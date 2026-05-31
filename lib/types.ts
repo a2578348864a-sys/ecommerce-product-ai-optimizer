@@ -60,6 +60,11 @@ export type GeneratedContent = {
   conversionAdvice: string[];
   audienceTags: string[];
   marketingHooks: string[];
+  seoKeywords: string[];
+  searchTerms: string[];
+  imageOptimizationIdeas: string[];
+  complianceChecklist: string[];
+  priorityActionPlan: string[];
 };
 
 export type GenerateErrorResponse = {
@@ -107,4 +112,9 @@ export const resultLabels: Array<{
   { key: "conversionAdvice", title: "提高转化率的优化建议", description: "页面、价格、信任和促销优化" },
   { key: "audienceTags", title: "适合投放的人群标签", description: "广告和内容测试可用标签" },
   { key: "marketingHooks", title: "适合测试的营销钩子", description: "可用于标题、视频和广告开头" },
+  { key: "seoKeywords", title: "SEO 关键词", description: "适合平台搜索、长尾词和人群意图的关键词" },
+  { key: "searchTerms", title: "搜索词和后台词", description: "适合上架、标签和广告测试的词组" },
+  { key: "imageOptimizationIdeas", title: "主图/详情图优化建议", description: "图片信息层级、场景和卖点表达建议" },
+  { key: "complianceChecklist", title: "平台合规检查", description: "发布前需要人工核对的风险点" },
+  { key: "priorityActionPlan", title: "优先行动计划", description: "上新、测试和优化的可执行步骤" },
 ];

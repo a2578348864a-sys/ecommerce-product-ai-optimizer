@@ -18,7 +18,7 @@ export const maxDuration = 60;
 const DEFAULT_OPENAI_MODEL = "gpt-5.5";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
-const MAX_OUTPUT_TOKENS = 6000;
+const MAX_OUTPUT_TOKENS = 8000;
 const REQUEST_BODY_LIMIT_BYTES = 16 * 1024;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 8;
@@ -38,7 +38,12 @@ const DEEPSEEK_JSON_FORMAT_INSTRUCTION = `
   "differentiationAdvice": ["至少 5 条竞品差异化建议"],
   "conversionAdvice": ["至少 5 条提高转化率的优化建议"],
   "audienceTags": ["至少 5 条适合投放的人群标签"],
-  "marketingHooks": ["至少 5 条适合测试的营销钩子"]
+  "marketingHooks": ["至少 5 条适合测试的营销钩子"],
+  "seoKeywords": ["正好 10 条 SEO 关键词"],
+  "searchTerms": ["正好 8 条搜索词和后台词"],
+  "imageOptimizationIdeas": ["正好 8 条主图/详情图优化建议"],
+  "complianceChecklist": ["正好 8 条平台合规检查"],
+  "priorityActionPlan": ["正好 8 条优先行动计划"]
 }
 不要添加其他顶层字段。不要省略 detailPageCopy。`;
 
@@ -166,6 +171,11 @@ function validateGeneratedContent(value: unknown): value is GeneratedContent {
     videoScripts: 3,
     customerServiceReplies: 8,
     negativeReviewReplies: 5,
+    seoKeywords: 10,
+    searchTerms: 8,
+    imageOptimizationIdeas: 8,
+    complianceChecklist: 8,
+    priorityActionPlan: 8,
   };
 
   const arrayFields: Array<keyof GeneratedContent> = [
@@ -180,6 +190,11 @@ function validateGeneratedContent(value: unknown): value is GeneratedContent {
     "conversionAdvice",
     "audienceTags",
     "marketingHooks",
+    "seoKeywords",
+    "searchTerms",
+    "imageOptimizationIdeas",
+    "complianceChecklist",
+    "priorityActionPlan",
   ];
 
   if (typeof value.detailPageCopy !== "string" || !value.detailPageCopy.trim()) {

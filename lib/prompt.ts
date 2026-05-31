@@ -19,6 +19,11 @@ export const generatedContentJsonSchema = {
       conversionAdvice: { type: "array", items: { type: "string" } },
       audienceTags: { type: "array", items: { type: "string" } },
       marketingHooks: { type: "array", items: { type: "string" } },
+      seoKeywords: { type: "array", items: { type: "string" } },
+      searchTerms: { type: "array", items: { type: "string" } },
+      imageOptimizationIdeas: { type: "array", items: { type: "string" } },
+      complianceChecklist: { type: "array", items: { type: "string" } },
+      priorityActionPlan: { type: "array", items: { type: "string" } },
     },
     required: [
       "titles",
@@ -33,9 +38,59 @@ export const generatedContentJsonSchema = {
       "conversionAdvice",
       "audienceTags",
       "marketingHooks",
+      "seoKeywords",
+      "searchTerms",
+      "imageOptimizationIdeas",
+      "complianceChecklist",
+      "priorityActionPlan",
     ],
   },
 } as const;
+
+const platformGuidance: Record<string, string[]> = {
+  "淘宝/天猫": [
+    "标题要兼顾搜索词、核心卖点、适用场景和人群，不要堆砌无关热词。",
+    "详情页文案要突出信任背书、参数信息、场景利益和售后降低顾虑。",
+    "转化建议要包含主图点击率、价格锚点、评价问大家、优惠利益点和关联购买思路。",
+  ],
+  拼多多: [
+    "标题和主图文案要更直接强调价格感、刚需场景、规格利益和下单理由。",
+    "详情页文案要避免过度高端表达，突出实惠、耐用、易懂、适合家庭或日常囤货。",
+    "营销钩子要适合低决策成本测试，例如限时优惠、多件更划算、场景痛点即时解决。",
+  ],
+  抖音小店: [
+    "短视频脚本要强化前 3 秒钩子、痛点演示、场景反转、口播节奏和下单动作。",
+    "商品标题和卖点要适合直播间、短视频挂车和信息流投放，表达要短、准、容易听懂。",
+    "转化建议要包含直播讲解顺序、视频封面信息、评论区 FAQ 和成交阻力处理。",
+  ],
+  小红书: [
+    "文案要有真实体验感和种草语气，避免硬广感、夸大承诺和过强销售话术。",
+    "小红书笔记要包含使用场景、个人感受、适合人群、不适合人群和收藏理由。",
+    "关键词要兼顾搜索发现和笔记标签，覆盖场景词、痛点词、人群词和风格词。",
+  ],
+  "TikTok Shop": [
+    "内容要适合短视频电商和跨境用户理解，强调场景演示、卖点直观化和简洁 CTA。",
+    "英文或双语输出时要自然本地化，避免中文电商直译腔。",
+    "营销钩子要适合短视频开头、达人口播、直播间讲解和商品卡点击。",
+  ],
+  亚马逊: [
+    "标题、搜索词和卖点要更偏搜索友好、参数清楚、利益明确，避免违规功效和夸大用语。",
+    "详情页文案要接近 bullet points、A+ 页面和 FAQ 的结构，突出使用场景、规格、兼容性和购买顾虑。",
+    "合规检查要提醒商标、专利、功效宣称、平台敏感词、图片真实性和评价诱导风险。",
+  ],
+  独立站: [
+    "文案要强化品牌信任、首屏价值主张、社证据、退换承诺和结账前顾虑处理。",
+    "详情页文案要适合落地页结构，包含问题引入、解决方案、核心利益、使用场景和行动号召。",
+    "转化建议要覆盖首屏、产品图、用户评价、FAQ、优惠弹窗、邮件或再营销素材。",
+  ],
+};
+
+function getPlatformGuidance(platform: string) {
+  return platformGuidance[platform] || [
+    "根据目标平台的内容调性、搜索逻辑、转化路径和合规要求调整输出。",
+    "优先生成能直接用于商品页、内容发布、客服沟通和投放测试的运营素材。",
+  ];
+}
 
 export function buildOptimizationPrompt(input: ProductInput) {
   return [
@@ -53,6 +108,11 @@ export function buildOptimizationPrompt(input: ProductInput) {
     "- customerServiceReplies 必须正好 8 条。",
     "- negativeReviewReplies 必须正好 5 条。",
     "- differentiationAdvice、conversionAdvice、audienceTags、marketingHooks 每项至少 5 条。",
+    "- seoKeywords 必须正好 10 条，覆盖核心词、长尾词、场景词和人群词。",
+    "- searchTerms 必须正好 8 条，适合平台后台搜索词、商品标签或广告词包，不要重复堆词。",
+    "- imageOptimizationIdeas 必须正好 8 条，给出主图、详情图、信息图和场景图建议。",
+    "- complianceChecklist 必须正好 8 条，提醒运营发布前检查平台规则、广告法和真实性风险。",
+    "- priorityActionPlan 必须正好 8 条，按优先级给出下一步可执行动作。",
     "",
     "内容要求：",
     "- 避免虚假承诺、绝对化广告用语和无法证明的功效描述。",
@@ -60,6 +120,12 @@ export function buildOptimizationPrompt(input: ProductInput) {
     "- 如果竞品信息为空，请基于常见同类商品做差异化建议。",
     "- 客服回复要自然、克制、可直接复制改写。",
     "- 差评回复要先共情，再解释，再给出解决动作。",
+    "- SEO 关键词要自然、具体，不要堆砌无关高流量词。",
+    "- 合规检查不要替代法律意见，只列出运营发布前需要核对的风险点。",
+    "- 行动计划要具体到可以直接执行，例如改主图、测试标题、补充 FAQ、调整价格锚点。",
+    "",
+    "目标平台专项要求：",
+    ...getPlatformGuidance(input.platform).map((item) => `- ${item}`),
     "",
     "用户输入：",
     `商品名称：${input.productName}`,
