@@ -1,120 +1,235 @@
+// 产品类别
 export const categories = [
-  "服装",
-  "美妆",
-  "数码",
+  "电子",
+  "机械",
   "家居",
+  "纺织",
+  "包装",
+  "五金",
+  "化工",
+  "医疗",
+  "玩具",
   "食品",
-  "宠物用品",
-  "母婴",
+  "美容",
   "运动",
+  "宠物",
   "其他",
 ] as const;
 
-export const platforms = [
-  "淘宝/天猫",
-  "拼多多",
-  "抖音小店",
-  "小红书",
-  "TikTok Shop",
-  "亚马逊",
-  "独立站",
-] as const;
+// 三态选择（是/否/不确定）
+export const yesNoUnsure = ["是", "否", "不确定"] as const;
 
-export const tones = [
-  "专业可信",
-  "年轻活泼",
-  "高端质感",
-  "强促销转化",
-  "小红书种草风",
-] as const;
+export const yesNo = ["是", "否"] as const;
 
-export const languages = ["中文", "英文", "中英双语"] as const;
+// ========== 表单输入类型 ==========
 
-export type ProductInput = {
+export type ProductFormInput = {
+  // 基础模式（必填）
   productName: string;
   category: string;
-  platform: string;
-  sellingPointsInput: string;
-  targetAudience: string;
-  priceRange?: string;
-  competitorInfo?: string;
-  painPoints?: string;
-  tone: string;
-  language: string;
+  material: string;
+  sellingPoints: string;
+  productCost: string;
+  estimatedPrice: string;
+  moq: string;
+  targetCountries: string;
+
+  // 专业模式 - 第一组：产品基础信息补充
+  englishName: string;
+  specifications: string;
+  productUsage: string;
+  applicableScenarios: string;
+
+  // 专业模式 - 第二组：选品判断信息补充
+  productWeight: string;
+  productVolume: string;
+  supportsOemOdm: string;
+  hasStock: string;
+  leadTime: string;
+  packagingMethod: string;
+
+  // 专业模式 - 第三组：市场与买家信息
+  targetBuyerTypes: string;
+  customerPainPoints: string;
+  competitorInfo: string;
+  keywordTrendData: string;
+  rfqData: string;
+  amazonCompetitorInfo: string;
+
+  // 专业模式 - 第四组：风险信息
+  isFragile: string;
+  isLiquid: string;
+  isBatteryPowered: string;
+  isMagnetic: string;
+  isFoodContact: string;
+  isChildrenProduct: string;
+  needsCertification: string;
+  existingCertificates: string;
+
+  // 专业模式 - 第五组：补充信息
+  supplyChainAdvantages: string;
+  factoryAdvantages: string;
+  additionalNotes: string;
 };
 
-export type GenerateRequest = ProductInput & {
+export type GenerateRequest = ProductFormInput & {
   accessPassword: string;
 };
 
-export type GeneratedContent = {
-  titles: string[];
-  coverCopies: string[];
-  sellingPoints: string[];
-  detailPageCopy: string;
-  xiaohongshuPosts: string[];
-  videoScripts: string[];
-  customerServiceReplies: string[];
-  negativeReviewReplies: string[];
-  differentiationAdvice: string[];
-  conversionAdvice: string[];
-  audienceTags: string[];
-  marketingHooks: string[];
-  seoKeywords: string[];
-  searchTerms: string[];
-  imageOptimizationIdeas: string[];
-  complianceChecklist: string[];
-  priorityActionPlan: string[];
+// ========== 输出类型 ==========
+
+export type ConfidenceLevel = "low" | "medium" | "high";
+
+// 五要素结论格式
+export type BaseAssessment = {
+  conclusion: string;
+  basis: string;
+  risk: string;
+  confidence: ConfidenceLevel;
+  verificationStep: string;
+};
+
+// 评分维度明细
+export type ScoreDimension = {
+  score: number;
+  basis: string;
+  mainRisk: string;
+  missingData: string;
+};
+
+// 评分拆分
+export type ScoreBreakdown = {
+  marketDemand: ScoreDimension;
+  competitionRisk: ScoreDimension;
+  profitMargin: ScoreDimension;
+  logisticsDifficulty: ScoreDimension;
+  complianceRisk: ScoreDimension;
+  b2bFit: ScoreDimension;
+  differentiation: ScoreDimension;
+  beginnerDifficulty: ScoreDimension;
+};
+
+// 询盘回复模板
+export type InquiryTemplates = {
+  firstInquiry: string;
+  moqReply: string;
+  sampleFeeReply: string;
+  oemOdmReply: string;
+  priceTooHighReply: string;
+  leadTimeReply: string;
+  shippingReply: string;
+  followUpReply: string;
+};
+
+// AI 输出结果
+export type AlibabaResult = {
+  productOpportunityScore: number;
+  confidenceLevel: ConfidenceLevel;
+  recommendation: {
+    suggestion: string;
+    dataWarning: string;
+  };
+  scoreBreakdown: ScoreBreakdown;
+  demandAnalysis: BaseAssessment;
+  competitionRiskAssessment: BaseAssessment;
+  profitRiskAssessment: BaseAssessment;
+  logisticsRiskAssessment: BaseAssessment;
+  complianceRiskAssessment: BaseAssessment;
+  b2bFitAssessment: BaseAssessment;
+  differentiationAssessment: BaseAssessment;
+  beginnerDifficultyAssessment: BaseAssessment;
+  missingData: string[];
+  validationChecklist: string[];
+  targetMarkets: string[];
+  buyerTypes: string[];
+  alibabaTitle: string;
+  coreKeywords: string[];
+  longTailKeywords: string[];
+  productDescription: string;
+  inquiryReplyTemplates: InquiryTemplates;
+  imageSuggestions: string[];
+  amazonListing: string;
+  actionPlan: string[];
 };
 
 export type GenerateErrorResponse = {
   error: string;
-  fieldErrors?: Partial<Record<keyof GenerateRequest, string>>;
+  fieldErrors?: Partial<Record<keyof ProductFormInput, string>>;
 };
 
-export const inputLimits: Record<keyof ProductInput, number> = {
-  productName: 80,
-  category: 40,
-  platform: 40,
-  sellingPointsInput: 800,
-  targetAudience: 80,
-  priceRange: 80,
-  competitorInfo: 600,
-  painPoints: 500,
-  tone: 40,
-  language: 40,
-};
+// ========== 限制与验证 ==========
 
-export const requiredFields: Array<keyof ProductInput> = [
+// 基础模式必填字段
+export const basicRequiredFields: Array<keyof ProductFormInput> = [
   "productName",
   "category",
-  "platform",
-  "sellingPointsInput",
-  "targetAudience",
-  "tone",
-  "language",
+  "material",
+  "sellingPoints",
+  "productCost",
+  "estimatedPrice",
+  "moq",
+  "targetCountries",
 ];
 
-export const resultLabels: Array<{
-  key: keyof GeneratedContent;
-  title: string;
-  description: string;
-}> = [
-  { key: "titles", title: "商品标题", description: "10 个适合测试的标题方向" },
-  { key: "coverCopies", title: "商品主图文案", description: "5 条可放在主图上的短文案" },
-  { key: "sellingPoints", title: "商品核心卖点", description: "6 条面向转化的卖点表达" },
-  { key: "detailPageCopy", title: "详情页完整文案", description: "可直接改写成详情页结构" },
-  { key: "xiaohongshuPosts", title: "小红书种草文案", description: "3 条更适合内容平台的文案" },
-  { key: "videoScripts", title: "抖音/短视频脚本", description: "3 条短视频口播与镜头脚本" },
-  { key: "customerServiceReplies", title: "客服常见问题回复", description: "8 条售前售后高频回复" },
-  { key: "negativeReviewReplies", title: "差评回复模板", description: "5 条克制、可执行的回复模板" },
-  { key: "differentiationAdvice", title: "竞品差异化建议", description: "帮助商品避开同质化竞争" },
-  { key: "conversionAdvice", title: "提高转化率的优化建议", description: "页面、价格、信任和促销优化" },
-  { key: "audienceTags", title: "适合投放的人群标签", description: "广告和内容测试可用标签" },
-  { key: "marketingHooks", title: "适合测试的营销钩子", description: "可用于标题、视频和广告开头" },
-  { key: "seoKeywords", title: "SEO 关键词", description: "适合平台搜索、长尾词和人群意图的关键词" },
-  { key: "searchTerms", title: "搜索词和后台词", description: "适合上架、标签和广告测试的词组" },
-  { key: "imageOptimizationIdeas", title: "主图/详情图优化建议", description: "图片信息层级、场景和卖点表达建议" },
-  { key: "complianceChecklist", title: "平台合规检查", description: "发布前需要人工核对的风险点" },
-  { key: "priorityActionPlan", title: "优先行动计划", description: "上新、测试和优化的可执行步骤" },
+// 输入字符限制
+export const inputLimits: Partial<Record<keyof ProductFormInput, number>> = {
+  productName: 80,
+  category: 40,
+  material: 100,
+  sellingPoints: 800,
+  productCost: 40,
+  estimatedPrice: 40,
+  moq: 40,
+  targetCountries: 100,
+  englishName: 200,
+  specifications: 200,
+  productUsage: 200,
+  applicableScenarios: 200,
+  productWeight: 40,
+  productVolume: 40,
+  leadTime: 100,
+  packagingMethod: 200,
+  targetBuyerTypes: 200,
+  customerPainPoints: 500,
+  competitorInfo: 600,
+  keywordTrendData: 600,
+  rfqData: 600,
+  amazonCompetitorInfo: 600,
+
+  supportsOemOdm: 40,
+  hasStock: 40,
+  isFragile: 40,
+  isLiquid: 40,
+  isBatteryPowered: 40,
+  isMagnetic: 40,
+  isFoodContact: 40,
+  isChildrenProduct: 40,
+  needsCertification: 40,
+  existingCertificates: 400,
+  supplyChainAdvantages: 400,
+  factoryAdvantages: 400,
+  additionalNotes: 800,
+};
+
+// 风险字段列表（用于判断是否需要红色高亮）
+export const riskFields: Array<keyof ProductFormInput> = [
+  "isFragile",
+  "isLiquid",
+  "isBatteryPowered",
+  "isMagnetic",
+  "isFoodContact",
+  "isChildrenProduct",
+  "needsCertification",
 ];
+
+// 用于展示的评分维度标签
+export const scoreDimensionLabels: Record<keyof ScoreBreakdown, { label: string; maxScore: number }> = {
+  marketDemand: { label: "市场需求", maxScore: 20 },
+  competitionRisk: { label: "竞争强度", maxScore: 15 },
+  profitMargin: { label: "利润空间", maxScore: 20 },
+  logisticsDifficulty: { label: "物流难度", maxScore: 10 },
+  complianceRisk: { label: "认证/合规风险", maxScore: 10 },
+  b2bFit: { label: "B2B 适配度", maxScore: 10 },
+  differentiation: { label: "差异化空间", maxScore: 10 },
+  beginnerDifficulty: { label: "新手操作难度", maxScore: 5 },
+};

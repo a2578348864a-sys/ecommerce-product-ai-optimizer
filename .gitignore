@@ -11,3 +11,17 @@ yarn-error.log*
 pnpm-debug.log*
 
 .vercel
+
+# Local debug artifacts
+.real_api_result.json
+.api_result.json
+.gen_result.txt
+.mock_dev_*.txt
+.real_dev_*.txt
+.dev_*.txt
+.build_*.txt
+.page_test.html
+.server_check.html
+.test*.html
+fix_*.py
+test_*.py

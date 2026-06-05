@@ -12,14 +12,40 @@ type CopyButtonProps = {
 export function CopyButton({ text, label = "一键复制", className = "" }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
+  function fallbackCopy(value: string) {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const success = document.execCommand("copy");
+    textarea.remove();
+    return success;
+  }
+
   async function handleCopy() {
     if (!text) {
       return;
     }
 
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    let success = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } else {
+        success = fallbackCopy(text);
+      }
+    } catch {
+      success = fallbackCopy(text);
+    }
+
+    if (success) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    }
   }
 
   return (

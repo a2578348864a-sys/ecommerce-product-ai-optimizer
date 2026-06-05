@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 const DEFAULT_MODEL = "gpt-5.5";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 
 function getProvider() {
   return process.env.AI_PROVIDER?.trim().toLowerCase() === "deepseek" ? "deepseek" : "openai";

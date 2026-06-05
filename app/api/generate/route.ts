@@ -1,15 +1,22 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
-import { buildOptimizationPrompt, generatedContentJsonSchema } from "@/lib/prompt";
 import {
+  alibabaJsonSchema,
+  buildAlibabaPrompt,
+  DEEPSEEK_JSON_FORMAT_INSTRUCTION,
+} from "@/lib/prompt";
+import {
+  basicRequiredFields,
   categories,
-  GeneratedContent,
-  GenerateRequest,
   inputLimits,
-  languages,
-  platforms,
-  requiredFields,
-  tones,
+} from "@/lib/types";
+import type {
+  AlibabaResult,
+  BaseAssessment,
+  InquiryTemplates,
+  ProductFormInput,
+  ScoreBreakdown,
+  ScoreDimension,
 } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -17,35 +24,13 @@ export const maxDuration = 60;
 
 const DEFAULT_OPENAI_MODEL = "gpt-5.5";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const MAX_OUTPUT_TOKENS = 8000;
 const REQUEST_BODY_LIMIT_BYTES = 16 * 1024;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 8;
 const OPENAI_TIMEOUT_MS = 60 * 1000;
 const GENERATION_ERROR = "生成失败，请检查 API Key、模型名称、余额或稍后重试。";
-const DEEPSEEK_JSON_FORMAT_INSTRUCTION = `
-必须返回且只返回一个 JSON object。顶层字段必须完整包含：
-{
-  "titles": ["正好 10 条商品标题"],
-  "coverCopies": ["正好 5 条商品主图文案"],
-  "sellingPoints": ["正好 6 条商品核心卖点"],
-  "detailPageCopy": "详情页完整文案，必须是非空字符串，不能省略",
-  "xiaohongshuPosts": ["正好 3 条小红书种草文案"],
-  "videoScripts": ["正好 3 条抖音/短视频脚本"],
-  "customerServiceReplies": ["正好 8 条客服常见问题回复"],
-  "negativeReviewReplies": ["正好 5 条差评回复模板"],
-  "differentiationAdvice": ["至少 5 条竞品差异化建议"],
-  "conversionAdvice": ["至少 5 条提高转化率的优化建议"],
-  "audienceTags": ["至少 5 条适合投放的人群标签"],
-  "marketingHooks": ["至少 5 条适合测试的营销钩子"],
-  "seoKeywords": ["正好 10 条 SEO 关键词"],
-  "searchTerms": ["正好 8 条搜索词和后台词"],
-  "imageOptimizationIdeas": ["正好 8 条主图/详情图优化建议"],
-  "complianceChecklist": ["正好 8 条平台合规检查"],
-  "priorityActionPlan": ["正好 8 条优先行动计划"]
-}
-不要添加其他顶层字段。不要省略 detailPageCopy。`;
 
 type AiProvider = "openai" | "deepseek";
 
@@ -94,13 +79,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function getTrimmedString(body: Record<string, unknown>, field: keyof GenerateRequest) {
+function getTrimmedString(body: Record<string, unknown>, field: string) {
   const value = body[field];
   return typeof value === "string" ? value.trim() : "";
 }
 
 function validateInput(body: unknown) {
-  const fieldErrors: Partial<Record<keyof GenerateRequest, string>> = {};
+  const fieldErrors: Partial<Record<string, string>> = {};
 
   if (!isPlainObject(body)) {
     return {
@@ -109,21 +94,14 @@ function validateInput(body: unknown) {
     };
   }
 
-  const value: GenerateRequest = {
-    accessPassword: getTrimmedString(body, "accessPassword"),
-    productName: getTrimmedString(body, "productName"),
-    category: getTrimmedString(body, "category"),
-    platform: getTrimmedString(body, "platform"),
-    sellingPointsInput: getTrimmedString(body, "sellingPointsInput"),
-    targetAudience: getTrimmedString(body, "targetAudience"),
-    priceRange: getTrimmedString(body, "priceRange"),
-    competitorInfo: getTrimmedString(body, "competitorInfo"),
-    painPoints: getTrimmedString(body, "painPoints"),
-    tone: getTrimmedString(body, "tone"),
-    language: getTrimmedString(body, "language"),
-  };
+  const value: Record<string, string> = {};
+  const allFields = Object.keys(inputLimits) as string[];
+  for (const field of allFields) {
+    value[field] = getTrimmedString(body, field);
+  }
+  value.accessPassword = getTrimmedString(body, "accessPassword");
 
-  for (const field of requiredFields) {
+  for (const field of basicRequiredFields) {
     if (!value[field]) {
       fieldErrors[field] = "该项不能为空。";
     }
@@ -139,85 +117,136 @@ function validateInput(body: unknown) {
     fieldErrors.category = "商品类目不在允许范围内。";
   }
 
-  if (!platforms.includes(value.platform as (typeof platforms)[number])) {
-    fieldErrors.platform = "目标平台不在允许范围内。";
-  }
-
-  if (!tones.includes(value.tone as (typeof tones)[number])) {
-    fieldErrors.tone = "风格选择不在允许范围内。";
-  }
-
-  if (!languages.includes(value.language as (typeof languages)[number])) {
-    fieldErrors.language = "输出语言不在允许范围内。";
-  }
-
   return { value, fieldErrors };
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string" && item.trim().length > 0);
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }
 
-function validateGeneratedContent(value: unknown): value is GeneratedContent {
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isString);
+}
+
+function isConfidenceLevel(value: unknown) {
+  return value === "low" || value === "medium" || value === "high";
+}
+
+function isRecommendation(value: unknown): value is AlibabaResult["recommendation"] {
+  return isPlainObject(value)
+    && isString(value.suggestion)
+    && isString(value.dataWarning);
+}
+
+function isScoreDimension(value: unknown): value is ScoreDimension {
+  return isPlainObject(value)
+    && typeof value.score === "number"
+    && Number.isFinite(value.score)
+    && isString(value.basis)
+    && isString(value.mainRisk)
+    && isString(value.missingData);
+}
+
+function isScoreBreakdown(value: unknown): value is ScoreBreakdown {
   if (!isPlainObject(value)) {
     return false;
   }
 
-  const expectedArrayLengths: Partial<Record<keyof GeneratedContent, number>> = {
-    titles: 10,
-    coverCopies: 5,
-    sellingPoints: 6,
-    xiaohongshuPosts: 3,
-    videoScripts: 3,
-    customerServiceReplies: 8,
-    negativeReviewReplies: 5,
-    seoKeywords: 10,
-    searchTerms: 8,
-    imageOptimizationIdeas: 8,
-    complianceChecklist: 8,
-    priorityActionPlan: 8,
-  };
-
-  const arrayFields: Array<keyof GeneratedContent> = [
-    "titles",
-    "coverCopies",
-    "sellingPoints",
-    "xiaohongshuPosts",
-    "videoScripts",
-    "customerServiceReplies",
-    "negativeReviewReplies",
-    "differentiationAdvice",
-    "conversionAdvice",
-    "audienceTags",
-    "marketingHooks",
-    "seoKeywords",
-    "searchTerms",
-    "imageOptimizationIdeas",
-    "complianceChecklist",
-    "priorityActionPlan",
+  const fields: Array<keyof ScoreBreakdown> = [
+    "marketDemand",
+    "competitionRisk",
+    "profitMargin",
+    "logisticsDifficulty",
+    "complianceRisk",
+    "b2bFit",
+    "differentiation",
+    "beginnerDifficulty",
   ];
 
-  if (typeof value.detailPageCopy !== "string" || !value.detailPageCopy.trim()) {
+  return fields.every((field) => isScoreDimension(value[field]));
+}
+
+function isBaseAssessment(value: unknown): value is BaseAssessment {
+  return isPlainObject(value)
+    && isString(value.conclusion)
+    && isString(value.basis)
+    && isString(value.risk)
+    && isConfidenceLevel(value.confidence)
+    && isString(value.verificationStep);
+}
+
+function isInquiryTemplates(value: unknown): value is InquiryTemplates {
+  if (!isPlainObject(value)) {
     return false;
   }
 
-  for (const field of arrayFields) {
-    const fieldValue = value[field];
-    if (!isStringArray(fieldValue)) {
-      return false;
-    }
+  const fields: Array<keyof InquiryTemplates> = [
+    "firstInquiry",
+    "moqReply",
+    "sampleFeeReply",
+    "oemOdmReply",
+    "priceTooHighReply",
+    "leadTimeReply",
+    "shippingReply",
+    "followUpReply",
+  ];
 
-    const expectedLength = expectedArrayLengths[field];
-    if (expectedLength && fieldValue.length !== expectedLength) {
-      return false;
-    }
+  return fields.every((field) => isString(value[field]));
+}
 
-    if (!expectedLength && fieldValue.length < 1) {
-      return false;
-    }
+function validateAlibabaResult(value: unknown): value is AlibabaResult {
+  if (!isPlainObject(value)) {
+    return false;
   }
 
-  return true;
+  const assessmentFields = [
+    "demandAnalysis",
+    "competitionRiskAssessment",
+    "profitRiskAssessment",
+    "logisticsRiskAssessment",
+    "complianceRiskAssessment",
+    "b2bFitAssessment",
+    "differentiationAssessment",
+    "beginnerDifficultyAssessment",
+  ] as const;
+  const arrayFields = [
+    "missingData",
+    "validationChecklist",
+    "targetMarkets",
+    "buyerTypes",
+    "coreKeywords",
+    "longTailKeywords",
+    "imageSuggestions",
+    "actionPlan",
+  ] as const;
+  const stringFields = [
+    "alibabaTitle",
+    "productDescription",
+    "amazonListing",
+  ] as const;
+
+  return typeof value.productOpportunityScore === "number"
+    && Number.isFinite(value.productOpportunityScore)
+    && value.productOpportunityScore >= 0
+    && value.productOpportunityScore <= 100
+    && isConfidenceLevel(value.confidenceLevel)
+    && isRecommendation(value.recommendation)
+    && isScoreBreakdown(value.scoreBreakdown)
+    && assessmentFields.every((field) => isBaseAssessment(value[field]))
+    && arrayFields.every((field) => isStringArray(value[field]))
+    && stringFields.every((field) => isString(value[field]))
+    && isInquiryTemplates(value.inquiryReplyTemplates);
+}
+
+function parseAiJson(outputText: string): unknown {
+  const trimmed = outputText.trim();
+  if (!trimmed) {
+    throw new Error("Empty AI response");
+  }
+
+  const fencedJson = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const jsonText = (fencedJson?.[1] ?? trimmed).trim();
+  return JSON.parse(jsonText);
 }
 
 function getSafeLogPayload(error: unknown) {
@@ -281,7 +310,6 @@ export async function POST(request: NextRequest) {
       const response = await client.chat.completions.create({
         model: process.env.DEEPSEEK_MODEL?.trim() || DEFAULT_DEEPSEEK_MODEL,
         max_tokens: MAX_OUTPUT_TOKENS,
-        response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
@@ -289,7 +317,7 @@ export async function POST(request: NextRequest) {
           },
           {
             role: "user",
-            content: `${buildOptimizationPrompt(value)}\n\n${DEEPSEEK_JSON_FORMAT_INSTRUCTION}`,
+            content: `${buildAlibabaPrompt(value as ProductFormInput)}\n\n${DEEPSEEK_JSON_FORMAT_INSTRUCTION}`,
           },
         ],
       });
@@ -316,13 +344,13 @@ export async function POST(request: NextRequest) {
           },
           {
             role: "user",
-            content: buildOptimizationPrompt(value),
+            content: buildAlibabaPrompt(value as ProductFormInput),
           },
         ],
         text: {
           format: {
             type: "json_schema",
-            ...generatedContentJsonSchema,
+            ...alibabaJsonSchema,
           },
         },
       });
@@ -336,12 +364,12 @@ export async function POST(request: NextRequest) {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(outputText);
+    parsed = parseAiJson(outputText);
   } catch {
-    return jsonError("AI 返回结构不完整，请重新生成。", 502);
+    return jsonError("AI 返回的内容不是合法 JSON，请重新生成。", 502);
   }
 
-  if (!validateGeneratedContent(parsed)) {
+  if (!validateAlibabaResult(parsed)) {
     return jsonError("AI 返回结构不完整，请重新生成。", 502);
   }
 
