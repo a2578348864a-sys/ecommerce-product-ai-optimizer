@@ -64,7 +64,7 @@ DEEPSEEK_API_KEY=你的 DeepSeek API Key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-chat
 
-APP_ACCESS_PASSWORD=888888
+ACCESS_PASSWORD=888888
 ```
 
 4. 启动本地开发服务：
@@ -97,7 +97,7 @@ http://localhost:3000/api/health
 ```env
 AI_PROVIDER=deepseek
 DEEPSEEK_API_KEY=你的 DeepSeek API Key
-APP_ACCESS_PASSWORD=888888
+ACCESS_PASSWORD=888888
 ```
 5. 点击 `Deploy`。
 

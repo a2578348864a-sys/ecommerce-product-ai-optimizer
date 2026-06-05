@@ -49,6 +49,10 @@ function getAiProvider(): AiProvider {
   return process.env.AI_PROVIDER?.trim().toLowerCase() === "deepseek" ? "deepseek" : "openai";
 }
 
+function getAccessPassword() {
+  return process.env.ACCESS_PASSWORD || process.env.APP_ACCESS_PASSWORD;
+}
+
 function getClientIp(request: NextRequest) {
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
@@ -273,9 +277,9 @@ export async function POST(request: NextRequest) {
     return jsonError("请求体不是合法 JSON。", 400);
   }
 
-  const configuredPassword = process.env.APP_ACCESS_PASSWORD;
+  const configuredPassword = getAccessPassword();
   if (!configuredPassword) {
-    return jsonError("服务器未配置 APP_ACCESS_PASSWORD，请在 Vercel 环境变量中添加。", 500);
+    return jsonError("服务器未配置 ACCESS_PASSWORD，请在 Vercel 环境变量中添加。", 500);
   }
 
   if (!isPlainObject(body) || getTrimmedString(body, "accessPassword") !== configuredPassword) {

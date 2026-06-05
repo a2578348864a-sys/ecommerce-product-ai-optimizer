@@ -578,7 +578,7 @@ export default function HomePage() {
                 </label>
                 <input id="pw" type="password" value={accessPassword} onChange={(e) => { setAccessPassword(e.target.value); setFieldErrors((c) => ({ ...c, accessPassword: undefined })); }}
                   className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  placeholder="请输入 APP_ACCESS_PASSWORD" autoComplete="current-password" />
+                  placeholder="请输入 ACCESS_PASSWORD" autoComplete="current-password" />
                 {fieldErrors.accessPassword ? <p className="mt-2 text-sm text-red-600">{fieldErrors.accessPassword}</p> : <p className="mt-2 text-xs text-slate-500">密码仅用于当前浏览器会话</p>}
               </div>
 
