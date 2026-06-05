@@ -19,6 +19,7 @@ pnpm-debug.log*
 .mock_dev_*.txt
 .real_dev_*.txt
 .dev_*.txt
+.start_check_*.txt
 .build_*.txt
 .page_test.html
 .server_check.html

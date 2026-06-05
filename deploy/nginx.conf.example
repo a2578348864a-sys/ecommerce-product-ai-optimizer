@@ -1,0 +1,48 @@
+# Nginx reverse proxy example for Alibaba AI Assistant.
+#
+# Temporary test:
+# - Visit http://服务器公网IP:3005 directly.
+# - Only open security group port 3005.
+#
+# Domain + Nginx production access:
+# - Open security group ports 80 and 443.
+# - Point your domain to the server.
+# - Replace your-domain.com with your real domain.
+# - Configure HTTPS only after you have a domain and certificate.
+# - Without a domain, do not configure HTTPS yet.
+
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3005;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+
+# HTTPS example. Enable this only after your domain and certificate are ready.
+# server {
+#     listen 443 ssl http2;
+#     server_name your-domain.com;
+#
+#     ssl_certificate /etc/nginx/ssl/your-domain.com.pem;
+#     ssl_certificate_key /etc/nginx/ssl/your-domain.com.key;
+#
+#     location / {
+#         proxy_pass http://127.0.0.1:3005;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection "upgrade";
+#     }
+# }

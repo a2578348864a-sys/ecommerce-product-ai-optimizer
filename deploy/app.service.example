@@ -1,0 +1,26 @@
+# systemd service example.
+#
+# Recommended project directory:
+#   /www/alibaba-ai-assistant
+#
+# If your real project directory is different, replace every
+# /www/alibaba-ai-assistant below with your actual path.
+
+[Unit]
+Description=Alibaba AI Assistant Next.js app
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/www/alibaba-ai-assistant
+EnvironmentFile=/www/alibaba-ai-assistant/.env.local
+ExecStart=/usr/bin/npm run start -- -p 3005
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
