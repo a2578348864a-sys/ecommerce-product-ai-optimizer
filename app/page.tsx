@@ -8,10 +8,7 @@ import {
   ClipboardCheck,
   Download,
   FileText,
-  History,
   ImagePlus,
-  House,
-  LayoutDashboard,
   RefreshCcw,
   Save,
   ShieldCheck,
@@ -30,6 +27,7 @@ import {
   useState,
 } from "react";
 import { CopyButton } from "@/components/CopyButton";
+import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import {
   EvidenceCardList,
   EvidenceSection,
@@ -196,17 +194,6 @@ const displayAgents = [
     icon: Brain,
   },
 ];
-
-const sidebarMenus = [
-  { label: "首页", icon: House },
-  { label: "选品体检", icon: LayoutDashboard },
-  { label: "素材接收", icon: UploadCloud },
-  { label: "爆款拆解", icon: Sparkles },
-  { label: "货源判断", icon: ClipboardCheck },
-  { label: "风险排查", icon: ShieldCheck },
-  { label: "小白结论", icon: Brain },
-  { label: "任务记录", icon: History },
-] as const;
 
 const localArchiveKey = "hot-material-agent-archives";
 
@@ -913,7 +900,6 @@ export default function Home() {
   const [result, setResult] = useState<HotProductRadarResult | null>(null);
   const [materialAgentResult, setMaterialAgentResult] = useState<MaterialAgentResult | null>(null);
   const [viralAgentResult, setViralAgentResult] = useState<ViralAgentResult | null>(null);
-  const [activeMenu, setActiveMenu] = useState<(typeof sidebarMenus)[number]["label"]>("首页");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1182,7 +1168,6 @@ export default function Home() {
       }
 
       setViralAgentResult(data.result);
-      setActiveMenu("爆款拆解");
       setNotice(`爆款拆解 Agent 已完成。${data.result.summary}`);
       setError("");
     } catch {
@@ -1633,87 +1618,88 @@ export default function Home() {
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#f7f3ff] via-white to-[#eef7ff] px-3 py-3 sm:px-5 lg:px-6">
-      <div className="mx-auto grid max-w-[1540px] gap-4 lg:grid-cols-[230px_minmax(0,1fr)]">
-        <AgentSidebar activeMenu={activeMenu} onSelect={setActiveMenu} />
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.16),transparent_34rem),linear-gradient(180deg,#f8fcfb_0%,#f4f8fb_100%)] px-3 py-3 sm:px-5 lg:px-6">
+      <div className="mx-auto grid max-w-[1540px] gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
+        <WorkspaceSidebar />
 
-        <div className="min-w-0 space-y-4">
-          <header className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 shadow-sm backdrop-blur">
+        <div className="min-w-0 space-y-5">
+          <header className="rounded-[28px] border border-white/80 bg-white/90 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-slate-950">首页</p>
-                <p className="mt-0.5 text-sm text-slate-500">用 AI 拆解小红书素材，判断这个品能不能做。</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-600">Qingxuan Workspace</p>
+                <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">轻选 Agent 工作台</h1>
+                <p className="mt-1 text-sm text-slate-500">按步骤放素材、识别证据、判断能不能做。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-sm font-semibold text-rose-700">
+                <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">
                   省钱模式：已开启
                 </span>
                 <button
                   type="button"
                   onClick={() => {
                     clearAll();
-                    setActiveMenu("首页");
                   }}
-                  className="inline-flex h-9 items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-slate-800"
+                  className="inline-flex h-10 items-center justify-center rounded-full bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800"
                 >
                   新建体检
                 </button>
               </div>
             </div>
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:hidden">
-              {sidebarMenus.map((item) => {
-                const Icon = item.icon;
-                const active = activeMenu === item.label;
-                return (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => setActiveMenu(item.label)}
-                    className={"inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-medium " + (active ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-600")}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
+            <WorkspaceMobileNav />
           </header>
 
-          <section className="overflow-hidden rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-5 shadow-sm">
+          <section className="overflow-hidden rounded-[28px] border border-teal-100/80 bg-white/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="max-w-3xl">
-                <p className="text-sm font-semibold text-teal-700">AI 跨境上架助手 MVP</p>
-                <h2 className="mt-2 text-2xl font-bold text-slate-950">跨境商品利润测算</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  填写采购价、运费、平台佣金和目标利润率，系统会用程序公式实时计算建议售价、保本价、毛利润、毛利率和 ROI。
-                  当前版本不保存数据、不调用 AI、不自动上架。
-                </p>
+              <div className="flex items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
+                  <ClipboardCheck className="h-6 w-6" />
+                </span>
+                <div className="max-w-3xl">
+                  <p className="text-sm font-semibold text-teal-700">常用入口</p>
+                  <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">跨境商品利润测算</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    先算成本、售价和利润，再决定要不要继续做 AI 选品分析。这个入口不保存数据、不调用 AI、不自动上架。
+                  </p>
+                </div>
               </div>
               <Link
                 href="/products/new"
-                className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+                className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-700"
               >
                 开始测算
               </Link>
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-3xl border border-white/80 bg-gradient-to-br from-white via-rose-50 to-indigo-50 p-5 shadow-[0_20px_60px_rgba(99,102,241,0.10)]">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+          <section className="overflow-hidden rounded-[32px] border border-white/80 bg-gradient-to-br from-white via-teal-50/70 to-sky-50 p-6 shadow-[0_24px_70px_rgba(20,184,166,0.12)]">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
               <div>
-                <p className="text-sm font-semibold text-rose-600">轻选 Agent</p>
-                <h1 className="mt-2 max-w-3xl text-3xl font-bold tracking-normal text-slate-950 sm:text-4xl">
-                  一个轻选 Agent，帮你看懂小红书无货源选品
+                <p className="text-sm font-semibold text-teal-700">今天从这里开始</p>
+                <h1 className="mt-2 max-w-3xl text-3xl font-bold tracking-tight text-slate-950 sm:text-5xl sm:leading-tight">
+                  放入素材，按 3 步看懂这个品能不能做
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
                   放入笔记、商品信息或选品想法，先拆证据，再看风险，最后给出小白能看懂的结论。
                 </p>
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  {[
+                    ["01", "粘贴素材", "笔记、链接、截图都可以"],
+                    ["02", "识别证据", "先整理商品和卖点"],
+                    ["03", "开始体检", "再判断能不能做"],
+                  ].map(([step, title, text]) => (
+                    <div key={step} className="rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm">
+                      <p className="text-xs font-bold tracking-[0.2em] text-teal-600">{step}</p>
+                      <h3 className="mt-2 text-sm font-bold text-slate-950">{title}</h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{text}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
-                <p className="text-sm font-bold text-slate-950">今日选品状态</p>
+              <div className="rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-sm">
+                <p className="text-sm font-bold text-slate-950">当前状态</p>
                 <div className="mt-3 space-y-2">
                   {heroStats.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                    <div key={item.label} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
                       <span className="text-xs text-slate-500">{item.label}</span>
                       <span className="text-sm font-bold text-slate-950">{item.value}</span>
                     </div>
@@ -1723,15 +1709,16 @@ export default function Home() {
             </div>
           </section>
 
-          <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="min-w-0 space-y-4">
-              <section className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <form onSubmit={handleSubmit} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="min-w-0 space-y-5">
+              <section className="rounded-[28px] border border-white/80 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-rose-600">指令输入</p>
-                    <h2 className="mt-1 text-xl font-bold text-slate-950">粘贴你的选品素材</h2>
+                    <p className="text-sm font-semibold text-teal-700">第一步</p>
+                    <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">粘贴你的选品素材</h2>
+                    <p className="mt-1 text-sm text-slate-500">先把信息放进来，后面的按钮会按顺序带你走。</p>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  <span className="rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
                     {assistantState.title}
                   </span>
                 </div>
@@ -1770,12 +1757,12 @@ export default function Home() {
                   />
                 </div>
 
-                <div className="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="mt-4 grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
                   <div
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={handleDrop}
                     onPaste={handlePaste}
-                    className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/60 p-3 text-center"
+                    className="rounded-2xl border border-dashed border-teal-200 bg-teal-50/70 p-4 text-center"
                   >
                     <input
                       ref={fileInputRef}
@@ -1785,14 +1772,14 @@ export default function Home() {
                       className="hidden"
                       onChange={handleFileChange}
                     />
-                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm">
+                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm">
                       <ImagePlus className="h-5 w-5" />
                     </div>
                     <p className="mt-2 text-sm font-semibold text-slate-900">图片 / 截图</p>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="mt-2 inline-flex h-8 items-center gap-2 rounded-md bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:text-indigo-700"
+                      className="mt-2 inline-flex h-8 items-center gap-2 rounded-full bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:text-teal-700"
                     >
                       <UploadCloud className="h-4 w-4" />
                       选择图片
@@ -1828,44 +1815,41 @@ export default function Home() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 grid gap-2 sm:grid-cols-5">
+                <div className="mt-5 grid gap-3 lg:grid-cols-5">
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveMenu("素材接收");
                       void recognizeEvidence();
                     }}
                     disabled={recognizeDisabled}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-teal-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:hover:translate-y-0 lg:col-span-1"
                   >
                     <Sparkles className="h-4 w-4" />
-                    {recognizingEvidence ? "识别中" : "识别素材"}
+                    {recognizingEvidence ? "1 识别中" : "1 识别素材"}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveMenu("爆款拆解");
                       void analyzeViralPotential();
                     }}
                     disabled={viralAnalyzeDisabled}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-indigo-200 bg-white px-3 text-sm font-semibold text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-teal-200 bg-white px-3 text-sm font-semibold text-teal-700 transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:translate-y-0 lg:col-span-1"
                   >
                     <Brain className="h-4 w-4" />
-                    {analyzingViral ? "分析中" : "爆款拆解"}
+                    {analyzingViral ? "2 分析中" : "2 爆款拆解"}
                   </button>
                   <button
                     type="submit"
-                    onClick={() => setActiveMenu("选品体检")}
                     disabled={analyzeDisabled}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:hover:translate-y-0 lg:col-span-1"
                   >
                     <Wand2 className="h-4 w-4" />
-                    {loading ? "体检中" : "开始体检"}
+                    {loading ? "3 体检中" : "3 开始体检"}
                   </button>
                   <button
                     type="button"
                     onClick={fillSample}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-teal-300 hover:text-teal-700"
                   >
                     <RefreshCcw className="h-4 w-4" />
                     填入示例
@@ -1873,17 +1857,17 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={clearAll}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-red-300 hover:text-red-700"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-red-300 hover:text-red-700"
                   >
                     <Trash2 className="h-4 w-4" />
                     清空
                   </button>
                 </div>
 
-                <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
-                  <p><span className="font-semibold text-slate-800">识别素材：</span>{recognizeHint}</p>
-                  <p><span className="font-semibold text-slate-800">爆款拆解：</span>{viralHint}</p>
-                  <p><span className="font-semibold text-slate-800">开始体检：</span>{analyzeHint}</p>
+                <div className="mt-4 grid gap-2 rounded-2xl border border-teal-100 bg-teal-50/70 p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
+                  <p><span className="font-semibold text-teal-800">1 识别素材：</span>{recognizeHint}</p>
+                  <p><span className="font-semibold text-teal-800">2 爆款拆解：</span>{viralHint}</p>
+                  <p><span className="font-semibold text-teal-800">3 开始体检：</span>{analyzeHint}</p>
                 </div>
 
                 {evidenceNeedsMoreInfo && form.evidenceCards.length ? (
@@ -1927,13 +1911,13 @@ export default function Home() {
                 ))}
               </div>
 
-              <section className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+              <section className="rounded-[28px] border border-white/80 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-indigo-600">Agent 工作区</p>
-                    <h2 className="mt-1 text-lg font-bold text-slate-950">当前流程</h2>
+                    <p className="text-sm font-semibold text-teal-700">Agent 工作区</p>
+                    <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">当前流程</h2>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
                     前两个 Agent 可真实运行，其余待接入
                   </span>
                 </div>
@@ -1944,7 +1928,7 @@ export default function Home() {
               {viralAgentResult ? <ViralAgentSummaryCard result={viralAgentResult} /> : null}
 
               {form.evidenceCards.length ? (
-                <section className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+                <section className="rounded-[28px] border border-white/80 bg-white p-5 shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
                   <SectionTitle title="确认证据" count={form.evidenceCards.length} />
                   <div className="space-y-3">
                     {form.evidenceCards.map((card, index) => (
@@ -1962,8 +1946,8 @@ export default function Home() {
                   </div>
                 </section>
               ) : (
-                <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center shadow-sm">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 text-white">
+                <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[28px] border border-dashed border-teal-200 bg-white/80 p-6 text-center shadow-sm">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-teal-600 text-white">
                     <UploadCloud className="h-5 w-5" />
                   </div>
                   <h3 className="mt-3 text-base font-semibold text-slate-950">等待素材输入</h3>
@@ -1975,7 +1959,7 @@ export default function Home() {
                 <section className="space-y-4">
                   <SummaryCard result={result} />
                   <TrafficLightPanel risks={result.trafficLightRisks} />
-                  <details open className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <details open className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">详细依据</summary>
                     <div className="mt-4 space-y-4">
                       <KeywordAndDirectionPanel result={result} />
@@ -1983,7 +1967,7 @@ export default function Home() {
                       <NextActions result={result} />
                     </div>
                   </details>
-                  <details className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <details className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">候选商品</summary>
                     <div className="mt-4 space-y-4">
                       <div className="grid gap-4 xl:grid-cols-3">
@@ -2000,20 +1984,20 @@ export default function Home() {
                       </div>
                     </div>
                   </details>
-                  <details className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <details className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">平台读取情况</summary>
                     <div className="mt-4 space-y-4">
                       <PlatformStatusList statuses={result.platformSearchStatus} />
                       <EvidenceSection result={result} />
                     </div>
                   </details>
-                  <details className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <details className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">原始证据</summary>
                     <div className="mt-4">
                       <EvidenceCardList cards={result.evidenceCards} />
                     </div>
                   </details>
-                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-800">
+                  <p className="rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-800">
                     {result.disclaimer || reportDisclaimer}
                   </p>
                 </section>
@@ -2021,23 +2005,23 @@ export default function Home() {
             </div>
 
             <aside className="space-y-4">
-              <section className="sticky top-4 rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
-                <p className="text-sm font-semibold text-indigo-600">现在该做什么</p>
-                <h2 className="mt-1 text-lg font-bold text-slate-950">{assistantState.title}</h2>
+              <section className="sticky top-4 rounded-[28px] border border-white/80 bg-white/95 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+                <p className="text-sm font-semibold text-teal-700">现在该做什么</p>
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">{assistantState.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{assistantState.text}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">{assistantState.detail}</p>
                 {result ? (
                   <div className="mt-4 grid gap-2">
                     <CopyButton text={reportMarkdown} label="复制报告" />
-                    <button type="button" onClick={exportMarkdown} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700">
+                    <button type="button" onClick={exportMarkdown} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-teal-300 hover:text-teal-700">
                       <Download className="h-4 w-4" />
                       导出 Markdown
                     </button>
-                    <button type="button" onClick={exportWord} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700">
+                    <button type="button" onClick={exportWord} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-teal-300 hover:text-teal-700">
                       <FileText className="h-4 w-4" />
                       导出 Word
                     </button>
-                    <button type="button" onClick={saveLocalArchive} disabled={saving} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+                    <button type="button" onClick={saveLocalArchive} disabled={saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-teal-300 hover:text-teal-700 disabled:cursor-not-allowed disabled:opacity-60">
                       <Save className="h-4 w-4" />
                       {saving ? "保存中" : "保存本地档案"}
                     </button>
@@ -2054,9 +2038,9 @@ export default function Home() {
 
 function StepCard({ step, title, text, active }: { step: string; title: string; text: string; active: boolean }) {
   return (
-    <div className={"rounded-lg border p-3 transition " + (active ? "border-rose-200 bg-rose-50 shadow-sm" : "border-slate-200 bg-slate-50")}>
+    <div className={"rounded-2xl border p-3 transition " + (active ? "border-teal-200 bg-teal-50 shadow-sm" : "border-slate-200 bg-slate-50")}>
       <div className="flex items-center gap-3">
-        <span className={"flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold " + (active ? "bg-rose-600 text-white" : "bg-white text-slate-500")}>
+        <span className={"flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold " + (active ? "bg-teal-600 text-white" : "bg-white text-slate-500")}>
           {step}
         </span>
         <h2 className="text-sm font-bold text-slate-950">{title}</h2>
@@ -2066,48 +2050,9 @@ function StepCard({ step, title, text, active }: { step: string; title: string; 
   );
 }
 
-function AgentSidebar({
-  activeMenu,
-  onSelect,
-}: {
-  activeMenu: (typeof sidebarMenus)[number]["label"];
-  onSelect: (value: (typeof sidebarMenus)[number]["label"]) => void;
-}) {
-  return (
-    <aside className="hidden lg:block">
-      <div className="sticky top-3 space-y-3">
-        <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-indigo-500 text-white">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <h1 className="mt-3 text-xl font-bold tracking-normal text-slate-950">轻选 Agent</h1>
-          <p className="mt-1 text-xs leading-5 text-slate-500">小红书无货源选品助手</p>
-        </div>
-        <nav className="rounded-2xl border border-white/80 bg-white p-2 shadow-sm">
-          {sidebarMenus.map((item) => {
-            const Icon = item.icon;
-            const active = activeMenu === item.label;
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => onSelect(item.label)}
-                className={"mb-1 flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition last:mb-0 " + (active ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-    </aside>
-  );
-}
-
 function MetricTile({ label, value, helper }: { label: string; value: string | number; helper: string }) {
   return (
-    <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+    <div className="rounded-[24px] border border-white/80 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.04)]">
       <p className="text-sm font-semibold text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
       <p className="mt-1 text-xs leading-5 text-slate-400">{helper}</p>
@@ -2135,9 +2080,9 @@ function AgentWorkspacePanel({
             ? "bg-indigo-50 text-indigo-700"
             : "bg-slate-100 text-slate-500";
         return (
-          <div key={agent.name} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div key={agent.name} className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 transition hover:-translate-y-0.5 hover:border-teal-200 hover:bg-white">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-teal-700 shadow-sm">
                 <Icon className="h-4 w-4" />
               </span>
               <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + statusClass}>{status}</span>
@@ -2166,20 +2111,20 @@ function MaterialAgentSummaryCard({ result }: { result: MaterialAgentResult }) {
   ] as const;
 
   return (
-    <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-sm">
+    <div className="rounded-[24px] border border-teal-200 bg-teal-50 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-rose-700">素材接收 Agent 已识别</p>
+          <p className="text-sm font-semibold text-teal-700">素材接收 Agent 已识别</p>
           <h3 className="mt-1 text-base font-bold text-slate-950">{result.productType || "未提到"}</h3>
         </div>
-        <span className="rounded-full border border-rose-200 bg-white px-2 py-0.5 text-xs font-semibold text-rose-700">
+        <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-xs font-semibold text-teal-700">
           {result.materialCompleteness}
         </span>
       </div>
       <p className="mt-2 text-sm leading-6 text-slate-700">{result.summary || "这段素材还可以再补充一点信息。"}</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {rows.map(([label, value]) => (
-          <div key={label} className="rounded-md bg-white/80 p-2.5">
+          <div key={label} className="rounded-2xl bg-white/80 p-3">
             <p className="text-xs font-semibold text-slate-500">{label}</p>
             <p className="mt-1 text-sm leading-6 text-slate-800">{value || "未提到"}</p>
           </div>
@@ -2218,10 +2163,10 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
   ] as const;
 
   return (
-    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
+    <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-indigo-700">爆款拆解 Agent 已完成</p>
+          <p className="text-sm font-semibold text-sky-700">爆款拆解 Agent 已完成</p>
           <h3 className="mt-1 text-base font-bold text-slate-950">{result.summary || "这个品的小红书爆款潜力已拆解完成。"}</h3>
         </div>
         <span className={"rounded-full border px-2 py-0.5 text-xs font-semibold " + getViralLevelClass(result.viralPotential)}>
@@ -2230,13 +2175,13 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <div className={"rounded-md border p-3 " + getViralLevelClass(result.viralPotential)}>
+        <div className={"rounded-2xl border p-3 " + getViralLevelClass(result.viralPotential)}>
           <p className="text-sm font-bold">爆款潜力</p>
           <p className="mt-1 text-2xl font-bold text-slate-950">{result.viralPotential}</p>
           <p className="mt-1 text-sm leading-6 text-slate-700">这是内容爆款潜力判断，不是最终做不做的结论。</p>
         </div>
         {fields.map((field) => (
-          <div key={field.label} className="rounded-md border border-white/80 bg-white p-3">
+          <div key={field.label} className="rounded-2xl border border-white/80 bg-white p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-bold text-slate-900">{field.label}</p>
               <span className={"rounded-full border px-2 py-0.5 text-xs font-semibold " + getViralLevelClass(field.value.level)}>
@@ -2252,13 +2197,13 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
         {listGroups.map((group) => {
           const items = group.items.filter((item) => item.trim()).slice(0, 3);
           return (
-            <div key={group.label} className="rounded-md border border-white/80 bg-white p-3">
+            <div key={group.label} className="rounded-2xl border border-white/80 bg-white p-3">
               <p className="text-sm font-bold text-slate-900">{group.label}</p>
               {items.length ? (
                 <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-700">
                   {items.map((item, index) => (
                     <li key={group.label + item} className="flex gap-2">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
                         {index + 1}
                       </span>
                       <span>{item}</span>
@@ -2279,7 +2224,7 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
 function AlertBox({ text, tone }: { text: string; tone: "error" | "notice" }) {
   const isError = tone === "error";
   return (
-    <div className={`flex gap-2 rounded-md border px-3 py-2 text-sm ${isError ? "border-red-200 bg-red-50 text-red-700" : "border-teal-200 bg-teal-50 text-teal-800"}`}>
+    <div className={`flex gap-2 rounded-2xl border px-3 py-2 text-sm ${isError ? "border-red-200 bg-red-50 text-red-700" : "border-teal-200 bg-teal-50 text-teal-800"}`}>
       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
       <span>{text}</span>
     </div>
@@ -2317,7 +2262,7 @@ function TextInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className={"h-10 w-full rounded-md border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/20 " + (error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-teal-400")}
+        className={"h-11 w-full rounded-2xl border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/20 " + (error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-teal-400")}
       />
       {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
     </label>
@@ -2341,7 +2286,7 @@ function SelectInput({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+        className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
@@ -2381,7 +2326,7 @@ function TextareaInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className={"w-full rounded-md border bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/20 " + (error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-teal-400")}
+        className={"w-full rounded-2xl border bg-white px-3 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/20 " + (error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-teal-400")}
       />
       {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
     </label>
@@ -2408,7 +2353,7 @@ function CheckboxGroup({
           return (
             <label
               key={option.value}
-              className={"flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition " + (checked ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300")}
+              className={"flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2 text-sm transition " + (checked ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50/50")}
             >
               <input
                 type="checkbox"
@@ -2439,7 +2384,7 @@ function ProgressPanel({
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-teal-700">任务进度</p>
@@ -2454,7 +2399,7 @@ function ProgressPanel({
           const done = resultReady || index < activeStep;
           const active = loading && index === activeStep;
           return (
-            <div key={step} className="flex items-center gap-3 rounded-md bg-slate-50 px-3 py-2">
+            <div key={step} className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-teal-600 text-white" : active ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>
                 {index + 1}
               </span>
@@ -2485,7 +2430,7 @@ function EvidenceCardEditor({
   onRoleChange: (role: EvidenceRole) => void;
 }) {
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2505,14 +2450,14 @@ function EvidenceCardEditor({
         <button
           type="button"
           onClick={() => onRoleChange("primary")}
-          className={"h-9 rounded-md border px-3 text-sm font-semibold " + (role === "primary" ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-600")}
+          className={"h-10 rounded-2xl border px-3 text-sm font-semibold " + (role === "primary" ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-600")}
         >
           主商品
         </button>
         <button
           type="button"
           onClick={() => onRoleChange("supporting")}
-          className={"h-9 rounded-md border px-3 text-sm font-semibold " + (role === "supporting" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-slate-200 bg-white text-slate-600")}
+          className={"h-10 rounded-2xl border px-3 text-sm font-semibold " + (role === "supporting" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-slate-200 bg-white text-slate-600")}
         >
           辅助证据
         </button>
@@ -2538,7 +2483,7 @@ function EvidenceCardEditor({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
+    <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
       {text}
     </div>
   );

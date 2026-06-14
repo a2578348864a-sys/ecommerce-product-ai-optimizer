@@ -4,7 +4,7 @@
 
 :root {
   color-scheme: light;
-  background: #f7f9fb;
+  background: #f8fcfb;
 }
 
 * {
@@ -14,9 +14,9 @@
 body {
   margin: 0;
   background:
-    linear-gradient(135deg, rgba(20, 184, 166, 0.08), transparent 28rem),
-    linear-gradient(315deg, rgba(37, 99, 235, 0.06), transparent 24rem),
-    #f7f9fb;
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 30rem),
+    radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.08), transparent 28rem),
+    #f8fcfb;
   color: #0f172a;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -38,3 +38,10 @@ textarea {
   background: rgba(20, 184, 166, 0.22);
 }
 
+details > summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
