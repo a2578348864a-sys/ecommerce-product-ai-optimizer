@@ -1,235 +1,585 @@
-// 产品类别
-export const categories = [
-  "电子",
-  "机械",
-  "家居",
-  "纺织",
-  "包装",
-  "五金",
-  "化工",
-  "医疗",
-  "玩具",
-  "食品",
-  "美容",
-  "运动",
-  "宠物",
-  "其他",
-] as const;
+export const platformOptions = ["manual", "jd", "taobao", "tmall", "pdd", "douyin", "xhs"] as const;
 
-// 三态选择（是/否/不确定）
-export const yesNoUnsure = ["是", "否", "不确定"] as const;
+export type Platform = (typeof platformOptions)[number];
 
-export const yesNo = ["是", "否"] as const;
-
-// ========== 表单输入类型 ==========
-
-export type ProductFormInput = {
-  // 基础模式（必填）
-  productName: string;
-  category: string;
-  material: string;
-  sellingPoints: string;
-  productCost: string;
-  estimatedPrice: string;
-  moq: string;
-  targetCountries: string;
-
-  // 专业模式 - 第一组：产品基础信息补充
-  englishName: string;
-  specifications: string;
-  productUsage: string;
-  applicableScenarios: string;
-
-  // 专业模式 - 第二组：选品判断信息补充
-  productWeight: string;
-  productVolume: string;
-  supportsOemOdm: string;
-  hasStock: string;
-  leadTime: string;
-  packagingMethod: string;
-
-  // 专业模式 - 第三组：市场与买家信息
-  targetBuyerTypes: string;
-  customerPainPoints: string;
-  competitorInfo: string;
-  keywordTrendData: string;
-  rfqData: string;
-  amazonCompetitorInfo: string;
-
-  // 专业模式 - 第四组：风险信息
-  isFragile: string;
-  isLiquid: string;
-  isBatteryPowered: string;
-  isMagnetic: string;
-  isFoodContact: string;
-  isChildrenProduct: string;
-  needsCertification: string;
-  existingCertificates: string;
-
-  // 专业模式 - 第五组：补充信息
-  supplyChainAdvantages: string;
-  factoryAdvantages: string;
-  additionalNotes: string;
+export const platformLabels: Record<Platform, string> = {
+  manual: "手动输入",
+  jd: "京东",
+  taobao: "淘宝",
+  tmall: "天猫",
+  pdd: "拼多多",
+  douyin: "抖音",
+  xhs: "小红书",
 };
 
-export type GenerateRequest = ProductFormInput & {
+export const analysisGoals = [
+  "能不能跟品",
+  "风险有多高",
+  "去哪里找货",
+  "怎么差异化",
+  "全部分析",
+] as const;
+
+export const personalLimitOptions = [
+  "不做食品",
+  "不做美妆",
+  "不做儿童用品",
+  "不做带电产品",
+  "不做大件",
+  "不做易碎",
+  "不做高售后",
+  "不做品牌/IP相关",
+] as const;
+
+export const preferredCategories = [
+  "家居收纳",
+  "厨房小工具",
+  "清洁用品",
+  "桌面办公",
+  "宿舍用品",
+  "宠物用品，但不包括宠物食品和宠物药品",
+  "车载小件，但不包括汽车安全件",
+  "低价、低售后、低资质风险的百货类小件",
+] as const;
+
+export const riskBlacklist = [
+  "食品",
+  "美妆",
+  "儿童用品",
+  "母婴用品",
+  "医疗健康",
+  "减肥产品",
+  "保健品",
+  "宠物食品",
+  "宠物药品",
+  "贴身用品",
+  "带电产品",
+  "电池",
+  "充电器",
+  "加热类产品",
+  "汽车安全件",
+  "大件商品",
+  "易碎商品",
+  "液体商品",
+  "品牌强相关",
+  "卡通/IP形象",
+  "明星同款",
+  "影视/动漫/游戏周边",
+  "疑似专利结构商品",
+] as const;
+
+export type ConfidenceLevel = "low" | "medium" | "high";
+export type FinalDecision = "recommend" | "caution" | "reject";
+export type MaterialType = "url" | "image" | "text";
+export type MaterialStatus = "success" | "partial" | "failed" | "need_more_info";
+export type DetectedMaterialType =
+  | "product_page"
+  | "ranking_page"
+  | "search_result"
+  | "note"
+  | "comment_screenshot"
+  | "product_image"
+  | "manual_text"
+  | "unknown";
+
+export type LinkType = "product" | "ranking" | "search" | "note" | "unknown";
+
+export type PlatformSearchStatusValue =
+  | "success"
+  | "partial"
+  | "need_login"
+  | "no_permission"
+  | "captcha"
+  | "failed"
+  | "manual_required"
+  | "not_supported_yet";
+
+export type ConfidenceField = {
+  fieldName: string;
+  value: string;
+  confidence: ConfidenceLevel;
+  reason: string;
+};
+
+export type MaterialInput = {
+  id: string;
+  type: MaterialType;
+  sourceName?: string;
+  originalUrl?: string;
+  cleanedUrl?: string;
+  fileName?: string;
+  mimeType?: string;
+  size?: number;
+  rawText?: string;
+  previewUrl?: string;
+  createdAt: string;
+};
+
+export type ProductEvidence = {
+  productName?: string;
+  normalizedProductName?: string;
+  priceText?: string;
+  salesText?: string;
+  ratingText?: string;
+  rankText?: string;
+  shopName?: string;
+  brandName?: string;
+  pageTitle?: string;
+  visibleDescription?: string;
+  sourceUrl?: string;
+  platform: Platform | "unknown";
+  rawEvidenceText: string;
+  capturedAt: string;
+  confidenceFields: ConfidenceField[];
+};
+
+export type EvidenceCard = ProductEvidence & {
+  id: string;
+  materialId: string;
+  materialType: MaterialType;
+  detectedMaterialType: DetectedMaterialType;
+  status: MaterialStatus;
+  missingFields: string[];
+  message: string;
+  riskNotes: string;
+  userNotes: string;
+};
+
+export type MaterialAnalysisResult = {
+  materialId: string;
+  materialType: MaterialType;
+  detectedPlatform: Platform | "unknown";
+  detectedMaterialType: DetectedMaterialType;
+  status: MaterialStatus;
+  extractedEvidence: ProductEvidence[];
+  missingFields: string[];
+  message: string;
+};
+
+export type MaterialAgentCompleteness = "完整" | "一般" | "不完整";
+
+export type MaterialAgentResult = {
+  productType: string;
+  sellingPoints: string[];
+  targetUsers: string[];
+  usageScenarios: string[];
+  priceRange: string;
+  painPoints: string[];
+  commentDemands: string[];
+  riskWords: string[];
+  materialCompleteness: MaterialAgentCompleteness;
+  missingInfo: string[];
+  summary: string;
+};
+
+export type ViralLevel = "高" | "中" | "低";
+
+export type ViralLevelReason = {
+  level: ViralLevel;
+  reason: string;
+};
+
+export type ViralAgentResult = {
+  titleAttraction: ViralLevelReason;
+  sellingPointClarity: ViralLevelReason;
+  sceneSense: ViralLevelReason;
+  commentDemand: ViralLevelReason;
+  painPointStrength: ViralLevelReason;
+  contentShootability: ViralLevelReason;
+  viralPotential: ViralLevel;
+  bonusPoints: string[];
+  weakPoints: string[];
+  optimizationSuggestions: string[];
+  suggestedAngles: string[];
+  summary: string;
+};
+
+export type LinkAnalysisInput = {
+  originalUrl: string;
+  cleanedUrl: string;
+  platform: Platform | "unknown";
+  linkType: LinkType;
+  rawText?: string;
+};
+
+export type RadarFormInput = {
+  keyword: string;
+  analysisGoal: string;
+  targetPriceRange: string;
+  targetAudience: string;
+  excludedCategories: string;
+  selectedPlatforms: Platform[];
+  personalLimits: string[];
+  notes: string;
+  linksText: string;
+  manualText: string;
+  lowTokenMode: boolean;
+  materials: MaterialInput[];
+  evidenceCards: EvidenceCard[];
+};
+
+export type GenerateRequest = RadarFormInput & {
   accessPassword: string;
 };
 
-// ========== 输出类型 ==========
-
-export type ConfidenceLevel = "low" | "medium" | "high";
-
-// 五要素结论格式
-export type BaseAssessment = {
-  conclusion: string;
-  basis: string;
-  risk: string;
-  confidence: ConfidenceLevel;
-  verificationStep: string;
+export type PlatformSearchStatus = {
+  platform: Platform;
+  status: PlatformSearchStatusValue;
+  message: string;
+  itemCount: number;
 };
 
-// 评分维度明细
-export type ScoreDimension = {
-  score: number;
-  basis: string;
-  mainRisk: string;
-  missingData: string;
-};
-
-// 评分拆分
-export type ScoreBreakdown = {
-  marketDemand: ScoreDimension;
-  competitionRisk: ScoreDimension;
-  profitMargin: ScoreDimension;
-  logisticsDifficulty: ScoreDimension;
-  complianceRisk: ScoreDimension;
-  b2bFit: ScoreDimension;
-  differentiation: ScoreDimension;
-  beginnerDifficulty: ScoreDimension;
-};
-
-// 询盘回复模板
-export type InquiryTemplates = {
-  firstInquiry: string;
-  moqReply: string;
-  sampleFeeReply: string;
-  oemOdmReply: string;
-  priceTooHighReply: string;
-  leadTimeReply: string;
-  shippingReply: string;
-  followUpReply: string;
-};
-
-// AI 输出结果
-export type AlibabaResult = {
-  productOpportunityScore: number;
-  confidenceLevel: ConfidenceLevel;
-  recommendation: {
-    suggestion: string;
-    dataWarning: string;
+export type CandidateProduct = {
+  productName: string;
+  normalizedProductName: string;
+  platform: Platform | string;
+  priceText: string;
+  salesText: string;
+  ratingText: string;
+  rankText: string;
+  shopName: string;
+  brandName: string;
+  productUrl: string;
+  sourceUrl: string;
+  capturedAt: string;
+  sourcePlatform: Platform | string;
+  rawEvidenceText: string;
+  evidenceText: string;
+  riskTags: string[];
+  hotScore: number;
+  beginnerFitScore: number;
+  competitionScore: number;
+  afterSalesRiskScore: number;
+  ipRiskScore: number;
+  logisticsRiskScore: number;
+  grossMarginPotentialScore: number;
+  finalScore: number;
+  hotReason: string;
+  beginnerFitReason: string;
+  competitionRisk: string;
+  afterSalesRisk: string;
+  ipRisk: string;
+  logisticsRisk: string;
+  estimatedCostRange: string;
+  suggestedSellingPrice: string;
+  grossMarginHint: string;
+  shippingDifficulty: string;
+  afterSalesDifficulty: string;
+  ipRiskLevel: string;
+  sourcingKeywords: {
+    source1688: string[];
+    pdd: string[];
+    taobao: string[];
+    specsAndMaterials: string[];
+    differentiation: string[];
   };
-  scoreBreakdown: ScoreBreakdown;
-  demandAnalysis: BaseAssessment;
-  competitionRiskAssessment: BaseAssessment;
-  profitRiskAssessment: BaseAssessment;
-  logisticsRiskAssessment: BaseAssessment;
-  complianceRiskAssessment: BaseAssessment;
-  b2bFitAssessment: BaseAssessment;
-  differentiationAssessment: BaseAssessment;
-  beginnerDifficultyAssessment: BaseAssessment;
-  missingData: string[];
-  validationChecklist: string[];
-  targetMarkets: string[];
-  buyerTypes: string[];
-  alibabaTitle: string;
-  coreKeywords: string[];
-  longTailKeywords: string[];
-  productDescription: string;
-  inquiryReplyTemplates: InquiryTemplates;
-  imageSuggestions: string[];
-  amazonListing: string;
-  actionPlan: string[];
+  differentiationAngle: string;
+  similarDirections: string[];
+  finalDecision: FinalDecision;
+  reason: string;
+};
+
+export type PlatformEvidence = {
+  platform: Platform | string;
+  evidenceSummary: string;
+  credibility: string;
+  gaps: string;
+};
+
+export type RiskWarning = {
+  riskType: string;
+  level: "green" | "yellow" | "red";
+  relatedProducts: string[];
+  reason: string;
+  suggestion: string;
+};
+
+export type TrafficLightRisk = {
+  name: string;
+  level: "green" | "yellow" | "red";
+  explanation: string;
+};
+
+export type DifferentiationIdea = {
+  productDirection: string;
+  angle: string;
+  whyItMayWork: string;
+  contentSuggestion: string;
+};
+
+export type NextAction = {
+  productDirection: string;
+  action: string;
+  checklist: string[];
+  testSuggestion: "先观察" | "小批量测试" | "暂不做" | "直接排除";
+};
+
+export type HotProductRadarResult = {
+  summary: string;
+  finalDecision: FinalDecision;
+  confidenceLevel: ConfidenceLevel;
+  sampleQuality: string;
+  agentConclusion: string;
+  platformSearchStatus: PlatformSearchStatus[];
+  evidenceCards: EvidenceCard[];
+  candidateProducts: CandidateProduct[];
+  recommendedProducts: CandidateProduct[];
+  cautiousProducts: CandidateProduct[];
+  rejectedProducts: CandidateProduct[];
+  platformEvidence: PlatformEvidence[];
+  riskWarnings: RiskWarning[];
+  sourcingKeywords: string[];
+  differentiationIdeas: DifferentiationIdea[];
+  similarProductDirections: string[];
+  nextActions: NextAction[];
+  trafficLightRisks: TrafficLightRisk[];
+  disclaimer: string;
 };
 
 export type GenerateErrorResponse = {
   error: string;
-  fieldErrors?: Partial<Record<keyof ProductFormInput, string>>;
+  fieldErrors?: Partial<Record<keyof RadarFormInput | "accessPassword", string>>;
 };
 
-// ========== 限制与验证 ==========
-
-// 基础模式必填字段
-export const basicRequiredFields: Array<keyof ProductFormInput> = [
-  "productName",
-  "category",
-  "material",
-  "sellingPoints",
-  "productCost",
-  "estimatedPrice",
-  "moq",
-  "targetCountries",
-];
-
-// 输入字符限制
-export const inputLimits: Partial<Record<keyof ProductFormInput, number>> = {
-  productName: 80,
-  category: 40,
-  material: 100,
-  sellingPoints: 800,
-  productCost: 40,
-  estimatedPrice: 40,
-  moq: 40,
-  targetCountries: 100,
-  englishName: 200,
-  specifications: 200,
-  productUsage: 200,
-  applicableScenarios: 200,
-  productWeight: 40,
-  productVolume: 40,
-  leadTime: 100,
-  packagingMethod: 200,
-  targetBuyerTypes: 200,
-  customerPainPoints: 500,
-  competitorInfo: 600,
-  keywordTrendData: 600,
-  rfqData: 600,
-  amazonCompetitorInfo: 600,
-
-  supportsOemOdm: 40,
-  hasStock: 40,
-  isFragile: 40,
-  isLiquid: 40,
-  isBatteryPowered: 40,
-  isMagnetic: 40,
-  isFoodContact: 40,
-  isChildrenProduct: 40,
-  needsCertification: 40,
-  existingCertificates: 400,
-  supplyChainAdvantages: 400,
-  factoryAdvantages: 400,
-  additionalNotes: 800,
+export const inputLimits: Partial<Record<keyof RadarFormInput, number>> = {
+  keyword: 80,
+  analysisGoal: 40,
+  targetPriceRange: 80,
+  targetAudience: 200,
+  excludedCategories: 300,
+  notes: 800,
+  linksText: 3000,
+  manualText: 12000,
 };
 
-// 风险字段列表（用于判断是否需要红色高亮）
-export const riskFields: Array<keyof ProductFormInput> = [
-  "isFragile",
-  "isLiquid",
-  "isBatteryPowered",
-  "isMagnetic",
-  "isFoodContact",
-  "isChildrenProduct",
-  "needsCertification",
+export const imageLimits = {
+  maxCount: 10,
+  maxSizeBytes: 8 * 1024 * 1024,
+  acceptedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
+};
+
+export const linkLimits = {
+  maxCount: 10,
+};
+
+export const defaultPlatformStatus: PlatformSearchStatus[] = [
+  {
+    platform: "manual",
+    status: "success",
+    message: "已使用你手动提供的商品、榜单或截图信息作为主要分析来源。",
+    itemCount: 0,
+  },
+  {
+    platform: "jd",
+    status: "manual_required",
+    message: "V1 不深度读取页面，请复制公开可见商品信息或上传截图后分析。",
+    itemCount: 0,
+  },
+  {
+    platform: "taobao",
+    status: "manual_required",
+    message: "V1 不绕过登录或验证，请手动复制可见商品信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "tmall",
+    status: "manual_required",
+    message: "V1 不自动读取平台页面，请手动补充商品信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "pdd",
+    status: "manual_required",
+    message: "V1 不自动读取平台页面，请手动复制可见榜单或商品信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "douyin",
+    status: "not_supported_yet",
+    message: "V1 不读取抖音页面，请上传截图或手动粘贴可见信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "xhs",
+    status: "manual_required",
+    message: "V1 支持截图和手动信息，不强抓页面。",
+    itemCount: 0,
+  },
 ];
 
-// 用于展示的评分维度标签
-export const scoreDimensionLabels: Record<keyof ScoreBreakdown, { label: string; maxScore: number }> = {
-  marketDemand: { label: "市场需求", maxScore: 20 },
-  competitionRisk: { label: "竞争强度", maxScore: 15 },
-  profitMargin: { label: "利润空间", maxScore: 20 },
-  logisticsDifficulty: { label: "物流难度", maxScore: 10 },
-  complianceRisk: { label: "认证/合规风险", maxScore: 10 },
-  b2bFit: { label: "B2B 适配度", maxScore: 10 },
-  differentiation: { label: "差异化空间", maxScore: 10 },
-  beginnerDifficulty: { label: "新手操作难度", maxScore: 5 },
+export const reportDisclaimer =
+  "免责声明：本报告仅基于用户提供信息和本地浏览器可见页面内容生成，不构成经营、投资或法律建议。平台数据可能变化，最终选品需人工复核资质、侵权、价格、供货、售后、物流和平台规则风险。";
+
+// ========== 跨境电商选品上架助手 MVP 类型 ==========
+
+export type TargetPlatform =
+  | "amazon"
+  | "ebay"
+  | "etsy"
+  | "shopify"
+  | "tiktok_shop"
+  | "shopee"
+  | "lazada"
+  | "temu"
+  | "other";
+
+export type TargetCountry = string;
+
+export type CurrencyCode =
+  | "USD"
+  | "EUR"
+  | "GBP"
+  | "JPY"
+  | "CNY"
+  | (string & { readonly __currencyCode?: never });
+
+export type ProductStatus =
+  | "draft"
+  | "analyzed"
+  | "copy_generated"
+  | "pending_confirm"
+  | "exported"
+  | "discarded";
+
+export type ListingConfirmStatus = "pending" | "confirmed" | "needs_edit";
+
+export type NumericFormValue = string;
+
+export type CrossBorderProductFormInput = {
+  name: string;
+  description: string;
+  purchasePrice: NumericFormValue;
+  domesticShippingFee: NumericFormValue;
+  weight: NumericFormValue;
+  packageLength: NumericFormValue;
+  packageWidth: NumericFormValue;
+  packageHeight: NumericFormValue;
+  targetCountry: TargetCountry;
+  targetPlatform: TargetPlatform;
+  currency: CurrencyCode;
+  internationalShippingFee: NumericFormValue;
+  commissionRate: NumericFormValue;
+  expectedProfitRate: NumericFormValue;
+  otherCost: NumericFormValue;
+  stock: NumericFormValue;
+  imagePaths: string[];
+};
+
+export type CrossBorderProductInput = {
+  id?: string;
+  sku?: string;
+  name?: string;
+  description?: string;
+  purchasePrice?: number;
+  domesticShippingFee?: number;
+  weight?: number;
+  packageLength?: number;
+  packageWidth?: number;
+  packageHeight?: number;
+  targetCountry?: TargetCountry;
+  targetPlatform?: TargetPlatform;
+  currency?: CurrencyCode;
+  internationalShippingFee?: number;
+  commissionRate?: number;
+  expectedProfitRate?: number;
+  otherCost?: number;
+  stock?: number;
+  imagePaths?: string[];
+  status?: ProductStatus;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ProfitNumberInput = number | string | null | undefined;
+
+export type ProfitCalculationInput = {
+  purchasePrice?: ProfitNumberInput;
+  domesticShippingFee?: ProfitNumberInput;
+  internationalShippingFee?: ProfitNumberInput;
+  commissionRate?: ProfitNumberInput;
+  expectedProfitRate?: ProfitNumberInput;
+  otherCost?: ProfitNumberInput;
+  manualSellingPrice?: ProfitNumberInput;
+  currency?: CurrencyCode;
+};
+
+export type ProfitCalculationResult = {
+  baseCost: number;
+  totalFixedCost: number;
+  commissionRate: number;
+  suggestedPrice: number;
+  breakEvenPrice: number;
+  commissionAmount: number;
+  grossProfit: number;
+  grossMargin: number;
+  roi: number;
+  currency: CurrencyCode;
+  warnings: string[];
+};
+
+export type ProfitLevel = "loss" | "low" | "medium" | "high";
+
+export type ListingCopyResult = {
+  title: string;
+  bulletPoints: string[];
+  description: string;
+  shortDescription: string;
+  keywords: string[];
+  longTailKeywords: string[];
+  faq: Array<{
+    question: string;
+    answer: string;
+  }>;
+  packingList: string[];
+  afterSales: string;
+  notes: string[];
+};
+
+export type AiAnalysisResult = {
+  recommendation: "recommend" | "caution" | "reject";
+  score: number;
+  reasons: string[];
+  risks: string[];
+  targetAudience: string[];
+  scenarios: string[];
+  platformFit: string;
+  logisticsRisk: string;
+  afterSalesRisk: string;
+  infringementRisk: string;
+  sensitiveCategoryRisk: string;
+  newbieFriendly: boolean;
+};
+
+export type KeywordGenerationResult = {
+  coreKeywords: string[];
+  longTailKeywords: string[];
+  searchTerms: string[];
+  titleKeywords: string[];
+  sellingPointKeywords: string[];
+  riskWords: string[];
+  negativeKeywords?: string[];
+  platformNotes: string;
+};
+
+export type StructuredListingData = {
+  sku: string;
+  title: string;
+  price: number;
+  stock: number;
+  targetPlatform: TargetPlatform;
+  targetCountry: TargetCountry;
+  categorySuggestion: string;
+  attributes: Record<string, string>;
+  keywords: string[];
+  bulletPoints: string[];
+  description: string;
+  weight?: number;
+  dimensions?: {
+    length?: number;
+    width?: number;
+    height?: number;
+  };
+  imagePaths: string[];
+  riskNotes: string[];
+  confirmStatus: ListingConfirmStatus;
 };
