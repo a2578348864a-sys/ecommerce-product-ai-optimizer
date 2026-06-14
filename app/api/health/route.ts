@@ -16,6 +16,8 @@ export function GET() {
 
   return NextResponse.json({
     ok: true,
+    app: "hot-material-agent",
+    name: "爆款素材识别 Agent",
     provider,
     hasOpenAIKey: provider === "openai" && Boolean(process.env.OPENAI_API_KEY),
     hasDeepSeekKey: provider === "deepseek" && Boolean(process.env.DEEPSEEK_API_KEY),

@@ -9,7 +9,7 @@ type CopyButtonProps = {
   className?: string;
 };
 
-export function CopyButton({ text, label = "一键复制", className = "" }: CopyButtonProps) {
+export function CopyButton({ text, label = "复制结果", className = "" }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   function fallbackCopy(value: string) {
