@@ -1,140 +1,299 @@
-// page.tsx - to be written via multiple steps
 "use client";
 
-import { AlertCircle, ChevronDown, ChevronUp, ClipboardList, Download, FileText, Lock, RefreshCcw, ShieldCheck, Wand2 } from "lucide-react";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  AlertCircle,
+  Ban,
+  Brain,
+  ClipboardCheck,
+  Download,
+  FileText,
+  History,
+  ImagePlus,
+  House,
+  LayoutDashboard,
+  RefreshCcw,
+  Save,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+  Wand2,
+  X,
+} from "lucide-react";
+import {
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  useRef,
+  useState,
+} from "react";
 import { CopyButton } from "@/components/CopyButton";
 import {
-  AssessmentCard,
-  ConfidenceBadge,
+  EvidenceCardList,
+  EvidenceSection,
+  KeywordAndDirectionPanel,
+  NextActions,
+  PlatformStatusList,
+  ProductCard,
+  ProductGroup,
+  RiskAndIdeas,
+  SectionTitle,
+  SummaryCard,
+  TrafficLightPanel,
   getConfidenceLabel,
-  InquiryTemplatesSection,
-  MissingDataSection,
-  ScoreCard,
-  ScoreDimensionCard,
-  SectionGroupTitle,
-  SimpleListSection,
-  TextBlockSection,
-  ValidationChecklistSection,
+  getDecisionLabel,
 } from "@/components/ResultSection";
 import {
-  AlibabaResult,
-  basicRequiredFields,
-  categories,
-  GenerateErrorResponse,
+  analysisGoals,
+  imageLimits,
   inputLimits,
-  ProductFormInput,
-  scoreDimensionLabels,
-  yesNo,
-  yesNoUnsure,
+  linkLimits,
+  personalLimitOptions,
+  platformLabels,
+  platformOptions,
+  reportDisclaimer,
+} from "@/lib/types";
+import type {
+  ConfidenceField,
+  DetectedMaterialType,
+  EvidenceCard,
+  FinalDecision,
+  GenerateErrorResponse,
+  HotProductRadarResult,
+  LinkType,
+  MaterialInput,
+  MaterialAgentResult,
+  Platform,
+  RadarFormInput,
+  ViralAgentResult,
 } from "@/lib/types";
 
-const emptyForm: ProductFormInput = {
-  productName: "",
-  category: "电子",
-  material: "",
-  sellingPoints: "",
-  productCost: "",
-  estimatedPrice: "",
-  moq: "",
-  targetCountries: "",
-  englishName: "",
-  specifications: "",
-  productUsage: "",
-  applicableScenarios: "",
-  productWeight: "",
-  productVolume: "",
-  supportsOemOdm: "",
-  hasStock: "",
-  leadTime: "",
-  packagingMethod: "",
-  targetBuyerTypes: "",
-  customerPainPoints: "",
-  competitorInfo: "",
-  keywordTrendData: "",
-  rfqData: "",
-  amazonCompetitorInfo: "",
-  isFragile: "",
-  isLiquid: "",
-  isBatteryPowered: "",
-  isMagnetic: "",
-  isFoodContact: "",
-  isChildrenProduct: "",
-  needsCertification: "",
-  existingCertificates: "",
-  supplyChainAdvantages: "",
-  factoryAdvantages: "",
-  additionalNotes: "",
-};
-const sampleForm: ProductFormInput = {
-  productName: "便携式蓝牙无线音箱",
-  category: "电子",
-  material: "ABS塑料+金属网罩",
-  sellingPoints: "IPX7防水、20小时续航、蓝牙5.3、TWS串联、免提通话、便携挂扣设计",
-  productCost: "35-50",
-  estimatedPrice: "12-25",
-  moq: "500",
-  targetCountries: "美国、欧洲、东南亚",
-  englishName: "Portable Bluetooth Wireless Speaker",
-  specifications: "直径8cm*高10cm，重量320g",
-  productUsage: "户外露营、泳池派对、骑行、浴室、桌面使用",
-  applicableScenarios: "户外活动、家庭娱乐、商务礼品、促销赠品",
-  productWeight: "320",
-  productVolume: "0.5",
-  supportsOemOdm: "是",
-  hasStock: "是",
-  leadTime: "15-25天",
-  packagingMethod: "彩盒包装，每箱50个",
-  targetBuyerTypes: "批发商、品牌商、促销品采购商、电商卖家",
-  customerPainPoints: "音质差、续航短、不防水、连接不稳定",
-  competitorInfo: "JBL Go4售价49美元，Anker Soundcore售价35美元，主打IPX7和长续航",
-  keywordTrendData: "",
-  rfqData: "",
-  amazonCompetitorInfo: "",
-  isFragile: "否",
-  isLiquid: "否",
-  isBatteryPowered: "是",
-  isMagnetic: "否",
-  isFoodContact: "否",
-  isChildrenProduct: "否",
-  needsCertification: "是",
-  existingCertificates: "CE、FCC、ROHS",
-  supplyChainAdvantages: "价格优势，月产能5万台",
-  factoryAdvantages: "自有注塑车间，QC团队20人",
-  additionalNotes: "",
+type FieldErrors = Partial<Record<keyof RadarFormInput | "accessPassword", string>>;
+type EvidenceRole = "primary" | "supporting";
+type ManualEvidenceDraft = {
+  productName: string;
+  platform: Platform | "unknown";
+  priceText: string;
+  heatText: string;
+  notes: string;
 };
 
-type FieldErrors = Partial<Record<keyof ProductFormInput | "accessPassword", string>>;
+const emptyManualEvidenceDraft: ManualEvidenceDraft = {
+  productName: "",
+  platform: "manual",
+  priceText: "",
+  heatText: "",
+  notes: "",
+};
+
+const materialChangedMessage = "素材已变化，请重新识别证据，旧证据可能不再准确。";
+const insufficientEvidenceMessage = "当前证据不足，建议补充价格、热度或平台来源。";
+
+const emptyForm: RadarFormInput = {
+  keyword: "",
+  analysisGoal: "全部分析",
+  targetPriceRange: "",
+  targetAudience: "",
+  excludedCategories: "",
+  selectedPlatforms: ["manual"],
+  personalLimits: [
+    "不做食品",
+    "不做美妆",
+    "不做儿童用品",
+    "不做带电产品",
+    "不做大件",
+    "不做易碎",
+    "不做高售后",
+    "不做品牌/IP相关",
+  ],
+  notes: "",
+  linksText: "",
+  manualText: "",
+  lowTokenMode: true,
+  materials: [],
+  evidenceCards: [],
+};
+
+const sampleLinks = "https://item.jd.com/example.html";
+
+const sampleManualText = `平台：小红书
+商品名：桌面洞洞板收纳架
+价格：29.9
+热度：笔记互动较多，评论里有人问链接
+备注：适合宿舍、桌面收纳、女生房间改造内容
+
+平台：拼多多
+商品名：厨房缝隙清洁刷
+价格：5.9
+热度：低价爆款，同款较多
+备注：小件低价，但可能价格很卷
+
+平台：京东
+商品名：透明桌面收纳盒
+价格：19.9
+热度：排行榜靠前，评价 10万+
+备注：适合学生宿舍、桌面整理、小件收纳`;
+
+const sampleForm: RadarFormInput = {
+  ...emptyForm,
+  keyword: "桌面收纳 / 厨房清洁小件",
+  targetPriceRange: "9.9-39.9 元",
+  targetAudience: "学生宿舍、租房人群、桌面整理、厨房清洁需求人群",
+  excludedCategories: "食品、美妆、儿童用品、带电、大件、易碎、强 IP",
+  selectedPlatforms: ["manual", "jd", "pdd", "xhs"],
+  notes: "第一版只看低风险百货小件，优先找体积小、售后少、容易自己拍图的方向。",
+  linksText: sampleLinks,
+  manualText: sampleManualText,
+};
+
+const progressSteps = [
+  "识别输入类型",
+  "识别平台和素材类型",
+  "提取可见商品证据",
+  "生成证据卡片和置信度",
+  "执行反向淘汰器",
+  "判断推荐做 / 谨慎做 / 不建议做",
+  "生成找货关键词和同类扩展",
+  "生成下一步行动和本地档案",
+];
+
+const skillButtons = [
+  "识别这是什么商品",
+  "判断能不能跟品",
+  "提取找货关键词",
+  "检查高风险",
+  "生成差异化方案",
+  "生成同类扩展方向",
+  "保存到选品档案",
+];
+
+const displayAgents = [
+  {
+    name: "素材接收",
+    description: "提取商品、卖点、人群、场景和价格。",
+    icon: UploadCloud,
+  },
+  {
+    name: "爆款拆解",
+    description: "看标题、卖点、场景是否有爆款感。",
+    icon: Sparkles,
+  },
+  {
+    name: "货源判断",
+    description: "判断是否容易找同款或平替。",
+    icon: ClipboardCheck,
+  },
+  {
+    name: "风险排查",
+    description: "检查侵权、功效宣称和售后风险。",
+    icon: ShieldCheck,
+  },
+  {
+    name: "小白结论",
+    description: "直接告诉你能不能做、为什么。",
+    icon: Brain,
+  },
+];
+
+const sidebarMenus = [
+  { label: "首页", icon: House },
+  { label: "选品体检", icon: LayoutDashboard },
+  { label: "素材接收", icon: UploadCloud },
+  { label: "爆款拆解", icon: Sparkles },
+  { label: "货源判断", icon: ClipboardCheck },
+  { label: "风险排查", icon: ShieldCheck },
+  { label: "小白结论", icon: Brain },
+  { label: "任务记录", icon: History },
+] as const;
+
+const localArchiveKey = "hot-material-agent-archives";
+
+const materialTypeLabels: Record<DetectedMaterialType, string> = {
+  product_page: "商品页",
+  ranking_page: "榜单页",
+  search_result: "搜索结果",
+  note: "笔记",
+  comment_screenshot: "评论截图",
+  product_image: "商品图/截图",
+  manual_text: "手动文字",
+  unknown: "未知",
+};
+
+function makeId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 function getTextLength(value: string | undefined) {
   return (value || "").trim().length;
 }
 
-function validateForm(form: ProductFormInput, accessPassword: string) {
-  const errors: FieldErrors = {};
-  if (!accessPassword.trim()) {
-    errors.accessPassword = "请输入访问密码。";
+function hasRawMaterialInput(form: RadarFormInput) {
+  return form.materials.some((item) => item.type === "image")
+    || Boolean(form.linksText.trim())
+    || Boolean(form.manualText.trim());
+}
+
+function hasAnyMaterialInput(form: RadarFormInput) {
+  return hasRawMaterialInput(form) || form.evidenceCards.length > 0;
+}
+
+function isValidEvidenceCard(card: EvidenceCard) {
+  return Boolean(
+    (card.productName || "").trim()
+    || (card.pageTitle || "").trim()
+    || (card.visibleDescription || "").trim()
+    || (card.userNotes || "").trim(),
+  );
+}
+
+function hasPriceOrHeat(card: EvidenceCard) {
+  return Boolean(
+    (card.priceText || "").trim()
+    && ((card.salesText || "").trim() || (card.ratingText || "").trim() || (card.rankText || "").trim()),
+  );
+}
+
+function getPrimaryEvidenceId(cards: EvidenceCard[], roles: Record<string, EvidenceRole>) {
+  const primary = cards.find((card) => roles[card.id] === "primary" && isValidEvidenceCard(card));
+  return primary?.id || "";
+}
+
+function assignEvidenceRoles(cards: EvidenceCard[], roles: Record<string, EvidenceRole>) {
+  const next: Record<string, EvidenceRole> = {};
+  const validCards = cards.filter(isValidEvidenceCard);
+  const existingPrimary = validCards.find((card) => roles[card.id] === "primary");
+  const primaryId = existingPrimary?.id || validCards[0]?.id || "";
+
+  for (const card of cards) {
+    next[card.id] = card.id === primaryId ? "primary" : "supporting";
   }
-  for (const field of basicRequiredFields) {
-    if (!form[field]?.trim()) {
-      errors[field] = "该项不能为空。";
-    }
-  }
-  for (const [field, limit] of Object.entries(inputLimits)) {
-    const val = form[field as keyof ProductFormInput];
-    if (getTextLength(val) > (limit || 999)) {
-      errors[field as keyof ProductFormInput] = "最多输入 " + (limit || 999) + " 个字符。";
-    }
-  }
-  return errors;
+
+  return next;
+}
+
+function orderCardsForAnalysis(cards: EvidenceCard[], roles: Record<string, EvidenceRole>) {
+  const primaryId = getPrimaryEvidenceId(cards, roles);
+  if (!primaryId) return cards;
+  const primary = cards.filter((card) => card.id === primaryId);
+  const supporting = cards.filter((card) => card.id !== primaryId);
+  return [...primary, ...supporting];
 }
 
 function escapeHtml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function sanitizeFileName(value: string) {
-  return value.trim().replace(/[\\/:*?"<>|]+/g, "-").slice(0, 48) || "选品分析结果";
+  return value.trim().replace(/[\\/:*?"<>|]+/g, "-").slice(0, 48) || "爆款素材识别报告";
 }
 
 function downloadTextFile(fileName: string, content: string, type: string) {
@@ -149,727 +308,2238 @@ function downloadTextFile(fileName: string, content: string, type: string) {
   window.URL.revokeObjectURL(url);
 }
 
-function getInputSummary(form: ProductFormInput) {
-  return [
-    ["产品中文名称", form.productName],
-    ["产品英文名称", form.englishName || "未填写"],
-    ["产品类别", form.category],
-    ["材质", form.material],
-    ["核心卖点", form.sellingPoints],
-    ["产品成本", form.productCost],
-    ["预估售价", form.estimatedPrice],
-    ["MOQ", form.moq],
-    ["目标国家/地区", form.targetCountries],
-  ];
-}
-function resultToText(form: ProductFormInput, result: AlibabaResult) {
-  const scoreLabels: Record<string, string> = {
-    marketDemand: "市场需求", competitionRisk: "竞争强度", profitMargin: "利润空间",
-    logisticsDifficulty: "物流难度", complianceRisk: "认证/合规风险", b2bFit: "B2B适配度",
-    differentiation: "差异化空间", beginnerDifficulty: "新手操作难度",
-  };
-  const lines: string[] = [];
-  lines.push("== 产品机会总评分: " + result.productOpportunityScore + "/100 (置信度: " + getConfidenceLabel(result.confidenceLevel) + ") ==");
-  lines.push("");
-  lines.push("建议: " + (result.recommendation || {}).suggestion || "");
-  if ((result.recommendation || {}).dataWarning || "") lines.push("数据提示: " + (result.recommendation || {}).dataWarning || "");
-  lines.push("");
-  lines.push("== 评分明细 ==");
-  for (const [key, dim] of Object.entries(result.scoreBreakdown || {})) {
-    const label = scoreLabels[key] || key;
-    lines.push(label + ": " + dim.score + "分 - " + dim.basis);
-  }
-  lines.push("");
-  const assessments: Array<[string, any]> = [
-    ["市场需求", (result.demandAnalysis )],
-    ["竞争强度", result.competitionRiskAssessment],
-    ["利润空间", result.profitRiskAssessment],
-    ["物流难度", result.logisticsRiskAssessment],
-    ["认证/合规风险", result.complianceRiskAssessment],
-    ["B2B适配度", result.b2bFitAssessment],
-    ["差异化机会", result.differentiationAssessment],
-    ["新手操作难度", result.beginnerDifficultyAssessment],
-  ];
-  for (const [label, a] of assessments) {
-    lines.push("== " + label + " ==");
-    lines.push("结论: " + a.conclusion);
-    lines.push("依据: " + a.basis);
-    lines.push("风险: " + a.risk);
-    lines.push("置信度: " + a.confidence);
-    lines.push("验证: " + a.verificationStep);
-    lines.push("");
-  }
-  lines.push("== 缺失数据提醒 ==");
-  if (result.missingData.length) result.missingData.forEach(i => lines.push("- " + i));
-  else lines.push("无");
-  lines.push("");
-  lines.push("== 验证清单 ==");
-  result.validationChecklist.forEach((i, idx) => lines.push((idx + 1) + ". " + i));
-  lines.push("");
-  lines.push("== 目标国家/地区 ==");
-  lines.push(result.targetMarkets.join(", "));
-  lines.push("");
-  lines.push("== 买家类型 ==");
-  lines.push(result.buyerTypes.join(", "));
-  lines.push("");
-  lines.push("== 标题 ==");
-  lines.push(result.alibabaTitle);
-  lines.push("");
-  lines.push("== 核心关键词 ==");
-  lines.push(result.coreKeywords.join(", "));
-  lines.push("");
-  lines.push("== 长尾关键词 ==");
-  lines.push(result.longTailKeywords.join(", "));
-  lines.push("");
-  lines.push("== 详情页文案 ==");
-  lines.push(result.productDescription);
-  lines.push("");
-  lines.push("== 询盘模板 ==");
-  lines.push("首次询价: " + (result.inquiryReplyTemplates || {}).firstInquiry);
-  lines.push("MOQ: " + (result.inquiryReplyTemplates || {}).moqReply);
-  lines.push("样品费: " + (result.inquiryReplyTemplates || {}).sampleFeeReply);
-  lines.push("OEM/ODM: " + (result.inquiryReplyTemplates || {}).oemOdmReply);
-  lines.push("价格: " + (result.inquiryReplyTemplates || {}).priceTooHighReply);
-  lines.push("交期: " + (result.inquiryReplyTemplates || {}).leadTimeReply);
-  lines.push("运费: " + (result.inquiryReplyTemplates || {}).shippingReply);
-  lines.push("跟进: " + (result.inquiryReplyTemplates || {}).followUpReply);
-  lines.push("");
-  lines.push("== 主图建议 ==");
-  result.imageSuggestions.forEach((i, idx) => lines.push((idx + 1) + ". " + i));
-  lines.push("");
-  lines.push("== Amazon Listing 补充版 ==");
-  lines.push(result.amazonListing || "");
-  lines.push("");
-  lines.push("== 行动计划 ==");
-  result.actionPlan.forEach((i, idx) => lines.push((idx + 1) + ". " + i));
-  return lines.join("\n");
+function listLines(items: string[]) {
+  return items.length ? items.map((item) => "- " + item).join("\n") : "- 未提供";
 }
 
-function resultToMarkdown(form: ProductFormInput, result: AlibabaResult, generatedAt: string) {
-  const lines: string[] = [];
-  lines.push("# 阿里国际站选品分析报告: " + (form.productName || ""));
-  lines.push("");
-  lines.push("**生成时间：** " + generatedAt);
-  lines.push("");
-  lines.push("**产品机会评分：** " + result.productOpportunityScore + "/100（" + getConfidenceLabel(result.confidenceLevel) + "置信度）");
-  lines.push("");
-  lines.push("**建议：** " + (result.recommendation || {}).suggestion || "");
-  if ((result.recommendation || {}).dataWarning || "") lines.push("**" + (result.recommendation || {}).dataWarning || "" + "**");
-  lines.push("");
-  lines.push("## 产品信息");
-  lines.push("");
-  for (const [k, v] of getInputSummary(form)) {
-    lines.push("- **" + k + "：** " + v);
+function toFriendlyError(message: string) {
+  const text = (message || "").trim();
+  if (!text) return "当前信息不足，建议补充价格、热度或平台来源。";
+  if (/JSON|502|结构不完整|selector timeout|failed to fetch|parse error|schema error|undefined|null|stack trace/i.test(text)) {
+    return "AI 这次没有按格式返回，我已经尽量整理。你可以减少输入后重试。";
   }
-  lines.push("");
-  lines.push("## 评分明细");
-  lines.push("");
-  const scoreLabels: Record<string, string> = {
-    marketDemand: "市场需求", competitionRisk: "竞争强度", profitMargin: "利润空间",
-    logisticsDifficulty: "物流难度", complianceRisk: "认证/合规风险", b2bFit: "B2B适配度",
-    differentiation: "差异化空间", beginnerDifficulty: "新手操作难度",
-  };
-  for (const [key, dim] of Object.entries(result.scoreBreakdown || {})) {
-    const label = scoreLabels[key] || key;
-    lines.push("### " + label + "（" + dim.score + "分）");
-    lines.push("");
-    lines.push("- 依据：" + dim.basis);
-    lines.push("- 主要风险：" + (dim.mainRisk || "无"));
-    lines.push("- 缺失数据：" + (dim.missingData || "无"));
-    lines.push("");
+  if (/too large|内容过长|素材太多|413/i.test(text)) {
+    return "这次素材太多了，建议先分析 1 个商品，结果会更准，也更省分析次数。";
   }
-  lines.push("## 选品分析");
-  lines.push("");
-  const assessments: Array<[string, any]> = [
-    ["市场需求", (result.demandAnalysis )],
-    ["竞争强度", result.competitionRiskAssessment],
-    ["利润空间", result.profitRiskAssessment],
-    ["物流难度", result.logisticsRiskAssessment],
-    ["认证/合规风险", result.complianceRiskAssessment],
-    ["B2B适配度", result.b2bFitAssessment],
-    ["差异化机会", result.differentiationAssessment],
-    ["新手操作难度", result.beginnerDifficultyAssessment],
-  ];
-  for (const [label, a] of assessments) {
-    lines.push("### " + label);
-    lines.push("");
-    lines.push("- 结论：" + a.conclusion);
-    lines.push("- 依据：" + a.basis);
-    lines.push("- 风险：" + a.risk);
-    lines.push("- 置信度：" + a.confidence);
-    lines.push("- 下一步验证：" + a.verificationStep);
-    lines.push("");
+  if (/网络|fetch|ECONN|timeout/i.test(text)) {
+    return "本地服务刚才没有正常响应，请稍后重试，或确认 http://localhost:3005 是否打开。";
   }
-  lines.push("## 缺失数据");
-  lines.push("");
-  if (result.missingData.length) result.missingData.forEach(i => lines.push("- " + i));
-  else lines.push("无缺失数据");
-  lines.push("");
-  lines.push("## 验证清单");
-  lines.push("");
-  result.validationChecklist.forEach((i, idx) => lines.push((idx + 1) + ". " + i));
-  lines.push("");
-  lines.push("## 发布优化");
-  lines.push("");
-  lines.push("**目标国家/地区：** " + result.targetMarkets.join("、"));
-  lines.push("");
-  lines.push("**买家类型：** " + result.buyerTypes.join("、"));
-  lines.push("");
-  lines.push("**Alibaba 标题：** " + result.alibabaTitle);
-  lines.push("");
-  lines.push("**核心关键词：** " + result.coreKeywords.join("、"));
-  lines.push("");
-  lines.push("**长尾关键词：** " + result.longTailKeywords.join("、"));
-  lines.push("");
-  lines.push("**产品描述：** " + result.productDescription);
-  lines.push("");
-  lines.push("**Amazon Listing 补充版：** " + result.amazonListing);
-  lines.push("");
-  lines.push("---");
-  lines.push("");
-  lines.push("*生成内容仅供选品初筛参考，不构成销售承诺。*");
-  return lines.join("\n");
+  return text;
 }
-function resultToWordHtml(form: ProductFormInput, result: AlibabaResult, generatedAt: string) {
-  const esc = (s: string) => escapeHtml(s);
-  const dimRows = Object.entries(result.scoreBreakdown || {}).map(([key, dim]) => {
-    const labels: Record<string, string> = {
-      marketDemand: "市场需求", competitionRisk: "竞争强度", profitMargin: "利润空间",
-      logisticsDifficulty: "物流难度", complianceRisk: "认证/合规风险", b2bFit: "B2B适配度",
-      differentiation: "差异化空间", beginnerDifficulty: "新手操作难度",
+
+function normalizeUrlCandidate(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}/i.test(trimmed)) return `https://${trimmed}`;
+  return trimmed;
+}
+
+function extractUrls(text: string) {
+  const urls = new Set<string>();
+  const urlRegex = /(https?:\/\/[^\s，。；、]+|(?:item\.)?jd\.com\/[^\s，。；、]+|(?:www\.)?(?:taobao|tmall|pinduoduo|yangkeduo|douyin|jinritemai|xiaohongshu)\.com\/[^\s，。；、]+)/gi;
+  for (const match of text.matchAll(urlRegex)) {
+    urls.add(normalizeUrlCandidate(match[0]));
+  }
+  return Array.from(urls).slice(0, linkLimits.maxCount);
+}
+
+function isPrivateHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  return host === "localhost"
+    || host === "0.0.0.0"
+    || host.startsWith("127.")
+    || host.startsWith("10.")
+    || host.startsWith("192.168.")
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+}
+
+function detectPlatform(hostname: string): Platform | "unknown" {
+  const host = hostname.toLowerCase();
+  if (host === "jd.com" || host.endsWith(".jd.com")) return "jd";
+  if (host === "taobao.com" || host.endsWith(".taobao.com")) return "taobao";
+  if (host === "tmall.com" || host.endsWith(".tmall.com")) return "tmall";
+  if (host === "pinduoduo.com" || host.endsWith(".pinduoduo.com") || host === "yangkeduo.com" || host.endsWith(".yangkeduo.com")) return "pdd";
+  if (host === "douyin.com" || host.endsWith(".douyin.com") || host === "jinritemai.com" || host.endsWith(".jinritemai.com")) return "douyin";
+  if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com")) return "xhs";
+  return "unknown";
+}
+
+function detectLinkType(url: URL, platform: Platform | "unknown"): LinkType {
+  const value = `${url.hostname}${url.pathname}${url.search}`.toLowerCase();
+  if (platform === "xhs") return "note";
+  if (/item|product|detail|goods/.test(value)) return "product";
+  if (/rank|top|榜/.test(value)) return "ranking";
+  if (/search|keyword|q=|wd=/.test(value)) return "search";
+  return "unknown";
+}
+
+function cleanSupportedUrl(rawUrl: string) {
+  const normalized = normalizeUrlCandidate(rawUrl);
+  try {
+    const url = new URL(normalized);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { ok: false as const, message: "该链接协议不支持，已阻止打开。请改用截图或手动粘贴商品信息。" };
+    }
+    if (isPrivateHost(url.hostname)) {
+      return { ok: false as const, message: "该链接指向本地或内网地址，已阻止打开。" };
+    }
+    const platform = detectPlatform(url.hostname);
+    if (platform === "unknown") {
+      return { ok: false as const, message: "该链接不在安全白名单内，已阻止打开。你可以上传截图或手动粘贴商品信息继续分析。" };
+    }
+    const trackingKeys = ["utm", "spm", "share", "invite", "tracking", "track", "from", "refer"];
+    for (const key of Array.from(url.searchParams.keys())) {
+      const lower = key.toLowerCase();
+      if (trackingKeys.some((prefix) => lower.startsWith(prefix) || lower.includes(prefix))) {
+        url.searchParams.delete(key);
+      }
+    }
+    return {
+      ok: true as const,
+      originalUrl: rawUrl,
+      cleanedUrl: url.toString(),
+      platform,
+      linkType: detectLinkType(url, platform),
     };
-    const label = labels[key] || key;
-    return "<tr><td>" + label + "</td><td>" + dim.score + "分</td><td>" + esc(dim.basis) + "</td></tr>";
-  }).join("");
-  const inputRows = getInputSummary(form).map(([k, v]) => "<li><strong>" + esc(k) + "：</strong>" + esc(v || "") + "</li>").join("");
-  const assessments: Array<[string, any]> = [
-    ["市场需求", (result.demandAnalysis )],
-    ["竞争强度", result.competitionRiskAssessment],
-    ["利润空间", result.profitRiskAssessment],
-    ["物流难度", result.logisticsRiskAssessment],
-    ["认证/合规风险", result.complianceRiskAssessment],
-    ["B2B适配度", result.b2bFitAssessment],
-    ["差异化机会", result.differentiationAssessment],
-    ["新手操作难度", result.beginnerDifficultyAssessment],
-  ];
-  const assessHtml = assessments.map(([label, a]) => {
-    const isRisk = a.risk.includes("⚠️") || a.risk.includes("高风险");
-    const bgColor = isRisk ? "#fef2f2" : "#f8fafc";
-    return "<div style='background:" + bgColor + ";border:1px solid #e2e8f0;border-radius:6px;padding:12px;margin:8px 0'>"
-      + "<h3 style='margin:0 0 8px'>" + label + "</h3>"
-      + "<p><strong>结论：</strong>" + esc(a.conclusion) + "</p>"
-      + "<p><strong>依据：</strong>" + esc(a.basis) + "</p>"
-      + "<p><strong>风险：</strong>" + esc(a.risk) + "</p>"
-      + "<p><strong>置信度：</strong>" + esc(a.confidence) + "</p>"
-      + "<p><strong>验证：</strong>" + esc(a.verificationStep) + "</p></div>";
-  }).join("");
-  return "<!doctype html><html><head><meta charset='utf-8'/>"
-    + "<title>阿里国际站选品分析报告</title>"
-    + "<style>body{font-family:'Microsoft YaHei',Arial,sans-serif;color:#0f172a;line-height:1.7;max-width:800px;margin:40px auto;padding:0 20px}"
-    + "h1{font-size:24px;margin-bottom:8px}h2{margin-top:28px;font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px}"
-    + "h3{margin-top:16px;font-size:15px}"
-    + "table{width:100%;border-collapse:collapse;margin:16px 0}"
-    + "th,td{border:1px solid #e2e8f0;padding:8px 12px;text-align:left;font-size:14px}"
-    + "th{background:#f8fafc;font-weight:600}"
-    + ".score{font-size:32px;font-weight:700;color:#0f766e}"
-    + ".meta{color:#475569;font-size:13px}.notice{margin-top:28px;color:#64748b;font-size:13px}"
-    + "</style></head><body>"
-    + "<h1>阿里国际站选品分析报告</h1>"
-    + "<p class='meta'>生成时间：" + esc(generatedAt) + "</p>"
-    + "<p><span class='score'>" + result.productOpportunityScore + "</span>/100分</p>"
-    + "<p><strong>建议：</strong>" + esc((result.recommendation || {}).suggestion || "") + "</p>"
-    + ((result.recommendation || {}).dataWarning || "" ? "<div style='background:#fffbeb;border:1px solid #fde68a;padding:12px;border-radius:6px;margin:16px 0'>" + esc((result.recommendation || {}).dataWarning || "") + "</div>" : "")
-    + "<h2>产品信息</h2><ul>" + inputRows + "</ul>"
-    + "<h2>评分明细</h2><table><thead><tr><th>维度</th><th>得分</th><th>依据</th></tr></thead><tbody>" + dimRows + "</tbody></table>"
-    + "<h2>选品分析</h2>" + assessHtml
-    + ((result.amazonListing || "") ? "<h2>Amazon Listing 补充版</h2><p>" + esc(result.amazonListing || "") + "</p>" : "")
-    + "<p class='notice'>生成内容仅供选品初筛参考，不构成销售承诺。</p>"
-    + "</body></html>";
+  } catch {
+    return { ok: false as const, message: "链接格式无法识别，请检查后重试，或改用截图/手动文字。" };
+  }
 }
 
-function normalizeResult(data: any): AlibabaResult {
-  const source = data && typeof data === "object" ? data : {};
-  const asString = (value: unknown) => typeof value === "string" ? value : "";
-  const asStringArray = (value: unknown) => Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
-  const normalizeDim = (value: any) => ({
-    score: typeof value?.score === "number" && Number.isFinite(value.score) ? value.score : 0,
-    basis: asString(value?.basis) || "暂无依据",
-    mainRisk: asString(value?.mainRisk),
-    missingData: asString(value?.missingData),
-  });
-  const normalizeAssess = (value: any) => ({
-    conclusion: asString(value?.conclusion),
-    basis: asString(value?.basis),
-    risk: asString(value?.risk),
-    confidence: (["low", "medium", "high"].includes(value?.confidence) ? value.confidence : "low") as "low" | "medium" | "high",
-    verificationStep: asString(value?.verificationStep),
-  });
-  const templates = source.inquiryReplyTemplates && typeof source.inquiryReplyTemplates === "object"
-    ? source.inquiryReplyTemplates
-    : {};
+function detectPlatformFromText(text: string): Platform | "unknown" {
+  if (/京东|jd/i.test(text)) return "jd";
+  if (/淘宝/i.test(text)) return "taobao";
+  if (/天猫/i.test(text)) return "tmall";
+  if (/拼多多|pdd/i.test(text)) return "pdd";
+  if (/抖音/i.test(text)) return "douyin";
+  if (/小红书/i.test(text)) return "xhs";
+  return "manual";
+}
+
+function readLineField(text: string, names: string[]) {
+  const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const match = text.match(new RegExp(`(?:${escaped})\\s*[:：]\\s*([^\\n]+)`, "i"));
+  return match?.[1]?.trim() || "";
+}
+
+function splitManualEntries(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return [];
+  const byBlank = normalized.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean);
+  if (byBlank.length > 1) return byBlank.slice(0, 12);
+  const byPlatform = normalized.split(/(?=平台\s*[:：])/).map((item) => item.trim()).filter(Boolean);
+  return (byPlatform.length ? byPlatform : [normalized]).slice(0, 12);
+}
+
+function confidenceField(fieldName: string, value: string, confidence: ConfidenceField["confidence"], reason: string): ConfidenceField {
+  return { fieldName, value, confidence, reason };
+}
+
+function createLinkEvidenceCard(rawUrl: string): { material: MaterialInput; card: EvidenceCard } {
+  const materialId = makeId("url");
+  const parsed = cleanSupportedUrl(rawUrl);
+  const now = new Date().toISOString();
+  const failedMaterial: MaterialInput = {
+    id: materialId,
+    type: "url",
+    originalUrl: rawUrl,
+    rawText: rawUrl,
+    createdAt: now,
+  };
+
+  if (!parsed.ok) {
+    return {
+      material: failedMaterial,
+      card: {
+        id: makeId("card"),
+        materialId,
+        materialType: "url",
+        detectedMaterialType: "unknown",
+        status: "failed",
+        missingFields: ["商品名", "价格", "热度证据"],
+        message: "待补充证据卡片：链接没有识别成功，请手动补商品名、价格、热度或换成截图。",
+        riskNotes: parsed.message,
+        userNotes: "",
+        productName: "",
+        normalizedProductName: "",
+        priceText: "",
+        salesText: "",
+        ratingText: "",
+        rankText: "",
+        shopName: "",
+        brandName: "",
+        pageTitle: "",
+        visibleDescription: "",
+        sourceUrl: rawUrl,
+        platform: "unknown",
+        rawEvidenceText: rawUrl,
+        capturedAt: now,
+        confidenceFields: [confidenceField("链接安全", "未通过", "high", "链接不在白名单或协议不安全。")],
+      },
+    };
+  }
 
   return {
-    productOpportunityScore: typeof source.productOpportunityScore === "number" && Number.isFinite(source.productOpportunityScore)
-      ? Math.min(Math.max(source.productOpportunityScore, 0), 100)
-      : 0,
-    confidenceLevel: (["low", "medium", "high"].includes(source.confidenceLevel) ? source.confidenceLevel : "low") as "low" | "medium" | "high",
-    recommendation: {
-      suggestion: asString(source.recommendation?.suggestion),
-      dataWarning: asString(source.recommendation?.dataWarning),
+    material: {
+      ...failedMaterial,
+      sourceName: platformLabels[parsed.platform],
+      cleanedUrl: parsed.cleanedUrl,
     },
-    scoreBreakdown: {
-      marketDemand: normalizeDim(source.scoreBreakdown?.marketDemand),
-      competitionRisk: normalizeDim(source.scoreBreakdown?.competitionRisk),
-      profitMargin: normalizeDim(source.scoreBreakdown?.profitMargin),
-      logisticsDifficulty: normalizeDim(source.scoreBreakdown?.logisticsDifficulty),
-      complianceRisk: normalizeDim(source.scoreBreakdown?.complianceRisk),
-      b2bFit: normalizeDim(source.scoreBreakdown?.b2bFit),
-      differentiation: normalizeDim(source.scoreBreakdown?.differentiation),
-      beginnerDifficulty: normalizeDim(source.scoreBreakdown?.beginnerDifficulty),
+    card: {
+      id: makeId("card"),
+      materialId,
+      materialType: "url",
+      detectedMaterialType: parsed.linkType === "product" ? "product_page" : parsed.linkType === "ranking" ? "ranking_page" : parsed.linkType === "search" ? "search_result" : parsed.linkType === "note" ? "note" : "unknown",
+      status: "partial",
+      missingFields: ["商品名", "价格", "销量/评价/排名", "店铺/品牌"],
+      message: "链接已通过白名单和基础清洗。V1 不自动抓取页面，请补充页面可见信息或上传截图。",
+      riskNotes: "",
+      userNotes: "",
+      productName: "",
+      normalizedProductName: "",
+      priceText: "",
+      salesText: "",
+      ratingText: "",
+      rankText: "",
+      shopName: "",
+      brandName: "",
+      pageTitle: "",
+      visibleDescription: "",
+      sourceUrl: parsed.cleanedUrl,
+      platform: parsed.platform,
+      rawEvidenceText: parsed.cleanedUrl,
+      capturedAt: now,
+      confidenceFields: [
+        confidenceField("平台", platformLabels[parsed.platform], "high", "根据域名识别。"),
+        confidenceField("链接类型", parsed.linkType, "medium", "根据路径关键词粗略识别。"),
+      ],
     },
-    demandAnalysis: normalizeAssess(source.demandAnalysis),
-    competitionRiskAssessment: normalizeAssess(source.competitionRiskAssessment),
-    profitRiskAssessment: normalizeAssess(source.profitRiskAssessment),
-    logisticsRiskAssessment: normalizeAssess(source.logisticsRiskAssessment),
-    complianceRiskAssessment: normalizeAssess(source.complianceRiskAssessment),
-    b2bFitAssessment: normalizeAssess(source.b2bFitAssessment),
-    differentiationAssessment: normalizeAssess(source.differentiationAssessment),
-    beginnerDifficultyAssessment: normalizeAssess(source.beginnerDifficultyAssessment),
-    missingData: asStringArray(source.missingData),
-    validationChecklist: asStringArray(source.validationChecklist),
-    targetMarkets: asStringArray(source.targetMarkets),
-    buyerTypes: asStringArray(source.buyerTypes),
-    alibabaTitle: asString(source.alibabaTitle),
-    coreKeywords: asStringArray(source.coreKeywords),
-    longTailKeywords: asStringArray(source.longTailKeywords),
-    productDescription: asString(source.productDescription),
-    inquiryReplyTemplates: {
-      firstInquiry: asString(templates.firstInquiry),
-      moqReply: asString(templates.moqReply),
-      sampleFeeReply: asString(templates.sampleFeeReply),
-      oemOdmReply: asString(templates.oemOdmReply),
-      priceTooHighReply: asString(templates.priceTooHighReply),
-      leadTimeReply: asString(templates.leadTimeReply),
-      shippingReply: asString(templates.shippingReply),
-      followUpReply: asString(templates.followUpReply),
-    },
-    imageSuggestions: asStringArray(source.imageSuggestions),
-    amazonListing: asString(source.amazonListing),
-    actionPlan: asStringArray(source.actionPlan),
   };
 }
 
-export default function HomePage() {
-  const [form, setForm] = useState<ProductFormInput>(emptyForm);
+function createTextEvidenceCard(text: string, index: number): { material: MaterialInput; card: EvidenceCard } {
+  const now = new Date().toISOString();
+  const materialId = makeId("text");
+  const productName = readLineField(text, ["商品名", "产品名", "名称"]);
+  const priceText = readLineField(text, ["价格", "售价", "客单价"]);
+  const heatText = readLineField(text, ["热度", "销量", "互动", "评价"]);
+  const rankText = readLineField(text, ["排名", "榜单"]);
+  const shopName = readLineField(text, ["店铺", "店铺名"]);
+  const brandName = readLineField(text, ["品牌", "品牌名"]);
+  const sourceUrl = extractUrls(text)[0] || readLineField(text, ["链接", "地址"]);
+  const platform = detectPlatformFromText(text);
+  const missingFields = [
+    productName ? "" : "商品名",
+    priceText ? "" : "价格",
+    heatText || rankText ? "" : "销量/评价/排名",
+  ].filter(Boolean);
+
+  return {
+    material: {
+      id: materialId,
+      type: "text",
+      sourceName: `手动文字 ${index + 1}`,
+      rawText: text,
+      createdAt: now,
+    },
+    card: {
+      id: makeId("card"),
+      materialId,
+      materialType: "text",
+      detectedMaterialType: "manual_text",
+      status: missingFields.length ? "partial" : "success",
+      missingFields,
+      message: missingFields.length ? "已从文字中提取部分信息，请补充缺失字段后再完整分析。" : "已从手动文字中提取到基础证据。",
+      riskNotes: "",
+      userNotes: "",
+      productName,
+      normalizedProductName: productName,
+      priceText,
+      salesText: heatText,
+      ratingText: heatText.includes("评价") ? heatText : "",
+      rankText,
+      shopName,
+      brandName,
+      pageTitle: "",
+      visibleDescription: readLineField(text, ["备注", "卖点", "描述"]),
+      sourceUrl,
+      platform,
+      rawEvidenceText: text,
+      capturedAt: now,
+      confidenceFields: [
+        confidenceField("商品名", productName || "未识别", productName ? "medium" : "low", "来自用户粘贴文字。"),
+        confidenceField("价格", priceText || "未识别", priceText ? "medium" : "low", "来自用户粘贴文字。"),
+        confidenceField("热度", heatText || rankText || "未识别", heatText || rankText ? "medium" : "low", "来自用户粘贴文字。"),
+      ],
+    },
+  };
+}
+
+function createImageEvidenceCard(material: MaterialInput): EvidenceCard {
+  return {
+    id: makeId("card"),
+    materialId: material.id,
+    materialType: "image",
+    detectedMaterialType: "product_image",
+    status: "need_more_info",
+    missingFields: ["商品名", "价格", "销量/评价/排名", "平台"],
+    message: "待补充证据卡片：图片已上传，请手动补充截图里的商品名、价格、销量或评价。",
+    riskNotes: "",
+    userNotes: "",
+    productName: "",
+    normalizedProductName: "",
+    priceText: "",
+    salesText: "",
+    ratingText: "",
+    rankText: "",
+    shopName: "",
+    brandName: "",
+    pageTitle: "",
+    visibleDescription: "",
+    sourceUrl: "",
+    platform: "unknown",
+    rawEvidenceText: `图片文件：${material.fileName || "未命名图片"}`,
+    capturedAt: new Date().toISOString(),
+    confidenceFields: [
+      confidenceField("图片文件", material.fileName || "未命名图片", "high", "来自本地上传文件名。"),
+      confidenceField("图片识别", "需要人工补充", "low", "V1 优先保留上传和预览，不强依赖视觉模型。"),
+    ],
+  };
+}
+
+function createFallbackEvidenceCard(reason: string): EvidenceCard {
+  const now = new Date().toISOString();
+  return {
+    id: makeId("card"),
+    materialId: makeId("manual-fallback"),
+    materialType: "text",
+    detectedMaterialType: "unknown",
+    status: "need_more_info",
+    missingFields: ["商品名", "平台", "价格", "热度"],
+    message: "待补充证据卡片：识别不完整，请手动填写商品名、平台、价格、热度或备注。",
+    riskNotes: reason,
+    userNotes: "",
+    productName: "",
+    normalizedProductName: "",
+    priceText: "",
+    salesText: "",
+    ratingText: "",
+    rankText: "",
+    shopName: "",
+    brandName: "",
+    pageTitle: "",
+    visibleDescription: "",
+    sourceUrl: "",
+    platform: "unknown",
+    rawEvidenceText: reason,
+    capturedAt: now,
+    confidenceFields: [
+      confidenceField("识别状态", "待补充", "low", "本地解析没有拿到足够信息。"),
+    ],
+  };
+}
+
+function getMaterialAgentText(form: RadarFormInput) {
+  const imageNames = form.materials
+    .filter((item) => item.type === "image")
+    .map((item) => item.fileName || item.sourceName || "未命名图片")
+    .filter(Boolean);
+
+  return [
+    form.keyword.trim() ? `关键词/品类：${form.keyword.trim()}` : "",
+    form.manualText.trim() ? `用户粘贴内容：\n${form.manualText.trim()}` : "",
+    form.linksText.trim() ? `用户粘贴链接：\n${form.linksText.trim()}` : "",
+    imageNames.length ? `用户上传图片：${imageNames.join("、")}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+function materialListText(values: string[]) {
+  return values.length ? values.join("、") : "未提到";
+}
+
+function createMaterialAgentEvidenceCard(result: MaterialAgentResult, rawText: string): EvidenceCard {
+  const now = new Date().toISOString();
+  const productName = result.productType && result.productType !== "未提到" ? result.productType : "";
+  const missingFields = result.missingInfo.length ? result.missingInfo : [
+    productName ? "" : "商品类型",
+    result.priceRange && result.priceRange !== "未提到" ? "" : "价格区间",
+    result.targetUsers.length ? "" : "目标人群",
+    result.usageScenarios.length ? "" : "使用场景",
+    result.commentDemands.length ? "" : "评论需求",
+  ].filter(Boolean);
+
+  return {
+    id: makeId("card"),
+    materialId: makeId("material-agent"),
+    materialType: "text",
+    detectedMaterialType: "manual_text",
+    status: result.materialCompleteness === "完整" ? "success" : result.materialCompleteness === "一般" ? "partial" : "need_more_info",
+    missingFields,
+    message: "素材接收 Agent 已识别。请检查下面的信息是否准确。",
+    riskNotes: materialListText(result.riskWords),
+    userNotes: result.summary,
+    productName,
+    normalizedProductName: productName,
+    priceText: result.priceRange === "未提到" ? "" : result.priceRange,
+    salesText: materialListText(result.commentDemands),
+    ratingText: "",
+    rankText: "",
+    shopName: "",
+    brandName: "",
+    pageTitle: result.productType || "",
+    visibleDescription: [
+      `核心卖点：${materialListText(result.sellingPoints)}`,
+      `目标人群：${materialListText(result.targetUsers)}`,
+      `使用场景：${materialListText(result.usageScenarios)}`,
+      `用户痛点：${materialListText(result.painPoints)}`,
+    ].join("\n"),
+    sourceUrl: "",
+    platform: "xhs",
+    rawEvidenceText: rawText || result.summary,
+    capturedAt: now,
+    confidenceFields: [
+      confidenceField("商品类型", result.productType || "未提到", productName ? "medium" : "low", "来自素材接收 Agent。"),
+      confidenceField("价格区间", result.priceRange || "未提到", result.priceRange && result.priceRange !== "未提到" ? "medium" : "low", "来自素材接收 Agent。"),
+      confidenceField("素材完整度", result.materialCompleteness, result.materialCompleteness === "完整" ? "high" : "medium", "来自素材接收 Agent。"),
+    ],
+  };
+}
+
+function buildEvidenceFromForm(form: RadarFormInput) {
+  const materials: MaterialInput[] = [];
+  const cards: EvidenceCard[] = [];
+
+  const imageMaterials = form.materials.filter((item) => item.type === "image");
+  materials.push(...imageMaterials);
+  cards.push(...imageMaterials.map(createImageEvidenceCard));
+
+  const linkCandidates = [
+    ...extractUrls(form.linksText),
+    ...extractUrls(form.manualText),
+  ].slice(0, linkLimits.maxCount);
+  for (const rawUrl of Array.from(new Set(linkCandidates))) {
+    const item = createLinkEvidenceCard(rawUrl);
+    materials.push(item.material);
+    cards.push(item.card);
+  }
+
+  splitManualEntries(form.manualText).forEach((entry, index) => {
+    const item = createTextEvidenceCard(entry, index);
+    materials.push(item.material);
+    cards.push(item.card);
+  });
+
+  return { materials, cards };
+}
+
+function resultToMarkdown(form: RadarFormInput, result: HotProductRadarResult, generatedAt: string) {
+  const lines: string[] = [];
+  lines.push(`# 爆款素材识别报告：${form.keyword || "未命名选品"}`);
+  lines.push("");
+  lines.push(`生成时间：${generatedAt}`);
+  lines.push("");
+  lines.push("## Agent 结论");
+  lines.push("");
+  lines.push(`- 最终判断：${getDecisionLabel(result.finalDecision)}`);
+  lines.push(`- 置信度：${getConfidenceLabel(result.confidenceLevel)}`);
+  lines.push(`- 样本质量：${result.sampleQuality}`);
+  lines.push("");
+  lines.push(result.summary || "未生成总结。");
+  lines.push("");
+  lines.push(result.agentConclusion || "");
+  lines.push("");
+  lines.push("## 风险红黄绿灯");
+  lines.push("");
+  result.trafficLightRisks.forEach((risk) => {
+    lines.push(`- ${risk.name}：${risk.level}，${risk.explanation}`);
+  });
+  lines.push("");
+  lines.push("## 证据卡片");
+  lines.push("");
+  result.evidenceCards.forEach((card, index) => {
+    lines.push(`### 素材 ${index + 1}`);
+    lines.push(`- 平台：${card.platform}`);
+    lines.push(`- 类型：${materialTypeLabels[card.detectedMaterialType] || card.detectedMaterialType}`);
+    lines.push(`- 商品名：${card.productName || "未识别"}`);
+    lines.push(`- 价格：${card.priceText || "未识别"}`);
+    lines.push(`- 热度：${card.salesText || card.ratingText || card.rankText || "未识别"}`);
+    lines.push(`- 缺失：${card.missingFields.join("、") || "无"}`);
+    lines.push(`- 备注：${card.userNotes || card.message}`);
+    lines.push("");
+  });
+  lines.push("## 候选商品");
+  lines.push("");
+  result.candidateProducts.forEach((product, index) => {
+    lines.push(`### ${index + 1}. ${product.productName}`);
+    lines.push(`- 判断：${getDecisionLabel(product.finalDecision)}`);
+    lines.push(`- 综合分：${product.finalScore}`);
+    lines.push(`- 平台：${product.platform || product.sourcePlatform}`);
+    lines.push(`- 价格：${product.priceText}`);
+    lines.push(`- 热度证据：${product.evidenceText}`);
+    lines.push(`- 风险标签：${product.riskTags.join("、") || "无"}`);
+    lines.push(`- 理由：${product.reason}`);
+    lines.push(`- 差异化：${product.differentiationAngle}`);
+    lines.push(`- 找货关键词：${[
+      ...product.sourcingKeywords.source1688,
+      ...product.sourcingKeywords.pdd,
+      ...product.sourcingKeywords.taobao,
+      ...product.sourcingKeywords.specsAndMaterials,
+    ].join("、")}`);
+    lines.push("");
+  });
+  lines.push("## 推荐做 / 谨慎做 / 不建议做");
+  lines.push("");
+  lines.push("### 推荐做");
+  lines.push(listLines(result.recommendedProducts.map((item) => `${item.productName}：${item.reason}`)));
+  lines.push("");
+  lines.push("### 谨慎做");
+  lines.push(listLines(result.cautiousProducts.map((item) => `${item.productName}：${item.reason}`)));
+  lines.push("");
+  lines.push("### 不建议做");
+  lines.push(listLines(result.rejectedProducts.map((item) => `${item.productName}：${item.reason}`)));
+  lines.push("");
+  lines.push("## 找货关键词");
+  lines.push("");
+  lines.push(listLines(result.sourcingKeywords));
+  lines.push("");
+  lines.push("## 同类扩展方向");
+  lines.push("");
+  lines.push(listLines(result.similarProductDirections));
+  lines.push("");
+  lines.push("## 下一步行动");
+  lines.push("");
+  result.nextActions.forEach((action) => {
+    lines.push(`### ${action.productDirection}`);
+    lines.push("");
+    lines.push(action.action);
+    lines.push("");
+    lines.push(listLines(action.checklist));
+    lines.push("");
+    lines.push(`测试建议：${action.testSuggestion}`);
+    lines.push("");
+  });
+  lines.push("---");
+  lines.push("");
+  lines.push(result.disclaimer || reportDisclaimer);
+  return lines.join("\n");
+}
+
+function resultToWordHtml(form: RadarFormInput, result: HotProductRadarResult, generatedAt: string) {
+  const esc = escapeHtml;
+  const markdown = resultToMarkdown(form, result, generatedAt)
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("# ")) return `<h1>${esc(line.slice(2))}</h1>`;
+      if (line.startsWith("## ")) return `<h2>${esc(line.slice(3))}</h2>`;
+      if (line.startsWith("### ")) return `<h3>${esc(line.slice(4))}</h3>`;
+      if (line.startsWith("- ")) return `<li>${esc(line.slice(2))}</li>`;
+      if (line.trim() === "---") return "<hr />";
+      if (!line.trim()) return "";
+      return `<p>${esc(line)}</p>`;
+    })
+    .join("\n");
+
+  return "<!DOCTYPE html><html><head><meta charset='utf-8'><title>爆款素材识别报告</title>"
+    + "<style>body{font-family:'Microsoft YaHei',Arial,sans-serif;line-height:1.7;color:#111827;}h1,h2,h3{color:#0f172a;}li{margin:4px 0}</style>"
+    + `</head><body><p>生成时间：${esc(generatedAt)}</p>${markdown}</body></html>`;
+}
+
+function getDecisionFileName(decision: FinalDecision) {
+  switch (decision) {
+    case "recommend": return "推荐做";
+    case "reject": return "不建议做";
+    default: return "谨慎做";
+  }
+}
+
+function normalizeMatchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{Script=Han}a-z0-9]+/gu, "")
+    .trim();
+}
+
+function getStoredArchives() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(localArchiveKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item?.name === "string") as Array<{ name: string; decision: string; risks: string; savedAt: string }> : [];
+  } catch {
+    return [];
+  }
+}
+
+function findDuplicateReminder(cards: EvidenceCard[]) {
+  const archives = getStoredArchives();
+  if (!archives.length || !cards.length) return "";
+
+  const cardNames = cards
+    .map((card) => normalizeMatchText(card.productName || card.normalizedProductName || ""))
+    .filter((name) => name.length >= 4);
+  if (!cardNames.length) return "";
+
+  const matched = archives.find((archive) => {
+    const archiveName = normalizeMatchText(archive.name);
+    return cardNames.some((name) => archiveName.includes(name) || name.includes(archiveName));
+  });
+
+  if (!matched) return "";
+  return `你之前分析过类似商品：${matched.name}。上次结论：${matched.decision || "未记录"}。主要风险：${matched.risks || "未记录"}。`;
+}
+
+function rememberLocalArchive(result: HotProductRadarResult) {
+  if (typeof window === "undefined") return;
+  const archives = getStoredArchives();
+  const primaryName = result.candidateProducts[0]?.productName || result.summary.slice(0, 24) || "未命名选品";
+  const item = {
+    name: primaryName,
+    decision: getDecisionLabel(result.finalDecision),
+    risks: result.riskWarnings.slice(0, 3).map((risk) => risk.riskType).join("、"),
+    savedAt: new Date().toISOString(),
+  };
+  const next = [item, ...archives.filter((archive) => normalizeMatchText(archive.name) !== normalizeMatchText(item.name))].slice(0, 30);
+  window.localStorage.setItem(localArchiveKey, JSON.stringify(next));
+}
+
+export default function Home() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [accessPassword, setAccessPassword] = useState("");
+  const [form, setForm] = useState<RadarFormInput>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [result, setResult] = useState<HotProductRadarResult | null>(null);
+  const [materialAgentResult, setMaterialAgentResult] = useState<MaterialAgentResult | null>(null);
+  const [viralAgentResult, setViralAgentResult] = useState<ViralAgentResult | null>(null);
+  const [activeMenu, setActiveMenu] = useState<(typeof sidebarMenus)[number]["label"]>("首页");
   const [error, setError] = useState("");
-  const [result, setResult] = useState<AlibabaResult | null>(null);
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [recognizingEvidence, setRecognizingEvidence] = useState(false);
+  const [analyzingViral, setAnalyzingViral] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [progressStep, setProgressStep] = useState(-1);
   const [generatedAt, setGeneratedAt] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showProfessional, setShowProfessional] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [materialsDirtyAfterEvidence, setMaterialsDirtyAfterEvidence] = useState(false);
+  const [evidenceDirtyAfterAnalysis, setEvidenceDirtyAfterAnalysis] = useState(false);
+  const [evidenceRoles, setEvidenceRoles] = useState<Record<string, EvidenceRole>>({});
+  const [manualEvidenceDraft, setManualEvidenceDraft] = useState<ManualEvidenceDraft>(emptyManualEvidenceDraft);
 
-  useEffect(() => {
-    const savedPassword = window.sessionStorage.getItem("app_access_password");
-    if (savedPassword) setAccessPassword(savedPassword);
-  }, []);
+  const reportMarkdown = result ? resultToMarkdown(form, result, generatedAt) : "";
 
-  const allResultText = useMemo(() => (result ? resultToText(form, result) : ""), [form, result]);
+  function markMaterialsChanged() {
+    if (form.evidenceCards.length) {
+      setMaterialsDirtyAfterEvidence(true);
+      setNotice(materialChangedMessage);
+    }
+    setMaterialAgentResult(null);
+    setViralAgentResult(null);
+  }
 
-  const updateField = useCallback(<K extends keyof ProductFormInput>(field: K, value: ProductFormInput[K]) => {
-    setForm((cur) => ({ ...cur, [field]: value }));
-    setFieldErrors((cur) => ({ ...cur, [field]: undefined }));
-  }, []);
+  function markEvidenceChanged() {
+    setEvidenceDirtyAfterAnalysis(true);
+    setViralAgentResult(null);
+    setNotice(result ? "证据已修改，当前体检报告可能已过期，请重新分析。" : "证据已修改，可重新分析。");
+  }
 
-  const toggleGroup = useCallback((group: string) => {
-    setExpandedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
-  }, []);
+  function updateField<K extends keyof RadarFormInput>(field: K, value: RadarFormInput[K]) {
+    if (field === "linksText" || field === "manualText") {
+      markMaterialsChanged();
+    }
+    setForm((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
+  }
+
+  function updateEvidenceCard(cardId: string, updates: Partial<EvidenceCard>) {
+    markEvidenceChanged();
+    setForm((current) => ({
+      ...current,
+      evidenceCards: current.evidenceCards.map((card) => card.id === cardId ? { ...card, ...updates } : card),
+    }));
+    setEvidenceRoles((current) => assignEvidenceRoles(
+      form.evidenceCards.map((card) => card.id === cardId ? { ...card, ...updates } : card),
+      current,
+    ));
+  }
+
+  function clearProgressTimer() {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }
+
+  function startProgress() {
+    clearProgressTimer();
+    setProgressStep(0);
+    progressTimerRef.current = setInterval(() => {
+      setProgressStep((current) => Math.min(current + 1, progressSteps.length - 1));
+    }, 900);
+  }
+
+  function finishProgress(success: boolean) {
+    clearProgressTimer();
+    setProgressStep(success ? progressSteps.length - 1 : -1);
+  }
+
+  function removeEvidenceCard(cardId: string) {
+    markEvidenceChanged();
+    setForm((current) => ({
+      ...current,
+      evidenceCards: current.evidenceCards.filter((card) => card.id !== cardId),
+    }));
+    setEvidenceRoles((current) => assignEvidenceRoles(form.evidenceCards.filter((card) => card.id !== cardId), current));
+  }
+
+  function addImageFiles(files: FileList | File[]) {
+    setError("");
+    const currentImages = form.materials.filter((item) => item.type === "image").length;
+    const accepted: MaterialInput[] = [];
+    const rejected: string[] = [];
+
+    Array.from(files).forEach((file) => {
+      if (currentImages + accepted.length >= imageLimits.maxCount) {
+        rejected.push(`${file.name}：一次最多 ${imageLimits.maxCount} 张图片`);
+        return;
+      }
+      if (!imageLimits.acceptedMimeTypes.includes(file.type)) {
+        rejected.push(`${file.name}：只支持 png、jpg、jpeg、webp`);
+        return;
+      }
+      if (file.size > imageLimits.maxSizeBytes) {
+        rejected.push(`${file.name}：单张图片不能超过 8MB`);
+        return;
+      }
+      accepted.push({
+        id: makeId("image"),
+        type: "image",
+        sourceName: file.name,
+        fileName: file.name.replace(/[\\/:*?"<>|]+/g, "-"),
+        mimeType: file.type,
+        size: file.size,
+        previewUrl: URL.createObjectURL(file),
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    if (accepted.length) {
+      const hadEvidence = form.evidenceCards.length > 0;
+      markMaterialsChanged();
+      setForm((current) => ({
+        ...current,
+        materials: [...current.materials.filter((item) => item.type !== "image"), ...current.materials.filter((item) => item.type === "image"), ...accepted],
+        evidenceCards: current.evidenceCards.filter((card) => card.materialType !== "image"),
+      }));
+      setNotice(hadEvidence ? materialChangedMessage : `已添加 ${accepted.length} 张图片，请点击“识别素材”生成证据卡片。`);
+    }
+    if (rejected.length) {
+      setError(rejected.join("；"));
+    }
+  }
+
+  function removeImage(materialId: string) {
+    markMaterialsChanged();
+    setForm((current) => ({
+      ...current,
+      materials: current.materials.filter((item) => item.id !== materialId),
+      evidenceCards: current.evidenceCards.filter((card) => card.materialId !== materialId),
+    }));
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    if (event.target.files) {
+      addImageFiles(event.target.files);
+      event.target.value = "";
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    addImageFiles(event.dataTransfer.files);
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    if (files.length) {
+      addImageFiles(files);
+    }
+  }
+
+  async function recognizeEvidence() {
+    if (recognizingEvidence || loading) return;
+    if (!hasRawMaterialInput(form)) {
+      setNotice("请先放入素材。");
+      return;
+    }
+    if (!accessPassword.trim()) {
+      setFieldErrors((current) => ({ ...current, accessPassword: "请先输入访问密码。" }));
+      setNotice("请先输入访问密码。");
+      return;
+    }
+
+    setRecognizingEvidence(true);
+    setNotice("素材接收 Agent 正在识别...");
+    setError("");
+    try {
+      const response = await fetch("/api/agents/material", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessPassword,
+          keyword: form.keyword,
+          linksText: form.linksText,
+          manualText: form.manualText,
+          materials: form.materials,
+        }),
+      });
+      const data = await response.json() as { result?: MaterialAgentResult; error?: string };
+      if (!response.ok || !data.result) {
+        const message = toFriendlyError(data.error || "素材识别失败，请补充商品信息后重试。");
+        const fallbackCard = createFallbackEvidenceCard(message);
+        setMaterialAgentResult(null);
+        setViralAgentResult(null);
+        setForm((current) => ({ ...current, evidenceCards: [fallbackCard] }));
+        setEvidenceRoles(assignEvidenceRoles([fallbackCard], {}));
+        setMaterialsDirtyAfterEvidence(false);
+        setEvidenceDirtyAfterAnalysis(false);
+        setResult(null);
+        setGeneratedAt("");
+        setError(message);
+        setNotice(message);
+        return;
+      }
+
+      const agentResult = data.result;
+      const agentText = getMaterialAgentText(form);
+      const card = createMaterialAgentEvidenceCard(agentResult, agentText);
+      setMaterialAgentResult(agentResult);
+      setViralAgentResult(null);
+      setForm((current) => ({ ...current, evidenceCards: [card] }));
+      setEvidenceRoles(assignEvidenceRoles([card], {}));
+      setMaterialsDirtyAfterEvidence(false);
+      setEvidenceDirtyAfterAnalysis(false);
+      setResult(null);
+      setGeneratedAt("");
+      const duplicateReminder = findDuplicateReminder([card]);
+      setNotice(`素材接收 Agent 已识别。${agentResult.summary}${duplicateReminder ? ` ${duplicateReminder}` : ""}`);
+      setError("");
+    } catch {
+      const fallbackCard = createFallbackEvidenceCard("素材识别失败，请补充商品信息后重试。");
+      setMaterialAgentResult(null);
+      setViralAgentResult(null);
+      setForm((current) => ({ ...current, evidenceCards: [fallbackCard] }));
+      setEvidenceRoles(assignEvidenceRoles([fallbackCard], {}));
+      setMaterialsDirtyAfterEvidence(false);
+      setNotice("素材识别失败，请补充商品信息后重试。");
+      setError("素材识别失败，请补充商品信息后重试。");
+    } finally {
+      setRecognizingEvidence(false);
+    }
+  }
+
+  async function analyzeViralPotential() {
+    if (analyzingViral || loading || recognizingEvidence) return;
+    if (!hasRawMaterialInput(form)) {
+      setNotice("请先放入素材。");
+      return;
+    }
+    if (!materialAgentResult) {
+      setNotice("请先识别素材，再进行爆款拆解。");
+      return;
+    }
+    if (!accessPassword.trim()) {
+      setFieldErrors((current) => ({ ...current, accessPassword: "请先输入访问密码。" }));
+      setNotice("请先输入访问密码。");
+      return;
+    }
+
+    setAnalyzingViral(true);
+    setNotice("爆款拆解 Agent 正在分析...");
+    setError("");
+    try {
+      const response = await fetch("/api/agents/viral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessPassword,
+          keyword: form.keyword,
+          linksText: form.linksText,
+          manualText: form.manualText,
+          materials: form.materials,
+          evidenceCards: form.evidenceCards,
+          materialAgentResult,
+        }),
+      });
+      const data = await response.json() as { result?: ViralAgentResult; error?: string };
+      if (!response.ok || !data.result) {
+        const message = toFriendlyError(data.error || "爆款拆解失败，请补充标题、卖点、场景或评论需求后重试。");
+        setViralAgentResult(null);
+        setError(message);
+        setNotice(message);
+        return;
+      }
+
+      setViralAgentResult(data.result);
+      setActiveMenu("爆款拆解");
+      setNotice(`爆款拆解 Agent 已完成。${data.result.summary}`);
+      setError("");
+    } catch {
+      setViralAgentResult(null);
+      setNotice("爆款拆解失败，请补充标题、卖点、场景或评论需求后重试。");
+      setError("爆款拆解失败，请补充标题、卖点、场景或评论需求后重试。");
+    } finally {
+      setAnalyzingViral(false);
+    }
+  }
+
+  function addManualEvidence() {
+    const hasContent = manualEvidenceDraft.productName.trim()
+      || manualEvidenceDraft.priceText.trim()
+      || manualEvidenceDraft.heatText.trim()
+      || manualEvidenceDraft.notes.trim();
+
+    if (!hasContent) {
+      setNotice("请至少填写商品名、价格、热度或备注中的一项。");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const card: EvidenceCard = {
+      id: makeId("card"),
+      materialId: makeId("manual"),
+      materialType: "text",
+      detectedMaterialType: "manual_text",
+      status: manualEvidenceDraft.productName.trim() ? "partial" : "need_more_info",
+      missingFields: [
+        manualEvidenceDraft.productName.trim() ? "" : "商品名",
+        manualEvidenceDraft.priceText.trim() ? "" : "价格",
+        manualEvidenceDraft.heatText.trim() ? "" : "热度",
+      ].filter(Boolean),
+      message: "手动填写的证据卡片。识别不准时，可以用它继续分析。",
+      riskNotes: "",
+      userNotes: manualEvidenceDraft.notes.trim(),
+      productName: manualEvidenceDraft.productName.trim(),
+      normalizedProductName: manualEvidenceDraft.productName.trim(),
+      priceText: manualEvidenceDraft.priceText.trim(),
+      salesText: manualEvidenceDraft.heatText.trim(),
+      ratingText: "",
+      rankText: "",
+      shopName: "",
+      brandName: "",
+      pageTitle: "",
+      visibleDescription: manualEvidenceDraft.notes.trim(),
+      sourceUrl: "",
+      platform: manualEvidenceDraft.platform,
+      rawEvidenceText: manualEvidenceDraft.notes.trim() || manualEvidenceDraft.productName.trim() || "手动填写证据",
+      capturedAt: now,
+      confidenceFields: [
+        confidenceField("手动填写", "用户确认", "high", "来自用户手动补充。"),
+      ],
+    };
+
+    const hasPrimary = Boolean(getPrimaryEvidenceId(form.evidenceCards, evidenceRoles));
+    const nextCards = [...form.evidenceCards, card];
+    const nextRoles = assignEvidenceRoles(nextCards, {
+      ...evidenceRoles,
+      [card.id]: hasPrimary ? "supporting" : "primary",
+    });
+
+    setForm((current) => ({ ...current, evidenceCards: [...current.evidenceCards, card] }));
+    setEvidenceRoles(nextRoles);
+    setManualEvidenceDraft(emptyManualEvidenceDraft);
+    setMaterialsDirtyAfterEvidence(false);
+    markEvidenceChanged();
+  }
+
+  function setEvidenceRole(cardId: string, role: EvidenceRole) {
+    markEvidenceChanged();
+    setEvidenceRoles((current) => {
+      if (role === "primary") {
+        const next: Record<string, EvidenceRole> = {};
+        for (const card of form.evidenceCards) {
+          next[card.id] = card.id === cardId ? "primary" : "supporting";
+        }
+        return assignEvidenceRoles(form.evidenceCards, next);
+      }
+      return assignEvidenceRoles(form.evidenceCards, { ...current, [cardId]: "supporting" });
+    });
+  }
+
+  function runSkill(skill: string) {
+    if (skill === "保存到选品档案") {
+      if (result) {
+        void saveLocalArchive();
+      } else {
+        setNotice("请先生成完整分析报告，再保存到选品档案。");
+      }
+      return;
+    }
+
+    const goal = skill.includes("找货关键词")
+      ? "去哪里找货"
+      : skill.includes("高风险")
+        ? "风险有多高"
+        : skill.includes("差异化")
+          ? "怎么差异化"
+          : skill.includes("同类扩展")
+            ? "怎么差异化"
+            : skill.includes("能不能")
+              ? "能不能跟品"
+              : "全部分析";
+
+    setForm((current) => ({ ...current, analysisGoal: goal }));
+    setNotice(`已切换技能：${skill}。如果还没有证据卡片，请先点“识别素材”。`);
+  }
+
+  function validateBeforeAnalyze(currentForm: RadarFormInput) {
+    const errors: FieldErrors = {};
+    if (!accessPassword.trim()) {
+      errors.accessPassword = "请先输入访问密码。";
+    }
+    if (!currentForm.keyword.trim()) {
+      errors.keyword = "请输入关键词或品类。";
+    }
+    if (materialsDirtyAfterEvidence) {
+      errors.manualText = materialChangedMessage;
+    }
+    if (!currentForm.evidenceCards.some(isValidEvidenceCard)) {
+      errors.manualText = "请先补充至少一张有效证据卡片。";
+    }
+    for (const [field, limit] of Object.entries(inputLimits) as Array<[keyof RadarFormInput, number]>) {
+      const value = currentForm[field];
+      if (typeof value === "string" && getTextLength(value) > limit) {
+        errors[field] = `最多输入 ${limit} 个字符。`;
+      }
+    }
+    return errors;
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
-    const errors = validateForm(form, accessPassword);
-    setFieldErrors(errors);
-    if (Object.keys(errors).length > 0) {
-      setError("请先检查表单中的必填项和字数限制。");
+    if (loading || recognizingEvidence || analyzingViral) return;
+
+    const primaryId = getPrimaryEvidenceId(form.evidenceCards, evidenceRoles);
+    if (!primaryId) {
+      setNotice("请先补充一张有效证据卡片，并设为主商品。");
       return;
     }
-    setIsLoading(true);
+
+    const orderedCards = orderCardsForAnalysis(form.evidenceCards, evidenceRoles);
+    const primaryCard = orderedCards[0];
+    const currentForm = {
+      ...form,
+      evidenceCards: orderedCards,
+      notes: [
+        form.notes,
+        `主商品：${primaryCard.productName || primaryCard.pageTitle || primaryCard.visibleDescription || primaryCard.userNotes || "未命名商品"}`,
+        "请围绕主商品分析，其他辅助证据只作为热度、同类方向、价格参考或风险参考。",
+      ].filter(Boolean).join("\n"),
+    };
+
+    const errors = validateBeforeAnalyze(currentForm);
+    setFieldErrors(errors);
+    setError("");
+    setNotice("");
+    if (Object.keys(errors).length > 0) {
+      return;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    setLoading(true);
+    startProgress();
     try {
-      window.sessionStorage.setItem("app_access_password", accessPassword);
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, accessPassword }),
+        body: JSON.stringify({ ...currentForm, accessPassword }),
+        signal: controller.signal,
       });
-      const data = await response.json() as AlibabaResult | GenerateErrorResponse;
+      const data = await response.json() as HotProductRadarResult | GenerateErrorResponse;
       if (!response.ok) {
-        const failure = data as GenerateErrorResponse;
-        if (failure.fieldErrors) setFieldErrors(failure.fieldErrors as FieldErrors);
-        setError(failure.error || "生成失败，请稍后重试。");
+        const errorData = data as GenerateErrorResponse;
+        setError(toFriendlyError(errorData.error || "生成失败，请稍后重试。"));
+        setFieldErrors(errorData.fieldErrors || {});
+        finishProgress(false);
         return;
       }
-      setResult(normalizeResult(data));
+      setResult(data as HotProductRadarResult);
       setGeneratedAt(new Date().toLocaleString("zh-CN", { hour12: false }));
-    } catch {
-      setError("请求失败，请检查网络连接或稍后重试。");
+      setEvidenceDirtyAfterAnalysis(false);
+      finishProgress(true);
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        setNotice("已取消本次分析。你可以继续修改证据卡片后重新开始。");
+      } else {
+        setError(toFriendlyError("failed to fetch"));
+      }
+      finishProgress(false);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+      abortControllerRef.current = null;
     }
   }
 
   function fillSample() {
     setForm(sampleForm);
+    setEvidenceRoles({});
+    setMaterialsDirtyAfterEvidence(false);
+    setEvidenceDirtyAfterAnalysis(false);
+    setMaterialAgentResult(null);
+    setViralAgentResult(null);
+    setAnalyzingViral(false);
+    setManualEvidenceDraft(emptyManualEvidenceDraft);
     setFieldErrors({});
     setError("");
+    setNotice("示例已填入，点击“识别素材”即可生成证据卡片。");
+    setResult(null);
+    setGeneratedAt("");
   }
 
-  function downloadMarkdown() {
-    if (!result) return;
-    const fileName = sanitizeFileName(form.productName) + "-选品分析.md";
-    downloadTextFile(fileName, resultToMarkdown(form, result, generatedAt), "text/markdown;charset=utf-8");
+  function clearAll() {
+    setForm(emptyForm);
+    setEvidenceRoles({});
+    setMaterialsDirtyAfterEvidence(false);
+    setEvidenceDirtyAfterAnalysis(false);
+    setMaterialAgentResult(null);
+    setViralAgentResult(null);
+    setAnalyzingViral(false);
+    setManualEvidenceDraft(emptyManualEvidenceDraft);
+    setFieldErrors({});
+    setError("");
+    setNotice("");
+    setResult(null);
+    setGeneratedAt("");
+    setProgressStep(-1);
+    clearProgressTimer();
   }
 
-  function downloadWord() {
-    if (!result) return;
-    const fileName = sanitizeFileName(form.productName) + "-选品分析.doc";
-    downloadTextFile(fileName, resultToWordHtml(form, result, generatedAt), "application/msword;charset=utf-8");
+  function cancelAnalysis() {
+    abortControllerRef.current?.abort();
+    clearProgressTimer();
+    setLoading(false);
+    setProgressStep(-1);
   }
+
+  function restartAnalysis() {
+    setResult(null);
+    setGeneratedAt("");
+    setProgressStep(-1);
+    setEvidenceDirtyAfterAnalysis(false);
+    setNotice("已回到证据确认阶段，你可以修改证据卡片后重新分析。");
+  }
+
+  function togglePlatform(platform: Platform) {
+    const selected = new Set(form.selectedPlatforms);
+    if (selected.has(platform)) {
+      selected.delete(platform);
+    } else {
+      selected.add(platform);
+    }
+    if (selected.size === 0) {
+      selected.add("manual");
+    }
+    updateField("selectedPlatforms", Array.from(selected) as Platform[]);
+  }
+
+  function toggleLimit(limit: string) {
+    const selected = new Set(form.personalLimits);
+    if (selected.has(limit)) {
+      selected.delete(limit);
+    } else {
+      selected.add(limit);
+    }
+    updateField("personalLimits", Array.from(selected));
+  }
+
+  function exportMarkdown() {
+    if (!result) return;
+    downloadTextFile(`${sanitizeFileName(form.keyword)}-爆款素材识别报告.md`, reportMarkdown, "text/markdown;charset=utf-8");
+  }
+
+  function exportWord() {
+    if (!result) return;
+    downloadTextFile(
+      `${sanitizeFileName(form.keyword)}-爆款素材识别报告.doc`,
+      resultToWordHtml(form, result, generatedAt),
+      "application/msword;charset=utf-8",
+    );
+  }
+
+  async function saveLocalArchive() {
+    if (!result || saving) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/radar/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessPassword,
+          keyword: form.keyword,
+          finalDecision: getDecisionFileName(result.finalDecision),
+          markdown: reportMarkdown,
+          payload: { form, result, generatedAt },
+        }),
+      });
+      const data = await response.json() as { ok?: boolean; error?: string; markdownFileName?: string; jsonFileName?: string; relativeDir?: string };
+      if (!response.ok || !data.ok) {
+        setError(toFriendlyError(data.error || "保存失败，请稍后重试。"));
+        return;
+      }
+      rememberLocalArchive(result);
+      const savedFileName = data.markdownFileName || data.jsonFileName || "";
+      const savedLocation = savedFileName
+        ? `${data.relativeDir || ".local/radar-research"}/${savedFileName}`
+        : data.relativeDir || ".local/radar-research";
+      setNotice(`已保存本地选品档案：${savedLocation}`);
+    } catch {
+      setError(toFriendlyError("failed to fetch"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const imageMaterials = form.materials.filter((item) => item.type === "image");
+  const rawMaterialReady = hasRawMaterialInput(form);
+  const anyMaterialReady = hasAnyMaterialInput(form);
+  const validEvidenceCards = form.evidenceCards.filter(isValidEvidenceCard);
+  const primaryEvidenceId = getPrimaryEvidenceId(form.evidenceCards, evidenceRoles);
+  const evidenceNeedsMoreInfo = validEvidenceCards.some((card) => !hasPriceOrHeat(card));
+
+  const recognizeDisabled = recognizingEvidence || loading || analyzingViral || !rawMaterialReady;
+  const analyzeDisabled = loading
+    || recognizingEvidence
+    || analyzingViral
+    || !anyMaterialReady
+    || !accessPassword.trim()
+    || materialsDirtyAfterEvidence
+    || !primaryEvidenceId
+    || (Boolean(result) && !evidenceDirtyAfterAnalysis);
+  const viralAnalyzeDisabled = loading || recognizingEvidence || analyzingViral;
+
+  const recognizeHint = recognizingEvidence
+    ? "素材接收 Agent 正在识别..."
+    : !rawMaterialReady
+      ? "请先放入素材。"
+      : "先提取商品类型、卖点、人群、场景、价格和风险。";
+
+  const analyzeHint = loading
+    ? "正在分析素材，请稍等。"
+    : !anyMaterialReady
+      ? "请先放入素材。"
+      : !accessPassword.trim()
+        ? "请先输入访问密码。"
+        : materialsDirtyAfterEvidence
+          ? materialChangedMessage
+          : !primaryEvidenceId
+            ? "请先确认一张有效证据。"
+            : result && !evidenceDirtyAfterAnalysis
+              ? "已生成选品结论，先查看右侧报告。"
+              : "开始体检：根据确认后的证据生成最终选品结论。";
+
+  const viralHint = analyzingViral
+    ? "爆款拆解 Agent 正在分析..."
+    : !rawMaterialReady
+      ? "请先放入素材。"
+      : !materialAgentResult
+        ? "请先识别素材，再进行爆款拆解。"
+        : viralAgentResult
+          ? "爆款拆解 Agent 已完成。"
+          : "根据标题、卖点、场景、评论需求和痛点，判断小红书内容爆款潜力。";
+
+  const assistantState = loading
+    ? {
+        title: "正在分析素材",
+        text: "正在生成小白选品结论，已开启省钱模式。",
+        detail: "请不要重复点击，避免浪费分析次数。",
+      }
+    : recognizingEvidence
+      ? {
+          title: "素材接收 Agent 正在识别...",
+          text: "正在提取商品类型、卖点、人群、场景、价格和风险词。",
+          detail: "这一步只整理证据，不生成最终选品结论。",
+        }
+    : analyzingViral
+      ? {
+          title: "爆款拆解 Agent 正在分析...",
+          text: "正在看标题钩子、卖点、场景、评论需求和内容可拍性。",
+          detail: "这一步只判断小红书内容爆款潜力，不判断能不能做无货源。",
+        }
+    : result
+      ? {
+          title: "查看选品结论",
+          text: "先看最终判断，再看适合无货源吗、爆款潜力和下一步建议。",
+          detail: evidenceDirtyAfterAnalysis ? "证据已修改，当前体检报告可能已过期，请重新分析。" : "详细依据在下方折叠区。",
+        }
+      : viralAgentResult
+        ? {
+            title: "爆款拆解 Agent 已完成",
+            text: viralAgentResult.summary,
+            detail: "这只是内容爆款潜力判断，不是最终做不做的结论。",
+          }
+      : materialAgentResult
+        ? {
+            title: "素材接收 Agent 已识别",
+            text: materialAgentResult.summary,
+            detail: "请先核对商品类型、卖点、人群、场景和缺失信息。",
+          }
+      : materialsDirtyAfterEvidence
+        ? {
+            title: "请重新识别证据",
+            text: materialChangedMessage,
+            detail: "不要用旧证据直接分析新素材。",
+          }
+        : form.evidenceCards.length
+          ? {
+              title: "检查证据",
+              text: "请检查商品类型、卖点、价格、热度是否正确。识别不准可以手动修改。",
+              detail: evidenceNeedsMoreInfo ? insufficientEvidenceMessage : "确认无误后再点开始体检。",
+            }
+          : rawMaterialReady
+            ? {
+                title: "下一步：识别素材",
+                text: "下一步：点击“识别素材”，先提取商品类型、卖点、价格和风险。",
+                detail: "本地识别不要求访问密码。",
+              }
+            : {
+                title: "请先放入素材",
+                text: "先粘贴一段小红书笔记、商品信息或选品想法。",
+                detail: "只需要先完成第一步，不用理解技术设置。",
+              };
+
+  const hasMaterialInput = hasRawMaterialInput(form);
+  const pendingMaterialCount = hasMaterialInput || materialAgentResult ? 1 : 0;
+  const riskReminderCount = materialAgentResult ? materialAgentResult.riskWords.length : 0;
+  const recommendedCount = result ? result.recommendedProducts.length : 0;
+  const identifiedProductCount = materialAgentResult?.productType && materialAgentResult.productType !== "未提到" ? "1" : "待识别";
+  const materialCompletenessText = materialAgentResult?.materialCompleteness || "待识别";
+  const viralPotentialText = viralAgentResult?.viralPotential || "待分析";
+  const materialAgentStatus = recognizingEvidence ? "识别中" : materialAgentResult ? "已完成" : "待开始";
+  const viralAgentStatus = analyzingViral ? "分析中" : viralAgentResult ? "已完成" : "待开始";
+  const heroStats = [
+    { label: "待体检素材", value: pendingMaterialCount },
+    { label: "高风险提醒", value: riskReminderCount },
+    { label: "建议做", value: recommendedCount },
+  ];
+  const metricCards = [
+    { label: "已识别素材", value: identifiedProductCount, helper: identifiedProductCount === "待识别" ? "先点击识别素材" : "商品类型数量" },
+    { label: "风险提醒", value: materialAgentResult ? String(riskReminderCount) : "待识别", helper: "来自素材接收 Agent 的风险词" },
+    { label: "素材完整度", value: materialCompletenessText, helper: "完整 / 一般 / 不完整" },
+    { label: "爆款潜力", value: viralPotentialText, helper: viralAgentResult ? "来自爆款拆解 Agent" : "先运行爆款拆解" },
+  ];
+
   return (
-    <main className="min-h-screen px-4 py-5 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
-        <header className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft">
-          <div className="flex flex-col gap-3 px-5 py-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-teal-700">Alibaba.com AI Workspace</p>
-              <h1 className="mt-2 text-3xl font-bold tracking-normal text-slate-950 sm:text-4xl">阿里国际站选品发布 AI 助手 Pro</h1>
-              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">输入产品信息，AI 帮你初步判断产品机会、利润风险、物流风险、认证风险、B2B 适配度，并生成阿里国际站标题、关键词、详情页和询盘回复。</p>
-            </div>
-            <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-3 lg:w-[420px]">
-              <StatusPill icon={<ClipboardList className="h-4 w-4" />} label="选品初筛" />
-              <StatusPill icon={<ShieldCheck className="h-4 w-4" />} label="发布优化" />
-              <StatusPill icon={<Download className="h-4 w-4" />} label="询盘转化" />
-            </div>
-          </div>
-          <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs leading-5 text-slate-500 sm:px-6">工具定位为「选品初筛与发布辅助」，不是「保证选品成功」。</div>
-        </header>
+    <main className="min-h-screen bg-gradient-to-br from-[#f7f3ff] via-white to-[#eef7ff] px-3 py-3 sm:px-5 lg:px-6">
+      <div className="mx-auto grid max-w-[1540px] gap-4 lg:grid-cols-[230px_minmax(0,1fr)]">
+        <AgentSidebar activeMenu={activeMenu} onSelect={setActiveMenu} />
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(400px,1fr)_minmax(0,1.1fr)]">
-          {/* FORM */}
-          <form onSubmit={handleSubmit} className="rounded-lg border border-slate-200 bg-white shadow-soft">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="min-w-0 space-y-4">
+          <header className="rounded-2xl border border-white/70 bg-white/85 px-4 py-3 shadow-sm backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold text-slate-950">产品信息</h2>
-                <p className="mt-1 text-sm text-slate-500">基础模式展示核心字段</p>
+                <p className="text-sm font-semibold text-slate-950">首页</p>
+                <p className="mt-0.5 text-sm text-slate-500">用 AI 拆解小红书素材，判断这个品能不能做。</p>
               </div>
-              <button type="button" onClick={fillSample} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-teal-300 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
-                <RefreshCcw className="h-4 w-4" />填入示例
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-sm font-semibold text-rose-700">
+                  省钱模式：已开启
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAll();
+                    setActiveMenu("首页");
+                  }}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  新建体检
+                </button>
+              </div>
             </div>
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+              {sidebarMenus.map((item) => {
+                const Icon = item.icon;
+                const active = activeMenu === item.label;
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => setActiveMenu(item.label)}
+                    className={"inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-medium " + (active ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-600")}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          </header>
 
-            <div className="space-y-4 p-5">
-              {/* Access Password */}
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800" htmlFor="pw">
-                  <Lock className="h-4 w-4" />访问密码
-                </label>
-                <input id="pw" type="password" value={accessPassword} onChange={(e) => { setAccessPassword(e.target.value); setFieldErrors((c) => ({ ...c, accessPassword: undefined })); }}
-                  className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  placeholder="请输入 ACCESS_PASSWORD" autoComplete="current-password" />
-                {fieldErrors.accessPassword ? <p className="mt-2 text-sm text-red-600">{fieldErrors.accessPassword}</p> : <p className="mt-2 text-xs text-slate-500">密码仅用于当前浏览器会话</p>}
+          <section className="overflow-hidden rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-cyan-50 p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-sm font-semibold text-teal-700">AI 跨境上架助手 MVP</p>
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">跨境商品利润测算</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  填写采购价、运费、平台佣金和目标利润率，系统会用程序公式实时计算建议售价、保本价、毛利润、毛利率和 ROI。
+                  当前版本不保存数据、不调用 AI、不自动上架。
+                </p>
+              </div>
+              <Link
+                href="/products/new"
+                className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+              >
+                开始测算
+              </Link>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-3xl border border-white/80 bg-gradient-to-br from-white via-rose-50 to-indigo-50 p-5 shadow-[0_20px_60px_rgba(99,102,241,0.10)]">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div>
+                <p className="text-sm font-semibold text-rose-600">轻选 Agent</p>
+                <h1 className="mt-2 max-w-3xl text-3xl font-bold tracking-normal text-slate-950 sm:text-4xl">
+                  一个轻选 Agent，帮你看懂小红书无货源选品
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  放入笔记、商品信息或选品想法，先拆证据，再看风险，最后给出小白能看懂的结论。
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                <p className="text-sm font-bold text-slate-950">今日选品状态</p>
+                <div className="mt-3 space-y-2">
+                  {heroStats.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+                      <span className="text-xs text-slate-500">{item.label}</span>
+                      <span className="text-sm font-bold text-slate-950">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0 space-y-4">
+              <section className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-rose-600">指令输入</p>
+                    <h2 className="mt-1 text-xl font-bold text-slate-950">粘贴你的选品素材</h2>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {assistantState.title}
+                  </span>
+                </div>
+
+                <TextareaInput
+                  label="素材输入"
+                  value={form.manualText}
+                  limit={inputLimits.manualText || 12000}
+                  error={fieldErrors.manualText}
+                  onChange={(value) => updateField("manualText", value)}
+                  placeholder="粘贴你的小红书笔记、商品信息、评论需求、选品想法。例如：标题、卖点、价格、人群、使用场景、评论区问题。"
+                  rows={8}
+                />
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <TextInput
+                    label="访问密码"
+                    required
+                    type="password"
+                    value={accessPassword}
+                    error={fieldErrors.accessPassword}
+                    onChange={(value) => {
+                      setAccessPassword(value);
+                      setFieldErrors((current) => ({ ...current, accessPassword: undefined }));
+                    }}
+                    placeholder="开始体检前需要填写"
+                  />
+                  <TextInput
+                    label="关键词 / 品类"
+                    required
+                    value={form.keyword}
+                    limit={inputLimits.keyword || 80}
+                    error={fieldErrors.keyword}
+                    onChange={(value) => updateField("keyword", value)}
+                    placeholder="例如：小红书宿舍收纳、懒人清洁神器"
+                  />
+                </div>
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+                  <div
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={handleDrop}
+                    onPaste={handlePaste}
+                    className="rounded-xl border border-dashed border-indigo-200 bg-indigo-50/60 p-3 text-center"
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                    <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm">
+                      <ImagePlus className="h-5 w-5" />
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-slate-900">图片 / 截图</p>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mt-2 inline-flex h-8 items-center gap-2 rounded-md bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:text-indigo-700"
+                    >
+                      <UploadCloud className="h-4 w-4" />
+                      选择图片
+                    </button>
+                  </div>
+                  <TextareaInput
+                    label="补充链接"
+                    value={form.linksText}
+                    limit={inputLimits.linksText || 3000}
+                    error={fieldErrors.linksText}
+                    onChange={(value) => updateField("linksText", value)}
+                    placeholder="也可以粘贴小红书、淘宝、拼多多等链接。"
+                    rows={4}
+                  />
+                </div>
+
+                {imageMaterials.length ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {imageMaterials.map((image) => (
+                      <div key={image.id} className="relative overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                        {image.previewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={image.previewUrl} alt={image.fileName || "商品截图"} className="h-24 w-full object-cover" />
+                        ) : null}
+                        <div className="flex items-center justify-between gap-2 px-2 py-1">
+                          <p className="truncate text-xs text-slate-600">{image.fileName}</p>
+                          <button type="button" onClick={() => removeImage(image.id)} className="text-slate-400 hover:text-red-600" title="移除图片">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveMenu("素材接收");
+                      void recognizeEvidence();
+                    }}
+                    disabled={recognizeDisabled}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {recognizingEvidence ? "识别中" : "识别素材"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveMenu("爆款拆解");
+                      void analyzeViralPotential();
+                    }}
+                    disabled={viralAnalyzeDisabled}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-indigo-200 bg-white px-3 text-sm font-semibold text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <Brain className="h-4 w-4" />
+                    {analyzingViral ? "分析中" : "爆款拆解"}
+                  </button>
+                  <button
+                    type="submit"
+                    onClick={() => setActiveMenu("选品体检")}
+                    disabled={analyzeDisabled}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    {loading ? "体检中" : "开始体检"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fillSample}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                    填入示例
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearAll}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-red-300 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    清空
+                  </button>
+                </div>
+
+                <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
+                  <p><span className="font-semibold text-slate-800">识别素材：</span>{recognizeHint}</p>
+                  <p><span className="font-semibold text-slate-800">爆款拆解：</span>{viralHint}</p>
+                  <p><span className="font-semibold text-slate-800">开始体检：</span>{analyzeHint}</p>
+                </div>
+
+                {evidenceNeedsMoreInfo && form.evidenceCards.length ? (
+                  <div className="mt-3"><AlertBox tone="notice" text={insufficientEvidenceMessage} /></div>
+                ) : null}
+                {error ? <div className="mt-3"><AlertBox tone="error" text={error} /></div> : null}
+                {notice ? <div className="mt-3"><AlertBox tone="notice" text={notice} /></div> : null}
+
+                <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-800">更多设置 / 手动补充</summary>
+                  <div className="mt-3 space-y-3">
+                    <details className="rounded-lg border border-indigo-100 bg-white p-3">
+                      <summary className="cursor-pointer text-sm font-semibold text-indigo-800">识别不准？手动填写商品信息</summary>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <TextInput label="商品名" value={manualEvidenceDraft.productName} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, productName: value }))} placeholder="例如：透明桌面收纳盒" />
+                        <SelectInput label="平台" value={manualEvidenceDraft.platform} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, platform: value as Platform | "unknown" }))} options={[{ value: "unknown", label: "未知" }, ...platformOptions.map((platform) => ({ value: platform, label: platformLabels[platform] }))]} />
+                        <TextInput label="价格" value={manualEvidenceDraft.priceText} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, priceText: value }))} placeholder="例如：19.9 元" />
+                        <TextInput label="热度" value={manualEvidenceDraft.heatText} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, heatText: value }))} placeholder="例如：评价10万+、榜单靠前" />
+                        <div className="md:col-span-2">
+                          <TextareaInput label="备注" value={manualEvidenceDraft.notes} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, notes: value }))} placeholder="补充你看到的卖点、截图内容或风险" rows={3} />
+                        </div>
+                      </div>
+                      <button type="button" onClick={addManualEvidence} className="mt-3 inline-flex h-9 items-center justify-center rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white hover:bg-indigo-700">
+                        添加为证据卡片
+                      </button>
+                    </details>
+
+                    <SelectInput label="分析目标" value={form.analysisGoal} onChange={(value) => updateField("analysisGoal", value)} options={analysisGoals.map((goal) => ({ value: goal, label: goal }))} />
+                    <TextInput label="目标价格带" value={form.targetPriceRange} limit={inputLimits.targetPriceRange || 80} onChange={(value) => updateField("targetPriceRange", value)} placeholder="例如：9.9-39.9 元" />
+                    <TextareaInput label="目标人群" value={form.targetAudience} limit={inputLimits.targetAudience || 200} onChange={(value) => updateField("targetAudience", value)} placeholder="例如：学生宿舍、租房人群、厨房清洁需求" rows={3} />
+                    <TextareaInput label="排除类目" value={form.excludedCategories} limit={inputLimits.excludedCategories || 300} onChange={(value) => updateField("excludedCategories", value)} placeholder="食品、美妆、儿童用品、带电、大件、易碎、强 IP" rows={3} />
+                    <CheckboxGroup label="平台选择" options={platformOptions.map((platform) => ({ value: platform, label: platformLabels[platform] }))} selected={form.selectedPlatforms} onToggle={(value) => togglePlatform(value as Platform)} />
+                    <CheckboxGroup label="我的限制" options={personalLimitOptions.map((limit) => ({ value: limit, label: limit }))} selected={form.personalLimits} onToggle={toggleLimit} />
+                  </div>
+                </details>
+              </section>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {metricCards.map((item) => (
+                  <MetricTile key={item.label} label={item.label} value={item.value} helper={item.helper} />
+                ))}
               </div>
 
-              {/* Basic Fields */}
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-50 text-teal-700"><Wand2 className="h-3.5 w-3.5" /></div>
-                  <h3 className="text-sm font-semibold text-slate-800">基础信息（必填）</h3>
+              <section className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-indigo-600">Agent 工作区</p>
+                    <h2 className="mt-1 text-lg font-bold text-slate-950">当前流程</h2>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    前两个 Agent 可真实运行，其余待接入
+                  </span>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TextInput label="产品中文名称" required value={form.productName} limit={inputLimits.productName || 80} error={fieldErrors.productName} onChange={(v) => updateField("productName", v)} placeholder="便携式蓝牙无线音箱" />
-                  <SelectInput label="产品类别" required value={form.category} options={categories} error={fieldErrors.category} onChange={(v) => updateField("category", v)} />
-                  <TextInput label="材质" required value={form.material} limit={inputLimits.material || 100} error={fieldErrors.material} onChange={(v) => updateField("material", v)} placeholder="ABS塑料+金属网罩" />
-                  <TextInput label="产品成本" required value={form.productCost} limit={inputLimits.productCost || 40} error={fieldErrors.productCost} onChange={(v) => updateField("productCost", v)} placeholder="35-50 元或美元" />
-                  <TextInput label="预估售价" required value={form.estimatedPrice} limit={inputLimits.estimatedPrice || 40} error={fieldErrors.estimatedPrice} onChange={(v) => updateField("estimatedPrice", v)} placeholder="12-25 美元" />
-                  <TextInput label="MOQ" required value={form.moq} limit={inputLimits.moq || 40} error={fieldErrors.moq} onChange={(v) => updateField("moq", v)} placeholder="500" />
-                  <div className="sm:col-span-2"><TextInput label="目标国家/地区" required value={form.targetCountries} limit={inputLimits.targetCountries || 100} error={fieldErrors.targetCountries} onChange={(v) => updateField("targetCountries", v)} placeholder="美国、欧洲、东南亚" /></div>
-                  <div className="sm:col-span-2"><TextareaInput label="核心卖点" required value={form.sellingPoints} limit={inputLimits.sellingPoints || 800} error={fieldErrors.sellingPoints} onChange={(v) => updateField("sellingPoints", v)} placeholder="写清楚材质、功能、场景、优势" /></div>
-                </div>
-              </div>
+                <AgentWorkspacePanel materialStatus={materialAgentStatus} viralStatus={viralAgentStatus} />
+              </section>
 
-              {/* Professional Toggle */}
-              <button type="button" onClick={() => setShowProfessional(!showProfessional)}
-                className="flex w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 transition hover:border-teal-300 hover:text-teal-700">
-                {showProfessional ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                {showProfessional ? "收起专业信息" : "展开更多专业信息（可选填）"}
-              </button>
+              {materialAgentResult ? <MaterialAgentSummaryCard result={materialAgentResult} /> : null}
+              {viralAgentResult ? <ViralAgentSummaryCard result={viralAgentResult} /> : null}
 
-              {/* Professional Groups */}
-              {showProfessional && (
-                <div className="space-y-3">
-                  <ProfGroup title="产品基础信息补充" group="g1" expanded={expandedGroups} onToggle={toggleGroup}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <TextInput label="产品英文名称" value={form.englishName || ""} limit={inputLimits.englishName || 200} onChange={(v) => updateField("englishName", v)} placeholder="Portable Bluetooth Speaker" />
-                      <TextInput label="规格尺寸" value={form.specifications || ""} limit={inputLimits.specifications || 200} onChange={(v) => updateField("specifications", v)} placeholder="8cm*10cm" />
-                      <TextInput label="产品用途" value={form.productUsage || ""} limit={inputLimits.productUsage || 200} onChange={(v) => updateField("productUsage", v)} placeholder="客户用这个产品做什么" />
-                      <TextInput label="适用场景" value={form.applicableScenarios || ""} limit={inputLimits.applicableScenarios || 200} onChange={(v) => updateField("applicableScenarios", v)} placeholder="户外、家庭、礼品" />
-                    </div>
-                  </ProfGroup>
-
-                  <ProfGroup title="选品判断信息补充" group="g2" expanded={expandedGroups} onToggle={toggleGroup}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <TextInput label="产品重量(g)" value={form.productWeight || ""} limit={inputLimits.productWeight || 40} onChange={(v) => updateField("productWeight", v)} placeholder="320" />
-                      <TextInput label="产品体积(m³)" value={form.productVolume || ""} limit={inputLimits.productVolume || 40} onChange={(v) => updateField("productVolume", v)} placeholder="0.5" />
-                      <SelectInput label="OEM/ODM" value={form.supportsOemOdm || ""} options={["", ...yesNo]} onChange={(v) => updateField("supportsOemOdm", v)} />
-                      <SelectInput label="是否现货" value={form.hasStock || ""} options={["", ...yesNo]} onChange={(v) => updateField("hasStock", v)} />
-                      <TextInput label="交货周期" value={form.leadTime || ""} limit={inputLimits.leadTime || 100} onChange={(v) => updateField("leadTime", v)} placeholder="15-25天" />
-                      <TextInput label="包装方式" value={form.packagingMethod || ""} limit={inputLimits.packagingMethod || 200} onChange={(v) => updateField("packagingMethod", v)} placeholder="彩盒包装，每箱50个" />
-                    </div>
-                  </ProfGroup>
-
-                  <ProfGroup title="市场与买家信息" group="g3" expanded={expandedGroups} onToggle={toggleGroup}>
-                    <div className="grid gap-4">
-                      <TextInput label="目标买家类型" value={form.targetBuyerTypes || ""} limit={inputLimits.targetBuyerTypes || 200} onChange={(v) => updateField("targetBuyerTypes", v)} placeholder="批发商、品牌商、电商卖家" />
-                      <TextareaInput label="目标客户痛点" value={form.customerPainPoints || ""} limit={inputLimits.customerPainPoints || 500} onChange={(v) => updateField("customerPainPoints", v)} placeholder="客户对同类产品的不满或期望" />
-                      <TextareaInput label="竞品信息" value={form.competitorInfo || ""} limit={inputLimits.competitorInfo || 600} onChange={(v) => updateField("competitorInfo", v)} placeholder="竞品链接、价格、主打卖点" />
-                      <TextareaInput label="阿里关键词趋势" value={form.keywordTrendData || ""} limit={inputLimits.keywordTrendData || 600} onChange={(v) => updateField("keywordTrendData", v)} placeholder="可选，来自阿里后台" />
-                      <TextareaInput label="RFQ 需求信息" value={form.rfqData || ""} limit={inputLimits.rfqData || 600} onChange={(v) => updateField("rfqData", v)} placeholder="可选，来自 RFQ 市场" />
-                      <TextareaInput label="Amazon 竞品" value={form.amazonCompetitorInfo || ""} limit={inputLimits.amazonCompetitorInfo || 600} onChange={(v) => updateField("amazonCompetitorInfo", v)} placeholder="可选，Amazon 数据" />
-                    </div>
-                  </ProfGroup>
-
-                  <ProfGroup title="风险信息" group="g4" expanded={expandedGroups} onToggle={toggleGroup}>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <SelectInput label="是否易碎" value={form.isFragile || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("isFragile", v)} />
-                      <SelectInput label="是否液体" value={form.isLiquid || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("isLiquid", v)} />
-                      <SelectInput label="是否带电" value={form.isBatteryPowered || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("isBatteryPowered", v)} />
-                      <SelectInput label="是否带磁" value={form.isMagnetic || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("isMagnetic", v)} />
-                      <SelectInput label="食品接触" value={form.isFoodContact || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("isFoodContact", v)} />
-                      <SelectInput label="儿童用品" value={form.isChildrenProduct || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("isChildrenProduct", v)} />
-                      <SelectInput label="需要认证" value={form.needsCertification || ""} options={["", ...yesNoUnsure]} onChange={(v) => updateField("needsCertification", v)} />
-                      <TextareaInput label="已有认证证书" value={form.existingCertificates || ""} limit={inputLimits.existingCertificates || 400} onChange={(v) => updateField("existingCertificates", v)} placeholder="CE、FCC、ROHS" />
-                    </div>
-                  </ProfGroup>
-
-                  <ProfGroup title="补充信息" group="g5" expanded={expandedGroups} onToggle={toggleGroup}>
-                    <div className="grid gap-4">
-                      <TextareaInput label="供应链优势" value={form.supplyChainAdvantages || ""} limit={inputLimits.supplyChainAdvantages || 400} onChange={(v) => updateField("supplyChainAdvantages", v)} placeholder="价格优势、月产能5万台" />
-                      <TextareaInput label="工厂优势" value={form.factoryAdvantages || ""} limit={inputLimits.factoryAdvantages || 400} onChange={(v) => updateField("factoryAdvantages", v)} placeholder="自有车间、QC团队" />
-                      <TextareaInput label="其他补充" value={form.additionalNotes || ""} limit={inputLimits.additionalNotes || 800} onChange={(v) => updateField("additionalNotes", v)} placeholder="其他你想 AI 知道的信息" />
-                    </div>
-                  </ProfGroup>
+              {form.evidenceCards.length ? (
+                <section className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+                  <SectionTitle title="确认证据" count={form.evidenceCards.length} />
+                  <div className="space-y-3">
+                    {form.evidenceCards.map((card, index) => (
+                      <EvidenceCardEditor
+                        key={card.id}
+                        card={card}
+                        index={index}
+                        role={evidenceRoles[card.id] || "supporting"}
+                        isValid={isValidEvidenceCard(card)}
+                        onChange={(updates) => updateEvidenceCard(card.id, updates)}
+                        onRemove={() => removeEvidenceCard(card.id)}
+                        onRoleChange={(role) => setEvidenceRole(card.id, role)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <div className="flex min-h-[200px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-950 text-white">
+                    <UploadCloud className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-3 text-base font-semibold text-slate-950">等待素材输入</h3>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">放入素材后，先点“识别素材”。</p>
                 </div>
               )}
-            </div>
-            {error ? (
-              <div className="mx-5 mb-4 flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
-                <AlertCircle className="mt-0.5 h-4 w-4 flex-none" />
-                <span>{error}</span>
-              </div>
-            ) : null}
 
-            <div className="px-5 pb-5">
-              <button type="submit" disabled={isLoading}
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md bg-slate-950 px-5 text-base font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400">
-                <Wand2 className="h-5 w-5" />
-                {isLoading ? "正在分析，请稍候..." : "开始分析"}
-              </button>
+              {result ? (
+                <section className="space-y-4">
+                  <SummaryCard result={result} />
+                  <TrafficLightPanel risks={result.trafficLightRisks} />
+                  <details open className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <summary className="cursor-pointer text-sm font-bold text-slate-900">详细依据</summary>
+                    <div className="mt-4 space-y-4">
+                      <KeywordAndDirectionPanel result={result} />
+                      <RiskAndIdeas result={result} />
+                      <NextActions result={result} />
+                    </div>
+                  </details>
+                  <details className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <summary className="cursor-pointer text-sm font-bold text-slate-900">候选商品</summary>
+                    <div className="mt-4 space-y-4">
+                      <div className="grid gap-4 xl:grid-cols-3">
+                        <ProductGroup title="推荐做" type="recommend" products={result.recommendedProducts} />
+                        <ProductGroup title="谨慎做" type="caution" products={result.cautiousProducts} />
+                        <ProductGroup title="不建议做" type="reject" products={result.rejectedProducts} />
+                      </div>
+                      <div className="space-y-3">
+                        {result.candidateProducts.length ? result.candidateProducts.map((product, index) => (
+                          <ProductCard key={product.productName + index} product={product} />
+                        )) : (
+                          <EmptyState text="没有识别到候选商品，请补充更清晰的商品/榜单信息。" />
+                        )}
+                      </div>
+                    </div>
+                  </details>
+                  <details className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <summary className="cursor-pointer text-sm font-bold text-slate-900">平台读取情况</summary>
+                    <div className="mt-4 space-y-4">
+                      <PlatformStatusList statuses={result.platformSearchStatus} />
+                      <EvidenceSection result={result} />
+                    </div>
+                  </details>
+                  <details className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <summary className="cursor-pointer text-sm font-bold text-slate-900">原始证据</summary>
+                    <div className="mt-4">
+                      <EvidenceCardList cards={result.evidenceCards} />
+                    </div>
+                  </details>
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-800">
+                    {result.disclaimer || reportDisclaimer}
+                  </p>
+                </section>
+              ) : null}
             </div>
+
+            <aside className="space-y-4">
+              <section className="sticky top-4 rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-indigo-600">现在该做什么</p>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">{assistantState.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{assistantState.text}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{assistantState.detail}</p>
+                {result ? (
+                  <div className="mt-4 grid gap-2">
+                    <CopyButton text={reportMarkdown} label="复制报告" />
+                    <button type="button" onClick={exportMarkdown} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700">
+                      <Download className="h-4 w-4" />
+                      导出 Markdown
+                    </button>
+                    <button type="button" onClick={exportWord} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700">
+                      <FileText className="h-4 w-4" />
+                      导出 Word
+                    </button>
+                    <button type="button" onClick={saveLocalArchive} disabled={saving} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+                      <Save className="h-4 w-4" />
+                      {saving ? "保存中" : "保存本地档案"}
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+            </aside>
           </form>
-          {/* RESULTS */}
-          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-soft">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-950">分析结果</h2>
-                  <p className="mt-1 text-sm text-slate-500">{result ? "点击各模块展开查看" : "生成后可复制全部或导出 Markdown / Word"}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <CopyButton text={allResultText} label="复制全部" className={!result ? "pointer-events-none opacity-45" : ""} />
-                  <button type="button" onClick={downloadMarkdown} disabled={!result}
-                    className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-teal-300 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-45">
-                    <FileText className="h-4 w-4" />Markdown
-                  </button>
-                  <button type="button" onClick={downloadWord} disabled={!result}
-                    className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-teal-300 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-45">
-                    <Download className="h-4 w-4" />Word
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {!result ? (
-              <div className="m-5 flex min-h-[600px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-teal-50 text-teal-700"><Wand2 className="h-6 w-6" /></div>
-                <h3 className="mt-4 text-lg font-semibold text-slate-950">等待选品分析</h3>
-                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">先填写左侧产品信息，至少填写基础模式的 8 个必填字段。</p>
-                <div className="mt-5 grid w-full max-w-lg gap-2 sm:grid-cols-3">
-                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left">
-                    <p className="text-sm font-semibold text-slate-900">选品初筛</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">机会评分+风险判断</p>
-                  </div>
-                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left">
-                    <p className="text-sm font-semibold text-slate-900">发布优化</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">标题+关键词+详情页</p>
-                  </div>
-                  <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-left">
-                    <p className="text-sm font-semibold text-slate-900">询盘转化</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">8个沟通模板</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="grid gap-5 p-5">
-                <ScoreCard score={result.productOpportunityScore} confidenceLevel={result.confidenceLevel} recommendation={result.recommendation} />
-                <MissingDataSection items={result.missingData} />
-                <ValidationChecklistSection items={result.validationChecklist} />
-
-                <div>
-                  <SectionGroupTitle title="评分明细" count={8} />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(result.scoreBreakdown ? Object.entries(result.scoreBreakdown) : []).map(([key, dim]) => {
-                      const info = scoreDimensionLabels[key as keyof typeof scoreDimensionLabels]; if (!info) return null;
-                      if (!info) return null;
-                      return <ScoreDimensionCard key={key} label={info.label} maxScore={info.maxScore} dimension={dim} />;
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <SectionGroupTitle title="选品分析" count={8} />
-                  <div className="grid gap-3">
-                    <AssessmentCard title="市场需求判断" assessment={(result.demandAnalysis ) || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="竞争强度判断" assessment={result.competitionRiskAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="利润空间判断" assessment={result.profitRiskAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="物流难度判断" assessment={result.logisticsRiskAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="认证/合规风险判断" assessment={result.complianceRiskAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="B2B 适配度判断" assessment={result.b2bFitAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="差异化机会" assessment={result.differentiationAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                    <AssessmentCard title="新手操作难度" assessment={result.beginnerDifficultyAssessment || { conclusion: "", basis: "", risk: "", confidence: "low", verificationStep: "" }} />
-                  </div>
-                </div>
-
-                <div>
-                  <SectionGroupTitle title="发布优化" />
-                  <div className="grid gap-3">
-                    <SimpleListSection title="适合目标国家/地区" items={result.targetMarkets} />
-                    <SimpleListSection title="适合买家类型" items={result.buyerTypes} />
-                    <TextBlockSection title="阿里国际站英文标题" text={result.alibabaTitle} />
-                    <SimpleListSection title="核心关键词" items={result.coreKeywords} />
-                    <SimpleListSection title="长尾关键词" items={result.longTailKeywords} />
-                    <TextBlockSection title="产品详情页英文文案" text={result.productDescription} />
-                  </div>
-                </div>
-
-                <div>
-                  <SectionGroupTitle title="询盘转化" />
-                  <InquiryTemplatesSection templates={result.inquiryReplyTemplates} />
-                </div>
-
-                <div>
-                  <SectionGroupTitle title="补充与行动" />
-                  <div className="grid gap-3">
-                    <SimpleListSection title="主图/详情图建议" items={result.imageSuggestions} />
-                    <TextBlockSection title="Amazon Listing 补充版" text={result.amazonListing || ""} />
-                    <SimpleListSection title="优先行动计划" items={result.actionPlan} />
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
         </div>
-
-        <footer className="rounded-lg border border-slate-200 bg-white px-5 py-4 text-center text-sm leading-6 text-slate-500">
-          生成内容仅供选品初筛参考，不构成销售承诺。
-        </footer>
       </div>
     </main>
   );
 }
-// ==================== Helper Components ====================
 
-function StatusPill({ icon, label }: { icon: ReactNode; label: string }) {
+function StepCard({ step, title, text, active }: { step: string; title: string; text: string; active: boolean }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-      <span className="text-teal-700">{icon}</span>
-      <span className="font-medium">{label}</span>
+    <div className={"rounded-lg border p-3 transition " + (active ? "border-rose-200 bg-rose-50 shadow-sm" : "border-slate-200 bg-slate-50")}>
+      <div className="flex items-center gap-3">
+        <span className={"flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold " + (active ? "bg-rose-600 text-white" : "bg-white text-slate-500")}>
+          {step}
+        </span>
+        <h2 className="text-sm font-bold text-slate-950">{title}</h2>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-slate-600">{text}</p>
     </div>
   );
 }
 
-function ProfGroup({ title, group, expanded, onToggle, children }: {
-  title: string;
-  group: string;
-  expanded: Record<string, boolean>;
-  onToggle: (g: string) => void;
-  children: ReactNode;
+function AgentSidebar({
+  activeMenu,
+  onSelect,
+}: {
+  activeMenu: (typeof sidebarMenus)[number]["label"];
+  onSelect: (value: (typeof sidebarMenus)[number]["label"]) => void;
 }) {
-  const isOpen = !!expanded[group];
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
-      <button type="button" onClick={() => onToggle(group)}
-        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
-        <span>{title}</span>
-        {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-      </button>
-      {isOpen && <div className="border-t border-slate-100 p-4">{children}</div>}
+    <aside className="hidden lg:block">
+      <div className="sticky top-3 space-y-3">
+        <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-indigo-500 text-white">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <h1 className="mt-3 text-xl font-bold tracking-normal text-slate-950">轻选 Agent</h1>
+          <p className="mt-1 text-xs leading-5 text-slate-500">小红书无货源选品助手</p>
+        </div>
+        <nav className="rounded-2xl border border-white/80 bg-white p-2 shadow-sm">
+          {sidebarMenus.map((item) => {
+            const Icon = item.icon;
+            const active = activeMenu === item.label;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => onSelect(item.label)}
+                className={"mb-1 flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition last:mb-0 " + (active ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    </aside>
+  );
+}
+
+function MetricTile({ label, value, helper }: { label: string; value: string | number; helper: string }) {
+  return (
+    <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+      <p className="text-sm font-semibold text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-400">{helper}</p>
     </div>
   );
 }
 
-function TextInput({ label, value, onChange, limit, required, error, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void;
-  limit: number; required?: boolean; error?: string; placeholder?: string;
+type AgentDisplayStatus = "待开始" | "识别中" | "分析中" | "已完成";
+
+function AgentWorkspacePanel({
+  materialStatus,
+  viralStatus,
+}: {
+  materialStatus: AgentDisplayStatus;
+  viralStatus: AgentDisplayStatus;
 }) {
-  const len = getTextLength(value);
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      {displayAgents.map((agent, index) => {
+        const Icon = agent.icon;
+        const status = index === 0 ? materialStatus : index === 1 ? viralStatus : "待开始";
+        const statusClass = status === "已完成"
+          ? "bg-emerald-50 text-emerald-700"
+          : status === "识别中" || status === "分析中"
+            ? "bg-indigo-50 text-indigo-700"
+            : "bg-slate-100 text-slate-500";
+        return (
+          <div key={agent.name} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + statusClass}>{status}</span>
+            </div>
+            <h3 className="mt-3 text-sm font-bold text-slate-950">{agent.name} Agent</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{agent.description}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MaterialAgentSummaryCard({ result }: { result: MaterialAgentResult }) {
+  const rows = [
+    ["商品类型", result.productType],
+    ["核心卖点", materialListText(result.sellingPoints)],
+    ["目标人群", materialListText(result.targetUsers)],
+    ["使用场景", materialListText(result.usageScenarios)],
+    ["价格区间", result.priceRange || "未提到"],
+    ["用户痛点", materialListText(result.painPoints)],
+    ["评论需求", materialListText(result.commentDemands)],
+    ["初步风险词", materialListText(result.riskWords)],
+    ["素材完整度", result.materialCompleteness],
+    ["缺失信息", materialListText(result.missingInfo)],
+  ] as const;
+
+  return (
+    <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-rose-700">素材接收 Agent 已识别</p>
+          <h3 className="mt-1 text-base font-bold text-slate-950">{result.productType || "未提到"}</h3>
+        </div>
+        <span className="rounded-full border border-rose-200 bg-white px-2 py-0.5 text-xs font-semibold text-rose-700">
+          {result.materialCompleteness}
+        </span>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-700">{result.summary || "这段素材还可以再补充一点信息。"}</p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="rounded-md bg-white/80 p-2.5">
+            <p className="text-xs font-semibold text-slate-500">{label}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-800">{value || "未提到"}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function getViralLevelClass(level: "高" | "中" | "低") {
+  switch (level) {
+    case "高":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "中":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    default:
+      return "border-slate-200 bg-slate-100 text-slate-600";
+  }
+}
+
+function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
+  const fields = [
+    { label: "标题吸引力", value: result.titleAttraction },
+    { label: "卖点清晰度", value: result.sellingPointClarity },
+    { label: "场景代入感", value: result.sceneSense },
+    { label: "评论需求强度", value: result.commentDemand },
+    { label: "痛点强度", value: result.painPointStrength },
+    { label: "内容可拍性", value: result.contentShootability },
+  ] as const;
+
+  const listGroups = [
+    { label: "主要加分点", items: result.bonusPoints },
+    { label: "主要短板", items: result.weakPoints },
+    { label: "优化建议", items: result.optimizationSuggestions },
+    { label: "可尝试的内容角度", items: result.suggestedAngles },
+  ] as const;
+
+  return (
+    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-indigo-700">爆款拆解 Agent 已完成</p>
+          <h3 className="mt-1 text-base font-bold text-slate-950">{result.summary || "这个品的小红书爆款潜力已拆解完成。"}</h3>
+        </div>
+        <span className={"rounded-full border px-2 py-0.5 text-xs font-semibold " + getViralLevelClass(result.viralPotential)}>
+          爆款潜力：{result.viralPotential}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className={"rounded-md border p-3 " + getViralLevelClass(result.viralPotential)}>
+          <p className="text-sm font-bold">爆款潜力</p>
+          <p className="mt-1 text-2xl font-bold text-slate-950">{result.viralPotential}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-700">这是内容爆款潜力判断，不是最终做不做的结论。</p>
+        </div>
+        {fields.map((field) => (
+          <div key={field.label} className="rounded-md border border-white/80 bg-white p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-slate-900">{field.label}</p>
+              <span className={"rounded-full border px-2 py-0.5 text-xs font-semibold " + getViralLevelClass(field.value.level)}>
+                {field.value.level}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-700">{field.value.reason?.trim() || "证据不足"}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {listGroups.map((group) => {
+          const items = group.items.filter((item) => item.trim()).slice(0, 3);
+          return (
+            <div key={group.label} className="rounded-md border border-white/80 bg-white p-3">
+              <p className="text-sm font-bold text-slate-900">{group.label}</p>
+              {items.length ? (
+                <ul className="mt-2 space-y-2 text-sm leading-6 text-slate-700">
+                  {items.map((item, index) => (
+                    <li key={group.label + item} className="flex gap-2">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
+                        {index + 1}
+                      </span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-slate-500">证据不足</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AlertBox({ text, tone }: { text: string; tone: "error" | "notice" }) {
+  const isError = tone === "error";
+  return (
+    <div className={`flex gap-2 rounded-md border px-3 py-2 text-sm ${isError ? "border-red-200 bg-red-50 text-red-700" : "border-teal-200 bg-teal-50 text-teal-800"}`}>
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function TextInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  error,
+  required,
+  limit,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  error?: string;
+  required?: boolean;
+  limit?: number;
+  type?: string;
+}) {
   return (
     <label className="block">
-      <span className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-slate-800">
-        <span>{label}{required ? <span className="text-red-500"> *</span> : null}</span>
-        <span className={len > limit ? "text-red-600" : "text-slate-400"}>{len}/{limit}</span>
-      </span>
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-        className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-700">{label}{required ? <span className="text-red-500"> *</span> : null}</span>
+        {limit ? <span className="text-xs text-slate-400">{getTextLength(value)}/{limit}</span> : null}
+      </div>
+      <input
+        type={type}
+        autoComplete={type === "password" ? "current-password" : undefined}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={"h-10 w-full rounded-md border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/20 " + (error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-teal-400")}
+      />
+      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
     </label>
   );
 }
 
-function TextareaInput({ label, value, onChange, limit, required, error, placeholder }: {
-  label: string; value: string; onChange: (v: string) => void;
-  limit: number; required?: boolean; error?: string; placeholder?: string;
-}) {
-  const len = getTextLength(value);
-  return (
-    <label className="block">
-      <span className="mb-2 flex items-center justify-between gap-2 text-sm font-semibold text-slate-800">
-        <span>{label}{required ? <span className="text-red-500"> *</span> : null}</span>
-        <span className={len > limit ? "text-red-600" : "text-slate-400"}>{len}/{limit}</span>
-      </span>
-      <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={3}
-        className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
-    </label>
-  );
-}
-
-function SelectInput({ label, value, options, onChange, required, error }: {
-  label: string; value: string; options: readonly string[];
-  onChange: (v: string) => void; required?: boolean; error?: string;
+function SelectInput({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-800">
-        {label}{required ? <span className="text-red-500"> *</span> : null}
-      </span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}
-        className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
-        {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+      <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
       </select>
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
     </label>
+  );
+}
+
+function TextareaInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  error,
+  required,
+  limit,
+  rows = 5,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  error?: string;
+  required?: boolean;
+  limit?: number;
+  rows?: number;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-700">{label}{required ? <span className="text-red-500"> *</span> : null}</span>
+        {limit ? <span className="text-xs text-slate-400">{getTextLength(value)}/{limit}</span> : null}
+      </div>
+      <textarea
+        rows={rows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={"w-full rounded-md border bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-teal-500/20 " + (error ? "border-red-300 focus:border-red-400" : "border-slate-200 focus:border-teal-400")}
+      />
+      {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
+    </label>
+  );
+}
+
+function CheckboxGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-sm font-medium text-slate-700">{label}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {options.map((option) => {
+          const checked = selected.includes(option.value);
+          return (
+            <label
+              key={option.value}
+              className={"flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition " + (checked ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300")}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => onToggle(option.value)}
+                className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProgressPanel({
+  activeStep,
+  loading,
+  resultReady,
+}: {
+  activeStep: number;
+  loading: boolean;
+  resultReady: boolean;
+}) {
+  if (activeStep < 0 && !resultReady) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-teal-700">任务进度</p>
+          <h3 className="mt-1 font-bold text-slate-950">完整分析 8 步</h3>
+        </div>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+          {resultReady ? "已完成" : loading ? "执行中" : "待开始"}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {progressSteps.map((step, index) => {
+          const done = resultReady || index < activeStep;
+          const active = loading && index === activeStep;
+          return (
+            <div key={step} className="flex items-center gap-3 rounded-md bg-slate-50 px-3 py-2">
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-teal-600 text-white" : active ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>
+                {index + 1}
+              </span>
+              <span className={`text-sm ${done || active ? "font-semibold text-slate-900" : "text-slate-500"}`}>{step}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceCardEditor({
+  card,
+  index,
+  role,
+  isValid,
+  onChange,
+  onRemove,
+  onRoleChange,
+}: {
+  card: EvidenceCard;
+  index: number;
+  role: EvidenceRole;
+  isValid: boolean;
+  onChange: (updates: Partial<EvidenceCard>) => void;
+  onRemove: () => void;
+  onRoleChange: (role: EvidenceRole) => void;
+}) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-teal-700">证据卡片 {index + 1}</p>
+            <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + (isValid ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
+              {isValid ? "有效证据" : "待补充证据卡片"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">{card.message}</p>
+        </div>
+        <button type="button" onClick={onRemove} className="text-slate-400 hover:text-red-600" title="删除证据卡片">
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mb-3 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onRoleChange("primary")}
+          className={"h-9 rounded-md border px-3 text-sm font-semibold " + (role === "primary" ? "border-teal-300 bg-teal-50 text-teal-800" : "border-slate-200 bg-white text-slate-600")}
+        >
+          主商品
+        </button>
+        <button
+          type="button"
+          onClick={() => onRoleChange("supporting")}
+          className={"h-9 rounded-md border px-3 text-sm font-semibold " + (role === "supporting" ? "border-slate-300 bg-slate-100 text-slate-800" : "border-slate-200 bg-white text-slate-600")}
+        >
+          辅助证据
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <TextInput label="商品名" value={card.productName || ""} onChange={(value) => onChange({ productName: value, normalizedProductName: value })} placeholder="例如：厨房缝隙清洁刷" />
+        <SelectInput
+          label="平台"
+          value={card.platform}
+          onChange={(value) => onChange({ platform: value as EvidenceCard["platform"] })}
+          options={[{ value: "unknown", label: "未知" }, ...platformOptions.map((platform) => ({ value: platform, label: platformLabels[platform] }))]}
+        />
+        <TextInput label="价格" value={card.priceText || ""} onChange={(value) => onChange({ priceText: value })} placeholder="例如：9.9" />
+        <TextInput label="热度" value={card.salesText || card.ratingText || card.rankText || ""} onChange={(value) => onChange({ salesText: value, ratingText: "", rankText: "" })} placeholder="例如：评价10万+、榜单靠前" />
+      </div>
+      <div className="mt-3">
+        <TextareaInput label="备注" value={card.userNotes || card.visibleDescription || ""} onChange={(value) => onChange({ userNotes: value, visibleDescription: value })} rows={3} />
+      </div>
+    </article>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
+      {text}
+    </div>
   );
 }
