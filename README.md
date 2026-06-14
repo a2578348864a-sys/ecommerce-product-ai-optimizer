@@ -57,6 +57,10 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
+## 服务器部署说明
+
+阿里云轻量服务器部署请看 [DEPLOY.md](DEPLOY.md)。
+
 ## 访问密码说明
 
 项目继续使用环境变量里的访问密码，避免别人随便消耗你的 API 额度。
