@@ -12,6 +12,10 @@ function getAccessPassword() {
 }
 
 export function GET() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ ok: true });
+  }
+
   const provider = getProvider();
 
   return NextResponse.json({
