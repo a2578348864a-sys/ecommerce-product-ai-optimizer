@@ -34,15 +34,22 @@ export function WorkspaceSidebar() {
 
   return (
     <aside className="hidden lg:block">
-      <div className="sticky top-3 space-y-3">
-        <div className="rounded-[28px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-sky-500 text-white shadow-sm">
-            <Sparkles className="h-5 w-5" />
+      <div className="sticky top-4 flex flex-col gap-3">
+        <div className="premium-card rounded-[32px] p-5">
+          <div className="premium-shell rounded-[26px] p-1.5">
+            <div className="premium-inner flex min-h-[112px] flex-col justify-between rounded-[21px] p-4">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-sky-500 text-white shadow-[0_18px_36px_rgba(20,184,166,0.26)]">
+                <Sparkles className="size-5" />
+              </div>
+              <div>
+                <p className="mt-5 text-[10px] font-black uppercase tracking-[0.24em] text-teal-700">Local Agent</p>
+                <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">轻选 Agent</h1>
+                <p className="mt-1 text-xs leading-5 text-slate-500">本地优先的选品工作台</p>
+              </div>
+            </div>
           </div>
-          <h1 className="mt-4 text-xl font-bold tracking-tight text-slate-950">轻选 Agent</h1>
-          <p className="mt-1 text-xs leading-5 text-slate-500">清爽版选品工作台</p>
         </div>
-        <nav className="rounded-[28px] border border-white/80 bg-white/90 p-2 shadow-[0_18px_50px_rgba(15,23,42,0.05)]" aria-label="工作台导航">
+        <nav className="premium-card rounded-[32px] p-2.5" aria-label="工作台导航">
           {workspaceNavItems.map((item) => {
             const Icon = item.icon;
             const active = isActivePath(pathname, item.href);
@@ -51,9 +58,11 @@ export function WorkspaceSidebar() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={"mb-1 flex h-11 w-full items-center gap-3 rounded-2xl px-3 text-sm font-medium transition last:mb-0 " + (active ? "bg-teal-600 text-white shadow-sm" : "text-slate-600 hover:bg-teal-50 hover:text-teal-800")}
+                className={"premium-button mb-1 flex h-12 w-full items-center gap-3 rounded-[22px] px-3 text-sm font-bold last:mb-0 " + (active ? "glass-nav-active" : "text-slate-600 hover:bg-emerald-50/70 hover:text-emerald-800")}
               >
-                <Icon className="h-4 w-4" />
+                <span className={"flex size-8 items-center justify-center rounded-2xl " + (active ? "bg-white/70 text-emerald-700 shadow-sm" : "bg-white text-slate-500 shadow-sm")}>
+                  <Icon className="size-4" />
+                </span>
                 {item.label}
               </Link>
             );
@@ -68,7 +77,7 @@ export function WorkspaceMobileNav() {
   const pathname = usePathname() || "/";
 
   return (
-    <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
+    <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
       {workspaceNavItems.map((item) => {
         const Icon = item.icon;
         const active = isActivePath(pathname, item.href);
@@ -77,9 +86,9 @@ export function WorkspaceMobileNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={"inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-medium " + (active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600")}
+            className={"premium-button inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-bold " + (active ? "glass-nav-active" : "border-white/80 bg-white/80 text-slate-600 shadow-sm")}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="size-4" />
             {item.label}
           </Link>
         );
