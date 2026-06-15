@@ -28,3 +28,23 @@ model ListingCopyHistory {
   @@index([createdAt])
   @@index([productName])
 }
+
+model ViralAnalysisRecord {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  type           String   @default("viral")
+  title          String?
+  platform       String
+  productUrl     String?
+  materialText   String
+  source         String
+  score          Int
+  level          String
+  oneLineSummary String
+  resultJson     String
+
+  @@index([type, createdAt])
+  @@index([source])
+  @@index([platform])
+}

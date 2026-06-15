@@ -7,6 +7,7 @@ import {
   Clipboard,
   ClipboardList,
   Loader2,
+  Save,
   Sparkles,
   Wand2,
 } from "lucide-react";
@@ -55,6 +56,10 @@ type DisplayResult = ViralAiData & {
 
 type ApiResponse =
   | { ok: true; data: ViralAiData }
+  | { ok: false; error: { code: string; message: string } };
+
+type SaveResponse =
+  | { ok: true; data: { id: string } }
   | { ok: false; error: { code: string; message: string } };
 
 function textLengthScore(text: string) {
@@ -306,7 +311,9 @@ export function ViralMockAgent() {
   const [fieldError, setFieldError] = useState("");
   const [accessPasswordError, setAccessPasswordError] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [savedRecordId, setSavedRecordId] = useState("");
 
   const lengthText = useMemo(() => materialText.trim().length + "/8000", [materialText]);
 
@@ -326,6 +333,7 @@ export function ViralMockAgent() {
     setResult(createMockResult(combined.slice(0, 8000), platform));
     setNotice("模拟拆解完成：这是本地规则演示，不调用接口、不消耗 AI 额度。");
     setCopyState("idle");
+    setSavedRecordId("");
   }
 
   async function runAiAnalysis() {
@@ -375,6 +383,7 @@ export function ViralMockAgent() {
 
       setResult({ ...normalizeResponseData(data.data), mode: "ai" });
       setNotice("AI 深度拆解完成。请人工复核后再做选品决定。");
+      setSavedRecordId("");
     } catch (error) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
       setNotice(isAbort ? "请求超时：AI 服务响应太慢，请稍后重试。" : "AI 返回失败：请稍后重试。");
@@ -392,6 +401,44 @@ export function ViralMockAgent() {
       setCopyState("copied");
     } catch {
       setCopyState("failed");
+    }
+  }
+
+  async function saveResult() {
+    if (!result || isSaving) return;
+    if (!materialText.trim()) {
+      setNotice("保存失败：素材文案不能为空。");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          platform,
+          productUrl,
+          materialText,
+          source: result.mode,
+          result,
+        }),
+      });
+      const data = await response.json() as SaveResponse;
+
+      if (!response.ok || !data.ok) {
+        const message = data.ok ? "保存失败，请稍后重试。" : data.error.message;
+        setNotice(message || "保存失败，请稍后重试。");
+        return;
+      }
+
+      setSavedRecordId(data.data.id);
+      setNotice("已保存到任务记录。可以去 /tasks 查看历史拆解。");
+    } catch {
+      setNotice("保存失败：本地任务记录接口暂时没有响应。");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -440,8 +487,11 @@ export function ViralMockAgent() {
                   <label className="block">
                     <span className="mb-2 block text-sm font-semibold text-slate-800">素材标题，可选</span>
                     <input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value.slice(0, 160))}
+                    value={title}
+                      onChange={(event) => {
+                        setTitle(event.target.value.slice(0, 160));
+                        setSavedRecordId("");
+                      }}
                       placeholder="例如：宿舍桌面洞洞板收纳架"
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
                     />
@@ -450,7 +500,10 @@ export function ViralMockAgent() {
                     <span className="mb-2 block text-sm font-semibold text-slate-800">商品/素材链接，可选</span>
                     <input
                       value={productUrl}
-                      onChange={(event) => setProductUrl(event.target.value.slice(0, 400))}
+                      onChange={(event) => {
+                        setProductUrl(event.target.value.slice(0, 400));
+                        setSavedRecordId("");
+                      }}
                       placeholder="可粘贴小红书、抖音、淘宝等链接"
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
                     />
@@ -461,7 +514,10 @@ export function ViralMockAgent() {
                   <span className="mb-2 block text-sm font-semibold text-slate-800">平台选择</span>
                   <select
                     value={platform}
-                    onChange={(event) => setPlatform(event.target.value as AgentPlatform)}
+                    onChange={(event) => {
+                      setPlatform(event.target.value as AgentPlatform);
+                      setSavedRecordId("");
+                    }}
                     className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 md:w-64"
                   >
                     {extendedPlatformOptions.map((item) => (
@@ -496,6 +552,7 @@ export function ViralMockAgent() {
                       setMaterialText(event.target.value.slice(0, 8000));
                       setFieldError("");
                       setResult(null);
+                      setSavedRecordId("");
                     }}
                     rows={10}
                     placeholder="粘贴标题、卖点、评论区反馈、商品价格、使用场景。例如：宿舍桌面收纳架，29.9 元，评论区很多人问链接..."
@@ -560,6 +617,15 @@ export function ViralMockAgent() {
                         >
                           {copyState === "copied" ? <CheckCircle2 className="h-4 w-4 text-teal-600" /> : <Clipboard className="h-4 w-4" />}
                           {copyState === "copied" ? "已复制" : "复制结果"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveResult}
+                          disabled={isSaving}
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-4 text-sm font-semibold text-teal-800 transition hover:border-teal-300 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                          {savedRecordId ? "已保存" : "保存到任务记录"}
                         </button>
                       </div>
                     </div>
