@@ -3,27 +3,41 @@
 import {
   AlertCircle,
   Brain,
+  CheckCircle2,
+  Clipboard,
   ClipboardList,
-  Lightbulb,
-  RefreshCcw,
+  Loader2,
   Sparkles,
   Wand2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import type { ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
-
-const sampleMaterial = [
-  "标题：宿舍桌面洞洞板收纳架，桌面乱的人真的需要",
-  "商品：桌面洞洞板收纳架",
-  "价格：29.9 元",
-  "卖点：免打孔、可挂小物件、桌面更整齐、拍照也好看",
-  "场景：学生宿舍、租房桌面、女生房间改造",
-  "评论：有人问链接，也有人说桌面线太乱、不知道怎么收纳",
-].join("\n");
+import { platformLabels, platformOptions } from "@/lib/types";
+import type { Platform, ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
 
 const positiveWords = ["痛点", "对比", "改造", "懒人", "宿舍", "租房", "收纳", "神器", "评论", "链接", "平替", "省钱", "免打孔", "前后"];
 const riskWords = ["品牌", "授权", "功效", "治疗", "减肥", "医用", "儿童", "带电", "大件", "易碎"];
+
+type ViralAiData = {
+  score: number;
+  level: ViralLevel;
+  sellingPoints: string[];
+  painPoints: string[];
+  hooks: string[];
+  titleSuggestions: string[];
+  videoOpenings: string[];
+  risks: string[];
+  beginnerConclusion: string;
+};
+
+type DisplayResult = ViralAiData & {
+  mode: "mock" | "ai";
+  metrics?: ViralAgentResult;
+};
+
+type ApiResponse =
+  | { ok: true; data: ViralAiData }
+  | { ok: false; error: { code: string; message: string } };
 
 function textLengthScore(text: string) {
   if (text.length > 220) return 22;
@@ -57,7 +71,16 @@ function getLevelClass(level: ViralLevel) {
   }
 }
 
-function createMockViralResult(rawText: string): ViralAgentResult & { score: number; riskHits: string[] } {
+function joinMaterial(title: string, link: string, platform: Platform, materialText: string) {
+  return [
+    title ? `标题：${title}` : "",
+    `平台：${platformLabels[platform]}`,
+    link ? `链接：${link}` : "",
+    materialText ? `素材：${materialText}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function createMockResult(rawText: string): DisplayResult {
   const text = rawText.trim();
   const positiveHits = countMatches(text, positiveWords);
   const riskHits = riskWords.filter((word) => text.includes(word));
@@ -67,7 +90,6 @@ function createMockViralResult(rawText: string): ViralAgentResult & { score: num
   const hasComment = /评论|问链接|求链接|种草|反馈|需求/.test(text);
   const hasPain = /痛点|太乱|麻烦|懒|不会|烦|难/.test(text);
   const hasVisual = /截图|图片|视频|拍|对比|改造|前后/.test(text);
-
   const score = Math.max(
     18,
     Math.min(
@@ -83,64 +105,102 @@ function createMockViralResult(rawText: string): ViralAgentResult & { score: num
         - riskHits.length * 8,
     ),
   );
-  const viralPotential = levelFromScore(score);
+  const level = levelFromScore(score);
   const titleAttractionLevel = levelFromScore((hasTitle ? 56 : 30) + positiveHits * 5 + (hasPain ? 12 : 0));
   const clarityLevel = levelFromScore((hasPrice ? 20 : 8) + (hasScene ? 20 : 8) + textLengthScore(text) + positiveHits * 4);
   const sceneLevel = levelFromScore((hasScene ? 62 : 28) + (hasVisual ? 12 : 0));
   const commentLevel = levelFromScore((hasComment ? 68 : 26) + positiveHits * 3);
   const painLevel = levelFromScore((hasPain ? 68 : 30) + (hasComment ? 8 : 0));
   const shootLevel = levelFromScore((hasVisual ? 66 : 34) + (hasScene ? 12 : 0));
+  const risks = [
+    riskHits.length ? "出现风险词：" + riskHits.join("、") + "，后续要谨慎核对。" : "暂未发现明显高风险词，但仍需人工复核。",
+    hasPrice ? "价格已出现，但还要看同款是否很卷。" : "缺少价格信息，无法判断低价吸引力。",
+  ];
 
   return {
+    mode: "mock",
     score,
-    riskHits,
-    viralPotential,
-    titleAttraction: levelReason(
-      titleAttractionLevel,
-      hasTitle ? "素材里已经有标题或开头信息，可以继续强化反差、痛点或结果感。" : "暂时没看到明确标题钩子，建议补一句能让用户停下来的开头。",
-    ),
-    sellingPointClarity: levelReason(
-      clarityLevel,
-      hasPrice || positiveHits >= 2 ? "卖点和价格信息较清楚，适合先做内容测试。" : "卖点还偏散，建议补充价格、核心功能和为什么比同类更值得买。",
-    ),
-    sceneSense: levelReason(
-      sceneLevel,
-      hasScene ? "已经出现具体使用场景，用户更容易代入。" : "场景感不足，建议写清楚谁在什么地方、什么时候会用它。",
-    ),
-    commentDemand: levelReason(
-      commentLevel,
-      hasComment ? "素材提到评论或求链接信号，说明有一定需求反馈。" : "还没看到评论区需求，建议补充用户问了什么、为什么想买。",
-    ),
-    painPointStrength: levelReason(
-      painLevel,
-      hasPain ? "痛点较明确，适合做前后对比或问题解决型内容。" : "痛点不够尖锐，建议补一句用户现在最烦的问题。",
-    ),
-    contentShootability: levelReason(
-      shootLevel,
-      hasVisual ? "有图片/视频/对比线索，比较容易拍成短内容。" : "可拍性一般，建议补充前后对比、使用过程或细节特写。",
-    ),
-    bonusPoints: [
+    level,
+    sellingPoints: [
       hasScene ? "有具体使用场景，内容不容易空。" : "可以补一个强场景，比如宿舍、租房、厨房或桌面。",
       hasComment ? "有评论需求信号，适合做“评论区问爆了”的角度。" : "可以补充评论区问题，判断用户是否真的想买。",
       positiveHits >= 3 ? "关键词里有多个小红书常见种草信号。" : "可以加入痛点、对比、改造、懒人等更容易传播的表达。",
     ],
-    weakPoints: [
-      hasPrice ? "价格已出现，但还要看同款是否很卷。" : "缺少价格信息，无法判断低价吸引力。",
-      riskHits.length ? "出现风险词：" + riskHits.join("、") + "，后续要谨慎核对。" : "暂未发现明显高风险词，但仍需人工复核。",
-      hasVisual ? "可拍性不错，但要避免只拍产品不拍场景。" : "缺少可视化素材，内容可能不够直观。",
+    painPoints: [
+      hasPain ? "痛点较明确，适合做前后对比或问题解决型内容。" : "痛点不够尖锐，建议补一句用户现在最烦的问题。",
+      hasComment ? "素材提到评论反馈，可以继续挖真实需求。" : "还没看到评论区需求，建议补充用户问了什么。",
     ],
-    optimizationSuggestions: [
-      "标题先写“人群 + 痛点 + 结果”，例如：桌面乱的人试试这个收纳架。",
-      "正文补充价格、使用前后对比和适合人群，减少泛泛描述。",
-      "评论区重点观察是否有人问链接、问尺寸、问同款或问使用效果。",
-    ],
-    suggestedAngles: [
+    hooks: [
+      "人群 + 痛点 + 结果：桌面乱的人试试这个收纳架。",
       "前后对比：改造前桌面乱，改造后清爽好拍。",
-      "人群场景：宿舍党、租房党、小桌面用户怎么收纳。",
-      "避坑角度：哪些收纳架看着好看但不好用。",
+      "避坑角度：哪些同类产品看着好看但不好用。",
     ],
-    summary: "Mock 判断：当前爆款潜力为「" + viralPotential + "」，分数 " + score + "/100。这个结果只用于前端演示和初筛，不代表真实 AI 结论。",
+    titleSuggestions: [
+      "把标题改成“人群 + 痛点 + 结果”，不要只写商品名。",
+      "标题里加入具体场景，比如宿舍、租房、桌面改造。",
+      "如果有评论需求，可以写“评论区问爆了”。",
+    ],
+    videoOpenings: [
+      "先展示混乱场景，再拿出产品解决问题。",
+      "用 3 秒前后对比抓注意力。",
+      "开头直接说：桌面乱的人，这个小东西真能救一下。",
+    ],
+    risks,
+    beginnerConclusion: `模拟拆解：当前爆款潜力为「${level}」，分数 ${score}/100。这个结果只基于前端规则，用于演示和初筛，不代表真实 AI 结论。`,
+    metrics: {
+      titleAttraction: levelReason(titleAttractionLevel, hasTitle ? "素材里已有标题或开头信息，可以继续强化反差、痛点或结果感。" : "暂时没看到明确标题钩子，建议补一句能让用户停下来的开头。"),
+      sellingPointClarity: levelReason(clarityLevel, hasPrice || positiveHits >= 2 ? "卖点和价格信息较清楚，适合先做内容测试。" : "卖点还偏散，建议补充价格、核心功能和为什么比同类更值得买。"),
+      sceneSense: levelReason(sceneLevel, hasScene ? "已经出现具体使用场景，用户更容易代入。" : "场景感不足，建议写清楚谁在什么地方、什么时候会用它。"),
+      commentDemand: levelReason(commentLevel, hasComment ? "素材提到评论或求链接信号，说明有一定需求反馈。" : "还没看到评论区需求，建议补充用户问了什么、为什么想买。"),
+      painPointStrength: levelReason(painLevel, hasPain ? "痛点较明确，适合做前后对比或问题解决型内容。" : "痛点不够尖锐，建议补一句用户现在最烦的问题。"),
+      contentShootability: levelReason(shootLevel, hasVisual ? "有图片/视频/对比线索，比较容易拍成短内容。" : "可拍性一般，建议补充前后对比、使用过程或细节特写。"),
+      viralPotential: level,
+      bonusPoints: [],
+      weakPoints: risks,
+      optimizationSuggestions: [],
+      suggestedAngles: [],
+      summary: "",
+    },
   };
+}
+
+function mapApiError(code: string, message: string) {
+  if (code === "missing_api_key" || code === "missing_model" || code === "missing_base_url") {
+    return "AI 服务未配置：请先检查服务端 AI 环境变量。";
+  }
+  if (code === "timeout") return "请求超时：AI 服务响应太慢，请稍后重试。";
+  if (code === "json_parse_error") return "返回格式异常：AI 没有按 JSON 格式返回，请稍后重试。";
+  if (code === "missing_content") return "请先填写素材文案，再点击 AI 深度拆解。";
+  return message || "AI 返回失败，请稍后重试。";
+}
+
+function formatResultForCopy(result: DisplayResult) {
+  return [
+    `${result.mode === "mock" ? "模拟拆解" : "AI 深度拆解"}`,
+    `爆款潜力评分：${result.score}/100`,
+    `潜力等级：${result.level}`,
+    "",
+    "核心卖点：",
+    ...result.sellingPoints.map((item) => `- ${item}`),
+    "",
+    "用户痛点：",
+    ...result.painPoints.map((item) => `- ${item}`),
+    "",
+    "内容钩子：",
+    ...result.hooks.map((item) => `- ${item}`),
+    "",
+    "标题优化建议：",
+    ...result.titleSuggestions.map((item) => `- ${item}`),
+    "",
+    "短视频开头建议：",
+    ...result.videoOpenings.map((item) => `- ${item}`),
+    "",
+    "风险提醒：",
+    ...result.risks.map((item) => `- ${item}`),
+    "",
+    "小白结论：",
+    result.beginnerConclusion,
+  ].join("\n");
 }
 
 function ResultMetric({ label, value }: { label: string; value: ViralLevelReason }) {
@@ -161,42 +221,112 @@ function SimpleList({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
       <p className="text-sm font-bold text-slate-900">{title}</p>
-      <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
-        {items.map((item, index) => (
-          <li key={item} className="flex gap-2">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
-              {index + 1}
-            </span>
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
+      {items.length ? (
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+          {items.map((item, index) => (
+            <li key={item} className="flex gap-2">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
+                {index + 1}
+              </span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm leading-6 text-slate-500">暂无明确内容，建议补充更多素材后再分析。</p>
+      )}
     </div>
   );
 }
 
 export function ViralMockAgent() {
-  const [material, setMaterial] = useState("");
-  const [result, setResult] = useState<ReturnType<typeof createMockViralResult> | null>(null);
-  const [notice, setNotice] = useState("这是 mock 版爆款拆解，不调用 AI，也不会保存数据。");
+  const [title, setTitle] = useState("");
+  const [productUrl, setProductUrl] = useState("");
+  const [platform, setPlatform] = useState<Platform>("xhs");
+  const [materialText, setMaterialText] = useState("");
+  const [result, setResult] = useState<DisplayResult | null>(null);
+  const [notice, setNotice] = useState("模拟拆解是规则演示；AI 深度拆解会请求后端并消耗 AI 额度。");
+  const [fieldError, setFieldError] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
-  const lengthText = useMemo(() => material.trim().length + "/1200", [material]);
+  const lengthText = useMemo(() => materialText.trim().length + "/8000", [materialText]);
 
-  function runMockAnalysis() {
-    const text = material.trim();
-    if (text.length < 12) {
-      setResult(null);
-      setNotice("请先粘贴至少 12 个字的标题、卖点、评论或商品信息。");
-      return;
+  function validateMaterial() {
+    if (!materialText.trim()) {
+      setFieldError("请先填写素材文案。");
+      setNotice("素材文案是必填项，标题和链接可以不填。");
+      return false;
     }
-    setResult(createMockViralResult(text.slice(0, 1200)));
-    setNotice("Mock 拆解完成：结果只基于前端规则，不调用真实 AI。");
+    setFieldError("");
+    return true;
   }
 
-  function fillSample() {
-    setMaterial(sampleMaterial);
-    setResult(null);
-    setNotice("示例素材已填入，可以点击“生成 mock 拆解”。");
+  function runMockAnalysis() {
+    if (!validateMaterial()) return;
+    const combined = joinMaterial(title, productUrl, platform, materialText);
+    setResult(createMockResult(combined.slice(0, 8000)));
+    setNotice("模拟拆解完成：这是本地规则演示，不调用接口、不消耗 AI 额度。");
+    setCopyState("idle");
+  }
+
+  async function runAiAnalysis() {
+    if (!validateMaterial()) return;
+    setIsAiLoading(true);
+    setNotice("AI 深度拆解准备请求后端。注意：真实点击会消耗 AI 额度。");
+    setCopyState("idle");
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 50_000);
+
+    try {
+      const response = await fetch("/api/agents/viral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          productUrl,
+          materialText,
+          platform,
+        }),
+        signal: controller.signal,
+      });
+      const data = await response.json() as ApiResponse;
+
+      if (!response.ok || !data.ok) {
+        const error = data.ok ? { code: "provider_error", message: "AI 返回失败。" } : data.error;
+        const message = mapApiError(error.code, error.message);
+        setNotice(message);
+        setResult(null);
+        return;
+      }
+
+      if (!data.data || typeof data.data.score !== "number" || !data.data.beginnerConclusion) {
+        setNotice("返回格式异常：后端没有返回完整拆解结果。");
+        setResult(null);
+        return;
+      }
+
+      setResult({ ...data.data, mode: "ai" });
+      setNotice("AI 深度拆解完成。请人工复核后再做选品决定。");
+    } catch (error) {
+      const isAbort = error instanceof DOMException && error.name === "AbortError";
+      setNotice(isAbort ? "请求超时：AI 服务响应太慢，请稍后重试。" : "AI 返回失败：请稍后重试。");
+      setResult(null);
+    } finally {
+      window.clearTimeout(timer);
+      setIsAiLoading(false);
+    }
+  }
+
+  async function copyResult() {
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(formatResultForCopy(result));
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
   }
 
   return (
@@ -208,13 +338,18 @@ export function ViralMockAgent() {
           <header className="rounded-[28px] border border-white/80 bg-white/90 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-600">Mock Agent</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-600">Viral Agent</p>
                 <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">爆款拆解</h1>
-                <p className="mt-1 text-sm text-slate-500">先用本地规则快速看标题、卖点、场景和评论需求。</p>
+                <p className="mt-1 text-sm text-slate-500">先用规则模拟，再按需接入真实 AI 做深度拆解。</p>
               </div>
-              <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">
-                不调用 AI
-              </span>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-slate-600">
+                  模拟拆解：规则演示
+                </span>
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">
+                  AI 深度拆解：会消耗 AI 额度
+                </span>
+              </div>
             </div>
             <WorkspaceMobileNav />
           </header>
@@ -227,58 +362,85 @@ export function ViralMockAgent() {
                     <Sparkles className="h-6 w-6" />
                   </span>
                   <div>
-                    <p className="text-sm font-semibold text-teal-700">爆款拆解 mock 版</p>
-                    <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">输入素材，生成一份模拟爆款判断</h2>
+                    <p className="text-sm font-semibold text-teal-700">真实 AI 可接入版</p>
+                    <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">输入素材，拆出爆款角度和风险</h2>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      适合先做页面流程演示和人工初筛。它不会请求后端、不会消耗 AI 次数、不会保存任何内容。
+                      你可以先用模拟拆解快速演示流程；确认素材值得细看后，再点击 AI 深度拆解。
                     </p>
                   </div>
                 </div>
 
-                <label className="mt-6 block">
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-slate-800">素材标题，可选</span>
+                    <input
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value.slice(0, 160))}
+                      placeholder="例如：宿舍桌面洞洞板收纳架"
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-semibold text-slate-800">商品/素材链接，可选</span>
+                    <input
+                      value={productUrl}
+                      onChange={(event) => setProductUrl(event.target.value.slice(0, 400))}
+                      placeholder="可粘贴小红书、抖音、淘宝等链接"
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+                    />
+                  </label>
+                </div>
+
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">平台选择</span>
+                  <select
+                    value={platform}
+                    onChange={(event) => setPlatform(event.target.value as Platform)}
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 md:w-64"
+                  >
+                    {platformOptions.map((item) => (
+                      <option key={item} value={item}>{platformLabels[item]}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="mt-4 block">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-slate-800">素材内容</span>
+                    <span className="text-sm font-semibold text-slate-800">素材文案，必填</span>
                     <span className="text-xs text-slate-400">{lengthText}</span>
                   </div>
                   <textarea
-                    value={material}
+                    value={materialText}
                     onChange={(event) => {
-                      setMaterial(event.target.value.slice(0, 1200));
+                      setMaterialText(event.target.value.slice(0, 8000));
+                      setFieldError("");
                       setResult(null);
                     }}
                     rows={10}
                     placeholder="粘贴标题、卖点、评论区反馈、商品价格、使用场景。例如：宿舍桌面收纳架，29.9 元，评论区很多人问链接..."
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
                   />
+                  {fieldError ? <p className="mt-2 text-sm font-semibold text-rose-600">{fieldError}</p> : null}
                 </label>
 
-                <div className="mt-4 flex flex-wrap gap-3">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={runMockAnalysis}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-700"
+                    disabled={isAiLoading}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Wand2 className="h-4 w-4" />
-                    生成 mock 拆解
+                    生成模拟拆解
                   </button>
                   <button
                     type="button"
-                    onClick={fillSample}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-teal-200 bg-white px-5 text-sm font-semibold text-teal-700 transition hover:border-teal-300 hover:bg-teal-50"
+                    onClick={runAiAnalysis}
+                    disabled={isAiLoading}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-5 text-sm font-semibold text-amber-800 transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <RefreshCcw className="h-4 w-4" />
-                    填入示例
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMaterial("");
-                      setResult(null);
-                      setNotice("已清空。这个页面只在浏览器内模拟，不保存数据。");
-                    }}
-                    className="inline-flex h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-slate-300"
-                  >
-                    清空
+                    {isAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                    AI 深度拆解
                   </button>
                 </div>
 
@@ -293,33 +455,50 @@ export function ViralMockAgent() {
                   <section className="rounded-[32px] border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-semibold text-teal-700">Mock 结论</p>
+                        <p className="text-sm font-semibold text-teal-700">
+                          {result.mode === "mock" ? "模拟拆解：规则演示" : "AI 深度拆解：真实 AI 结果"}
+                        </p>
                         <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-                          爆款潜力：{result.viralPotential}
+                          爆款潜力：{result.level}
                         </h2>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">{result.summary}</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{result.beginnerConclusion}</p>
                       </div>
-                      <div className={"rounded-3xl border px-5 py-4 text-center " + getLevelClass(result.viralPotential)}>
-                        <p className="text-xs font-semibold">模拟分数</p>
-                        <p className="mt-1 text-3xl font-bold text-slate-950">{result.score}</p>
+                      <div className="flex flex-wrap items-start gap-3">
+                        <div className={"rounded-3xl border px-5 py-4 text-center " + getLevelClass(result.level)}>
+                          <p className="text-xs font-semibold">爆款潜力评分</p>
+                          <p className="mt-1 text-3xl font-bold text-slate-950">{result.score}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={copyResult}
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-teal-200 hover:text-teal-700"
+                        >
+                          {copyState === "copied" ? <CheckCircle2 className="h-4 w-4 text-teal-600" /> : <Clipboard className="h-4 w-4" />}
+                          {copyState === "copied" ? "已复制" : "复制结果"}
+                        </button>
                       </div>
                     </div>
+                    {copyState === "failed" ? <p className="mt-3 text-sm text-rose-600">复制失败，请手动选择结果文本复制。</p> : null}
                   </section>
 
-                  <section className="grid gap-3 md:grid-cols-2">
-                    <ResultMetric label="标题吸引力" value={result.titleAttraction} />
-                    <ResultMetric label="卖点清晰度" value={result.sellingPointClarity} />
-                    <ResultMetric label="场景代入感" value={result.sceneSense} />
-                    <ResultMetric label="评论需求强度" value={result.commentDemand} />
-                    <ResultMetric label="痛点强度" value={result.painPointStrength} />
-                    <ResultMetric label="内容可拍性" value={result.contentShootability} />
-                  </section>
+                  {result.metrics ? (
+                    <section className="grid gap-3 md:grid-cols-2">
+                      <ResultMetric label="标题吸引力" value={result.metrics.titleAttraction} />
+                      <ResultMetric label="卖点清晰度" value={result.metrics.sellingPointClarity} />
+                      <ResultMetric label="场景代入感" value={result.metrics.sceneSense} />
+                      <ResultMetric label="评论需求强度" value={result.metrics.commentDemand} />
+                      <ResultMetric label="痛点强度" value={result.metrics.painPointStrength} />
+                      <ResultMetric label="内容可拍性" value={result.metrics.contentShootability} />
+                    </section>
+                  ) : null}
 
                   <section className="grid gap-3 lg:grid-cols-2">
-                    <SimpleList title="主要加分点" items={result.bonusPoints} />
-                    <SimpleList title="主要短板" items={result.weakPoints} />
-                    <SimpleList title="优化建议" items={result.optimizationSuggestions} />
-                    <SimpleList title="可尝试的内容角度" items={result.suggestedAngles} />
+                    <SimpleList title="核心卖点" items={result.sellingPoints} />
+                    <SimpleList title="用户痛点" items={result.painPoints} />
+                    <SimpleList title="内容钩子" items={result.hooks} />
+                    <SimpleList title="标题优化建议" items={result.titleSuggestions} />
+                    <SimpleList title="短视频开头建议" items={result.videoOpenings} />
+                    <SimpleList title="风险提醒" items={result.risks} />
                   </section>
                 </div>
               ) : null}
@@ -328,19 +507,19 @@ export function ViralMockAgent() {
             <aside className="space-y-4">
               <section className="sticky top-4 rounded-[28px] border border-white/80 bg-white/95 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
                 <p className="text-sm font-semibold text-teal-700">怎么用</p>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">只做初筛，不做最终决定</h2>
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">先模拟，再决定要不要消耗 AI</h2>
                 <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
                   <p className="flex gap-2">
                     <ClipboardList className="mt-1 h-4 w-4 shrink-0 text-teal-600" />
-                    先粘贴一个商品或一段笔记素材。
+                    先填素材文案，标题和链接可以先不填。
                   </p>
                   <p className="flex gap-2">
-                    <Brain className="mt-1 h-4 w-4 shrink-0 text-teal-600" />
-                    看标题、卖点、场景、评论需求和可拍性。
+                    <Wand2 className="mt-1 h-4 w-4 shrink-0 text-teal-600" />
+                    模拟拆解只跑本地规则，不请求后端。
                   </p>
                   <p className="flex gap-2">
-                    <Lightbulb className="mt-1 h-4 w-4 shrink-0 text-teal-600" />
-                    根据建议补充素材，再去真实选品体检。
+                    <Brain className="mt-1 h-4 w-4 shrink-0 text-amber-600" />
+                    AI 深度拆解会请求后端接口并消耗 AI 额度，适合正式复核。
                   </p>
                 </div>
               </section>

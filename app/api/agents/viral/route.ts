@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callAiText, getAiConfig } from "@/lib/server/aiClient";
-import type { EvidenceCard, MaterialAgentResult, MaterialInput, ViralAgentResult, ViralLevel } from "@/lib/types";
+import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
+import { platformLabels, platformOptions } from "@/lib/types";
+import type { EvidenceCard, MaterialAgentResult, MaterialInput, Platform, ViralAgentResult, ViralLevel } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -8,60 +9,35 @@ export const maxDuration = 45;
 const OPENAI_TIMEOUT_MS = 45 * 1000;
 const MAX_OUTPUT_TOKENS = 2200;
 const REQUEST_BODY_LIMIT_BYTES = 96 * 1024;
+const MAX_MATERIAL_TEXT_LENGTH = 8000;
 
-const levelReasonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    level: { type: "string", enum: ["高", "中", "低"] },
-    reason: { type: "string" },
-  },
-  required: ["level", "reason"],
-} as const;
+type ViralAiData = {
+  score: number;
+  level: ViralLevel;
+  sellingPoints: string[];
+  painPoints: string[];
+  hooks: string[];
+  titleSuggestions: string[];
+  videoOpenings: string[];
+  risks: string[];
+  beginnerConclusion: string;
+};
 
-const viralAgentJsonSchema = {
-  name: "viral_agent_result",
-  strict: true,
-  schema: {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      titleAttraction: levelReasonSchema,
-      sellingPointClarity: levelReasonSchema,
-      sceneSense: levelReasonSchema,
-      commentDemand: levelReasonSchema,
-      painPointStrength: levelReasonSchema,
-      contentShootability: levelReasonSchema,
-      viralPotential: { type: "string", enum: ["高", "中", "低"] },
-      bonusPoints: { type: "array", items: { type: "string" } },
-      weakPoints: { type: "array", items: { type: "string" } },
-      optimizationSuggestions: { type: "array", items: { type: "string" } },
-      suggestedAngles: { type: "array", items: { type: "string" } },
-      summary: { type: "string" },
-    },
-    required: [
-      "titleAttraction",
-      "sellingPointClarity",
-      "sceneSense",
-      "commentDemand",
-      "painPointStrength",
-      "contentShootability",
-      "viralPotential",
-      "bonusPoints",
-      "weakPoints",
-      "optimizationSuggestions",
-      "suggestedAngles",
-      "summary",
-    ],
-  },
-} as const;
+type ApiError = {
+  code: string;
+  message: string;
+};
 
-function jsonError(error: string, status = 400) {
-  return NextResponse.json({ error }, { status });
+type ApiResponse =
+  | { ok: true; data: ViralAiData; result?: ViralAgentResult }
+  | { ok: false; error: ApiError };
+
+function jsonResponse(body: ApiResponse, status = 200) {
+  return NextResponse.json(body, { status });
 }
 
-function getAccessPassword() {
-  return process.env.ACCESS_PASSWORD || process.env.APP_ACCESS_PASSWORD;
+function legacyJsonError(error: string, status = 400) {
+  return NextResponse.json({ error }, { status });
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -82,85 +58,55 @@ function asLevel(value: unknown): ViralLevel {
   return value === "高" || value === "中" || value === "低" ? value : "低";
 }
 
-function asLevelReason(value: unknown) {
+function asPlatform(value: unknown): Platform | null {
+  return platformOptions.includes(value as Platform) ? value as Platform : null;
+}
+
+function clampScore(value: unknown) {
+  const score = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(score)) return 50;
+  return Math.min(100, Math.max(0, Math.round(score)));
+}
+
+function limitItems(items: string[], max = 5) {
+  return items.slice(0, max);
+}
+
+function normalizeAiData(value: unknown): ViralAiData {
   const source = isPlainObject(value) ? value : {};
-  const reason = asString(source.reason, "证据不足");
+  const score = clampScore(source.score);
   return {
-    level: asLevel(source.level),
-    reason: reason || "证据不足",
+    score,
+    level: asLevel(source.level) || (score >= 72 ? "高" : score >= 45 ? "中" : "低"),
+    sellingPoints: limitItems(asStringArray(source.sellingPoints)),
+    painPoints: limitItems(asStringArray(source.painPoints)),
+    hooks: limitItems(asStringArray(source.hooks)),
+    titleSuggestions: limitItems(asStringArray(source.titleSuggestions)),
+    videoOpenings: limitItems(asStringArray(source.videoOpenings)),
+    risks: limitItems(asStringArray(source.risks)),
+    beginnerConclusion: asString(source.beginnerConclusion, "当前素材证据不足，建议补充标题、卖点、价格、场景和评论反馈后再判断。"),
   };
 }
 
-function stripCodeFence(outputText: string) {
-  const trimmed = outputText.trim();
-  const fencedJson = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return (fencedJson?.[1] ?? trimmed).trim();
+function asLevelReason(level: ViralLevel, reason: string) {
+  return { level, reason: reason || "证据不足" };
 }
 
-function repairJsonText(outputText: string) {
-  const withoutFence = stripCodeFence(outputText);
-  const start = withoutFence.indexOf("{");
-  const end = withoutFence.lastIndexOf("}");
-  const sliced = start >= 0 && end > start ? withoutFence.slice(start, end + 1) : withoutFence;
-  return sliced
-    .replace(/,\s*([}\]])/g, "$1")
-    .replace(/\u0000/g, "")
-    .trim();
-}
-
-function parseAiJson(outputText: string): unknown {
-  const first = stripCodeFence(outputText);
-  if (!first) {
-    throw new Error("Empty AI response");
-  }
-
-  try {
-    return JSON.parse(first);
-  } catch {
-    return JSON.parse(repairJsonText(first));
-  }
-}
-
-function normalizeViralAgentResult(value: unknown): ViralAgentResult {
-  const source = isPlainObject(value) ? value : {};
-  const result: ViralAgentResult = {
-    titleAttraction: asLevelReason(source.titleAttraction),
-    sellingPointClarity: asLevelReason(source.sellingPointClarity),
-    sceneSense: asLevelReason(source.sceneSense),
-    commentDemand: asLevelReason(source.commentDemand),
-    painPointStrength: asLevelReason(source.painPointStrength),
-    contentShootability: asLevelReason(source.contentShootability),
-    viralPotential: asLevel(source.viralPotential),
-    bonusPoints: asStringArray(source.bonusPoints).slice(0, 3),
-    weakPoints: asStringArray(source.weakPoints).slice(0, 3),
-    optimizationSuggestions: asStringArray(source.optimizationSuggestions).slice(0, 3),
-    suggestedAngles: asStringArray(source.suggestedAngles).slice(0, 3),
-    summary: asString(source.summary, "这个品的小红书爆款潜力还需要更多标题、卖点、场景或评论需求证据来判断。"),
+function toLegacyViralResult(data: ViralAiData): ViralAgentResult {
+  return {
+    titleAttraction: asLevelReason(data.level, data.hooks[0] || data.titleSuggestions[0] || "AI 已输出标题与钩子方向。"),
+    sellingPointClarity: asLevelReason(data.level, data.sellingPoints[0] || "AI 已整理核心卖点。"),
+    sceneSense: asLevelReason(data.level, data.videoOpenings[0] || "AI 已整理短视频开头方向。"),
+    commentDemand: asLevelReason(data.level, data.painPoints[0] || "AI 已整理用户痛点和需求线索。"),
+    painPointStrength: asLevelReason(data.level, data.painPoints[0] || "AI 已整理痛点强度。"),
+    contentShootability: asLevelReason(data.level, data.videoOpenings[0] || "AI 已整理可拍内容方向。"),
+    viralPotential: data.level,
+    bonusPoints: limitItems(data.sellingPoints, 3),
+    weakPoints: limitItems(data.risks, 3),
+    optimizationSuggestions: limitItems(data.titleSuggestions, 3),
+    suggestedAngles: limitItems(data.hooks, 3),
+    summary: data.beginnerConclusion,
   };
-
-  if (!result.summary) {
-    result.summary = "这个品的小红书爆款潜力还需要更多标题、卖点、场景或评论需求证据来判断。";
-  }
-  return result;
-}
-
-function getSafeLogPayload(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message.slice(0, 240),
-    };
-  }
-  return { message: "Unknown error" };
-}
-
-function getViralAgentResponseFormat() {
-  const config = getAiConfig();
-  if (config.ok && config.data.provider !== "deepseek") {
-    return { type: "json_schema" as const, json_schema: viralAgentJsonSchema };
-  }
-
-  return { type: "json_object" as const };
 }
 
 function normalizeMaterials(value: unknown) {
@@ -195,7 +141,7 @@ function normalizeEvidenceCards(value: unknown) {
     : [];
 }
 
-function buildInputText(body: Record<string, unknown>) {
+function buildLegacyInputText(body: Record<string, unknown>) {
   const keyword = asString(body.keyword);
   const manualText = asString(body.manualText);
   const linksText = asString(body.linksText);
@@ -227,55 +173,70 @@ function summarizeEvidenceCards(cards: EvidenceCard[]) {
   }));
 }
 
-function buildViralAgentPrompt(inputText: string, materialResult: MaterialAgentResult, evidenceCards: EvidenceCard[]) {
+function buildPrompt(params: {
+  title: string;
+  productUrl: string;
+  platform: Platform;
+  materialText: string;
+  materialResult?: MaterialAgentResult | null;
+  evidenceCards?: EvidenceCard[];
+}) {
   return [
-    "你是小红书选品内容分析助手。",
-    "你只判断“小红书内容爆款潜力”，不判断最终能不能做，不判断能不能做无货源，不负责找货源，不输出做或不做的最终建议。",
-    "不要夸大，不要编造没有出现的数据。所有判断必须来自用户原始素材、素材接收 Agent 结果或证据卡片。",
-    "如果素材里没有评论区信息，就在 commentDemand.reason 明确说明“评论需求证据不足”。",
-    "如果没有价格、人群、场景，也要如实提示证据不足。",
-    "标题吸引力只看标题/开头是否有钩子，不要把商品热度当成标题钩子。",
-    "卖点清晰度看卖点是否具体、好理解、容易打动用户。",
-    "场景代入感看是否有宿舍、通勤、办公、厨房、租房、旅行等明确使用场景。",
-    "痛点强度看痛点是否真实、具体、容易引发共鸣。",
-    "内容可拍性看是否容易做成小红书图文或短视频，不要判断供应链。",
-    "bonusPoints、weakPoints、optimizationSuggestions、suggestedAngles 都最多 3 条，写小白能看懂的话。",
-    "summary 用一句小白能看懂的话总结，必须点出优势和证据不足处。",
+    "你是电商运营团队里的“爆款拆解 Agent”。",
+    "你的任务是分析用户提供的商品素材、笔记文案或评论反馈，判断它是否适合做内容种草与短视频选题。",
+    "不要承诺销量，不要编造不存在的数据，不要输出医疗、金融或侵权保证。",
+    "如果证据不足，请明确说证据不足，并给出小白能补充什么信息。",
     "",
-    "必须只输出合法 JSON object，字段如下：",
+    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要额外解释。",
+    "JSON 字段固定为：",
     JSON.stringify({
-      titleAttraction: { level: "高 / 中 / 低", reason: "" },
-      sellingPointClarity: { level: "高 / 中 / 低", reason: "" },
-      sceneSense: { level: "高 / 中 / 低", reason: "" },
-      commentDemand: { level: "高 / 中 / 低", reason: "" },
-      painPointStrength: { level: "高 / 中 / 低", reason: "" },
-      contentShootability: { level: "高 / 中 / 低", reason: "" },
-      viralPotential: "高 / 中 / 低",
-      bonusPoints: [],
-      weakPoints: [],
-      optimizationSuggestions: [],
-      suggestedAngles: [],
-      summary: "",
+      score: 0,
+      level: "高 / 中 / 低",
+      sellingPoints: [],
+      painPoints: [],
+      hooks: [],
+      titleSuggestions: [],
+      videoOpenings: [],
+      risks: [],
+      beginnerConclusion: "",
     }, null, 2),
     "",
-    "素材接收 Agent 结果：",
-    JSON.stringify(materialResult, null, 2),
+    "字段要求：",
+    "- score：0 到 100 的整数。",
+    "- level：只能是 高、中、低。",
+    "- sellingPoints：核心卖点，最多 5 条。",
+    "- painPoints：用户痛点，最多 5 条。",
+    "- hooks：内容钩子，最多 5 条。",
+    "- titleSuggestions：标题优化建议，最多 5 条。",
+    "- videoOpenings：短视频开头建议，最多 5 条。",
+    "- risks：风险提醒，最多 5 条。",
+    "- beginnerConclusion：一句小白能看懂的结论，说明优势、短板和下一步。",
     "",
-    "证据卡片（可作为补充证据）：",
-    JSON.stringify(summarizeEvidenceCards(evidenceCards), null, 2),
+    `平台：${platformLabels[params.platform]}`,
+    params.title ? `素材标题：${params.title}` : "素材标题：未提供",
+    params.productUrl ? `商品/素材链接：${params.productUrl}` : "商品/素材链接：未提供",
     "",
-    "用户原始输入：",
-    inputText,
-  ].join("\n");
+    "素材文案：",
+    params.materialText,
+    "",
+    params.materialResult ? "素材接收 Agent 结果：" : "",
+    params.materialResult ? JSON.stringify(params.materialResult, null, 2) : "",
+    params.evidenceCards?.length ? "证据卡片：" : "",
+    params.evidenceCards?.length ? JSON.stringify(summarizeEvidenceCards(params.evidenceCards), null, 2) : "",
+  ].filter(Boolean).join("\n");
 }
 
-async function runViralAgent(inputText: string, materialResult: MaterialAgentResult, evidenceCards: EvidenceCard[]): Promise<ViralAgentResult> {
-  const prompt = buildViralAgentPrompt(inputText, materialResult, evidenceCards);
-
-  const aiResult = await callAiText({
+async function runViralAgent(params: {
+  title: string;
+  productUrl: string;
+  platform: Platform;
+  materialText: string;
+  materialResult?: MaterialAgentResult | null;
+  evidenceCards?: EvidenceCard[];
+}): Promise<ViralAiData> {
+  const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
-    responseFormat: getViralAgentResponseFormat(),
     messages: [
       {
         role: "system",
@@ -283,7 +244,7 @@ async function runViralAgent(inputText: string, materialResult: MaterialAgentRes
       },
       {
         role: "user",
-        content: prompt,
+        content: buildPrompt(params),
       },
     ],
   });
@@ -292,50 +253,128 @@ async function runViralAgent(inputText: string, materialResult: MaterialAgentRes
     throw new Error(aiResult.error.code);
   }
 
-  return normalizeViralAgentResult(parseAiJson(aiResult.data));
+  return normalizeAiData(aiResult.data);
+}
+
+function getErrorMessage(code: string) {
+  if (code === "missing_api_key" || code === "missing_model" || code === "missing_base_url") {
+    return "AI 服务未配置，请先检查服务端环境变量。";
+  }
+  if (code === "timeout") return "AI 请求超时，请稍后重试。";
+  if (code === "json_parse_error") return "AI 返回格式异常，请稍后重试。";
+  return getSafeAiClientErrorMessage(code as Parameters<typeof getSafeAiClientErrorMessage>[0]);
+}
+
+function toStructuredError(code: string, status = 500) {
+  return jsonResponse({
+    ok: false,
+    error: {
+      code,
+      message: getErrorMessage(code),
+    },
+  }, status);
+}
+
+function isStandaloneViralRequest(body: Record<string, unknown>) {
+  return "materialText" in body || "content" in body || "platform" in body || "productUrl" in body || "title" in body;
+}
+
+async function handleStandaloneRequest(body: Record<string, unknown>) {
+  const title = asString(body.title).slice(0, 160);
+  const productUrl = asString(body.productUrl || body.url).slice(0, 400);
+  const materialText = asString(body.materialText || body.content);
+  const platform = asPlatform(body.platform);
+
+  if (!materialText) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "missing_content", message: "请先填写素材文案。" },
+    }, 400);
+  }
+
+  if (materialText.length > MAX_MATERIAL_TEXT_LENGTH) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "content_too_large", message: "素材文案太长，请控制在 8000 字以内。" },
+    }, 413);
+  }
+
+  if (!platform) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "invalid_platform", message: "平台选择不正确，请重新选择。" },
+    }, 400);
+  }
+
+  try {
+    const data = await runViralAgent({ title, productUrl, platform, materialText });
+    return jsonResponse({ ok: true, data });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "unknown_error";
+    return toStructuredError(code);
+  }
+}
+
+async function handleLegacyRequest(body: Record<string, unknown>) {
+  const materialText = buildLegacyInputText(body);
+  if (!materialText) {
+    return legacyJsonError("请先放入素材。", 400);
+  }
+
+  if (materialText.length > MAX_MATERIAL_TEXT_LENGTH) {
+    return legacyJsonError("这次素材太多了，建议先减少输入后重试。", 413);
+  }
+
+  const materialResult = normalizeMaterialResult(body.materialAgentResult);
+  if (!materialResult) {
+    return legacyJsonError("请先识别素材，再进行爆款拆解。", 400);
+  }
+
+  try {
+    const data = await runViralAgent({
+      title: asString(body.keyword),
+      productUrl: "",
+      platform: "xhs",
+      materialText,
+      materialResult,
+      evidenceCards: normalizeEvidenceCards(body.evidenceCards),
+    });
+    return jsonResponse({ ok: true, data, result: toLegacyViralResult(data) });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "unknown_error";
+    return legacyJsonError(getErrorMessage(code), 500);
+  }
 }
 
 export async function POST(request: NextRequest) {
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > REQUEST_BODY_LIMIT_BYTES) {
-    return jsonError("这次素材太多了，建议先减少输入后重试。", 413);
+    return jsonResponse({
+      ok: false,
+      error: { code: "body_too_large", message: "请求体过大，请减少素材后重试。" },
+    }, 413);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return jsonError("请求格式不正确，请刷新页面后重试。", 400);
+    return jsonResponse({
+      ok: false,
+      error: { code: "invalid_json", message: "请求格式不正确，请刷新页面后重试。" },
+    }, 400);
   }
 
   if (!isPlainObject(body)) {
-    return jsonError("请先放入素材。", 400);
+    return jsonResponse({
+      ok: false,
+      error: { code: "invalid_body", message: "请求体必须是 JSON object。" },
+    }, 400);
   }
 
-  const inputText = buildInputText(body);
-  if (!inputText) {
-    return jsonError("请先放入素材。", 400);
+  if (isStandaloneViralRequest(body)) {
+    return handleStandaloneRequest(body);
   }
 
-  const materialResult = normalizeMaterialResult(body.materialAgentResult);
-  if (!materialResult) {
-    return jsonError("请先识别素材，再进行爆款拆解。", 400);
-  }
-
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonError("服务端未配置访问密码。", 500);
-  }
-
-  if (asString(body.accessPassword) !== configuredPassword) {
-    return jsonError("请先输入正确的访问密码。", 401);
-  }
-
-  try {
-    const result = await runViralAgent(inputText, materialResult, normalizeEvidenceCards(body.evidenceCards));
-    return NextResponse.json({ result });
-  } catch (error) {
-    console.error("Viral Agent failed", getSafeLogPayload(error));
-    return jsonError("爆款拆解失败，请补充标题、卖点、场景或评论需求后重试。", 500);
-  }
+  return handleLegacyRequest(body);
 }
