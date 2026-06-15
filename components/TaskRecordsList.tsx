@@ -149,7 +149,7 @@ export function TaskRecordsList() {
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
                 <p className="text-lg font-black text-slate-950">还没有保存的爆款拆解记录</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  去 /viral 生成 mock 或 AI 拆解结果后，点击“保存到任务记录”，这里就会出现历史记录。
+                  先去 /viral 做一次 mock 或 AI 分析，生成结果后点击“保存到任务记录”，这里就会出现历史记录。
                 </p>
                 <Link
                   href="/viral"
@@ -190,6 +190,12 @@ export function TaskRecordsList() {
                           >
                             {open ? "收起" : "展开详情"}
                           </button>
+                          <Link
+                            href={`/tasks/${item.id}`}
+                            className="rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-bold text-teal-800 transition hover:border-teal-300 hover:bg-teal-100"
+                          >
+                            查看详情
+                          </Link>
                         </div>
                       </div>
 
