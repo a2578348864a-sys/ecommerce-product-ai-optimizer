@@ -40,6 +40,21 @@ function legacyJsonError(error: string, status = 400) {
   return NextResponse.json({ error }, { status });
 }
 
+function getAccessPassword() {
+  return process.env.ACCESS_PASSWORD || process.env.APP_ACCESS_PASSWORD;
+}
+
+function authError(code: "missing_access_password" | "unauthorized", status: 401 | 500, standalone: boolean) {
+  const message = code === "missing_access_password" ? "服务端访问密码未配置。" : "访问密码错误或缺失。";
+  if (!standalone) {
+    return legacyJsonError(message, status);
+  }
+  return jsonResponse({
+    ok: false,
+    error: { code, message },
+  }, status);
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -142,6 +157,7 @@ function normalizeEvidenceCards(value: unknown) {
 }
 
 function buildLegacyInputText(body: Record<string, unknown>) {
+  const input = asString(body.input);
   const keyword = asString(body.keyword);
   const manualText = asString(body.manualText);
   const linksText = asString(body.linksText);
@@ -152,6 +168,7 @@ function buildLegacyInputText(body: Record<string, unknown>) {
     .filter(Boolean);
 
   return [
+    input ? `用户输入：\n${input}` : "",
     keyword ? `关键词/品类：${keyword}` : "",
     manualText ? `用户原始素材：\n${manualText}` : "",
     linksText ? `用户粘贴链接：\n${linksText}` : "",
@@ -372,7 +389,17 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  if (isStandaloneViralRequest(body)) {
+  const standalone = isStandaloneViralRequest(body);
+  const configuredPassword = getAccessPassword();
+  if (!configuredPassword) {
+    return authError("missing_access_password", 500, standalone);
+  }
+
+  if (asString(body.accessPassword) !== configuredPassword) {
+    return authError("unauthorized", 401, standalone);
+  }
+
+  if (standalone) {
     return handleStandaloneRequest(body);
   }
 

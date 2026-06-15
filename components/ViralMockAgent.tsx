@@ -165,6 +165,8 @@ function createMockResult(rawText: string): DisplayResult {
 }
 
 function mapApiError(code: string, message: string) {
+  if (code === "unauthorized") return "访问密码错误或缺失，请检查后重试。";
+  if (code === "missing_access_password") return "服务端访问密码未配置，请先检查服务端设置。";
   if (code === "missing_api_key" || code === "missing_model" || code === "missing_base_url") {
     return "AI 服务未配置：请先检查服务端 AI 环境变量。";
   }
@@ -244,9 +246,11 @@ export function ViralMockAgent() {
   const [productUrl, setProductUrl] = useState("");
   const [platform, setPlatform] = useState<Platform>("xhs");
   const [materialText, setMaterialText] = useState("");
+  const [accessPassword, setAccessPassword] = useState("");
   const [result, setResult] = useState<DisplayResult | null>(null);
   const [notice, setNotice] = useState("模拟拆解是规则演示；AI 深度拆解会请求后端并消耗 AI 额度。");
   const [fieldError, setFieldError] = useState("");
+  const [accessPasswordError, setAccessPasswordError] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -272,6 +276,13 @@ export function ViralMockAgent() {
 
   async function runAiAnalysis() {
     if (!validateMaterial()) return;
+    if (!accessPassword.trim()) {
+      setAccessPasswordError("请先输入访问密码。");
+      setNotice("AI 深度拆解需要访问密码，未填写时不会请求后端。");
+      return;
+    }
+
+    setAccessPasswordError("");
     setIsAiLoading(true);
     setNotice("AI 深度拆解准备请求后端。注意：真实点击会消耗 AI 额度。");
     setCopyState("idle");
@@ -288,6 +299,7 @@ export function ViralMockAgent() {
           productUrl,
           materialText,
           platform,
+          accessPassword,
         }),
         signal: controller.signal,
       });
@@ -402,6 +414,21 @@ export function ViralMockAgent() {
                       <option key={item} value={item}>{platformLabels[item]}</option>
                     ))}
                   </select>
+                </label>
+
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
+                  <input
+                    value={accessPassword}
+                    type="password"
+                    onChange={(event) => {
+                      setAccessPassword(event.target.value);
+                      setAccessPasswordError("");
+                    }}
+                    placeholder="AI 深度拆解前需要填写"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 md:w-80"
+                  />
+                  {accessPasswordError ? <p className="mt-2 text-sm font-semibold text-rose-600">{accessPasswordError}</p> : null}
                 </label>
 
                 <label className="mt-4 block">
