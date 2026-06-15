@@ -7,18 +7,31 @@ export const runtime = "nodejs";
 export const maxDuration = 45;
 
 const OPENAI_TIMEOUT_MS = 45 * 1000;
-const MAX_OUTPUT_TOKENS = 2200;
+const MAX_OUTPUT_TOKENS = 2400;
 const REQUEST_BODY_LIMIT_BYTES = 96 * 1024;
 const MAX_MATERIAL_TEXT_LENGTH = 8000;
 
+const agentPlatformLabels = {
+  ...platformLabels,
+  tiktok: "TikTok",
+  "1688": "1688",
+  alibaba: "阿里国际站",
+} as const;
+
+type AgentPlatform = keyof typeof agentPlatformLabels;
+type ViralPotentialLevel = "高潜力" | "可优化" | "一般" | "不建议主推";
+
 type ViralAiData = {
   score: number;
-  level: ViralLevel;
+  level: ViralPotentialLevel;
+  oneLineSummary: string;
   sellingPoints: string[];
   painPoints: string[];
   hooks: string[];
   titleSuggestions: string[];
   videoOpenings: string[];
+  commentTriggers: string[];
+  conversionSuggestions: string[];
   risks: string[];
   beginnerConclusion: string;
 };
@@ -31,6 +44,21 @@ type ApiError = {
 type ApiResponse =
   | { ok: true; data: ViralAiData; result?: ViralAgentResult }
   | { ok: false; error: ApiError };
+
+const defaultAiData: ViralAiData = {
+  score: 60,
+  level: "一般",
+  oneLineSummary: "素材有一定可拆解空间，但需要补充更具体的卖点、场景和用户反馈。",
+  sellingPoints: ["补充商品的核心功能、价格带和差异点，让用户知道为什么值得点开。"],
+  painPoints: ["补充目标用户正在遇到的具体麻烦，不要只写泛泛的好用。"],
+  hooks: ["用“人群 + 痛点 + 结果”写开头，例如：桌面乱的人先看这个收纳思路。"],
+  titleSuggestions: ["标题里加入具体人群、使用场景和结果感，避免只写商品名。"],
+  videoOpenings: ["前三秒先展示使用前的混乱状态，再切到解决后的对比画面。"],
+  commentTriggers: ["引导用户评论自己的使用场景、尺寸疑问或想看的对比角度。"],
+  conversionSuggestions: ["补充价格、适用人群、使用步骤和购买前需要确认的尺寸/规格。"],
+  risks: ["当前证据不足，需人工复核平台规则、价格竞争和夸大宣传风险。"],
+  beginnerConclusion: "先把素材补到“谁用、解决什么、怎么拍、为什么买”四点，再决定是否消耗更多预算测试。",
+};
 
 function jsonResponse(body: ApiResponse, status = 200) {
   return NextResponse.json(body, { status });
@@ -49,10 +77,7 @@ function authError(code: "missing_access_password" | "unauthorized", status: 401
   if (!standalone) {
     return legacyJsonError(message, status);
   }
-  return jsonResponse({
-    ok: false,
-    error: { code, message },
-  }, status);
+  return jsonResponse({ ok: false, error: { code, message } }, status);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -64,42 +89,58 @@ function asString(value: unknown, fallback = "") {
 }
 
 function asStringArray(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
-    : [];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
 }
 
-function asLevel(value: unknown): ViralLevel {
-  return value === "高" || value === "中" || value === "低" ? value : "低";
-}
-
-function asPlatform(value: unknown): Platform | null {
-  return platformOptions.includes(value as Platform) ? value as Platform : null;
+function withDefaultItems(items: string[], fallback: string[], max = 5) {
+  const cleaned = items.filter(Boolean).slice(0, max);
+  return cleaned.length ? cleaned : fallback.slice(0, max);
 }
 
 function clampScore(value: unknown) {
   const score = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(score)) return 50;
+  if (!Number.isFinite(score)) return 60;
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
-function limitItems(items: string[], max = 5) {
-  return items.slice(0, max);
+function levelFromScore(score: number): ViralPotentialLevel {
+  if (score >= 80) return "高潜力";
+  if (score >= 65) return "可优化";
+  if (score >= 50) return "一般";
+  return "不建议主推";
+}
+
+function legacyLevelFromScore(score: number): ViralLevel {
+  if (score >= 80) return "高";
+  if (score >= 50) return "中";
+  return "低";
+}
+
+function asAgentPlatform(value: unknown): AgentPlatform | null {
+  const text = asString(value);
+  if ((platformOptions as readonly string[]).includes(text)) return text as Platform;
+  if (text === "tiktok" || text === "1688" || text === "alibaba") return text;
+  return null;
 }
 
 function normalizeAiData(value: unknown): ViralAiData {
   const source = isPlainObject(value) ? value : {};
   const score = clampScore(source.score);
+  const fallback = defaultAiData;
   return {
     score,
-    level: asLevel(source.level) || (score >= 72 ? "高" : score >= 45 ? "中" : "低"),
-    sellingPoints: limitItems(asStringArray(source.sellingPoints)),
-    painPoints: limitItems(asStringArray(source.painPoints)),
-    hooks: limitItems(asStringArray(source.hooks)),
-    titleSuggestions: limitItems(asStringArray(source.titleSuggestions)),
-    videoOpenings: limitItems(asStringArray(source.videoOpenings)),
-    risks: limitItems(asStringArray(source.risks)),
-    beginnerConclusion: asString(source.beginnerConclusion, "当前素材证据不足，建议补充标题、卖点、价格、场景和评论反馈后再判断。"),
+    level: levelFromScore(score),
+    oneLineSummary: asString(source.oneLineSummary, fallback.oneLineSummary) || fallback.oneLineSummary,
+    sellingPoints: withDefaultItems(asStringArray(source.sellingPoints), fallback.sellingPoints),
+    painPoints: withDefaultItems(asStringArray(source.painPoints), fallback.painPoints),
+    hooks: withDefaultItems(asStringArray(source.hooks), fallback.hooks),
+    titleSuggestions: withDefaultItems(asStringArray(source.titleSuggestions), fallback.titleSuggestions),
+    videoOpenings: withDefaultItems(asStringArray(source.videoOpenings), fallback.videoOpenings),
+    commentTriggers: withDefaultItems(asStringArray(source.commentTriggers), fallback.commentTriggers),
+    conversionSuggestions: withDefaultItems(asStringArray(source.conversionSuggestions), fallback.conversionSuggestions),
+    risks: withDefaultItems(asStringArray(source.risks), fallback.risks),
+    beginnerConclusion: asString(source.beginnerConclusion, fallback.beginnerConclusion) || fallback.beginnerConclusion,
   };
 }
 
@@ -108,18 +149,19 @@ function asLevelReason(level: ViralLevel, reason: string) {
 }
 
 function toLegacyViralResult(data: ViralAiData): ViralAgentResult {
+  const level = legacyLevelFromScore(data.score);
   return {
-    titleAttraction: asLevelReason(data.level, data.hooks[0] || data.titleSuggestions[0] || "AI 已输出标题与钩子方向。"),
-    sellingPointClarity: asLevelReason(data.level, data.sellingPoints[0] || "AI 已整理核心卖点。"),
-    sceneSense: asLevelReason(data.level, data.videoOpenings[0] || "AI 已整理短视频开头方向。"),
-    commentDemand: asLevelReason(data.level, data.painPoints[0] || "AI 已整理用户痛点和需求线索。"),
-    painPointStrength: asLevelReason(data.level, data.painPoints[0] || "AI 已整理痛点强度。"),
-    contentShootability: asLevelReason(data.level, data.videoOpenings[0] || "AI 已整理可拍内容方向。"),
-    viralPotential: data.level,
-    bonusPoints: limitItems(data.sellingPoints, 3),
-    weakPoints: limitItems(data.risks, 3),
-    optimizationSuggestions: limitItems(data.titleSuggestions, 3),
-    suggestedAngles: limitItems(data.hooks, 3),
+    titleAttraction: asLevelReason(level, data.hooks[0] || data.titleSuggestions[0] || data.oneLineSummary),
+    sellingPointClarity: asLevelReason(level, data.sellingPoints[0] || data.oneLineSummary),
+    sceneSense: asLevelReason(level, data.videoOpenings[0] || data.oneLineSummary),
+    commentDemand: asLevelReason(level, data.commentTriggers[0] || data.painPoints[0] || data.oneLineSummary),
+    painPointStrength: asLevelReason(level, data.painPoints[0] || data.oneLineSummary),
+    contentShootability: asLevelReason(level, data.videoOpenings[0] || data.hooks[0] || data.oneLineSummary),
+    viralPotential: level,
+    bonusPoints: data.sellingPoints.slice(0, 3),
+    weakPoints: data.risks.slice(0, 3),
+    optimizationSuggestions: data.conversionSuggestions.slice(0, 3),
+    suggestedAngles: data.hooks.slice(0, 3),
     summary: data.beginnerConclusion,
   };
 }
@@ -190,46 +232,89 @@ function summarizeEvidenceCards(cards: EvidenceCard[]) {
   }));
 }
 
+function getPlatformInstruction(platform: AgentPlatform) {
+  switch (platform) {
+    case "xhs":
+      return "小红书重点看：种草感、真实体验、标题钩子、评论区话题、是否像真实用户分享。";
+    case "douyin":
+      return "抖音重点看：前三秒停留、冲突感、画面动作、转化口播、是否能用短视频讲清楚。";
+    case "tiktok":
+      return "TikTok 重点看：视觉冲击、海外用户能否秒懂、短句钩子、场景动作和跨文化表达。";
+    case "taobao":
+    case "tmall":
+      return "淘宝/天猫重点看：搜索转化、卖点可信度、购买理由、规格价格是否能支撑下单。";
+    case "jd":
+      return "京东重点看：品质信任、参数清楚、售后顾虑、购买理由是否理性充分。";
+    case "pdd":
+      return "拼多多重点看：低价理由、强对比、刚需痛点、是否能减少廉价感和信任顾虑。";
+    case "1688":
+      return "1688 重点看：批发/货盘/成本/供货吸引力、是否适合拿来做选品或分销。";
+    case "alibaba":
+      return "阿里国际站重点看：B端采购理由、规格参数、应用场景、MOQ/供货能力和海外买家表达。";
+    default:
+      return "手动输入重点看：素材证据是否完整、卖点是否具体、场景和用户痛点是否清楚。";
+  }
+}
+
 function buildPrompt(params: {
   title: string;
   productUrl: string;
-  platform: Platform;
+  platform: AgentPlatform;
   materialText: string;
   materialResult?: MaterialAgentResult | null;
   evidenceCards?: EvidenceCard[];
 }) {
   return [
-    "你是电商运营团队里的“爆款拆解 Agent”。",
-    "你的任务是分析用户提供的商品素材、笔记文案或评论反馈，判断它是否适合做内容种草与短视频选题。",
-    "不要承诺销量，不要编造不存在的数据，不要输出医疗、金融或侵权保证。",
-    "如果证据不足，请明确说证据不足，并给出小白能补充什么信息。",
+    "你是资深电商运营和内容投放负责人，正在做“爆款素材拆解报告”。",
+    "你的任务不是泛泛夸产品，而是把用户给的标题、链接、商品素材、评论反馈或选题想法，拆成运营可以直接照着改的建议。",
+    "必须基于用户素材判断，不要编造销量、评价、平台数据或功效承诺。证据不足时要直接写“证据不足”，并告诉小白运营下一步补什么。",
     "",
-    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要额外解释。",
+    "重点分析维度：",
+    "- 用户第一眼为什么会停留，停留理由是否具体。",
+    "- 素材钩子强不强，是否有反差、痛点、结果感或悬念。",
+    "- 卖点是否具体，是否能说清楚比同类强在哪里。",
+    "- 痛点是否真实，是否来自明确人群、场景或评论需求。",
+    "- 场景是否清楚，用户能不能想象自己会怎么用。",
+    "- 是否适合短视频/图文种草，前三秒或首图怎么做。",
+    "- 标题是否有点击欲，是否避免只写商品名。",
+    "- 哪些地方像广告硬推，应该如何改成真实体验表达。",
+    "- 小白运营应该怎么改标题、开头、评论区话题和转化信息。",
+    "",
+    `平台：${agentPlatformLabels[params.platform]}`,
+    `平台差异要求：${getPlatformInstruction(params.platform)}`,
+    "",
+    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要解释文字。",
     "JSON 字段固定为：",
     JSON.stringify({
-      score: 0,
-      level: "高 / 中 / 低",
+      score: 60,
+      level: "一般",
+      oneLineSummary: "",
       sellingPoints: [],
       painPoints: [],
       hooks: [],
       titleSuggestions: [],
       videoOpenings: [],
+      commentTriggers: [],
+      conversionSuggestions: [],
       risks: [],
       beginnerConclusion: "",
     }, null, 2),
     "",
     "字段要求：",
-    "- score：0 到 100 的整数。",
-    "- level：只能是 高、中、低。",
-    "- sellingPoints：核心卖点，最多 5 条。",
-    "- painPoints：用户痛点，最多 5 条。",
-    "- hooks：内容钩子，最多 5 条。",
-    "- titleSuggestions：标题优化建议，最多 5 条。",
-    "- videoOpenings：短视频开头建议，最多 5 条。",
-    "- risks：风险提醒，最多 5 条。",
-    "- beginnerConclusion：一句小白能看懂的结论，说明优势、短板和下一步。",
+    "- score 必须是 0-100 的数字；不要写百分号。",
+    "- level 必须根据 score 输出：80+ 高潜力，65-79 可优化，50-64 一般，50以下 不建议主推。",
+    "- oneLineSummary 用一句话说清“为什么有/没有爆款潜力”。",
+    "- 每个数组输出 3-5 条；每条必须具体、可执行，禁止只写“提升吸引力”“优化内容”这种空话。",
+    "- sellingPoints 写核心卖点，必须贴近素材。",
+    "- painPoints 写用户真实痛点或证据不足点。",
+    "- hooks 写开头钩子/首图角度。",
+    "- titleSuggestions 写可以直接改标题的方向。",
+    "- videoOpenings 写短视频前三秒脚本或画面动作。",
+    "- commentTriggers 写评论区可引导的话题和问题。",
+    "- conversionSuggestions 写转化补强建议，例如价格、规格、对比、信任、购买理由。",
+    "- risks 写广告硬推、夸大、侵权、平台规则、证据不足等风险。",
+    "- beginnerConclusion 写给小白运营的一段结论，包含下一步怎么改。",
     "",
-    `平台：${platformLabels[params.platform]}`,
     params.title ? `素材标题：${params.title}` : "素材标题：未提供",
     params.productUrl ? `商品/素材链接：${params.productUrl}` : "商品/素材链接：未提供",
     "",
@@ -246,7 +331,7 @@ function buildPrompt(params: {
 async function runViralAgent(params: {
   title: string;
   productUrl: string;
-  platform: Platform;
+  platform: AgentPlatform;
   materialText: string;
   materialResult?: MaterialAgentResult | null;
   evidenceCards?: EvidenceCard[];
@@ -257,7 +342,7 @@ async function runViralAgent(params: {
     messages: [
       {
         role: "system",
-        content: "你只输出严格 JSON。不要输出 Markdown、解释、代码块或额外文本。",
+        content: "你只输出严格 JSON object。不要输出 Markdown、解释、代码块或额外文本。",
       },
       {
         role: "user",
@@ -300,7 +385,7 @@ async function handleStandaloneRequest(body: Record<string, unknown>) {
   const title = asString(body.title).slice(0, 160);
   const productUrl = asString(body.productUrl || body.url).slice(0, 400);
   const materialText = asString(body.materialText || body.content);
-  const platform = asPlatform(body.platform);
+  const platform = asAgentPlatform(body.platform);
 
   if (!materialText) {
     return jsonResponse({
