@@ -35,21 +35,21 @@ export function WorkspaceSidebar() {
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-4 flex flex-col gap-3">
-        <div className="premium-card rounded-[32px] p-5">
-          <div className="premium-shell rounded-[26px] p-1.5">
+        <div className="surface-card rounded-[32px] p-5">
+          <div className="glass-panel rounded-[26px] p-1.5">
             <div className="premium-inner flex min-h-[112px] flex-col justify-between rounded-[21px] p-4">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-sky-500 text-white shadow-[0_18px_36px_rgba(20,184,166,0.26)]">
+              <div className="icon-glass size-12 rounded-2xl">
                 <Sparkles className="size-5" />
               </div>
               <div>
-                <p className="mt-5 text-[10px] font-black uppercase tracking-[0.24em] text-teal-700">Local Agent</p>
-                <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">轻选 Agent</h1>
-                <p className="mt-1 text-xs leading-5 text-slate-500">本地优先的选品工作台</p>
+                <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-teal-700">Local Agent</p>
+                <h1 className="section-title mt-1 text-2xl">轻选 Agent</h1>
+                <p className="muted-text mt-1 text-xs leading-5">本地优先的选品工作台</p>
               </div>
             </div>
           </div>
         </div>
-        <nav className="premium-card rounded-[32px] p-2.5" aria-label="工作台导航">
+        <nav className="surface-card rounded-[32px] p-2.5" aria-label="工作台导航">
           {workspaceNavItems.map((item) => {
             const Icon = item.icon;
             const active = isActivePath(pathname, item.href);
@@ -60,7 +60,7 @@ export function WorkspaceSidebar() {
                 aria-current={active ? "page" : undefined}
                 className={"premium-button mb-1 flex h-12 w-full items-center gap-3 rounded-[22px] px-3 text-sm font-bold last:mb-0 " + (active ? "glass-nav-active" : "text-slate-600 hover:bg-emerald-50/70 hover:text-emerald-800")}
               >
-                <span className={"flex size-8 items-center justify-center rounded-2xl " + (active ? "bg-white/70 text-emerald-700 shadow-sm" : "bg-white text-slate-500 shadow-sm")}>
+                <span className={"flex size-8 items-center justify-center rounded-2xl " + (active ? "bg-white/75 text-emerald-700 shadow-sm" : "bg-white/75 text-slate-500 shadow-sm")}>
                   <Icon className="size-4" />
                 </span>
                 {item.label}

@@ -52,7 +52,7 @@ export function CopyButton({ text, label = "复制结果", className = "" }: Cop
     <button
       type="button"
       onClick={handleCopy}
-      className={`inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-teal-300 hover:text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 ${className}`}
+      className={`glass-button inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500/30 ${className}`}
       title={label}
     >
       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}

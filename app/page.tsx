@@ -1618,17 +1618,17 @@ export default function Home() {
   ];
 
   return (
-    <main className="app-surface px-3 py-4 sm:px-5 lg:px-6">
+    <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
       <div className="relative mx-auto grid max-w-[1540px] gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
         <WorkspaceSidebar />
 
         <div className="flex min-w-0 flex-col gap-5">
-          <header className="premium-card rounded-[34px] px-5 py-4">
+          <header className="surface-card rounded-[34px] px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="eyebrow">Qingxuan Workspace</p>
-                <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">轻选 Agent 工作台</h1>
-                <p className="mt-1 text-sm text-slate-500">按步骤放素材、识别证据、判断能不能做。</p>
+                <h1 className="section-title mt-2 text-2xl">轻选 Agent 工作台</h1>
+                <p className="muted-text mt-1 text-sm">按步骤放素材、识别证据、判断能不能做。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="status-pill px-3 py-1 text-sm">
@@ -1648,7 +1648,7 @@ export default function Home() {
             <WorkspaceMobileNav />
           </header>
 
-          <section className="premium-shell overflow-hidden rounded-[38px] p-1.5">
+          <section className="glass-panel overflow-hidden rounded-[38px] p-1.5">
             <div className="premium-inner rounded-[32px] p-5 sm:p-6">
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_300px]">
               <div>
@@ -1665,7 +1665,7 @@ export default function Home() {
                     ["02", "识别证据", "整理商品卖点"],
                     ["03", "开始体检", "判断能不能做"],
                   ].map(([step, title, text]) => (
-                    <div key={step} className="premium-card-soft rounded-[22px] p-3 transition duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 sm:rounded-[26px] sm:p-4">
+                    <div key={step} className="surface-card-soft rounded-[22px] p-3 transition duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 sm:rounded-[26px] sm:p-4">
                       <p className="text-[10px] font-black tracking-[0.18em] text-teal-600 sm:text-xs">{step}</p>
                       <h3 className="mt-1 text-xs font-black text-slate-950 sm:mt-2 sm:text-sm">{title}</h3>
                       <p className="mt-1 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">{text}</p>
@@ -1673,7 +1673,7 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              <div className="premium-card-soft hidden rounded-[30px] p-5 md:block">
+              <div className="surface-card-soft hidden rounded-[30px] p-5 md:block">
                 <p className="text-sm font-black text-slate-950">当前状态</p>
                 <div className="mt-3 flex flex-col gap-2">
                   {heroStats.map((item) => (
@@ -1690,12 +1690,12 @@ export default function Home() {
 
           <form onSubmit={handleSubmit} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex min-w-0 flex-col gap-5">
-              <section className="premium-card rounded-[34px] p-5 shadow-[0_26px_70px_rgba(13,148,136,0.13)] ring-1 ring-emerald-200/45 sm:p-6">
+              <section className="surface-card rounded-[34px] p-5 ring-1 ring-emerald-200/35 sm:p-6">
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="eyebrow">第一步</p>
-                    <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-950">粘贴你的选品素材</h2>
-                    <p className="mt-1 text-sm text-slate-500">先把信息放进来，后面的按钮会按顺序带你走。</p>
+                    <h2 className="section-title mt-3 text-3xl">粘贴你的选品素材</h2>
+                    <p className="muted-text mt-1 text-sm">先把信息放进来，后面的按钮会按顺序带你走。</p>
                   </div>
                   <span className="status-pill px-3 py-1 text-xs">
                     {assistantState.title}
@@ -1741,7 +1741,7 @@ export default function Home() {
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={handleDrop}
                     onPaste={handlePaste}
-                    className="rounded-[28px] border border-dashed border-teal-200/80 bg-teal-50/70 p-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+                    className="surface-card-soft rounded-[28px] border-dashed border-teal-200/80 p-4 text-center"
                   >
                     <input
                       ref={fileInputRef}
@@ -1751,7 +1751,7 @@ export default function Home() {
                       className="hidden"
                       onChange={handleFileChange}
                     />
-                    <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-[0_14px_28px_rgba(15,23,42,0.08)]">
+                    <div className="icon-glass mx-auto size-12 rounded-2xl">
                       <ImagePlus className="size-5" />
                     </div>
                     <p className="mt-2 text-sm font-black text-slate-900">图片 / 截图</p>
@@ -1778,7 +1778,7 @@ export default function Home() {
                 {imageMaterials.length ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {imageMaterials.map((image) => (
-                      <div key={image.id} className="relative overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                        <div key={image.id} className="relative overflow-hidden rounded-2xl border border-white/80 bg-white/80 shadow-sm">
                         {image.previewUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={image.previewUrl} alt={image.fileName || "商品截图"} className="h-24 w-full object-cover" />
@@ -1843,7 +1843,7 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="mt-4 grid gap-2 rounded-[26px] border border-teal-100 bg-teal-50/70 p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
+                <div className="surface-card-soft mt-4 grid gap-2 rounded-[26px] p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
                   <p><span className="font-semibold text-teal-800">1 识别素材：</span>{recognizeHint}</p>
                   <p><span className="font-semibold text-teal-800">2 爆款拆解：</span>{viralHint}</p>
                   <p><span className="font-semibold text-teal-800">3 开始体检：</span>{analyzeHint}</p>
@@ -1855,10 +1855,10 @@ export default function Home() {
                 {error ? <div className="mt-3"><AlertBox tone="error" text={error} /></div> : null}
                 {notice ? <div className="mt-3"><AlertBox tone="notice" text={notice} /></div> : null}
 
-                <details className="mt-3 rounded-[24px] border border-slate-200/80 bg-slate-50/70 p-3">
+                <details className="surface-card-soft mt-3 rounded-[24px] p-3">
                   <summary className="cursor-pointer text-sm font-semibold text-slate-800">更多设置 / 手动补充</summary>
                   <div className="mt-3 flex flex-col gap-3">
-                    <details className="rounded-[22px] border border-indigo-100 bg-white p-3">
+                    <details className="surface-card-soft rounded-[22px] p-3">
                       <summary className="cursor-pointer text-sm font-semibold text-indigo-800">识别不准？手动填写商品信息</summary>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <TextInput label="商品名" value={manualEvidenceDraft.productName} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, productName: value }))} placeholder="例如：透明桌面收纳盒" />
@@ -1884,10 +1884,10 @@ export default function Home() {
                 </details>
               </section>
 
-              <section className="premium-card-soft rounded-[30px] p-4 sm:p-5">
+              <section className="surface-card-soft rounded-[30px] p-4 sm:p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="flex items-start gap-3">
-                    <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.86)]">
+                    <span className="icon-glass size-11 shrink-0 rounded-2xl">
                       <ClipboardCheck className="size-5" />
                     </span>
                     <div className="min-w-0">
@@ -1910,11 +1910,11 @@ export default function Home() {
                 ))}
               </div>
 
-              <section className="premium-card rounded-[34px] p-5 sm:p-6">
+              <section className="surface-card rounded-[34px] p-5 sm:p-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="eyebrow">Agent 工作区</p>
-                    <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">当前流程</h2>
+                    <h2 className="section-title mt-3 text-2xl">当前流程</h2>
                   </div>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
                     前两个 Agent 可真实运行，其余待接入
@@ -1927,7 +1927,7 @@ export default function Home() {
               {viralAgentResult ? <ViralAgentSummaryCard result={viralAgentResult} /> : null}
 
               {form.evidenceCards.length ? (
-                <section className="premium-card rounded-[34px] p-5 sm:p-6">
+                <section className="surface-card rounded-[34px] p-5 sm:p-6">
                   <SectionTitle title="确认证据" count={form.evidenceCards.length} />
                   <div className="flex flex-col gap-3">
                     {form.evidenceCards.map((card, index) => (
@@ -1945,8 +1945,8 @@ export default function Home() {
                   </div>
                 </section>
               ) : (
-                <div className="premium-card flex min-h-[220px] flex-col items-center justify-center rounded-[34px] border-dashed border-teal-200 p-6 text-center">
-                  <div className="flex size-12 items-center justify-center rounded-2xl bg-teal-600 text-white shadow-[0_18px_34px_rgba(20,184,166,0.22)]">
+                <div className="surface-card flex min-h-[220px] flex-col items-center justify-center rounded-[34px] border-dashed border-teal-200 p-6 text-center">
+                  <div className="icon-glass size-12 rounded-2xl">
                     <UploadCloud className="size-5" />
                   </div>
                   <h3 className="mt-3 text-base font-black text-slate-950">等待素材输入</h3>
@@ -1958,7 +1958,7 @@ export default function Home() {
                 <section className="flex flex-col gap-4">
                   <SummaryCard result={result} />
                   <TrafficLightPanel risks={result.trafficLightRisks} />
-                  <details open className="premium-card rounded-[30px] p-4">
+                  <details open className="surface-card rounded-[30px] p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">详细依据</summary>
                     <div className="mt-4 flex flex-col gap-4">
                       <KeywordAndDirectionPanel result={result} />
@@ -1966,7 +1966,7 @@ export default function Home() {
                       <NextActions result={result} />
                     </div>
                   </details>
-                  <details className="premium-card rounded-[30px] p-4">
+                  <details className="surface-card rounded-[30px] p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">候选商品</summary>
                     <div className="mt-4 flex flex-col gap-4">
                       <div className="grid gap-4 xl:grid-cols-3">
@@ -1983,14 +1983,14 @@ export default function Home() {
                       </div>
                     </div>
                   </details>
-                  <details className="premium-card rounded-[30px] p-4">
+                  <details className="surface-card rounded-[30px] p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">平台读取情况</summary>
                     <div className="mt-4 flex flex-col gap-4">
                       <PlatformStatusList statuses={result.platformSearchStatus} />
                       <EvidenceSection result={result} />
                     </div>
                   </details>
-                  <details className="premium-card rounded-[30px] p-4">
+                  <details className="surface-card rounded-[30px] p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">原始证据</summary>
                     <div className="mt-4">
                       <EvidenceCardList cards={result.evidenceCards} />
@@ -2004,9 +2004,9 @@ export default function Home() {
             </div>
 
             <aside className="flex flex-col gap-4">
-              <section className="premium-card sticky top-4 rounded-[34px] p-5">
+              <section className="surface-card sticky top-4 rounded-[34px] p-5">
                 <p className="eyebrow">现在该做什么</p>
-                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">{assistantState.title}</h2>
+                <h2 className="section-title mt-3 text-2xl">{assistantState.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{assistantState.text}</p>
                 <p className="mt-1 hidden text-xs leading-5 text-slate-500 sm:block">{assistantState.detail}</p>
                 {result ? (
