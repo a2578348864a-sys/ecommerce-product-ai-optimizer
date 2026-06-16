@@ -56,7 +56,7 @@ cd /www
 git clone 你的仓库地址 alibaba-ai-assistant
 cd /www/alibaba-ai-assistant
 npm install
-cp deploy/env.production.example .env.local
+cp deploy/env.production.example .env.local  # 部署配置文件位于项目 09_交付与归档/deploy/
 ```
 
 然后手动打开 `.env.local`，填写真实环境变量。不要把 `.env.local` 上传到 Git。
@@ -86,7 +86,7 @@ http://服务器公网IP:3005
 项目已经提供 PM2 示例：
 
 ```text
-deploy/ecosystem.config.cjs
+deploy/ecosystem.config.cjs  # (实际位于项目 09_交付与归档/deploy/，部署时需复制到代码目录)
 ```
 
 如果项目目录不是 `/www/alibaba-ai-assistant`，先把示例里的 `cwd` 和 `env_file` 改成你的真实路径。
@@ -94,7 +94,7 @@ deploy/ecosystem.config.cjs
 启动：
 
 ```bash
-pm2 start deploy/ecosystem.config.cjs
+pm2 start deploy/ecosystem.config.cjs  # (实际位于项目 09_交付与归档/deploy/，部署时需复制到代码目录)
 ```
 
 查看状态：
@@ -135,7 +135,7 @@ pm2 startup
 项目已经提供 Nginx 示例：
 
 ```text
-deploy/nginx.conf.example
+deploy/nginx.conf.example  # (实际位于项目 09_交付与归档/deploy/，部署时需复制到代码目录)
 ```
 
 核心逻辑是把公网请求转发到：

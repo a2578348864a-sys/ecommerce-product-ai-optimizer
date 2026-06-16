@@ -2,7 +2,7 @@
 
 ## 当前生产地址
 
-- 公网地址：[http://112.124.54.81](http://112.124.54.81/)
+- 公网地址：[http://你的服务器IP](http://你的服务器IP/)
 - 服务端口：`3005`
 
 ## 推荐连接方式
@@ -23,14 +23,14 @@ Permission denied (publickey)
 
 ## 服务器信息
 
-- 登录用户：`root`
-- 公网 IP：`112.124.54.81`
-- 项目目录：`/www/alibaba-ai-assistant`
-- PM2 服务名：`alibaba-ai-assistant`
+- 登录用户：`你的用户名`
+- 公网 IP：`你的服务器IP`
+- 项目目录：`/www/你的项目目录`
+- PM2 服务名：`你的PM2服务名`
 
 注意：
 
-- 项目目录来自历史部署记录，进入服务器后仍需用 `pwd` 和 `git status -sb` 再确认。
+- 项目目录来自历史部署记录（示例路径已脱敏），进入服务器后仍需用 `pwd` 和 `git status -sb` 再确认。
 - PM2 服务名来自历史日志和当前运行信息，后续部署前仍需用 `pm2 status` 再确认。
 
 ## 标准部署流程
@@ -38,7 +38,7 @@ Permission denied (publickey)
 在阿里云 Workbench 网页终端中执行：
 
 ```bash
-cd /www/alibaba-ai-assistant
+cd /www/你的项目目录
 pwd
 git branch --show-current
 git status -sb
@@ -48,10 +48,10 @@ git pull --ff-only origin main
 git log --oneline -3
 git status -sb
 npm run build
-pm2 restart alibaba-ai-assistant
+pm2 restart 你的PM2服务名
 pm2 status
 curl -s http://127.0.0.1:3005/api/health
-curl -s http://112.124.54.81/api/health
+curl -s http://你的服务器IP/api/health
 ```
 
 说明：
@@ -66,10 +66,10 @@ curl -s http://112.124.54.81/api/health
 部署后至少检查：
 
 ```bash
-curl -I http://112.124.54.81/
-curl -I http://112.124.54.81/viral
-curl -I http://112.124.54.81/tasks
-curl -s http://112.124.54.81/api/health
+curl -I http://你的服务器IP/
+curl -I http://你的服务器IP/viral
+curl -I http://你的服务器IP/tasks
+curl -s http://你的服务器IP/api/health
 ```
 
 页面验收：
