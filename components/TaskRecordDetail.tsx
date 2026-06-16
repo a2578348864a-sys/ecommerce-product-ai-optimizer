@@ -152,36 +152,36 @@ export function TaskRecordDetail({ id }: { id: string }) {
         <WorkspaceSidebar />
 
         <div className="flex min-w-0 flex-col gap-5">
-          <header className="premium-card rounded-[34px] px-5 py-4">
+          <header className="surface-card rounded-[34px] px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Task Detail</p>
                 <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950">任务详情</h1>
-                <p className="mt-1 text-sm text-slate-500">查看单条爆款拆解记录的输入和完整结果。</p>
+                <p className="mt-1 text-sm text-slate-500">查看单条爆款拆解记录的输入、摘要和完整 JSON。</p>
               </div>
               <Link
                 href="/tasks"
                 className="glass-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-bold"
               >
-                返回任务列表
+                返回任务中心
               </Link>
             </div>
             <WorkspaceMobileNav />
           </header>
 
           {loading ? (
-            <section className="premium-card rounded-[38px] p-8 text-sm text-teal-800">
+            <section className="surface-card rounded-[38px] p-8 text-sm text-teal-800">
               正在读取任务详情...
             </section>
           ) : error ? (
-            <section className="premium-card rounded-[38px] p-8">
+            <section className="surface-card rounded-[38px] p-8">
               <p className="text-sm font-bold text-rose-700">{error}</p>
               <Link href="/tasks" className="mt-5 inline-flex text-sm font-bold text-teal-700">
                 返回任务列表
               </Link>
             </section>
           ) : record ? (
-            <section className="premium-card rounded-[38px] p-5 sm:p-6">
+            <section className="surface-card rounded-[38px] p-5 sm:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-teal-700">Viral Record</p>
@@ -200,22 +200,26 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl bg-white/80 p-4">
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <div className="surface-card-soft rounded-[22px] p-4">
+                  <p className="text-xs font-bold text-slate-400">记录 ID</p>
+                  <p className="mt-1 break-all text-xs font-bold text-slate-800">{record.id}</p>
+                </div>
+                <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">创建时间</p>
                   <p className="mt-1 text-sm font-bold text-slate-800">{formatDate(record.createdAt)}</p>
                 </div>
-                <div className="rounded-2xl bg-white/80 p-4">
+                <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">平台</p>
                   <p className="mt-1 text-sm font-bold text-slate-800">
                     {extendedPlatformLabels[record.platform] || record.platform}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-white/80 p-4">
+                <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">来源</p>
                   <p className="mt-1 text-sm font-bold text-slate-800">{sourceLabel(record.source)}</p>
                 </div>
-                <div className="rounded-2xl bg-white/80 p-4">
+                <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">类型</p>
                   <p className="mt-1 text-sm font-bold text-slate-800">{record.type}</p>
                 </div>
@@ -244,6 +248,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4">
                 <h3 className="text-sm font-black text-slate-950">完整结果 JSON</h3>
+                <p className="mt-1 text-xs text-slate-500">用于复核 AI/mock 返回结构，长内容可以滚动查看。</p>
                 <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
                   {resultJson}
                 </pre>
@@ -259,7 +264,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   {deleting ? "删除中..." : "删除这条记录"}
                 </button>
                 <Link href="/tasks" className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-slate-700">
-                  返回任务列表
+                  返回任务中心
                 </Link>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>

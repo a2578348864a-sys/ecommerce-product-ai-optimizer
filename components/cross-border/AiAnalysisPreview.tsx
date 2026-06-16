@@ -35,7 +35,7 @@ function pendingText(value?: string | number | boolean) {
 
 function ListBlock({ label, items }: { label: string; items?: string[] }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
       {items?.length ? (
         <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-800">
@@ -52,7 +52,7 @@ function ListBlock({ label, items }: { label: string; items?: string[] }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <p className="text-xs font-semibold text-slate-500">{label}</p>
       <p className="mt-1 text-sm leading-6 text-slate-800">{value}</p>
     </div>
@@ -75,7 +75,7 @@ export function AiAnalysisPreview({
       : "生成 AI 选品分析";
 
   return (
-    <section className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5 shadow-sm">
+    <section className="surface-card rounded-[28px] p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-indigo-700">AI 选品分析</p>
@@ -90,7 +90,7 @@ export function AiAnalysisPreview({
           type="button"
           onClick={onGenerate}
           disabled={loading}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-indigo-300"
+          className="glass-button-primary inline-flex h-10 shrink-0 items-center justify-center px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
           {buttonText}
         </button>
@@ -119,7 +119,7 @@ export function AiAnalysisPreview({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <div className="surface-card-soft rounded-[22px] p-3">
           <p className="text-xs font-semibold text-slate-500">推荐结论</p>
           {analysis ? (
             <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-sm font-bold ${recommendationClasses[analysis.recommendation]}`}>

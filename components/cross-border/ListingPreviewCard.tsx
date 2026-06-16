@@ -69,7 +69,7 @@ function PreviewSection({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="surface-card-soft rounded-[22px] p-4">
       <h3 className="text-sm font-bold text-slate-950">{title}</h3>
       <div className="mt-2 divide-y divide-slate-100">{children}</div>
     </div>
@@ -190,7 +190,7 @@ export function ListingPreviewCard({
   }
 
   return (
-    <section className="rounded-2xl border border-teal-100 bg-teal-50/60 p-5 shadow-sm">
+    <section className="surface-card rounded-[28px] p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-teal-700">上架资料预览</p>
@@ -202,7 +202,7 @@ export function ListingPreviewCard({
         <button
           type="button"
           onClick={handleCopy}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition hover:bg-teal-700"
+          className="glass-button-primary inline-flex h-10 shrink-0 items-center justify-center px-4 text-sm font-semibold"
         >
           一键复制预览内容
         </button>
@@ -269,7 +269,7 @@ export function ListingPreviewCard({
           </ul>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="surface-card-soft rounded-[22px] p-4">
           <h3 className="text-sm font-bold text-slate-950">人工确认状态</h3>
           <p className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
             待人工确认

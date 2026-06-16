@@ -266,24 +266,24 @@ function formatResultForCopy(result: DisplayResult) {
 
 function ResultMetric({ label, value }: { label: string; value: ViralLevelReason }) {
   return (
-    <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+    <div className="surface-card-soft rounded-[22px] p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-bold text-slate-900">{label}</p>
-        <span className={"rounded-full border px-2 py-0.5 text-xs font-semibold " + getLevelClass(value.level)}>
+        <span className={"status-pill px-2 py-0.5 text-xs font-semibold " + getLevelClass(value.level)}>
           {value.level}
         </span>
       </div>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{value.reason}</p>
+      <p className="mt-2 text-sm leading-6 muted-text">{value.reason}</p>
     </div>
   );
 }
 
 function SimpleList({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="rounded-2xl border border-white/80 bg-white p-4 shadow-sm">
+    <div className="surface-card-soft rounded-[22px] p-4">
       <p className="text-sm font-bold text-slate-900">{title}</p>
       {items.length ? (
-        <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+        <ul className="mt-3 space-y-2 text-sm leading-6 muted-text">
           {items.map((item, index) => (
             <li key={item} className="flex gap-2">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
@@ -294,7 +294,7 @@ function SimpleList({ title, items }: { title: string; items: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm leading-6 text-slate-500">暂无明确内容，建议补充更多素材后再分析。</p>
+        <p className="mt-3 text-sm leading-6 muted-text">暂无明确内容，建议补充更多素材后再分析。</p>
       )}
     </div>
   );
@@ -443,23 +443,23 @@ export function ViralMockAgent() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.14),transparent_32rem),linear-gradient(180deg,#f8fcfb_0%,#f4f8fb_100%)] px-4 py-8 sm:px-6 lg:px-8">
+    <main className="app-surface px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto grid max-w-[1540px] gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
         <WorkspaceSidebar />
 
         <div className="min-w-0 space-y-5">
-          <header className="rounded-[28px] border border-white/80 bg-white/90 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+          <header className="surface-card rounded-[34px] px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-teal-600">Viral Agent</p>
+                <p className="eyebrow">Viral Agent</p>
                 <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">爆款拆解</h1>
-                <p className="mt-1 text-sm text-slate-500">先用规则模拟，再按需接入真实 AI 做运营报告。</p>
+                <p className="mt-1 text-sm muted-text">先用规则模拟，再按需接入真实 AI 做运营报告。</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-slate-600">
+                <span className="glass-pill px-3 py-1 text-sm font-semibold">
                   模拟拆解：不消耗额度
                 </span>
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">
+                <span className="status-pill border-amber-200 bg-amber-50 text-amber-700 px-3 py-1 text-sm font-semibold">
                   AI 深度拆解：会消耗 AI 额度
                 </span>
               </div>
@@ -469,7 +469,7 @@ export function ViralMockAgent() {
 
           <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-5">
-              <div className="rounded-[32px] border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
+              <div className="surface-card rounded-[34px] p-6">
                 <div className="flex items-start gap-4">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
                     <Sparkles className="h-6 w-6" />
@@ -493,7 +493,7 @@ export function ViralMockAgent() {
                         setSavedRecordId("");
                       }}
                       placeholder="例如：宿舍桌面洞洞板收纳架"
-                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+                      className="premium-input h-11 w-full rounded-[22px] px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400"
                     />
                   </label>
                   <label className="block">
@@ -505,7 +505,7 @@ export function ViralMockAgent() {
                         setSavedRecordId("");
                       }}
                       placeholder="可粘贴小红书、抖音、淘宝等链接"
-                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+                      className="premium-input h-11 w-full rounded-[22px] px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400"
                     />
                   </label>
                 </div>
@@ -518,7 +518,7 @@ export function ViralMockAgent() {
                       setPlatform(event.target.value as AgentPlatform);
                       setSavedRecordId("");
                     }}
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 md:w-64"
+                    className="glass-select h-11 w-full rounded-[22px] px-4 text-sm text-slate-900 outline-none transition md:w-64"
                   >
                     {extendedPlatformOptions.map((item) => (
                       <option key={item} value={item}>{extendedPlatformLabels[item]}</option>
@@ -536,7 +536,7 @@ export function ViralMockAgent() {
                       setAccessPasswordError("");
                     }}
                     placeholder="AI 深度拆解前需要填写"
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 md:w-80"
+                    className="premium-input h-11 w-full rounded-[22px] px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 md:w-80"
                   />
                   {accessPasswordError ? <p className="mt-2 text-sm font-semibold text-rose-600">{accessPasswordError}</p> : null}
                 </label>
@@ -556,7 +556,7 @@ export function ViralMockAgent() {
                     }}
                     rows={10}
                     placeholder="粘贴标题、卖点、评论区反馈、商品价格、使用场景。例如：宿舍桌面收纳架，29.9 元，评论区很多人问链接..."
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20"
+                    className="glass-input-area w-full rounded-[22px] px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400"
                   />
                   {fieldError ? <p className="mt-2 text-sm font-semibold text-rose-600">{fieldError}</p> : null}
                 </label>
@@ -566,7 +566,7 @@ export function ViralMockAgent() {
                     type="button"
                     onClick={runMockAnalysis}
                     disabled={isAiLoading}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-teal-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <Wand2 className="h-4 w-4" />
                     生成模拟拆解
@@ -575,14 +575,14 @@ export function ViralMockAgent() {
                     type="button"
                     onClick={runAiAnalysis}
                     disabled={isAiLoading}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-5 text-sm font-semibold text-amber-800 transition hover:-translate-y-0.5 hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="glass-button-soft inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {isAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
                     AI 深度拆解
                   </button>
                 </div>
 
-                <div className="mt-4 flex gap-2 rounded-2xl border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm leading-6 text-teal-800">
+                <div className="mt-4 flex gap-2 surface-card-soft rounded-[22px] px-4 py-3 text-sm leading-6 text-teal-800">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>{notice}</span>
                 </div>
@@ -590,7 +590,7 @@ export function ViralMockAgent() {
 
               {result ? (
                 <div className="space-y-5">
-                  <section className="rounded-[32px] border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.07)]">
+                  <section className="surface-card rounded-[34px] p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <p className="text-sm font-semibold text-teal-700">
@@ -599,21 +599,21 @@ export function ViralMockAgent() {
                         <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
                           爆款潜力：{result.level}
                         </h2>
-                        <div className="mt-3 rounded-2xl border border-teal-100 bg-teal-50/70 p-4">
+                        <div className="mt-3 surface-card-soft rounded-[22px] p-4">
                           <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">一句话判断</p>
                           <p className="mt-2 text-sm leading-6 text-slate-700">{result.oneLineSummary}</p>
                         </div>
                         <p className="mt-3 text-sm leading-6 text-slate-600">{result.beginnerConclusion}</p>
                       </div>
                       <div className="flex flex-wrap items-start gap-3">
-                        <div className={"rounded-3xl border px-5 py-4 text-center " + getLevelClass(result.level)}>
+                        <div className={"glass-pill px-5 py-4 text-center " + getLevelClass(result.level)}>
                           <p className="text-xs font-semibold">爆款潜力评分</p>
                           <p className="mt-1 text-3xl font-bold text-slate-950">{result.score}</p>
                         </div>
                         <button
                           type="button"
                           onClick={copyResult}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-teal-200 hover:text-teal-700"
+                          className="glass-button inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold"
                         >
                           {copyState === "copied" ? <CheckCircle2 className="h-4 w-4 text-teal-600" /> : <Clipboard className="h-4 w-4" />}
                           {copyState === "copied" ? "已复制" : "复制结果"}
@@ -622,7 +622,7 @@ export function ViralMockAgent() {
                           type="button"
                           onClick={saveResult}
                           disabled={isSaving}
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-4 text-sm font-semibold text-teal-800 transition hover:border-teal-300 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="glass-button-soft inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                           {savedRecordId ? "已保存" : "保存到任务记录"}
@@ -658,7 +658,7 @@ export function ViralMockAgent() {
             </div>
 
             <aside className="space-y-4">
-              <section className="sticky top-4 rounded-[28px] border border-white/80 bg-white/95 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+              <section className="sticky top-4 surface-card rounded-[34px] p-5">
                 <p className="text-sm font-semibold text-teal-700">怎么用</p>
                 <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950">先模拟，再决定要不要消耗 AI</h2>
                 <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">

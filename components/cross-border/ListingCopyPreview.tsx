@@ -162,7 +162,7 @@ function CopyButton({
 
 function EmptyText({ label }: { label: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <p className="text-sm font-bold text-slate-950">{label}</p>
       <p className="mt-2 text-sm leading-6 text-slate-500">暂无</p>
     </div>
@@ -187,7 +187,7 @@ function TextBlock({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-bold text-slate-950">{label}</p>
         <CopyButton ariaLabel={`复制${label}`} copyKey={copyKey} text={copyText} onCopy={onCopy} />
@@ -215,7 +215,7 @@ function ListBlock({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-bold text-slate-950">{label}</p>
         <CopyButton ariaLabel={`复制${label}`} copyKey={copyKey} text={copyText} onCopy={onCopy} />
@@ -243,7 +243,7 @@ function FaqBlock({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-bold text-slate-950">FAQ</p>
         <CopyButton ariaLabel="复制FAQ" copyKey="faq" text={copyText} onCopy={onCopy} />
@@ -310,7 +310,7 @@ function HistoryList({
       {items.length ? (
         <div className="space-y-2">
           {items.map((item) => (
-            <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div key={item.id} className="surface-card-soft rounded-[18px] p-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -428,7 +428,7 @@ export function ListingCopyPreview({
   }
 
   return (
-    <section className="rounded-2xl border border-violet-100 bg-violet-50/70 p-5 shadow-sm">
+    <section className="surface-card rounded-[28px] p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-violet-700">英文上架文案 / Listing Copy</p>
@@ -443,7 +443,7 @@ export function ListingCopyPreview({
           type="button"
           onClick={onGenerate}
           disabled={loading}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-violet-300"
+          className="glass-button-primary inline-flex h-10 shrink-0 items-center justify-center px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
           {buttonText}
         </button>

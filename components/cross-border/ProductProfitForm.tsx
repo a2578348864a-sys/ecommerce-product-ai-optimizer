@@ -632,7 +632,7 @@ export function ProductProfitForm() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="surface-card rounded-[28px] p-5">
         <div className="mb-5">
           <h2 className="text-xl font-bold text-slate-950">商品输入表单</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -744,7 +744,7 @@ export function ProductProfitForm() {
       </section>
 
       <aside className="space-y-4">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="surface-card rounded-[28px] p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold text-slate-950">利润测算结果</h2>
@@ -755,7 +755,7 @@ export function ProductProfitForm() {
             </span>
           </div>
 
-          <div className="rounded-xl bg-slate-950 p-4 text-white">
+          <div className="rounded-[22px] bg-slate-950/90 backdrop-blur-md p-4 text-white">
             <p className="text-sm text-slate-300">建议售价</p>
             <p className="mt-1 text-3xl font-bold">{formatMoney(profitResult.suggestedPrice, profitResult.currency)}</p>
             <p className="mt-2 text-xs text-slate-400">手动售价为空时，按预期利润率自动推算。</p>
@@ -773,7 +773,7 @@ export function ProductProfitForm() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+        <section className="surface-card rounded-[28px] border-amber-200 bg-amber-50 p-5">
           <h3 className="text-sm font-bold text-amber-900">风险提示</h3>
           {profitResult.warnings.length ? (
             <ul className="mt-3 space-y-2 text-sm leading-6 text-amber-800">

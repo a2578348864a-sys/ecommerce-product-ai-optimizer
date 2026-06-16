@@ -32,7 +32,7 @@ function KeywordGroup({
       : "border-cyan-100 bg-cyan-50 text-cyan-800";
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div className="surface-card-soft rounded-[22px] p-3">
       <p className="text-sm font-bold text-slate-950">{title}</p>
       {hasItems ? (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -65,7 +65,7 @@ export function KeywordPreview({
       : "生成关键词";
 
   return (
-    <section className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-5 shadow-sm">
+    <section className="surface-card rounded-[28px] p-5">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-cyan-700">关键词生成</p>
@@ -80,7 +80,7 @@ export function KeywordPreview({
           type="button"
           onClick={onGenerate}
           disabled={loading}
-          className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-cyan-600 px-4 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-cyan-300"
+          className="glass-button-primary inline-flex h-10 shrink-0 items-center justify-center px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
           {buttonLabel}
         </button>
