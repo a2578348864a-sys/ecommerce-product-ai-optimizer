@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { platformOptions } from "@/lib/types";
 
@@ -37,6 +38,20 @@ type ViralTaskItem = {
 type ApiResponse =
   | { ok: true; data: ViralTaskItem }
   | { ok: true; data: { items: ViralTaskItem[] } }
+  | {
+    ok: true;
+    records: ViralTaskItem[];
+    data: { items: ViralTaskItem[] };
+    page: {
+      type: string;
+      q: string;
+      limit: number;
+      offset: number;
+      total: number;
+      hasMore: boolean;
+      nextOffset: number | null;
+    };
+  }
   | { ok: false; error: ApiError };
 
 function jsonResponse(body: ApiResponse, status = 200) {
@@ -63,10 +78,31 @@ function asScore(value: unknown) {
 }
 
 function parseLimit(value: string | null) {
-  if (!value) return 30;
+  if (!value) return 10;
   const limit = Number(value);
-  if (!Number.isFinite(limit) || limit < 1) return 30;
-  return Math.min(Math.trunc(limit), 100);
+  if (!Number.isFinite(limit) || limit < 1) return 10;
+  return Math.min(Math.trunc(limit), 50);
+}
+
+function parseOffset(value: string | null) {
+  if (!value) return 0;
+  const offset = Number(value);
+  if (!Number.isFinite(offset) || offset < 0) return 0;
+  return Math.trunc(offset);
+}
+
+function getSearchWhere(q: string): Prisma.ViralAnalysisRecordWhereInput[] {
+  if (!q) return [];
+
+  // SQLite stores resultJson as text here, so simple text contains search is stable enough.
+  return [
+    { title: { contains: q } },
+    { productUrl: { contains: q } },
+    { materialText: { contains: q } },
+    { level: { contains: q } },
+    { oneLineSummary: { contains: q } },
+    { resultJson: { contains: q } },
+  ];
 }
 
 function safeParseJson(value: string) {
@@ -156,16 +192,43 @@ export async function GET(request: NextRequest) {
     }, 400);
   }
 
+  const q = asString(request.nextUrl.searchParams.get("q"));
+  const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
+  const offset = parseOffset(request.nextUrl.searchParams.get("offset"));
+  const searchWhere = getSearchWhere(q);
+  const where: Prisma.ViralAnalysisRecordWhereInput = {
+    type: "viral",
+    ...(searchWhere.length ? { OR: searchWhere } : {}),
+  };
+
   try {
-    const records = await prisma.viralAnalysisRecord.findMany({
-      where: { type: "viral" },
-      orderBy: { createdAt: "desc" },
-      take: parseLimit(request.nextUrl.searchParams.get("limit")),
-    });
+    const [records, total] = await Promise.all([
+      prisma.viralAnalysisRecord.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.viralAnalysisRecord.count({ where }),
+    ]);
+
+    const items = records.map(toTaskItem);
+    const nextOffset = offset + items.length;
+    const hasMore = nextOffset < total;
 
     return jsonResponse({
       ok: true,
-      data: { items: records.map(toTaskItem) },
+      records: items,
+      data: { items },
+      page: {
+        type,
+        q,
+        limit,
+        offset,
+        total,
+        hasMore,
+        nextOffset: hasMore ? nextOffset : null,
+      },
     });
   } catch (error) {
     return isDatabaseError(error) ? databaseError() : serverError();
