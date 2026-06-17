@@ -11,6 +11,15 @@ const allowedPlatforms = new Set<string>([
   "tiktok",
   "1688",
   "alibaba",
+  "amazon",
+  "shopify",
+  "ebay",
+  "etsy",
+  "tiktok_shop",
+  "shopee",
+  "lazada",
+  "temu",
+  "other",
 ]);
 const allowedSources = new Set(["mock", "ai"]);
 const allowedTypes = new Set(["viral", "radar", "product", "risk", "sourcing"]);

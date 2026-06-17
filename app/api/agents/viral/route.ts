@@ -16,6 +16,15 @@ const agentPlatformLabels = {
   tiktok: "TikTok",
   "1688": "1688",
   alibaba: "阿里国际站",
+  amazon: "Amazon",
+  shopify: "Shopify",
+  ebay: "eBay",
+  etsy: "Etsy",
+  tiktok_shop: "TikTok Shop",
+  shopee: "Shopee",
+  lazada: "Lazada",
+  temu: "Temu",
+  other: "其他平台",
 } as const;
 
 type AgentPlatform = keyof typeof agentPlatformLabels;
@@ -117,10 +126,11 @@ function legacyLevelFromScore(score: number): ViralLevel {
   return "低";
 }
 
+const allAgentPlatforms = new Set(Object.keys(agentPlatformLabels));
+
 function asAgentPlatform(value: unknown): AgentPlatform | null {
   const text = asString(value);
-  if ((platformOptions as readonly string[]).includes(text)) return text as Platform;
-  if (text === "tiktok" || text === "1688" || text === "alibaba") return text;
+  if (allAgentPlatforms.has(text)) return text as AgentPlatform;
   return null;
 }
 
@@ -251,6 +261,23 @@ function getPlatformInstruction(platform: AgentPlatform) {
       return "1688 重点看：批发/货盘/成本/供货吸引力、是否适合拿来做选品或分销。";
     case "alibaba":
       return "阿里国际站重点看：B端采购理由、规格参数、应用场景、MOQ/供货能力和海外买家表达。";
+    case "amazon":
+      return "Amazon 重点看：搜索排名、Review数量和评分、QA区痛点、主图和A+内容质量、价格竞争力。";
+    case "shopify":
+      return "Shopify 重点看：独立站落地页说服力、产品描述完整性、信任信号、加购转化元素。";
+    case "ebay":
+      return "eBay 重点看：拍卖/一口价策略、卖家信誉、退货政策、标题关键词覆盖。";
+    case "etsy":
+      return "Etsy 重点看：手工/设计感、故事性描述、材质与工艺细节、个性化程度。";
+    case "tiktok_shop":
+      return "TikTok Shop 重点看：短视频带货力、直播间转化、评论互动率、挂车点击率。";
+    case "shopee":
+    case "lazada":
+      return "东南亚平台重点看：本地化表达、价格敏感度、宗教信仰和文化禁忌、物流时效。";
+    case "temu":
+      return "Temu 重点看：极致性价比、主图视觉冲击、是否适合低价爆款打法。";
+    case "other":
+      return "其他平台：请依据输入素材自行判断分析重点，优先看素材证据是否完整。";
     default:
       return "手动输入重点看：素材证据是否完整、卖点是否具体、场景和用户痛点是否清楚。";
   }
