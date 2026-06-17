@@ -21,6 +21,10 @@ type SourcingRisk = {
   suggestion: string;
 };
 
+type BeginnerFit = "high" | "medium" | "low";
+type BarrierLevel = "low" | "medium" | "high";
+type EntryLevel = "beginner" | "intermediate" | "experienced";
+
 type SourcingData = {
   feasibility: "high" | "medium" | "low";
   summary: string;
@@ -29,6 +33,11 @@ type SourcingData = {
   priceBand: SourcingPriceBand;
   moqEstimate: string;
   beginnerFriendly: boolean;
+  beginnerFit?: BeginnerFit;
+  complianceBarrier?: BarrierLevel;
+  logisticsDifficulty?: BarrierLevel;
+  afterSalesRisk?: BarrierLevel;
+  suggestedEntryLevel?: EntryLevel;
   risks: SourcingRisk[];
   nextSteps: string[];
 };
@@ -397,7 +406,7 @@ export function SourcingForm() {
                 </div>
               ) : null}
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
                 <div className="flex items-center gap-3">
                   <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${result.beginnerFriendly ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
                     {result.beginnerFriendly ? "适合新手操作" : "建议有经验者操作"}
@@ -406,6 +415,71 @@ export function SourcingForm() {
                     {result.beginnerFriendly ? "小白运营可以独立完成选品和采购。" : "该品类采购复杂度较高，建议找有经验的采购或服务商。"}
                   </span>
                 </div>
+
+                {result.beginnerFit || result.complianceBarrier || result.logisticsDifficulty || result.afterSalesRisk || result.suggestedEntryLevel ? (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {result.beginnerFit ? (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                        <p className="text-[11px] font-semibold text-slate-400">新手适合度</p>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
+                          result.beginnerFit === "high" ? "bg-emerald-50 text-emerald-700" :
+                          result.beginnerFit === "medium" ? "bg-amber-50 text-amber-700" :
+                          "bg-red-50 text-red-700"
+                        }`}>
+                          {result.beginnerFit === "high" ? "高" : result.beginnerFit === "medium" ? "中" : "低"}
+                        </span>
+                      </div>
+                    ) : null}
+                    {result.complianceBarrier ? (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                        <p className="text-[11px] font-semibold text-slate-400">合规门槛</p>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
+                          result.complianceBarrier === "low" ? "bg-emerald-50 text-emerald-700" :
+                          result.complianceBarrier === "medium" ? "bg-amber-50 text-amber-700" :
+                          "bg-red-50 text-red-700"
+                        }`}>
+                          {result.complianceBarrier === "low" ? "低" : result.complianceBarrier === "medium" ? "中" : "高"}
+                        </span>
+                      </div>
+                    ) : null}
+                    {result.logisticsDifficulty ? (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                        <p className="text-[11px] font-semibold text-slate-400">物流难度</p>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
+                          result.logisticsDifficulty === "low" ? "bg-emerald-50 text-emerald-700" :
+                          result.logisticsDifficulty === "medium" ? "bg-amber-50 text-amber-700" :
+                          "bg-red-50 text-red-700"
+                        }`}>
+                          {result.logisticsDifficulty === "low" ? "低" : result.logisticsDifficulty === "medium" ? "中" : "高"}
+                        </span>
+                      </div>
+                    ) : null}
+                    {result.afterSalesRisk ? (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                        <p className="text-[11px] font-semibold text-slate-400">售后风险</p>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
+                          result.afterSalesRisk === "low" ? "bg-emerald-50 text-emerald-700" :
+                          result.afterSalesRisk === "medium" ? "bg-amber-50 text-amber-700" :
+                          "bg-red-50 text-red-700"
+                        }`}>
+                          {result.afterSalesRisk === "low" ? "低" : result.afterSalesRisk === "medium" ? "中" : "高"}
+                        </span>
+                      </div>
+                    ) : null}
+                    {result.suggestedEntryLevel ? (
+                      <div className="rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                        <p className="text-[11px] font-semibold text-slate-400">建议入门级别</p>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
+                          result.suggestedEntryLevel === "beginner" ? "bg-emerald-50 text-emerald-700" :
+                          result.suggestedEntryLevel === "intermediate" ? "bg-amber-50 text-amber-700" :
+                          "bg-red-50 text-red-700"
+                        }`}>
+                          {result.suggestedEntryLevel === "beginner" ? "小白可做" : result.suggestedEntryLevel === "intermediate" ? "有经验可做" : "需资深运营"}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </section>
           ) : null}

@@ -45,8 +45,8 @@ function normalizeSummaryData(raw: unknown, productName: string): SummaryData {
   const source = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 
   const verdictRaw = asString(source.verdict);
-  const validVerdicts = ["可以做", "谨慎做", "不建议做"];
-  const verdict = validVerdicts.includes(verdictRaw) ? verdictRaw : "谨慎做";
+  const validVerdicts = ["新手可小单测试", "可做但需控制成本", "有经验再做", "新手不建议做", "暂不建议做"];
+  const verdict = validVerdicts.includes(verdictRaw) ? verdictRaw : "可做但需控制成本";
 
   const confidenceRaw = asString(source.confidence);
   const validConfidences = ["高", "中", "低"];

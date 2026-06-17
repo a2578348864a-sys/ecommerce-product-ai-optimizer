@@ -398,9 +398,12 @@ export function RiskCheckForm() {
                 <p className="mt-2 text-sm leading-6 text-slate-700">{result.summary}</p>
               </div>
 
-              {/* Risk cards */}
+              {/* Risk cards — sort red/yellow first for visibility */}
               <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {result.risks.map((risk) => (
+                {[...result.risks].sort((a, b) => {
+                  const order = { red: 0, yellow: 1, green: 2 };
+                  return (order[a.level] ?? 2) - (order[b.level] ?? 2);
+                }).map((risk) => (
                   <div key={risk.category} className="surface-card-soft rounded-[22px] p-4">
                     <div className="flex items-center gap-2">
                       <span className={`inline-block size-2.5 shrink-0 rounded-full ${levelDotClasses[risk.level]}`} />

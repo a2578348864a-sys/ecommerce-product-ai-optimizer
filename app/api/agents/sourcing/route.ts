@@ -22,6 +22,10 @@ type SourcingRisk = {
   suggestion: string;
 };
 
+type BeginnerFit = "high" | "medium" | "low";
+type BarrierLevel = "low" | "medium" | "high";
+type EntryLevel = "beginner" | "intermediate" | "experienced";
+
 type SourcingData = {
   feasibility: "high" | "medium" | "low";
   summary: string;
@@ -30,12 +34,32 @@ type SourcingData = {
   priceBand: SourcingPriceBand;
   moqEstimate: string;
   beginnerFriendly: boolean;
+  beginnerFit: BeginnerFit;
+  complianceBarrier: BarrierLevel;
+  logisticsDifficulty: BarrierLevel;
+  afterSalesRisk: BarrierLevel;
+  suggestedEntryLevel: EntryLevel;
   risks: SourcingRisk[];
   nextSteps: string[];
 };
 
 type ApiError = { code: string; message: string };
 type ApiResponse = { ok: true; data: SourcingData } | { ok: false; error: ApiError };
+
+function clampBeginnerFit(value: unknown): BeginnerFit {
+  if (value === "high" || value === "medium" || value === "low") return value;
+  return "medium";
+}
+
+function clampBarrierLevel(value: unknown): BarrierLevel {
+  if (value === "low" || value === "medium" || value === "high") return value;
+  return "low";
+}
+
+function clampEntryLevel(value: unknown): EntryLevel {
+  if (value === "beginner" || value === "intermediate" || value === "experienced") return value;
+  return "beginner";
+}
 
 const defaultData: SourcingData = {
   feasibility: "medium",
@@ -45,6 +69,11 @@ const defaultData: SourcingData = {
   priceBand: { min: "待确认", max: "待确认", unit: "CNY", note: "未提供目标售价，无法估算价格带。" },
   moqEstimate: "未提供足够信息，建议确认品类后咨询供应商。",
   beginnerFriendly: true,
+  beginnerFit: "medium",
+  complianceBarrier: "low",
+  logisticsDifficulty: "low",
+  afterSalesRisk: "low",
+  suggestedEntryLevel: "beginner",
   risks: [],
   nextSteps: ["补充商品品类和目标售价", "在 1688 搜索同类商品了解价格区间", "联系 2-3 家供应商拿样品对比"],
 };
@@ -101,6 +130,11 @@ function normalizeSourcingData(value: unknown): SourcingData {
     priceBand,
     moqEstimate: asString(source.moqEstimate, fallback.moqEstimate) || fallback.moqEstimate,
     beginnerFriendly: typeof source.beginnerFriendly === "boolean" ? source.beginnerFriendly : true,
+    beginnerFit: clampBeginnerFit(source.beginnerFit),
+    complianceBarrier: clampBarrierLevel(source.complianceBarrier),
+    logisticsDifficulty: clampBarrierLevel(source.logisticsDifficulty),
+    afterSalesRisk: clampBarrierLevel(source.afterSalesRisk),
+    suggestedEntryLevel: clampEntryLevel(source.suggestedEntryLevel),
     risks,
     nextSteps: asStringArray(source.nextSteps).slice(0, 6),
   };

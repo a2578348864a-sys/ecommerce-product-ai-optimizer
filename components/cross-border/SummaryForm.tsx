@@ -34,9 +34,11 @@ type ApiResponse =
   | { ok: false; error: { code: string; message: string } };
 
 const verdictClasses: Record<string, string> = {
-  "可以做": "border-emerald-200 bg-emerald-50 text-emerald-700",
-  "谨慎做": "border-amber-200 bg-amber-50 text-amber-700",
-  "不建议做": "border-red-200 bg-red-50 text-red-700",
+  "新手可小单测试": "border-emerald-300 bg-emerald-50 text-emerald-800",
+  "可做但需控制成本": "border-teal-200 bg-teal-50 text-teal-700",
+  "有经验再做": "border-amber-300 bg-amber-50 text-amber-800",
+  "新手不建议做": "border-orange-300 bg-orange-50 text-orange-800",
+  "暂不建议做": "border-red-300 bg-red-50 text-red-800",
 };
 
 const confidenceLabels: Record<string, string> = {
@@ -185,8 +187,9 @@ export function SummaryForm() {
           materialText: sharedProduct.description || sharedProduct.productName,
           result: {
             oneLineSummary: result.summary,
-            level: result.verdict === "可以做" ? "高" : result.verdict === "谨慎做" ? "中" : "低",
-            score: result.confidence === "高" ? 80 : result.confidence === "中" ? 50 : 20,
+            level: result.verdict === "新手可小单测试" ? "high" : result.verdict === "可做但需控制成本" ? "high" : result.verdict === "有经验再做" ? "medium" : result.verdict === "新手不建议做" ? "low" : "low",
+            score: result.verdict === "新手可小单测试" ? 85 : result.verdict === "可做但需控制成本" ? 70 : result.verdict === "有经验再做" ? 50 : result.verdict === "新手不建议做" ? 30 : 15,
+            confidence: result.confidence,
             verdict: result.verdict,
             reasons: result.reasons,
             risks: result.risks,
