@@ -350,7 +350,7 @@ export function SummaryForm() {
                   <p className="mt-1 text-sm text-slate-500">AI 汇总分析，基于已有的 {foundTypes.length} 项结果。</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex shrink-0 rounded-full border px-4 py-1.5 text-sm font-bold ${verdictClasses[result.verdict] || verdictClasses["谨慎做"]}`}>
+                  <span className={`inline-flex shrink-0 rounded-full border px-4 py-1.5 text-sm font-bold ${verdictClasses[result.verdict] || verdictClasses["可做但需控制成本"]}`}>
                     {result.verdict}
                   </span>
                   <span className="text-xs text-slate-400">
