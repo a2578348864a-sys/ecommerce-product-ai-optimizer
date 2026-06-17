@@ -1675,7 +1675,58 @@ export default function Home() {
                   rows={8}
                 />
 
-                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                {/* 主操作按钮 — 放在输入区下方首屏可见 */}
+                <div className="mt-4 grid gap-3 lg:grid-cols-5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void recognizeEvidence();
+                    }}
+                    disabled={recognizeDisabled}
+                    className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
+                  >
+                    <Sparkles className="size-4" />
+                    {recognizingEvidence ? "1 识别中" : "1 识别素材"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void analyzeViralPotential();
+                    }}
+                    disabled={viralAnalyzeDisabled}
+                    className="linear-button-soft inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
+                  >
+                    <Brain className="size-4" />
+                    {analyzingViral ? "2 分析中" : "2 爆款拆解"}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={analyzeDisabled}
+                    className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
+                  >
+                    <Wand2 className="size-4" />
+                    {loading ? "3 体检中" : "3 开始体检"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fillSample}
+                    className="linear-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold"
+                  >
+                    <RefreshCcw className="size-4" />
+                    填入示例
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearAll}
+                    className="linear-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold hover:text-red-700"
+                  >
+                    <Trash2 className="size-4" />
+                    清空
+                  </button>
+                </div>
+
+                {/* 三步说明 */}
+                <div className="mt-4 grid gap-2 md:grid-cols-3">
                   {[
                     ["01", "粘贴素材", "内容 / 链接 / 截图"],
                     ["02", "识别证据", "商品、卖点、风险"],
@@ -1689,7 +1740,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <TextInput
                     label="访问密码"
                     required
@@ -1770,55 +1821,6 @@ export default function Home() {
                     ))}
                   </div>
                 ) : null}
-
-                <div className="mt-5 grid gap-3 lg:grid-cols-5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void recognizeEvidence();
-                    }}
-                    disabled={recognizeDisabled}
-                    className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
-                  >
-                    <Sparkles className="size-4" />
-                    {recognizingEvidence ? "1 识别中" : "1 识别素材"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void analyzeViralPotential();
-                    }}
-                    disabled={viralAnalyzeDisabled}
-                    className="linear-button-soft inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
-                  >
-                    <Brain className="size-4" />
-                    {analyzingViral ? "2 分析中" : "2 爆款拆解"}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={analyzeDisabled}
-                    className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
-                  >
-                    <Wand2 className="size-4" />
-                    {loading ? "3 体检中" : "3 开始体检"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={fillSample}
-                    className="linear-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold"
-                  >
-                    <RefreshCcw className="size-4" />
-                    填入示例
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearAll}
-                    className="linear-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold hover:text-red-700"
-                  >
-                    <Trash2 className="size-4" />
-                    清空
-                  </button>
-                </div>
 
                 <div className="surface-card-soft mt-4 grid gap-2 p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
                   <p><span className="font-semibold text-teal-800">1 识别素材：</span>{recognizeHint}</p>

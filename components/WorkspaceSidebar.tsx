@@ -23,8 +23,9 @@ export const workspaceNavItems = [
   { label: "任务记录", href: "/tasks", icon: History, step: 5 },
   { label: "素材接收", href: "/materials", icon: UploadCloud },
   { label: "小白结论", href: "/summary", icon: Brain },
-  { label: "首页", href: "/", icon: House },
 ] as const;
+
+const homeItem = { label: "首页", href: "/", icon: House } as const;
 
 const navGroups = [
   {
@@ -32,8 +33,8 @@ const navGroups = [
     items: workspaceNavItems.slice(0, 5),
   },
   {
-    title: "高级工具",
-    items: workspaceNavItems.slice(5, 8),
+    title: "素材工具",
+    items: workspaceNavItems.slice(5, 7),
   },
 ] as const;
 
@@ -83,6 +84,18 @@ export function WorkspaceSidebar() {
             </div>
           </div>
         </div>
+
+        {/* 首页独立入口 */}
+        <Link
+          href={homeItem.href}
+          aria-current={isActivePath(pathname, homeItem.href) ? "page" : undefined}
+          className={"surface-card flex h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition " + (isActivePath(pathname, homeItem.href) ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
+        >
+          <span className={"flex size-7 items-center justify-center rounded-lg border " + (isActivePath(pathname, homeItem.href) ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
+            <homeItem.icon className="size-4" />
+          </span>
+          {homeItem.label}
+        </Link>
 
         <nav className="surface-card p-2" aria-label="工作台导航">
           {navGroups.map((group) => (
