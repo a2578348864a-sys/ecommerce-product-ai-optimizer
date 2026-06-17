@@ -331,6 +331,8 @@ export function ProductProfitForm() {
   const [listingCopyHistoryLoading, setListingCopyHistoryLoading] = useState(false);
   const [listingCopyHistoryMessage, setListingCopyHistoryMessage] = useState<string | null>(null);
   const [activeAiTab, setActiveAiTab] = useState<"analysis" | "keywords" | "listing">("analysis");
+  const [savingToTasks, setSavingToTasks] = useState(false);
+  const [tasksSaveMessage, setTasksSaveMessage] = useState<string | null>(null);
 
   const profitInput = useMemo<ProfitCalculationInput>(() => ({
     purchasePrice: form.purchasePrice,
@@ -591,6 +593,52 @@ export function ProductProfitForm() {
       setListingCopyError("网络异常，请检查本地服务或网络。");
     } finally {
       setListingCopyLoading(false);
+    }
+  }
+
+  async function handleSaveToTaskCenter() {
+    if (savingToTasks) return;
+    setSavingToTasks(true);
+    setTasksSaveMessage(null);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "product",
+          title: form.name.trim() || "未命名商品",
+          platform: form.targetPlatform || "manual",
+          source: "ai",
+          materialText: form.description.trim() || form.name.trim(),
+          result: {
+            oneLineSummary: profitLevelLabels[profitLevel],
+            level: profitLevel,
+            score: Math.round(profitResult.grossMargin * 100),
+            suggestedPrice: profitResult.suggestedPrice,
+            breakEvenPrice: profitResult.breakEvenPrice,
+            grossProfit: profitResult.grossProfit,
+            grossMargin: profitResult.grossMargin,
+            roi: profitResult.roi,
+            baseCost: profitResult.baseCost,
+            aiAnalysis: aiAnalysis ? {
+              recommendation: aiAnalysis.recommendation,
+              score: aiAnalysis.score,
+              reasons: aiAnalysis.reasons,
+              risks: aiAnalysis.risks,
+            } : null,
+          },
+        }),
+      });
+      const data = await response.json() as { ok?: boolean; error?: { code?: string; message?: string } };
+      if (!response.ok || !data.ok) {
+        setTasksSaveMessage(data.error?.message || "保存到任务中心失败。");
+        return;
+      }
+      setTasksSaveMessage("已保存到任务中心");
+    } catch {
+      setTasksSaveMessage("网络异常，保存失败。");
+    } finally {
+      setSavingToTasks(false);
     }
   }
 
@@ -891,13 +939,26 @@ export function ProductProfitForm() {
           <h3 className="text-lg font-bold text-slate-950">人工确认下一步</h3>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             请人工复核以上所有信息（利润测算、风险提示、上架资料预览、AI 分析结果）。
-            确认无误后，可继续后续上架流程。当前页面不保存数据。
+            确认无误后，可继续后续上架流程。
           </p>
         </div>
-        <span className="inline-flex shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
-          待人工确认
-        </span>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSaveToTaskCenter}
+            disabled={savingToTasks}
+            className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {savingToTasks ? "保存中" : "保存到任务中心"}
+          </button>
+          <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+            待人工确认
+          </span>
+        </div>
       </div>
+      {tasksSaveMessage ? (
+        <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{tasksSaveMessage}</p>
+      ) : null}
     </section>
     </div>
   );

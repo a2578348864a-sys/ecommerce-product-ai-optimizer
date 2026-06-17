@@ -907,6 +907,8 @@ export default function Home() {
   const [recognizingEvidence, setRecognizingEvidence] = useState(false);
   const [analyzingViral, setAnalyzingViral] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingToTasks, setSavingToTasks] = useState(false);
+  const [tasksMessage, setTasksMessage] = useState<string | null>(null);
   const [progressStep, setProgressStep] = useState(-1);
   const [generatedAt, setGeneratedAt] = useState("");
   const [materialsDirtyAfterEvidence, setMaterialsDirtyAfterEvidence] = useState(false);
@@ -1452,6 +1454,47 @@ export default function Home() {
       resultToWordHtml(form, result, generatedAt),
       "application/msword;charset=utf-8",
     );
+  }
+
+  function confidenceToScore(level: string) {
+    if (level === "high") return 80;
+    if (level === "medium") return 55;
+    return 30;
+  }
+
+  async function saveToTaskCenter() {
+    if (!result || savingToTasks) return;
+    setSavingToTasks(true);
+    setTasksMessage(null);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "radar",
+          title: form.keyword.trim() || "未命名分析",
+          platform: "manual",
+          source: "ai",
+          materialText: form.manualText || form.keyword,
+          result: {
+            ...result,
+            oneLineSummary: result.summary || result.agentConclusion,
+            level: result.finalDecision,
+            score: confidenceToScore(result.confidenceLevel),
+          },
+        }),
+      });
+      const data = await response.json() as { ok?: boolean; error?: { code?: string; message?: string } };
+      if (!response.ok || !data.ok) {
+        setTasksMessage(data.error?.message || "保存到任务中心失败。");
+        return;
+      }
+      setTasksMessage("已保存到任务中心");
+    } catch {
+      setTasksMessage("网络异常，保存失败。");
+    } finally {
+      setSavingToTasks(false);
+    }
   }
 
   async function saveLocalArchive() {
@@ -2105,6 +2148,13 @@ export default function Home() {
                       <Save className="size-4" />
                       {saving ? "保存中" : "保存本地档案"}
                     </button>
+                    <button type="button" onClick={saveToTaskCenter} disabled={savingToTasks} className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-semibold disabled:opacity-60">
+                      <Save className="size-4" />
+                      {savingToTasks ? "保存中" : "保存到任务中心"}
+                    </button>
+                    {tasksMessage ? (
+                      <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{tasksMessage}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </section>

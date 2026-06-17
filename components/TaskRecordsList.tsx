@@ -6,10 +6,15 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 
-const defaultType = "viral";
+const defaultType = "";
 const defaultLimit = 10;
 const taskTypes = [
+  { value: "", label: "全部类型" },
   { value: "viral", label: "爆款素材分析" },
+  { value: "radar", label: "爆款雷达分析" },
+  { value: "product", label: "选品利润分析" },
+  { value: "risk", label: "风险排查" },
+  { value: "sourcing", label: "货源判断" },
 ];
 
 const extendedPlatformLabels: Record<string, string> = {
@@ -74,12 +79,28 @@ function sourceLabel(source: string) {
   return source === "ai" ? "AI" : "mock";
 }
 
+const typeLabelMap: Record<string, string> = {
+  viral: "爆款素材分析",
+  radar: "爆款雷达分析",
+  product: "选品利润分析",
+  risk: "风险排查",
+  sourcing: "货源判断",
+};
+
+const agentLabelMap: Record<string, string> = {
+  viral: "爆款素材 Agent",
+  radar: "爆款雷达 Agent",
+  product: "选品分析 Agent",
+  risk: "风险检查 Agent",
+  sourcing: "货源判断 Agent",
+};
+
 function getTaskTypeLabel(item: TaskCenterItem) {
-  return item.type === "viral" || !item.type ? "爆款素材分析" : item.type;
+  return typeLabelMap[item.type || ""] || item.type || "未知任务";
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return item.type === "viral" || !item.type ? "爆款素材 Agent" : "规划 Agent";
+  return agentLabelMap[item.type || ""] || "规划 Agent";
 }
 
 function getTaskStatusLabel() {

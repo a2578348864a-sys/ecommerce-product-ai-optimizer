@@ -13,6 +13,7 @@ const allowedPlatforms = new Set<string>([
   "alibaba",
 ]);
 const allowedSources = new Set(["mock", "ai"]);
+const allowedTypes = new Set(["viral", "radar", "product", "risk", "sourcing"]);
 
 type ApiError = {
   code: string;
@@ -184,22 +185,18 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
-  const type = request.nextUrl.searchParams.get("type") || "viral";
-  if (type !== "viral") {
-    return jsonResponse({
-      ok: false,
-      error: { code: "invalid_type", message: "当前只支持 viral 任务记录。" },
-    }, 400);
-  }
-
+  const typeParam = request.nextUrl.searchParams.get("type");
   const q = asString(request.nextUrl.searchParams.get("q"));
   const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
   const offset = parseOffset(request.nextUrl.searchParams.get("offset"));
   const searchWhere = getSearchWhere(q);
+
   const where: Prisma.ViralAnalysisRecordWhereInput = {
-    type: "viral",
+    ...(typeParam && allowedTypes.has(typeParam) ? { type: typeParam } : {}),
     ...(searchWhere.length ? { OR: searchWhere } : {}),
   };
+
+  const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "all";
 
   try {
     const [records, total] = await Promise.all([
@@ -221,7 +218,7 @@ export async function GET(request: NextRequest) {
       records: items,
       data: { items },
       page: {
-        type,
+        type: effectiveType,
         q,
         limit,
         offset,
@@ -261,35 +258,36 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
+  const taskType = asString(body.type) || "viral";
+  if (!allowedTypes.has(taskType)) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "invalid_type", message: "不支持该任务类型。" },
+    }, 400);
+  }
+
   const materialText = asString(body.materialText);
   const platform = asString(body.platform);
   const source = asString(body.source);
 
-  if (!materialText) {
-    return jsonResponse({
-      ok: false,
-      error: { code: "missing_material", message: "素材文案不能为空。" },
-    }, 400);
-  }
-
-  if (!allowedPlatforms.has(platform)) {
-    return jsonResponse({
-      ok: false,
-      error: { code: "invalid_platform", message: "平台选择不正确，请重新选择。" },
-    }, 400);
-  }
-
-  if (!allowedSources.has(source)) {
+  if (!source || !allowedSources.has(source)) {
     return jsonResponse({
       ok: false,
       error: { code: "invalid_source", message: "记录来源只能是 mock 或 ai。" },
     }, 400);
   }
 
+  if (platform && !allowedPlatforms.has(platform)) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "invalid_platform", message: "平台选择不正确，请重新选择。" },
+    }, 400);
+  }
+
   if (!isRecord(body.result)) {
     return jsonResponse({
       ok: false,
-      error: { code: "missing_result", message: "请先生成拆解结果再保存。" },
+      error: { code: "missing_result", message: "请先生成分析结果再保存。" },
     }, 400);
   }
 
@@ -298,11 +296,11 @@ export async function POST(request: NextRequest) {
   try {
     const record = await prisma.viralAnalysisRecord.create({
       data: {
-        type: "viral",
-        title: asOptionalString(body.title),
-        platform,
+        type: taskType,
+        title: asOptionalString(body.title) || asOptionalString(body.productName),
+        platform: platform || "manual",
         productUrl: asOptionalString(body.productUrl),
-        materialText,
+        materialText: materialText || asString(body.title) || asString(body.productName) || "手动记录",
         source,
         score: resultSummary.score,
         level: resultSummary.level,
