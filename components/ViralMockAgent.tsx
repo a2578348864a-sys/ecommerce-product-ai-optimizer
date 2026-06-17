@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clipboard,
   ClipboardList,
+  Download,
   Loader2,
   Save,
   Sparkles,
@@ -234,6 +235,56 @@ function mapApiError(code: string, message: string) {
 
 function copySection(title: string, items: string[]) {
   return [title + "：", ...(items.length ? items.map((item) => `- ${item}`) : ["- 暂无"])];
+}
+
+function formatResultForMarkdown(result: DisplayResult) {
+  return [
+    `# ${result.mode === "mock" ? "模拟拆解" : "AI 深度拆解"}运营报告`,
+    "",
+    `- 爆款潜力评分：**${result.score} / 100**`,
+    `- 潜力等级：**${result.level}**`,
+    `- 一句话判断：${result.oneLineSummary}`,
+    "",
+    "## 核心卖点",
+    ...result.sellingPoints.length ? result.sellingPoints.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 用户痛点",
+    ...result.painPoints.length ? result.painPoints.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 开头钩子",
+    ...result.hooks.length ? result.hooks.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 标题建议",
+    ...result.titleSuggestions.length ? result.titleSuggestions.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 短视频开头",
+    ...result.videoOpenings.length ? result.videoOpenings.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 评论区话题",
+    ...result.commentTriggers.length ? result.commentTriggers.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 转化优化",
+    ...result.conversionSuggestions.length ? result.conversionSuggestions.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 风险提醒",
+    ...result.risks.length ? result.risks.map((s) => `- ${s}`) : ["- 暂无"],
+    "",
+    "## 小白结论",
+    result.beginnerConclusion,
+  ].join("\n");
+}
+
+function exportMarkdown(result: DisplayResult, title: string) {
+  const fileName = (title.trim().slice(0, 40) || "爆款拆解报告").replace(/[\\/:*?"<>|]+/g, "-") + ".md";
+  const blob = new Blob([formatResultForMarkdown(result)], { type: "text/markdown;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 function formatResultForCopy(result: DisplayResult) {
@@ -628,6 +679,14 @@ export function ViralMockAgent() {
                         >
                           {copyState === "copied" ? <CheckCircle2 className="h-4 w-4 text-teal-600" /> : <Clipboard className="h-4 w-4" />}
                           {copyState === "copied" ? "已复制" : "复制结果"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => result && exportMarkdown(result, title)}
+                          className="linear-button inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold"
+                        >
+                          <Download className="h-4 w-4" />
+                          导出 Markdown
                         </button>
                         <button
                           type="button"

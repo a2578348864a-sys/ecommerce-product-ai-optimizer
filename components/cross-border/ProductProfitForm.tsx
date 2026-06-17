@@ -333,6 +333,7 @@ export function ProductProfitForm() {
   const [activeAiTab, setActiveAiTab] = useState<"analysis" | "keywords" | "listing">("analysis");
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [tasksSaveMessage, setTasksSaveMessage] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   const profitInput = useMemo<ProfitCalculationInput>(() => ({
     purchasePrice: form.purchasePrice,
@@ -594,6 +595,67 @@ export function ProductProfitForm() {
     } finally {
       setListingCopyLoading(false);
     }
+  }
+
+  const profitReportText = useMemo(() => {
+    const p = profitResult;
+    const lines = [
+      `# 商品利润测算报告`,
+      "",
+      `商品名称：${form.name.trim() || "未填写"}`,
+      `目标平台：${form.targetPlatform}`,
+      `币种：${p.currency}`,
+      "",
+      `## 利润测算`,
+      `- 建议售价：${formatMoney(p.suggestedPrice, p.currency)}`,
+      `- 保本价：${formatMoney(p.breakEvenPrice, p.currency)}`,
+      `- 基础成本：${formatMoney(p.baseCost, p.currency)}`,
+      `- 总固定成本：${formatMoney(p.totalFixedCost, p.currency)}`,
+      `- 平台佣金：${formatMoney(p.commissionAmount, p.currency)}（${formatPercent(p.commissionRate)}）`,
+      `- 毛利润：${formatMoney(p.grossProfit, p.currency)}`,
+      `- 毛利率：${formatPercent(p.grossMargin)}`,
+      `- ROI：${formatPercent(p.roi)}`,
+      "",
+      `## 风险提示`,
+      ...(p.warnings.length ? p.warnings.map((w) => `- ${w}`) : ["- 当前没有明显公式风险"]),
+      "",
+    ];
+    if (aiAnalysis) {
+      lines.push("## AI 选品分析");
+      lines.push(`- 推荐结论：${aiAnalysis.recommendation}`);
+      lines.push(`- 综合评分：${aiAnalysis.score}/100`);
+      if (aiAnalysis.reasons.length) { lines.push(`- 推荐理由：${aiAnalysis.reasons.join("；")}`); }
+      if (aiAnalysis.risks.length) { lines.push(`- AI 风险点：${aiAnalysis.risks.join("；")}`); }
+      lines.push(`- 平台适配度：${aiAnalysis.platformFit}`);
+      lines.push(`- 是否适合新手：${aiAnalysis.newbieFriendly ? "是" : "否"}`);
+      lines.push("");
+    }
+    lines.push("---");
+    lines.push("> 报告由轻选 Agent 自动生成，仅供运营参考。");
+    return lines.join("\n");
+  }, [form, profitResult, aiAnalysis]);
+
+  async function handleCopyReport() {
+    try {
+      await navigator.clipboard.writeText(profitReportText);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 1800);
+    } catch {
+      setCopyState("failed");
+    }
+  }
+
+  function handleExportMarkdown() {
+    const fileName = (form.name.trim().slice(0, 40) || "利润测算报告").replace(/[\\/:*?"<>|]+/g, "-") + ".md";
+    const blob = new Blob([profitReportText], { type: "text/markdown;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
   }
 
   async function handleSaveToTaskCenter() {
@@ -945,6 +1007,20 @@ export function ProductProfitForm() {
         <div className="flex shrink-0 flex-wrap items-center gap-3">
           <button
             type="button"
+            onClick={handleCopyReport}
+            className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold"
+          >
+            {copyState === "copied" ? "已复制" : "复制报告"}
+          </button>
+          <button
+            type="button"
+            onClick={handleExportMarkdown}
+            className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold"
+          >
+            导出 Markdown
+          </button>
+          <button
+            type="button"
             onClick={handleSaveToTaskCenter}
             disabled={savingToTasks}
             className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
@@ -956,6 +1032,9 @@ export function ProductProfitForm() {
           </span>
         </div>
       </div>
+      {copyState === "failed" ? (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800">复制失败，请手动选择文本复制。</p>
+      ) : null}
       {tasksSaveMessage ? (
         <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{tasksSaveMessage}</p>
       ) : null}
