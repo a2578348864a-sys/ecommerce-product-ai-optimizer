@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
@@ -292,6 +293,19 @@ export function SourcingForm() {
               </div>
             </section>
           ) : null}
+
+          {/* 下一步 */}
+          <section className="surface-card rounded-[28px] p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-600">Step 1 完成 → 下一步</p>
+                <p className="mt-1 text-sm text-slate-500">知道货源了，接下来检查这个品类有没有坑。</p>
+              </div>
+              <Link href="/risk" className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold">
+                风险排查 → Step 2
+              </Link>
+            </div>
+          </section>
         </div>
       </div>
     </main>

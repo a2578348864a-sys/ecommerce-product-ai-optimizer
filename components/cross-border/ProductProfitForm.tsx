@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
 import { ListingCopyPreview } from "@/components/cross-border/ListingCopyPreview";
@@ -1038,6 +1039,19 @@ export function ProductProfitForm() {
       {tasksSaveMessage ? (
         <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{tasksSaveMessage}</p>
       ) : null}
+    </section>
+
+    {/* 下一步 */}
+    <section className="surface-card rounded-[28px] p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-600">Step 3 完成 → 下一步</p>
+          <p className="mt-1 text-sm text-slate-500">利润算清楚了，接下来分析爆款潜力和怎么拍怎么卖。</p>
+        </div>
+        <Link href="/viral" className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold">
+          爆款拆解 → Step 4
+        </Link>
+      </div>
     </section>
     </div>
   );

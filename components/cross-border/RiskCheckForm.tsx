@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
@@ -332,6 +333,19 @@ export function RiskCheckForm() {
               </div>
             </section>
           ) : null}
+
+          {/* 下一步 */}
+          <section className="surface-card rounded-[28px] p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-600">Step 2 完成 → 下一步</p>
+                <p className="mt-1 text-sm text-slate-500">知道有什么风险了，接下来算算能不能赚钱。</p>
+              </div>
+              <Link href="/products/new" className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold">
+                选品体检 → Step 3
+              </Link>
+            </div>
+          </section>
         </div>
       </div>
     </main>

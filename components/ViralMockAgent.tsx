@@ -12,6 +12,7 @@ import {
   Sparkles,
   Wand2,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { platformLabels, platformOptions } from "@/lib/types";
@@ -747,6 +748,19 @@ export function ViralMockAgent() {
                 </div>
               </section>
             </aside>
+          </section>
+
+          {/* 下一步 */}
+          <section className="surface-card rounded-[28px] p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-600">Step 4 完成 → 下一步</p>
+                <p className="mt-1 text-sm text-slate-500">拆解完了，去任务中心查看所有分析记录。</p>
+              </div>
+              <Link href="/tasks" className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold">
+                任务记录 → Step 5
+              </Link>
+            </div>
           </section>
         </div>
       </div>

@@ -14,28 +14,33 @@ import {
 } from "lucide-react";
 
 export const workspaceNavItems = [
+  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck, step: 1 },
+  { label: "风险排查", href: "/risk", icon: ShieldCheck, step: 2 },
+  { label: "选品体检", href: "/products/new", icon: LayoutDashboard, step: 3 },
+  { label: "爆款拆解", href: "/viral", icon: Sparkles, step: 4 },
+  { label: "任务记录", href: "/tasks", icon: History, step: 5 },
   { label: "首页", href: "/", icon: House },
-  { label: "选品体检", href: "/products/new", icon: LayoutDashboard },
-  { label: "素材接收", href: "/materials", icon: UploadCloud },
-  { label: "爆款拆解", href: "/viral", icon: Sparkles },
-  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
-  { label: "风险排查", href: "/risk", icon: ShieldCheck },
-  { label: "小白结论", href: "/summary", icon: Brain },
-  { label: "任务记录", href: "/tasks", icon: History },
 ] as const;
 
 const navGroups = [
   {
-    title: "当前工作台",
-    items: workspaceNavItems.slice(0, 2),
+    title: "选品工作流",
+    items: workspaceNavItems.slice(0, 5),
   },
   {
-    title: "运营工具",
-    items: workspaceNavItems.slice(2),
+    title: "高级工具",
+    items: workspaceNavItems.slice(5, 6),
   },
 ] as const;
 
-const plannedAgents = ["关键词 Agent", "AI 生图 Agent", "AI 生视频 Agent", "发布 Agent"] as const;
+const plannedItems = [
+  { label: "素材接收", icon: UploadCloud },
+  { label: "小白结论", icon: Brain },
+  { label: "关键词 Agent", icon: null },
+  { label: "AI 生图 Agent", icon: null },
+  { label: "AI 生视频 Agent", icon: null },
+  { label: "发布 Agent", icon: null },
+] as const;
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -76,9 +81,16 @@ export function WorkspaceSidebar() {
                     className={"mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 " + (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
                   >
                     <span className={"flex size-7 items-center justify-center rounded-lg border " + (active ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
-                      <Icon className="size-4" />
+                      {"step" in item && item.step ? (
+                        <span className="text-[11px] font-bold">{item.step}</span>
+                      ) : (
+                        <Icon className="size-4" />
+                      )}
                     </span>
                     {item.label}
+                    {"step" in item && item.step ? (
+                      <span className="ml-auto text-[10px] font-medium text-slate-400">Step {item.step}</span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -88,14 +100,14 @@ export function WorkspaceSidebar() {
 
         <div className="surface-card-soft p-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold text-slate-500">未来能力</p>
-            <span className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">规划中</span>
+            <p className="text-[11px] font-semibold text-slate-500">规划中</p>
+            <span className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">后期接入</span>
           </div>
           <div className="mt-2 flex flex-col gap-1.5">
-            {plannedAgents.map((item) => (
-              <div key={item} className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
+            {plannedItems.map((item) => (
+              <div key={item.label} className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
                 <span className="status-dot status-dot-slate" />
-                {item}
+                {item.label}
               </div>
             ))}
           </div>
