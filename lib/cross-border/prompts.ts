@@ -303,3 +303,73 @@ export function buildListingCopyPrompt(input: ListingCopyPromptInput) {
     JSON.stringify(buildKeywordSummary(input.keywords), null, 2),
   ].join("\n");
 }
+
+// ── 风险排查 prompt ──
+
+export type RiskCheckPromptInput = {
+  productName: string;
+  category: string;
+  claims: string;
+  targetPlatform: string;
+  description: string;
+};
+
+export function buildRiskCheckPrompt(input: RiskCheckPromptInput) {
+  return [
+    "你是资深跨境电商合规和风控专家，正在做“新品风险排查报告”。",
+    "你的任务是根据用户提供的商品信息，检查侵权、功效宣称、品类、物流、售后和平台规则风险。",
+    "必须基于用户输入判断，不要编造品牌、销量、认证或法律结论。证据不足时要写“需人工复核”，并告诉小白运营该查什么。",
+    "",
+    "重点检查维度：",
+    "- 侵权风险：是否涉及品牌名、IP形象、卡通角色、影视/动漫/游戏周边、明星同款、专利结构。",
+    "- 功效宣称风险：是否声称减肥、美白、祛痘、抗皱、治病、增高、壮阳等。",
+    "- 品类风险：是否属于食品、美妆、儿童用品、医疗健康、带电产品、液体、大件、易碎等高风险类目。",
+    "- 平台规则风险：目标平台对该品类是否有特殊资质要求或禁售限制。",
+    "- 物流风险：是否带电、带磁、液体、大件、易碎，是否影响头程和尾程。",
+    "- 售后风险：退货率预期、售后复杂度、是否容易引发纠纷。",
+    "- 新手友好度：小白运营能不能独立上架和售后。",
+    "",
+    `目标平台：${input.targetPlatform || "未提供"}`,
+    "",
+    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要解释文字。",
+    "JSON 字段固定为：",
+    JSON.stringify({
+      overallLevel: "yellow",
+      summary: "",
+      risks: [
+        {
+          category: "侵权风险",
+          level: "green",
+          title: "",
+          description: "",
+          suggestion: "",
+        },
+      ],
+      blacklistMatches: [],
+      beginnerFriendly: true,
+    }, null, 2),
+    "",
+    "字段要求：",
+    "- overallLevel 必须是 green / yellow / red：全是 green 则 green，有 yellow 无 red 则 yellow，有任一 red 则 red。",
+    "- summary 用一段话总结整体风险判断和下一步建议。",
+    "- risks 数组至少包含：侵权风险、功效宣称风险、品类风险、平台规则风险、物流风险、售后风险，共 6 项。",
+    "- 每一项 risk.level 必须是 green / yellow / red。",
+    "- 每一项 risk.title 是简短的风险标题（不超过 15 字）。",
+    "- 每一项 risk.description 是 1-3 句话说明风险原因。",
+    "- 每一项 risk.suggestion 是给运营的可执行建议。",
+    "- blacklistMatches 列出匹配到的风险类目名称；没有则输出空数组。",
+    "- beginnerFriendly 为 true 表示小白运营可独立操作；false 表示建议有经验者操作。",
+    "",
+    "商品名称：",
+    input.productName || "未提供",
+    "",
+    "商品类目：",
+    input.category || "未提供",
+    "",
+    "卖点声明 / 功效宣称：",
+    input.claims || "未提供",
+    "",
+    "商品描述：",
+    input.description || "未提供",
+  ].join("\n");
+}
