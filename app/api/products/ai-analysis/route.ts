@@ -9,6 +9,7 @@ import type {
   StructuredListingData,
   TargetPlatform,
 } from "@/lib/types";
+import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,17 +32,10 @@ type AnalysisRequest = {
   listingPreview?: StructuredListingData;
 };
 
-const targetPlatforms: TargetPlatform[] = [
-  "amazon",
-  "ebay",
-  "etsy",
-  "shopify",
-  "tiktok_shop",
-  "shopee",
-  "lazada",
-  "temu",
-  "other",
-];
+function toTargetPlatform(value: unknown): TargetPlatform | undefined {
+  if (typeof value !== "string") return undefined;
+  return CROSS_BORDER_PLATFORMS.includes(value as TargetPlatform) ? value as TargetPlatform : undefined;
+}
 
 function jsonResponse(body: ApiResponse, status = 200) {
   return NextResponse.json(body, { status });
@@ -80,7 +74,7 @@ function asStringArray(value: unknown) {
 }
 
 function asTargetPlatform(value: unknown): TargetPlatform | undefined {
-  return targetPlatforms.includes(value as TargetPlatform) ? value as TargetPlatform : undefined;
+  return CROSS_BORDER_PLATFORMS.includes(value as TargetPlatform) ? value as TargetPlatform : undefined;
 }
 
 function asCurrencyCode(value: unknown): CurrencyCode | undefined {

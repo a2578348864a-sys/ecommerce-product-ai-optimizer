@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const DEFAULT_MODEL = "gpt-5.5";
+const DEFAULT_MODEL = "";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 
 function getProvider() {

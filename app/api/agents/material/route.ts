@@ -215,7 +215,7 @@ async function runMaterialAgent(inputText: string): Promise<MaterialAgentResult>
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.code);
+    throw new Error(aiResult.error.message);
   }
 
   return normalizeMaterialAgentResult(parseAiJson(aiResult.data));

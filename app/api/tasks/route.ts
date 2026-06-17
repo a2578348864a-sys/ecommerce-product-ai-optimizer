@@ -1,26 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
-import { platformOptions } from "@/lib/types";
+import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 const REQUEST_BODY_LIMIT_BYTES = 256 * 1024;
-const allowedPlatforms = new Set<string>([
-  ...platformOptions,
-  "tiktok",
-  "1688",
-  "alibaba",
-  "amazon",
-  "shopify",
-  "ebay",
-  "etsy",
-  "tiktok_shop",
-  "shopee",
-  "lazada",
-  "temu",
-  "other",
-]);
+const allowedPlatforms = new Set<string>(ALL_KNOWN_PLATFORMS);
 const allowedSources = new Set(["mock", "ai"]);
 const allowedTypes = new Set(["viral", "radar", "product", "risk", "sourcing"]);
 

@@ -131,7 +131,7 @@ async function runRiskAgent(input: RiskCheckPromptInput): Promise<RiskCheckData>
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.code);
+    throw new Error(aiResult.error.message);
   }
 
   return normalizeRiskCheckData(aiResult.data);

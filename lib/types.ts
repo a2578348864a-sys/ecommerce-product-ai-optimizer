@@ -12,6 +12,52 @@ export const platformLabels: Record<Platform, string> = {
   xhs: "小红书",
 };
 
+// ========== 跨境电商平台 ==========
+
+/** 跨境电商售卖平台（TargetPlatform 的常量数组，用于迭代和校验） */
+export const CROSS_BORDER_PLATFORMS = [
+  "amazon",
+  "ebay",
+  "etsy",
+  "shopify",
+  "tiktok_shop",
+  "shopee",
+  "lazada",
+  "temu",
+  "other",
+] as const;
+
+/** 所有已知平台（中国雷达 + 跨境 + 杂项），用于 API 校验 */
+export const ALL_KNOWN_PLATFORMS = [
+  ...platformOptions,
+  ...CROSS_BORDER_PLATFORMS,
+  "tiktok",
+  "1688",
+  "alibaba",
+] as const;
+
+/** 跨境 + 杂项平台的中文标签 */
+export const crossBorderPlatformLabels: Record<string, string> = {
+  amazon: "Amazon",
+  ebay: "eBay",
+  etsy: "Etsy",
+  shopify: "Shopify",
+  tiktok_shop: "TikTok Shop",
+  shopee: "Shopee",
+  lazada: "Lazada",
+  temu: "Temu",
+  tiktok: "TikTok",
+  "1688": "1688",
+  alibaba: "阿里国际站",
+  other: "其他平台",
+};
+
+/** 合并所有平台标签（中国 + 跨境） */
+export const allPlatformLabels: Record<string, string> = {
+  ...platformLabels,
+  ...crossBorderPlatformLabels,
+};
+
 export const analysisGoals = [
   "能不能跟品",
   "风险有多高",
@@ -223,7 +269,7 @@ export type GenerateRequest = RadarFormInput & {
 };
 
 export type PlatformSearchStatus = {
-  platform: Platform;
+  platform: Platform | string;
   status: PlatformSearchStatusValue;
   message: string;
   itemCount: number;
@@ -403,6 +449,54 @@ export const defaultPlatformStatus: PlatformSearchStatus[] = [
     platform: "xhs",
     status: "manual_required",
     message: "V1 支持截图和手动信息，不强抓页面。",
+    itemCount: 0,
+  },
+  {
+    platform: "amazon",
+    status: "manual_required",
+    message: "V1 不自动抓取 Amazon 页面，请手动粘贴商品信息或上传截图。",
+    itemCount: 0,
+  },
+  {
+    platform: "ebay",
+    status: "manual_required",
+    message: "V1 不自动抓取 eBay 页面，请手动粘贴商品信息或上传截图。",
+    itemCount: 0,
+  },
+  {
+    platform: "etsy",
+    status: "manual_required",
+    message: "V1 不自动抓取 Etsy 页面，请手动粘贴商品信息或上传截图。",
+    itemCount: 0,
+  },
+  {
+    platform: "shopify",
+    status: "manual_required",
+    message: "V1 不自动抓取 Shopify 独立站页面，请手动粘贴商品信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "tiktok_shop",
+    status: "not_supported_yet",
+    message: "V1 不读取 TikTok Shop 页面，请上传截图或手动粘贴可见信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "shopee",
+    status: "manual_required",
+    message: "V1 不自动抓取 Shopee 页面，请手动粘贴商品信息或上传截图。",
+    itemCount: 0,
+  },
+  {
+    platform: "lazada",
+    status: "manual_required",
+    message: "V1 不自动抓取 Lazada 页面，请手动粘贴商品信息或上传截图。",
+    itemCount: 0,
+  },
+  {
+    platform: "temu",
+    status: "not_supported_yet",
+    message: "V1 不读取 Temu 页面，请上传截图或手动粘贴可见信息。",
     itemCount: 0,
   },
 ];

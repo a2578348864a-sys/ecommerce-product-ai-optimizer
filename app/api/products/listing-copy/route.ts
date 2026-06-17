@@ -11,6 +11,7 @@ import type {
   StructuredListingData,
   TargetPlatform,
 } from "@/lib/types";
+import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -35,18 +36,6 @@ type ListingCopyRequest = {
   aiAnalysis?: AiAnalysisResult;
   keywords?: KeywordGenerationResult;
 };
-
-const targetPlatforms: TargetPlatform[] = [
-  "amazon",
-  "ebay",
-  "etsy",
-  "shopify",
-  "tiktok_shop",
-  "shopee",
-  "lazada",
-  "temu",
-  "other",
-];
 
 function jsonResponse(body: ApiResponse, status = 200) {
   return NextResponse.json(body, { status });
@@ -88,7 +77,7 @@ function asStringArray(value: unknown) {
 }
 
 function asTargetPlatform(value: unknown): TargetPlatform | undefined {
-  return targetPlatforms.includes(value as TargetPlatform) ? value as TargetPlatform : undefined;
+  return CROSS_BORDER_PLATFORMS.includes(value as TargetPlatform) ? value as TargetPlatform : undefined;
 }
 
 function asCurrencyCode(value: unknown): CurrencyCode | undefined {

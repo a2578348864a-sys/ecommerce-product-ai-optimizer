@@ -8,7 +8,7 @@ import type {
 
 const DEFAULT_PROVIDER = "openai";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+const DEFAULT_OPENAI_MODEL = "";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 const DEFAULT_TIMEOUT_MS = 45_000;

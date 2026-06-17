@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 
 type RiskLevel = "green" | "yellow" | "red";
 
@@ -186,7 +187,7 @@ export function RiskCheckForm() {
                     onChange={(e) => setTargetPlatform(e.target.value)}
                     className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   >
-                    {["shopify", "amazon", "ebay", "etsy", "tiktok_shop", "shopee", "lazada", "temu", "other"].map((p) => (
+                    {CROSS_BORDER_PLATFORMS.map((p) => (
                       <option key={p} value={p}>{p}</option>
                     ))}
                   </select>

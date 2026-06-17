@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
-import { platformLabels, platformOptions } from "@/lib/types";
+import { allPlatformLabels, platformLabels, platformOptions } from "@/lib/types";
 import type { EvidenceCard, MaterialAgentResult, MaterialInput, Platform, ViralAgentResult, ViralLevel } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -11,23 +11,7 @@ const MAX_OUTPUT_TOKENS = 2400;
 const REQUEST_BODY_LIMIT_BYTES = 96 * 1024;
 const MAX_MATERIAL_TEXT_LENGTH = 8000;
 
-const agentPlatformLabels = {
-  ...platformLabels,
-  tiktok: "TikTok",
-  "1688": "1688",
-  alibaba: "阿里国际站",
-  amazon: "Amazon",
-  shopify: "Shopify",
-  ebay: "eBay",
-  etsy: "Etsy",
-  tiktok_shop: "TikTok Shop",
-  shopee: "Shopee",
-  lazada: "Lazada",
-  temu: "Temu",
-  other: "其他平台",
-} as const;
-
-type AgentPlatform = keyof typeof agentPlatformLabels;
+const allstrings = new Set(Object.keys(allPlatformLabels));
 type ViralPotentialLevel = "高潜力" | "可优化" | "一般" | "不建议主推";
 
 type ViralAiData = {
@@ -126,11 +110,9 @@ function legacyLevelFromScore(score: number): ViralLevel {
   return "低";
 }
 
-const allAgentPlatforms = new Set(Object.keys(agentPlatformLabels));
-
-function asAgentPlatform(value: unknown): AgentPlatform | null {
+function asstring(value: unknown): string | null {
   const text = asString(value);
-  if (allAgentPlatforms.has(text)) return text as AgentPlatform;
+  if (allstrings.has(text)) return text;
   return null;
 }
 
@@ -242,7 +224,7 @@ function summarizeEvidenceCards(cards: EvidenceCard[]) {
   }));
 }
 
-function getPlatformInstruction(platform: AgentPlatform) {
+function getPlatformInstruction(platform: string) {
   switch (platform) {
     case "xhs":
       return "小红书重点看：种草感、真实体验、标题钩子、评论区话题、是否像真实用户分享。";
@@ -286,7 +268,7 @@ function getPlatformInstruction(platform: AgentPlatform) {
 function buildPrompt(params: {
   title: string;
   productUrl: string;
-  platform: AgentPlatform;
+  platform: string;
   materialText: string;
   materialResult?: MaterialAgentResult | null;
   evidenceCards?: EvidenceCard[];
@@ -307,7 +289,7 @@ function buildPrompt(params: {
     "- 哪些地方像广告硬推，应该如何改成真实体验表达。",
     "- 小白运营应该怎么改标题、开头、评论区话题和转化信息。",
     "",
-    `平台：${agentPlatformLabels[params.platform]}`,
+    `平台：${allPlatformLabels[params.platform] ?? params.platform}`,
     `平台差异要求：${getPlatformInstruction(params.platform)}`,
     "",
     "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要解释文字。",
@@ -358,7 +340,7 @@ function buildPrompt(params: {
 async function runViralAgent(params: {
   title: string;
   productUrl: string;
-  platform: AgentPlatform;
+  platform: string;
   materialText: string;
   materialResult?: MaterialAgentResult | null;
   evidenceCards?: EvidenceCard[];
@@ -379,7 +361,7 @@ async function runViralAgent(params: {
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.code);
+    throw new Error(aiResult.error.message);
   }
 
   return normalizeAiData(aiResult.data);
@@ -412,7 +394,7 @@ async function handleStandaloneRequest(body: Record<string, unknown>) {
   const title = asString(body.title).slice(0, 160);
   const productUrl = asString(body.productUrl || body.url).slice(0, 400);
   const materialText = asString(body.materialText || body.content);
-  const platform = asAgentPlatform(body.platform);
+  const platform = asstring(body.platform);
 
   if (!materialText) {
     return jsonResponse({

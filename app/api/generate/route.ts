@@ -318,13 +318,13 @@ function normalizePlatformStatus(value: unknown): PlatformSearchStatus[] {
   const normalized = source
     .filter(isPlainObject)
     .map((item) => ({
-      platform: platformOptions.includes(item.platform as Platform) ? item.platform as Platform : "manual",
+      platform: (platformOptions as readonly string[]).includes(String(item.platform ?? "")) ? String(item.platform ?? "") : "manual",
       status: asString(item.status, "manual_required") as PlatformSearchStatus["status"],
       message: asString(item.message, "请手动粘贴该平台可见商品信息。"),
       itemCount: asNumber(item.itemCount),
     }));
 
-  const seen = new Set(normalized.map((item) => item.platform));
+  const seen = new Set<string>(normalized.map((item) => item.platform));
   for (const item of defaultPlatformStatus) {
     if (!seen.has(item.platform)) {
       normalized.push(item);

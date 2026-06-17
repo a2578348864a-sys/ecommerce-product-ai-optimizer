@@ -116,7 +116,7 @@ async function runSourcingAgent(input: SourcingPromptInput): Promise<SourcingDat
     ],
   });
 
-  if (!aiResult.ok) throw new Error(aiResult.error.code);
+  if (!aiResult.ok) throw new Error(aiResult.error.message);
   return normalizeSourcingData(aiResult.data);
 }
 
