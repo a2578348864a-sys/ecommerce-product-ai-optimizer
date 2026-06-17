@@ -37,11 +37,21 @@ type ApiResponse =
   | { ok: true; data: SourcingData }
   | { ok: false; error: { code: string; message: string } };
 
+type SaveTaskResponse =
+  | { ok: true; data: { id: string } }
+  | { ok: false; error: { code?: string; message?: string } };
+
 const feasibilityLabels: Record<string, string> = { high: "好找货源", medium: "一般", low: "较难找" };
 const feasibilityClasses: Record<string, string> = {
   high: "border-emerald-200 bg-emerald-50 text-emerald-700",
   medium: "border-amber-200 bg-amber-50 text-amber-700",
   low: "border-red-200 bg-red-50 text-red-700",
+};
+
+const feasibilityScores: Record<SourcingData["feasibility"], number> = {
+  high: 85,
+  medium: 60,
+  low: 30,
 };
 
 const defaultCategories = [
@@ -65,6 +75,9 @@ export function SourcingForm() {
   const [result, setResult] = useState<SourcingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingTask, setSavingTask] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Sync back to shared product on change (debounced)
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -114,12 +127,61 @@ export function SourcingForm() {
       let payload: unknown;
       try { payload = await response.json(); } catch { setError("服务端返回格式异常。"); return; }
       if (!isApiResponse(payload)) { setError("服务端返回格式异常。"); return; }
-      if (payload.ok) { setResult(payload.data); return; }
+      if (payload.ok) {
+        setResult(payload.data);
+        setSaveMessage(null);
+        setSaveError(null);
+        return;
+      }
       setError(payload.error.message || "货源判断失败，请稍后重试。");
     } catch {
       setError("网络异常，请检查本地服务或网络。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSaveToTaskCenter() {
+    if (!result || savingTask) return;
+
+    setSavingTask(true);
+    setSaveMessage(null);
+    setSaveError(null);
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "sourcing",
+          title: productName.trim(),
+          productName: productName.trim(),
+          platform: targetPlatform || "manual",
+          source: "ai",
+          materialText: description.trim() || productName.trim(),
+          result: {
+            ...result,
+            productName: productName.trim(),
+            category: category.trim(),
+            targetPrice: targetPrice.trim(),
+            targetPlatform,
+            description: description.trim(),
+            score: feasibilityScores[result.feasibility],
+            level: result.feasibility,
+            oneLineSummary: result.summary,
+          },
+        }),
+      });
+      const data = await response.json() as SaveTaskResponse;
+      if (!response.ok || !data.ok) {
+        setSaveError(data.ok ? "保存到任务中心失败。" : data.error?.message || "保存到任务中心失败。");
+        return;
+      }
+      setSaveMessage("已保存到任务中心");
+    } catch {
+      setSaveError("网络异常，保存到任务中心失败。");
+    } finally {
+      setSavingTask(false);
     }
   }
 
@@ -238,10 +300,27 @@ export function SourcingForm() {
                   <h2 className="text-xl font-bold text-slate-950">货源判断结果</h2>
                   <p className="mt-1 text-sm text-slate-500">AI 辅助分析，最终决策需人工核实供应商。</p>
                 </div>
-                <span className={`inline-flex shrink-0 rounded-full border px-4 py-1.5 text-sm font-bold ${feasibilityClasses[result.feasibility]}`}>
-                  {feasibilityLabels[result.feasibility]}
-                </span>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <span className={`inline-flex rounded-full border px-4 py-1.5 text-sm font-bold ${feasibilityClasses[result.feasibility]}`}>
+                    {feasibilityLabels[result.feasibility]}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSaveToTaskCenter}
+                    disabled={savingTask}
+                    className="glass-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingTask ? "保存中..." : "保存到任务中心"}
+                  </button>
+                </div>
               </div>
+
+              {saveMessage ? (
+                <p className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{saveMessage}</p>
+              ) : null}
+              {saveError ? (
+                <p className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>
+              ) : null}
 
               <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-sm font-semibold text-slate-900">综合判断</p>

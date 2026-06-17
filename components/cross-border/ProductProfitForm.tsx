@@ -404,12 +404,17 @@ export function ProductProfitForm() {
   }, []);
 
   useEffect(() => {
-    const cachedListingCopy = readCachedListingCopy();
-    if (!cachedListingCopy) return;
+    const productName = form.name.trim();
+    if (!productName) {
+      setListingCopy(null);
+      setListingCopyNotice(null);
+      return;
+    }
 
+    const cachedListingCopy = readCachedListingCopy(productName);
     setListingCopy(cachedListingCopy);
-    setListingCopyNotice("已恢复上次本地文案");
-  }, []);
+    setListingCopyNotice(cachedListingCopy ? "已恢复当前商品本地文案" : null);
+  }, [form.name]);
 
   useEffect(() => {
     let active = true;
@@ -595,7 +600,7 @@ export function ProductProfitForm() {
 
       if (payload.ok) {
         setListingCopy(payload.data);
-        writeCachedListingCopy(payload.data);
+        writeCachedListingCopy(payload.data, form.name);
         const historyItem = createListingCopyHistoryItem(form.name, payload.data);
         setLocalListingCopyHistoryItems((currentItems) => {
           const nextItems = prependListingCopyHistoryItem(currentItems, historyItem);
@@ -748,7 +753,7 @@ export function ProductProfitForm() {
   }
 
   function handleClearListingCopy() {
-    removeCachedListingCopy();
+    removeCachedListingCopy(form.name);
     setListingCopy(null);
     setListingCopyError(null);
     setListingCopyNotice("本地文案已清除");
@@ -758,7 +763,7 @@ export function ProductProfitForm() {
     setListingCopy(item.data);
     setListingCopyError(null);
     setListingCopyNotice("已恢复历史文案");
-    writeCachedListingCopy(item.data);
+    writeCachedListingCopy(item.data, item.productName);
   }
 
   async function handleDeleteListingCopyHistory(item: ListingCopyHistoryItem) {

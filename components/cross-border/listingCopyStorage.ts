@@ -14,6 +14,8 @@ export type ListingCopyHistoryItem = {
 type ListingCopyCachePayload = {
   version: 1;
   savedAt: string;
+  productKey?: string;
+  productName?: string;
   data: ListingCopyResult;
 };
 
@@ -30,6 +32,15 @@ export const listingCopyHistoryMaxItems = 10;
 
 const listingCopyCacheVersion = 1;
 const listingCopyHistoryVersion = 1;
+
+export function getListingCopyProductKey(productName: string) {
+  return productName.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getScopedListingCopyCacheKey(productName: string) {
+  const productKey = getListingCopyProductKey(productName);
+  return productKey ? `${listingCopyCacheKey}:${encodeURIComponent(productKey)}` : listingCopyCacheKey;
+}
 
 function getBrowserLocalStorage(): LocalStorageLike | null {
   if (typeof window === "undefined") return null;
@@ -148,16 +159,23 @@ export function createListingCopyHistoryItem(
   };
 }
 
-export function readCachedListingCopy(storage = getBrowserLocalStorage()) {
+export function readCachedListingCopy(
+  productName = "",
+  storage = getBrowserLocalStorage(),
+) {
   if (!storage) return null;
 
   try {
-    const raw = storage.getItem(listingCopyCacheKey);
+    const expectedProductKey = getListingCopyProductKey(productName);
+    if (!expectedProductKey) return null;
+
+    const raw = storage.getItem(getScopedListingCopyCacheKey(productName));
     if (!raw) return null;
 
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return null;
     if (parsed.version !== listingCopyCacheVersion) return null;
+    if (asString(parsed.productKey) !== expectedProductKey) return null;
 
     return normalizeCachedListingCopy(parsed.data);
   } catch {
@@ -167,28 +185,37 @@ export function readCachedListingCopy(storage = getBrowserLocalStorage()) {
 
 export function writeCachedListingCopy(
   data: ListingCopyResult,
+  productName: string,
   storage = getBrowserLocalStorage(),
 ) {
   if (!storage) return false;
 
   try {
+    const productKey = getListingCopyProductKey(productName);
+    if (!productKey) return false;
+
     const payload: ListingCopyCachePayload = {
       version: listingCopyCacheVersion,
       savedAt: new Date().toISOString(),
+      productKey,
+      productName: productName.trim(),
       data,
     };
-    storage.setItem(listingCopyCacheKey, JSON.stringify(payload));
+    storage.setItem(getScopedListingCopyCacheKey(productName), JSON.stringify(payload));
     return true;
   } catch {
     return false;
   }
 }
 
-export function removeCachedListingCopy(storage = getBrowserLocalStorage()) {
+export function removeCachedListingCopy(
+  productName = "",
+  storage = getBrowserLocalStorage(),
+) {
   if (!storage) return false;
 
   try {
-    storage.removeItem(listingCopyCacheKey);
+    storage.removeItem(getScopedListingCopyCacheKey(productName));
     return true;
   } catch {
     return false;

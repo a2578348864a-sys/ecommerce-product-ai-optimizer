@@ -135,7 +135,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
   try {
     const record = await prisma.viralAnalysisRecord.findFirst({
-      where: { id, type: "viral" },
+      where: { id },
     });
 
     if (!record) return notFoundResponse();

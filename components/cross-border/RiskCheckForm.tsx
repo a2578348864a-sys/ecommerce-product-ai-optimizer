@@ -30,6 +30,10 @@ type RiskCheckApiResponse =
   | { ok: true; data: RiskCheckData }
   | { ok: false; error: { code: string; message: string } };
 
+type SaveTaskResponse =
+  | { ok: true; data: { id: string } }
+  | { ok: false; error: { code?: string; message?: string } };
+
 const levelLabels: Record<RiskLevel, string> = {
   green: "低风险",
   yellow: "需注意",
@@ -46,6 +50,12 @@ const levelDotClasses: Record<RiskLevel, string> = {
   green: "bg-emerald-500",
   yellow: "bg-amber-500",
   red: "bg-red-500",
+};
+
+const riskScores: Record<RiskLevel, number> = {
+  green: 80,
+  yellow: 55,
+  red: 20,
 };
 
 const defaultCategories = [
@@ -69,6 +79,9 @@ export function RiskCheckForm() {
   const [result, setResult] = useState<RiskCheckData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingTask, setSavingTask] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncToShared = useCallback(() => {
@@ -137,6 +150,8 @@ export function RiskCheckForm() {
 
       if (payload.ok) {
         setResult(payload.data);
+        setSaveMessage(null);
+        setSaveError(null);
         return;
       }
 
@@ -145,6 +160,50 @@ export function RiskCheckForm() {
       setError("网络异常，请检查本地服务或网络。");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSaveToTaskCenter() {
+    if (!result || savingTask) return;
+
+    setSavingTask(true);
+    setSaveMessage(null);
+    setSaveError(null);
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "risk",
+          title: productName.trim(),
+          productName: productName.trim(),
+          platform: targetPlatform || "manual",
+          source: "ai",
+          materialText: description.trim() || productName.trim(),
+          result: {
+            ...result,
+            productName: productName.trim(),
+            category: category.trim(),
+            claims: claims.trim(),
+            targetPlatform,
+            description: description.trim(),
+            score: riskScores[result.overallLevel],
+            level: result.overallLevel,
+            oneLineSummary: result.summary,
+          },
+        }),
+      });
+      const data = await response.json() as SaveTaskResponse;
+      if (!response.ok || !data.ok) {
+        setSaveError(data.ok ? "保存到任务中心失败。" : data.error?.message || "保存到任务中心失败。");
+        return;
+      }
+      setSaveMessage("已保存到任务中心");
+    } catch {
+      setSaveError("网络异常，保存到任务中心失败。");
+    } finally {
+      setSavingTask(false);
     }
   }
 
@@ -311,10 +370,27 @@ export function RiskCheckForm() {
                   <h2 className="text-xl font-bold text-slate-950">风险排查结果</h2>
                   <p className="mt-1 text-sm text-slate-500">AI 辅助分析，最终决策需人工复核。</p>
                 </div>
-                <span className={`inline-flex shrink-0 rounded-full border px-4 py-1.5 text-sm font-bold ${levelClasses[result.overallLevel]}`}>
-                  {levelLabels[result.overallLevel]}
-                </span>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <span className={`inline-flex rounded-full border px-4 py-1.5 text-sm font-bold ${levelClasses[result.overallLevel]}`}>
+                    {levelLabels[result.overallLevel]}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSaveToTaskCenter}
+                    disabled={savingTask}
+                    className="glass-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingTask ? "保存中..." : "保存到任务中心"}
+                  </button>
+                </div>
               </div>
+
+              {saveMessage ? (
+                <p className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{saveMessage}</p>
+              ) : null}
+              {saveError ? (
+                <p className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>
+              ) : null}
 
               {/* Summary */}
               <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
