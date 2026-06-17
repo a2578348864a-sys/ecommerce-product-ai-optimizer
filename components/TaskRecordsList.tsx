@@ -15,6 +15,8 @@ const taskTypes = [
   { value: "product", label: "选品利润分析" },
   { value: "risk", label: "风险排查" },
   { value: "sourcing", label: "货源判断" },
+  { value: "material", label: "素材接收" },
+  { value: "summary", label: "小白结论" },
 ];
 
 const extendedPlatformLabels: Record<string, string> = {
@@ -85,6 +87,8 @@ const typeLabelMap: Record<string, string> = {
   product: "选品利润分析",
   risk: "风险排查",
   sourcing: "货源判断",
+  material: "素材接收",
+  summary: "小白结论",
 };
 
 const agentLabelMap: Record<string, string> = {
@@ -93,6 +97,8 @@ const agentLabelMap: Record<string, string> = {
   product: "选品分析 Agent",
   risk: "风险检查 Agent",
   sourcing: "货源判断 Agent",
+  material: "素材接收 Agent",
+  summary: "小白结论 Agent",
 };
 
 function getTaskTypeLabel(item: TaskCenterItem) {

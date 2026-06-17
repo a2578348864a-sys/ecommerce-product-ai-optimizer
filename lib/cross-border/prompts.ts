@@ -374,6 +374,71 @@ export function buildRiskCheckPrompt(input: RiskCheckPromptInput) {
   ].join("\n");
 }
 
+// ── 小白结论 prompt ──
+
+export type SummaryPromptInput = {
+  productName: string;
+  sourcingFindings: string;
+  riskFindings: string;
+  productFindings: string;
+  viralFindings: string;
+  extraNotes: string;
+};
+
+export function buildSummaryPrompt(input: SummaryPromptInput) {
+  return [
+    "你是资深跨境电商选品顾问，正在给小白运营做最终总结。",
+    "你的任务：把前面几步的分散分析结果，用大白话总结为一句结论。",
+    "不要推荐具体供应商名、不要给法律/医疗建议、不要断言绝对不侵权或绝对安全。",
+    "",
+    "输出要求：",
+    "- 用中文，像跟朋友聊天一样说清楚。",
+    "- 结论先行：第一句就说能不能做（可以做/谨慎做/不建议做）。",
+    "- 解释为什么：2-4 条理由，每条简短。",
+    "- 下一步：2-4 条可执行的动作。",
+    "- 风险提醒：需要人工复核的关键点。",
+    "",
+    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要解释文字。",
+    "JSON 结构固定为：",
+    JSON.stringify({
+      verdict: "可以做 / 谨慎做 / 不建议做",
+      confidence: "高 / 中 / 低",
+      summary: "一句白话总结",
+      reasons: ["理由 1", "理由 2"],
+      risks: ["需要人工复核的风险点"],
+      nextSteps: ["可执行的下一步动作"],
+      beginnerTip: "给小白运营的一句贴心提示",
+    }, null, 2),
+    "",
+    "字段规则：",
+    "- verdict 只能是 可以做、谨慎做、不建议做 之一。",
+    "- confidence 只能是 高、中、低 之一。信息越完整则 confidence 越高。",
+    "- summary 一句话，不超过 80 字。",
+    "- reasons 2-4 条。",
+    "- risks 2-4 条。",
+    "- nextSteps 2-4 条，每条可执行。",
+    "- beginnerTip 一句贴心话，不超过 60 字。",
+    "",
+    "商品名称：",
+    input.productName || "未提供",
+    "",
+    "货源判断结果：",
+    input.sourcingFindings || "未提供（用户还没做货源判断）",
+    "",
+    "风险排查结果：",
+    input.riskFindings || "未提供（用户还没做风险排查）",
+    "",
+    "选品体检结果（利润 + AI 分析 + 关键词）：",
+    input.productFindings || "未提供（用户还没做选品体检）",
+    "",
+    "爆款拆解结果：",
+    input.viralFindings || "未提供（用户还没做爆款拆解）",
+    "",
+    "补充说明：",
+    input.extraNotes || "未提供",
+  ].join("\n");
+}
+
 // ── 货源判断 prompt ──
 
 export type SourcingPromptInput = {

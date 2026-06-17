@@ -33,6 +33,8 @@ export function MaterialsForm() {
   const [result, setResult] = useState<MaterialAgentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingToTasks, setSavingToTasks] = useState(false);
+  const [tasksSaveMessage, setTasksSaveMessage] = useState<string | null>(null);
 
   async function handleSubmit() {
     if (loading) return;
@@ -88,6 +90,45 @@ export function MaterialsForm() {
   }
 
   const hasResult = Boolean(result);
+
+  async function handleSaveToTaskCenter() {
+    if (savingToTasks || !result) return;
+    setSavingToTasks(true);
+    setTasksSaveMessage(null);
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "material",
+          title: keyword.trim() || manualText.trim().slice(0, 30) || "未命名素材",
+          platform: "manual",
+          source: "ai",
+          materialText: manualText.trim() || keyword.trim(),
+          result: {
+            oneLineSummary: result.summary,
+            level: result.materialCompleteness,
+            score: result.materialCompleteness === "完整" ? 80 : result.materialCompleteness === "一般" ? 50 : 20,
+            productType: result.productType,
+            sellingPoints: result.sellingPoints,
+            targetUsers: result.targetUsers,
+            painPoints: result.painPoints,
+            riskWords: result.riskWords,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (payload?.ok) {
+        setTasksSaveMessage("已保存到任务中心。");
+      } else {
+        setTasksSaveMessage("保存失败，请稍后重试。");
+      }
+    } catch {
+      setTasksSaveMessage("保存失败，请稍后重试。");
+    } finally {
+      setSavingToTasks(false);
+    }
+  }
 
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
@@ -336,6 +377,31 @@ export function MaterialsForm() {
                     ))}
                   </ul>
                 </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {/* Save to task center */}
+          {result ? (
+            <section className="surface-card rounded-[28px] p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-600">保存分析结果</p>
+                  <p className="mt-1 text-sm text-slate-500">将素材识别结果保存到任务中心，方便后续查阅。</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveToTaskCenter}
+                  disabled={savingToTasks}
+                  className="glass-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingToTasks ? "保存中" : "保存到任务中心"}
+                </button>
+              </div>
+              {tasksSaveMessage ? (
+                <p className={`mt-3 rounded-lg border px-3 py-1.5 text-xs ${tasksSaveMessage.includes("失败") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                  {tasksSaveMessage}
+                </p>
               ) : null}
             </section>
           ) : null}

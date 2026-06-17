@@ -20,6 +20,7 @@ export const workspaceNavItems = [
   { label: "爆款拆解", href: "/viral", icon: Sparkles, step: 4 },
   { label: "任务记录", href: "/tasks", icon: History, step: 5 },
   { label: "素材接收", href: "/materials", icon: UploadCloud },
+  { label: "小白结论", href: "/summary", icon: Brain },
   { label: "首页", href: "/", icon: House },
 ] as const;
 
@@ -30,12 +31,11 @@ const navGroups = [
   },
   {
     title: "高级工具",
-    items: workspaceNavItems.slice(5, 7),
+    items: workspaceNavItems.slice(5, 8),
   },
 ] as const;
 
 const plannedItems = [
-  { label: "小白结论", icon: Brain },
   { label: "关键词 Agent", icon: null },
   { label: "AI 生图 Agent", icon: null },
   { label: "AI 生视频 Agent", icon: null },
