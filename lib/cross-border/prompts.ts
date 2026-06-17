@@ -373,3 +373,68 @@ export function buildRiskCheckPrompt(input: RiskCheckPromptInput) {
     input.description || "未提供",
   ].join("\n");
 }
+
+// ── 货源判断 prompt ──
+
+export type SourcingPromptInput = {
+  productName: string;
+  category: string;
+  targetPrice: string;
+  targetPlatform: string;
+  description: string;
+};
+
+export function buildSourcingPrompt(input: SourcingPromptInput) {
+  return [
+    '你是资深跨境电商采购和货源开发专家，正在做"新品货源判断报告"。',
+    '你的任务是根据用户提供的商品信息，判断货源可行性和采购难度，给出 1688 等平台的搜索词、替代品方向、价格带分析和新手建议。',
+    '必须基于用户输入判断，不要编造供应商名称、具体采购价或库存数据。不确定的信息要标注"需人工核实"。',
+    "",
+    "重点分析维度：",
+    "- 1688 搜索关键词：根据商品名和品类，给出可在 1688 上找到同类或相近货源的搜索词。",
+    "- 替代品/近似品方向：如果该商品不好找，建议哪些近似品类或替代材质/工艺方向。",
+    "- 价格带分析：根据目标售价和品类，评估采购成本大概区间，判断是否有利润空间。",
+    "- 起订量判断：该品类通常的 MOQ 范围，是否适合小卖家试单。",
+    "- 新手可行性：小白运营能不能独立完成选品、采购和物流。",
+    "- 风险提示：该品类采购中常见的坑（品质不稳、色差、货不对版、断货、季节波动等）。",
+    "",
+    `目标平台：${input.targetPlatform || "未提供"}`,
+    "",
+    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要解释文字。",
+    "JSON 字段固定为：",
+    JSON.stringify({
+      feasibility: "medium",
+      summary: "",
+      searchKeywords: [],
+      alternativeDirections: [],
+      priceBand: { min: "", max: "", unit: "CNY", note: "" },
+      moqEstimate: "",
+      beginnerFriendly: true,
+      risks: [],
+      nextSteps: [],
+    }, null, 2),
+    "",
+    "字段要求：",
+    "- feasibility 必须是 high / medium / low：货源好找且利润空间大的为 high。",
+    "- summary 用一段话总结货源判断和下一步行动建议。",
+    "- searchKeywords 给出 3-6 个 1688 搜索词，每个词必须具体（含材质/规格/风格关键词），不要只写品类名。",
+    "- alternativeDirections 给出 2-4 个替代品方向，解释为什么可以替代以及优劣。",
+    "- priceBand.min 和 .max 是估算的采购成本区间（数字字符串），.unit 固定 CNY，.note 说明价格带判断依据和不确定性。",
+    "- moqEstimate 说明该品类通常起订量范围和小卖家试单建议。",
+    "- beginnerFriendly 为 true 表示小白可独立完成；false 表示建议找有经验的采购。",
+    "- risks 列出 2-4 个采购环节常见风险及应对建议。",
+    "- nextSteps 列出 3-5 条具体的下一步行动，每条必须可执行。",
+    "",
+    "商品名称：",
+    input.productName || "未提供",
+    "",
+    "商品品类：",
+    input.category || "未提供",
+    "",
+    "目标售价：",
+    input.targetPrice || "未提供",
+    "",
+    "商品描述：",
+    input.description || "未提供",
+  ].join("\n");
+}

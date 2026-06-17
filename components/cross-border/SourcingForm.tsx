@@ -1,0 +1,297 @@
+"use client";
+
+import { useState } from "react";
+import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+
+type SourcingPriceBand = {
+  min: string;
+  max: string;
+  unit: string;
+  note: string;
+};
+
+type SourcingRisk = {
+  title: string;
+  description: string;
+  suggestion: string;
+};
+
+type SourcingData = {
+  feasibility: "high" | "medium" | "low";
+  summary: string;
+  searchKeywords: string[];
+  alternativeDirections: string[];
+  priceBand: SourcingPriceBand;
+  moqEstimate: string;
+  beginnerFriendly: boolean;
+  risks: SourcingRisk[];
+  nextSteps: string[];
+};
+
+type ApiResponse =
+  | { ok: true; data: SourcingData }
+  | { ok: false; error: { code: string; message: string } };
+
+const feasibilityLabels: Record<string, string> = { high: "好找货源", medium: "一般", low: "较难找" };
+const feasibilityClasses: Record<string, string> = {
+  high: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  medium: "border-amber-200 bg-amber-50 text-amber-700",
+  low: "border-red-200 bg-red-50 text-red-700",
+};
+
+const defaultCategories = [
+  "服装配饰", "鞋靴箱包", "美妆个护", "3C数码", "家居日用",
+  "母婴用品", "食品饮料", "运动户外", "宠物用品", "玩具乐器",
+  "汽车用品", "医疗器械", "成人用品", "珠宝首饰", "其他",
+];
+
+function isApiResponse(value: unknown): value is ApiResponse {
+  return typeof value === "object" && value !== null && "ok" in value;
+}
+
+export function SourcingForm() {
+  const [productName, setProductName] = useState("");
+  const [category, setCategory] = useState("");
+  const [targetPrice, setTargetPrice] = useState("");
+  const [targetPlatform, setTargetPlatform] = useState("shopify");
+  const [description, setDescription] = useState("");
+  const [accessPassword, setAccessPassword] = useState("");
+  const [result, setResult] = useState<SourcingData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit() {
+    if (loading) return;
+    if (!productName.trim()) { setError("请先填写商品名称。"); return; }
+    if (!accessPassword.trim()) { setError("请输入访问密码。"); return; }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/agents/sourcing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productName: productName.trim(),
+          category: category.trim(),
+          targetPrice: targetPrice.trim(),
+          targetPlatform,
+          description: description.trim(),
+          accessPassword: accessPassword.trim(),
+        }),
+      });
+
+      let payload: unknown;
+      try { payload = await response.json(); } catch { setError("服务端返回格式异常。"); return; }
+      if (!isApiResponse(payload)) { setError("服务端返回格式异常。"); return; }
+      if (payload.ok) { setResult(payload.data); return; }
+      setError(payload.error.message || "货源判断失败，请稍后重试。");
+    } catch {
+      setError("网络异常，请检查本地服务或网络。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
+      <div className="workspace-page workspace-layout">
+        <WorkspaceSidebar />
+
+        <div className="min-w-0 space-y-6">
+          <header className="workspace-header">
+            <div>
+              <p className="eyebrow">Qingxuan Workspace</p>
+              <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">货源判断</h1>
+              <p className="muted-text mt-1 text-sm">判断货源可行性、搜索关键词、价格带和新手可操作性，仅供参考不做采购决策。</p>
+            </div>
+            <WorkspaceMobileNav />
+          </header>
+
+          {/* Form */}
+          <section className="surface-card rounded-[28px] p-5">
+            <div className="mb-5">
+              <h2 className="text-xl font-bold text-slate-950">商品货源信息</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                填写商品基本信息后，AI 会给出 1688 搜索词、替代品方向、价格带和新手建议。
+              </p>
+            </div>
+
+            <div className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">商品名称 *</span>
+                  <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)}
+                    placeholder="例如：硅胶折叠水杯" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">商品品类</span>
+                  <input type="text" list="sourcing-category-list" value={category} onChange={(e) => setCategory(e.target.value)}
+                    placeholder="选择或输入品类" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                  <datalist id="sourcing-category-list">
+                    {defaultCategories.map((cat) => (<option key={cat} value={cat} />))}
+                  </datalist>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">目标售价</span>
+                  <input type="text" value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)}
+                    placeholder="例如：19.99 USD 或 29.99 EUR" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">目标平台</span>
+                  <select value={targetPlatform} onChange={(e) => setTargetPlatform(e.target.value)}
+                    className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
+                    {["shopify", "amazon", "ebay", "etsy", "tiktok_shop", "shopee", "lazada", "temu", "other"].map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-800">商品描述</span>
+                <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
+                  placeholder="简单描述商品材质、规格、功能和目标客群。" className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
+                <input type="password" value={accessPassword} onChange={(e) => setAccessPassword(e.target.value)}
+                  placeholder="输入服务端配置的访问密码" className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+              </label>
+
+              <button type="button" onClick={handleSubmit} disabled={loading}
+                className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">
+                {loading ? "分析中..." : result ? "重新判断" : "开始货源判断"}
+              </button>
+            </div>
+          </section>
+
+          {error ? (
+            <section className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-sm text-red-700">{error}</p></section>
+          ) : null}
+
+          {loading ? (
+            <section className="surface-card rounded-[28px] p-5"><p className="text-sm text-slate-500">AI 正在分析货源可行性，请稍等...</p></section>
+          ) : null}
+
+          {!result && !loading ? (
+            <section className="surface-card rounded-[28px] p-5">
+              <div className="max-w-2xl">
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">待判断</span>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  填写商品名称、品类和目标售价后，点击「开始货源判断」。AI 会从 1688 搜索词、替代品方向、价格带、MOQ 和采购风险等维度做分析。
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">AI 结果仅供运营参考，采购前必须人工联系供应商核实价格、品质和交期。</p>
+              </div>
+            </section>
+          ) : null}
+
+          {result ? (
+            <section className="surface-card rounded-[28px] p-5">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-950">货源判断结果</h2>
+                  <p className="mt-1 text-sm text-slate-500">AI 辅助分析，最终决策需人工核实供应商。</p>
+                </div>
+                <span className={`inline-flex shrink-0 rounded-full border px-4 py-1.5 text-sm font-bold ${feasibilityClasses[result.feasibility]}`}>
+                  {feasibilityLabels[result.feasibility]}
+                </span>
+              </div>
+
+              <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-sm font-semibold text-slate-900">综合判断</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{result.summary}</p>
+              </div>
+
+              {/* Search keywords */}
+              {result.searchKeywords.length ? (
+                <div className="mb-5">
+                  <p className="text-sm font-bold text-slate-950">1688 搜索关键词</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {result.searchKeywords.map((kw) => (
+                      <span key={kw} className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-800">{kw}</span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Alternatives */}
+              {result.alternativeDirections.length ? (
+                <div className="mb-5">
+                  <p className="text-sm font-bold text-slate-950">替代品 / 近似品方向</p>
+                  <ul className="mt-2 space-y-2">
+                    {result.alternativeDirections.map((d, i) => (
+                      <li key={i} className="surface-card-soft rounded-[18px] p-3 text-sm leading-6 text-slate-700">{d}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {/* Price + MOQ */}
+              <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                <div className="surface-card-soft rounded-[22px] p-4">
+                  <p className="text-xs font-semibold text-slate-500">估算采购价格带</p>
+                  <p className="mt-1 text-xl font-bold text-slate-950">
+                    {result.priceBand.min === result.priceBand.max ? result.priceBand.min : `${result.priceBand.min} - ${result.priceBand.max}`} {result.priceBand.unit}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{result.priceBand.note}</p>
+                </div>
+                <div className="surface-card-soft rounded-[22px] p-4">
+                  <p className="text-xs font-semibold text-slate-500">起订量 / MOQ 估计</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">{result.moqEstimate}</p>
+                </div>
+              </div>
+
+              {/* Risks */}
+              {result.risks.length ? (
+                <div className="mb-5">
+                  <p className="text-sm font-bold text-slate-950">采购风险提示</p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {result.risks.map((r, i) => (
+                      <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-sm font-bold text-amber-900">{r.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-amber-800">{r.description}</p>
+                        <p className="mt-1 text-xs leading-5 text-amber-700"><span className="font-semibold">建议：</span>{r.suggestion}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Next steps */}
+              {result.nextSteps.length ? (
+                <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50 p-4">
+                  <p className="text-sm font-bold text-teal-900">下一步行动</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {result.nextSteps.map((step, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm leading-6 text-teal-800">
+                        <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-teal-500" />
+                        {step}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center gap-3">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${result.beginnerFriendly ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                    {result.beginnerFriendly ? "适合新手操作" : "建议有经验者操作"}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {result.beginnerFriendly ? "小白运营可以独立完成选品和采购。" : "该品类采购复杂度较高，建议找有经验的采购或服务商。"}
+                  </span>
+                </div>
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </div>
+    </main>
+  );
+}
