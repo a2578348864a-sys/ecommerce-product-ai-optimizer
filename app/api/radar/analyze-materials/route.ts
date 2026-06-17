@@ -47,7 +47,7 @@ function inferProductName(text: string, priceText: string, heatText: string) {
     .replace(/https?:\/\/\S+/gi, " ")
     .replace(priceText, " ")
     .replace(heatText, " ")
-    .replace(/^(京东|淘宝|天猫|拼多多|抖音|小红书|jd|pdd)\s*/i, "")
+    .replace(/^(tiktok|amazon|etsy|shopify|instagram|pinterest|youtube)\s*/i, "")
     .replace(/\s*(平台|商品|产品|名称)\s*[:：]\s*/gi, " ")
     .split(/[，,。；;｜|]/)[0]
     .replace(/\s{2,}/g, " ")
@@ -57,12 +57,14 @@ function inferProductName(text: string, priceText: string, heatText: string) {
 }
 
 function detectPlatformFromText(text: string): Platform | "unknown" {
-  if (/京东|jd/i.test(text)) return "jd";
-  if (/淘宝/i.test(text)) return "taobao";
-  if (/天猫/i.test(text)) return "tmall";
-  if (/拼多多|pdd/i.test(text)) return "pdd";
-  if (/抖音/i.test(text)) return "douyin";
-  if (/小红书/i.test(text)) return "xhs";
+  if (/tiktok/i.test(text)) return "tiktok";
+  if (/amazon/i.test(text)) return "amazon";
+  if (/etsy/i.test(text)) return "etsy";
+  if (/shopify/i.test(text)) return "shopify";
+  if (/instagram/i.test(text)) return "instagram";
+  if (/pinterest/i.test(text)) return "pinterest";
+  if (/youtube\s*shorts/i.test(text)) return "youtube_shorts";
+  if (/other/i.test(text)) return "other";
   return "manual";
 }
 

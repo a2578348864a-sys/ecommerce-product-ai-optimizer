@@ -29,15 +29,6 @@ function readableStatus(platform: Platform): PlatformSearchStatus {
     };
   }
 
-  if (platform === "jd") {
-    return {
-      platform,
-      status: "manual_required",
-      message: "V1 仅预留京东公开页面读取结构，当前不自动打开页面，请手动粘贴可见信息。",
-      itemCount: 0,
-    };
-  }
-
   return {
     platform,
     status: "not_supported_yet",

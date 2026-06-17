@@ -205,7 +205,7 @@ export const radarJsonSchema = {
           type: "object",
           additionalProperties: false,
           properties: {
-            platform: { type: "string", enum: ["manual", "jd", "taobao", "tmall", "pdd", "douyin", "xhs"] },
+            platform: { type: "string", enum: ["manual", "tiktok", "amazon", "etsy", "shopify", "instagram", "pinterest", "youtube_shorts", "other"] },
             status: {
               type: "string",
               enum: ["success", "partial", "need_login", "no_permission", "captcha", "failed", "manual_required", "not_supported_yet"],

@@ -21,19 +21,13 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { EXAMPLE_VIRAL, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
-const positiveWords = ["痛点", "对比", "改造", "懒人", "宿舍", "租房", "收纳", "神器", "评论", "链接", "平替", "省钱", "免打孔", "前后"];
-const riskWords = ["品牌", "授权", "功效", "治疗", "减肥", "医用", "儿童", "带电", "大件", "易碎"];
+const positiveWords = ["viral", "review", "comment", "tiktok", "amazon", "pain point", "hack", "comparison", "before after", "link in bio", "kitchen gadget", "storage", "organization", "cleaning", "portable", "must have"];
+const riskWords = ["brand", "trademark", "patent", "medical", "FDA", "children", "electronics", "fragile", "liquid", "IP infringement", "licensed", "copyright"];
 const extendedPlatformLabels = {
   ...platformLabels,
-  tiktok: "TikTok",
-  "1688": "1688",
-  alibaba: "阿里国际站",
 } as const;
 const extendedPlatformOptions = [
   ...platformOptions,
-  "tiktok",
-  "1688",
-  "alibaba",
 ] as const;
 
 type AgentPlatform = keyof typeof extendedPlatformLabels;
@@ -112,10 +106,10 @@ function getLevelClass(level: ViralPotentialLevel | ViralLevel) {
 
 function joinMaterial(title: string, link: string, platform: AgentPlatform, materialText: string) {
   return [
-    title ? `标题：${title}` : "",
-    `平台：${extendedPlatformLabels[platform]}`,
-    link ? `链接：${link}` : "",
-    materialText ? `素材：${materialText}` : "",
+    title ? `Title: ${title}` : "",
+    `Platform: ${extendedPlatformLabels[platform]}`,
+    link ? `Link: ${link}` : "",
+    materialText ? `Material: ${materialText}` : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -123,13 +117,13 @@ function createMockResult(rawText: string, platform: AgentPlatform): DisplayResu
   const text = rawText.trim();
   const positiveHits = countMatches(text, positiveWords);
   const riskHits = riskWords.filter((word) => text.includes(word));
-  const hasTitle = /标题|题目|开头|钩子/.test(text);
-  const hasPrice = /价格|售价|¥|元|\d+\.\d+/.test(text);
-  const hasScene = /场景|宿舍|租房|厨房|桌面|通勤|办公室|卧室|仓库|采购|批发/.test(text);
-  const hasComment = /评论|问链接|求链接|种草|反馈|需求|留言/.test(text);
-  const hasPain = /痛点|太乱|麻烦|懒|不会|烦|难|贵|不方便/.test(text);
-  const hasVisual = /截图|图片|视频|拍|对比|改造|前后|画面|展示/.test(text);
-  const platformBonus = platform === "douyin" || platform === "tiktok" ? (hasVisual ? 8 : 0) : platform === "1688" || platform === "alibaba" ? (hasPrice ? 6 : 0) : 0;
+  const hasTitle = /title|hook|headline|caption|标题|开头/.test(text);
+  const hasPrice = /price|\$|USD|EUR|£|价格|售价|\d+\.\d+/.test(text);
+  const hasScene = /kitchen|camping|office|desk|bedroom|bathroom|outdoor|travel|home|car|gym|场景|宿舍|租房|厨房|桌面|通勤|办公室/.test(text);
+  const hasComment = /comment|review|feedback|Q&A|question|ask|link in bio|评论|问链接|求链接|反馈|需求/.test(text);
+  const hasPain = /pain point|problem|struggle|annoying|hard|difficult|hate|痛点|太乱|麻烦|不方便/.test(text);
+  const hasVisual = /video|photo|image|screenshot|before after|对比|改造|前后|画面|展示|截图|图片/.test(text);
+  const platformBonus = platform === "tiktok" || platform === "youtube_shorts" ? (hasVisual ? 8 : 0) : platform === "amazon" ? (hasComment ? 6 : 0) : platform === "etsy" ? (hasVisual ? 5 : 0) : platform === "shopify" ? (hasPrice ? 5 : 0) : 0;
   const score = Math.max(
     18,
     Math.min(
@@ -149,12 +143,12 @@ function createMockResult(rawText: string, platform: AgentPlatform): DisplayResu
   const level = levelFromScore(score);
   const legacyLevel = legacyLevelFromScore(score);
   const oneLineSummary = hasPain || hasScene
-    ? "这段素材有可拆的痛点或场景，适合先做一版更具体的种草/短视频脚本。"
-    : "这段素材还偏商品介绍，需要先补具体人群、痛点和使用场景。";
+    ? "素材有可拆解的痛点或使用场景，适合进一步做短视频脚本或商品角度拆解。"
+    : "素材仍偏泛泛的商品介绍，建议补充具体目标人群、痛点和使用场景。";
   const risks = [
-    riskHits.length ? "出现风险词：" + riskHits.join("、") + "，后续要人工核对是否夸大或违规。" : "暂未发现明显高风险词，但仍需人工复核平台规则。",
-    hasPrice ? "价格已出现，但要补同类对比，避免只靠低价吸引。" : "缺少价格或成本信息，转化理由不够完整。",
-    "如果表达太像广告硬推，建议改成真实体验、前后对比或评论区问答。",
+    riskHits.length ? "发现风险提示词：" + riskHits.join("、") + "，需人工核对是否符合平台政策与合规要求。" : "暂未发现明显高风险词，但仍需人工复核各海外平台规则。",
+    hasPrice ? "价格信息已出现，建议补充同类竞品对比，避免单纯依赖低价吸引。" : "缺少价格或成本信息，转化理由不够完整，建议补充定价参考。",
+    "如果内容像广告硬推，建议改成真实使用体验、前后对比或评论问答形式。",
   ];
 
   return {
@@ -163,49 +157,49 @@ function createMockResult(rawText: string, platform: AgentPlatform): DisplayResu
     level,
     oneLineSummary,
     sellingPoints: [
-      hasScene ? "已经有具体使用场景，可以围绕场景做首图或前三秒。" : "先补一个具体场景，比如宿舍桌面、租房厨房、通勤包内收纳。",
-      hasPrice ? "价格信息能帮助用户判断购买门槛，但还要说明值不值。" : "补充价格、规格或成本优势，让购买理由更完整。",
-      positiveHits >= 3 ? "素材里有痛点、评论或对比等传播信号，可以继续放大。" : "加入痛点、对比、改造、懒人等更容易传播的表达。",
+      hasScene ? "已识别出具体使用场景，可围绕该场景制作首图或前 3 秒钩子。" : "先补充一个具体场景，例如厨房台面、露营装备、家庭办公桌等。",
+      hasPrice ? "价格信息有助于判断购买门槛，但还需说明为什么值得这个价格。" : "补充价格、规格或成本优势，让购买理由更完整。",
+      positiveHits >= 3 ? "素材中有痛点、评论或对比等传播信号，可继续放大这些角度。" : "加入痛点、对比、改造技巧或解决问题型表达，提升传播性。",
     ],
     painPoints: [
-      hasPain ? "用户痛点已经出现，可以继续写具体到“谁在什么场景下很烦”。" : "痛点还不够尖锐，建议补一句用户现在最烦的问题。",
-      hasComment ? "评论需求能证明用户关心点，可以整理成评论区话题。" : "缺少评论区反馈，建议补充用户问链接、问尺寸或问效果的证据。",
-      hasScene ? "场景清楚，用户更容易代入。" : "场景不清楚，用户可能不知道这个东西和自己有什么关系。",
+      hasPain ? "用户痛点已出现，可进一步明确'谁在什么场景下遇到了什么困扰'。" : "痛点还不够尖锐，建议补充用户当前最烦恼的具体问题。",
+      hasComment ? "评论需求能证明用户关心点，可以整理成内容钩子和评论互动话题。" : "缺少评论反馈，建议补充用户关于尺寸、效果、耐用性等典型问题。",
+      hasScene ? "场景清楚，用户更容易代入自己的使用情境。" : "场景不清楚，观众可能无法将产品与自己的生活关联起来。",
     ],
     hooks: [
-      "桌面/房间/包里乱的人，先看这个改造前后对比。",
-      "别再只买好看的收纳，真正好用要看这 3 个细节。",
-      platform === "douyin" || platform === "tiktok" ? "前三秒先拍混乱画面，再一镜切到整理后的结果。" : "首图直接放前后对比，标题写清人群和痛点。",
+      "前 3 秒展示使用前的混乱状态（桌面、厨房、背包），再切到整理后的对比画面。",
+      "不要只展示好看的产品，展示真正好用的 3 个细节。",
+      platform === "tiktok" || platform === "youtube_shorts" ? "开场文字叠加：'别再买 [品类] 了，先看这个再说。'" : "首图直接放前后对比，标题写清目标人群和痛点。",
     ],
     titleSuggestions: [
-      "把标题改成“人群 + 痛点 + 结果”，例如：桌面乱的人试试这个收纳架。",
-      "标题里加入场景词，比如宿舍、租房、厨房、通勤或采购备货。",
-      "避免只写商品名，改成用户能立刻代入的问题句。",
+      "使用'目标人群 + 痛点 + 结果'公式写标题，例如：'露营党终于找到不占地方的折叠杯了'。",
+      "标题里加入场景关键词：camping、small kitchen、apartment、office desk、travel。",
+      "避免只写商品名，改成观众一眼就能代入的问题句或结果句。",
     ],
     videoOpenings: [
-      "前三秒展示使用前的混乱状态，字幕写：桌面乱到找不到东西？",
-      "接着用一个动作展示产品如何解决问题，不要先念参数。",
-      "结尾补价格/规格/适用人群，减少用户下单前疑问。",
+      "前 3 秒展示使用前的混乱状态，字幕写出具体痛点。",
+      "接着用一个动作展示产品如何解决问题，不要先念参数规格。",
+      "结尾补充价格/尺寸/适用人群，消除下单前的犹豫。",
     ],
     commentTriggers: [
-      "你们最想收纳的是桌面、厨房还是衣柜？",
-      "要不要我整理一版不同尺寸/价格的对比？",
-      "评论区可以问：这个场景你会不会用，想看哪种细节测试？",
+      "你最想先整理哪里：桌面、厨房还是衣柜？",
+      "要不要我整理一版不同尺寸和价格的对比？",
+      "评论区留言：你会在什么场景下用这个？还想看什么细节测试？",
     ],
     conversionSuggestions: [
-      "补充价格、尺寸、承重或材质，解决购买前的核心顾虑。",
-      "加一个同类对比：为什么这个更省空间、更好装或更适合小户型。",
-      "把“好用”改成可验证细节，比如免打孔、几分钟装好、能放哪些物品。",
+      "补充价格、尺寸、承重或材质信息，解决购买前核心顾虑。",
+      "加一个同类竞品对比：为什么这个更省空间、更好收纳、更适合小空间。",
+      "把'质量好'这类模糊说法改成可验证细节：免工具安装、2 分钟搞定、适配标准尺寸。",
     ],
     risks,
-    beginnerConclusion: `模拟拆解：当前为「${level}」，分数 ${score}/100。先把素材改成“具体人群 + 真实痛点 + 场景画面 + 购买理由”，再决定是否用真实 AI 深挖。`,
+    beginnerConclusion: `模拟拆解结果：潜力等级「${level}」，评分 ${score}/100。建议先将素材补到"具体人群 + 真实痛点 + 场景画面 + 购买理由"四个要素齐全，再决定是否用 AI 深度拆解。`,
     metrics: {
-      titleAttraction: levelReason(legacyLevel, hasTitle ? "素材已有标题/开头信息，继续强化反差、痛点或结果感。" : "暂时没看到明确标题钩子，建议补一句能让用户停下来的开头。"),
-      sellingPointClarity: levelReason(legacyLevel, hasPrice || positiveHits >= 2 ? "卖点和价格信息较清楚，适合继续做内容测试。" : "卖点还偏散，建议补价格、核心功能和差异点。"),
-      sceneSense: levelReason(legacyLevel, hasScene ? "已经出现具体使用场景，用户更容易代入。" : "场景感不足，建议写清谁在什么地方、什么时候会用。"),
-      commentDemand: levelReason(legacyLevel, hasComment ? "素材提到评论或求链接信号，说明有需求反馈。" : "还没看到评论区需求，建议补用户问了什么。"),
-      painPointStrength: levelReason(legacyLevel, hasPain ? "痛点较明确，适合做前后对比或问题解决型内容。" : "痛点不够尖锐，建议补一句用户现在最烦的问题。"),
-      contentShootability: levelReason(legacyLevel, hasVisual ? "有图片/视频/对比线索，比较容易拍成短内容。" : "可拍性一般，建议补前后对比、使用过程或细节特写。"),
+      titleAttraction: levelReason(legacyLevel, hasTitle ? "素材已有标题/开头信息，继续强化反差、痛点或结果感。" : "暂未看到明确的标题钩子，建议补一句能让用户停下来的开头。"),
+      sellingPointClarity: levelReason(legacyLevel, hasPrice || positiveHits >= 2 ? "卖点和价格信息较清楚，可继续做内容测试。" : "卖点还偏散，建议补充价格、核心功能和差异化亮点。"),
+      sceneSense: levelReason(legacyLevel, hasScene ? "已出现具体使用场景，用户更容易代入。" : "场景感不足，建议写清楚谁在什么地方、什么时候会用。"),
+      commentDemand: levelReason(legacyLevel, hasComment ? "素材提到评论或互动信号，需求反馈已验证。" : "还没看到评论区需求，建议补充用户提问和反馈内容。"),
+      painPointStrength: levelReason(legacyLevel, hasPain ? "痛点较明确，适合做前后对比或问题解决型内容。" : "痛点不够尖锐，建议补充用户当前最烦恼的具体问题。"),
+      contentShootability: levelReason(legacyLevel, hasVisual ? "有图片/视频/对比线索，比较容易拍成短内容。" : "可拍性一般，建议补充前后对比、使用过程或细节特写。"),
       viralPotential: legacyLevel,
       bonusPoints: [],
       weakPoints: risks,
@@ -243,9 +237,9 @@ function copySection(title: string, items: string[]) {
 
 function formatResultForMarkdown(result: DisplayResult) {
   return [
-    `# ${result.mode === "mock" ? "模拟拆解" : "AI 深度拆解"}运营报告`,
+    `# ${result.mode === "mock" ? "模拟拆解" : "AI 深度拆解"} — 海外爆款趋势报告`,
     "",
-    `- 爆款潜力评分：**${result.score} / 100**`,
+    `- 商品机会评分：**${result.score} / 100**`,
     `- 潜力等级：**${result.level}**`,
     `- 一句话判断：${result.oneLineSummary}`,
     "",
@@ -255,7 +249,7 @@ function formatResultForMarkdown(result: DisplayResult) {
     "## 用户痛点",
     ...result.painPoints.length ? result.painPoints.map((s) => `- ${s}`) : ["- 暂无"],
     "",
-    "## 开头钩子",
+    "## 内容钩子",
     ...result.hooks.length ? result.hooks.map((s) => `- ${s}`) : ["- 暂无"],
     "",
     "## 标题建议",
@@ -264,22 +258,22 @@ function formatResultForMarkdown(result: DisplayResult) {
     "## 短视频开头",
     ...result.videoOpenings.length ? result.videoOpenings.map((s) => `- ${s}`) : ["- 暂无"],
     "",
-    "## 评论区话题",
+    "## 评论互动话题",
     ...result.commentTriggers.length ? result.commentTriggers.map((s) => `- ${s}`) : ["- 暂无"],
     "",
-    "## 转化优化",
+    "## 转化优化建议",
     ...result.conversionSuggestions.length ? result.conversionSuggestions.map((s) => `- ${s}`) : ["- 暂无"],
     "",
     "## 风险提醒",
     ...result.risks.length ? result.risks.map((s) => `- ${s}`) : ["- 暂无"],
     "",
-    "## 小白结论",
+    "## 新手结论",
     result.beginnerConclusion,
   ].join("\n");
 }
 
 function exportMarkdown(result: DisplayResult, title: string) {
-  const fileName = (title.trim().slice(0, 40) || "爆款拆解报告").replace(/[\\/:*?"<>|]+/g, "-") + ".md";
+  const fileName = (title.trim().slice(0, 40) || "海外爆款趋势报告").replace(/[\\/:*?"<>|]+/g, "-") + ".md";
   const blob = new Blob([formatResultForMarkdown(result)], { type: "text/markdown;charset=utf-8" });
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -293,8 +287,8 @@ function exportMarkdown(result: DisplayResult, title: string) {
 
 function formatResultForCopy(result: DisplayResult) {
   return [
-    `${result.mode === "mock" ? "模拟拆解" : "AI 深度拆解"}运营报告`,
-    `爆款潜力评分：${result.score}/100`,
+    `${result.mode === "mock" ? "模拟拆解" : "AI 深度拆解"} — 海外爆款趋势报告`,
+    `商品机会评分：${result.score}/100`,
     `潜力等级：${result.level}`,
     `一句话判断：${result.oneLineSummary}`,
     "",
@@ -302,19 +296,19 @@ function formatResultForCopy(result: DisplayResult) {
     "",
     ...copySection("用户痛点", result.painPoints),
     "",
-    ...copySection("开头钩子", result.hooks),
+    ...copySection("内容钩子", result.hooks),
     "",
     ...copySection("标题建议", result.titleSuggestions),
     "",
     ...copySection("短视频开头", result.videoOpenings),
     "",
-    ...copySection("评论区话题", result.commentTriggers),
+    ...copySection("评论互动话题", result.commentTriggers),
     "",
-    ...copySection("转化优化", result.conversionSuggestions),
+    ...copySection("转化优化建议", result.conversionSuggestions),
     "",
     ...copySection("风险提醒", result.risks),
     "",
-    "小白结论：",
+    "新手结论：",
     result.beginnerConclusion,
   ].join("\n");
 }
@@ -362,7 +356,7 @@ export function ViralMockAgent() {
   const [platform, setPlatform] = useState<AgentPlatform>(
     (sharedProduct.targetPlatform && sharedProduct.targetPlatform !== "shopify")
       ? sharedProduct.targetPlatform as AgentPlatform
-      : "xhs"
+      : "tiktok"
   );
   const [materialText, setMaterialText] = useState(sharedProduct.description);
   const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
@@ -533,9 +527,9 @@ export function ViralMockAgent() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Viral Agent</p>
-                <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">爆款拆解 Agent</h1>
-                <p className="mt-1 text-sm muted-text">先用规则模拟，再按需接入真实 AI 做运营报告。</p>
+                <p className="eyebrow">Overseas Trend Agent</p>
+                <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">海外爆款趋势拆解 Agent</h1>
+                <p className="mt-1 text-sm muted-text">半自动分析工具：先用本地规则模拟，再按需接入 AI 做海外平台运营报告。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <span className="linear-pill px-3 py-1 text-sm font-semibold">
@@ -557,10 +551,10 @@ export function ViralMockAgent() {
                     <Sparkles className="h-6 w-6" />
                   </span>
                   <div>
-                    <p className="text-sm font-semibold text-teal-700">运营报告版</p>
-                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">输入素材，拆出可直接改的爆款报告</h2>
+                    <p className="text-sm font-semibold text-teal-700">海外市场运营报告</p>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">输入海外素材，拆解跨境商品机会</h2>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
-                      先用模拟拆解验证结构；正式复核时，再让 AI 按平台差异拆标题、开头、评论区和转化建议。
+                      先用模拟拆解验证结构；正式复核时，再让 AI 按平台差异拆标题、开头、评论互动和转化建议。
                     </p>
                   </div>
                 </div>
@@ -573,7 +567,7 @@ export function ViralMockAgent() {
                   ))}
                 </div>
                 <p className="mt-3 text-xs leading-5 text-slate-500">
-                  2代预留：未来可联动关键词、找货、发布 Agent；当前仍需人工确认，不自动调用外部平台。
+                  V2 预留：未来可联动关键词、找货、发布 Agent；当前仍需人工确认，不自动调用外部平台 API。
                 </p>
 
                 <button
@@ -593,7 +587,7 @@ export function ViralMockAgent() {
                         setTitle(event.target.value.slice(0, 160));
                         setSavedRecordId("");
                       }}
-                      placeholder="例如：宿舍桌面洞洞板收纳架"
+                      placeholder="e.g. Portable USB-C mini blender"
                     className="input-soft h-11 w-full px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                     />
                   </label>
@@ -605,7 +599,7 @@ export function ViralMockAgent() {
                         setProductUrl(event.target.value.slice(0, 400));
                         setSavedRecordId("");
                       }}
-                      placeholder="可粘贴小红书、抖音、淘宝等链接"
+                      placeholder="可粘贴 TikTok、Amazon、Etsy、Shopify 等链接"
                       className="input-soft h-11 w-full px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                     />
                   </label>
@@ -656,7 +650,7 @@ export function ViralMockAgent() {
                       setSavedRecordId("");
                     }}
                     rows={10}
-                    placeholder="粘贴标题、卖点、评论区反馈、商品价格、使用场景。例如：宿舍桌面收纳架，29.9 元，评论区很多人问链接..."
+                    placeholder="Paste title, selling points, comment feedback, price, use scenario. e.g. Portable blender, $19.99, comments asking about battery life..."
                     className="input-soft w-full px-4 py-3 text-sm leading-6 text-slate-900 outline-none placeholder:text-slate-400"
                   />
                   {fieldError ? <p className="mt-2 text-sm font-semibold text-rose-600">{fieldError}</p> : null}
@@ -773,7 +767,7 @@ export function ViralMockAgent() {
                 <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
                   <p className="flex gap-2">
                     <ClipboardList className="mt-1 h-4 w-4 shrink-0 text-teal-600" />
-                    先填素材文案，标题和链接可以先不填。
+                    填写海外平台素材文案，标题和链接可以先不填。
                   </p>
                   <p className="flex gap-2">
                     <Wand2 className="mt-1 h-4 w-4 shrink-0 text-teal-600" />
@@ -792,11 +786,11 @@ export function ViralMockAgent() {
           <section className="surface-card rounded-[28px] p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-600">Step 4 完成 → 下一步</p>
-                <p className="mt-1 text-sm text-slate-500">拆解完了，去任务中心查看所有分析记录。</p>
+                <p className="text-sm font-semibold text-slate-600">分析完成 → 下一步</p>
+                <p className="mt-1 text-sm text-slate-500">拆解完了，去任务中心查看所有海外爆款分析记录。</p>
               </div>
               <Link href="/tasks" className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold">
-                任务记录 → Step 5
+                任务记录 →
               </Link>
             </div>
           </section>

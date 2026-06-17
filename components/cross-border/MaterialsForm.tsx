@@ -56,9 +56,9 @@ export function MaterialsForm() {
   function fillExample() {
     setKeyword(EXAMPLE_PRODUCT.productName);
     setManualText(
-      "小红书笔记原文：\n\n标题：露营神器！这个折叠水杯太方便了\n\n正文：户外露营必备好物分享！食品级硅胶折叠水杯，350ml容量，折叠后只有5cm厚，带金属挂扣直接挂包上。IPX4防水不漏，比普通水杯轻一半。\n\n价格：39.9元\n\n评论区反馈：\n- 会不会漏水？\n- 能装热水吗？\n- 折叠处容易老化吗？\n- 颜值好高，求链接！",
+      "TikTok viral post:\n\nTitle: This foldable camping cup is genius!\n\nBody: Food-grade silicone foldable cup, 350ml capacity, folds to just 5cm thick. Metal carabiner clips right onto your backpack. IPX4 waterproof, half the weight of regular cups.\n\nPrice: $14.99\n\nTop comments:\n- Does it actually not leak?\n- Can I use it for hot drinks?\n- How long does the silicone last?\n- Link please!!",
     );
-    setLinksText("https://www.xiaohongshu.com/explore/example-water-bottle");
+    setLinksText("https://www.tiktok.com/@example/video/foldable-camping-cup");
     setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
   }
 
@@ -179,7 +179,7 @@ export function MaterialsForm() {
               <div>
                 <h2 className="text-xl font-bold text-slate-950">素材信息</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-500">
-                  可以粘贴小红书笔记、商品详情、1688 链接或选品想法，AI 会提取关键信息。
+                  可以粘贴海外平台内容、商品详情、1688/阿里国际站链接或选品想法，AI 会提取关键信息。
                 </p>
               </div>
               <button
@@ -204,12 +204,12 @@ export function MaterialsForm() {
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">商品描述 / 笔记原文</span>
+                <span className="mb-2 block text-sm font-semibold text-slate-800">商品描述 / 素材原文</span>
                 <textarea
                   value={manualText}
                   onChange={(e) => setManualText(e.target.value)}
                   rows={5}
-                  placeholder="粘贴小红书笔记全文、商品详情页描述、或者你对这个品类的想法。AI 会从中提取商品类型、卖点、目标人群、使用场景等信息。"
+                  placeholder="粘贴海外平台素材全文、商品详情页描述、或者你对这个品类的想法。AI 会从中提取商品类型、卖点、目标人群、使用场景等信息。"
                   className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                 />
                 <p className="mt-1 text-xs text-slate-400">支持多段文字，AI 会自动整理结构。</p>
@@ -221,7 +221,7 @@ export function MaterialsForm() {
                   value={linksText}
                   onChange={(e) => setLinksText(e.target.value)}
                   rows={3}
-                  placeholder="粘贴商品链接，每行一个。支持 1688、淘宝、京东、拼多多、小红书等平台的公开链接。"
+                  placeholder="粘贴商品链接，每行一个。支持 1688、阿里国际站、Amazon、TikTok 等平台的公开链接。"
                   className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                 />
                 <p className="mt-1 text-xs text-slate-400">V1 阶段不自动抓取页面内容，链接用于辅助判断商品来源和平台。</p>

@@ -14,18 +14,19 @@ describe("platform constants", () => {
     expect(CROSS_BORDER_PLATFORMS).toContain("other");
   });
 
-  it("ALL_KNOWN_PLATFORMS includes both Chinese and cross-border", () => {
-    expect(ALL_KNOWN_PLATFORMS).toContain("jd");
+  it("ALL_KNOWN_PLATFORMS includes both overseas and cross-border", () => {
     expect(ALL_KNOWN_PLATFORMS).toContain("amazon");
     expect(ALL_KNOWN_PLATFORMS).toContain("tiktok");
     expect(ALL_KNOWN_PLATFORMS).toContain("alibaba");
   });
 
-  it("platformOptions still contains Chinese radar platforms", () => {
-    expect(platformOptions).toContain("jd");
-    expect(platformOptions).toContain("xhs");
+  it("platformOptions contains overseas content platforms", () => {
+    expect(platformOptions).toContain("tiktok");
+    expect(platformOptions).toContain("amazon");
+    expect(platformOptions).toContain("etsy");
+    expect(platformOptions).toContain("shopify");
     expect(platformOptions).toContain("manual");
-    // Cross-border platforms should NOT be in platformOptions
-    expect(platformOptions as readonly string[]).not.toContain("amazon");
+    // TikTok Shop (selling platform) is separate from TikTok (content platform)
+    expect(CROSS_BORDER_PLATFORMS).toContain("tiktok_shop");
   });
 });

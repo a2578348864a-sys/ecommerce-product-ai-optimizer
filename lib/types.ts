@@ -1,15 +1,17 @@
-export const platformOptions = ["manual", "jd", "taobao", "tmall", "pdd", "douyin", "xhs"] as const;
+export const platformOptions = ["manual", "tiktok", "amazon", "etsy", "shopify", "instagram", "pinterest", "youtube_shorts", "other"] as const;
 
 export type Platform = (typeof platformOptions)[number];
 
 export const platformLabels: Record<Platform, string> = {
   manual: "手动输入",
-  jd: "京东",
-  taobao: "淘宝",
-  tmall: "天猫",
-  pdd: "拼多多",
-  douyin: "抖音",
-  xhs: "小红书",
+  tiktok: "TikTok",
+  amazon: "Amazon",
+  etsy: "Etsy",
+  shopify: "Shopify / 独立站",
+  instagram: "Instagram",
+  pinterest: "Pinterest",
+  youtube_shorts: "YouTube Shorts",
+  other: "其他海外平台",
 };
 
 // ========== 跨境电商平台 ==========
@@ -27,11 +29,10 @@ export const CROSS_BORDER_PLATFORMS = [
   "other",
 ] as const;
 
-/** 所有已知平台（中国雷达 + 跨境 + 杂项），用于 API 校验 */
+/** 所有已知平台（海外 + 跨境 + 杂项），用于 API 校验 */
 export const ALL_KNOWN_PLATFORMS = [
   ...platformOptions,
   ...CROSS_BORDER_PLATFORMS,
-  "tiktok",
   "1688",
   "alibaba",
 ] as const;
@@ -43,10 +44,13 @@ export const crossBorderPlatformLabels: Record<string, string> = {
   etsy: "Etsy",
   shopify: "Shopify",
   tiktok_shop: "TikTok Shop",
+  tiktok: "TikTok",
   shopee: "Shopee",
   lazada: "Lazada",
   temu: "Temu",
-  tiktok: "TikTok",
+  instagram: "Instagram",
+  pinterest: "Pinterest",
+  youtube_shorts: "YouTube Shorts",
   "1688": "1688",
   alibaba: "阿里国际站",
   other: "其他平台",
@@ -412,55 +416,19 @@ export const defaultPlatformStatus: PlatformSearchStatus[] = [
   {
     platform: "manual",
     status: "success",
-    message: "已使用你手动提供的商品、榜单或截图信息作为主要分析来源。",
+    message: "已使用你手动提供的商品、素材或截图信息作为主要分析来源。",
     itemCount: 0,
   },
   {
-    platform: "jd",
-    status: "manual_required",
-    message: "V1 不深度读取页面，请复制公开可见商品信息或上传截图后分析。",
-    itemCount: 0,
-  },
-  {
-    platform: "taobao",
-    status: "manual_required",
-    message: "V1 不绕过登录或验证，请手动复制可见商品信息。",
-    itemCount: 0,
-  },
-  {
-    platform: "tmall",
-    status: "manual_required",
-    message: "V1 不自动读取平台页面，请手动补充商品信息。",
-    itemCount: 0,
-  },
-  {
-    platform: "pdd",
-    status: "manual_required",
-    message: "V1 不自动读取平台页面，请手动复制可见榜单或商品信息。",
-    itemCount: 0,
-  },
-  {
-    platform: "douyin",
+    platform: "tiktok",
     status: "not_supported_yet",
-    message: "V1 不读取抖音页面，请上传截图或手动粘贴可见信息。",
-    itemCount: 0,
-  },
-  {
-    platform: "xhs",
-    status: "manual_required",
-    message: "V1 支持截图和手动信息，不强抓页面。",
+    message: "V1 不读取 TikTok 页面，请上传截图或手动粘贴可见信息。",
     itemCount: 0,
   },
   {
     platform: "amazon",
     status: "manual_required",
     message: "V1 不自动抓取 Amazon 页面，请手动粘贴商品信息或上传截图。",
-    itemCount: 0,
-  },
-  {
-    platform: "ebay",
-    status: "manual_required",
-    message: "V1 不自动抓取 eBay 页面，请手动粘贴商品信息或上传截图。",
     itemCount: 0,
   },
   {
@@ -476,9 +444,33 @@ export const defaultPlatformStatus: PlatformSearchStatus[] = [
     itemCount: 0,
   },
   {
-    platform: "tiktok_shop",
+    platform: "instagram",
     status: "not_supported_yet",
-    message: "V1 不读取 TikTok Shop 页面，请上传截图或手动粘贴可见信息。",
+    message: "V1 不支持自动读取 Instagram 内容，请上传截图或手动粘贴素材。",
+    itemCount: 0,
+  },
+  {
+    platform: "pinterest",
+    status: "manual_required",
+    message: "V1 不读取 Pinterest 页面，请手动粘贴商品或素材信息。",
+    itemCount: 0,
+  },
+  {
+    platform: "youtube_shorts",
+    status: "not_supported_yet",
+    message: "V1 不支持自动读取 YouTube Shorts，请上传截图或手动粘贴素材。",
+    itemCount: 0,
+  },
+  {
+    platform: "other",
+    status: "manual_required",
+    message: "V1 对其他海外平台不自动读取，请手动粘贴信息或上传截图。",
+    itemCount: 0,
+  },
+  {
+    platform: "ebay",
+    status: "manual_required",
+    message: "V1 不自动抓取 eBay 页面，请手动粘贴商品信息或上传截图。",
     itemCount: 0,
   },
   {

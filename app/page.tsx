@@ -30,7 +30,6 @@ import {
 } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { useSharedProduct } from "@/hooks/useSharedProduct";
 import {
   EvidenceCardList,
   EvidenceSection,
@@ -118,34 +117,34 @@ const emptyForm: RadarFormInput = {
   evidenceCards: [],
 };
 
-const sampleLinks = "https://item.jd.com/example.html";
+const sampleLinks = "https://www.amazon.com/dp/example-kitchen-gadget";
 
-const sampleManualText = `平台：小红书
-商品名：桌面洞洞板收纳架
-价格：29.9
-热度：笔记互动较多，评论里有人问链接
-备注：适合宿舍、桌面收纳、女生房间改造内容
+const sampleManualText = `Platform: TikTok
+Product: Portable USB-C rechargeable mini blender
+Price: $19.99
+Popularity: 2M+ views, comments asking where to buy
+Notes: Portable, good for gym/office/camping, small and lightweight
 
-平台：拼多多
-商品名：厨房缝隙清洁刷
-价格：5.9
-热度：低价爆款，同款较多
-备注：小件低价，但可能价格很卷
+Platform: Amazon
+Product: Pet slow feeder bowl
+Price: $14.99
+Popularity: 5,000+ reviews, 4.5 stars
+Notes: Anti-choke design, suitable for small/medium dogs, dishwasher safe
 
-平台：京东
-商品名：透明桌面收纳盒
-价格：19.9
-热度：排行榜靠前，评价 10万+
-备注：适合学生宿舍、桌面整理、小件收纳`;
+Platform: Etsy
+Product: Handmade resin phone charm
+Price: $8.50
+Popularity: Top seller badge, many 5-star reviews
+Notes: Customizable colors, aesthetic accessory, small parcel shipping`;
 
 const sampleForm: RadarFormInput = {
   ...emptyForm,
-  keyword: "桌面收纳 / 厨房清洁小件",
-  targetPriceRange: "9.9-39.9 元",
-  targetAudience: "学生宿舍、租房人群、桌面整理、厨房清洁需求人群",
+  keyword: "kitchen gadgets / pet accessories",
+  targetPriceRange: "$5 - $25 USD",
+  targetAudience: "US/Europe, home organization, pet owners, kitchen enthusiasts, gift buyers",
   excludedCategories: "食品、美妆、儿童用品、带电、大件、易碎、强 IP",
-  selectedPlatforms: ["manual", "jd", "pdd", "xhs"],
-  notes: "第一版只看低风险百货小件，优先找体积小、售后少、容易自己拍图的方向。",
+  selectedPlatforms: ["manual", "tiktok", "amazon", "etsy"],
+  notes: "V1 focus on low-risk general merchandise small items. Prioritize compact, low after-sales, easy-to-self-photograph products for cross-border e-commerce.",
   linksText: sampleLinks,
   manualText: sampleManualText,
 };
@@ -160,6 +159,19 @@ const progressSteps = [
   "生成找货关键词和同类扩展",
   "生成下一步行动和本地档案",
 ];
+
+const localArchiveKey = "hot-material-agent-archives";
+
+const materialTypeLabels: Record<DetectedMaterialType, string> = {
+  product_page: "商品页",
+  ranking_page: "榜单页",
+  search_result: "搜索结果",
+  note: "内容素材",
+  comment_screenshot: "评论截图",
+  product_image: "商品图/截图",
+  manual_text: "手动文字",
+  unknown: "未知",
+};
 
 const skillButtons = [
   "识别这是什么商品",
@@ -198,19 +210,6 @@ const displayAgents = [
     icon: Brain,
   },
 ];
-
-const localArchiveKey = "hot-material-agent-archives";
-
-const materialTypeLabels: Record<DetectedMaterialType, string> = {
-  product_page: "商品页",
-  ranking_page: "榜单页",
-  search_result: "搜索结果",
-  note: "笔记",
-  comment_screenshot: "评论截图",
-  product_image: "商品图/截图",
-  manual_text: "手动文字",
-  unknown: "未知",
-};
 
 function makeId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -328,7 +327,7 @@ function normalizeUrlCandidate(value: string) {
 
 function extractUrls(text: string) {
   const urls = new Set<string>();
-  const urlRegex = /(https?:\/\/[^\s，。；、]+|(?:item\.)?jd\.com\/[^\s，。；、]+|(?:www\.)?(?:taobao|tmall|pinduoduo|yangkeduo|douyin|jinritemai|xiaohongshu)\.com\/[^\s，。；、]+)/gi;
+  const urlRegex = /(https?:\/\/[^\s，。；、]+|(?:www\.)?(?:amazon|tiktok|etsy|shopify|ebay|alibaba|1688)\.com\/[^\s，。；、]+|(?:www\.)?(?:taobao|tmall|pinduoduo|jd|xiaohongshu|douyin)\.com\/[^\s，。；、]+)/gi;
   for (const match of text.matchAll(urlRegex)) {
     urls.add(normalizeUrlCandidate(match[0]));
   }
@@ -347,21 +346,24 @@ function isPrivateHost(hostname: string) {
 
 function detectPlatform(hostname: string): Platform | "unknown" {
   const host = hostname.toLowerCase();
-  if (host === "jd.com" || host.endsWith(".jd.com")) return "jd";
-  if (host === "taobao.com" || host.endsWith(".taobao.com")) return "taobao";
-  if (host === "tmall.com" || host.endsWith(".tmall.com")) return "tmall";
-  if (host === "pinduoduo.com" || host.endsWith(".pinduoduo.com") || host === "yangkeduo.com" || host.endsWith(".yangkeduo.com")) return "pdd";
-  if (host === "douyin.com" || host.endsWith(".douyin.com") || host === "jinritemai.com" || host.endsWith(".jinritemai.com")) return "douyin";
-  if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com")) return "xhs";
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) return "tiktok";
+  if (host === "amazon.com" || host.endsWith(".amazon.com") || host.endsWith(".amazon.co.uk") || host.endsWith(".amazon.de") || host.endsWith(".amazon.co.jp")) return "amazon";
+  if (host === "etsy.com" || host.endsWith(".etsy.com")) return "etsy";
+  if (host === "shopify.com" || host.endsWith(".shopify.com") || host.endsWith(".myshopify.com")) return "shopify";
+  if (host === "instagram.com" || host.endsWith(".instagram.com")) return "instagram";
+  if (host === "pinterest.com" || host.endsWith(".pinterest.com")) return "pinterest";
+  if (host === "youtube.com" || host.endsWith(".youtube.com")) return "youtube_shorts";
+  if (host === "ebay.com" || host.endsWith(".ebay.com")) return "other";
+  if (host === "alibaba.com" || host.endsWith(".alibaba.com")) return "other";
   return "unknown";
 }
 
 function detectLinkType(url: URL, platform: Platform | "unknown"): LinkType {
   const value = `${url.hostname}${url.pathname}${url.search}`.toLowerCase();
-  if (platform === "xhs") return "note";
-  if (/item|product|detail|goods/.test(value)) return "product";
-  if (/rank|top|榜/.test(value)) return "ranking";
-  if (/search|keyword|q=|wd=/.test(value)) return "search";
+  if (platform === "instagram" || platform === "pinterest") return "note";
+  if (/item|product|detail|goods|listing|dp\//.test(value)) return "product";
+  if (/rank|top|best.seller|榜/.test(value)) return "ranking";
+  if (/search|keyword|q=|wd=|s=|k=/.test(value)) return "search";
   return "unknown";
 }
 
@@ -399,12 +401,14 @@ function cleanSupportedUrl(rawUrl: string) {
 }
 
 function detectPlatformFromText(text: string): Platform | "unknown" {
-  if (/京东|jd/i.test(text)) return "jd";
-  if (/淘宝/i.test(text)) return "taobao";
-  if (/天猫/i.test(text)) return "tmall";
-  if (/拼多多|pdd/i.test(text)) return "pdd";
-  if (/抖音/i.test(text)) return "douyin";
-  if (/小红书/i.test(text)) return "xhs";
+  if (/tiktok/i.test(text)) return "tiktok";
+  if (/amazon/i.test(text)) return "amazon";
+  if (/etsy/i.test(text)) return "etsy";
+  if (/shopify/i.test(text)) return "shopify";
+  if (/instagram/i.test(text)) return "instagram";
+  if (/pinterest/i.test(text)) return "pinterest";
+  if (/youtube\s*shorts/i.test(text)) return "youtube_shorts";
+  if (/manual|other|unknown/i.test(text)) return "manual";
   return "manual";
 }
 
@@ -686,7 +690,7 @@ function createMaterialAgentEvidenceCard(result: MaterialAgentResult, rawText: s
       `用户痛点：${materialListText(result.painPoints)}`,
     ].join("\n"),
     sourceUrl: "",
-    platform: "xhs",
+    platform: "tiktok",
     rawEvidenceText: rawText || result.summary,
     capturedAt: now,
     confidenceFields: [
@@ -1258,32 +1262,6 @@ export default function Home() {
     });
   }
 
-  function runSkill(skill: string) {
-    if (skill === "保存到选品档案") {
-      if (result) {
-        void saveLocalArchive();
-      } else {
-        setNotice("请先生成完整分析报告，再保存到选品档案。");
-      }
-      return;
-    }
-
-    const goal = skill.includes("找货关键词")
-      ? "去哪里找货"
-      : skill.includes("高风险")
-        ? "风险有多高"
-        : skill.includes("差异化")
-          ? "怎么差异化"
-          : skill.includes("同类扩展")
-            ? "怎么差异化"
-            : skill.includes("能不能")
-              ? "能不能跟品"
-              : "全部分析";
-
-    setForm((current) => ({ ...current, analysisGoal: goal }));
-    setNotice(`已切换技能：${skill}。如果还没有证据卡片，请先点“识别素材”。`);
-  }
-
   function validateBeforeAnalyze(currentForm: RadarFormInput) {
     const errors: FieldErrors = {};
     if (!accessPassword.trim()) {
@@ -1581,7 +1559,7 @@ export default function Home() {
         ? "请先识别素材，再进行爆款拆解。"
         : viralAgentResult
           ? "爆款拆解 Agent 已完成。"
-          : "根据标题、卖点、场景、评论需求和痛点，判断小红书内容爆款潜力。";
+          : "根据标题、卖点、场景、评论需求和痛点，判断海外平台内容爆款潜力。";
 
   const assistantState = loading
     ? {
@@ -1599,7 +1577,7 @@ export default function Home() {
       ? {
           title: "爆款拆解 Agent 正在分析...",
           text: "正在看标题钩子、卖点、场景、评论需求和内容可拍性。",
-          detail: "这一步只判断小红书内容爆款潜力，不判断能不能做无货源。",
+          detail: "这一步分析海外平台内容趋势与商品机会，不构成经营决策。",
         }
     : result
       ? {
@@ -1639,30 +1617,11 @@ export default function Home() {
               }
             : {
                 title: "请先放入素材",
-                text: "先粘贴一段小红书笔记、商品信息或选品想法。",
+                text: "先粘贴海外平台内容链接、商品信息或选品想法。",
                 detail: "只需要先完成第一步，不用理解技术设置。",
               };
 
   const hasMaterialInput = hasRawMaterialInput(form);
-  const pendingMaterialCount = hasMaterialInput || materialAgentResult ? 1 : 0;
-  const riskReminderCount = materialAgentResult ? materialAgentResult.riskWords.length : 0;
-  const recommendedCount = result ? result.recommendedProducts.length : 0;
-  const identifiedProductCount = materialAgentResult?.productType && materialAgentResult.productType !== "未提到" ? "1" : "待识别";
-  const materialCompletenessText = materialAgentResult?.materialCompleteness || "待识别";
-  const viralPotentialText = viralAgentResult?.viralPotential || "待分析";
-  const materialAgentStatus = recognizingEvidence ? "识别中" : materialAgentResult ? "已完成" : "待开始";
-  const viralAgentStatus = analyzingViral ? "分析中" : viralAgentResult ? "已完成" : "待开始";
-  const heroStats = [
-    { label: "待体检素材", value: pendingMaterialCount },
-    { label: "高风险提醒", value: riskReminderCount },
-    { label: "建议做", value: recommendedCount },
-  ];
-  const metricCards = [
-    { label: "已识别素材", value: identifiedProductCount, helper: identifiedProductCount === "待识别" ? "先点击识别素材" : "商品类型数量" },
-    { label: "风险提醒", value: materialAgentResult ? String(riskReminderCount) : "待识别", helper: "来自素材接收 Agent 的风险词" },
-    { label: "素材完整度", value: materialCompletenessText, helper: "完整 / 一般 / 不完整" },
-    { label: "爆款潜力", value: viralPotentialText, helper: viralAgentResult ? "来自爆款拆解 Agent" : "先运行爆款拆解" },
-  ];
 
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
@@ -1673,12 +1632,8 @@ export default function Home() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="linear-pill linear-pill-brand px-2.5 py-1 text-xs">1代半自动工作台</span>
-                  <span className="linear-pill px-2.5 py-1 text-xs text-slate-500">人工确认</span>
-                </div>
-                <h1 className="section-title mt-2 text-2xl">AI 电商运营 Agent 工作台</h1>
-                <p className="muted-text mt-1 text-sm">当前是半自动 AI 分析工具：AI 负责分析、生成、整理，关键决策由你人工确认。</p>
+                <h1 className="section-title text-2xl">粘贴商品素材，判断这个品能不能做</h1>
+                <p className="muted-text mt-1 text-sm">半自动 AI 分析工具：AI 负责分析/生成/整理，关键决策由人工确认。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="linear-pill px-3 py-1 text-sm">本地部署</span>
@@ -1697,17 +1652,13 @@ export default function Home() {
             <WorkspaceMobileNav />
           </header>
 
-          {/* 工作流引导 */}
-          <WorkflowGuideCards />
-
           <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-5">
               <section className="surface-card-strong p-5 sm:p-6">
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="linear-kicker">当前主流程</p>
-                    <h2 className="section-title mt-3 text-2xl sm:text-3xl">粘贴你的选品素材</h2>
-                    <p className="muted-text mt-1 text-sm">1代半自动流程：素材进入、证据拆解、人工确认、生成结论。</p>
+                    <h2 className="section-title text-2xl sm:text-3xl">素材输入</h2>
+                    <p className="muted-text mt-1 text-sm">填入素材后逐步识别、拆解、生成结论。当前是半自动流程，AI 负责整理证据，你负责确认判断。</p>
                   </div>
                   <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">
                     {assistantState.title}
@@ -1720,13 +1671,13 @@ export default function Home() {
                   limit={inputLimits.manualText || 12000}
                   error={fieldErrors.manualText}
                   onChange={(value) => updateField("manualText", value)}
-                  placeholder="粘贴你的小红书笔记、商品信息、评论需求、选品想法。例如：标题、卖点、价格、人群、使用场景、评论区问题。"
+                  placeholder="粘贴海外平台内容、商品信息、评论需求、选品想法。例如：标题、卖点、价格、目标人群、使用场景、评论区问题。"
                   rows={8}
                 />
 
                 <div className="mt-3 grid gap-2 md:grid-cols-3">
                   {[
-                    ["01", "粘贴素材", "笔记 / 链接 / 截图"],
+                    ["01", "粘贴素材", "内容 / 链接 / 截图"],
                     ["02", "识别证据", "商品、卖点、风险"],
                     ["03", "开始体检", "推荐 / 谨慎 / 不建议"],
                   ].map(([step, title, text]) => (
@@ -1758,7 +1709,7 @@ export default function Home() {
                     limit={inputLimits.keyword || 80}
                     error={fieldErrors.keyword}
                     onChange={(value) => updateField("keyword", value)}
-                    placeholder="例如：小红书宿舍收纳、懒人清洁神器"
+                    placeholder="例如：TikTok kitchen gadgets、Amazon pet supplies"
                   />
                 </div>
 
@@ -1796,7 +1747,7 @@ export default function Home() {
                     limit={inputLimits.linksText || 3000}
                     error={fieldErrors.linksText}
                     onChange={(value) => updateField("linksText", value)}
-                    placeholder="也可以粘贴小红书、淘宝、拼多多等链接。"
+                    placeholder="也可以粘贴 TikTok、Amazon、Etsy、Shopify 等链接。"
                     rows={4}
                   />
                 </div>
@@ -1951,99 +1902,6 @@ export default function Home() {
                 </div>
               </section>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {metricCards.map((item) => (
-                  <MetricTile key={item.label} label={item.label} value={item.value} helper={item.helper} />
-                ))}
-              </div>
-
-              <section className="surface-card p-5 sm:p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="linear-kicker">Agent 能力矩阵</p>
-                    <h2 className="section-title mt-3 text-2xl">从爆款素材分析扩展到电商运营工作台</h2>
-                    <p className="muted-text mt-1 text-sm">只有爆款素材 Agent 已上线；其他能力仅为规划位，不会跳转不存在页面，也不会调用 API。</p>
-                  </div>
-                  <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">当前主入口：/viral</span>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {agentCapabilityMatrix.map((item) => {
-                    const isLive = item.status === "已上线" && "href" in item && item.href;
-                    const isHighCost = item.status.includes("高成本");
-                    return (
-                    <div key={item.name} className={(isLive ? "agent-card" : "agent-card-planned") + " p-4"}>
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-semibold text-slate-950">{item.name}</h3>
-                        <span className={(isLive ? "linear-pill-brand" : isHighCost ? "border-amber-200 bg-amber-50 text-amber-700" : "text-slate-500") + " linear-pill px-2 py-0.5 text-[11px]"}>
-                          {item.status}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
-                      {"flags" in item && item.flags?.length ? (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {item.flags.map((flag) => (
-                            <span key={flag} className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">{flag}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                      <div className="mt-4">
-                        {isLive ? (
-                          <Link href={item.href} className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                            {item.cta}
-                          </Link>
-                        ) : (
-                          <button type="button" disabled className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                            即将支持
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="surface-card p-5 sm:p-6">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="linear-kicker">1代可用能力</p>
-                    <h2 className="section-title mt-3 text-2xl">当前半自动工作台</h2>
-                  </div>
-                  <span className="linear-pill px-3 py-1 text-xs text-slate-600">
-                    输入素材后逐步执行
-                  </span>
-                </div>
-                <AgentWorkspacePanel materialStatus={materialAgentStatus} viralStatus={viralAgentStatus} />
-              </section>
-
-              <section className="surface-card p-5 sm:p-6">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="linear-kicker">多 Agent 工作流预览</p>
-                    <h2 className="section-title mt-3 text-2xl">未来自动工作流地基</h2>
-                    <p className="muted-text mt-1 text-sm">这里只展示结构预留，不做自动发布、投广告、爬虫、外部平台操作或真实媒体生成。</p>
-                  </div>
-                  <span className="linear-pill px-3 py-1 text-xs text-slate-500">规划中 / 人工确认</span>
-                </div>
-                <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-                  {workflowPreviewSteps.map((step, index) => (
-                    <div key={step} className="workflow-step p-3">
-                      <span className="text-[11px] font-semibold text-slate-400">0{index + 1}</span>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">{step}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="linear-panel p-4">
-                    <p className="text-sm font-semibold text-slate-950">高风险动作</p>
-                    <p className="muted-text mt-2 text-sm leading-6">发布商品、改价、投广告、联系客户、批量发送等动作后期也必须保留人工确认。</p>
-                  </div>
-                  <div className="linear-panel p-4">
-                    <p className="text-sm font-semibold text-slate-950">成本控制</p>
-                    <p className="muted-text mt-2 text-sm leading-6">真实生图/生视频 API 当前默认关闭，未来调用前必须先确认费用和用途。</p>
-                  </div>
-                </div>
-              </section>
 
               {materialAgentResult ? <MaterialAgentSummaryCard result={materialAgentResult} /> : null}
               {viralAgentResult ? <ViralAgentSummaryCard result={viralAgentResult} /> : null}
@@ -2127,15 +1985,21 @@ export default function Home() {
 
             <aside className="flex flex-col gap-4">
               <section className="surface-card sticky top-4 p-4">
-                <p className="linear-kicker">现在该做什么</p>
+                <p className="linear-kicker">当前步骤</p>
                 <h2 className="section-title mt-3 text-xl">{assistantState.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{assistantState.text}</p>
-                <p className="mt-1 hidden text-xs leading-5 text-slate-500 sm:block">{assistantState.detail}</p>
-                <div className="mt-4 grid gap-2">
-                  {heroStats.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                      <span className="text-xs text-slate-500">{item.label}</span>
-                      <span className="text-sm font-semibold text-slate-900">{item.value}</span>
+                <div className="mt-4 flex flex-col gap-2">
+                  {[
+                    { step: 1, label: "放入素材", desc: "粘贴内容、链接或截图" },
+                    { step: 2, label: "AI 识别信息", desc: "提取商品证据和风险" },
+                    { step: 3, label: "生成判断报告", desc: "推荐做 / 谨慎做 / 不建议做" },
+                  ].map((item) => (
+                    <div key={item.step} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">{item.step}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                        <p className="text-xs text-slate-500">{item.desc}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2164,80 +2028,56 @@ export default function Home() {
                   </div>
                 ) : null}
               </section>
-
-              <section className="surface-card-soft p-4">
-                <p className="text-sm font-semibold text-slate-900">产品路线</p>
-                <div className="mt-3 flex flex-col gap-2 text-xs leading-5 text-slate-600">
-                  <p><span className="font-semibold text-teal-700">1代：</span>半自动 Agent 工作台，当前主流程。</p>
-                  <p><span className="font-semibold text-slate-700">2代：</span>多 Agent 协同，规划中。</p>
-                  <p><span className="font-semibold text-slate-700">3代：</span>全自动中控，规划中。</p>
-                </div>
-              </section>
             </aside>
           </form>
+
+          <details className="surface-card p-5 sm:p-6">
+            <summary className="cursor-pointer text-base font-semibold text-slate-800">后续能力规划</summary>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              当前主流程：半自动分析 + 人工确认。以下能力仅为规划，不会自动发布、投广告或操作外部平台。
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {agentCapabilityMatrix.map((item) => {
+                const isLive = item.status === "已上线" && "href" in item && item.href;
+                return (
+                <div key={item.name} className={(isLive ? "agent-card" : "agent-card-planned") + " p-3"}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-950">{item.name}</h3>
+                    <span className={(isLive ? "linear-pill-brand" : "text-slate-500") + " linear-pill px-2 py-0.5 text-[11px]"}>
+                      {item.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>
+                  <div className="mt-2">
+                    {isLive ? (
+                      <Link href={item.href} className="linear-button-primary inline-flex h-9 items-center justify-center px-3 text-xs font-semibold">
+                        {item.cta}
+                      </Link>
+                    ) : (
+                      <button type="button" disabled className="linear-button inline-flex h-9 items-center justify-center px-3 text-xs font-semibold opacity-60">
+                        规划中
+                      </button>
+                    )}
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+              {workflowPreviewSteps.map((step, index) => (
+                <div key={step} className="workflow-step p-2 text-center">
+                  <span className="text-[10px] font-semibold text-slate-400">0{index + 1}</span>
+                  <p className="mt-0.5 text-xs text-slate-500">{step}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              未来多 Agent 工作流仅为规划，不会自动发布、投广告或操作外部平台。高风险动作后期也必须保留人工确认。
+            </p>
+          </details>
         </div>
       </div>
     </main>
-  );
-}
-
-function StepCard({ step, title, text, active }: { step: string; title: string; text: string; active: boolean }) {
-  return (
-    <div className={"workflow-step p-3 " + (active ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white")}>
-      <div className="flex items-center gap-3">
-        <span className={"flex size-7 items-center justify-center rounded-full text-xs font-semibold " + (active ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500")}>
-          {step}
-        </span>
-        <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
-      </div>
-      <p className="mt-1 text-xs leading-5 text-slate-600">{text}</p>
-    </div>
-  );
-}
-
-function MetricTile({ label, value, helper }: { label: string; value: string | number; helper: string }) {
-  return (
-    <div className="surface-card-soft p-4">
-      <p className="text-sm font-bold text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-slate-400">{helper}</p>
-    </div>
-  );
-}
-
-type AgentDisplayStatus = "待开始" | "识别中" | "分析中" | "已完成";
-
-function AgentWorkspacePanel({
-  materialStatus,
-  viralStatus,
-}: {
-  materialStatus: AgentDisplayStatus;
-  viralStatus: AgentDisplayStatus;
-}) {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-      {displayAgents.map((agent, index) => {
-        const Icon = agent.icon;
-        const status = index === 0 ? materialStatus : index === 1 ? viralStatus : "待开始";
-        const statusClass = status === "已完成"
-          ? "bg-emerald-50 text-emerald-700"
-          : status === "识别中" || status === "分析中"
-            ? "bg-indigo-50 text-indigo-700"
-            : "bg-slate-100 text-slate-500";
-        return (
-          <div key={agent.name} className="agent-card p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="linear-icon flex size-10 items-center justify-center rounded-xl">
-                <Icon className="size-4" />
-              </span>
-              <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + statusClass}>{status}</span>
-            </div>
-            <h3 className="mt-3 text-sm font-semibold text-slate-950">{agent.name} Agent</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-500">{agent.description}</p>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -2312,7 +2152,7 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-sky-700">爆款拆解 Agent 已完成</p>
-          <h3 className="mt-1 text-base font-semibold text-slate-950">{result.summary || "这个品的小红书爆款潜力已拆解完成。"}</h3>
+          <h3 className="mt-1 text-base font-semibold text-slate-950">{result.summary || "海外平台内容趋势与商品机会已拆解完成。"}</h3>
         </div>
         <span className={"rounded-full border px-2 py-0.5 text-xs font-bold " + getViralLevelClass(result.viralPotential)}>
           爆款潜力：{result.viralPotential}
@@ -2515,48 +2355,6 @@ function CheckboxGroup({
   );
 }
 
-function ProgressPanel({
-  activeStep,
-  loading,
-  resultReady,
-}: {
-  activeStep: number;
-  loading: boolean;
-  resultReady: boolean;
-}) {
-  if (activeStep < 0 && !resultReady) {
-    return null;
-  }
-
-  return (
-    <div className="surface-card p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-teal-700">任务进度</p>
-          <h3 className="mt-1 font-semibold text-slate-950">完整分析 8 步</h3>
-        </div>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
-          {resultReady ? "已完成" : loading ? "执行中" : "待开始"}
-        </span>
-      </div>
-      <div className="flex flex-col gap-2">
-        {progressSteps.map((step, index) => {
-          const done = resultReady || index < activeStep;
-          const active = loading && index === activeStep;
-          return (
-            <div key={step} className="flex items-center gap-3 rounded-[22px] bg-slate-50/80 px-3 py-2">
-              <span className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-teal-600 text-white" : active ? "bg-amber-500 text-white" : "bg-white text-slate-400"}`}>
-                {index + 1}
-              </span>
-              <span className={`text-sm ${done || active ? "font-semibold text-slate-900" : "text-slate-500"}`}>{step}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function EvidenceCardEditor({
   card,
   index,
@@ -2634,38 +2432,3 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-function WorkflowGuideCards() {
-  const [sharedProduct] = useSharedProduct();
-  const hasProduct = Boolean(sharedProduct.productName);
-
-  const items = [
-    { step: 1, label: "货源判断", desc: "能不能进货", href: "/sourcing", icon: ClipboardCheck },
-    { step: 2, label: "风险排查", desc: "有没有坑", href: "/risk", icon: ShieldCheck },
-    { step: 3, label: "选品体检", desc: "能赚多少", href: "/products/new", icon: LayoutDashboard },
-    { step: 4, label: "爆款拆解", desc: "怎么拍怎么卖", href: "/viral", icon: Sparkles },
-    { step: 5, label: "任务记录", desc: "回顾所有分析", href: "/tasks", icon: History },
-  ];
-
-  return (
-    <section>
-      {hasProduct ? (
-        <p className="mb-2 text-xs font-semibold text-teal-700">
-          当前选品：{sharedProduct.productName}
-          {sharedProduct.targetPlatform ? ` · ${sharedProduct.targetPlatform}` : ""}
-        </p>
-      ) : null}
-      <div className="grid gap-3 sm:grid-cols-5">
-        {items.map((wf) => {
-          const Icon = wf.icon;
-          return (
-            <Link key={wf.step} href={wf.href} className="surface-card-soft rounded-[22px] p-4 transition hover:shadow-soft">
-              <span className="inline-flex size-7 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-xs font-bold text-teal-700">{wf.step}</span>
-              <p className="mt-2 text-sm font-semibold text-slate-900">{wf.label}</p>
-              <p className="mt-1 text-xs text-slate-500">{hasProduct ? `继续分析` : wf.desc}</p>
-            </Link>
-          );
-        })}
-      </div>
-    </section>
-  );
-}

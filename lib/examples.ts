@@ -42,9 +42,9 @@ export const EXAMPLE_PRODUCT_PROFIT = {
 };
 
 export const EXAMPLE_VIRAL = {
-  title: "露营神器！这个折叠水杯太方便了",
-  productUrl: "",
-  platform: "xhs",
+  title: "TikTok viral kitchen gadget - portable mini blender",
+  productUrl: "https://www.tiktok.com/@example/video/example-portable-blender",
+  platform: "tiktok",
   materialText:
-    "户外露营必备好物！\n\n食品级硅胶折叠水杯，350ml容量刚刚好。折叠后只有5cm厚，带金属挂扣直接挂包上，完全不占地方。\n\nIPX4防水实测两周完全不漏，比普通水杯轻了一半还要多。关键是颜值也在线，拍照超出片！\n\n评论区的宝子们问最多的就是会不会漏水，统一回复：正常使用没漏过，但别装开水长时间闷着。#露营装备 #户外好物 #折叠水杯",
+    "Portable mini blender for smoothie lovers! USB-C rechargeable, 380ml capacity, blends ice and frozen fruit in 30 seconds. Only 450g, fits in any bag. Perfect for gym, office, camping.\n\nPrice: $19.99\n\nComments asking most: does it leak? how many blends per charge? is it loud?\n\nHashtags: #kitchengadgets #tiktokmademebuyit #portableblender #amazonfinds",
 };

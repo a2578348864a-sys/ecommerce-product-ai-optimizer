@@ -114,7 +114,7 @@ function getViralPotential(result: HotProductRadarResult) {
   const label = score >= 70 ? "高" : score >= 40 ? "中" : "低";
   const text = result.candidateProducts[0]?.hotReason
     || result.summary
-    || "当前热度证据不足，建议补充小红书互动、评论需求或平台来源。";
+    || "当前热度证据不足，建议补充平台互动、评论需求或来源信息。";
   return { label, text };
 }
 
@@ -148,7 +148,7 @@ function getNextSuggestions(result: HotProductRadarResult) {
   const suggestions = uniqueTexts([
     ...result.nextActions.map((item) => item.action),
     ...result.nextActions.flatMap((item) => item.checklist || []),
-    ...result.sourcingKeywords.map((keyword) => `去 1688、拼多多或淘宝搜：${keyword}`),
+    ...result.sourcingKeywords.map((keyword) => `在 1688 或阿里国际站搜索：${keyword}`),
     ...result.differentiationIdeas.map((idea) => idea.contentSuggestion),
   ]);
   const fallback = [

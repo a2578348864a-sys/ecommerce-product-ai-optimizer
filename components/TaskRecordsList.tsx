@@ -10,7 +10,7 @@ const defaultType = "";
 const defaultLimit = 10;
 const taskTypes = [
   { value: "", label: "全部类型" },
-  { value: "viral", label: "爆款素材分析" },
+  { value: "viral", label: "海外爆款趋势分析" },
   { value: "radar", label: "爆款雷达分析" },
   { value: "product", label: "选品利润分析" },
   { value: "risk", label: "风险排查" },
@@ -82,7 +82,7 @@ function sourceLabel(source: string) {
 }
 
 const typeLabelMap: Record<string, string> = {
-  viral: "爆款素材分析",
+  viral: "海外爆款趋势分析",
   radar: "爆款雷达分析",
   product: "选品利润分析",
   risk: "风险排查",
@@ -92,7 +92,7 @@ const typeLabelMap: Record<string, string> = {
 };
 
 const agentLabelMap: Record<string, string> = {
-  viral: "爆款素材 Agent",
+  viral: "海外爆款趋势 Agent",
   radar: "爆款雷达 Agent",
   product: "选品分析 Agent",
   risk: "风险检查 Agent",

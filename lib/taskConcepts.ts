@@ -9,7 +9,7 @@ export const taskStatusOptions = [
 ] as const;
 
 export const taskTypeOptions = [
-  { value: "viral", label: "爆款素材分析" },
+  { value: "viral", label: "海外爆款趋势分析" },
   { value: "product", label: "选品分析" },
   { value: "competitor", label: "竞品拆解" },
   { value: "keyword", label: "关键词分析" },
@@ -22,7 +22,7 @@ export const taskTypeOptions = [
 ] as const;
 
 export const agentTypeOptions = [
-  { value: "viral", label: "爆款素材 Agent" },
+  { value: "viral", label: "海外爆款趋势 Agent" },
   { value: "product", label: "选品分析 Agent" },
   { value: "competitor", label: "竞品拆解 Agent" },
   { value: "keyword", label: "关键词 Agent" },
@@ -46,10 +46,10 @@ export const mediaProviderOptions = [
 
 export const agentCapabilityMatrix = [
   {
-    name: "爆款素材 Agent",
+    name: "海外爆款趋势 Agent",
     status: "已上线",
     href: "/viral",
-    description: "拆解素材标题、卖点、评论需求和爆款潜力。",
+    description: "拆解海外平台素材标题、卖点、评论需求和跨境商品机会。",
     cta: "进入分析",
   },
   { name: "选品分析 Agent", status: "规划中", description: "根据产品、价格、平台证据判断是否值得继续做。" },

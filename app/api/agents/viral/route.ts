@@ -41,16 +41,16 @@ type ApiResponse =
 const defaultAiData: ViralAiData = {
   score: 60,
   level: "一般",
-  oneLineSummary: "素材有一定可拆解空间，但需要补充更具体的卖点、场景和用户反馈。",
-  sellingPoints: ["补充商品的核心功能、价格带和差异点，让用户知道为什么值得点开。"],
-  painPoints: ["补充目标用户正在遇到的具体麻烦，不要只写泛泛的好用。"],
-  hooks: ["用“人群 + 痛点 + 结果”写开头，例如：桌面乱的人先看这个收纳思路。"],
-  titleSuggestions: ["标题里加入具体人群、使用场景和结果感，避免只写商品名。"],
-  videoOpenings: ["前三秒先展示使用前的混乱状态，再切到解决后的对比画面。"],
-  commentTriggers: ["引导用户评论自己的使用场景、尺寸疑问或想看的对比角度。"],
-  conversionSuggestions: ["补充价格、适用人群、使用步骤和购买前需要确认的尺寸/规格。"],
-  risks: ["当前证据不足，需人工复核平台规则、价格竞争和夸大宣传风险。"],
-  beginnerConclusion: "先把素材补到“谁用、解决什么、怎么拍、为什么买”四点，再决定是否消耗更多预算测试。",
+  oneLineSummary: "素材有一定可拆解空间，但需要补充更具体的卖点、使用场景和用户反馈，以便评估海外市场适配性。",
+  sellingPoints: ["补充商品的核心功能、价格带和差异化亮点，让观众理解为什么值得关注。"],
+  painPoints: ["明确目标用户当前面临的具体问题，避免只说'好用'而不说'解决了什么痛点'。"],
+  hooks: ["使用'人群 + 痛点 + 结果'公式写内容钩子，例如：露营党终于找到不占地方的折叠杯。"],
+  titleSuggestions: ["标题包含具体人群、使用场景和结果感，避免只写商品名。"],
+  videoOpenings: ["前 3 秒展示使用前的混乱状态，然后切到解决后的对比画面。"],
+  commentTriggers: ["引导观众评论自己的使用场景、尺寸疑问，或想看什么对比。"],
+  conversionSuggestions: ["补充价格、目标人群、使用步骤和购买前需确认的关键规格。"],
+  risks: ["当前证据不足，需人工复核平台政策、价格竞争和夸大宣传风险。跨境合规性尚未评估。"],
+  beginnerConclusion: "先确保素材覆盖'谁用、解决什么、怎么拍、为什么买'四个要素，再决定是否投入更多预算测试。",
 };
 
 function jsonResponse(body: ApiResponse, status = 200) {
@@ -226,42 +226,37 @@ function summarizeEvidenceCards(cards: EvidenceCard[]) {
 
 function getPlatformInstruction(platform: string) {
   switch (platform) {
-    case "xhs":
-      return "小红书重点看：种草感、真实体验、标题钩子、评论区话题、是否像真实用户分享。";
-    case "douyin":
-      return "抖音重点看：前三秒停留、冲突感、画面动作、转化口播、是否能用短视频讲清楚。";
     case "tiktok":
-      return "TikTok 重点看：视觉冲击、海外用户能否秒懂、短句钩子、场景动作和跨文化表达。";
-    case "taobao":
-    case "tmall":
-      return "淘宝/天猫重点看：搜索转化、卖点可信度、购买理由、规格价格是否能支撑下单。";
-    case "jd":
-      return "京东重点看：品质信任、参数清楚、售后顾虑、购买理由是否理性充分。";
-    case "pdd":
-      return "拼多多重点看：低价理由、强对比、刚需痛点、是否能减少廉价感和信任顾虑。";
-    case "1688":
-      return "1688 重点看：批发/货盘/成本/供货吸引力、是否适合拿来做选品或分销。";
-    case "alibaba":
-      return "阿里国际站重点看：B端采购理由、规格参数、应用场景、MOQ/供货能力和海外买家表达。";
+      return "TikTok: Focus on visual impact, whether global audiences can instantly understand the hook, short punchy text overlays, scenario-driven action, and cross-cultural appeal.";
     case "amazon":
-      return "Amazon 重点看：搜索排名、Review数量和评分、QA区痛点、主图和A+内容质量、价格竞争力。";
-    case "shopify":
-      return "Shopify 重点看：独立站落地页说服力、产品描述完整性、信任信号、加购转化元素。";
-    case "ebay":
-      return "eBay 重点看：拍卖/一口价策略、卖家信誉、退货政策、标题关键词覆盖。";
+      return "Amazon: Focus on search ranking, review count and rating, Q&A section pain points, main image and A+ content quality, price competitiveness, and whether selling points are substantiated.";
     case "etsy":
-      return "Etsy 重点看：手工/设计感、故事性描述、材质与工艺细节、个性化程度。";
+      return "Etsy: Focus on handmade/design feel, story-driven descriptions, material and craftsmanship details, personalization level, and niche appeal.";
+    case "shopify":
+      return "Shopify / independent store: Focus on landing page persuasiveness, product description completeness, trust signals, and add-to-cart conversion elements.";
+    case "instagram":
+      return "Instagram: Focus on visual aesthetics, lifestyle integration, Reels hook strength, carousel storytelling, and whether the product fits organic discovery.";
+    case "pinterest":
+      return "Pinterest: Focus on visual search intent, idea-pin storytelling, DIY/inspiration angles, and seasonal/timeless content strategy.";
+    case "youtube_shorts":
+      return "YouTube Shorts: Focus on quick demonstration, problem-solution framing, before/after payoff, and whether the viewer gets value in under 30 seconds.";
+    case "1688":
+      return "1688: Focus on wholesale/supply chain appeal, cost structure, and whether the product is suitable for sourcing or distribution (supplementary reference).";
+    case "alibaba":
+      return "Alibaba International: Focus on B2B buying rationale, specs, application scenarios, MOQ/supply capacity, and global buyer messaging (supplementary reference).";
+    case "ebay":
+      return "eBay: Focus on auction/BIN pricing strategy, seller reputation, return policy, and title keyword coverage.";
     case "tiktok_shop":
-      return "TikTok Shop 重点看：短视频带货力、直播间转化、评论互动率、挂车点击率。";
+      return "TikTok Shop: Focus on short-video selling power, livestream conversion, comment engagement rate, and product link click-through.";
     case "shopee":
     case "lazada":
-      return "东南亚平台重点看：本地化表达、价格敏感度、宗教信仰和文化禁忌、物流时效。";
+      return "Southeast Asia platforms: Focus on localized messaging, price sensitivity, religious/cultural taboos, and logistics expectations.";
     case "temu":
-      return "Temu 重点看：极致性价比、主图视觉冲击、是否适合低价爆款打法。";
+      return "Temu: Focus on extreme value proposition, main image visual impact, and whether the product fits the ultra-low-price viral model.";
     case "other":
-      return "其他平台：请依据输入素材自行判断分析重点，优先看素材证据是否完整。";
+      return "Other overseas platform: Evaluate based on input material — prioritize whether the evidence is complete and actionable.";
     default:
-      return "手动输入重点看：素材证据是否完整、卖点是否具体、场景和用户痛点是否清楚。";
+      return "Manual input: Focus on whether the material evidence is complete, selling points are specific, and scenarios + user pain points are clear.";
   }
 }
 
@@ -274,26 +269,27 @@ function buildPrompt(params: {
   evidenceCards?: EvidenceCard[];
 }) {
   return [
-    "你是资深电商运营和内容投放负责人，正在做“爆款素材拆解报告”。",
-    "你的任务不是泛泛夸产品，而是把用户给的标题、链接、商品素材、评论反馈或选题想法，拆成运营可以直接照着改的建议。",
-    "必须基于用户素材判断，不要编造销量、评价、平台数据或功效承诺。证据不足时要直接写“证据不足”，并告诉小白运营下一步补什么。",
+    "You are a senior cross-border e-commerce operations and content strategist creating an \"overseas viral trend & product opportunity breakdown report\".",
+    "Your task is NOT to hype a product, but to break down the title, link, product material, comment feedback, or content idea the user provides into actionable, copy-paste-ready recommendations for overseas platforms.",
+    "Base all judgments on the user's provided material. Do NOT fabricate sales data, reviews, platform metrics, or efficacy claims. Where evidence is insufficient, state \"insufficient evidence\" and tell the beginner operator what to supplement next.",
     "",
-    "重点分析维度：",
-    "- 用户第一眼为什么会停留，停留理由是否具体。",
-    "- 素材钩子强不强，是否有反差、痛点、结果感或悬念。",
-    "- 卖点是否具体，是否能说清楚比同类强在哪里。",
-    "- 痛点是否真实，是否来自明确人群、场景或评论需求。",
-    "- 场景是否清楚，用户能不能想象自己会怎么用。",
-    "- 是否适合短视频/图文种草，前三秒或首图怎么做。",
-    "- 标题是否有点击欲，是否避免只写商品名。",
-    "- 哪些地方像广告硬推，应该如何改成真实体验表达。",
-    "- 小白运营应该怎么改标题、开头、评论区话题和转化信息。",
+    "Key analysis dimensions:",
+    "- Why would a viewer stop scrolling — is the stopping reason specific and compelling?",
+    "- How strong is the hook — does it have contrast, pain point, result payoff, or curiosity gap?",
+    "- Are selling points specific — can you clearly explain why this beats alternatives?",
+    "- Are pain points real — do they come from a defined audience, scenario, or comment demand?",
+    "- Is the use scenario clear — can the audience instantly picture themselves using it?",
+    "- Is it suitable for short video or visual content — how to execute the first 3 seconds or lead image?",
+    "- Does the title/caption drive clicks — does it avoid being just a product name?",
+    "- Which parts read like hard-sell ads — how to rewrite them as authentic experience content?",
+    "- What should a beginner cross-border operator do to improve the title, hook, comment engagement, and conversion info?",
+    "- Cross-border viability: Is this product suitable for overseas markets? Consider cultural fit, shipping complexity, compliance, and whether a beginner can execute.",
     "",
-    `平台：${allPlatformLabels[params.platform] ?? params.platform}`,
-    `平台差异要求：${getPlatformInstruction(params.platform)}`,
+    `Platform: ${allPlatformLabels[params.platform] ?? params.platform}`,
+    `Platform-specific focus: ${getPlatformInstruction(params.platform)}`,
     "",
-    "必须只返回合法 JSON object，不要 Markdown，不要代码块，不要解释文字。",
-    "JSON 字段固定为：",
+    "CRITICAL: Return ONLY a valid JSON object. No markdown, no code blocks, no explanatory text.",
+    "JSON fields (fixed):",
     JSON.stringify({
       score: 60,
       level: "一般",
@@ -309,30 +305,37 @@ function buildPrompt(params: {
       beginnerConclusion: "",
     }, null, 2),
     "",
-    "字段要求：",
-    "- score 必须是 0-100 的数字；不要写百分号。",
-    "- level 必须根据 score 输出：80+ 高潜力，65-79 可优化，50-64 一般，50以下 不建议主推。",
-    "- oneLineSummary 用一句话说清“为什么有/没有爆款潜力”。",
-    "- 每个数组输出 3-5 条；每条必须具体、可执行，禁止只写“提升吸引力”“优化内容”这种空话。",
-    "- sellingPoints 写核心卖点，必须贴近素材。",
-    "- painPoints 写用户真实痛点或证据不足点。",
-    "- hooks 写开头钩子/首图角度。",
-    "- titleSuggestions 写可以直接改标题的方向。",
-    "- videoOpenings 写短视频前三秒脚本或画面动作。",
-    "- commentTriggers 写评论区可引导的话题和问题。",
-    "- conversionSuggestions 写转化补强建议，例如价格、规格、对比、信任、购买理由。",
-    "- risks 写广告硬推、夸大、侵权、平台规则、证据不足等风险。",
-    "- beginnerConclusion 写给小白运营的一段结论，包含下一步怎么改。",
+    "Field requirements:",
+    "- score: integer 0-100, no percent sign.",
+    "- level: based on score — 80+ \"高潜力\", 65-79 \"可优化\", 50-64 \"一般\", below 50 \"不建议主推\".",
+    "- oneLineSummary: one sentence explaining WHY this does or doesn't have viral/opportunity potential for overseas markets.",
+    "- Each array: 3-5 items; each item must be specific and executable. NO vague filler like \"improve appeal\" or \"optimize content\".",
+    "- sellingPoints: core selling points, tied closely to the material.",
+    "- painPoints: real user pain points or evidence gaps.",
+    "- hooks: opening hooks / lead image angles for short video or social content.",
+    "- titleSuggestions: specific title/caption directions the operator can directly adapt.",
+    "- videoOpenings: first-3-second script or visual action for short video.",
+    "- commentTriggers: topics and questions to drive comment engagement.",
+    "- conversionSuggestions: recommendations to strengthen conversion, e.g. price clarity, specs, competitor comparison, trust signals, purchase rationale.",
+    "- risks: hard-sell language, exaggerated claims, IP/trademark infringement risk, platform policy issues, evidence gaps, cross-border compliance concerns, shipping/after-sales risks.",
+    "- beginnerConclusion: a paragraph for a beginner cross-border operator, covering what to do next. Do NOT promise guaranteed success, \"must-buy\", or zero-risk outcomes.",
     "",
-    params.title ? `素材标题：${params.title}` : "素材标题：未提供",
-    params.productUrl ? `商品/素材链接：${params.productUrl}` : "商品/素材链接：未提供",
+    "Additional cross-border context to assess:",
+    "- Cross-border sales feasibility for this product.",
+    "- Supply chain complexity (sourcing, MOQ, lead time).",
+    "- Compliance risk (FDA, CE, trademark, patent, safety certifications).",
+    "- Logistics/after-sales risk (shipping cost, damage rate, returns).",
+    "- Whether a beginner can realistically execute on this opportunity.",
     "",
-    "素材文案：",
+    params.title ? `Title: ${params.title}` : "Title: not provided",
+    params.productUrl ? `Product/Content Link: ${params.productUrl}` : "Product/Content Link: not provided",
+    "",
+    "Material Text:",
     params.materialText,
     "",
-    params.materialResult ? "素材接收 Agent 结果：" : "",
+    params.materialResult ? "Material Agent Result:" : "",
     params.materialResult ? JSON.stringify(params.materialResult, null, 2) : "",
-    params.evidenceCards?.length ? "证据卡片：" : "",
+    params.evidenceCards?.length ? "Evidence Cards:" : "",
     params.evidenceCards?.length ? JSON.stringify(summarizeEvidenceCards(params.evidenceCards), null, 2) : "",
   ].filter(Boolean).join("\n");
 }
@@ -445,7 +448,7 @@ async function handleLegacyRequest(body: Record<string, unknown>) {
     const data = await runViralAgent({
       title: asString(body.keyword),
       productUrl: "",
-      platform: "xhs",
+      platform: "tiktok",
       materialText,
       materialResult,
       evidenceCards: normalizeEvidenceCards(body.evidenceCards),

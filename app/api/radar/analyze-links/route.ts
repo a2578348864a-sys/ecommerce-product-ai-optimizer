@@ -41,21 +41,24 @@ function isPrivateHost(hostname: string) {
 
 function detectPlatform(hostname: string): Platform | "unknown" {
   const host = hostname.toLowerCase();
-  if (host === "jd.com" || host.endsWith(".jd.com")) return "jd";
-  if (host === "taobao.com" || host.endsWith(".taobao.com")) return "taobao";
-  if (host === "tmall.com" || host.endsWith(".tmall.com")) return "tmall";
-  if (host === "pinduoduo.com" || host.endsWith(".pinduoduo.com") || host === "yangkeduo.com" || host.endsWith(".yangkeduo.com")) return "pdd";
-  if (host === "douyin.com" || host.endsWith(".douyin.com") || host === "jinritemai.com" || host.endsWith(".jinritemai.com")) return "douyin";
-  if (host === "xiaohongshu.com" || host.endsWith(".xiaohongshu.com")) return "xhs";
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) return "tiktok";
+  if (host === "amazon.com" || host.endsWith(".amazon.com") || host.endsWith(".amazon.co.uk") || host.endsWith(".amazon.de") || host.endsWith(".amazon.co.jp")) return "amazon";
+  if (host === "etsy.com" || host.endsWith(".etsy.com")) return "etsy";
+  if (host === "shopify.com" || host.endsWith(".shopify.com") || host.endsWith(".myshopify.com")) return "shopify";
+  if (host === "instagram.com" || host.endsWith(".instagram.com")) return "instagram";
+  if (host === "pinterest.com" || host.endsWith(".pinterest.com")) return "pinterest";
+  if (host === "youtube.com" || host.endsWith(".youtube.com")) return "youtube_shorts";
+  if (host === "ebay.com" || host.endsWith(".ebay.com")) return "other";
+  if (host === "alibaba.com" || host.endsWith(".alibaba.com")) return "other";
   return "unknown";
 }
 
 function detectLinkType(url: URL, platform: Platform | "unknown"): LinkType {
   const value = `${url.hostname}${url.pathname}${url.search}`.toLowerCase();
-  if (platform === "xhs") return "note";
-  if (/item|product|detail|goods/.test(value)) return "product";
-  if (/rank|top|榜/.test(value)) return "ranking";
-  if (/search|keyword|q=|wd=/.test(value)) return "search";
+  if (platform === "instagram" || platform === "pinterest") return "note";
+  if (/item|product|detail|goods|listing|dp\//.test(value)) return "product";
+  if (/rank|top|best.seller|榜/.test(value)) return "ranking";
+  if (/search|keyword|q=|wd=|s=|k=/.test(value)) return "search";
   return "unknown";
 }
 

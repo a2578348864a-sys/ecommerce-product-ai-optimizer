@@ -56,11 +56,11 @@ function getTitle(item: TaskCenterItem) {
 }
 
 function getTaskTypeLabel(item: TaskCenterItem) {
-  return item.type === "viral" || !item.type ? "爆款素材分析" : item.type;
+  return item.type === "viral" || !item.type ? "海外爆款趋势分析" : item.type;
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return item.type === "viral" || !item.type ? "爆款素材 Agent" : "规划 Agent";
+  return item.type === "viral" || !item.type ? "海外爆款趋势 Agent" : "规划 Agent";
 }
 
 function getStringArray(result: unknown, key: string) {
