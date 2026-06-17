@@ -53,6 +53,7 @@ import {
   platformOptions,
   reportDisclaimer,
 } from "@/lib/types";
+import { agentCapabilityMatrix, workflowPreviewSteps } from "@/lib/taskConcepts";
 import type {
   ConfidenceField,
   DetectedMaterialType,
@@ -1619,27 +1620,29 @@ export default function Home() {
 
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
-      <div className="relative mx-auto grid max-w-[1540px] gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
+      <div className="workspace-page workspace-layout">
         <WorkspaceSidebar />
 
-        <div className="flex min-w-0 flex-col gap-5">
-          <header className="surface-card rounded-[34px] px-5 py-4">
+        <div className="flex min-w-0 flex-col gap-4">
+          <header className="workspace-header">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="eyebrow">Qingxuan Workspace</p>
-                <h1 className="section-title mt-2 text-2xl">轻选 Agent 工作台</h1>
-                <p className="muted-text mt-1 text-sm">按步骤放素材、识别证据、判断能不能做。</p>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="linear-pill linear-pill-brand px-2.5 py-1 text-xs">1代半自动工作台</span>
+                  <span className="linear-pill px-2.5 py-1 text-xs text-slate-500">人工确认</span>
+                </div>
+                <h1 className="section-title mt-2 text-2xl">AI 电商运营 Agent 工作台</h1>
+                <p className="muted-text mt-1 text-sm">当前是半自动 AI 分析工具：AI 负责分析、生成、整理，关键决策由你人工确认。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="status-pill px-3 py-1 text-sm">
-                  省钱模式：已开启
-                </span>
+                <span className="linear-pill px-3 py-1 text-sm">本地部署</span>
+                <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">省钱模式：已开启</span>
                 <button
                   type="button"
                   onClick={() => {
                     clearAll();
                   }}
-                  className="glass-button inline-flex h-11 items-center justify-center px-5 text-sm font-bold"
+                  className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
                   新建体检
                 </button>
@@ -1648,56 +1651,16 @@ export default function Home() {
             <WorkspaceMobileNav />
           </header>
 
-          <section className="glass-panel overflow-hidden rounded-[38px] p-1.5">
-            <div className="premium-inner rounded-[32px] p-5 sm:p-6">
-            <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_260px] xl:grid-cols-[minmax(0,1fr)_300px]">
-              <div>
-                <p className="eyebrow">今天从这里开始</p>
-                <h1 className="mt-3 max-w-3xl text-3xl font-black tracking-[-0.04em] text-slate-950 sm:text-5xl sm:leading-[1.04]">
-                  放入素材，按 3 步看懂这个品能不能做
-                </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
-                  放入笔记、商品信息或选品想法，先拆证据，再看风险，最后给出小白能看懂的结论。
-                </p>
-                <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
-                  {[
-                    ["01", "粘贴素材", "笔记 / 链接 / 截图"],
-                    ["02", "识别证据", "整理商品卖点"],
-                    ["03", "开始体检", "判断能不能做"],
-                  ].map(([step, title, text]) => (
-                    <div key={step} className="surface-card-soft rounded-[22px] p-3 transition duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1 sm:rounded-[26px] sm:p-4">
-                      <p className="text-[10px] font-black tracking-[0.18em] text-teal-600 sm:text-xs">{step}</p>
-                      <h3 className="mt-1 text-xs font-black text-slate-950 sm:mt-2 sm:text-sm">{title}</h3>
-                      <p className="mt-1 text-[11px] leading-4 text-slate-500 sm:text-xs sm:leading-5">{text}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="surface-card-soft hidden rounded-[30px] p-5 md:block">
-                <p className="text-sm font-black text-slate-950">当前状态</p>
-                <div className="mt-3 flex flex-col gap-2">
-                  {heroStats.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between rounded-[22px] bg-slate-50/80 px-4 py-3">
-                      <span className="text-xs text-slate-500">{item.label}</span>
-                      <span className="text-sm font-black text-slate-950">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            </div>
-          </section>
-
-          <form onSubmit={handleSubmit} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-5">
-              <section className="surface-card rounded-[34px] p-5 ring-1 ring-emerald-200/35 sm:p-6">
+              <section className="surface-card-strong p-5 sm:p-6">
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="eyebrow">第一步</p>
-                    <h2 className="section-title mt-3 text-3xl">粘贴你的选品素材</h2>
-                    <p className="muted-text mt-1 text-sm">先把信息放进来，后面的按钮会按顺序带你走。</p>
+                    <p className="linear-kicker">当前主流程</p>
+                    <h2 className="section-title mt-3 text-2xl sm:text-3xl">粘贴你的选品素材</h2>
+                    <p className="muted-text mt-1 text-sm">1代半自动流程：素材进入、证据拆解、人工确认、生成结论。</p>
                   </div>
-                  <span className="status-pill px-3 py-1 text-xs">
+                  <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">
                     {assistantState.title}
                   </span>
                 </div>
@@ -1711,6 +1674,20 @@ export default function Home() {
                   placeholder="粘贴你的小红书笔记、商品信息、评论需求、选品想法。例如：标题、卖点、价格、人群、使用场景、评论区问题。"
                   rows={8}
                 />
+
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  {[
+                    ["01", "粘贴素材", "笔记 / 链接 / 截图"],
+                    ["02", "识别证据", "商品、卖点、风险"],
+                    ["03", "开始体检", "推荐 / 谨慎 / 不建议"],
+                  ].map(([step, title, text]) => (
+                    <div key={step} className="workflow-step p-3">
+                      <p className="text-[11px] font-semibold text-teal-700">{step}</p>
+                      <h3 className="mt-1 text-sm font-semibold text-slate-900">{title}</h3>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{text}</p>
+                    </div>
+                  ))}
+                </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <TextInput
@@ -1741,7 +1718,7 @@ export default function Home() {
                     onDragOver={(event) => event.preventDefault()}
                     onDrop={handleDrop}
                     onPaste={handlePaste}
-                    className="surface-card-soft rounded-[28px] border-dashed border-teal-200/80 p-4 text-center"
+                    className="surface-card-soft border-dashed border-teal-200/80 p-4 text-center"
                   >
                     <input
                       ref={fileInputRef}
@@ -1751,14 +1728,14 @@ export default function Home() {
                       className="hidden"
                       onChange={handleFileChange}
                     />
-                    <div className="icon-glass mx-auto size-12 rounded-2xl">
+                    <div className="linear-icon mx-auto size-12 rounded-xl">
                       <ImagePlus className="size-5" />
                     </div>
-                    <p className="mt-2 text-sm font-black text-slate-900">图片 / 截图</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-900">图片 / 截图</p>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="glass-button-soft mt-2 inline-flex h-11 items-center gap-2 px-3 text-xs font-bold"
+                      className="linear-button-soft mt-2 inline-flex h-11 items-center gap-2 px-3 text-xs font-semibold"
                     >
                       <UploadCloud className="size-4" />
                       选择图片
@@ -1801,7 +1778,7 @@ export default function Home() {
                       void recognizeEvidence();
                     }}
                     disabled={recognizeDisabled}
-                    className="glass-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-bold disabled:hover:translate-y-0 lg:col-span-1"
+                    className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
                   >
                     <Sparkles className="size-4" />
                     {recognizingEvidence ? "1 识别中" : "1 识别素材"}
@@ -1812,7 +1789,7 @@ export default function Home() {
                       void analyzeViralPotential();
                     }}
                     disabled={viralAnalyzeDisabled}
-                    className="glass-button-soft inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-bold disabled:hover:translate-y-0 lg:col-span-1"
+                    className="linear-button-soft inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
                   >
                     <Brain className="size-4" />
                     {analyzingViral ? "2 分析中" : "2 爆款拆解"}
@@ -1820,7 +1797,7 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={analyzeDisabled}
-                    className="glass-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-bold disabled:hover:translate-y-0 lg:col-span-1"
+                    className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:hover:translate-y-0 lg:col-span-1"
                   >
                     <Wand2 className="size-4" />
                     {loading ? "3 体检中" : "3 开始体检"}
@@ -1828,7 +1805,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={fillSample}
-                    className="glass-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-bold"
+                    className="linear-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold"
                   >
                     <RefreshCcw className="size-4" />
                     填入示例
@@ -1836,14 +1813,14 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={clearAll}
-                    className="glass-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-bold hover:text-red-700"
+                    className="linear-button inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold hover:text-red-700"
                   >
                     <Trash2 className="size-4" />
                     清空
                   </button>
                 </div>
 
-                <div className="surface-card-soft mt-4 grid gap-2 rounded-[26px] p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
+                <div className="surface-card-soft mt-4 grid gap-2 p-3 text-xs leading-5 text-slate-600 md:grid-cols-3">
                   <p><span className="font-semibold text-teal-800">1 识别素材：</span>{recognizeHint}</p>
                   <p><span className="font-semibold text-teal-800">2 爆款拆解：</span>{viralHint}</p>
                   <p><span className="font-semibold text-teal-800">3 开始体检：</span>{analyzeHint}</p>
@@ -1855,10 +1832,10 @@ export default function Home() {
                 {error ? <div className="mt-3"><AlertBox tone="error" text={error} /></div> : null}
                 {notice ? <div className="mt-3"><AlertBox tone="notice" text={notice} /></div> : null}
 
-                <details className="surface-card-soft mt-3 rounded-[24px] p-3">
+                <details className="surface-card-soft mt-3 p-3">
                   <summary className="cursor-pointer text-sm font-semibold text-slate-800">更多设置 / 手动补充</summary>
                   <div className="mt-3 flex flex-col gap-3">
-                    <details className="surface-card-soft rounded-[22px] p-3">
+                    <details className="surface-card-soft p-3">
                       <summary className="cursor-pointer text-sm font-semibold text-indigo-800">识别不准？手动填写商品信息</summary>
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <TextInput label="商品名" value={manualEvidenceDraft.productName} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, productName: value }))} placeholder="例如：透明桌面收纳盒" />
@@ -1869,7 +1846,7 @@ export default function Home() {
                           <TextareaInput label="备注" value={manualEvidenceDraft.notes} onChange={(value) => setManualEvidenceDraft((current) => ({ ...current, notes: value }))} placeholder="补充你看到的卖点、截图内容或风险" rows={3} />
                         </div>
                       </div>
-                      <button type="button" onClick={addManualEvidence} className="glass-button-soft mt-3 inline-flex h-11 items-center justify-center px-4 text-sm font-bold">
+                      <button type="button" onClick={addManualEvidence} className="linear-button-soft mt-3 inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
                         添加为证据卡片
                       </button>
                     </details>
@@ -1884,23 +1861,44 @@ export default function Home() {
                 </details>
               </section>
 
-              <section className="surface-card-soft rounded-[30px] p-4 sm:p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex items-start gap-3">
-                    <span className="icon-glass size-11 shrink-0 rounded-2xl">
-                      <ClipboardCheck className="size-5" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">常用入口</p>
-                      <h2 className="mt-1 text-lg font-black tracking-tight text-slate-950">跨境商品利润测算</h2>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">
-                        需要先算成本和利润时再进入；主流程仍然是先粘贴素材做选品分析。
-                      </p>
+              <section className="grid gap-3 md:grid-cols-2">
+                <div className="surface-card-soft p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-3">
+                      <span className="linear-icon size-11 shrink-0 rounded-xl">
+                        <ClipboardCheck className="size-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-emerald-700">常用入口</p>
+                        <h2 className="mt-1 text-lg font-semibold text-slate-950">跨境商品利润测算</h2>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          需要先算成本和利润时再进入；主流程仍然是先粘贴素材做选品分析。
+                        </p>
+                      </div>
                     </div>
+                    <Link href="/products/new" className="linear-button-soft inline-flex h-11 shrink-0 items-center justify-center px-5 text-sm font-semibold">
+                      开始测算
+                    </Link>
                   </div>
-                  <Link href="/products/new" className="glass-button-soft inline-flex h-11 shrink-0 items-center justify-center px-5 text-sm font-bold">
-                    开始测算
-                  </Link>
+                </div>
+                <div className="surface-card-soft p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-3">
+                      <span className="linear-icon size-11 shrink-0 rounded-xl">
+                        <FileText className="size-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-sky-700">任务中心</p>
+                        <h2 className="mt-1 text-lg font-semibold text-slate-950">沉淀分析结果</h2>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          查看历史任务、继续分析素材，把每次判断沉淀成可复盘记录。
+                        </p>
+                      </div>
+                    </div>
+                    <Link href="/tasks" className="linear-button inline-flex h-11 shrink-0 items-center justify-center px-5 text-sm font-semibold">
+                      查看任务
+                    </Link>
+                  </div>
                 </div>
               </section>
 
@@ -1910,24 +1908,99 @@ export default function Home() {
                 ))}
               </div>
 
-              <section className="surface-card rounded-[34px] p-5 sm:p-6">
+              <section className="surface-card p-5 sm:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="linear-kicker">Agent 能力矩阵</p>
+                    <h2 className="section-title mt-3 text-2xl">从爆款素材分析扩展到电商运营工作台</h2>
+                    <p className="muted-text mt-1 text-sm">只有爆款素材 Agent 已上线；其他能力仅为规划位，不会跳转不存在页面，也不会调用 API。</p>
+                  </div>
+                  <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">当前主入口：/viral</span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {agentCapabilityMatrix.map((item) => {
+                    const isLive = item.status === "已上线" && "href" in item && item.href;
+                    const isHighCost = item.status.includes("高成本");
+                    return (
+                    <div key={item.name} className={(isLive ? "agent-card" : "agent-card-planned") + " p-4"}>
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-slate-950">{item.name}</h3>
+                        <span className={(isLive ? "linear-pill-brand" : isHighCost ? "border-amber-200 bg-amber-50 text-amber-700" : "text-slate-500") + " linear-pill px-2 py-0.5 text-[11px]"}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+                      {"flags" in item && item.flags?.length ? (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {item.flags.map((flag) => (
+                            <span key={flag} className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">{flag}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="mt-4">
+                        {isLive ? (
+                          <Link href={item.href} className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                            {item.cta}
+                          </Link>
+                        ) : (
+                          <button type="button" disabled className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                            即将支持
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="surface-card p-5 sm:p-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="eyebrow">Agent 工作区</p>
-                    <h2 className="section-title mt-3 text-2xl">当前流程</h2>
+                    <p className="linear-kicker">1代可用能力</p>
+                    <h2 className="section-title mt-3 text-2xl">当前半自动工作台</h2>
                   </div>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                    前两个 Agent 可真实运行，其余待接入
+                  <span className="linear-pill px-3 py-1 text-xs text-slate-600">
+                    输入素材后逐步执行
                   </span>
                 </div>
                 <AgentWorkspacePanel materialStatus={materialAgentStatus} viralStatus={viralAgentStatus} />
+              </section>
+
+              <section className="surface-card p-5 sm:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="linear-kicker">多 Agent 工作流预览</p>
+                    <h2 className="section-title mt-3 text-2xl">未来自动工作流地基</h2>
+                    <p className="muted-text mt-1 text-sm">这里只展示结构预留，不做自动发布、投广告、爬虫、外部平台操作或真实媒体生成。</p>
+                  </div>
+                  <span className="linear-pill px-3 py-1 text-xs text-slate-500">规划中 / 人工确认</span>
+                </div>
+                <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+                  {workflowPreviewSteps.map((step, index) => (
+                    <div key={step} className="workflow-step p-3">
+                      <span className="text-[11px] font-semibold text-slate-400">0{index + 1}</span>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">{step}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="linear-panel p-4">
+                    <p className="text-sm font-semibold text-slate-950">高风险动作</p>
+                    <p className="muted-text mt-2 text-sm leading-6">发布商品、改价、投广告、联系客户、批量发送等动作后期也必须保留人工确认。</p>
+                  </div>
+                  <div className="linear-panel p-4">
+                    <p className="text-sm font-semibold text-slate-950">成本控制</p>
+                    <p className="muted-text mt-2 text-sm leading-6">真实生图/生视频 API 当前默认关闭，未来调用前必须先确认费用和用途。</p>
+                  </div>
+                </div>
               </section>
 
               {materialAgentResult ? <MaterialAgentSummaryCard result={materialAgentResult} /> : null}
               {viralAgentResult ? <ViralAgentSummaryCard result={viralAgentResult} /> : null}
 
               {form.evidenceCards.length ? (
-                <section className="surface-card rounded-[34px] p-5 sm:p-6">
+                <section className="surface-card p-5 sm:p-6">
                   <SectionTitle title="确认证据" count={form.evidenceCards.length} />
                   <div className="flex flex-col gap-3">
                     {form.evidenceCards.map((card, index) => (
@@ -1945,11 +2018,11 @@ export default function Home() {
                   </div>
                 </section>
               ) : (
-                <div className="surface-card flex min-h-[220px] flex-col items-center justify-center rounded-[34px] border-dashed border-teal-200 p-6 text-center">
-                  <div className="icon-glass size-12 rounded-2xl">
+                <div className="surface-card flex min-h-[220px] flex-col items-center justify-center border-dashed border-teal-200 p-6 text-center">
+                  <div className="linear-icon size-12 rounded-xl">
                     <UploadCloud className="size-5" />
                   </div>
-                  <h3 className="mt-3 text-base font-black text-slate-950">等待素材输入</h3>
+                  <h3 className="mt-3 text-base font-semibold text-slate-950">等待素材输入</h3>
                   <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">放入素材后，先点“识别素材”。</p>
                 </div>
               )}
@@ -1958,7 +2031,7 @@ export default function Home() {
                 <section className="flex flex-col gap-4">
                   <SummaryCard result={result} />
                   <TrafficLightPanel risks={result.trafficLightRisks} />
-                  <details open className="surface-card rounded-[30px] p-4">
+                  <details open className="surface-card p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">详细依据</summary>
                     <div className="mt-4 flex flex-col gap-4">
                       <KeywordAndDirectionPanel result={result} />
@@ -1966,7 +2039,7 @@ export default function Home() {
                       <NextActions result={result} />
                     </div>
                   </details>
-                  <details className="surface-card rounded-[30px] p-4">
+                  <details className="surface-card p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">候选商品</summary>
                     <div className="mt-4 flex flex-col gap-4">
                       <div className="grid gap-4 xl:grid-cols-3">
@@ -1983,20 +2056,20 @@ export default function Home() {
                       </div>
                     </div>
                   </details>
-                  <details className="surface-card rounded-[30px] p-4">
+                  <details className="surface-card p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">平台读取情况</summary>
                     <div className="mt-4 flex flex-col gap-4">
                       <PlatformStatusList statuses={result.platformSearchStatus} />
                       <EvidenceSection result={result} />
                     </div>
                   </details>
-                  <details className="surface-card rounded-[30px] p-4">
+                  <details className="surface-card p-4">
                     <summary className="cursor-pointer text-sm font-bold text-slate-900">原始证据</summary>
                     <div className="mt-4">
                       <EvidenceCardList cards={result.evidenceCards} />
                     </div>
                   </details>
-                  <p className="rounded-[28px] border border-amber-200 bg-amber-50/90 p-4 text-xs leading-6 text-amber-800 shadow-sm">
+                  <p className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-xs leading-6 text-amber-800">
                     {result.disclaimer || reportDisclaimer}
                   </p>
                 </section>
@@ -2004,28 +2077,45 @@ export default function Home() {
             </div>
 
             <aside className="flex flex-col gap-4">
-              <section className="surface-card sticky top-4 rounded-[34px] p-5">
-                <p className="eyebrow">现在该做什么</p>
-                <h2 className="section-title mt-3 text-2xl">{assistantState.title}</h2>
+              <section className="surface-card sticky top-4 p-4">
+                <p className="linear-kicker">现在该做什么</p>
+                <h2 className="section-title mt-3 text-xl">{assistantState.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{assistantState.text}</p>
                 <p className="mt-1 hidden text-xs leading-5 text-slate-500 sm:block">{assistantState.detail}</p>
+                <div className="mt-4 grid gap-2">
+                  {heroStats.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <span className="text-xs text-slate-500">{item.label}</span>
+                      <span className="text-sm font-semibold text-slate-900">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
                 {result ? (
                   <div className="mt-4 grid gap-2">
                     <CopyButton text={reportMarkdown} label="复制报告" />
-                    <button type="button" onClick={exportMarkdown} className="glass-button inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-bold">
+                    <button type="button" onClick={exportMarkdown} className="linear-button inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-semibold">
                       <Download className="size-4" />
                       导出 Markdown
                     </button>
-                    <button type="button" onClick={exportWord} className="glass-button inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-bold">
+                    <button type="button" onClick={exportWord} className="linear-button inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-semibold">
                       <FileText className="size-4" />
                       导出 Word
                     </button>
-                    <button type="button" onClick={saveLocalArchive} disabled={saving} className="glass-button inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-bold disabled:opacity-60">
+                    <button type="button" onClick={saveLocalArchive} disabled={saving} className="linear-button inline-flex h-11 items-center justify-center gap-2 px-3 text-sm font-semibold disabled:opacity-60">
                       <Save className="size-4" />
                       {saving ? "保存中" : "保存本地档案"}
                     </button>
                   </div>
                 ) : null}
+              </section>
+
+              <section className="surface-card-soft p-4">
+                <p className="text-sm font-semibold text-slate-900">产品路线</p>
+                <div className="mt-3 flex flex-col gap-2 text-xs leading-5 text-slate-600">
+                  <p><span className="font-semibold text-teal-700">1代：</span>半自动 Agent 工作台，当前主流程。</p>
+                  <p><span className="font-semibold text-slate-700">2代：</span>多 Agent 协同，规划中。</p>
+                  <p><span className="font-semibold text-slate-700">3代：</span>全自动中控，规划中。</p>
+                </div>
               </section>
             </aside>
           </form>
@@ -2037,12 +2127,12 @@ export default function Home() {
 
 function StepCard({ step, title, text, active }: { step: string; title: string; text: string; active: boolean }) {
   return (
-    <div className={"rounded-[24px] border p-3 transition duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] " + (active ? "border-teal-200 bg-teal-50 shadow-sm" : "border-slate-200 bg-slate-50/80")}>
+    <div className={"workflow-step p-3 " + (active ? "border-teal-200 bg-teal-50" : "border-slate-200 bg-white")}>
       <div className="flex items-center gap-3">
-        <span className={"flex size-7 items-center justify-center rounded-full text-xs font-black " + (active ? "bg-teal-600 text-white" : "bg-white text-slate-500")}>
+        <span className={"flex size-7 items-center justify-center rounded-full text-xs font-semibold " + (active ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500")}>
           {step}
         </span>
-        <h2 className="text-sm font-black text-slate-950">{title}</h2>
+        <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
       </div>
       <p className="mt-1 text-xs leading-5 text-slate-600">{text}</p>
     </div>
@@ -2051,9 +2141,9 @@ function StepCard({ step, title, text, active }: { step: string; title: string; 
 
 function MetricTile({ label, value, helper }: { label: string; value: string | number; helper: string }) {
   return (
-    <div className="premium-card-soft rounded-[28px] p-4">
+    <div className="surface-card-soft p-4">
       <p className="text-sm font-bold text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
       <p className="mt-1 text-xs leading-5 text-slate-400">{helper}</p>
     </div>
   );
@@ -2079,14 +2169,14 @@ function AgentWorkspacePanel({
             ? "bg-indigo-50 text-indigo-700"
             : "bg-slate-100 text-slate-500";
         return (
-          <div key={agent.name} className="premium-card-soft rounded-[26px] p-3 transition duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-1">
+          <div key={agent.name} className="agent-card p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="flex size-10 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm">
+              <span className="linear-icon flex size-10 items-center justify-center rounded-xl">
                 <Icon className="size-4" />
               </span>
               <span className={"rounded-full px-2 py-0.5 text-xs font-semibold " + statusClass}>{status}</span>
             </div>
-            <h3 className="mt-3 text-sm font-black text-slate-950">{agent.name} Agent</h3>
+            <h3 className="mt-3 text-sm font-semibold text-slate-950">{agent.name} Agent</h3>
             <p className="mt-1 text-xs leading-5 text-slate-500">{agent.description}</p>
           </div>
         );
@@ -2110,11 +2200,11 @@ function MaterialAgentSummaryCard({ result }: { result: MaterialAgentResult }) {
   ] as const;
 
   return (
-    <div className="rounded-[30px] border border-teal-200/80 bg-teal-50/80 p-4 shadow-sm">
+    <div className="linear-panel border-teal-200 bg-teal-50/70 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-black text-teal-700">素材接收 Agent 已识别</p>
-          <h3 className="mt-1 text-base font-black text-slate-950">{result.productType || "未提到"}</h3>
+          <p className="text-sm font-semibold text-teal-700">素材接收 Agent 已识别</p>
+          <h3 className="mt-1 text-base font-semibold text-slate-950">{result.productType || "未提到"}</h3>
         </div>
         <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-xs font-bold text-teal-700">
           {result.materialCompleteness}
@@ -2123,7 +2213,7 @@ function MaterialAgentSummaryCard({ result }: { result: MaterialAgentResult }) {
       <p className="mt-2 text-sm leading-6 text-slate-700">{result.summary || "这段素材还可以再补充一点信息。"}</p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {rows.map(([label, value]) => (
-          <div key={label} className="rounded-[22px] bg-white/80 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+          <div key={label} className="rounded-2xl border border-teal-100 bg-white/85 p-3">
             <p className="text-xs font-bold text-slate-500">{label}</p>
             <p className="mt-1 text-sm leading-6 text-slate-800">{value || "未提到"}</p>
           </div>
@@ -2162,11 +2252,11 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
   ] as const;
 
   return (
-    <div className="rounded-[30px] border border-sky-200/80 bg-sky-50/80 p-4 shadow-sm">
+    <div className="linear-panel border-sky-200 bg-sky-50/70 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-black text-sky-700">爆款拆解 Agent 已完成</p>
-          <h3 className="mt-1 text-base font-black text-slate-950">{result.summary || "这个品的小红书爆款潜力已拆解完成。"}</h3>
+          <p className="text-sm font-semibold text-sky-700">爆款拆解 Agent 已完成</p>
+          <h3 className="mt-1 text-base font-semibold text-slate-950">{result.summary || "这个品的小红书爆款潜力已拆解完成。"}</h3>
         </div>
         <span className={"rounded-full border px-2 py-0.5 text-xs font-bold " + getViralLevelClass(result.viralPotential)}>
           爆款潜力：{result.viralPotential}
@@ -2174,15 +2264,15 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <div className={"rounded-[24px] border p-3 " + getViralLevelClass(result.viralPotential)}>
-          <p className="text-sm font-black">爆款潜力</p>
-          <p className="mt-1 text-2xl font-black text-slate-950">{result.viralPotential}</p>
+        <div className={"rounded-2xl border p-3 " + getViralLevelClass(result.viralPotential)}>
+          <p className="text-sm font-semibold">爆款潜力</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-950">{result.viralPotential}</p>
           <p className="mt-1 text-sm leading-6 text-slate-700">这是内容爆款潜力判断，不是最终做不做的结论。</p>
         </div>
         {fields.map((field) => (
-          <div key={field.label} className="rounded-[24px] border border-white/80 bg-white p-3">
+          <div key={field.label} className="rounded-2xl border border-slate-200 bg-white p-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-black text-slate-900">{field.label}</p>
+              <p className="text-sm font-semibold text-slate-900">{field.label}</p>
               <span className={"rounded-full border px-2 py-0.5 text-xs font-bold " + getViralLevelClass(field.value.level)}>
                 {field.value.level}
               </span>
@@ -2196,8 +2286,8 @@ function ViralAgentSummaryCard({ result }: { result: ViralAgentResult }) {
         {listGroups.map((group) => {
           const items = group.items.filter((item) => item.trim()).slice(0, 3);
           return (
-            <div key={group.label} className="rounded-[24px] border border-white/80 bg-white p-3">
-              <p className="text-sm font-black text-slate-900">{group.label}</p>
+            <div key={group.label} className="rounded-2xl border border-slate-200 bg-white p-3">
+              <p className="text-sm font-semibold text-slate-900">{group.label}</p>
               {items.length ? (
                 <ul className="mt-2 flex flex-col gap-2 text-sm leading-6 text-slate-700">
                   {items.map((item, index) => (
@@ -2383,11 +2473,11 @@ function ProgressPanel({
   }
 
   return (
-    <div className="premium-card rounded-[30px] p-4">
+    <div className="surface-card p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-black text-teal-700">任务进度</p>
-          <h3 className="mt-1 font-black text-slate-950">完整分析 8 步</h3>
+          <p className="text-sm font-semibold text-teal-700">任务进度</p>
+          <h3 className="mt-1 font-semibold text-slate-950">完整分析 8 步</h3>
         </div>
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
           {resultReady ? "已完成" : loading ? "执行中" : "待开始"}
@@ -2429,11 +2519,11 @@ function EvidenceCardEditor({
   onRoleChange: (role: EvidenceRole) => void;
 }) {
   return (
-    <article className="premium-card-soft rounded-[30px] p-4">
+    <article className="surface-card-soft p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-black text-teal-700">证据卡片 {index + 1}</p>
+            <p className="text-sm font-semibold text-teal-700">证据卡片 {index + 1}</p>
             <span className={"rounded-full px-2 py-0.5 text-xs font-bold " + (isValid ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
               {isValid ? "有效证据" : "待补充证据卡片"}
             </span>
@@ -2449,14 +2539,14 @@ function EvidenceCardEditor({
         <button
           type="button"
           onClick={() => onRoleChange("primary")}
-          className={"h-11 rounded-full px-3 text-sm font-bold " + (role === "primary" ? "glass-nav-active" : "glass-button")}
+          className={"h-11 rounded-full px-3 text-sm font-semibold " + (role === "primary" ? "linear-nav-active" : "linear-button")}
         >
           主商品
         </button>
         <button
           type="button"
           onClick={() => onRoleChange("supporting")}
-          className={"h-11 rounded-full px-3 text-sm font-bold " + (role === "supporting" ? "glass-nav-active" : "glass-button")}
+          className={"h-11 rounded-full px-3 text-sm font-semibold " + (role === "supporting" ? "linear-nav-active" : "linear-button")}
         >
           辅助证据
         </button>
@@ -2482,7 +2572,7 @@ function EvidenceCardEditor({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="premium-card-soft rounded-[28px] p-6 text-center text-sm text-slate-500">
+    <div className="surface-card-soft p-6 text-center text-sm text-slate-500">
       {text}
     </div>
   );

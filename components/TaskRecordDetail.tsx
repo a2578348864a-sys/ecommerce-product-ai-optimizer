@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 
 const extendedPlatformLabels: Record<string, string> = {
@@ -13,7 +14,7 @@ const extendedPlatformLabels: Record<string, string> = {
   alibaba: "阿里国际站",
 };
 
-type ViralTaskItem = {
+type TaskCenterItem = {
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -30,7 +31,7 @@ type ViralTaskItem = {
 };
 
 type DetailResponse =
-  | { ok: true; data: ViralTaskItem }
+  | { ok: true; data: TaskCenterItem }
   | { ok: false; error: { code: string; message: string } };
 
 type DeleteResponse =
@@ -50,8 +51,16 @@ function sourceLabel(source: string) {
   return source === "ai" ? "AI 深度拆解" : "mock 模拟拆解";
 }
 
-function getTitle(item: ViralTaskItem) {
+function getTitle(item: TaskCenterItem) {
   return item.title?.trim() || item.materialText.trim().slice(0, 20) || "未命名记录";
+}
+
+function getTaskTypeLabel(item: TaskCenterItem) {
+  return item.type === "viral" || !item.type ? "爆款素材分析" : item.type;
+}
+
+function getAgentTypeLabel(item: TaskCenterItem) {
+  return item.type === "viral" || !item.type ? "爆款素材 Agent" : "规划 Agent";
 }
 
 function getStringArray(result: unknown, key: string) {
@@ -67,7 +76,7 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
 
   return (
     <section className="rounded-2xl border border-white/80 bg-white p-4">
-      <h3 className="text-sm font-black text-slate-950">{title}</h3>
+      <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
       <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
         {items.map((item) => (
           <li key={item}>- {item}</li>
@@ -79,7 +88,7 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
 
 export function TaskRecordDetail({ id }: { id: string }) {
   const router = useRouter();
-  const [record, setRecord] = useState<ViralTaskItem | null>(null);
+  const [record, setRecord] = useState<TaskCenterItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -147,21 +156,21 @@ export function TaskRecordDetail({ id }: { id: string }) {
   }
 
   return (
-    <main className="app-surface px-4 py-8 sm:px-6 lg:px-8">
-      <div className="relative mx-auto grid max-w-[1540px] gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
+    <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
+      <div className="workspace-page workspace-layout">
         <WorkspaceSidebar />
 
         <div className="flex min-w-0 flex-col gap-5">
-          <header className="surface-card rounded-[34px] px-5 py-4">
+          <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Task Detail</p>
-                <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-950">任务详情</h1>
-                <p className="mt-1 text-sm text-slate-500">查看单条爆款拆解记录的输入、摘要和完整 JSON。</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务详情</h1>
+                <p className="mt-1 text-sm text-slate-500">查看单条任务的输入、Agent 摘要、执行状态和完整结果。</p>
               </div>
               <Link
                 href="/tasks"
-                className="glass-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-bold"
+                className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
               >
                 返回任务中心
               </Link>
@@ -170,25 +179,30 @@ export function TaskRecordDetail({ id }: { id: string }) {
           </header>
 
           {loading ? (
-            <section className="surface-card rounded-[38px] p-8 text-sm text-teal-800">
+            <section className="surface-card p-6 text-sm text-teal-800">
               正在读取任务详情...
             </section>
           ) : error ? (
-            <section className="surface-card rounded-[38px] p-8">
+            <section className="surface-card p-6">
               <p className="text-sm font-bold text-rose-700">{error}</p>
               <Link href="/tasks" className="mt-5 inline-flex text-sm font-bold text-teal-700">
                 返回任务列表
               </Link>
             </section>
           ) : record ? (
-            <section className="surface-card rounded-[38px] p-5 sm:p-6">
+            <section className="surface-card p-5 sm:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-teal-700">Viral Record</p>
-                  <h2 className="mt-2 break-words text-3xl font-black tracking-tight text-slate-950">
+                  <p className="text-sm font-bold text-teal-700">Task Center Record</p>
+                  <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">
                     {getTitle(record)}
                   </h2>
                   <p className="mt-3 text-sm leading-6 text-slate-600">{record.oneLineSummary}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">{getTaskTypeLabel(record)}</span>
+                    <span className="linear-pill px-3 py-1 text-xs text-slate-600">{getAgentTypeLabel(record)}</span>
+                    <span className="linear-pill border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">已完成</span>
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
@@ -200,7 +214,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">记录 ID</p>
                   <p className="mt-1 break-all text-xs font-bold text-slate-800">{record.id}</p>
@@ -220,13 +234,40 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <p className="mt-1 text-sm font-bold text-slate-800">{sourceLabel(record.source)}</p>
                 </div>
                 <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">类型</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{record.type}</p>
+                  <p className="text-xs font-bold text-slate-400">任务类型</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800">{getTaskTypeLabel(record)}</p>
+                </div>
+                <div className="surface-card-soft rounded-[22px] p-4">
+                  <p className="text-xs font-bold text-slate-400">Agent 类型</p>
+                  <p className="mt-1 text-sm font-bold text-slate-800">{getAgentTypeLabel(record)}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="linear-panel p-4">
+                  <p className="text-sm font-semibold text-slate-950">执行步骤预留</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    {["输入素材", "Agent 分析", "保存任务", "人工确认"].map((step, index) => (
+                      <div key={step} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <span className="text-[11px] font-semibold text-slate-400">0{index + 1}</span>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="muted-text mt-3 text-xs leading-5">失败原因、重试、继续执行、多 Agent 串联均为后续能力，本页不触发真实动作。</p>
+                </div>
+                <div className="linear-panel p-4">
+                  <p className="text-sm font-semibold text-slate-950">未来状态</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {taskStatusOptions.map((status) => (
+                      <span key={status.value} className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">{status.label}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-slate-50 p-4">
-                <h3 className="text-sm font-black text-slate-950">输入素材</h3>
+                <h3 className="text-sm font-semibold text-slate-950">输入素材</h3>
                 {record.productUrl ? (
                   <p className="mt-3 break-all text-xs text-slate-500">链接：{record.productUrl}</p>
                 ) : null}
@@ -247,7 +288,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </div>
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4">
-                <h3 className="text-sm font-black text-slate-950">完整结果 JSON</h3>
+                <h3 className="text-sm font-semibold text-slate-950">完整结果 JSON</h3>
                 <p className="mt-1 text-xs text-slate-500">用于复核 AI/mock 返回结构，长内容可以滚动查看。</p>
                 <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
                   {resultJson}
@@ -263,9 +304,12 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 >
                   {deleting ? "删除中..." : "删除这条记录"}
                 </button>
-                <Link href="/tasks" className="inline-flex h-11 items-center justify-center rounded-full bg-white px-5 text-sm font-bold text-slate-700">
+                <Link href="/tasks" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   返回任务中心
                 </Link>
+                <button type="button" disabled className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
+                  继续执行（规划中）
+                </button>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>
             </section>

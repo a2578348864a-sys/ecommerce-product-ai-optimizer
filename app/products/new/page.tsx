@@ -10,21 +10,21 @@ export const metadata: Metadata = {
 
 export default function NewProductPage() {
   return (
-    <main className="app-surface px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-[1540px] gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
+    <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
+      <div className="workspace-page workspace-layout">
         <WorkspaceSidebar />
 
         <div className="min-w-0">
-          <div className="mb-4 surface-card rounded-[34px] px-5 py-4">
+          <div className="workspace-header mb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="eyebrow">Qingxuan Workspace</p>
-                <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">选品体检</h1>
+                <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">选品体检</h1>
                 <p className="mt-1 text-sm muted-text">这里是跨境商品利润测算入口。</p>
               </div>
               <Link
                 href="/"
-                className="glass-button inline-flex h-10 items-center px-4 text-sm font-semibold"
+                className="linear-button inline-flex h-10 items-center px-4 text-sm font-semibold"
               >
                 ← 返回工作台
               </Link>
@@ -32,10 +32,10 @@ export default function NewProductPage() {
             <WorkspaceMobileNav />
           </div>
 
-          <section className="mb-6 overflow-hidden surface-card rounded-[34px]">
+          <section className="mb-6 overflow-hidden surface-card-strong">
           <div className="border-b border-slate-100 px-6 py-6">
             <p className="text-sm font-semibold text-teal-700">新建商品分析</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">跨境商品利润测算</h1>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">跨境商品利润测算</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 muted-text">
               先用程序公式测算成本、售价、利润和风险提示。当前页面只是利润测算草稿，不会保存数据、
               不会调用 AI、不会自动上架；后续再接 AI 选品分析、上架文案和历史记录。

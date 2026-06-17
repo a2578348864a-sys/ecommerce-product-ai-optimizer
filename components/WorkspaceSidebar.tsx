@@ -24,6 +24,19 @@ export const workspaceNavItems = [
   { label: "任务记录", href: "/tasks", icon: History },
 ] as const;
 
+const navGroups = [
+  {
+    title: "当前工作台",
+    items: workspaceNavItems.slice(0, 2),
+  },
+  {
+    title: "运营工具",
+    items: workspaceNavItems.slice(2),
+  },
+] as const;
+
+const plannedAgents = ["关键词 Agent", "AI 生图 Agent", "AI 生视频 Agent", "发布 Agent"] as const;
+
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
@@ -35,39 +48,58 @@ export function WorkspaceSidebar() {
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-4 flex flex-col gap-3">
-        <div className="surface-card rounded-[32px] p-5">
-          <div className="glass-panel rounded-[26px] p-1.5">
-            <div className="premium-inner flex min-h-[112px] flex-col justify-between rounded-[21px] p-4">
-              <div className="icon-glass size-12 rounded-2xl">
+        <div className="surface-card p-3">
+          <div className="flex items-start gap-3">
+            <div className="linear-icon size-9 shrink-0 rounded-xl">
                 <Sparkles className="size-5" />
-              </div>
-              <div>
-                <p className="mt-5 text-[10px] font-black uppercase tracking-[0.18em] text-teal-700">Local Agent</p>
-                <h1 className="section-title mt-1 text-2xl">轻选 Agent</h1>
-                <p className="muted-text mt-1 text-xs leading-5">本地优先的选品工作台</p>
-              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-teal-700">1代半自动</p>
+              <h1 className="section-title mt-0.5 truncate text-lg">轻选 Agent</h1>
+              <p className="muted-text mt-1 text-xs leading-5">本地优先，人工确认</p>
             </div>
           </div>
         </div>
-        <nav className="surface-card rounded-[32px] p-2.5" aria-label="工作台导航">
-          {workspaceNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActivePath(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={"premium-button mb-1 flex h-12 w-full items-center gap-3 rounded-[22px] px-3 text-sm font-bold last:mb-0 " + (active ? "glass-nav-active" : "text-slate-600 hover:bg-emerald-50/70 hover:text-emerald-800")}
-              >
-                <span className={"flex size-8 items-center justify-center rounded-2xl " + (active ? "bg-white/75 text-emerald-700 shadow-sm" : "bg-white/75 text-slate-500 shadow-sm")}>
-                  <Icon className="size-4" />
-                </span>
-                {item.label}
-              </Link>
-            );
-          })}
+
+        <nav className="surface-card p-2" aria-label="工作台导航">
+          {navGroups.map((group) => (
+            <div key={group.title} className="mb-3 last:mb-0">
+              <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">{group.title}</p>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const active = isActivePath(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={"mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 " + (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
+                  >
+                    <span className={"flex size-7 items-center justify-center rounded-lg border " + (active ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
+                      <Icon className="size-4" />
+                    </span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
+
+        <div className="surface-card-soft p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold text-slate-500">未来能力</p>
+            <span className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">规划中</span>
+          </div>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {plannedAgents.map((item) => (
+              <div key={item} className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
+                <span className="status-dot status-dot-slate" />
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </aside>
   );
@@ -86,7 +118,7 @@ export function WorkspaceMobileNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={"premium-button inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-bold " + (active ? "glass-nav-active" : "border-white/80 bg-white/80 text-slate-600 shadow-sm")}
+            className={"inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition " + (active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600")}
           >
             <Icon className="size-4" />
             {item.label}

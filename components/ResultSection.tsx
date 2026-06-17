@@ -72,7 +72,7 @@ export function SectionTitle({ title, count }: { title: string; count?: number }
       </span>
       <h2 className="section-title text-lg">{title}</h2>
       {typeof count === "number" ? (
-        <span className="glass-pill px-2 py-0.5 text-xs font-bold">{count}</span>
+        <span className="linear-pill px-2 py-0.5 text-xs font-semibold">{count}</span>
       ) : null}
     </div>
   );
@@ -172,23 +172,23 @@ export function SummaryCard({ result }: { result: HotProductRadarResult }) {
   const nextSuggestions = getNextSuggestions(result);
 
   return (
-    <div className="surface-card rounded-[34px] p-5 sm:p-6">
+    <div className="surface-card p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="eyebrow border-rose-200 bg-rose-50 text-rose-700">小白体检报告</p>
-          <h2 className="section-title mt-3 text-4xl">{getBeginnerDecisionLabel(result.finalDecision)}</h2>
+          <h2 className="section-title mt-3 text-2xl sm:text-3xl">{getBeginnerDecisionLabel(result.finalDecision)}</h2>
           <p className="muted-text mt-2 max-w-3xl text-sm leading-6">
             {reasons[0] || fallback}
           </p>
         </div>
-        <span className={"rounded-full border px-3 py-1 text-sm font-black " + getDecisionClass(result.finalDecision)}>
+        <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getDecisionClass(result.finalDecision)}>
           最终判断：{getBeginnerDecisionLabel(result.finalDecision)}
         </span>
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <div className="surface-card-soft rounded-[28px] p-4">
-          <p className="text-sm font-black text-slate-950">最终判断</p>
+        <div className="surface-card-soft p-4">
+          <p className="text-sm font-semibold text-slate-950">最终判断</p>
           {reasons.length ? (
             <ul className="mt-2 flex flex-col gap-2 text-sm leading-6 text-slate-700">
               {reasons.map((reason, index) => (
@@ -202,18 +202,18 @@ export function SummaryCard({ result }: { result: HotProductRadarResult }) {
             <p className="mt-2 text-sm leading-6 text-slate-700">{fallback}</p>
           )}
         </div>
-        <div className={"rounded-[28px] border p-4 " + noSourceFit.className}>
-          <p className="text-sm font-black">适合无货源吗</p>
-          <h3 className="mt-1 text-lg font-black">{noSourceFit.label}</h3>
+        <div className={"rounded-2xl border p-4 " + noSourceFit.className}>
+          <p className="text-sm font-semibold">适合无货源吗</p>
+          <h3 className="mt-1 text-lg font-semibold">{noSourceFit.label}</h3>
           <p className="mt-1 text-sm leading-6">{noSourceFit.text}</p>
         </div>
-        <div className="rounded-[28px] border border-indigo-200 bg-indigo-50/90 p-4 text-indigo-950">
-          <p className="text-sm font-black">爆款潜力</p>
-          <h3 className="mt-1 text-3xl font-black">{viralPotential.label}</h3>
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 text-indigo-950">
+          <p className="text-sm font-semibold">爆款潜力</p>
+          <h3 className="mt-1 text-2xl font-semibold">{viralPotential.label}</h3>
           <p className="mt-1 text-sm leading-6">{viralPotential.text}</p>
         </div>
-        <div className="rounded-[28px] border border-red-200 bg-red-50/90 p-4 text-red-950">
-          <p className="text-sm font-black">主要风险</p>
+        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-red-950">
+          <p className="text-sm font-semibold">主要风险</p>
           <ul className="mt-2 flex flex-col gap-2 text-sm leading-6">
             {mainRisks.map((risk) => (
               <li key={risk} className="flex gap-2">
@@ -223,8 +223,8 @@ export function SummaryCard({ result }: { result: HotProductRadarResult }) {
             ))}
           </ul>
         </div>
-        <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/90 p-4 text-emerald-950 lg:col-span-2">
-          <p className="text-sm font-black">下一步建议</p>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-emerald-950 lg:col-span-2">
+          <p className="text-sm font-semibold">下一步建议</p>
           <div className="mt-2 grid gap-2 md:grid-cols-3">
             {nextSuggestions.map((suggestion, index) => (
               <div key={suggestion} className="rounded-[20px] bg-white/72 p-3 text-sm leading-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
@@ -254,14 +254,14 @@ export function TrafficLightPanel({ risks }: { risks: TrafficLightRisk[] }) {
   });
 
   return (
-    <div className="surface-card rounded-[34px] p-5 sm:p-6">
+    <div className="surface-card p-5 sm:p-6">
       <SectionTitle title="风险红黄绿灯" />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {normalizedRisks.map((risk) => (
           <div key={risk.name} className={"rounded-[24px] border p-3 " + getLightClass(risk.level)}>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-black">{risk.name}</p>
-              <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-black">{getLightLabel(risk.level)}</span>
+              <p className="text-sm font-semibold">{risk.name}</p>
+              <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold">{getLightLabel(risk.level)}</span>
             </div>
             <p className="mt-2 text-xs leading-5">{risk.explanation}</p>
           </div>
@@ -278,7 +278,7 @@ export function PlatformStatusList({ statuses }: { statuses: PlatformSearchStatu
         <div key={item.platform} className="surface-card-soft rounded-[22px] p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-bold text-slate-900">{item.platform}</span>
-            <span className="glass-pill px-2 py-0.5 text-xs font-bold">{item.status}</span>
+            <span className="linear-pill px-2 py-0.5 text-xs font-semibold">{item.status}</span>
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-600">{item.message}</p>
           <p className="mt-1 text-xs text-slate-400">数量：{item.itemCount}</p>
@@ -314,11 +314,11 @@ function InfoBlock({ title, text }: { title: string; text?: string }) {
 
 export function ProductCard({ product }: { product: CandidateProduct }) {
   return (
-    <article className="surface-card rounded-[30px] p-4">
+    <article className="surface-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-black text-slate-950">{product.productName || "未命名商品"}</h3>
+            <h3 className="text-base font-semibold text-slate-950">{product.productName || "未命名商品"}</h3>
             <span className={"rounded-full border px-2 py-0.5 text-xs font-bold " + getDecisionClass(product.finalDecision)}>
               {getDecisionLabel(product.finalDecision)}
             </span>
@@ -328,7 +328,7 @@ export function ProductCard({ product }: { product: CandidateProduct }) {
           </p>
         </div>
         <div className="text-right">
-          <div className="text-3xl font-black text-slate-950">{product.finalScore || 0}</div>
+          <div className="text-2xl font-semibold text-slate-950">{product.finalScore || 0}</div>
           <div className="text-xs text-slate-400">综合分</div>
         </div>
       </div>
@@ -373,12 +373,12 @@ export function ProductGroup({ title, products, type }: {
       ? <XCircle className="h-4 w-4" />
       : <CircleHelp className="h-4 w-4" />;
   return (
-    <div className="surface-card-soft rounded-[28px] p-4">
+    <div className="surface-card-soft p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className={"flex size-8 items-center justify-center rounded-2xl " + getDecisionClass(type === "recommend" ? "recommend" : type === "reject" ? "reject" : "caution")}>
           {icon}
         </span>
-        <h3 className="font-black text-slate-950">{title}</h3>
+        <h3 className="font-semibold text-slate-950">{title}</h3>
         <span className="text-xs text-slate-400">{products.length} 个</span>
       </div>
       <div className="flex flex-col gap-3">
@@ -386,7 +386,7 @@ export function ProductGroup({ title, products, type }: {
           <div key={product.productName + index} className="rounded-[20px] bg-slate-50/80 p-3">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-bold text-slate-900">{product.productName || "未命名商品"}</p>
-              <span className="text-xs font-black text-slate-500">{product.finalScore || 0}</span>
+              <span className="text-xs font-semibold text-slate-500">{product.finalScore || 0}</span>
             </div>
             <p className="mt-1 text-xs leading-5 text-slate-600">{product.reason || product.evidenceText}</p>
           </div>
@@ -402,7 +402,7 @@ export function EvidenceCardList({ cards }: { cards: EvidenceCard[] }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {cards.length ? cards.map((card, index) => (
-        <div key={card.id || index} className="surface-card-soft rounded-[28px] p-4">
+        <div key={card.id || index} className="surface-card-soft p-4">
           <div className="flex items-center gap-2">
             <FileSearch className="size-4 text-teal-600" />
             <h3 className="font-bold text-slate-950">素材 {index + 1}：{card.productName || card.sourceUrl || card.materialType}</h3>
@@ -417,7 +417,7 @@ export function EvidenceCardList({ cards }: { cards: EvidenceCard[] }) {
           </div>
         </div>
       )) : (
-        <p className="surface-card-soft rounded-[28px] p-4 text-sm text-slate-500">暂无证据卡片。</p>
+        <p className="surface-card-soft p-4 text-sm text-slate-500">暂无证据卡片。</p>
       )}
     </div>
   );
@@ -427,7 +427,7 @@ export function EvidenceSection({ result }: { result: HotProductRadarResult }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {result.platformEvidence.length ? result.platformEvidence.map((item, index) => (
-        <div key={item.platform + index} className="surface-card-soft rounded-[28px] p-4">
+        <div key={item.platform + index} className="surface-card-soft p-4">
           <div className="flex items-center gap-2">
             <TrafficCone className="size-4 text-teal-600" />
             <h3 className="font-bold text-slate-950">{item.platform || "未知平台"}</h3>
@@ -437,7 +437,7 @@ export function EvidenceSection({ result }: { result: HotProductRadarResult }) {
           <InfoBlock title="不足" text={item.gaps} />
         </div>
       )) : (
-        <p className="surface-card-soft rounded-[28px] p-4 text-sm text-slate-500">暂无平台热度证据，请补充更多榜单或商品信息。</p>
+        <p className="surface-card-soft p-4 text-sm text-slate-500">暂无平台热度证据，请补充更多榜单或商品信息。</p>
       )}
     </div>
   );
@@ -446,10 +446,10 @@ export function EvidenceSection({ result }: { result: HotProductRadarResult }) {
 export function RiskAndIdeas({ result }: { result: HotProductRadarResult }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <div className="surface-card-soft rounded-[28px] p-4">
+      <div className="surface-card-soft p-4">
         <div className="mb-3 flex items-center gap-2">
           <ShieldAlert className="size-4 text-red-600" />
-          <h3 className="font-black text-slate-950">风险提醒</h3>
+          <h3 className="font-semibold text-slate-950">风险提醒</h3>
         </div>
         <div className="flex flex-col gap-3">
           {result.riskWarnings.length ? result.riskWarnings.map((risk, index) => (
@@ -463,10 +463,10 @@ export function RiskAndIdeas({ result }: { result: HotProductRadarResult }) {
           )}
         </div>
       </div>
-      <div className="surface-card-soft rounded-[28px] p-4">
+      <div className="surface-card-soft p-4">
         <div className="mb-3 flex items-center gap-2">
           <Lightbulb className="size-4 text-teal-600" />
-          <h3 className="font-black text-slate-950">差异化方案</h3>
+          <h3 className="font-semibold text-slate-950">差异化方案</h3>
         </div>
         <div className="flex flex-col gap-3">
           {result.differentiationIdeas.length ? result.differentiationIdeas.map((idea, index) => (
@@ -487,25 +487,25 @@ export function RiskAndIdeas({ result }: { result: HotProductRadarResult }) {
 export function KeywordAndDirectionPanel({ result }: { result: HotProductRadarResult }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <div className="surface-card-soft rounded-[28px] p-4">
+      <div className="surface-card-soft p-4">
         <div className="mb-3 flex items-center gap-2">
           <Search className="size-4 text-teal-600" />
-          <h3 className="font-black text-slate-950">找货关键词</h3>
+          <h3 className="font-semibold text-slate-950">找货关键词</h3>
         </div>
         <div className="flex flex-wrap gap-2">
           {result.sourcingKeywords.length ? result.sourcingKeywords.map((keyword) => (
-            <span key={keyword} className="glass-pill px-3 py-1 text-xs font-bold">{keyword}</span>
+            <span key={keyword} className="linear-pill px-3 py-1 text-xs font-semibold">{keyword}</span>
           )) : <p className="text-sm text-slate-500">暂无关键词。</p>}
         </div>
       </div>
-      <div className="surface-card-soft rounded-[28px] p-4">
+      <div className="surface-card-soft p-4">
         <div className="mb-3 flex items-center gap-2">
           <ClipboardList className="size-4 text-teal-600" />
-          <h3 className="font-black text-slate-950">同类扩展方向</h3>
+          <h3 className="font-semibold text-slate-950">同类扩展方向</h3>
         </div>
         <div className="flex flex-wrap gap-2">
           {result.similarProductDirections.length ? result.similarProductDirections.map((direction) => (
-            <span key={direction} className="glass-pill px-3 py-1 text-xs font-bold text-slate-700">{direction}</span>
+            <span key={direction} className="linear-pill px-3 py-1 text-xs font-semibold text-slate-700">{direction}</span>
           )) : <p className="text-sm text-slate-500">暂无同类方向。</p>}
         </div>
       </div>
@@ -517,10 +517,10 @@ export function NextActions({ result }: { result: HotProductRadarResult }) {
   return (
     <div className="flex flex-col gap-3">
       {result.nextActions.length ? result.nextActions.map((item, index) => (
-        <div key={item.productDirection + index} className="surface-card-soft rounded-[28px] p-4">
+        <div key={item.productDirection + index} className="surface-card-soft p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-black text-slate-950">{item.productDirection || "下一步"}</h3>
-            <span className="glass-pill px-2 py-0.5 text-xs font-bold">{item.testSuggestion}</span>
+            <h3 className="font-semibold text-slate-950">{item.productDirection || "下一步"}</h3>
+            <span className="linear-pill px-2 py-0.5 text-xs font-semibold">{item.testSuggestion}</span>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-700">{item.action}</p>
           {item.checklist.length ? (
@@ -535,7 +535,7 @@ export function NextActions({ result }: { result: HotProductRadarResult }) {
           ) : null}
         </div>
       )) : (
-        <p className="surface-card-soft rounded-[28px] p-4 text-sm text-slate-500">暂无下一步行动，请补充更多信息后重新生成。</p>
+        <p className="surface-card-soft p-4 text-sm text-slate-500">暂无下一步行动，请补充更多信息后重新生成。</p>
       )}
     </div>
   );
