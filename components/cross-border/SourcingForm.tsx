@@ -123,13 +123,13 @@ export function SourcingForm() {
                 <label className="block">
                   <span className="mb-2 block text-sm font-semibold text-slate-800">商品名称 *</span>
                   <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)}
-                    placeholder="例如：硅胶折叠水杯" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                    placeholder="例如：硅胶折叠水杯、铝合金折叠桌" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
                 </label>
 
                 <label className="block">
                   <span className="mb-2 block text-sm font-semibold text-slate-800">商品品类</span>
                   <input type="text" list="sourcing-category-list" value={category} onChange={(e) => setCategory(e.target.value)}
-                    placeholder="选择或输入品类" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                    placeholder="例如：家居日用、户外用品、宠物用品" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
                   <datalist id="sourcing-category-list">
                     {defaultCategories.map((cat) => (<option key={cat} value={cat} />))}
                   </datalist>
@@ -138,7 +138,9 @@ export function SourcingForm() {
                 <label className="block">
                   <span className="mb-2 block text-sm font-semibold text-slate-800">目标售价</span>
                   <input type="text" value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)}
-                    placeholder="例如：19.99 USD 或 29.99 EUR" className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                    placeholder="例如：19.99 USD"
+                    className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100" />
+                  <p className="mt-1 text-xs text-slate-400">填写计划售价，AI 会据此估算采购成本是否有利润空间。</p>
                 </label>
 
                 <label className="block">

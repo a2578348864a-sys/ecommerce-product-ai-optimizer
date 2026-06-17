@@ -250,10 +250,11 @@ function normalizeKeywordArray(value: unknown) {
     .slice(0, 10);
 }
 
-function normalizeKeywordGenerationResult(raw: unknown): KeywordGenerationResult {
+function normalizeKeywordGenerationResult(raw: unknown, productName: string): KeywordGenerationResult {
   const source = isRecord(raw) ? raw : {};
+  const name = productName.trim();
 
-  return {
+  const result = {
     coreKeywords: normalizeKeywordArray(source.coreKeywords),
     longTailKeywords: normalizeKeywordArray(source.longTailKeywords),
     searchTerms: normalizeKeywordArray(source.searchTerms),
@@ -263,6 +264,19 @@ function normalizeKeywordGenerationResult(raw: unknown): KeywordGenerationResult
     negativeKeywords: normalizeKeywordArray(source.negativeKeywords),
     platformNotes: asString(source.platformNotes) || DEFAULT_PLATFORM_NOTES,
   };
+
+  // Fallback: if AI returned empty for the main keyword groups, generate basic keywords from the product name
+  const hasKeywords = result.coreKeywords.length > 0 || result.longTailKeywords.length > 0;
+  if (!hasKeywords && name) {
+    const nameParts = name.split(/\s+/).filter((p) => p.length >= 2);
+    result.coreKeywords = nameParts.slice(0, 5);
+    result.searchTerms = [name, ...nameParts].slice(0, 6);
+    result.platformNotes = `关键词由商品名称"${name}"自动生成。建议补充商品描述、用途和卖点后重新生成，可获得更精准的关键词。`;
+  } else if (!hasKeywords) {
+    result.platformNotes = "商品名称未填写，无法生成关键词。请先填写商品名称和描述。";
+  }
+
+  return result;
 }
 
 function toSafeError(error: ApiError): ApiError {
@@ -344,6 +358,6 @@ export async function POST(request: NextRequest) {
 
   return jsonResponse({
     ok: true,
-    data: normalizeKeywordGenerationResult(aiResult.data),
+    data: normalizeKeywordGenerationResult(aiResult.data, parsed.value.product.name || ""),
   });
 }

@@ -154,7 +154,7 @@ export function RiskCheckForm() {
                     type="text"
                     value={productName}
                     onChange={(e) => setProductName(e.target.value)}
-                    placeholder="例如：便携式桌面收纳盒"
+                    placeholder="例如：便携式桌面收纳盒、猫咪慢食碗"
                     className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
                 </label>
@@ -167,7 +167,7 @@ export function RiskCheckForm() {
                       list="risk-category-list"
                       value={category}
                       onChange={(e) => setCategory(e.target.value)}
-                      placeholder="选择或输入品类"
+                      placeholder="例如：家居日用、户外用品"
                       className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                     />
                     <datalist id="risk-category-list">
@@ -197,9 +197,10 @@ export function RiskCheckForm() {
                     type="text"
                     value={claims}
                     onChange={(e) => setClaims(e.target.value)}
-                    placeholder="例如：防水、抗菌、3秒速热、纯天然"
+                    placeholder="例如：防水IPX4、食品级硅胶、承重30kg"
                     className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                   />
+                  <p className="mt-1 text-xs text-slate-400">填写商品详情页宣传的卖点词，AI 会检查是否有违规宣传风险。</p>
                 </label>
               </div>
 
