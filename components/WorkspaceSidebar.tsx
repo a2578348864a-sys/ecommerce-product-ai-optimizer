@@ -28,7 +28,7 @@ export const workspaceNavItems = [
 
 const navGroups = [
   {
-    title: "选品工作流",
+    title: "功能导航",
     items: workspaceNavItems.slice(0, 5),
   },
   {
@@ -77,8 +77,8 @@ export function WorkspaceSidebar() {
                 <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-teal-700">1代半自动</p>
-              <h1 className="section-title mt-0.5 truncate text-lg">轻选 Agent</h1>
+              <p className="text-[11px] font-semibold text-teal-700">半自动工作台</p>
+              <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
               <p className="muted-text mt-1 text-xs leading-5">本地优先，人工确认</p>
             </div>
           </div>
@@ -106,9 +106,6 @@ export function WorkspaceSidebar() {
                       )}
                     </span>
                     {item.label}
-                    {"step" in item && item.step ? (
-                      <span className="ml-auto text-[10px] font-medium text-slate-400">Step {item.step}</span>
-                    ) : null}
                   </Link>
                 );
               })}
