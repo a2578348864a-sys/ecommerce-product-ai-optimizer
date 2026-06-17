@@ -8,10 +8,12 @@ import {
   History,
   House,
   LayoutDashboard,
+  Package,
   ShieldCheck,
   Sparkles,
   UploadCloud,
 } from "lucide-react";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
   { label: "货源判断", href: "/sourcing", icon: ClipboardCheck, step: 1 },
@@ -49,10 +51,26 @@ function isActivePath(pathname: string, href: string) {
 
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
+  const [sharedProduct] = useSharedProduct();
 
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-4 flex flex-col gap-3">
+        {/* 当前选品指示器 */}
+        {sharedProduct.productName ? (
+          <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
+            <div className="flex items-center gap-2">
+              <Package className="size-4 shrink-0 text-teal-600" />
+              <p className="text-[11px] font-semibold text-teal-600">当前选品</p>
+            </div>
+            <p className="mt-1 truncate text-sm font-bold text-teal-900">{sharedProduct.productName}</p>
+            <p className="mt-0.5 text-xs text-teal-600">
+              {sharedProduct.targetPlatform}
+              {sharedProduct.category ? ` · ${sharedProduct.category}` : ""}
+            </p>
+          </div>
+        ) : null}
+
         <div className="surface-card p-3">
           <div className="flex items-start gap-3">
             <div className="linear-icon size-9 shrink-0 rounded-xl">

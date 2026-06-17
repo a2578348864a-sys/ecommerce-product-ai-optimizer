@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import type { MaterialAgentResult } from "@/lib/types";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 type ApiResponse =
   | { result: MaterialAgentResult }
@@ -26,15 +28,29 @@ function isApiError(value: unknown): value is { error: string } {
 }
 
 export function MaterialsForm() {
-  const [keyword, setKeyword] = useState("");
-  const [manualText, setManualText] = useState("");
+  const [sharedProduct, updateShared] = useSharedProduct();
+  const [keyword, setKeyword] = useState(sharedProduct.productName);
+  const [manualText, setManualText] = useState(sharedProduct.description);
   const [linksText, setLinksText] = useState("");
-  const [accessPassword, setAccessPassword] = useState("");
+  const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
   const [result, setResult] = useState<MaterialAgentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [tasksSaveMessage, setTasksSaveMessage] = useState<string | null>(null);
+
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncToShared = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      updateShared({ productName: keyword, description: manualText });
+    }, 500);
+  }, [keyword, manualText, updateShared]);
+
+  useEffect(() => {
+    syncToShared();
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [syncToShared]);
 
   async function handleSubmit() {
     if (loading) return;

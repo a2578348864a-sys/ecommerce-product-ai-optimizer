@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
 import { ListingCopyPreview } from "@/components/cross-border/ListingCopyPreview";
@@ -314,7 +315,27 @@ function getFriendlyAiErrorMessage(error: ApiErrorPayload | undefined, fallback:
 }
 
 export function ProductProfitForm() {
-  const [form, setForm] = useState<ProductProfitFormInput>(initialForm);
+  const [sharedProduct, updateShared] = useSharedProduct();
+  const [form, setForm] = useState<ProductProfitFormInput>({
+    ...initialForm,
+    name: sharedProduct.productName || initialForm.name,
+    description: sharedProduct.description || initialForm.description,
+    targetPlatform: (sharedProduct.targetPlatform as ProductProfitFormInput["targetPlatform"]) || initialForm.targetPlatform,
+  });
+
+  // Sync shared fields back
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncToShared = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      updateShared({ productName: form.name, description: form.description, targetPlatform: form.targetPlatform });
+    }, 500);
+  }, [form.name, form.description, form.targetPlatform, updateShared]);
+
+  useEffect(() => {
+    syncToShared();
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [syncToShared]);
   const [temporarySku, setTemporarySku] = useState("CB-TEMP");
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);

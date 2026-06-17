@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 type SourcingPriceBand = {
   min: string;
@@ -52,15 +54,30 @@ function isApiResponse(value: unknown): value is ApiResponse {
 }
 
 export function SourcingForm() {
-  const [productName, setProductName] = useState("");
-  const [category, setCategory] = useState("");
-  const [targetPrice, setTargetPrice] = useState("");
-  const [targetPlatform, setTargetPlatform] = useState("shopify");
-  const [description, setDescription] = useState("");
-  const [accessPassword, setAccessPassword] = useState("");
+  const [sharedProduct, updateShared] = useSharedProduct();
+  const [productName, setProductName] = useState(sharedProduct.productName);
+  const [category, setCategory] = useState(sharedProduct.category);
+  const [targetPrice, setTargetPrice] = useState(sharedProduct.targetPrice);
+  const [targetPlatform, setTargetPlatform] = useState(sharedProduct.targetPlatform);
+  const [description, setDescription] = useState(sharedProduct.description);
+  const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
   const [result, setResult] = useState<SourcingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync back to shared product on change (debounced)
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncToShared = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      updateShared({ productName, category, targetPlatform, description, targetPrice });
+    }, 500);
+  }, [productName, category, targetPlatform, description, targetPrice, updateShared]);
+
+  useEffect(() => {
+    syncToShared();
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [syncToShared]);
 
   async function handleSubmit() {
     if (loading) return;

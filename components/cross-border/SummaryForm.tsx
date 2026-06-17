@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 type SummaryData = {
   verdict: string;
@@ -12,6 +13,20 @@ type SummaryData = {
   risks: string[];
   nextSteps: string[];
   beginnerTip: string;
+};
+
+type AggregateResponse =
+  | { ok: true; data: AggregateResult }
+  | { ok: false; error: { code: string; message: string } };
+
+type AggregateResult = {
+  productName: string;
+  found: boolean;
+  sourcing: Record<string, unknown> | null;
+  risk: Record<string, unknown> | null;
+  product: Record<string, unknown> | null;
+  viral: Record<string, unknown> | null;
+  material: Record<string, unknown> | null;
 };
 
 type ApiResponse =
@@ -34,25 +49,63 @@ function isApiResponse(value: unknown): value is ApiResponse {
   return typeof value === "object" && value !== null && "ok" in value;
 }
 
+function isAggregateResponse(value: unknown): value is AggregateResponse {
+  return typeof value === "object" && value !== null && "ok" in value;
+}
+
+const typeLabels: Record<string, string> = {
+  sourcing: "货源判断",
+  risk: "风险排查",
+  product: "选品体检",
+  viral: "爆款拆解",
+  material: "素材接收",
+};
+
 export function SummaryForm() {
-  const [productName, setProductName] = useState("");
-  const [sourcingFindings, setSourcingFindings] = useState("");
-  const [riskFindings, setRiskFindings] = useState("");
-  const [productFindings, setProductFindings] = useState("");
-  const [viralFindings, setViralFindings] = useState("");
-  const [extraNotes, setExtraNotes] = useState("");
+  const [sharedProduct] = useSharedProduct();
   const [accessPassword, setAccessPassword] = useState("");
   const [result, setResult] = useState<SummaryData | null>(null);
+  const [aggregate, setAggregate] = useState<AggregateResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingAggregate, setLoadingAggregate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [tasksSaveMessage, setTasksSaveMessage] = useState<string | null>(null);
 
+  // Auto-fetch aggregate data when product name is available
+  useEffect(() => {
+    if (!sharedProduct.productName) {
+      setAggregate(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingAggregate(true);
+    setError(null);
+
+    fetch(`/api/tasks/aggregate?productName=${encodeURIComponent(sharedProduct.productName)}`)
+      .then((res) => res.json())
+      .then((payload: unknown) => {
+        if (cancelled) return;
+        if (isAggregateResponse(payload) && payload.ok) {
+          setAggregate(payload.data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("获取分析记录失败，请检查网络。");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAggregate(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [sharedProduct.productName]);
+
   async function handleSubmit() {
     if (loading) return;
 
-    if (!productName.trim()) {
-      setError("请先填写商品名称。");
+    if (!sharedProduct.productName) {
+      setError("请先在任意工作流页面填写商品名称。");
       return;
     }
 
@@ -61,8 +114,8 @@ export function SummaryForm() {
       return;
     }
 
-    if (!sourcingFindings.trim() && !riskFindings.trim() && !productFindings.trim() && !viralFindings.trim()) {
-      setError("请至少填写一项分析结果。");
+    if (!aggregate?.found) {
+      setError("未找到该商品的分析记录。请先完成至少一项分析（货源判断/风险排查/选品体检/爆款拆解）。");
       return;
     }
 
@@ -70,16 +123,28 @@ export function SummaryForm() {
     setLoading(true);
 
     try {
+      // Build findings text from aggregate
+      const findings: string[] = [];
+      for (const key of ["sourcing", "risk", "product", "viral"] as const) {
+        const item = aggregate[key];
+        if (item) {
+          const label = typeLabels[key];
+          const summary = typeof item.oneLineSummary === "string" ? item.oneLineSummary : "";
+          const score = typeof item.score === "number" ? ` (评分: ${item.score})` : "";
+          findings.push(`【${label}】${summary}${score}`);
+        }
+      }
+
       const response = await fetch("/api/agents/summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productName: productName.trim(),
-          sourcingFindings: sourcingFindings.trim(),
-          riskFindings: riskFindings.trim(),
-          productFindings: productFindings.trim(),
-          viralFindings: viralFindings.trim(),
-          extraNotes: extraNotes.trim(),
+          productName: sharedProduct.productName,
+          sourcingFindings: aggregate.sourcing ? JSON.stringify(aggregate.sourcing) : "",
+          riskFindings: aggregate.risk ? JSON.stringify(aggregate.risk) : "",
+          productFindings: aggregate.product ? JSON.stringify(aggregate.product) : "",
+          viralFindings: aggregate.viral ? JSON.stringify(aggregate.viral) : "",
+          extraNotes: "",
           accessPassword: accessPassword.trim(),
         }),
       });
@@ -104,8 +169,6 @@ export function SummaryForm() {
     }
   }
 
-  const hasResult = Boolean(result);
-
   async function handleSaveToTaskCenter() {
     if (savingToTasks || !result) return;
     setSavingToTasks(true);
@@ -116,16 +179,10 @@ export function SummaryForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "summary",
-          title: productName.trim(),
-          platform: "manual",
+          title: sharedProduct.productName,
+          platform: sharedProduct.targetPlatform || "manual",
           source: "ai",
-          materialText: [
-            sourcingFindings.trim(),
-            riskFindings.trim(),
-            productFindings.trim(),
-            viralFindings.trim(),
-            extraNotes.trim(),
-          ].filter(Boolean).join("\n\n") || productName.trim(),
+          materialText: sharedProduct.description || sharedProduct.productName,
           result: {
             oneLineSummary: result.summary,
             level: result.verdict === "可以做" ? "高" : result.verdict === "谨慎做" ? "中" : "低",
@@ -151,6 +208,11 @@ export function SummaryForm() {
     }
   }
 
+  const hasResult = Boolean(result);
+  const foundTypes = aggregate
+    ? (["sourcing", "risk", "product", "viral", "material"] as const).filter((k) => aggregate[k])
+    : [];
+
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
       <div className="workspace-page workspace-layout">
@@ -162,118 +224,104 @@ export function SummaryForm() {
               <p className="eyebrow">Qingxuan Workspace</p>
               <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">小白结论</h1>
               <p className="muted-text mt-1 text-sm">
-                把前面几步的分析结果汇总，AI 用大白话告诉你这个品能不能做、为什么、下一步怎么试。
+                自动拉取前面各步骤的分析结果，AI 用大白话告诉你这个品能不能做。
               </p>
             </div>
             <WorkspaceMobileNav />
           </header>
 
-          {/* Form */}
+          {/* Current product status */}
           <section className="surface-card rounded-[28px] p-5">
             <div className="mb-5">
-              <h2 className="text-xl font-bold text-slate-950">汇总分析</h2>
+              <h2 className="text-xl font-bold text-slate-950">当前选品</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                把货源判断、风险排查、选品体检、爆款拆解的结果粘贴进来，AI 帮你做最终判断。
+                系统自动从你已经完成的分析中拉取结果。
               </p>
             </div>
 
-            <div className="space-y-5">
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">商品名称 *</span>
-                <input
-                  type="text"
-                  value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  placeholder="例如：硅胶折叠水杯"
-                  className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                />
-              </label>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Step 1 货源判断结果
-                  </span>
-                  <textarea
-                    value={sourcingFindings}
-                    onChange={(e) => setSourcingFindings(e.target.value)}
-                    rows={4}
-                    placeholder="粘贴货源判断页面的关键结论：能不能找到货、价格带、MOQ..."
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Step 2 风险排查结果
-                  </span>
-                  <textarea
-                    value={riskFindings}
-                    onChange={(e) => setRiskFindings(e.target.value)}
-                    rows={4}
-                    placeholder="粘贴风险排查页面的关键结论：有没有侵权风险、哪些坑要注意..."
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Step 3 选品体检结果
-                  </span>
-                  <textarea
-                    value={productFindings}
-                    onChange={(e) => setProductFindings(e.target.value)}
-                    rows={4}
-                    placeholder="粘贴选品体检页面的关键结论：利润空间、AI 分析评分、关键词..."
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">
-                    Step 4 爆款拆解结果
-                  </span>
-                  <textarea
-                    value={viralFindings}
-                    onChange={(e) => setViralFindings(e.target.value)}
-                    rows={4}
-                    placeholder="粘贴爆款拆解页面的关键结论：卖点吸引力、内容可拍性、优化建议..."
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
+            {!sharedProduct.productName ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-bold text-amber-900">尚未设置选品</p>
+                <p className="mt-1 text-sm text-amber-700">
+                  请先在工作流任意页面（货源判断 / 风险排查 / 选品体检）填写商品名称。填写后系统会自动记住，回到本页即可使用。
+                </p>
+                <Link
+                  href="/sourcing"
+                  className="glass-button-primary mt-3 inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
+                >
+                  去货源判断 →
+                </Link>
               </div>
+            ) : loadingAggregate ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="text-sm text-slate-500">正在检查「{sharedProduct.productName}」的分析记录...</p>
+              </div>
+            ) : aggregate?.found ? (
+              <div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-bold text-emerald-900">
+                    已找到「{sharedProduct.productName}」的 {foundTypes.length} 项分析结果
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {foundTypes.map((k) => (
+                      <span key={k} className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-700">
+                        {typeLabels[k]}
+                      </span>
+                    ))}
+                  </div>
+                </div>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">补充说明</span>
-                <textarea
-                  value={extraNotes}
-                  onChange={(e) => setExtraNotes(e.target.value)}
-                  rows={2}
-                  placeholder="其他你想告诉 AI 的信息..."
-                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                />
-              </label>
+                {/* Found items detail */}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {foundTypes.map((k) => {
+                    const item = aggregate[k];
+                    if (!item) return null;
+                    const summary = typeof item.oneLineSummary === "string" ? item.oneLineSummary : "";
+                    const score = typeof item.score === "number" ? item.score : null;
+                    return (
+                      <div key={k} className="surface-card-soft rounded-[18px] p-3">
+                        <p className="text-xs font-semibold text-slate-500">{typeLabels[k]}</p>
+                        <p className="mt-1 text-sm leading-5 text-slate-700 line-clamp-2">{summary}</p>
+                        {score !== null ? (
+                          <span className="mt-1 inline-block rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-bold text-teal-700">
+                            {score}/100
+                          </span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
-                <input
-                  type="password"
-                  value={accessPassword}
-                  onChange={(e) => setAccessPassword(e.target.value)}
-                  placeholder="输入服务端配置的访问密码"
-                  className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                />
-              </label>
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
+                  <input
+                    type="password"
+                    value={accessPassword}
+                    onChange={(e) => setAccessPassword(e.target.value)}
+                    placeholder="输入服务端配置的访问密码"
+                    className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
 
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={loading}
-                className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading ? "分析中..." : hasResult ? "重新分析" : "生成小白结论"}
-              </button>
-            </div>
+                <div className="mt-3 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={loading}
+                    className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? "AI 分析中..." : hasResult ? "重新生成" : "生成小白结论"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-bold text-amber-900">尚未找到分析记录</p>
+                <p className="mt-1 text-sm text-amber-700">
+                  产品名「{sharedProduct.productName}」还没有保存的分析结果。请先在货源判断、风险排查、选品体检或爆款拆解页面完成分析并点击【保存到任务中心】。
+                </p>
+              </div>
+            )}
           </section>
 
           {/* Error */}
@@ -290,30 +338,13 @@ export function SummaryForm() {
             </section>
           ) : null}
 
-          {/* No result yet */}
-          {!hasResult && !loading ? (
-            <section className="surface-card rounded-[28px] p-5">
-              <div className="max-w-2xl">
-                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">
-                  待汇总
-                </span>
-                <p className="mt-3 text-sm leading-6 text-slate-500">
-                  填写商品名称，然后粘贴前面几步的分析结果。AI 会汇总成一句大白话结论。
-                </p>
-                <p className="mt-2 text-xs leading-5 text-slate-400">
-                  如果你是按工作流 Step 1→5 走下来的，每步的结果页面都有一段总结文字，复制粘贴过来即可。
-                </p>
-              </div>
-            </section>
-          ) : null}
-
           {/* Results */}
           {result ? (
             <section className="surface-card rounded-[28px] p-5">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-slate-950">小白结论</h2>
-                  <p className="mt-1 text-sm text-slate-500">AI 汇总分析，最终决策需人工复核。</p>
+                  <p className="mt-1 text-sm text-slate-500">AI 汇总分析，基于已有的 {foundTypes.length} 项结果。</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`inline-flex shrink-0 rounded-full border px-4 py-1.5 text-sm font-bold ${verdictClasses[result.verdict] || verdictClasses["谨慎做"]}`}>
@@ -325,13 +356,11 @@ export function SummaryForm() {
                 </div>
               </div>
 
-              {/* Summary */}
               <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-sm font-semibold text-slate-900">一句话结论</p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">{result.summary}</p>
               </div>
 
-              {/* Reasons */}
               {result.reasons.length ? (
                 <div className="mb-5">
                   <p className="text-sm font-bold text-slate-950">为什么</p>
@@ -346,7 +375,6 @@ export function SummaryForm() {
                 </div>
               ) : null}
 
-              {/* Next steps */}
               {result.nextSteps.length ? (
                 <div className="mb-5 rounded-xl border border-teal-200 bg-teal-50 p-4">
                   <p className="text-sm font-bold text-teal-900">下一步做什么</p>
@@ -361,10 +389,9 @@ export function SummaryForm() {
                 </div>
               ) : null}
 
-              {/* Risks */}
               {result.risks.length ? (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                  <p className="text-sm font-bold text-amber-900">⚠️ 别忘了人工复核</p>
+                  <p className="text-sm font-bold text-amber-900">别忘了人工复核</p>
                   <ul className="mt-2 space-y-1">
                     {result.risks.map((r, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm leading-6 text-amber-800">
@@ -376,21 +403,20 @@ export function SummaryForm() {
                 </div>
               ) : null}
 
-              {/* Beginner tip */}
               <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-                <p className="text-xs font-semibold text-indigo-500">💡 小白提示</p>
+                <p className="text-xs font-semibold text-indigo-500">给小白的一句话</p>
                 <p className="mt-1 text-sm leading-6 text-indigo-800">{result.beginnerTip}</p>
               </div>
             </section>
           ) : null}
 
-          {/* Save to task center */}
+          {/* Save */}
           {result ? (
             <section className="surface-card rounded-[28px] p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-600">保存分析结果</p>
-                  <p className="mt-1 text-sm text-slate-500">将小白结论保存到任务中心，方便后续回顾决策依据。</p>
+                  <p className="mt-1 text-sm text-slate-500">将小白结论保存到任务中心。</p>
                 </div>
                 <button
                   type="button"

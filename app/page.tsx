@@ -30,6 +30,7 @@ import {
 } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
 import {
   EvidenceCardList,
   EvidenceSection,
@@ -1697,24 +1698,7 @@ export default function Home() {
           </header>
 
           {/* 工作流引导 */}
-          <section className="grid gap-3 sm:grid-cols-5">
-            {[
-              { step: 1, label: "货源判断", desc: "能不能进货", href: "/sourcing", icon: ClipboardCheck },
-              { step: 2, label: "风险排查", desc: "有没有坑", href: "/risk", icon: ShieldCheck },
-              { step: 3, label: "选品体检", desc: "能赚多少", href: "/products/new", icon: LayoutDashboard },
-              { step: 4, label: "爆款拆解", desc: "怎么拍怎么卖", href: "/viral", icon: Sparkles },
-              { step: 5, label: "任务记录", desc: "回顾所有分析", href: "/tasks", icon: History },
-            ].map((wf) => {
-              const Icon = wf.icon;
-              return (
-                <Link key={wf.step} href={wf.href} className="surface-card-soft rounded-[22px] p-4 transition hover:shadow-soft">
-                  <span className="inline-flex size-7 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-xs font-bold text-teal-700">{wf.step}</span>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{wf.label}</p>
-                  <p className="mt-1 text-xs text-slate-500">{wf.desc}</p>
-                </Link>
-              );
-            })}
-          </section>
+          <WorkflowGuideCards />
 
           <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-5">
@@ -2647,5 +2631,41 @@ function EmptyState({ text }: { text: string }) {
     <div className="surface-card-soft p-6 text-center text-sm text-slate-500">
       {text}
     </div>
+  );
+}
+
+function WorkflowGuideCards() {
+  const [sharedProduct] = useSharedProduct();
+  const hasProduct = Boolean(sharedProduct.productName);
+
+  const items = [
+    { step: 1, label: "货源判断", desc: "能不能进货", href: "/sourcing", icon: ClipboardCheck },
+    { step: 2, label: "风险排查", desc: "有没有坑", href: "/risk", icon: ShieldCheck },
+    { step: 3, label: "选品体检", desc: "能赚多少", href: "/products/new", icon: LayoutDashboard },
+    { step: 4, label: "爆款拆解", desc: "怎么拍怎么卖", href: "/viral", icon: Sparkles },
+    { step: 5, label: "任务记录", desc: "回顾所有分析", href: "/tasks", icon: History },
+  ];
+
+  return (
+    <section>
+      {hasProduct ? (
+        <p className="mb-2 text-xs font-semibold text-teal-700">
+          当前选品：{sharedProduct.productName}
+          {sharedProduct.targetPlatform ? ` · ${sharedProduct.targetPlatform}` : ""}
+        </p>
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-5">
+        {items.map((wf) => {
+          const Icon = wf.icon;
+          return (
+            <Link key={wf.step} href={wf.href} className="surface-card-soft rounded-[22px] p-4 transition hover:shadow-soft">
+              <span className="inline-flex size-7 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-xs font-bold text-teal-700">{wf.step}</span>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{wf.label}</p>
+              <p className="mt-1 text-xs text-slate-500">{hasProduct ? `继续分析` : wf.desc}</p>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }

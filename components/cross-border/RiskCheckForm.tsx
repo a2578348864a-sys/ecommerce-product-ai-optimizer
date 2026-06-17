@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 type RiskLevel = "green" | "yellow" | "red";
 
@@ -56,15 +58,29 @@ function isRiskCheckApiResponse(value: unknown): value is RiskCheckApiResponse {
 }
 
 export function RiskCheckForm() {
-  const [productName, setProductName] = useState("");
-  const [category, setCategory] = useState("");
-  const [claims, setClaims] = useState("");
-  const [targetPlatform, setTargetPlatform] = useState("shopify");
-  const [description, setDescription] = useState("");
-  const [accessPassword, setAccessPassword] = useState("");
+  const [sharedProduct, updateShared] = useSharedProduct();
+  const [productName, setProductName] = useState(sharedProduct.productName);
+  const [category, setCategory] = useState(sharedProduct.category);
+  const [claims, setClaims] = useState(sharedProduct.claims);
+  const [targetPlatform, setTargetPlatform] = useState(sharedProduct.targetPlatform);
+  const [description, setDescription] = useState(sharedProduct.description);
+  const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
   const [result, setResult] = useState<RiskCheckData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncToShared = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      updateShared({ productName, category, targetPlatform, description, claims });
+    }, 500);
+  }, [productName, category, targetPlatform, description, claims, updateShared]);
+
+  useEffect(() => {
+    syncToShared();
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [syncToShared]);
 
   async function handleSubmit() {
     if (loading) return;

@@ -13,10 +13,12 @@ import {
   Wand2,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { platformLabels, platformOptions } from "@/lib/types";
 import type { Platform, ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
+import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalStorage } from "@/hooks/useLocalStorage";
 
 const positiveWords = ["痛点", "对比", "改造", "懒人", "宿舍", "租房", "收纳", "神器", "评论", "链接", "平替", "省钱", "免打孔", "前后"];
 const riskWords = ["品牌", "授权", "功效", "治疗", "减肥", "医用", "儿童", "带电", "大件", "易碎"];
@@ -353,11 +355,16 @@ function SimpleList({ title, items }: { title: string; items: string[] }) {
 }
 
 export function ViralMockAgent() {
-  const [title, setTitle] = useState("");
+  const [sharedProduct, updateShared] = useSharedProduct();
+  const [title, setTitle] = useState(sharedProduct.productName);
   const [productUrl, setProductUrl] = useState("");
-  const [platform, setPlatform] = useState<AgentPlatform>("xhs");
-  const [materialText, setMaterialText] = useState("");
-  const [accessPassword, setAccessPassword] = useState("");
+  const [platform, setPlatform] = useState<AgentPlatform>(
+    (sharedProduct.targetPlatform && sharedProduct.targetPlatform !== "shopify")
+      ? sharedProduct.targetPlatform as AgentPlatform
+      : "xhs"
+  );
+  const [materialText, setMaterialText] = useState(sharedProduct.description);
+  const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
   const [result, setResult] = useState<DisplayResult | null>(null);
   const [notice, setNotice] = useState("模拟拆解不消耗额度；AI 深度拆解会请求后端并消耗 AI 额度。");
   const [fieldError, setFieldError] = useState("");
@@ -365,6 +372,20 @@ export function ViralMockAgent() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
+  // Sync shared fields back
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncToShared = useCallback(() => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      updateShared({ productName: title, description: materialText, targetPlatform: platform });
+    }, 500);
+  }, [title, materialText, platform, updateShared]);
+
+  useEffect(() => {
+    syncToShared();
+    return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
+  }, [syncToShared]);
   const [savedRecordId, setSavedRecordId] = useState("");
 
   const lengthText = useMemo(() => materialText.trim().length + "/8000", [materialText]);
