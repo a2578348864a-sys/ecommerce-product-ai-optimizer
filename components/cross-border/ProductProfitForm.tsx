@@ -330,6 +330,7 @@ export function ProductProfitForm() {
   const [listingCopyHistorySource, setListingCopyHistorySource] = useState<ListingCopyHistorySource>("local");
   const [listingCopyHistoryLoading, setListingCopyHistoryLoading] = useState(false);
   const [listingCopyHistoryMessage, setListingCopyHistoryMessage] = useState<string | null>(null);
+  const [activeAiTab, setActiveAiTab] = useState<"analysis" | "keywords" | "listing">("analysis");
 
   const profitInput = useMemo<ProfitCalculationInput>(() => ({
     purchasePrice: form.purchasePrice,
@@ -631,7 +632,9 @@ export function ProductProfitForm() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+    <div className="space-y-6">
+      {/* ===== Layer 1: Two-column layout ===== */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
       <section className="surface-card rounded-[28px] p-5">
         <div className="mb-5">
           <h2 className="text-xl font-bold text-slate-950">商品输入表单</h2>
@@ -786,12 +789,62 @@ export function ProductProfitForm() {
           )}
         </section>
 
-        <ListingPreviewCard
-          form={form}
-          listingData={listingPreview}
-          profitResult={profitResult}
-        />
+        <section className="surface-card rounded-[28px] p-5">
+          <h3 className="text-sm font-bold text-slate-950">人工确认状态</h3>
+          <p className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+            待人工确认
+          </p>
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            当前只是预览，不会保存、不调用 AI、不自动上架。请人工复核利润、风险和上架资料。
+          </p>
+        </section>
+      </aside>
+    </div>
 
+    {/* ===== Layer 2: Full-width 上架资料预览 ===== */}
+    <ListingPreviewCard
+      form={form}
+      listingData={listingPreview}
+      profitResult={profitResult}
+    />
+
+    {/* ===== Layer 3: Full-width AI 辅助分析与生成 Tabs ===== */}
+    <section className="surface-card rounded-[28px] p-5">
+      <div className="mb-5">
+        <h2 className="text-xl font-bold text-slate-950">AI 辅助分析与生成</h2>
+        <p className="mt-1 text-sm leading-6 text-slate-500">
+          使用 AI 辅助选品分析、关键词生成和英文文案撰写。结果仅供运营参考，不等于平台最终规则。
+        </p>
+      </div>
+
+      {/* Tab bar */}
+      <div className="mb-5 flex gap-1 border-b border-slate-200" role="tablist">
+        {(
+          [
+            { key: "analysis" as const, label: "AI 选品分析" },
+            { key: "keywords" as const, label: "关键词生成" },
+            { key: "listing" as const, label: "英文上架文案" },
+          ]
+        ).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={activeAiTab === tab.key}
+            onClick={() => setActiveAiTab(tab.key)}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+              activeAiTab === tab.key
+                ? "border-teal-500 text-teal-700"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab panels — all mounted, hidden when inactive to preserve state */}
+      <div className={activeAiTab === "analysis" ? "" : "hidden"}>
         <AiAnalysisPreview
           form={form}
           listingData={listingPreview}
@@ -800,7 +853,8 @@ export function ProductProfitForm() {
           error={aiAnalysisError}
           onGenerate={handleGenerateAiAnalysis}
         />
-
+      </div>
+      <div className={activeAiTab === "keywords" ? "" : "hidden"}>
         <KeywordPreview
           form={form}
           listingData={listingPreview}
@@ -809,7 +863,8 @@ export function ProductProfitForm() {
           error={keywordsError}
           onGenerate={handleGenerateKeywords}
         />
-
+      </div>
+      <div className={activeAiTab === "listing" ? "" : "hidden"}>
         <ListingCopyPreview
           form={form}
           listingData={listingPreview}
@@ -826,7 +881,24 @@ export function ProductProfitForm() {
           onRestoreHistory={handleRestoreListingCopyHistory}
           onDeleteHistory={handleDeleteListingCopyHistory}
         />
-      </aside>
+      </div>
+    </section>
+
+    {/* ===== Layer 4: Full-width 人工确认下一步 ===== */}
+    <section className="surface-card rounded-[28px] p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-lg font-bold text-slate-950">人工确认下一步</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            请人工复核以上所有信息（利润测算、风险提示、上架资料预览、AI 分析结果）。
+            确认无误后，可继续后续上架流程。当前页面不保存数据。
+          </p>
+        </div>
+        <span className="inline-flex shrink-0 rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+          待人工确认
+        </span>
+      </div>
+    </section>
     </div>
   );
 }

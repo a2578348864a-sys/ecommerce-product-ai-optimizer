@@ -132,14 +132,18 @@ export function AiAnalysisPreview({
         <InfoRow label="综合评分" value={analysis ? `${analysis.score}/100` : "待生成"} />
         <ListBlock label="推荐理由" items={analysis?.reasons} />
         <ListBlock label="风险点" items={analysis?.risks} />
-        <ListBlock label="目标人群" items={analysis?.targetAudience} />
-        <ListBlock label="使用场景" items={analysis?.scenarios} />
-        <InfoRow label="平台适配度" value={pendingText(analysis?.platformFit)} />
-        <InfoRow label="物流风险" value={pendingText(analysis?.logisticsRisk)} />
-        <InfoRow label="售后风险" value={pendingText(analysis?.afterSalesRisk)} />
-        <InfoRow label="侵权风险" value={pendingText(analysis?.infringementRisk)} />
-        <InfoRow label="敏感品类风险" value={pendingText(analysis?.sensitiveCategoryRisk)} />
-        <InfoRow label="是否适合新手" value={analysis ? pendingText(analysis.newbieFriendly) : "待生成"} />
+        {hasAnalysis ? (
+          <>
+            <ListBlock label="目标人群" items={analysis?.targetAudience} />
+            <ListBlock label="使用场景" items={analysis?.scenarios} />
+            <InfoRow label="平台适配度" value={pendingText(analysis?.platformFit)} />
+            <InfoRow label="物流风险" value={pendingText(analysis?.logisticsRisk)} />
+            <InfoRow label="售后风险" value={pendingText(analysis?.afterSalesRisk)} />
+            <InfoRow label="侵权风险" value={pendingText(analysis?.infringementRisk)} />
+            <InfoRow label="敏感品类风险" value={pendingText(analysis?.sensitiveCategoryRisk)} />
+            <InfoRow label="是否适合新手" value={analysis ? pendingText(analysis.newbieFriendly) : "待生成"} />
+          </>
+        ) : null}
       </div>
     </section>
   );

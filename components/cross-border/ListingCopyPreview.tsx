@@ -525,12 +525,16 @@ export function ListingCopyPreview({
         <ListBlock label="五点描述" items={copyResult?.bulletPoints} copyKey="bulletPoints" copyText={bulletPointsCopyText} onCopy={handleCopy} />
         <TextBlock label="详情页描述" value={copyResult?.description} copyKey="description" copyText={descriptionCopyText} onCopy={handleCopy} />
         <TextBlock label="短描述" value={copyResult?.shortDescription} copyKey="shortDescription" copyText={shortDescriptionCopyText} onCopy={handleCopy} />
-        <ListBlock label="关键词" items={copyResult?.keywords} copyKey="keywords" copyText={keywordsCopyText} onCopy={handleCopy} />
-        <ListBlock label="长尾关键词" items={copyResult?.longTailKeywords} copyKey="longTailKeywords" copyText={longTailKeywordsCopyText} onCopy={handleCopy} />
-        <FaqBlock items={copyResult?.faq} copyText={faqCopyText} onCopy={handleCopy} />
-        <ListBlock label="包装清单" items={copyResult?.packingList} copyKey="packingList" copyText={packingListCopyText} onCopy={handleCopy} />
-        <TextBlock label="售后说明" value={copyResult?.afterSales} copyKey="afterSales" copyText={afterSalesCopyText} onCopy={handleCopy} />
-        <ListBlock label="注意事项" items={copyResult?.notes} copyKey="notes" copyText={notesCopyText} onCopy={handleCopy} />
+        {hasCopyResult ? (
+          <>
+            <ListBlock label="关键词" items={copyResult?.keywords} copyKey="keywords" copyText={keywordsCopyText} onCopy={handleCopy} />
+            <ListBlock label="长尾关键词" items={copyResult?.longTailKeywords} copyKey="longTailKeywords" copyText={longTailKeywordsCopyText} onCopy={handleCopy} />
+            <FaqBlock items={copyResult?.faq} copyText={faqCopyText} onCopy={handleCopy} />
+            <ListBlock label="包装清单" items={copyResult?.packingList} copyKey="packingList" copyText={packingListCopyText} onCopy={handleCopy} />
+            <TextBlock label="售后说明" value={copyResult?.afterSales} copyKey="afterSales" copyText={afterSalesCopyText} onCopy={handleCopy} />
+            <ListBlock label="注意事项" items={copyResult?.notes} copyKey="notes" copyText={notesCopyText} onCopy={handleCopy} />
+          </>
+        ) : null}
       </div>
     </section>
   );

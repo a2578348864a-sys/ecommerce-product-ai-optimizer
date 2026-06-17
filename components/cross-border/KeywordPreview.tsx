@@ -112,18 +112,24 @@ export function KeywordPreview({
         <KeywordGroup title="核心关键词" items={keywords?.coreKeywords} />
         <KeywordGroup title="长尾关键词" items={keywords?.longTailKeywords} />
         <KeywordGroup title="搜索词" items={keywords?.searchTerms} />
-        <KeywordGroup title="标题关键词" items={keywords?.titleKeywords} />
-        <KeywordGroup title="卖点关键词" items={keywords?.sellingPointKeywords} />
-        <KeywordGroup title="风险词提醒" items={keywords?.riskWords} tone="risk" />
-        <KeywordGroup title="排除词" items={keywords?.negativeKeywords} tone="muted" />
+        {hasKeywords ? (
+          <>
+            <KeywordGroup title="标题关键词" items={keywords?.titleKeywords} />
+            <KeywordGroup title="卖点关键词" items={keywords?.sellingPointKeywords} />
+            <KeywordGroup title="风险词提醒" items={keywords?.riskWords} tone="risk" />
+            <KeywordGroup title="排除词" items={keywords?.negativeKeywords} tone="muted" />
+          </>
+        ) : null}
       </div>
 
-      <div className="mt-3 rounded-xl border border-cyan-100 bg-white p-3">
-        <p className="text-sm font-bold text-slate-950">平台关键词建议</p>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          {keywords?.platformNotes || "暂无"}
-        </p>
-      </div>
+      {hasKeywords ? (
+        <div className="mt-3 rounded-xl border border-cyan-100 bg-white p-3">
+          <p className="text-sm font-bold text-slate-950">平台关键词建议</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            {keywords?.platformNotes || "暂无"}
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
