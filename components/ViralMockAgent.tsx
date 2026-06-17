@@ -19,6 +19,7 @@ import { platformLabels, platformOptions } from "@/lib/types";
 import type { Platform, ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { EXAMPLE_VIRAL, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 const positiveWords = ["痛点", "对比", "改造", "懒人", "宿舍", "租房", "收纳", "神器", "评论", "链接", "平替", "省钱", "免打孔", "前后"];
 const riskWords = ["品牌", "授权", "功效", "治疗", "减肥", "医用", "儿童", "带电", "大件", "易碎"];
@@ -386,6 +387,14 @@ export function ViralMockAgent() {
     syncToShared();
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   }, [syncToShared]);
+
+  function fillExample() {
+    setTitle(EXAMPLE_VIRAL.title);
+    setProductUrl(EXAMPLE_VIRAL.productUrl);
+    setPlatform(EXAMPLE_VIRAL.platform as AgentPlatform);
+    setMaterialText(EXAMPLE_VIRAL.materialText);
+    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+  }
   const [savedRecordId, setSavedRecordId] = useState("");
 
   const lengthText = useMemo(() => materialText.trim().length + "/8000", [materialText]);
@@ -566,6 +575,14 @@ export function ViralMockAgent() {
                 <p className="mt-3 text-xs leading-5 text-slate-500">
                   2代预留：未来可联动关键词、找货、发布 Agent；当前仍需人工确认，不自动调用外部平台。
                 </p>
+
+                <button
+                  type="button"
+                  onClick={fillExample}
+                  className="mt-4 inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                >
+                  填入示例
+                </button>
 
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <label className="block">

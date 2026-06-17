@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
 import { ListingCopyPreview } from "@/components/cross-border/ListingCopyPreview";
@@ -336,6 +337,26 @@ export function ProductProfitForm() {
     syncToShared();
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   }, [syncToShared]);
+
+  function fillExample() {
+    setForm({
+      ...form,
+      name: EXAMPLE_PRODUCT_PROFIT.name,
+      description: EXAMPLE_PRODUCT_PROFIT.description,
+      targetPlatform: EXAMPLE_PRODUCT_PROFIT.targetPlatform,
+      targetCountry: EXAMPLE_PRODUCT_PROFIT.targetCountry,
+      currency: EXAMPLE_PRODUCT_PROFIT.currency,
+      purchasePrice: EXAMPLE_PRODUCT_PROFIT.purchasePrice,
+      domesticShippingFee: EXAMPLE_PRODUCT_PROFIT.domesticShippingFee,
+      internationalShippingFee: EXAMPLE_PRODUCT_PROFIT.internationalShippingFee,
+      otherCost: EXAMPLE_PRODUCT_PROFIT.otherCost,
+      commissionRate: EXAMPLE_PRODUCT_PROFIT.commissionRate,
+      expectedProfitRate: EXAMPLE_PRODUCT_PROFIT.expectedProfitRate,
+      manualSellingPrice: EXAMPLE_PRODUCT_PROFIT.manualSellingPrice,
+      weight: EXAMPLE_PRODUCT_PROFIT.weight,
+      stock: EXAMPLE_PRODUCT_PROFIT.stock,
+    });
+  }
   const [temporarySku, setTemporarySku] = useState("CB-TEMP");
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
@@ -768,11 +789,20 @@ export function ProductProfitForm() {
       {/* ===== Layer 1: Two-column layout ===== */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
       <section className="surface-card rounded-[28px] p-5">
-        <div className="mb-5">
-          <h2 className="text-xl font-bold text-slate-950">商品输入表单</h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            先填基础成本和平台参数。空值会按 0 处理，不会保存到服务器。
-          </p>
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-slate-950">商品输入表单</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              先填基础成本和平台参数。空值会按 0 处理，不会保存到服务器。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={fillExample}
+            className="inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+          >
+            填入示例
+          </button>
         </div>
 
         <div className="space-y-6">

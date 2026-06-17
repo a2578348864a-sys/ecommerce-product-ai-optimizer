@@ -6,6 +6,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { EXAMPLE_SOURCING, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 type SourcingPriceBand = {
   min: string;
@@ -79,6 +80,15 @@ export function SourcingForm() {
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   }, [syncToShared]);
 
+  function fillExample() {
+    setProductName(EXAMPLE_SOURCING.productName);
+    setCategory(EXAMPLE_SOURCING.category);
+    setTargetPrice(EXAMPLE_SOURCING.targetPrice);
+    setTargetPlatform(EXAMPLE_SOURCING.targetPlatform);
+    setDescription(EXAMPLE_SOURCING.description);
+    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+  }
+
   async function handleSubmit() {
     if (loading) return;
     if (!productName.trim()) { setError("请先填写商品名称。"); return; }
@@ -130,11 +140,20 @@ export function SourcingForm() {
 
           {/* Form */}
           <section className="surface-card rounded-[28px] p-5">
-            <div className="mb-5">
-              <h2 className="text-xl font-bold text-slate-950">商品货源信息</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                填写商品基本信息后，AI 会给出 1688 搜索词、替代品方向、价格带和新手建议。
-              </p>
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-slate-950">商品货源信息</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  填写商品基本信息后，AI 会给出 1688 搜索词、替代品方向、价格带和新手建议。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fillExample}
+                className="inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+              >
+                填入示例
+              </button>
             </div>
 
             <div className="space-y-5">

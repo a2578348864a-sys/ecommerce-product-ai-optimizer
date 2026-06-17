@@ -6,6 +6,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { EXAMPLE_RISK, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 type RiskLevel = "green" | "yellow" | "red";
 
@@ -82,6 +83,15 @@ export function RiskCheckForm() {
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   }, [syncToShared]);
 
+  function fillExample() {
+    setProductName(EXAMPLE_RISK.productName);
+    setCategory(EXAMPLE_RISK.category);
+    setClaims(EXAMPLE_RISK.claims);
+    setTargetPlatform(EXAMPLE_RISK.targetPlatform);
+    setDescription(EXAMPLE_RISK.description);
+    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+  }
+
   async function handleSubmit() {
     if (loading) return;
 
@@ -157,11 +167,20 @@ export function RiskCheckForm() {
 
           {/* Form */}
           <section className="surface-card rounded-[28px] p-5">
-            <div className="mb-5">
-              <h2 className="text-xl font-bold text-slate-950">商品风险信息</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                填写商品基本信息后，AI 会从侵权、合规、物流、售后等维度做风险排查。
-              </p>
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-slate-950">商品风险信息</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  填写商品基本信息后，AI 会从侵权、合规、物流、售后等维度做风险排查。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fillExample}
+                className="inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+              >
+                填入示例
+              </button>
             </div>
 
             <div className="space-y-5">

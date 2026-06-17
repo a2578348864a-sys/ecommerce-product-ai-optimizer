@@ -6,6 +6,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import type { MaterialAgentResult } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { EXAMPLE_PRODUCT, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 type ApiResponse =
   | { result: MaterialAgentResult }
@@ -51,6 +52,15 @@ export function MaterialsForm() {
     syncToShared();
     return () => { if (syncTimer.current) clearTimeout(syncTimer.current); };
   }, [syncToShared]);
+
+  function fillExample() {
+    setKeyword(EXAMPLE_PRODUCT.productName);
+    setManualText(
+      "小红书笔记原文：\n\n标题：露营神器！这个折叠水杯太方便了\n\n正文：户外露营必备好物分享！食品级硅胶折叠水杯，350ml容量，折叠后只有5cm厚，带金属挂扣直接挂包上。IPX4防水不漏，比普通水杯轻一半。\n\n价格：39.9元\n\n评论区反馈：\n- 会不会漏水？\n- 能装热水吗？\n- 折叠处容易老化吗？\n- 颜值好高，求链接！",
+    );
+    setLinksText("https://www.xiaohongshu.com/explore/example-water-bottle");
+    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+  }
 
   async function handleSubmit() {
     if (loading) return;
@@ -165,11 +175,20 @@ export function MaterialsForm() {
 
           {/* Form */}
           <section className="surface-card rounded-[28px] p-5">
-            <div className="mb-5">
-              <h2 className="text-xl font-bold text-slate-950">素材信息</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                可以粘贴小红书笔记、商品详情、1688 链接或选品想法，AI 会提取关键信息。
-              </p>
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-slate-950">素材信息</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  可以粘贴小红书笔记、商品详情、1688 链接或选品想法，AI 会提取关键信息。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fillExample}
+                className="inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+              >
+                填入示例
+              </button>
             </div>
 
             <div className="space-y-5">
