@@ -224,7 +224,9 @@ export function TaskRecordsList() {
     const params = new URLSearchParams(window.location.search);
     const initialType = params.get("type") || defaultType;
     const initialQuery = (params.get("q") || "").trim();
-    const safeType = initialType === defaultType ? initialType : defaultType;
+    // 确保 initialType 在合法值范围内，否则回退到 defaultType
+    const validTypes = taskTypes.map((t) => t.value);
+    const safeType = validTypes.includes(initialType) ? initialType : defaultType;
     setType(safeType);
     setQueryInput(initialQuery);
     setActiveQuery(initialQuery);
@@ -243,6 +245,17 @@ export function TaskRecordsList() {
     void loadTasks({
       nextType: type,
       q,
+      offset: 0,
+      mode: "replace",
+      syncUrl: true,
+    });
+  }
+
+  function onTypeChange(nextType: string) {
+    setType(nextType);
+    void loadTasks({
+      nextType,
+      q: activeQuery,
       offset: 0,
       mode: "replace",
       syncUrl: true,
@@ -307,7 +320,7 @@ export function TaskRecordsList() {
         ? {
           ...current,
           total: Math.max(0, current.total - 1),
-          hasMore: current.nextOffset !== null ? current.nextOffset < Math.max(0, current.total - 1) : false,
+          hasMore: current.offset + current.limit < Math.max(0, current.total - 1),
         }
         : current);
     } catch {
@@ -395,7 +408,7 @@ export function TaskRecordsList() {
                 <span className="text-xs font-bold text-slate-500">类型筛选</span>
                 <select
                   value={type}
-                  onChange={(event) => setType(event.target.value)}
+                  onChange={(event) => onTypeChange(event.target.value)}
                   className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none"
                 >
                   {taskTypes.map((item) => (

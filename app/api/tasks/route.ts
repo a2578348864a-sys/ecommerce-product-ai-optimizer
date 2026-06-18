@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
+import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
 
 export const runtime = "nodejs";
 
@@ -124,20 +125,25 @@ function toTaskItem(record: {
   oneLineSummary: string;
   resultJson: string;
 }): ViralTaskItem {
+  const normalized = normalizeTaskRecord({
+    ...record,
+    resultJson: record.resultJson,
+  });
+
   return {
-    id: record.id,
-    createdAt: record.createdAt.toISOString(),
-    updatedAt: record.updatedAt.toISOString(),
-    type: record.type,
-    title: record.title,
-    platform: record.platform,
-    productUrl: record.productUrl,
-    materialText: record.materialText,
-    source: record.source,
-    score: record.score,
-    level: record.level,
-    oneLineSummary: record.oneLineSummary,
-    result: safeParseJson(record.resultJson),
+    id: normalized.id,
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+    type: normalized.type,
+    title: normalized.title,
+    platform: normalized.platform,
+    productUrl: normalized.productUrl || null,
+    materialText: normalized.materialText,
+    source: normalized.source,
+    score: normalized.score,
+    level: normalized.level,
+    oneLineSummary: normalized.oneLineSummary,
+    result: normalized.result,
   };
 }
 
@@ -180,10 +186,17 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
-  const typeParam = request.nextUrl.searchParams.get("type");
+  let typeParam = request.nextUrl.searchParams.get("type");
+  const agentTypeParam = request.nextUrl.searchParams.get("agentType");
   const q = asString(request.nextUrl.searchParams.get("q"));
   const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
   const offset = parseOffset(request.nextUrl.searchParams.get("offset"));
+
+  // 兼容 agentType 参数：映射到 type（两者在本 schema 中等价）
+  if (!typeParam && agentTypeParam && allowedTypes.has(agentTypeParam)) {
+    typeParam = agentTypeParam;
+  }
+
   const searchWhere = getSearchWhere(q);
 
   const where: Prisma.ViralAnalysisRecordWhereInput = {
@@ -191,7 +204,7 @@ export async function GET(request: NextRequest) {
     ...(searchWhere.length ? { OR: searchWhere } : {}),
   };
 
-  const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "all";
+  const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "";
 
   try {
     const [records, total] = await Promise.all([
