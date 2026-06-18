@@ -90,7 +90,9 @@ export function SummaryForm() {
     setLoadingAggregate(true);
     setError(null);
 
-    fetch(`/api/tasks/aggregate?productName=${encodeURIComponent(sharedProduct.productName)}`)
+    fetch(`/api/tasks/aggregate?productName=${encodeURIComponent(sharedProduct.productName)}`, {
+      headers: { "x-access-password": accessPassword },
+    })
       .then((res) => res.json())
       .then((payload: unknown) => {
         if (cancelled) return;
@@ -106,7 +108,7 @@ export function SummaryForm() {
       });
 
     return () => { cancelled = true; };
-  }, [sharedProduct.productName]);
+  }, [sharedProduct.productName, accessPassword]);
 
   async function handleSubmit() {
     if (loading) return;
@@ -185,6 +187,7 @@ export function SummaryForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          accessPassword,
           type: "summary",
           title: sharedProduct.productName,
           platform: sharedProduct.targetPlatform || "manual",

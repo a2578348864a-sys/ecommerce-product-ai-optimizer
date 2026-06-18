@@ -1452,6 +1452,7 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          accessPassword,
           type: "radar",
           title: form.keyword.trim() || "未命名分析",
           platform: "manual",

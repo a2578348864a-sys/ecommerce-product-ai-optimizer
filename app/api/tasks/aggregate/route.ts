@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,9 @@ function extractResultFields(record: {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   const { searchParams } = new URL(request.url);
   const productName = (searchParams.get("productName") || "").trim();
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
@@ -316,6 +317,7 @@ function getFriendlyAiErrorMessage(error: ApiErrorPayload | undefined, fallback:
 }
 
 export function ProductProfitForm() {
+  const [accessPassword] = useAccessPassword();
   const [sharedProduct, updateShared] = useSharedProduct();
   const [form, setForm] = useState<ProductProfitFormInput>({
     ...initialForm,
@@ -715,6 +717,7 @@ export function ProductProfitForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          accessPassword,
           type: "product",
           title: form.name.trim() || "未命名商品",
           platform: form.targetPlatform || "manual",

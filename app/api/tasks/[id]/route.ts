@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 
@@ -129,7 +130,10 @@ async function getId(context: RouteContext) {
   return typeof rawId === "string" ? rawId.trim() : "";
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   const id = await getId(context);
   if (!id) return invalidIdResponse();
 
@@ -149,7 +153,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   const id = await getId(context);
   if (!id) return invalidIdResponse();
 

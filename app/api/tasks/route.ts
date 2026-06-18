@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 
@@ -186,6 +187,9 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   let typeParam = request.nextUrl.searchParams.get("type");
   const agentTypeParam = request.nextUrl.searchParams.get("agentType");
   const q = asString(request.nextUrl.searchParams.get("q"));
@@ -265,6 +269,9 @@ export async function POST(request: NextRequest) {
       error: { code: "invalid_body", message: "请求体必须是 JSON object。" },
     }, 400);
   }
+
+  const authError = checkAccessPassword(request, body);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
 
   const taskType = asString(body.type) || "viral";
   if (!allowedTypes.has(taskType)) {

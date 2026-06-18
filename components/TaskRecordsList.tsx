@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 
 const defaultType = "";
 const defaultLimit = 10;
@@ -149,6 +150,7 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
 }
 
 export function TaskRecordsList() {
+  const [accessPassword] = useAccessPassword();
   const [items, setItems] = useState<TaskCenterItem[]>([]);
   const [page, setPage] = useState<TaskPageInfo | null>(null);
   const [type, setType] = useState(defaultType);
@@ -188,7 +190,10 @@ export function TaskRecordsList() {
       });
       if (q) params.set("q", q);
 
-      const response = await fetch(`/api/tasks?${params.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/tasks?${params.toString()}`, {
+        cache: "no-store",
+        headers: { "x-access-password": accessPassword },
+      });
       const data = await response.json() as ApiResponse;
       if (!response.ok || !data.ok) {
         setError(data.ok ? "任务记录读取失败。" : data.error.message);
@@ -218,7 +223,7 @@ export function TaskRecordsList() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, []);
+  }, [accessPassword]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -304,6 +309,7 @@ export function TaskRecordsList() {
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(item.id)}`, {
         method: "DELETE",
+        headers: { "x-access-password": accessPassword },
       });
       const data = await response.json() as
         | { ok: true; data: { id: string } }

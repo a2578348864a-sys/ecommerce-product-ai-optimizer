@@ -126,6 +126,7 @@ export function MaterialsForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          accessPassword,
           type: "material",
           title: keyword.trim() || manualText.trim().slice(0, 30) || "未命名素材",
           platform: "manual",

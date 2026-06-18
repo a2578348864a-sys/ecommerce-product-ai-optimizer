@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -87,6 +88,7 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
 }
 
 export function TaskRecordDetail({ id }: { id: string }) {
+  const [accessPassword] = useAccessPassword();
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
       setLoading(true);
       setError("");
       try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { cache: "no-store" });
+        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+          cache: "no-store",
+          headers: { "x-access-password": accessPassword },
+        });
         const data = await response.json() as DetailResponse;
         if (!response.ok || !data.ok) {
           if (!cancelled) setError(data.ok ? "任务详情读取失败。" : data.error.message);
@@ -119,7 +124,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, accessPassword]);
 
   const resultJson = useMemo(() => {
     if (!record) return "";
@@ -140,6 +145,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(record.id)}`, {
         method: "DELETE",
+        headers: { "x-access-password": accessPassword },
       });
       const data = await response.json() as DeleteResponse;
       if (!response.ok || !data.ok) {

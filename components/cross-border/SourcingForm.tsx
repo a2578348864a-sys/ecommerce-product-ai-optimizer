@@ -162,6 +162,7 @@ export function SourcingForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          accessPassword,
           type: "sourcing",
           title: productName.trim(),
           productName: productName.trim(),
