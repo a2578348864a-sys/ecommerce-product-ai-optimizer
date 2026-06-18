@@ -6,7 +6,7 @@
 // If your real project directory is different, replace cwd below with your actual path.
 //
 // Equivalent command:
-//   pm2 start npm --name alibaba-ai-assistant -- run start -- -p 3005
+//   pm2 start npm --name alibaba-ai-assistant -- run start -- --hostname 127.0.0.1 -p 3005
 
 module.exports = {
   apps: [
@@ -14,7 +14,7 @@ module.exports = {
       name: "alibaba-ai-assistant",
       cwd: "/www/alibaba-ai-assistant",
       script: "npm",
-      args: "run start -- -p 3005",
+      args: "run start -- --hostname 127.0.0.1 -p 3005",
       env_file: "/www/alibaba-ai-assistant/.env.local",
       autorestart: true,
       max_restarts: 10,
