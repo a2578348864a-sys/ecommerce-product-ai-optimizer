@@ -18,7 +18,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { platformLabels, platformOptions } from "@/lib/types";
 import type { Platform, ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_VIRAL, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 const positiveWords = ["viral", "review", "comment", "tiktok", "amazon", "pain point", "hack", "comparison", "before after", "link in bio", "kitchen gadget", "storage", "organization", "cleaning", "portable", "must have"];
@@ -359,7 +359,7 @@ export function ViralMockAgent() {
       : "tiktok"
   );
   const [materialText, setMaterialText] = useState(sharedProduct.description);
-  const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
+  const [accessPassword, setAccessPassword] = useAccessPassword();
   const [result, setResult] = useState<DisplayResult | null>(null);
   const [notice, setNotice] = useState("模拟拆解不消耗额度；AI 深度拆解会请求后端并消耗 AI 额度。");
   const [fieldError, setFieldError] = useState("");

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 
 type SummaryData = {
   verdict: string;
@@ -13,6 +14,10 @@ type SummaryData = {
   risks: string[];
   nextSteps: string[];
   beginnerTip: string;
+  /** 硬规则是否触发了降级 */
+  downgraded?: boolean;
+  /** 降级原因 */
+  downgradeReasons?: string[];
 };
 
 type AggregateResponse =
@@ -65,7 +70,7 @@ const typeLabels: Record<string, string> = {
 
 export function SummaryForm() {
   const [sharedProduct] = useSharedProduct();
-  const [accessPassword, setAccessPassword] = useState("");
+  const [accessPassword, setAccessPassword] = useAccessPassword();
   const [result, setResult] = useState<SummaryData | null>(null);
   const [aggregate, setAggregate] = useState<AggregateResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -358,6 +363,26 @@ export function SummaryForm() {
                   </span>
                 </div>
               </div>
+
+              {/* 硬规则降级提示 */}
+              {result.downgraded && result.downgradeReasons?.length ? (
+                <div className="mb-5 rounded-xl border border-orange-200 bg-orange-50 p-4">
+                  <p className="text-sm font-bold text-orange-900">
+                    ⚠️ 安全规则已介入：AI 原始结论被降级
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {result.downgradeReasons.map((reason, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm leading-6 text-orange-800">
+                        <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-orange-500" />
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs text-orange-600">
+                    以上结论基于安全规则自动调整，AI 原始分析原因已保留，但最终判断以安全规则为准。
+                  </p>
+                </div>
+              ) : null}
 
               <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-sm font-semibold text-slate-900">一句话结论</p>

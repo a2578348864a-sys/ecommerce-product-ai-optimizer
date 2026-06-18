@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_SOURCING, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 type SourcingPriceBand = {
@@ -80,7 +80,7 @@ export function SourcingForm() {
   const [targetPrice, setTargetPrice] = useState(sharedProduct.targetPrice);
   const [targetPlatform, setTargetPlatform] = useState(sharedProduct.targetPlatform);
   const [description, setDescription] = useState(sharedProduct.description);
-  const [accessPassword, setAccessPassword] = useLocalStorage("qingxuan-pwd", "");
+  const [accessPassword, setAccessPassword] = useAccessPassword();
   const [result, setResult] = useState<SourcingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

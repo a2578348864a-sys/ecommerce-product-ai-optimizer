@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildSummaryPrompt, type SummaryPromptInput } from "@/lib/cross-border/prompts";
+import { applyHardGuard, type RiskGuardInput } from "@/lib/server/summaryRiskGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -17,6 +18,10 @@ type SummaryData = {
   risks: string[];
   nextSteps: string[];
   beginnerTip: string;
+  /** 硬规则是否触发了降级 */
+  downgraded?: boolean;
+  /** 降级原因（前端展示用） */
+  downgradeReasons?: string[];
 };
 
 type ApiResponse =
@@ -41,7 +46,46 @@ function asStringArray(value: unknown) {
     : [];
 }
 
-function normalizeSummaryData(raw: unknown, productName: string): SummaryData {
+/** 安全解析 JSON 字符串，失败返回 null */
+function tryParseJson(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从 API body 中提取 RiskGuardInput 所需的结构化字段 */
+function buildRiskGuardInput(
+  productName: string,
+  source: Record<string, unknown>,
+): RiskGuardInput {
+  const riskData = tryParseJson(source.riskFindings);
+  const sourcingData = tryParseJson(source.sourcingFindings);
+
+  return {
+    aiVerdict: "", // 将在 normalizeSummaryData 之后填入
+    productName,
+    category: asString(source.category) || asString(sourcingData?.category) || "",
+    description: asString(source.extraNotes) || asString(source.description) || "",
+    riskOverallLevel: asString(riskData?.overallLevel) || undefined,
+    riskBlacklistMatches: Array.isArray(riskData?.blacklistMatches)
+      ? (riskData?.blacklistMatches as string[]).filter((m) => typeof m === "string")
+      : undefined,
+    sourcingComplianceBarrier: asString(sourcingData?.complianceBarrier) || undefined,
+    sourcingBeginnerFit: asString(sourcingData?.beginnerFit) || undefined,
+    sourcingSuggestedEntryLevel: asString(sourcingData?.suggestedEntryLevel) || undefined,
+    sourcingLogisticsDifficulty: asString(sourcingData?.logisticsDifficulty) || undefined,
+    sourcingAfterSalesRisk: asString(sourcingData?.afterSalesRisk) || undefined,
+  };
+}
+
+function normalizeSummaryData(raw: unknown, productName: string): Omit<SummaryData, "downgraded" | "downgradeReasons"> {
   const source = typeof raw === "object" && raw !== null && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 
   const verdictRaw = asString(source.verdict);
@@ -69,7 +113,10 @@ function normalizeSummaryData(raw: unknown, productName: string): SummaryData {
   };
 }
 
-async function runSummaryAgent(input: SummaryPromptInput): Promise<SummaryData> {
+async function runSummaryAgent(
+  promptInput: SummaryPromptInput,
+  guardInputBase: RiskGuardInput,
+): Promise<SummaryData> {
   const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
@@ -81,7 +128,7 @@ async function runSummaryAgent(input: SummaryPromptInput): Promise<SummaryData> 
       },
       {
         role: "user",
-        content: buildSummaryPrompt(input),
+        content: buildSummaryPrompt(promptInput),
       },
     ],
   });
@@ -90,7 +137,21 @@ async function runSummaryAgent(input: SummaryPromptInput): Promise<SummaryData> 
     throw new Error(aiResult.error.message);
   }
 
-  return normalizeSummaryData(aiResult.data, input.productName);
+  const normalized = normalizeSummaryData(aiResult.data, promptInput.productName);
+
+  // ── 硬规则拦截：对 AI verdict 做确定性安全检查 ──
+  const guardInput: RiskGuardInput = {
+    ...guardInputBase,
+    aiVerdict: normalized.verdict,
+  };
+  const guardResult = applyHardGuard(guardInput);
+
+  return {
+    ...normalized,
+    verdict: guardResult.safeVerdict,
+    downgraded: guardResult.downgraded,
+    downgradeReasons: guardResult.downgradeReasons,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -148,8 +209,11 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
+  // 构建硬规则输入（在调用 AI 前提取结构化字段，供 guard 使用）
+  const guardInputBase = buildRiskGuardInput(productName, source);
+
   try {
-    const data = await runSummaryAgent(promptInput);
+    const data = await runSummaryAgent(promptInput, guardInputBase);
     return jsonResponse({ ok: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";
