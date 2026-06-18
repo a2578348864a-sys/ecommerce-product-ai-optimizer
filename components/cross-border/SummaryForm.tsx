@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { useAccessPassword } from "@/lib/client/accessPassword";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 
 type SummaryData = {
   verdict: string;
@@ -70,7 +70,7 @@ const typeLabels: Record<string, string> = {
 
 export function SummaryForm() {
   const [sharedProduct] = useSharedProduct();
-  const [accessPassword, setAccessPassword] = useAccessPassword();
+  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
   const [result, setResult] = useState<SummaryData | null>(null);
   const [aggregate, setAggregate] = useState<AggregateResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -83,6 +83,19 @@ export function SummaryForm() {
   useEffect(() => {
     if (!sharedProduct.productName) {
       setAggregate(null);
+      return;
+    }
+
+    if (!isAccessPasswordReady) {
+      setLoadingAggregate(true);
+      setError(null);
+      return;
+    }
+
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setAggregate(null);
+      setLoadingAggregate(false);
+      setError(null);
       return;
     }
 
@@ -108,13 +121,18 @@ export function SummaryForm() {
       });
 
     return () => { cancelled = true; };
-  }, [sharedProduct.productName, accessPassword]);
+  }, [sharedProduct.productName, accessPassword, isAccessPasswordReady]);
 
   async function handleSubmit() {
     if (loading) return;
 
     if (!sharedProduct.productName) {
       setError("请先在任意工作流页面填写商品名称。");
+      return;
+    }
+
+    if (!isAccessPasswordReady) {
+      setError("正在读取访问状态，请稍后再试。");
       return;
     }
 
@@ -180,6 +198,11 @@ export function SummaryForm() {
 
   async function handleSaveToTaskCenter() {
     if (savingToTasks || !result) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setTasksSaveMessage("请先输入访问密码后保存到任务中心。");
+      return;
+    }
+
     setSavingToTasks(true);
     setTasksSaveMessage(null);
     try {
@@ -262,6 +285,20 @@ export function SummaryForm() {
                 >
                   去货源判断 →
                 </Link>
+              </div>
+            ) : isAccessPasswordReady && !accessPassword.trim() ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-bold text-amber-900">请输入访问密码后读取分析记录</p>
+                <label className="mt-3 block">
+                  <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
+                  <input
+                    type="password"
+                    value={accessPassword}
+                    onChange={(e) => setAccessPassword(e.target.value)}
+                    placeholder="输入服务端配置的访问密码"
+                    className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
               </div>
             ) : loadingAggregate ? (
               <div className="rounded-xl border border-slate-200 bg-white p-4">

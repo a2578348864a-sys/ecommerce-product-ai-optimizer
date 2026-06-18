@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
-import { useAccessPassword } from "@/lib/client/accessPassword";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 
 const defaultType = "";
 const defaultLimit = 10;
@@ -150,7 +150,7 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
 }
 
 export function TaskRecordsList() {
-  const [accessPassword] = useAccessPassword();
+  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const [items, setItems] = useState<TaskCenterItem[]>([]);
   const [page, setPage] = useState<TaskPageInfo | null>(null);
   const [type, setType] = useState(defaultType);
@@ -175,6 +175,27 @@ export function TaskRecordsList() {
     mode: LoadMode;
     syncUrl: boolean;
   }) => {
+    if (!isAccessPasswordReady) {
+      if (mode === "append") {
+        setLoadingMore(false);
+      } else {
+        setLoading(true);
+      }
+      return;
+    }
+
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      if (mode === "append") {
+        setLoadingMore(false);
+      } else {
+        setItems([]);
+        setPage(null);
+        setLoading(false);
+      }
+      setError("请先输入访问密码后查看任务记录。");
+      return;
+    }
+
     if (mode === "append") {
       setLoadingMore(true);
     } else {
@@ -223,7 +244,7 @@ export function TaskRecordsList() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [accessPassword]);
+  }, [accessPassword, isAccessPasswordReady]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -301,6 +322,11 @@ export function TaskRecordsList() {
 
   async function deleteRecord(item: TaskCenterItem) {
     if (deletingId) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setError("请先输入访问密码后删除任务。");
+      return;
+    }
+
     const confirmed = window.confirm(`确定删除「${getTitle(item)}」这条任务记录吗？删除后无法恢复。`);
     if (!confirmed) return;
 

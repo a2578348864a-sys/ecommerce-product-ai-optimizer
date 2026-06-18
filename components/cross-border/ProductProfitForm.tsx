@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { useAccessPassword } from "@/lib/client/accessPassword";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
@@ -317,7 +317,7 @@ function getFriendlyAiErrorMessage(error: ApiErrorPayload | undefined, fallback:
 }
 
 export function ProductProfitForm() {
-  const [accessPassword] = useAccessPassword();
+  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const [sharedProduct, updateShared] = useSharedProduct();
   const [form, setForm] = useState<ProductProfitFormInput>({
     ...initialForm,
@@ -710,6 +710,10 @@ export function ProductProfitForm() {
 
   async function handleSaveToTaskCenter() {
     if (savingToTasks) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setTasksSaveMessage("请先输入访问密码后保存到任务中心。");
+      return;
+    }
     setSavingToTasks(true);
     setTasksSaveMessage(null);
     try {

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
-import { useAccessPassword } from "@/lib/client/accessPassword";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -88,7 +88,7 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
 }
 
 export function TaskRecordDetail({ id }: { id: string }) {
-  const [accessPassword] = useAccessPassword();
+  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +98,23 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!isAccessPasswordReady) {
+      setLoading(true);
+      setError("");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setRecord(null);
+      setLoading(false);
+      setError("请先输入访问密码后查看任务详情。");
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function loadRecord() {
       setLoading(true);
@@ -124,7 +141,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, accessPassword]);
+  }, [id, accessPassword, isAccessPasswordReady]);
 
   const resultJson = useMemo(() => {
     if (!record) return "";
@@ -137,6 +154,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
   async function deleteRecord() {
     if (!record || deleting) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setDeleteError("请先输入访问密码后删除任务。");
+      return;
+    }
+
     const confirmed = window.confirm("确定删除这条任务记录吗？删除后无法恢复。");
     if (!confirmed) return;
 

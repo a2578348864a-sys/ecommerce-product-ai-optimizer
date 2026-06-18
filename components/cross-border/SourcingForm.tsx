@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { useAccessPassword } from "@/lib/client/accessPassword";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_SOURCING, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 type SourcingPriceBand = {
@@ -80,7 +80,7 @@ export function SourcingForm() {
   const [targetPrice, setTargetPrice] = useState(sharedProduct.targetPrice);
   const [targetPlatform, setTargetPlatform] = useState(sharedProduct.targetPlatform);
   const [description, setDescription] = useState(sharedProduct.description);
-  const [accessPassword, setAccessPassword] = useAccessPassword();
+  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
   const [result, setResult] = useState<SourcingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +113,7 @@ export function SourcingForm() {
 
   async function handleSubmit() {
     if (loading) return;
+    if (!isAccessPasswordReady) { setError("正在读取访问状态，请稍后再试。"); return; }
     if (!productName.trim()) { setError("请先填写商品名称。"); return; }
     if (!accessPassword.trim()) { setError("请输入访问密码。"); return; }
 
@@ -152,6 +153,10 @@ export function SourcingForm() {
 
   async function handleSaveToTaskCenter() {
     if (!result || savingTask) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setSaveError("请先输入访问密码后保存到任务中心。");
+      return;
+    }
 
     setSavingTask(true);
     setSaveMessage(null);

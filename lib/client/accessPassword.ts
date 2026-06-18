@@ -95,6 +95,10 @@ export function isAccessPasswordExpired(): boolean {
  */
 export const ACCESS_PASSWORD_STORAGE_KEY = PASSWORD_KEY;
 
+export function canRequestWithAccessPassword(isReady: boolean, password: string): boolean {
+  return isReady && password.trim().length > 0;
+}
+
 /**
  * React Hook：跨页面统一的访问密码状态。
  *
@@ -112,13 +116,17 @@ export const ACCESS_PASSWORD_STORAGE_KEY = PASSWORD_KEY;
 export function useAccessPassword(): [
   string,
   (value: string | ((prev: string) => string)) => void,
+  boolean,
+  () => void,
 ] {
   const [password, setPasswordState] = useState("");
+  const [hydrated, setHydrated] = useState(false);
 
   // Hydrate on mount from localStorage (with TTL check)
   useEffect(() => {
     if (typeof window === "undefined") return;
     setPasswordState(getStoredAccessPassword());
+    setHydrated(true);
   }, []);
 
   const setPassword = (value: string | ((prev: string) => string)) => {
@@ -129,5 +137,11 @@ export function useAccessPassword(): [
     });
   };
 
-  return [password, setPassword];
+  const clearPassword = () => {
+    clearStoredAccessPassword();
+    setPasswordState("");
+    setHydrated(true);
+  };
+
+  return [password, setPassword, hydrated, clearPassword];
 }

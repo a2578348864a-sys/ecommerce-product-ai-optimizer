@@ -1,3 +1,5 @@
+import React from "react";
+import { renderToString } from "react-dom/server";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 /**
@@ -109,5 +111,32 @@ describe("accessPassword client tools", () => {
 
   it("ACCESS_PASSWORD_STORAGE_KEY 为 qingxuan-pwd", () => {
     expect(accessPassword.ACCESS_PASSWORD_STORAGE_KEY).toBe("qingxuan-pwd");
+  });
+
+  it("useAccessPassword: initial render reports hydrated=false", () => {
+    let observed: unknown;
+
+    function Probe() {
+      observed = accessPassword.useAccessPassword();
+      return React.createElement("div");
+    }
+
+    renderToString(React.createElement(Probe));
+
+    expect(Array.isArray(observed)).toBe(true);
+    expect((observed as unknown[])[0]).toBe("");
+    expect((observed as unknown[])[2]).toBe(false);
+  });
+
+  it("canRequestWithAccessPassword: blocks requests until hydrated", () => {
+    expect(accessPassword.canRequestWithAccessPassword(false, "saved-password")).toBe(false);
+  });
+
+  it("canRequestWithAccessPassword: blocks requests after hydrate when password is empty", () => {
+    expect(accessPassword.canRequestWithAccessPassword(true, "   ")).toBe(false);
+  });
+
+  it("canRequestWithAccessPassword: allows requests after hydrate when password exists", () => {
+    expect(accessPassword.canRequestWithAccessPassword(true, "saved-password")).toBe(true);
   });
 });

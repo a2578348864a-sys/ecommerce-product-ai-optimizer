@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import type { MaterialAgentResult } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
-import { useAccessPassword } from "@/lib/client/accessPassword";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_PRODUCT, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
 
 type ApiResponse =
@@ -33,7 +33,7 @@ export function MaterialsForm() {
   const [keyword, setKeyword] = useState(sharedProduct.productName);
   const [manualText, setManualText] = useState(sharedProduct.description);
   const [linksText, setLinksText] = useState("");
-  const [accessPassword, setAccessPassword] = useAccessPassword();
+  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
   const [result, setResult] = useState<MaterialAgentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +64,10 @@ export function MaterialsForm() {
 
   async function handleSubmit() {
     if (loading) return;
+    if (!isAccessPasswordReady) {
+      setError("正在读取访问状态，请稍后再试。");
+      return;
+    }
 
     if (!manualText.trim() && !linksText.trim() && !keyword.trim()) {
       setError("请至少填写关键词、商品描述或链接中的一项。");
@@ -119,6 +123,10 @@ export function MaterialsForm() {
 
   async function handleSaveToTaskCenter() {
     if (savingToTasks || !result) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setTasksSaveMessage("请先输入访问密码后保存到任务中心。");
+      return;
+    }
     setSavingToTasks(true);
     setTasksSaveMessage(null);
     try {
