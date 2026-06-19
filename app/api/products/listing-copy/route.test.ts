@@ -33,14 +33,14 @@ describe("POST /api/products/listing-copy", () => {
     mockCallAiJson.mockResolvedValueOnce({
       ok: true,
       data: {
-        title: "FDA approved CE certified kids toothbrush",
-        bulletPoints: ["CPC certified and 100% safe", "RoHS certified battery"],
-        description: "This product is CPSIA compliant and non-toxic guaranteed.",
-        shortDescription: "Food grade guaranteed.",
+        title: "FDA approved CE certified kids toothbrush FDA 认证",
+        bulletPoints: ["CPC certified and 100% safe", "RoHS certified battery", "儿童安全认证，FCC认证齐全"],
+        description: "This product is CPSIA compliant and non-toxic guaranteed. 通过 CPC 认证，符合 ASTM 标准。",
+        shortDescription: "Food grade guaranteed. 食品级保证。",
         keywords: ["kids toothbrush"],
         longTailKeywords: ["safe kids toothbrush"],
-        faq: [{ question: "Is it certified?", answer: "Yes, ASTM certified." }],
-        packingList: ["CE marked toothbrush"],
+        faq: [{ question: "Is it certified?", answer: "Yes, ASTM certified. 已认证。" }],
+        packingList: ["CE marked toothbrush", "CPSIA认证文件"],
         afterSales: "Risk-free service.",
         notes: ["Manual review reminder"],
       },
@@ -58,6 +58,7 @@ describe("POST /api/products/listing-copy", () => {
 
     expect(body.ok).toBe(true);
     expect(text).not.toMatch(/FDA approved|CE certified|CPC certified|RoHS certified|CPSIA compliant|ASTM certified|100% safe|non-toxic guaranteed|Food grade guaranteed|Risk-free/i);
-    expect(text).toMatch(/Certification details should be confirmed|Manual review/i);
+    expect(text).not.toMatch(/FDA\s*认证|FCC\s*认证|CPC\s*认证|ASTM\s*标准|CPSIA\s*认证|已认证|食品级保证|儿童安全认证/);
+    expect(text).toMatch(/supplier verification|Manual review|人工复核|索取|未验证前/i);
   });
 });

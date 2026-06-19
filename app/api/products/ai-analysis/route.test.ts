@@ -98,4 +98,35 @@ describe("POST /api/products/ai-analysis", () => {
 
     expect(body.data.recommendation).not.toBe("reject");
   });
+
+  it("AI 选品分析输出会净化中文认证承诺，但保留复核提醒", async () => {
+    mockCallAiJson.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        recommendation: "caution",
+        score: 66,
+        reasons: ["FCC 认证齐全，FDA 认证，可作为卖点。"],
+        risks: ["符合 CPC/ASTM/CPSIA 标准，100% 安全。"],
+        targetAudience: ["儿童家庭"],
+        scenarios: ["儿童刷牙"],
+        platformFit: "已认证，适合直接上架。",
+        logisticsRisk: "绝对安全。",
+        afterSalesRisk: "无毒保证。",
+        infringementRisk: "低",
+        sensitiveCategoryRisk: "食品级保证。",
+        newbieFriendly: false,
+      },
+    });
+
+    const response = await POST(createRequest(requestBody({
+      name: "儿童电动牙刷",
+      description: "儿童用品，带电池，口腔接触。",
+    })));
+    const { body } = await readJson(response);
+    const text = JSON.stringify(body);
+
+    expect(body.ok).toBe(true);
+    expect(text).not.toMatch(/FDA\s*认证|FCC\s*认证|CPC\/ASTM\/CPSIA\s*标准|已认证|100%\s*安全|绝对安全|无毒保证|食品级保证/);
+    expect(text).toMatch(/人工复核|索取|合规文件|测试报告|未验证前/);
+  });
 });

@@ -138,11 +138,11 @@ describe("POST /api/agents/summary", () => {
       data: {
         verdict: "新手可小单测试",
         confidence: "高",
-        summary: "This is FDA approved and 100% safe.",
-        reasons: ["CE certified", "CPSIA compliant"],
-        risks: ["RoHS certified"],
-        nextSteps: ["Write CPC certified in listing"],
-        beginnerTip: "non-toxic guaranteed",
+        summary: "This is FDA approved and 100% safe. 宠物慢食碗有 FDA 认证，食品级保证。",
+        reasons: ["CE certified", "CPSIA compliant", "儿童电动牙刷通过 CPC 认证，符合 ASTM 标准。"],
+        risks: ["RoHS certified", "FCC 认证齐全，已认证。"],
+        nextSteps: ["Write CPC certified in listing", "未验证前不要写入 listing 承诺，需向供应商索取测试报告。"],
+        beginnerTip: "non-toxic guaranteed，绝对安全。",
       },
     });
 
@@ -151,6 +151,7 @@ describe("POST /api/agents/summary", () => {
     const text = JSON.stringify(body);
 
     expect(text).not.toMatch(/FDA approved|CE certified|CPSIA compliant|RoHS certified|CPC certified|100% safe|non-toxic guaranteed/i);
-    expect(text).toMatch(/人工复核|索取|合规文件|认证/);
+    expect(text).not.toMatch(/FDA\s*认证|CPC\s*认证|ASTM\s*标准|FCC\s*认证|已认证|食品级保证|绝对安全/);
+    expect(text).toMatch(/人工复核|索取|合规文件|测试报告|未验证前不要写入/);
   });
 });

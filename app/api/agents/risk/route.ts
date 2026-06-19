@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildRiskCheckPrompt, type RiskCheckPromptInput } from "@/lib/cross-border/prompts";
-import { classifyKeywordFallbackRisk, isPetFoodContactProduct } from "@/lib/server/alphaSafety";
+import { classifyKeywordFallbackRisk, isPetFoodContactProduct, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -99,12 +99,12 @@ function normalizeRiskCheckData(value: unknown): RiskCheckData {
   const fallback = defaultData;
 
   const risks: RiskCheckItem[] = Array.isArray(source.risks)
-    ? source.risks.filter(isPlainObject).slice(0, 10).map((r) => ({
-        category: asString(r.category, "未分类"),
+      ? source.risks.filter(isPlainObject).slice(0, 10).map((r) => ({
+        category: sanitizeUnsupportedCertificationClaims(asString(r.category, "未分类")),
         level: clampRiskLevel(r.level),
-        title: asString(r.title, "待确认").slice(0, 40),
-        description: asString(r.description, "未提供详细说明"),
-        suggestion: asString(r.suggestion, "请人工复核"),
+        title: sanitizeUnsupportedCertificationClaims(asString(r.title, "待确认")).slice(0, 80),
+        description: sanitizeUnsupportedCertificationClaims(asString(r.description, "未提供详细说明")),
+        suggestion: sanitizeUnsupportedCertificationClaims(asString(r.suggestion, "请人工复核")),
       }))
     : fallback.risks;
 
@@ -112,9 +112,9 @@ function normalizeRiskCheckData(value: unknown): RiskCheckData {
     overallLevel: clampRiskLevel(source.overallLevel) === "yellow" && risks.length
       ? clampOverallLevel(risks)
       : clampRiskLevel(source.overallLevel),
-    summary: asString(source.summary, fallback.summary) || fallback.summary,
+    summary: sanitizeUnsupportedCertificationClaims(asString(source.summary, fallback.summary) || fallback.summary),
     risks: risks.length >= 3 ? risks : fallback.risks,
-    blacklistMatches: asStringArray(source.blacklistMatches).slice(0, 15),
+    blacklistMatches: sanitizeStringArray(asStringArray(source.blacklistMatches)).slice(0, 15),
     beginnerFriendly: typeof source.beginnerFriendly === "boolean" ? source.beginnerFriendly : true,
   };
 }

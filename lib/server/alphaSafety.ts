@@ -65,6 +65,10 @@ export function classifyKeywordFallbackRisk(input: AlphaRiskTextInput): "red" | 
 export function sanitizeUnsupportedCertificationClaims(text: string) {
   if (!text) return text;
 
+  const reviewMessage = "相关测试报告/合规文件需向供应商索取并人工复核，未验证前不要写入 listing 承诺";
+  const safetyReviewMessage = "安全性和材质声明需人工复核，未验证前不要写入 listing 承诺";
+  const standardGroup = String.raw`(?:FDA|CE|FCC|CPC|ASTM(?:\s*F963)?|CPSIA|RoHS)(?:\s*(?:\/|、|,|，|和|及)\s*(?:FDA|CE|FCC|CPC|ASTM(?:\s*F963)?|CPSIA|RoHS))*`;
+
   return text
     .replace(/\bFDA\s+(?:approved|certified|registered)\b/gi, "certification details need supplier verification")
     .replace(/\bCE\s+(?:certified|marked|compliant)\b/gi, "compliance details need supplier verification")
@@ -84,10 +88,22 @@ export function sanitizeUnsupportedCertificationClaims(text: string) {
     .replace(/\bfood\s+grade\s+guaranteed\b/gi, "food-contact material documents need supplier verification")
     .replace(/\bguaranteed\s+safe\b/gi, "safety must be verified before listing")
     .replace(/\bchild-safe\s+certified\b/gi, "children product documents need supplier verification")
-    .replace(/已认证/g, "需人工复核认证文件")
-    .replace(/已通过认证/g, "需人工复核认证文件")
-    .replace(/符合认证/g, "需人工复核认证文件")
-    .replace(/100%安全/g, "安全性需人工复核");
+    .replace(new RegExp(`(?:通过|符合)\\s*${standardGroup}\\s*(?:认证|标准|要求|规范|检测|测试)?`, "gi"), reviewMessage)
+    .replace(new RegExp(`${standardGroup}\\s*(?:认证|认证齐全)`, "gi"), (match) => {
+      const standard = match.replace(/认证齐全|认证/gi, "").trim();
+      return `${standard} ${reviewMessage}`;
+    })
+    .replace(/已通过认证/g, "需人工复核认证文件，未验证前不要写入 listing 承诺")
+    .replace(/已认证/g, "需人工复核认证文件，未验证前不要写入 listing 承诺")
+    .replace(/符合认证/g, "需人工复核认证文件，未验证前不要写入 listing 承诺")
+    .replace(/安全认证齐全/g, safetyReviewMessage)
+    .replace(/认证齐全/g, reviewMessage)
+    .replace(/儿童安全认证/g, "儿童相关安全文件需人工复核，未验证前不要写入 listing 承诺")
+    .replace(/100%\s*安全/g, safetyReviewMessage)
+    .replace(/绝对安全/g, safetyReviewMessage)
+    .replace(/无毒保证/g, "材质安全声明需向供应商索取检测报告并人工复核，未验证前不要写入 listing 承诺")
+    .replace(/食品级保证/g, "食品接触材料文件需向供应商索取检测报告并人工复核，未验证前不要写入 listing 承诺")
+    .replace(/婴幼儿安全/g, "婴幼儿相关安全要求需人工复核，未验证前不要写入 listing 承诺");
 }
 
 export function sanitizeStringArray(values: string[]) {

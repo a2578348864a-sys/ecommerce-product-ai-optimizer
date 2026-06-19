@@ -10,7 +10,7 @@ import type {
   TargetPlatform,
 } from "@/lib/types";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
-import { appendUnique, isPetFoodContactProduct } from "@/lib/server/alphaSafety";
+import { appendUnique, isPetFoodContactProduct, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -216,15 +216,15 @@ function normalizeAiAnalysisResult(raw: unknown): AiAnalysisResult {
   return {
     recommendation: normalizeRecommendation(source.recommendation),
     score: clampScore(source.score),
-    reasons: asStringArray(source.reasons),
-    risks: asStringArray(source.risks),
-    targetAudience: asStringArray(source.targetAudience),
-    scenarios: asStringArray(source.scenarios),
-    platformFit: asReviewText(source.platformFit),
-    logisticsRisk: asReviewText(source.logisticsRisk),
-    afterSalesRisk: asReviewText(source.afterSalesRisk),
-    infringementRisk: asReviewText(source.infringementRisk),
-    sensitiveCategoryRisk: asReviewText(source.sensitiveCategoryRisk),
+    reasons: sanitizeStringArray(asStringArray(source.reasons)),
+    risks: sanitizeStringArray(asStringArray(source.risks)),
+    targetAudience: sanitizeStringArray(asStringArray(source.targetAudience)),
+    scenarios: sanitizeStringArray(asStringArray(source.scenarios)),
+    platformFit: sanitizeUnsupportedCertificationClaims(asReviewText(source.platformFit)),
+    logisticsRisk: sanitizeUnsupportedCertificationClaims(asReviewText(source.logisticsRisk)),
+    afterSalesRisk: sanitizeUnsupportedCertificationClaims(asReviewText(source.afterSalesRisk)),
+    infringementRisk: sanitizeUnsupportedCertificationClaims(asReviewText(source.infringementRisk)),
+    sensitiveCategoryRisk: sanitizeUnsupportedCertificationClaims(asReviewText(source.sensitiveCategoryRisk)),
     newbieFriendly: asBoolean(source.newbieFriendly),
   };
 }

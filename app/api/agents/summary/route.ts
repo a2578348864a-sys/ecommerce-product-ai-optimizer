@@ -146,7 +146,7 @@ function applyGuardToSummary(
     ...normalized,
     verdict: guardResult.safeVerdict,
     downgraded: guardResult.downgraded,
-    downgradeReasons: guardResult.downgradeReasons,
+    downgradeReasons: sanitizeStringArray(guardResult.downgradeReasons),
   };
 }
 

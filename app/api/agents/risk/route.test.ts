@@ -141,4 +141,34 @@ describe("POST /api/agents/risk", () => {
 
     expect(json.data.overallLevel).not.toBe("red");
   });
+
+  it("risk 输出会净化中文认证承诺，但保留复核提醒", async () => {
+    mockCallAiJson.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        overallLevel: "yellow",
+        summary: "产品已通过 FCC 认证，符合 CE 标准，100% 安全。",
+        risks: [
+          { category: "平台规则风险", level: "yellow", title: "认证齐全", description: "FDA 认证，已认证。", suggestion: "直接写入 listing。" },
+          { category: "儿童安全", level: "yellow", title: "CPC 认证", description: "通过 CPC/ASTM/CPSIA 认证。", suggestion: "儿童安全认证齐全。" },
+          { category: "材质", level: "yellow", title: "食品级保证", description: "无毒保证。", suggestion: "绝对安全。" },
+        ],
+        blacklistMatches: [],
+        beginnerFriendly: false,
+      },
+    });
+
+    const response = await POST(createRequest(body({
+      productName: "儿童电动牙刷",
+      category: "母婴用品",
+      claims: "儿童用品，带电池。",
+      description: "儿童电动牙刷。",
+    })));
+    const { body: json } = await readJson(response);
+    const text = JSON.stringify(json);
+
+    expect(json.ok).toBe(true);
+    expect(text).not.toMatch(/FCC\s*认证|CE\s*标准|FDA\s*认证|CPC\s*认证|CPC\/ASTM\/CPSIA\s*认证|已认证|认证齐全|100%\s*安全|绝对安全|无毒保证|食品级保证|儿童安全认证/);
+    expect(text).toMatch(/人工复核|索取|合规文件|测试报告|未验证前/);
+  });
 });
