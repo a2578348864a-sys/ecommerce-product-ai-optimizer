@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildRiskCheckPrompt, type RiskCheckPromptInput } from "@/lib/cross-border/prompts";
+import { classifyKeywordFallbackRisk, isPetFoodContactProduct } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -25,6 +26,8 @@ type RiskCheckData = {
   risks: RiskCheckItem[];
   blacklistMatches: string[];
   beginnerFriendly: boolean;
+  errorFallback?: boolean;
+  message?: string;
 };
 
 type ApiError = {
@@ -85,6 +88,12 @@ function clampOverallLevel(risks: RiskCheckItem[]): RiskLevel {
   return "green";
 }
 
+function moreSevereRiskLevel(a: RiskLevel, b: RiskLevel): RiskLevel {
+  if (a === "red" || b === "red") return "red";
+  if (a === "yellow" || b === "yellow") return "yellow";
+  return "green";
+}
+
 function normalizeRiskCheckData(value: unknown): RiskCheckData {
   const source = isPlainObject(value) ? value : {};
   const fallback = defaultData;
@@ -110,6 +119,73 @@ function normalizeRiskCheckData(value: unknown): RiskCheckData {
   };
 }
 
+function buildPetFoodContactRisk(): RiskCheckItem {
+  return {
+    category: "材质与入口接触风险",
+    level: "yellow",
+    title: "材质需复核",
+    description: "该商品涉及宠物进食或长期舔咬接触，不能按普通非入口宠物配件处理。材质安全、气味、清洁死角和霉菌问题都可能引发退货或差评。",
+    suggestion: "向供应商索取材质和食品接触相关检测文件，拿样测试气味、清洁难度和耐咬性；未验证前不要写认证承诺。",
+  };
+}
+
+function applyDeterministicRiskGuards(data: RiskCheckData, input: RiskCheckPromptInput): RiskCheckData {
+  if (!isPetFoodContactProduct(input)) return data;
+
+  const petRisk = buildPetFoodContactRisk();
+  const risks = [
+    ...data.risks.filter((item) => item.category !== petRisk.category),
+    petRisk,
+  ];
+
+  return {
+    ...data,
+    overallLevel: moreSevereRiskLevel(data.overallLevel, "yellow"),
+    summary: data.summary.includes("食品接触") || data.summary.includes("材质")
+      ? data.summary
+      : `${data.summary} 该商品涉及宠物进食接触，需重点复核材质、清洁、售后和合规文件。`,
+    risks,
+    beginnerFriendly: false,
+  };
+}
+
+function buildRiskFallbackData(input: RiskCheckPromptInput, code: string): RiskCheckData {
+  const fallbackLevel = classifyKeywordFallbackRisk(input);
+  const riskItems: RiskCheckItem[] = [
+    {
+      category: "AI 风险分析状态",
+      level: "yellow",
+      title: "AI 分析失败",
+      description: "AI 风险分析本次未稳定返回结果，不能按低风险处理。",
+      suggestion: "先按保守风险处理，补充商品信息后再重新分析；不要因为本次失败就直接上架。",
+    },
+  ];
+
+  if (fallbackLevel === "red") {
+    riskItems.push({
+      category: "高风险关键词",
+      level: "red",
+      title: "保守拦截",
+      description: "商品信息命中儿童、电池、磁铁、医疗美妆等明显高风险关键词，AI 失败时必须按高风险处理。",
+      suggestion: "先确认平台规则、物流限制、认证文件和售后责任，再决定是否继续。",
+    });
+  }
+
+  if (isPetFoodContactProduct(input)) {
+    riskItems.push(buildPetFoodContactRisk());
+  }
+
+  return {
+    overallLevel: riskItems.some((item) => item.level === "red") ? "red" : "yellow",
+    summary: "AI 风险分析失败，已按高风险关键词和品类规则保守处理。",
+    risks: riskItems,
+    blacklistMatches: fallbackLevel === "red" ? ["高风险关键词"] : [],
+    beginnerFriendly: false,
+    errorFallback: true,
+    message: `AI 风险分析失败，已按保守规则处理（${code}）。`,
+  };
+}
+
 function buildPrompt(input: RiskCheckPromptInput) {
   return buildRiskCheckPrompt(input);
 }
@@ -131,10 +207,11 @@ async function runRiskAgent(input: RiskCheckPromptInput): Promise<RiskCheckData>
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.message);
+    console.error("Risk Agent failed", aiResult.error.code);
+    return buildRiskFallbackData(input, aiResult.error.code);
   }
 
-  return normalizeRiskCheckData(aiResult.data);
+  return applyDeterministicRiskGuards(normalizeRiskCheckData(aiResult.data), input);
 }
 
 function getErrorMessage(code: string) {

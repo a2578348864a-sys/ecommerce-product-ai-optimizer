@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
+import { callAiJson } from "@/lib/server/aiClient";
 import { buildSummaryPrompt, type SummaryPromptInput } from "@/lib/cross-border/prompts";
 import { applyHardGuard, type RiskGuardInput } from "@/lib/server/summaryRiskGuard";
+import { sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -18,6 +19,10 @@ type SummaryData = {
   risks: string[];
   nextSteps: string[];
   beginnerTip: string;
+  /** AI JSON 解析失败时是否启用了保守兜底 */
+  parseFailed?: boolean;
+  /** 兜底原因，避免前端误以为是确定性 AI 结论 */
+  reason?: string;
   /** 硬规则是否触发了降级 */
   downgraded?: boolean;
   /** 降级原因（前端展示用） */
@@ -105,11 +110,43 @@ function normalizeSummaryData(raw: unknown, productName: string): Omit<SummaryDa
   return {
     verdict,
     confidence,
-    summary,
-    reasons: reasons.length ? reasons : ["信息不足，建议完成更多分析步骤后再看结论。"],
-    risks: risks.length ? risks : ["信息不完整，需人工补充分析。"],
-    nextSteps: nextSteps.length ? nextSteps : ["先完成货源判断和风险排查", "再做选品体检获取利润分析", "最后做爆款拆解了解内容方向"],
-    beginnerTip,
+    summary: sanitizeUnsupportedCertificationClaims(summary),
+    reasons: sanitizeStringArray(reasons.length ? reasons : ["信息不足，建议完成更多分析步骤后再看结论。"]),
+    risks: sanitizeStringArray(risks.length ? risks : ["信息不完整，需人工补充分析。"]),
+    nextSteps: sanitizeStringArray(nextSteps.length ? nextSteps : ["先完成货源判断和风险排查", "再做选品体检获取利润分析", "最后做爆款拆解了解内容方向"]),
+    beginnerTip: sanitizeUnsupportedCertificationClaims(beginnerTip),
+  };
+}
+
+function buildParseFallbackSummary(productName: string): Omit<SummaryData, "downgraded" | "downgradeReasons"> {
+  return {
+    verdict: "暂不建议做",
+    confidence: "低",
+    summary: `「${productName}」的小白结论暂时无法稳定生成，先按保守方案处理。`,
+    reasons: ["AI 输出格式异常，本次没有把模型原文当成确定结论。"],
+    risks: ["AI 输出格式异常，已使用保守兜底；认证、材质、物流和平台规则仍需人工复核。"],
+    nextSteps: ["先查看货源判断和风险排查结果", "补充关键信息后再重新生成小白结论", "上架前人工复核认证、材质和平台规则"],
+    beginnerTip: "本次结论置信度低，先不要按乐观结果启动。",
+    parseFailed: true,
+    reason: "AI 输出格式异常，已使用保守兜底",
+  };
+}
+
+function applyGuardToSummary(
+  normalized: Omit<SummaryData, "downgraded" | "downgradeReasons">,
+  guardInputBase: RiskGuardInput,
+): SummaryData {
+  const guardInput: RiskGuardInput = {
+    ...guardInputBase,
+    aiVerdict: normalized.verdict,
+  };
+  const guardResult = applyHardGuard(guardInput);
+
+  return {
+    ...normalized,
+    verdict: guardResult.safeVerdict,
+    downgraded: guardResult.downgraded,
+    downgradeReasons: guardResult.downgradeReasons,
   };
 }
 
@@ -134,24 +171,14 @@ async function runSummaryAgent(
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.message);
+    if (aiResult.error.code === "json_parse_error") {
+      return applyGuardToSummary(buildParseFallbackSummary(promptInput.productName), guardInputBase);
+    }
+    throw new Error(aiResult.error.code);
   }
 
   const normalized = normalizeSummaryData(aiResult.data, promptInput.productName);
-
-  // ── 硬规则拦截：对 AI verdict 做确定性安全检查 ──
-  const guardInput: RiskGuardInput = {
-    ...guardInputBase,
-    aiVerdict: normalized.verdict,
-  };
-  const guardResult = applyHardGuard(guardInput);
-
-  return {
-    ...normalized,
-    verdict: guardResult.safeVerdict,
-    downgraded: guardResult.downgraded,
-    downgradeReasons: guardResult.downgradeReasons,
-  };
+  return applyGuardToSummary(normalized, guardInputBase);
 }
 
 export async function POST(request: NextRequest) {
@@ -220,7 +247,7 @@ export async function POST(request: NextRequest) {
     console.error("Summary Agent failed", message.slice(0, 240));
     return jsonResponse({
       ok: false,
-      error: { code: "ai_error", message: `小白结论生成失败：${message.slice(0, 100)}` },
+      error: { code: "ai_error", message: "小白结论生成失败，请稍后重试。" },
     }, 500);
   }
 }

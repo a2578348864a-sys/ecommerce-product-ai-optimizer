@@ -12,6 +12,7 @@ import type {
   TargetPlatform,
 } from "@/lib/types";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
+import { appendUnique, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -269,8 +270,8 @@ function normalizeFaq(value: unknown): ListingCopyResult["faq"] {
   return value
     .map((item) => {
       if (!isRecord(item)) return null;
-      const question = asString(item.question);
-      const answer = asString(item.answer);
+      const question = sanitizeUnsupportedCertificationClaims(asString(item.question));
+      const answer = sanitizeUnsupportedCertificationClaims(asString(item.answer));
       return question && answer ? { question, answer } : null;
     })
     .filter((item): item is { question: string; answer: string } => item !== null)
@@ -279,18 +280,22 @@ function normalizeFaq(value: unknown): ListingCopyResult["faq"] {
 
 function normalizeListingCopyResult(raw: unknown): ListingCopyResult {
   const source = isRecord(raw) ? raw : {};
+  const notes = sanitizeStringArray(normalizeStringArray(source.notes, 10));
 
   return {
-    title: truncateTitle(asString(source.title)),
-    bulletPoints: normalizeStringArray(source.bulletPoints, 5),
-    description: asString(source.description),
-    shortDescription: asString(source.shortDescription),
+    title: truncateTitle(sanitizeUnsupportedCertificationClaims(asString(source.title))),
+    bulletPoints: sanitizeStringArray(normalizeStringArray(source.bulletPoints, 5)),
+    description: sanitizeUnsupportedCertificationClaims(asString(source.description)),
+    shortDescription: sanitizeUnsupportedCertificationClaims(asString(source.shortDescription)),
     keywords: normalizeStringArray(source.keywords, 10),
     longTailKeywords: normalizeStringArray(source.longTailKeywords, 10),
     faq: normalizeFaq(source.faq),
-    packingList: normalizeStringArray(source.packingList, 20),
-    afterSales: asString(source.afterSales) || DEFAULT_AFTER_SALES,
-    notes: normalizeStringArray(source.notes, 10),
+    packingList: sanitizeStringArray(normalizeStringArray(source.packingList, 20)),
+    afterSales: sanitizeUnsupportedCertificationClaims(asString(source.afterSales)) || DEFAULT_AFTER_SALES,
+    notes: appendUnique(notes, [
+      "Certification details should be confirmed with the supplier before sale.",
+      "Manual review is required before using any safety, material, or compliance claim.",
+    ], 10),
   };
 }
 

@@ -10,6 +10,7 @@ import type {
   TargetPlatform,
 } from "@/lib/types";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
+import { appendUnique, isPetFoodContactProduct } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -228,6 +229,36 @@ function normalizeAiAnalysisResult(raw: unknown): AiAnalysisResult {
   };
 }
 
+function applyProductRiskGuards(result: AiAnalysisResult, request: AnalysisRequest): AiAnalysisResult {
+  if (!isPetFoodContactProduct({
+    productName: request.product.name,
+    category: request.listingPreview?.categorySuggestion,
+    description: [
+      request.product.description,
+      request.listingPreview?.description,
+      request.listingPreview?.riskNotes?.join(" "),
+    ].filter(Boolean).join(" "),
+  })) {
+    return result;
+  }
+
+  return {
+    ...result,
+    recommendation: result.recommendation === "reject" ? "reject" : "caution",
+    score: Math.min(result.score, 69),
+    newbieFriendly: false,
+    risks: appendUnique(result.risks, [
+      "宠物食品接触/入口接触类商品需要复核材质安全、清洁死角、气味、耐咬性和售后争议，不能按完全低风险处理。",
+    ]),
+    sensitiveCategoryRisk: result.sensitiveCategoryRisk.includes("食品接触") || result.sensitiveCategoryRisk.includes("材质")
+      ? result.sensitiveCategoryRisk
+      : `${result.sensitiveCategoryRisk} 宠物进食接触类商品需人工复核材质和相关合规文件。`,
+    afterSalesRisk: result.afterSalesRisk.includes("清洁") || result.afterSalesRisk.includes("售后")
+      ? result.afterSalesRisk
+      : `${result.afterSalesRisk} 还需关注清洁难度、耐咬性、气味和退货争议。`,
+  };
+}
+
 function toSafeError(error: ApiError): ApiError {
   return {
     code: error.code,
@@ -304,6 +335,6 @@ export async function POST(request: NextRequest) {
 
   return jsonResponse({
     ok: true,
-    data: normalizeAiAnalysisResult(aiResult.data),
+    data: applyProductRiskGuards(normalizeAiAnalysisResult(aiResult.data), parsed.value),
   });
 }
