@@ -63,9 +63,9 @@ const categoryLabels: Record<ChecklistItem["category"], { label: string; classNa
   general: { label: "通用", className: "border-slate-200 bg-slate-50 text-slate-600" },
 };
 
-export function ManualReviewChecklist() {
+export function ManualReviewChecklist({ className }: { className?: string }) {
   return (
-    <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+    <section className={`rounded-2xl border border-amber-200 bg-amber-50/70 p-4${className ? ` ${className}` : ""}`}>
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
           <ShieldAlert className="size-4" />

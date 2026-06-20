@@ -17,6 +17,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { platformLabels, platformOptions } from "@/lib/types";
 import type { Platform, ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
@@ -830,6 +832,14 @@ export function ViralMockAgent() {
               </section>
             </aside>
           </section>
+
+          {/* 工作流建议与人工确认 */}
+          {result ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <WorkflowNextStepCard taskType="viral" />
+              <ManualReviewChecklist />
+            </div>
+          ) : null}
 
           {/* 下一步 */}
           <section className="surface-card rounded-[28px] p-5">

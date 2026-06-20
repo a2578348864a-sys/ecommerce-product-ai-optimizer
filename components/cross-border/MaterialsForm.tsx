@@ -7,6 +7,8 @@ import type { MaterialAgentResult } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { EXAMPLE_PRODUCT } from "@/lib/examples";
 
 type ApiResponse =
@@ -461,6 +463,14 @@ export function MaterialsForm() {
                 </div>
               ) : null}
             </section>
+          ) : null}
+
+          {/* 工作流建议与人工确认 */}
+          {result ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <WorkflowNextStepCard taskType="material" />
+              <ManualReviewChecklist />
+            </div>
           ) : null}
 
           {/* Save to task center */}

@@ -7,6 +7,8 @@ import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { EXAMPLE_SOURCING } from "@/lib/examples";
 
 type SourcingPriceBand = {
@@ -532,6 +534,14 @@ export function SourcingForm() {
                 ) : null}
               </div>
             </section>
+          ) : null}
+
+          {/* 工作流建议与人工确认 */}
+          {result ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <WorkflowNextStepCard taskType="sourcing" />
+              <ManualReviewChecklist />
+            </div>
           ) : null}
 
           {/* 下一步 */}

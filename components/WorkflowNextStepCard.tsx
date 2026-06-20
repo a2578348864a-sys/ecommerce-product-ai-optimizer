@@ -119,11 +119,11 @@ function getNextSteps(taskType: string | undefined): TaskNextSteps {
   return fallbackNextSteps;
 }
 
-export function WorkflowNextStepCard({ taskType }: { taskType?: string }) {
+export function WorkflowNextStepCard({ taskType, className }: { taskType?: string; className?: string }) {
   const nextSteps = getNextSteps(taskType);
 
   return (
-    <section className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+    <section className={`rounded-2xl border border-teal-200 bg-teal-50/70 p-4${className ? ` ${className}` : ""}`}>
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
           <Lightbulb className="size-4" />

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 
 type SummaryData = {
@@ -548,6 +550,14 @@ export function SummaryForm() {
                 <p className="mt-1 text-sm leading-6 text-indigo-800">{result.beginnerTip}</p>
               </div>
             </section>
+          ) : null}
+
+          {/* 工作流建议与人工确认 */}
+          {result ? (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <WorkflowNextStepCard taskType="summary" />
+              <ManualReviewChecklist />
+            </div>
           ) : null}
 
           {/* Save */}

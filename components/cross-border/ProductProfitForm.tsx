@@ -7,6 +7,8 @@ import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { ConfidenceConfirmationCard } from "@/components/ConfidenceConfirmationCard";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
 import { ListingCopyPreview } from "@/components/cross-border/ListingCopyPreview";
@@ -1207,6 +1209,12 @@ export function ProductProfitForm() {
         <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">{tasksSaveMessage}</p>
       ) : null}
     </section>
+
+    {/* 工作流建议与人工确认清单 */}
+    <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <WorkflowNextStepCard taskType="product" />
+      <ManualReviewChecklist />
+    </div>
 
     {/* 下一步 */}
     <section className="surface-card rounded-[28px] p-5">
