@@ -5,109 +5,233 @@ export const metadata: Metadata = {
   description: "V2 工作流原型，仅为内部规划和截图讨论，不是已上线功能。",
 };
 
+/* ── Mock data ─────────────────────────────────────── */
+
 const MOCK_CANDIDATES = [
-  { id: "a", name: "桌面手机支架", score: 90, level: "A" },
-  { id: "b", name: "宠物慢食碗", score: 55, level: "B" },
-  { id: "c", name: "硅胶折叠水杯", score: 45, level: "C" },
+  {
+    id: "a",
+    name: "桌面手机支架",
+    score: 90,
+    level: "优先小单测试",
+    riskHint: "低风险 · 新手友好",
+    selected: true,
+  },
+  {
+    id: "b",
+    name: "宠物慢食碗",
+    score: 55,
+    level: "可以观察",
+    riskHint: "食品接触 · 需确认材质认证",
+    selected: false,
+  },
+  {
+    id: "c",
+    name: "硅胶折叠水杯",
+    score: 45,
+    level: "有经验再做",
+    riskHint: "食品接触 · 专利风险 · 认证多",
+    selected: false,
+  },
 ];
 
-const MOCK_STEPS = [
+/* 4-step workflow (Phase 1A mock) */
+interface WorkflowStep {
+  id: string;
+  label: string;
+  status: "done" | "active" | "pending";
+  summary: string;
+  riskNote: string;
+  confirmed: boolean;
+}
+
+const MOCK_STEPS: WorkflowStep[] = [
   {
     id: "sourcing",
     label: "货源确认",
-    status: "done" as const,
-    summary: "1688 货源充足，MOQ 10-50 个，价格带 ¥3-15，供应商 200+ 家。",
+    status: "done",
+    summary:
+      "1688 货源充足，MOQ 10-50 个，价格带 ¥3-15，供应商 200+ 家。成熟品类，采购难度低。",
+    riskNote: "",
+    confirmed: true,
   },
   {
     id: "risk",
-    label: "风险确认",
-    status: "done" as const,
-    summary: "桌面手机支架为通用品类，无侵权/禁售风险。注意确认无磁铁/电池夹带。",
+    label: "风险排查",
+    status: "done",
+    summary:
+      "通用品类，无侵权/禁售风险。物流售后简单。注意确认产品无磁铁或电池夹带。",
+    riskNote: "高风险提示：如果变体含磁铁/电池，风险升级为橙色。",
+    confirmed: true,
   },
   {
-    id: "profit",
-    label: "利润粗算",
-    status: "active" as const,
-    summary: "预估售价 $8-15，采购成本 ¥5-12，头程运费约 $1-2/件，FBA 费约 $3-5，毛利率预估 35-50%。",
+    id: "profitCompliance",
+    label: "利润与合规粗判",
+    status: "active",
+    summary:
+      "预估售价 $8-15，采购 ¥5-12，头程运费约 $1-2/件，FBA 约 $3-5，毛利率约 35-50%。目标市场（美国）无需特殊认证。",
+    riskNote:
+      "利润为 mock 估算，真实选品需要人工复核采购成本、运费和平台费率。合规结论基于品类通用判断，正式上线前需逐一核验目标市场要求。",
+    confirmed: false,
   },
   {
-    id: "compliance",
-    label: "合规确认",
-    status: "pending" as const,
-    summary: "无需特殊认证。目标市场（美国）无额外合规门槛。确认包装标签合规即可。",
-  },
-  {
-    id: "beginner",
-    label: "新手适合度",
-    status: "pending" as const,
-    summary: "货源易找、风险低、无合规门槛、物流简单 — 适合新手小单测试。",
-  },
-  {
-    id: "nextAction",
-    label: "下一步动作",
-    status: "pending" as const,
-    summary: "建议找 3-5 家 1688 供应商对比样品，先采购 10-20 个 FBA 测品。",
+    id: "conclusion",
+    label: "小白结论与下一步",
+    status: "pending",
+    summary:
+      "货源易找、风险低、利润空间合理、无特殊合规门槛 — 建议小单测试。找 3-5 家 1688 供应商对比样品，先采购 10-20 个 FBA 测品，验证转化率和售后率后再决定是否加大投入。",
+    riskNote:
+      "本结论基于 AI 分析 + mock 数据，不是最终采购建议。所有关键动作必须人工确认。系统不会自动采购、自动上架或自动投广告。",
+    confirmed: false,
   },
 ];
 
-const MOCK_CHECKLIST = [
-  { id: "c1", label: "货源已确认", done: true },
-  { id: "c2", label: "风险已确认", done: true },
-  { id: "c3", label: "利润已粗算", done: false },
-  { id: "c4", label: "合规已确认", done: false },
-  { id: "c5", label: "适合度已判断", done: false },
-  { id: "c6", label: "动作已确认", done: false },
-];
+/* ── Sub-components ───────────────────────────────── */
 
-function StepIcon({ status }: { status: "done" | "active" | "pending" }) {
+function StepStatusBadge({ status }: { status: WorkflowStep["status"] }) {
+  const map = {
+    done: "bg-green-50 text-green-700 border-green-200",
+    active: "bg-blue-50 text-blue-700 border-blue-200",
+    pending: "bg-gray-50 text-gray-400 border-gray-200",
+  };
+  const label = { done: "已完成", active: "进行中", pending: "待执行" };
+  return (
+    <span
+      className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${map[status]}`}
+    >
+      {label[status]}
+    </span>
+  );
+}
+
+function StepIcon({ status }: { status: WorkflowStep["status"] }) {
   if (status === "done") {
     return (
-      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 text-xs font-bold">
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-bold text-green-700">
         ✓
       </span>
     );
   }
   if (status === "active") {
     return (
-      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-500 text-white text-xs font-bold animate-pulse">
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-bold text-white">
         →
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border border-gray-300 text-gray-400 text-xs">
+    <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-400">
       ○
     </span>
   );
 }
 
+function StepCard({ step, isLast }: { step: WorkflowStep; isLast: boolean }) {
+  return (
+    <li className="relative flex gap-3">
+      {/* vertical connector */}
+      {!isLast && (
+        <div
+          className={`absolute left-[9px] top-5 h-full w-0.5 ${
+            step.status === "done" ? "bg-green-200" : "bg-gray-200"
+          }`}
+        />
+      )}
+      {/* icon */}
+      <div className="mt-1 shrink-0">
+        <StepIcon status={step.status} />
+      </div>
+      {/* card body */}
+      <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white p-3 pb-3">
+        <div className="mb-1.5 flex items-center gap-2">
+          <span
+            className={`text-sm font-semibold ${
+              step.status === "pending" ? "text-gray-400" : "text-gray-800"
+            }`}
+          >
+            {step.label}
+          </span>
+          <StepStatusBadge status={step.status} />
+        </div>
+
+        <p
+          className={`mb-2 text-xs leading-relaxed ${
+            step.status === "pending" ? "text-gray-300" : "text-gray-600"
+          }`}
+        >
+          {step.summary}
+        </p>
+
+        {/* risk note */}
+        {step.riskNote && (
+          <p
+            className={`mb-2 rounded bg-amber-50 px-2 py-1 text-[11px] leading-relaxed ${
+              step.status === "pending" ? "text-amber-300" : "text-amber-700"
+            }`}
+          >
+            ⚠ {step.riskNote}
+          </p>
+        )}
+
+        {/* inline confirm checkbox */}
+        <label
+          className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs transition ${
+            step.confirmed
+              ? "border-green-200 bg-green-50 text-green-700"
+              : step.status === "pending"
+                ? "border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed"
+                : "border-gray-200 bg-white text-gray-600 cursor-pointer hover:border-blue-300"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={step.confirmed}
+            readOnly
+            className="h-3.5 w-3.5 rounded"
+          />
+          {step.confirmed ? "已确认" : "人工确认"}
+        </label>
+      </div>
+    </li>
+  );
+}
+
+/* ── Page ──────────────────────────────────────────── */
+
 export default function V2LabPage() {
+  const confirmedCount = MOCK_STEPS.filter((s) => s.confirmed).length;
+  const totalCount = MOCK_STEPS.length;
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      {/* ⚠️ 沙盒警告横幅 */}
+      {/* ⚠️ Sandbox banner */}
       <div className="mb-6 rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3">
         <p className="text-sm font-semibold text-amber-800">
-          ⚠️ V2 工作流沙盒 — 仅为原型，不是已上线功能
+          ⚠️ V2 工作流沙盒 — Phase 1A 交互原型，不是已上线功能
         </p>
         <p className="mt-1 text-xs text-amber-700">
-          此页面仅供内部规划和截图讨论。所有数据为演示 mock，未调用真实 AI，未连接数据库。
+          当前不调用真实 AI，不保存任务，不接 API。
+          所有数据为 mock 演示。不会自动采购、自动发布、自动投广告。
+          <strong> 所有关键动作必须人工确认。</strong>
         </p>
       </div>
 
-      {/* 三栏布局 */}
+      {/* Two-column layout */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* 左栏：候选商品 */}
-        <aside className="lg:col-span-3">
+        {/* Left column: candidates */}
+        <aside className="lg:col-span-4">
           <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <h2 className="mb-3 text-sm font-semibold text-gray-700">
+            <h2 className="mb-1 text-sm font-semibold text-gray-700">
               候选商品
             </h2>
+            <p className="mb-3 text-[11px] text-gray-400">
+              来自机会雷达排行榜 · 当前为 mock 示例
+            </p>
             <ul className="space-y-2">
-              {MOCK_CANDIDATES.map((c, i) => (
+              {MOCK_CANDIDATES.map((c) => (
                 <li
                   key={c.id}
-                  className={`rounded-md border px-3 py-2 text-sm transition ${
-                    i === 0
+                  className={`rounded-md border px-3 py-2.5 text-sm transition ${
+                    c.selected
                       ? "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
                       : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
@@ -118,138 +242,75 @@ export default function V2LabPage() {
                       {c.score}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-xs text-gray-500">
-                    等级 {c.level} · {i === 0 ? "当前选中" : "点击切换"}
+                  <div className="mt-1 text-xs text-gray-500">
+                    {c.level}
                   </div>
+                  <div
+                    className={`mt-0.5 text-[11px] ${
+                      c.riskHint.includes("低风险")
+                        ? "text-green-600"
+                        : "text-amber-600"
+                    }`}
+                  >
+                    {c.riskHint}
+                  </div>
+                  {c.selected && (
+                    <div className="mt-1.5 text-[11px] font-medium text-blue-600">
+                      ← 当前选中
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-gray-400">
-              以上为演示数据，实际接入 /api/opportunities 排行榜。
-            </p>
           </div>
         </aside>
 
-        {/* 中栏：工作流步骤 */}
-        <main className="lg:col-span-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <h2 className="mb-4 text-sm font-semibold text-gray-700">
-              工作流步骤 · 桌面手机支架
-            </h2>
+        {/* Right column: workflow steps + inline confirm */}
+        <section className="lg:col-span-8">
+          <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-700">
+                工作流 · 桌面手机支架
+              </h2>
+              <span className="text-xs text-gray-500">
+                已确认 {confirmedCount}/{totalCount} 步
+              </span>
+            </div>
+
             <ol className="space-y-0">
               {MOCK_STEPS.map((step, i) => (
-                <li key={step.id} className="relative">
-                  {i < MOCK_STEPS.length - 1 && (
-                    <div
-                      className={`absolute left-[9px] top-5 h-full w-0.5 ${
-                        step.status === "done" ? "bg-green-300" : "bg-gray-200"
-                      }`}
-                    />
-                  )}
-                  <div className="flex items-start gap-3 pb-4">
-                    <div className="mt-0.5 shrink-0">
-                      <StepIcon status={step.status} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-sm font-medium ${
-                            step.status === "pending"
-                              ? "text-gray-400"
-                              : "text-gray-800"
-                          }`}
-                        >
-                          {step.label}
-                        </span>
-                        {step.status === "done" && (
-                          <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-700">
-                            已完成
-                          </span>
-                        )}
-                        {step.status === "active" && (
-                          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
-                            进行中
-                          </span>
-                        )}
-                        {step.status === "pending" && (
-                          <span className="rounded bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-400">
-                            待执行
-                          </span>
-                        )}
-                      </div>
-                      <p
-                        className={`mt-1 text-xs leading-relaxed ${
-                          step.status === "pending"
-                            ? "text-gray-300"
-                            : "text-gray-600"
-                        }`}
-                      >
-                        {step.summary}
-                      </p>
-                    </div>
-                  </div>
-                </li>
+                <StepCard
+                  key={step.id}
+                  step={step}
+                  isLast={i === MOCK_STEPS.length - 1}
+                />
               ))}
             </ol>
-          </div>
-        </main>
 
-        {/* 右栏：人工确认清单 */}
-        <aside className="lg:col-span-3">
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <h2 className="mb-3 text-sm font-semibold text-gray-700">
-              人工确认清单
-            </h2>
-            <ul className="space-y-2">
-              {MOCK_CHECKLIST.map((item) => (
-                <li key={item.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={item.done}
-                    readOnly
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
-                  />
-                  <span
-                    className={
-                      item.done ? "text-gray-500 line-through" : "text-gray-700"
-                    }
-                  >
-                    {item.label}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 border-t border-gray-100 pt-3">
-              <p className="text-xs text-gray-500">
-                已确认{" "}
-                <span className="font-bold text-gray-700">
-                  {MOCK_CHECKLIST.filter((c) => c.done).length}
-                </span>
-                {" "}/ {MOCK_CHECKLIST.length} 项
-              </p>
+            {/* Bottom action */}
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-700">
+                  💡 下一步建议
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {confirmedCount === totalCount
+                    ? "全部确认完成，可保存到任务中心。"
+                    : `请先完成剩余 ${totalCount - confirmedCount} 步的人工确认。`}
+                </p>
+              </div>
               <button
                 disabled
-                className="mt-2 w-full rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 cursor-not-allowed"
+                className="shrink-0 rounded-md bg-gray-200 px-4 py-1.5 text-xs font-medium text-gray-500 cursor-not-allowed"
               >
-                全部确认后保存（mock）
+                {confirmedCount === totalCount
+                  ? "保存到任务中心（mock）"
+                  : "全部确认后可保存"}
               </button>
             </div>
           </div>
-        </aside>
+        </section>
       </div>
-
-      {/* 底部：下一步建议 */}
-      <footer className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-gray-700">
-          💡 下一步建议
-        </h2>
-        <p className="mt-1 text-sm text-gray-600">
-          桌面手机支架是成熟品类，建议先从该商品开始验证完整工作流。优先确认货源和利润粗算，再进入合规和新手适合度判断。
-        </p>
-        <p className="mt-2 text-xs text-gray-400">
-          所有关键动作均需人工确认。系统不会自动采购、不会自动上架、不会自动投广告。
-        </p>
-      </footer>
     </div>
   );
 }
