@@ -98,13 +98,20 @@ function buildSteps(c: StoredCandidate | null): WorkflowStep[] {
 
 /* ── Sub-components ─────────────────────────────── */
 
-function StepBadge({ status }: { status: WorkflowStep["status"] }) {
+function StepBadge({ status, confirmed }: { status: WorkflowStep["status"]; confirmed: boolean }) {
+  if (confirmed) {
+    return (
+      <span className="inline-block rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700">
+        人工已确认
+      </span>
+    );
+  }
   const map = {
-    done: "bg-green-50 text-green-700 border-green-200",
+    done: "bg-blue-50 text-blue-700 border-blue-200",
     active: "bg-blue-50 text-blue-700 border-blue-200",
     pending: "bg-gray-50 text-gray-400 border-gray-200",
   };
-  const label = { done: "AI 已分析", active: "分析中", pending: "待分析" };
+  const label = { done: "AI 已分析 · 待确认", active: "分析中", pending: "待分析" };
   return (
     <span className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${map[status]}`}>
       {label[status]}
@@ -112,11 +119,18 @@ function StepBadge({ status }: { status: WorkflowStep["status"] }) {
   );
 }
 
-function StepIcon({ status }: { status: WorkflowStep["status"] }) {
-  if (status === "done") {
+function StepIcon({ status, confirmed }: { status: WorkflowStep["status"]; confirmed: boolean }) {
+  if (confirmed) {
     return (
       <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-bold text-green-700">
         ✓
+      </span>
+    );
+  }
+  if (status === "done") {
+    return (
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-[9px] font-bold text-blue-600">
+        AI
       </span>
     );
   }
@@ -150,19 +164,19 @@ function StepCard({
       {!isLast && (
         <div
           className={`absolute left-[9px] top-5 h-full w-0.5 ${
-            step.status === "done" ? "bg-green-200" : "bg-gray-200"
+            confirmed ? "bg-green-200" : "bg-gray-200"
           }`}
         />
       )}
       <div className="mt-1 shrink-0">
-        <StepIcon status={step.status} />
+        <StepIcon status={step.status} confirmed={confirmed} />
       </div>
       <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white p-3">
         <div className="mb-1.5 flex items-center gap-2">
           <span className={`text-sm font-semibold ${step.status === "pending" ? "text-gray-400" : "text-gray-800"}`}>
             {step.label}
           </span>
-          <StepBadge status={step.status} />
+          <StepBadge status={step.status} confirmed={confirmed} />
         </div>
 
         <p className={`mb-2 text-xs leading-relaxed ${step.status === "pending" ? "text-gray-300" : "text-gray-600"}`}>
@@ -467,13 +481,18 @@ export default function V2WorkflowLabClient() {
           {/* Right: workflow steps */}
           <section className="lg:col-span-8">
             <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-700">
-                  工作流 · {selectedCandidate?.name ?? "—"}
-                </h2>
-                <span className="text-xs text-gray-500">
-                  已确认 {confirmedCount}/{stepIds.length} 步
-                </span>
+              <div className="mb-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-gray-700">
+                    工作流 · {selectedCandidate?.name ?? "—"}
+                  </h2>
+                  <span className="text-xs text-gray-500">
+                    已确认 {confirmedCount}/{stepIds.length} 步
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  💡 请按顺序确认 4 个步骤，全部确认后，Phase 1D 才允许保存工作流记录。
+                </p>
               </div>
 
               <ol className="space-y-0">
