@@ -5,12 +5,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import type { MaterialAgentResult } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
-import { EXAMPLE_PRODUCT, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
+import { EXAMPLE_PRODUCT } from "@/lib/examples";
 
 type ApiResponse =
   | { result: MaterialAgentResult }
   | { error: string };
+
+type MaterialsDraft = {
+  keyword: string;
+  manualText: string;
+  linksText: string;
+  result: MaterialAgentResult | null;
+};
 
 const completenessLabels: Record<string, string> = {
   "完整": "素材完整",
@@ -30,11 +38,24 @@ function isApiError(value: unknown): value is { error: string } {
 
 export function MaterialsForm() {
   const [sharedProduct, updateShared] = useSharedProduct();
-  const [keyword, setKeyword] = useState(sharedProduct.productName);
-  const [manualText, setManualText] = useState(sharedProduct.description);
-  const [linksText, setLinksText] = useState("");
+  const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<MaterialsDraft>({
+    storageKey: "qx:draft:materials:v1",
+    initialValue: {
+      keyword: sharedProduct.productName,
+      manualText: sharedProduct.description,
+      linksText: "",
+      result: null,
+    },
+  });
+  const { keyword, manualText, linksText, result } = draftValue;
+  const updateDraft = (patch: Partial<MaterialsDraft>) => {
+    setDraftValue((current) => ({ ...current, ...patch }));
+  };
+  const setKeyword = (value: string) => updateDraft({ keyword: value });
+  const setManualText = (value: string) => updateDraft({ manualText: value });
+  const setLinksText = (value: string) => updateDraft({ linksText: value });
+  const setResult = (value: MaterialAgentResult | null) => updateDraft({ result: value });
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [result, setResult] = useState<MaterialAgentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingToTasks, setSavingToTasks] = useState(false);
@@ -59,7 +80,8 @@ export function MaterialsForm() {
       "TikTok viral post:\n\nTitle: This foldable camping cup is genius!\n\nBody: Food-grade silicone foldable cup, 350ml capacity, folds to just 5cm thick. Metal carabiner clips right onto your backpack. IPX4 waterproof, half the weight of regular cups.\n\nPrice: $14.99\n\nTop comments:\n- Does it actually not leak?\n- Can I use it for hot drinks?\n- How long does the silicone last?\n- Link please!!",
     );
     setLinksText("https://www.tiktok.com/@example/video/foldable-camping-cup");
-    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+    setError(null);
+    setTasksSaveMessage(null);
   }
 
   async function handleSubmit() {
@@ -74,8 +96,8 @@ export function MaterialsForm() {
       return;
     }
 
-    if (!accessPassword.trim()) {
-      setError("请输入访问密码。");
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setError("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
@@ -102,7 +124,7 @@ export function MaterialsForm() {
       }
 
       if (isApiError(payload)) {
-        setError(payload.error || "素材识别失败，请稍后重试。");
+        setError(response.status === 401 || response.status === 403 ? "访问密码不正确，请重新输入。" : payload.error || "AI 请求失败，请稍后重试。");
         return;
       }
 
@@ -113,7 +135,7 @@ export function MaterialsForm() {
 
       setError("服务端返回格式异常。");
     } catch {
-      setError("网络异常，请检查本地服务或网络。");
+      setError("AI 请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -199,6 +221,11 @@ export function MaterialsForm() {
                 填入示例
               </button>
             </div>
+            {restored ? (
+              <p className="mb-4 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-700">
+                已恢复上次未完成内容
+              </p>
+            ) : null}
 
             <div className="space-y-5">
               <label className="block">
@@ -254,6 +281,17 @@ export function MaterialsForm() {
                 className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? "识别中..." : hasResult ? "重新识别" : "开始识别"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  setError(null);
+                  setTasksSaveMessage(null);
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:text-red-700"
+              >
+                清空当前内容
               </button>
             </div>
           </section>

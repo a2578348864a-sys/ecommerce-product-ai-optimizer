@@ -30,6 +30,8 @@ import {
 } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
+import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import {
   EvidenceCardList,
   EvidenceSection,
@@ -79,6 +81,12 @@ type ManualEvidenceDraft = {
   priceText: string;
   heatText: string;
   notes: string;
+};
+
+type HomeDraft = {
+  form: RadarFormInput;
+  result: HotProductRadarResult | null;
+  generatedAt: string;
 };
 
 const emptyManualEvidenceDraft: ManualEvidenceDraft = {
@@ -902,10 +910,29 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const [accessPassword, setAccessPassword] = useState("");
-  const [form, setForm] = useState<RadarFormInput>(emptyForm);
+  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const { draftValue, setDraftValue, clearDraft, restored: draftRestored } = useLocalDraft<HomeDraft>({
+    storageKey: "qx:draft:home:v1",
+    initialValue: {
+      form: emptyForm,
+      result: null,
+      generatedAt: "",
+    },
+  });
+  const { form, result, generatedAt } = draftValue;
+  const setForm = (value: RadarFormInput | ((prev: RadarFormInput) => RadarFormInput)) => {
+    setDraftValue((current) => ({
+      ...current,
+      form: typeof value === "function" ? value(current.form) : value,
+    }));
+  };
+  const setResult = (value: HotProductRadarResult | null) => {
+    setDraftValue((current) => ({ ...current, result: value }));
+  };
+  const setGeneratedAt = (value: string) => {
+    setDraftValue((current) => ({ ...current, generatedAt: value }));
+  };
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [result, setResult] = useState<HotProductRadarResult | null>(null);
   const [materialAgentResult, setMaterialAgentResult] = useState<MaterialAgentResult | null>(null);
   const [viralAgentResult, setViralAgentResult] = useState<ViralAgentResult | null>(null);
   const [error, setError] = useState("");
@@ -917,7 +944,6 @@ export default function Home() {
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [tasksMessage, setTasksMessage] = useState<string | null>(null);
   const [progressStep, setProgressStep] = useState(-1);
-  const [generatedAt, setGeneratedAt] = useState("");
   const [materialsDirtyAfterEvidence, setMaterialsDirtyAfterEvidence] = useState(false);
   const [evidenceDirtyAfterAnalysis, setEvidenceDirtyAfterAnalysis] = useState(false);
   const [evidenceRoles, setEvidenceRoles] = useState<Record<string, EvidenceRole>>({});
@@ -1069,9 +1095,14 @@ export default function Home() {
       setNotice("请先放入素材。");
       return;
     }
-    if (!accessPassword.trim()) {
-      setFieldErrors((current) => ({ ...current, accessPassword: "请先输入访问密码。" }));
-      setNotice("请先输入访问密码。");
+    if (!isAccessPasswordReady) {
+      setFieldErrors((current) => ({ ...current, accessPassword: "正在读取访问状态，请稍后再试。" }));
+      setNotice("正在读取访问状态，请稍后再试。");
+      return;
+    }
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setFieldErrors((current) => ({ ...current, accessPassword: "访问密码缺失或已过期，请先在首页输入访问密码。" }));
+      setNotice("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
@@ -1145,9 +1176,14 @@ export default function Home() {
       setNotice("请先识别素材，再进行爆款拆解。");
       return;
     }
-    if (!accessPassword.trim()) {
-      setFieldErrors((current) => ({ ...current, accessPassword: "请先输入访问密码。" }));
-      setNotice("请先输入访问密码。");
+    if (!isAccessPasswordReady) {
+      setFieldErrors((current) => ({ ...current, accessPassword: "正在读取访问状态，请稍后再试。" }));
+      setNotice("正在读取访问状态，请稍后再试。");
+      return;
+    }
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setFieldErrors((current) => ({ ...current, accessPassword: "访问密码缺失或已过期，请先在首页输入访问密码。" }));
+      setNotice("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
@@ -1264,8 +1300,10 @@ export default function Home() {
 
   function validateBeforeAnalyze(currentForm: RadarFormInput) {
     const errors: FieldErrors = {};
-    if (!accessPassword.trim()) {
-      errors.accessPassword = "请先输入访问密码。";
+    if (!isAccessPasswordReady) {
+      errors.accessPassword = "正在读取访问状态，请稍后再试。";
+    } else if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      errors.accessPassword = "访问密码缺失或已过期，请先在首页输入访问密码。";
     }
     if (!currentForm.keyword.trim()) {
       errors.keyword = "请输入关键词或品类。";
@@ -1368,6 +1406,7 @@ export default function Home() {
   }
 
   function clearAll() {
+    clearDraft();
     setForm(emptyForm);
     setEvidenceRoles({});
     setMaterialsDirtyAfterEvidence(false);
@@ -1526,7 +1565,7 @@ export default function Home() {
     || recognizingEvidence
     || analyzingViral
     || !anyMaterialReady
-    || !accessPassword.trim()
+    || !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)
     || materialsDirtyAfterEvidence
     || !primaryEvidenceId
     || (Boolean(result) && !evidenceDirtyAfterAnalysis);
@@ -1542,8 +1581,10 @@ export default function Home() {
     ? "正在分析素材，请稍等。"
     : !anyMaterialReady
       ? "请先放入素材。"
-      : !accessPassword.trim()
-        ? "请先输入访问密码。"
+      : !isAccessPasswordReady
+        ? "正在读取访问状态，请稍后再试。"
+        : !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)
+          ? "访问密码缺失或已过期，请先在首页输入访问密码。"
         : materialsDirtyAfterEvidence
           ? materialChangedMessage
           : !primaryEvidenceId
@@ -1660,6 +1701,9 @@ export default function Home() {
                   <div>
                     <h2 className="section-title text-2xl sm:text-3xl">素材输入</h2>
                     <p className="muted-text mt-1 text-sm">填入素材后逐步识别、拆解、生成结论。当前是半自动流程，AI 负责整理证据，你负责确认判断。</p>
+                    {draftRestored ? (
+                      <p className="mt-2 text-xs font-semibold text-teal-700">已恢复上次未完成内容</p>
+                    ) : null}
                   </div>
                   <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">
                     {assistantState.title}
@@ -1751,6 +1795,9 @@ export default function Home() {
                     onChange={(value) => {
                       setAccessPassword(value);
                       setFieldErrors((current) => ({ ...current, accessPassword: undefined }));
+                      if (value.trim()) {
+                        setNotice("访问密码已保存，本次会话内全站可用");
+                      }
                     }}
                     placeholder="开始体检前需要填写"
                   />

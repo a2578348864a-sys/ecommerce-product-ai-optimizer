@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
@@ -42,6 +43,15 @@ import type {
 
 type ProductProfitFormInput = CrossBorderProductFormInput & {
   manualSellingPrice: string;
+};
+
+type ProductProfitDraft = {
+  form: ProductProfitFormInput;
+  temporarySku: string;
+  aiAnalysis: AiAnalysisResult | null;
+  keywords: KeywordGenerationResult | null;
+  listingCopy: ListingCopyResult | null;
+  activeAiTab: "analysis" | "keywords" | "listing";
 };
 
 const platformOptions: Array<{ value: TargetPlatform; label: string }> = [
@@ -319,12 +329,44 @@ function getFriendlyAiErrorMessage(error: ApiErrorPayload | undefined, fallback:
 export function ProductProfitForm() {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const [sharedProduct, updateShared] = useSharedProduct();
-  const [form, setForm] = useState<ProductProfitFormInput>({
-    ...initialForm,
-    name: sharedProduct.productName || initialForm.name,
-    description: sharedProduct.description || initialForm.description,
-    targetPlatform: (sharedProduct.targetPlatform as ProductProfitFormInput["targetPlatform"]) || initialForm.targetPlatform,
+  const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<ProductProfitDraft>({
+    storageKey: "qx:draft:products-new:v1",
+    initialValue: {
+      form: {
+        ...initialForm,
+        name: sharedProduct.productName || initialForm.name,
+        description: sharedProduct.description || initialForm.description,
+        targetPlatform: (sharedProduct.targetPlatform as ProductProfitFormInput["targetPlatform"]) || initialForm.targetPlatform,
+      },
+      temporarySku: "CB-TEMP",
+      aiAnalysis: null,
+      keywords: null,
+      listingCopy: null,
+      activeAiTab: "analysis",
+    },
   });
+  const { form, temporarySku, aiAnalysis, keywords, listingCopy, activeAiTab } = draftValue;
+  const setForm = useCallback((value: ProductProfitFormInput | ((prev: ProductProfitFormInput) => ProductProfitFormInput)) => {
+    setDraftValue((current) => ({
+      ...current,
+      form: typeof value === "function" ? value(current.form) : value,
+    }));
+  }, [setDraftValue]);
+  const setTemporarySku = useCallback((value: string) => {
+    setDraftValue((current) => ({ ...current, temporarySku: value }));
+  }, [setDraftValue]);
+  const setAiAnalysis = useCallback((value: AiAnalysisResult | null) => {
+    setDraftValue((current) => ({ ...current, aiAnalysis: value }));
+  }, [setDraftValue]);
+  const setKeywords = useCallback((value: KeywordGenerationResult | null) => {
+    setDraftValue((current) => ({ ...current, keywords: value }));
+  }, [setDraftValue]);
+  const setListingCopy = useCallback((value: ListingCopyResult | null) => {
+    setDraftValue((current) => ({ ...current, listingCopy: value }));
+  }, [setDraftValue]);
+  const setActiveAiTab = useCallback((value: "analysis" | "keywords" | "listing") => {
+    setDraftValue((current) => ({ ...current, activeAiTab: value }));
+  }, [setDraftValue]);
 
   // Sync shared fields back
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -359,14 +401,10 @@ export function ProductProfitForm() {
       stock: EXAMPLE_PRODUCT_PROFIT.stock,
     });
   }
-  const [temporarySku, setTemporarySku] = useState("CB-TEMP");
-  const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
   const [aiAnalysisError, setAiAnalysisError] = useState<string | null>(null);
-  const [keywords, setKeywords] = useState<KeywordGenerationResult | null>(null);
   const [keywordsLoading, setKeywordsLoading] = useState(false);
   const [keywordsError, setKeywordsError] = useState<string | null>(null);
-  const [listingCopy, setListingCopy] = useState<ListingCopyResult | null>(null);
   const [listingCopyLoading, setListingCopyLoading] = useState(false);
   const [listingCopyError, setListingCopyError] = useState<string | null>(null);
   const [listingCopyNotice, setListingCopyNotice] = useState<string | null>(null);
@@ -375,7 +413,6 @@ export function ProductProfitForm() {
   const [listingCopyHistorySource, setListingCopyHistorySource] = useState<ListingCopyHistorySource>("local");
   const [listingCopyHistoryLoading, setListingCopyHistoryLoading] = useState(false);
   const [listingCopyHistoryMessage, setListingCopyHistoryMessage] = useState<string | null>(null);
-  const [activeAiTab, setActiveAiTab] = useState<"analysis" | "keywords" | "listing">("analysis");
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [tasksSaveMessage, setTasksSaveMessage] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -402,8 +439,10 @@ export function ProductProfitForm() {
     : localListingCopyHistoryItems;
 
   useEffect(() => {
-    setTemporarySku(makeTemporarySku());
-  }, []);
+    if (!temporarySku || temporarySku === "CB-TEMP") {
+      setTemporarySku(makeTemporarySku());
+    }
+  }, [temporarySku, setTemporarySku]);
 
   useEffect(() => {
     const productName = form.name.trim();
@@ -416,7 +455,7 @@ export function ProductProfitForm() {
     const cachedListingCopy = readCachedListingCopy(productName);
     setListingCopy(cachedListingCopy);
     setListingCopyNotice(cachedListingCopy ? "已恢复当前商品本地文案" : null);
-  }, [form.name]);
+  }, [form.name, setListingCopy]);
 
   useEffect(() => {
     let active = true;
@@ -454,6 +493,10 @@ export function ProductProfitForm() {
       setAiAnalysisError("请先填写商品名称。");
       return;
     }
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setAiAnalysisError("访问密码缺失或已过期，请先在首页输入访问密码。");
+      return;
+    }
 
     setAiAnalysisError(null);
     setAiAnalysisLoading(true);
@@ -465,6 +508,7 @@ export function ProductProfitForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          accessPassword: accessPassword.trim(),
           product: buildProductPayload(form, temporarySku),
           profit: profitResult,
           listingPreview,
@@ -499,7 +543,7 @@ export function ProductProfitForm() {
 
       setAiAnalysisError(getFriendlyAiErrorMessage(payload.error, "AI 分析失败，请稍后重试。"));
     } catch {
-      setAiAnalysisError("网络异常，请检查本地服务或网络。");
+      setAiAnalysisError("AI 请求失败，请稍后重试。");
     } finally {
       setAiAnalysisLoading(false);
     }
@@ -510,6 +554,10 @@ export function ProductProfitForm() {
 
     if (!form.name.trim()) {
       setKeywordsError("请先填写商品名称。");
+      return;
+    }
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setKeywordsError("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
@@ -523,6 +571,7 @@ export function ProductProfitForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          accessPassword: accessPassword.trim(),
           product: buildProductPayload(form, temporarySku),
           profit: profitResult,
           listingPreview,
@@ -558,7 +607,7 @@ export function ProductProfitForm() {
 
       setKeywordsError(getFriendlyAiErrorMessage(payload.error, "关键词生成失败，请稍后重试。"));
     } catch {
-      setKeywordsError("网络异常，请检查本地服务或网络。");
+      setKeywordsError("AI 请求失败，请稍后重试。");
     } finally {
       setKeywordsLoading(false);
     }
@@ -566,6 +615,10 @@ export function ProductProfitForm() {
 
   async function handleGenerateListingCopy() {
     if (listingCopyLoading) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setListingCopyError("访问密码缺失或已过期，请先在首页输入访问密码。");
+      return;
+    }
 
     setListingCopyError(null);
     setListingCopyNotice(null);
@@ -579,6 +632,7 @@ export function ProductProfitForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          accessPassword: accessPassword.trim(),
           product: productPayload,
           profit: profitResult,
           listingPreview,
@@ -641,7 +695,7 @@ export function ProductProfitForm() {
 
       setListingCopyError(payload.error?.message?.trim() || "英文上架文案生成失败，请稍后重试。");
     } catch {
-      setListingCopyError("网络异常，请检查本地服务或网络。");
+      setListingCopyError("AI 请求失败，请稍后重试。");
     } finally {
       setListingCopyLoading(false);
     }
@@ -808,14 +862,36 @@ export function ProductProfitForm() {
               先填基础成本和平台参数。空值会按 0 处理，不会保存到服务器。
             </p>
           </div>
-          <button
-            type="button"
-            onClick={fillExample}
-            className="inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
-          >
-            填入示例
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={fillExample}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-teal-200 bg-teal-50 px-4 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+            >
+              填入示例
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearDraft();
+                setAiAnalysisError(null);
+                setKeywordsError(null);
+                setListingCopyError(null);
+                setListingCopyNotice(null);
+                setTasksSaveMessage(null);
+                setCopyState("idle");
+              }}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:border-red-200 hover:text-red-700"
+            >
+              清空当前内容
+            </button>
+          </div>
         </div>
+        {restored ? (
+          <p className="mb-4 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-700">
+            已恢复上次未完成内容
+          </p>
+        ) : null}
 
         <div className="space-y-6">
           <div>

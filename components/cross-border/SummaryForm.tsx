@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 
@@ -38,6 +39,11 @@ type ApiResponse =
   | { ok: true; data: SummaryData }
   | { ok: false; error: { code: string; message: string } };
 
+type SummaryDraft = {
+  result: SummaryData | null;
+  aggregate: AggregateResult | null;
+};
+
 const verdictClasses: Record<string, string> = {
   "新手可小单测试": "border-emerald-300 bg-emerald-50 text-emerald-800",
   "可做但需控制成本": "border-teal-200 bg-teal-50 text-teal-700",
@@ -71,8 +77,20 @@ const typeLabels: Record<string, string> = {
 export function SummaryForm() {
   const [sharedProduct] = useSharedProduct();
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [result, setResult] = useState<SummaryData | null>(null);
-  const [aggregate, setAggregate] = useState<AggregateResult | null>(null);
+  const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<SummaryDraft>({
+    storageKey: "qx:draft:summary:v1",
+    initialValue: {
+      result: null,
+      aggregate: null,
+    },
+  });
+  const { result, aggregate } = draftValue;
+  const setResult = useCallback((value: SummaryData | null) => {
+    setDraftValue((current) => ({ ...current, result: value }));
+  }, [setDraftValue]);
+  const setAggregate = useCallback((value: AggregateResult | null) => {
+    setDraftValue((current) => ({ ...current, aggregate: value }));
+  }, [setDraftValue]);
   const [loading, setLoading] = useState(false);
   const [loadingAggregate, setLoadingAggregate] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +139,7 @@ export function SummaryForm() {
       });
 
     return () => { cancelled = true; };
-  }, [sharedProduct.productName, accessPassword, isAccessPasswordReady]);
+  }, [sharedProduct.productName, accessPassword, isAccessPasswordReady, setAggregate]);
 
   async function handleSubmit() {
     if (loading) return;
@@ -137,7 +155,7 @@ export function SummaryForm() {
     }
 
     if (!accessPassword.trim()) {
-      setError("请输入访问密码。");
+      setError("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
@@ -188,9 +206,14 @@ export function SummaryForm() {
         return;
       }
 
-      setError(payload.error.message || "小白结论生成失败，请稍后重试。");
+      if (response.status === 401 || response.status === 403) {
+        setError("访问密码不正确，请重新输入。");
+        return;
+      }
+
+      setError(payload.error.message || "AI 请求失败，请稍后重试。");
     } catch {
-      setError("网络异常，请检查本地服务或网络。");
+      setError("AI 请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -247,6 +270,12 @@ export function SummaryForm() {
     ? (["sourcing", "risk", "product", "viral", "material"] as const).filter((k) => aggregate[k])
     : [];
 
+  function clearCurrentDraft() {
+    clearDraft();
+    setError(null);
+    setTasksSaveMessage(null);
+  }
+
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
       <div className="workspace-page workspace-layout">
@@ -271,6 +300,9 @@ export function SummaryForm() {
               <p className="mt-1 text-sm leading-6 text-slate-500">
                 系统自动从你已经完成的分析中拉取结果。
               </p>
+              {restored ? (
+                <p className="mt-2 text-xs font-semibold text-teal-700">已恢复上次未完成内容</p>
+              ) : null}
             </div>
 
             {!sharedProduct.productName ? (
@@ -359,6 +391,13 @@ export function SummaryForm() {
                     className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {loading ? "AI 分析中..." : hasResult ? "重新生成" : "生成小白结论"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearCurrentDraft}
+                    className="glass-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                  >
+                    清空当前内容
                   </button>
                 </div>
               </div>

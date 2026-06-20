@@ -18,8 +18,9 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { platformLabels, platformOptions } from "@/lib/types";
 import type { Platform, ViralAgentResult, ViralLevel, ViralLevelReason } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
-import { EXAMPLE_VIRAL, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
+import { EXAMPLE_VIRAL } from "@/lib/examples";
 
 const positiveWords = ["viral", "review", "comment", "tiktok", "amazon", "pain point", "hack", "comparison", "before after", "link in bio", "kitchen gadget", "storage", "organization", "cleaning", "portable", "must have"];
 const riskWords = ["brand", "trademark", "patent", "medical", "FDA", "children", "electronics", "fragile", "liquid", "IP infringement", "licensed", "copyright"];
@@ -60,6 +61,15 @@ type ApiResponse =
 type SaveResponse =
   | { ok: true; data: { id: string } }
   | { ok: false; error: { code: string; message: string } };
+
+type ViralDraft = {
+  title: string;
+  productUrl: string;
+  platform: AgentPlatform;
+  materialText: string;
+  result: DisplayResult | null;
+  savedRecordId: string;
+};
 
 function textLengthScore(text: string) {
   if (text.length > 220) return 22;
@@ -220,7 +230,7 @@ function normalizeResponseData(data: ViralAiData): ViralAiData {
 }
 
 function mapApiError(code: string, message: string) {
-  if (code === "unauthorized") return "访问密码错误或缺失，请检查后重试。";
+  if (code === "unauthorized") return "访问密码不正确，请重新输入。";
   if (code === "missing_access_password") return "服务端访问密码未配置，请先检查服务端设置。";
   if (code === "missing_api_key" || code === "missing_model" || code === "missing_base_url") {
     return "AI 服务未配置：请先检查服务端 AI 环境变量。";
@@ -351,16 +361,28 @@ function SimpleList({ title, items }: { title: string; items: string[] }) {
 
 export function ViralMockAgent() {
   const [sharedProduct, updateShared] = useSharedProduct();
-  const [title, setTitle] = useState(sharedProduct.productName);
-  const [productUrl, setProductUrl] = useState("");
-  const [platform, setPlatform] = useState<AgentPlatform>(
-    (sharedProduct.targetPlatform && sharedProduct.targetPlatform !== "shopify")
+  const initialDraft: ViralDraft = {
+    title: sharedProduct.productName,
+    productUrl: "",
+    platform: (sharedProduct.targetPlatform && sharedProduct.targetPlatform !== "shopify")
       ? sharedProduct.targetPlatform as AgentPlatform
-      : "tiktok"
-  );
-  const [materialText, setMaterialText] = useState(sharedProduct.description);
+      : "tiktok",
+    materialText: sharedProduct.description,
+    result: null,
+    savedRecordId: "",
+  };
+  const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<ViralDraft>({
+    storageKey: "qx:draft:viral:v1",
+    initialValue: initialDraft,
+  });
+  const { title, productUrl, platform, materialText, result, savedRecordId } = draftValue;
+  const setTitle = (value: string) => setDraftValue((current) => ({ ...current, title: value }));
+  const setProductUrl = (value: string) => setDraftValue((current) => ({ ...current, productUrl: value }));
+  const setPlatform = (value: AgentPlatform) => setDraftValue((current) => ({ ...current, platform: value }));
+  const setMaterialText = (value: string) => setDraftValue((current) => ({ ...current, materialText: value }));
+  const setResult = (value: DisplayResult | null) => setDraftValue((current) => ({ ...current, result: value }));
+  const setSavedRecordId = (value: string) => setDraftValue((current) => ({ ...current, savedRecordId: value }));
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [result, setResult] = useState<DisplayResult | null>(null);
   const [notice, setNotice] = useState("模拟拆解不消耗额度；AI 深度拆解会请求后端并消耗 AI 额度。");
   const [fieldError, setFieldError] = useState("");
   const [accessPasswordError, setAccessPasswordError] = useState("");
@@ -387,9 +409,8 @@ export function ViralMockAgent() {
     setProductUrl(EXAMPLE_VIRAL.productUrl);
     setPlatform(EXAMPLE_VIRAL.platform as AgentPlatform);
     setMaterialText(EXAMPLE_VIRAL.materialText);
-    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+    setNotice("示例已填入，访问密码仍沿用全站保存的密码。");
   }
-  const [savedRecordId, setSavedRecordId] = useState("");
 
   const lengthText = useMemo(() => materialText.trim().length + "/8000", [materialText]);
 
@@ -420,8 +441,8 @@ export function ViralMockAgent() {
       return;
     }
     if (!accessPassword.trim()) {
-      setAccessPasswordError("请先输入访问密码。");
-      setNotice("AI 深度拆解需要访问密码，未填写时不会请求后端。");
+      setAccessPasswordError("访问密码缺失或已过期，请先在首页输入访问密码。");
+      setNotice("AI 深度拆解需要访问密码，缺失或过期时不会请求后端。");
       return;
     }
 
@@ -451,7 +472,7 @@ export function ViralMockAgent() {
       if (!response.ok || !data.ok) {
         const error = data.ok ? { code: "provider_error", message: "AI 返回失败。" } : data.error;
         const message = mapApiError(error.code, error.message);
-        setNotice(message);
+        setNotice(response.status === 401 || response.status === 403 ? "访问密码不正确，请重新输入。" : message);
         setResult(null);
         return;
       }
@@ -467,7 +488,7 @@ export function ViralMockAgent() {
       setSavedRecordId("");
     } catch (error) {
       const isAbort = error instanceof DOMException && error.name === "AbortError";
-      setNotice(isAbort ? "请求超时：AI 服务响应太慢，请稍后重试。" : "AI 返回失败：请稍后重试。");
+      setNotice(isAbort ? "请求超时：AI 服务响应太慢，请稍后重试。" : "AI 请求失败，请稍后重试。");
       setResult(null);
     } finally {
       window.clearTimeout(timer);
@@ -587,6 +608,11 @@ export function ViralMockAgent() {
                 >
                   填入示例
                 </button>
+                {restored ? (
+                  <p className="mt-3 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-700">
+                    已恢复上次未完成内容
+                  </p>
+                ) : null}
 
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <label className="block">
@@ -686,6 +712,19 @@ export function ViralMockAgent() {
                     AI 深度拆解
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearDraft();
+                    setAccessPasswordError("");
+                    setFieldError("");
+                    setNotice("当前爆款拆解内容已清空，访问密码仍保留。");
+                    setCopyState("idle");
+                  }}
+                  className="linear-button mt-3 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold hover:text-red-700"
+                >
+                  清空当前内容
+                </button>
 
                 <div className="mt-4 flex gap-2 surface-card-soft rounded-[22px] px-4 py-3 text-sm leading-6 text-teal-800">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />

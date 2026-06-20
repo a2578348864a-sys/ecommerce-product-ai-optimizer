@@ -5,8 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
-import { EXAMPLE_SOURCING, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
+import { EXAMPLE_SOURCING } from "@/lib/examples";
 
 type SourcingPriceBand = {
   min: string;
@@ -50,6 +51,15 @@ type SaveTaskResponse =
   | { ok: true; data: { id: string } }
   | { ok: false; error: { code?: string; message?: string } };
 
+type SourcingDraft = {
+  productName: string;
+  category: string;
+  targetPrice: string;
+  targetPlatform: string;
+  description: string;
+  result: SourcingData | null;
+};
+
 const feasibilityLabels: Record<string, string> = { high: "好找货源", medium: "一般", low: "较难找" };
 const feasibilityClasses: Record<string, string> = {
   high: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -75,13 +85,28 @@ function isApiResponse(value: unknown): value is ApiResponse {
 
 export function SourcingForm() {
   const [sharedProduct, updateShared] = useSharedProduct();
-  const [productName, setProductName] = useState(sharedProduct.productName);
-  const [category, setCategory] = useState(sharedProduct.category);
-  const [targetPrice, setTargetPrice] = useState(sharedProduct.targetPrice);
-  const [targetPlatform, setTargetPlatform] = useState(sharedProduct.targetPlatform);
-  const [description, setDescription] = useState(sharedProduct.description);
+  const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<SourcingDraft>({
+    storageKey: "qx:draft:sourcing:v1",
+    initialValue: {
+      productName: sharedProduct.productName,
+      category: sharedProduct.category,
+      targetPrice: sharedProduct.targetPrice,
+      targetPlatform: sharedProduct.targetPlatform,
+      description: sharedProduct.description,
+      result: null,
+    },
+  });
+  const { productName, category, targetPrice, targetPlatform, description, result } = draftValue;
+  const updateDraft = (patch: Partial<SourcingDraft>) => {
+    setDraftValue((current) => ({ ...current, ...patch }));
+  };
+  const setProductName = (value: string) => updateDraft({ productName: value });
+  const setCategory = (value: string) => updateDraft({ category: value });
+  const setTargetPrice = (value: string) => updateDraft({ targetPrice: value });
+  const setTargetPlatform = (value: string) => updateDraft({ targetPlatform: value });
+  const setDescription = (value: string) => updateDraft({ description: value });
+  const setResult = (value: SourcingData | null) => updateDraft({ result: value });
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [result, setResult] = useState<SourcingData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingTask, setSavingTask] = useState(false);
@@ -108,14 +133,16 @@ export function SourcingForm() {
     setTargetPrice(EXAMPLE_SOURCING.targetPrice);
     setTargetPlatform(EXAMPLE_SOURCING.targetPlatform);
     setDescription(EXAMPLE_SOURCING.description);
-    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+    setSaveMessage(null);
+    setSaveError(null);
+    setError(null);
   }
 
   async function handleSubmit() {
     if (loading) return;
     if (!isAccessPasswordReady) { setError("正在读取访问状态，请稍后再试。"); return; }
     if (!productName.trim()) { setError("请先填写商品名称。"); return; }
-    if (!accessPassword.trim()) { setError("请输入访问密码。"); return; }
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) { setError("访问密码缺失或已过期，请先在首页输入访问密码。"); return; }
 
     setError(null);
     setLoading(true);
@@ -143,9 +170,9 @@ export function SourcingForm() {
         setSaveError(null);
         return;
       }
-      setError(payload.error.message || "货源判断失败，请稍后重试。");
+      setError(response.status === 401 || response.status === 403 ? "访问密码不正确，请重新输入。" : payload.error.message || "AI 请求失败，请稍后重试。");
     } catch {
-      setError("网络异常，请检查本地服务或网络。");
+      setError("AI 请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -232,6 +259,11 @@ export function SourcingForm() {
                 填入示例
               </button>
             </div>
+            {restored ? (
+              <p className="mb-4 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-700">
+                已恢复上次未完成内容
+              </p>
+            ) : null}
 
             <div className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -284,6 +316,18 @@ export function SourcingForm() {
               <button type="button" onClick={handleSubmit} disabled={loading}
                 className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60">
                 {loading ? "分析中..." : result ? "重新判断" : "开始货源判断"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  setError(null);
+                  setSaveMessage(null);
+                  setSaveError(null);
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:text-red-700"
+              >
+                清空当前内容
               </button>
             </div>
           </section>

@@ -1,15 +1,7 @@
 import React from "react";
 import { renderToString } from "react-dom/server";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-/**
- * accessPassword client 工具测试
- *
- * 由于 Node 环境无 localStorage，使用 mock 模拟浏览器行为。
- * 不引入 jsdom 依赖。
- */
-
-// Mock localStorage
 const store = new Map<string, string>();
 
 const mockLocalStorage = {
@@ -19,101 +11,95 @@ const mockLocalStorage = {
   clear: () => { store.clear(); },
 };
 
-// 在模块加载前 mock global 对象（代码内部使用 window.localStorage）
 vi.stubGlobal("window", { localStorage: mockLocalStorage });
 vi.stubGlobal("localStorage", mockLocalStorage);
 
-// 延迟导入以在 mock 之后加载
 const accessPassword = await import("@/lib/client/accessPassword");
 
 beforeEach(() => {
   store.clear();
+  vi.stubGlobal("window", { localStorage: mockLocalStorage });
+  vi.stubGlobal("localStorage", mockLocalStorage);
 });
 
 describe("accessPassword client tools", () => {
-  // ── getStoredAccessPassword ──
-
-  it("getStoredAccessPassword: 未保存时返回空字符串", () => {
-    expect(accessPassword.getStoredAccessPassword()).toBe("");
+  it("uses the unified v1 storage key", () => {
+    expect(accessPassword.ACCESS_PASSWORD_STORAGE_KEY).toBe("qx:access-password:v1");
   });
 
-  it("getStoredAccessPassword: 保存后能读取", () => {
-    accessPassword.setStoredAccessPassword("test-password-123");
-    expect(accessPassword.getStoredAccessPassword()).toBe("test-password-123");
+  it("saveAccessPassword stores the v1 payload shape", () => {
+    accessPassword.saveAccessPassword("test-password-123");
+
+    const raw = store.get("qx:access-password:v1");
+    expect(raw).toBeTruthy();
+
+    const parsed = JSON.parse(raw || "{}");
+    expect(parsed.version).toBe(1);
+    expect(parsed.value).toBe("test-password-123");
+    expect(typeof parsed.updatedAt).toBe("number");
+    expect(typeof parsed.expiresAt).toBe("number");
+    expect(parsed.expiresAt).toBeGreaterThan(parsed.updatedAt);
   });
 
-  it("getStoredAccessPassword: 过期后返回空字符串", () => {
-    // 保存一个已过期的密码（TTL=-1ms）
-    accessPassword.setStoredAccessPassword("old-password", -1);
-    const result = accessPassword.getStoredAccessPassword();
-    expect(result).toBe("");
-  });
-
-  // ── isAccessPasswordExpired ──
-
-  it("isAccessPasswordExpired: 未保存时返回 true", () => {
-    expect(accessPassword.isAccessPasswordExpired()).toBe(true);
-  });
-
-  it("isAccessPasswordExpired: 有效期内返回 false", () => {
-    // 默认 TTL 12 小时
-    accessPassword.setStoredAccessPassword("valid-pwd");
+  it("getValidAccessPassword returns a saved password before TTL expires", () => {
+    accessPassword.saveAccessPassword("valid-pwd");
+    expect(accessPassword.getValidAccessPassword()).toBe("valid-pwd");
     expect(accessPassword.isAccessPasswordExpired()).toBe(false);
   });
 
-  it("isAccessPasswordExpired: 已过期返回 true", () => {
-    accessPassword.setStoredAccessPassword("expired-pwd", -1);
+  it("getValidAccessPassword clears and rejects an expired password", () => {
+    accessPassword.saveAccessPassword("expired-pwd", -1);
+
+    expect(accessPassword.getValidAccessPassword()).toBe("");
+    expect(store.has("qx:access-password:v1")).toBe(false);
     expect(accessPassword.isAccessPasswordExpired()).toBe(true);
   });
 
-  // ── clearStoredAccessPassword ──
+  it("migrates valid legacy qingxuan-pwd keys to the unified key", () => {
+    store.set("qingxuan-pwd", "legacy-pwd");
+    store.set("qingxuan-pwd-expires", String(Date.now() + 60_000));
 
-  it("clearStoredAccessPassword: 清除后返回空", () => {
-    accessPassword.setStoredAccessPassword("to-be-cleared");
-    expect(accessPassword.getStoredAccessPassword()).toBe("to-be-cleared");
-
-    accessPassword.clearStoredAccessPassword();
-    expect(accessPassword.getStoredAccessPassword()).toBe("");
-    expect(accessPassword.isAccessPasswordExpired()).toBe(true);
+    expect(accessPassword.getValidAccessPassword()).toBe("legacy-pwd");
+    expect(store.has("qx:access-password:v1")).toBe(true);
+    expect(store.has("qingxuan-pwd")).toBe(false);
+    expect(store.has("qingxuan-pwd-expires")).toBe(false);
   });
 
-  it("clearStoredAccessPassword: 清除空存储不报错", () => {
-    expect(() => accessPassword.clearStoredAccessPassword()).not.toThrow();
+  it("clears expired legacy keys", () => {
+    store.set("qingxuan-pwd", "legacy-pwd");
+    store.set("qingxuan-pwd-expires", String(Date.now() - 60_000));
+
+    expect(accessPassword.getValidAccessPassword()).toBe("");
+    expect(store.has("qx:access-password:v1")).toBe(false);
+    expect(store.has("qingxuan-pwd")).toBe(false);
+    expect(store.has("qingxuan-pwd-expires")).toBe(false);
   });
 
-  // ── 无效存储内容不崩溃 ──
+  it("clears damaged JSON without throwing", () => {
+    store.set("qx:access-password:v1", "{not-json");
 
-  it("getStoredAccessPassword: 过期的过期时间值为非数字时不崩溃", () => {
-    // 模拟写入无效的过期时间
-    accessPassword.setStoredAccessPassword("test", 12 * 60 * 60 * 1000);
-    // 直接 mock 修改 expiresAt 为非法值
-    store.set("qingxuan-pwd-expires", "not-a-number");
-    const result = accessPassword.getStoredAccessPassword();
-    // 应该能正常返回（不过期，向后兼容）
-    expect(typeof result).toBe("string");
+    expect(() => accessPassword.getValidAccessPassword()).not.toThrow();
+    expect(accessPassword.getValidAccessPassword()).toBe("");
+    expect(store.has("qx:access-password:v1")).toBe(false);
   });
 
-  it("getStoredAccessPassword: 空字符串密码正常返回", () => {
-    accessPassword.setStoredAccessPassword("");
-    const result = accessPassword.getStoredAccessPassword();
-    expect(result).toBe("");
+  it("empty password is not stored as valid", () => {
+    accessPassword.saveAccessPassword("   ");
+
+    expect(accessPassword.getValidAccessPassword()).toBe("");
+    expect(accessPassword.canRequestWithAccessPassword(true, "   ")).toBe(false);
   });
 
-  // ── setStoredAccessPassword 多次写入 ──
+  it("SSR safety: storage helpers do not throw when window is unavailable", () => {
+    vi.stubGlobal("window", undefined);
 
-  it("setStoredAccessPassword: 多次写入只保留最后一次", () => {
-    accessPassword.setStoredAccessPassword("first");
-    accessPassword.setStoredAccessPassword("second");
-    expect(accessPassword.getStoredAccessPassword()).toBe("second");
+    expect(() => accessPassword.getValidAccessPassword()).not.toThrow();
+    expect(() => accessPassword.saveAccessPassword("pwd")).not.toThrow();
+    expect(() => accessPassword.clearAccessPassword()).not.toThrow();
+    expect(accessPassword.getValidAccessPassword()).toBe("");
   });
 
-  // ── ACCESS_PASSWORD_STORAGE_KEY 常量 ──
-
-  it("ACCESS_PASSWORD_STORAGE_KEY 为 qingxuan-pwd", () => {
-    expect(accessPassword.ACCESS_PASSWORD_STORAGE_KEY).toBe("qingxuan-pwd");
-  });
-
-  it("useAccessPassword: initial render reports hydrated=false", () => {
+  it("useAccessPassword keeps old array destructuring compatible on initial render", () => {
     let observed: unknown;
 
     function Probe() {
@@ -125,18 +111,14 @@ describe("accessPassword client tools", () => {
 
     expect(Array.isArray(observed)).toBe(true);
     expect((observed as unknown[])[0]).toBe("");
+    expect(typeof (observed as unknown[])[1]).toBe("function");
     expect((observed as unknown[])[2]).toBe(false);
+    expect(typeof (observed as unknown[])[3]).toBe("function");
   });
 
-  it("canRequestWithAccessPassword: blocks requests until hydrated", () => {
+  it("canRequestWithAccessPassword blocks until hydrated and allows non-empty passwords", () => {
     expect(accessPassword.canRequestWithAccessPassword(false, "saved-password")).toBe(false);
-  });
-
-  it("canRequestWithAccessPassword: blocks requests after hydrate when password is empty", () => {
     expect(accessPassword.canRequestWithAccessPassword(true, "   ")).toBe(false);
-  });
-
-  it("canRequestWithAccessPassword: allows requests after hydrate when password exists", () => {
     expect(accessPassword.canRequestWithAccessPassword(true, "saved-password")).toBe(true);
   });
 });

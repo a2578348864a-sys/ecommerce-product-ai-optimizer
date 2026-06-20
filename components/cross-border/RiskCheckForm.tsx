@@ -5,8 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { CROSS_BORDER_PLATFORMS } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
-import { EXAMPLE_RISK, EXAMPLE_ACCESS_PASSWORD } from "@/lib/examples";
+import { EXAMPLE_RISK } from "@/lib/examples";
 
 type RiskLevel = "green" | "yellow" | "red";
 
@@ -33,6 +34,15 @@ type RiskCheckApiResponse =
 type SaveTaskResponse =
   | { ok: true; data: { id: string } }
   | { ok: false; error: { code?: string; message?: string } };
+
+type RiskDraft = {
+  productName: string;
+  category: string;
+  claims: string;
+  targetPlatform: string;
+  description: string;
+  result: RiskCheckData | null;
+};
 
 const levelLabels: Record<RiskLevel, string> = {
   green: "低风险",
@@ -70,13 +80,28 @@ function isRiskCheckApiResponse(value: unknown): value is RiskCheckApiResponse {
 
 export function RiskCheckForm() {
   const [sharedProduct, updateShared] = useSharedProduct();
-  const [productName, setProductName] = useState(sharedProduct.productName);
-  const [category, setCategory] = useState(sharedProduct.category);
-  const [claims, setClaims] = useState(sharedProduct.claims);
-  const [targetPlatform, setTargetPlatform] = useState(sharedProduct.targetPlatform);
-  const [description, setDescription] = useState(sharedProduct.description);
+  const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<RiskDraft>({
+    storageKey: "qx:draft:risk:v1",
+    initialValue: {
+      productName: sharedProduct.productName,
+      category: sharedProduct.category,
+      claims: sharedProduct.claims,
+      targetPlatform: sharedProduct.targetPlatform,
+      description: sharedProduct.description,
+      result: null,
+    },
+  });
+  const { productName, category, claims, targetPlatform, description, result } = draftValue;
+  const updateDraft = (patch: Partial<RiskDraft>) => {
+    setDraftValue((current) => ({ ...current, ...patch }));
+  };
+  const setProductName = (value: string) => updateDraft({ productName: value });
+  const setCategory = (value: string) => updateDraft({ category: value });
+  const setClaims = (value: string) => updateDraft({ claims: value });
+  const setTargetPlatform = (value: string) => updateDraft({ targetPlatform: value });
+  const setDescription = (value: string) => updateDraft({ description: value });
+  const setResult = (value: RiskCheckData | null) => updateDraft({ result: value });
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [result, setResult] = useState<RiskCheckData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingTask, setSavingTask] = useState(false);
@@ -102,7 +127,9 @@ export function RiskCheckForm() {
     setClaims(EXAMPLE_RISK.claims);
     setTargetPlatform(EXAMPLE_RISK.targetPlatform);
     setDescription(EXAMPLE_RISK.description);
-    setAccessPassword(EXAMPLE_ACCESS_PASSWORD);
+    setSaveMessage(null);
+    setSaveError(null);
+    setError(null);
   }
 
   async function handleSubmit() {
@@ -117,8 +144,8 @@ export function RiskCheckForm() {
       return;
     }
 
-    if (!accessPassword.trim()) {
-      setError("请输入访问密码。");
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setError("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
@@ -159,9 +186,9 @@ export function RiskCheckForm() {
         return;
       }
 
-      setError(payload.error.message || "风险排查失败，请稍后重试。");
+      setError(response.status === 401 || response.status === 403 ? "访问密码不正确，请重新输入。" : payload.error.message || "AI 请求失败，请稍后重试。");
     } catch {
-      setError("网络异常，请检查本地服务或网络。");
+      setError("AI 请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -250,6 +277,11 @@ export function RiskCheckForm() {
                 填入示例
               </button>
             </div>
+            {restored ? (
+              <p className="mb-4 rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-700">
+                已恢复上次未完成内容
+              </p>
+            ) : null}
 
             <div className="space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -338,6 +370,18 @@ export function RiskCheckForm() {
                 className="glass-button-primary inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? "排查中..." : hasResult ? "重新排查" : "开始风险排查"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  setError(null);
+                  setSaveMessage(null);
+                  setSaveError(null);
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:border-red-200 hover:text-red-700"
+              >
+                清空当前内容
               </button>
             </div>
           </section>
