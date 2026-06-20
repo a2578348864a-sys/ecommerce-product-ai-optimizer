@@ -1,6 +1,6 @@
 # V2 工作流沙盒 — 规划文档
 
-> 状态：🟡 Phase 1A 交互原型收敛完成，待进入 Phase 1B。
+> 状态：🟡 Phase 1B 只读数据接入完成，待进入 Phase 1C。
 > 分支：`feature/v2-workflow-sandbox`
 > 基于：`main` `8c66f46563f92e3044e2a6d5d034814033cfb3d4`
 
@@ -138,11 +138,14 @@
 - 顶部文案明确"不调 AI、不自动操作"
 - 不接 API、不接 AI、不写 DB
 
-### Phase 1B 🔜 下一步 — 读取已有数据，不调用新 AI
-- 接 `/api/opportunities`（GET）读取已有排行榜记录作为候选品列表
-- 用户选中候选品后，从已有任务记录中读取该商品的 sourcing/risk/summary 摘要
-- 不触发新 AI 调用，只展示历史分析结果
-- 仍为前端改动，不新增 API
+### Phase 1B ✅ 已完成 — 只读已有 opportunities 任务记录
+- 新增 `components/cross-border/V2WorkflowLabClient.tsx`（客户端组件）
+- 使用 `useAccessPassword()` + `GET /api/tasks?type=opportunities&limit=1` 读取最新记录
+- 左侧候选品列表来自真实 tasks 数据，替代硬编码 mock
+- 右侧 4 步工作流根据选中候选品的已有 sourcing/risk/summary 摘要填充
+- 处理了 6 种状态：loading / no_password / password_expired / unauthorized / error / empty
+- 不调用新 AI，不保存任务，不新增 API
+- checkbox 仍为本地演示状态
 
 ### Phase 1C — 单商品串行调用（用户确认后）
 - 用户在 Phase 1B 基础上点击「重新分析」
@@ -192,7 +195,7 @@
 
 - 分支：`feature/v2-workflow-sandbox`
 - 基于：`main` `8c66f46`
-- 阶段：Phase 1A 交互原型收敛完成
+- 阶段：Phase 1B 只读数据接入完成
 - 不调用真实 AI
 - 不部署
 - 不改数据库
