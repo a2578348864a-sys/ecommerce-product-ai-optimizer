@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ type ViralTaskItem = {
   createdAt: string;
   updatedAt: string;
   type: string;
+  decisionStatus: DecisionStatus;
   title: string | null;
   platform: string;
   productUrl: string | null;
@@ -29,6 +31,7 @@ type ViralTaskItem = {
 type ApiResponse =
   | { ok: true; data: ViralTaskItem }
   | { ok: true; data: { id: string } }
+  | { ok: true; data: { id: string; decisionStatus: DecisionStatus } }
   | { ok: false; error: ApiError };
 
 type RouteContext = {
@@ -54,6 +57,7 @@ function toTaskItem(record: {
   createdAt: Date;
   updatedAt: Date;
   type: string;
+  decisionStatus?: string | null;
   title: string | null;
   platform: string;
   productUrl: string | null;
@@ -69,6 +73,7 @@ function toTaskItem(record: {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     type: record.type,
+    decisionStatus: normalizeDecisionStatus(record.decisionStatus),
     title: record.title,
     platform: record.platform,
     productUrl: record.productUrl,
@@ -93,6 +98,13 @@ function notFoundResponse() {
     ok: false,
     error: { code: "not_found", message: "任务记录不存在或已删除。" },
   }, 404);
+}
+
+function invalidDecisionStatusResponse() {
+  return jsonResponse({
+    ok: false,
+    error: { code: "invalid_decision_status", message: "人工状态只能是待判断、可继续、需补资料或已淘汰。" },
+  }, 400);
 }
 
 function databaseError() {
@@ -123,6 +135,10 @@ function isDatabaseError(error: unknown) {
     error.message.includes("database") ||
     error.message.includes("no such table")
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function getId(context: RouteContext) {
@@ -168,6 +184,52 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     return jsonResponse({
       ok: true,
       data: { id },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return notFoundResponse();
+    }
+
+    return isDatabaseError(error) ? databaseError() : serverError();
+  }
+}
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({
+      ok: false,
+      error: { code: "invalid_json", message: "请求体不是合法 JSON。" },
+    }, 400);
+  }
+
+  const bodyRecord = isRecord(body) ? body : {};
+
+  const authError = checkAccessPassword(request, bodyRecord);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
+  const id = await getId(context);
+  if (!id) return invalidIdResponse();
+
+  const decisionStatus = bodyRecord.decisionStatus;
+
+  if (!isDecisionStatus(decisionStatus)) return invalidDecisionStatusResponse();
+
+  try {
+    const record = await prisma.viralAnalysisRecord.update({
+      where: { id },
+      data: { decisionStatus },
+      select: { id: true, decisionStatus: true },
+    });
+
+    return jsonResponse({
+      ok: true,
+      data: {
+        id: record.id,
+        decisionStatus: normalizeDecisionStatus(record.decisionStatus),
+      },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {

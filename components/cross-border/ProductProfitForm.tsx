@@ -6,6 +6,7 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
+import { ConfidenceConfirmationCard } from "@/components/ConfidenceConfirmationCard";
 import { AiAnalysisPreview } from "@/components/cross-border/AiAnalysisPreview";
 import { KeywordPreview } from "@/components/cross-border/KeywordPreview";
 import { ListingCopyPreview } from "@/components/cross-border/ListingCopyPreview";
@@ -326,6 +327,18 @@ function getFriendlyAiErrorMessage(error: ApiErrorPayload | undefined, fallback:
   }
 }
 
+function getProductConfidence(
+  aiAnalysis: AiAnalysisResult | null,
+  profitWarnings: string[],
+  productName: string,
+) {
+  if (!productName.trim()) return "低";
+  if (!aiAnalysis) return profitWarnings.length ? "低" : "中";
+  if (aiAnalysis.score >= 75 && profitWarnings.length === 0) return "高";
+  if (aiAnalysis.score >= 45) return "中";
+  return "低";
+}
+
 export function ProductProfitForm() {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const [sharedProduct, updateShared] = useSharedProduct();
@@ -437,6 +450,7 @@ export function ProductProfitForm() {
   const listingCopyHistoryItems = listingCopyHistorySource === "database"
     ? databaseListingCopyHistoryItems
     : localListingCopyHistoryItems;
+  const confidenceLabel = getProductConfidence(aiAnalysis, profitResult.warnings, form.name);
 
   useEffect(() => {
     if (!temporarySku || temporarySku === "CB-TEMP") {
@@ -1056,6 +1070,20 @@ export function ProductProfitForm() {
       form={form}
       listingData={listingPreview}
       profitResult={profitResult}
+    />
+
+    <ConfidenceConfirmationCard
+      confidence={confidenceLabel}
+      assumptions={[
+        "采购价、售价、物流、广告成本可能为估算。",
+        aiAnalysis ? "AI 选品分析已生成，但仍基于当前输入信息判断。" : "当前主要基于表单和利润公式，尚未生成 AI 选品分析。",
+        "Listing 草稿、关键词和平台规则需要人工复查。",
+      ]}
+      confirmations={[
+        "是否涉及认证、侵权、儿童用品、食品接触、带电、带磁。",
+        "供应商资质、真实报价、起订量和物流时效。",
+        "目标平台最新规则、禁售词和可用 listing 表达。",
+      ]}
     />
 
     {/* ===== Layer 3: Full-width AI 辅助分析与生成 Tabs ===== */}

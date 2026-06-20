@@ -19,6 +19,7 @@ const mockPrisma = {
       createdAt: new Date("2025-01-01"),
       updatedAt: new Date("2025-01-01"),
       type: "viral",
+      decisionStatus: "pending",
       title: "测试商品",
       platform: "tiktok",
       productUrl: null,
@@ -43,6 +44,7 @@ vi.mock("@/lib/tasks/normalizeTaskRecord", () => ({
     createdAt: (record.createdAt instanceof Date ? record.createdAt.toISOString() : "2025-01-01T00:00:00.000Z"),
     updatedAt: (record.updatedAt instanceof Date ? record.updatedAt.toISOString() : "2025-01-01T00:00:00.000Z"),
     type: record.type ?? "viral",
+    decisionStatus: record.decisionStatus ?? "pending",
     title: record.title ?? "测试",
     platform: record.platform ?? "manual",
     productUrl: record.productUrl ?? null,
@@ -135,6 +137,20 @@ describe("GET /api/tasks", () => {
     expect(body.ok).toBe(true);
     expect(body.data).toBeDefined();
     expect(mockPrisma.viralAnalysisRecord.findMany).toHaveBeenCalled();
+  });
+
+  it("人工状态筛选 → 带入 decisionStatus where 条件", async () => {
+    const request = createRequest({
+      url: "http://localhost:3000/api/tasks?decisionStatus=need_info",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    });
+    const response = await GET(request);
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(mockPrisma.viralAnalysisRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ decisionStatus: "need_info" }),
+    }));
   });
 
   it("服务端未配置密码 → 返回 500", async () => {

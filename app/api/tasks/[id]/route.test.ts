@@ -15,6 +15,7 @@ const mockRecord = {
   createdAt: new Date("2025-01-01"),
   updatedAt: new Date("2025-01-01"),
   type: "viral",
+  decisionStatus: "pending",
   title: "测试商品",
   platform: "tiktok",
   productUrl: null,
@@ -29,6 +30,7 @@ const mockRecord = {
 const mockPrisma = {
   viralAnalysisRecord: {
     findFirst: vi.fn().mockResolvedValue(mockRecord),
+    update: vi.fn().mockResolvedValue({ id: "task-001", decisionStatus: "continue" }),
     delete: vi.fn().mockResolvedValue(mockRecord),
   },
 };
@@ -50,6 +52,7 @@ vi.mock("@/lib/server/db", () => ({
 }));
 
 let GET: any;
+let PATCH: any;
 let DELETE: any;
 
 beforeEach(async () => {
@@ -58,9 +61,11 @@ beforeEach(async () => {
   vi.stubEnv("NODE_ENV", "test");
   vi.clearAllMocks();
   mockPrisma.viralAnalysisRecord.findFirst.mockResolvedValue(mockRecord);
+  mockPrisma.viralAnalysisRecord.update.mockResolvedValue({ id: "task-001", decisionStatus: "continue" });
   mockPrisma.viralAnalysisRecord.delete.mockResolvedValue(mockRecord);
   const mod = await import("./route");
   GET = mod.GET;
+  PATCH = mod.PATCH;
   DELETE = mod.DELETE;
 });
 
@@ -72,6 +77,7 @@ function createRequest(params: {
   url?: string;
   headers?: Record<string, string>;
   method?: string;
+  body?: unknown;
 }) {
   const urlStr = params.url ?? "http://localhost:3000/api/tasks/task-001";
   const url = new URL(urlStr);
@@ -82,7 +88,7 @@ function createRequest(params: {
     url: urlStr,
     nextUrl: url,
     headers,
-    json: async () => ({}),
+    json: async () => params.body ?? {},
   };
 }
 
@@ -203,5 +209,47 @@ describe("DELETE /api/tasks/[id]", () => {
     const { status, body } = await getJsonStatus(response);
     expect(status).toBe(500);
     expect(body.error).toContain("ACCESS_PASSWORD");
+  });
+});
+
+describe("PATCH /api/tasks/[id]", () => {
+  it("无密码 → 返回 401", async () => {
+    const request = createRequest({
+      method: "PATCH",
+      body: { decisionStatus: "continue" },
+    });
+    const response = await PATCH(request, createContext("task-001"));
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(401);
+    expect(body.error).toContain("访问密码错误");
+  });
+
+  it("正确密码 → 更新人工状态", async () => {
+    const request = createRequest({
+      method: "PATCH",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+      body: { decisionStatus: "continue" },
+    });
+    const response = await PATCH(request, createContext("task-001"));
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.data.decisionStatus).toBe("continue");
+    expect(mockPrisma.viralAnalysisRecord.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "task-001" },
+      data: { decisionStatus: "continue" },
+    }));
+  });
+
+  it("非法人工状态 → 返回 400", async () => {
+    const request = createRequest({
+      method: "PATCH",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+      body: { decisionStatus: "done" },
+    });
+    const response = await PATCH(request, createContext("task-001"));
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(400);
+    expect(body.error.code).toBe("invalid_decision_status");
   });
 });

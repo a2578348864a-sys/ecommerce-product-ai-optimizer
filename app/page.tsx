@@ -219,6 +219,45 @@ const displayAgents = [
   },
 ];
 
+const beginnerGuideSteps = [
+  { step: "Step 1", title: "输入商品或素材", description: "先粘贴商品文字、链接说明或素材信息。", href: "/materials" },
+  { step: "Step 2", title: "货源判断", description: "判断是否容易找到稳定供应商和可替代货源。", href: "/sourcing" },
+  { step: "Step 3", title: "风险排查", description: "先排除侵权、认证、儿童、食品接触、带电带磁等高风险。", href: "/risk" },
+  { step: "Step 4", title: "新品体检 / Listing", description: "测算利润、整理关键词和 listing 草稿。", href: "/products/new" },
+  { step: "Step 5", title: "小白汇总结论", description: "用大白话看 AI 的保守结论和下一步建议。", href: "/summary" },
+  { step: "Step 6", title: "任务中心复盘", description: "保存任务后人工决定继续、补资料或淘汰。", href: "/tasks" },
+] as const;
+
+const demoProducts = [
+  {
+    name: "桌面手机支架",
+    risk: "低风险",
+    riskClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    highlight: "适合展示可小单测试",
+    reason: "结构简单、客单价低、合规和售后风险相对可控，适合演示基础选品流程。",
+    href: "/products/new",
+    pageLabel: "打开新品体检",
+  },
+  {
+    name: "宠物慢食碗",
+    risk: "中风险",
+    riskClass: "border-amber-200 bg-amber-50 text-amber-700",
+    highlight: "适合展示谨慎判断",
+    reason: "涉及宠物进食接触，需要人工确认材质、供应商文件和平台表达，适合演示保守判断。",
+    href: "/risk",
+    pageLabel: "打开风险排查",
+  },
+  {
+    name: "儿童电动牙刷",
+    risk: "高风险",
+    riskClass: "border-rose-200 bg-rose-50 text-rose-700",
+    highlight: "适合展示风险拦截",
+    reason: "同时涉及儿童、带电、认证和合规表达，适合演示为什么不能只看利润和热度。",
+    href: "/summary",
+    pageLabel: "打开小白结论",
+  },
+] as const;
+
 function makeId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -943,6 +982,8 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [tasksMessage, setTasksMessage] = useState<string | null>(null);
+  const [showBeginnerGuide, setShowBeginnerGuide] = useState(false);
+  const [showDemoSamples, setShowDemoSamples] = useState(false);
   const [progressStep, setProgressStep] = useState(-1);
   const [materialsDirtyAfterEvidence, setMaterialsDirtyAfterEvidence] = useState(false);
   const [evidenceDirtyAfterAnalysis, setEvidenceDirtyAfterAnalysis] = useState(false);
@@ -1693,6 +1734,83 @@ export default function Home() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          <section className="surface-card p-4 sm:p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
+                <p className="linear-kicker">v1.1 小白入口</p>
+                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">不知道从哪开始，就先跑一遍标准流程</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  AI 结果仅供初筛，关键动作需人工确认。这里不会自动爬取、发布或操作外部平台。
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setShowBeginnerGuide((current) => !current)}
+                  className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                >
+                  我是新手，带我跑一遍
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDemoSamples((current) => !current)}
+                  className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                >
+                  加载演示样例
+                </button>
+              </div>
+            </div>
+
+            {showBeginnerGuide ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {beginnerGuideSteps.map((item) => (
+                  <article key={item.step} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-bold text-teal-700">{item.step}</p>
+                    <h3 className="mt-1 text-base font-semibold text-slate-950">{item.title}</h3>
+                    <p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-600">{item.description}</p>
+                    <Link
+                      href={item.href}
+                      className="linear-button-soft mt-3 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                    >
+                      去这一步
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+
+            {showDemoSamples ? (
+              <div className="mt-5">
+                <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4">
+                  <p className="text-sm font-bold text-teal-800">演示样例，不调用真实 AI</p>
+                  <p className="mt-1 text-sm leading-6 text-teal-700">
+                    以下是固定静态样例，只用于面试或产品演示，不代表真人测试结果，也不会写入数据库。
+                  </p>
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {demoProducts.map((item) => (
+                    <article key={item.name} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h3 className="text-base font-semibold text-slate-950">{item.name}</h3>
+                        <span className={"rounded-full border px-3 py-1 text-xs font-bold " + item.riskClass}>
+                          {item.risk}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-slate-800">{item.highlight}</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.reason}</p>
+                      <Link
+                        href={item.href}
+                        className="linear-button-soft mt-4 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                      >
+                        {item.pageLabel}
+                      </Link>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
 
           <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-5">

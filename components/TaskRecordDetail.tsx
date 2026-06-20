@@ -4,9 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import {
+  decisionStatusOptions,
+  getDecisionStatusOption,
+  type DecisionStatus,
+} from "@/lib/tasks/decisionStatus";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -20,6 +24,7 @@ type TaskCenterItem = {
   createdAt: string;
   updatedAt: string;
   type: string;
+  decisionStatus: DecisionStatus;
   title: string | null;
   platform: string;
   productUrl: string | null;
@@ -37,6 +42,10 @@ type DetailResponse =
 
 type DeleteResponse =
   | { ok: true; data: { id: string } }
+  | { ok: false; error: { code: string; message: string } };
+
+type PatchResponse =
+  | { ok: true; data: { id: string; decisionStatus: DecisionStatus } }
   | { ok: false; error: { code: string; message: string } };
 
 function formatDate(value: string) {
@@ -93,8 +102,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [updatingDecision, setUpdatingDecision] = useState(false);
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
+  const [decisionMessage, setDecisionMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +194,43 @@ export function TaskRecordDetail({ id }: { id: string }) {
     }
   }
 
+  async function updateDecisionStatus(nextDecisionStatus: DecisionStatus) {
+    if (!record || updatingDecision) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setDecisionMessage("请先输入访问密码后更新人工状态。");
+      return;
+    }
+
+    const previous = record.decisionStatus;
+    setUpdatingDecision(true);
+    setDecisionMessage("");
+    setRecord({ ...record, decisionStatus: nextDecisionStatus });
+
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(record.id)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-password": accessPassword,
+        },
+        body: JSON.stringify({ decisionStatus: nextDecisionStatus }),
+      });
+      const data = await response.json() as PatchResponse;
+      if (!response.ok || !data.ok) {
+        setRecord((current) => current ? { ...current, decisionStatus: previous } : current);
+        setDecisionMessage(data.ok ? "人工状态更新失败，请稍后再试。" : data.error.message);
+        return;
+      }
+      setRecord((current) => current ? { ...current, decisionStatus: data.data.decisionStatus } : current);
+      setDecisionMessage("人工状态已保存。");
+    } catch {
+      setRecord((current) => current ? { ...current, decisionStatus: previous } : current);
+      setDecisionMessage("人工状态更新失败，请检查本地服务后重试。");
+    } finally {
+      setUpdatingDecision(false);
+    }
+  }
+
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
       <div className="workspace-page workspace-layout">
@@ -230,6 +278,9 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">{getTaskTypeLabel(record)}</span>
                     <span className="linear-pill px-3 py-1 text-xs text-slate-600">{getAgentTypeLabel(record)}</span>
                     <span className="linear-pill border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">已完成</span>
+                    <span className={"linear-pill px-3 py-1 text-xs " + getDecisionStatusOption(record.decisionStatus).className}>
+                      {getDecisionStatusOption(record.decisionStatus).shortLabel}
+                    </span>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -285,12 +336,26 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <p className="muted-text mt-3 text-xs leading-5">失败原因、重试、继续执行、多 Agent 串联均为后续能力，本页不触发真实动作。</p>
                 </div>
                 <div className="linear-panel p-4">
-                  <p className="text-sm font-semibold text-slate-950">未来状态</p>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {taskStatusOptions.map((status) => (
-                      <span key={status.value} className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">{status.label}</span>
+                  <p className="text-sm font-semibold text-slate-950">人工决策状态</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    AI 结果仅供初筛，关键动作需人工确认后再继续。
+                  </p>
+                  <select
+                    value={record.decisionStatus}
+                    onChange={(event) => void updateDecisionStatus(event.target.value as DecisionStatus)}
+                    disabled={updatingDecision}
+                    className="input-soft mt-3 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {decisionStatusOptions.filter((option) => option.value).map((status) => (
+                      <option key={status.value} value={status.value}>{status.shortLabel}</option>
                     ))}
-                  </div>
+                  </select>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {getDecisionStatusOption(record.decisionStatus).description}
+                  </p>
+                  {decisionMessage ? (
+                    <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
+                  ) : null}
                 </div>
               </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ConfidenceConfirmationCard } from "@/components/ConfidenceConfirmationCard";
 import { useCallback, useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
@@ -411,6 +412,22 @@ export function SummaryForm() {
             )}
           </section>
 
+          {!result ? (
+            <ConfidenceConfirmationCard
+              confidence="低"
+              assumptions={[
+                "当前尚未生成小白汇总结论，可信度先按低处理。",
+                "AI 基于当前输入信息判断，信息越少越保守。",
+                "平台规则、认证要求、供应商报价和物流成本需要人工复查。",
+              ]}
+              confirmations={[
+                "是否涉及认证、侵权、儿童用品、食品接触、带电、带磁。",
+                "供应商资质、真实报价、起订量和发货稳定性。",
+                "目标平台最新规则和 listing 可用表达。",
+              ]}
+            />
+          ) : null}
+
           {/* Error */}
           {error ? (
             <section className="rounded-xl border border-red-200 bg-red-50 p-4">
@@ -441,6 +458,22 @@ export function SummaryForm() {
                     {confidenceLabels[result.confidence] || result.confidence}
                   </span>
                 </div>
+              </div>
+
+              <div className="mb-5">
+                <ConfidenceConfirmationCard
+                  confidence={result.confidence}
+                  assumptions={[
+                    `当前汇总基于已保存的 ${foundTypes.length} 项分析结果。`,
+                    "AI 基于当前输入信息判断，信息越少越保守。",
+                    "平台规则、认证要求、供应商报价和物流成本需要人工复查。",
+                  ]}
+                  confirmations={[
+                    "是否涉及认证、侵权、儿童用品、食品接触、带电、带磁。",
+                    "供应商资质、真实报价、起订量和发货稳定性。",
+                    "目标平台最新规则和 listing 可用表达。",
+                  ]}
+                />
               </div>
 
               {/* 硬规则降级提示 */}

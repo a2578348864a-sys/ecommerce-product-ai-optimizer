@@ -41,6 +41,8 @@ export type RawTaskRecord = {
   metadata?: unknown;
   /** 状态字段（旧数据可能缺失） */
   status?: string;
+  /** 人工决策字段（旧数据可能缺失） */
+  decisionStatus?: string | null;
 };
 
 export type NormalizedTaskRecord = {
@@ -53,6 +55,7 @@ export type NormalizedTaskRecord = {
   agentType: string;
   /** status：缺失则默认 completed（历史记录都是已完成） */
   status: string;
+  decisionStatus: string;
   title: string;
   platform: string;
   productUrl: string;
@@ -181,6 +184,7 @@ export function normalizeTaskRecord(raw: RawTaskRecord): NormalizedTaskRecord {
 
   const agentType = asString(raw.agentType) || TYPE_TO_AGENT[type] || "";
   const status = asString(raw.status) || "completed";
+  const decisionStatus = asString(raw.decisionStatus) || "pending";
 
   return {
     id: asString(raw.id),
@@ -189,6 +193,7 @@ export function normalizeTaskRecord(raw: RawTaskRecord): NormalizedTaskRecord {
     type,
     agentType,
     status,
+    decisionStatus,
     title,
     platform: asString(raw.platform) || "manual",
     productUrl: asOptionalString(raw.productUrl) || "",

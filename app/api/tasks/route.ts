@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,7 @@ type ViralTaskItem = {
   createdAt: string;
   updatedAt: string;
   type: string;
+  decisionStatus: DecisionStatus;
   title: string | null;
   platform: string;
   productUrl: string | null;
@@ -48,6 +50,7 @@ type ApiResponse =
       total: number;
       hasMore: boolean;
       nextOffset: number | null;
+      decisionStatus: string;
     };
   }
   | { ok: false; error: ApiError };
@@ -116,6 +119,7 @@ function toTaskItem(record: {
   createdAt: Date;
   updatedAt: Date;
   type: string;
+  decisionStatus?: string | null;
   title: string | null;
   platform: string;
   productUrl: string | null;
@@ -136,6 +140,7 @@ function toTaskItem(record: {
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt,
     type: normalized.type,
+    decisionStatus: normalizeDecisionStatus(record.decisionStatus),
     title: normalized.title,
     platform: normalized.platform,
     productUrl: normalized.productUrl || null,
@@ -195,6 +200,7 @@ export async function GET(request: NextRequest) {
   const q = asString(request.nextUrl.searchParams.get("q"));
   const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
   const offset = parseOffset(request.nextUrl.searchParams.get("offset"));
+  const decisionStatusParam = asString(request.nextUrl.searchParams.get("decisionStatus"));
 
   // 兼容 agentType 参数：映射到 type（两者在本 schema 中等价）
   if (!typeParam && agentTypeParam && allowedTypes.has(agentTypeParam)) {
@@ -205,10 +211,12 @@ export async function GET(request: NextRequest) {
 
   const where: Prisma.ViralAnalysisRecordWhereInput = {
     ...(typeParam && allowedTypes.has(typeParam) ? { type: typeParam } : {}),
+    ...(isDecisionStatus(decisionStatusParam) ? { decisionStatus: decisionStatusParam } : {}),
     ...(searchWhere.length ? { OR: searchWhere } : {}),
   };
 
   const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "";
+  const effectiveDecisionStatus = isDecisionStatus(decisionStatusParam) ? decisionStatusParam : "";
 
   try {
     const [records, total] = await Promise.all([
@@ -237,6 +245,7 @@ export async function GET(request: NextRequest) {
         total,
         hasMore,
         nextOffset: hasMore ? nextOffset : null,
+        decisionStatus: effectiveDecisionStatus,
       },
     });
   } catch (error) {

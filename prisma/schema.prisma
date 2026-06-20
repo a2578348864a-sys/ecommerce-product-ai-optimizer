@@ -34,6 +34,7 @@ model ViralAnalysisRecord {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   type           String   @default("viral")
+  decisionStatus String   @default("pending")
   title          String?
   platform       String
   productUrl     String?
@@ -45,6 +46,7 @@ model ViralAnalysisRecord {
   resultJson     String
 
   @@index([type, createdAt])
+  @@index([decisionStatus, createdAt])
   @@index([source])
   @@index([platform])
 }

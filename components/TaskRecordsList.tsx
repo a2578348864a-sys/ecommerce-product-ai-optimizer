@@ -6,8 +6,14 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { taskStatusOptions } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import {
+  decisionStatusOptions,
+  getDecisionStatusOption,
+  type DecisionStatus,
+} from "@/lib/tasks/decisionStatus";
 
 const defaultType = "";
+const defaultDecisionStatus = "";
 const defaultLimit = 10;
 const taskTypes = [
   { value: "", label: "全部类型" },
@@ -30,6 +36,7 @@ const extendedPlatformLabels: Record<string, string> = {
 type TaskCenterItem = {
   id: string;
   createdAt: string;
+  decisionStatus: DecisionStatus;
   title: string | null;
   type?: string;
   platform: string;
@@ -50,6 +57,7 @@ type TaskPageInfo = {
   total: number;
   hasMore: boolean;
   nextOffset: number | null;
+  decisionStatus?: string;
 };
 
 type ApiResponse =
@@ -126,10 +134,11 @@ function getStringArray(result: unknown, key: string) {
     : [];
 }
 
-function updateBrowserQuery(type: string, q: string) {
+function updateBrowserQuery(type: string, q: string, decisionStatus: string) {
   const params = new URLSearchParams();
   if (type && type !== defaultType) params.set("type", type);
   if (q) params.set("q", q);
+  if (decisionStatus && decisionStatus !== defaultDecisionStatus) params.set("decisionStatus", decisionStatus);
   const query = params.toString();
   window.history.pushState(null, "", query ? `/tasks?${query}` : "/tasks");
 }
@@ -154,6 +163,7 @@ export function TaskRecordsList() {
   const [items, setItems] = useState<TaskCenterItem[]>([]);
   const [page, setPage] = useState<TaskPageInfo | null>(null);
   const [type, setType] = useState(defaultType);
+  const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [queryInput, setQueryInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -161,15 +171,18 @@ export function TaskRecordsList() {
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [updatingDecisionId, setUpdatingDecisionId] = useState("");
 
   const loadTasks = useCallback(async ({
     nextType,
+    nextDecisionStatus,
     q,
     offset,
     mode,
     syncUrl,
   }: {
     nextType: string;
+    nextDecisionStatus: string;
     q: string;
     offset: number;
     mode: LoadMode;
@@ -210,6 +223,7 @@ export function TaskRecordsList() {
         offset: String(offset),
       });
       if (q) params.set("q", q);
+      if (nextDecisionStatus) params.set("decisionStatus", nextDecisionStatus);
 
       const response = await fetch(`/api/tasks?${params.toString()}`, {
         cache: "no-store",
@@ -235,9 +249,10 @@ export function TaskRecordsList() {
       setItems((current) => (mode === "append" ? [...current, ...records] : records));
       setPage(nextPage);
       setType(nextType);
+      setDecisionStatus(nextDecisionStatus);
       setActiveQuery(q);
       if (mode === "replace") setOpenId("");
-      if (syncUrl) updateBrowserQuery(nextType, q);
+      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus);
     } catch {
       setError("任务记录暂时无法读取，请稍后刷新。");
     } finally {
@@ -249,15 +264,22 @@ export function TaskRecordsList() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const initialType = params.get("type") || defaultType;
+    const initialDecisionStatus = params.get("decisionStatus") || defaultDecisionStatus;
     const initialQuery = (params.get("q") || "").trim();
     // 确保 initialType 在合法值范围内，否则回退到 defaultType
     const validTypes = taskTypes.map((t) => t.value);
     const safeType = validTypes.includes(initialType) ? initialType : defaultType;
+    const validDecisionStatuses = decisionStatusOptions.map((item) => item.value);
+    const safeDecisionStatus = validDecisionStatuses.includes(initialDecisionStatus as DecisionStatus)
+      ? initialDecisionStatus
+      : defaultDecisionStatus;
     setType(safeType);
+    setDecisionStatus(safeDecisionStatus);
     setQueryInput(initialQuery);
     setActiveQuery(initialQuery);
     void loadTasks({
       nextType: safeType,
+      nextDecisionStatus: safeDecisionStatus,
       q: initialQuery,
       offset: 0,
       mode: "replace",
@@ -270,6 +292,7 @@ export function TaskRecordsList() {
     const q = queryInput.trim();
     void loadTasks({
       nextType: type,
+      nextDecisionStatus: decisionStatus,
       q,
       offset: 0,
       mode: "replace",
@@ -281,6 +304,19 @@ export function TaskRecordsList() {
     setType(nextType);
     void loadTasks({
       nextType,
+      nextDecisionStatus: decisionStatus,
+      q: activeQuery,
+      offset: 0,
+      mode: "replace",
+      syncUrl: true,
+    });
+  }
+
+  function onDecisionStatusChange(nextDecisionStatus: string) {
+    setDecisionStatus(nextDecisionStatus);
+    void loadTasks({
+      nextType: type,
+      nextDecisionStatus,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -292,6 +328,7 @@ export function TaskRecordsList() {
     setQueryInput("");
     void loadTasks({
       nextType: defaultType,
+      nextDecisionStatus: defaultDecisionStatus,
       q: "",
       offset: 0,
       mode: "replace",
@@ -302,6 +339,7 @@ export function TaskRecordsList() {
   function retryLoad() {
     void loadTasks({
       nextType: type,
+      nextDecisionStatus: decisionStatus,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -313,6 +351,7 @@ export function TaskRecordsList() {
     if (!page?.hasMore || page.nextOffset === null) return;
     void loadTasks({
       nextType: page.type,
+      nextDecisionStatus: page.decisionStatus || decisionStatus,
       q: page.q,
       offset: page.nextOffset,
       mode: "append",
@@ -362,7 +401,55 @@ export function TaskRecordsList() {
     }
   }
 
-  const hasActiveFilters = Boolean(activeQuery || type !== defaultType);
+  async function updateDecisionStatus(item: TaskCenterItem, nextDecisionStatus: DecisionStatus) {
+    if (updatingDecisionId) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setError("请先输入访问密码后更新人工状态。");
+      return;
+    }
+
+    const previousStatus = item.decisionStatus;
+    setUpdatingDecisionId(item.id);
+    setError("");
+    setItems((current) => current.map((record) => (
+      record.id === item.id ? { ...record, decisionStatus: nextDecisionStatus } : record
+    )));
+
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(item.id)}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-password": accessPassword,
+        },
+        body: JSON.stringify({ decisionStatus: nextDecisionStatus }),
+      });
+      const data = await response.json() as
+        | { ok: true; data: { id: string; decisionStatus: DecisionStatus } }
+        | { ok: false; error: { code: string; message: string } };
+
+      if (!response.ok || !data.ok) {
+        setItems((current) => current.map((record) => (
+          record.id === item.id ? { ...record, decisionStatus: previousStatus } : record
+        )));
+        setError(data.ok ? "人工状态更新失败，请稍后再试。" : data.error.message);
+        return;
+      }
+
+      setItems((current) => current.map((record) => (
+        record.id === item.id ? { ...record, decisionStatus: data.data.decisionStatus } : record
+      )));
+    } catch {
+      setItems((current) => current.map((record) => (
+        record.id === item.id ? { ...record, decisionStatus: previousStatus } : record
+      )));
+      setError("人工状态更新失败，请检查本地服务后重试。");
+    } finally {
+      setUpdatingDecisionId("");
+    }
+  }
+
+  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus);
   const isSearchEmpty = !loading && !error && items.length === 0 && hasActiveFilters;
   const isDefaultEmpty = !loading && !error && items.length === 0 && !hasActiveFilters;
 
@@ -426,7 +513,7 @@ export function TaskRecordsList() {
               </div>
             </div>
 
-            <form onSubmit={submitSearch} className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:grid-cols-[minmax(0,1fr)_220px_auto_auto]">
+            <form onSubmit={submitSearch} className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:grid-cols-[minmax(0,1fr)_220px_180px_auto_auto]">
               <label className="min-w-0">
                 <span className="text-xs font-bold text-slate-500">搜索关键词</span>
                 <input
@@ -445,6 +532,18 @@ export function TaskRecordsList() {
                 >
                   {taskTypes.map((item) => (
                     <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="text-xs font-bold text-slate-500">人工状态</span>
+                <select
+                  value={decisionStatus}
+                  onChange={(event) => onDecisionStatusChange(event.target.value)}
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none"
+                >
+                  {decisionStatusOptions.map((item) => (
+                    <option key={item.value || "all"} value={item.value}>{item.label}</option>
                   ))}
                 </select>
               </label>
@@ -536,6 +635,9 @@ export function TaskRecordsList() {
                             <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getTaskStatusClass()}>
                               {getTaskStatusLabel()}
                             </span>
+                            <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
+                              {getDecisionStatusOption(item.decisionStatus).shortLabel}
+                            </span>
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
                               {item.score}/100
                             </span>
@@ -576,6 +678,26 @@ export function TaskRecordsList() {
 
                         {open ? (
                           <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4 md:col-span-2">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div>
+                                  <p className="text-sm font-bold text-slate-950">人工决策状态</p>
+                                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                                    {getDecisionStatusOption(item.decisionStatus).description} AI 结果仅供初筛，关键动作需人工确认。
+                                  </p>
+                                </div>
+                                <select
+                                  value={item.decisionStatus}
+                                  onChange={(event) => void updateDecisionStatus(item, event.target.value as DecisionStatus)}
+                                  disabled={updatingDecisionId === item.id}
+                                  className="input-soft h-11 min-w-[160px] px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {decisionStatusOptions.filter((option) => option.value).map((option) => (
+                                    <option key={option.value} value={option.value}>{option.shortLabel}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
                               <p className="text-sm font-bold text-slate-950">执行步骤预留</p>
                               <div className="mt-3 grid gap-2 sm:grid-cols-4">
