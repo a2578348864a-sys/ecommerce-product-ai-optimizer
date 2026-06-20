@@ -44,6 +44,7 @@ type CandidateData = {
   } | null;
   risk: {
     overallLevel: string;
+    displayLevel?: string;
     summary: string;
     blacklistMatches: string[];
   } | null;
@@ -93,6 +94,32 @@ const RISK_BADGE: Record<string, string> = {
 };
 
 const DRAFT_KEY = "qx:opportunities-draft:v1";
+
+function displayRiskLevel(candidate?: Pick<CandidateData, "risk">) {
+  return candidate?.risk?.displayLevel || candidate?.risk?.overallLevel || "";
+}
+
+const riskOrder: Record<string, number> = { red: 3, yellow: 2, green: 1 };
+
+function riskText(level: string) {
+  if (level === "red") return "高";
+  if (level === "yellow") return "中";
+  if (level === "green") return "低";
+  return "—";
+}
+
+function riskSummaryText(level: string) {
+  if (level === "red") return "高风险";
+  if (level === "yellow") return "需注意";
+  if (level === "green") return "低风险";
+  return "—";
+}
+
+function riskColor(level: string) {
+  if (level === "red") return "text-rose-600 font-semibold";
+  if (level === "yellow") return "text-amber-600";
+  return "text-emerald-600";
+}
 
 async function copyTextToClipboard(text: string) {
   try {
@@ -247,7 +274,7 @@ export function OpportunitiesForm() {
         if (c.sourcing.searchKeywords.length) lines.push(`- **找货关键词**：${c.sourcing.searchKeywords.join("、")}`);
       }
       if (c.risk) {
-        lines.push(`- **风险等级**：${c.risk.overallLevel}`);
+        lines.push(`- **风险等级**：${riskText(displayRiskLevel(c))}`);
         lines.push(`- **风险摘要**：${c.risk.summary}`);
       }
       if (c.summary) {
@@ -304,8 +331,7 @@ export function OpportunitiesForm() {
     return bFriendly - aFriendly || b.score - a.score;
   })[0];
   const highestRisk = [...candidates].filter(c => c.status === "completed").sort((a, b) => {
-    const riskOrder: Record<string, number> = { red: 3, yellow: 2, green: 1 };
-    return (riskOrder[b.risk?.overallLevel || ""] || 0) - (riskOrder[a.risk?.overallLevel || ""] || 0);
+    return (riskOrder[displayRiskLevel(b)] || 0) - (riskOrder[displayRiskLevel(a)] || 0);
   })[0];
   const completedCandidates = candidates.filter(c => c.status === "completed");
 
@@ -432,8 +458,8 @@ export function OpportunitiesForm() {
                   <div>
                     <p className="text-slate-400">风险最高</p>
                     <p className="text-sm font-bold text-slate-900 truncate">{highestRisk?.name || "—"}</p>
-                    <p className={`text-[11px] font-semibold ${highestRisk?.risk?.overallLevel === "red" ? "text-rose-600" : "text-amber-600"}`}>
-                      {highestRisk?.risk?.overallLevel === "red" ? "高风险" : highestRisk?.risk?.overallLevel === "yellow" ? "需注意" : "—"}
+                    <p className={`text-[11px] font-semibold ${riskColor(displayRiskLevel(highestRisk))}`}>
+                      {riskSummaryText(displayRiskLevel(highestRisk))}
                     </p>
                   </div>
                 </div>
@@ -492,7 +518,7 @@ export function OpportunitiesForm() {
                         {/* Mini indicators */}
                         <div className="mt-1.5 flex items-center gap-3 text-[10px] text-slate-400">
                           <span title="货源难度">📦 货源：<span className={feasibilityColor(c.sourcing?.feasibility || "")}>{feasibilityLabel(c.sourcing?.feasibility || "")}</span></span>
-                          <span title="风险等级">🛡 风险：<span className={c.risk?.overallLevel === "red" ? "text-rose-600 font-semibold" : c.risk?.overallLevel === "yellow" ? "text-amber-600" : "text-emerald-600"}>{c.risk?.overallLevel === "red" ? "高" : c.risk?.overallLevel === "yellow" ? "中" : c.risk?.overallLevel === "green" ? "低" : "—"}</span></span>
+                          <span title="风险等级">🛡 风险：<span className={riskColor(displayRiskLevel(c))}>{riskText(displayRiskLevel(c))}</span></span>
                           <span title="新手适合度">👤 新手：<span className={c.sourcing?.beginnerFriendly ? "text-emerald-600" : "text-rose-600"}>{beginnerLabel(c.sourcing?.beginnerFit)}</span></span>
                         </div>
                         {/* Reason tags */}
@@ -534,9 +560,9 @@ export function OpportunitiesForm() {
                           {c.risk && (
                             <div className="rounded-xl border border-slate-200 bg-white p-3">
                               <div className="mb-1.5 flex items-center gap-1.5">
-                                <Shield className={`size-3.5 ${c.risk.overallLevel === "red" ? "text-rose-500" : c.risk.overallLevel === "yellow" ? "text-amber-500" : "text-emerald-500"}`} />
+                                <Shield className={`size-3.5 ${displayRiskLevel(c) === "red" ? "text-rose-500" : displayRiskLevel(c) === "yellow" ? "text-amber-500" : "text-emerald-500"}`} />
                                 <p className="text-xs font-semibold text-slate-700">风险排查</p>
-                                <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${RISK_BADGE[c.risk.overallLevel] || ""}`}>{c.risk.overallLevel}</span>
+                                <span className={`ml-auto rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${RISK_BADGE[displayRiskLevel(c)] || ""}`}>{riskText(displayRiskLevel(c))}</span>
                               </div>
                               <p className="text-xs text-slate-600">{c.risk.summary}</p>
                               {c.risk.blacklistMatches.length > 0 && (

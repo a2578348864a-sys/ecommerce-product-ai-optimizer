@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { runOpportunitiesPipeline } from "@/lib/agents/orchestrator";
+import { getOpportunityDisplayRiskLevel, runOpportunitiesPipeline } from "@/lib/agents/orchestrator";
 import { getAccessPassword } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
             score: c.score,
             level: c.level,
             levelLabel: c.levelLabel,
+            displayRiskLevel: c.displayRiskLevel ?? getOpportunityDisplayRiskLevel(c),
             reasons: c.reasons,
             risks: c.risks,
             nextAction: c.nextAction,
@@ -138,6 +139,7 @@ export async function POST(request: NextRequest) {
         } : null,
         risk: c.risk ? {
           overallLevel: c.risk.overallLevel,
+          displayLevel: c.displayRiskLevel ?? getOpportunityDisplayRiskLevel(c),
           summary: c.risk.summary,
           blacklistMatches: c.risk.blacklistMatches,
         } : null,

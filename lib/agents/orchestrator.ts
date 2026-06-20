@@ -44,6 +44,7 @@ export type ProductCandidate = {
   score: number;
   level: RecommendationLevel;
   levelLabel: string;
+  displayRiskLevel?: OpportunityDisplayRiskLevel;
   reasons: string[];
   risks: string[];
   nextAction: string;
@@ -83,6 +84,7 @@ export type SummaryVerdict = {
 };
 
 export type RecommendationLevel = "A" | "B" | "C" | "D" | "E";
+export type OpportunityDisplayRiskLevel = "green" | "yellow" | "red";
 
 const LEVEL_LABELS: Record<RecommendationLevel, string> = {
   A: "优先小单测试",
@@ -403,6 +405,76 @@ function getLevel(score: number): RecommendationLevel {
   return "E";
 }
 
+function textIncludesAny(text: string, keywords: string[]) {
+  return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+}
+
+const HIGH_RISK_DISPLAY_KEYWORDS = [
+  "儿童", "婴儿", "婴幼儿", "母婴", "宝宝", "小孩", "幼儿",
+  "children", "child", "kids", "baby", "infant", "toddler",
+  "电池", "锂电池", "充电", "电动", "带电", "电子", "电器", "电源",
+  "battery", "lithium", "rechargeable", "electric", "electronic",
+  "食品接触", "食品级", "入口", "餐具", "水杯", "饭盒", "宠物碗", "慢食碗", "饮水",
+  "food contact", "food grade", "food safe", "tableware", "cup", "bottle", "pet bowl", "slow feeder",
+  "认证", "资质", "合规门槛", "平台资质", "平台规则", "平台审核", "检测报告", "测试报告",
+  "cpc", "cpsc", "astm", "cpsia", "fda", "lfgb", "ce", "fcc", "3c", "ccc", "un38.3",
+  "侵权", "专利", "外观设计", "仿牌", "品牌同款", "功效宣称",
+  "patent", "infringement", "trademark", "claim",
+];
+
+function buildDisplayRiskText(candidate: Pick<ProductCandidate, "name" | "rawInput" | "sourcing" | "risk" | "summary" | "risks" | "level" | "levelLabel">) {
+  return [
+    candidate.name,
+    candidate.rawInput,
+    candidate.level,
+    candidate.levelLabel,
+    candidate.sourcing?.summary,
+    candidate.sourcing?.complianceBarrier,
+    candidate.sourcing?.suggestedEntryLevel,
+    candidate.sourcing?.beginnerFit,
+    candidate.sourcing?.afterSalesRisk,
+    candidate.risk?.overallLevel,
+    candidate.risk?.summary,
+    ...(candidate.risk?.blacklistMatches || []),
+    candidate.summary?.verdict,
+    candidate.summary?.summary,
+    ...(candidate.summary?.reasons || []),
+    ...(candidate.summary?.risks || []),
+    ...(candidate.summary?.downgradeReasons || []),
+    candidate.summary?.beginnerTip,
+    ...(candidate.risks || []),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+export function getOpportunityDisplayRiskLevel(
+  candidate: Pick<ProductCandidate, "name" | "rawInput" | "sourcing" | "risk" | "summary" | "risks" | "level" | "levelLabel">,
+): OpportunityDisplayRiskLevel {
+  const rawLevel = candidate.risk?.overallLevel;
+  const baseLevel: OpportunityDisplayRiskLevel = rawLevel === "red" ? "red" : rawLevel === "green" ? "green" : "yellow";
+  if (baseLevel === "red") return "red";
+
+  const text = buildDisplayRiskText(candidate);
+  const hasHighRiskSignal = textIncludesAny(text, HIGH_RISK_DISPLAY_KEYWORDS);
+  const wasStronglyDowngraded =
+    candidate.level === "D"
+    || candidate.level === "E"
+    || candidate.summary?.downgraded === true
+    || candidate.levelLabel.includes("新手不建议")
+    || candidate.levelLabel.includes("暂不建议")
+    || candidate.summary?.verdict.includes("新手不建议")
+    || candidate.summary?.verdict.includes("暂不建议");
+  const hasHighBarrier =
+    candidate.sourcing?.complianceBarrier === "high"
+    || candidate.sourcing?.suggestedEntryLevel === "experienced"
+    || candidate.sourcing?.beginnerFit === "low"
+    || candidate.risk?.beginnerFriendly === false;
+
+  if (hasHighRiskSignal && (wasStronglyDowngraded || hasHighBarrier)) return "red";
+  if (hasHighRiskSignal && baseLevel === "green") return "yellow";
+
+  return baseLevel;
+}
+
 function buildReasons(candidate: ProductCandidate): string[] {
   const reasons: string[] = [];
   if (candidate.sourcing) {
@@ -492,6 +564,7 @@ export async function runOpportunitiesPipeline(
       candidate.levelLabel = LEVEL_LABELS[candidate.level];
       candidate.reasons = buildReasons(candidate);
       candidate.risks = buildRiskItems(candidate);
+      candidate.displayRiskLevel = getOpportunityDisplayRiskLevel(candidate);
       candidate.nextAction = buildNextAction(candidate);
 
       candidate.status = "completed";
@@ -501,6 +574,7 @@ export async function runOpportunitiesPipeline(
       candidate.score = calculateScore(candidate);
       candidate.level = getLevel(candidate.score);
       candidate.levelLabel = LEVEL_LABELS[candidate.level];
+      candidate.displayRiskLevel = getOpportunityDisplayRiskLevel(candidate);
     }
   }
 
