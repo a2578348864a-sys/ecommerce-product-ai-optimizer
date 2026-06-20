@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import {
   Search,
   TrendingUp,
@@ -636,6 +638,14 @@ export function OpportunitiesForm() {
               </div>
             </div>
           </>
+        )}
+
+        {/* 工作流建议与人工确认 */}
+        {hasResults && !loading && (
+          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <WorkflowNextStepCard taskType="opportunities" />
+            <ManualReviewChecklist />
+          </div>
         )}
 
         {/* Empty state */}
