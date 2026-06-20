@@ -5,23 +5,11 @@ import {
   useAccessPassword,
   canRequestWithAccessPassword,
 } from "@/lib/client/accessPassword";
+import { extractCandidates, type V2Candidate } from "@/lib/agents/v2WorkflowRecords";
 
 /* ── Types ──────────────────────────────────────── */
 
-type StoredCandidate = {
-  name: string;
-  score: number;
-  level?: string;
-  levelLabel?: string;
-  displayRiskLevel?: string;
-  reasons?: string[];
-  risks?: string[];
-  nextAction?: string;
-  sourcingSummary?: string;
-  riskSummary?: string;
-  summaryVerdict?: string;
-  status?: string;
-};
+type StoredCandidate = V2Candidate;
 
 type LoadState =
   | { type: "loading" }
@@ -49,11 +37,6 @@ type WorkflowStep = {
 function safeString(v: unknown, fallback = "暂无该项数据"): string {
   if (typeof v === "string" && v.trim().length > 0) return v.trim();
   return fallback;
-}
-
-function safeArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
-  return [];
 }
 
 function buildSteps(c: StoredCandidate | null): WorkflowStep[] {
@@ -252,45 +235,19 @@ export default function V2WorkflowLabClient() {
       }
 
       const json = await resp.json();
-      const items: Array<Record<string, unknown>> =
-        json?.data?.items ?? json?.records ?? [];
+      const candidates = extractCandidates(json);
 
-      if (!Array.isArray(items) || items.length === 0) {
+      if (candidates.length === 0) {
         setLoadState({ type: "empty" });
         return;
       }
-
-      const latest = items[0];
-      const result = latest.result as Record<string, unknown> | undefined;
-      const rawCandidates = result?.candidates;
-
-      if (!Array.isArray(rawCandidates) || rawCandidates.length === 0) {
-        setLoadState({ type: "empty" });
-        return;
-      }
-
-      const candidates: StoredCandidate[] = rawCandidates.map((c: unknown) => {
-        const item = c as Record<string, unknown>;
-        return {
-          name: safeString(item.name, "未命名商品"),
-          score: typeof item.score === "number" ? item.score : 0,
-          level: safeString(item.level, ""),
-          levelLabel: safeString(item.levelLabel, ""),
-          displayRiskLevel: safeString(item.displayRiskLevel, ""),
-          reasons: safeArray(item.reasons),
-          risks: safeArray(item.risks),
-          nextAction: safeString(item.nextAction, ""),
-          sourcingSummary: safeString(item.sourcingSummary, ""),
-          riskSummary: safeString(item.riskSummary, ""),
-          summaryVerdict: safeString(item.summaryVerdict, ""),
-          status: safeString(item.status, ""),
-        };
-      });
 
       setLoadState({
         type: "ready",
         candidates,
-        taskTitle: safeString(latest.title, `机会雷达 · ${candidates.length} 个候选品`),
+        taskTitle: candidates.length > 0
+          ? `机会雷达 · ${candidates.length} 个候选品`
+          : "机会雷达",
       });
     } catch {
       setLoadState({ type: "error", message: "网络请求失败，请检查连接后重试。" });

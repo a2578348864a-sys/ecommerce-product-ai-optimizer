@@ -140,6 +140,8 @@
 
 ### Phase 1B ✅ 已完成 — 只读已有 opportunities 任务记录
 - 新增 `components/cross-border/V2WorkflowLabClient.tsx`（客户端组件）
+- 新增 `lib/agents/v2WorkflowRecords.ts`：纯函数 `extractCandidates()`，解析 opportunities 记录
+- 新增 `lib/agents/v2WorkflowRecords.test.ts`：13 个测试，覆盖正常/缺失/异常字段
 - 使用 `useAccessPassword()` + `GET /api/tasks?type=opportunities&limit=1` 读取最新记录
 - 左侧候选品列表来自真实 tasks 数据，替代硬编码 mock
 - 右侧 4 步工作流根据选中候选品的已有 sourcing/risk/summary 摘要填充
