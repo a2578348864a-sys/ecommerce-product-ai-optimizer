@@ -348,7 +348,7 @@ export function OpportunitiesForm() {
               </div>
               <div>
                 <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达</h1>
-                <p className="muted-text mt-1 text-sm">先看排序，再看风险，最后人工确认。分数不是采购建议，只是初筛参考。</p>
+                <p className="muted-text mt-1 text-sm">先看排序，再看风险，最后人工确认。分数不是采购建议，只是初筛参考，建议 3 个以上候选品对比，高风险品类必须人工确认。</p>
               </div>
             </div>
             <WorkspaceMobileNav />
