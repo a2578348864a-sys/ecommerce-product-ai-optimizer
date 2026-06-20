@@ -2056,15 +2056,15 @@ export default function Home() {
                         <FileText className="size-5" />
                       </span>
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-sky-700">任务中心</p>
-                        <h2 className="mt-1 text-lg font-semibold text-slate-950">沉淀分析结果</h2>
+                        <p className="text-xs font-semibold text-sky-700">任务工作流中心</p>
+                        <h2 className="mt-1 text-lg font-semibold text-slate-950">复盘分析与确认下一步</h2>
                         <p className="mt-1 text-sm leading-6 text-slate-600">
-                          查看历史任务、继续分析素材，把每次判断沉淀成可复盘记录。
+                          查看历史分析、复盘风险结论、确认下一步动作。当前为半自动 Alpha 阶段，关键决策需人工确认。
                         </p>
                       </div>
                     </div>
                     <Link href="/tasks" className="linear-button inline-flex h-11 shrink-0 items-center justify-center px-5 text-sm font-semibold">
-                      查看任务
+                      进入任务工作流中心
                     </Link>
                   </div>
                 </div>

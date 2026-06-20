@@ -17,6 +17,7 @@ const defaultDecisionStatus = "";
 const defaultLimit = 10;
 const taskTypes = [
   { value: "", label: "全部类型" },
+  { value: "opportunities", label: "机会雷达" },
   { value: "viral", label: "海外爆款趋势分析" },
   { value: "radar", label: "爆款雷达分析" },
   { value: "product", label: "选品利润分析" },
@@ -91,6 +92,7 @@ function sourceLabel(source: string) {
 }
 
 const typeLabelMap: Record<string, string> = {
+  opportunities: "机会雷达",
   viral: "海外爆款趋势分析",
   radar: "爆款雷达分析",
   product: "选品利润分析",
@@ -101,6 +103,7 @@ const typeLabelMap: Record<string, string> = {
 };
 
 const agentLabelMap: Record<string, string> = {
+  opportunities: "机会雷达 Agent",
   viral: "海外爆款趋势 Agent",
   radar: "爆款雷达 Agent",
   product: "选品分析 Agent",
@@ -463,16 +466,16 @@ export function TaskRecordsList() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Qingxuan Workspace</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务中心</h1>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务工作流中心</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  查看历史任务、继续分析素材，沉淀每一次 Agent 分析结果。
+                  沉淀每次选品分析、风险判断和下一步动作。当前为半自动 Alpha 阶段，所有结论需要人工复核；未来会逐步承接多 Agent 自动化工作流。
                 </p>
               </div>
               <Link
-                href="/viral"
+                href="/"
                 className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
               >
-                去爆款拆解
+                返回工作台
               </Link>
             </div>
             <WorkspaceMobileNav />
@@ -481,35 +484,43 @@ export function TaskRecordsList() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">Task Center</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">AI 电商运营任务中心</h2>
-                <p className="muted-text mt-1 text-sm">当前只读取已上线的爆款素材分析记录；其他任务类型为后续多 Agent 工作流预留。</p>
+                <p className="text-sm font-bold text-teal-700">工作流中心</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">任务复盘与工作流中心</h2>
+                <p className="muted-text mt-1 text-sm">当前为半自动 Alpha 阶段，所有 AI 结论需要人工复核。未来逐步扩展为多 Agent 自动化工作流底座。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {page ? `${items.length}/${page.total} 条` : `${items.length} 条记录`}
               </span>
             </div>
 
+            <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+              <p className="text-sm font-bold text-teal-800">💡 当前阶段说明</p>
+              <p className="mt-1 text-sm leading-6 text-teal-700">
+                这里是半自动选品分析的任务沉淀中心，不是全自动执行系统。AI 负责分析、整理和提示风险，但采购、上架、广告投放等关键动作必须由你人工确认后再执行。
+              </p>
+            </div>
+
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="linear-panel p-4">
-                <p className="text-sm font-semibold text-slate-950">工作流预览</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  {["素材进入", "Agent 分析", "人工确认"].map((step, index) => (
+                <p className="text-sm font-semibold text-slate-950">工作流阶段</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                  {["输入素材", "Agent 分析", "查看结论", "人工确认"].map((step, index) => (
                     <div key={step} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <span className="text-[11px] font-semibold text-slate-400">0{index + 1}</span>
                       <p className="mt-1 text-sm font-semibold text-slate-800">{step}</p>
                     </div>
                   ))}
                 </div>
-                <p className="muted-text mt-3 text-xs leading-5">自动执行、失败重试、发布商品等动作仍为规划中，不会在本页触发。</p>
+                <p className="muted-text mt-3 text-xs leading-5">自动执行、失败重试、多 Agent 串联等为后续能力，当前版本不会在本页触发。</p>
               </div>
               <div className="linear-panel p-4">
-                <p className="text-sm font-semibold text-slate-950">状态预留</p>
+                <p className="text-sm font-semibold text-slate-950">人工决策状态</p>
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {taskStatusOptions.map((status) => (
-                    <span key={status.value} className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">{status.label}</span>
+                  {decisionStatusOptions.filter((item) => item.value).map((status) => (
+                    <span key={status.value} className={"rounded-full border px-2 py-0.5 text-[11px] " + status.className}>{status.shortLabel}</span>
                   ))}
                 </div>
+                <p className="muted-text mt-3 text-xs leading-5">每条任务支持标记：待判断 / 可继续 / 需补资料 / 已淘汰。</p>
               </div>
             </div>
 
@@ -585,22 +596,22 @@ export function TaskRecordsList() {
               </div>
             ) : isDefaultEmpty ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
-                <p className="text-lg font-semibold text-slate-950">还没有保存的爆款拆解记录</p>
+                <p className="text-lg font-semibold text-slate-950">还没有保存的任务记录</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  先去 /viral 做一次 mock 分析，生成结果后点击“保存到任务记录”，这里就会出现历史记录。
+                  在任何分析页面（货源判断、风险排查、小白结论、爆款拆解等）生成结果后点击「保存到任务记录」，这里就会出现历史记录，供你复盘和确认下一步动作。
                 </p>
                 <Link
-                  href="/viral"
+                  href="/"
                   className="linear-button-primary mt-5 inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  去生成第一条记录
+                  返回工作台开始分析
                 </Link>
               </div>
             ) : isSearchEmpty ? (
               <div className="mt-6 rounded-3xl border border-dashed border-slate-200 bg-white/70 p-8">
-                <p className="text-lg font-semibold text-slate-950">没有匹配任务</p>
+                <p className="text-lg font-semibold text-slate-950">没有匹配的任务</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  换个关键词试试，或者清空筛选后查看全部爆款素材分析记录。
+                  换个关键词试试，或者清空筛选后查看全部任务记录。
                 </p>
                 <button
                   type="button"

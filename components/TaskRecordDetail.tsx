@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
+import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import {
@@ -65,12 +67,34 @@ function getTitle(item: TaskCenterItem) {
   return item.title?.trim() || item.materialText.trim().slice(0, 20) || "未命名记录";
 }
 
+const typeLabelMap: Record<string, string> = {
+  opportunities: "机会雷达",
+  viral: "海外爆款趋势分析",
+  radar: "爆款雷达分析",
+  product: "选品利润分析",
+  risk: "风险排查",
+  sourcing: "货源判断",
+  material: "素材接收",
+  summary: "小白结论",
+};
+
+const agentLabelMap: Record<string, string> = {
+  opportunities: "机会雷达 Agent",
+  viral: "海外爆款趋势 Agent",
+  radar: "爆款雷达 Agent",
+  product: "选品分析 Agent",
+  risk: "风险检查 Agent",
+  sourcing: "货源判断 Agent",
+  material: "素材接收 Agent",
+  summary: "小白结论 Agent",
+};
+
 function getTaskTypeLabel(item: TaskCenterItem) {
-  return item.type === "viral" || !item.type ? "海外爆款趋势分析" : item.type;
+  return typeLabelMap[item.type || ""] || item.type || "未知任务";
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return item.type === "viral" || !item.type ? "海外爆款趋势 Agent" : "规划 Agent";
+  return agentLabelMap[item.type || ""] || "规划 Agent";
 }
 
 function getStringArray(result: unknown, key: string) {
@@ -357,6 +381,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
                   ) : null}
                 </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <WorkflowNextStepCard taskType={record.type} />
+                <ManualReviewChecklist />
               </div>
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-slate-50 p-4">
