@@ -43,6 +43,32 @@ export function isPetFoodContactProduct(input: AlphaRiskTextInput) {
   return includesAny(text, PET_TERMS) && includesAny(text, PET_FOOD_CONTACT_TERMS);
 }
 
+// ── 人类食品接触检测，用于 risk guard ──
+
+const HUMAN_FOOD_CONTACT_TERMS = [
+  "食品接触", "食品级", "食品级硅胶", "硅胶水杯", "硅胶杯", "折叠水杯",
+  "水杯", "杯子", "杯", "餐具", "饭盒", "保鲜盒", "水壶", "碗", "盘",
+  "厨房用品", "厨具", "入口接触", "饮水", "喝水", "饮用",
+  "food contact", "food grade", "food safe", "food container",
+  "tableware", "cup", "bottle", "container", "lunch box",
+  "silicone cup", "collapsible cup", "collapsible bottle",
+  "kitchenware", "drinkware", "drinking", "beverage",
+];
+
+const HUMAN_FOOD_CONTACT_NEGATIONS = [
+  "非食品", "不接触食品", "非餐具", "not food contact",
+  "non-food", "no food contact", "not for food",
+];
+
+export function isHumanFoodContactProduct(input: AlphaRiskTextInput) {
+  const text = buildRiskText(input);
+  if (!text || includesAny(text, HUMAN_FOOD_CONTACT_NEGATIONS)) return false;
+  // 食品接触场景：产品名或描述命中食品接触词
+  // 排除纯宠物场景（已由 isPetFoodContactProduct 单独处理）
+  if (isPetFoodContactProduct(input)) return false;
+  return includesAny(text, HUMAN_FOOD_CONTACT_TERMS);
+}
+
 export function classifyKeywordFallbackRisk(input: AlphaRiskTextInput): "red" | "yellow" {
   const text = buildRiskText(input)
     .replace(/无电池|不含电池|没有电池|no battery|without battery/g, "")

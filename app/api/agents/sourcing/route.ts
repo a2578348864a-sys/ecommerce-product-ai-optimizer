@@ -140,6 +140,41 @@ function normalizeSourcingData(value: unknown): SourcingData {
   };
 }
 
+function buildSourcingFallbackData(input: SourcingPromptInput): SourcingData {
+  const text = [input.productName, input.category, input.description].filter(Boolean).join(" ").toLowerCase();
+
+  // 根据输入关键词做轻量增强判断
+  const hasElectrical = /usb|供电|水泵|电池|充电|带电|电动|电子|battery|lithium|rechargeable|electric|pump|电机|filter|滤芯/.test(text);
+  const fallbackFeasibility = hasElectrical ? "low" : "medium";
+  const fallbackCompliance = hasElectrical ? "high" : "medium";
+  const fallbackLogistics = hasElectrical ? "medium" : "low";
+  const fallbackAftersales = hasElectrical ? "high" : "medium";
+
+  return {
+    feasibility: fallbackFeasibility as "medium" | "low",
+    summary: "AI 输出格式异常，系统已生成保守兜底结果。该商品需要人工复核供应稳定性、售后风险、合规要求和平台限制，不建议仅凭本结果直接采购。" + (hasElectrical ? " 检测到带电/水泵/滤芯等关键词，建议进一步确认电气安全、配件耗材和认证要求。" : ""),
+    searchKeywords: [],
+    alternativeDirections: [],
+    priceBand: { min: "待确认", max: "待确认", unit: "CNY", note: "AI 未返回价格估算，建议人工询价。" },
+    moqEstimate: "未获取到 MOQ 信息，建议手动联系供应商确认。",
+    beginnerFriendly: false,
+    beginnerFit: hasElectrical ? "low" : "medium",
+    complianceBarrier: fallbackCompliance as "medium" | "high",
+    logisticsDifficulty: fallbackLogistics as "low" | "medium",
+    afterSalesRisk: fallbackAftersales as "medium" | "high",
+    suggestedEntryLevel: hasElectrical ? "experienced" : "intermediate",
+    risks: hasElectrical
+      ? [{ title: "保守兜底", description: "AI 分析失败，且检测到带电/水泵等关键词，已按保守规则处理。", suggestion: "手动确认电气安全、认证、配件耗材和售后风险后再推进。" }]
+      : [{ title: "保守兜底", description: "AI 分析失败，已使用保守默认值。", suggestion: "补充商品信息后重新分析，或手动询价和联系供应商。" }],
+    nextSteps: [
+      "手动在 1688 搜索同类商品了解价格和 MOQ",
+      "联系 2-3 家供应商索取报价和样品",
+      "确认平台规则和认证要求（特别是带电/食品接触类）",
+      "人工复核供应链稳定性和售后方案",
+    ],
+  };
+}
+
 async function runSourcingAgent(input: SourcingPromptInput): Promise<SourcingData> {
   const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
@@ -150,7 +185,10 @@ async function runSourcingAgent(input: SourcingPromptInput): Promise<SourcingDat
     ],
   });
 
-  if (!aiResult.ok) throw new Error(aiResult.error.message);
+  if (!aiResult.ok) {
+    console.error("Sourcing Agent failed", aiResult.error.code);
+    return buildSourcingFallbackData(input);
+  }
   return normalizeSourcingData(aiResult.data);
 }
 

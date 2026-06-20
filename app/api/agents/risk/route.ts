@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildRiskCheckPrompt, type RiskCheckPromptInput } from "@/lib/cross-border/prompts";
-import { classifyKeywordFallbackRisk, isPetFoodContactProduct, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
+import { classifyKeywordFallbackRisk, isHumanFoodContactProduct, isPetFoodContactProduct, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -129,24 +129,56 @@ function buildPetFoodContactRisk(): RiskCheckItem {
   };
 }
 
-function applyDeterministicRiskGuards(data: RiskCheckData, input: RiskCheckPromptInput): RiskCheckData {
-  if (!isPetFoodContactProduct(input)) return data;
-
-  const petRisk = buildPetFoodContactRisk();
-  const risks = [
-    ...data.risks.filter((item) => item.category !== petRisk.category),
-    petRisk,
-  ];
-
+function buildHumanFoodContactRisk(): RiskCheckItem {
   return {
-    ...data,
-    overallLevel: moreSevereRiskLevel(data.overallLevel, "yellow"),
-    summary: data.summary.includes("食品接触") || data.summary.includes("材质")
-      ? data.summary
-      : `${data.summary} 该商品涉及宠物进食接触，需重点复核材质、清洁、售后和合规文件。`,
-    risks,
-    beginnerFriendly: false,
+    category: "食品接触风险",
+    level: "yellow",
+    title: "食品接触类需人工复核",
+    description: "该商品涉及食品/饮品接触，需要关注材质证明（FDA/LFGB/国标）、平台合规和相关认证，整体风险不应按低风险处理。",
+    suggestion: "向供应商索取食品接触材料检测报告，确认目标平台对食品接触类商品的资质要求，未验证前不要写入 listing 认证承诺。",
   };
+}
+
+function applyDeterministicRiskGuards(data: RiskCheckData, input: RiskCheckPromptInput): RiskCheckData {
+  let result = data;
+
+  // ── 宠物食品接触 guard ──
+  if (isPetFoodContactProduct(input)) {
+    const petRisk = buildPetFoodContactRisk();
+    const risks = [
+      ...result.risks.filter((item) => item.category !== petRisk.category),
+      petRisk,
+    ];
+    result = {
+      ...result,
+      overallLevel: moreSevereRiskLevel(result.overallLevel, "yellow"),
+      summary: result.summary.includes("食品接触") || result.summary.includes("材质")
+        ? result.summary
+        : `${result.summary} 该商品涉及宠物进食接触，需重点复核材质、清洁、售后和合规文件。`,
+      risks,
+      beginnerFriendly: false,
+    };
+  }
+
+  // ── 人类食品接触 guard ──
+  if (isHumanFoodContactProduct(input)) {
+    const foodRisk = buildHumanFoodContactRisk();
+    const risks = [
+      ...result.risks.filter((item) => item.category !== foodRisk.category),
+      foodRisk,
+    ];
+    result = {
+      ...result,
+      overallLevel: moreSevereRiskLevel(result.overallLevel, "yellow"),
+      summary: result.summary.includes("食品接触") || result.summary.includes("材质")
+        ? result.summary
+        : `${result.summary} 涉及食品/饮品接触，需要确认材质认证和平台合规要求。`,
+      risks,
+      beginnerFriendly: false,
+    };
+  }
+
+  return result;
 }
 
 function buildRiskFallbackData(input: RiskCheckPromptInput, code: string): RiskCheckData {
