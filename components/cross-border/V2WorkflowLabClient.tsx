@@ -104,7 +104,7 @@ function StepBadge({ status }: { status: WorkflowStep["status"] }) {
     active: "bg-blue-50 text-blue-700 border-blue-200",
     pending: "bg-gray-50 text-gray-400 border-gray-200",
   };
-  const label = { done: "已完成", active: "分析中", pending: "待分析" };
+  const label = { done: "AI 已分析", active: "分析中", pending: "待分析" };
   return (
     <span className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${map[status]}`}>
       {label[status]}
@@ -188,7 +188,7 @@ function StepCard({
             onChange={onToggle}
             className="h-3.5 w-3.5 rounded"
           />
-          {confirmed ? "已确认" : "人工确认"}
+          {confirmed ? "人工已确认" : "待人工确认"}
         </label>
       </div>
     </li>
@@ -406,9 +406,14 @@ export default function V2WorkflowLabClient() {
               <h2 className="mb-1 text-sm font-semibold text-gray-700">
                 候选商品
               </h2>
-              <p className="mb-3 text-[11px] text-gray-400">
+              <p className="mb-1 text-[11px] text-gray-400">
                 {loadState.isSample ? "沙盒示例数据" : "来自已有机会雷达记录"} · {loadState.taskTitle}
               </p>
+              {!loadState.isSample && (
+                <p className="mb-2 text-[10px] text-gray-400">
+                  当前仅回放已有分析结果，不会重新调用 AI。
+                </p>
+              )}
               <ul className="space-y-2">
                 {loadState.candidates.map((c, i) => {
                   const isSelected = i === selectedIndex;
@@ -498,7 +503,7 @@ export default function V2WorkflowLabClient() {
                   </p>
                 </div>
                 <span className="shrink-0 rounded-md bg-gray-100 px-3 py-1.5 text-xs text-gray-400">
-                  {loadState.isSample ? "沙盒评审用" : "Phase 1D 才上线保存"}
+                  {loadState.isSample ? "沙盒评审用" : "保存工作流记录（Phase 1D 开放）"}
                 </span>
               </div>
             </div>
