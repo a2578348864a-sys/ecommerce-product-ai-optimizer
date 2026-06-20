@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractCandidates, type V2RecordsInput } from "./v2WorkflowRecords";
+import { extractCandidates, SAMPLE_CANDIDATES, type V2RecordsInput } from "./v2WorkflowRecords";
 
 /* ── Fixtures ──────────────────────────────────── */
 
@@ -272,5 +272,85 @@ describe("extractCandidates", () => {
       items: [{ type: "opportunities" }],
     };
     expect(extractCandidates(input)).toEqual([]);
+  });
+});
+
+/* ── Sample fixture tests ──────────────────────── */
+
+describe("SAMPLE_CANDIDATES", () => {
+  it("包含 3 个候选品", () => {
+    expect(SAMPLE_CANDIDATES).toHaveLength(3);
+  });
+
+  it("桌面手机支架 — 高分、低风险、适合新手", () => {
+    const c = SAMPLE_CANDIDATES[0];
+    expect(c.name).toBe("桌面手机支架");
+    expect(c.score).toBe(90);
+    expect(c.level).toBe("A");
+    expect(c.levelLabel).toBe("优先小单测试");
+    expect(c.displayRiskLevel).toBe("yellow");
+    expect(c.reasons.length).toBeGreaterThan(0);
+    expect(c.sourcingSummary).not.toBe("暂无该项数据");
+    expect(c.summaryVerdict).toBe("新手可小单测试");
+  });
+
+  it("硅胶折叠水杯 — 中低分、食品接触合规风险", () => {
+    const c = SAMPLE_CANDIDATES[1];
+    expect(c.name).toBe("硅胶折叠水杯");
+    expect(c.score).toBe(45);
+    expect(c.levelLabel).toBe("有经验再做");
+    expect(c.risks.some((r) => r.includes("食品接触"))).toBe(true);
+    expect(c.risks.some((r) => r.includes("FDA") || r.includes("LFGB"))).toBe(true);
+    expect(c.summaryVerdict).toContain("新手慎入");
+  });
+
+  it("儿童电动牙刷 — 低分、高风险、不建议新手", () => {
+    const c = SAMPLE_CANDIDATES[2];
+    expect(c.name).toBe("儿童电动牙刷");
+    expect(c.score).toBe(10);
+    expect(c.level).toBe("E");
+    expect(c.levelLabel).toBe("暂不建议");
+    expect(c.displayRiskLevel).toBe("red");
+    expect(c.risks.some((r) => r.includes("儿童"))).toBe(true);
+    expect(c.risks.some((r) => r.includes("CPC"))).toBe(true);
+    expect(c.summaryVerdict).toBe("新手不建议");
+    expect(c.reasons).toEqual([]);
+  });
+
+  it("所有候选品不包含 undefined/null 展示字段", () => {
+    for (const c of SAMPLE_CANDIDATES) {
+      expect(typeof c.name).toBe("string");
+      expect(c.name.length).toBeGreaterThan(0);
+      expect(typeof c.score).toBe("number");
+      expect(Number.isFinite(c.score)).toBe(true);
+      expect(typeof c.level).toBe("string");
+      expect(typeof c.levelLabel).toBe("string");
+      expect(typeof c.displayRiskLevel).toBe("string");
+      expect(Array.isArray(c.reasons)).toBe(true);
+      expect(Array.isArray(c.risks)).toBe(true);
+      expect(typeof c.nextAction).toBe("string");
+      expect(typeof c.sourcingSummary).toBe("string");
+      expect(typeof c.riskSummary).toBe("string");
+      expect(typeof c.summaryVerdict).toBe("string");
+      expect(typeof c.status).toBe("string");
+    }
+  });
+
+  it("可被 extractCandidates 正确解析（mock API 响应结构）", () => {
+    const input: V2RecordsInput = {
+      items: [
+        {
+          type: "opportunities",
+          result: {
+            candidates: SAMPLE_CANDIDATES,
+          },
+        },
+      ],
+    };
+    const result = extractCandidates(input);
+    expect(result).toHaveLength(3);
+    expect(result[0].name).toBe("桌面手机支架");
+    expect(result[1].name).toBe("硅胶折叠水杯");
+    expect(result[2].name).toBe("儿童电动牙刷");
   });
 });

@@ -5,7 +5,7 @@ import {
   useAccessPassword,
   canRequestWithAccessPassword,
 } from "@/lib/client/accessPassword";
-import { extractCandidates, type V2Candidate } from "@/lib/agents/v2WorkflowRecords";
+import { extractCandidates, SAMPLE_CANDIDATES, type V2Candidate } from "@/lib/agents/v2WorkflowRecords";
 
 /* ── Types ──────────────────────────────────────── */
 
@@ -22,6 +22,7 @@ type LoadState =
       type: "ready";
       candidates: StoredCandidate[];
       taskTitle: string;
+      isSample: boolean;
     };
 
 type WorkflowStep = {
@@ -248,11 +249,23 @@ export default function V2WorkflowLabClient() {
         taskTitle: candidates.length > 0
           ? `机会雷达 · ${candidates.length} 个候选品`
           : "机会雷达",
+        isSample: false,
       });
     } catch {
       setLoadState({ type: "error", message: "网络请求失败，请检查连接后重试。" });
     }
   }, [accessPassword, isAccessPasswordReady]);
+
+  const loadSample = useCallback(() => {
+    setSelectedIndex(0);
+    setConfirmedSet(new Set());
+    setLoadState({
+      type: "ready",
+      candidates: SAMPLE_CANDIDATES,
+      taskTitle: "沙盒示例 · 3 个候选品",
+      isSample: true,
+    });
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -292,15 +305,27 @@ export default function V2WorkflowLabClient() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       {/* ⚠️ Sandbox banner */}
-      <div className="mb-6 rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3">
-        <p className="text-sm font-semibold text-amber-800">
-          ⚠️ V2 工作流沙盒 — Phase 1B 只读已有机会雷达记录
-        </p>
-        <p className="mt-1 text-xs text-amber-700">
-          当前只读已有 opportunities 任务记录，不调用新 AI，不保存任务。
-          所有数据来自已完成的 AI 分析。<strong> 不会自动采购、自动发布、自动投广告。</strong>
-        </p>
-      </div>
+      {loadState.type === "ready" && loadState.isSample ? (
+        <div className="mb-6 rounded-lg border-2 border-purple-400 bg-purple-50 px-4 py-3">
+          <p className="text-sm font-semibold text-purple-800">
+            🧪 沙盒示例数据 — 仅用于 V2 工作流评审
+          </p>
+          <p className="mt-1 text-xs text-purple-700">
+            当前展示的是内置示例数据，不来自真实 AI，不会保存任务。
+            <strong> 不会自动采购、自动发布、自动投广告。</strong>
+          </p>
+        </div>
+      ) : (
+        <div className="mb-6 rounded-lg border-2 border-amber-400 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-800">
+            ⚠️ V2 工作流沙盒 — Phase 1B 只读已有机会雷达记录
+          </p>
+          <p className="mt-1 text-xs text-amber-700">
+            当前只读已有 opportunities 任务记录，不调用新 AI，不保存任务。
+            所有数据来自已完成的 AI 分析。<strong> 不会自动采购、自动发布、自动投广告。</strong>
+          </p>
+        </div>
+      )}
 
       {/* Loading */}
       {loadState.type === "loading" && (
@@ -354,6 +379,21 @@ export default function V2WorkflowLabClient() {
             </a>{" "}
             完成一次分析，再回到此页面查看。
           </p>
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <p className="mb-2 text-xs text-gray-400">
+              或使用内置示例数据预览 V2 工作流效果：
+            </p>
+            <button
+              type="button"
+              onClick={loadSample}
+              className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 transition"
+            >
+              🧪 加载示例数据
+            </button>
+            <p className="mt-2 text-[11px] text-gray-400">
+              示例数据不来自真实 AI，不会保存任务，仅用于 V2 工作流评审。
+            </p>
+          </div>
         </div>
       )}
 
@@ -367,7 +407,7 @@ export default function V2WorkflowLabClient() {
                 候选商品
               </h2>
               <p className="mb-3 text-[11px] text-gray-400">
-                来自已有机会雷达记录 · {loadState.taskTitle}
+                {loadState.isSample ? "沙盒示例数据" : "来自已有机会雷达记录"} · {loadState.taskTitle}
               </p>
               <ul className="space-y-2">
                 {loadState.candidates.map((c, i) => {
@@ -447,16 +487,18 @@ export default function V2WorkflowLabClient() {
               <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-gray-700">
-                    💡 确认状态仅为本地演示
+                    💡 {loadState.isSample ? "沙盒示例 · 确认仅本地演示" : "确认状态仅为本地演示"}
                   </p>
                   <p className="mt-0.5 text-xs text-gray-400">
-                    {allConfirmed
-                      ? "全部确认完成（本阶段不保存到任务中心）。"
-                      : `请完成剩余 ${stepIds.length - confirmedCount} 步的人工确认。当前不会保存。`}
+                    {loadState.isSample
+                      ? "当前为内置示例数据，不会保存到任务中心，不会调用 AI。"
+                      : allConfirmed
+                        ? "全部确认完成（本阶段不保存到任务中心）。"
+                        : `请完成剩余 ${stepIds.length - confirmedCount} 步的人工确认。当前不会保存。`}
                   </p>
                 </div>
                 <span className="shrink-0 rounded-md bg-gray-100 px-3 py-1.5 text-xs text-gray-400">
-                  Phase 1D 才上线保存
+                  {loadState.isSample ? "沙盒评审用" : "Phase 1D 才上线保存"}
                 </span>
               </div>
             </div>

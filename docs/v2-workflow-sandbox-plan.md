@@ -1,6 +1,6 @@
 # V2 工作流沙盒 — 规划文档
 
-> 状态：🟡 Phase 1B 只读数据接入完成，待进入 Phase 1C。
+> 状态：🟡 Phase 1B.5 沙盒示例数据模式完成，待进入 Phase 1C。
 > 分支：`feature/v2-workflow-sandbox`
 > 基于：`main` `8c66f46563f92e3044e2a6d5d034814033cfb3d4`
 
@@ -149,6 +149,15 @@
 - 不调用新 AI，不保存任务，不新增 API
 - checkbox 仍为本地演示状态
 
+### Phase 1B.5 ✅ 已完成 — 沙盒示例数据模式
+- `lib/agents/v2WorkflowRecords.ts` 新增 `SAMPLE_CANDIDATES` 导出（3 个候选品）
+- 空状态新增「加载示例数据」按钮，点击后加载内置 fixture，不请求网络
+- 示例模式有紫色 banner 明确标注「沙盒示例数据 — 仅用于 V2 工作流评审」
+- 示例数据覆盖：高分低风险（桌面手机支架）、中低分合规风险（硅胶折叠水杯）、低分高风险新手不建议（儿童电动牙刷）
+- 切换候选品后 4 步内容跟随变化
+- 不调用 AI，不保存任务，不新增 API
+- 测试新增 6 个 sample fixture 用例
+
 ### Phase 1C — 单商品串行调用（用户确认后）
 - 用户在 Phase 1B 基础上点击「重新分析」
 - 串行调用 `/api/agents/sourcing` → `/api/agents/risk` → `/api/agents/summary`
@@ -197,7 +206,7 @@
 
 - 分支：`feature/v2-workflow-sandbox`
 - 基于：`main` `8c66f46`
-- 阶段：Phase 1B 只读数据接入完成
+- 阶段：Phase 1B.5 沙盒示例数据模式完成
 - 不调用真实 AI
 - 不部署
 - 不改数据库
