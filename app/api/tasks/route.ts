@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 const REQUEST_BODY_LIMIT_BYTES = 256 * 1024;
 const allowedPlatforms = new Set<string>(ALL_KNOWN_PLATFORMS);
 const allowedSources = new Set(["mock", "ai"]);
-const allowedTypes = new Set(["viral", "radar", "product", "risk", "sourcing", "material", "summary"]);
+const allowedTypes = new Set(["viral", "radar", "product", "risk", "sourcing", "material", "summary", "opportunities"]);
 
 type ApiError = {
   code: string;

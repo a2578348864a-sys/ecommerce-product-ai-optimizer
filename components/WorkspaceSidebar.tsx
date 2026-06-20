@@ -11,11 +11,13 @@ import {
   Package,
   ShieldCheck,
   Sparkles,
+  Target,
   UploadCloud,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
+  { label: "机会雷达", href: "/opportunities", icon: Target },
   { label: "货源判断", href: "/sourcing", icon: ClipboardCheck, step: 1 },
   { label: "风险排查", href: "/risk", icon: ShieldCheck, step: 2 },
   { label: "选品体检", href: "/products/new", icon: LayoutDashboard, step: 3 },
@@ -30,11 +32,11 @@ const homeItem = { label: "首页", href: "/", icon: House } as const;
 const navGroups = [
   {
     title: "功能导航",
-    items: workspaceNavItems.slice(0, 5),
+    items: workspaceNavItems.slice(0, 6),
   },
   {
-    title: "素材工具",
-    items: workspaceNavItems.slice(5, 7),
+    title: "素材与结论",
+    items: workspaceNavItems.slice(6),
   },
 ] as const;
 

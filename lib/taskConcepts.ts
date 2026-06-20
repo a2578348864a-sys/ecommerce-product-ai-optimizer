@@ -9,6 +9,7 @@ export const taskStatusOptions = [
 ] as const;
 
 export const taskTypeOptions = [
+  { value: "opportunities", label: "机会雷达" },
   { value: "viral", label: "海外爆款趋势分析" },
   { value: "product", label: "选品分析" },
   { value: "competitor", label: "竞品拆解" },
