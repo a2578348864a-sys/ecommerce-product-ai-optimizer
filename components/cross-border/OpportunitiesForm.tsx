@@ -157,10 +157,15 @@ export function OpportunitiesForm() {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Phase 1E: Crawl state
+  const [crawlInput, setCrawlInput] = useState("");
+  const [crawling, setCrawling] = useState(false);
+  const [crawlWarnings, setCrawlWarnings] = useState<string[]>([]);
+
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
     storageKey: DRAFT_KEY,
-    ttlMs: 7 * 24 * 60 * 60 * 1000,
+    ttlMs: 10 * 60 * 1000, // Phase 1E: 10 minutes
     initialValue: "",
   });
 
@@ -235,6 +240,54 @@ export function OpportunitiesForm() {
       setLoading(false);
     }
   }, [rawText, accessPassword, isAccessPasswordReady, overLimit, validCount]);
+
+  // Phase 1E: Crawl public sources
+  const handleCrawl = useCallback(async () => {
+    if (!crawlInput.trim() || crawling || loading) return;
+    if (!isAccessPasswordReady || !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setCrawlWarnings(["访问密码缺失或已过期。"]);
+      return;
+    }
+
+    setCrawling(true);
+    setCrawlWarnings([]);
+    setError("");
+
+    try {
+      const res = await fetch("/api/opportunities/crawl", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: crawlInput, accessPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setCrawlWarnings([data.error?.message || "抓取失败"]);
+        return;
+      }
+
+      // Convert crawl items to plain text lines, append to rawText
+      const crawlLines = (data.items || []).map(
+        (item: { title: string; sourceHost: string; scores: { finalScore: number } }) =>
+          `${item.title} [${item.sourceHost}] score:${item.scores.finalScore}`
+      );
+      if (crawlLines.length > 0) {
+        const newText = [rawText, ...crawlLines].filter(Boolean).join("\n");
+        setRawText(newText);
+        setDraft(newText);
+      }
+
+      if (data.warnings?.length) {
+        setCrawlWarnings(data.warnings);
+      }
+      if (crawlLines.length > 0) {
+        setCrawlWarnings((prev) => [...prev, `已抓取 ${crawlLines.length} 条公开线索，已填入候选列表。可继续手动编辑后点「开始分析」。`]);
+      }
+    } catch {
+      setCrawlWarnings(["网络异常，抓取失败。"]);
+    } finally {
+      setCrawling(false);
+    }
+  }, [crawlInput, accessPassword, isAccessPasswordReady, crawling, loading, rawText, setDraft]);
 
   const handleExportMarkdown = useCallback(() => {
     const lines: string[] = [
@@ -355,6 +408,36 @@ export function OpportunitiesForm() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+        {/* Phase 1E: Crawl input */}
+        <div className="surface-card p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <label className="mb-1 block text-xs font-semibold text-slate-600">
+                抓取公开线索（可选）
+                <span className="ml-1 font-normal text-slate-400">粘贴公开 URL / RSS / sitemap，每行一个，最多 5 个</span>
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100"
+                placeholder="https://example.com/sitemap.xml"
+                value={crawlInput}
+                onChange={(e) => setCrawlInput(e.target.value)}
+                disabled={loading || crawling}
+              />
+            </div>
+            <button type="button" onClick={handleCrawl} disabled={loading || crawling || !crawlInput.trim()}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-4 text-sm font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50">
+              {crawling ? <><Loader2 className="size-3.5 animate-spin" />抓取中</> : <><Search className="size-3.5" />抓取公开线索</>}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">不调用 AI，不保存任务，仅整理候选机会。不支持登录态页面。</p>
+          {crawlWarnings.length > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+              {crawlWarnings.map((w, i) => <p key={i}>{w}</p>)}
+            </div>
+          )}
+        </div>
 
         {/* Input Area */}
         {!hasResults ? (

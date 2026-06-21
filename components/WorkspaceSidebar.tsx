@@ -18,25 +18,25 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
   { label: "机会雷达", href: "/opportunities", icon: Target },
-  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck, step: 1 },
-  { label: "风险排查", href: "/risk", icon: ShieldCheck, step: 2 },
-  { label: "选品体检", href: "/products/new", icon: LayoutDashboard, step: 3 },
-  { label: "爆款拆解", href: "/viral", icon: Sparkles, step: 4 },
-  { label: "任务记录", href: "/tasks", icon: History, step: 5 },
-  { label: "素材接收", href: "/materials", icon: UploadCloud },
+  { label: "产品分析", href: "/products/new", icon: Package },
+  { label: "风险排查", href: "/risk", icon: ShieldCheck },
   { label: "小白结论", href: "/summary", icon: Brain },
+  { label: "任务中心", href: "/tasks", icon: History },
+  { label: "爆款拆解", href: "/viral", icon: Sparkles },
+  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
+  { label: "素材接收", href: "/materials", icon: UploadCloud },
 ] as const;
 
 const homeItem = { label: "首页", href: "/", icon: House } as const;
 
 const navGroups = [
   {
-    title: "功能导航",
-    items: workspaceNavItems.slice(0, 6),
+    title: "核心流程",
+    items: workspaceNavItems.slice(0, 5),
   },
   {
-    title: "素材与结论",
-    items: workspaceNavItems.slice(6),
+    title: "辅助工具",
+    items: workspaceNavItems.slice(5),
   },
 ] as const;
 
@@ -114,11 +114,7 @@ export function WorkspaceSidebar() {
                     className={"mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 " + (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
                   >
                     <span className={"flex size-7 items-center justify-center rounded-lg border " + (active ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
-                      {"step" in item && item.step ? (
-                        <span className="text-[11px] font-bold">{item.step}</span>
-                      ) : (
-                        <Icon className="size-4" />
-                      )}
+                      <Icon className="size-4" />
                     </span>
                     {item.label}
                   </Link>

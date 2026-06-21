@@ -30,7 +30,7 @@ import {
 } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { useLocalDraft } from "@/hooks/useLocalDraft";
+import { useLocalDraft, INPUT_DRAFT_TTL_MS } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import {
   EvidenceCardList,
@@ -952,6 +952,7 @@ export default function Home() {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
   const { draftValue, setDraftValue, clearDraft, restored: draftRestored } = useLocalDraft<HomeDraft>({
     storageKey: "qx:draft:home:v1",
+    ttlMs: INPUT_DRAFT_TTL_MS,
     initialValue: {
       form: emptyForm,
       result: null,
@@ -1719,8 +1720,7 @@ export default function Home() {
                 <p className="muted-text mt-1 text-sm">半自动 AI 分析工具：AI 负责分析/生成/整理，关键决策由人工确认。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="linear-pill px-3 py-1 text-sm">本地部署</span>
-                <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">省钱模式：已开启</span>
+                <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">Alpha 版</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -1736,74 +1736,96 @@ export default function Home() {
           </header>
 
           <section className="surface-card p-4 sm:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <p className="linear-kicker">v1.1 小白入口</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">不知道从哪开始，就先跑一遍标准流程</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  AI 结果仅供初筛，关键动作需人工确认。这里不会自动爬取、发布或操作外部平台。
+            <div className="mb-4">
+              <p className="linear-kicker">从哪里开始？</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">三个入口，按需选择</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                半自动 AI 电商分析工具 Alpha 版。AI 负责整理证据和建议，关键决策由人工确认。
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              {/* 入口 1：找机会 */}
+              <article className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <span className="linear-icon size-10 shrink-0 rounded-xl bg-teal-100 text-teal-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-teal-800">找机会</p>
+                    <p className="text-xs text-teal-600">机会雷达</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  还没有明确产品？从公开线索中发现候选机会，抓取→清洗→去重→评分，整理成候选机会池。
                 </p>
-              </div>
-              <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                <Link href="/opportunities" className="linear-button-primary mt-4 inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold">
+                  打开机会雷达
+                </Link>
+              </article>
+
+              {/* 入口 2：分析产品 */}
+              <article className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <span className="linear-icon size-10 shrink-0 rounded-xl bg-indigo-100 text-indigo-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-indigo-800">分析产品</p>
+                    <p className="text-xs text-indigo-600">粘贴素材，逐步判断</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  已经有商品名、链接、截图或想法？填入素材 → 识别证据 → 货源/风险/结论，逐步判断能不能做。
+                </p>
+                <div className="mt-4 text-sm leading-6 text-slate-600">
+                  直接在下方素材输入区粘贴内容开始分析。
+                </div>
+              </article>
+
+              {/* 入口 3：看演示 */}
+              <article className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 sm:p-5">
+                <div className="flex items-center gap-3">
+                  <span className="linear-icon size-10 shrink-0 rounded-xl bg-amber-100 text-amber-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-amber-800">看演示</p>
+                    <p className="text-xs text-amber-600">不调用 AI，不保存记录</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-700">
+                  第一次使用？一键看完整流程：机会发现→清洗→评分→人工选择→分析→任务沉淀。
+                </p>
                 <button
                   type="button"
                   onClick={() => setShowBeginnerGuide((current) => !current)}
-                  className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                  className="linear-button mt-4 inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold"
                 >
-                  我是新手，带我跑一遍
+                  {showBeginnerGuide ? "收起演示" : "一键看完整演示"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDemoSamples((current) => !current)}
-                  className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
-                >
-                  加载演示样例
-                </button>
-              </div>
+              </article>
             </div>
 
+            {/* Demo stepper — reuses old beginner guide but with better framing */}
             {showBeginnerGuide ? (
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {beginnerGuideSteps.map((item) => (
-                  <article key={item.step} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-bold text-teal-700">{item.step}</p>
-                    <h3 className="mt-1 text-base font-semibold text-slate-950">{item.title}</h3>
-                    <p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-600">{item.description}</p>
-                    <Link
-                      href={item.href}
-                      className="linear-button-soft mt-3 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
-                    >
-                      去这一步
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-
-            {showDemoSamples ? (
               <div className="mt-5">
-                <div className="rounded-2xl border border-teal-200 bg-teal-50/80 p-4">
-                  <p className="text-sm font-bold text-teal-800">演示样例，不调用真实 AI</p>
-                  <p className="mt-1 text-sm leading-6 text-teal-700">
-                    以下是固定静态样例，只用于面试或产品演示，不代表真人测试结果，也不会写入数据库。
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                  <p className="text-sm font-bold text-amber-800">演示流程，不调用 AI，不保存新记录</p>
+                  <p className="mt-1 text-sm leading-6 text-amber-700">
+                    以下是固定静态演示，只用于了解工具能力。不代表真实测试结果，不会写入数据库。
                   </p>
                 </div>
-                <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                  {demoProducts.map((item) => (
-                    <article key={item.name} className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <h3 className="text-base font-semibold text-slate-950">{item.name}</h3>
-                        <span className={"rounded-full border px-3 py-1 text-xs font-bold " + item.riskClass}>
-                          {item.risk}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm font-semibold text-slate-800">{item.highlight}</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{item.reason}</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {beginnerGuideSteps.map((item) => (
+                    <article key={item.step} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-bold text-teal-700">{item.step}</p>
+                      <h3 className="mt-1 text-base font-semibold text-slate-950">{item.title}</h3>
+                      <p className="mt-2 min-h-[48px] text-sm leading-6 text-slate-600">{item.description}</p>
                       <Link
                         href={item.href}
-                        className="linear-button-soft mt-4 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                        className="linear-button-soft mt-3 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
                       >
-                        {item.pageLabel}
+                        去这一步
                       </Link>
                     </article>
                   ))}

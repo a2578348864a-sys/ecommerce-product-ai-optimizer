@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export const DEFAULT_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Phase 1E: short-lived input draft TTL — 10 minutes */
+export const INPUT_DRAFT_TTL_MS = 10 * 60 * 1000;
 export const DEFAULT_DRAFT_VERSION = 1;
 
 type StoredLocalDraft<T> = {
