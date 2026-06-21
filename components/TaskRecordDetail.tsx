@@ -68,6 +68,7 @@ function getTitle(item: TaskCenterItem) {
 }
 
 const typeLabelMap: Record<string, string> = {
+  workflow: "一键分析",
   opportunities: "机会雷达",
   viral: "海外爆款趋势分析",
   radar: "爆款雷达分析",
@@ -79,6 +80,7 @@ const typeLabelMap: Record<string, string> = {
 };
 
 const agentLabelMap: Record<string, string> = {
+  workflow: "工作流 Agent",
   opportunities: "机会雷达 Agent",
   viral: "海外爆款趋势 Agent",
   radar: "爆款雷达 Agent",
@@ -119,6 +121,104 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
     </section>
   );
 }
+
+/* ── Workflow result sub-component ────────────── */
+
+function WorkflowResultSection({ result }: { result: Record<string, unknown> }) {
+  const fr = result.finalReport as Record<string, unknown> | undefined;
+  const steps = Array.isArray(result.steps) ? result.steps as Array<Record<string, unknown>> : [];
+
+  if (!fr) return null;
+
+  const riskLevel = (fr.riskLevel as string) || "unknown";
+  const riskColors: Record<string, string> = {
+    green: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    yellow: "border-amber-200 bg-amber-50 text-amber-700",
+    red: "border-rose-200 bg-rose-50 text-rose-700",
+  };
+
+  return (
+    <div className="mt-5 space-y-4">
+      {/* Final Report banner */}
+      <section className={`rounded-2xl border p-4 ${riskColors[riskLevel] || riskColors.yellow}`}>
+        <h3 className="text-sm font-bold text-slate-950">工作流最终报告</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
+            {(fr.finalVerdict as string) || "未评级"}
+          </span>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${riskColors[riskLevel] || riskColors.yellow}`}>
+            {riskLevel === "green" ? "低风险" : riskLevel === "red" ? "高风险" : "需注意"}
+          </span>
+          <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+            {(fr.beginnerFit as string) || ""}
+          </span>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            fr.canTestSmallBatch ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+          }`}>
+            {fr.canTestSmallBatch ? "可小单测试" : "需先评估合规"}
+          </span>
+        </div>
+      </section>
+
+      {/* Steps summary */}
+      {steps.length > 0 && (
+        <section className="rounded-2xl border border-white/80 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-950">工作流步骤</h3>
+          <div className="mt-3 space-y-1.5">
+            {steps.map((s) => {
+              const icon = s.status === "completed" ? "✅" : s.status === "fallback" ? "⚠️" : "❌";
+              return (
+                <div key={s.key as string} className="flex items-start gap-2 text-sm text-slate-600">
+                  <span className="shrink-0">{icon}</span>
+                  <span className="font-medium">{(s.label as string) || (s.key as string)}</span>
+                  <span className="text-slate-400 truncate">{(s.summary as string || "").slice(0, 60)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Must check before listing */}
+      {Array.isArray(fr.mustCheckBeforeListing) && (fr.mustCheckBeforeListing as string[]).length > 0 && (
+        <section className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+          <h3 className="text-sm font-semibold text-slate-950">上线前必须检查</h3>
+          <ul className="mt-2 space-y-1">
+            {(fr.mustCheckBeforeListing as string[]).map((item, i) => (
+              <li key={i} className="text-sm text-slate-600">- {item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Next steps */}
+      {Array.isArray(fr.nextSteps) && (fr.nextSteps as string[]).length > 0 && (
+        <section className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
+          <h3 className="text-sm font-semibold text-slate-950">下一步动作</h3>
+          <ul className="mt-2 space-y-1">
+            {(fr.nextSteps as string[]).map((item, i) => (
+              <li key={i} className="text-sm text-slate-600">- {item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Manual review checklist */}
+      {Array.isArray(fr.manualReviewChecklist) && (fr.manualReviewChecklist as string[]).length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+          <h3 className="text-sm font-semibold text-slate-950">人工确认清单</h3>
+          <ul className="mt-2 space-y-1">
+            {(fr.manualReviewChecklist as string[]).map((item, i) => (
+              <li key={i} className="text-sm text-slate-600">- {item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/* ── Main component ───────────────────────────── */
 
 export function TaskRecordDetail({ id }: { id: string }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
@@ -398,16 +498,21 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </p>
               </div>
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                <ResultList title="核心卖点" items={getStringArray(record.result, "sellingPoints")} />
-                <ResultList title="用户痛点" items={getStringArray(record.result, "painPoints")} />
-                <ResultList title="开头钩子" items={getStringArray(record.result, "hooks")} />
-                <ResultList title="标题建议" items={getStringArray(record.result, "titleSuggestions")} />
-                <ResultList title="短视频开头" items={getStringArray(record.result, "videoOpenings")} />
-                <ResultList title="评论区话题" items={getStringArray(record.result, "commentTriggers")} />
-                <ResultList title="转化优化" items={getStringArray(record.result, "conversionSuggestions")} />
-                <ResultList title="风险提醒" items={getStringArray(record.result, "risks")} />
-              </div>
+              {/* Workflow-specific result rendering */}
+              {record.type === "workflow" && typeof record.result === "object" && record.result !== null && !Array.isArray(record.result) ? (
+                <WorkflowResultSection result={record.result as Record<string, unknown>} />
+              ) : (
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  <ResultList title="核心卖点" items={getStringArray(record.result, "sellingPoints")} />
+                  <ResultList title="用户痛点" items={getStringArray(record.result, "painPoints")} />
+                  <ResultList title="开头钩子" items={getStringArray(record.result, "hooks")} />
+                  <ResultList title="标题建议" items={getStringArray(record.result, "titleSuggestions")} />
+                  <ResultList title="短视频开头" items={getStringArray(record.result, "videoOpenings")} />
+                  <ResultList title="评论区话题" items={getStringArray(record.result, "commentTriggers")} />
+                  <ResultList title="转化优化" items={getStringArray(record.result, "conversionSuggestions")} />
+                  <ResultList title="风险提醒" items={getStringArray(record.result, "risks")} />
+                </div>
+              )}
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4">
                 <h3 className="text-sm font-semibold text-slate-950">完整结果 JSON</h3>

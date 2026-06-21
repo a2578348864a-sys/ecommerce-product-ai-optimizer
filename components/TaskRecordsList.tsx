@@ -17,6 +17,7 @@ const defaultDecisionStatus = "";
 const defaultLimit = 10;
 const taskTypes = [
   { value: "", label: "全部类型" },
+  { value: "workflow", label: "一键分析" },
   { value: "opportunities", label: "机会雷达" },
   { value: "viral", label: "海外爆款趋势分析" },
   { value: "radar", label: "爆款雷达分析" },

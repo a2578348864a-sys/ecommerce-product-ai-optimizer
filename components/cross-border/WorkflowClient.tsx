@@ -10,6 +10,7 @@ import {
   Download,
   Lightbulb,
   Loader2,
+  Save,
   Search,
   ShieldAlert,
   Sparkles,
@@ -130,10 +131,43 @@ export function WorkflowClient() {
   });
   const [result, setResult] = useState<ApiWorkflowResult | null>(null);
   const [error, setError] = useState("");
+  const [savedTaskId, setSavedTaskId] = useState<string | null>(null);
+  const [savingToTasks, setSavingToTasks] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  async function saveToTasks() {
+    if (!result || savingToTasks || savedTaskId) return;
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setSaveError("请先输入访问密码。");
+      return;
+    }
+    setSavingToTasks(true);
+    setSaveError("");
+    try {
+      const res = await fetch("/api/workflows/product-analysis/save-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessPassword, workflowResult: result }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setSaveError(data.error?.message || "保存失败，请稍后重试。");
+        return;
+      }
+      setSavedTaskId(data.data.id);
+    } catch {
+      setSaveError("网络异常，保存失败。");
+    } finally {
+      setSavingToTasks(false);
+    }
+  }
 
   const resetRun = useCallback(() => {
     setResult(null);
     setError("");
+    setSavedTaskId(null);
+    setSaveError("");
+    setSavingToTasks(false);
     setStepStatuses({
       normalize: "pending",
       sourcing: "pending",
@@ -490,6 +524,34 @@ export function WorkflowClient() {
                     <Download className="size-3.5" />
                     导出 Markdown
                   </button>
+                  {savedTaskId ? (
+                    <Link
+                      href={`/tasks/${savedTaskId}`}
+                      className="linear-button-primary inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
+                    >
+                      <CheckCircle2 className="size-3.5" />
+                      已保存，查看任务详情
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={saveToTasks}
+                      disabled={savingToTasks}
+                      className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold disabled:opacity-50"
+                    >
+                      {savingToTasks ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" />
+                          保存中…
+                        </>
+                      ) : (
+                        <>
+                          <Save className="size-3.5" />
+                          保存到任务中心
+                        </>
+                      )}
+                    </button>
+                  )}
                   <Link
                     href="/tasks"
                     className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
@@ -498,6 +560,9 @@ export function WorkflowClient() {
                     任务中心
                   </Link>
                 </div>
+                {saveError && (
+                  <p className="mt-2 text-xs text-rose-600">{saveError}</p>
+                )}
               </div>
 
               {/* Verdict banner */}

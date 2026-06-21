@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
 
   // Reject batch
   if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
-    return NextResponse.json({ ok: false, error: { code: "batch_not_supported", message: "本接口仅支持单品分析，不支持批量输入。" } }, { status: 400 });
+    return NextResponse.json({ ok: false, error: { code: "batch_not_supported", message: "当前只支持单品工作流，暂不支持批量输入。" } }, { status: 400 });
   }
 
   const productName = productNameRaw;
