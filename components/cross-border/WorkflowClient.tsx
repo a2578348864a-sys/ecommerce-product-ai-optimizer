@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -281,12 +281,24 @@ export function WorkflowClient() {
   const [savedTaskId, setSavedTaskId] = useState<string | null>(null);
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [progressExpanded, setProgressExpanded] = useState(false);
+  const finalReportRef = useRef<HTMLElement | null>(null);
+  const reviewRef = useRef<HTMLElement | null>(null);
+  const lastAutoScrolledWorkflowId = useRef<string | null>(null);
   const reviewStepKeys: StepKey[] = ["sourcing", "risk", "summary", "listing"];
   const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
   const allReviewed = reviewStepKeys.every((k) => reviewConfirmed[k]);
 
   const toggleReviewConfirm = useCallback((key: string) => {
     setReviewConfirmed((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const scrollToFinalReport = useCallback(() => {
+    finalReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const scrollToReview = useCallback(() => {
+    reviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
   async function saveToTasks() {
@@ -323,6 +335,8 @@ export function WorkflowClient() {
     setSaveError("");
     setSavingToTasks(false);
     setReviewConfirmed({});
+    setProgressExpanded(false);
+    lastAutoScrolledWorkflowId.current = null;
     setStepStatuses({
       normalize: "pending",
       sourcing: "pending",
@@ -400,6 +414,7 @@ export function WorkflowClient() {
         if (!finalStatuses[key]) finalStatuses[key] = "completed";
       }
       setStepStatuses(finalStatuses);
+      setProgressExpanded(false);
       setResult(wf);
 
       if (wf.warnings.length) {
@@ -419,6 +434,15 @@ export function WorkflowClient() {
       setRunning(false);
     }
   }, [productName, accessPassword, isAccessPasswordReady, running, resetRun]);
+
+  useEffect(() => {
+    if (!result?.workflowId || !result.finalReport) return;
+    if (lastAutoScrolledWorkflowId.current === result.workflowId) return;
+    lastAutoScrolledWorkflowId.current = result.workflowId;
+    window.requestAnimationFrame(() => {
+      finalReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [result?.workflowId, result?.finalReport]);
 
   // Build markdown for export
   function buildMarkdown() {
@@ -492,6 +516,12 @@ export function WorkflowClient() {
 
   const hasResult = result !== null;
   const report = result?.finalReport || null;
+  const aiStepsCompleted = result?.costGuard.aiStepsCompleted ?? 0;
+  const aiStepsRequested = result?.costGuard.aiStepsRequested ?? 4;
+  const progressHasIssues = Object.values(stepStatuses).some((status) => status === "fallback" || status === "failed");
+  const progressSummaryText = progressHasIssues
+    ? `已完成 ${aiStepsCompleted}/${aiStepsRequested}，含兜底/异常步骤`
+    : `已完成 ${aiStepsCompleted}/${aiStepsRequested}`;
 
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
@@ -606,88 +636,86 @@ export function WorkflowClient() {
             )}
           </section>
 
-          {/* Progress stepper — always visible when running or has result */}
-          {(running || hasResult) && (
-            <section className="surface-card p-4 sm:p-5">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">分析进度</h2>
-              <div className="space-y-2">
-                {STEPS.map((step) => {
-                  const status = stepStatuses[step.key] || "pending";
-                  return (
-                    <div
-                      key={step.key}
-                      className={`flex items-start gap-3 rounded-xl border p-3 ${
-                        status === "running"
-                          ? "border-indigo-200 bg-indigo-50/60"
-                          : status === "fallback"
-                            ? "border-amber-200 bg-amber-50/60"
-                            : status === "failed"
-                              ? "border-rose-200 bg-rose-50/60"
-                              : status === "completed"
-                                ? "border-emerald-100 bg-emerald-50/40"
-                                : "border-slate-100 bg-slate-50/40"
-                      }`}
-                    >
-                      <span className="mt-0.5 shrink-0">
-                        <StepIcon status={status} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-slate-900">{step.label}</span>
-                          <StepStatusLabel status={status} />
-                        </div>
-                        <p className="mt-0.5 text-xs text-slate-500">{step.description}</p>
-                        {status !== "pending" && result?.steps.find((s) => s.key === step.key)?.summary && (
-                          <p className="mt-1 text-xs leading-5 text-slate-600 line-clamp-2">
-                            {result.steps.find((s) => s.key === step.key)?.summary}
-                          </p>
-                        )}
-                        {result?.steps.find((s) => s.key === step.key)?.warnings?.length ? (
-                          <div className="mt-1">
-                            {result.steps.find((s) => s.key === step.key)!.warnings.map((w, i) => (
-                              <p key={i} className="text-xs text-amber-600">{w}</p>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* ── Review section ── */}
           {hasResult && result && (
-            <section className="surface-card p-4 sm:p-5">
-              <h2 className="mb-1 text-lg font-semibold text-slate-950">人工复核</h2>
-              <p className="mb-4 text-sm text-slate-500">
-                请逐项复核 AI 分析结果。AI 结论仅供辅助参考，关键决策需人工判断。
-              </p>
-              <div className="space-y-3">
-                {reviewStepKeys.map((key) => (
-                  <StepReviewCard
-                    key={key}
-                    stepKey={key}
-                    result={result}
-                    confirmed={!!reviewConfirmed[key]}
-                    onToggle={() => toggleReviewConfirm(key)}
-                  />
-                ))}
+            <section className="surface-card border-teal-200 bg-teal-50/70 p-4 sm:p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-teal-800">
+                    ✅ 分析完成：{result.productName}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-teal-700">
+                    已生成最终报告和人工复核清单，请先查看最终报告，再展开各步骤复核。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={scrollToFinalReport}
+                    className="linear-button-primary inline-flex h-10 items-center justify-center px-3 text-xs font-semibold"
+                  >
+                    查看最终报告
+                  </button>
+                  <button
+                    type="button"
+                    onClick={scrollToReview}
+                    className="linear-button-soft inline-flex h-10 items-center justify-center px-3 text-xs font-semibold"
+                  >
+                    查看人工复核
+                  </button>
+                  <button
+                    type="button"
+                    onClick={copyMarkdown}
+                    className="linear-button-soft inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
+                  >
+                    <Copy className="size-3.5" />
+                    复制报告
+                  </button>
+                  {savedTaskId ? (
+                    <Link
+                      href={`/tasks/${savedTaskId}`}
+                      className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
+                    >
+                      <CheckCircle2 className="size-3.5" />
+                      查看任务
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={saveToTasks}
+                      disabled={savingToTasks}
+                      className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold disabled:opacity-50"
+                    >
+                      {savingToTasks ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin" />
+                          保存中…
+                        </>
+                      ) : (
+                        <>
+                          <Save className="size-3.5" />
+                          保存到任务中心
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className={`mt-4 rounded-xl border p-3 text-sm ${allReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-                {allReviewed
-                  ? "✓ 4/4 已完成人工确认，可作为下一步测试参考"
-                  : "⚠️ 请完成 4 个步骤人工确认后，再把结论用于采购/上架决策"}
-              </div>
+              {saveError && (
+                <p className="mt-2 text-xs text-rose-600">{saveError}</p>
+              )}
             </section>
           )}
 
           {/* Final report */}
           {hasResult && report && (
-            <section className="surface-card p-4 sm:p-5">
+            <section ref={finalReportRef} className="surface-card p-4 sm:p-5 scroll-mt-4">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-slate-950">最终报告</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-950">最终选品报告</h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    先看结论、风险等级、是否可小单测试，再进入人工复核区逐项确认。
+                  </p>
+                </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -749,7 +777,7 @@ export function WorkflowClient() {
               {/* Review gate banner */}
               {!allReviewed && (
                 <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                  ⚠️ AI 初步结论，尚未完成人工确认。请在上方逐项复核后再用于采购/上架决策。
+                  ⚠️ AI 初步结论，尚未完成人工确认。请在下方人工复核区逐项确认后，再用于采购/上架决策。
                 </div>
               )}
 
@@ -772,13 +800,14 @@ export function WorkflowClient() {
                      <AlertCircle className="size-5" />}
                   </span>
                   <div>
-                    <h3 className="text-base font-bold text-slate-950">{report.finalVerdict}</h3>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">结论</p>
+                    <h3 className="mt-1 text-base font-bold text-slate-950">{report.finalVerdict}</h3>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${riskLevelLabel(report.riskLevel).cls}`}>
-                        {riskLevelLabel(report.riskLevel).text}
+                        风险等级：{riskLevelLabel(report.riskLevel).text}
                       </span>
                       <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                        {report.beginnerFit}
+                        新手适配：{report.beginnerFit}
                       </span>
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                         report.canTestSmallBatch
@@ -849,6 +878,114 @@ export function WorkflowClient() {
                   工作流 ID：{result.workflowId}
                 </p>
               </div>
+            </section>
+          )}
+
+          {/* ── Review section ── */}
+          {hasResult && result && (
+            <section ref={reviewRef} className="surface-card p-4 sm:p-5 scroll-mt-4">
+              <h2 className="mb-1 text-lg font-semibold text-slate-950">人工复核区</h2>
+              <p className="mb-4 text-sm text-slate-500">
+                以下是 AI 每一步的详细依据，请逐项展开确认。AI 结论不能替代人工采购和合规判断。
+              </p>
+              <div className="space-y-3">
+                {reviewStepKeys.map((key) => (
+                  <StepReviewCard
+                    key={key}
+                    stepKey={key}
+                    result={result}
+                    confirmed={!!reviewConfirmed[key]}
+                    onToggle={() => toggleReviewConfirm(key)}
+                  />
+                ))}
+              </div>
+              <div className={`mt-4 rounded-xl border p-3 text-sm ${allReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                {allReviewed
+                  ? "✓ 4/4 已完成人工确认，可作为下一步测试参考"
+                  : "⚠️ 请完成 4 个步骤人工确认后，再把结论用于采购/上架决策"}
+              </div>
+            </section>
+          )}
+
+          {/* Progress stepper */}
+          {(running || hasResult) && (
+            <section className="surface-card p-4 sm:p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">分析进度</h2>
+                  {hasResult && result ? (
+                    <p className="mt-1 text-sm text-slate-500">{progressSummaryText}</p>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-500">正在按步骤生成报告，请稍候。</p>
+                  )}
+                </div>
+                {hasResult && !running && (
+                  <button
+                    type="button"
+                    onClick={() => setProgressExpanded((expanded) => !expanded)}
+                    className="linear-button-soft inline-flex h-9 items-center justify-center px-3 text-xs font-semibold"
+                  >
+                    {progressExpanded ? "收起完整进度" : "展开完整进度"}
+                  </button>
+                )}
+              </div>
+
+              {hasResult && !running && !progressExpanded ? (
+                <div className={`mt-3 flex items-center gap-2 rounded-xl border p-3 text-sm ${
+                  progressHasIssues
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                }`}>
+                  {progressHasIssues ? <AlertCircle className="size-4 shrink-0" /> : <CheckCircle2 className="size-4 shrink-0" />}
+                  <span className="font-semibold">{progressSummaryText}</span>
+                  <span className="text-xs opacity-80">完整过程已折叠，最终报告和人工复核在上方。</span>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {STEPS.map((step) => {
+                    const status = stepStatuses[step.key] || "pending";
+                    return (
+                      <div
+                        key={step.key}
+                        className={`flex items-start gap-3 rounded-xl border p-3 ${
+                          status === "running"
+                            ? "border-indigo-200 bg-indigo-50/60"
+                            : status === "fallback"
+                              ? "border-amber-200 bg-amber-50/60"
+                              : status === "failed"
+                                ? "border-rose-200 bg-rose-50/60"
+                                : status === "completed"
+                                  ? "border-emerald-100 bg-emerald-50/40"
+                                  : "border-slate-100 bg-slate-50/40"
+                        }`}
+                      >
+                        <span className="mt-0.5 shrink-0">
+                          <StepIcon status={status} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900">{step.label}</span>
+                            <StepStatusLabel status={status} />
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-500">{step.description}</p>
+                          {status !== "pending" && result?.steps.find((s) => s.key === step.key)?.summary && (
+                            <p className="mt-1 text-xs leading-5 text-slate-600 line-clamp-2">
+                              {result.steps.find((s) => s.key === step.key)?.summary}
+                            </p>
+                          )}
+                          {result?.steps.find((s) => s.key === step.key)?.warnings?.length ? (
+                            <div className="mt-1">
+                              {result.steps.find((s) => s.key === step.key)!.warnings.map((w, i) => (
+                                <p key={i} className="text-xs text-amber-600">{w}</p>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
 

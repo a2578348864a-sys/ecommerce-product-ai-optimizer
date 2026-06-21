@@ -126,8 +126,8 @@ export function WorkspaceSidebar() {
 
         <div className="surface-card-soft p-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold text-slate-500">规划中</p>
-            <span className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">后期接入</span>
+            <p className="text-[11px] font-semibold text-slate-500">后续能力预留</p>
+            <span className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">未上线</span>
           </div>
           <div className="mt-2 flex flex-col gap-1.5">
             {plannedItems.map((item) => (
