@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { taskStatusOptions } from "@/lib/taskConcepts";
+import { taskStatusOptions, TASK_TYPE_FILTER_OPTIONS } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import {
@@ -15,18 +15,7 @@ import {
 const defaultType = "";
 const defaultDecisionStatus = "";
 const defaultLimit = 10;
-const taskTypes = [
-  { value: "", label: "全部类型" },
-  { value: "workflow", label: "一键分析" },
-  { value: "opportunities", label: "机会雷达" },
-  { value: "viral", label: "海外爆款趋势分析" },
-  { value: "radar", label: "爆款雷达分析" },
-  { value: "product", label: "选品利润分析" },
-  { value: "risk", label: "风险排查" },
-  { value: "sourcing", label: "货源判断" },
-  { value: "material", label: "素材接收" },
-  { value: "summary", label: "小白结论" },
-];
+const taskTypes = TASK_TYPE_FILTER_OPTIONS;
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,

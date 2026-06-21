@@ -1,3 +1,49 @@
+/* ── Phase 2-A.3: Centralized task type registry ── */
+
+export type TaskTypeEntry = {
+  type: string;
+  label: string;
+  agentLabel: string;
+  filterLabel: string;
+  searchable: boolean;
+};
+
+/** Single source of truth for all task types. Add new types here only. */
+export const TASK_TYPE_REGISTRY: readonly TaskTypeEntry[] = [
+  { type: "workflow",      label: "一键分析",         agentLabel: "一键选品工作流",   filterLabel: "一键分析",                  searchable: true },
+  { type: "opportunities", label: "机会雷达",         agentLabel: "机会雷达 Agent",   filterLabel: "机会雷达",                  searchable: true },
+  { type: "viral",         label: "海外爆款趋势分析", agentLabel: "海外爆款趋势 Agent", filterLabel: "海外爆款趋势分析",        searchable: true },
+  { type: "radar",         label: "爆款雷达分析",     agentLabel: "爆款雷达 Agent",   filterLabel: "爆款雷达分析",              searchable: true },
+  { type: "product",       label: "选品利润分析",     agentLabel: "选品分析 Agent",   filterLabel: "选品利润分析",              searchable: true },
+  { type: "risk",          label: "风险排查",         agentLabel: "风险检查 Agent",   filterLabel: "风险排查",                  searchable: true },
+  { type: "sourcing",      label: "货源判断",         agentLabel: "货源判断 Agent",   filterLabel: "货源判断",                  searchable: true },
+  { type: "material",      label: "素材接收",         agentLabel: "素材接收 Agent",   filterLabel: "素材接收",                  searchable: true },
+  { type: "summary",       label: "小白结论",         agentLabel: "小白结论 Agent",   filterLabel: "小白结论",                  searchable: true },
+] as const;
+
+/** Derive task type labels map for detail display */
+export const TASK_TYPE_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  TASK_TYPE_REGISTRY.map((e) => [e.type, e.label]),
+);
+
+/** Derive agent label map for detail display */
+export const TASK_AGENT_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  TASK_TYPE_REGISTRY.map((e) => [e.type, e.agentLabel]),
+);
+
+/** Searchable types — used by /api/tasks to validate the type param */
+export const SEARCHABLE_TASK_TYPES: ReadonlySet<string> = new Set(
+  TASK_TYPE_REGISTRY.filter((e) => e.searchable).map((e) => e.type),
+);
+
+/** Filter dropdown options for /tasks list */
+export const TASK_TYPE_FILTER_OPTIONS = [
+  { value: "", label: "全部类型" },
+  ...TASK_TYPE_REGISTRY.map((e) => ({ value: e.type, label: e.filterLabel })),
+] as const;
+
+/* ── Original task status / agent options (preserved) ── */
+
 export const taskStatusOptions = [
   { value: "draft", label: "草稿", tone: "slate" },
   { value: "queued", label: "排队中", tone: "sky" },

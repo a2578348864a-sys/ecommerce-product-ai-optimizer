@@ -5,13 +5,14 @@ import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
+import { SEARCHABLE_TASK_TYPES } from "@/lib/taskConcepts";
 
 export const runtime = "nodejs";
 
 const REQUEST_BODY_LIMIT_BYTES = 256 * 1024;
 const allowedPlatforms = new Set<string>(ALL_KNOWN_PLATFORMS);
 const allowedSources = new Set(["mock", "ai"]);
-const allowedTypes = new Set(["viral", "radar", "product", "risk", "sourcing", "material", "summary", "opportunities", "workflow"]);
+const allowedTypes = SEARCHABLE_TASK_TYPES;
 
 type ApiError = {
   code: string;

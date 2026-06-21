@@ -13,6 +13,7 @@ import {
   getDecisionStatusOption,
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
+import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -67,36 +68,12 @@ function getTitle(item: TaskCenterItem) {
   return item.title?.trim() || item.materialText.trim().slice(0, 20) || "未命名记录";
 }
 
-const typeLabelMap: Record<string, string> = {
-  workflow: "一键分析",
-  opportunities: "机会雷达",
-  viral: "海外爆款趋势分析",
-  radar: "爆款雷达分析",
-  product: "选品利润分析",
-  risk: "风险排查",
-  sourcing: "货源判断",
-  material: "素材接收",
-  summary: "小白结论",
-};
-
-const agentLabelMap: Record<string, string> = {
-  workflow: "工作流 Agent",
-  opportunities: "机会雷达 Agent",
-  viral: "海外爆款趋势 Agent",
-  radar: "爆款雷达 Agent",
-  product: "选品分析 Agent",
-  risk: "风险检查 Agent",
-  sourcing: "货源判断 Agent",
-  material: "素材接收 Agent",
-  summary: "小白结论 Agent",
-};
-
 function getTaskTypeLabel(item: TaskCenterItem) {
-  return typeLabelMap[item.type || ""] || item.type || "未知任务";
+  return TASK_TYPE_LABEL_MAP[item.type || ""] || item.type || "未知任务";
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return agentLabelMap[item.type || ""] || "规划 Agent";
+  return TASK_AGENT_LABEL_MAP[item.type || ""] || "规划 Agent";
 }
 
 function getStringArray(result: unknown, key: string) {
@@ -124,9 +101,50 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
 
 /* ── Workflow result sub-component ────────────── */
 
+function buildFinalReportMarkdown(result: Record<string, unknown>) {
+  const fr = result.finalReport as Record<string, unknown> | undefined;
+  const productName = (result.productName as string) || "未命名";
+  if (!fr) return "";
+
+  const lines: string[] = [];
+  lines.push(`# 一键分析报告：${productName}`);
+  lines.push("");
+  lines.push(`- 结论：${fr.finalVerdict || "未评级"}`);
+  lines.push(`- 风险等级：${fr.riskLevel || "unknown"}`);
+  lines.push(`- 新手适配：${fr.beginnerFit || ""}`);
+  lines.push(`- 可小单测试：${fr.canTestSmallBatch ? "是" : "否"}`);
+  lines.push("");
+
+  const checklist = fr.manualReviewChecklist as string[] | undefined;
+  if (checklist && checklist.length) {
+    lines.push("## 人工确认清单");
+    checklist.forEach((item) => lines.push(`- [ ] ${item}`));
+    lines.push("");
+  }
+
+  const mustCheck = fr.mustCheckBeforeListing as string[] | undefined;
+  if (mustCheck && mustCheck.length) {
+    lines.push("## 上线前必须检查");
+    mustCheck.forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+  }
+
+  const nextSteps = fr.nextSteps as string[] | undefined;
+  if (nextSteps && nextSteps.length) {
+    lines.push("## 下一步动作");
+    nextSteps.forEach((item) => lines.push(`- ${item}`));
+    lines.push("");
+  }
+
+  lines.push("---");
+  lines.push("轻选 Agent 自动生成 · AI 结论仅供辅助参考");
+  return lines.join("\n");
+}
+
 function WorkflowResultSection({ result }: { result: Record<string, unknown> }) {
   const fr = result.finalReport as Record<string, unknown> | undefined;
   const steps = Array.isArray(result.steps) ? result.steps as Array<Record<string, unknown>> : [];
+  const [copied, setCopied] = useState(false);
 
   if (!fr) return null;
 
@@ -137,11 +155,35 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
     red: "border-rose-200 bg-rose-50 text-rose-700",
   };
 
+  function handleCopy() {
+    const md = buildFinalReportMarkdown(result);
+    if (!md) return;
+    navigator.clipboard.writeText(md).catch(() => {
+      const textarea = document.createElement("textarea");
+      textarea.value = md;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
     <div className="mt-5 space-y-4">
       {/* Final Report banner */}
       <section className={`rounded-2xl border p-4 ${riskColors[riskLevel] || riskColors.yellow}`}>
-        <h3 className="text-sm font-bold text-slate-950">工作流最终报告</h3>
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-sm font-bold text-slate-950">工作流最终报告</h3>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+          >
+            {copied ? "已复制" : "复制报告"}
+          </button>
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-semibold text-slate-700">
             {(fr.finalVerdict as string) || "未评级"}
