@@ -1771,15 +1771,18 @@ export default function Home() {
                   </span>
                   <div>
                     <p className="text-sm font-bold text-indigo-800">分析产品</p>
-                    <p className="text-xs text-indigo-600">粘贴素材，逐步判断</p>
+                    <p className="text-xs text-indigo-600">单品一键分析</p>
                   </div>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-700">
-                  已经有商品名、链接、截图或想法？填入素材 → 识别证据 → 货源/风险/结论，逐步判断能不能做。
+                  已经有商品名或想法？输入一个商品，一键跑完整判断流程：货源→风险→结论→上架文案，自动生成最终报告。
                 </p>
-                <div className="mt-4 text-sm leading-6 text-slate-600">
-                  直接在下方素材输入区粘贴内容开始分析。
-                </div>
+                <Link href="/workflow" className="linear-button-primary mt-4 inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold">
+                  打开一键分析
+                </Link>
+                <p className="mt-2 text-xs text-slate-400">
+                  想要逐步手动分析？仍可使用下方素材输入区，或通过侧边栏进入各单项分析页面。
+                </p>
               </article>
 
               {/* 入口 3：看演示 */}
