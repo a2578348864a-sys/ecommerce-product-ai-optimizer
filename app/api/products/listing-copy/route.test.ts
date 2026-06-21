@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const CORRECT_PASSWORD = "ci-test-password";
+
 const mockCallAiJson = vi.fn();
 
 vi.mock("@/lib/server/aiClient", () => ({
@@ -10,9 +12,10 @@ vi.mock("@/lib/server/aiClient", () => ({
 let POST: any;
 
 function createRequest(body: unknown) {
+  const json = JSON.stringify({ accessPassword: CORRECT_PASSWORD, ...(body as Record<string, unknown> || {}) });
   return {
     headers: new Headers({ "content-type": "application/json" }),
-    text: async () => JSON.stringify(body),
+    text: async () => json,
   };
 }
 
@@ -24,6 +27,8 @@ async function readJson(response: Response) {
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  vi.stubEnv("ACCESS_PASSWORD", CORRECT_PASSWORD);
   const mod = await import("./route");
   POST = mod.POST;
 });

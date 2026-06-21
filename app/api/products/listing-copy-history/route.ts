@@ -4,6 +4,7 @@ import {
   listListingCopyHistories,
   type ListingCopyHistoryRecord,
 } from "@/lib/server/listingCopyHistoryStore";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
 import type { ListingCopyResult } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -101,6 +102,9 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   if (!isDatabaseReady()) return databaseError();
 
   try {
@@ -153,6 +157,9 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
+  const authError = checkAccessPassword(request, rawBody);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   try {
     const item = await createListingCopyHistory({
       productId: parseOptionalString(rawBody.productId),
@@ -170,7 +177,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export function DELETE() {
+export async function DELETE(request: NextRequest) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   return jsonResponse({
     ok: false,
     error: { code: "invalid_id", message: "\u8bf7\u63d0\u4f9b\u8981\u5220\u9664\u7684\u5386\u53f2\u8bb0\u5f55 ID\u3002" },

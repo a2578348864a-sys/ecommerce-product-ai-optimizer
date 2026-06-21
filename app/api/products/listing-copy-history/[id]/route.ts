@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteListingCopyHistory } from "@/lib/server/listingCopyHistoryStore";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 
@@ -56,6 +57,9 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const authError = checkAccessPassword(_request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
   if (!isDatabaseReady()) return databaseError();
 
   const { id: rawId } = await context.params;

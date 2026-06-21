@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildCrossBorderAnalysisPrompt } from "@/lib/cross-border/prompts";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
 import type {
   AiAnalysisResult,
   CrossBorderProductInput,
@@ -301,6 +302,9 @@ export async function POST(request: NextRequest) {
       error: { code: "invalid_json", message: "请求体不是合法 JSON。" },
     }, 400);
   }
+
+  const authError = checkAccessPassword(request, isRecord(rawBody) ? rawBody : undefined);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
 
   const parsed = parseAnalysisRequest(rawBody);
   if (!parsed.value) {
