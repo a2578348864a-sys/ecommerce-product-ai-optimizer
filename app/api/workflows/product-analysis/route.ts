@@ -167,6 +167,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Reject batch before string normalization
+  if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
+    return NextResponse.json({ ok: false, error: { code: "batch_not_supported", message: "当前只支持单品工作流，暂不支持批量输入。" } }, { status: 400 });
+  }
+
   // Validate productName
   const productNameRaw = asString(body.productName).slice(0, MAX_PRODUCT_NAME_LENGTH).trim();
   if (!productNameRaw) {
@@ -174,11 +179,6 @@ export async function POST(request: NextRequest) {
   }
   if (productNameRaw.length < 2) {
     return NextResponse.json({ ok: false, error: { code: "product_name_too_short", message: "商品名称至少需要 2 个字符。" } }, { status: 400 });
-  }
-
-  // Reject batch
-  if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
-    return NextResponse.json({ ok: false, error: { code: "batch_not_supported", message: "当前只支持单品工作流，暂不支持批量输入。" } }, { status: 400 });
   }
 
   const productName = productNameRaw;
