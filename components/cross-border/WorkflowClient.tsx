@@ -115,6 +115,153 @@ function riskLevelLabel(level: string) {
   return { text: "需注意", cls: "bg-amber-100 text-amber-700" };
 }
 
+/* ── Step Review Card ──────────────────────────── */
+
+function s(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function sa(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+}
+
+const REVIEW_STEP_LABELS: Record<string, string> = {
+  sourcing: "货源判断",
+  risk: "风险排查",
+  summary: "小白结论",
+  listing: "上架文案",
+};
+
+const FEASIBILITY_LABELS: Record<string, string> = { high: "容易找到", medium: "一般", low: "较难" };
+const BARRIER_LABELS: Record<string, string> = { low: "低", medium: "中", high: "高" };
+const FIT_LABELS: Record<string, string> = { high: "适合", medium: "一般", low: "不适合" };
+const ENTRY_LABELS: Record<string, string> = { beginner: "新手可做", intermediate: "有经验可做", experienced: "需资深运营" };
+
+function StepReviewCard({
+  stepKey,
+  result,
+  confirmed,
+  onToggle,
+}: {
+  stepKey: string;
+  result: ApiWorkflowResult;
+  confirmed: boolean;
+  onToggle: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const data = stepKey === "sourcing" ? result.sourcing
+    : stepKey === "risk" ? result.risk
+    : stepKey === "summary" ? result.summary
+    : stepKey === "listing" ? result.listing
+    : null;
+
+  const stepInfo = result.steps?.find((s) => s.key === stepKey);
+  const status = stepInfo?.status || "completed";
+  const isFallback = status === "fallback" || status === "failed";
+
+  if (!data && status === "completed") return null;
+
+  return (
+    <div className={`rounded-xl border p-3 ${confirmed ? "border-emerald-200 bg-emerald-50/60" : isFallback ? "border-amber-200 bg-amber-50/60" : "border-slate-200 bg-white"}`}>
+      <button type="button" onClick={() => setExpanded(!expanded)} className="flex w-full items-center justify-between gap-2 text-left">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-semibold text-slate-400 shrink-0">
+            {REVIEW_STEP_LABELS[stepKey] || stepKey}
+          </span>
+          {isFallback && <span className="text-xs font-semibold text-amber-600">⚠ 使用兜底</span>}
+          {confirmed && <span className="text-xs font-semibold text-emerald-600">✓ 已确认</span>}
+        </div>
+        <span className="text-xs text-slate-400 shrink-0">{expanded ? "收起 ▲" : "展开 ▼"}</span>
+      </button>
+
+      {expanded && data && (
+        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-sm text-slate-600">
+          {stepKey === "sourcing" && (
+            <>
+              <p className="leading-6">{s(data.summary) || "暂未获取到货源分析。"}</p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5">可行性：{FEASIBILITY_LABELS[s(data.feasibility)] || s(data.feasibility) || "-"}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5">新手适配：{FIT_LABELS[s(data.beginnerFit)] || s(data.beginnerFit) || "-"}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5">合规门槛：{BARRIER_LABELS[s(data.complianceBarrier)] || s(data.complianceBarrier) || "-"}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5">物流难度：{BARRIER_LABELS[s(data.logisticsDifficulty)] || s(data.logisticsDifficulty) || "-"}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5">入门级别：{ENTRY_LABELS[s(data.suggestedEntryLevel)] || s(data.suggestedEntryLevel) || "-"}</span>
+              </div>
+              {sa(data.searchKeywords).length > 0 && (
+                <p className="text-xs text-slate-500">关键词：{sa(data.searchKeywords).slice(0, 6).join("、")}</p>
+              )}
+            </>
+          )}
+          {stepKey === "risk" && (
+            <>
+              <p className="leading-6">{s(data.summary) || "暂未获取到风险分析。"}</p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className={`rounded-full px-2 py-0.5 ${s(data.overallLevel) === "green" ? "bg-emerald-100 text-emerald-700" : s(data.overallLevel) === "red" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                  风险等级：{s(data.overallLevel) === "green" ? "低" : s(data.overallLevel) === "red" ? "高" : "中"}
+                </span>
+                {data.beginnerFriendly === true && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">新手友好</span>}
+              </div>
+              {sa(data.blacklistMatches).length > 0 && (
+                <p className="text-xs text-rose-600">命中风险标签：{sa(data.blacklistMatches).join("、")}</p>
+              )}
+              {sa(data.complianceWarnings).length > 0 && (
+                <p className="text-xs text-amber-600">合规提示：{sa(data.complianceWarnings).join("；")}</p>
+              )}
+            </>
+          )}
+          {stepKey === "summary" && (
+            <>
+              <p className="leading-6">{s(data.summary) || "暂未获取到综合结论。"}</p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-indigo-700">结论：{s(data.verdict)}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5">置信度：{s(data.confidence)}</span>
+                {data.canTestSmallBatch !== undefined && (
+                  <span className={`rounded-full px-2 py-0.5 ${data.canTestSmallBatch ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                    {data.canTestSmallBatch ? "可小单测试" : "建议先评估"}
+                  </span>
+                )}
+              </div>
+              {sa(data.downgradeReasons).length > 0 && (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
+                  <p className="font-semibold">安全规则降级：</p>
+                  {sa(data.downgradeReasons).map((r, i) => <p key={i}>- {r}</p>)}
+                </div>
+              )}
+            </>
+          )}
+          {stepKey === "listing" && (
+            <>
+              {s(data.title) && <p className="font-semibold text-slate-800">{s(data.title)}</p>}
+              {sa(data.keywords).length > 0 && (
+                <p className="text-xs text-slate-500">关键词：{sa(data.keywords).slice(0, 8).join("、")}</p>
+              )}
+              {sa(data.complianceNotes).length > 0 && (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
+                  {sa(data.complianceNotes).map((n, i) => <p key={i}>- {n}</p>)}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Confirm checkbox */}
+      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2">
+        <input
+          type="checkbox"
+          id={`review-${stepKey}`}
+          checked={confirmed}
+          onChange={onToggle}
+          className="size-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+        />
+        <label htmlFor={`review-${stepKey}`} className="text-xs font-semibold text-slate-600 cursor-pointer select-none">
+          已人工确认{REVIEW_STEP_LABELS[stepKey] || stepKey}结果
+        </label>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main component ────────────────────────────── */
 
 export function WorkflowClient() {
@@ -134,6 +281,13 @@ export function WorkflowClient() {
   const [savedTaskId, setSavedTaskId] = useState<string | null>(null);
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const reviewStepKeys: StepKey[] = ["sourcing", "risk", "summary", "listing"];
+  const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
+  const allReviewed = reviewStepKeys.every((k) => reviewConfirmed[k]);
+
+  const toggleReviewConfirm = useCallback((key: string) => {
+    setReviewConfirmed((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   async function saveToTasks() {
     if (!result || savingToTasks || savedTaskId) return;
@@ -168,6 +322,7 @@ export function WorkflowClient() {
     setSavedTaskId(null);
     setSaveError("");
     setSavingToTasks(false);
+    setReviewConfirmed({});
     setStepStatuses({
       normalize: "pending",
       sourcing: "pending",
@@ -502,6 +657,32 @@ export function WorkflowClient() {
             </section>
           )}
 
+          {/* ── Review section ── */}
+          {hasResult && result && (
+            <section className="surface-card p-4 sm:p-5">
+              <h2 className="mb-1 text-lg font-semibold text-slate-950">人工复核</h2>
+              <p className="mb-4 text-sm text-slate-500">
+                请逐项复核 AI 分析结果。AI 结论仅供辅助参考，关键决策需人工判断。
+              </p>
+              <div className="space-y-3">
+                {reviewStepKeys.map((key) => (
+                  <StepReviewCard
+                    key={key}
+                    stepKey={key}
+                    result={result}
+                    confirmed={!!reviewConfirmed[key]}
+                    onToggle={() => toggleReviewConfirm(key)}
+                  />
+                ))}
+              </div>
+              <div className={`mt-4 rounded-xl border p-3 text-sm ${allReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                {allReviewed
+                  ? "✓ 4/4 已完成人工确认，可作为下一步测试参考"
+                  : "⚠️ 请完成 4 个步骤人工确认后，再把结论用于采购/上架决策"}
+              </div>
+            </section>
+          )}
+
           {/* Final report */}
           {hasResult && report && (
             <section className="surface-card p-4 sm:p-5">
@@ -564,6 +745,13 @@ export function WorkflowClient() {
                   <p className="mt-2 text-xs text-rose-600">{saveError}</p>
                 )}
               </div>
+
+              {/* Review gate banner */}
+              {!allReviewed && (
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                  ⚠️ AI 初步结论，尚未完成人工确认。请在上方逐项复核后再用于采购/上架决策。
+                </div>
+              )}
 
               {/* Verdict banner */}
               <div className={`rounded-2xl border p-4 ${
