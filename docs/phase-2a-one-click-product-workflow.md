@@ -382,3 +382,63 @@ main / origin/main
 HEAD:  d4c6c57
 Remote: d4c6c5795ebb880d770eabbb1437ce321181ba55
 ```
+
+---
+
+## 11. Phase 2-B.1 Production Deployment
+
+> 部署日期：2026-06-21 | 部署 commit：`1dedc41` | 部署人：Claude
+
+### 部署概述
+
+Phase 2-B.1 是纯前端展示增强——`/workflow` 页面新增 Workflow Review 人工复核区（StepReviewCard × 4 + 确认门控）。零 API/DB 变更。
+
+部署前生产运行的是 Phase 1E（`0ba2860`），本次 Fast-forward 到 `1dedc41`，累计包含 Phase 2-A ∼ Phase 2-B.1 全部变更。
+
+### 部署记录
+
+| 项目 | 值 |
+|------|-----|
+| 部署前 HEAD | `0ba2860`（Phase 1E） |
+| 部署后 HEAD | `1dedc41` |
+| pull 方式 | `git pull --ff-only origin main` |
+| pull 范围 | `0ba2860..1dedc41`（14 files, +2833/-52） |
+| npm ci | ✅ |
+| build | ✅ 37/37 pages |
+| PM2 | ✅ `alibaba-ai-assistant` online, restart 14→15 |
+| 127.0.0.1:3005 | ✅ 200 |
+| /api/health | ✅ `{"ok":true}` |
+
+### 页面验收
+
+| 页面 | 状态 |
+|------|:--:|
+| 公网 `/` | ✅ 200 |
+| 公网 `/workflow` | ✅ 200 |
+| `/tasks` | ✅ 200 |
+| `/sourcing` | ✅ 200 |
+| `/risk` | ✅ 200 |
+| `/summary` | ✅ 200 |
+| `/products/new` | ✅ 200 |
+| `/viral` | ✅ 200 |
+| `/materials` | ✅ 200 |
+
+### 变更说明
+
+Phase 2-B.1 单独代码改动仅 `components/cross-border/WorkflowClient.tsx`（+188 行）。本次部署因生产从 Phase 1E 直接 Fast-forward，同时部署了 Phase 2-A.0 ∼ 2-B.1 的累计 14 个文件。
+
+### 安全确认
+
+| 项目 | 状态 |
+|------|:--:|
+| 调用真实 AI | ❌ 未调用 |
+| 改 API | ❌ 未改 |
+| 改 DB schema | ❌ 未改 |
+| 改 PM2 配置 | ❌ 未改 |
+| 改 Nginx | ❌ 未改 |
+| 进入 Phase 2-B.2 | ❌ 未进入 |
+| 需要回滚 | ❌ 不需要 |
+
+### 下一步
+
+Phase 2-B.2：review 确认状态持久化 + 决策动作（继续/需补资料/淘汰）写入 task decisionStatus。
