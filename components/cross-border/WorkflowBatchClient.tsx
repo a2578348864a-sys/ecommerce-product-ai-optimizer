@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
   ClipboardList,
+  FileUp,
   Loader2,
   Play,
   RotateCcw,
@@ -133,6 +134,9 @@ export function WorkflowBatchClient() {
   const [batchId, setBatchId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importMessage, setImportMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null);
 
   const parsedProducts = useMemo(() => parseProducts(input), [input]);
   const canRun = parsedProducts.length > 0 && !running;
@@ -280,6 +284,99 @@ export function WorkflowBatchClient() {
     setMessage("");
   }
 
+  function handleFileImport(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Reset file input so the same file can be re-imported
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith(".csv") && !fileName.endsWith(".txt")) {
+      setImportMessage({ type: "error", text: "仅支持 .csv 和 .txt 文件格式。" });
+      return;
+    }
+
+    const isCsv = fileName.endsWith(".csv");
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text || text.trim().length === 0) {
+        setImportMessage({ type: "error", text: "文件内容为空，请检查文件。" });
+        return;
+      }
+
+      let productNames: string[];
+
+      if (!isCsv) {
+        // TXT: one product per line, reuse existing parser
+        productNames = parseProducts(text);
+      } else {
+        // CSV: detect header, extract product names
+        const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+        if (lines.length === 0) {
+          setImportMessage({ type: "error", text: "CSV 文件无有效内容。" });
+          return;
+        }
+
+        const headerCells = lines[0].split(",").map((h) => h.trim().toLowerCase());
+        const productNameKeywords = ["productname", "商品名", "name", "title", "product", "product_name"];
+        let targetColumn = -1;
+
+        for (let i = 0; i < headerCells.length; i++) {
+          if (productNameKeywords.includes(headerCells[i])) {
+            targetColumn = i;
+            break;
+          }
+        }
+
+        const hasHeader = targetColumn >= 0;
+        if (!hasHeader) targetColumn = 0;
+
+        const dataStartIndex = hasHeader ? 1 : 0;
+        const seen = new Set<string>();
+        productNames = [];
+
+        for (let i = dataStartIndex; i < lines.length; i++) {
+          const cells = lines[i].split(",");
+          const name = (cells[targetColumn] ?? "").trim();
+          if (!name || seen.has(name)) continue;
+          seen.add(name);
+          productNames.push(name);
+        }
+      }
+
+      if (productNames.length === 0) {
+        setImportMessage({ type: "error", text: "未找到有效商品名，请检查文件内容。" });
+        return;
+      }
+
+      if (productNames.length > MAX_BATCH_PRODUCTS) {
+        const truncated = productNames.slice(0, MAX_BATCH_PRODUCTS);
+        setInput(truncated.join("\n"));
+        setImportMessage({
+          type: "warning",
+          text: `已导入前 ${MAX_BATCH_PRODUCTS} 个商品，超出部分未加入（共识别 ${productNames.length} 个）。`,
+        });
+      } else {
+        setInput(productNames.join("\n"));
+        setImportMessage({
+          type: "success",
+          text: `已导入 ${productNames.length} 个商品。`,
+        });
+      }
+
+      if (message) setMessage("");
+    };
+
+    reader.onerror = () => {
+      setImportMessage({ type: "error", text: "文件读取失败，请重试。" });
+    };
+
+    reader.readAsText(file, "UTF-8");
+  }
+
   const savedCount = queueItems.filter((item) => item.status === "saved").length;
   const failedCount = queueItems.filter((item) => item.status === "failed" || item.status === "save_failed").length;
 
@@ -311,11 +408,32 @@ export function WorkflowBatchClient() {
           </header>
 
           <section className="surface-card p-5 sm:p-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.txt"
+              onChange={handleFileImport}
+              className="hidden"
+              data-testid="batch-file-input"
+            />
+
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div>
-                <label className="block text-sm font-semibold text-slate-700">
-                  批量商品名 <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="block text-sm font-semibold text-slate-700">
+                    批量商品名 <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={running}
+                    data-testid="import-csv-button"
+                    className="linear-button inline-flex h-8 items-center gap-1.5 px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FileUp className="size-3.5" />
+                    导入 CSV/TXT
+                  </button>
+                </div>
                 <textarea
                   value={input}
                   onChange={(event) => {
@@ -334,6 +452,20 @@ export function WorkflowBatchClient() {
                     <span className="font-semibold text-rose-600">超过上限，不会发起 AI 或保存请求。</span>
                   ) : null}
                 </div>
+                {importMessage ? (
+                  <div
+                    data-testid="import-message"
+                    className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold ${
+                      importMessage.type === "error"
+                        ? "border border-rose-200 bg-rose-50 text-rose-700"
+                        : importMessage.type === "warning"
+                          ? "border border-amber-200 bg-amber-50 text-amber-700"
+                          : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {importMessage.text}
+                  </div>
+                ) : null}
               </div>
 
               <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
