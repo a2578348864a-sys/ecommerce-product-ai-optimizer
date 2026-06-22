@@ -1814,6 +1814,17 @@ export default function Home() {
               </article>
             </div>
 
+            {/* /agent 入口提示 */}
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-3 text-center">
+              <p className="text-sm text-slate-600">
+                想了解全自动 Agent 的长期路线图？
+                <Link href="/agent" className="ml-1 font-semibold text-teal-700 underline">
+                  查看 Agent 路线图
+                </Link>
+                <span className="ml-2 text-xs text-slate-400">（能力展示，非已上线全自动执行台）</span>
+              </p>
+            </div>
+
             {/* Demo stepper — reuses old beginner guide but with better framing */}
             {showBeginnerGuide ? (
               <div className="mt-5">
