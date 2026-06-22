@@ -1853,7 +1853,15 @@ export default function Home() {
             ) : null}
           </section>
 
-          <form onSubmit={handleSubmit} className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <details className="mt-5 surface-card p-4 sm:p-5">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700 hover:text-teal-700">
+              旧版素材输入区（点击展开）— 单步手动分析模式
+            </summary>
+            <p className="mt-2 text-xs text-slate-400">
+              此区域是 Alpha 早期版本的逐个步骤手动工作模式，适合已经熟悉工具的深度用户。推荐新用户使用上方入口卡片。
+            </p>
+
+          <form onSubmit={handleSubmit} className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-5">
               <section className="surface-card-strong p-5 sm:p-6">
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -2239,6 +2247,7 @@ export default function Home() {
               </section>
             </aside>
           </form>
+          </details>
 
           <details className="surface-card p-5 sm:p-6">
             <summary className="cursor-pointer text-base font-semibold text-slate-800">后续能力规划</summary>

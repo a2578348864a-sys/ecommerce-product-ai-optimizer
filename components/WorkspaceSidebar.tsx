@@ -22,8 +22,8 @@ export const workspaceNavItems = [
   { label: "机会雷达", href: "/opportunities", icon: Target },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
   { label: "单品分析", href: "/workflow", icon: LayoutDashboard },
-  { label: "Agent 路线图 · 规划", href: "/agent", icon: Compass },
   { label: "任务中心", href: "/tasks", icon: History },
+  { label: "Agent 路线图 · 规划", href: "/agent", icon: Compass },
   { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
   { label: "风险排查", href: "/risk", icon: ShieldCheck },
   { label: "小白结论", href: "/summary", icon: Brain },
@@ -36,8 +36,12 @@ const homeItem = { label: "首页", href: "/", icon: House } as const;
 
 const navGroups = [
   {
-    title: "核心流程",
-    items: workspaceNavItems.slice(0, 5),
+    title: "主链路",
+    items: workspaceNavItems.slice(0, 4),
+  },
+  {
+    title: "路线图",
+    items: workspaceNavItems.slice(4, 5),
   },
   {
     title: "辅助工具",
@@ -85,7 +89,7 @@ export function WorkspaceSidebar() {
                 <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-teal-700">全自动 Agent Alpha</p>
+              <p className="text-[11px] font-semibold text-teal-700">受控自动化 · Alpha MVP</p>
               <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
               <p className="muted-text mt-1 text-xs leading-5">受控自动化，人工复核</p>
             </div>
