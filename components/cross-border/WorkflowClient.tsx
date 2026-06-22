@@ -545,9 +545,14 @@ export function WorkflowClient() {
                   输入一个商品，自动完成货源判断、风险排查、小白结论和上架准备。结果需人工确认。
                 </p>
               </div>
-              <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">
-                Phase 2-A
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href="/workflow/batch" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                  批量分析
+                </Link>
+                <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">
+                  Phase 2-A
+                </span>
+              </div>
             </div>
             <WorkspaceMobileNav />
           </header>

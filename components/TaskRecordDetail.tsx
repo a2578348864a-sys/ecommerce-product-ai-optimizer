@@ -84,6 +84,17 @@ function getStringArray(result: unknown, key: string) {
     : [];
 }
 
+function getBatchMeta(result: unknown) {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) return null;
+  const value = Reflect.get(result, "batchMeta");
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const batchIndex = Reflect.get(value, "batchIndex");
+  const batchTotal = Reflect.get(value, "batchTotal");
+  if (typeof batchIndex !== "number" || typeof batchTotal !== "number") return null;
+  if (!Number.isFinite(batchIndex) || !Number.isFinite(batchTotal)) return null;
+  return { batchIndex, batchTotal };
+}
+
 function ResultList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
 
@@ -144,6 +155,7 @@ function buildFinalReportMarkdown(result: Record<string, unknown>) {
 function WorkflowResultSection({ result }: { result: Record<string, unknown> }) {
   const fr = result.finalReport as Record<string, unknown> | undefined;
   const steps = Array.isArray(result.steps) ? result.steps as Array<Record<string, unknown>> : [];
+  const batchMeta = getBatchMeta(result);
   const [copied, setCopied] = useState(false);
 
   if (!fr) return null;
@@ -172,6 +184,15 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
 
   return (
     <div className="mt-5 space-y-4">
+      {batchMeta ? (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
+          <h3 className="text-sm font-semibold text-slate-950">批量队列来源</h3>
+          <p className="mt-2 text-sm font-semibold text-indigo-700">
+            批量任务 {batchMeta.batchIndex}/{batchMeta.batchTotal}
+          </p>
+        </section>
+      ) : null}
+
       {/* Final Report banner */}
       <section className={`rounded-2xl border p-4 ${riskColors[riskLevel] || riskColors.yellow}`}>
         <div className="flex items-start justify-between gap-3">
@@ -482,6 +503,15 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     <span className={"linear-pill px-3 py-1 text-xs " + getDecisionStatusOption(record.decisionStatus).className}>
                       {getDecisionStatusOption(record.decisionStatus).shortLabel}
                     </span>
+                    {(() => {
+                      const batchMeta = getBatchMeta(record.result);
+                      if (!batchMeta) return null;
+                      return (
+                        <span className="linear-pill border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-700">
+                          批量任务 {batchMeta.batchIndex}/{batchMeta.batchTotal}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">

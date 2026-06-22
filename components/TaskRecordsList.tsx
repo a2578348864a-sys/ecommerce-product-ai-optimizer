@@ -82,6 +82,7 @@ function sourceLabel(source: string) {
 }
 
 const typeLabelMap: Record<string, string> = {
+  workflow: "一键分析",
   opportunities: "机会雷达",
   viral: "海外爆款趋势分析",
   radar: "爆款雷达分析",
@@ -93,6 +94,7 @@ const typeLabelMap: Record<string, string> = {
 };
 
 const agentLabelMap: Record<string, string> = {
+  workflow: "一键选品工作流",
   opportunities: "机会雷达 Agent",
   viral: "海外爆款趋势 Agent",
   radar: "爆款雷达 Agent",
@@ -125,6 +127,17 @@ function getStringArray(result: unknown, key: string) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string").slice(0, 5)
     : [];
+}
+
+function getBatchMeta(result: unknown) {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) return null;
+  const value = Reflect.get(result, "batchMeta");
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const batchIndex = Reflect.get(value, "batchIndex");
+  const batchTotal = Reflect.get(value, "batchTotal");
+  if (typeof batchIndex !== "number" || typeof batchTotal !== "number") return null;
+  if (!Number.isFinite(batchIndex) || !Number.isFinite(batchTotal)) return null;
+  return { batchIndex, batchTotal };
 }
 
 function updateBrowserQuery(type: string, q: string, decisionStatus: string) {
@@ -649,6 +662,15 @@ export function TaskRecordsList() {
                               return (
                                 <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${allDone ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
                                   {allDone ? `已复核 ${done}/4` : `待复核 ${done}/4`}
+                                </span>
+                              );
+                            })()}
+                            {(() => {
+                              const batchMeta = getBatchMeta(item.result);
+                              if (!batchMeta) return null;
+                              return (
+                                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">
+                                  批量任务 {batchMeta.batchIndex}/{batchMeta.batchTotal}
                                 </span>
                               );
                             })()}

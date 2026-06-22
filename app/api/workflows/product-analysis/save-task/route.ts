@@ -48,6 +48,14 @@ type ReviewState = {
   reviewedAt: string | null;
 };
 
+type BatchMeta = {
+  batchId: string;
+  batchName: string;
+  batchIndex: number;
+  batchTotal: number;
+  source: "workflow_batch_mvp";
+};
+
 /**
  * Parse and validate reviewState from the request body.
  * Server always recomputes allReviewed and reviewedCount to prevent client-side forgery.
@@ -82,6 +90,39 @@ function parseReviewState(raw: unknown): ReviewState | null {
     totalReviewSteps: TOTAL_REVIEW_STEPS,
     allReviewed,
     reviewedAt: allReviewed ? new Date().toISOString() : null,
+  };
+}
+
+function asBoundedInteger(value: unknown, min: number, max: number): number | null {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return null;
+  const normalized = Math.trunc(numberValue);
+  if (normalized < min || normalized > max) return null;
+  return normalized;
+}
+
+function parseBatchMeta(raw: unknown): BatchMeta | null {
+  if (!isRecord(raw)) return null;
+
+  const batchId = asString(raw.batchId).slice(0, 80);
+  if (!/^batch-[a-zA-Z0-9_-]{4,72}$/.test(batchId)) return null;
+
+  const batchTotal = asBoundedInteger(raw.batchTotal, 1, 3);
+  if (!batchTotal) return null;
+
+  const batchIndex = asBoundedInteger(raw.batchIndex, 1, batchTotal);
+  if (!batchIndex) return null;
+
+  if (asString(raw.source) !== "workflow_batch_mvp") return null;
+
+  const batchName = asString(raw.batchName, "批量一键分析").slice(0, 40) || "批量一键分析";
+
+  return {
+    batchId,
+    batchName,
+    batchIndex,
+    batchTotal,
+    source: "workflow_batch_mvp",
   };
 }
 
@@ -134,6 +175,7 @@ export async function POST(request: NextRequest) {
 
   // Parse and validate reviewState
   const reviewState = parseReviewState(body.reviewState);
+  const batchMeta = parseBatchMeta(body.batchMeta);
 
   // Build a structured result for the task record
   const taskResult = {
@@ -154,6 +196,7 @@ export async function POST(request: NextRequest) {
       allReviewed: false,
       reviewedAt: null,
     },
+    ...(batchMeta ? { batchMeta } : {}),
   };
 
   try {
