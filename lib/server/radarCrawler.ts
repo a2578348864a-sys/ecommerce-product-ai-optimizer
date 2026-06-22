@@ -2,25 +2,21 @@
  * Phase 1E — Radar Crawler MVP
  * 低频公开源抓取，SSRF 防护，robots.txt 检查。
  * 不绕验证码、不模拟登录、不使用 Cookie/代理池。
+ *
+ * SSRF 防护覆盖：
+ * - 协议限制（仅 http/https）
+ * - hostname 黑名单
+ * - HTTP 重定向目标重新校验
+ * - DNS 解析后内网 IP 检测
  */
+
+import { isAllowedProtocol, isBlockedHostname, isValidTargetUrl, resolveToPublicIp } from "@/lib/server/ssrfGuard";
 
 const USER_AGENT = "QingxuanAgent-Radar-MVP/0.1";
 const TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 3;
 const MAX_RESPONSE_SIZE = 1_048_576; // 1MB
 const MAX_URLS_PER_REQUEST = 5;
-
-const BLOCKED_HOSTNAME_PATTERNS = [
-  /^localhost$/i,
-  /^127\.\d+\.\d+\.\d+$/,
-  /^0\.0\.0\.0$/,
-  /^\[::1\]$/i,
-  /^::1$/i,
-  /^10\.\d+\.\d+\.\d+$/,
-  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
-  /^192\.168\.\d+\.\d+$/,
-  /^169\.254\.\d+\.\d+$/,
-];
 
 export type CrawlResult = {
   url: string;
@@ -31,14 +27,10 @@ export type CrawlResult = {
   error?: string;
 };
 
-function isPrivateHost(hostname: string): boolean {
-  return BLOCKED_HOSTNAME_PATTERNS.some((pattern) => pattern.test(hostname));
-}
-
 function parseRobotsTxt(body: string, targetPath: string): boolean {
   const lines = body.split(/\r?\n/);
   let currentAgent = "*";
-  let disallowed: string[] = [];
+  const disallowed: string[] = [];
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -62,7 +54,6 @@ function parseRobotsTxt(body: string, targetPath: string): boolean {
 
   return !disallowed.some((rule) => {
     if (!rule) return false;
-    // Simple prefix/path matching
     if (rule.endsWith("*")) {
       return targetPath.startsWith(rule.slice(0, -1));
     }
@@ -71,8 +62,10 @@ function parseRobotsTxt(body: string, targetPath: string): boolean {
 }
 
 /**
- * Fetch a single URL with safety checks.
- * Returns a CrawlResult — never throws.
+ * Fetch a single URL with SSRF protection.
+ * - Validates initial URL (protocol, hostname, DNS)
+ * - Manually follows redirects, re-validating each target
+ * - Returns a CrawlResult — never throws.
  */
 export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
   let url: URL;
@@ -82,21 +75,39 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
     return { url: rawUrl, status: "invalid", error: "无法解析 URL" };
   }
 
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
+  // ── Initial URL validation ──
+
+  if (!isAllowedProtocol(url.protocol)) {
     return { url: rawUrl, status: "blocked", error: `不支持的协议：${url.protocol}` };
   }
 
-  if (isPrivateHost(url.hostname)) {
+  if (isBlockedHostname(url.hostname)) {
     return { url: rawUrl, status: "blocked", error: `内网地址已阻止：${url.hostname}` };
   }
 
-  // Check robots.txt
+  // DNS validation for the initial URL
+  try {
+    const resolvedHostname = url.hostname.replace(/^\[|\]$/g, "");
+    // If the hostname is a plain IP, the regex check above already handled it.
+    // If it's a domain name, resolve DNS and check.
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(resolvedHostname) && !resolvedHostname.startsWith("[")) {
+      const resolved = await resolveToPublicIp(resolvedHostname);
+      if (!resolved) {
+        return { url: rawUrl, status: "blocked", error: `DNS 解析到内网地址或解析失败：${url.hostname}` };
+      }
+    }
+  } catch {
+    return { url: rawUrl, status: "blocked", error: `DNS 解析失败：${url.hostname}` };
+  }
+
+  // ── Robots.txt check ──
+
   try {
     const robotsUrl = `${url.protocol}//${url.hostname}/robots.txt`;
     const robotsRes = await fetch(robotsUrl, {
       signal: AbortSignal.timeout(5000),
       headers: { "User-Agent": USER_AGENT },
-      redirect: "follow",
+      redirect: "manual",
     });
     if (robotsRes.ok) {
       const robotsBody = await robotsRes.text();
@@ -108,22 +119,58 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
     // If robots.txt fetch fails, proceed cautiously
   }
 
-  // Fetch the actual page
+  // ── Fetch with manual redirect handling ──
+
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-    const res = await fetch(url.toString(), {
+    let currentUrl = url.toString();
+    let response = await fetch(currentUrl, {
       signal: controller.signal,
       headers: { "User-Agent": USER_AGENT },
-      redirect: "follow",
+      redirect: "manual",
     });
+
+    // Follow redirects manually, re-validating each target
+    let redirectCount = 0;
+    while (
+      redirectCount < MAX_REDIRECTS &&
+      (response.status === 301 || response.status === 302 || response.status === 303 || response.status === 307 || response.status === 308)
+    ) {
+      const location = response.headers.get("location");
+      if (!location) break;
+
+      let redirectUrl: URL;
+      try {
+        redirectUrl = new URL(location, currentUrl);
+      } catch {
+        return { url: rawUrl, status: "error", error: "重定向目标 URL 无效" };
+      }
+
+      currentUrl = redirectUrl.toString();
+
+      // Re-validate redirect target
+      const redirectValid = await isValidTargetUrl(redirectUrl);
+      if (!redirectValid) {
+        clearTimeout(timer);
+        return { url: rawUrl, status: "blocked", error: `重定向到禁止地址已阻止：${redirectUrl.hostname}` };
+      }
+
+      redirectCount++;
+      response = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers: { "User-Agent": USER_AGENT },
+        redirect: "manual",
+      });
+    }
+
     clearTimeout(timer);
 
-    const contentType = res.headers.get("content-type") || "";
+    const contentType = response.headers.get("content-type") || "";
 
     // Read up to MAX_RESPONSE_SIZE
-    const reader = res.body?.getReader();
+    const reader = response.body?.getReader();
     if (!reader) {
       return { url: rawUrl, status: "error", error: "无法读取响应体" };
     }
@@ -147,7 +194,7 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
     return {
       url: rawUrl,
       status: "ok",
-      statusCode: res.status,
+      statusCode: response.status,
       contentType,
       body,
     };
