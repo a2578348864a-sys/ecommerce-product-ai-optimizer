@@ -474,12 +474,23 @@ export function TaskRecordsList() {
                   沉淀每次选品分析、风险判断和下一步动作。当前为全自动电商 Agent Alpha MVP，所有结论需要人工复核；后续逐步承接批量队列与多 Agent 自动化工作流。
                 </p>
               </div>
-              <Link
-                href="/"
-                className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
-              >
-                返回工作台
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
+                  机会雷达
+                </Link>
+                <Link href="/workflow/batch" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
+                  批量分析
+                </Link>
+                <Link href="/workflow" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
+                  单品分析
+                </Link>
+                <Link
+                  href="/"
+                  className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                >
+                  返回工作台
+                </Link>
+              </div>
             </div>
             <WorkspaceMobileNav />
           </header>

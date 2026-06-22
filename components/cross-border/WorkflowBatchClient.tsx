@@ -396,6 +396,9 @@ export function WorkflowBatchClient() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
+                  机会雷达
+                </Link>
                 <Link href="/workflow" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   单品分析
                 </Link>
@@ -406,6 +409,18 @@ export function WorkflowBatchClient() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          {/* 主链路引导 */}
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm">
+            <p className="font-semibold text-indigo-800">📍 上一步：机会雷达 → 当前：批量分析 → 下一步：单品深度分析/人工复核 → 任务中心</p>
+            <p className="mt-1 text-xs text-indigo-700">
+              可从
+              <Link href="/opportunities" className="mx-0.5 font-semibold underline">机会雷达</Link>
+              复制候选商品，手动输入或 CSV/TXT 导入。分析完成后建议对重点商品做
+              <Link href="/workflow" className="mx-0.5 font-semibold underline">单品深度分析</Link>（含人工复核），结果自动保存到
+              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>。
+            </p>
+          </div>
 
           <section className="surface-card p-5 sm:p-6">
             <input

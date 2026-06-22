@@ -549,6 +549,9 @@ export function WorkflowClient() {
                 <Link href="/workflow/batch" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
                   批量分析
                 </Link>
+                <Link href="/tasks" className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                  任务中心
+                </Link>
                 <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">
                   Phase 2-A
                 </span>

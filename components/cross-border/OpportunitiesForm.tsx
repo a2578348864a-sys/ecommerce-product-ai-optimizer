@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
@@ -408,6 +409,19 @@ export function OpportunitiesForm() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          {/* 主链路引导 */}
+          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm">
+            <p className="font-semibold text-teal-800">📍 主路径：机会雷达 → 批量分析 → 单品深度分析 → 人工复核 → 任务中心</p>
+            <p className="mt-1 text-xs text-teal-700">
+              本页用于发现候选商品。筛选出感兴趣的商品后，去
+              <Link href="/workflow/batch" className="mx-0.5 font-semibold underline">批量分析</Link>
+              快速验证 1-3 个商品，或去
+              <Link href="/workflow" className="mx-0.5 font-semibold underline">单品分析</Link>
+              做深度判断。结果会自动保存到
+              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>。
+            </p>
+          </div>
 
         {/* Phase 1E: Crawl input */}
         <div className="surface-card p-4">

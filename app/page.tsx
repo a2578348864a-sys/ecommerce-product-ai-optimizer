@@ -1771,41 +1771,46 @@ export default function Home() {
                   </span>
                   <div>
                     <p className="text-sm font-bold text-indigo-800">分析产品</p>
-                    <p className="text-xs text-indigo-600">单品一键分析</p>
+                    <p className="text-xs text-indigo-600">批量分析 + CSV 导入</p>
                   </div>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-700">
-                  已经有商品名或想法？输入一个商品，一键跑完整判断流程：货源→风险→结论→上架文案，自动生成最终报告。
+                  已有商品名或候选清单？一次最多 3 个商品，自动跑货源→风险→结论，支持 CSV/TXT 导入，结果自动保存到任务中心。
                 </p>
-                <Link href="/workflow" className="linear-button-primary mt-4 inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold">
-                  打开一键分析
+                <Link href="/workflow/batch" className="linear-button-primary mt-4 inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold">
+                  打开批量分析
                 </Link>
                 <p className="mt-2 text-xs text-slate-400">
-                  想要逐步手动分析？仍可使用下方素材输入区，或通过侧边栏进入各单项分析页面。
+                  只需深度分析 1 个商品？使用 <Link href="/workflow" className="underline">单品分析</Link>，含人工复核和完整报告。
                 </p>
               </article>
 
-              {/* 入口 3：看演示 */}
+              {/* 入口 3：看演示 + 任务 */}
               <article className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 sm:p-5">
                 <div className="flex items-center gap-3">
                   <span className="linear-icon size-10 shrink-0 rounded-xl bg-amber-100 text-amber-700">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                   </span>
                   <div>
-                    <p className="text-sm font-bold text-amber-800">看演示</p>
-                    <p className="text-xs text-amber-600">不调用 AI，不保存记录</p>
+                    <p className="text-sm font-bold text-amber-800">看演示 · 查任务</p>
+                    <p className="text-xs text-amber-600">不调用 AI，不保存新记录</p>
                   </div>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-700">
-                  第一次使用？一键看完整流程：机会发现→清洗→评分→人工选择→分析→任务沉淀。
+                  第一次使用？看完整流程演示：机会发现→清洗→评分→分析→任务沉淀。或直接查看已保存的分析记录和决策状态。
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setShowBeginnerGuide((current) => !current)}
-                  className="linear-button mt-4 inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold"
-                >
-                  {showBeginnerGuide ? "收起演示" : "一键看完整演示"}
-                </button>
+                <div className="mt-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBeginnerGuide((current) => !current)}
+                    className="linear-button inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold"
+                  >
+                    {showBeginnerGuide ? "收起演示" : "一键看完整演示"}
+                  </button>
+                  <Link href="/tasks" className="linear-button-soft inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold">
+                    打开任务中心
+                  </Link>
+                </div>
               </article>
             </div>
 

@@ -8,6 +8,7 @@ import {
   History,
   House,
   LayoutDashboard,
+  ListChecks,
   Package,
   ShieldCheck,
   Sparkles,
@@ -18,12 +19,14 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
   { label: "机会雷达", href: "/opportunities", icon: Target },
-  { label: "产品分析", href: "/products/new", icon: Package },
+  { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
+  { label: "单品分析", href: "/workflow", icon: LayoutDashboard },
+  { label: "任务中心", href: "/tasks", icon: History },
+  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
   { label: "风险排查", href: "/risk", icon: ShieldCheck },
   { label: "小白结论", href: "/summary", icon: Brain },
-  { label: "任务中心", href: "/tasks", icon: History },
   { label: "爆款拆解", href: "/viral", icon: Sparkles },
-  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
+  { label: "新品体检", href: "/products/new", icon: Package },
   { label: "素材接收", href: "/materials", icon: UploadCloud },
 ] as const;
 
@@ -32,11 +35,11 @@ const homeItem = { label: "首页", href: "/", icon: House } as const;
 const navGroups = [
   {
     title: "核心流程",
-    items: workspaceNavItems.slice(0, 5),
+    items: workspaceNavItems.slice(0, 4),
   },
   {
     title: "辅助工具",
-    items: workspaceNavItems.slice(5),
+    items: workspaceNavItems.slice(4),
   },
 ] as const;
 
