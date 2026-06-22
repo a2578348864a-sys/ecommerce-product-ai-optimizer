@@ -10,7 +10,7 @@
  * - DNS 解析后内网 IP 检测
  */
 
-import { isAllowedProtocol, isBlockedHostname, isValidTargetUrl, resolveToPublicIp } from "@/lib/server/ssrfGuard";
+import { isValidTargetUrl } from "@/lib/server/ssrfGuard";
 
 const USER_AGENT = "QingxuanAgent-Radar-MVP/0.1";
 const TIMEOUT_MS = 10_000;
@@ -75,29 +75,15 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
     return { url: rawUrl, status: "invalid", error: "无法解析 URL" };
   }
 
-  // ── Initial URL validation ──
+  // ── Initial URL validation (unified SSRF guard) ──
 
-  if (!isAllowedProtocol(url.protocol)) {
-    return { url: rawUrl, status: "blocked", error: `不支持的协议：${url.protocol}` };
-  }
-
-  if (isBlockedHostname(url.hostname)) {
-    return { url: rawUrl, status: "blocked", error: `内网地址已阻止：${url.hostname}` };
-  }
-
-  // DNS validation for the initial URL
   try {
-    const resolvedHostname = url.hostname.replace(/^\[|\]$/g, "");
-    // If the hostname is a plain IP, the regex check above already handled it.
-    // If it's a domain name, resolve DNS and check.
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(resolvedHostname) && !resolvedHostname.startsWith("[")) {
-      const resolved = await resolveToPublicIp(resolvedHostname);
-      if (!resolved) {
-        return { url: rawUrl, status: "blocked", error: `DNS 解析到内网地址或解析失败：${url.hostname}` };
-      }
+    const isValid = await isValidTargetUrl(url);
+    if (!isValid) {
+      return { url: rawUrl, status: "blocked", error: `不安全的请求地址：${url.hostname}` };
     }
   } catch {
-    return { url: rawUrl, status: "blocked", error: `DNS 解析失败：${url.hostname}` };
+    return { url: rawUrl, status: "blocked", error: `URL 安全校验失败：${url.hostname}` };
   }
 
   // ── Robots.txt check ──

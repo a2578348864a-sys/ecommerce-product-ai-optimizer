@@ -410,6 +410,30 @@ describe("isValidTargetUrl", () => {
     expect(result).toBe(false);
   });
 
+  it("IPv6 loopback 初始 URL http://[::1]/ → false", async () => {
+    const url = new URL("http://[::1]/");
+    const result = await guard.isValidTargetUrl(url);
+    expect(result).toBe(false);
+  });
+
+  it("IPv6 link-local 初始 URL http://[fe80::1]/ → false", async () => {
+    const url = new URL("http://[fe80::1]/");
+    const result = await guard.isValidTargetUrl(url);
+    expect(result).toBe(false);
+  });
+
+  it("IPv6 ULA 初始 URL http://[fc00::1]/ → false", async () => {
+    const url = new URL("http://[fc00::1]/");
+    const result = await guard.isValidTargetUrl(url);
+    expect(result).toBe(false);
+  });
+
+  it("IPv6 ULA 初始 URL http://[fd00::1]/ → false", async () => {
+    const url = new URL("http://[fd00::1]/");
+    const result = await guard.isValidTargetUrl(url);
+    expect(result).toBe(false);
+  });
+
   it("empty hostname → false", async () => {
     // URL constructor would throw with empty host, but test the edge case
     const result = await guard.isValidTargetUrl({ hostname: "", protocol: "https:" } as URL);

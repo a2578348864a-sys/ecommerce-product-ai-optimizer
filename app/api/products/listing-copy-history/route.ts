@@ -121,8 +121,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isDatabaseReady()) return databaseError();
-
   let rawText = "";
   try {
     rawText = await request.text();
@@ -150,15 +148,18 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
+  // Auth first \u2014 do not expose DB readiness to unauthenticated callers
+  const authError = checkAccessPassword(request, rawBody);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
+  if (!isDatabaseReady()) return databaseError();
+
   if (!isRecord(rawBody.data)) {
     return jsonResponse({
       ok: false,
       error: { code: "invalid_data", message: "\u8bf7\u63d0\u4f9b\u8981\u4fdd\u5b58\u7684\u82f1\u6587\u4e0a\u67b6\u6587\u6848\u3002" },
     }, 400);
   }
-
-  const authError = checkAccessPassword(request, rawBody);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
 
   try {
     const item = await createListingCopyHistory({
