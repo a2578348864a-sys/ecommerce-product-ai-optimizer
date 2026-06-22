@@ -202,6 +202,41 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
         </div>
       </section>
 
+      {/* ── Review status ── */}
+      {(() => {
+        const rs = result.reviewState as Record<string, unknown> | undefined;
+        if (!rs) return null;
+        const revSteps = [
+          { key: "sourcing", label: "货源判断", done: !!rs.sourcingReviewed },
+          { key: "risk", label: "风险排查", done: !!rs.riskReviewed },
+          { key: "summary", label: "小白结论", done: !!rs.summaryReviewed },
+          { key: "listing", label: "Listing 文案", done: !!rs.listingReviewed },
+        ];
+        const doneCount = revSteps.filter((s) => s.done).length;
+        const allDone = doneCount === 4;
+        return (
+          <section className={`rounded-2xl border p-4 ${allDone ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-slate-950">
+                {allDone ? "人工复核已完成" : "待人工复核完成"}
+              </h3>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${allDone ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                {doneCount}/4
+              </span>
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {revSteps.map((s) => (
+                <div key={s.key} className="flex items-center gap-2 text-sm">
+                  <span className="shrink-0">{s.done ? "✅" : "⬜"}</span>
+                  <span className={s.done ? "text-slate-700 font-medium" : "text-slate-400"}>{s.label}</span>
+                  <span className="text-xs ml-auto text-slate-400">{s.done ? "已确认" : "未确认"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
       {/* Steps summary */}
       {steps.length > 0 && (
         <section className="rounded-2xl border border-white/80 bg-white p-4">

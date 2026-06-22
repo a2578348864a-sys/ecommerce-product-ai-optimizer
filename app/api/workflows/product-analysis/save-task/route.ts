@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 /* ── Types ─────────────────────────────────────── */
 
 type ApiResponse =
-  | { ok: true; data: { id: string; title: string; type: string } }
+  | { ok: true; data: { id: string; title: string; type: string; allReviewed: boolean } }
   | { ok: false; error: { code: string; message: string } };
 
 function jsonResponse(body: ApiResponse, status = 200) {
@@ -24,10 +24,65 @@ function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+function asBoolean(value: unknown): boolean {
+  return typeof value === "boolean" ? value : false;
+}
+
 function workflowScoreFromRiskLevel(riskLevel: string): number {
   if (riskLevel === "green") return 85;
   if (riskLevel === "red") return 25;
   return 55; // yellow / unknown
+}
+
+const REVIEW_STEP_KEYS = ["sourcing", "risk", "summary", "listing"] as const;
+const TOTAL_REVIEW_STEPS = 4;
+
+type ReviewState = {
+  sourcingReviewed: boolean;
+  riskReviewed: boolean;
+  summaryReviewed: boolean;
+  listingReviewed: boolean;
+  reviewedCount: number;
+  totalReviewSteps: number;
+  allReviewed: boolean;
+  reviewedAt: string | null;
+};
+
+/**
+ * Parse and validate reviewState from the request body.
+ * Server always recomputes allReviewed and reviewedCount to prevent client-side forgery.
+ */
+function parseReviewState(raw: unknown): ReviewState | null {
+  if (!isRecord(raw)) return null;
+
+  const sourcingReviewed = asBoolean(raw.sourcingReviewed);
+  const riskReviewed = asBoolean(raw.riskReviewed);
+  const summaryReviewed = asBoolean(raw.summaryReviewed);
+  const listingReviewed = asBoolean(raw.listingReviewed);
+
+  const confirmedSteps = REVIEW_STEP_KEYS.filter((k) => {
+    switch (k) {
+      case "sourcing": return sourcingReviewed;
+      case "risk": return riskReviewed;
+      case "summary": return summaryReviewed;
+      case "listing": return listingReviewed;
+      default: return false;
+    }
+  });
+
+  const reviewedCount = confirmedSteps.length;
+  const allReviewed = reviewedCount === TOTAL_REVIEW_STEPS;
+
+  return {
+    sourcingReviewed,
+    riskReviewed,
+    summaryReviewed,
+    listingReviewed,
+    reviewedCount,
+    totalReviewSteps: TOTAL_REVIEW_STEPS,
+    allReviewed,
+    reviewedAt: allReviewed ? new Date().toISOString() : null,
+  };
 }
 
 /* ── POST handler ──────────────────────────────── */
@@ -77,6 +132,9 @@ export async function POST(request: NextRequest) {
   const riskLevel = asString(finalReport.riskLevel, "yellow");
   const score = workflowScoreFromRiskLevel(riskLevel);
 
+  // Parse and validate reviewState
+  const reviewState = parseReviewState(body.reviewState);
+
   // Build a structured result for the task record
   const taskResult = {
     type: "workflow",
@@ -86,6 +144,16 @@ export async function POST(request: NextRequest) {
     finalReport,
     steps: Array.isArray(workflowResult.steps) ? workflowResult.steps : [],
     costGuard: isRecord(workflowResult.costGuard) ? workflowResult.costGuard : {},
+    reviewState: reviewState || {
+      sourcingReviewed: false,
+      riskReviewed: false,
+      summaryReviewed: false,
+      listingReviewed: false,
+      reviewedCount: 0,
+      totalReviewSteps: 4,
+      allReviewed: false,
+      reviewedAt: null,
+    },
   };
 
   try {
@@ -110,6 +178,7 @@ export async function POST(request: NextRequest) {
         id: record.id,
         title: record.title || productName,
         type: "workflow",
+        allReviewed: taskResult.reviewState.allReviewed,
       },
     });
   } catch (error) {

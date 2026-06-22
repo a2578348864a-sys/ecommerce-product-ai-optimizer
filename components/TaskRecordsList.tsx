@@ -639,6 +639,19 @@ export function TaskRecordsList() {
                             <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
                               {getDecisionStatusOption(item.decisionStatus).shortLabel}
                             </span>
+                            {(() => {
+                              if (item.type !== "workflow") return null;
+                              const r = item.result as Record<string, unknown> | undefined;
+                              const rs = r?.reviewState as Record<string, unknown> | undefined;
+                              if (!rs) return null;
+                              const done = [!!rs.sourcingReviewed, !!rs.riskReviewed, !!rs.summaryReviewed, !!rs.listingReviewed].filter(Boolean).length;
+                              const allDone = done === 4;
+                              return (
+                                <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${allDone ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                                  {allDone ? `已复核 ${done}/4` : `待复核 ${done}/4`}
+                                </span>
+                              );
+                            })()}
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
                               {item.score}/100
                             </span>

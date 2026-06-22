@@ -309,11 +309,19 @@ export function WorkflowClient() {
     }
     setSavingToTasks(true);
     setSaveError("");
+
+    const reviewState = {
+      sourcingReviewed: !!reviewConfirmed.sourcing,
+      riskReviewed: !!reviewConfirmed.risk,
+      summaryReviewed: !!reviewConfirmed.summary,
+      listingReviewed: !!reviewConfirmed.listing,
+    };
+
     try {
       const res = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessPassword, workflowResult: result }),
+        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -702,6 +710,11 @@ export function WorkflowClient() {
               </div>
               {saveError && (
                 <p className="mt-2 text-xs text-rose-600">{saveError}</p>
+              )}
+              {savedTaskId && (
+                <p className={`mt-2 text-xs font-semibold ${allReviewed ? "text-emerald-600" : "text-amber-600"}`}>
+                  {allReviewed ? "已保存为已复核任务" : "已保存为待复核任务"}
+                </p>
               )}
             </section>
           )}
