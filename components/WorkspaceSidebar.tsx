@@ -22,7 +22,7 @@ export const workspaceNavItems = [
   { label: "机会雷达", href: "/opportunities", icon: Target },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
   { label: "单品分析", href: "/workflow", icon: LayoutDashboard },
-  { label: "Agent 路线图", href: "/agent", icon: Compass },
+  { label: "Agent 路线图 · 规划", href: "/agent", icon: Compass },
   { label: "任务中心", href: "/tasks", icon: History },
   { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
   { label: "风险排查", href: "/risk", icon: ShieldCheck },
