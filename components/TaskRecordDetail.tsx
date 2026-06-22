@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { AgentNextStepPanel } from "@/components/AgentNextStepPanel";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { platformLabels } from "@/lib/types";
@@ -553,6 +554,12 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </div>
               </div>
 
+              <AgentNextStepPanel
+                className="mt-5"
+                taskType={record.type}
+                decisionStatus={record.decisionStatus}
+                result={record.result}
+              />
               <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
                 <div className="linear-panel p-4">
                   <p className="text-sm font-semibold text-slate-950">执行步骤预留</p>
