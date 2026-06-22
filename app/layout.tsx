@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "轻选 Agent",
-  description: "跨境电商半自动选品助手，拆解海外爆款趋势与商品机会，先看证据再判断风险。",
+  description: "面向跨境电商新手和小团队的全自动电商 Agent，当前 Alpha MVP 通过受控自动化和人工复核判断商品机会与风险。",
 };
 
 export default function RootLayout({

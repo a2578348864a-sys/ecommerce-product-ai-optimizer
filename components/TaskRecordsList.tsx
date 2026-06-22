@@ -458,7 +458,7 @@ export function TaskRecordsList() {
                 <p className="eyebrow">Qingxuan Workspace</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务工作流中心</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  沉淀每次选品分析、风险判断和下一步动作。当前为半自动 Alpha 阶段，所有结论需要人工复核；未来会逐步承接多 Agent 自动化工作流。
+                  沉淀每次选品分析、风险判断和下一步动作。当前为全自动电商 Agent Alpha MVP，所有结论需要人工复核；后续逐步承接批量队列与多 Agent 自动化工作流。
                 </p>
               </div>
               <Link
@@ -476,7 +476,7 @@ export function TaskRecordsList() {
               <div>
                 <p className="text-sm font-bold text-teal-700">工作流中心</p>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">任务复盘与工作流中心</h2>
-                <p className="muted-text mt-1 text-sm">当前为半自动 Alpha 阶段，所有 AI 结论需要人工复核。未来逐步扩展为多 Agent 自动化工作流底座。</p>
+                <p className="muted-text mt-1 text-sm">当前为全自动电商 Agent Alpha MVP，所有 AI 结论需要人工复核。未来逐步扩展为批量队列与多 Agent 自动化工作流底座。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {page ? `${items.length}/${page.total} 条` : `${items.length} 条记录`}
@@ -486,7 +486,7 @@ export function TaskRecordsList() {
             <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
               <p className="text-sm font-bold text-teal-800">💡 当前阶段说明</p>
               <p className="mt-1 text-sm leading-6 text-teal-700">
-                这里是半自动选品分析的任务沉淀中心，不是全自动执行系统。AI 负责分析、整理和提示风险，但采购、上架、广告投放等关键动作必须由你人工确认后再执行。
+                这里是全自动电商 Agent 的任务沉淀中心，不是完全无人值守执行系统。AI 负责分析、整理和提示风险，但采购、上架、广告投放等关键动作必须由你人工确认后再执行。
               </p>
             </div>
 

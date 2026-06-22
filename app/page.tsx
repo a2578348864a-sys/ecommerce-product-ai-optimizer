@@ -1717,7 +1717,7 @@ export default function Home() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <h1 className="section-title text-2xl">粘贴商品素材，判断这个品能不能做</h1>
-                <p className="muted-text mt-1 text-sm">半自动 AI 分析工具：AI 负责分析/生成/整理，关键决策由人工确认。</p>
+                <p className="muted-text mt-1 text-sm">全自动电商 Agent Alpha MVP：AI 负责分析/生成/整理，关键决策由人工复核门控。</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">Alpha 版</span>
@@ -1740,7 +1740,7 @@ export default function Home() {
               <p className="linear-kicker">从哪里开始？</p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">三个入口，按需选择</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                半自动 AI 电商分析工具 Alpha 版。AI 负责整理证据和建议，关键决策由人工确认。
+                全自动电商 Agent 的 Alpha MVP / Pre-commercial 版本。当前通过受控自动化和人工复核落地。
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
@@ -1843,7 +1843,7 @@ export default function Home() {
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="section-title text-2xl sm:text-3xl">素材输入</h2>
-                    <p className="muted-text mt-1 text-sm">填入素材后逐步识别、拆解、生成结论。当前是半自动流程，AI 负责整理证据，你负责确认判断。</p>
+                    <p className="muted-text mt-1 text-sm">填入素材后逐步识别、拆解、生成结论。当前是受控自动化流程，AI 负责整理证据，你负责确认判断。</p>
                     {draftRestored ? (
                       <p className="mt-2 text-xs font-semibold text-teal-700">已恢复上次未完成内容</p>
                     ) : null}
@@ -2084,7 +2084,7 @@ export default function Home() {
                         <p className="text-xs font-semibold text-sky-700">任务工作流中心</p>
                         <h2 className="mt-1 text-lg font-semibold text-slate-950">复盘分析与确认下一步</h2>
                         <p className="mt-1 text-sm leading-6 text-slate-600">
-                          查看历史分析、复盘风险结论、确认下一步动作。当前为半自动 Alpha 阶段，关键决策需人工确认。
+                          查看历史分析、复盘风险结论、确认下一步动作。当前为全自动电商 Agent Alpha MVP，关键决策需人工复核。
                         </p>
                       </div>
                     </div>
@@ -2227,7 +2227,7 @@ export default function Home() {
           <details className="surface-card p-5 sm:p-6">
             <summary className="cursor-pointer text-base font-semibold text-slate-800">后续能力规划</summary>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              当前主流程：半自动分析 + 人工确认。以下能力仅为规划，不会自动发布、投广告或操作外部平台。
+              当前主流程：受控自动化 + 人工复核。以下能力仅为规划，不会自动发布、投广告或操作外部平台。
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {agentCapabilityMatrix.map((item) => {

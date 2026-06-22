@@ -80,9 +80,9 @@ export function WorkspaceSidebar() {
                 <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-teal-700">半自动工作台</p>
+              <p className="text-[11px] font-semibold text-teal-700">全自动 Agent Alpha</p>
               <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
-              <p className="muted-text mt-1 text-xs leading-5">本地优先，人工确认</p>
+              <p className="muted-text mt-1 text-xs leading-5">受控自动化，人工复核</p>
             </div>
           </div>
         </div>

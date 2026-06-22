@@ -562,7 +562,7 @@ export function ViralMockAgent() {
               <div>
                 <p className="eyebrow">Overseas Trend Agent</p>
                 <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">海外爆款趋势拆解 Agent</h1>
-                <p className="mt-1 text-sm muted-text">半自动分析工具：先用本地规则模拟，再按需接入 AI 做海外平台运营报告。</p>
+                <p className="mt-1 text-sm muted-text">爆款趋势拆解能力：先用本地规则模拟，再按需接入 AI 做海外平台运营报告，服务于全自动电商 Agent 的选品决策链路。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <span className="linear-pill px-3 py-1 text-sm font-semibold">

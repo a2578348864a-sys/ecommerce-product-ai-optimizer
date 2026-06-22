@@ -8,7 +8,7 @@
 
 ## 为什么先做安全修复
 
-Phase 2 的核心目标是让轻选 Agent 从「半自动工具集合」升级为「自动工作流 Agent」。在进入 Phase 2-B.2（review 持久化 + 决策状态）之前，必须先补齐两个安全地基：
+Phase 2 的核心目标是沿着「全自动电商 Agent」路线，把单品受控自动化链路扩展为可复核的自动工作流。在进入 Phase 2-B.2（review 持久化 + 决策状态）之前，必须先补齐两个安全地基：
 
 1. **Products API 服务端鉴权**：自动化 Agent 会通过 `/api/products/*` 批量调用 AI 分析，如果这些接口没有服务端密码校验，任何人都可以绕过前端直接调用，导致 AI token 被盗刷、历史文案数据被泄露。
 2. **radarCrawler SSRF 防护**：自动化 Agent 未来需要从合规数据源抓取信息。radarCrawler 是 Phase 1E 打下的基础，但其 SSRF 防护只检查了 hostname 字符串，未覆盖 HTTP 重定向目标校验和 DNS 解析后 IP 检测，存在绕过风险。
