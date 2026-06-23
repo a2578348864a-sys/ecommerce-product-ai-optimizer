@@ -362,6 +362,57 @@ export default function AgentRunPage() {
             </div>
           </div>
 
+          {/* 从哪里开始 — quick entry cards */}
+          <section className="surface-card p-5 sm:p-6">
+            <div className="mb-4">
+              <p className="linear-kicker">从哪里开始？</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                选择你的第一步
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                以下入口均需你手动操作，不会自动执行 AI 分析或商业动作。
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Link
+                href="/opportunities"
+                className="group rounded-2xl border border-teal-200 bg-teal-50/60 p-4 transition hover:border-teal-300 hover:shadow-md"
+              >
+                <p className="text-sm font-bold text-teal-800">从机会雷达开始</p>
+                <p className="mt-1 text-xs leading-5 text-teal-700">
+                  还没有明确产品？先发现候选商品，再带入工作流做深度分析。
+                </p>
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 group-hover:text-teal-800">
+                  进入机会雷达 <ArrowRight className="size-3" />
+                </span>
+              </Link>
+              <Link
+                href="/workflow"
+                className="group rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 transition hover:border-indigo-300 hover:shadow-md"
+              >
+                <p className="text-sm font-bold text-indigo-800">直接单品分析</p>
+                <p className="mt-1 text-xs leading-5 text-indigo-700">
+                  已有商品名？输入后自动跑 4 步 AI 分析，含人工复核和完整报告。
+                </p>
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 group-hover:text-indigo-800">
+                  开始单品分析 <ArrowRight className="size-3" />
+                </span>
+              </Link>
+              <Link
+                href="/tasks"
+                className="group rounded-2xl border border-amber-200 bg-amber-50/60 p-4 transition hover:border-amber-300 hover:shadow-md"
+              >
+                <p className="text-sm font-bold text-amber-800">查看任务中心</p>
+                <p className="mt-1 text-xs leading-5 text-amber-700">
+                  查看已保存的分析记录、人工复核状态和 Agent 下一步建议。
+                </p>
+                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-600 group-hover:text-amber-800">
+                  进入任务中心 <ArrowRight className="size-3" />
+                </span>
+              </Link>
+            </div>
+          </section>
+
           {/* Main loop pipeline */}
           <section className="surface-card p-5 sm:p-6">
             <div className="mb-4">

@@ -131,14 +131,15 @@ export default function AgentPage() {
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
                   长期目标是全自动电商 Agent。当前是 Alpha MVP / Pre-commercial 阶段，通过受控自动化 + 人工复核落地。
+                  本页是路线图和能力规划，不是当前主流程入口。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/workflow"
+                  href="/agent/run"
                   className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                 >
-                  进入受控自动化
+                  进入 Agent 主流程
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link

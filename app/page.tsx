@@ -1737,6 +1737,21 @@ export default function Home() {
 
           <section className="surface-card p-4 sm:p-5">
             <div className="mb-4">
+              {/* Agent 主流程入口 */}
+              <Link
+                href="/agent/run"
+                className="linear-button-primary mb-5 flex w-full items-center justify-between rounded-2xl bg-teal-600 px-5 py-4 text-left transition hover:bg-teal-700"
+              >
+                <div>
+                  <p className="text-sm font-bold text-white">当前可用：Agent 主流程</p>
+                  <p className="mt-0.5 text-xs text-teal-100">从线索发现、单品分析到任务复核，按主链路一步步走</p>
+                </div>
+                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-white/20 px-4 py-2 text-sm font-semibold text-white">
+                  开始跑 Agent 主流程
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                </span>
+              </Link>
+
               <p className="linear-kicker">从哪里开始？</p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">三个入口，按需选择</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">

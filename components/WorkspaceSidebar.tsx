@@ -19,6 +19,7 @@ import {
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
+  { label: "Agent 主流程", href: "/agent/run", icon: Compass },
   { label: "机会雷达", href: "/opportunities", icon: Target },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
   { label: "单品分析", href: "/workflow", icon: LayoutDashboard },
@@ -37,15 +38,15 @@ const homeItem = { label: "首页", href: "/", icon: House } as const;
 const navGroups = [
   {
     title: "主链路",
-    items: workspaceNavItems.slice(0, 4),
+    items: workspaceNavItems.slice(0, 5),
   },
   {
     title: "路线图",
-    items: workspaceNavItems.slice(4, 5),
+    items: workspaceNavItems.slice(5, 6),
   },
   {
     title: "辅助工具",
-    items: workspaceNavItems.slice(5),
+    items: workspaceNavItems.slice(6),
   },
 ] as const;
 
