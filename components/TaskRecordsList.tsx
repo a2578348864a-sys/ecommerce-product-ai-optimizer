@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  agentStatusFilterOptions,
+  deriveAgentNextStepPanelState,
+  type AgentStatusKey,
+} from "@/components/agentNextStepPanelModel";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { taskStatusOptions, TASK_TYPE_FILTER_OPTIONS } from "@/lib/taskConcepts";
+import { TASK_TYPE_FILTER_OPTIONS } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import {
@@ -14,6 +19,7 @@ import {
 
 const defaultType = "";
 const defaultDecisionStatus = "";
+const defaultAgentStatus = "";
 const defaultLimit = 10;
 const taskTypes = TASK_TYPE_FILTER_OPTIONS;
 
@@ -121,6 +127,14 @@ function getTaskStatusClass() {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
+function getAgentStatus(item: TaskCenterItem) {
+  return deriveAgentNextStepPanelState({
+    taskType: item.type,
+    decisionStatus: item.decisionStatus,
+    result: item.result,
+  }).agentStatus;
+}
+
 function getStringArray(result: unknown, key: string) {
   if (typeof result !== "object" || result === null || Array.isArray(result)) return [];
   const value = Reflect.get(result, key);
@@ -140,11 +154,12 @@ function getBatchMeta(result: unknown) {
   return { batchIndex, batchTotal };
 }
 
-function updateBrowserQuery(type: string, q: string, decisionStatus: string) {
+function updateBrowserQuery(type: string, q: string, decisionStatus: string, agentStatus: string) {
   const params = new URLSearchParams();
   if (type && type !== defaultType) params.set("type", type);
   if (q) params.set("q", q);
   if (decisionStatus && decisionStatus !== defaultDecisionStatus) params.set("decisionStatus", decisionStatus);
+  if (agentStatus && agentStatus !== defaultAgentStatus) params.set("agentStatus", agentStatus);
   const query = params.toString();
   window.history.pushState(null, "", query ? `/tasks?${query}` : "/tasks");
 }
@@ -170,6 +185,7 @@ export function TaskRecordsList() {
   const [page, setPage] = useState<TaskPageInfo | null>(null);
   const [type, setType] = useState(defaultType);
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
+  const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
   const [queryInput, setQueryInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -182,6 +198,7 @@ export function TaskRecordsList() {
   const loadTasks = useCallback(async ({
     nextType,
     nextDecisionStatus,
+    nextAgentStatus,
     q,
     offset,
     mode,
@@ -189,6 +206,7 @@ export function TaskRecordsList() {
   }: {
     nextType: string;
     nextDecisionStatus: string;
+    nextAgentStatus: "" | AgentStatusKey;
     q: string;
     offset: number;
     mode: LoadMode;
@@ -256,9 +274,10 @@ export function TaskRecordsList() {
       setPage(nextPage);
       setType(nextType);
       setDecisionStatus(nextDecisionStatus);
+      setAgentStatus(nextAgentStatus);
       setActiveQuery(q);
       if (mode === "replace") setOpenId("");
-      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus);
+      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus, nextAgentStatus);
     } catch {
       setError("任务记录暂时无法读取，请稍后刷新。");
     } finally {
@@ -271,6 +290,7 @@ export function TaskRecordsList() {
     const params = new URLSearchParams(window.location.search);
     const initialType = params.get("type") || defaultType;
     const initialDecisionStatus = params.get("decisionStatus") || defaultDecisionStatus;
+    const initialAgentStatus = params.get("agentStatus") || defaultAgentStatus;
     const initialQuery = (params.get("q") || "").trim();
     // 确保 initialType 在合法值范围内，否则回退到 defaultType
     const validTypes = taskTypes.map((t) => t.value);
@@ -279,13 +299,19 @@ export function TaskRecordsList() {
     const safeDecisionStatus = validDecisionStatuses.includes(initialDecisionStatus as DecisionStatus)
       ? initialDecisionStatus
       : defaultDecisionStatus;
+    const validAgentStatuses = agentStatusFilterOptions.map((item) => item.value);
+    const safeAgentStatus = validAgentStatuses.includes(initialAgentStatus as AgentStatusKey)
+      ? initialAgentStatus as "" | AgentStatusKey
+      : defaultAgentStatus;
     setType(safeType);
     setDecisionStatus(safeDecisionStatus);
+    setAgentStatus(safeAgentStatus);
     setQueryInput(initialQuery);
     setActiveQuery(initialQuery);
     void loadTasks({
       nextType: safeType,
       nextDecisionStatus: safeDecisionStatus,
+      nextAgentStatus: safeAgentStatus,
       q: initialQuery,
       offset: 0,
       mode: "replace",
@@ -299,6 +325,7 @@ export function TaskRecordsList() {
     void loadTasks({
       nextType: type,
       nextDecisionStatus: decisionStatus,
+      nextAgentStatus: agentStatus,
       q,
       offset: 0,
       mode: "replace",
@@ -311,6 +338,7 @@ export function TaskRecordsList() {
     void loadTasks({
       nextType,
       nextDecisionStatus: decisionStatus,
+      nextAgentStatus: agentStatus,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -323,6 +351,7 @@ export function TaskRecordsList() {
     void loadTasks({
       nextType: type,
       nextDecisionStatus,
+      nextAgentStatus: agentStatus,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -330,11 +359,18 @@ export function TaskRecordsList() {
     });
   }
 
+  function onAgentStatusChange(nextAgentStatus: "" | AgentStatusKey) {
+    setAgentStatus(nextAgentStatus);
+    updateBrowserQuery(type, activeQuery, decisionStatus, nextAgentStatus);
+    setOpenId("");
+  }
+
   function clearFilters() {
     setQueryInput("");
     void loadTasks({
       nextType: defaultType,
       nextDecisionStatus: defaultDecisionStatus,
+      nextAgentStatus: defaultAgentStatus,
       q: "",
       offset: 0,
       mode: "replace",
@@ -346,6 +382,7 @@ export function TaskRecordsList() {
     void loadTasks({
       nextType: type,
       nextDecisionStatus: decisionStatus,
+      nextAgentStatus: agentStatus,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -358,6 +395,7 @@ export function TaskRecordsList() {
     void loadTasks({
       nextType: page.type,
       nextDecisionStatus: page.decisionStatus || decisionStatus,
+      nextAgentStatus: agentStatus,
       q: page.q,
       offset: page.nextOffset,
       mode: "append",
@@ -455,9 +493,12 @@ export function TaskRecordsList() {
     }
   }
 
-  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus);
-  const isSearchEmpty = !loading && !error && items.length === 0 && hasActiveFilters;
-  const isDefaultEmpty = !loading && !error && items.length === 0 && !hasActiveFilters;
+  const visibleItems = agentStatus
+    ? items.filter((item) => getAgentStatus(item).key === agentStatus)
+    : items;
+  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus);
+  const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters;
+  const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
@@ -503,7 +544,9 @@ export function TaskRecordsList() {
                 <p className="muted-text mt-1 text-sm">当前为全自动电商 Agent Alpha MVP，所有 AI 结论需要人工复核。未来逐步扩展为批量队列与多 Agent 自动化工作流底座。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
-                {page ? `${items.length}/${page.total} 条` : `${items.length} 条记录`}
+                {agentStatus
+                  ? `已筛选 ${visibleItems.length}/${items.length} 条`
+                  : page ? `${items.length}/${page.total} 条` : `${items.length} 条记录`}
               </span>
             </div>
 
@@ -538,7 +581,7 @@ export function TaskRecordsList() {
               </div>
             </div>
 
-            <form onSubmit={submitSearch} className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 lg:grid-cols-[minmax(0,1fr)_220px_180px_auto_auto]">
+            <form onSubmit={submitSearch} className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 xl:grid-cols-[minmax(0,1fr)_200px_170px_210px_auto_auto]">
               <label className="min-w-0">
                 <span className="text-xs font-bold text-slate-500">搜索关键词</span>
                 <input
@@ -572,6 +615,18 @@ export function TaskRecordsList() {
                   ))}
                 </select>
               </label>
+              <label>
+                <span className="text-xs font-bold text-slate-500">Agent 状态</span>
+                <select
+                  value={agentStatus}
+                  onChange={(event) => onAgentStatusChange(event.target.value as "" | AgentStatusKey)}
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none"
+                >
+                  {agentStatusFilterOptions.map((item) => (
+                    <option key={item.value || "all"} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="submit"
                 className="linear-button-primary inline-flex h-11 items-center justify-center self-end px-5 text-sm font-semibold"
@@ -590,6 +645,15 @@ export function TaskRecordsList() {
             {activeQuery ? (
               <p className="mt-3 text-sm text-slate-500">
                 当前搜索：<span className="font-bold text-slate-800">{activeQuery}</span>
+              </p>
+            ) : null}
+            {agentStatus ? (
+              <p className="mt-2 text-sm text-slate-500">
+                当前 Agent 状态筛选：
+                <span className="font-bold text-slate-800">
+                  {agentStatusFilterOptions.find((item) => item.value === agentStatus)?.label || "未知状态"}
+                </span>
+                <span className="ml-2 text-xs text-slate-400">基于当前已加载任务前端筛选。</span>
               </p>
             ) : null}
 
@@ -625,7 +689,7 @@ export function TaskRecordsList() {
               <div className="mt-6 rounded-3xl border border-dashed border-slate-200 bg-white/70 p-8">
                 <p className="text-lg font-semibold text-slate-950">没有匹配的任务</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  换个关键词试试，或者清空筛选后查看全部任务记录。
+                  换个关键词，调整类型、人工状态或 Agent 状态筛选；也可以加载更多后继续筛选当前已加载任务。
                 </p>
                 <button
                   type="button"
@@ -638,8 +702,9 @@ export function TaskRecordsList() {
             ) : (
               <>
                 <div className="mt-6 space-y-4">
-                  {items.map((item) => {
+                  {visibleItems.map((item) => {
                     const open = openId === item.id;
+                    const itemAgentStatus = getAgentStatus(item);
                     return (
                       <article key={item.id} className="linear-panel p-5">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -662,6 +727,12 @@ export function TaskRecordsList() {
                             </span>
                             <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
                               {getDecisionStatusOption(item.decisionStatus).shortLabel}
+                            </span>
+                            <span
+                              className={"rounded-full border px-3 py-1 text-sm font-semibold " + itemAgentStatus.className}
+                              title={itemAgentStatus.description}
+                            >
+                              Agent：{itemAgentStatus.label}
                             </span>
                             {(() => {
                               if (item.type !== "workflow") return null;

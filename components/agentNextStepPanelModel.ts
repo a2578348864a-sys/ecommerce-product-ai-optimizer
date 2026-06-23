@@ -12,10 +12,27 @@ type BatchMeta = {
   batchTotal: number;
 } | null;
 
+export type AgentStatusKey =
+  | "needs_review"
+  | "needs_decision"
+  | "can_continue"
+  | "needs_info"
+  | "rejected"
+  | "missing_review_state"
+  | "non_agent";
+
+export type AgentStatusSummary = {
+  key: AgentStatusKey;
+  label: string;
+  description: string;
+  className: string;
+};
+
 export type AgentNextStepPanelState = {
   stageLabel: string;
   stageDescription: string;
   stageClassName: string;
+  agentStatus: AgentStatusSummary;
   reviewState: ReviewState;
   decisionLabel: string;
   riskLevel: "green" | "yellow" | "red" | "unknown";
@@ -32,6 +49,17 @@ export type AgentNextStepPanelInput = {
   decisionStatus: DecisionStatus;
   result: unknown;
 };
+
+export const agentStatusFilterOptions: Array<{ value: "" | AgentStatusKey; label: string }> = [
+  { value: "", label: "全部 Agent 状态" },
+  { value: "needs_review", label: "待复核" },
+  { value: "needs_decision", label: "待决策" },
+  { value: "can_continue", label: "可人工推进" },
+  { value: "needs_info", label: "需补资料" },
+  { value: "rejected", label: "已淘汰" },
+  { value: "missing_review_state", label: "缺少复核状态" },
+  { value: "non_agent", label: "普通任务" },
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -135,14 +163,18 @@ function getStage(input: {
   }
 
   if (input.decisionStatus === "continue") {
+    if (input.riskLevel === "red") {
+      return {
+        label: "高风险需复查",
+        description: "人工已选择继续，但当前仍是高风险结果，必须先复查合规、认证和平台规则，不能直接推进。",
+        className: "border-rose-200 bg-rose-50 text-rose-700",
+      };
+    }
+
     return {
-      label: input.riskLevel === "red" ? "可继续推进（需风险复查）" : "可继续推进",
-      description: input.riskLevel === "red"
-        ? "人工已选择继续，但当前仍是高风险结果，必须先复查合规、认证和平台规则。"
-        : "人工已选择继续，下一步仍需线下确认供应链、成本和平台规则。",
-      className: input.riskLevel === "red"
-        ? "border-rose-200 bg-rose-50 text-rose-700"
-        : "border-emerald-200 bg-emerald-50 text-emerald-700",
+      label: "可人工推进",
+      description: "人工已选择继续，下一步仍需线下确认供应链、成本和平台规则。",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
   }
 
@@ -218,6 +250,104 @@ function buildNextActions(input: {
   return Array.from(new Set(actions)).slice(0, 5);
 }
 
+function makeAgentStatus(
+  key: AgentStatusKey,
+  label: string,
+  description: string,
+  className: string,
+): AgentStatusSummary {
+  return { key, label, description, className };
+}
+
+function getAgentStatus(input: {
+  taskType?: string;
+  hasFinalReport: boolean;
+  decisionStatus: DecisionStatus;
+  reviewState: ReviewState;
+  riskLevel: AgentNextStepPanelState["riskLevel"];
+}): AgentStatusSummary {
+  const isWorkflowTask = input.taskType === undefined || input.taskType === "workflow";
+
+  if (!isWorkflowTask) {
+    return makeAgentStatus(
+      "non_agent",
+      "普通任务",
+      "这条记录不是 workflow 类型，只展示基础任务状态，不包装成完整 Agent 推进状态。",
+      "border-slate-200 bg-slate-50 text-slate-600",
+    );
+  }
+
+  if (!input.hasFinalReport) {
+    return makeAgentStatus(
+      "needs_info",
+      "需补资料",
+      "当前任务缺少可用分析结果，需要补资料或重新生成分析。",
+      "border-amber-200 bg-amber-50 text-amber-700",
+    );
+  }
+
+  if (input.decisionStatus === "rejected") {
+    return makeAgentStatus(
+      "rejected",
+      "已淘汰",
+      "人工已标记为暂不推进。",
+      "border-rose-200 bg-rose-50 text-rose-700",
+    );
+  }
+
+  if (input.decisionStatus === "need_info") {
+    return makeAgentStatus(
+      "needs_info",
+      "需补资料",
+      "人工已标记需要补充供应商、成本、认证或平台规则资料。",
+      "border-amber-200 bg-amber-50 text-amber-700",
+    );
+  }
+
+  if (!input.reviewState.exists) {
+    return makeAgentStatus(
+      "missing_review_state",
+      "缺少复核状态",
+      "老版或异常任务缺少 reviewState，只能人工确认后再判断。",
+      "border-slate-300 bg-slate-50 text-slate-700",
+    );
+  }
+
+  if (!input.reviewState.allReviewed) {
+    return makeAgentStatus(
+      "needs_review",
+      "待复核",
+      "AI 已完成分析，但人工复核门槛还未完成。",
+      "border-amber-200 bg-amber-50 text-amber-700",
+    );
+  }
+
+  if (input.riskLevel === "red") {
+    return makeAgentStatus(
+      "needs_info",
+      "需补资料",
+      "当前为高风险结果，不能归为可推进，需先复查合规、认证和平台规则。",
+      "border-rose-200 bg-rose-50 text-rose-700",
+    );
+  }
+
+  if (input.decisionStatus === "continue") {
+    return makeAgentStatus(
+      "can_continue",
+      "可人工推进",
+      "人工已选择继续，系统不会自动执行采购、上架、投放或联系供应商。",
+      "border-emerald-200 bg-emerald-50 text-emerald-700",
+    );
+  }
+
+  return makeAgentStatus(
+    "needs_decision",
+    "待决策",
+    "必要复核已完成，请人工决定继续推进、补资料或淘汰。",
+    "border-slate-200 bg-slate-50 text-slate-700",
+  );
+}
+
 export function deriveAgentNextStepPanelState(input: AgentNextStepPanelInput): AgentNextStepPanelState {
   const result = isRecord(input.result) ? input.result : null;
   const finalReport = result && isRecord(result.finalReport) ? result.finalReport : null;
@@ -230,6 +360,13 @@ export function deriveAgentNextStepPanelState(input: AgentNextStepPanelInput): A
     reviewState,
     riskLevel,
   });
+  const agentStatus = getAgentStatus({
+    taskType: input.taskType,
+    hasFinalReport: Boolean(finalReport),
+    decisionStatus: input.decisionStatus,
+    reviewState,
+    riskLevel,
+  });
   const reportNextSteps = getStringArray(finalReport?.nextSteps, 5);
   const manualReviewChecklist = getStringArray(finalReport?.manualReviewChecklist, 6);
 
@@ -237,6 +374,7 @@ export function deriveAgentNextStepPanelState(input: AgentNextStepPanelInput): A
     stageLabel: stage.label,
     stageDescription: stage.description,
     stageClassName: stage.className,
+    agentStatus,
     reviewState,
     decisionLabel: getDecisionLabel(input.decisionStatus),
     riskLevel,
