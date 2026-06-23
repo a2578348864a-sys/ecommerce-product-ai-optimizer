@@ -159,6 +159,51 @@ describe("sanitizeRun", () => {
     expect(result.queueItems[0].productName).toBe("valid item");
   });
 
+  it("preserves save_failed items with result/error/status/batchMeta", () => {
+    const raw = {
+      version: 1,
+      runId: "run-test",
+      createdAt: Date.now(),
+      input: "test",
+      batchId: "b1",
+      queueItems: [
+        {
+          id: "b1-0",
+          productName: "test",
+          status: "save_failed" as const,
+          result: { ok: true, finalReport: { finalVerdict: "ok" } },
+          taskId: null,
+          error: "保存失败，请重试",
+          batchMeta: {
+            batchId: "b1",
+            batchName: "分析产品",
+            batchIndex: 1,
+            batchTotal: 1,
+            source: "workflow_batch_mvp" as const,
+          },
+        },
+      ],
+      lastSavedTaskId: null,
+      lastSavedProductName: "",
+    };
+
+    const result = sanitizeRun(raw);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.queueItems).toHaveLength(1);
+    const item = result.queueItems[0];
+    expect(item.id).toBe("b1-0");
+    expect(item.productName).toBe("test");
+    expect(item.status).toBe("save_failed");
+    expect(item.result).not.toBeNull();
+    expect(item.result?.finalReport).toBeDefined();
+    expect(item.error).toBe("保存失败，请重试");
+    expect(item.taskId).toBeNull();
+    expect(item.batchMeta).not.toBeNull();
+    expect(item.batchMeta?.batchIndex).toBe(1);
+  });
+
   it("returns null for completely invalid input", () => {
     expect(sanitizeRun(null)).toBeNull();
     expect(sanitizeRun(undefined)).toBeNull();
@@ -311,7 +356,7 @@ describe("stripLargeResult", () => {
 /* ── hasRunContent ────────────────────────────── */
 
 describe("hasRunContent", () => {
-  it("returns true when at least one item is analyzed or saved", () => {
+  it("returns true when at least one item is analyzed, saved, or save_failed with result", () => {
     const run = {
       ...emptyWorkflowBatchRun,
       queueItems: [
@@ -323,14 +368,29 @@ describe("hasRunContent", () => {
 
     const run2 = { ...emptyWorkflowBatchRun, queueItems: [{ id: "1", productName: "a", status: "saved" as const, result: null, taskId: "t1", error: "", batchMeta: null }] };
     expect(hasRunContent(run2)).toBe(true);
+
+    // save_failed with result → should restore
+    const run3 = { ...emptyWorkflowBatchRun, queueItems: [{ id: "1", productName: "a", status: "save_failed" as const, result: { ok: true }, taskId: null, error: "保存失败", batchMeta: null }] };
+    expect(hasRunContent(run3)).toBe(true);
   });
 
-  it("returns false when no items are analyzed or saved", () => {
+  it("returns false for save_failed without result", () => {
+    const run = {
+      ...emptyWorkflowBatchRun,
+      queueItems: [
+        { id: "1", productName: "a", status: "save_failed" as const, result: null, taskId: null, error: "保存失败", batchMeta: null },
+      ],
+    };
+    expect(hasRunContent(run)).toBe(false);
+  });
+
+  it("returns false for pending/queued/failed/analyzing without result", () => {
     const run = {
       ...emptyWorkflowBatchRun,
       queueItems: [
         { id: "1", productName: "a", status: "queued" as const, result: null, taskId: null, error: "", batchMeta: null },
-        { id: "2", productName: "b", status: "failed" as const, result: null, taskId: null, error: "err", batchMeta: null },
+        { id: "2", productName: "b", status: "running" as const, result: null, taskId: null, error: "", batchMeta: null },
+        { id: "3", productName: "c", status: "failed" as const, result: null, taskId: null, error: "err", batchMeta: null },
       ],
     };
     expect(hasRunContent(run)).toBe(false);

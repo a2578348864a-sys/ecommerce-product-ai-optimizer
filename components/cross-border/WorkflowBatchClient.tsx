@@ -283,7 +283,10 @@ export function WorkflowBatchClient() {
     if (!runReady) return;
 
     const hasResults = queueItems.some(
-      (item) => item.status === "analyzed" || item.status === "saved"
+      (item) =>
+        item.status === "analyzed"
+        || item.status === "saved"
+        || (item.status === "save_failed" && item.result !== null),
     );
 
     if (!hasResults) {

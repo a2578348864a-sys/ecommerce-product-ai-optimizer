@@ -65,10 +65,13 @@ export function makeRunId() {
   return `run-${Date.now()}`;
 }
 
-/** True when the run contains at least one analyzed or saved item. */
+/** True when the run contains at least one item whose analysis result is worth restoring. */
 export function hasRunContent(run: WorkflowBatchRun) {
   return run.queueItems.some(
-    (item) => item.status === "analyzed" || item.status === "saved"
+    (item) =>
+      item.status === "analyzed"
+      || item.status === "saved"
+      || (item.status === "save_failed" && item.result !== null),
   );
 }
 
