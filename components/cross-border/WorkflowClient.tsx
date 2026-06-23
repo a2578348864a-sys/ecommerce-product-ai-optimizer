@@ -264,9 +264,9 @@ function StepReviewCard({
 
 /* ── Main component ────────────────────────────── */
 
-export function WorkflowClient() {
+export function WorkflowClient({ initialProductName }: { initialProductName?: string }) {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [productName, setProductName] = useState("");
+  const [productName, setProductName] = useState(initialProductName ?? "");
   const [running, setRunning] = useState(false);
   const [stepStatuses, setStepStatuses] = useState<Record<StepKey, StepStatus>>({
     normalize: "pending",

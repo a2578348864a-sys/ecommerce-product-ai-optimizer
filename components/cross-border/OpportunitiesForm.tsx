@@ -687,10 +687,19 @@ export function OpportunitiesForm() {
                             </div>
                           )}
                         </div>
-                        <div className="mt-3 flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50/60 p-2.5 text-xs">
+                        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-teal-100 bg-teal-50/60 p-2.5 text-xs">
                           <TrendingUp className="size-3.5 text-teal-600 shrink-0" />
                           <span className="font-semibold text-teal-700">下一步：</span>
                           <span className="text-teal-700">{c.nextAction}</span>
+                          {c.name?.trim() && (
+                            <Link
+                              href={`/workflow?product=${encodeURIComponent(c.name.trim())}`}
+                              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
+                            >
+                              带入工作流
+                              <TrendingUp className="size-3" />
+                            </Link>
+                          )}
                         </div>
                         {c.summary?.downgradeReasons && c.summary.downgradeReasons.length > 0 && (
                           <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/50 p-2">
