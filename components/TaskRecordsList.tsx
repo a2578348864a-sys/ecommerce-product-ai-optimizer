@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   agentStatusFilterOptions,
   deriveAgentNextStepPanelState,
@@ -22,6 +22,7 @@ const defaultDecisionStatus = "";
 const defaultAgentStatus = "";
 const defaultLimit = 10;
 const taskTypes = TASK_TYPE_FILTER_OPTIONS;
+const mainlineTaskTypes = new Set(["workflow", "opportunities"]);
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -154,6 +155,69 @@ function getBatchMeta(result: unknown) {
   return { batchIndex, batchTotal };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getText(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function getFinalReport(item: TaskCenterItem) {
+  if (!isRecord(item.result)) return null;
+  const finalReport = item.result.finalReport;
+  return isRecord(finalReport) ? finalReport : null;
+}
+
+function getRiskDisplay(item: TaskCenterItem) {
+  const riskLevel = getText(getFinalReport(item)?.riskLevel).toLowerCase() || item.level.toLowerCase();
+  if (riskLevel === "green" || riskLevel.includes("低")) return "绿色 / 风险较低";
+  if (riskLevel === "yellow" || riskLevel.includes("黄")) return "黄色 / 需补充判断";
+  if (riskLevel === "red" || riskLevel.includes("红") || riskLevel.includes("高")) return "红色 / 暂缓推进";
+  return item.level || "未判断";
+}
+
+function getVerdictDisplay(item: TaskCenterItem, stageLabel: string) {
+  return (
+    getText(getFinalReport(item)?.finalVerdict)
+    || getText(item.oneLineSummary)
+    || (item.type === "opportunities" ? "机会线索待复盘" : "")
+    || stageLabel
+    || "待查看详情"
+  );
+}
+
+function getReviewDisplay(item: TaskCenterItem, agentState: ReturnType<typeof deriveAgentNextStepPanelState>) {
+  if (item.type !== "workflow") return "普通记录";
+  if (!agentState.reviewState.exists) return "缺少复核状态";
+  return agentState.reviewState.allReviewed
+    ? `已复核 ${agentState.reviewState.reviewedCount}/${agentState.reviewState.totalReviewSteps}`
+    : `待复核 ${agentState.reviewState.reviewedCount}/${agentState.reviewState.totalReviewSteps}`;
+}
+
+function getNextActionDisplay(item: TaskCenterItem, agentState: ReturnType<typeof deriveAgentNextStepPanelState>) {
+  if (item.decisionStatus === "rejected") return "暂缓";
+  if (item.decisionStatus === "need_info") return "补资料";
+  if (agentState.agentStatus.key === "needs_review") return "人工复核";
+  if (agentState.agentStatus.key === "can_continue") return "可人工推进";
+  if (agentState.agentStatus.key === "needs_decision") return "人工决策";
+  if (item.type === "opportunities") return "可继续分析";
+  return "查看结果";
+}
+
+function getPriorityScore(item: TaskCenterItem, highlightedTaskId: string, hasActiveFilters: boolean) {
+  let score = 0;
+  if (item.id === highlightedTaskId) score += 1000;
+  if (!hasActiveFilters) {
+    if (item.type === "workflow") score += 160;
+    if (item.type === "opportunities") score += 120;
+    if (item.decisionStatus === "pending") score += 45;
+    if (item.decisionStatus === "need_info") score += 30;
+    if (mainlineTaskTypes.has(item.type || "")) score += 25;
+  }
+  return score;
+}
+
 function updateBrowserQuery(type: string, q: string, decisionStatus: string, agentStatus: string) {
   const params = new URLSearchParams();
   if (type && type !== defaultType) params.set("type", type);
@@ -194,6 +258,7 @@ export function TaskRecordsList() {
   const [openId, setOpenId] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [updatingDecisionId, setUpdatingDecisionId] = useState("");
+  const [highlightedTaskId, setHighlightedTaskId] = useState("");
 
   const loadTasks = useCallback(async ({
     nextType,
@@ -291,6 +356,7 @@ export function TaskRecordsList() {
     const initialType = params.get("type") || defaultType;
     const initialDecisionStatus = params.get("decisionStatus") || defaultDecisionStatus;
     const initialAgentStatus = params.get("agentStatus") || defaultAgentStatus;
+    const initialHighlight = (params.get("highlight") || params.get("recent") || "").trim();
     const initialQuery = (params.get("q") || "").trim();
     // 确保 initialType 在合法值范围内，否则回退到 defaultType
     const validTypes = taskTypes.map((t) => t.value);
@@ -306,6 +372,7 @@ export function TaskRecordsList() {
     setType(safeType);
     setDecisionStatus(safeDecisionStatus);
     setAgentStatus(safeAgentStatus);
+    setHighlightedTaskId(initialHighlight);
     setQueryInput(initialQuery);
     setActiveQuery(initialQuery);
     void loadTasks({
@@ -497,6 +564,12 @@ export function TaskRecordsList() {
     ? items.filter((item) => getAgentStatus(item).key === agentStatus)
     : items;
   const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus);
+  const highlightedItemExists = Boolean(highlightedTaskId && visibleItems.some((item) => item.id === highlightedTaskId));
+  const displayItems = useMemo(() => [...visibleItems].sort((a, b) => {
+    const priorityDiff = getPriorityScore(b, highlightedTaskId, hasActiveFilters) - getPriorityScore(a, highlightedTaskId, hasActiveFilters);
+    if (priorityDiff !== 0) return priorityDiff;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  }), [hasActiveFilters, highlightedTaskId, visibleItems]);
   const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters;
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
@@ -521,9 +594,6 @@ export function TaskRecordsList() {
                 </Link>
                 <Link href="/workflow/batch" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
                   分析产品
-                </Link>
-                <Link href="/workflow" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  单品分析
                 </Link>
                 <Link
                   href="/"
@@ -656,6 +726,11 @@ export function TaskRecordsList() {
                 <span className="ml-2 text-xs text-slate-400">基于当前已加载任务前端筛选。</span>
               </p>
             ) : null}
+            {highlightedItemExists ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm font-semibold text-emerald-800">
+                已定位到刚刚保存的分析结果。它会优先显示在列表顶部，方便继续查看和人工复核。
+              </div>
+            ) : null}
 
             {loading ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8 text-sm text-teal-800">
@@ -702,26 +777,55 @@ export function TaskRecordsList() {
             ) : (
               <>
                 <div className="mt-6 space-y-4">
-                  {visibleItems.map((item) => {
+                  {displayItems.map((item) => {
                     const open = openId === item.id;
-                    const itemAgentStatus = getAgentStatus(item);
+                    const agentState = deriveAgentNextStepPanelState({
+                      taskType: item.type,
+                      decisionStatus: item.decisionStatus,
+                      result: item.result,
+                    });
+                    const itemAgentStatus = agentState.agentStatus;
+                    const highlighted = item.id === highlightedTaskId;
+                    const batchMeta = getBatchMeta(item.result);
                     return (
-                      <article key={item.id} className="linear-panel p-5">
+                      <article
+                        key={item.id}
+                        className={`linear-panel p-5 ${highlighted ? "border-emerald-300 bg-emerald-50/60 ring-2 ring-emerald-200" : ""}`}
+                      >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500">
-                              <span>{getTaskTypeLabel(item)}</span>
-                              <span>{getAgentTypeLabel(item)}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                              <span className={mainlineTaskTypes.has(item.type || "") ? "text-teal-700" : "text-slate-400"}>
+                                {mainlineTaskTypes.has(item.type || "") ? "主链路任务" : "旧版记录"}
+                              </span>
+                              {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
                               <span>{formatDate(item.createdAt)}</span>
-                              <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
-                              <span>{sourceLabel(item.source)}</span>
                             </div>
                             <h3 className="mt-2 truncate text-lg font-semibold tracking-tight text-slate-950">
                               {getTitle(item)}
                             </h3>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{item.oneLineSummary}</p>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                              {[
+                                ["结论", getVerdictDisplay(item, agentState.stageLabel)],
+                                ["风险", getRiskDisplay(item)],
+                                ["复核", getReviewDisplay(item, agentState)],
+                                ["下一步", getNextActionDisplay(item, agentState)],
+                              ].map(([label, value]) => (
+                                <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
+                                  <p className="text-xs font-bold text-slate-400">{label}</p>
+                                  <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                              <span>{getTaskTypeLabel(item)}</span>
+                              <span>{getAgentTypeLabel(item)}</span>
+                              <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
+                              <span>{sourceLabel(item.source)}</span>
+                              {batchMeta ? <span>清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}</span> : null}
+                            </div>
                           </div>
-                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">
                             <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getTaskStatusClass()}>
                               {getTaskStatusLabel()}
                             </span>
@@ -734,28 +838,6 @@ export function TaskRecordsList() {
                             >
                               Agent：{itemAgentStatus.label}
                             </span>
-                            {(() => {
-                              if (item.type !== "workflow") return null;
-                              const r = item.result as Record<string, unknown> | undefined;
-                              const rs = r?.reviewState as Record<string, unknown> | undefined;
-                              if (!rs) return null;
-                              const done = [!!rs.sourcingReviewed, !!rs.riskReviewed, !!rs.summaryReviewed, !!rs.listingReviewed].filter(Boolean).length;
-                              const allDone = done === 4;
-                              return (
-                                <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${allDone ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-                                  {allDone ? `已复核 ${done}/4` : `待复核 ${done}/4`}
-                                </span>
-                              );
-                            })()}
-                            {(() => {
-                              const batchMeta = getBatchMeta(item.result);
-                              if (!batchMeta) return null;
-                              return (
-                                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">
-                                  批量任务 {batchMeta.batchIndex}/{batchMeta.batchTotal}
-                                </span>
-                              );
-                            })()}
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
                               {item.score}/100
                             </span>
@@ -771,18 +853,16 @@ export function TaskRecordsList() {
                             </button>
                             <Link
                               href={`/tasks/${item.id}`}
-                              className="linear-button-soft px-4 py-2 text-sm font-semibold"
+                              className="linear-button-primary px-4 py-2 text-sm font-semibold"
                             >
-                              查看详情
+                              查看结果
                             </Link>
-                            <button
-                              type="button"
-                              disabled
+                            <Link
+                              href="/workflow/batch"
                               className="linear-button px-4 py-2 text-sm font-semibold"
-                              title="多 Agent 继续执行后续版本接入"
                             >
-                              继续执行（规划中）
-                            </button>
+                              继续分析
+                            </Link>
                             <button
                               type="button"
                               onClick={() => void deleteRecord(item)}

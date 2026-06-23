@@ -187,9 +187,9 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
     <div className="mt-5 space-y-4">
       {batchMeta ? (
         <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
-          <h3 className="text-sm font-semibold text-slate-950">批量队列来源</h3>
+          <h3 className="text-sm font-semibold text-slate-950">清单分析来源</h3>
           <p className="mt-2 text-sm font-semibold text-indigo-700">
-            批量任务 {batchMeta.batchIndex}/{batchMeta.batchTotal}
+            清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}
           </p>
         </section>
       ) : null}
@@ -463,16 +463,24 @@ export function TaskRecordDetail({ id }: { id: string }) {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Task Detail</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务详情</h1>
-                <p className="mt-1 text-sm text-slate-500">查看单条任务的输入、Agent 摘要、执行状态和完整结果。</p>
+                <p className="eyebrow">运营任务详情</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">运营任务详情</h1>
+                <p className="mt-1 text-sm text-slate-500">查看本次商品分析结果、人工复核状态和下一步运营动作。</p>
               </div>
-              <Link
-                href="/tasks"
-                className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
-              >
-                返回任务中心
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/workflow/batch"
+                  className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                >
+                  继续分析产品
+                </Link>
+                <Link
+                  href="/tasks"
+                  className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                >
+                  返回运营任务中心
+                </Link>
+              </div>
             </div>
             <WorkspaceMobileNav />
           </header>
@@ -485,14 +493,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
             <section className="surface-card p-6">
               <p className="text-sm font-bold text-rose-700">{error}</p>
               <Link href="/tasks" className="mt-5 inline-flex text-sm font-bold text-teal-700">
-                返回任务列表
+                返回运营任务中心
               </Link>
             </section>
           ) : record ? (
             <section className="surface-card p-5 sm:p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-teal-700">Task Center Record</p>
+                  <p className="text-sm font-bold text-teal-700">运营任务结果</p>
                   <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">
                     {getTitle(record)}
                   </h2>
@@ -509,7 +517,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                       if (!batchMeta) return null;
                       return (
                         <span className="linear-pill border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-700">
-                          批量任务 {batchMeta.batchIndex}/{batchMeta.batchTotal}
+                          清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}
                         </span>
                       );
                     })()}
@@ -571,7 +579,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                       </div>
                     ))}
                   </div>
-                  <p className="muted-text mt-3 text-xs leading-5">失败原因、重试、继续执行、多 Agent 串联均为后续能力，本页不触发真实动作。</p>
+                  <p className="muted-text mt-3 text-xs leading-5">失败原因、重试入口、多 Agent 串联均为后续能力，本页不触发真实动作。</p>
                 </div>
                 <div className="linear-panel p-4">
                   <p className="text-sm font-semibold text-slate-950">人工决策状态</p>
@@ -646,11 +654,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   {deleting ? "删除中..." : "删除这条记录"}
                 </button>
                 <Link href="/tasks" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  返回任务中心
+                  返回运营任务中心
                 </Link>
-                <button type="button" disabled className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  继续执行（规划中）
-                </button>
+                <Link href="/workflow/batch" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
+                  继续分析产品
+                </Link>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>
             </section>

@@ -111,7 +111,7 @@ export function AgentNextStepPanel({
         </span>
         {state.batchMeta ? (
           <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">
-            批量任务 {state.batchMeta.batchIndex}/{state.batchMeta.batchTotal}
+            清单商品 {state.batchMeta.batchIndex}/{state.batchMeta.batchTotal}
           </span>
         ) : null}
       </div>
