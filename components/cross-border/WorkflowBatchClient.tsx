@@ -102,7 +102,7 @@ function makeBatchId() {
 function makeBatchMeta(batchId: string, batchIndex: number, batchTotal: number): BatchMeta {
   return {
     batchId,
-    batchName: "批量一键分析",
+    batchName: "分析产品",
     batchIndex,
     batchTotal,
     source: "workflow_batch_mvp",
@@ -389,18 +389,15 @@ export function WorkflowBatchClient() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Phase 2-C</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">批量一键分析队列</h1>
+                <p className="eyebrow">Analyze Products</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">分析产品</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  一次最多 3 个商品，系统按顺序自动分析并保存到任务中心。站外动作仍需人工确认。
+                  输入 1 个商品或最多 3 个商品清单，系统按顺序分析并保存到任务中心。站外动作仍需人工确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  机会雷达
-                </Link>
-                <Link href="/workflow" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  单品分析
+                  找机会
                 </Link>
                 <Link href="/tasks" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   任务中心
@@ -412,12 +409,11 @@ export function WorkflowBatchClient() {
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm">
-            <p className="font-semibold text-indigo-800">📍 上一步：机会雷达 → 当前：批量分析 → 下一步：单品深度分析/人工复核 → 任务中心</p>
+            <p className="font-semibold text-indigo-800">主路径：找机会 → 分析产品 → 任务中心</p>
             <p className="mt-1 text-xs text-indigo-700">
               可从
               <Link href="/opportunities" className="mx-0.5 font-semibold underline">机会雷达</Link>
-              复制候选商品，手动输入或 CSV/TXT 导入。分析完成后建议对重点商品做
-              <Link href="/workflow" className="mx-0.5 font-semibold underline">单品深度分析</Link>（含人工复核），结果自动保存到
+              复制候选商品，也可以直接输入 1 个商品或导入最多 3 个商品。分析结果会保存到
               <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>。
             </p>
           </div>
@@ -436,7 +432,7 @@ export function WorkflowBatchClient() {
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="block text-sm font-semibold text-slate-700">
-                    批量商品名 <span className="text-rose-500">*</span>
+                    商品名 / 商品清单 <span className="text-rose-500">*</span>
                   </label>
                   <button
                     type="button"
@@ -517,7 +513,7 @@ export function WorkflowBatchClient() {
                 className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                {running ? "队列执行中" : "开始批量执行"}
+                  {running ? "分析中" : "开始分析产品"}
               </button>
               <button
                 type="button"
@@ -540,8 +536,8 @@ export function WorkflowBatchClient() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">执行队列</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-950">站内自动执行进度</h2>
+                <p className="text-sm font-bold text-teal-700">分析队列</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">站内分析进度</h2>
               </div>
               <div className="flex flex-wrap gap-2 text-sm">
                 <span className="linear-pill px-3 py-1 text-slate-600">总数 {queueItems.length}</span>
@@ -556,7 +552,7 @@ export function WorkflowBatchClient() {
 
             {queueItems.length === 0 ? (
               <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-sm leading-6 text-slate-500">
-                队列还未开始。输入 1-3 个商品后点击“开始批量执行”。
+                队列还未开始。输入 1-3 个商品后点击“开始分析产品”。
               </div>
             ) : (
               <div className="mt-5 space-y-3">
@@ -574,7 +570,7 @@ export function WorkflowBatchClient() {
                             </span>
                             {item.batchMeta ? (
                               <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-                                批量任务 {item.batchMeta.batchIndex}/{item.batchMeta.batchTotal}
+                                清单商品 {item.batchMeta.batchIndex}/{item.batchMeta.batchTotal}
                               </span>
                             ) : null}
                           </div>

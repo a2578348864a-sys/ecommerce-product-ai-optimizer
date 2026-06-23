@@ -3,63 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Brain,
-  ClipboardCheck,
-  Compass,
   History,
   House,
-  LayoutDashboard,
   ListChecks,
   Package,
-  ShieldCheck,
   Sparkles,
   Target,
-  UploadCloud,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
-  { label: "Agent 主流程", href: "/agent/run", icon: Compass },
-  { label: "机会雷达", href: "/opportunities", icon: Target },
-  { label: "单品分析", href: "/workflow", icon: LayoutDashboard },
+  { label: "找机会", href: "/opportunities", icon: Target },
+  { label: "分析产品", href: "/workflow/batch", icon: ListChecks },
   { label: "任务中心", href: "/tasks", icon: History },
-  { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
-  { label: "Agent 路线图 · 规划", href: "/agent", icon: Compass },
-  { label: "货源判断", href: "/sourcing", icon: ClipboardCheck },
-  { label: "风险排查", href: "/risk", icon: ShieldCheck },
-  { label: "小白结论", href: "/summary", icon: Brain },
-  { label: "爆款拆解", href: "/viral", icon: Sparkles },
-  { label: "新品体检", href: "/products/new", icon: Package },
-  { label: "素材接收", href: "/materials", icon: UploadCloud },
 ] as const;
 
 const homeItem = { label: "首页", href: "/", icon: House } as const;
-
-const navGroups = [
-  {
-    title: "主链路",
-    items: workspaceNavItems.slice(0, 4),
-  },
-  {
-    title: "进阶",
-    items: workspaceNavItems.slice(4, 5),
-  },
-  {
-    title: "路线图",
-    items: workspaceNavItems.slice(5, 6),
-  },
-  {
-    title: "辅助工具",
-    items: workspaceNavItems.slice(6),
-  },
-] as const;
-
-const plannedItems = [
-  { label: "关键词 Agent", icon: null },
-  { label: "AI 生图 Agent", icon: null },
-  { label: "AI 生视频 Agent", icon: null },
-  { label: "发布 Agent", icon: null },
-] as const;
+const mobileNavItems = [homeItem, ...workspaceNavItems] as const;
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -114,44 +74,25 @@ export function WorkspaceSidebar() {
         </Link>
 
         <nav className="surface-card p-2" aria-label="工作台导航">
-          {navGroups.map((group) => (
-            <div key={group.title} className="mb-3 last:mb-0">
-              <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">{group.title}</p>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                const active = isActivePath(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={"mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 " + (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
-                  >
-                    <span className={"flex size-7 items-center justify-center rounded-lg border " + (active ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
-                      <Icon className="size-4" />
-                    </span>
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        <div className="surface-card-soft p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold text-slate-500">后续能力预留</p>
-            <span className="linear-pill px-2 py-0.5 text-[11px] text-slate-500">未上线</span>
-          </div>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {plannedItems.map((item) => (
-              <div key={item.label} className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
-                <span className="status-dot status-dot-slate" />
+          <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">主链路</p>
+          {workspaceNavItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActivePath(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={"mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 " + (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
+              >
+                <span className={"flex size-7 items-center justify-center rounded-lg border " + (active ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
+                  <Icon className="size-4" />
+                </span>
                 {item.label}
-              </div>
-            ))}
-          </div>
-        </div>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
     </aside>
   );
@@ -162,7 +103,7 @@ export function WorkspaceMobileNav() {
 
   return (
     <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
-      {workspaceNavItems.map((item) => {
+      {mobileNavItems.map((item) => {
         const Icon = item.icon;
         const active = isActivePath(pathname, item.href);
         return (
