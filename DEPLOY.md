@@ -1,11 +1,14 @@
 # 阿里云轻量服务器部署说明
 
-> **当前生产部署状态**（2026-06-18）
+> **本文档说明初始部署、Nginx 配置和 PM2 设置。标准日常部署流程以 [docs/PRODUCTION_RUNBOOK.md](docs/PRODUCTION_RUNBOOK.md) 为准。**
+>
+> **当前生产部署状态**
 > - 服务器 IP：`112.124.54.81`
 > - 项目目录：`/www/alibaba-ai-assistant`
 > - PM2 进程名：`alibaba-ai-assistant`
-> - 线上最新 commit：`06b2f81`
 > - 旧 IP `47.97.118.71` 已不可用
+>
+> **部署节奏**：本地阶段开发 → 本地验证 → 本地 commit → 阶段收口统一 push → 服务器 `git pull --ff-only` → `npm ci` → `npm run build` → `pm2 restart`。**禁止每做一点就部署生产，禁止整包上传服务器。**
 
 这份文档只说明如何把项目部署到阿里云轻量服务器作为稳定主站，不会替你真实部署，也不会写入任何真实密钥。
 
@@ -62,7 +65,7 @@ sudo npm install -g pm2
 cd /www
 git clone 你的仓库地址 alibaba-ai-assistant
 cd /www/alibaba-ai-assistant
-npm install
+npm ci
 cp deploy/env.production.example .env.local  # 部署配置文件位于项目 09_交付与归档/deploy/
 ```
 
@@ -205,15 +208,21 @@ PM2 和 Nginx 日志主要用于排查问题，也建议保留一段时间。
 
 ## 9. 回滚方案
 
+> 回滚操作同样遵循安全原则：先备份、确认 git 状态、构建验证通过后再重启，不允许盲目覆盖。
+
 如果新版本上线后出问题，先按这个顺序回滚：
 
 ```bash
 cd /www/alibaba-ai-assistant
 git log --oneline -5
+# 先备份当前状态
+cp -r . /www/server-backups/before-rollback-$(date +%Y%m%d-%H%M%S)/
 git checkout 上一个可用commit
-npm install
+npm ci
 npm run build
 pm2 restart alibaba-ai-assistant
+pm2 status
+curl -s http://127.0.0.1:3005/api/health
 ```
 
 如果代码回滚也解决不了，或者服务器环境被改乱了，再考虑用阿里云快照恢复。

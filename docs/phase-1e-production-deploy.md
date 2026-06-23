@@ -1,5 +1,7 @@
 # Phase 1E — 生产部署记录
 
+> ⚠️ **这是历史应急 SCP 部署记录。** 当时 GitHub 从服务器不可达（TLS connection timeout），因此使用 SCP 精确文件上传作为应急方案。此文档仅作为当时异常场景下的证据链保留，**不代表当前标准部署方式**。当前标准部署流程以 [PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md) 为准（`git pull --ff-only` → `npm ci` → `npm run build` → `pm2 restart`）。SCP 仅作为 GitHub 或服务器异常时的应急方案，且必须精确文件、记录原因、文件清单和后续 Git 对齐方案。
+
 ## 元数据
 
 - **部署时间**：2026-06-21

@@ -1,5 +1,7 @@
 # Phase 1E — 生产部署协调与线上验证
 
+> ⚠️ **这是历史应急 SCP 部署后的 Git 对齐记录。** 记录的是 Phase 1E 应急 SCP 部署后服务器 Git 状态与 origin/main 的重新对齐过程。**不代表当前标准部署方式**。当前标准部署流程以 [PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md) 为准。
+
 ## 元数据
 
 - **日期**：2026-06-21

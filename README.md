@@ -4,15 +4,15 @@
 
 当前版本处于 Alpha MVP / Pre-commercial 阶段，已完成单品一键分析、机会初筛、风险判断、报告生成、人工复核和任务沉淀闭环。当前保留人工复核，是为了安全、合规、成本控制和结果可信度，不代表产品定位是半自动工具。
 
-V1 单商品分析 MVP 已完成并部署生产。V1.5 机会雷达 `/opportunities` MVP 已完成本地真实 AI 链路验收，等待生产部署。
+**长期目标**：打造可商用的全自动化跨境电商 Agent，覆盖从机会发现、选品判断、货源可行性、合规风险、Listing 生成、任务沉淀到执行复盘的完整链路。
+
+**当前阶段**：Alpha MVP / 受控自动化 / 人工复核。不是成熟商用系统。
 
 ## 当前状态
 
-- V1 单商品分析 MVP：已完成并部署生产。
-- V1.5 机会雷达 MVP：已完成本地真实 AI 链路验收。
-- 功能主提交：`2665382 feat: add opportunities radar MVP`。
-- 风险等级展示修复：`cb18f37 fix: align opportunities risk display`。
-- 生产部署：尚未执行，需部署前验证通过并由人工确认。
+- **项目阶段**：Phase 2 系列后续阶段。单商品分析、机会雷达、批量队列、工作流闭环、Agent 状态筛选等均已陆续部署生产。
+- **当前定位**：全自动电商 Agent 的 Alpha MVP / Pre-commercial 版本。可发小范围 Alpha，不能宣传为完全无人值守或商业化验证完成。
+- **生产部署与运维规范**：见 [docs/PRODUCTION_RUNBOOK.md](docs/PRODUCTION_RUNBOOK.md)。
 
 ## 当前能力
 
@@ -88,7 +88,9 @@ npm.cmd run build
 
 ## 服务器部署说明
 
-阿里云轻量服务器部署请看 [DEPLOY.md](DEPLOY.md)。
+阿里云轻量服务器初始部署与配置请看 [DEPLOY.md](DEPLOY.md)。
+
+**日常部署规范**请看 [docs/PRODUCTION_RUNBOOK.md](docs/PRODUCTION_RUNBOOK.md)。标准流程：本地阶段开发 → 本地验证 → 本地 commit → 阶段收口统一 push → 服务器 `git pull --ff-only` → `npm ci` → `npm run build` → `pm2 restart`。
 
 ## 访问密码说明
 
