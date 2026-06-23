@@ -1873,7 +1873,7 @@ export default function Home() {
               旧版素材输入区（点击展开）— 单步手动分析模式
             </summary>
             <p className="mt-2 text-xs text-slate-400">
-              此区域是 Alpha 早期版本的逐个步骤手动工作模式，适合已经熟悉工具的深度用户。推荐新用户使用上方入口卡片。
+              此区域是 Alpha 早期版本的单步手动工作模式。推荐使用上方「Agent 主流程」，从机会雷达→单品分析→任务中心按主链路走。
             </p>
 
           <form onSubmit={handleSubmit} className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
