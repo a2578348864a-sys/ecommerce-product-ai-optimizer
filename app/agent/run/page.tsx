@@ -322,7 +322,7 @@ export default function AgentRunPage() {
                   Agent 主链路驾驶舱
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  从公开线索到人工决策的完整 Agent 流程可视化。当前为全自动电商 Agent 的 Alpha MVP 驾驶舱，不是无人值守执行台。
+                  从公开线索到人工决策的 Agent 流程可视化。这是跨境电商运营全流程 Agent 工作台的内部驾驶舱 / 实验看板，不是普通用户主流程入口，也不是无人值守执行台。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -499,7 +499,7 @@ export default function AgentRunPage() {
 
           {/* Footer note */}
           <p className="text-center text-xs text-slate-400">
-            Agent 主链路驾驶舱 · Phase 2-J · 全自动电商 Agent Alpha MVP · 受控自动化 + 人工复核
+            Agent 主链路驾驶舱 · Phase 2-J · 跨境电商运营全流程 Agent 工作台 Alpha MVP · 受控自动化 + 人工复核
           </p>
         </div>
       </div>

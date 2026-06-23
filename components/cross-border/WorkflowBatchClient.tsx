@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 
 type QueueStatus = "queued" | "running" | "analyzed" | "saved" | "failed" | "save_failed";
 
@@ -71,6 +72,25 @@ type QueueItem = {
 };
 
 const MAX_BATCH_PRODUCTS = 3;
+const WORKFLOW_BATCH_DRAFT_KEY = "qx:workflow-batch-draft:v1";
+const WORKFLOW_BATCH_DRAFT_TTL_MS = 2 * 60 * 60 * 1000;
+const WORKFLOW_BATCH_DRAFT_VERSION = 1;
+
+type WorkflowBatchDraft = {
+  input: string;
+  batchId: string | null;
+  queueItems: QueueItem[];
+  lastSavedTaskId: string | null;
+  lastSavedProductName: string;
+};
+
+const emptyWorkflowBatchDraft: WorkflowBatchDraft = {
+  input: "",
+  batchId: null,
+  queueItems: [],
+  lastSavedTaskId: null,
+  lastSavedProductName: "",
+};
 
 const statusConfig: Record<QueueStatus, { label: string; className: string }> = {
   queued: { label: "等待中", className: "border-slate-200 bg-slate-50 text-slate-600" },
@@ -118,6 +138,32 @@ function makeReviewState() {
   };
 }
 
+function hasDraftContent(draft: WorkflowBatchDraft) {
+  return Boolean(
+    draft.input.trim()
+    || draft.queueItems.length
+    || draft.batchId
+    || draft.lastSavedTaskId,
+  );
+}
+
+function sanitizeDraft(draft: WorkflowBatchDraft): WorkflowBatchDraft {
+  return {
+    input: typeof draft.input === "string" ? draft.input.slice(0, 4000) : "",
+    batchId: typeof draft.batchId === "string" ? draft.batchId : null,
+    queueItems: Array.isArray(draft.queueItems)
+      ? draft.queueItems.filter((item) => (
+        item
+        && typeof item.id === "string"
+        && typeof item.productName === "string"
+        && item.productName.trim().length > 0
+      )).slice(0, MAX_BATCH_PRODUCTS)
+      : [],
+    lastSavedTaskId: typeof draft.lastSavedTaskId === "string" ? draft.lastSavedTaskId : null,
+    lastSavedProductName: typeof draft.lastSavedProductName === "string" ? draft.lastSavedProductName : "",
+  };
+}
+
 function StatusIcon({ status }: { status: QueueStatus }) {
   if (status === "running") return <Loader2 className="size-4 animate-spin text-indigo-500" />;
   if (status === "saved") return <CheckCircle2 className="size-4 text-emerald-500" />;
@@ -129,17 +175,63 @@ function StatusIcon({ status }: { status: QueueStatus }) {
 
 export function WorkflowBatchClient() {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [input, setInput] = useState("桌面手机支架\n宠物慢食碗\n硅胶折叠水杯");
+  const [input, setInput] = useState("");
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftNotice, setDraftNotice] = useState("");
+  const [lastSavedTaskId, setLastSavedTaskId] = useState<string | null>(null);
+  const [lastSavedProductName, setLastSavedProductName] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importMessage, setImportMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null);
 
   const parsedProducts = useMemo(() => parseProducts(input), [input]);
   const canRun = parsedProducts.length > 0 && !running;
+
+  useEffect(() => {
+    const draft = readLocalDraft<WorkflowBatchDraft>(
+      WORKFLOW_BATCH_DRAFT_KEY,
+      emptyWorkflowBatchDraft,
+      { ttlMs: WORKFLOW_BATCH_DRAFT_TTL_MS, version: WORKFLOW_BATCH_DRAFT_VERSION },
+    );
+
+    if (draft.restored && hasDraftContent(draft.value)) {
+      const restoredDraft = sanitizeDraft(draft.value);
+      setInput(restoredDraft.input);
+      setBatchId(restoredDraft.batchId);
+      setQueueItems(restoredDraft.queueItems);
+      setLastSavedTaskId(restoredDraft.lastSavedTaskId);
+      setLastSavedProductName(restoredDraft.lastSavedProductName);
+      setDraftNotice("已恢复上次未完成的分析草稿。");
+    }
+
+    setDraftReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+
+    const draft: WorkflowBatchDraft = {
+      input,
+      batchId,
+      queueItems,
+      lastSavedTaskId,
+      lastSavedProductName,
+    };
+
+    if (!hasDraftContent(draft)) {
+      clearLocalDraft(WORKFLOW_BATCH_DRAFT_KEY);
+      return;
+    }
+
+    writeLocalDraft(WORKFLOW_BATCH_DRAFT_KEY, draft, {
+      ttlMs: WORKFLOW_BATCH_DRAFT_TTL_MS,
+      version: WORKFLOW_BATCH_DRAFT_VERSION,
+    });
+  }, [batchId, draftReady, input, lastSavedProductName, lastSavedTaskId, queueItems]);
 
   function updateItem(id: string, patch: Partial<QueueItem>) {
     setQueueItems((current) => current.map((item) => (
@@ -178,6 +270,8 @@ export function WorkflowBatchClient() {
       }
 
       updateItem(item.id, { status: "saved", taskId: data.data.id, error: "" });
+      setLastSavedTaskId(data.data.id);
+      setLastSavedProductName(item.productName);
     } catch {
       updateItem(item.id, { status: "save_failed", error: "网络异常，保存失败。" });
     }
@@ -279,9 +373,28 @@ export function WorkflowBatchClient() {
 
   function resetBatch() {
     if (running) return;
+    setInput("");
     setQueueItems([]);
     setBatchId(null);
     setMessage("");
+    setDraftNotice("");
+    setLastSavedTaskId(null);
+    setLastSavedProductName("");
+    setImportMessage(null);
+    clearLocalDraft(WORKFLOW_BATCH_DRAFT_KEY);
+  }
+
+  function continueNextProduct() {
+    if (running) return;
+    setInput("");
+    setQueueItems([]);
+    setBatchId(null);
+    setMessage("");
+    setDraftNotice("");
+    setLastSavedTaskId(null);
+    setLastSavedProductName("");
+    setImportMessage(null);
+    clearLocalDraft(WORKFLOW_BATCH_DRAFT_KEY);
   }
 
   function handleFileImport(event: React.ChangeEvent<HTMLInputElement>) {
@@ -355,12 +468,14 @@ export function WorkflowBatchClient() {
       if (productNames.length > MAX_BATCH_PRODUCTS) {
         const truncated = productNames.slice(0, MAX_BATCH_PRODUCTS);
         setInput(truncated.join("\n"));
+        setDraftNotice("");
         setImportMessage({
           type: "warning",
           text: `已导入前 ${MAX_BATCH_PRODUCTS} 个商品，超出部分未加入（共识别 ${productNames.length} 个）。`,
         });
       } else {
         setInput(productNames.join("\n"));
+        setDraftNotice("");
         setImportMessage({
           type: "success",
           text: `已导入 ${productNames.length} 个商品。`,
@@ -389,10 +504,10 @@ export function WorkflowBatchClient() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Analyze Products</p>
+                <p className="eyebrow">商品立项分析</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">分析产品</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  输入 1 个商品或最多 3 个商品清单，系统按顺序分析并保存到任务中心。站外动作仍需人工确认。
+                  输入 1 个商品或最多 3 个商品清单，进行选品立项分析。这是运营全流程的第一段：判断值不值得继续做，不会自动采购、上架或投广告。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -400,7 +515,7 @@ export function WorkflowBatchClient() {
                   找机会
                 </Link>
                 <Link href="/tasks" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  任务中心
+                  运营任务中心
                 </Link>
               </div>
             </div>
@@ -409,14 +524,55 @@ export function WorkflowBatchClient() {
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm">
-            <p className="font-semibold text-indigo-800">主路径：找机会 → 分析产品 → 任务中心</p>
+            <p className="font-semibold text-indigo-800">运营全流程前半段：找机会 → 分析产品 → 任务中心</p>
             <p className="mt-1 text-xs text-indigo-700">
               可从
               <Link href="/opportunities" className="mx-0.5 font-semibold underline">机会雷达</Link>
               复制候选商品，也可以直接输入 1 个商品或导入最多 3 个商品。分析结果会保存到
-              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>。
+              <Link href="/tasks" className="mx-0.5 font-semibold underline">运营任务中心</Link>，供人工复核和下一步决策。
             </p>
           </div>
+
+          {draftNotice ? (
+            <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm font-semibold text-teal-800" data-testid="batch-draft-notice">
+              {draftNotice}
+            </div>
+          ) : null}
+
+          {lastSavedTaskId ? (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4" data-testid="last-saved-task-panel">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-emerald-800">已保存到运营任务中心</p>
+                  <p className="mt-1 text-sm leading-6 text-emerald-700">
+                    {lastSavedProductName || "本次分析结果"} 已保存。你可以直接查看本次结果，也可以继续分析下一个商品。
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/tasks/${lastSavedTaskId}`}
+                    className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                  >
+                    查看本次结果
+                  </Link>
+                  <Link
+                    href={`/tasks?highlight=${encodeURIComponent(lastSavedTaskId)}`}
+                    className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                  >
+                    打开运营任务中心
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={continueNextProduct}
+                    disabled={running}
+                    className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    继续分析下一个
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           <section className="surface-card p-5 sm:p-6">
             <input
@@ -449,6 +605,7 @@ export function WorkflowBatchClient() {
                   value={input}
                   onChange={(event) => {
                     setInput(event.target.value);
+                    setDraftNotice("");
                     if (message) setMessage("");
                   }}
                   disabled={running}
@@ -522,7 +679,7 @@ export function WorkflowBatchClient() {
                 className="linear-button inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <RotateCcw className="size-4" />
-                清空队列
+                清空草稿
               </button>
             </div>
 
@@ -585,9 +742,14 @@ export function WorkflowBatchClient() {
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
                           {item.taskId ? (
-                            <Link href={`/tasks/${item.taskId}`} className="linear-button-primary inline-flex h-10 items-center px-4 text-sm font-semibold">
-                              查看任务
-                            </Link>
+                            <>
+                              <Link href={`/tasks/${item.taskId}`} className="linear-button-primary inline-flex h-10 items-center px-4 text-sm font-semibold">
+                                查看本次结果
+                              </Link>
+                              <Link href={`/tasks?highlight=${encodeURIComponent(item.taskId)}`} className="linear-button inline-flex h-10 items-center px-4 text-sm font-semibold">
+                                定位到任务中心
+                              </Link>
+                            </>
                           ) : null}
                           {item.status === "save_failed" ? (
                             <button

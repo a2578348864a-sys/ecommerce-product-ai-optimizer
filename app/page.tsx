@@ -7,8 +7,8 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 const primaryEntries = [
   {
     eyebrow: "我还没有产品",
-    title: "先找机会",
-    description: "从公开线索或手动候选品里整理机会，先筛出值得继续看的商品。",
+    title: "找机会",
+    description: "还没有明确商品时，先发现可分析的市场机会。",
     href: "/opportunities",
     cta: "去找机会",
     icon: Target,
@@ -16,8 +16,8 @@ const primaryEntries = [
   },
   {
     eyebrow: "我已有产品 / 清单",
-    title: "开始分析产品",
-    description: "支持单个商品，也支持最多 3 个商品清单；分析后保存到任务中心等待人工复核。",
+    title: "分析产品",
+    description: "已有商品或清单时，进行选品立项、风险判断和初步上架准备。",
     href: "/workflow/batch",
     cta: "开始分析",
     icon: ListChecks,
@@ -25,10 +25,10 @@ const primaryEntries = [
   },
   {
     eyebrow: "我想看之前结果",
-    title: "打开任务中心",
-    description: "查看历史分析、复核状态、Agent 状态和下一步建议，不触发新的 AI 分析。",
+    title: "运营任务中心",
+    description: "查看分析结果、人工复核状态和下一步运营动作。",
     href: "/tasks",
-    cta: "看结果",
+    cta: "查看任务",
     icon: History,
     tone: "amber",
   },
@@ -73,10 +73,10 @@ export default function Home() {
               <div className="min-w-0">
                 <p className="eyebrow">Qingxuan Agent Alpha</p>
                 <h1 className="mt-2 max-w-3xl text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
-                  帮你判断一个跨境商品值不值得做
+                  跨境电商运营 Agent，从选品立项开始
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  先找机会，再分析产品，最后在任务中心复盘下一步。AI 给建议，关键动作你确认。
+                  先找机会，再分析产品，把结果沉淀成运营任务。AI 给建议、提示风险，关键动作你确认。
                 </p>
               </div>
               <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">受控自动化 · Alpha MVP</span>
@@ -127,7 +127,7 @@ export default function Home() {
 
           <section className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm leading-6 text-slate-500">
             <p>
-              当前版本是 Alpha MVP：系统只做分析、整理和建议；采购、上架、联系供应商、投广告等动作都需要你人工确认后手动执行。
+              当前版本是跨境电商运营全流程 Agent 的 Alpha MVP：先开放找机会、分析产品、运营任务中心三段前半链路。采购、上架、联系供应商、投广告等动作都需要你人工确认后手动执行。
             </p>
           </section>
         </div>

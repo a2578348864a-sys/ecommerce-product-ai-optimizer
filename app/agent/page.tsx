@@ -17,8 +17,8 @@ import {
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
 export const metadata: Metadata = {
-  title: "Agent 路线图 - 轻选 Agent",
-  description: "全自动电商 Agent 能力路线图，明确当前可用能力与规划中的自动化方向。",
+  title: "能力路线图 - 轻选 Agent",
+  description: "跨境电商运营全流程 Agent 工作台的能力路线图与阶段说明，明确当前可用能力与规划方向。",
 };
 
 /* ── Data ─────────────────────────────────────── */
@@ -127,10 +127,10 @@ export default function AgentPage() {
               <div>
                 <p className="eyebrow">Phase 2-E</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                  全自动 Agent 路线图
+                  Agent 能力路线图与阶段说明
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  长期目标是全自动电商 Agent。当前是 Alpha MVP / Pre-commercial 阶段，通过受控自动化 + 人工复核落地。
+                  轻选 Agent 是跨境电商运营全流程 Agent 工作台。当前是 Alpha MVP 阶段，先开放找机会、分析产品、运营任务中心三段前半链路。
                   本页是路线图和能力规划，不是当前主流程入口。
                 </p>
               </div>
@@ -146,7 +146,7 @@ export default function AgentPage() {
                   href="/workflow/batch"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  批量分析
+                  分析产品
                 </Link>
               </div>
             </div>

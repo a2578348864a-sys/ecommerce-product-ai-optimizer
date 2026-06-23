@@ -510,9 +510,9 @@ export function TaskRecordsList() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Qingxuan Workspace</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务工作流中心</h1>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">运营任务中心</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  沉淀每次选品分析、风险判断和下一步动作。当前为全自动电商 Agent Alpha MVP，所有结论需要人工复核；后续逐步承接批量队列与多 Agent 自动化工作流。
+                  沉淀每次机会发现、商品分析、人工复核和下一步运营动作。当前是跨境电商运营全流程 Agent 的 Alpha MVP，AI 给建议、提示风险，关键动作由你确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -520,7 +520,7 @@ export function TaskRecordsList() {
                   机会雷达
                 </Link>
                 <Link href="/workflow/batch" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  批量分析
+                  分析产品
                 </Link>
                 <Link href="/workflow" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
                   单品分析
@@ -539,9 +539,9 @@ export function TaskRecordsList() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">工作流中心</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">任务复盘与工作流中心</h2>
-                <p className="muted-text mt-1 text-sm">当前为全自动电商 Agent Alpha MVP，所有 AI 结论需要人工复核。未来逐步扩展为批量队列与多 Agent 自动化工作流底座。</p>
+                <p className="text-sm font-bold text-teal-700">运营任务中心</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">分析结果与运营任务沉淀</h2>
+                <p className="muted-text mt-1 text-sm">当前是跨境电商运营全流程 Agent 的 Alpha MVP，所有 AI 结论需要人工复核。这里是分析结果、人工复核状态和下一步运营动作的沉淀地。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {agentStatus
@@ -553,7 +553,7 @@ export function TaskRecordsList() {
             <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
               <p className="text-sm font-bold text-teal-800">💡 当前阶段说明</p>
               <p className="mt-1 text-sm leading-6 text-teal-700">
-                这里是全自动电商 Agent 的任务沉淀中心，不是完全无人值守执行系统。AI 负责分析、整理和提示风险，但采购、上架、广告投放等关键动作必须由你人工确认后再执行。
+                这里是跨境电商运营全流程 Agent 的任务沉淀中心。AI 负责分析、整理和提示风险，帮你把运营动作拆成可执行任务。采购、上架、广告投放等关键动作必须由你人工确认后手动执行，当前不会自动操作任何平台。
               </p>
             </div>
 
@@ -676,13 +676,13 @@ export function TaskRecordsList() {
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
                 <p className="text-lg font-semibold text-slate-950">还没有保存的任务记录</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  在任何分析页面（货源判断、风险排查、小白结论、爆款拆解等）生成结果后点击「保存到任务记录」，这里就会出现历史记录，供你复盘和确认下一步动作。
+                  从首页「找机会」发现候选商品，或「分析产品」完成选品立项分析后保存结果，这里就会出现运营任务记录，供你复盘和确认下一步动作。
                 </p>
                 <Link
                   href="/"
                   className="linear-button-primary mt-5 inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  返回工作台开始分析
+                  返回工作台开始
                 </Link>
               </div>
             ) : isSearchEmpty ? (
