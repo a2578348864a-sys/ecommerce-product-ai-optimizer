@@ -16,6 +16,14 @@ import {
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
+import {
+  clearLocalRun,
+  hasRunContent,
+  makeRunId,
+  readLocalRun,
+  sanitizeRun,
+  writeLocalRun,
+} from "./workflowBatchRunCache";
 
 type QueueStatus = "queued" | "running" | "analyzed" | "saved" | "failed" | "save_failed";
 
@@ -185,6 +193,10 @@ export function WorkflowBatchClient() {
   const [lastSavedTaskId, setLastSavedTaskId] = useState<string | null>(null);
   const [lastSavedProductName, setLastSavedProductName] = useState("");
 
+  const [runReady, setRunReady] = useState(false);
+  const [runRestored, setRunRestored] = useState(false);
+  const [runNotice, setRunNotice] = useState("");
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importMessage, setImportMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null);
 
@@ -192,6 +204,37 @@ export function WorkflowBatchClient() {
   const canRun = parsedProducts.length > 0 && !running;
 
   useEffect(() => {
+    // ── 1. Try RUN_KEY first (full analysis results) ──
+    const runResult = readLocalRun();
+
+    if (runResult.restored) {
+      const safeRun = sanitizeRun(runResult.value);
+      if (safeRun && hasRunContent(safeRun)) {
+        setInput(safeRun.input);
+        setBatchId(safeRun.batchId);
+        setQueueItems(safeRun.queueItems as QueueItem[]);
+        setLastSavedTaskId(safeRun.lastSavedTaskId);
+        setLastSavedProductName(safeRun.lastSavedProductName);
+
+        const hasUnsaved = safeRun.queueItems.some(
+          (item) => item.status === "analyzed"
+        );
+        setRunRestored(true);
+        setRunNotice(
+          `已恢复上次分析结果，未重新消耗 AI。${
+            hasUnsaved
+              ? "当前分析结果尚未保存，建议先保存到运营任务中心，避免丢失。"
+              : ""
+          }`,
+        );
+
+        setDraftReady(true);
+        setRunReady(true);
+        return; // Skip DRAFT_KEY — don't let it overwrite run results
+      }
+    }
+
+    // ── 2. Fallback: restore input draft from DRAFT_KEY ──
     const draft = readLocalDraft<WorkflowBatchDraft>(
       WORKFLOW_BATCH_DRAFT_KEY,
       emptyWorkflowBatchDraft,
@@ -209,20 +252,22 @@ export function WorkflowBatchClient() {
     }
 
     setDraftReady(true);
+    setRunReady(true);
   }, []);
 
+  // ── Write input draft (DRAFT_KEY) — input text only, no analysis results ──
   useEffect(() => {
     if (!draftReady) return;
 
     const draft: WorkflowBatchDraft = {
       input,
-      batchId,
-      queueItems,
+      batchId: null,
+      queueItems: [],
       lastSavedTaskId,
       lastSavedProductName,
     };
 
-    if (!hasDraftContent(draft)) {
+    if (!input.trim() && !lastSavedTaskId) {
       clearLocalDraft(WORKFLOW_BATCH_DRAFT_KEY);
       return;
     }
@@ -231,7 +276,68 @@ export function WorkflowBatchClient() {
       ttlMs: WORKFLOW_BATCH_DRAFT_TTL_MS,
       version: WORKFLOW_BATCH_DRAFT_VERSION,
     });
-  }, [batchId, draftReady, input, lastSavedProductName, lastSavedTaskId, queueItems]);
+  }, [batchId, draftReady, input, lastSavedProductName, lastSavedTaskId]);
+
+  // ── Write analysis run (RUN_KEY) — full queueItems with results ──
+  useEffect(() => {
+    if (!runReady) return;
+
+    const hasResults = queueItems.some(
+      (item) => item.status === "analyzed" || item.status === "saved"
+    );
+
+    if (!hasResults) {
+      // Don't overwrite existing run cache with empty/queued-only state
+      return;
+    }
+
+    const run = {
+      version: 1,
+      runId: batchId ? `run-${batchId}` : makeRunId(),
+      createdAt: Date.now(),
+      input,
+      batchId,
+      queueItems: queueItems.map((item) => ({
+        id: item.id,
+        productName: item.productName,
+        status: item.status,
+        result: item.result as Record<string, unknown> | null,
+        taskId: item.taskId,
+        error: item.error,
+        batchMeta: item.batchMeta,
+      })),
+      lastSavedTaskId,
+      lastSavedProductName,
+    };
+
+    writeLocalRun(run);
+  }, [runReady, queueItems, batchId, lastSavedTaskId, lastSavedProductName, input]);
+
+  // ── beforeunload: warn when unsaved analyzed results exist ──
+  useEffect(() => {
+    const hasUnsaved = queueItems.some(
+      (item) => item.status === "analyzed"
+    );
+    if (!hasUnsaved) return;
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+
+    try {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+    } catch {
+      // Ignore if not supported
+    }
+
+    return () => {
+      try {
+        window.removeEventListener("beforeunload", handleBeforeUnload);
+      } catch {
+        // Ignore
+      }
+    };
+  }, [queueItems]);
 
   function updateItem(id: string, patch: Partial<QueueItem>) {
     setQueueItems((current) => current.map((item) => (
@@ -378,10 +484,13 @@ export function WorkflowBatchClient() {
     setBatchId(null);
     setMessage("");
     setDraftNotice("");
+    setRunRestored(false);
+    setRunNotice("");
     setLastSavedTaskId(null);
     setLastSavedProductName("");
     setImportMessage(null);
     clearLocalDraft(WORKFLOW_BATCH_DRAFT_KEY);
+    clearLocalRun();
   }
 
   function continueNextProduct() {
@@ -391,10 +500,13 @@ export function WorkflowBatchClient() {
     setBatchId(null);
     setMessage("");
     setDraftNotice("");
+    setRunRestored(false);
+    setRunNotice("");
     setLastSavedTaskId(null);
     setLastSavedProductName("");
     setImportMessage(null);
     clearLocalDraft(WORKFLOW_BATCH_DRAFT_KEY);
+    clearLocalRun();
   }
 
   function handleFileImport(event: React.ChangeEvent<HTMLInputElement>) {
@@ -533,9 +645,15 @@ export function WorkflowBatchClient() {
             </p>
           </div>
 
-          {draftNotice ? (
+          {draftNotice && !runNotice ? (
             <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm font-semibold text-teal-800" data-testid="batch-draft-notice">
               {draftNotice}
+            </div>
+          ) : null}
+
+          {runNotice ? (
+            <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm font-semibold text-teal-800" data-testid="batch-run-notice">
+              {runNotice}
             </div>
           ) : null}
 
@@ -691,6 +809,12 @@ export function WorkflowBatchClient() {
           </section>
 
           <section className="surface-card p-5 sm:p-6">
+            {queueItems.some((item) => item.status === "analyzed") ? (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm font-semibold text-amber-800" data-testid="batch-unsaved-warning">
+                当前分析结果尚未保存，建议先保存到运营任务中心，避免丢失。
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold text-teal-700">分析队列</p>
