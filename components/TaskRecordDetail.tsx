@@ -96,6 +96,28 @@ function getBatchMeta(result: unknown) {
   return { batchIndex, batchTotal };
 }
 
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function displayText(value: unknown, fallback = "暂无该项") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function getWorkflowFinalReport(result: unknown) {
+  if (!isRecordValue(result)) return null;
+  const finalReport = result.finalReport;
+  return isRecordValue(finalReport) ? finalReport : null;
+}
+
+function getRiskText(value: unknown) {
+  const risk = typeof value === "string" ? value : "";
+  if (risk === "green") return "低风险";
+  if (risk === "red") return "高风险";
+  if (risk === "yellow") return "需注意";
+  return displayText(value);
+}
+
 function ResultList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
 
@@ -107,6 +129,57 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
           <li key={item}>- {item}</li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function WorkflowDecisionSummary({
+  result,
+  fallbackTitle,
+}: {
+  result: Record<string, unknown>;
+  fallbackTitle: string;
+}) {
+  const finalReport = getWorkflowFinalReport(result);
+  const nextSteps = Array.isArray(finalReport?.nextSteps)
+    ? (finalReport.nextSteps as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 4)
+    : [];
+
+  return (
+    <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-teal-700">AI 辅助结论 · 最终仍需人工确认</p>
+          <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">
+            {displayText(result.productName, fallbackTitle || "暂无该项")}
+          </h3>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">
+            {displayText(finalReport?.finalVerdict)}
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:w-[360px]">
+          <div className="rounded-xl border border-white/80 bg-white p-3">
+            <p className="text-xs font-bold text-slate-400">风险判断</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{getRiskText(finalReport?.riskLevel)}</p>
+          </div>
+          <div className="rounded-xl border border-white/80 bg-white p-3">
+            <p className="text-xs font-bold text-slate-400">新手适配</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{displayText(finalReport?.beginnerFit)}</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl border border-white/80 bg-white p-3">
+        <p className="text-xs font-bold text-slate-400">下一步建议</p>
+        {nextSteps.length ? (
+          <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-700">
+            {nextSteps.map((item) => (
+              <li key={item}>- {item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-slate-500">暂无该项</p>
+        )}
+      </div>
     </section>
   );
 }
@@ -472,7 +545,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   href="/workflow/batch"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  继续分析产品
+                  继续批量分析
                 </Link>
                 <Link
                   href="/tasks"
@@ -532,6 +605,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   </span>
                 </div>
               </div>
+
+              {record.type === "workflow" && isRecordValue(record.result) ? (
+                <WorkflowDecisionSummary result={record.result} fallbackTitle={getTitle(record)} />
+              ) : null}
 
               <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <div className="surface-card-soft rounded-[22px] p-4">
@@ -657,7 +734,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   返回运营任务中心
                 </Link>
                 <Link href="/workflow/batch" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  继续分析产品
+                  继续批量分析
                 </Link>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>

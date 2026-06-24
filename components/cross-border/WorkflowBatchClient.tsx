@@ -130,7 +130,7 @@ function makeBatchId() {
 function makeBatchMeta(batchId: string, batchIndex: number, batchTotal: number): BatchMeta {
   return {
     batchId,
-    batchName: "分析产品",
+    batchName: "批量分析",
     batchIndex,
     batchTotal,
     source: "workflow_batch_mvp",
@@ -620,7 +620,7 @@ export function WorkflowBatchClient() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">商品立项分析</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">分析产品</h1>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">批量分析</h1>
                 <p className="mt-1 text-sm text-slate-500">
                   输入 1 个商品或最多 3 个商品清单，进行选品立项分析。这是运营全流程的第一段：判断值不值得继续做，不会自动采购、上架或投广告。
                 </p>
@@ -639,7 +639,7 @@ export function WorkflowBatchClient() {
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm">
-            <p className="font-semibold text-indigo-800">运营全流程前半段：找机会 → 分析产品 → 任务中心</p>
+            <p className="font-semibold text-indigo-800">运营全流程前半段：找机会 → 单品分析 / 批量分析 → 任务中心</p>
             <p className="mt-1 text-xs text-indigo-700">
               可从
               <Link href="/opportunities" className="mx-0.5 font-semibold underline">机会雷达</Link>
@@ -791,7 +791,7 @@ export function WorkflowBatchClient() {
                 className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-                  {running ? "分析中" : "开始分析产品"}
+                  {running ? "分析中" : "开始批量分析"}
               </button>
               <button
                 type="button"
@@ -836,7 +836,7 @@ export function WorkflowBatchClient() {
 
             {queueItems.length === 0 ? (
               <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-sm leading-6 text-slate-500">
-                队列还未开始。输入 1-3 个商品后点击“开始分析产品”。
+                队列还未开始。输入 1-3 个商品后点击“开始批量分析”。
               </div>
             ) : (
               <div className="mt-5 space-y-3">

@@ -16,8 +16,8 @@ const primaryEntries = [
   },
   {
     eyebrow: "我已有产品 / 清单",
-    title: "分析产品",
-    description: "单品一键分析：输入一个商品，完成货源、风险、结论、上架准备全流程分析。批量分析最多支持 3 个商品清单。",
+    title: "单品分析",
+    description: "已有一个明确商品时，先做货源、风险、结论和上架准备判断；有清单时走侧边栏「批量分析」，最多 3 个商品。",
     href: "/workflow",
     cta: "单品分析",
     icon: ListChecks,
@@ -76,7 +76,7 @@ export default function Home() {
                   跨境电商运营 Agent，从选品立项开始
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  先找机会，再分析产品，把结果沉淀成运营任务。AI 给建议、提示风险，关键动作你确认。
+                  先找机会，再做单品或批量分析，把结果沉淀成运营任务。AI 给建议、提示风险，关键动作你确认。
                 </p>
               </div>
               <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">受控自动化 · Alpha MVP</span>
@@ -127,7 +127,7 @@ export default function Home() {
 
           <section className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm leading-6 text-slate-500">
             <p>
-              当前版本是跨境电商运营全流程 Agent 的 Alpha MVP：先开放找机会、分析产品、运营任务中心三段前半链路。采购、上架、联系供应商、投广告等动作都需要你人工确认后手动执行。
+              当前版本是跨境电商运营全流程 Agent 的 Alpha MVP：先开放找机会、单品分析 / 批量分析、运营任务中心三段前半链路。采购、上架、联系供应商、投广告等动作都需要你人工确认后手动执行。
             </p>
           </section>
         </div>

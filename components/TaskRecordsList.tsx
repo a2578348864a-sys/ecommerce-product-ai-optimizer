@@ -593,7 +593,7 @@ export function TaskRecordsList() {
                   机会雷达
                 </Link>
                 <Link href="/workflow/batch" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  分析产品
+                  批量分析
                 </Link>
                 <Link
                   href="/"
@@ -751,7 +751,7 @@ export function TaskRecordsList() {
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
                 <p className="text-lg font-semibold text-slate-950">还没有保存的任务记录</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  从首页「找机会」发现候选商品，或「分析产品」完成选品立项分析后保存结果，这里就会出现运营任务记录，供你复盘和确认下一步动作。
+                  从首页「找机会」发现候选商品，或完成单品分析 / 批量分析后保存结果，这里就会出现运营任务记录，供你复盘和确认下一步动作。
                 </p>
                 <Link
                   href="/"
@@ -861,7 +861,7 @@ export function TaskRecordsList() {
                               href="/workflow/batch"
                               className="linear-button px-4 py-2 text-sm font-semibold"
                             >
-                              继续分析
+                              继续批量分析
                             </Link>
                             <button
                               type="button"

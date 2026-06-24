@@ -54,7 +54,7 @@ describe("sanitizeRun", () => {
           error: "",
           batchMeta: {
             batchId: "batch-123",
-            batchName: "分析产品",
+            batchName: "批量分析",
             batchIndex: 1,
             batchTotal: 2,
             source: "workflow_batch_mvp" as const,
@@ -89,7 +89,7 @@ describe("sanitizeRun", () => {
           error: "",
           batchMeta: {
             batchId: "batch-123",
-            batchName: "分析产品",
+            batchName: "批量分析",
             batchIndex: 2,
             batchTotal: 2,
             source: "workflow_batch_mvp" as const,
@@ -176,7 +176,7 @@ describe("sanitizeRun", () => {
           error: "保存失败，请重试",
           batchMeta: {
             batchId: "b1",
-            batchName: "分析产品",
+            batchName: "批量分析",
             batchIndex: 1,
             batchTotal: 1,
             source: "workflow_batch_mvp" as const,
