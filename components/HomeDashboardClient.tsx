@@ -160,7 +160,15 @@ export function HomeDashboardClient() {
       });
 
       if (!res.ok) {
-        setPasswordError("访问密码错误，请重新输入。");
+        if (res.status === 401 || res.status === 403) {
+          setPasswordError("访问密码错误，请重新输入。");
+        } else if (res.status === 502 || res.status === 503 || res.status === 504) {
+          setPasswordError("服务正在重启或暂时不可用，请稍后再试。");
+        } else if (res.status >= 500) {
+          setPasswordError("服务异常，请稍后再试。");
+        } else {
+          setPasswordError("验证失败，请稍后重试。");
+        }
         setApiProbeStatus("fail");
         setValidating(false);
         return;
@@ -168,7 +176,7 @@ export function HomeDashboardClient() {
 
       const json = await res.json().catch(() => null);
       if (!json?.ok) {
-        setPasswordError("访问密码错误，请重新输入。");
+        setPasswordError("服务返回异常，请稍后重试。");
         setApiProbeStatus("fail");
         setValidating(false);
         return;
@@ -178,7 +186,7 @@ export function HomeDashboardClient() {
       setAccessPassword(trimmed);
       setApiProbeStatus("ok");
     } catch {
-      setPasswordError("验证失败，请稍后重试。");
+      setPasswordError("网络连接失败，请检查网络后重试。");
       setApiProbeStatus("fail");
     } finally {
       setValidating(false);
