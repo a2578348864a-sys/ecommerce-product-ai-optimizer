@@ -174,7 +174,7 @@ function WorkflowDecisionSummary({
               <div className="flex flex-wrap gap-2 font-semibold">
                 <span>来源：机会雷达</span>
                 {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
-                {sourceMeta.opportunitySource ? <span className="break-all">来源名称：{sourceMeta.opportunitySource}</span> : null}
+                {sourceMeta.opportunitySource ? <span className="max-w-[200px] truncate">来源名称：{sourceMeta.opportunitySource}</span> : null}
               </div>
               {sourceMeta.candidateType && (
                 <span className="inline-flex w-fit items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold">
@@ -742,22 +742,23 @@ export function TaskRecordDetail({ id }: { id: string }) {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">运营任务详情</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">运营任务详情</h1>
-                <p className="mt-1 text-sm text-slate-500">查看本次商品分析结果、人工复核状态和下一步运营动作。</p>
+                <nav className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <Link href="/tasks" className="hover:text-teal-600">任务中心</Link>
+                  <span>/</span>
+                  <span className="text-slate-600">任务详情</span>
+                  {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
+                </nav>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
+                  任务详情{record ? `：${getTitle(record)}` : ""}
+                </h1>
+                <p className="mt-1 text-sm text-slate-500">查看商品分析结论、人工复核状态和下一步运营动作。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/workflow/batch"
+                  href="/tasks"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  继续批量分析
-                </Link>
-                <Link
-                  href="/tasks"
-                  className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
-                >
-                  返回运营任务中心
+                  返回任务中心
                 </Link>
               </div>
             </div>
@@ -825,7 +826,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 />
               ) : null}
 
-              <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              {/* Phase 4-E.2.1-Fix: Task info collapsed */}
+              <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">任务信息</summary>
+                <div className="mt-2 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">记录 ID</p>
                   <p className="mt-1 break-all text-xs font-bold text-slate-800">{record.id}</p>
@@ -853,6 +857,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <p className="mt-1 text-sm font-bold text-slate-800">{getAgentTypeLabel(record)}</p>
                 </div>
               </div>
+              </details>
 
               <AgentNextStepPanel
                 className="mt-5"
@@ -860,47 +865,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 decisionStatus={record.decisionStatus}
                 result={record.result}
               />
-              <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="linear-panel p-4">
-                  <p className="text-sm font-semibold text-slate-950">执行步骤预留</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                    {["输入素材", "Agent 分析", "保存任务", "人工确认"].map((step, index) => (
-                      <div key={step} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <span className="text-[11px] font-semibold text-slate-400">0{index + 1}</span>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{step}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="muted-text mt-3 text-xs leading-5">失败原因、重试入口、多 Agent 串联均为后续能力，本页不触发真实动作。</p>
+              {/* Phase 4-E.2.1-Fix: Detailed review collapsed */}
+              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">详细复查与下一步建议</summary>
+                <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <WorkflowNextStepCard taskType={record.type} />
+                  <ManualReviewChecklist />
                 </div>
-                <div className="linear-panel p-4">
-                  <p className="text-sm font-semibold text-slate-950">人工决策状态</p>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    AI 结果仅供初筛，关键动作需人工确认后再继续。
-                  </p>
-                  <select
-                    value={record.decisionStatus}
-                    onChange={(event) => void updateDecisionStatus(event.target.value as DecisionStatus)}
-                    disabled={updatingDecision}
-                    className="input-soft mt-3 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {decisionStatusOptions.filter((option) => option.value).map((status) => (
-                      <option key={status.value} value={status.value}>{status.shortLabel}</option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    {getDecisionStatusOption(record.decisionStatus).description}
-                  </p>
-                  {decisionMessage ? (
-                    <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <WorkflowNextStepCard taskType={record.type} />
-                <ManualReviewChecklist />
-              </div>
+              </details>
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-slate-50 p-4">
                 <h3 className="text-sm font-semibold text-slate-950">输入素材</h3>
@@ -929,7 +901,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
               )}
 
               <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4">
-                <h3 className="text-sm font-semibold text-slate-950">完整结果 JSON</h3>
+                <h3 className="text-sm font-semibold text-slate-500">完整结果 JSON（调试用）</h3>
                 <p className="mt-1 text-xs text-slate-500">用于复核 AI/mock 返回结构，长内容可以滚动查看。</p>
                 <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
                   {resultJson}
