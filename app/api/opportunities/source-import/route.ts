@@ -30,6 +30,8 @@ type SourceImportCandidate = {
   supplyEaseScore: number;
   riskScore: number;
   beginnerFitScore: number;
+  /** Phase 4-D.7: candidate quality classification */
+  candidateType?: "product_candidate" | "category_hint" | "trend_signal" | "rejected";
 };
 
 type SourceImportResult = {
@@ -127,15 +129,18 @@ export async function POST(request: NextRequest) {
     // Score
     const scored = scoreCandidates(items);
 
-    // Collect warnings
+    // Collect warnings with machine-readable failure reasons
     const allWarnings = [...crawlWarnings, ...normWarnings];
+    const failureReasons: string[] = [];
     for (const cr of crawlResults) {
       if (cr.status !== "ok" && cr.error) {
-        allWarnings.push(`${cr.url}: ${cr.error}`);
+        const reasonTag = cr.failureReason ? ` [${cr.failureReason}]` : "";
+        allWarnings.push(`${cr.url}: ${cr.error}${reasonTag}`);
+        if (cr.failureReason) failureReasons.push(cr.failureReason);
       }
     }
 
-    // Map to candidate format
+    // Map to candidate format (Phase 4-D.7: include candidateType)
     const candidates: SourceImportCandidate[] = scored.map((item) => ({
       title: item.title,
       sourceUrl: item.sourceUrl,
@@ -151,6 +156,8 @@ export async function POST(request: NextRequest) {
       supplyEaseScore: item.scores.supplyEaseScore,
       riskScore: item.scores.riskScore,
       beginnerFitScore: item.scores.beginnerFitScore,
+      // Phase 4-D.7: candidate quality classification
+      candidateType: (item.candidateType as SourceImportCandidate["candidateType"]) || "product_candidate",
     }));
 
     const okCount = crawlResults.filter((r) => r.status === "ok").length;

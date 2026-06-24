@@ -1,5 +1,5 @@
 /**
- * Phase 1E — Radar Crawler MVP
+ * Phase 4-D.7 — Radar Crawler (improved limits + failure reasons)
  * 低频公开源抓取，SSRF 防护，robots.txt 检查。
  * 不绕验证码、不模拟登录、不使用 Cookie/代理池。
  *
@@ -8,15 +8,27 @@
  * - hostname 黑名单
  * - HTTP 重定向目标重新校验
  * - DNS 解析后内网 IP 检测
+ *
+ * Phase 4-D.7 changes:
+ * - timeout 10s → 30s (SOURCE_IMPORT_FETCH_TIMEOUT_MS)
+ * - max response 1MB → 5MB (SOURCE_IMPORT_MAX_BYTES)
+ * - all constants are now named, not magic numbers
+ * - added machine-readable failureReason to every CrawlResult
  */
 
 import { isValidTargetUrl } from "@/lib/server/ssrfGuard";
 
 const USER_AGENT = "QingxuanAgent-Radar-MVP/0.1";
-const TIMEOUT_MS = 10_000;
+
+/**
+ * Source import fetch limits.
+ * Kept as named constants — not magic numbers — for auditability and tuning.
+ */
+const SOURCE_IMPORT_FETCH_TIMEOUT_MS = 30_000;   // 30s (was 10s) — allows China→global connections
+const SOURCE_IMPORT_MAX_BYTES = 5 * 1024 * 1024; // 5MB (was 1MB) — handles modern pages
 const MAX_REDIRECTS = 3;
-const MAX_RESPONSE_SIZE = 1_048_576; // 1MB
 const MAX_URLS_PER_REQUEST = 5;
+const INTER_REQUEST_DELAY_MS = 500;
 
 export type CrawlResult = {
   url: string;
@@ -25,6 +37,8 @@ export type CrawlResult = {
   contentType?: string;
   body?: string;
   error?: string;
+  /** Machine-readable failure reason for client-side handling */
+  failureReason?: "timeout" | "response_too_large" | "fetch_failed" | "robots_disallowed" | "ssrf_blocked" | "js_rendered_source_not_supported" | "anti_bot_challenge" | "invalid_url" | "redirect_invalid" | "unknown";
 };
 
 function parseRobotsTxt(body: string, targetPath: string): boolean {
@@ -72,7 +86,7 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
   try {
     url = new URL(rawUrl.trim());
   } catch {
-    return { url: rawUrl, status: "invalid", error: "无法解析 URL" };
+    return { url: rawUrl, status: "invalid", error: "无法解析 URL", failureReason: "invalid_url" };
   }
 
   // ── Initial URL validation (unified SSRF guard) ──
@@ -80,10 +94,10 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
   try {
     const isValid = await isValidTargetUrl(url);
     if (!isValid) {
-      return { url: rawUrl, status: "blocked", error: `不安全的请求地址：${url.hostname}` };
+      return { url: rawUrl, status: "blocked", error: `不安全的请求地址：${url.hostname}`, failureReason: "ssrf_blocked" };
     }
   } catch {
-    return { url: rawUrl, status: "blocked", error: `URL 安全校验失败：${url.hostname}` };
+    return { url: rawUrl, status: "blocked", error: `URL 安全校验失败：${url.hostname}`, failureReason: "ssrf_blocked" };
   }
 
   // ── Robots.txt check ──
@@ -98,7 +112,7 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
     if (robotsRes.ok) {
       const robotsBody = await robotsRes.text();
       if (!parseRobotsTxt(robotsBody, url.pathname + url.search)) {
-        return { url: rawUrl, status: "blocked", error: "robots.txt 不允许抓取该路径" };
+        return { url: rawUrl, status: "blocked", error: "robots.txt 不允许抓取该路径", failureReason: "robots_disallowed" };
       }
     }
   } catch {
@@ -109,7 +123,7 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), SOURCE_IMPORT_FETCH_TIMEOUT_MS);
 
     let currentUrl = url.toString();
     let response = await fetch(currentUrl, {
@@ -131,7 +145,8 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
       try {
         redirectUrl = new URL(location, currentUrl);
       } catch {
-        return { url: rawUrl, status: "error", error: "重定向目标 URL 无效" };
+        clearTimeout(timer);
+        return { url: rawUrl, status: "error", error: "重定向目标 URL 无效", failureReason: "redirect_invalid" };
       }
 
       currentUrl = redirectUrl.toString();
@@ -140,7 +155,7 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
       const redirectValid = await isValidTargetUrl(redirectUrl);
       if (!redirectValid) {
         clearTimeout(timer);
-        return { url: rawUrl, status: "blocked", error: `重定向到禁止地址已阻止：${redirectUrl.hostname}` };
+        return { url: rawUrl, status: "blocked", error: `重定向到禁止地址已阻止：${redirectUrl.hostname}`, failureReason: "ssrf_blocked" };
       }
 
       redirectCount++;
@@ -155,10 +170,10 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
 
     const contentType = response.headers.get("content-type") || "";
 
-    // Read up to MAX_RESPONSE_SIZE
+    // Read up to SOURCE_IMPORT_MAX_BYTES
     const reader = response.body?.getReader();
     if (!reader) {
-      return { url: rawUrl, status: "error", error: "无法读取响应体" };
+      return { url: rawUrl, status: "error", error: "无法读取响应体", failureReason: "fetch_failed" };
     }
 
     const chunks: Uint8Array[] = [];
@@ -167,15 +182,41 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
       const { done, value } = await reader.read();
       if (done) break;
       totalSize += value.length;
-      if (totalSize > MAX_RESPONSE_SIZE) {
+      if (totalSize > SOURCE_IMPORT_MAX_BYTES) {
         reader.cancel();
-        return { url: rawUrl, status: "too_large", error: `响应超过 ${MAX_RESPONSE_SIZE} 字节限制`, contentType };
+        return { url: rawUrl, status: "too_large", error: `响应超过 ${SOURCE_IMPORT_MAX_BYTES} 字节限制`, contentType, failureReason: "response_too_large" };
       }
       chunks.push(value);
     }
 
     const decoder = new TextDecoder("utf-8", { fatal: false });
     const body = decoder.decode(Buffer.concat(chunks));
+
+    // Phase 4-D.7: Detect anti-bot challenges and JS-rendered pages in the response body
+    if (/cloudflare|cf-challenge|cf-browser-verification|Just a moment/i.test(body.slice(0, 2000)) &&
+        /challenge|verification|security check/i.test(body.slice(0, 2000))) {
+      return {
+        url: rawUrl,
+        status: "blocked",
+        statusCode: response.status,
+        contentType,
+        error: "检测到反爬/安全验证页面（Cloudflare 等），当前不支持绕过",
+        failureReason: "anti_bot_challenge",
+      };
+    }
+
+    // Detect JS-only pages (no meaningful text content, mostly script tags)
+    const textContent = body.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (textContent.length < 100 && body.length > 500) {
+      return {
+        url: rawUrl,
+        status: "blocked",
+        statusCode: response.status,
+        contentType,
+        error: "页面主要为 JavaScript 渲染内容，当前不支持 JS 渲染抓取",
+        failureReason: "js_rendered_source_not_supported",
+      };
+    }
 
     return {
       url: rawUrl,
@@ -187,9 +228,9 @@ export async function crawlSingleUrl(rawUrl: string): Promise<CrawlResult> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("abort") || message.includes("timeout")) {
-      return { url: rawUrl, status: "timeout", error: `请求超时 (${TIMEOUT_MS / 1000}s)` };
+      return { url: rawUrl, status: "timeout", error: `请求超时 (${SOURCE_IMPORT_FETCH_TIMEOUT_MS / 1000}s)`, failureReason: "timeout" };
     }
-    return { url: rawUrl, status: "error", error: message };
+    return { url: rawUrl, status: "error", error: message, failureReason: "fetch_failed" };
   }
 }
 
@@ -212,9 +253,8 @@ export async function crawlUrls(rawUrls: string[]): Promise<{
   // Fetch sequentially to be polite
   const results: CrawlResult[] = [];
   for (const url of urlsToFetch) {
-    // Small delay between requests
     if (results.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, INTER_REQUEST_DELAY_MS));
     }
     const result = await crawlSingleUrl(url);
     results.push(result);

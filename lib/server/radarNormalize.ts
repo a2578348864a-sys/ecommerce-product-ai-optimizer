@@ -9,17 +9,68 @@ import type { CrawlResult } from "./radarCrawler";
 export type CandidateItem = {
   title: string;
   sourceUrl: string;
-  sourceType: "html" | "rss" | "sitemap" | "json";
+  sourceType: "html" | "rss" | "sitemap" | "json" | "trend_api";
   sourceHost: string;
   categoryHint: string;
   signalText: string;
   riskHint: string;
   extractedAt: string;
   rawSnippet: string;
+  /** Phase 4-D.7: Candidate quality classification */
+  candidateType?: "product_candidate" | "category_hint" | "trend_signal" | "rejected";
+  /** Phase 4-D.7: Reason for rejection or classification */
+  rejectionReason?: string;
 };
 
 const MAX_CANDIDATES_PER_URL = 20;
 const MAX_TOTAL_CANDIDATES = 50;
+
+/**
+ * Phase 4-D.7: Low-quality candidate patterns.
+ * Filters out obvious category names, navigation text, and non-product content.
+ */
+const LOW_QUALITY_PATTERNS: RegExp[] = [
+  /^best sellers?\s/i,                          // Amazon category headers
+  /^best sellers?\s+in\s/i,                     // "Best Sellers in Kitchen & Dining"
+  /^amazon\s*(\.com)?\s*best\s*sellers?/i,      // Amazon BS page title variants
+  /^top\s+sellers?\s+in\s/i,                    // Generic category headers
+  /^shop\s+by\s/i,                              // Navigation
+  /^browse\s/i,                                 // Navigation
+  /^category:/i,                                // Labeled categories
+  /(cookies|privacy|terms|accessibility|settings?)\s*(policy|notice|preferences?)?$/i, // Legal pages
+  /^(sign\s*in|log\s*in|register|create\s*account|my\s*account|wish\s*list|cart|checkout)$/i, // Account pages
+  /^(home|about|contact(\s*us)?|faq|help|support|blog)$/i, // Generic pages
+  /^\s*(just\s*a\s*moment\.*|one\s*moment\.*|please\s*wait\.*|verifying.*|checking\s*your\s*browser\.*)\s*$/i, // Anti-bot pages
+  /^.{1,2}$/,                                   // Too short (1-2 chars)
+  /^\d+$/,                                      // Only digits
+];
+
+/**
+ * Phase 4-D.7: Check if a candidate title looks like a product/opportunity signal
+ * rather than a category name or navigation label.
+ */
+function isLowQualityCandidate(title: string): { rejected: boolean; reason?: string; candidateType: CandidateItem["candidateType"] } {
+  const trimmed = title.trim();
+
+  for (const pattern of LOW_QUALITY_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      if (/best sellers?/i.test(trimmed) || /top sellers?/i.test(trimmed) || /shop by/i.test(trimmed) || /\bbrowse\b/i.test(trimmed)) {
+        return { rejected: false, candidateType: "category_hint", reason: "类目/导航文本，非具体商品候选" };
+      }
+      return { rejected: true, candidateType: "rejected", reason: `匹配低质模式: ${pattern.source.slice(0, 40)}` };
+    }
+  }
+
+  // Product-like signals
+  const productSignals = /product|gadget|device|tool|gear|item|accessory|buy|price|\$|sale|review|best|top|recommend|deal|discount|new|trending|viral|dropship|supplier|manufacturer|wholesale/i;
+  const isCategoryLike = /(?:department|category|section|aisle|collection|range|series|type|style|color|size|brand|shop\s+all|all\s+products?)/i;
+
+  if (isCategoryLike.test(trimmed) && !productSignals.test(trimmed)) {
+    return { rejected: false, candidateType: "category_hint", reason: "疑似类目描述，缺少商品信号" };
+  }
+
+  return { rejected: false, candidateType: "product_candidate" };
+}
 
 function extractHost(url: string): string {
   try {
@@ -302,5 +353,19 @@ export function normalizeResults(crawlResults: CrawlResult[]): NormalizeResult {
     return true;
   });
 
-  return { items: deduped.slice(0, MAX_TOTAL_CANDIDATES), warnings };
+  // Phase 4-D.7: Classify and filter low-quality candidates
+  const classified = deduped.map((item) => {
+    const quality = isLowQualityCandidate(item.title);
+    return { ...item, candidateType: quality.candidateType, rejectionReason: quality.reason };
+  });
+
+  // Separate rejected, product candidates, and category hints
+  const rejected = classified.filter((c) => c.candidateType === "rejected");
+  const kept = classified.filter((c) => c.candidateType !== "rejected");
+
+  if (rejected.length > 0) {
+    warnings.push(`过滤 ${rejected.length} 条低质候选（类目/导航/非商品文本）`);
+  }
+
+  return { items: kept.slice(0, MAX_TOTAL_CANDIDATES), warnings };
 }
