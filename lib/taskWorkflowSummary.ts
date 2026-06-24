@@ -32,6 +32,15 @@ export type TaskWorkflowSummary = {
   } | null;
 };
 
+export type TaskSourceMeta = {
+  source: "opportunity";
+  opportunityTitle: string;
+  opportunitySource?: string;
+  opportunityScore?: number;
+  keyword?: string;
+  importedAt?: string;
+};
+
 const DEFAULT_WORKFLOW_ACTIONS = [
   "联系供应商确认 MOQ、报价和发货周期",
   "核查侵权、认证、平台规则和售后风险",
@@ -77,6 +86,34 @@ export function getTaskBatchMeta(result: unknown): TaskWorkflowSummary["batchMet
     batchIndex,
     batchTotal,
     source: source || "workflow_batch_mvp",
+  };
+}
+
+function boundedNumber(value: unknown, min: number, max: number) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return undefined;
+  return Math.min(max, Math.max(min, Math.round(numberValue)));
+}
+
+export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
+  if (!isRecord(result) || !isRecord(result.sourceMeta)) return null;
+  if (text(result.sourceMeta.source) !== "opportunity") return null;
+
+  const opportunityTitle = text(result.sourceMeta.opportunityTitle) || text(isRecord(result) ? result.productName : "");
+  if (!opportunityTitle) return null;
+
+  const opportunitySource = text(result.sourceMeta.opportunitySource);
+  const keyword = text(result.sourceMeta.keyword);
+  const importedAt = text(result.sourceMeta.importedAt);
+  const opportunityScore = boundedNumber(result.sourceMeta.opportunityScore, 0, 100);
+
+  return {
+    source: "opportunity",
+    opportunityTitle,
+    ...(opportunitySource ? { opportunitySource } : {}),
+    ...(opportunityScore !== undefined ? { opportunityScore } : {}),
+    ...(keyword ? { keyword } : {}),
+    ...(importedAt ? { importedAt } : {}),
   };
 }
 

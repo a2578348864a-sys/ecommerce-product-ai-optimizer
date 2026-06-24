@@ -149,6 +149,21 @@ async function copyTextToClipboard(text: string) {
   }
 }
 
+function buildOpportunityWorkflowHref(candidate: CandidateData) {
+  const productName = candidate.name.trim();
+  const params = new URLSearchParams({
+    product: productName,
+    source: "opportunity",
+    opportunityTitle: productName,
+    opportunityScore: String(Math.round(candidate.score)),
+    opportunitySource: candidate.link?.trim().slice(0, 180) || "机会雷达候选品",
+  });
+  const keyword = candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0)?.trim()
+    || candidate.rawInput.trim();
+  if (keyword) params.set("keyword", keyword.slice(0, 80));
+  return `/workflow?${params.toString()}`;
+}
+
 export function OpportunitiesForm() {
   const [rawText, setRawText] = useState("");
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
@@ -693,10 +708,10 @@ export function OpportunitiesForm() {
                           <span className="text-teal-700">{c.nextAction}</span>
                           {c.name?.trim() && (
                             <Link
-                              href={`/workflow?product=${encodeURIComponent(c.name.trim())}`}
+                              href={buildOpportunityWorkflowHref(c)}
                               className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
                             >
-                              带入工作流
+                              用单品分析深挖
                               <TrendingUp className="size-3" />
                             </Link>
                           )}

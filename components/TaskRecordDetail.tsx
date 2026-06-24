@@ -15,7 +15,7 @@ import {
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
-import { deriveTaskWorkflowSummary, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -140,6 +140,7 @@ function WorkflowDecisionSummary({
     decisionStatus,
     result,
   });
+  const sourceMeta = getTaskSourceMeta(result);
   const decisionOption = getDecisionStatusOption(decisionStatus);
 
   return (
@@ -156,6 +157,13 @@ function WorkflowDecisionSummary({
           <p className="mt-2 text-xs leading-5 text-teal-700">
             {summary.reason}
           </p>
+          {sourceMeta ? (
+            <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 py-2 text-xs font-semibold text-teal-800">
+              <span>来源：机会雷达</span>
+              {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
+              {sourceMeta.opportunitySource ? <span className="break-all">来源名称：{sourceMeta.opportunitySource}</span> : null}
+            </div>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
           <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>

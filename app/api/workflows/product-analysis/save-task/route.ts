@@ -56,6 +56,15 @@ type BatchMeta = {
   source: "workflow_batch_mvp";
 };
 
+type SourceMeta = {
+  source: "opportunity";
+  opportunityTitle: string;
+  opportunitySource?: string;
+  opportunityScore?: number;
+  keyword?: string;
+  importedAt: string;
+};
+
 /**
  * Parse and validate reviewState from the request body.
  * Server always recomputes allReviewed and reviewedCount to prevent client-side forgery.
@@ -126,6 +135,28 @@ function parseBatchMeta(raw: unknown): BatchMeta | null {
   };
 }
 
+function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null {
+  if (!isRecord(raw)) return null;
+  if (asString(raw.source) !== "opportunity") return null;
+
+  const opportunityTitle = asString(raw.opportunityTitle, fallbackTitle).slice(0, 120);
+  if (!opportunityTitle) return null;
+
+  const opportunitySource = asString(raw.opportunitySource).slice(0, 180);
+  const keyword = asString(raw.keyword).slice(0, 80);
+  const score = asBoundedInteger(raw.opportunityScore, 0, 100);
+  const importedAt = asString(raw.importedAt).slice(0, 40) || new Date().toISOString();
+
+  return {
+    source: "opportunity",
+    opportunityTitle,
+    ...(opportunitySource ? { opportunitySource } : {}),
+    ...(score !== null ? { opportunityScore: score } : {}),
+    ...(keyword ? { keyword } : {}),
+    importedAt,
+  };
+}
+
 /* ── POST handler ──────────────────────────────── */
 
 export async function POST(request: NextRequest) {
@@ -176,6 +207,7 @@ export async function POST(request: NextRequest) {
   // Parse and validate reviewState
   const reviewState = parseReviewState(body.reviewState);
   const batchMeta = parseBatchMeta(body.batchMeta);
+  const sourceMeta = parseSourceMeta(body.sourceMeta, productName);
 
   // Build a structured result for the task record
   const taskResult = {
@@ -197,6 +229,7 @@ export async function POST(request: NextRequest) {
       reviewedAt: null,
     },
     ...(batchMeta ? { batchMeta } : {}),
+    ...(sourceMeta ? { sourceMeta } : {}),
   };
 
   try {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveTaskWorkflowSummary, getTaskBatchMeta } from "@/lib/taskWorkflowSummary";
+import { deriveTaskWorkflowSummary, getTaskBatchMeta, getTaskSourceMeta } from "@/lib/taskWorkflowSummary";
 
 describe("deriveTaskWorkflowSummary", () => {
   it("extracts workflow final report into operation summary", () => {
@@ -115,5 +115,33 @@ describe("getTaskBatchMeta", () => {
       batchTotal: 3,
       source: "workflow_batch_mvp",
     });
+  });
+});
+
+describe("getTaskSourceMeta", () => {
+  it("extracts opportunity source metadata from workflow result", () => {
+    expect(getTaskSourceMeta({
+      productName: "桌面手机支架",
+      sourceMeta: {
+        source: "opportunity",
+        opportunityTitle: "桌面手机支架",
+        opportunitySource: "机会雷达候选品",
+        opportunityScore: 86.4,
+        keyword: "phone stand",
+        importedAt: "2026-06-24T10:00:00.000Z",
+      },
+    })).toEqual({
+      source: "opportunity",
+      opportunityTitle: "桌面手机支架",
+      opportunitySource: "机会雷达候选品",
+      opportunityScore: 86,
+      keyword: "phone stand",
+      importedAt: "2026-06-24T10:00:00.000Z",
+    });
+  });
+
+  it("ignores unsupported or incomplete source metadata", () => {
+    expect(getTaskSourceMeta({ sourceMeta: { source: "manual" } })).toBeNull();
+    expect(getTaskSourceMeta({ sourceMeta: { source: "opportunity" } })).toBeNull();
   });
 });

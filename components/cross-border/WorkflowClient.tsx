@@ -69,6 +69,15 @@ type ApiWorkflowResult = {
   warnings: string[];
 };
 
+export type WorkflowSourceMeta = {
+  source: "opportunity";
+  opportunityTitle: string;
+  opportunitySource?: string;
+  opportunityScore?: number;
+  keyword?: string;
+  importedAt: string;
+};
+
 type ApiErrorResponse = {
   ok: false;
   error: { code: string; message: string };
@@ -278,6 +287,7 @@ type WorkflowSingleRun = {
   stepStatuses: Record<StepKey, StepStatus>;
   savedTaskId: string | null;
   reviewConfirmed: Record<string, boolean>;
+  sourceMeta: WorkflowSourceMeta | null;
 };
 
 const emptyRun: WorkflowSingleRun = {
@@ -289,13 +299,21 @@ const emptyRun: WorkflowSingleRun = {
   stepStatuses: {} as Record<StepKey, StepStatus>,
   savedTaskId: null,
   reviewConfirmed: {},
+  sourceMeta: null,
 };
 
 /* ── Main component ────────────────────────────── */
 
-export function WorkflowClient({ initialProductName }: { initialProductName?: string }) {
+export function WorkflowClient({
+  initialProductName,
+  initialSourceMeta,
+}: {
+  initialProductName?: string;
+  initialSourceMeta?: WorkflowSourceMeta | null;
+}) {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
   const [productName, setProductName] = useState(initialProductName ?? "");
+  const [sourceMeta, setSourceMeta] = useState<WorkflowSourceMeta | null>(initialSourceMeta ?? null);
   const [running, setRunning] = useState(false);
   const [stepStatuses, setStepStatuses] = useState<Record<StepKey, StepStatus>>({
     normalize: "pending",
@@ -336,8 +354,14 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
 
     if (stored.restored && stored.value.result) {
       const run = stored.value;
+      if (initialProductName?.trim() && run.productName.trim() !== initialProductName.trim()) {
+        clearLocalDraft(WORKFLOW_SINGLE_RUN_KEY);
+        setRunReady(true);
+        return;
+      }
       try {
         setProductName(run.productName || "");
+        setSourceMeta(run.sourceMeta || initialSourceMeta || null);
         setResult(run.result);
         if (run.stepStatuses && Object.keys(run.stepStatuses).length > 0) {
           setStepStatuses(run.stepStatuses);
@@ -354,7 +378,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
     }
 
     setRunReady(true);
-  }, []);
+  }, [initialProductName, initialSourceMeta]);
 
   // ── Write to localStorage when result changes ──
   useEffect(() => {
@@ -370,6 +394,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
       stepStatuses,
       savedTaskId,
       reviewConfirmed,
+      sourceMeta,
     };
 
     try {
@@ -380,7 +405,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
     } catch {
       // Silently ignore storage errors
     }
-  }, [runReady, result, productName, stepStatuses, savedTaskId, reviewConfirmed]);
+  }, [runReady, result, productName, stepStatuses, savedTaskId, reviewConfirmed, sourceMeta]);
 
   const scrollToFinalReport = useCallback(() => {
     finalReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -410,7 +435,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
       const res = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState }),
+        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState, sourceMeta }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -425,7 +450,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
     }
   }
 
-  const resetRun = useCallback(() => {
+  const resetRun = useCallback((options?: { keepSourceMeta?: boolean }) => {
     setResult(null);
     setError("");
     setSavedTaskId(null);
@@ -436,6 +461,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
     setDetailExpanded(false);
     setRunRestored(false);
     setRunNotice("");
+    if (!options?.keepSourceMeta) setSourceMeta(null);
     lastAutoScrolledWorkflowId.current = null;
     clearLocalDraft(WORKFLOW_SINGLE_RUN_KEY);
     setStepStatuses({
@@ -460,7 +486,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
       return;
     }
 
-    resetRun();
+    resetRun({ keepSourceMeta: true });
     setRunning(true);
 
     // Start step progression animation
@@ -685,6 +711,12 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
                 />
                 <p className="mt-1 text-xs text-slate-400">{productName.length}/120</p>
+                {sourceMeta ? (
+                  <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs leading-5 text-teal-800">
+                    <p className="font-semibold">已从机会雷达带入：{sourceMeta.opportunityTitle}</p>
+                    <p>请确认商品名后再开始分析。{sourceMeta.opportunityScore !== undefined ? ` 来源分数 ${sourceMeta.opportunityScore}/100。` : ""}</p>
+                  </div>
+                ) : null}
               </div>
               <div className="flex flex-col justify-end gap-2">
                 <button
@@ -708,7 +740,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
                 {hasResult && !running && (
                   <button
                     type="button"
-                    onClick={resetRun}
+                    onClick={() => resetRun()}
                     className="linear-button inline-flex h-10 w-full items-center justify-center text-sm"
                   >
                     重新分析
@@ -804,7 +836,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
                   className="linear-button-soft inline-flex h-9 items-center gap-1.5 px-3 text-xs font-semibold">
                   <Download className="size-3.5" /> 导出
                 </button>
-                <button type="button" onClick={resetRun}
+                <button type="button" onClick={() => resetRun()}
                   className="linear-button-soft inline-flex h-9 items-center px-3 text-xs font-semibold">
                   重新分析
                 </button>

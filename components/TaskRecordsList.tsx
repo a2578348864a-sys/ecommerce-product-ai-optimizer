@@ -16,7 +16,7 @@ import {
   getDecisionStatusOption,
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
-import { deriveTaskWorkflowSummary, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -819,6 +819,7 @@ export function TaskRecordsList() {
                       result: item.result,
                     });
                     const batchMeta = summary.batchMeta;
+                    const sourceMeta = getTaskSourceMeta(item.result);
                     const batchGroup = batchMeta ? operationStats.batchGroups.get(batchMeta.batchId) : null;
                     return (
                       <article
@@ -866,6 +867,7 @@ export function TaskRecordsList() {
                               <span>{getAgentTypeLabel(item)}</span>
                               <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
                               <span>{sourceLabel(item.source)}</span>
+                              {sourceMeta ? <span>来源：机会雷达</span> : null}
                               {batchMeta ? <span>清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}</span> : null}
                             </div>
                           </div>
@@ -888,6 +890,11 @@ export function TaskRecordsList() {
                             >
                               Agent：{itemAgentStatus.label}
                             </span>
+                            {sourceMeta ? (
+                              <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">
+                                来源：机会雷达
+                              </span>
+                            ) : null}
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
                               {item.score}/100
                             </span>
