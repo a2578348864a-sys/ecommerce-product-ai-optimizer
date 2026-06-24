@@ -8,7 +8,7 @@ const primaryEntries = [
   {
     eyebrow: "我还没有产品",
     title: "找机会",
-    description: "还没有明确商品时，先发现可分析的市场机会。",
+    description: "发现候选品，加入候选池，再进入单品分析深挖。",
     href: "/opportunities",
     cta: "去找机会",
     icon: Target,

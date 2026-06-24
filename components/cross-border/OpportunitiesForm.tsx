@@ -1,12 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
+import {
+  filterCandidatePool,
+  mergeCandidatesIntoPool,
+  normalizeCandidate,
+  readCandidatePool,
+  sortCandidatePool,
+  updateCandidateStatus,
+  writeCandidatePool,
+  type CandidatePoolFilter,
+  type CandidatePoolSort,
+  type CandidateStatus,
+  type OpportunityCandidateInput,
+  type OpportunityCandidatePoolItem,
+} from "@/lib/opportunityCandidatePool";
 import {
   Search,
   TrendingUp,
@@ -98,6 +112,23 @@ const RISK_BADGE: Record<string, string> = {
 
 const DRAFT_KEY = "qx:opportunities-draft:v1";
 
+const candidateStatusLabels: Record<CandidateStatus, string> = {
+  pending: "待判断",
+  worth_analyzing: "值得深挖",
+  analyzed: "已进入单品分析",
+  paused: "暂缓",
+  rejected: "放弃",
+};
+
+const candidateFilterOptions: { value: CandidatePoolFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "worth_analyzing", label: "值得深挖" },
+  { value: "pending", label: "待判断" },
+  { value: "paused", label: "暂缓/高风险" },
+  { value: "analyzed", label: "已进入单品分析" },
+  { value: "rejected", label: "放弃" },
+];
+
 function displayRiskLevel(candidate?: Pick<CandidateData, "risk">) {
   return candidate?.risk?.displayLevel || candidate?.risk?.overallLevel || "";
 }
@@ -149,24 +180,76 @@ async function copyTextToClipboard(text: string) {
   }
 }
 
-function buildOpportunityWorkflowHref(candidate: CandidateData) {
-  const productName = candidate.name.trim();
+function buildOpportunityWorkflowHrefFromParts(input: {
+  name: string;
+  score: number;
+  sourceName?: string | null;
+  keyword?: string;
+  rawInput?: string;
+}) {
+  const productName = input.name.trim();
   const params = new URLSearchParams({
     product: productName,
     source: "opportunity",
     opportunityTitle: productName,
-    opportunityScore: String(Math.round(candidate.score)),
-    opportunitySource: candidate.link?.trim().slice(0, 180) || "机会雷达候选品",
+    opportunityScore: String(Math.round(input.score)),
+    opportunitySource: input.sourceName?.trim().slice(0, 180) || "机会雷达候选品",
   });
-  const keyword = candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0)?.trim()
-    || candidate.rawInput.trim();
+  const keyword = input.keyword?.trim() || input.rawInput?.trim();
   if (keyword) params.set("keyword", keyword.slice(0, 80));
   return `/workflow?${params.toString()}`;
+}
+
+function buildOpportunityWorkflowHref(candidate: CandidateData) {
+  return buildOpportunityWorkflowHrefFromParts({
+    name: candidate.name,
+    score: candidate.score,
+    sourceName: candidate.link,
+    keyword: candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0),
+    rawInput: candidate.rawInput,
+  });
+}
+
+function buildPoolWorkflowHref(candidate: OpportunityCandidatePoolItem) {
+  return buildOpportunityWorkflowHrefFromParts({
+    name: candidate.name,
+    score: candidate.score,
+    sourceName: candidate.link || candidate.source,
+    keyword: candidate.keyword,
+    rawInput: candidate.rawInput,
+  });
+}
+
+function candidateToPoolInput(candidate: CandidateData): OpportunityCandidateInput {
+  const riskLevel = displayRiskLevel(candidate);
+  return {
+    name: candidate.name,
+    rawInput: candidate.rawInput,
+    link: candidate.link,
+    score: candidate.score,
+    source: "机会雷达",
+    keyword: candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0)?.trim() || candidate.rawInput,
+    riskLevel,
+    riskLabel: riskSummaryText(riskLevel),
+    summaryLabel: candidate.summary?.verdict || candidate.reasons.slice(0, 1).join("") || candidate.nextAction,
+  };
+}
+
+function candidateStatusClass(status: CandidateStatus) {
+  if (status === "worth_analyzing") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "analyzed") return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (status === "paused") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 export function OpportunitiesForm() {
   const [rawText, setRawText] = useState("");
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
+  const [poolItems, setPoolItems] = useState<OpportunityCandidatePoolItem[]>([]);
+  const [poolHydrated, setPoolHydrated] = useState(false);
+  const [poolFilter, setPoolFilter] = useState<CandidatePoolFilter>("all");
+  const [poolSort, setPoolSort] = useState<CandidatePoolSort>("updated");
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState("");
   const [error, setError] = useState("");
@@ -193,6 +276,16 @@ export function OpportunitiesForm() {
       didRestore.current = true;
     }
   }, [draftRestored, draftVal]);
+
+  useEffect(() => {
+    setPoolItems(readCandidatePool(typeof window === "undefined" ? null : window.localStorage));
+    setPoolHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!poolHydrated) return;
+    writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, poolItems);
+  }, [poolHydrated, poolItems]);
 
   const handleInputChange = useCallback((value: string) => {
     setRawText(value);
@@ -250,6 +343,7 @@ export function OpportunitiesForm() {
       // Simulate progress updates
       setCurrentStep(`分析完成：${data.completedCount}/${data.totalCount} 成功，${data.failedCount} 失败`);
       setCandidates(data.candidates);
+      setPoolItems((current) => mergeCandidatesIntoPool(current, data.candidates.map(candidateToPoolInput)));
       setLoading(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "网络请求失败，请检查服务是否在运行。");
@@ -377,6 +471,33 @@ export function OpportunitiesForm() {
 
   const hasResults = candidates.length > 0;
   const isSingle = candidates.length === 1;
+  const visiblePoolItems = useMemo(() => {
+    return sortCandidatePool(filterCandidatePool(poolItems, poolFilter), poolSort);
+  }, [poolItems, poolFilter, poolSort]);
+  const poolCounts = useMemo(() => {
+    return {
+      all: poolItems.length,
+      pending: filterCandidatePool(poolItems, "pending").length,
+      worth_analyzing: filterCandidatePool(poolItems, "worth_analyzing").length,
+      analyzed: filterCandidatePool(poolItems, "analyzed").length,
+      paused: filterCandidatePool(poolItems, "paused").length,
+      rejected: filterCandidatePool(poolItems, "rejected").length,
+    };
+  }, [poolItems]);
+
+  const setPoolCandidateStatus = useCallback((id: string, status: CandidateStatus) => {
+    setPoolItems((current) => updateCandidateStatus(current, id, status));
+  }, []);
+
+  const markCandidateAnalyzed = useCallback((candidate: CandidateData) => {
+    const input = candidateToPoolInput(candidate);
+    const normalized = normalizeCandidate(input);
+    if (!normalized) return;
+    setPoolItems((current) => {
+      const merged = mergeCandidatesIntoPool(current, [input]);
+      return updateCandidateStatus(merged, normalized.id, "analyzed");
+    });
+  }, []);
 
   // Score helper
   const scoreLabel = (s: number) => s >= 80 ? "优先测试" : s >= 65 ? "可小单验证" : s >= 50 ? "谨慎观察" : "暂不建议";
@@ -418,8 +539,8 @@ export function OpportunitiesForm() {
                 <Target className="size-5" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达</h1>
-                <p className="muted-text mt-1 text-sm">先看排序，再看风险，最后人工确认。分数不是采购建议，只是初筛参考。</p>
+                <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达 / 候选品池</h1>
+                <p className="muted-text mt-1 text-sm">把候选品沉淀下来，先筛选标记，再进入单品分析和任务跟进。</p>
               </div>
             </div>
             <WorkspaceMobileNav />
@@ -427,14 +548,13 @@ export function OpportunitiesForm() {
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm">
-            <p className="font-semibold text-teal-800">📍 主路径：机会雷达 → 批量分析 → 单品深度分析 → 人工复核 → 任务中心</p>
+            <p className="font-semibold text-teal-800">📍 主路径：机会候选池 → 单品分析 → 人工复核 → 任务中心</p>
             <p className="mt-1 text-xs text-teal-700">
-              本页用于发现候选商品。筛选出感兴趣的商品后，去
-              <Link href="/workflow/batch" className="mx-0.5 font-semibold underline">批量分析</Link>
-              快速验证 1-3 个商品，或去
+              本页用于发现候选商品并标记状态。筛选出感兴趣的商品后，去
               <Link href="/workflow" className="mx-0.5 font-semibold underline">单品分析</Link>
-              做深度判断。结果会自动保存到
-              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>。
+              做深度判断，保存后进入
+              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>
+              跟进。
             </p>
           </div>
 
@@ -542,6 +662,126 @@ export function OpportunitiesForm() {
             <p className="mt-1 text-xs text-slate-400">正在逐个分析候选商品，请耐心等待...</p>
           </div>
         )}
+
+        {/* Candidate pool */}
+        <section className="surface-card p-4 sm:p-5" data-testid="opportunity-candidate-pool">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="linear-kicker">候选品池</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">先筛选，再深挖</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                候选品会保存在本浏览器 7 天。这里不自动采购、不自动上架，只帮你记录判断状态。
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                value={poolSort}
+                onChange={(event) => setPoolSort(event.target.value as CandidatePoolSort)}
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+                aria-label="候选品排序"
+              >
+                <option value="updated">最近更新</option>
+                <option value="score">按分数优先</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {candidateFilterOptions.map((option) => {
+              const active = poolFilter === option.value;
+              const count = option.value === "all" ? poolCounts.all : poolCounts[option.value];
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPoolFilter(option.value)}
+                  className={"rounded-full border px-3 py-1.5 text-xs font-semibold transition " + (active
+                    ? "border-teal-300 bg-teal-50 text-teal-700"
+                    : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50")}
+                >
+                  {option.label} {count}
+                </button>
+              );
+            })}
+          </div>
+
+          {poolItems.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm text-slate-500">
+              还没有候选品。先在上方输入候选商品并手动分析，结果会自动进入候选品池。
+            </div>
+          ) : visiblePoolItems.length === 0 ? (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm text-slate-500">
+              当前筛选下没有候选品。
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+              {visiblePoolItems.map((item) => (
+                <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="break-words text-base font-semibold text-slate-950">{item.name}</h3>
+                        <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + candidateStatusClass(item.candidateStatus)}>
+                          {candidateStatusLabels[item.candidateStatus]}
+                        </span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{item.summaryLabel}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                        <span>分数 {item.score}/100</span>
+                        <span>风险：{item.riskLabel}</span>
+                        {item.keyword ? <span>关键词：{item.keyword}</span> : null}
+                        <span>来源：{item.source}</span>
+                      </div>
+                      {item.candidateStatus === "analyzed" ? (
+                        <p className="mt-2 text-xs font-semibold text-indigo-700">已进入单品分析，可继续深挖。</p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setPoolCandidateStatus(item.id, "worth_analyzing")}
+                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"
+                      >
+                        值得深挖
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPoolCandidateStatus(item.id, "paused")}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"
+                      >
+                        暂缓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPoolCandidateStatus(item.id, "rejected")}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                      >
+                        放弃
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                    <Link
+                      href={buildPoolWorkflowHref(item)}
+                      onClick={() => setPoolCandidateStatus(item.id, "analyzed")}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white transition hover:bg-teal-700"
+                    >
+                      用单品分析深挖
+                      <TrendingUp className="size-3" />
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setPoolCandidateStatus(item.id, "pending")}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+                    >
+                      设为待判断
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Results */}
         {hasResults && !loading && (
@@ -709,6 +949,7 @@ export function OpportunitiesForm() {
                           {c.name?.trim() && (
                             <Link
                               href={buildOpportunityWorkflowHref(c)}
+                              onClick={() => markCandidateAnalyzed(c)}
                               className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
                             >
                               用单品分析深挖
