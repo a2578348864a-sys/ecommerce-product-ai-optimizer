@@ -50,6 +50,7 @@ import {
   BarChart3,
   Lightbulb,
 } from "lucide-react";
+import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 
 type CandidateData = {
   index: number;
@@ -138,6 +139,8 @@ type SourceImportCandidateData = {
   supplyEaseScore: number;
   riskScore: number;
   beginnerFitScore: number;
+  /** Phase 4-D.8: candidate quality classification */
+  candidateType?: string;
 };
 
 type SourceImportResponse = {
@@ -1264,7 +1267,33 @@ export function OpportunitiesForm() {
             </div>
           </div>
 
+          {/* Phase 4-D.8: Source tier reference */}
+          <details className="mb-4 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+            <summary className="cursor-pointer font-semibold text-slate-600 select-none">来源可用性说明</summary>
+            <div className="mt-3 space-y-3">
+              {SOURCE_IMPORT_TIERS.map((tier) => (
+                <div key={tier.key} className={`rounded-lg border p-2.5 ${
+                  tier.tone === "green" ? "border-emerald-200 bg-emerald-50/60" :
+                  tier.tone === "amber" ? "border-amber-200 bg-amber-50/60" :
+                  tier.tone === "blue" ? "border-blue-200 bg-blue-50/60" :
+                  "border-slate-200 bg-slate-50/60"
+                }`}>
+                  <p className="font-semibold text-slate-700">{tier.name} · {tier.description}</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {tier.examples.map((ex) => (
+                      <span key={ex.label} className="inline-flex items-center rounded-full bg-white/70 px-2 py-0.5 text-xs text-slate-500 ring-1 ring-slate-200">
+                        {ex.label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-slate-400">{tier.recommendation}</p>
+                </div>
+              ))}
+            </div>
+          </details>
+
           {/* URL input */}
+          <p className="mb-2 text-xs text-slate-400">{SOURCE_IMPORT_HINT}</p>
           <div className="grid gap-3 md:grid-cols-[1fr_160px]">
             <textarea
               className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100"
@@ -1313,10 +1342,31 @@ export function OpportunitiesForm() {
             </div>
           )}
 
-          {/* Source import warnings */}
+          {/* Source import warnings — Phase 4-D.8: show failureReason labels */}
           {sourceImportWarnings.length > 0 && (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-              {sourceImportWarnings.map((w, i) => <p key={i}>{w}</p>)}
+            <div className="mt-4 space-y-2">
+              {sourceImportWarnings.map((w, i) => {
+                const reasonKey = extractFailureReason(w);
+                const reasonLabel = reasonKey ? getFailureReasonLabel(reasonKey) : null;
+                // Extract the URL portion from warning (format: "URL: message [reason]")
+                const urlMatch = w.match(/^(https?:\/\/[^\s]+):/);
+                const sourceUrl = urlMatch ? urlMatch[1] : "";
+                const messageText = w.replace(/\s*\[[a-z_]+\]\s*$/, "");
+                return (
+                  <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
+                    {reasonLabel && reasonLabel.reason !== "unknown" ? (
+                      <>
+                        <p className="font-semibold text-amber-800">{reasonLabel.title}</p>
+                        <p className="mt-0.5 text-amber-700">{reasonLabel.description}</p>
+                        <p className="mt-1 text-amber-600">{reasonLabel.recommendation}</p>
+                        <p className="mt-1 text-amber-400">{messageText}</p>
+                      </>
+                    ) : (
+                      <p className="text-amber-700">{w}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1342,6 +1392,22 @@ export function OpportunitiesForm() {
                       ({sourceImportSummary.okUrls}/{sourceImportSummary.totalUrls} 个 URL 成功)
                     </span>
                   </p>
+                  {/* Phase 4-D.8: candidateType breakdown */}
+                  {(() => {
+                    const pc = sourceImportCandidates.filter(c => getCandidateTypeLabel(c.candidateType).type === "product_candidate").length;
+                    const ch = sourceImportCandidates.filter(c => getCandidateTypeLabel(c.candidateType).type === "category_hint").length;
+                    const ts = sourceImportCandidates.filter(c => getCandidateTypeLabel(c.candidateType).type === "trend_signal").length;
+                    const rj = sourceImportCandidates.filter(c => getCandidateTypeLabel(c.candidateType).type === "rejected").length;
+                    if (pc + ch + ts + rj === 0) return null;
+                    return (
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {pc > 0 && <span className="mr-2">商品候选 {pc}</span>}
+                        {ch > 0 && <span className="mr-2">类目提示 {ch}</span>}
+                        {ts > 0 && <span className="mr-2">趋势信号 {ts}</span>}
+                        {rj > 0 && <span>已过滤 {rj}</span>}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -1389,6 +1455,15 @@ export function OpportunitiesForm() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900 truncate">{c.title}</p>
+                          {/* Phase 4-D.8: candidateType badge */}
+                          {(() => {
+                            const ctLabel = getCandidateTypeLabel(c.candidateType);
+                            return (
+                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getCandidateTypeBadgeClass(ctLabel.tone)}`}>
+                                {ctLabel.label}
+                              </span>
+                            );
+                          })()}
                           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${c.riskLevel === "red" ? "border-rose-200 bg-rose-50 text-rose-700" : c.riskLevel === "yellow" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
                             风险{riskText(c.riskLevel)}
                           </span>
