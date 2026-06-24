@@ -626,6 +626,7 @@ export function OpportunitiesForm() {
 
   // Phase 4-B: Source import handlers
   const handleSourceImport = useCallback(async () => {
+    // Clear previous results immediately
     setSourceImportError("");
     setSourceImportWarnings([]);
     setSourceImportCandidates([]);
@@ -639,32 +640,71 @@ export function OpportunitiesForm() {
       return;
     }
 
-    if (!isAccessPasswordReady || !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setSourceImportError("请先输入访问密码。");
-      return;
-    }
-
+    // Show loading state immediately, before any async work
     setSourceImporting(true);
+
     try {
       const res = await fetch("/api/opportunities/source-import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: urls, accessPassword }),
       });
-      const json: SourceImportResponse = await res.json();
-      if (!json.ok) {
-        setSourceImportError(json.error.message);
+
+      // Handle non-JSON responses (e.g. HTML error pages from reverse proxy)
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        if (res.status === 401 || res.status === 403) {
+          setSourceImportError("访问已失效，请重新输入访问密码。");
+        } else {
+          setSourceImportError(`服务返回异常（${res.status}），请稍后重试。`);
+        }
         return;
       }
-      setSourceImportCandidates(json.candidates);
+
+      let json: SourceImportResponse;
+      try {
+        json = await res.json() as SourceImportResponse;
+      } catch {
+        setSourceImportError("服务返回了不可识别的数据，请稍后重试。");
+        return;
+      }
+
+      if (!json.ok) {
+        const msg = json.error?.message || "来源导入失败。";
+        if (res.status === 401 || json.error?.code === "unauthorized") {
+          setSourceImportError("访问已失效，请重新输入访问密码。");
+        } else if (json.error?.code === "too_many_urls") {
+          setSourceImportError(msg);
+        } else if (json.error?.code === "no_valid_urls") {
+          setSourceImportError(msg);
+        } else {
+          setSourceImportError(msg);
+        }
+        return;
+      }
+
+      const candidates = json.candidates || [];
+      if (candidates.length === 0) {
+        setSourceImportError("抓取成功，但未提取到候选品。请尝试 RSS 或 Sitemap 格式的链接。");
+        setSourceImportSummary(json.summary);
+        if (json.warnings?.length) setSourceImportWarnings(json.warnings);
+        return;
+      }
+
+      setSourceImportCandidates(candidates);
       setSourceImportSummary(json.summary);
-      if (json.warnings.length) setSourceImportWarnings(json.warnings);
+      if (json.warnings?.length) setSourceImportWarnings(json.warnings);
     } catch (e) {
-      setSourceImportError(e instanceof Error ? e.message : "网络请求失败。");
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        setSourceImportError("网络连接失败，请检查网络后重试。");
+      } else {
+        setSourceImportError(msg || "来源抓取失败，请换 RSS / Sitemap / 公开文章页链接后重试。");
+      }
     } finally {
       setSourceImporting(false);
     }
-  }, [sourceImportUrls, accessPassword, isAccessPasswordReady]);
+  }, [sourceImportUrls, accessPassword]);
 
   const toggleSourceCandidate = useCallback((index: number) => {
     setSourceImportChecked((prev) => {
