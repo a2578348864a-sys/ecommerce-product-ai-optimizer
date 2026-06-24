@@ -40,6 +40,7 @@ import {
   Upload,
   Wifi,
   WifiOff,
+  Trash2,
 } from "lucide-react";
 
 type CandidateData = {
@@ -145,7 +146,7 @@ const candidateStatusLabels: Record<CandidateStatus, string> = {
   worth_analyzing: "值得深挖",
   analyzed: "已进入单品分析",
   paused: "暂缓",
-  rejected: "放弃",
+  rejected: "已标记放弃",
 };
 
 const candidateFilterOptions: { value: CandidatePoolFilter; label: string }[] = [
@@ -154,7 +155,7 @@ const candidateFilterOptions: { value: CandidatePoolFilter; label: string }[] = 
   { value: "pending", label: "待判断" },
   { value: "paused", label: "暂缓/高风险" },
   { value: "analyzed", label: "已进入单品分析" },
-  { value: "rejected", label: "放弃" },
+  { value: "rejected", label: "已标记放弃" },
 ];
 
 function displayRiskLevel(candidate?: Pick<CandidateData, "risk">) {
@@ -678,6 +679,43 @@ export function OpportunitiesForm() {
     }
   }, [poolItems, hasAccess, serverAvailable, accessPassword, refreshServerPool]);
 
+  const deletePoolCandidate = useCallback(async (item: OpportunityCandidatePoolItem) => {
+    if (!item.id) return;
+
+    const isLocalOnly = !hasAccess || serverAvailable !== true || item.id.startsWith("opp-");
+    const confirmed = window.confirm(
+      isLocalOnly
+        ? `确定从本浏览器候选池删除「${item.name}」吗？此操作不可恢复。`
+        : `确定删除「${item.name}」这个候选吗？此操作不可恢复。`
+    );
+    if (!confirmed) return;
+
+    setPoolSyncNotice("");
+
+    if (isLocalOnly) {
+      setPoolItems((current) => current.filter((candidate) => candidate.id !== item.id));
+      setPoolSyncNotice("已删除本浏览器候选；该操作只影响当前浏览器。");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/opportunity-candidates/${encodeURIComponent(item.id)}`, {
+        method: "DELETE",
+        headers: { "x-access-password": accessPassword },
+      });
+      const json: unknown = await res.json().catch(() => null);
+      if (!res.ok || !json || typeof json !== "object" || Array.isArray(json) || (json as Record<string, unknown>).ok !== true) {
+        throw new Error(getApiErrorMessage(json, "候选删除失败，请稍后重试。"));
+      }
+      setPoolItems((current) => current.filter((candidate) => candidate.id !== item.id));
+      setPoolSyncNotice("候选已从服务端候选池删除。");
+    } catch (deleteError) {
+      setPoolSyncNotice(deleteError instanceof Error
+        ? deleteError.message
+        : "候选删除失败，请稍后重试。");
+    }
+  }, [hasAccess, serverAvailable, accessPassword]);
+
   const markCandidateAnalyzed = useCallback((candidate: CandidateData) => {
     const input = candidateToPoolInput(candidate);
     const normalized = normalizeCandidate(input);
@@ -937,13 +975,13 @@ export function OpportunitiesForm() {
               <div className="flex items-center gap-2">
                 {serverAvailable ? <Wifi className="size-4 text-emerald-600" /> : <WifiOff className="size-4 text-amber-600" />}
                 <span className={`font-semibold ${serverAvailable ? "text-emerald-800" : "text-amber-800"}`}>
-                  {serverAvailable ? "已连接服务端候选池" : "使用本浏览器候选池"}
+                  {serverAvailable ? "已解锁 / 服务端候选池" : "未解锁 / 本浏览器候选池"}
                 </span>
               </div>
               <p className={`mt-1 text-xs ${serverAvailable ? "text-emerald-700" : "text-amber-700"}`}>
                 {serverAvailable
-                  ? "候选品保存在服务端，换浏览器、清缓存不丢失。本浏览器候选池仍作为离线备份。"
-                  : "输入访问密码后自动切换到服务端候选池。当前数据仅保存在本浏览器，清缓存会丢失。"}
+                  ? "当前数据已从服务端候选池加载，刷新后仍保留。"
+                  : "当前数据仅保存在本浏览器，清缓存或换设备会丢失。输入访问密码后可切换到服务端候选池。"}
               </p>
             </div>
           ) : null}
@@ -1136,6 +1174,17 @@ export function OpportunitiesForm() {
           {/* Results */}
           {sourceImportCandidates.length > 0 && sourceImportSummary && (
             <div className="mt-4">
+              <div className="mb-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="font-semibold">以下结果只是本次抓取的临时预览，刷新页面会清空。</p>
+                    <p className="mt-1 text-xs leading-5 text-amber-800">
+                      请勾选候选并点击“确认导入候选池”，导入后才会保存到服务端候选池。
+                    </p>
+                  </div>
+                </div>
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-700">
@@ -1143,9 +1192,6 @@ export function OpportunitiesForm() {
                     <span className="ml-2 text-xs text-slate-400">
                       ({sourceImportSummary.okUrls}/{sourceImportSummary.totalUrls} 个 URL 成功)
                     </span>
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    以下结果只是本次抓取的临时预览，刷新页面会清空。请勾选候选并点击“确认导入候选池”，导入后才会保存到服务端候选池。
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1228,9 +1274,9 @@ export function OpportunitiesForm() {
               <h2 className="mt-1 text-lg font-semibold text-slate-950">先筛选，再深挖</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
                 {serverAvailable === true
-                  ? "已连接服务端候选池。候选品会保存在服务器，不随浏览器清除丢失。"
+                  ? "已解锁 / 服务端候选池。当前数据已从服务端候选池加载，刷新后仍保留。"
                   : serverAvailable === false
-                    ? "当前使用本浏览器候选池（7 天有效）。输入访问密码后可升级到服务端候选池。"
+                    ? "未解锁 / 本浏览器候选池。当前数据仅保存在本浏览器，清缓存或换设备会丢失。"
                     : "候选品会保存在本浏览器 7 天。这里不自动采购、不自动上架，只帮你记录判断状态。"}
               </p>
             </div>
@@ -1357,10 +1403,13 @@ export function OpportunitiesForm() {
                         onClick={() => setPoolCandidateStatus(item.id, "rejected")}
                         className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
                       >
-                        放弃
+                        标记为放弃
                       </button>
                     </div>
                   </div>
+                  <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-xs leading-5 text-rose-700">
+                    标记为放弃不会删除候选，只会改变状态。需要移除记录请使用“删除候选”。
+                  </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                     <Link
                       href={buildPoolWorkflowHref(item)}
@@ -1376,6 +1425,14 @@ export function OpportunitiesForm() {
                       className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
                     >
                       设为待判断
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deletePoolCandidate(item)}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                    >
+                      <Trash2 className="size-3.5" />
+                      删除候选
                     </button>
                   </div>
                 </article>
