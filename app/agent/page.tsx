@@ -131,22 +131,28 @@ export default function AgentPage() {
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
                   轻选 Agent 是跨境电商运营全流程 Agent 工作台。当前是 Alpha MVP 阶段，先开放找机会、单品分析、运营任务中心三段前半链路。
-                  本页是路线图和能力规划，不是当前主流程入口。
+                  本页只看路线图和能力规划；日常使用请回工作台主链路。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/agent/run"
+                  href="/"
                   className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                 >
-                  进入 Agent 主流程
+                  返回工作台
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
-                  href="/workflow/batch"
+                  href="/workflow"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  批量分析
+                  开始单品分析
+                </Link>
+                <Link
+                  href="/agent/run"
+                  className="inline-flex h-11 items-center justify-center px-3 text-xs font-semibold text-slate-400 transition hover:text-slate-600"
+                >
+                  内部实验看板
                 </Link>
               </div>
             </div>

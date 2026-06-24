@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   History,
-  ListChecks,
   Loader2,
   Lock,
   Route,
@@ -99,27 +98,21 @@ function StatCard({
 const workflowSteps = [
   {
     title: "找机会",
-    description: "进入候选池，先放 2-3 个可能值得看的商品。",
+    description: "先进入候选池，放 2-3 个可能值得深挖的商品。",
     href: "/opportunities",
     icon: Target,
   },
   {
-    title: "单品分析",
-    description: "深挖一个明确商品，看货源、风险和新手结论。",
+    title: "做分析",
+    description: "单个商品走单品分析；多个候选再用批量分析做对比。",
     href: "/workflow",
     icon: Search,
   },
   {
-    title: "任务中心",
+    title: "进任务中心",
     description: "复核已保存结果，决定继续、补资料或淘汰。",
     href: "/tasks",
     icon: History,
-  },
-  {
-    title: "批量分析",
-    description: "最多 3 个商品快速对比，不替代人工判断。",
-    href: "/workflow/batch",
-    icon: ListChecks,
   },
 ] as const;
 
@@ -366,26 +359,14 @@ export function HomeDashboardClient() {
                 </div>
               </div>
 
-              {/* Feature status grid */}
-              <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {[
-                  { label: "Agent 主流程", href: "/agent/run", unlocked: true },
-                  { label: "机会雷达", href: "/opportunities", unlocked: true },
-                  { label: "单品分析", href: "/workflow", unlocked: true },
-                  { label: "批量分析", href: "/workflow/batch", unlocked: true },
-                  { label: "任务中心", href: "/tasks", unlocked: true },
-                  { label: "辅助工具", href: "/agent", unlocked: true },
-                ].map((feature) => (
+              <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                {["1. 找机会", "2. 做分析", "3. 进任务中心"].map((step) => (
                   <div
-                    key={feature.label}
+                    key={step}
                     className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-white px-3 py-2.5"
                   >
-                    {feature.unlocked ? (
-                      <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
-                    ) : (
-                      <Lock className="size-4 shrink-0 text-slate-300" />
-                    )}
-                    <span className="text-sm font-medium text-slate-700">{feature.label}</span>
+                    <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
+                    <span className="text-sm font-medium text-slate-700">{step}</span>
                   </div>
                 ))}
               </div>
@@ -492,9 +473,9 @@ export function HomeDashboardClient() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <Route className="size-5 text-teal-700" />
-              <h2 className="text-xl font-semibold text-slate-950">工作流路径</h2>
+              <h2 className="text-xl font-semibold text-slate-950">三步主路径</h2>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
               {workflowSteps.map((step, index) => {
                 const Icon = step.icon;
                 return (

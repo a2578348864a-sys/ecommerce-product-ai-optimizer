@@ -320,30 +320,30 @@ export default function AgentRunPage() {
               <div>
                 <p className="eyebrow">Phase 2-J</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                  Agent 主链路驾驶舱
+                  内部 Agent 实验看板
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  从公开线索到人工决策的 Agent 流程可视化。这是跨境电商运营全流程 Agent 工作台的内部驾驶舱 / 实验看板，不是普通用户主流程入口，也不是无人值守执行台。
+                  这里只展示从公开线索到人工决策的内部流程，不是普通用户主流程入口，也不是无人值守执行台。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/"
-                  className="linear-button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+                  className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                 >
-                  前往主工作台
+                  返回工作台
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
                   href="/workflow"
-                  className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+                  className="linear-button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                 >
-                  开始单品分析
+                  去单品分析
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
                   href="/agent"
-                  className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                  className="inline-flex h-11 items-center justify-center px-3 text-xs font-semibold text-slate-400 transition hover:text-slate-600"
                 >
                   路线图
                 </Link>
@@ -360,7 +360,7 @@ export default function AgentRunPage() {
               </span>
               <div>
                 <p className="text-sm font-bold text-amber-800">
-                  ⚠️ 本页是 Agent 主链路驾驶舱，不是已上线的无人值守执行台
+                  ⚠️ 本页是内部实验看板，不是普通用户入口
                 </p>
                 <p className="mt-1 text-sm leading-6 text-amber-700">
                   当前版本是 Alpha MVP / Pre-commercial 阶段。所有 AI 结论必须人工复核，所有商业动作由你手动执行。
@@ -370,66 +370,44 @@ export default function AgentRunPage() {
             </div>
           </div>
 
-          {/* 从哪里开始 — quick entry cards */}
+          {/* Internal page redirect */}
           <section className="surface-card p-5 sm:p-6">
-            <div className="mb-4">
-              <p className="linear-kicker">从哪里开始？</p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+              <p className="linear-kicker">内部页面</p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                选择你的第一步
+                普通使用请从工作台主链路开始
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                以下入口均需你手动操作，不会自动执行 AI 分析或商业动作。
+                这个页面只保留给后续 Agent 流程可视化和内部检查。真正使用时，先回工作台，再按“找机会 → 做分析 → 进任务中心”走。
               </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+              </div>
+              <div className="flex flex-wrap gap-2">
               <Link
-                href="/opportunities"
-                className="group rounded-2xl border border-teal-200 bg-teal-50/60 p-4 transition hover:border-teal-300 hover:shadow-md"
+                href="/"
+                className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold"
               >
-                <p className="text-sm font-bold text-teal-800">从机会雷达开始</p>
-                <p className="mt-1 text-xs leading-5 text-teal-700">
-                  还没有明确产品？先发现候选商品，再带入工作流做深度分析。
-                </p>
-                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 group-hover:text-teal-800">
-                  进入机会雷达 <ArrowRight className="size-3" />
-                </span>
+                返回工作台 <ArrowRight className="size-4" />
               </Link>
               <Link
                 href="/workflow"
-                className="group rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 transition hover:border-indigo-300 hover:shadow-md"
+                className="linear-button inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold"
               >
-                <p className="text-sm font-bold text-indigo-800">直接单品分析</p>
-                <p className="mt-1 text-xs leading-5 text-indigo-700">
-                  已有商品名？输入后自动跑 4 步 AI 分析，含人工复核和完整报告。
-                </p>
-                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 group-hover:text-indigo-800">
-                  开始单品分析 <ArrowRight className="size-3" />
-                </span>
+                去单品分析
               </Link>
-              <Link
-                href="/tasks"
-                className="group rounded-2xl border border-amber-200 bg-amber-50/60 p-4 transition hover:border-amber-300 hover:shadow-md"
-              >
-                <p className="text-sm font-bold text-amber-800">查看任务中心</p>
-                <p className="mt-1 text-xs leading-5 text-amber-700">
-                  查看已保存的分析记录、人工复核状态和 Agent 下一步建议。
-                </p>
-                <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-600 group-hover:text-amber-800">
-                  进入任务中心 <ArrowRight className="size-3" />
-                </span>
-              </Link>
+              </div>
             </div>
           </section>
 
           {/* Main loop pipeline */}
           <section className="surface-card p-5 sm:p-6">
             <div className="mb-4">
-              <p className="linear-kicker">主链路</p>
+              <p className="linear-kicker">内部流程参考</p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                从线索到决策 · 7 步 Agent 主链路
+                从线索到决策 · 7 步内部流程
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                绿色 = 已可用，蓝色 = 内嵌于其他能力，琥珀 = 只读建议。数量来自真实任务数据（需登录后可见）。
+                绿色 = 已可用，蓝色 = 内嵌于其他能力，琥珀 = 只读建议。这里用于内部检查，不作为普通用户导航。
               </p>
             </div>
 
@@ -507,7 +485,7 @@ export default function AgentRunPage() {
 
           {/* Footer note */}
           <p className="text-center text-xs text-slate-400">
-            Agent 主链路驾驶舱 · Phase 2-J · 跨境电商运营全流程 Agent 工作台 Alpha MVP · 受控自动化 + 人工复核
+            内部 Agent 实验看板 · Phase 2-J · 跨境电商运营全流程 Agent 工作台 Alpha MVP · 受控自动化 + 人工复核
           </p>
         </div>
       </div>

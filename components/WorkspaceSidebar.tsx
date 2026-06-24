@@ -3,39 +3,93 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Calculator,
+  FileText,
+  Flame,
   History,
   House,
+  Images,
   ListChecks,
+  Map,
   Package,
   Search,
+  ShieldAlert,
   Sparkles,
   Target,
+  Truck,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
+  { label: "工作台", href: "/", icon: House },
   { label: "找机会", href: "/opportunities", icon: Target },
   { label: "单品分析", href: "/workflow", icon: Search },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
   { label: "任务中心", href: "/tasks", icon: History },
 ] as const;
 
-const homeItem = { label: "首页", href: "/", icon: House } as const;
-const mobileNavItems = [homeItem, ...workspaceNavItems] as const;
+const assistantToolItems = [
+  { label: "货源判断", href: "/sourcing", icon: Truck },
+  { label: "风险排查", href: "/risk", icon: ShieldAlert },
+  { label: "小白结论", href: "/summary", icon: FileText },
+  { label: "爆款拆解", href: "/viral", icon: Flame },
+  { label: "素材接收", href: "/materials", icon: Images },
+  { label: "利润试算", href: "/products/new", icon: Calculator },
+] as const;
+
+const routeMapItem = { label: "能力路线图", href: "/agent", icon: Map } as const;
+const mobileNavItems = workspaceNavItems;
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
+function NavLink({
+  item,
+  pathname,
+  compact = false,
+}: {
+  item: (typeof workspaceNavItems)[number] | (typeof assistantToolItems)[number] | typeof routeMapItem;
+  pathname: string;
+  compact?: boolean;
+}) {
+  const Icon = item.icon;
+  const active = isActivePath(pathname, item.href);
+
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={
+        (compact
+          ? "mb-1 flex h-9 w-full items-center gap-2 rounded-lg px-2 text-xs font-medium transition last:mb-0 "
+          : "mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 ") +
+        (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")
+      }
+    >
+      <span
+        className={
+          "flex items-center justify-center rounded-lg border bg-white " +
+          (compact ? "size-6 " : "size-7 ") +
+          (active ? "border-teal-200 text-teal-700" : "border-slate-200 text-slate-500")
+        }
+      >
+        <Icon className={compact ? "size-3.5" : "size-4"} />
+      </span>
+      {item.label}
+    </Link>
+  );
+}
+
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
   const [sharedProduct] = useSharedProduct();
+  const assistantOpen = assistantToolItems.some((item) => isActivePath(pathname, item.href));
 
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-4 flex flex-col gap-3">
-        {/* 当前选品指示器 */}
         {sharedProduct.productName ? (
           <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
             <div className="flex items-center gap-2">
@@ -45,7 +99,7 @@ export function WorkspaceSidebar() {
             <p className="mt-1 truncate text-sm font-bold text-teal-900">{sharedProduct.productName}</p>
             <p className="mt-0.5 text-xs text-teal-600">
               {sharedProduct.targetPlatform}
-              {sharedProduct.category ? ` · ${sharedProduct.category}` : ""}
+              {sharedProduct.category ? ` / ${sharedProduct.category}` : ""}
             </p>
           </div>
         ) : null}
@@ -53,47 +107,37 @@ export function WorkspaceSidebar() {
         <div className="surface-card p-3">
           <div className="flex items-start gap-3">
             <div className="linear-icon size-9 shrink-0 rounded-xl">
-                <Sparkles className="size-5" />
+              <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-teal-700">受控自动化 · Alpha MVP</p>
+              <p className="text-[11px] font-semibold text-teal-700">受控自动化 / Alpha MVP</p>
               <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
-              <p className="muted-text mt-1 text-xs leading-5">受控自动化，人工复核</p>
+              <p className="muted-text mt-1 text-xs leading-5">先分析，再人工复核</p>
             </div>
           </div>
         </div>
 
-        {/* 首页独立入口 */}
-        <Link
-          href={homeItem.href}
-          aria-current={isActivePath(pathname, homeItem.href) ? "page" : undefined}
-          className={"surface-card flex h-11 items-center gap-2.5 rounded-xl px-3 text-sm font-semibold transition " + (isActivePath(pathname, homeItem.href) ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
-        >
-          <span className={"flex size-7 items-center justify-center rounded-lg border " + (isActivePath(pathname, homeItem.href) ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
-            <homeItem.icon className="size-4" />
-          </span>
-          {homeItem.label}
-        </Link>
-
         <nav className="surface-card p-2" aria-label="工作台导航">
           <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">主链路</p>
-          {workspaceNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActivePath(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={"mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 " + (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")}
-              >
-                <span className={"flex size-7 items-center justify-center rounded-lg border " + (active ? "border-teal-200 bg-white text-teal-700" : "border-slate-200 bg-white text-slate-500")}>
-                  <Icon className="size-4" />
-                </span>
-                {item.label}
-              </Link>
-            );
-          })}
+          {workspaceNavItems.map((item) => (
+            <NavLink key={item.href} item={item} pathname={pathname} />
+          ))}
+        </nav>
+
+        <details className="surface-card p-2" open={assistantOpen}>
+          <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600">
+            辅助工具
+          </summary>
+          <div className="mt-1">
+            {assistantToolItems.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} compact />
+            ))}
+          </div>
+        </details>
+
+        <nav className="surface-card p-2" aria-label="项目说明">
+          <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">项目说明</p>
+          <NavLink item={routeMapItem} pathname={pathname} compact />
         </nav>
       </div>
     </aside>
@@ -113,7 +157,10 @@ export function WorkspaceMobileNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={"inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition " + (active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600")}
+            className={
+              "inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition " +
+              (active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600")
+            }
           >
             <Icon className="size-4" />
             {item.label}
