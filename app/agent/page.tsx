@@ -130,7 +130,7 @@ export default function AgentPage() {
                   Agent 能力路线图与阶段说明
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  轻选 Agent 是跨境电商运营全流程 Agent 工作台。当前是 Alpha MVP 阶段，先开放找机会、分析产品、运营任务中心三段前半链路。
+                  轻选 Agent 是跨境电商运营全流程 Agent 工作台。当前是 Alpha MVP 阶段，先开放找机会、单品分析、运营任务中心三段前半链路。
                   本页是路线图和能力规划，不是当前主流程入口。
                 </p>
               </div>
@@ -146,7 +146,7 @@ export default function AgentPage() {
                   href="/workflow/batch"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  分析产品
+                  批量分析
                 </Link>
               </div>
             </div>

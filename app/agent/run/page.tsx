@@ -327,6 +327,13 @@ export default function AgentRunPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
+                  href="/"
+                  className="linear-button inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+                >
+                  前往主工作台
+                  <ArrowRight className="size-4" />
+                </Link>
+                <Link
                   href="/workflow"
                   className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
                 >
