@@ -114,6 +114,30 @@ const RISK_BADGE: Record<string, string> = {
   red: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
+type SourceImportCandidateData = {
+  title: string;
+  sourceUrl: string;
+  sourceType: string;
+  sourceHost: string;
+  categoryHint: string;
+  keyword: string;
+  riskHint: string;
+  riskLevel: string;
+  summaryLabel: string;
+  score: number;
+  demandSignalScore: number;
+  supplyEaseScore: number;
+  riskScore: number;
+  beginnerFitScore: number;
+};
+
+type SourceImportResponse = {
+  ok: true;
+  candidates: SourceImportCandidateData[];
+  summary: { totalUrls: number; okUrls: number; failedUrls: number; totalCandidates: number };
+  warnings: string[];
+} | { ok: false; error: { code: string; message: string } };
+
 const DRAFT_KEY = "qx:opportunities-draft:v1";
 
 const candidateStatusLabels: Record<CandidateStatus, string> = {
@@ -269,6 +293,17 @@ export function OpportunitiesForm() {
   const [serverAvailable, setServerAvailable] = useState<boolean | null>(null); // null = checking
   const [importingLocal, setImportingLocal] = useState(false);
   const [importResult, setImportResult] = useState("");
+
+  // Phase 4-B: Source importer state
+  const [sourceImportUrls, setSourceImportUrls] = useState("");
+  const [sourceImporting, setSourceImporting] = useState(false);
+  const [sourceImportError, setSourceImportError] = useState("");
+  const [sourceImportWarnings, setSourceImportWarnings] = useState<string[]>([]);
+  const [sourceImportCandidates, setSourceImportCandidates] = useState<SourceImportCandidateData[]>([]);
+  const [sourceImportChecked, setSourceImportChecked] = useState<Set<string>>(new Set());
+  const [sourceImportSummary, setSourceImportSummary] = useState<{ totalUrls: number; okUrls: number; failedUrls: number; totalCandidates: number } | null>(null);
+  const [sourceConfirming, setSourceConfirming] = useState(false);
+  const [sourceConfirmResult, setSourceConfirmResult] = useState("");
 
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
@@ -589,6 +624,174 @@ export function OpportunitiesForm() {
     });
   }, []);
 
+  // Phase 4-B: Source import handlers
+  const handleSourceImport = useCallback(async () => {
+    setSourceImportError("");
+    setSourceImportWarnings([]);
+    setSourceImportCandidates([]);
+    setSourceImportChecked(new Set());
+    setSourceImportSummary(null);
+    setSourceConfirmResult("");
+
+    const urls = sourceImportUrls.trim();
+    if (!urls) {
+      setSourceImportError("请输入至少 1 个公开 URL。");
+      return;
+    }
+
+    if (!isAccessPasswordReady || !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setSourceImportError("请先输入访问密码。");
+      return;
+    }
+
+    setSourceImporting(true);
+    try {
+      const res = await fetch("/api/opportunities/source-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input: urls, accessPassword }),
+      });
+      const json: SourceImportResponse = await res.json();
+      if (!json.ok) {
+        setSourceImportError(json.error.message);
+        return;
+      }
+      setSourceImportCandidates(json.candidates);
+      setSourceImportSummary(json.summary);
+      if (json.warnings.length) setSourceImportWarnings(json.warnings);
+    } catch (e) {
+      setSourceImportError(e instanceof Error ? e.message : "网络请求失败。");
+    } finally {
+      setSourceImporting(false);
+    }
+  }, [sourceImportUrls, accessPassword, isAccessPasswordReady]);
+
+  const toggleSourceCandidate = useCallback((index: number) => {
+    setSourceImportChecked((prev) => {
+      const next = new Set(prev);
+      const key = String(index);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleAllSourceCandidates = useCallback(() => {
+    setSourceImportChecked((prev) => {
+      if (prev.size === sourceImportCandidates.length) return new Set<string>();
+      return new Set(sourceImportCandidates.map((_, i) => String(i)));
+    });
+  }, [sourceImportCandidates]);
+
+  const handleConfirmImport = useCallback(async () => {
+    if (sourceImportChecked.size === 0) {
+      setSourceImportError("请至少勾选一个候选品后再导入。");
+      return;
+    }
+
+    setSourceConfirming(true);
+    setSourceConfirmResult("");
+    setSourceImportError("");
+
+    const selected = sourceImportCandidates.filter((_, i) => sourceImportChecked.has(String(i)));
+    const inputs = selected.map((c) => {
+      const now = new Date().toISOString();
+      return {
+        name: c.title,
+        rawInput: c.title,
+        link: c.sourceUrl || null,
+        score: c.score,
+        source: `${c.sourceType === "rss" ? "RSS抓取" : c.sourceType === "sitemap" ? "Sitemap抓取" : "网页抓取"} · ${c.sourceHost}`,
+        keyword: c.keyword || c.categoryHint,
+        riskLevel: c.riskLevel,
+        riskLabel: c.riskLevel === "red" ? "高风险" : c.riskLevel === "yellow" ? "需注意" : "低风险",
+        summaryLabel: c.summaryLabel,
+        sourceMetaJson: JSON.stringify({
+          sourceType: c.sourceType,
+          sourceUrl: c.sourceUrl,
+          sourceHost: c.sourceHost,
+          importedAt: now,
+          importMethod: "phase4b_source_importer_mvp",
+          crawlStatus: "success",
+          robotsAllowed: true,
+        }),
+        analysisJson: JSON.stringify({
+          title: c.title,
+          sourceUrl: c.sourceUrl,
+          sourceType: c.sourceType,
+          sourceHost: c.sourceHost,
+          categoryHint: c.categoryHint,
+          riskHint: c.riskHint,
+          scores: {
+            demandSignalScore: c.demandSignalScore,
+            supplyEaseScore: c.supplyEaseScore,
+            riskScore: c.riskScore,
+            beginnerFitScore: c.beginnerFitScore,
+            finalScore: c.score,
+          },
+          importedAt: now,
+        }),
+      };
+    });
+
+    try {
+      const res = await fetch("/api/opportunity-candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+        body: JSON.stringify({ items: inputs }),
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        setSourceImportError(json.error?.message || "导入失败。");
+        return;
+      }
+      const created = json.created ?? 0;
+      const updated = json.updated ?? 0;
+      setSourceConfirmResult(`已导入 ${created} 个新候选品，更新 ${updated} 个已有候选品。`);
+
+      // Refresh pool from server
+      setPoolItems((current) => {
+        const serverIds = new Set((json.items as Array<{ id: string }> || []).map((item: { id: string }) => item.id));
+        return current.filter((item) => !serverIds.has(item.id));
+      });
+      // Trigger server refresh
+      if (hasAccess && serverAvailable !== false) {
+        fetch(`/api/opportunity-candidates?limit=100`, {
+          headers: { "x-access-password": accessPassword },
+        }).then((r) => r.json()).then((data) => {
+          if (data.ok && Array.isArray(data.items)) {
+            const serverItems = data.items.map((item: Record<string, unknown>) => ({
+              id: String(item.id || ""),
+              name: String(item.name || ""),
+              rawInput: String(item.rawInput || ""),
+              link: typeof item.link === "string" ? item.link : null,
+              score: typeof item.score === "number" ? item.score : 0,
+              source: String(item.source || ""),
+              keyword: String(item.keyword || ""),
+              riskLevel: String(item.riskLevel || ""),
+              riskLabel: String(item.riskLabel || ""),
+              summaryLabel: String(item.summaryLabel || ""),
+              candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status)) ? String(item.status) : "pending") as CandidateStatus,
+              createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
+              updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
+              lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
+            }));
+            setPoolItems(serverItems);
+            writeCandidatePool(window.localStorage, serverItems);
+          }
+        }).catch(() => {});
+      }
+
+      // Clear source import state
+      setSourceImportCandidates([]);
+      setSourceImportChecked(new Set());
+      setSourceImportSummary(null);
+    } catch (e) {
+      setSourceImportError(e instanceof Error ? e.message : "导入失败。");
+    } finally {
+      setSourceConfirming(false);
+    }
+  }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable]);
+
   // Score helper
   const scoreLabel = (s: number) => s >= 80 ? "优先测试" : s >= 65 ? "可小单验证" : s >= 50 ? "谨慎观察" : "暂不建议";
   const scoreColor = (s: number) => s >= 80 ? "text-emerald-600" : s >= 65 ? "text-sky-600" : s >= 50 ? "text-amber-600" : "text-rose-600";
@@ -773,6 +976,158 @@ export function OpportunitiesForm() {
             <p className="mt-1 text-xs text-slate-400">正在逐个分析候选商品，请耐心等待...</p>
           </div>
         )}
+
+        {/* Phase 4-B: Source Importer */}
+        <section className="surface-card p-4 sm:p-5" data-testid="source-importer">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="linear-icon size-10 shrink-0 rounded-xl">
+              <Upload className="size-5" />
+            </div>
+            <div>
+              <p className="linear-kicker">来源导入</p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">从公开 URL 导入候选品</h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                粘贴 RSS、Sitemap 或公开网页 URL（最多 5 个）。系统会遵守 robots.txt，不会自动执行商业动作。结果需你人工确认后再导入候选池。
+              </p>
+            </div>
+          </div>
+
+          {/* URL input */}
+          <div className="grid gap-3 md:grid-cols-[1fr_160px]">
+            <textarea
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100"
+              rows={4}
+              placeholder={`https://example.com/rss\nhttps://example.com/sitemap.xml\nhttps://example.com/products`}
+              value={sourceImportUrls}
+              onChange={(e) => { setSourceImportUrls(e.target.value); setSourceImportError(""); }}
+              disabled={sourceImporting || sourceConfirming}
+            />
+            <div className="flex flex-col justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleSourceImport}
+                disabled={sourceImporting || sourceConfirming || !sourceImportUrls.trim()}
+                className="linear-button-primary inline-flex h-12 w-full items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
+              >
+                {sourceImporting ? (
+                  <><Loader2 className="size-4 animate-spin" />抓取中…</>
+                ) : (
+                  <><Search className="size-4" />抓取公开来源</>
+                )}
+              </button>
+              {sourceImportCandidates.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSourceImportCandidates([]);
+                    setSourceImportChecked(new Set());
+                    setSourceImportSummary(null);
+                    setSourceImportError("");
+                    setSourceImportWarnings([]);
+                  }}
+                  className="linear-button inline-flex h-10 w-full items-center justify-center text-sm"
+                >
+                  清除结果
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Source import error */}
+          {sourceImportError && (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              <AlertTriangle className="mr-2 inline size-4" />{sourceImportError}
+            </div>
+          )}
+
+          {/* Source import warnings */}
+          {sourceImportWarnings.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+              {sourceImportWarnings.map((w, i) => <p key={i}>{w}</p>)}
+            </div>
+          )}
+
+          {/* Results */}
+          {sourceImportCandidates.length > 0 && sourceImportSummary && (
+            <div className="mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <p className="text-sm font-semibold text-slate-700">
+                  已提取 {sourceImportCandidates.length} 个候选品
+                  <span className="ml-2 text-xs text-slate-400">
+                    ({sourceImportSummary.okUrls}/{sourceImportSummary.totalUrls} 个 URL 成功)
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleAllSourceCandidates}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+                  >
+                    {sourceImportChecked.size === sourceImportCandidates.length ? "取消全选" : "全选"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmImport}
+                    disabled={sourceConfirming || sourceImportChecked.size === 0}
+                    className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {sourceConfirming ? (
+                      <><Loader2 className="size-4 animate-spin" />导入中…</>
+                    ) : (
+                      <>确认导入候选池（{sourceImportChecked.size}）</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {sourceConfirmResult && (
+                <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                  <CheckCircle2 className="mr-2 inline size-4" />{sourceConfirmResult}
+                </div>
+              )}
+
+              <div className="grid gap-2 max-h-[500px] overflow-y-auto">
+                {sourceImportCandidates.map((c, i) => {
+                  const checked = sourceImportChecked.has(String(i));
+                  return (
+                    <label
+                      key={`${c.title}-${i}`}
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${checked ? "border-teal-300 bg-teal-50/60" : "border-slate-200 bg-white hover:border-teal-200"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleSourceCandidate(i)}
+                        className="mt-1 size-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{c.title}</p>
+                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${c.riskLevel === "red" ? "border-rose-200 bg-rose-50 text-rose-700" : c.riskLevel === "yellow" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+                            风险{riskText(c.riskLevel)}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-400">
+                          <span>来源：{c.sourceHost} · {c.sourceType}</span>
+                          <span>分数：{c.score}/100</span>
+                          <span>需求：{c.demandSignalScore} | 风险：{c.riskScore} | 新手：{c.beginnerFitScore}</span>
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-xs text-slate-500">{c.summaryLabel}</p>
+                        {c.riskHint && (
+                          <p className="mt-1 text-[11px] text-amber-600">⚠ {c.riskHint}</p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <p className="mt-3 text-xs text-slate-400">
+                ⚠ 以上结果由系统规则评分生成，不代表最终选品决策。关键动作需人工确认。本次不会自动采购、自动上架或自动投广告。
+              </p>
+            </div>
+          )}
+        </section>
 
         {/* Candidate pool */}
         <section className="surface-card p-4 sm:p-5" data-testid="opportunity-candidate-pool">
