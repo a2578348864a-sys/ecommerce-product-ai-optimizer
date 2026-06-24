@@ -39,6 +39,10 @@ export type TaskSourceMeta = {
   opportunityScore?: number;
   keyword?: string;
   importedAt?: string;
+  /** Phase 4-E.1: enhanced candidate context */
+  candidateType?: string;
+  sourceUrl?: string;
+  candidateId?: string;
 };
 
 const DEFAULT_WORKFLOW_ACTIONS = [
@@ -106,6 +110,10 @@ export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
   const keyword = text(result.sourceMeta.keyword);
   const importedAt = text(result.sourceMeta.importedAt);
   const opportunityScore = boundedNumber(result.sourceMeta.opportunityScore, 0, 100);
+  // Phase 4-E.1: enhanced context
+  const candidateType = text(result.sourceMeta.candidateType);
+  const sourceUrl = text(result.sourceMeta.sourceUrl);
+  const candidateId = text(result.sourceMeta.candidateId);
 
   return {
     source: "opportunity",
@@ -114,6 +122,82 @@ export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
     ...(opportunityScore !== undefined ? { opportunityScore } : {}),
     ...(keyword ? { keyword } : {}),
     ...(importedAt ? { importedAt } : {}),
+    ...(candidateType ? { candidateType } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+    ...(candidateId ? { candidateId } : {}),
+  };
+}
+
+/** Phase 4-E.1: Derive workflow task lifecycle status from resultJson and reviewState */
+export type WorkflowLifecycleStatus = {
+  label: string;
+  description: string;
+  nextAction: string;
+  tone: "amber" | "teal" | "emerald" | "slate" | "rose";
+};
+
+export function deriveWorkflowLifecycleStatus(
+  result: Record<string, unknown> | null | undefined,
+  reviewState: Record<string, unknown> | null | undefined,
+  decisionStatus: string | null | undefined,
+): WorkflowLifecycleStatus {
+  // Check review state first
+  const allReviewed = reviewState && typeof reviewState.allReviewed === "boolean" ? reviewState.allReviewed : false;
+  const reviewedCount = reviewState && typeof reviewState.reviewedCount === "number" ? reviewState.reviewedCount : 0;
+
+  // Decision status overrides
+  if (decisionStatus === "abandoned" || decisionStatus === "dismissed") {
+    return {
+      label: "已放弃",
+      description: "该候选已标记为放弃，不再继续推进。",
+      nextAction: "如需重新评估，可将状态改回待决策。",
+      tone: "slate",
+    };
+  }
+
+  if (decisionStatus === "approved" || decisionStatus === "selected" || decisionStatus === "ready") {
+    return {
+      label: "准备推进",
+      description: "已通过人工复核，可进入供应商报价、利润测算或准备测款。",
+      nextAction: "补充供应商报价、利润测算和 Listing 草稿后再决定是否测款。",
+      tone: "emerald",
+    };
+  }
+
+  // Review-based statuses
+  if (!allReviewed && reviewedCount === 0) {
+    return {
+      label: "待人工复核",
+      description: "分析结果已生成，请逐项确认货源、风险、小白结论和 Listing。",
+      nextAction: "点击上方步骤逐项复核，全部确认后可标记为已复核。",
+      tone: "amber",
+    };
+  }
+
+  if (!allReviewed && reviewedCount > 0) {
+    return {
+      label: `复核中（${reviewedCount}/4）`,
+      description: `已完成 ${reviewedCount} 个步骤的复核，还需确认剩余 ${4 - reviewedCount} 步。`,
+      nextAction: "继续完成剩余步骤的复核后，决定下一步动作。",
+      tone: "amber",
+    };
+  }
+
+  if (allReviewed && !decisionStatus) {
+    return {
+      label: "待决策",
+      description: "四步复核已完成，请根据利润、风险、货源情况决定下一步。",
+      nextAction: "选择观察、准备测款或放弃，系统将记录你的决策状态。",
+      tone: "teal",
+    };
+  }
+
+  // Fallback
+  return {
+    label: "待评估",
+    description: "该任务状态未明确，请人工判断后续动作。",
+    nextAction: "查看分析结果并完成人工复核后决定下一步。",
+    tone: "slate",
   };
 }
 

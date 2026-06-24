@@ -63,6 +63,10 @@ type SourceMeta = {
   opportunityScore?: number;
   keyword?: string;
   importedAt: string;
+  /** Phase 4-E.1: enhanced candidate context */
+  candidateType?: string;
+  sourceUrl?: string;
+  candidateId?: string;
 };
 
 /**
@@ -146,6 +150,10 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
   const keyword = asString(raw.keyword).slice(0, 80);
   const score = asBoundedInteger(raw.opportunityScore, 0, 100);
   const importedAt = asString(raw.importedAt).slice(0, 40) || new Date().toISOString();
+  // Phase 4-E.1: enhanced context
+  const candidateType = asString(raw.candidateType).slice(0, 40);
+  const sourceUrl = asString(raw.sourceUrl).slice(0, 500);
+  const candidateId = asString(raw.candidateId).slice(0, 80);
 
   return {
     source: "opportunity",
@@ -153,6 +161,9 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(score !== null ? { opportunityScore: score } : {}),
     ...(keyword ? { keyword } : {}),
+    ...(candidateType ? { candidateType } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+    ...(candidateId ? { candidateId } : {}),
     importedAt,
   };
 }

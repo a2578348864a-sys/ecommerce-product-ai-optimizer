@@ -77,6 +77,10 @@ export type WorkflowSourceMeta = {
   opportunityScore?: number;
   keyword?: string;
   importedAt: string;
+  /** Phase 4-E.1: enhanced candidate context */
+  candidateType?: string;
+  sourceUrl?: string;
+  candidateId?: string;
 };
 
 type ApiErrorResponse = {
@@ -720,7 +724,26 @@ export function WorkflowClient({
                 {sourceMeta ? (
                   <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs leading-5 text-teal-800">
                     <p className="font-semibold">已从机会雷达带入：{sourceMeta.opportunityTitle}</p>
-                    <p>请确认商品名后再开始分析。{sourceMeta.opportunityScore !== undefined ? ` 来源分数 ${sourceMeta.opportunityScore}/100。` : ""}</p>
+                    <p>请确认商品名后再开始分析。{sourceMeta.opportunityScore !== undefined ? `来源分数 ${sourceMeta.opportunityScore}/100。` : ""}</p>
+                    {/* Phase 4-E.1: enhanced context display */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {sourceMeta.opportunitySource && (
+                        <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] text-teal-700">
+                          来源：{sourceMeta.opportunitySource}
+                        </span>
+                      )}
+                      {sourceMeta.candidateType && (
+                        <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+                          {sourceMeta.candidateType === "product_candidate" ? "商品候选" : sourceMeta.candidateType === "category_hint" ? "类目提示" : sourceMeta.candidateType === "trend_signal" ? "趋势信号" : sourceMeta.candidateType}
+                        </span>
+                      )}
+                      {sourceMeta.sourceUrl && (
+                        <a href={sourceMeta.sourceUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] text-teal-600 underline hover:text-teal-800">
+                          查看来源
+                        </a>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-teal-600">后续分析结果需人工复核，不代表自动立项或推荐采购。</p>
                   </div>
                 ) : null}
               </div>

@@ -7,6 +7,9 @@ type WorkflowSearchParams = {
   opportunityScore?: string | string[];
   opportunitySource?: string | string[];
   keyword?: string | string[];
+  candidateType?: string | string[];
+  sourceUrl?: string | string[];
+  candidateId?: string | string[];
 };
 
 function firstParam(value: string | string[] | undefined) {
@@ -33,6 +36,10 @@ function sourceMetaFromParams(params: WorkflowSearchParams, productName?: string
   const opportunityTitle = safeDecode(firstParam(params.opportunityTitle)) || productName;
   const opportunitySource = safeDecode(firstParam(params.opportunitySource));
   const keyword = safeDecode(firstParam(params.keyword));
+  // Phase 4-E.1: enhanced context
+  const candidateType = safeDecode(firstParam(params.candidateType));
+  const sourceUrl = safeDecode(firstParam(params.sourceUrl));
+  const candidateId = safeDecode(firstParam(params.candidateId));
 
   return {
     source: "opportunity",
@@ -40,6 +47,9 @@ function sourceMetaFromParams(params: WorkflowSearchParams, productName?: string
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(opportunityScore !== undefined ? { opportunityScore } : {}),
     ...(keyword ? { keyword } : {}),
+    ...(candidateType ? { candidateType } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+    ...(candidateId ? { candidateId } : {}),
     importedAt: new Date().toISOString(),
   };
 }

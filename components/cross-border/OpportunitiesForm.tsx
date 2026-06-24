@@ -226,6 +226,9 @@ function buildOpportunityWorkflowHrefFromParts(input: {
   sourceName?: string | null;
   keyword?: string;
   rawInput?: string;
+  candidateId?: string;
+  sourceUrl?: string;
+  candidateType?: string;
 }) {
   const productName = input.name.trim();
   const params = new URLSearchParams({
@@ -237,6 +240,10 @@ function buildOpportunityWorkflowHrefFromParts(input: {
   });
   const keyword = input.keyword?.trim() || input.rawInput?.trim();
   if (keyword) params.set("keyword", keyword.slice(0, 80));
+  // Phase 4-E.1: enhanced context
+  if (input.sourceUrl?.trim()) params.set("sourceUrl", input.sourceUrl.trim().slice(0, 500));
+  if (input.candidateType?.trim()) params.set("candidateType", input.candidateType.trim());
+  if (input.candidateId?.trim()) params.set("candidateId", input.candidateId.trim());
   return `/workflow?${params.toString()}`;
 }
 
@@ -257,6 +264,8 @@ function buildPoolWorkflowHref(candidate: OpportunityCandidatePoolItem) {
     sourceName: candidate.link || candidate.source,
     keyword: candidate.keyword,
     rawInput: candidate.rawInput,
+    candidateId: candidate.id,
+    sourceUrl: candidate.link ?? undefined,
   });
 }
 

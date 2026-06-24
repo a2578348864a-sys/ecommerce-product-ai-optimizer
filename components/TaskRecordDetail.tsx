@@ -16,7 +16,7 @@ import {
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
-import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveTaskWorkflowSummary, getTaskSourceMeta, deriveWorkflowLifecycleStatus, toneClass } from "@/lib/taskWorkflowSummary";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -143,6 +143,9 @@ function WorkflowDecisionSummary({
   });
   const sourceMeta = getTaskSourceMeta(result);
   const decisionOption = getDecisionStatusOption(decisionStatus);
+  // Phase 4-E.1: derive lifecycle status from review state + decision
+  const reviewState = isRecordValue(result) && isRecordValue(result.reviewState) ? result.reviewState : null;
+  const lifecycleStatus = deriveWorkflowLifecycleStatus(result as Record<string, unknown> | null, reviewState, decisionStatus);
 
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
@@ -158,13 +161,38 @@ function WorkflowDecisionSummary({
           <p className="mt-2 text-xs leading-5 text-teal-700">
             {summary.reason}
           </p>
+          {/* Phase 4-E.1: Enhanced source context + lifecycle status */}
           {sourceMeta ? (
-            <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 py-2 text-xs font-semibold text-teal-800">
-              <span>来源：机会雷达</span>
-              {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
-              {sourceMeta.opportunitySource ? <span className="break-all">来源名称：{sourceMeta.opportunitySource}</span> : null}
+            <div className="mt-3 flex flex-col gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 py-2 text-xs text-teal-800">
+              <div className="flex flex-wrap gap-2 font-semibold">
+                <span>来源：机会雷达</span>
+                {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
+                {sourceMeta.opportunitySource ? <span className="break-all">来源名称：{sourceMeta.opportunitySource}</span> : null}
+              </div>
+              {sourceMeta.candidateType && (
+                <span className="inline-flex w-fit items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold">
+                  {sourceMeta.candidateType === "product_candidate" ? "商品候选" : sourceMeta.candidateType === "category_hint" ? "类目提示" : sourceMeta.candidateType === "trend_signal" ? "趋势信号" : sourceMeta.candidateType}
+                </span>
+              )}
+              {sourceMeta.sourceUrl && (
+                <a href={sourceMeta.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-teal-600 underline hover:text-teal-800">
+                  查看来源链接
+                </a>
+              )}
             </div>
           ) : null}
+          {/* Phase 4-E.1: Lifecycle status */}
+          <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
+            lifecycleStatus.tone === "amber" ? "border-amber-200 bg-amber-50/70 text-amber-800" :
+            lifecycleStatus.tone === "emerald" ? "border-emerald-200 bg-emerald-50/70 text-emerald-800" :
+            lifecycleStatus.tone === "teal" ? "border-teal-200 bg-teal-50/70 text-teal-800" :
+            lifecycleStatus.tone === "rose" ? "border-rose-200 bg-rose-50/70 text-rose-800" :
+            "border-slate-200 bg-slate-50/70 text-slate-600"
+          }`}>
+            <p className="font-semibold">状态：{lifecycleStatus.label}</p>
+            <p className="mt-0.5">{lifecycleStatus.description}</p>
+            <p className="mt-1 font-medium">下一步：{lifecycleStatus.nextAction}</p>
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
           <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>
