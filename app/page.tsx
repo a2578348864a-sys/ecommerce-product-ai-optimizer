@@ -26,7 +26,7 @@ const primaryEntries = [
   {
     eyebrow: "我想看之前结果",
     title: "运营任务中心",
-    description: "查看分析结果、人工复核状态和下一步运营动作。",
+    description: "查看已保存的分析任务，继续复核、筛选和跟进。",
     href: "/tasks",
     cta: "查看任务",
     icon: History,

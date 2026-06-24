@@ -15,6 +15,7 @@ import {
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
+import { deriveTaskWorkflowSummary, toneClass } from "@/lib/taskWorkflowSummary";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -100,24 +101,6 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function displayText(value: unknown, fallback = "暂无该项") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function getWorkflowFinalReport(result: unknown) {
-  if (!isRecordValue(result)) return null;
-  const finalReport = result.finalReport;
-  return isRecordValue(finalReport) ? finalReport : null;
-}
-
-function getRiskText(value: unknown) {
-  const risk = typeof value === "string" ? value : "";
-  if (risk === "green") return "低风险";
-  if (risk === "red") return "高风险";
-  if (risk === "yellow") return "需注意";
-  return displayText(value);
-}
-
 function ResultList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
 
@@ -136,49 +119,101 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
 function WorkflowDecisionSummary({
   result,
   fallbackTitle,
+  decisionStatus,
+  updatingDecision,
+  decisionMessage,
+  onDecisionChange,
 }: {
   result: Record<string, unknown>;
   fallbackTitle: string;
+  decisionStatus: DecisionStatus;
+  updatingDecision: boolean;
+  decisionMessage: string;
+  onDecisionChange: (nextDecisionStatus: DecisionStatus) => void;
 }) {
-  const finalReport = getWorkflowFinalReport(result);
-  const nextSteps = Array.isArray(finalReport?.nextSteps)
-    ? (finalReport.nextSteps as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 4)
-    : [];
+  const summary = deriveTaskWorkflowSummary({
+    type: "workflow",
+    title: fallbackTitle,
+    materialText: fallbackTitle,
+    oneLineSummary: "",
+    level: "",
+    decisionStatus,
+    result,
+  });
+  const decisionOption = getDecisionStatusOption(decisionStatus);
 
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-bold text-teal-700">AI 辅助结论 · 最终仍需人工确认</p>
+          <p className="text-xs font-bold text-teal-700">运营跟进面板 · AI 辅助判断，最终人工确认</p>
           <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">
-            {displayText(result.productName, fallbackTitle || "暂无该项")}
+            {summary.productName}
           </h3>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">
-            {displayText(finalReport?.finalVerdict)}
+            {summary.verdictLabel}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-teal-700">
+            {summary.reason}
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:w-[360px]">
-          <div className="rounded-xl border border-white/80 bg-white p-3">
-            <p className="text-xs font-bold text-slate-400">风险判断</p>
-            <p className="mt-1 text-sm font-bold text-slate-800">{getRiskText(finalReport?.riskLevel)}</p>
-          </div>
-          <div className="rounded-xl border border-white/80 bg-white p-3">
-            <p className="text-xs font-bold text-slate-400">新手适配</p>
-            <p className="mt-1 text-sm font-bold text-slate-800">{displayText(finalReport?.beginnerFit)}</p>
-          </div>
+        <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
+          <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>
+            {summary.priorityLabel}
+          </span>
+          <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.riskTone)}>
+            {summary.riskLabel}
+          </span>
+          <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + decisionOption.className}>
+            {decisionOption.shortLabel}
+          </span>
         </div>
       </div>
-      <div className="mt-4 rounded-xl border border-white/80 bg-white p-3">
-        <p className="text-xs font-bold text-slate-400">下一步建议</p>
-        {nextSteps.length ? (
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ["风险等级", summary.riskLabel],
+          ["新手适配", summary.beginnerLabel],
+          ["小单判断", summary.smallBatchLabel],
+          ["当前决策", decisionOption.shortLabel],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-xl border border-white/80 bg-white p-3">
+            <p className="text-xs font-bold text-slate-400">{label}</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="rounded-xl border border-white/80 bg-white p-3">
+          <p className="text-xs font-bold text-slate-400">建议动作</p>
           <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-700">
-            {nextSteps.map((item) => (
+            {summary.nextActions.slice(0, 5).map((item) => (
               <li key={item}>- {item}</li>
             ))}
           </ul>
-        ) : (
-          <p className="mt-2 text-sm text-slate-500">暂无该项</p>
-        )}
+        </div>
+        <div className="rounded-xl border border-white/80 bg-white p-3">
+          <p className="text-xs font-bold text-slate-400">人工决策</p>
+          <select
+            value={decisionStatus}
+            onChange={(event) => onDecisionChange(event.target.value as DecisionStatus)}
+            disabled={updatingDecision}
+            className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {decisionStatusOptions.filter((option) => option.value).map((status) => (
+              <option key={status.value} value={status.value}>{status.shortLabel}</option>
+            ))}
+          </select>
+          <p className="mt-2 text-xs leading-5 text-slate-500">{decisionOption.description}</p>
+          {decisionMessage ? (
+            <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
+        <p className="text-sm font-semibold text-amber-800">人工确认提醒</p>
+        <p className="mt-1 text-xs leading-5 text-amber-700">
+          AI 结果不能直接等于采购、上架或投放决策。请先确认供应商、成本、侵权、认证、物流和平台规则，再手动执行真实动作。
+        </p>
       </div>
     </section>
   );
@@ -607,7 +642,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </div>
 
               {record.type === "workflow" && isRecordValue(record.result) ? (
-                <WorkflowDecisionSummary result={record.result} fallbackTitle={getTitle(record)} />
+                <WorkflowDecisionSummary
+                  result={record.result}
+                  fallbackTitle={getTitle(record)}
+                  decisionStatus={record.decisionStatus}
+                  updatingDecision={updatingDecision}
+                  decisionMessage={decisionMessage}
+                  onDecisionChange={(nextDecisionStatus) => void updateDecisionStatus(nextDecisionStatus)}
+                />
               ) : null}
 
               <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
