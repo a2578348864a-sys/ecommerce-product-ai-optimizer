@@ -271,6 +271,34 @@ function candidateStatusClass(status: CandidateStatus) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function serverCandidateToPoolItem(item: Record<string, unknown>): OpportunityCandidatePoolItem {
+  return {
+    id: String(item.id || ""),
+    name: String(item.name || ""),
+    rawInput: String(item.rawInput || item.name || ""),
+    link: typeof item.link === "string" ? item.link : null,
+    score: typeof item.score === "number" ? item.score : 0,
+    source: String(item.source || "机会雷达"),
+    keyword: String(item.keyword || ""),
+    riskLevel: String(item.riskLevel || ""),
+    riskLabel: String(item.riskLabel || ""),
+    summaryLabel: String(item.summaryLabel || ""),
+    candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
+      ? String(item.status) : "pending") as CandidateStatus,
+    createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
+    updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
+    lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
+  };
+}
+
+function getApiErrorMessage(value: unknown, fallback: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const error = (value as Record<string, unknown>).error;
+  if (!error || typeof error !== "object" || Array.isArray(error)) return fallback;
+  const message = (error as Record<string, unknown>).message;
+  return typeof message === "string" && message.trim().length > 0 ? message.trim() : fallback;
+}
+
 export function OpportunitiesForm() {
   const [rawText, setRawText] = useState("");
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
@@ -293,6 +321,7 @@ export function OpportunitiesForm() {
   const [serverAvailable, setServerAvailable] = useState<boolean | null>(null); // null = checking
   const [importingLocal, setImportingLocal] = useState(false);
   const [importResult, setImportResult] = useState("");
+  const [poolSyncNotice, setPoolSyncNotice] = useState("");
 
   // Phase 4-B: Source importer state
   const [sourceImportUrls, setSourceImportUrls] = useState("");
@@ -325,6 +354,34 @@ export function OpportunitiesForm() {
   // Phase 3-B.1: Try server first, fall back to localStorage
   const hasAccess = isAccessPasswordReady && canRequestWithAccessPassword(isAccessPasswordReady, accessPassword);
 
+  const refreshServerPool = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch("/api/opportunity-candidates?limit=100", {
+      headers: { "x-access-password": accessPassword },
+      signal,
+    });
+    let json: unknown = null;
+    try {
+      json = await res.json();
+    } catch {
+      throw new Error("候选池服务返回异常，请稍后重试。");
+    }
+    if (!res.ok || !json || typeof json !== "object" || Array.isArray(json)) {
+      throw new Error(getApiErrorMessage(json, "候选池读取失败，请稍后重试。"));
+    }
+    const items = (json as Record<string, unknown>).items;
+    if ((json as Record<string, unknown>).ok !== true || !Array.isArray(items)) {
+      throw new Error(getApiErrorMessage(json, "候选池读取失败，请稍后重试。"));
+    }
+
+    const serverItems = items
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item))
+      .map(serverCandidateToPoolItem);
+    setPoolItems(serverItems);
+    setServerAvailable(true);
+    writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, serverItems);
+    return serverItems;
+  }, [accessPassword]);
+
   useEffect(() => {
     if (!hasAccess) {
       // No access password: use localStorage only
@@ -338,42 +395,13 @@ export function OpportunitiesForm() {
     const controller = new AbortController();
     async function loadFromServer() {
       try {
-        const res = await fetch("/api/opportunity-candidates?limit=100", {
-          headers: { "x-access-password": accessPassword },
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error("server unavailable");
-        const json = await res.json();
-        if (!json.ok || !Array.isArray(json.items)) throw new Error("invalid response");
-
-        const serverItems: OpportunityCandidatePoolItem[] = json.items.map(
-          (item: Record<string, unknown>) => ({
-            id: String(item.id || ""),
-            name: String(item.name || ""),
-            rawInput: String(item.rawInput || item.name || ""),
-            link: typeof item.link === "string" ? item.link : null,
-            score: typeof item.score === "number" ? item.score : 0,
-            source: String(item.source || "机会雷达"),
-            keyword: String(item.keyword || ""),
-            riskLevel: String(item.riskLevel || ""),
-            riskLabel: String(item.riskLabel || ""),
-            summaryLabel: String(item.summaryLabel || ""),
-            candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
-              ? String(item.status) : "pending") as CandidateStatus,
-            createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
-            updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
-            lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
-          }),
-        );
-
-        setPoolItems(serverItems);
-        setServerAvailable(true);
-        // Sync to localStorage as backup
-        writeCandidatePool(window.localStorage, serverItems);
-      } catch {
-        // Fall back to localStorage
+        await refreshServerPool(controller.signal);
+        setPoolSyncNotice("");
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setPoolItems(readCandidatePool(window.localStorage));
         setServerAvailable(false);
+        setPoolSyncNotice("候选池服务端读取失败，当前仅显示本浏览器候选池；刷新或重新输入访问密码后会再次尝试连接。");
       } finally {
         setPoolHydrated(true);
       }
@@ -381,7 +409,7 @@ export function OpportunitiesForm() {
 
     void loadFromServer();
     return () => controller.abort();
-  }, [hasAccess, accessPassword]);
+  }, [hasAccess, refreshServerPool]);
 
   useEffect(() => {
     if (!poolHydrated) return;
@@ -423,6 +451,7 @@ export function OpportunitiesForm() {
     setLoading(true);
     setError("");
     setCandidates([]);
+    setPoolSyncNotice("");
     setExpandedIndex(null);
     setCurrentStep("正在启动机会雷达...");
 
@@ -451,13 +480,27 @@ export function OpportunitiesForm() {
       const poolInputs = data.candidates.map(candidateToPoolInput);
       setPoolItems((current) => mergeCandidatesIntoPool(current, poolInputs));
 
-      // Phase 3-B.1: Also write to server
+      // Phase 3-B.1: Also write to server when unlocked. Failures must be visible.
       if (hasAccess && serverAvailable !== false) {
-        fetch("/api/opportunity-candidates", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
-          body: JSON.stringify({ items: poolInputs.map((input) => ({ ...input, name: input.name })) }),
-        }).catch(() => { /* server write failed, already in localStorage */ });
+        try {
+          const saveRes = await fetch("/api/opportunity-candidates", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+            body: JSON.stringify({ items: poolInputs.map((input) => ({ ...input, name: input.name })) }),
+          });
+          const saveJson: unknown = await saveRes.json().catch(() => null);
+          if (!saveRes.ok || !saveJson || typeof saveJson !== "object" || Array.isArray(saveJson) || (saveJson as Record<string, unknown>).ok !== true) {
+            throw new Error(getApiErrorMessage(saveJson, "分析已完成，但候选品保存到服务端失败。"));
+          }
+          await refreshServerPool();
+          setPoolSyncNotice("分析结果已保存到服务端候选池。");
+        } catch (saveError) {
+          setPoolSyncNotice(saveError instanceof Error
+            ? saveError.message
+            : "分析已完成，但候选品保存到服务端失败。请稍后重试。");
+        }
+      } else {
+        setPoolSyncNotice("分析结果当前仅保存在本浏览器候选池，清缓存会丢失。输入访问密码后可使用服务端候选池。");
       }
 
       setLoading(false);
@@ -465,7 +508,7 @@ export function OpportunitiesForm() {
       setError(e instanceof Error ? e.message : "网络请求失败，请检查服务是否在运行。");
       setLoading(false);
     }
-  }, [rawText, accessPassword, isAccessPasswordReady, hasAccess, serverAvailable, overLimit, validCount]);
+  }, [rawText, accessPassword, isAccessPasswordReady, hasAccess, serverAvailable, overLimit, validCount, refreshServerPool]);
 
   // Phase 1E: Crawl public sources
   const handleCrawl = useCallback(async () => {
@@ -601,18 +644,39 @@ export function OpportunitiesForm() {
     };
   }, [poolItems]);
 
-  const setPoolCandidateStatus = useCallback((id: string, status: CandidateStatus) => {
+  const setPoolCandidateStatus = useCallback(async (id: string, status: CandidateStatus) => {
+    const previous = poolItems.find((item) => item.id === id);
     setPoolItems((current) => updateCandidateStatus(current, id, status));
+    setPoolSyncNotice("");
 
-    // Phase 3-B.1: Also PATCH server
-    if (hasAccess && serverAvailable !== false && id && !id.startsWith("opp-")) {
-      fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
+    if (!id) return;
+
+    if (!hasAccess || serverAvailable !== true || id.startsWith("opp-")) {
+      setPoolSyncNotice("当前状态仅保存在本浏览器候选池，清缓存会丢失。连接服务端候选池后可持久保存。");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
         body: JSON.stringify({ status }),
-      }).catch(() => { /* server update failed, already in localStorage */ });
+      });
+      const json: unknown = await res.json().catch(() => null);
+      if (!res.ok || !json || typeof json !== "object" || Array.isArray(json) || (json as Record<string, unknown>).ok !== true) {
+        throw new Error(getApiErrorMessage(json, "候选品状态保存失败，请稍后重试。"));
+      }
+      await refreshServerPool();
+      setPoolSyncNotice("候选品状态已保存到服务端。");
+    } catch (updateError) {
+      if (previous) {
+        setPoolItems((current) => updateCandidateStatus(current, id, previous.candidateStatus));
+      }
+      setPoolSyncNotice(updateError instanceof Error
+        ? updateError.message
+        : "候选品状态保存失败，请稍后重试。");
     }
-  }, [hasAccess, serverAvailable, accessPassword]);
+  }, [poolItems, hasAccess, serverAvailable, accessPassword, refreshServerPool]);
 
   const markCandidateAnalyzed = useCallback((candidate: CandidateData) => {
     const input = candidateToPoolInput(candidate);
@@ -727,6 +791,10 @@ export function OpportunitiesForm() {
       setSourceImportError("请至少勾选一个候选品后再导入。");
       return;
     }
+    if (!hasAccess || serverAvailable !== true) {
+      setSourceImportError("请先在首页输入访问密码并连接服务端候选池，再确认导入。");
+      return;
+    }
 
     setSourceConfirming(true);
     setSourceConfirmResult("");
@@ -779,58 +847,26 @@ export function OpportunitiesForm() {
         headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
         body: JSON.stringify({ items: inputs }),
       });
-      const json = await res.json();
-      if (!json.ok) {
-        setSourceImportError(json.error?.message || "导入失败。");
+      const json: unknown = await res.json().catch(() => null);
+      if (!res.ok || !json || typeof json !== "object" || Array.isArray(json) || (json as Record<string, unknown>).ok !== true) {
+        setSourceImportError(getApiErrorMessage(json, "导入失败，请稍后重试。"));
         return;
       }
-      const created = json.created ?? 0;
-      const updated = json.updated ?? 0;
-      setSourceConfirmResult(`已导入 ${created} 个新候选品，更新 ${updated} 个已有候选品。`);
+      const created = Number((json as Record<string, unknown>).created ?? 0);
+      const updated = Number((json as Record<string, unknown>).updated ?? 0);
 
-      // Refresh pool from server
-      setPoolItems((current) => {
-        const serverIds = new Set((json.items as Array<{ id: string }> || []).map((item: { id: string }) => item.id));
-        return current.filter((item) => !serverIds.has(item.id));
-      });
-      // Trigger server refresh
-      if (hasAccess && serverAvailable !== false) {
-        fetch(`/api/opportunity-candidates?limit=100`, {
-          headers: { "x-access-password": accessPassword },
-        }).then((r) => r.json()).then((data) => {
-          if (data.ok && Array.isArray(data.items)) {
-            const serverItems = data.items.map((item: Record<string, unknown>) => ({
-              id: String(item.id || ""),
-              name: String(item.name || ""),
-              rawInput: String(item.rawInput || ""),
-              link: typeof item.link === "string" ? item.link : null,
-              score: typeof item.score === "number" ? item.score : 0,
-              source: String(item.source || ""),
-              keyword: String(item.keyword || ""),
-              riskLevel: String(item.riskLevel || ""),
-              riskLabel: String(item.riskLabel || ""),
-              summaryLabel: String(item.summaryLabel || ""),
-              candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status)) ? String(item.status) : "pending") as CandidateStatus,
-              createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
-              updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
-              lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
-            }));
-            setPoolItems(serverItems);
-            writeCandidatePool(window.localStorage, serverItems);
-          }
-        }).catch(() => {});
+      try {
+        await refreshServerPool();
+        setSourceConfirmResult(`已导入候选池，可在下方候选池查看。新增 ${created} 个，更新 ${updated} 个。`);
+      } catch {
+        setSourceConfirmResult("已导入服务端，但刷新候选池失败，请手动刷新页面查看。");
       }
-
-      // Clear source import state
-      setSourceImportCandidates([]);
-      setSourceImportChecked(new Set());
-      setSourceImportSummary(null);
     } catch (e) {
       setSourceImportError(e instanceof Error ? e.message : "导入失败。");
     } finally {
       setSourceConfirming(false);
     }
-  }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable]);
+  }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable, refreshServerPool]);
 
   // Score helper
   const scoreLabel = (s: number) => s >= 80 ? "优先测试" : s >= 65 ? "可小单验证" : s >= 50 ? "谨慎观察" : "暂不建议";
@@ -909,6 +945,15 @@ export function OpportunitiesForm() {
                   ? "候选品保存在服务端，换浏览器、清缓存不丢失。本浏览器候选池仍作为离线备份。"
                   : "输入访问密码后自动切换到服务端候选池。当前数据仅保存在本浏览器，清缓存会丢失。"}
               </p>
+            </div>
+          ) : null}
+
+          {poolSyncNotice ? (
+            <div className={"rounded-xl border p-3 text-sm " + (serverAvailable === true
+              ? "border-teal-200 bg-teal-50 text-teal-800"
+              : "border-amber-200 bg-amber-50 text-amber-800")}
+            >
+              {poolSyncNotice}
             </div>
           ) : null}
 
@@ -1064,6 +1109,7 @@ export function OpportunitiesForm() {
                     setSourceImportSummary(null);
                     setSourceImportError("");
                     setSourceImportWarnings([]);
+                    setSourceConfirmResult("");
                   }}
                   className="linear-button inline-flex h-10 w-full items-center justify-center text-sm"
                 >
@@ -1091,12 +1137,17 @@ export function OpportunitiesForm() {
           {sourceImportCandidates.length > 0 && sourceImportSummary && (
             <div className="mt-4">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <p className="text-sm font-semibold text-slate-700">
-                  已提取 {sourceImportCandidates.length} 个候选品
-                  <span className="ml-2 text-xs text-slate-400">
-                    ({sourceImportSummary.okUrls}/{sourceImportSummary.totalUrls} 个 URL 成功)
-                  </span>
-                </p>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-700">
+                    已提取 {sourceImportCandidates.length} 个候选品
+                    <span className="ml-2 text-xs text-slate-400">
+                      ({sourceImportSummary.okUrls}/{sourceImportSummary.totalUrls} 个 URL 成功)
+                    </span>
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    以下结果只是本次抓取的临时预览，刷新页面会清空。请勾选候选并点击“确认导入候选池”，导入后才会保存到服务端候选池。
+                  </p>
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -1108,7 +1159,7 @@ export function OpportunitiesForm() {
                   <button
                     type="button"
                     onClick={handleConfirmImport}
-                    disabled={sourceConfirming || sourceImportChecked.size === 0}
+                    disabled={sourceConfirming || sourceImportChecked.size === 0 || !hasAccess || serverAvailable !== true}
                     className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
                   >
                     {sourceConfirming ? (
@@ -1200,35 +1251,10 @@ export function OpportunitiesForm() {
                       const json = await res.json();
                       if (json.ok) {
                         setImportResult(`已导入 ${json.imported} 个候选品`);
-                        // Refresh from server
-                        const refresh = await fetch("/api/opportunity-candidates?limit=100", {
-                          headers: { "x-access-password": accessPassword },
-                        });
-                        if (refresh.ok) {
-                          const refreshJson = await refresh.json();
-                          if (refreshJson.ok && Array.isArray(refreshJson.items)) {
-                            const serverItems = refreshJson.items.map(
-                              (item: Record<string, unknown>) => ({
-                                id: String(item.id || ""),
-                                name: String(item.name || ""),
-                                rawInput: String(item.rawInput || item.name || ""),
-                                link: typeof item.link === "string" ? item.link : null,
-                                score: typeof item.score === "number" ? item.score : 0,
-                                source: String(item.source || "机会雷达"),
-                                keyword: String(item.keyword || ""),
-                                riskLevel: String(item.riskLevel || ""),
-                                riskLabel: String(item.riskLabel || ""),
-                                summaryLabel: String(item.summaryLabel || ""),
-                                candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
-                                  ? String(item.status) : "pending") as CandidateStatus,
-                                createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
-                                updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
-                                lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
-                              }),
-                            );
-                            setPoolItems(serverItems);
-                            writeCandidatePool(window.localStorage, serverItems);
-                          }
+                        try {
+                          await refreshServerPool();
+                        } catch {
+                          setImportResult("已导入服务端，但刷新候选池失败，请手动刷新页面查看。");
                         }
                       } else {
                         setImportResult("导入失败，请重试。");
