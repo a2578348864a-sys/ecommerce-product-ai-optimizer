@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 
 export const runtime = "nodejs";
 
@@ -241,6 +242,8 @@ export async function POST(request: NextRequest) {
     },
     ...(batchMeta ? { batchMeta } : {}),
     ...(sourceMeta ? { sourceMeta } : {}),
+    // Phase 4-E.2.1: initialize product lifecycle
+    productLifecycle: createInitialProductLifecycle(),
   };
 
   try {

@@ -16,7 +16,8 @@ import {
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
-import { deriveTaskWorkflowSummary, getTaskSourceMeta, deriveWorkflowLifecycleStatus, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveDisplayLifecycle, getAvailableTransitions, getLifecycleStatusLabel, getLifecycleStatusDescription, getLifecycleNextAction, transitionLifecycle, type LifecycleStatus, type ProductLifecycle } from "@/lib/workflowLifecycle";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -123,14 +124,18 @@ function WorkflowDecisionSummary({
   decisionStatus,
   updatingDecision,
   decisionMessage,
+  taskId,
   onDecisionChange,
+  onLifecycleUpdated,
 }: {
   result: Record<string, unknown>;
   fallbackTitle: string;
   decisionStatus: DecisionStatus;
   updatingDecision: boolean;
   decisionMessage: string;
+  taskId: string;
   onDecisionChange: (nextDecisionStatus: DecisionStatus) => void;
+  onLifecycleUpdated: () => void;
 }) {
   const summary = deriveTaskWorkflowSummary({
     type: "workflow",
@@ -145,7 +150,9 @@ function WorkflowDecisionSummary({
   const decisionOption = getDecisionStatusOption(decisionStatus);
   // Phase 4-E.1: derive lifecycle status from review state + decision
   const reviewState = isRecordValue(result) && isRecordValue(result.reviewState) ? result.reviewState : null;
-  const lifecycleStatus = deriveWorkflowLifecycleStatus(result as Record<string, unknown> | null, reviewState, decisionStatus);
+  // Phase 4-E.2.1: Use persisted productLifecycle, fallback to derived
+  const productLifecycle = deriveDisplayLifecycle(result, reviewState, decisionStatus);
+  const isWorkflow = true; // only called for workflow tasks
 
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
@@ -181,18 +188,10 @@ function WorkflowDecisionSummary({
               )}
             </div>
           ) : null}
-          {/* Phase 4-E.1: Lifecycle status */}
-          <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
-            lifecycleStatus.tone === "amber" ? "border-amber-200 bg-amber-50/70 text-amber-800" :
-            lifecycleStatus.tone === "emerald" ? "border-emerald-200 bg-emerald-50/70 text-emerald-800" :
-            lifecycleStatus.tone === "teal" ? "border-teal-200 bg-teal-50/70 text-teal-800" :
-            lifecycleStatus.tone === "rose" ? "border-rose-200 bg-rose-50/70 text-rose-800" :
-            "border-slate-200 bg-slate-50/70 text-slate-600"
-          }`}>
-            <p className="font-semibold">状态：{lifecycleStatus.label}</p>
-            <p className="mt-0.5">{lifecycleStatus.description}</p>
-            <p className="mt-1 font-medium">下一步：{lifecycleStatus.nextAction}</p>
-          </div>
+          {/* Phase 4-E.2.1: Operation decision panel */}
+          {isWorkflow && productLifecycle && (
+            <OperationDecisionPanel taskId={taskId} lifecycle={productLifecycle} onUpdated={onLifecycleUpdated} />
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
           <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>
@@ -464,6 +463,135 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
 
 /* ── Main component ───────────────────────────── */
 
+/* ── Phase 4-E.2.1: Operation Decision Panel ───── */
+
+function OperationDecisionPanel({ taskId, lifecycle, onUpdated }: { taskId: string; lifecycle: ProductLifecycle; onUpdated: () => void }) {
+  const [accessPassword] = useAccessPassword();
+  const [updating, setUpdating] = useState(false);
+  const [showForm, setShowForm] = useState<LifecycleStatus | null>(null);
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonText, setReasonText] = useState("");
+  const [error, setError] = useState("");
+
+  const availableTransitions = getAvailableTransitions(lifecycle.status);
+  const isAbandoned = lifecycle.status === "abandoned";
+
+  async function handleTransition(to: LifecycleStatus) {
+    setUpdating(true);
+    setError("");
+    try {
+      const res = await fetch('/api/tasks/' + encodeURIComponent(taskId) + '/lifecycle', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-access-password': accessPassword },
+        body: JSON.stringify({ status: to, reasonCode: reasonCode || undefined, reasonText: reasonText || undefined }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error?.message || '更新失败'); setUpdating(false); return; }
+      setShowForm(null); setReasonCode(''); setReasonText('');
+      onUpdated();
+    } catch { setError('网络错误，请稍后重试。'); }
+    setUpdating(false);
+  }
+
+  const st = lifecycle.status;
+  const toneC: Record<string, string> = {
+    teal: 'border-teal-200 bg-teal-50/70 text-teal-800',
+    amber: 'border-amber-200 bg-amber-50/70 text-amber-800',
+    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-800',
+    slate: 'border-slate-200 bg-slate-50/70 text-slate-600',
+  };
+  const tone = st === 'analyzed' ? 'teal' : st === 'watching' ? 'amber' : st === 'ready_to_test' ? 'emerald' : st === 'abandoned' ? 'slate' : 'slate';
+
+  return (
+    <div className={'mt-2 rounded-xl border px-3 py-2 text-xs ' + (toneC[tone] || toneC.slate)}>
+      <div className="flex items-center gap-2">
+        <span className={'rounded-full border px-2 py-0.5 text-[11px] font-semibold ' + (toneC[tone] || toneC.slate)}>
+          {getLifecycleStatusLabel(lifecycle.status)}
+        </span>
+        <span className="text-xs opacity-70">- 人工决策</span>
+      </div>
+      <p className="mt-1.5">{getLifecycleStatusDescription(lifecycle.status)}</p>
+      <p className="mt-1 font-medium">下一步：{getLifecycleNextAction(lifecycle.status)}</p>
+
+      {!isAbandoned && availableTransitions.length > 0 && !showForm && (
+        <div className="mt-2 flex flex-wrap gap-1.5 border-t border-slate-200 pt-2">
+          {availableTransitions.map((t) => (
+            <button key={t} type="button" onClick={() => setShowForm(t)} disabled={updating}
+              className={'rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ' + (
+                t === 'ready_to_test' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' :
+                t === 'watching' ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' :
+                t === 'abandoned' ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100' :
+                'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              )}>
+              {getLifecycleStatusLabel(t)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isAbandoned && <p className="mt-2 text-slate-400">该候选已停止推进，不再显示操作按钮。</p>}
+
+      {showForm && (
+        <div className="mt-2 border-t border-slate-200 pt-2">
+          <p className="mb-1.5 font-semibold">标记为「{getLifecycleStatusLabel(showForm)}」</p>
+          <select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs">
+            <option value="">选择原因（可选）</option>
+            {showForm === 'abandoned' ? (<>
+              <option value="high_compliance_risk">合规/认证风险高</option>
+              <option value="ip_risk">品牌/IP/侵权风险</option>
+              <option value="low_margin">利润空间不足</option>
+              <option value="high_competition">竞争过强</option>
+              <option value="supply_uncertain">供应链不稳定</option>
+              <option value="logistics_risk">物流/售后风险高</option>
+              <option value="not_beginner_friendly">不适合新手</option>
+              <option value="weak_evidence">来源证据不足</option>
+            </>) : showForm === 'watching' ? (<>
+              <option value="weak_evidence">来源证据不足</option>
+              <option value="supply_uncertain">供应链信息不足</option>
+              <option value="high_competition">竞争情况需观察</option>
+            </>) : (
+              <option value="manual_ready_to_test">人工判断可进入测款准备</option>
+            )}
+            <option value="other">其他</option>
+          </select>
+          {(reasonCode === 'other' || reasonCode) && (
+            <textarea value={reasonText} onChange={(e) => setReasonText(e.target.value.slice(0, 300))}
+              placeholder={reasonCode === 'other' ? '请填写具体原因（必填）' : '补充说明（可选，最多300字）'}
+              className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs" rows={2} maxLength={300} />
+          )}
+          {error && <p className="mt-1 text-rose-600">{error}</p>}
+          <div className="mt-2 flex gap-1.5">
+            <button type="button" onClick={() => handleTransition(showForm)}
+              disabled={updating || (reasonCode === 'other' && !reasonText.trim())}
+              className="rounded-lg bg-teal-600 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-50">
+              {updating ? '提交中...' : '确认'}
+            </button>
+            <button type="button" onClick={() => { setShowForm(null); setReasonCode(''); setReasonText(''); setError(''); }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">取消</button>
+          </div>
+        </div>
+      )}
+
+      {lifecycle.history.length > 0 && (
+        <details className="mt-2 border-t border-slate-200 pt-2">
+          <summary className="cursor-pointer text-xs text-slate-400 select-none">状态历史（{lifecycle.history.length} 条）</summary>
+          <div className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+            {[...lifecycle.history].reverse().map((h, i) => (
+              <div key={i} className="text-[10px] text-slate-400">
+                <span>{new Date(h.at).toLocaleString('zh-CN')}</span>
+                <span className="mx-1">{h.by === 'system' ? 'SYS' : 'USER'}</span>
+                <span>{h.from ? getLifecycleStatusLabel(h.from as LifecycleStatus) + ' -> ' : ''}{getLifecycleStatusLabel(h.to as LifecycleStatus)}</span>
+                {h.reasonText && <span className="ml-1 text-slate-300">- {h.reasonText.slice(0, 40)}</span>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export function TaskRecordDetail({ id }: { id: string }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
@@ -472,6 +600,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [updatingDecision, setUpdatingDecision] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
@@ -521,7 +650,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, accessPassword, isAccessPasswordReady]);
+  }, [id, accessPassword, isAccessPasswordReady, refreshKey]);
 
   const resultJson = useMemo(() => {
     if (!record) return "";
@@ -690,7 +819,9 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   decisionStatus={record.decisionStatus}
                   updatingDecision={updatingDecision}
                   decisionMessage={decisionMessage}
+                  taskId={record.id}
                   onDecisionChange={(nextDecisionStatus) => void updateDecisionStatus(nextDecisionStatus)}
+                  onLifecycleUpdated={() => setRefreshKey((k) => k + 1)}
                 />
               ) : null}
 
