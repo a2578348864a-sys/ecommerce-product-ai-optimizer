@@ -311,6 +311,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [progressExpanded, setProgressExpanded] = useState(false);
+  const [detailExpanded, setDetailExpanded] = useState(false);
   const [runReady, setRunReady] = useState(false);
   const [runRestored, setRunRestored] = useState(false);
   const [runNotice, setRunNotice] = useState("");
@@ -432,6 +433,7 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
     setSavingToTasks(false);
     setReviewConfirmed({});
     setProgressExpanded(false);
+    setDetailExpanded(false);
     setRunRestored(false);
     setRunNotice("");
     lastAutoScrolledWorkflowId.current = null;
@@ -750,190 +752,120 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
             )}
           </section>
 
-          {hasResult && result && (
-            <section className="surface-card border-teal-200 bg-teal-50/70 p-4 sm:p-5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-teal-800">
-                    ✅ 分析完成：{result.productName}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-teal-700">
-                    已生成最终报告和人工复核清单，请先查看最终报告，再展开各步骤复核。
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={scrollToFinalReport}
-                    className="linear-button-primary inline-flex h-10 items-center justify-center px-3 text-xs font-semibold"
-                  >
-                    查看最终报告
-                  </button>
-                  <button
-                    type="button"
-                    onClick={scrollToReview}
-                    className="linear-button-soft inline-flex h-10 items-center justify-center px-3 text-xs font-semibold"
-                  >
-                    查看人工复核
-                  </button>
-                  <button
-                    type="button"
-                    onClick={copyMarkdown}
-                    className="linear-button-soft inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
-                  >
-                    <Copy className="size-3.5" />
-                    复制报告
-                  </button>
-                  {savedTaskId ? (
-                    <Link
-                      href={`/tasks/${savedTaskId}`}
-                      className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
-                    >
-                      <CheckCircle2 className="size-3.5" />
-                      查看任务
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={saveToTasks}
-                      disabled={savingToTasks}
-                      className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold disabled:opacity-50"
-                    >
-                      {savingToTasks ? (
-                        <>
-                          <Loader2 className="size-3.5 animate-spin" />
-                          保存中…
-                        </>
-                      ) : (
-                        <>
-                          <Save className="size-3.5" />
-                          保存到任务中心
-                        </>
-                      )}
-                    </button>
-                  )}
+          {/* ═══ Decision summary card — first thing user sees ═══ */}
+          {hasResult && report && (
+            <section className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">分析完成 · {result?.productName}</p>
+
+              {/* Big verdict */}
+              <div className="mt-3">
+                <h2 className="text-xl font-bold text-slate-950 sm:text-2xl">
+                  {report.finalVerdict}
+                </h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className={`rounded-full px-3 py-1 text-sm font-semibold ${riskLevelLabel(report.riskLevel).cls}`}>
+                    风险{riskLevelLabel(report.riskLevel).text}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+                    新手{report.beginnerFit}
+                  </span>
+                  <span className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                    report.canTestSmallBatch ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {report.canTestSmallBatch ? "可小单测试" : "建议先评估"}
+                  </span>
                 </div>
               </div>
-              {saveError && (
-                <p className="mt-2 text-xs text-rose-600">{saveError}</p>
-              )}
+
+              {/* Primary action */}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {savedTaskId ? (
+                  <Link href={`/tasks/${savedTaskId}`} className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold">
+                    <CheckCircle2 className="size-4" /> 已保存，查看任务详情
+                  </Link>
+                ) : (
+                  <button type="button" onClick={saveToTasks} disabled={savingToTasks}
+                    className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold disabled:opacity-50">
+                    {savingToTasks ? <><Loader2 className="size-4 animate-spin" /> 保存中…</> : <><Save className="size-4" /> 保存到任务中心</>}
+                  </button>
+                )}
+                <button type="button" onClick={() => setDetailExpanded(!detailExpanded)}
+                  className="linear-button inline-flex h-11 items-center gap-2 px-4 text-sm font-semibold">
+                  {detailExpanded ? "收起详细报告 ▲" : "查看详细报告 ▼"}
+                </button>
+                <Link href="/tasks" className="linear-button-soft inline-flex h-11 items-center gap-2 px-4 text-sm font-semibold">
+                  <ClipboardList className="size-4" /> 任务中心
+                </Link>
+                <button type="button" onClick={copyMarkdown}
+                  className="linear-button-soft inline-flex h-9 items-center gap-1.5 px-3 text-xs font-semibold">
+                  <Copy className="size-3.5" /> 复制
+                </button>
+                <button type="button" onClick={exportMarkdown}
+                  className="linear-button-soft inline-flex h-9 items-center gap-1.5 px-3 text-xs font-semibold">
+                  <Download className="size-3.5" /> 导出
+                </button>
+                <button type="button" onClick={resetRun}
+                  className="linear-button-soft inline-flex h-9 items-center px-3 text-xs font-semibold">
+                  重新分析
+                </button>
+              </div>
+              {saveError && <p className="mt-2 text-xs text-rose-600">{saveError}</p>}
               {savedTaskId && (
                 <p className={`mt-2 text-xs font-semibold ${allReviewed ? "text-emerald-600" : "text-amber-600"}`}>
                   {allReviewed ? "已保存为已复核任务" : "已保存为待复核任务"}
                 </p>
               )}
+
+              {/* Next steps — right under decision */}
+              {report.nextSteps.length > 0 && (
+                <div className="mt-5 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
+                  <p className="text-sm font-bold text-teal-800">下一步做什么</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {report.nextSteps.map((item, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm leading-6 text-slate-700">
+                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-teal-500" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </section>
           )}
 
-          {/* Final report */}
-          {hasResult && report && (
+          {/* ═══ Detailed report — collapsible ═══ */}
+          {hasResult && report && detailExpanded && (
             <section ref={finalReportRef} className="surface-card p-4 sm:p-5 scroll-mt-4">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-950">最终选品报告</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    先看结论、风险等级、是否可小单测试，再进入人工复核区逐项确认。
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={copyMarkdown}
-                    className="linear-button-soft inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
-                  >
-                    <Copy className="size-3.5" />
-                    复制报告
-                  </button>
-                  <button
-                    type="button"
-                    onClick={exportMarkdown}
-                    className="linear-button-soft inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
-                  >
-                    <Download className="size-3.5" />
-                    导出 Markdown
-                  </button>
-                  {savedTaskId ? (
-                    <Link
-                      href={`/tasks/${savedTaskId}`}
-                      className="linear-button-primary inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
-                    >
-                      <CheckCircle2 className="size-3.5" />
-                      已保存，查看任务详情
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={saveToTasks}
-                      disabled={savingToTasks}
-                      className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold disabled:opacity-50"
-                    >
-                      {savingToTasks ? (
-                        <>
-                          <Loader2 className="size-3.5 animate-spin" />
-                          保存中…
-                        </>
-                      ) : (
-                        <>
-                          <Save className="size-3.5" />
-                          保存到任务中心
-                        </>
-                      )}
-                    </button>
-                  )}
-                  <Link
-                    href="/tasks"
-                    className="linear-button inline-flex h-10 items-center gap-2 px-3 text-xs font-semibold"
-                  >
-                    <ClipboardList className="size-3.5" />
-                    任务中心
-                  </Link>
-                </div>
-                {saveError && (
-                  <p className="mt-2 text-xs text-rose-600">{saveError}</p>
-                )}
-              </div>
+              <h2 className="text-lg font-semibold text-slate-950">详细分析依据</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                AI 对货源、风险、小白结论和上架文案的完整分析。结论仅供初筛参考，关键决策需人工确认。
+              </p>
 
-              {/* Review gate banner */}
-              {!allReviewed && (
-                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                  ⚠️ AI 初步结论，尚未完成人工确认。请在下方人工复核区逐项确认后，再用于采购/上架决策。
-                </div>
-              )}
-
-              {/* Verdict banner */}
-              <div className={`rounded-2xl border p-4 ${
-                report.riskLevel === "red"
-                  ? "border-rose-200 bg-rose-50"
-                  : report.riskLevel === "green"
-                    ? "border-emerald-200 bg-emerald-50"
-                    : "border-amber-200 bg-amber-50"
+              {/* Verdict detail */}
+              <div className={`mt-4 rounded-2xl border p-4 ${
+                report.riskLevel === "red" ? "border-rose-200 bg-rose-50" :
+                report.riskLevel === "green" ? "border-emerald-200 bg-emerald-50" :
+                "border-amber-200 bg-amber-50"
               }`}>
                 <div className="flex items-start gap-3">
-                  <span className={`mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl ${
+                  <span className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl ${
                     report.riskLevel === "red" ? "bg-rose-100 text-rose-700" :
                     report.riskLevel === "green" ? "bg-emerald-100 text-emerald-700" :
                     "bg-amber-100 text-amber-700"
                   }`}>
-                    {report.riskLevel === "red" ? <ShieldAlert className="size-5" /> :
-                     report.riskLevel === "green" ? <CheckCircle2 className="size-5" /> :
-                     <AlertCircle className="size-5" />}
+                    {report.riskLevel === "red" ? <ShieldAlert className="size-4" /> :
+                     report.riskLevel === "green" ? <CheckCircle2 className="size-4" /> :
+                     <AlertCircle className="size-4" />}
                   </span>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">结论</p>
-                    <h3 className="mt-1 text-base font-bold text-slate-950">{report.finalVerdict}</h3>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${riskLevelLabel(report.riskLevel).cls}`}>
-                        风险等级：{riskLevelLabel(report.riskLevel).text}
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">AI 结论</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{report.finalVerdict}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${riskLevelLabel(report.riskLevel).cls}`}>
+                        风险{riskLevelLabel(report.riskLevel).text}
                       </span>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
-                        新手适配：{report.beginnerFit}
-                      </span>
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        report.canTestSmallBatch
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}>
-                        {report.canTestSmallBatch ? "可小单测试" : "建议先完成合规评估"}
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        新手{report.beginnerFit}
                       </span>
                     </div>
                   </div>
@@ -941,164 +873,95 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
               </div>
 
               {/* Must check before listing */}
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50/60 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <ShieldAlert className="size-4 text-rose-600" />
-                  <h3 className="text-sm font-bold text-slate-950">上线前必须检查</h3>
+              {report.mustCheckBeforeListing.length > 0 && (
+                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3">
+                  <p className="text-sm font-bold text-slate-950 mb-2">上线前必须检查</p>
+                  <ul className="space-y-1">
+                    {report.mustCheckBeforeListing.map((item, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-sm text-slate-700">
+                        <AlertCircle className="mt-0.5 size-3 shrink-0 text-rose-400" /> {item}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul className="space-y-1.5">
-                  {report.mustCheckBeforeListing.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                      <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-rose-400" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Next steps */}
-              <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Lightbulb className="size-4 text-teal-600" />
-                  <h3 className="text-sm font-bold text-slate-950">下一步动作</h3>
-                </div>
-                <ul className="space-y-1.5">
-                  {report.nextSteps.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-teal-400" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Manual review checklist */}
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <ClipboardList className="size-4 text-amber-600" />
-                  <h3 className="text-sm font-bold text-slate-950">人工确认清单</h3>
-                </div>
-                <ul className="space-y-1.5">
-                  {report.manualReviewChecklist.map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-400" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              )}
 
               {/* Cost guard */}
-              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
                 <p className="text-xs text-slate-500">
-                  AI 调用统计：{result.costGuard.aiStepsCompleted}/{result.costGuard.aiStepsRequested} 成功
-                  {result.costGuard.fallbackSteps > 0 ? `，${result.costGuard.fallbackSteps} 使用兜底` : ""}
-                  <span className="mx-2">·</span>
-                  工作流 ID：{result.workflowId}
+                  AI 调用：{result?.costGuard.aiStepsCompleted}/{result?.costGuard.aiStepsRequested} 成功
+                  {result?.costGuard.fallbackSteps ? `，${result.costGuard.fallbackSteps} 兜底` : ""}
+                  <span className="mx-2">·</span> {result?.workflowId}
                 </p>
               </div>
             </section>
           )}
 
-          {/* ── Review section ── */}
+          {/* ═══ Step review: "上线前人工确认" ═══ */}
           {hasResult && result && (
             <section ref={reviewRef} className="surface-card p-4 sm:p-5 scroll-mt-4">
-              <h2 className="mb-1 text-lg font-semibold text-slate-950">人工复核区</h2>
-              <p className="mb-4 text-sm text-slate-500">
-                以下是 AI 每一步的详细依据，请逐项展开确认。AI 结论不能替代人工采购和合规判断。
+              <h2 className="text-lg font-semibold text-slate-950">上线前人工确认</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                以下 4 项是 AI 每一步的判断依据。逐项展开确认后，结论才能作为采购/上架参考。
               </p>
-              <div className="space-y-3">
+
+              {!allReviewed && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                  还不能作为最终采购/上架依据，请先完成上线前确认。
+                </div>
+              )}
+
+              <div className="mt-4 space-y-3">
                 {reviewStepKeys.map((key) => (
-                  <StepReviewCard
-                    key={key}
-                    stepKey={key}
-                    result={result}
-                    confirmed={!!reviewConfirmed[key]}
-                    onToggle={() => toggleReviewConfirm(key)}
-                  />
+                  <StepReviewCard key={key} stepKey={key} result={result}
+                    confirmed={!!reviewConfirmed[key]} onToggle={() => toggleReviewConfirm(key)} />
                 ))}
               </div>
+
               <div className={`mt-4 rounded-xl border p-3 text-sm ${allReviewed ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
                 {allReviewed
-                  ? "✓ 4/4 已完成人工确认，可作为下一步测试参考"
-                  : "⚠️ 请完成 4 个步骤人工确认后，再把结论用于采购/上架决策"}
+                  ? "✓ 4/4 已完成确认，可作为下一步测试参考"
+                  : `已完成 ${Object.values(reviewConfirmed).filter(Boolean).length}/4 项确认`}
               </div>
             </section>
           )}
 
-          {/* Progress stepper */}
+          {/* ═══ Progress — at the bottom, collapsed when complete ═══ */}
           {(running || hasResult) && (
             <section className="surface-card p-4 sm:p-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-950">分析进度</h2>
-                  {hasResult && result ? (
-                    <p className="mt-1 text-sm text-slate-500">{progressSummaryText}</p>
-                  ) : (
-                    <p className="mt-1 text-sm text-slate-500">正在按步骤生成报告，请稍候。</p>
-                  )}
-                </div>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-500">分析过程记录</h2>
                 {hasResult && !running && (
-                  <button
-                    type="button"
-                    onClick={() => setProgressExpanded((expanded) => !expanded)}
-                    className="linear-button-soft inline-flex h-9 items-center justify-center px-3 text-xs font-semibold"
-                  >
-                    {progressExpanded ? "收起完整进度" : "展开完整进度"}
+                  <button type="button" onClick={() => setProgressExpanded(!progressExpanded)}
+                    className="text-xs font-semibold text-slate-400 hover:text-teal-600">
+                    {progressExpanded ? "收起 ▲" : "展开 ▼"}
                   </button>
                 )}
               </div>
 
               {hasResult && !running && !progressExpanded ? (
-                <div className={`mt-3 flex items-center gap-2 rounded-xl border p-3 text-sm ${
-                  progressHasIssues
-                    ? "border-amber-200 bg-amber-50 text-amber-700"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                }`}>
-                  {progressHasIssues ? <AlertCircle className="size-4 shrink-0" /> : <CheckCircle2 className="size-4 shrink-0" />}
-                  <span className="font-semibold">{progressSummaryText}</span>
-                  <span className="text-xs opacity-80">完整过程已折叠，最终报告和人工复核在上方。</span>
-                </div>
+                <p className="mt-1 text-xs text-slate-400">{progressSummaryText} · 过程已折叠</p>
               ) : (
-                <div className="mt-4 space-y-2">
+                <div className="mt-3 space-y-2">
                   {STEPS.map((step) => {
                     const status = stepStatuses[step.key] || "pending";
                     return (
-                      <div
-                        key={step.key}
-                        className={`flex items-start gap-3 rounded-xl border p-3 ${
-                          status === "running"
-                            ? "border-indigo-200 bg-indigo-50/60"
-                            : status === "fallback"
-                              ? "border-amber-200 bg-amber-50/60"
-                              : status === "failed"
-                                ? "border-rose-200 bg-rose-50/60"
-                                : status === "completed"
-                                  ? "border-emerald-100 bg-emerald-50/40"
-                                  : "border-slate-100 bg-slate-50/40"
-                        }`}
-                      >
-                        <span className="mt-0.5 shrink-0">
-                          <StepIcon status={status} />
-                        </span>
+                      <div key={step.key} className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs ${
+                        status === "running" ? "border-indigo-200 bg-indigo-50/60" :
+                        status === "fallback" ? "border-amber-200 bg-amber-50/60" :
+                        status === "failed" ? "border-rose-200 bg-rose-50/60" :
+                        status === "completed" ? "border-emerald-100 bg-emerald-50/40" :
+                        "border-slate-100 bg-slate-50/40"
+                      }`}>
+                        <span className="mt-0.5 shrink-0"><StepIcon status={status} /></span>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-900">{step.label}</span>
-                            <StepStatusLabel status={status} />
-                          </div>
-                          <p className="mt-0.5 text-xs text-slate-500">{step.description}</p>
+                          <span className="font-semibold text-slate-700">{step.label}</span>
+                          <StepStatusLabel status={status} />
                           {status !== "pending" && result?.steps.find((s) => s.key === step.key)?.summary && (
-                            <p className="mt-1 text-xs leading-5 text-slate-600 line-clamp-2">
+                            <p className="mt-0.5 text-slate-500 line-clamp-1">
                               {result.steps.find((s) => s.key === step.key)?.summary}
                             </p>
                           )}
-                          {result?.steps.find((s) => s.key === step.key)?.warnings?.length ? (
-                            <div className="mt-1">
-                              {result.steps.find((s) => s.key === step.key)!.warnings.map((w, i) => (
-                                <p key={i} className="text-xs text-amber-600">{w}</p>
-                              ))}
-                            </div>
-                          ) : null}
                         </div>
                       </div>
                     );
