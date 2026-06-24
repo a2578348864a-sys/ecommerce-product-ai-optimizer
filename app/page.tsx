@@ -17,9 +17,9 @@ const primaryEntries = [
   {
     eyebrow: "我已有产品 / 清单",
     title: "分析产品",
-    description: "已有商品或清单时，进行选品立项、风险判断和初步上架准备。",
-    href: "/workflow/batch",
-    cta: "开始分析",
+    description: "单品一键分析：输入一个商品，完成货源、风险、结论、上架准备全流程分析。批量分析最多支持 3 个商品清单。",
+    href: "/workflow",
+    cta: "单品分析",
     icon: ListChecks,
     tone: "indigo",
   },

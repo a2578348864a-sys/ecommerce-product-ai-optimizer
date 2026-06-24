@@ -7,6 +7,7 @@ import {
   House,
   ListChecks,
   Package,
+  Search,
   Sparkles,
   Target,
 } from "lucide-react";
@@ -14,7 +15,8 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
   { label: "找机会", href: "/opportunities", icon: Target },
-  { label: "分析产品", href: "/workflow/batch", icon: ListChecks },
+  { label: "单品分析", href: "/workflow", icon: Search },
+  { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
   { label: "任务中心", href: "/tasks", icon: History },
 ] as const;
 

@@ -19,6 +19,7 @@ import {
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useAccessPassword, canRequestWithAccessPassword } from "@/lib/client/accessPassword";
+import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -262,6 +263,34 @@ function StepReviewCard({
   );
 }
 
+/* ── Persistence ───────────────────────────────── */
+
+const WORKFLOW_SINGLE_RUN_KEY = "qx:workflow-single-run:v1";
+const WORKFLOW_SINGLE_RUN_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const WORKFLOW_SINGLE_RUN_VERSION = 1;
+
+type WorkflowSingleRun = {
+  version: number;
+  runId: string;
+  completedAt: number;
+  productName: string;
+  result: ApiWorkflowResult | null;
+  stepStatuses: Record<StepKey, StepStatus>;
+  savedTaskId: string | null;
+  reviewConfirmed: Record<string, boolean>;
+};
+
+const emptyRun: WorkflowSingleRun = {
+  version: WORKFLOW_SINGLE_RUN_VERSION,
+  runId: "",
+  completedAt: 0,
+  productName: "",
+  result: null,
+  stepStatuses: {} as Record<StepKey, StepStatus>,
+  savedTaskId: null,
+  reviewConfirmed: {},
+};
+
 /* ── Main component ────────────────────────────── */
 
 export function WorkflowClient({ initialProductName }: { initialProductName?: string }) {
@@ -282,6 +311,9 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
   const [savingToTasks, setSavingToTasks] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [progressExpanded, setProgressExpanded] = useState(false);
+  const [runReady, setRunReady] = useState(false);
+  const [runRestored, setRunRestored] = useState(false);
+  const [runNotice, setRunNotice] = useState("");
   const finalReportRef = useRef<HTMLElement | null>(null);
   const reviewRef = useRef<HTMLElement | null>(null);
   const lastAutoScrolledWorkflowId = useRef<string | null>(null);
@@ -292,6 +324,62 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
   const toggleReviewConfirm = useCallback((key: string) => {
     setReviewConfirmed((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  // ── Restore from localStorage on mount ──
+  useEffect(() => {
+    const stored = readLocalDraft<WorkflowSingleRun>(
+      WORKFLOW_SINGLE_RUN_KEY,
+      emptyRun,
+      { ttlMs: WORKFLOW_SINGLE_RUN_TTL_MS, version: WORKFLOW_SINGLE_RUN_VERSION },
+    );
+
+    if (stored.restored && stored.value.result) {
+      const run = stored.value;
+      try {
+        setProductName(run.productName || "");
+        setResult(run.result);
+        if (run.stepStatuses && Object.keys(run.stepStatuses).length > 0) {
+          setStepStatuses(run.stepStatuses);
+        }
+        if (run.savedTaskId) setSavedTaskId(run.savedTaskId);
+        if (run.reviewConfirmed && Object.keys(run.reviewConfirmed).length > 0) {
+          setReviewConfirmed(run.reviewConfirmed);
+        }
+        setRunRestored(true);
+        setRunNotice("已从浏览器本地恢复上次分析结果，可直接查看报告和人工复核。未重新消耗 AI。");
+      } catch {
+        clearLocalDraft(WORKFLOW_SINGLE_RUN_KEY);
+      }
+    }
+
+    setRunReady(true);
+  }, []);
+
+  // ── Write to localStorage when result changes ──
+  useEffect(() => {
+    if (!runReady) return;
+    if (!result) return;
+
+    const run: WorkflowSingleRun = {
+      version: WORKFLOW_SINGLE_RUN_VERSION,
+      runId: result.workflowId || `run-${Date.now()}`,
+      completedAt: Date.now(),
+      productName,
+      result,
+      stepStatuses,
+      savedTaskId,
+      reviewConfirmed,
+    };
+
+    try {
+      writeLocalDraft(WORKFLOW_SINGLE_RUN_KEY, run, {
+        ttlMs: WORKFLOW_SINGLE_RUN_TTL_MS,
+        version: WORKFLOW_SINGLE_RUN_VERSION,
+      });
+    } catch {
+      // Silently ignore storage errors
+    }
+  }, [runReady, result, productName, stepStatuses, savedTaskId, reviewConfirmed]);
 
   const scrollToFinalReport = useCallback(() => {
     finalReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -344,7 +432,10 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
     setSavingToTasks(false);
     setReviewConfirmed({});
     setProgressExpanded(false);
+    setRunRestored(false);
+    setRunNotice("");
     lastAutoScrolledWorkflowId.current = null;
+    clearLocalDraft(WORKFLOW_SINGLE_RUN_KEY);
     setStepStatuses({
       normalize: "pending",
       sourcing: "pending",
@@ -559,6 +650,13 @@ export function WorkflowClient({ initialProductName }: { initialProductName?: st
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          {/* Restore notice */}
+          {runRestored && runNotice ? (
+            <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm font-semibold text-teal-800" data-testid="single-run-notice">
+              {runNotice}
+            </div>
+          ) : null}
 
           {/* Input area */}
           <section className="surface-card p-4 sm:p-5">
