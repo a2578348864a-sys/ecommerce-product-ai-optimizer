@@ -1,0 +1,113 @@
+import { NextRequest, NextResponse } from "next/server";
+import { checkAccessPassword } from "@/lib/server/accessPassword";
+import {
+  isValidCandidateStatus,
+  listCandidates,
+  upsertCandidates,
+} from "@/lib/server/opportunityCandidateService";
+
+export const runtime = "nodejs";
+
+type ApiResponse =
+  | { ok: true; items: unknown[]; total: number; hasMore: boolean; nextOffset: number | null }
+  | { ok: true; items: unknown[]; created: number; updated: number }
+  | { ok: false; error: { code: string; message: string } };
+
+function json(body: ApiResponse, status = 200) {
+  return NextResponse.json(body, { status });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+/* ── GET ──────────────────────────────────────── */
+
+export async function GET(request: NextRequest) {
+  const authError = checkAccessPassword(request);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
+  const status = asString(request.nextUrl.searchParams.get("status")) || undefined;
+  const q = asString(request.nextUrl.searchParams.get("q")) || undefined;
+  const sort = asString(request.nextUrl.searchParams.get("sort")) || undefined;
+  const limit = Number(request.nextUrl.searchParams.get("limit")) || 50;
+  const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
+
+  try {
+    const result = await listCandidates({ status, q, sort, limit, offset });
+    return json({ ok: true, ...result });
+  } catch (error) {
+    return json({
+      ok: false,
+      error: {
+        code: "server_error",
+        message: error instanceof Error && error.message.includes("database")
+          ? "数据库暂时不可用，请稍后重试。"
+          : "候选池读取失败，请稍后重试。",
+      },
+    }, 500);
+  }
+}
+
+/* ── POST ─────────────────────────────────────── */
+
+export async function POST(request: NextRequest) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ ok: false, error: { code: "invalid_json", message: "请求体不是合法 JSON。" } }, 400);
+  }
+
+  if (!isRecord(body)) {
+    return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
+  }
+
+  const authError = checkAccessPassword(request, body);
+  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
+  // Support both single item and items array
+  const rawItems = Array.isArray(body.items) ? body.items : isRecord(body) && body.name ? [body] : [];
+  if (rawItems.length === 0) {
+    return json({ ok: false, error: { code: "invalid_payload", message: "请提供至少一个候选品。" } }, 400);
+  }
+
+  const inputs = rawItems.filter(isRecord).map((item) => ({
+    name: asString(item.name),
+    rawInput: asString(item.rawInput),
+    link: item.link ? asString(item.link) || null : undefined,
+    score: typeof item.score === "number" ? item.score : undefined,
+    source: asString(item.source),
+    keyword: asString(item.keyword),
+    riskLevel: asString(item.riskLevel),
+    riskLabel: asString(item.riskLabel),
+    summaryLabel: asString(item.summaryLabel),
+    status: isValidCandidateStatus(item.status) ? item.status : undefined,
+    sourceMetaJson: asString(item.sourceMetaJson),
+    analysisJson: asString(item.analysisJson),
+    convertedTaskId: item.convertedTaskId ? asString(item.convertedTaskId) || null : undefined,
+  })).filter((item) => item.name.length > 0);
+
+  if (inputs.length === 0) {
+    return json({ ok: false, error: { code: "invalid_payload", message: "候选品名称为空。" } }, 400);
+  }
+
+  try {
+    const result = await upsertCandidates(inputs);
+    return json({ ok: true, items: result.items, created: result.created, updated: result.updated });
+  } catch (error) {
+    return json({
+      ok: false,
+      error: {
+        code: "server_error",
+        message: error instanceof Error && error.message.includes("database")
+          ? "数据库暂时不可用，请稍后重试。"
+          : "候选品保存失败，请稍后重试。",
+      },
+    }, 500);
+  }
+}

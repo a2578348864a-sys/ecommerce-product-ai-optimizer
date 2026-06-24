@@ -36,6 +36,9 @@ import {
   Shield,
   Brain,
   Sparkles,
+  Upload,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 type CandidateData = {
@@ -261,6 +264,11 @@ export function OpportunitiesForm() {
   const [crawling, setCrawling] = useState(false);
   const [crawlWarnings, setCrawlWarnings] = useState<string[]>([]);
 
+  // Phase 3-B.1: Server candidate pool state
+  const [serverAvailable, setServerAvailable] = useState<boolean | null>(null); // null = checking
+  const [importingLocal, setImportingLocal] = useState(false);
+  const [importResult, setImportResult] = useState("");
+
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
     storageKey: DRAFT_KEY,
@@ -277,15 +285,75 @@ export function OpportunitiesForm() {
     }
   }, [draftRestored, draftVal]);
 
+  // Phase 3-B.1: Try server first, fall back to localStorage
+  const hasAccess = isAccessPasswordReady && canRequestWithAccessPassword(isAccessPasswordReady, accessPassword);
+
   useEffect(() => {
-    setPoolItems(readCandidatePool(typeof window === "undefined" ? null : window.localStorage));
-    setPoolHydrated(true);
-  }, []);
+    if (!hasAccess) {
+      // No access password: use localStorage only
+      setPoolItems(readCandidatePool(typeof window === "undefined" ? null : window.localStorage));
+      setPoolHydrated(true);
+      setServerAvailable(false);
+      return;
+    }
+
+    // Try server first
+    const controller = new AbortController();
+    async function loadFromServer() {
+      try {
+        const res = await fetch("/api/opportunity-candidates?limit=100", {
+          headers: { "x-access-password": accessPassword },
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("server unavailable");
+        const json = await res.json();
+        if (!json.ok || !Array.isArray(json.items)) throw new Error("invalid response");
+
+        const serverItems: OpportunityCandidatePoolItem[] = json.items.map(
+          (item: Record<string, unknown>) => ({
+            id: String(item.id || ""),
+            name: String(item.name || ""),
+            rawInput: String(item.rawInput || item.name || ""),
+            link: typeof item.link === "string" ? item.link : null,
+            score: typeof item.score === "number" ? item.score : 0,
+            source: String(item.source || "机会雷达"),
+            keyword: String(item.keyword || ""),
+            riskLevel: String(item.riskLevel || ""),
+            riskLabel: String(item.riskLabel || ""),
+            summaryLabel: String(item.summaryLabel || ""),
+            candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
+              ? String(item.status) : "pending") as CandidateStatus,
+            createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
+            updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
+            lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
+          }),
+        );
+
+        setPoolItems(serverItems);
+        setServerAvailable(true);
+        // Sync to localStorage as backup
+        writeCandidatePool(window.localStorage, serverItems);
+      } catch {
+        // Fall back to localStorage
+        setPoolItems(readCandidatePool(window.localStorage));
+        setServerAvailable(false);
+      } finally {
+        setPoolHydrated(true);
+      }
+    }
+
+    void loadFromServer();
+    return () => controller.abort();
+  }, [hasAccess, accessPassword]);
 
   useEffect(() => {
     if (!poolHydrated) return;
     writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, poolItems);
   }, [poolHydrated, poolItems]);
+
+  // Check if localStorage has items that server might not have
+  const localPoolCount = typeof window === "undefined" ? 0 : readCandidatePool(window.localStorage).length;
+  const showImportButton = serverAvailable === true && localPoolCount > 0;
 
   const handleInputChange = useCallback((value: string) => {
     setRawText(value);
@@ -343,13 +411,24 @@ export function OpportunitiesForm() {
       // Simulate progress updates
       setCurrentStep(`分析完成：${data.completedCount}/${data.totalCount} 成功，${data.failedCount} 失败`);
       setCandidates(data.candidates);
-      setPoolItems((current) => mergeCandidatesIntoPool(current, data.candidates.map(candidateToPoolInput)));
+      const poolInputs = data.candidates.map(candidateToPoolInput);
+      setPoolItems((current) => mergeCandidatesIntoPool(current, poolInputs));
+
+      // Phase 3-B.1: Also write to server
+      if (hasAccess && serverAvailable !== false) {
+        fetch("/api/opportunity-candidates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+          body: JSON.stringify({ items: poolInputs.map((input) => ({ ...input, name: input.name })) }),
+        }).catch(() => { /* server write failed, already in localStorage */ });
+      }
+
       setLoading(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "网络请求失败，请检查服务是否在运行。");
       setLoading(false);
     }
-  }, [rawText, accessPassword, isAccessPasswordReady, overLimit, validCount]);
+  }, [rawText, accessPassword, isAccessPasswordReady, hasAccess, serverAvailable, overLimit, validCount]);
 
   // Phase 1E: Crawl public sources
   const handleCrawl = useCallback(async () => {
@@ -487,7 +566,16 @@ export function OpportunitiesForm() {
 
   const setPoolCandidateStatus = useCallback((id: string, status: CandidateStatus) => {
     setPoolItems((current) => updateCandidateStatus(current, id, status));
-  }, []);
+
+    // Phase 3-B.1: Also PATCH server
+    if (hasAccess && serverAvailable !== false && id && !id.startsWith("opp-")) {
+      fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+        body: JSON.stringify({ status }),
+      }).catch(() => { /* server update failed, already in localStorage */ });
+    }
+  }, [hasAccess, serverAvailable, accessPassword]);
 
   const markCandidateAnalyzed = useCallback((candidate: CandidateData) => {
     const input = candidateToPoolInput(candidate);
@@ -557,6 +645,23 @@ export function OpportunitiesForm() {
               跟进。
             </p>
           </div>
+
+          {/* Phase 3-B.1: Server connection indicator */}
+          {serverAvailable !== null ? (
+            <div className={`rounded-xl border p-3 text-sm ${serverAvailable ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}>
+              <div className="flex items-center gap-2">
+                {serverAvailable ? <Wifi className="size-4 text-emerald-600" /> : <WifiOff className="size-4 text-amber-600" />}
+                <span className={`font-semibold ${serverAvailable ? "text-emerald-800" : "text-amber-800"}`}>
+                  {serverAvailable ? "已连接服务端候选池" : "使用本浏览器候选池"}
+                </span>
+              </div>
+              <p className={`mt-1 text-xs ${serverAvailable ? "text-emerald-700" : "text-amber-700"}`}>
+                {serverAvailable
+                  ? "候选品保存在服务端，换浏览器、清缓存不丢失。本浏览器候选池仍作为离线备份。"
+                  : "输入访问密码后自动切换到服务端候选池。当前数据仅保存在本浏览器，清缓存会丢失。"}
+              </p>
+            </div>
+          ) : null}
 
         {/* Phase 1E: Crawl input */}
         <div className="surface-card p-4">
@@ -670,10 +775,79 @@ export function OpportunitiesForm() {
               <p className="linear-kicker">候选品池</p>
               <h2 className="mt-1 text-lg font-semibold text-slate-950">先筛选，再深挖</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                候选品会保存在本浏览器 7 天。这里不自动采购、不自动上架，只帮你记录判断状态。
+                {serverAvailable === true
+                  ? "已连接服务端候选池。候选品会保存在服务器，不随浏览器清除丢失。"
+                  : serverAvailable === false
+                    ? "当前使用本浏览器候选池（7 天有效）。输入访问密码后可升级到服务端候选池。"
+                    : "候选品会保存在本浏览器 7 天。这里不自动采购、不自动上架，只帮你记录判断状态。"}
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              {showImportButton ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setImportingLocal(true);
+                    setImportResult("");
+                    const localItems = readCandidatePool(window.localStorage);
+                    try {
+                      const res = await fetch("/api/opportunity-candidates/import-local", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+                        body: JSON.stringify({ items: localItems }),
+                      });
+                      const json = await res.json();
+                      if (json.ok) {
+                        setImportResult(`已导入 ${json.imported} 个候选品`);
+                        // Refresh from server
+                        const refresh = await fetch("/api/opportunity-candidates?limit=100", {
+                          headers: { "x-access-password": accessPassword },
+                        });
+                        if (refresh.ok) {
+                          const refreshJson = await refresh.json();
+                          if (refreshJson.ok && Array.isArray(refreshJson.items)) {
+                            const serverItems = refreshJson.items.map(
+                              (item: Record<string, unknown>) => ({
+                                id: String(item.id || ""),
+                                name: String(item.name || ""),
+                                rawInput: String(item.rawInput || item.name || ""),
+                                link: typeof item.link === "string" ? item.link : null,
+                                score: typeof item.score === "number" ? item.score : 0,
+                                source: String(item.source || "机会雷达"),
+                                keyword: String(item.keyword || ""),
+                                riskLevel: String(item.riskLevel || ""),
+                                riskLabel: String(item.riskLabel || ""),
+                                summaryLabel: String(item.summaryLabel || ""),
+                                candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
+                                  ? String(item.status) : "pending") as CandidateStatus,
+                                createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
+                                updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
+                                lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
+                              }),
+                            );
+                            setPoolItems(serverItems);
+                            writeCandidatePool(window.localStorage, serverItems);
+                          }
+                        }
+                      } else {
+                        setImportResult("导入失败，请重试。");
+                      }
+                    } catch {
+                      setImportResult("导入失败，请检查网络。");
+                    } finally {
+                      setImportingLocal(false);
+                    }
+                  }}
+                  disabled={importingLocal}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {importingLocal ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                  导入本浏览器候选池
+                </button>
+              ) : null}
+              {importResult ? (
+                <span className="text-xs font-semibold text-teal-700">{importResult}</span>
+              ) : null}
               <select
                 value={poolSort}
                 onChange={(event) => setPoolSort(event.target.value as CandidatePoolSort)}

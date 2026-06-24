@@ -50,3 +50,28 @@ model ViralAnalysisRecord {
   @@index([source])
   @@index([platform])
 }
+
+model OpportunityCandidate {
+  id              String    @id @default(cuid())
+  name            String
+  rawInput        String    @default("")
+  link            String?
+  score           Int       @default(0)
+  source          String    @default("机会雷达")
+  keyword         String    @default("")
+  riskLevel       String    @default("")
+  riskLabel       String    @default("")
+  summaryLabel    String    @default("")
+  status          String    @default("pending")
+  sourceMetaJson  String    @default("{}")
+  analysisJson    String    @default("{}")
+  convertedTaskId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastActionAt    DateTime?
+
+  @@index([status, updatedAt])
+  @@index([score])
+  @@index([createdAt])
+  @@index([name])
+}
