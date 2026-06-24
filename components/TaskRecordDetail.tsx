@@ -9,6 +9,7 @@ import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -437,6 +438,7 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
 
 export function TaskRecordDetail({ id }: { id: string }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -568,6 +570,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
     } finally {
       setUpdatingDecision(false);
     }
+  }
+
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="任务详情" returnUrl={`/tasks/${id}`} />;
   }
 
   return (

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 import {
   clearLocalRun,
@@ -183,6 +184,7 @@ function StatusIcon({ status }: { status: QueueStatus }) {
 
 export function WorkflowBatchClient() {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [input, setInput] = useState("");
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -610,6 +612,10 @@ export function WorkflowBatchClient() {
   const savedCount = queueItems.filter((item) => item.status === "saved").length;
   const failedCount = queueItems.filter((item) => item.status === "failed" || item.status === "save_failed").length;
 
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="批量分析" returnUrl="/workflow/batch" />;
+  }
+
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
       <div className="workspace-page workspace-layout">
@@ -769,17 +775,7 @@ export function WorkflowBatchClient() {
             </div>
 
             <div className="mt-5">
-              <label className="mb-1 block text-sm font-semibold text-slate-700">
-                访问密码 <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={accessPassword}
-                onChange={(event) => setAccessPassword(event.target.value)}
-                disabled={running}
-                className="w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
-                placeholder="输入访问密码"
-              />
+              {/* Access password — removed from this page, now only on home */}
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">

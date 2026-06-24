@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { Lock, ArrowRight } from "lucide-react";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { ConfidenceConfirmationCard } from "@/components/ConfidenceConfirmationCard";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
@@ -343,6 +344,7 @@ function getProductConfidence(
 
 export function ProductProfitForm() {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [sharedProduct, updateShared] = useSharedProduct();
   const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<ProductProfitDraft>({
     storageKey: "qx:draft:products-new:v1",
@@ -864,6 +866,29 @@ export function ProductProfitForm() {
     });
     setListingCopyError(null);
     setListingCopyNotice("本地历史记录已删除");
+  }
+
+  if (!unlocked) {
+    return (
+      <div className="mx-auto flex max-w-lg flex-col items-center gap-5 py-14 text-center">
+        <div className="linear-icon size-14 rounded-2xl bg-slate-100 text-slate-400">
+          <Lock className="size-7" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">当前工作台未解锁</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            请先回到首页输入访问密码后再使用此功能。
+          </p>
+        </div>
+        <Link
+          href="/"
+          className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-5 text-sm font-semibold"
+        >
+          返回首页解锁
+          <ArrowRight className="size-4" />
+        </Link>
+      </div>
+    );
   }
 
   return (

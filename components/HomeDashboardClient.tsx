@@ -4,13 +4,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  CheckCircle2,
   ClipboardCheck,
   History,
   ListChecks,
+  Loader2,
+  Lock,
   Route,
   Search,
+  ShieldCheck,
   Sparkles,
   Target,
+  Unlock,
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
@@ -119,7 +124,7 @@ const workflowSteps = [
 ] as const;
 
 export function HomeDashboardClient() {
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
   const [candidateItems, setCandidateItems] = useState(() => readCandidatePool(null));
   const [recentSingleRun, setRecentSingleRun] = useState(() => parseRecentSingleRun(null));
   const [taskLoad, setTaskLoad] = useState<TaskLoadState>({
@@ -127,6 +132,58 @@ export function HomeDashboardClient() {
     summary: null,
     message: "正在读取任务统计。",
   });
+
+  // ── Password input & unlock state ──
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [apiProbeStatus, setApiProbeStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
+
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+
+  // ── Password submit: validate against server BEFORE saving ──
+  async function handlePasswordSubmit() {
+    const trimmed = passwordInput.trim();
+    if (!trimmed) {
+      setPasswordError("请输入访问密码。");
+      return;
+    }
+
+    setPasswordError("");
+    setPasswordInput("");
+    setValidating(true);
+    setApiProbeStatus("checking");
+
+    try {
+      const res = await fetch("/api/tasks?limit=1", {
+        headers: { "x-access-password": trimmed },
+      });
+
+      if (!res.ok) {
+        setPasswordError("访问密码错误，请重新输入。");
+        setApiProbeStatus("fail");
+        setValidating(false);
+        return;
+      }
+
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) {
+        setPasswordError("访问密码错误，请重新输入。");
+        setApiProbeStatus("fail");
+        setValidating(false);
+        return;
+      }
+
+      // Server validated — now save to in-memory state
+      setAccessPassword(trimmed);
+      setApiProbeStatus("ok");
+    } catch {
+      setPasswordError("验证失败，请稍后重试。");
+      setApiProbeStatus("fail");
+    } finally {
+      setValidating(false);
+    }
+  }
 
   useEffect(() => {
     try {
@@ -215,6 +272,135 @@ export function HomeDashboardClient() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          {/* ── Access password entry (only on home page) ── */}
+          {!unlocked ? (
+            <section className="surface-card border-amber-200 bg-amber-50/60 p-5 sm:p-6" data-testid="home-password-entry">
+              <div className="flex items-start gap-3">
+                <div className="linear-icon size-10 shrink-0 rounded-xl bg-amber-100 text-amber-700">
+                  <Lock className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-semibold text-slate-900">输入访问密码解锁工作台</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    全站只需要在这里输入一次访问密码。输入后本会话内所有功能可用，无需在其他页面重复输入。
+                  </p>
+                  <form
+                    className="mt-4 flex flex-wrap items-center gap-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handlePasswordSubmit();
+                    }}
+                  >
+                    <input
+                      type="password"
+                      value={passwordInput}
+                      onChange={(e) => {
+                        setPasswordInput(e.target.value);
+                        setPasswordError("");
+                      }}
+                      placeholder="输入访问密码"
+                      disabled={validating}
+                      className="h-11 w-full max-w-xs rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
+                      data-testid="home-password-input"
+                    />
+                    <button
+                      type="submit"
+                      disabled={validating}
+                      className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                      data-testid="home-password-submit"
+                    >
+                      {validating ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          验证中…
+                        </>
+                      ) : (
+                        <>
+                          解锁工作台
+                          <Unlock className="size-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                  {passwordError ? (
+                    <p className="mt-3 text-sm font-semibold text-rose-600" data-testid="home-password-error">
+                      {passwordError}
+                    </p>
+                  ) : null}
+                  {isAccessPasswordReady && !accessPassword.trim() && passwordError ? null : null}
+                  <p className="mt-3 text-xs text-slate-400">
+                    Alpha MVP 访问保护 · 密码仅保存在当前会话中 · 关闭网页后需重新输入 · 不收集个人信息
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {/* ── Unlock status visualization ── */}
+          {unlocked ? (
+            <section className="surface-card border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-5 sm:p-6" data-testid="home-unlock-status">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="linear-icon size-10 shrink-0 rounded-xl bg-emerald-100 text-emerald-700">
+                    <CheckCircle2 className="size-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold text-emerald-900">工作台已解锁</h2>
+                    <p className="mt-1 text-sm leading-6 text-emerald-700">
+                      你现在可以使用以下核心功能。访问密码在本次会话中有效，关闭网页后需重新输入。
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                  <div className="size-2 rounded-full bg-emerald-400" />
+                  API 鉴权{apiProbeStatus === "ok" ? "已通过" : apiProbeStatus === "checking" ? "检测中…" : "待确认"}
+                </div>
+              </div>
+
+              {/* Feature status grid */}
+              <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  { label: "Agent 主流程", href: "/agent/run", unlocked: true },
+                  { label: "机会雷达", href: "/opportunities", unlocked: true },
+                  { label: "单品分析", href: "/workflow", unlocked: true },
+                  { label: "批量分析", href: "/workflow/batch", unlocked: true },
+                  { label: "任务中心", href: "/tasks", unlocked: true },
+                  { label: "辅助工具", href: "/agent", unlocked: true },
+                ].map((feature) => (
+                  <div
+                    key={feature.label}
+                    className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-white px-3 py-2.5"
+                  >
+                    {feature.unlocked ? (
+                      <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
+                    ) : (
+                      <Lock className="size-4 shrink-0 text-slate-300" />
+                    )}
+                    <span className="text-sm font-medium text-slate-700">{feature.label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* TTL info */}
+              {apiProbeStatus === "ok" && (
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-xs leading-5 text-emerald-700">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    API 鉴权已确认 — 任务数据可正常读取。关闭网页后访问密码即失效，重新打开需重新输入。
+                  </span>
+                </div>
+              )}
+              {apiProbeStatus === "fail" && (
+                <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50/50 p-3 text-xs leading-5 text-amber-700">
+                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    前端访问状态已解锁，但 API 鉴权状态未能确认。如果你未配置服务端密码或密码不匹配，受保护 API 可能返回 401。请检查你的访问密码是否正确。
+                  </span>
+                </div>
+              )}
+            </section>
+          ) : null}
 
           <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="grid min-w-0 gap-4 md:grid-cols-3">

@@ -9,6 +9,7 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 
 type SummaryData = {
   verdict: string;
@@ -80,6 +81,7 @@ const typeLabels: Record<string, string> = {
 export function SummaryForm() {
   const [sharedProduct] = useSharedProduct();
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<SummaryDraft>({
     storageKey: "qx:draft:summary:v1",
     initialValue: {
@@ -279,6 +281,10 @@ export function SummaryForm() {
     setTasksSaveMessage(null);
   }
 
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="小白结论" returnUrl="/summary" />;
+  }
+
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
       <div className="workspace-page workspace-layout">
@@ -321,20 +327,6 @@ export function SummaryForm() {
                   去货源判断 →
                 </Link>
               </div>
-            ) : isAccessPasswordReady && !accessPassword.trim() ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-bold text-amber-900">请输入访问密码后读取分析记录</p>
-                <label className="mt-3 block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
-                  <input
-                    type="password"
-                    value={accessPassword}
-                    onChange={(e) => setAccessPassword(e.target.value)}
-                    placeholder="输入服务端配置的访问密码"
-                    className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
-              </div>
             ) : loadingAggregate ? (
               <div className="rounded-xl border border-slate-200 bg-white p-4">
                 <p className="text-sm text-slate-500">正在检查「{sharedProduct.productName}」的分析记录...</p>
@@ -375,16 +367,9 @@ export function SummaryForm() {
                   })}
                 </div>
 
-                <label className="mt-4 block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
-                  <input
-                    type="password"
-                    value={accessPassword}
-                    onChange={(e) => setAccessPassword(e.target.value)}
-                    placeholder="输入服务端配置的访问密码"
-                    className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  />
-                </label>
+                <div className="mt-4">
+                  {/* Access password — removed from this page, now only on home */}
+                </div>
 
                 <div className="mt-3 flex flex-wrap gap-3">
                   <button

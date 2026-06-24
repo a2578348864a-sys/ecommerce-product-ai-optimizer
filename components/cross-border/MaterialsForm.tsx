@@ -7,6 +7,7 @@ import type { MaterialAgentResult } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { EXAMPLE_PRODUCT } from "@/lib/examples";
@@ -58,6 +59,7 @@ export function MaterialsForm() {
   const setLinksText = (value: string) => updateDraft({ linksText: value });
   const setResult = (value: MaterialAgentResult | null) => updateDraft({ result: value });
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingToTasks, setSavingToTasks] = useState(false);
@@ -189,6 +191,10 @@ export function MaterialsForm() {
     }
   }
 
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="素材识别" returnUrl="/materials" />;
+  }
+
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
       <div className="workspace-page workspace-layout">
@@ -266,14 +272,7 @@ export function MaterialsForm() {
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
-                <input
-                  type="password"
-                  value={accessPassword}
-                  onChange={(e) => setAccessPassword(e.target.value)}
-                  placeholder="输入服务端配置的访问密码"
-                  className="h-11 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                />
+                {/* Access password — removed from this page, now only on home */}
               </label>
 
               <button

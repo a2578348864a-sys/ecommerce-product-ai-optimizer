@@ -11,6 +11,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { TASK_TYPE_FILTER_OPTIONS } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -203,6 +204,7 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
 
 export function TaskRecordsList() {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [items, setItems] = useState<TaskCenterItem[]>([]);
   const [page, setPage] = useState<TaskPageInfo | null>(null);
   const [type, setType] = useState(defaultType);
@@ -579,6 +581,10 @@ export function TaskRecordsList() {
   }, [visibleItems]);
   const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters;
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
+
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="任务中心" returnUrl="/tasks" />;
+  }
 
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">

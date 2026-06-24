@@ -3,16 +3,41 @@
 import { useEffect, useState } from "react";
 
 export const ACCESS_PASSWORD_STORAGE_KEY = "qx:access-password:v1";
-export const LEGACY_ACCESS_PASSWORD_STORAGE_KEY = "qingxuan-pwd";
-export const LEGACY_ACCESS_PASSWORD_EXPIRY_KEY = "qingxuan-pwd-expires";
 export const DEFAULT_ACCESS_PASSWORD_TTL_MS = 12 * 60 * 60 * 1000;
 
-type StoredAccessPassword = {
-  version: 1;
-  value: string;
-  updatedAt: number;
-  expiresAt: number;
-};
+// ── Session storage (survives refresh, clears on tab close) ──
+// Phase 3-B.1.6 P0 Fix v2: sessionStorage — not localStorage, not in-memory.
+// - Refresh within same tab → password survives
+// - Close tab / close browser → password cleared
+// - New incognito window → fresh session
+
+const SESSION_PASSWORD_KEY = "qx:access-password:session:v2";
+const SESSION_EXPIRES_KEY = "qx:access-expires:session:v2";
+
+// Legacy localStorage keys to clean up (do NOT read as unlock authority)
+const LEGACY_CLEANUP_KEYS = [
+  "qx:access-password:v1",
+  "qingxuan-pwd",
+  "qingxuan-pwd-expires",
+];
+
+function getSessionStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function safeRemove(storage: Storage | null, key: string) {
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
 
 type AccessPasswordSetter = (value: string | ((prev: string) => string)) => void;
 
@@ -33,144 +58,78 @@ export type UseAccessPasswordResult = [
   getValidAccessPassword: () => string;
 };
 
-function getStorage(): Storage | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function safeRemove(storage: Storage, key: string) {
-  try {
-    storage.removeItem(key);
-  } catch {
-    // localStorage unavailable/full/security errors should not break UI.
-  }
-}
-
-function clearLegacyAccessPassword(storage: Storage) {
-  safeRemove(storage, LEGACY_ACCESS_PASSWORD_STORAGE_KEY);
-  safeRemove(storage, LEGACY_ACCESS_PASSWORD_EXPIRY_KEY);
-}
-
-function isStoredAccessPassword(value: unknown): value is StoredAccessPassword {
-  if (!value || typeof value !== "object") return false;
-  const source = value as Record<string, unknown>;
-  return source.version === 1
-    && typeof source.value === "string"
-    && typeof source.updatedAt === "number"
-    && typeof source.expiresAt === "number"
-    && Number.isFinite(source.updatedAt)
-    && Number.isFinite(source.expiresAt);
-}
-
-function writeAccessPasswordPayload(storage: Storage, value: string, ttlMs = DEFAULT_ACCESS_PASSWORD_TTL_MS) {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    clearAccessPassword();
-    return;
-  }
-
-  const now = Date.now();
-  const payload: StoredAccessPassword = {
-    version: 1,
-    value: trimmed,
-    updatedAt: now,
-    expiresAt: now + ttlMs,
-  };
-
-  try {
-    storage.setItem(ACCESS_PASSWORD_STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    // localStorage 不可用时静默失败，页面仍可继续使用当前 React state。
-  }
-}
-
-function readLegacyAccessPassword(storage: Storage): string {
-  try {
-    const value = (storage.getItem(LEGACY_ACCESS_PASSWORD_STORAGE_KEY) || "").trim();
-    const expiresAtRaw = storage.getItem(LEGACY_ACCESS_PASSWORD_EXPIRY_KEY);
-
-    if (!value) {
-      clearLegacyAccessPassword(storage);
-      return "";
-    }
-
-    if (expiresAtRaw) {
-      const expiresAt = Number(expiresAtRaw);
-      if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
-        clearLegacyAccessPassword(storage);
-        return "";
-      }
-    }
-
-    writeAccessPasswordPayload(storage, value);
-    clearLegacyAccessPassword(storage);
-    return value;
-  } catch {
-    return "";
-  }
-}
+// ── Public getters / setters (sessionStorage only) ──
 
 export function getAccessPasswordExpiresAt(): number | null {
-  const storage = getStorage();
+  const storage = getSessionStorage();
   if (!storage) return null;
-
   try {
-    const raw = storage.getItem(ACCESS_PASSWORD_STORAGE_KEY);
+    const raw = storage.getItem(SESSION_EXPIRES_KEY);
     if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isStoredAccessPassword(parsed)) {
-      safeRemove(storage, ACCESS_PASSWORD_STORAGE_KEY);
+    const expiresAt = Number(raw);
+    if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+      safeRemove(storage, SESSION_PASSWORD_KEY);
+      safeRemove(storage, SESSION_EXPIRES_KEY);
       return null;
     }
-    return parsed.expiresAt;
+    return expiresAt;
   } catch {
-    safeRemove(storage, ACCESS_PASSWORD_STORAGE_KEY);
     return null;
   }
 }
 
 export function getValidAccessPassword(): string {
-  const storage = getStorage();
+  const storage = getSessionStorage();
   if (!storage) return "";
-
   try {
-    const raw = storage.getItem(ACCESS_PASSWORD_STORAGE_KEY);
-    if (!raw) return readLegacyAccessPassword(storage);
+    const password = (storage.getItem(SESSION_PASSWORD_KEY) || "").trim();
+    if (!password) return "";
 
-    const parsed: unknown = JSON.parse(raw);
-    if (!isStoredAccessPassword(parsed)) {
-      safeRemove(storage, ACCESS_PASSWORD_STORAGE_KEY);
-      return readLegacyAccessPassword(storage);
-    }
+    const expiresAt = getAccessPasswordExpiresAt();
+    if (expiresAt === null) return "";
 
-    const trimmed = parsed.value.trim();
-    if (!trimmed || Date.now() > parsed.expiresAt) {
-      clearAccessPassword();
-      return "";
-    }
-
-    return trimmed;
+    return password;
   } catch {
-    safeRemove(storage, ACCESS_PASSWORD_STORAGE_KEY);
-    return readLegacyAccessPassword(storage);
+    return "";
   }
 }
 
 export function saveAccessPassword(password: string, ttlMs = DEFAULT_ACCESS_PASSWORD_TTL_MS): void {
-  const storage = getStorage();
+  const trimmed = password.trim();
+  if (!trimmed) {
+    clearAccessPassword();
+    return;
+  }
+
+  const storage = getSessionStorage();
   if (!storage) return;
-  writeAccessPasswordPayload(storage, password, ttlMs);
+
+  try {
+    storage.setItem(SESSION_PASSWORD_KEY, trimmed);
+    storage.setItem(SESSION_EXPIRES_KEY, String(Date.now() + ttlMs));
+  } catch {
+    // sessionStorage unavailable — silently fail
+  }
 }
 
 export function clearAccessPassword(): void {
-  const storage = getStorage();
-  if (!storage) return;
-  safeRemove(storage, ACCESS_PASSWORD_STORAGE_KEY);
-  clearLegacyAccessPassword(storage);
+  const storage = getSessionStorage();
+  if (storage) {
+    safeRemove(storage, SESSION_PASSWORD_KEY);
+    safeRemove(storage, SESSION_EXPIRES_KEY);
+  }
+
+  // Also clean up legacy localStorage keys so old versions don't interfere
+  if (typeof window !== "undefined") {
+    try {
+      const ls = window.localStorage;
+      for (const key of LEGACY_CLEANUP_KEYS) {
+        try { ls.removeItem(key); } catch { /* ignore */ }
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  }
 }
 
 export function isAccessPasswordExpired(): boolean {
@@ -193,12 +152,15 @@ export function canRequestWithAccessPassword(isReady: boolean, password: string)
   return isReady && password.trim().length > 0;
 }
 
+// ── React hook ──
+
 export function useAccessPassword(): UseAccessPasswordResult {
   const [password, setPasswordState] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
 
   useEffect(() => {
+    // Hydrate from sessionStorage — survives refresh within same tab.
     setPasswordState(getValidAccessPassword());
     setExpiresAt(getAccessPasswordExpiresAt());
     setHydrated(true);

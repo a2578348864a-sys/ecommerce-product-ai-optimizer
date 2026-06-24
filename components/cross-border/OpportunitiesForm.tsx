@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
@@ -270,6 +271,7 @@ export function OpportunitiesForm() {
   const [importResult, setImportResult] = useState("");
 
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
     storageKey: DRAFT_KEY,
     ttlMs: 10 * 60 * 1000, // Phase 1E: 10 minutes
@@ -614,6 +616,10 @@ export function OpportunitiesForm() {
     return (riskOrder[displayRiskLevel(b)] || 0) - (riskOrder[displayRiskLevel(a)] || 0);
   })[0];
   const completedCandidates = candidates.filter(c => c.status === "completed");
+
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="机会雷达" returnUrl="/opportunities" />;
+  }
 
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">

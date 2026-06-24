@@ -19,6 +19,7 @@ import {
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useAccessPassword, canRequestWithAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 
 /* ── Types ─────────────────────────────────────── */
@@ -312,6 +313,7 @@ export function WorkflowClient({
   initialSourceMeta?: WorkflowSourceMeta | null;
 }) {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [productName, setProductName] = useState(initialProductName ?? "");
   const [sourceMeta, setSourceMeta] = useState<WorkflowSourceMeta | null>(initialSourceMeta ?? null);
   const [running, setRunning] = useState(false);
@@ -650,6 +652,10 @@ export function WorkflowClient({
     ? `已完成 ${aiStepsCompleted}/${aiStepsRequested}，含兜底/异常步骤`
     : `已完成 ${aiStepsCompleted}/${aiStepsRequested}`;
 
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="单品分析" returnUrl="/workflow" />;
+  }
+
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
       <div className="workspace-page workspace-layout">
@@ -749,20 +755,7 @@ export function WorkflowClient({
               </div>
             </div>
 
-            {/* Access password */}
-            <div className="mt-4">
-              <label className="mb-1 block text-sm font-semibold text-slate-700">
-                访问密码 <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={accessPassword}
-                onChange={(e) => setAccessPassword(e.target.value)}
-                placeholder="输入访问密码（本会话内有效）"
-                disabled={running}
-                className="w-full max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
-              />
-            </div>
+            {/* Access password — removed from this page, now only on home */}
 
             {/* Cost warning */}
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">

@@ -22,6 +22,7 @@ import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { EXAMPLE_VIRAL } from "@/lib/examples";
 
 const positiveWords = ["viral", "review", "comment", "tiktok", "amazon", "pain point", "hack", "comparison", "before after", "link in bio", "kitchen gadget", "storage", "organization", "cleaning", "portable", "must have"];
@@ -385,9 +386,10 @@ export function ViralMockAgent() {
   const setResult = (value: DisplayResult | null) => setDraftValue((current) => ({ ...current, result: value }));
   const setSavedRecordId = (value: string) => setDraftValue((current) => ({ ...current, savedRecordId: value }));
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [notice, setNotice] = useState("模拟拆解不消耗额度；AI 深度拆解会请求后端并消耗 AI 额度。");
   const [fieldError, setFieldError] = useState("");
-  const [accessPasswordError, setAccessPasswordError] = useState("");
+  // accessPasswordError removed with password input — now handled by WorkspaceLockedPrompt
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
@@ -438,17 +440,14 @@ export function ViralMockAgent() {
   async function runAiAnalysis() {
     if (!validateMaterial()) return;
     if (!isAccessPasswordReady) {
-      setAccessPasswordError("正在读取访问状态，请稍后再试。");
-      setNotice("访问状态读取完成前不会请求后端。");
+      setNotice("正在读取访问状态，请稍后再试。");
       return;
     }
     if (!accessPassword.trim()) {
-      setAccessPasswordError("访问密码缺失或已过期，请先在首页输入访问密码。");
-      setNotice("AI 深度拆解需要访问密码，缺失或过期时不会请求后端。");
+      setNotice("访问密码缺失或已过期，请先在首页输入访问密码。");
       return;
     }
 
-    setAccessPasswordError("");
     setIsAiLoading(true);
     setNotice("AI 深度拆解准备请求后端。注意：真实点击会消耗 AI 额度。");
     setCopyState("idle");
@@ -549,6 +548,10 @@ export function ViralMockAgent() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  if (!unlocked) {
+    return <WorkspaceLockedPrompt pageName="爆款拆解" returnUrl="/viral" />;
   }
 
   return (
@@ -659,20 +662,9 @@ export function ViralMockAgent() {
                   </select>
                 </label>
 
-                <label className="mt-4 block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-800">访问密码</span>
-                  <input
-                    value={accessPassword}
-                    type="password"
-                    onChange={(event) => {
-                      setAccessPassword(event.target.value);
-                      setAccessPasswordError("");
-                    }}
-                    placeholder="AI 深度拆解前需要填写"
-                    className="input-soft h-11 w-full px-4 text-sm text-slate-900 outline-none placeholder:text-slate-400 md:w-80"
-                  />
-                  {accessPasswordError ? <p className="mt-2 text-sm font-semibold text-rose-600">{accessPasswordError}</p> : null}
-                </label>
+                <div className="mt-4">
+                  {/* Access password — removed from this page, now only on home */}
+                </div>
 
                 <label className="mt-4 block">
                   <div className="mb-2 flex items-center justify-between gap-2">
@@ -718,7 +710,6 @@ export function ViralMockAgent() {
                   type="button"
                   onClick={() => {
                     clearDraft();
-                    setAccessPasswordError("");
                     setFieldError("");
                     setNotice("当前爆款拆解内容已清空，访问密码仍保留。");
                     setCopyState("idle");

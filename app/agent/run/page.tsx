@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { getStoredAccessPassword } from "@/lib/client/accessPassword";
 import {
   ArrowRight,
   Brain,
@@ -179,7 +180,7 @@ async function fetchCount(type: string): Promise<number | null> {
     }
 
     const res = await fetch(`/api/tasks?${params.toString()}`, {
-      headers: { "x-access-password": localStorage.getItem("qx:access-password:v1") || "" },
+      headers: { "x-access-password": getStoredAccessPassword() },
     });
 
     if (!res.ok) return null;
