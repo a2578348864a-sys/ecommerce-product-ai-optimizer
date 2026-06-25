@@ -155,6 +155,8 @@ function WorkflowDecisionSummary({
   // Phase 4-E.2.1: Use persisted productLifecycle, fallback to derived
   const productLifecycle = deriveDisplayLifecycle(result, reviewState, decisionStatus);
   const isWorkflow = true; // only called for workflow tasks
+  const hasProfitSnapshot = isRecordValue(result) && isRecordValue(result.profitSnapshot);
+  const hasRiskReviewSnapshot = isRecordValue(result) && isRecordValue(result.riskReviewSnapshot);
 
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
@@ -195,29 +197,6 @@ function WorkflowDecisionSummary({
             <OperationDecisionPanel taskId={taskId} lifecycle={productLifecycle} onUpdated={onLifecycleUpdated} />
           )}
 
-          {/* Phase Profit-M.1: show saved profit snapshot if present */}
-          {isRecordValue(result) && isRecordValue(result.profitSnapshot) && (
-            <div className="mt-3">
-              <ProfitSnapshotCard
-                initial={result.profitSnapshot as unknown as ProfitSnapshot}
-                readonly
-              />
-            </div>
-          )}
-
-          {/* Phase Risk-Auto-M.1: show saved rule precheck + manual review if present */}
-          {isRecordValue(result) && isRecordValue(result.riskReviewSnapshot) ? (
-            <div className="mt-3">
-              <RiskReviewChecklistCard
-                initial={result.riskReviewSnapshot}
-                readonly
-              />
-            </div>
-          ) : (
-            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-700">
-              该任务尚未保存合规 / 侵权 AI 预筛记录。
-            </p>
-          )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
           <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>
@@ -271,6 +250,34 @@ function WorkflowDecisionSummary({
           ) : null}
         </div>
       </div>
+      <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
+        <summary className="cursor-pointer font-semibold text-slate-600 select-none">
+          保存快照：成本利润 + 合规 / 侵权 AI 预筛
+          <span className="ml-2 font-normal text-slate-400">默认折叠，面试展示时可按需展开</span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          {hasProfitSnapshot ? (
+            <ProfitSnapshotCard
+              initial={result.profitSnapshot as unknown as ProfitSnapshot}
+              readonly
+            />
+          ) : (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500">
+              该任务尚未保存成本利润快照。
+            </p>
+          )}
+          {hasRiskReviewSnapshot ? (
+            <RiskReviewChecklistCard
+              initial={result.riskReviewSnapshot}
+              readonly
+            />
+          ) : (
+            <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-700">
+              该任务尚未保存合规 / 侵权 AI 预筛记录。
+            </p>
+          )}
+        </div>
+      </details>
       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
         <p className="text-sm font-semibold text-amber-800">人工确认提醒</p>
         <p className="mt-1 text-xs leading-5 text-amber-700">

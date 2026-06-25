@@ -347,7 +347,7 @@ export function WorkflowClient({
   const [profitSnapshot, setProfitSnapshot] = useState<ProfitSnapshot | null>(null);
   const [riskReviewSnapshot, setRiskReviewSnapshot] = useState<RiskReviewSnapshot | null>(null);
   const finalReportRef = useRef<HTMLElement | null>(null);
-  const reviewRef = useRef<HTMLElement | null>(null);
+  const reviewRef = useRef<HTMLDetailsElement | null>(null);
   const lastAutoScrolledWorkflowId = useRef<string | null>(null);
   const reviewStepKeys: StepKey[] = ["sourcing", "risk", "summary", "listing"];
   const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
@@ -719,113 +719,126 @@ export function WorkflowClient({
           ) : null}
 
           {/* Input area */}
-          <section className="surface-card p-4 sm:p-5">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-slate-950">输入商品</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                填写商品名称或简短描述。本次会依次调用货源判断、风险排查、小白结论和上架文案生成（共 4 个 AI 步骤）。
-              </p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-              <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">
-                  商品名称 <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={productName}
-                  onChange={(e) => { setProductName(e.target.value); if (error) setError(""); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleRun(); }}
-                  placeholder="例如：桌面手机支架、硅胶折叠水杯、宠物慢食碗"
-                  maxLength={120}
-                  disabled={running}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
-                />
-                <p className="mt-1 text-xs text-slate-400">{productName.length}/120</p>
-                {sourceMeta ? (
-                  <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs leading-5 text-teal-800">
-                    <p className="font-semibold">已从机会雷达带入：{sourceMeta.opportunityTitle}</p>
-                    <p>请确认商品名后再开始分析。{sourceMeta.opportunityScore !== undefined ? `来源分数 ${sourceMeta.opportunityScore}/100。` : ""}</p>
-                    {/* Phase 4-E.1: enhanced context display */}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      {sourceMeta.opportunitySource && (
-                        <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] text-teal-700">
-                          来源：{sourceMeta.opportunitySource}
-                        </span>
-                      )}
-                      {sourceMeta.candidateType && (
-                        <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-teal-700">
-                          {sourceMeta.candidateType === "product_candidate" ? "商品候选" : sourceMeta.candidateType === "category_hint" ? "类目提示" : sourceMeta.candidateType === "trend_signal" ? "趋势信号" : sourceMeta.candidateType}
-                        </span>
-                      )}
-                      {sourceMeta.sourceUrl && (
-                        <a href={sourceMeta.sourceUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] text-teal-600 underline hover:text-teal-800">
-                          查看来源
-                        </a>
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-teal-600">后续分析结果需人工复核，不代表自动立项或推荐采购。</p>
-                  </div>
-                ) : null}
-              </div>
-              <div className="flex flex-col justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={handleRun}
-                  disabled={running || !productName.trim() || productName.trim().length < 2}
-                  className="linear-button-primary inline-flex h-12 w-full items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
-                >
-                  {running ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      分析中…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="size-4" />
-                      开始一键分析
-                    </>
-                  )}
-                </button>
-                {hasResult && !running && (
+          <section className="surface-card p-3 sm:p-4">
+            {hasResult && report ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-teal-700">当前分析对象</p>
+                  <p className="mt-1 truncate text-base font-bold text-slate-950">{result?.productName}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    已生成选品结论。下面先看业务判断；输入区已收起，避免展示时抢主视线。
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => resetRun()}
-                    className="linear-button inline-flex h-10 w-full items-center justify-center text-sm"
+                    className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm"
                   >
-                    重新分析
+                    分析其他商品
                   </button>
-                )}
-              </div>
-            </div>
-
-            {/* Access password — removed from this page, now only on home */}
-
-            {/* Cost warning */}
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-                <div>
-                  <p className="text-sm font-semibold text-amber-800">AI 调用说明</p>
-                  <p className="mt-1 text-xs leading-5 text-amber-700">
-                    本次会依次调用 4 个 AI 步骤（货源判断、风险排查、小白结论、上架文案）。如果某一步失败，系统会使用保守兜底结果，不会中断全流程。结果仅供初筛参考，关键决策需人工确认。当前仅支持单品，不支持批量自动分析。
-                  </p>
+                  <Link href="/tasks" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                    任务中心
+                  </Link>
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-slate-950">输入商品</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    填写商品名称或简短描述。本次会依次调用货源判断、风险排查、小白结论和上架文案生成（共 4 个 AI 步骤）。
+                  </p>
+                </div>
 
-            {error && !hasResult && (
-              <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                <p className="text-sm text-rose-700">{error}</p>
-              </div>
+                <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+                  <div>
+                    <label className="mb-1 block text-sm font-semibold text-slate-700">
+                      商品名称 <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={productName}
+                      onChange={(e) => { setProductName(e.target.value); if (error) setError(""); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleRun(); }}
+                      placeholder="例如：桌面手机支架、硅胶折叠水杯、宠物慢食碗"
+                      maxLength={120}
+                      disabled={running}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
+                    />
+                    <p className="mt-1 text-xs text-slate-400">{productName.length}/120</p>
+                    {sourceMeta ? (
+                      <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs leading-5 text-teal-800">
+                        <p className="font-semibold">已从机会雷达带入：{sourceMeta.opportunityTitle}</p>
+                        <p>请确认商品名后再开始分析。{sourceMeta.opportunityScore !== undefined ? `来源分数 ${sourceMeta.opportunityScore}/100。` : ""}</p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {sourceMeta.opportunitySource && (
+                            <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] text-teal-700">
+                              来源：{sourceMeta.opportunitySource}
+                            </span>
+                          )}
+                          {sourceMeta.candidateType && (
+                            <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+                              {sourceMeta.candidateType === "product_candidate" ? "商品候选" : sourceMeta.candidateType === "category_hint" ? "类目提示" : sourceMeta.candidateType === "trend_signal" ? "趋势信号" : sourceMeta.candidateType}
+                            </span>
+                          )}
+                          {sourceMeta.sourceUrl && (
+                            <a href={sourceMeta.sourceUrl} target="_blank" rel="noopener noreferrer" className="rounded-full border border-teal-200 bg-white px-2 py-0.5 text-[11px] text-teal-600 underline hover:text-teal-800">
+                              查看来源
+                            </a>
+                          )}
+                        </div>
+                        <p className="mt-1.5 text-teal-600">后续分析结果需人工复核，不代表自动立项或推荐采购。</p>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRun}
+                      disabled={running || !productName.trim() || productName.trim().length < 2}
+                      className="linear-button-primary inline-flex h-12 w-full items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
+                    >
+                      {running ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" />
+                          分析中…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-4" />
+                          开始一键分析
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">AI 调用说明</p>
+                      <p className="mt-1 text-xs leading-5 text-amber-700">
+                        本次会依次调用 4 个 AI 步骤（货源判断、风险排查、小白结论、上架文案）。如果某一步失败，系统会使用保守兜底结果，不会中断全流程。结果仅供初筛参考，关键决策需人工确认。当前仅支持单品，不支持批量自动分析。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {error && !hasResult && (
+                  <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                    <p className="text-sm text-rose-700">{error}</p>
+                  </div>
+                )}
+              </>
             )}
           </section>
 
           {/* ═══ Decision summary card — first thing user sees ═══ */}
           {hasResult && report && (
             <section className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6">
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">分析完成 · {result?.productName}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">跨境电商选品分析结果 · {result?.productName}</p>
 
               {/* Big verdict */}
               <div className="mt-3">
@@ -906,18 +919,21 @@ export function WorkflowClient({
                 </div>
               )}
 
-              {/* Profit estimate — MVP: rough calculation, not real market data */}
-              <div className="mt-5">
-                <ProfitSnapshotCard
-                  onChange={setProfitSnapshot}
-                />
-              </div>
-              <div className="mt-5">
-                <RiskReviewChecklistCard
-                  precheckInput={riskPrecheckInput}
-                  onChange={setRiskReviewSnapshot}
-                />
-              </div>
+              <details className="mt-5 rounded-xl border border-slate-200 bg-white/80 p-3">
+                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                  保存前复核：成本利润 + 合规 / 侵权 AI 预筛
+                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，保存任务时仍会记录快照</span>
+                </summary>
+                <div className="mt-3 space-y-4">
+                  <ProfitSnapshotCard
+                    onChange={setProfitSnapshot}
+                  />
+                  <RiskReviewChecklistCard
+                    precheckInput={riskPrecheckInput}
+                    onChange={setRiskReviewSnapshot}
+                  />
+                </div>
+              </details>
             </section>
           )}
 
@@ -987,10 +1003,13 @@ export function WorkflowClient({
 
           {/* ═══ Step review: "上线前人工确认" ═══ */}
           {hasResult && result && (
-            <section ref={reviewRef} className="surface-card p-4 sm:p-5 scroll-mt-4">
-              <h2 className="text-lg font-semibold text-slate-950">上线前人工确认</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                以下 4 项是 AI 每一步的判断依据。逐项展开确认后，结论才能作为采购/上架参考。
+            <details ref={reviewRef} className="surface-card p-4 sm:p-5 scroll-mt-4">
+              <summary className="cursor-pointer text-lg font-semibold text-slate-950 select-none">
+                上线前人工确认
+                <span className="ml-2 text-xs font-medium text-slate-400">4 项步骤复核，默认折叠</span>
+              </summary>
+              <p className="mt-2 text-sm text-slate-500">
+                以下 4 项是 AI 每一步的判断依据。逐项展开确认后，结论才能作为采购 / 上架参考。
               </p>
 
               {!allReviewed && (
@@ -1011,7 +1030,7 @@ export function WorkflowClient({
                   ? "✓ 4/4 已完成确认，可作为下一步测试参考"
                   : `已完成 ${Object.values(reviewConfirmed).filter(Boolean).length}/4 项确认`}
               </div>
-            </section>
+            </details>
           )}
 
           {/* ═══ Progress — at the bottom, collapsed when complete ═══ */}
