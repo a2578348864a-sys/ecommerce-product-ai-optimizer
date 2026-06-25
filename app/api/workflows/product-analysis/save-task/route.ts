@@ -289,6 +289,8 @@ export async function POST(request: NextRequest) {
   const sourceMeta = parseSourceMeta(body.sourceMeta, productName);
   const profitSnapshot = parseProfitSnapshot(body.profitSnapshot);
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
+  const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
+  const listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
 
   // Build a structured result for the task record
   const taskResult = {
@@ -317,6 +319,10 @@ export async function POST(request: NextRequest) {
     ...(profitSnapshot ? { profitSnapshot } : {}),
     // Phase Risk-Review-M.1: optional manual compliance / IP review snapshot
     ...(riskReviewSnapshot ? { riskReviewSnapshot } : {}),
+    // Phase Agent-Save-M.1: agent run snapshot for task replay
+    ...(agentRunSnapshot ? { agentRunSnapshot } : {}),
+    // Phase Listing-Prep-M.1: listing preparation snapshot
+    ...(listingPrepSnapshot ? { listingPrepSnapshot } : {}),
   };
 
   try {
@@ -327,7 +333,7 @@ export async function POST(request: NextRequest) {
         platform: "manual",
         productUrl: null,
         materialText: productName,
-        source: "ai",
+        source: typeof body.source === "string" ? body.source : "ai",
         score,
         level: riskLevel,
         oneLineSummary: finalVerdict,

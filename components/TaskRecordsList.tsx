@@ -875,6 +875,7 @@ export function TaskRecordsList() {
                                 {mainlineTaskTypes.has(item.type || "") ? "主链路任务" : "旧版记录"}
                               </span>
                               {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
+                              {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
                               <span>{formatDate(item.createdAt)}</span>
                             </div>
                             <h3 className="mt-2 truncate text-lg font-semibold tracking-tight text-slate-950">

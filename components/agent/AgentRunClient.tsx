@@ -26,6 +26,7 @@ import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-bord
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
 import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
+import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -458,9 +459,24 @@ export function AgentRunClient({
             summaryReviewed: true,
             listingReviewed: manualChecked.listing,
           },
+          source: "agent_run",
           sourceMeta,
           profitSnapshot,
           riskReviewSnapshot,
+          agentRunSnapshot: buildAgentRunSnapshot({
+            workflowResult: result as Record<string, unknown>,
+            riskReviewSnapshot,
+            profitSnapshot,
+            manualChecked,
+            productName: productName.trim(),
+            sourceMeta,
+          }),
+          listingPrepSnapshot: buildListingPrepSnapshot({
+            listing: result?.listing as Record<string, unknown> | undefined,
+            riskReviewSnapshot,
+            finalReport: result?.finalReport as Record<string, unknown> | undefined,
+            productName: productName.trim(),
+          }),
         }),
       });
       const data = await response.json() as { ok?: boolean; data?: { id?: string }; error?: { message?: string } };

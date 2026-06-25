@@ -13,6 +13,7 @@ import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard, type ListingPrepInput } from "@/components/cross-border/ListingPrepPackageCard";
+import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -161,6 +162,12 @@ function WorkflowDecisionSummary({
   const hasListingData = isRecordValue(result) && isRecordValue(result.listing);
   const listingData = hasListingData ? (result.listing as { title?: string; keywords?: string[]; complianceNotes?: string[] }) : null;
 
+  // Phase Agent-Save-M.1: agent run snapshot
+  const agentRunSnapshot = extractAgentRunSnapshot(result);
+  const listingPrepSnapshot = extractListingPrepSnapshot(result) || (
+    agentRunSnapshot ? null : null // will try fallback from listing data below
+  );
+
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -253,6 +260,74 @@ function WorkflowDecisionSummary({
           ) : null}
         </div>
       </div>
+
+      {/* Phase Agent-Save-M.1: Agent 主链路复盘 */}
+      {agentRunSnapshot ? (
+        <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4" data-testid="agent-run-review">
+          <h3 className="text-base font-bold text-indigo-900">Agent 主链路复盘</h3>
+          <p className="mt-0.5 text-sm leading-6 text-indigo-600">
+            来自 Agent 主链路驾驶舱 · 受控自动化 · {agentRunSnapshot.manualConfirmed ? "人工已确认" : "未完整确认"}
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {agentRunSnapshot.finalVerdict && (
+              <div className="rounded-xl border border-white/80 bg-white p-2">
+                <span className="text-xs font-semibold text-indigo-500">最终结论</span>
+                <p className="mt-0.5 text-sm font-bold text-indigo-900">{agentRunSnapshot.finalVerdict}</p>
+              </div>
+            )}
+            {agentRunSnapshot.riskLevel && (
+              <div className="rounded-xl border border-white/80 bg-white p-2">
+                <span className="text-xs font-semibold text-indigo-500">风险等级</span>
+                <p className="mt-0.5 text-sm font-bold text-indigo-900">{agentRunSnapshot.riskLevel}</p>
+              </div>
+            )}
+            <div className="rounded-xl border border-white/80 bg-white p-2">
+              <span className="text-xs font-semibold text-indigo-500">步骤完成</span>
+              <p className="mt-0.5 text-sm font-bold text-indigo-900">
+                {agentRunSnapshot.steps.filter((s) => s.status === "completed").length}/{agentRunSnapshot.steps.length}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/80 bg-white p-2">
+              <span className="text-xs font-semibold text-indigo-500">人工确认</span>
+              <p className="mt-0.5 text-sm font-bold text-indigo-900">
+                {agentRunSnapshot.manualConfirmed ? "已确认" : "未确认"}
+              </p>
+            </div>
+          </div>
+          <details className="mt-3 rounded-xl border border-white/80 bg-white p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-indigo-700 select-none">
+              8 步链路状态
+            </summary>
+            <div className="mt-2 space-y-1">
+              {agentRunSnapshot.steps.map((step) => (
+                <div key={step.key} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm">
+                  <span className={`size-2 shrink-0 rounded-full ${
+                    step.status === "completed" ? "bg-emerald-500" :
+                    step.status === "needs_manual_review" ? "bg-amber-400" :
+                    step.status === "warning" ? "bg-amber-400" :
+                    "bg-slate-300"
+                  }`} />
+                  <span className="font-semibold text-slate-700">{step.label}</span>
+                  <span className="text-xs text-slate-400">
+                    {step.status === "completed" ? "已完成" :
+                     step.status === "needs_manual_review" ? "需人工复核" : step.status}
+                  </span>
+                  {step.summary && <span className="text-xs text-slate-500">— {step.summary}</span>}
+                </div>
+              ))}
+            </div>
+          </details>
+          {agentRunSnapshot.nextSteps && agentRunSnapshot.nextSteps.length > 0 && (
+            <div className="mt-3 rounded-xl border border-white/80 bg-white p-3">
+              <p className="text-sm font-semibold text-slate-700">下一步动作</p>
+              <ul className="mt-1 space-y-0.5">
+                {agentRunSnapshot.nextSteps.map((s, i) => <li key={i} className="text-sm text-slate-600">- {s}</li>)}
+              </ul>
+            </div>
+          )}
+        </section>
+      ) : null}
+
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
         <summary className="cursor-pointer font-semibold text-slate-600 select-none">
           保存快照：成本利润 + 合规 / 侵权 AI 预筛
