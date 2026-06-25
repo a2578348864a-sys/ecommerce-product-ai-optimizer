@@ -186,10 +186,18 @@ function WorkflowDecisionSummary({
           {sourceMeta ? (
             <div className="mt-3 flex flex-col gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 py-2 text-xs text-teal-800">
               <div className="flex flex-wrap gap-2 font-semibold">
-                <span>来源：机会雷达</span>
+                <span>来自候选池</span>
+                {sourceMeta.entry ? <span>入口：{sourceMeta.entry}</span> : null}
+                {sourceMeta.candidateId ? <span>候选 ID：{sourceMeta.candidateId}</span> : null}
                 {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
                 {sourceMeta.opportunitySource ? <span className="max-w-[200px] truncate">来源名称：{sourceMeta.opportunitySource}</span> : null}
               </div>
+              {sourceMeta.originalName || sourceMeta.analyzedName ? (
+                <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-teal-700">
+                  {sourceMeta.originalName ? <span>原始名称：{sourceMeta.originalName}</span> : null}
+                  {sourceMeta.analyzedName ? <span>分析名称：{sourceMeta.analyzedName}</span> : null}
+                </div>
+              ) : null}
               {sourceMeta.candidateType && (
                 <span className="inline-flex w-fit items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold">
                   {sourceMeta.candidateType === "product_candidate" ? "商品候选" : sourceMeta.candidateType === "category_hint" ? "类目提示" : sourceMeta.candidateType === "trend_signal" ? "趋势信号" : sourceMeta.candidateType}
@@ -325,6 +333,23 @@ function WorkflowDecisionSummary({
               </ul>
             </div>
           )}
+          {listingPrepSnapshot ? (
+            <div className="mt-3 rounded-xl border border-teal-200 bg-white p-3">
+              <h4 className="text-sm font-bold text-teal-900">Listing 上架准备包</h4>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {listingPrepSnapshot.titleStructure.recommendedTitle}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                {listingPrepSnapshot.keywordPool.coreWords.slice(0, 5).map((word) => (
+                  <span key={word} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-teal-700">
+                    {word}
+                  </span>
+                ))}
+                <span>五点草稿 {listingPrepSnapshot.bulletDrafts.length} 条</span>
+                <span>人工补充 {listingPrepSnapshot.manualSupplementChecklist.length} 项</span>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

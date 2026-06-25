@@ -2,14 +2,20 @@ import { AgentRunClient, type AgentRunSourceMeta } from "@/components/agent/Agen
 
 type AgentRunSearchParams = {
   product?: string | string[];
+  productName?: string | string[];
   source?: string | string[];
+  from?: string | string[];
+  entry?: string | string[];
   opportunityTitle?: string | string[];
+  sourceTitle?: string | string[];
   opportunityScore?: string | string[];
   opportunitySource?: string | string[];
   keyword?: string | string[];
   candidateType?: string | string[];
   sourceUrl?: string | string[];
   candidateId?: string | string[];
+  originalName?: string | string[];
+  analyzedName?: string | string[];
 };
 
 function firstParam(value: string | string[] | undefined) {
@@ -33,15 +39,22 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
   const opportunityScore = Number.isFinite(opportunityScoreNumber)
     ? Math.min(100, Math.max(0, Math.round(opportunityScoreNumber)))
     : undefined;
-  const opportunityTitle = safeDecode(firstParam(params.opportunityTitle)) || productName;
+  const sourceTitle = safeDecode(firstParam(params.sourceTitle));
+  const opportunityTitle = safeDecode(firstParam(params.opportunityTitle)) || sourceTitle || productName;
   const opportunitySource = safeDecode(firstParam(params.opportunitySource));
   const keyword = safeDecode(firstParam(params.keyword));
   const candidateType = safeDecode(firstParam(params.candidateType));
   const sourceUrl = safeDecode(firstParam(params.sourceUrl));
   const candidateId = safeDecode(firstParam(params.candidateId));
+  const from = safeDecode(firstParam(params.from));
+  const entry = safeDecode(firstParam(params.entry));
+  const originalName = safeDecode(firstParam(params.originalName));
+  const analyzedName = safeDecode(firstParam(params.analyzedName));
 
   return {
     source: "opportunity",
+    ...(from === "opportunity" ? { from } : {}),
+    ...(entry === "candidate_to_agent_m1" ? { entry } : {}),
     opportunityTitle,
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(opportunityScore !== undefined ? { opportunityScore } : {}),
@@ -49,6 +62,9 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
     ...(candidateType ? { candidateType } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(candidateId ? { candidateId } : {}),
+    ...(sourceTitle ? { sourceTitle } : {}),
+    ...(originalName ? { originalName } : {}),
+    ...(analyzedName ? { analyzedName } : {}),
     importedAt: new Date().toISOString(),
   };
 }
@@ -59,7 +75,7 @@ export default async function AgentRunPage({
   searchParams: Promise<AgentRunSearchParams>;
 }) {
   const params = await searchParams;
-  const initialProductName = safeDecode(firstParam(params.product));
+  const initialProductName = safeDecode(firstParam(params.productName)) || safeDecode(firstParam(params.product));
   const initialSourceMeta = sourceMetaFromParams(params, initialProductName);
 
   return (

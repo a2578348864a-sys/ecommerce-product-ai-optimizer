@@ -34,6 +34,8 @@ export type TaskWorkflowSummary = {
 
 export type TaskSourceMeta = {
   source: "opportunity";
+  from?: "opportunity";
+  entry?: "candidate_to_agent_m1";
   opportunityTitle: string;
   opportunitySource?: string;
   opportunityScore?: number;
@@ -43,6 +45,10 @@ export type TaskSourceMeta = {
   candidateType?: string;
   sourceUrl?: string;
   candidateId?: string;
+  /** Phase Candidate-To-Agent-M.1: candidate pool handoff context */
+  sourceTitle?: string;
+  originalName?: string;
+  analyzedName?: string;
 };
 
 const DEFAULT_WORKFLOW_ACTIONS = [
@@ -114,9 +120,16 @@ export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
   const candidateType = text(result.sourceMeta.candidateType);
   const sourceUrl = text(result.sourceMeta.sourceUrl);
   const candidateId = text(result.sourceMeta.candidateId);
+  const from = text(result.sourceMeta.from);
+  const entry = text(result.sourceMeta.entry);
+  const sourceTitle = text(result.sourceMeta.sourceTitle);
+  const originalName = text(result.sourceMeta.originalName);
+  const analyzedName = text(result.sourceMeta.analyzedName);
 
   return {
     source: "opportunity",
+    ...(from === "opportunity" ? { from } : {}),
+    ...(entry === "candidate_to_agent_m1" ? { entry } : {}),
     opportunityTitle,
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(opportunityScore !== undefined ? { opportunityScore } : {}),
@@ -125,6 +138,9 @@ export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
     ...(candidateType ? { candidateType } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(candidateId ? { candidateId } : {}),
+    ...(sourceTitle ? { sourceTitle } : {}),
+    ...(originalName ? { originalName } : {}),
+    ...(analyzedName ? { analyzedName } : {}),
   };
 }
 

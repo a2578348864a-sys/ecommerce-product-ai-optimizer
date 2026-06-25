@@ -8,6 +8,7 @@ import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
+import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
 import {
   filterCandidatePool,
   mergeCandidatesIntoPool,
@@ -266,6 +267,33 @@ function buildPoolWorkflowHref(candidate: OpportunityCandidatePoolItem) {
     rawInput: candidate.rawInput,
     candidateId: candidate.id,
     sourceUrl: candidate.link ?? undefined,
+  });
+}
+
+function buildPoolAgentRunHref(candidate: OpportunityCandidatePoolItem) {
+  return buildCandidateAgentRunHref({
+    candidateId: candidate.id,
+    name: candidate.name,
+    rawInput: candidate.rawInput,
+    analyzedName: candidate.name,
+    sourceTitle: candidate.summaryLabel || candidate.name,
+    sourceUrl: candidate.link,
+    source: candidate.source,
+    score: candidate.score,
+    keyword: candidate.keyword,
+  });
+}
+
+function buildOpportunityAgentRunHref(candidate: CandidateData) {
+  return buildCandidateAgentRunHref({
+    name: candidate.name,
+    rawInput: candidate.rawInput,
+    analyzedName: candidate.name,
+    sourceTitle: candidate.summary?.verdict || candidate.reasons.slice(0, 1).join("") || candidate.name,
+    sourceUrl: candidate.link,
+    source: "机会雷达候选品",
+    score: candidate.score,
+    keyword: candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0),
   });
 }
 
@@ -1652,6 +1680,17 @@ export function OpportunitiesForm() {
                       用单品分析深挖
                       <TrendingUp className="size-3" />
                     </Link>
+                    <Link
+                      href={buildPoolAgentRunHref(item)}
+                      data-testid={`candidate-agent-run-${item.id}`}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                    >
+                      进入 Agent 主链路
+                      <ArrowRight className="size-3" />
+                    </Link>
+                    <span className="flex items-center text-xs text-slate-400">
+                      已带入候选池上下文，不会自动开始 AI 分析
+                    </span>
                     <button
                       type="button"
                       onClick={() => setPoolCandidateStatus(item.id, "pending")}
@@ -1845,6 +1884,16 @@ export function OpportunitiesForm() {
                             >
                               用单品分析深挖
                               <TrendingUp className="size-3" />
+                            </Link>
+                          )}
+                          {c.name?.trim() && (
+                            <Link
+                              href={buildOpportunityAgentRunHref(c)}
+                              data-testid={`candidate-agent-run-result-${c.index}`}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                            >
+                              进入 Agent 主链路
+                              <ArrowRight className="size-3" />
                             </Link>
                           )}
                         </div>

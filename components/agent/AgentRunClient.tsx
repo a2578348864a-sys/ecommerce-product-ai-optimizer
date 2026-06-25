@@ -78,6 +78,8 @@ type ApiErrorResponse = {
 
 export type AgentRunSourceMeta = {
   source: "opportunity";
+  from?: "opportunity";
+  entry?: "candidate_to_agent_m1";
   opportunityTitle: string;
   opportunitySource?: string;
   opportunityScore?: number;
@@ -85,6 +87,9 @@ export type AgentRunSourceMeta = {
   candidateType?: string;
   sourceUrl?: string;
   candidateId?: string;
+  sourceTitle?: string;
+  originalName?: string;
+  analyzedName?: string;
   importedAt: string;
 };
 
@@ -573,6 +578,7 @@ export function AgentRunClient({
               <div className="flex flex-col justify-end gap-2">
                 <button
                   type="button"
+                  data-testid="agent-run-start"
                   onClick={() => void handleRun()}
                   disabled={isRunning || productName.trim().length < 2}
                   className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:opacity-50"
@@ -604,6 +610,23 @@ export function AgentRunClient({
             {error ? (
               <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800">
                 {error}
+              </div>
+            ) : null}
+            {sourceMeta ? (
+              <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-sm leading-6 text-indigo-800">
+                <p className="font-semibold">已带入候选池上下文</p>
+                <p className="mt-1">
+                  来自候选池：{sourceMeta.sourceTitle || sourceMeta.opportunityTitle}
+                  {sourceMeta.candidateId ? ` · 候选 ID：${sourceMeta.candidateId}` : ""}
+                </p>
+                {sourceMeta.originalName || sourceMeta.analyzedName ? (
+                  <p className="mt-1 text-xs">
+                    原始名称：{sourceMeta.originalName || "未提供"} · 分析名称：{sourceMeta.analyzedName || productName}
+                  </p>
+                ) : null}
+                <p className="mt-1 text-xs font-semibold">
+                  不会自动开始 AI 分析，仍需你手动点击“开始主链路分析”。
+                </p>
               </div>
             ) : null}
           </section>
@@ -769,6 +792,7 @@ export function AgentRunClient({
                     <label key={item.key} className="flex items-start gap-2 rounded-xl border border-white/80 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
                       <input
                         type="checkbox"
+                        data-testid={`agent-run-manual-${item.key}`}
                         checked={manualChecked[item.key]}
                         onChange={(event) => setManualChecked((current) => ({ ...current, [item.key]: event.target.checked }))}
                         className="mt-1"
@@ -786,6 +810,7 @@ export function AgentRunClient({
                   ) : (
                     <button
                       type="button"
+                      data-testid="agent-run-save-task"
                       onClick={() => void saveToTasks()}
                       disabled={saving || !manualReady}
                       className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold disabled:opacity-50"

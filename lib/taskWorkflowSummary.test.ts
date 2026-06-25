@@ -140,6 +140,33 @@ describe("getTaskSourceMeta", () => {
     });
   });
 
+  it("extracts candidate-to-agent source metadata fields", () => {
+    expect(getTaskSourceMeta({
+      productName: "桌面手机支架",
+      sourceMeta: {
+        source: "opportunity",
+        from: "opportunity",
+        entry: "candidate_to_agent_m1",
+        opportunityTitle: "桌面手机支架",
+        opportunitySource: "机会雷达候选品",
+        candidateId: "test-candidate",
+        sourceTitle: "test-title",
+        originalName: "原始候选：phone stand",
+        analyzedName: "桌面手机支架",
+      },
+    })).toMatchObject({
+      source: "opportunity",
+      from: "opportunity",
+      entry: "candidate_to_agent_m1",
+      opportunityTitle: "桌面手机支架",
+      opportunitySource: "机会雷达候选品",
+      candidateId: "test-candidate",
+      sourceTitle: "test-title",
+      originalName: "原始候选：phone stand",
+      analyzedName: "桌面手机支架",
+    });
+  });
+
   it("ignores unsupported or incomplete source metadata", () => {
     expect(getTaskSourceMeta({ sourceMeta: { source: "manual" } })).toBeNull();
     expect(getTaskSourceMeta({ sourceMeta: { source: "opportunity" } })).toBeNull();

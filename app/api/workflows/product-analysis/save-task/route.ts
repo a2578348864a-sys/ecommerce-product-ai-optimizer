@@ -60,6 +60,8 @@ type BatchMeta = {
 
 type SourceMeta = {
   source: "opportunity";
+  from?: "opportunity";
+  entry?: "candidate_to_agent_m1";
   opportunityTitle: string;
   opportunitySource?: string;
   opportunityScore?: number;
@@ -69,6 +71,10 @@ type SourceMeta = {
   candidateType?: string;
   sourceUrl?: string;
   candidateId?: string;
+  /** Phase Candidate-To-Agent-M.1: candidate pool handoff context */
+  sourceTitle?: string;
+  originalName?: string;
+  analyzedName?: string;
 };
 
 type ProfitDecision = "testable" | "caution" | "not_recommended" | "unknown";
@@ -222,9 +228,17 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
   const candidateType = asString(raw.candidateType).slice(0, 40);
   const sourceUrl = asString(raw.sourceUrl).slice(0, 500);
   const candidateId = asString(raw.candidateId).slice(0, 80);
+  // Phase Candidate-To-Agent-M.1: candidate pool handoff context
+  const from = asString(raw.from);
+  const entry = asString(raw.entry);
+  const sourceTitle = asString(raw.sourceTitle).slice(0, 160);
+  const originalName = asString(raw.originalName).slice(0, 200);
+  const analyzedName = asString(raw.analyzedName).slice(0, 120);
 
   return {
     source: "opportunity",
+    ...(from === "opportunity" ? { from } : {}),
+    ...(entry === "candidate_to_agent_m1" ? { entry } : {}),
     opportunityTitle,
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(score !== null ? { opportunityScore: score } : {}),
@@ -232,6 +246,9 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
     ...(candidateType ? { candidateType } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
     ...(candidateId ? { candidateId } : {}),
+    ...(sourceTitle ? { sourceTitle } : {}),
+    ...(originalName ? { originalName } : {}),
+    ...(analyzedName ? { analyzedName } : {}),
     importedAt,
   };
 }

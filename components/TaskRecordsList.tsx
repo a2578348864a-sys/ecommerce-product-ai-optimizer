@@ -910,7 +910,7 @@ export function TaskRecordsList() {
                               <span>{getAgentTypeLabel(item)}</span>
                               <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
                               <span>{sourceLabel(item.source)}</span>
-                              {sourceMeta ? <span>来源：机会雷达</span> : null}
+                              {sourceMeta ? <span>来自候选池</span> : null}
                               {batchMeta ? <span>清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}</span> : null}
                             </div>
                           </div>
@@ -935,7 +935,7 @@ export function TaskRecordsList() {
                             </span>
                             {sourceMeta ? (
                               <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">
-                                来源：机会雷达
+                                来自候选池
                               </span>
                             ) : null}
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">

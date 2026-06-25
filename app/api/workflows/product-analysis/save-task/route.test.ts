@@ -135,4 +135,53 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(result.profitSnapshot).toBeUndefined();
     expect(result.finalReport.finalVerdict).toBe("建议小单测试");
   });
+
+  it("keeps candidate pool source metadata for agent run saves", async () => {
+    const response = await POST(createRequest({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: workflowResult(),
+      reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
+      source: "agent_run",
+      sourceMeta: {
+        source: "opportunity",
+        from: "opportunity",
+        entry: "candidate_to_agent_m1",
+        opportunityTitle: "桌面手机支架",
+        opportunitySource: "机会雷达候选品",
+        opportunityScore: 86.4,
+        keyword: "phone stand",
+        sourceUrl: "https://example.com/item",
+        candidateId: "test-candidate",
+        sourceTitle: "test-title",
+        originalName: "原始候选：phone stand",
+        analyzedName: "桌面手机支架",
+        importedAt: "2026-06-26T10:00:00.000Z",
+      },
+      agentRunSnapshot: { source: "agent_run", steps: [] },
+      listingPrepSnapshot: { keywordPool: { coreWords: [] } },
+    }));
+
+    const { status, body } = await readJson(response);
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    const createArg = mockPrisma.viralAnalysisRecord.create.mock.calls.at(-1)?.[0];
+    expect(createArg?.data?.source).toBe("agent_run");
+    const result = savedResultJson();
+    expect(result.sourceMeta).toMatchObject({
+      source: "opportunity",
+      from: "opportunity",
+      entry: "candidate_to_agent_m1",
+      opportunityTitle: "桌面手机支架",
+      opportunitySource: "机会雷达候选品",
+      opportunityScore: 86,
+      keyword: "phone stand",
+      sourceUrl: "https://example.com/item",
+      candidateId: "test-candidate",
+      sourceTitle: "test-title",
+      originalName: "原始候选：phone stand",
+      analyzedName: "桌面手机支架",
+    });
+    expect(result.agentRunSnapshot.source).toBe("agent_run");
+    expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual([]);
+  });
 });
