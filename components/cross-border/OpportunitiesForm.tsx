@@ -387,6 +387,7 @@ export function OpportunitiesForm() {
   // Phase Candidate-Status-M.1: candidate ↔ task links
   const [candidateTaskLinks, setCandidateTaskLinks] = useState<Map<string, LinkedTaskInfo[]>>(new Map());
   const [taskLinksLoading, setTaskLinksLoading] = useState(false);
+  const [openMoreId, setOpenMoreId] = useState<string | null>(null);
 
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
@@ -1715,82 +1716,79 @@ export function OpportunitiesForm() {
                         );
                       })()}
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setPoolCandidateStatus(item.id, "analyzed")}
-                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                        title="人工确认该候选已通过 AI 分析"
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                      {/* Primary: 进入 Agent 主链路 */}
+                      <Link
+                        href={buildPoolAgentRunHref(item)}
+                        data-testid={`candidate-agent-run-${item.id}`}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
                       >
-                        人工标记为已分析
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPoolCandidateStatus(item.id, "worth_analyzing")}
-                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"
-                      >
-                        人工标记为值得深挖
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPoolCandidateStatus(item.id, "paused")}
-                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"
-                      >
-                        人工标记为暂缓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const confirmed = window.confirm(
-                            `确定将「${item.name}」标记为放弃吗？标记后该候选将不再出现在默认视图中，但不会删除记录。`
-                          );
-                          if (!confirmed) return;
-                          setPoolCandidateStatus(item.id, "rejected");
-                        }}
-                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-                      >
-                        人工标记为放弃
-                      </button>
+                        进入 Agent 主链路
+                        <ArrowRight className="size-3" />
+                      </Link>
+                      {/* More actions dropdown */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMoreId(openMoreId === item.id ? null : item.id)}
+                          className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                        >
+                          更多操作
+                          <ChevronDown className="size-3" />
+                        </button>
+                        {openMoreId === item.id ? (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setOpenMoreId(null)} />
+                            <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                              <Link
+                                href={buildPoolWorkflowHref(item)}
+                                onClick={() => { setPoolCandidateStatus(item.id, "analyzed"); setOpenMoreId(null); }}
+                                className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                              >
+                                <TrendingUp className="size-3" />
+                                旧版单品分析
+                              </Link>
+                              <div className="mx-2 my-1 border-t border-slate-100" />
+                              <span className="px-3 py-1 text-[10px] font-semibold text-slate-400">人工标记</span>
+                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "analyzed"); setOpenMoreId(null); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-indigo-600 hover:bg-indigo-50">
+                                人工标记为已分析
+                              </button>
+                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "worth_analyzing"); setOpenMoreId(null); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-emerald-600 hover:bg-emerald-50">
+                                人工标记为值得深挖
+                              </button>
+                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "pending"); setOpenMoreId(null); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                人工标记为待判断
+                              </button>
+                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "paused"); setOpenMoreId(null); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-amber-600 hover:bg-amber-50">
+                                人工标记为暂缓
+                              </button>
+                              <button type="button" onClick={() => {
+                                const confirmed = window.confirm(
+                                  `确认将「${item.name}」标记为放弃？这不会删除候选，只会改变状态。如需彻底移除，请使用"删除候选"。`
+                                );
+                                if (!confirmed) return;
+                                setPoolCandidateStatus(item.id, "rejected");
+                                setOpenMoreId(null);
+                              }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
+                                人工标记为放弃
+                              </button>
+                              <div className="mx-2 my-1 border-t border-slate-100" />
+                              <button type="button" onClick={() => { void deletePoolCandidate(item); setOpenMoreId(null); }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
+                                <Trash2 className="size-3" />
+                                删除候选
+                              </button>
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                      <span className="text-xs text-slate-400">不会自动开始 AI</span>
                     </div>
-                  </div>
-                  <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-xs leading-5 text-rose-700">
-                    标记为放弃不会删除候选，只会改变状态。需要移除记录请使用&ldquo;删除候选&rdquo;。所有状态标记均由人工手动操作，不会自动变更。
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-                    <Link
-                      href={buildPoolWorkflowHref(item)}
-                      onClick={() => setPoolCandidateStatus(item.id, "analyzed")}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-600 px-3 text-xs font-semibold text-white transition hover:bg-teal-700"
-                    >
-                      用单品分析深挖
-                      <TrendingUp className="size-3" />
-                    </Link>
-                    <Link
-                      href={buildPoolAgentRunHref(item)}
-                      data-testid={`candidate-agent-run-${item.id}`}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                    >
-                      进入 Agent 主链路
-                      <ArrowRight className="size-3" />
-                    </Link>
-                    <span className="flex items-center text-xs text-slate-400">
-                      已带入候选池上下文，不会自动开始 AI 分析
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPoolCandidateStatus(item.id, "pending")}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
-                    >
-                      设为待判断
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deletePoolCandidate(item)}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
-                    >
-                      <Trash2 className="size-3.5" />
-                      删除候选
-                    </button>
                   </div>
                 </article>
               ))}

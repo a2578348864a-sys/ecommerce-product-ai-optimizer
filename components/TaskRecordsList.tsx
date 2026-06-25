@@ -220,6 +220,12 @@ export function TaskRecordsList() {
   const [updatingDecisionId, setUpdatingDecisionId] = useState("");
   const [highlightedTaskId, setHighlightedTaskId] = useState("");
 
+  // Phase Action-Clean-M.1: batch selection + action menu
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [openMoreId, setOpenMoreId] = useState<string | null>(null);
+
   const loadTasks = useCallback(async ({
     nextType,
     nextDecisionStatus,
@@ -470,6 +476,74 @@ export function TaskRecordsList() {
     } finally {
       setDeletingId("");
     }
+  }
+
+  // Phase Action-Clean-M.1: selection helpers
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllCurrent() {
+    setSelectedIds(new Set(displayItems.map((item) => item.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function batchDeleteSelected() {
+    if (selectedIds.size === 0 || batchDeleting) return;
+    const ids = [...selectedIds];
+    const confirmed = window.confirm(
+      `确认删除选中的 ${ids.length} 条任务？此操作不可恢复。`
+    );
+    if (!confirmed) return;
+
+    setBatchDeleting(true);
+    setError("");
+    const failed: string[] = [];
+
+    for (const id of ids) {
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: { "x-access-password": accessPassword },
+        });
+        const data = await response.json() as
+          | { ok: true; data: { id: string } }
+          | { ok: false; error: { code: string; message: string } };
+        if (!response.ok || !data.ok) {
+          failed.push(id);
+        }
+      } catch {
+        failed.push(id);
+      }
+    }
+
+    // Remove successful deletions from list
+    if (failed.length < ids.length) {
+      const failedSet = new Set(failed);
+      setItems((current) => current.filter((item) => !selectedIds.has(item.id) || failedSet.has(item.id)));
+      setPage((current) => current
+        ? { ...current, total: Math.max(0, current.total - (ids.length - failed.length)) }
+        : current);
+    }
+
+    if (failed.length > 0) {
+      setError(`${failed.length}/${ids.length} 条删除失败，请稍后重试。`);
+    }
+
+    setBatchDeleting(false);
+    setSelectedIds(new Set());
   }
 
   async function updateDecisionStatus(item: TaskCenterItem, nextDecisionStatus: DecisionStatus) {
@@ -841,6 +915,40 @@ export function TaskRecordsList() {
               </div>
             ) : (
               <>
+                {/* Phase Action-Clean-M.1: Batch selection toolbar */}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {!selectMode ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectMode(true)}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                    >
+                      选择任务
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
+                      <span className="text-xs font-semibold text-blue-700">
+                        已选择 {selectedIds.size} 条
+                      </span>
+                      <button type="button" onClick={selectAllCurrent}
+                        className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-100">
+                        全选当前页
+                      </button>
+                      <button type="button" onClick={clearSelection}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-50">
+                        取消选择
+                      </button>
+                      <button type="button" onClick={() => void batchDeleteSelected()} disabled={selectedIds.size === 0 || batchDeleting}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-100 disabled:opacity-50">
+                        {batchDeleting ? "删除中…" : `删除选中 (${selectedIds.size})`}
+                      </button>
+                      <button type="button" onClick={exitSelectMode}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-50">
+                        退出选择模式
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="mt-6 space-y-4">
                   {displayItems.map((item) => {
                     const open = openId === item.id;
@@ -914,63 +1022,79 @@ export function TaskRecordsList() {
                               {batchMeta ? <span>清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}</span> : null}
                             </div>
                           </div>
-                          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-[360px] lg:justify-end">
-                            <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-[300px] lg:justify-end">
+                            {/* Checkbox in select mode */}
+                            {selectMode ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(item.id)}
+                                onChange={() => toggleSelect(item.id)}
+                                className="size-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            ) : null}
+                            {/* Key badges: max 4 */}
+                            <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + toneClass(summary.priorityTone)}>
                               {summary.priorityLabel}
                             </span>
-                            <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getTaskStatusClass()}>
-                              {getTaskStatusLabel()}
-                            </span>
-                            <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.riskTone)}>
+                            <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + toneClass(summary.riskTone)}>
                               {summary.riskLabel}
                             </span>
-                            <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
+                            <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
                               {getDecisionStatusOption(item.decisionStatus).shortLabel}
                             </span>
-                            <span
-                              className={"rounded-full border px-3 py-1 text-sm font-semibold " + itemAgentStatus.className}
-                              title={itemAgentStatus.description}
-                            >
-                              Agent：{itemAgentStatus.label}
-                            </span>
+                            {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
                             {sourceMeta ? (
-                              <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-semibold text-teal-700">
+                              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
                                 来自候选池
                               </span>
                             ) : null}
-                            <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
-                              {item.score}/100
-                            </span>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold text-slate-700">
-                              {item.level}
-                            </span>
+                            {/* Primary actions */}
+                            <Link
+                              href={`/tasks/${item.id}`}
+                              className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
+                            >
+                              查看跟进
+                            </Link>
                             <button
                               type="button"
                               onClick={() => setOpenId(open ? "" : item.id)}
-                              className="linear-button px-4 py-2 text-sm font-semibold"
+                              className="linear-button inline-flex h-8 items-center px-3 text-xs font-semibold"
                             >
-                              {open ? "收起" : "展开详情"}
+                              {open ? "收起" : "展开"}
                             </button>
-                            <Link
-                              href={`/tasks/${item.id}`}
-                              className="linear-button-primary px-4 py-2 text-sm font-semibold"
-                            >
-                              查看跟进面板
-                            </Link>
-                            <Link
-                              href="/workflow/batch"
-                              className="linear-button px-4 py-2 text-sm font-semibold"
-                            >
-                              继续批量分析
-                            </Link>
-                            <button
-                              type="button"
-                              onClick={() => void deleteRecord(item)}
-                              disabled={deletingId === item.id}
-                              className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {deletingId === item.id ? "删除中" : "删除"}
-                            </button>
+                            {/* More actions dropdown */}
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setOpenMoreId(openMoreId === item.id ? null : item.id)}
+                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                              >
+                                ···
+                              </button>
+                              {openMoreId === item.id ? (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={() => setOpenMoreId(null)} />
+                                  <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                                    <Link
+                                      href="/workflow/batch"
+                                      onClick={() => setOpenMoreId(null)}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+                                    >
+                                      继续批量分析
+                                    </Link>
+                                    <div className="mx-2 my-1 border-t border-slate-100" />
+                                    <button
+                                      type="button"
+                                      onClick={() => { void deleteRecord(item); setOpenMoreId(null); }}
+                                      disabled={deletingId === item.id}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                                    >
+                                      {deletingId === item.id ? "删除中…" : "删除"}
+                                    </button>
+                                  </div>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
 
