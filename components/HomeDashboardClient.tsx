@@ -331,7 +331,7 @@ export function HomeDashboardClient() {
                   ) : null}
                   {isAccessPasswordReady && !accessPassword.trim() && passwordError ? null : null}
                   <p className="mt-3 text-xs text-slate-400">
-                    Alpha MVP 访问保护 · 密码仅保存在当前会话中 · 关闭网页后需重新输入 · 不收集个人信息
+                    访问保护 · 密码仅保存在当前会话中 · 关闭网页后需重新输入 · 不收集个人信息
                   </p>
                 </div>
               </div>
@@ -502,7 +502,7 @@ export function HomeDashboardClient() {
             <div className="flex gap-2">
               <ClipboardCheck className="mt-0.5 size-4 shrink-0 text-teal-700" />
               <p>
-                当前仍是 Alpha MVP：采购、上架、联系供应商、投广告等动作都需要你人工确认后手动执行。
+                当前为人工复核版：采购、上架、联系供应商、投广告等动作都需要你人工确认后手动执行。
               </p>
             </div>
           </section>

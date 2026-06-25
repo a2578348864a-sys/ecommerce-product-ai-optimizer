@@ -110,7 +110,7 @@ export function WorkspaceSidebar() {
               <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-teal-700">受控自动化 / Alpha MVP</p>
+              <p className="text-[11px] font-semibold text-teal-700">受控自动化 · 人工复核版</p>
               <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
               <p className="muted-text mt-1 text-xs leading-5">先分析，再人工复核</p>
             </div>
@@ -126,7 +126,7 @@ export function WorkspaceSidebar() {
 
         <details className="surface-card p-2" open={assistantOpen}>
           <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600">
-            辅助工具
+            辅助工具（已整合进主链路）
           </summary>
           <div className="mt-1">
             {assistantToolItems.map((item) => (
