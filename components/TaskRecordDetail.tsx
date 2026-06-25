@@ -12,6 +12,7 @@ import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/ac
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
+import { ListingPrepPackageCard, type ListingPrepInput } from "@/components/cross-border/ListingPrepPackageCard";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -157,6 +158,8 @@ function WorkflowDecisionSummary({
   const isWorkflow = true; // only called for workflow tasks
   const hasProfitSnapshot = isRecordValue(result) && isRecordValue(result.profitSnapshot);
   const hasRiskReviewSnapshot = isRecordValue(result) && isRecordValue(result.riskReviewSnapshot);
+  const hasListingData = isRecordValue(result) && isRecordValue(result.listing);
+  const listingData = hasListingData ? (result.listing as { title?: string; keywords?: string[]; complianceNotes?: string[] }) : null;
 
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
@@ -274,6 +277,17 @@ function WorkflowDecisionSummary({
           ) : (
             <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-700">
               该任务尚未保存合规 / 侵权 AI 预筛记录。
+            </p>
+          )}
+          {hasListingData && listingData ? (
+            <ListingPrepPackageCard
+              embedded
+              listing={listingData as ListingPrepInput}
+              riskReviewSnapshot={hasRiskReviewSnapshot ? (result.riskReviewSnapshot as Record<string, unknown>) : null}
+            />
+          ) : (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-500">
+              该任务暂无 Listing 准备包。可回到主链路重新分析，或人工补充关键词、五点描述和上架素材。
             </p>
           )}
         </div>

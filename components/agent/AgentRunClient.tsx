@@ -24,6 +24,7 @@ import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
+import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
 import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
@@ -709,18 +710,16 @@ export function AgentRunClient({
               <details className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-3">
                 <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
                   Listing / 关键词准备
-                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，草稿需人工复核</span>
+                  <span className="ml-2 text-xs font-medium text-slate-400">上架准备包，默认折叠</span>
                 </summary>
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                  <p className="font-semibold text-slate-900">{listingTitle}</p>
-                  {listingKeywords.length > 0 ? (
-                    <p className="mt-2 text-sm text-slate-500">关键词：{listingKeywords.slice(0, 8).join("、")}</p>
-                  ) : null}
-                  {listingNotes.length > 0 ? (
-                    <ul className="mt-2 space-y-1 text-sm text-amber-700">
-                      {listingNotes.slice(0, 4).map((item) => <li key={item}>- {item}</li>)}
-                    </ul>
-                  ) : null}
+                <div className="mt-3">
+                  <ListingPrepPackageCard
+                    embedded
+                    listing={{ title: listingTitle, keywords: listingKeywords, complianceNotes: listingNotes }}
+                    riskReviewSnapshot={riskReviewSnapshot}
+                    finalReport={result?.finalReport}
+                    productName={productName.trim() || undefined}
+                  />
                 </div>
               </details>
 

@@ -23,6 +23,7 @@ import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
+import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
 import type { RiskReviewSnapshot } from "@/lib/riskReview";
 
 /* ── Types ─────────────────────────────────────── */
@@ -248,17 +249,13 @@ function StepReviewCard({
             </>
           )}
           {stepKey === "listing" && (
-            <>
-              {s(data.title) && <p className="font-semibold text-slate-800">{s(data.title)}</p>}
-              {sa(data.keywords).length > 0 && (
-                <p className="text-xs text-slate-500">关键词：{sa(data.keywords).slice(0, 8).join("、")}</p>
-              )}
-              {sa(data.complianceNotes).length > 0 && (
-                <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-xs text-amber-700">
-                  {sa(data.complianceNotes).map((n, i) => <p key={i}>- {n}</p>)}
-                </div>
-              )}
-            </>
+            <ListingPrepPackageCard
+              embedded
+              listing={{ title: s(data.title), keywords: sa(data.keywords), complianceNotes: sa(data.complianceNotes) }}
+              riskReviewSnapshot={result.risk as Record<string, unknown> | null}
+              finalReport={result.finalReport as Record<string, unknown> | null}
+              productName={result.productName}
+            />
           )}
         </div>
       )}
