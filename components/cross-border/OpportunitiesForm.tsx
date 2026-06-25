@@ -9,6 +9,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
+import { buildCandidateTaskLinkMap, type LinkedTaskInfo } from "@/lib/candidateTaskLinks";
 import {
   filterCandidatePool,
   mergeCandidatesIntoPool,
@@ -383,6 +384,10 @@ export function OpportunitiesForm() {
   const [sourceConfirming, setSourceConfirming] = useState(false);
   const [sourceConfirmResult, setSourceConfirmResult] = useState("");
 
+  // Phase Candidate-Status-M.1: candidate ↔ task links
+  const [candidateTaskLinks, setCandidateTaskLinks] = useState<Map<string, LinkedTaskInfo[]>>(new Map());
+  const [taskLinksLoading, setTaskLinksLoading] = useState(false);
+
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
@@ -464,6 +469,38 @@ export function OpportunitiesForm() {
     if (!poolHydrated) return;
     writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, poolItems);
   }, [poolHydrated, poolItems]);
+
+  // Phase Candidate-Status-M.1: Load recent tasks to build candidate→task link map
+  useEffect(() => {
+    if (!hasAccess || serverAvailable !== true) {
+      setCandidateTaskLinks(new Map());
+      return;
+    }
+
+    let cancelled = false;
+    async function loadTaskLinks() {
+      setTaskLinksLoading(true);
+      try {
+        const res = await fetch("/api/tasks?limit=50", {
+          headers: { "x-access-password": accessPassword },
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const records = json.records ?? json.data?.items ?? [];
+        if (!Array.isArray(records)) return;
+        if (!cancelled) {
+          setCandidateTaskLinks(buildCandidateTaskLinkMap(records));
+        }
+      } catch {
+        // Silently degrade — task links are optional
+      } finally {
+        if (!cancelled) setTaskLinksLoading(false);
+      }
+    }
+
+    void loadTaskLinks();
+    return () => { cancelled = true; };
+  }, [hasAccess, serverAvailable, accessPassword]);
 
   // Check if localStorage has items that server might not have
   const localPoolCount = typeof window === "undefined" ? 0 : readCandidatePool(window.localStorage).length;
@@ -1416,7 +1453,7 @@ export function OpportunitiesForm() {
                   <div>
                     <p className="font-semibold">以下结果只是本次抓取的临时预览，刷新页面会清空。</p>
                     <p className="mt-1 text-xs leading-5 text-amber-800">
-                      请勾选候选并点击“确认导入候选池”，导入后才会保存到服务端候选池。
+                      请勾选候选并点击&ldquo;确认导入候选池&rdquo;，导入后才会保存到服务端候选池。
                     </p>
                   </div>
                 </div>
@@ -1643,33 +1680,81 @@ export function OpportunitiesForm() {
                       {item.candidateStatus === "analyzed" ? (
                         <p className="mt-2 text-xs font-semibold text-indigo-700">已进入单品分析，可继续深挖。</p>
                       ) : null}
+                      {/* Phase Candidate-Status-M.1: Linked tasks display */}
+                      {(() => {
+                        const linkedTasks = candidateTaskLinks.get(item.id);
+                        if (!linkedTasks || linkedTasks.length === 0) return null;
+                        const latest = linkedTasks[0];
+                        return (
+                          <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/60 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-teal-200 bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+                                已关联任务
+                              </span>
+                              {latest.source === "agent_run" ? (
+                                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600">
+                                  来自 Agent 主链路
+                                </span>
+                              ) : null}
+                              {linkedTasks.length > 1 ? (
+                                <span className="text-[10px] text-slate-400">共 {linkedTasks.length} 条</span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 truncate text-xs font-semibold text-slate-700">{latest.title}</p>
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <Link
+                                href={`/tasks/${latest.taskId}`}
+                                className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-white px-2 py-1 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-100"
+                              >
+                                查看任务详情
+                                <ArrowRight className="size-3" />
+                              </Link>
+                              <span className="text-[10px] text-slate-400">ID: {latest.taskId.slice(0, 12)}…</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setPoolCandidateStatus(item.id, "analyzed")}
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                        title="人工确认该候选已通过 AI 分析"
+                      >
+                        人工标记为已分析
+                      </button>
                       <button
                         type="button"
                         onClick={() => setPoolCandidateStatus(item.id, "worth_analyzing")}
                         className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"
                       >
-                        值得深挖
+                        人工标记为值得深挖
                       </button>
                       <button
                         type="button"
                         onClick={() => setPoolCandidateStatus(item.id, "paused")}
                         className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"
                       >
-                        暂缓
+                        人工标记为暂缓
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPoolCandidateStatus(item.id, "rejected")}
-                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700"
+                        onClick={() => {
+                          const confirmed = window.confirm(
+                            `确定将「${item.name}」标记为放弃吗？标记后该候选将不再出现在默认视图中，但不会删除记录。`
+                          );
+                          if (!confirmed) return;
+                          setPoolCandidateStatus(item.id, "rejected");
+                        }}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
                       >
-                        标记为放弃
+                        人工标记为放弃
                       </button>
                     </div>
                   </div>
                   <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-xs leading-5 text-rose-700">
-                    标记为放弃不会删除候选，只会改变状态。需要移除记录请使用“删除候选”。
+                    标记为放弃不会删除候选，只会改变状态。需要移除记录请使用&ldquo;删除候选&rdquo;。所有状态标记均由人工手动操作，不会自动变更。
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                     <Link

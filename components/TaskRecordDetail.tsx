@@ -208,6 +208,18 @@ function WorkflowDecisionSummary({
                   查看来源链接
                 </a>
               )}
+              {/* Phase Candidate-Status-M.1: Back to candidate pool link */}
+              <div className="mt-1 border-t border-teal-100 pt-1.5">
+                <Link
+                  href="/opportunities"
+                  className="inline-flex items-center gap-1 text-teal-700 font-semibold hover:text-teal-900 transition"
+                >
+                  回到候选池 →
+                </Link>
+                {sourceMeta.candidateId ? (
+                  <span className="ml-2 text-[10px] text-teal-500">候选 ID：{sourceMeta.candidateId}</span>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {/* Phase 4-E.2.1: Operation decision panel */}
