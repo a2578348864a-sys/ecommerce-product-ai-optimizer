@@ -53,6 +53,14 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
+import { evaluateCandidateQuality, type CandidateQualityLevel } from "@/lib/candidateQuality";
+
+const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
+  recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  caution: "border-amber-200 bg-amber-50 text-amber-700",
+  not_recommended: "border-slate-200 bg-slate-50 text-slate-500",
+  rejected: "border-rose-200 bg-rose-50 text-rose-500",
+};
 
 type CandidateData = {
   index: number;
@@ -905,8 +913,16 @@ export function OpportunitiesForm() {
 
   const toggleAllSourceCandidates = useCallback(() => {
     setSourceImportChecked((prev) => {
-      if (prev.size === sourceImportCandidates.length) return new Set<string>();
-      return new Set(sourceImportCandidates.map((_, i) => String(i)));
+      // Re-select all only if every importable candidate is already checked
+      const importableIndices = sourceImportCandidates
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => {
+          const q = evaluateCandidateQuality({ title: c.title, url: c.sourceUrl, candidateType: c.candidateType });
+          return q.shouldAllowImport;
+        })
+        .map(({ i }) => String(i));
+      if (prev.size >= importableIndices.length) return new Set<string>();
+      return new Set(importableIndices);
     });
   }, [sourceImportCandidates]);
 
@@ -1483,6 +1499,24 @@ export function OpportunitiesForm() {
                       </p>
                     );
                   })()}
+                  {/* Candidate-Quality-M.1: quality summary */}
+                  {(() => {
+                    const qs = sourceImportCandidates.map(c => evaluateCandidateQuality({ title: c.title, url: c.sourceUrl, candidateType: c.candidateType }));
+                    const rec = qs.filter(q => q.level === "recommended").length;
+                    const cau = qs.filter(q => q.level === "caution").length;
+                    const nr = qs.filter(q => q.level === "not_recommended").length;
+                    const rej = qs.filter(q => q.level === "rejected").length;
+                    if (rec + cau + nr + rej === 0) return null;
+                    return (
+                      <p className="mt-1 text-xs text-slate-400">
+                        候选质量：
+                        {rec > 0 && <span className="ml-1 text-emerald-600">推荐入池 {rec}</span>}
+                        {cau > 0 && <span className="ml-1 text-amber-600">谨慎 {cau}</span>}
+                        {nr > 0 && <span className="ml-1 text-slate-500">不建议 {nr}</span>}
+                        {rej > 0 && <span className="ml-1 text-rose-500">拒绝 {rej}</span>}
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -1530,6 +1564,15 @@ export function OpportunitiesForm() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900 truncate">{c.title}</p>
+                          {/* Phase Candidate-Quality-M.1: quality badge */}
+                          {(() => {
+                            const quality = evaluateCandidateQuality({ title: c.title, url: c.sourceUrl, candidateType: c.candidateType });
+                            return (
+                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${QUALITY_TONE[quality.level]}`}>
+                                {quality.label}
+                              </span>
+                            );
+                          })()}
                           {/* Phase 4-D.8: candidateType badge */}
                           {(() => {
                             const ctLabel = getCandidateTypeLabel(c.candidateType);
