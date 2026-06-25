@@ -604,6 +604,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -741,6 +742,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
     }
   }
 
+  function handleCopyReport() {
+    if (!record || record.type !== "workflow" || !isRecordValue(record.result)) return;
+    const md = buildFinalReportMarkdown(record.result as Record<string, unknown>);
+    if (!md) return;
+    navigator.clipboard.writeText(md).catch(() => {
+      const textarea = document.createElement("textarea");
+      textarea.value = md;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   if (!unlocked) {
     return <WorkspaceLockedPrompt pageName="任务详情" returnUrl={`/tasks/${id}`} />;
   }
@@ -772,6 +789,15 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 >
                   返回任务中心
                 </Link>
+                {record?.type === "workflow" && isRecordValue(record.result) && (
+                  <button
+                    type="button"
+                    onClick={handleCopyReport}
+                    className="linear-button-soft inline-flex h-11 items-center justify-center gap-1.5 px-5 text-sm font-semibold"
+                  >
+                    {copied ? "已复制" : "复制报告"}
+                  </button>
+                )}
               </div>
             </div>
             <WorkspaceMobileNav />

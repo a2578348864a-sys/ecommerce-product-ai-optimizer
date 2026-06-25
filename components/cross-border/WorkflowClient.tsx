@@ -673,6 +673,10 @@ export function WorkflowClient({
                 <p className="muted-text mt-1 text-sm">
                   输入一个商品，自动完成货源判断、风险排查、小白结论和上架准备。结果需人工确认。
                 </p>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  <Lightbulb className="inline size-3 mr-0.5 align-[-1px]" />
+                  分析完成后，可一键保存到任务中心，继续人工复核、复制报告和运营跟进。
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Link href="/workflow/batch" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
@@ -859,9 +863,14 @@ export function WorkflowClient({
               </div>
               {saveError && <p className="mt-2 text-xs text-rose-600">{saveError}</p>}
               {savedTaskId && (
-                <p className={`mt-2 text-xs font-semibold ${allReviewed ? "text-emerald-600" : "text-amber-600"}`}>
-                  {allReviewed ? "已保存为已复核任务" : "已保存为待复核任务"}
-                </p>
+                <>
+                  <p className={`mt-2 text-xs font-semibold ${allReviewed ? "text-emerald-600" : "text-amber-600"}`}>
+                    {allReviewed ? "已保存为已复核任务" : "已保存为待复核任务"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    在任务中心可复核结论、复制报告、标记观察 / 测款 / 放弃。
+                  </p>
+                </>
               )}
 
               {/* Next steps — right under decision */}
