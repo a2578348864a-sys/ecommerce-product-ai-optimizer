@@ -21,6 +21,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { useAccessPassword, canRequestWithAccessPassword } from "@/lib/client/accessPassword";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
+import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -339,6 +340,7 @@ export function WorkflowClient({
   const [runReady, setRunReady] = useState(false);
   const [runRestored, setRunRestored] = useState(false);
   const [runNotice, setRunNotice] = useState("");
+  const [profitSnapshot, setProfitSnapshot] = useState<ProfitSnapshot | null>(null);
   const finalReportRef = useRef<HTMLElement | null>(null);
   const reviewRef = useRef<HTMLElement | null>(null);
   const lastAutoScrolledWorkflowId = useRef<string | null>(null);
@@ -441,7 +443,7 @@ export function WorkflowClient({
       const res = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState, sourceMeta }),
+        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState, sourceMeta, profitSnapshot }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -884,6 +886,13 @@ export function WorkflowClient({
                   </ul>
                 </div>
               )}
+
+              {/* Profit estimate — MVP: rough calculation, not real market data */}
+              <div className="mt-5">
+                <ProfitSnapshotCard
+                  onChange={setProfitSnapshot}
+                />
+              </div>
             </section>
           )}
 

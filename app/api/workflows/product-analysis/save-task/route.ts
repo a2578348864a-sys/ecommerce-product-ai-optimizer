@@ -244,6 +244,8 @@ export async function POST(request: NextRequest) {
     ...(sourceMeta ? { sourceMeta } : {}),
     // Phase 4-E.2.1: initialize product lifecycle
     productLifecycle: createInitialProductLifecycle(),
+    // Phase Profit-M.1: optional profit snapshot from in-line estimate card
+    ...(isRecord(body.profitSnapshot) ? { profitSnapshot: body.profitSnapshot } : {}),
   };
 
   try {

@@ -10,6 +10,7 @@ import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
+import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -191,6 +192,16 @@ function WorkflowDecisionSummary({
           {/* Phase 4-E.2.1: Operation decision panel */}
           {isWorkflow && productLifecycle && (
             <OperationDecisionPanel taskId={taskId} lifecycle={productLifecycle} onUpdated={onLifecycleUpdated} />
+          )}
+
+          {/* Phase Profit-M.1: show saved profit snapshot if present */}
+          {isRecordValue(result) && isRecordValue(result.profitSnapshot) && (
+            <div className="mt-3">
+              <ProfitSnapshotCard
+                initial={result.profitSnapshot as unknown as ProfitSnapshot}
+                readonly
+              />
+            </div>
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
