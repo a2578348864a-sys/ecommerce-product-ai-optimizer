@@ -3,42 +3,26 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Calculator,
-  FileText,
-  Flame,
   History,
   House,
-  Images,
   ListChecks,
-  Map,
   Package,
   Search,
-  ShieldAlert,
   Sparkles,
   Target,
-  Truck,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: House },
-  { label: "Agent 主流程", href: "/agent/run", icon: Sparkles },
   { label: "找机会", href: "/opportunities", icon: Target },
-  { label: "单品分析", href: "/workflow", icon: Search },
-  { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
+  { label: "Agent 主流程", href: "/agent/run", icon: Sparkles },
   { label: "任务中心", href: "/tasks", icon: History },
+  { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
-const assistantToolItems = [
-  { label: "货源判断", href: "/sourcing", icon: Truck },
-  { label: "风险排查", href: "/risk", icon: ShieldAlert },
-  { label: "小白结论", href: "/summary", icon: FileText },
-  { label: "爆款拆解", href: "/viral", icon: Flame },
-  { label: "素材接收", href: "/materials", icon: Images },
-  { label: "利润试算", href: "/products/new", icon: Calculator },
-] as const;
+const secondaryNavItem = { label: "单品分析（备用）", href: "/workflow", icon: Search } as const;
 
-const routeMapItem = { label: "能力路线图", href: "/agent", icon: Map } as const;
 const mobileNavItems = workspaceNavItems;
 
 function isActivePath(pathname: string, href: string) {
@@ -52,7 +36,7 @@ function NavLink({
   pathname,
   compact = false,
 }: {
-  item: (typeof workspaceNavItems)[number] | (typeof assistantToolItems)[number] | typeof routeMapItem;
+  item: (typeof workspaceNavItems)[number] | typeof secondaryNavItem;
   pathname: string;
   compact?: boolean;
 }) {
@@ -87,7 +71,6 @@ function NavLink({
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
   const [sharedProduct] = useSharedProduct();
-  const assistantOpen = assistantToolItems.some((item) => isActivePath(pathname, item.href));
 
   return (
     <aside className="hidden lg:block">
@@ -124,22 +107,8 @@ export function WorkspaceSidebar() {
           {workspaceNavItems.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
-        </nav>
-
-        <details className="surface-card p-2" open={assistantOpen}>
-          <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-xs font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600">
-            辅助工具（已整合进主链路）
-          </summary>
-          <div className="mt-1">
-            {assistantToolItems.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} compact />
-            ))}
-          </div>
-        </details>
-
-        <nav className="surface-card p-2" aria-label="项目说明">
-          <p className="px-2 pb-1 text-xs font-semibold text-slate-400">项目说明</p>
-          <NavLink item={routeMapItem} pathname={pathname} compact />
+          <div className="mx-2 my-1 border-t border-slate-100" />
+          <NavLink item={secondaryNavItem} pathname={pathname} compact />
         </nav>
       </div>
     </aside>

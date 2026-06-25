@@ -1075,18 +1075,14 @@ export function WorkflowClient({
             </section>
           )}
 
-          {/* Quick links to individual pages */}
+          {/* Main workflow entry points */}
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-            <span>单项分析入口：</span>
-            <Link href="/sourcing" className="hover:text-teal-600">货源判断</Link>
+            <span>主链路：</span>
+            <Link href="/agent/run" className="hover:text-teal-600">Agent 主流程</Link>
             <span>·</span>
-            <Link href="/risk" className="hover:text-teal-600">风险排查</Link>
+            <Link href="/opportunities" className="hover:text-teal-600">候选池</Link>
             <span>·</span>
-            <Link href="/summary" className="hover:text-teal-600">小白结论</Link>
-            <span>·</span>
-            <Link href="/products/new" className="hover:text-teal-600">新品体检</Link>
-            <span>·</span>
-            <Link href="/opportunities" className="hover:text-teal-600">机会雷达</Link>
+            <Link href="/tasks" className="hover:text-teal-600">任务中心</Link>
           </div>
         </div>
       </div>

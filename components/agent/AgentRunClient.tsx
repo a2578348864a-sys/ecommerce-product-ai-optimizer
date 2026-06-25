@@ -520,11 +520,11 @@ export function AgentRunClient({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Link href="/agent" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                  能力路线图
+                <Link href="/opportunities" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                  候选池
                 </Link>
-                <Link href="/workflow" className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                  单品分析页
+                <Link href="/tasks" className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                  任务中心
                 </Link>
               </div>
             </div>
