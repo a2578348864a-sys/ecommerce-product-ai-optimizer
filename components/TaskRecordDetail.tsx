@@ -205,7 +205,7 @@ function WorkflowDecisionSummary({
             </div>
           )}
 
-          {/* Phase Risk-Review-M.1: show saved manual risk review if present */}
+          {/* Phase Risk-Auto-M.1: show saved rule precheck + manual review if present */}
           {isRecordValue(result) && isRecordValue(result.riskReviewSnapshot) ? (
             <div className="mt-3">
               <RiskReviewChecklistCard
@@ -215,7 +215,7 @@ function WorkflowDecisionSummary({
             </div>
           ) : (
             <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-700">
-              该任务尚未保存合规 / 侵权人工复核记录。
+              该任务尚未保存合规 / 侵权 AI 预筛记录。
             </p>
           )}
         </div>

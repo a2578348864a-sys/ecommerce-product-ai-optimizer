@@ -89,10 +89,16 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
         note: "粗略估算，非真实市场价，需人工复核",
       },
       riskReviewSnapshot: {
+        version: "risk_auto_mvp_v1",
+        source: "rule_based_risk_precheck_mvp",
+        mode: "ai_rule_precheck_with_manual_review",
+        overallPrecheckLevel: "high",
+        summary: "系统自动圈出外观结构风险，需人工最终确认。",
+        recommendedActions: ["对比同类爆款外观结构", "向供应商索要检测报告"],
         items: [
-          { key: "brand_ip", status: "cleared", note: "未使用品牌词" },
-          { key: "trademark", status: "needs_check" },
-          { key: "patent_design", status: "high_risk" },
+          { key: "brand_ip", status: "cleared", precheckLevel: "not_triggered", note: "未使用品牌词" },
+          { key: "trademark", status: "needs_check", precheckLevel: "medium" },
+          { key: "patent_design", status: "high_risk", precheckLevel: "high", precheckReason: "外观结构需查证" },
         ],
         note: "外观相似度需要继续查证",
       },
@@ -104,11 +110,14 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     const result = savedResultJson();
 
     expect(result.profitSnapshot.estimatedProfit).toBe(6.25);
-    expect(result.riskReviewSnapshot.version).toBe("risk_review_mvp_v1");
-    expect(result.riskReviewSnapshot.source).toBe("manual_risk_review_mvp");
+    expect(result.riskReviewSnapshot.version).toBe("risk_auto_mvp_v1");
+    expect(result.riskReviewSnapshot.source).toBe("rule_based_risk_precheck_mvp");
+    expect(result.riskReviewSnapshot.mode).toBe("ai_rule_precheck_with_manual_review");
+    expect(result.riskReviewSnapshot.overallPrecheckLevel).toBe("high");
     expect(result.riskReviewSnapshot.overallStatus).toBe("high_risk");
     expect(result.riskReviewSnapshot.items.find((item: any) => item.key === "brand_ip").note).toBe("未使用品牌词");
     expect(JSON.stringify(result.riskReviewSnapshot)).not.toContain("安全可卖");
+    expect(JSON.stringify(result.riskReviewSnapshot)).not.toContain("已通过合规");
   });
 
   it("keeps old payload compatible when riskReviewSnapshot is missing", async () => {

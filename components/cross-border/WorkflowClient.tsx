@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -352,6 +352,16 @@ export function WorkflowClient({
   const reviewStepKeys: StepKey[] = ["sourcing", "risk", "summary", "listing"];
   const [reviewConfirmed, setReviewConfirmed] = useState<Record<string, boolean>>({});
   const allReviewed = reviewStepKeys.every((k) => reviewConfirmed[k]);
+  const riskPrecheckInput = useMemo(() => {
+    if (!result) return undefined;
+    return {
+      productName: result.productName || productName,
+      finalReport: result.finalReport,
+      riskResult: result.risk,
+      listingResult: result.listing,
+      sourcingResult: result.sourcing,
+    };
+  }, [productName, result]);
 
   const toggleReviewConfirm = useCallback((key: string) => {
     setReviewConfirmed((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -904,6 +914,7 @@ export function WorkflowClient({
               </div>
               <div className="mt-5">
                 <RiskReviewChecklistCard
+                  precheckInput={riskPrecheckInput}
                   onChange={setRiskReviewSnapshot}
                 />
               </div>
