@@ -714,10 +714,10 @@ export function AgentRunClient({
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
                   <p className="font-semibold text-slate-900">{listingTitle}</p>
                   {listingKeywords.length > 0 ? (
-                    <p className="mt-2 text-xs text-slate-500">关键词：{listingKeywords.slice(0, 8).join("、")}</p>
+                    <p className="mt-2 text-sm text-slate-500">关键词：{listingKeywords.slice(0, 8).join("、")}</p>
                   ) : null}
                   {listingNotes.length > 0 ? (
-                    <ul className="mt-2 space-y-1 text-xs text-amber-700">
+                    <ul className="mt-2 space-y-1 text-sm text-amber-700">
                       {listingNotes.slice(0, 4).map((item) => <li key={item}>- {item}</li>)}
                     </ul>
                   ) : null}
@@ -731,8 +731,8 @@ export function AgentRunClient({
                 </summary>
                 <div className="mt-3 space-y-3">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-bold text-slate-500">过程日志</p>
-                    <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+                    <p className="text-sm font-bold text-slate-500">过程日志</p>
+                    <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600">
                       {result.steps.map((step) => (
                         <li key={step.key}>- {step.label}：{step.summary}</li>
                       ))}
@@ -746,7 +746,7 @@ export function AgentRunClient({
 
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                 <p className="text-sm font-bold text-amber-900">人工确认与任务沉淀</p>
-                <p className="mt-1 text-xs leading-5 text-amber-800">
+                <p className="mt-1 text-sm leading-6 text-amber-800">
                   勾选后才允许点击“人工确认后保存任务”。这一步只由人工触发，不会自动保存任务或修改任务状态。
                 </p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -821,13 +821,13 @@ function TimelineCard({ step, status }: { step: TimelineStep; status: TimelineSt
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-bold text-slate-950">{step.title}</p>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(status)}`}>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClass(status)}`}>
               {status === "running" ? <Loader2 className="mr-1 inline size-3 animate-spin" /> : null}
               {statusLabel(status)}
             </span>
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">{step.description}</p>
-          <p className="mt-2 text-[11px] leading-5 text-slate-400">{step.detail}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600">{step.description}</p>
+          <p className="mt-2 text-xs leading-5 text-slate-400">{step.detail}</p>
         </div>
       </div>
     </div>
@@ -837,7 +837,7 @@ function TimelineCard({ step, status }: { step: TimelineStep; status: TimelineSt
 function SummaryMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-white/80 bg-white p-3">
-      <p className="text-xs font-bold text-slate-400">{label}</p>
+      <p className="text-sm font-bold text-slate-400">{label}</p>
       <p className="mt-1 text-sm font-bold text-slate-800">{value}</p>
     </div>
   );

@@ -141,7 +141,7 @@ export function RiskReviewChecklistCard({
               {isLegacy ? "合规 / 侵权人工复核记录" : "合规 / 侵权 AI 预筛"}
             </p>
           </div>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-amber-800">
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-800">
             系统会先根据商品名和分析结果自动圈出可能的侵权、禁售、认证和物流风险。AI / 规则只能做预筛，最终仍需人工结合商标、专利、平台规则和供应商文件确认。
           </p>
         </div>
@@ -176,8 +176,8 @@ export function RiskReviewChecklistCard({
 
       {recommendedActions.length > 0 ? (
         <div className="mt-3 rounded-xl border border-white/80 bg-white p-3">
-          <p className="text-xs font-bold text-slate-500">建议优先查证</p>
-          <ul className="mt-2 space-y-1.5 text-xs leading-5 text-slate-600">
+          <p className="text-sm font-bold text-slate-500">建议优先查证</p>
+          <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">
             {recommendedActions.slice(0, 5).map((action) => (
               <li key={action}>- {action}</li>
             ))}
@@ -245,7 +245,7 @@ export function RiskReviewChecklistCard({
         )}
       </div>
 
-      <p className="mt-3 text-xs leading-5 text-slate-500">{RISK_REVIEW_DISCLAIMER}</p>
+      <p className="mt-3 text-sm leading-6 text-slate-500">{RISK_REVIEW_DISCLAIMER}</p>
     </div>
   );
 }
@@ -267,11 +267,11 @@ function RiskReviewItemRow({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${precheckTone[item.precheckLevel]}`}>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${precheckTone[item.precheckLevel]}`}>
               预筛：{RISK_PRECHECK_LEVEL_LABELS[item.precheckLevel]}
             </span>
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-600">{item.description}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600">{item.description}</p>
           {item.example ? <p className="mt-1 text-xs leading-5 text-slate-400">示例：{item.example}</p> : null}
         </div>
         {readonly ? (

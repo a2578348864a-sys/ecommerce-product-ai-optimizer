@@ -819,7 +819,7 @@ export function WorkflowClient({
                     <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
                     <div>
                       <p className="text-sm font-semibold text-amber-800">AI 调用说明</p>
-                      <p className="mt-1 text-xs leading-5 text-amber-700">
+                      <p className="mt-1 text-sm leading-6 text-amber-700">
                         本次会依次调用 4 个 AI 步骤（货源判断、风险排查、小白结论、上架文案）。如果某一步失败，系统会使用保守兜底结果，不会中断全流程。结果仅供初筛参考，关键决策需人工确认。当前仅支持单品，不支持批量自动分析。
                       </p>
                     </div>
@@ -1047,13 +1047,13 @@ export function WorkflowClient({
               </div>
 
               {hasResult && !running && !progressExpanded ? (
-                <p className="mt-1 text-xs text-slate-400">{progressSummaryText} · 过程已折叠</p>
+                <p className="mt-1 text-sm text-slate-400">{progressSummaryText} · 过程已折叠</p>
               ) : (
                 <div className="mt-3 space-y-2">
                   {STEPS.map((step) => {
                     const status = stepStatuses[step.key] || "pending";
                     return (
-                      <div key={step.key} className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-xs ${
+                      <div key={step.key} className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-sm ${
                         status === "running" ? "border-indigo-200 bg-indigo-50/60" :
                         status === "fallback" ? "border-amber-200 bg-amber-50/60" :
                         status === "failed" ? "border-rose-200 bg-rose-50/60" :

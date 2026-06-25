@@ -169,7 +169,7 @@ function WorkflowDecisionSummary({
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">
             {summary.verdictLabel}
           </p>
-          <p className="mt-2 text-xs leading-5 text-teal-700">
+          <p className="mt-2 text-sm leading-6 text-teal-700">
             {summary.reason}
           </p>
           {/* Phase 4-E.1: Enhanced source context + lifecycle status */}

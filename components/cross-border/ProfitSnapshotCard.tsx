@@ -154,7 +154,7 @@ export function ProfitSnapshotCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-sm font-bold text-teal-900">成本利润估算</p>
-          <p className="mt-1 text-xs leading-5 text-teal-700">
+          <p className="mt-1 text-sm leading-6 text-teal-700">
             填写采购价、售价和平台佣金率后，自动估算利润、毛利率和测试建议。
           </p>
         </div>
@@ -166,7 +166,7 @@ export function ProfitSnapshotCard({
       {readonly ? null : (
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="block">
-            <span className="text-xs font-semibold text-slate-600">估算采购价</span>
+            <span className="text-sm font-semibold text-slate-600">估算采购价</span>
             <input
               type="number"
               value={purchaseCost}
@@ -177,7 +177,7 @@ export function ProfitSnapshotCard({
             />
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-slate-600">估算售价</span>
+            <span className="text-sm font-semibold text-slate-600">估算售价</span>
             <input
               type="number"
               value={salePrice}
@@ -188,7 +188,7 @@ export function ProfitSnapshotCard({
             />
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-slate-600">佣金率(%)</span>
+            <span className="text-sm font-semibold text-slate-600">佣金率(%)</span>
             <input
               type="number"
               value={platformFeeRatePercent}
@@ -214,19 +214,19 @@ export function ProfitSnapshotCard({
               />
               <ResultCell label="预估毛利率" value={formatPercent(snapshot.estimatedMarginRate)} />
             </div>
-            <p className="mt-3 text-xs leading-5 text-slate-500">
+            <p className="mt-3 text-sm leading-6 text-slate-500">
               毛利率按售价口径估算。当前决策标签：<span className="font-semibold text-slate-700">{decisionLabel}</span>。
             </p>
           </>
         ) : (
-          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs leading-5 text-slate-500">
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm leading-6 text-slate-500">
             填写采购价和售价后，将自动估算利润和毛利率。
             <span className="ml-1 font-semibold text-slate-600">当前决策标签：未知。</span>
           </div>
         )}
       </div>
 
-      <div className="mt-3 space-y-1 text-xs leading-5 text-slate-500">
+      <div className="mt-3 space-y-1 text-sm leading-6 text-slate-500">
         <p>{SNAPSHOT_NOTE}。</p>
         {readonly ? (
           <p>人工估算，需复核；老任务没有利润快照时不会显示此模块。</p>

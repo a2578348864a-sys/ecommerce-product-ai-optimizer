@@ -26,6 +26,7 @@
 
 html {
   background: #f7f8fa;
+  font-size: 17px;
 }
 
 body {
@@ -38,6 +39,7 @@ body {
   font-family:
     "Aptos", "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI",
     "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }

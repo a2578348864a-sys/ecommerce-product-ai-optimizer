@@ -65,7 +65,7 @@ function NavLink({
       aria-current={active ? "page" : undefined}
       className={
         (compact
-          ? "mb-1 flex h-9 w-full items-center gap-2 rounded-lg px-2 text-xs font-medium transition last:mb-0 "
+          ? "mb-1 flex h-9 w-full items-center gap-2 rounded-lg px-2 text-sm font-medium transition last:mb-0 "
           : "mb-1 flex h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-sm font-medium transition last:mb-0 ") +
         (active ? "linear-nav-active" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950")
       }
@@ -96,7 +96,7 @@ export function WorkspaceSidebar() {
           <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
             <div className="flex items-center gap-2">
               <Package className="size-4 shrink-0 text-teal-600" />
-              <p className="text-[11px] font-semibold text-teal-600">当前选品</p>
+              <p className="text-xs font-semibold text-teal-600">当前选品</p>
             </div>
             <p className="mt-1 truncate text-sm font-bold text-teal-900">{sharedProduct.productName}</p>
             <p className="mt-0.5 text-xs text-teal-600">
@@ -112,22 +112,22 @@ export function WorkspaceSidebar() {
               <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-teal-700">受控自动化 · 人工复核版</p>
+              <p className="text-xs font-semibold text-teal-700">受控自动化 · 人工复核版</p>
               <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
-              <p className="muted-text mt-1 text-xs leading-5">先分析，再人工复核</p>
+              <p className="muted-text mt-1 text-sm leading-6">先分析，再人工复核</p>
             </div>
           </div>
         </div>
 
         <nav className="surface-card p-2" aria-label="工作台导航">
-          <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">主链路</p>
+          <p className="px-2 pb-1 text-xs font-semibold text-slate-400">主链路</p>
           {workspaceNavItems.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
         </nav>
 
         <details className="surface-card p-2" open={assistantOpen}>
-          <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600">
+          <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-xs font-semibold text-slate-400 transition hover:bg-slate-50 hover:text-slate-600">
             辅助工具（已整合进主链路）
           </summary>
           <div className="mt-1">
@@ -138,7 +138,7 @@ export function WorkspaceSidebar() {
         </details>
 
         <nav className="surface-card p-2" aria-label="项目说明">
-          <p className="px-2 pb-1 text-[11px] font-semibold text-slate-400">项目说明</p>
+          <p className="px-2 pb-1 text-xs font-semibold text-slate-400">项目说明</p>
           <NavLink item={routeMapItem} pathname={pathname} compact />
         </nav>
       </div>
