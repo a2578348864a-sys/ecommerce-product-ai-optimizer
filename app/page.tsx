@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { HomeDashboardClient } from "@/components/HomeDashboardClient";
 import { LoginPage } from "@/components/LoginPage";
 import {
-  getValidAccessPassword,
-  saveAccessPassword,
-} from "@/lib/client/accessPassword";
+  saveAccessToken,
+  getAccessToken,
+  isAuthenticated,
+  type DemoAccessInfo,
+} from "@/lib/client/accessToken";
 
 export default function Home() {
   const [ready, setReady] = useState(false);
@@ -16,8 +18,7 @@ export default function Home() {
 
   // Hydrate from sessionStorage on mount
   useEffect(() => {
-    const pwd = getValidAccessPassword();
-    setAuthenticated(!!pwd);
+    setAuthenticated(isAuthenticated());
     setReady(true);
   }, []);
 
@@ -26,33 +27,44 @@ export default function Home() {
     setLoginLoading(true);
 
     try {
-      const res = await fetch("/api/tasks?limit=1", {
-        headers: { "x-access-password": password },
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
       });
 
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          setLoginError("访问密码错误，请重新输入。");
-        } else if (res.status === 502 || res.status === 503 || res.status === 504) {
-          setLoginError("服务正在重启或暂时不可用，请稍后再试。");
-        } else if (res.status >= 500) {
-          setLoginError("服务异常，请稍后再试。");
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        const code = json?.error?.code;
+        const message = json?.error?.message || "验证失败，请稍后重试。";
+
+        if (code === "demo_access_expired") {
+          setLoginError("该演示访问已超过 24 小时有效期，请联系项目作者获取新的演示密码。");
+        } else if (code === "demo_access_inactive") {
+          setLoginError("该演示访问已被停用。");
+        } else if (res.status === 401 || res.status === 403) {
+          setLoginError(message);
         } else {
-          setLoginError("验证失败，请稍后重试。");
+          setLoginError(message);
         }
         setLoginLoading(false);
         return;
       }
 
-      const json = await res.json().catch(() => null);
-      if (!json?.ok) {
-        setLoginError("服务返回异常，请稍后重试。");
-        setLoginLoading(false);
-        return;
-      }
+      // Login success — save token + mode + optional demoAccess
+      const demoAccess: DemoAccessInfo | undefined = json.demoAccess
+        ? {
+            id: json.demoAccess.id,
+            label: json.demoAccess.label,
+            expiresAt: json.demoAccess.expiresAt,
+            maxAiCalls: json.demoAccess.maxAiCalls,
+            usedAiCalls: json.demoAccess.usedAiCalls,
+            remainingAiCalls: json.demoAccess.remainingAiCalls,
+          }
+        : undefined;
 
-      // Password validated — save to sessionStorage
-      saveAccessPassword(password);
+      saveAccessToken(json.accessToken, json.mode, demoAccess);
       setAuthenticated(true);
     } catch {
       setLoginError("网络连接失败，请检查网络后重试。");

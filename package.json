@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
+    "demo:create": "node scripts/create-demo-password.mjs",
     "check": "npm run lint && npm run test && npm run build",
     "prepare": "husky"
   },

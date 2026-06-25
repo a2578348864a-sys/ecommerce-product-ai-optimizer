@@ -41,3 +41,6 @@ prisma/*.db-journal
 .test*.html
 fix_*.py
 test_*.py
+
+# Demo access credentials (contains password hashes — do not commit)
+data/demo-access.json

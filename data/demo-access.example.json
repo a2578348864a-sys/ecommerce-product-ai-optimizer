@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "accesses": [
+    {
+      "id": "demo_example_id_0000000000000000",
+      "label": "示例：杭州某公司一面",
+      "passwordHash": "sha256:REPLACE_WITH_REAL_HASH",
+      "salt": "REPLACE_WITH_REAL_SALT",
+      "expiresAt": "2026-06-27T00:00:00.000Z",
+      "maxAiCalls": 5,
+      "usedAiCalls": 0,
+      "isActive": false,
+      "createdAt": "2026-06-26T00:00:00.000Z",
+      "lastUsedAt": null,
+      "notes": "此文件为示例，不含真实密码。真实数据在 demo-access.json（已加入 .gitignore）。"
+    }
+  ]
+}
