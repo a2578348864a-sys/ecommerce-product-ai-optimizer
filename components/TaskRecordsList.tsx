@@ -530,6 +530,25 @@ export function TaskRecordsList() {
     if (priorityDiff !== 0) return priorityDiff;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   }), [hasActiveFilters, highlightedTaskId, visibleItems]);
+  const priorityItem = !loading && !error ? displayItems[0] : null;
+  const prioritySummary = priorityItem
+    ? deriveTaskWorkflowSummary({
+      type: priorityItem.type,
+      title: priorityItem.title,
+      materialText: priorityItem.materialText,
+      oneLineSummary: priorityItem.oneLineSummary,
+      level: priorityItem.level,
+      decisionStatus: priorityItem.decisionStatus,
+      result: priorityItem.result,
+    })
+    : null;
+  const priorityAgentState = priorityItem
+    ? deriveAgentNextStepPanelState({
+      taskType: priorityItem.type,
+      decisionStatus: priorityItem.decisionStatus,
+      result: priorityItem.result,
+    })
+    : null;
   const operationStats = useMemo(() => {
     const batchGroups = new Map<string, { total: number; loaded: number; followable: number; cautious: number }>();
     let needsReview = 0;
@@ -623,8 +642,8 @@ export function TaskRecordsList() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold text-teal-700">运营跟进台</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">先看优先级，再决定下一步</h2>
-                <p className="muted-text mt-1 text-sm">保存后的分析会沉淀为可跟进事项。AI 负责整理结论、风险和动作建议，采购、上架、投广告等真实动作必须人工确认。</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">先处理最该看的任务</h2>
+                <p className="muted-text mt-1 text-sm">这里优先回答：哪条要先复核、风险是什么、下一步点哪里。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {agentStatus
@@ -633,9 +652,51 @@ export function TaskRecordsList() {
               </span>
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {priorityItem && prioritySummary && priorityAgentState ? (
+              <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-teal-700">当前最该处理</p>
+                    <h3 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight text-slate-950">
+                      {prioritySummary.productName}
+                    </h3>
+                    <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-700">
+                      {prioritySummary.verdictLabel}
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        ["优先级", prioritySummary.priorityLabel],
+                        ["风险", prioritySummary.riskLabel],
+                        ["人工状态", getDecisionStatusOption(priorityItem.decisionStatus).shortLabel],
+                        ["下一步", prioritySummary.primaryNextAction || getNextActionDisplay(priorityItem, priorityAgentState)],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-xl border border-white/80 bg-white/85 p-3">
+                          <p className="text-xs font-bold text-slate-400">{label}</p>
+                          <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[260px] lg:justify-end">
+                    <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(prioritySummary.priorityTone)}>
+                      {prioritySummary.priorityLabel}
+                    </span>
+                    <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(prioritySummary.riskTone)}>
+                      {prioritySummary.riskLabel}
+                    </span>
+                    <Link
+                      href={`/tasks/${priorityItem.id}`}
+                      className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                    >
+                      处理这条
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ["全部任务", operationStats.total, "当前已加载任务"],
                 ["待复核", operationStats.needsReview, "需要人工看完再判断"],
                 ["可跟进", operationStats.followable, "适合继续核供应链/成本"],
                 ["高风险/需谨慎", operationStats.cautious, "先查风险，不急着推进"],
@@ -649,38 +710,12 @@ export function TaskRecordsList() {
               ))}
             </div>
 
-            <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
-              <p className="text-sm font-bold text-teal-800">💡 当前阶段说明</p>
-              <p className="mt-1 text-sm leading-6 text-teal-700">
-                这里是跨境电商运营全流程 Agent 的任务沉淀中心。AI 负责分析、整理和提示风险，帮你把运营动作拆成可执行任务。采购、上架、广告投放等关键动作必须由你人工确认后手动执行，当前不会自动操作任何平台。
-              </p>
-            </div>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="linear-panel p-4">
-                <p className="text-sm font-semibold text-slate-950">工作流阶段</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                  {["输入素材", "Agent 分析", "查看结论", "人工确认"].map((step, index) => (
-                    <div key={step} className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <span className="text-[11px] font-semibold text-slate-400">0{index + 1}</span>
-                      <p className="mt-1 text-sm font-semibold text-slate-800">{step}</p>
-                    </div>
-                  ))}
-                </div>
-                <p className="muted-text mt-3 text-xs leading-5">自动执行、失败重试、多 Agent 串联等为后续能力，当前版本不会在本页触发。</p>
-              </div>
-              <div className="linear-panel p-4">
-                <p className="text-sm font-semibold text-slate-950">人工决策状态</p>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {decisionStatusOptions.filter((item) => item.value).map((status) => (
-                    <span key={status.value} className={"rounded-full border px-2 py-0.5 text-[11px] " + status.className}>{status.shortLabel}</span>
-                  ))}
-                </div>
-                <p className="muted-text mt-3 text-xs leading-5">每条任务支持标记：待判断 / 可继续 / 需补资料 / 已淘汰。</p>
-              </div>
-            </div>
-
-            <form onSubmit={submitSearch} className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 xl:grid-cols-[minmax(0,1fr)_200px_170px_210px_auto_auto]">
+            <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                筛选和搜索
+                {hasActiveFilters ? <span className="ml-2 text-teal-700">已启用</span> : <span className="ml-2 text-slate-400">默认收起</span>}
+              </summary>
+              <form onSubmit={submitSearch} className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_200px_170px_210px_auto_auto]">
               <label className="min-w-0">
                 <span className="text-xs font-bold text-slate-500">搜索关键词</span>
                 <input
@@ -739,7 +774,8 @@ export function TaskRecordsList() {
               >
                 清空
               </button>
-            </form>
+              </form>
+            </details>
 
             {activeQuery ? (
               <p className="mt-3 text-sm text-slate-500">

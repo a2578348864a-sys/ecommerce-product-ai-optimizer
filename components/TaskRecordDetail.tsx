@@ -660,6 +660,18 @@ export function TaskRecordDetail({ id }: { id: string }) {
       return "结果内容暂时无法格式化。";
     }
   }, [record]);
+  const recordSummary = useMemo(() => {
+    if (!record) return null;
+    return deriveTaskWorkflowSummary({
+      type: record.type,
+      title: record.title,
+      materialText: record.materialText,
+      oneLineSummary: record.oneLineSummary,
+      level: record.level,
+      decisionStatus: record.decisionStatus,
+      result: record.result,
+    });
+  }, [record]);
 
   async function deleteRecord() {
     if (!record || deleting) return;
@@ -826,6 +838,31 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 />
               ) : null}
 
+              {record.type !== "workflow" && recordSummary ? (
+                <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+                  <p className="text-xs font-bold text-teal-700">决策摘要</p>
+                  <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">
+                    {recordSummary.productName}
+                  </h3>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">
+                    {recordSummary.verdictLabel}
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["风险等级", recordSummary.riskLabel],
+                      ["新手适配", recordSummary.beginnerLabel],
+                      ["当前人工状态", getDecisionStatusOption(record.decisionStatus).shortLabel],
+                      ["下一步动作", recordSummary.primaryNextAction || recordSummary.nextActions[0] || "查看完整结果"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-xl border border-white/80 bg-white p-3">
+                        <p className="text-xs font-bold text-slate-400">{label}</p>
+                        <p className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-slate-800">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               {/* Phase 4-E.2.1-Fix: Task info collapsed */}
               <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3 text-xs">
                 <summary className="cursor-pointer font-semibold text-slate-500 select-none">任务信息</summary>
@@ -859,36 +896,45 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </div>
               </details>
 
-              <AgentNextStepPanel
-                className="mt-5"
-                taskType={record.type}
-                decisionStatus={record.decisionStatus}
-                result={record.result}
-              />
-              {/* Phase 4-E.2.1-Fix: Detailed review collapsed */}
+              <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">Agent 状态和后续能力</summary>
+                <AgentNextStepPanel
+                  className="mt-3"
+                  taskType={record.type}
+                  decisionStatus={record.decisionStatus}
+                  result={record.result}
+                />
+              </details>
+
+              {/* Phase UI-C: Keep review capability, but lower default weight. */}
               <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">详细复查与下一步建议</summary>
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">人工复核清单和详细建议</summary>
                 <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <WorkflowNextStepCard taskType={record.type} />
                   <ManualReviewChecklist />
                 </div>
               </details>
 
-              <div className="mt-5 rounded-2xl border border-white/80 bg-slate-50 p-4">
-                <h3 className="text-sm font-semibold text-slate-950">输入素材</h3>
+              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">输入素材和原始链接</summary>
                 {record.productUrl ? (
                   <p className="mt-3 break-all text-xs text-slate-500">链接：{record.productUrl}</p>
                 ) : null}
                 <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
                   {record.materialText}
                 </p>
-              </div>
+              </details>
 
               {/* Workflow-specific result rendering */}
               {record.type === "workflow" && typeof record.result === "object" && record.result !== null && !Array.isArray(record.result) ? (
-                <WorkflowResultSection result={record.result as Record<string, unknown>} />
+                <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                  <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整分析、复制报告和过程记录</summary>
+                  <WorkflowResultSection result={record.result as Record<string, unknown>} />
+                </details>
               ) : (
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                  <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整结果拆解</summary>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
                   <ResultList title="核心卖点" items={getStringArray(record.result, "sellingPoints")} />
                   <ResultList title="用户痛点" items={getStringArray(record.result, "painPoints")} />
                   <ResultList title="开头钩子" items={getStringArray(record.result, "hooks")} />
@@ -897,16 +943,17 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <ResultList title="评论区话题" items={getStringArray(record.result, "commentTriggers")} />
                   <ResultList title="转化优化" items={getStringArray(record.result, "conversionSuggestions")} />
                   <ResultList title="风险提醒" items={getStringArray(record.result, "risks")} />
-                </div>
+                  </div>
+                </details>
               )}
 
-              <div className="mt-5 rounded-2xl border border-white/80 bg-white p-4">
-                <h3 className="text-sm font-semibold text-slate-500">完整结果 JSON（调试用）</h3>
+              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整结果 JSON（调试用）</summary>
                 <p className="mt-1 text-xs text-slate-500">用于复核 AI/mock 返回结构，长内容可以滚动查看。</p>
                 <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
                   {resultJson}
                 </pre>
-              </div>
+              </details>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button
