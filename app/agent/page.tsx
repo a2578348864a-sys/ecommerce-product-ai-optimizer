@@ -152,7 +152,7 @@ export default function AgentPage() {
                   href="/agent/run"
                   className="inline-flex h-11 items-center justify-center px-3 text-xs font-semibold text-slate-400 transition hover:text-slate-600"
                 >
-                  内部实验看板
+                  Agent 主流程
                 </Link>
               </div>
             </div>

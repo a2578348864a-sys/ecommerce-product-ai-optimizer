@@ -22,6 +22,7 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 
 export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: House },
+  { label: "Agent 主流程", href: "/agent/run", icon: Sparkles },
   { label: "找机会", href: "/opportunities", icon: Target },
   { label: "单品分析", href: "/workflow", icon: Search },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
@@ -42,6 +43,7 @@ const mobileNavItems = workspaceNavItems;
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  if (href === "/agent") return pathname === "/agent";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
