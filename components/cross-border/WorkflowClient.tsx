@@ -22,6 +22,8 @@ import { useAccessPassword, canRequestWithAccessPassword } from "@/lib/client/ac
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
+import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
+import type { RiskReviewSnapshot } from "@/lib/riskReview";
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -294,6 +296,7 @@ type WorkflowSingleRun = {
   savedTaskId: string | null;
   reviewConfirmed: Record<string, boolean>;
   sourceMeta: WorkflowSourceMeta | null;
+  riskReviewSnapshot: RiskReviewSnapshot | null;
 };
 
 const emptyRun: WorkflowSingleRun = {
@@ -306,6 +309,7 @@ const emptyRun: WorkflowSingleRun = {
   savedTaskId: null,
   reviewConfirmed: {},
   sourceMeta: null,
+  riskReviewSnapshot: null,
 };
 
 /* ── Main component ────────────────────────────── */
@@ -341,6 +345,7 @@ export function WorkflowClient({
   const [runRestored, setRunRestored] = useState(false);
   const [runNotice, setRunNotice] = useState("");
   const [profitSnapshot, setProfitSnapshot] = useState<ProfitSnapshot | null>(null);
+  const [riskReviewSnapshot, setRiskReviewSnapshot] = useState<RiskReviewSnapshot | null>(null);
   const finalReportRef = useRef<HTMLElement | null>(null);
   const reviewRef = useRef<HTMLElement | null>(null);
   const lastAutoScrolledWorkflowId = useRef<string | null>(null);
@@ -378,6 +383,7 @@ export function WorkflowClient({
         if (run.reviewConfirmed && Object.keys(run.reviewConfirmed).length > 0) {
           setReviewConfirmed(run.reviewConfirmed);
         }
+        if (run.riskReviewSnapshot) setRiskReviewSnapshot(run.riskReviewSnapshot);
         setRunRestored(true);
         setRunNotice("已从浏览器本地恢复上次分析结果，可直接查看报告和人工复核。未重新消耗 AI。");
       } catch {
@@ -403,6 +409,7 @@ export function WorkflowClient({
       savedTaskId,
       reviewConfirmed,
       sourceMeta,
+      riskReviewSnapshot,
     };
 
     try {
@@ -413,7 +420,7 @@ export function WorkflowClient({
     } catch {
       // Silently ignore storage errors
     }
-  }, [runReady, result, productName, stepStatuses, savedTaskId, reviewConfirmed, sourceMeta]);
+  }, [runReady, result, productName, stepStatuses, savedTaskId, reviewConfirmed, sourceMeta, riskReviewSnapshot]);
 
   const scrollToFinalReport = useCallback(() => {
     finalReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -443,7 +450,7 @@ export function WorkflowClient({
       const res = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState, sourceMeta, profitSnapshot }),
+        body: JSON.stringify({ accessPassword, workflowResult: result, reviewState, sourceMeta, profitSnapshot, riskReviewSnapshot }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -469,6 +476,8 @@ export function WorkflowClient({
     setDetailExpanded(false);
     setRunRestored(false);
     setRunNotice("");
+    setProfitSnapshot(null);
+    setRiskReviewSnapshot(null);
     if (!options?.keepSourceMeta) setSourceMeta(null);
     lastAutoScrolledWorkflowId.current = null;
     clearLocalDraft(WORKFLOW_SINGLE_RUN_KEY);
@@ -891,6 +900,11 @@ export function WorkflowClient({
               <div className="mt-5">
                 <ProfitSnapshotCard
                   onChange={setProfitSnapshot}
+                />
+              </div>
+              <div className="mt-5">
+                <RiskReviewChecklistCard
+                  onChange={setRiskReviewSnapshot}
                 />
               </div>
             </section>

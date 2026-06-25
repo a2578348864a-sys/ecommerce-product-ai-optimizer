@@ -11,6 +11,7 @@ import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
+import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -202,6 +203,20 @@ function WorkflowDecisionSummary({
                 readonly
               />
             </div>
+          )}
+
+          {/* Phase Risk-Review-M.1: show saved manual risk review if present */}
+          {isRecordValue(result) && isRecordValue(result.riskReviewSnapshot) ? (
+            <div className="mt-3">
+              <RiskReviewChecklistCard
+                initial={result.riskReviewSnapshot}
+                readonly
+              />
+            </div>
+          ) : (
+            <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-700">
+              该任务尚未保存合规 / 侵权人工复核记录。
+            </p>
           )}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
+import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 
 export const runtime = "nodejs";
 
@@ -287,6 +288,7 @@ export async function POST(request: NextRequest) {
   const batchMeta = parseBatchMeta(body.batchMeta);
   const sourceMeta = parseSourceMeta(body.sourceMeta, productName);
   const profitSnapshot = parseProfitSnapshot(body.profitSnapshot);
+  const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
 
   // Build a structured result for the task record
   const taskResult = {
@@ -313,6 +315,8 @@ export async function POST(request: NextRequest) {
     productLifecycle: createInitialProductLifecycle(),
     // Phase Profit-M.1: optional profit snapshot from in-line estimate card
     ...(profitSnapshot ? { profitSnapshot } : {}),
+    // Phase Risk-Review-M.1: optional manual compliance / IP review snapshot
+    ...(riskReviewSnapshot ? { riskReviewSnapshot } : {}),
   };
 
   try {
