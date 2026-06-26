@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { readCandidatePool } from "@/lib/opportunityCandidatePool";
 import {
   getRecommendedNextAction,
@@ -103,9 +104,9 @@ const workflowSteps = [
     icon: Target,
   },
   {
-    title: "Agent 主流程",
+    title: "单品分析",
     description: "从候选品进入 Agent 主链路：数据清洗 → 市场判断 → 风险/利润/Listing → 人工确认保存。",
-    href: "/agent/run",
+    href: "/workflow",
     icon: Sparkles,
   },
   {
@@ -149,7 +150,7 @@ export function HomeDashboardClient() {
 
     try {
       const res = await fetch("/api/tasks?limit=1", {
-        headers: { "x-access-password": trimmed },
+        headers: { ...buildAccessHeaders() },
       });
 
       if (!res.ok) {
@@ -211,7 +212,7 @@ export function HomeDashboardClient() {
       try {
         const response = await fetch("/api/tasks?limit=50", {
           method: "GET",
-          headers: { "x-access-password": accessPassword },
+          headers: { ...buildAccessHeaders() },
           signal: controller.signal,
         });
         if (!response.ok) {

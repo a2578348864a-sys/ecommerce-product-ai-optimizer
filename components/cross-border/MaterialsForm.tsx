@@ -7,6 +7,7 @@ import type { MaterialAgentResult } from "@/lib/types";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
@@ -111,7 +112,7 @@ export function MaterialsForm() {
     try {
       const response = await fetch("/api/agents/material", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           keyword: keyword.trim(),
           manualText: manualText.trim(),
@@ -158,7 +159,7 @@ export function MaterialsForm() {
     try {
       const response = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           accessPassword,
           type: "material",

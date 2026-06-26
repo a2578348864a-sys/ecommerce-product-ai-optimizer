@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 import {
@@ -359,7 +360,7 @@ export function WorkflowBatchClient() {
     try {
       const response = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           accessPassword,
           workflowResult: item.result,
@@ -394,7 +395,7 @@ export function WorkflowBatchClient() {
     try {
       const response = await fetch("/api/workflows/product-analysis", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           productName: item.productName,
           source: "manual",

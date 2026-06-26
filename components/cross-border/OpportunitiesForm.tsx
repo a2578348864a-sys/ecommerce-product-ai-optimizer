@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
@@ -421,7 +422,7 @@ export function OpportunitiesForm() {
 
   const refreshServerPool = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch("/api/opportunity-candidates?limit=100", {
-      headers: { "x-access-password": accessPassword },
+      headers: { ...buildAccessHeaders() },
       signal,
     });
     let json: unknown = null;
@@ -493,7 +494,7 @@ export function OpportunitiesForm() {
       setTaskLinksLoading(true);
       try {
         const res = await fetch("/api/tasks?limit=50", {
-          headers: { "x-access-password": accessPassword },
+          headers: { ...buildAccessHeaders() },
         });
         if (!res.ok) return;
         const json = await res.json();
@@ -555,7 +556,7 @@ export function OpportunitiesForm() {
     try {
       const res = await fetch("/api/opportunities", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           rawText,
           accessPassword: accessPassword.trim(),
@@ -582,7 +583,7 @@ export function OpportunitiesForm() {
         try {
           const saveRes = await fetch("/api/opportunity-candidates", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+            headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
             body: JSON.stringify({ items: poolInputs.map((input) => ({ ...input, name: input.name })) }),
           });
           const saveJson: unknown = await saveRes.json().catch(() => null);
@@ -622,7 +623,7 @@ export function OpportunitiesForm() {
     try {
       const res = await fetch("/api/opportunities/crawl", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({ input: crawlInput, accessPassword }),
       });
       const data = await res.json();
@@ -756,7 +757,7 @@ export function OpportunitiesForm() {
     try {
       const res = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({ status }),
       });
       const json: unknown = await res.json().catch(() => null);
@@ -797,7 +798,7 @@ export function OpportunitiesForm() {
     try {
       const res = await fetch(`/api/opportunity-candidates/${encodeURIComponent(item.id)}`, {
         method: "DELETE",
-        headers: { "x-access-password": accessPassword },
+        headers: { ...buildAccessHeaders() },
       });
       const json: unknown = await res.json().catch(() => null);
       if (!res.ok || !json || typeof json !== "object" || Array.isArray(json) || (json as Record<string, unknown>).ok !== true) {
@@ -844,7 +845,7 @@ export function OpportunitiesForm() {
     try {
       const res = await fetch("/api/opportunities/source-import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({ input: urls, accessPassword }),
       });
 
@@ -986,7 +987,7 @@ export function OpportunitiesForm() {
     try {
       const res = await fetch("/api/opportunity-candidates", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({ items: inputs }),
       });
       const json: unknown = await res.json().catch(() => null);
@@ -1635,7 +1636,7 @@ export function OpportunitiesForm() {
                     try {
                       const res = await fetch("/api/opportunity-candidates/import-local", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json", "x-access-password": accessPassword },
+                        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
                         body: JSON.stringify({ items: localItems }),
                       });
                       const json = await res.json();

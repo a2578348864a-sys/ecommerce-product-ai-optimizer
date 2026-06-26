@@ -34,11 +34,14 @@ export interface DemoAccessContext {
 export type AccessContext = OwnerAccessContext | DemoAccessContext;
 
 /**
- * Phase Demo-Login.1-C: Unified access check.
+ * Phase System-Recovery.2: Unified access check.
  *
  * Priority:
- * 1) x-access-token header → token session (new path)
- * 2) x-access-password header / body.accessPassword → Owner (legacy path)
+ * 1) x-access-token header → token session
+ * 2) x-access-password header → token session (compat with buildAccessHeaders)
+ * 3) body.accessToken → token session (compat)
+ * 4) body.accessPassword → token session (compat with old components)
+ * 5) x-access-password header / body.accessPassword → raw Owner password (legacy)
  *
  * Returns the access context, or null if unauthorized.
  */
@@ -46,48 +49,78 @@ export function getAccessContext(
   request: NextRequest,
   body?: Record<string, unknown>,
 ): AccessContext | null {
-  // 1) Token-based path (new)
-  const token = (request.headers.get("x-access-token") || "").trim();
-  if (token) {
-    const session = getAccessSession(token);
-    if (session) {
-      if (session.mode === "owner") {
-        return { mode: "owner", token: session.token };
-      }
-      if (session.mode === "demo" && session.demoAccessId) {
-        const demoAccess = getDemoAccessById(session.demoAccessId);
-        if (demoAccess) {
-          return {
-            mode: "demo",
-            token: session.token,
-            demoAccessId: demoAccess.id,
-            isActive: demoAccess.isActive,
-            isExpired: demoAccess.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
-            remainingAiCalls: getRemainingAiCalls(demoAccess),
-          };
-        }
+  // Helper: try a candidate string as a token session
+  const trySession = (candidate: string): AccessContext | null => {
+    if (!candidate) return null;
+    const session = getAccessSession(candidate);
+    if (!session) return null;
+    if (session.mode === "owner") {
+      return { mode: "owner", token: session.token };
+    }
+    if (session.mode === "demo" && session.demoAccessId) {
+      const demoAccess = getDemoAccessById(session.demoAccessId);
+      if (demoAccess) {
+        return {
+          mode: "demo",
+          token: session.token,
+          demoAccessId: demoAccess.id,
+          isActive: demoAccess.isActive,
+          isExpired: demoAccess.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
+          remainingAiCalls: getRemainingAiCalls(demoAccess),
+        };
       }
     }
-    return null; // invalid/expired token
+    return null; // session exists but demo access record gone
+  };
+
+  // 1) x-access-token header → token session (primary path)
+  const tokenHeader = (request.headers.get("x-access-token") || "").trim();
+  const ctx = trySession(tokenHeader);
+  if (ctx) return ctx;
+  // If x-access-token was present but session invalid, don't fall through to legacy
+  if (tokenHeader) return null;
+
+  // 2) x-access-password header → token session (buildAccessHeaders sends both)
+  const passwordHeader = (request.headers.get("x-access-password") || "").trim();
+  const ctx2 = trySession(passwordHeader);
+  if (ctx2) return ctx2;
+
+  // 3) body.accessToken → token session
+  if (body) {
+    const bodyToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+    const ctx3 = trySession(bodyToken);
+    if (ctx3) return ctx3;
   }
 
-  // 2) Legacy password path (backward compatible)
+  // 4) body.accessPassword → token session (old components send token here)
+  if (body) {
+    const bodyPassword = typeof body.accessPassword === "string" ? body.accessPassword.trim() : "";
+    const ctx4 = trySession(bodyPassword);
+    if (ctx4) return ctx4;
+  }
+
+  // 5) Legacy raw password path (backward compatible — direct env var comparison)
   const configured = getAccessPassword();
   if (!configured) return null;
 
-  const bodyPassword = body && typeof body.accessPassword === "string" ? body.accessPassword.trim() : "";
-  if (bodyPassword === configured) return { mode: "owner", token: "" };
+  // body.accessPassword matches configured password
+  if (body) {
+    const bodyPw = typeof body.accessPassword === "string" ? body.accessPassword.trim() : "";
+    if (bodyPw === configured) return { mode: "owner", token: "" };
+  }
 
-  const headerPassword = (request.headers.get("x-access-password") || "").trim();
-  if (headerPassword === configured) return { mode: "owner", token: "" };
+  // x-access-password header matches configured password
+  if (passwordHeader === configured) return { mode: "owner", token: "" };
 
   return null;
 }
 
 /**
  * Legacy checkAccessPassword — kept for backward compatibility.
- * Returns null if Owner password is valid, or error object if not.
- * Does NOT use token sessions — only checks raw password against env var.
+ * Returns null if authorized, or error object if not.
+ *
+ * Phase System-Recovery.2: Now also checks body.accessPassword and body.accessToken
+ * as token sessions, in addition to header-based checks.
  */
 export function checkAccessPassword(
   request: NextRequest,
@@ -102,25 +135,33 @@ export function checkAccessPassword(
     };
   }
 
-  // 1) 尝试从 body.accessPassword 读取（POST 场景）
+  // Helper: try a candidate string as a valid token session
+  const isValidSession = (candidate: string): boolean => {
+    if (!candidate) return false;
+    const session = getAccessSession(candidate);
+    return !!(session && (session.mode === "owner" || session.mode === "demo"));
+  };
+
+  // 1) Try x-access-token header as token session
+  const tokenHeader = (request.headers.get("x-access-token") || "").trim();
+  if (isValidSession(tokenHeader)) return null;
+
+  // 2) Try x-access-password header as token session or raw password
+  const headerPassword = (request.headers.get("x-access-password") || "").trim();
+  if (isValidSession(headerPassword)) return null;
+  if (headerPassword === configured) return null;
+
+  // 3) Try body.accessToken as token session
   if (body) {
-    const bodyPassword = typeof body.accessPassword === "string" ? body.accessPassword.trim() : "";
-    if (bodyPassword === configured) return null; // 通过
+    const bodyToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+    if (isValidSession(bodyToken)) return null;
   }
 
-  // 2) 尝试从 x-access-password header 读取（GET / DELETE 场景）
-  const headerPassword = (request.headers.get("x-access-password") || "").trim();
-  if (headerPassword === configured) return null; // 通过
-
-  // 3) Also accept x-access-token or x-access-password as a session token
-  // (x-access-password may carry the token after B+C login flow)
-  const tokenHeader = (request.headers.get("x-access-token") || "").trim();
-  const passwordHeaderAsToken = (request.headers.get("x-access-password") || "").trim();
-  for (const candidate of [tokenHeader, passwordHeaderAsToken]) {
-    if (candidate) {
-      const session = getAccessSession(candidate);
-      if (session && (session.mode === "owner" || session.mode === "demo")) return null; // 通过
-    }
+  // 4) Try body.accessPassword as token session or raw password
+  if (body) {
+    const bodyPassword = typeof body.accessPassword === "string" ? body.accessPassword.trim() : "";
+    if (isValidSession(bodyPassword)) return null;
+    if (bodyPassword === configured) return null;
   }
 
   return {

@@ -35,7 +35,10 @@ export function buildCandidateAgentRunHref(input: CandidateAgentRunLinkInput) {
     entry: "candidate_to_workflow",
   });
 
-  if (productName) params.set("productName", productName);
+  if (productName) {
+    params.set("productName", productName);
+    params.set("product", productName); // System-Recovery.2: unified product param
+  }
   if (sourceTitle) params.set("sourceTitle", sourceTitle);
 
   const candidateId = cleanText(input.candidateId, 80);

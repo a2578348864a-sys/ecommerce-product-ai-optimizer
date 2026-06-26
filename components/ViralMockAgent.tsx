@@ -22,6 +22,7 @@ import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { EXAMPLE_VIRAL } from "@/lib/examples";
 
@@ -458,7 +459,7 @@ export function ViralMockAgent() {
     try {
       const response = await fetch("/api/agents/viral", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           title,
           productUrl,
@@ -522,7 +523,7 @@ export function ViralMockAgent() {
     try {
       const response = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           accessPassword,
           title,

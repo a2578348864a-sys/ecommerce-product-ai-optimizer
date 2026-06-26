@@ -11,6 +11,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { TASK_TYPE_FILTER_OPTIONS } from "@/lib/taskConcepts";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import {
   decisionStatusOptions,
@@ -282,7 +283,7 @@ export function TaskRecordsList() {
 
       const response = await fetch(`/api/tasks?${params.toString()}`, {
         cache: "no-store",
-        headers: { "x-access-password": accessPassword },
+        headers: { ...buildAccessHeaders() },
       });
       const data = await response.json() as ApiResponse;
       if (!response.ok || !data.ok) {
@@ -451,7 +452,7 @@ export function TaskRecordsList() {
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(item.id)}`, {
         method: "DELETE",
-        headers: { "x-access-password": accessPassword },
+        headers: { ...buildAccessHeaders() },
       });
       const data = await response.json() as
         | { ok: true; data: { id: string } }
@@ -516,7 +517,7 @@ export function TaskRecordsList() {
       try {
         const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
           method: "DELETE",
-          headers: { "x-access-password": accessPassword },
+          headers: { ...buildAccessHeaders() },
         });
         const data = await response.json() as
           | { ok: true; data: { id: string } }
@@ -565,7 +566,7 @@ export function TaskRecordsList() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-access-password": accessPassword,
+          ...buildAccessHeaders(),
         },
         body: JSON.stringify({ decisionStatus: nextDecisionStatus }),
       });

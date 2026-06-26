@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
 
 describe("buildCandidateAgentRunHref", () => {
-  it("builds candidate pool handoff URL for Agent Run", () => {
+  it("builds candidate pool handoff URL for /workflow (System-Recovery.2: unified main entry)", () => {
     const href = buildCandidateAgentRunHref({
       candidateId: "test-candidate",
       name: "桌面手机支架",
@@ -16,12 +16,13 @@ describe("buildCandidateAgentRunHref", () => {
     });
 
     const url = new URL(href, "http://localhost:3005");
-    expect(url.pathname).toBe("/agent/run");
+    expect(url.pathname).toBe("/workflow");
     expect(url.searchParams.get("source")).toBe("opportunity");
     expect(url.searchParams.get("from")).toBe("opportunity");
-    expect(url.searchParams.get("entry")).toBe("candidate_to_agent_m1");
+    expect(url.searchParams.get("entry")).toBe("candidate_to_workflow");
     expect(url.searchParams.get("candidateId")).toBe("test-candidate");
     expect(url.searchParams.get("productName")).toBe("桌面手机支架");
+    expect(url.searchParams.get("product")).toBe("桌面手机支架");
     expect(url.searchParams.get("sourceTitle")).toBe("test-title");
     expect(url.searchParams.get("sourceUrl")).toBe("https://example.com/item");
     expect(url.searchParams.get("opportunityScore")).toBe("86");

@@ -9,6 +9,7 @@ import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
@@ -641,7 +642,7 @@ function OperationDecisionPanel({ taskId, lifecycle, onUpdated }: { taskId: stri
     try {
       const res = await fetch('/api/tasks/' + encodeURIComponent(taskId) + '/lifecycle', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-access-password': accessPassword },
+        headers: { 'Content-Type': 'application/json', ...buildAccessHeaders() },
         body: JSON.stringify({ status: to, reasonCode: reasonCode || undefined, reasonText: reasonText || undefined }),
       });
       const data = await res.json();
@@ -791,7 +792,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
       try {
         const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
           cache: "no-store",
-          headers: { "x-access-password": accessPassword },
+          headers: { ...buildAccessHeaders() },
         });
         const data = await response.json() as DetailResponse;
         if (!response.ok || !data.ok) {
@@ -848,7 +849,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(record.id)}`, {
         method: "DELETE",
-        headers: { "x-access-password": accessPassword },
+        headers: { ...buildAccessHeaders() },
       });
       const data = await response.json() as DeleteResponse;
       if (!response.ok || !data.ok) {
@@ -881,7 +882,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-access-password": accessPassword,
+          ...buildAccessHeaders(),
         },
         body: JSON.stringify({ decisionStatus: nextDecisionStatus }),
       });

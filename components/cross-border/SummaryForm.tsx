@@ -9,6 +9,7 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 
 type SummaryData = {
@@ -127,7 +128,7 @@ export function SummaryForm() {
     setError(null);
 
     fetch(`/api/tasks/aggregate?productName=${encodeURIComponent(sharedProduct.productName)}`, {
-      headers: { "x-access-password": accessPassword },
+      headers: { ...buildAccessHeaders() },
     })
       .then((res) => res.json())
       .then((payload: unknown) => {
@@ -187,7 +188,7 @@ export function SummaryForm() {
 
       const response = await fetch("/api/agents/summary", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           productName: sharedProduct.productName,
           sourcingFindings: aggregate.sourcing ? JSON.stringify(aggregate.sourcing) : "",
@@ -236,7 +237,7 @@ export function SummaryForm() {
     try {
       const response = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           accessPassword,
           type: "summary",

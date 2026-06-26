@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { crawlUrls } from "@/lib/server/radarCrawler";
 import { normalizeResults } from "@/lib/server/radarNormalize";
 import { scoreCandidates } from "@/lib/server/radarScore";
@@ -94,8 +94,8 @@ export async function POST(request: NextRequest) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  const authError = checkAccessPassword(request, body);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  const authResult = requireAuthenticated(request, body);
+  if (!authResult.ok) return NextResponse.json({ error: authResult.message }, { status: authResult.status });
 
   // Parse URLs
   const rawInput = asString(body.input) || asString(body.urls);

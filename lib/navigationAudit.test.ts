@@ -27,7 +27,7 @@ describe("WorkspaceSidebar navigation", () => {
   it("contains the five main workflow entries", () => {
     expect(sidebarSource).toMatch(/label:\s*"工作台"/);
     expect(sidebarSource).toMatch(/label:\s*"找机会"/);
-    expect(sidebarSource).toMatch(/label:\s*"Agent 主流程"/);
+    expect(sidebarSource).toMatch(/label:\s*"单品分析"/);
     expect(sidebarSource).toMatch(/label:\s*"任务中心"/);
     expect(sidebarSource).toMatch(/label:\s*"批量分析"/);
   });
@@ -57,8 +57,8 @@ describe("WorkspaceSidebar navigation", () => {
     expect(sidebarSource).not.toMatch(/项目说明/);
   });
 
-  it("keeps 单品分析 as a secondary backup entry", () => {
-    expect(sidebarSource).toMatch(/单品分析（备用）/);
+  it("keeps Agent 主流程 as a secondary backup entry", () => {
+    expect(sidebarSource).toMatch(/Agent 主流程（备用）/);
   });
 
   it("does not contain dangerous copy in nav labels", () => {
@@ -152,14 +152,14 @@ describe("/agent archive page", () => {
 describe("HomeDashboardClient navigation", () => {
   const homeSource = readComponentSource("components/HomeDashboardClient.tsx");
 
-  it("shows three main CTAs: 找机会, Agent 主流程, 任务中心", () => {
+  it("shows three main CTAs: 找机会, 单品分析, 任务中心", () => {
     expect(homeSource).toMatch(/找机会/);
-    expect(homeSource).toMatch(/Agent 主流程/);
+    expect(homeSource).toMatch(/单品分析/);
     expect(homeSource).toMatch(/进任务中心/);
   });
 
-  it("points to /agent/run for the Agent main flow step", () => {
-    expect(homeSource).toMatch(/\/agent\/run/);
+  it("points to /workflow for the Agent main flow step", () => {
+    expect(homeSource).toMatch(/\/workflow/);
   });
 
   it("does not show old direction entries as primary CTAs", () => {

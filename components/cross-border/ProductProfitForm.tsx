@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { Lock, ArrowRight } from "lucide-react";
 import { EXAMPLE_PRODUCT_PROFIT } from "@/lib/examples";
 import { ConfidenceConfirmationCard } from "@/components/ConfidenceConfirmationCard";
@@ -524,6 +525,7 @@ export function ProductProfitForm() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...buildAccessHeaders(),
         },
         body: JSON.stringify({
           accessPassword: accessPassword.trim(),
@@ -587,6 +589,7 @@ export function ProductProfitForm() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...buildAccessHeaders(),
         },
         body: JSON.stringify({
           accessPassword: accessPassword.trim(),
@@ -648,6 +651,7 @@ export function ProductProfitForm() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...buildAccessHeaders(),
         },
         body: JSON.stringify({
           accessPassword: accessPassword.trim(),
@@ -791,7 +795,7 @@ export function ProductProfitForm() {
     try {
       const response = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           accessPassword,
           type: "product",

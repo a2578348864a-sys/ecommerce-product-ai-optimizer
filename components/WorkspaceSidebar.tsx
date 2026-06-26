@@ -17,12 +17,12 @@ import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: House },
   { label: "找机会", href: "/opportunities", icon: Target },
-  { label: "Agent 主流程", href: "/agent/run", icon: Sparkles },
+  { label: "单品分析", href: "/workflow", icon: Sparkles },
   { label: "任务中心", href: "/tasks", icon: History },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
-const secondaryNavItem = { label: "单品分析（备用）", href: "/workflow", icon: Search } as const;
+const secondaryNavItem = { label: "Agent 主流程（备用）", href: "/agent/run", icon: Search } as const;
 
 const mobileNavItems = workspaceNavItems;
 

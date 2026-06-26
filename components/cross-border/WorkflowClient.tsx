@@ -19,6 +19,7 @@ import {
 import { CopyButton } from "@/components/CopyButton";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { useAccessPassword, canRequestWithAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
@@ -465,7 +466,7 @@ export function WorkflowClient({
     try {
       const res = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({ accessPassword, workflowResult: result, reviewState, sourceMeta, profitSnapshot, riskReviewSnapshot }),
       });
       const data = await res.json();
@@ -540,7 +541,7 @@ export function WorkflowClient({
     try {
       const res = await fetch("/api/workflows/product-analysis", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({ productName: name, source: "manual", accessPassword }),
       });
 
@@ -1097,7 +1098,7 @@ export function WorkflowClient({
           {/* Main workflow entry points */}
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
             <span>主链路：</span>
-            <Link href="/agent/run" className="hover:text-teal-600">Agent 主流程</Link>
+            <Link href="/workflow" className="hover:text-teal-600">单品分析</Link>
             <span>·</span>
             <Link href="/opportunities" className="hover:text-teal-600">候选池</Link>
             <span>·</span>

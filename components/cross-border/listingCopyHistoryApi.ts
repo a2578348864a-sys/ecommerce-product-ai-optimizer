@@ -2,6 +2,7 @@ import {
   normalizeCachedListingCopy,
   type ListingCopyHistoryItem,
 } from "@/components/cross-border/listingCopyStorage";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import type {
   AiAnalysisResult,
   CrossBorderProductInput,
@@ -103,6 +104,7 @@ export async function fetchListingCopyHistory(limit = 10): Promise<ApiResult<Lis
   try {
     const response = await fetch(`/api/products/listing-copy-history?limit=${limit}`, {
       method: "GET",
+      headers: { ...buildAccessHeaders() },
       cache: "no-store",
     });
     const parsed = await readJson(response);
@@ -147,6 +149,7 @@ export async function saveListingCopyHistory(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...buildAccessHeaders(),
       },
       body: JSON.stringify(input),
     });
@@ -199,6 +202,7 @@ export async function deleteDatabaseListingCopyHistory(id: string): Promise<ApiR
   try {
     const response = await fetch(`/api/products/listing-copy-history/${encodeURIComponent(id)}`, {
       method: "DELETE",
+      headers: { ...buildAccessHeaders() },
     });
     const parsed = await readJson(response);
     if (!parsed.ok) {
