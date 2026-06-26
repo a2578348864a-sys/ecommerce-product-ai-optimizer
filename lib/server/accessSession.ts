@@ -26,8 +26,22 @@ export interface AccessSession {
 }
 
 // ── In-memory store ─────────────────────────────
+//
+// IMPORTANT: In Next.js dev mode, different API routes may load separate
+// module instances, so module-level variables are NOT shared across routes.
+// We MUST use globalThis to ensure a process-level singleton.
+// Without this, tokens created in /api/auth/login are invisible to
+// /api/workflows/product-analysis/save-task and other API routes.
 
-const sessionMap = new Map<string, AccessSession>();
+const globalKey = Symbol.for("__accessSessionMap");
+
+function getSessionMap(): Map<string, AccessSession> {
+  const g = globalThis as Record<symbol, unknown>;
+  if (!g[globalKey]) {
+    g[globalKey] = new Map<string, AccessSession>();
+  }
+  return g[globalKey] as Map<string, AccessSession>;
+}
 
 const OWNER_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 const DEMO_SESSION_TTL_MS = 2 * 60 * 60 * 1000;  // 2 hours (or until demo expires)
@@ -48,7 +62,7 @@ export function createOwnerSession(): AccessSession {
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + OWNER_SESSION_TTL_MS).toISOString(),
   };
-  sessionMap.set(session.token, session);
+  getSessionMap().set(session.token, session);
   return session;
 }
 
@@ -61,19 +75,19 @@ export function createDemoSession(demoAccessId: string): AccessSession {
     createdAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + DEMO_SESSION_TTL_MS).toISOString(),
   };
-  sessionMap.set(session.token, session);
+  getSessionMap().set(session.token, session);
   return session;
 }
 
 // ── Session lookup ──────────────────────────────
 
 export function getAccessSession(token: string): AccessSession | null {
-  const session = sessionMap.get(token);
+  const session = getSessionMap().get(token);
   if (!session) return null;
 
   // Check expiry
   if (new Date(session.expiresAt) < new Date()) {
-    sessionMap.delete(token);
+    getSessionMap().delete(token);
     return null;
   }
 
@@ -81,7 +95,7 @@ export function getAccessSession(token: string): AccessSession | null {
 }
 
 export function deleteAccessSession(token: string): void {
-  sessionMap.delete(token);
+  getSessionMap().delete(token);
 }
 
 // ── Cleanup ─────────────────────────────────────
@@ -89,9 +103,9 @@ export function deleteAccessSession(token: string): void {
 export function cleanupExpiredSessions(): number {
   let cleaned = 0;
   const now = new Date();
-  for (const [token, session] of sessionMap) {
+  for (const [token, session] of getSessionMap()) {
     if (new Date(session.expiresAt) < now) {
-      sessionMap.delete(token);
+      getSessionMap().delete(token);
       cleaned++;
     }
   }

@@ -62,7 +62,7 @@ type BatchMeta = {
 type SourceMeta = {
   source: "opportunity";
   from?: "opportunity";
-  entry?: "candidate_to_agent_m1";
+  entry?: "candidate_to_agent_m1" | "candidate_to_agent_run";
   opportunityTitle: string;
   opportunitySource?: string;
   opportunityScore?: number;
@@ -239,7 +239,7 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
   return {
     source: "opportunity",
     ...(from === "opportunity" ? { from } : {}),
-    ...(entry === "candidate_to_agent_m1" ? { entry } : {}),
+    ...(entry === "candidate_to_agent_m1" || entry === "candidate_to_agent_run" ? { entry } : {}),
     opportunityTitle,
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(score !== null ? { opportunityScore: score } : {}),
