@@ -24,6 +24,7 @@ import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
+import { ListingPackCard } from "@/components/ListingPackCard";
 import {
   derivePipelineStatus,
   deriveNextAction,
@@ -536,26 +537,14 @@ function WorkflowDecisionSummary({
         </section>
       ) : null}
 
-      {/* AI Listing 包承接 */}
-      <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4" data-testid="listing-pack-placeholder">
-        <div className="flex items-start gap-3">
-          <span className="linear-icon size-9 shrink-0 rounded-xl bg-indigo-100 text-indigo-600">
-            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          </span>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-indigo-900">AI Listing 包</h3>
-            <p className="mt-1 text-sm leading-6 text-indigo-700">
-              后续 Core-4 阶段将基于当前商品分析，自动生成：标题草稿、五点描述、核心关键词、长尾关键词、卖点、目标用户、图片需求、价格建议、风险用词提醒、上架前检查清单。
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-sm font-semibold text-indigo-500">
-                状态：未生成
-              </span>
-              <span className="text-sm text-indigo-400">下一阶段：Core-4 AI Listing 包自动生成</span>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* AI Listing 包 — Core-4: real generator */}
+      <ListingPackCard
+        productName={summary.productName}
+        resultJson={result}
+        riskReviewSnapshot={hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined}
+        profitSnapshot={hasProfitSnapshot ? result.profitSnapshot : undefined}
+        disabled={decisionCard?.recommendation === "reject" || decisionCard?.recommendation === "needs_more_info"}
+      />
 
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
         <summary className="cursor-pointer font-semibold text-slate-600 select-none">
