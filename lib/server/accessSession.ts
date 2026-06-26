@@ -12,6 +12,7 @@
 
 import "server-only";
 import { randomBytes } from "crypto";
+import { verifySignedToken } from "@/lib/server/signedToken";
 
 // ── Types ───────────────────────────────────────
 
@@ -81,7 +82,32 @@ export function createDemoSession(demoAccessId: string): AccessSession {
 
 // ── Session lookup ──────────────────────────────
 
+/**
+ * Look up an access session from a token string.
+ *
+ * Phase Auth-Stability.1:
+ * 1) Try signed token verification first (survives server restarts).
+ * 2) Fall back to in-memory sessionMap (backward compat with old tokens).
+ */
 export function getAccessSession(token: string): AccessSession | null {
+  if (!token) return null;
+
+  // 1) Try signed token (stateless, survives restart)
+  if (token.startsWith("stok_v1.")) {
+    const result = verifySignedToken(token);
+    if (result.ok) {
+      return {
+        token,
+        mode: result.mode,
+        createdAt: new Date(result.payload.iat).toISOString(),
+        expiresAt: new Date(result.payload.exp).toISOString(),
+      };
+    }
+    // Signed token invalid → don't fall through to sessionMap
+    return null;
+  }
+
+  // 2) Legacy: in-memory sessionMap lookup
   const session = getSessionMap().get(token);
   if (!session) return null;
 

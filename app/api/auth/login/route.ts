@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAccessPassword } from "@/lib/server/accessPassword";
 import { findDemoAccessByPassword, isDemoAccessActive, getRemainingAiCalls, activateDemoAccessOnFirstLogin } from "@/lib/server/demoAccess";
 import { createOwnerSession, createDemoSession } from "@/lib/server/accessSession";
+import { generateSignedToken } from "@/lib/server/signedToken";
 
 export async function POST(request: NextRequest) {
   // Parse body
@@ -36,11 +37,13 @@ export async function POST(request: NextRequest) {
   // 1) Check Owner password (from env var)
   const ownerPassword = getAccessPassword();
   if (ownerPassword && password === ownerPassword) {
-    const session = createOwnerSession();
+    const signedToken = generateSignedToken("owner");
+    // Also create legacy session for backward compat (no-op if unused)
+    createOwnerSession();
     return NextResponse.json({
       ok: true,
       mode: "owner",
-      accessToken: session.token,
+      accessToken: signedToken,
     });
   }
 
@@ -69,11 +72,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Allow login even with 0 remaining AI calls — frontend shows 0, API will block actual AI calls later
-    const session = createDemoSession(demoAccess.id);
+    const signedToken = generateSignedToken("demo");
+    createDemoSession(demoAccess.id); // legacy session for backward compat
     return NextResponse.json({
       ok: true,
       mode: "demo",
-      accessToken: session.token,
+      accessToken: signedToken,
       demoAccess: {
         id: demoAccess.id,
         label: demoAccess.label,
