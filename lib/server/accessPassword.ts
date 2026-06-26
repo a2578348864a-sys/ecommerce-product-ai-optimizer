@@ -59,18 +59,17 @@ export function getAccessContext(
     }
     if (session.mode === "demo" && session.demoAccessId) {
       const demoAccess = getDemoAccessById(session.demoAccessId);
-      if (demoAccess) {
-        return {
-          mode: "demo",
-          token: session.token,
-          demoAccessId: demoAccess.id,
-          isActive: demoAccess.isActive,
-          isExpired: demoAccess.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
-          remainingAiCalls: getRemainingAiCalls(demoAccess),
-        };
-      }
+      // Phase System-Recovery.3: gracefully handle missing demo access record
+      return {
+        mode: "demo",
+        token: session.token,
+        demoAccessId: session.demoAccessId,
+        isActive: demoAccess?.isActive ?? true,
+        isExpired: demoAccess?.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
+        remainingAiCalls: demoAccess ? getRemainingAiCalls(demoAccess) : 0,
+      };
     }
-    return null; // session exists but demo access record gone
+    return null; // session exists but not owner/demo
   };
 
   // 1) x-access-token header → token session (primary path)
