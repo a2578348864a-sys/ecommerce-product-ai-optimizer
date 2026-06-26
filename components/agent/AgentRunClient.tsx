@@ -289,6 +289,7 @@ export function AgentRunClient({
     listing: false,
   });
   const [error, setError] = useState("");
+  const [authError, setAuthError] = useState(""); // auth failures should never mark steps as failed
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedTaskId, setSavedTaskId] = useState("");
@@ -324,6 +325,7 @@ export function AgentRunClient({
     setRiskReviewSnapshot(null);
     setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
     setError("");
+    setAuthError("");
     setSaveError("");
     setSaving(false);
     setSavedTaskId("");
@@ -350,12 +352,13 @@ export function AgentRunClient({
       return;
     }
     if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setError("会话未就绪，请返回首页重新登录后再操作。");
+      setAuthError("会话未就绪，请返回首页重新登录后再操作。");
       return;
     }
 
     setPhase("running");
     setError("");
+    setAuthError("");
     setSaveError("");
     setSavedTaskId("");
     setResult(null);
@@ -396,15 +399,22 @@ export function AgentRunClient({
 
       if (!response.ok || !data.ok) {
         const message = data.ok ? "主链路分析失败，请稍后重试。" : data.error?.message || "主链路分析失败，请稍后重试。";
-        setPhase("failed");
-        setError(message);
-        setStepStatuses((current) => {
-          const next = { ...current };
-          for (const key of runOrder) {
-            if (next[key] === "running") next[key] = "failed";
-          }
-          return next;
-        });
+        // Auth errors (401/403) should NOT pollute business run state
+        if (response.status === 401 || response.status === 403) {
+          setAuthError(message);
+          setPhase("idle");
+          setStepStatuses(INITIAL_STATUSES);
+        } else {
+          setPhase("failed");
+          setError(message);
+          setStepStatuses((current) => {
+            const next = { ...current };
+            for (const key of runOrder) {
+              if (next[key] === "running") next[key] = "failed";
+            }
+            return next;
+          });
+        }
         return;
       }
 
@@ -621,8 +631,15 @@ export function AgentRunClient({
                 ) : null}
               </div>
             </div>
+            {authError ? (
+              <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-700" data-testid="agent-run-auth-error">
+                <p className="font-semibold">会话状态异常</p>
+                <p className="mt-1">{authError}</p>
+                <Link href="/" className="mt-2 inline-block text-sm font-semibold text-rose-600 underline">返回首页重新登录</Link>
+              </div>
+            ) : null}
             {error ? (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800">
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800" data-testid="agent-run-error">
                 {error}
               </div>
             ) : null}
