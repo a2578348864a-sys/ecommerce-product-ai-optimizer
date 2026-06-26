@@ -103,9 +103,16 @@ export function buildDecisionCard(input: {
   const riskLabel = rawRisk === "red" || rawRisk === "high" ? "高风险" :
     rawRisk === "green" || rawRisk === "low" ? "低风险" :
     rawRisk === "yellow" || rawRisk === "medium" ? "中风险" : "未知";
-  const riskSummary = text(riskSnap?.summary || riskSnap?.overallLevel || finalReport?.riskLevel || "");
+  const rawRiskSummary = text(riskSnap?.summary || riskSnap?.overallLevel || finalReport?.riskLevel || "");
+  // Filter out raw enum values (green/red/yellow) from being displayed as risk description
+  const isRawEnum = /^(green|red|yellow|low|medium|high|unknown)$/i.test(rawRiskSummary);
   const riskItems = arr(riskSnap?.complianceWarnings || riskSnap?.blacklistMatches || []);
-  const biggestRisk = riskSummary || riskItems[0] || "当前缺少结构化风险数据，建议人工复核侵权、合规和供应链风险。";
+  const biggestRisk = (!isRawEnum && rawRiskSummary) ? rawRiskSummary
+    : riskItems[0]
+    || (rawRisk === "red" || rawRisk === "high" ? "存在较高风险，建议先复核侵权、合规、认证和平台禁售规则，再决定是否继续推进。"
+    : rawRisk === "yellow" || rawRisk === "medium" ? "存在待复核风险，建议重点确认侵权、平台规则、成本利润和供应商稳定性。"
+    : rawRisk === "green" || rawRisk === "low" ? "暂无明确高风险，仍需复核侵权、合规、供应商和售后风险。"
+    : "当前缺少结构化风险说明，建议人工复核侵权、认证、平台规则和售后风险。");
 
   // ── Profit ──
   const hasProfit = profitSnap && (typeof profitSnap === "object");
@@ -173,10 +180,10 @@ export function buildDecisionCard(input: {
       ready: listingReady,
       label: listingLabel,
       description: listingReady
-        ? "Core-4 阶段将自动生成标题、五点描述和关键词。"
+        ? "已支持规则草稿 Listing 包，可复制后人工复核；真实 AI 生成待后续升级。"
         : recommendation === "reject"
           ? "该候选不建议继续推进，无需生成 Listing。"
-          : "建议先补齐关键信息并人工复核后再进入 Listing 准备。",
+          : "建议先复核风险、利润和供应商信息，再生成或使用 Listing 草稿。",
     },
     missingFields,
   };

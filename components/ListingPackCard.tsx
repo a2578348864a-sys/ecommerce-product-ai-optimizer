@@ -80,7 +80,7 @@ export function ListingPackCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-indigo-900">AI Listing 包</h3>
-          <p className="mt-0.5 text-sm text-indigo-500">基于当前商品分析生成上架准备草稿 · AI 生成，人负责最终确认，不会自动上架</p>
+          <p className="mt-0.5 text-sm text-indigo-500">基于当前商品分析整理 Listing 准备材料。当前为规则草稿，发布前必须人工复核，不会自动上架。</p>
         </div>
         {pack && (
           <div className="flex flex-col items-end gap-1">
