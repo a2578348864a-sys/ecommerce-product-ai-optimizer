@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import {
+  isSandboxCandidateId,
+  getSandboxCandidate,
+  updateSandboxCandidate,
+  deleteSandboxCandidate,
+  sandboxCandidateToListItem,
+} from "@/lib/server/demoSandbox";
 import {
   isValidCandidateStatus,
   deleteCandidate,
@@ -39,6 +46,23 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   if (!isRecord(body)) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
+  }
+
+  // Demo-Sandbox.1-C: allow sandbox candidate PATCH for demo
+  if (isSandboxCandidateId(id)) {
+    const auth = requireAuthenticated(request, body);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    if (auth.context.mode === "demo") {
+      const update: Record<string, unknown> = {};
+      if (typeof body.status === "string" && isValidCandidateStatus(body.status)) update.status = body.status;
+      if (typeof body.score === "number") update.score = body.score;
+      if (typeof body.name === "string") update.name = body.name;
+      if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
+      const updated = updateSandboxCandidate(auth.context.demoAccessId, id, update);
+      if (!updated) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
+      return json({ ok: true, candidate: sandboxCandidateToListItem(updated) });
+    }
+    return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
 
   const auth = requireOwnerOnly(request, body);
@@ -87,6 +111,18 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   if (!id) return json({ ok: false, error: { code: "not_found", message: "缺少候选品 ID。" } }, 400);
+
+  // Demo-Sandbox.1-C: allow sandbox candidate DELETE for demo
+  if (isSandboxCandidateId(id)) {
+    const auth = requireAuthenticated(request);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    if (auth.context.mode === "demo") {
+      const deleted = deleteSandboxCandidate(auth.context.demoAccessId, id);
+      if (!deleted) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
+      return json({ ok: true, data: { id } });
+    }
+    return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
+  }
 
   const auth = requireOwnerOnly(request);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });

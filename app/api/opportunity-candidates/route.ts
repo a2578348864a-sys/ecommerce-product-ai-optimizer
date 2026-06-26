@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import {
+  listSandboxCandidates,
+  createSandboxCandidate,
+  sandboxCandidateToListItem,
+} from "@/lib/server/demoSandbox";
 import {
   isValidCandidateStatus,
   listCandidates,
@@ -11,7 +16,7 @@ export const runtime = "nodejs";
 
 type ApiResponse =
   | { ok: true; items: unknown[]; total: number; hasMore: boolean; nextOffset: number | null }
-  | { ok: true; items: unknown[]; created: number; updated: number }
+  | { ok: true; items: unknown[]; created: number; updated: number; isSandbox?: boolean; sourceMode?: string }
   | { ok: false; error: { code: string; message: string } };
 
 function json(body: ApiResponse, status = 200) {
@@ -40,7 +45,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await listCandidates({ status, q, sort, limit, offset });
-    return json({ ok: true, ...result });
+    let items = result.items as Record<string, unknown>[];
+
+    // Demo-Sandbox.1-C: merge sandbox candidates for demo
+    const ctx = getAccessContext(request);
+    if (ctx && ctx.mode === "demo") {
+      const sandboxCands = listSandboxCandidates(ctx.demoAccessId);
+      const sandboxItems = sandboxCands.map((c) => sandboxCandidateToListItem(c)) as unknown as Record<string, unknown>[];
+      items = [...sandboxItems, ...items.map((item) => ({ ...item, sourceMode: "official_readonly", isSandbox: false, canEdit: false, canDelete: false }))];
+    }
+
+    return json({ ok: true, items, total: result.total, hasMore: result.hasMore, nextOffset: result.nextOffset });
   } catch (error) {
     return json({
       ok: false,
@@ -68,13 +83,36 @@ export async function POST(request: NextRequest) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  const auth = requireOwnerOnly(request, body);
+  const auth = requireAuthenticated(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   // Support both single item and items array
   const rawItems = Array.isArray(body.items) ? body.items : isRecord(body) && body.name ? [body] : [];
   if (rawItems.length === 0) {
     return json({ ok: false, error: { code: "invalid_payload", message: "请提供至少一个候选品。" } }, 400);
+  }
+
+  // Demo-Sandbox.1-C: Demo writes to sandbox
+  if (auth.context.mode === "demo") {
+    let created = 0;
+    for (const item of rawItems.filter(isRecord)) {
+      createSandboxCandidate(auth.context.demoAccessId, {
+        name: asString(item.name),
+        rawInput: asString(item.rawInput),
+        link: item.link ? asString(item.link) || null : null,
+        score: typeof item.score === "number" ? item.score : undefined,
+        source: asString(item.source) || "访客输入",
+        keyword: asString(item.keyword),
+        riskLevel: asString(item.riskLevel),
+        riskLabel: asString(item.riskLabel),
+        summaryLabel: asString(item.summaryLabel),
+        status: asString(item.status) || "pending",
+        sourceMetaJson: typeof item.sourceMetaJson === "string" ? item.sourceMetaJson : undefined,
+        analysisJson: typeof item.analysisJson === "string" ? item.analysisJson : undefined,
+      });
+      created++;
+    }
+    return json({ ok: true, items: [], created, updated: 0, isSandbox: true, sourceMode: "demo_sandbox" });
   }
 
   const inputs = rawItems.filter(isRecord).map((item) => ({

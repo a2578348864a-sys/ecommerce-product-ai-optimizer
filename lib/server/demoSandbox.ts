@@ -280,3 +280,191 @@ export function markOfficialTaskReadonly(task: Record<string, unknown>) {
     canDelete: false,
   };
 }
+
+// ── Candidate types ─────────────────────────────
+
+export interface CreateSandboxCandidateInput {
+  name: string;
+  rawInput?: string;
+  link?: string | null;
+  score?: number;
+  source?: string;
+  keyword?: string;
+  riskLevel?: string;
+  riskLabel?: string;
+  summaryLabel?: string;
+  status?: string;
+  sourceMetaJson?: string;
+  analysisJson?: string;
+}
+
+export interface SandboxCandidatePatch {
+  status?: string;
+  score?: number;
+  riskLevel?: string;
+  riskLabel?: string;
+  summaryLabel?: string;
+  name?: string;
+  link?: string | null;
+  analysisJson?: string;
+  sourceMetaJson?: string;
+}
+
+export interface SandboxCandidateImportInput {
+  name: string;
+  rawInput?: string;
+  link?: string | null;
+  source?: string;
+  keyword?: string;
+}
+
+// ── Candidate ID helpers ────────────────────────
+
+const SANDBOX_CANDIDATE_PREFIX = "sandbox_candidate_";
+
+export function isSandboxCandidateId(id: string): boolean {
+  return id.startsWith(SANDBOX_CANDIDATE_PREFIX);
+}
+
+function generateSandboxCandidateId(): string {
+  const suffix = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  return `${SANDBOX_CANDIDATE_PREFIX}${suffix}`;
+}
+
+// ── Candidate CRUD ──────────────────────────────
+
+export function createSandboxCandidate(
+  demoAccessId: string,
+  input: CreateSandboxCandidateInput,
+): SandboxCandidate {
+  const store = loadDemoSandboxStore();
+  const now = new Date().toISOString();
+
+  const candidate: SandboxCandidate = {
+    id: generateSandboxCandidateId(),
+    demoAccessId,
+    name: input.name,
+    rawInput: input.rawInput || input.name,
+    link: input.link || null,
+    score: input.score ?? 70,
+    source: input.source || "访客输入",
+    keyword: input.keyword || "",
+    riskLevel: input.riskLevel || "",
+    riskLabel: input.riskLabel || "",
+    summaryLabel: input.summaryLabel || "",
+    status: input.status || "pending",
+    sourceMetaJson: input.sourceMetaJson || "{}",
+    analysisJson: input.analysisJson || "{}",
+    createdAt: now,
+  };
+
+  store.candidates.push(candidate);
+  saveDemoSandboxStore(store);
+  return candidate;
+}
+
+export function listSandboxCandidates(demoAccessId: string): SandboxCandidate[] {
+  const store = loadDemoSandboxStore();
+  return store.candidates
+    .filter((c) => c.demoAccessId === demoAccessId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export function getSandboxCandidate(demoAccessId: string, candidateId: string): SandboxCandidate | null {
+  const store = loadDemoSandboxStore();
+  return store.candidates.find((c) => c.id === candidateId && c.demoAccessId === demoAccessId) || null;
+}
+
+export function updateSandboxCandidate(
+  demoAccessId: string,
+  candidateId: string,
+  patch: SandboxCandidatePatch,
+): SandboxCandidate | null {
+  const store = loadDemoSandboxStore();
+  const idx = store.candidates.findIndex((c) => c.id === candidateId && c.demoAccessId === demoAccessId);
+  if (idx === -1) return null;
+
+  const c = store.candidates[idx];
+  if (patch.status !== undefined) c.status = patch.status;
+  if (patch.score !== undefined) c.score = patch.score;
+  if (patch.riskLevel !== undefined) c.riskLevel = patch.riskLevel;
+  if (patch.riskLabel !== undefined) c.riskLabel = patch.riskLabel;
+  if (patch.summaryLabel !== undefined) c.summaryLabel = patch.summaryLabel;
+  if (patch.name !== undefined) c.name = patch.name;
+  if (patch.link !== undefined) c.link = patch.link;
+  if (patch.analysisJson !== undefined) c.analysisJson = patch.analysisJson;
+  if (patch.sourceMetaJson !== undefined) c.sourceMetaJson = patch.sourceMetaJson;
+
+  saveDemoSandboxStore(store);
+  return c;
+}
+
+export function deleteSandboxCandidate(demoAccessId: string, candidateId: string): boolean {
+  const store = loadDemoSandboxStore();
+  const idx = store.candidates.findIndex((c) => c.id === candidateId && c.demoAccessId === demoAccessId);
+  if (idx === -1) return false;
+  store.candidates.splice(idx, 1);
+  saveDemoSandboxStore(store);
+  return true;
+}
+
+export function importSandboxCandidates(
+  demoAccessId: string,
+  inputs: SandboxCandidateImportInput[],
+): { imported: number; skipped: number } {
+  const store = loadDemoSandboxStore();
+  const now = new Date().toISOString();
+  let imported = 0;
+  let skipped = 0;
+
+  for (const input of inputs) {
+    if (!input.name || !input.name.trim()) { skipped++; continue; }
+    store.candidates.push({
+      id: generateSandboxCandidateId(),
+      demoAccessId,
+      name: input.name.trim(),
+      rawInput: input.rawInput || input.name.trim(),
+      link: input.link || null,
+      score: 70,
+      source: input.source || "访客导入",
+      keyword: input.keyword || "",
+      riskLevel: "",
+      riskLabel: "",
+      summaryLabel: "",
+      status: "pending",
+      sourceMetaJson: "{}",
+      analysisJson: "{}",
+      createdAt: now,
+    });
+    imported++;
+  }
+
+  if (imported > 0) saveDemoSandboxStore(store);
+  return { imported, skipped };
+}
+
+// ── Candidate format helpers ────────────────────
+
+export function sandboxCandidateToListItem(candidate: SandboxCandidate) {
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    rawInput: candidate.rawInput,
+    link: candidate.link,
+    score: candidate.score,
+    source: candidate.source,
+    keyword: candidate.keyword,
+    riskLevel: candidate.riskLevel,
+    riskLabel: candidate.riskLabel,
+    summaryLabel: candidate.summaryLabel,
+    status: candidate.status,
+    sourceMetaJson: candidate.sourceMetaJson,
+    analysisJson: candidate.analysisJson,
+    createdAt: candidate.createdAt,
+    updatedAt: candidate.createdAt,
+    sourceMode: "demo_sandbox" as const,
+    isSandbox: true,
+    canEdit: true,
+    canDelete: true,
+  };
+}

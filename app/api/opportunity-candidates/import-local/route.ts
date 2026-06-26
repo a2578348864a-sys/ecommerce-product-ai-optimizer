@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import { importSandboxCandidates } from "@/lib/server/demoSandbox";
 import { importLocalCandidates, isValidCandidateStatus, type CandidateInput } from "@/lib/server/opportunityCandidateService";
 
 export const runtime = "nodejs";
 
 type ApiResponse =
-  | { ok: true; imported: number; skipped: number }
+  | { ok: true; imported: number; skipped: number; isSandbox?: boolean; sourceMode?: string }
   | { ok: false; error: { code: string; message: string } };
 
 function json(body: ApiResponse, status = 200) {
@@ -32,12 +33,30 @@ export async function POST(request: NextRequest) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  const auth = requireOwnerOnly(request, body);
+  const auth = requireAuthenticated(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const rawItems = Array.isArray(body.items) ? body.items : [];
   if (rawItems.length === 0) {
     return json({ ok: false, error: { code: "invalid_payload", message: "请提供要导入的候选品列表。" } }, 400);
+  }
+
+  // Demo-Sandbox.1-C: Demo imports to sandbox
+  if (auth.context.mode === "demo") {
+    const MAX_DEMO_IMPORT = 20;
+    if (rawItems.length > MAX_DEMO_IMPORT) {
+      return json({ ok: false, error: { code: "import_limit_exceeded", message: `访客体验模式最多一次导入 ${MAX_DEMO_IMPORT} 条候选。` } }, 400);
+    }
+    const sandboxInputs = rawItems.filter(isRecord).map((item) => ({
+      name: asString(item.name),
+      rawInput: asString(item.rawInput, asString(item.name)),
+      link: item.link ? asString(item.link) || null : null,
+      source: asString(item.source, "访客导入"),
+      keyword: asString(item.keyword),
+    })).filter((item) => item.name.length > 0);
+
+    const result = importSandboxCandidates(auth.context.demoAccessId, sandboxInputs);
+    return json({ ok: true, imported: result.imported, skipped: result.skipped, isSandbox: true, sourceMode: "demo_sandbox" });
   }
 
   const inputs: CandidateInput[] = rawItems.filter(isRecord).map((item) => {
