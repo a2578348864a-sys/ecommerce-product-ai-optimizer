@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getAccessPassword } from "@/lib/server/accessPassword";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { crawlUrls } from "@/lib/server/radarCrawler";
 import { normalizeResults } from "@/lib/server/radarNormalize";
 import { scoreCandidates } from "@/lib/server/radarScore";
@@ -44,13 +44,10 @@ export async function POST(request: NextRequest) {
 
   const bodyObj = body as Record<string, unknown>;
 
-  // Password validation
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "missing_access_password", message: "服务端访问密码未配置。" } }, 500);
-  }
-  if (asString(bodyObj.accessPassword) !== configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "unauthorized", message: "访问密码错误，请检查后重试。" } }, 401);
+  // Auth: use unified signed token (same as /tasks, /agent/run, etc.)
+  const auth = requireAuthenticated(request, bodyObj);
+  if (!auth.ok) {
+    return jsonResponse({ ok: false, error: { code: auth.code, message: auth.message } }, auth.status);
   }
 
   // Input extraction
