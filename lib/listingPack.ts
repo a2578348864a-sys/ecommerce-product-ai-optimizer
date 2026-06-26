@@ -62,6 +62,45 @@ const IMAGE_REQUIREMENTS = [
   "对比图：与常见参照物对比，帮助买家直观理解尺寸",
 ];
 
+// ── Unverified claim terms that must NOT appear as factual in drafts ──
+
+const UNVERIFIED_CLAIMS: string[] = [
+  "PFOA-Free", "PFOS-Free", "PFOA Free", "PFOS Free",
+  "BPA-Free", "BPA Free",
+  "FDA Approved", "FDA Certified", "FDA Cleared",
+  "LFGB Certified", "LFGB Approved",
+  "CE Certified", "FCC Certified", "RoHS Certified", "UL Certified",
+  "Medical Grade", "Food Grade Safe",
+  "100% Safe", "100% Non-toxic", "Completely Safe",
+  "Non-toxic", "Chemical Free",
+  "Eco-friendly", "Biodegradable",
+  "Official", "Authentic", "Authorized", "Genuine",
+  "Guaranteed", "Warranty Guaranteed",
+  "Best", "No.1", "Top Rated",
+  "Cure", "Treatment", "Therapeutic",
+  "Hypoallergenic", "Dermatologist Tested",
+];
+
+function sanitizeText(text: string): string {
+  let result = text;
+  for (const claim of UNVERIFIED_CLAIMS) {
+    // Case-insensitive replacement
+    const regex = new RegExp(claim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    result = result.replace(regex, "supplier verification required");
+  }
+  return result;
+}
+
+function sanitizeKeywords(keywords: ListingPackKeyword[]): ListingPackKeyword[] {
+  return keywords.map(k => {
+    const cleaned = sanitizeText(k.keyword);
+    if (cleaned !== k.keyword) {
+      return { ...k, keyword: cleaned };
+    }
+    return k;
+  });
+}
+
 const CHECKLIST = [
   "确认标题不包含未授权的品牌词、绝对化用语、医疗功效",
   "确认五点描述不包含虚假承诺或保证性语句",
@@ -172,18 +211,29 @@ export function buildFallbackListingPack(input: {
   const riskWarnings = arr(riskSnap?.complianceWarnings || riskSnap?.blacklistMatches || []);
   const extraRisks: ListingPackRiskTerm[] = riskWarnings.slice(0, 3).map(w => ({ term: w, reason: "AI pre-check detected a potential risk term", saferAlternative: "Human review required before using this term in listing" }));
 
+  // Sanitize all generated text to prevent unverified claims
+  const safeTitles = titleDrafts.map(sanitizeText);
+  const safeBullets = bulletPoints.map(sanitizeText);
+  const safeCoreKw = sanitizeKeywords(coreKw);
+  const safeLongTailKw = sanitizeKeywords(longTailKw);
+  const safeScenarioKw = sanitizeKeywords(scenarioKw);
+  const safeAudienceKw = sanitizeKeywords(audienceKw);
+  const safeFeatureKw = sanitizeKeywords(featureKw);
+  const safeSelling = sellingPoints.map(sanitizeText);
+  const safeTarget = targetAudience.map(sanitizeText);
+
   return {
-    titleDrafts,
-    bulletPoints,
-    coreKeywords: coreKw,
-    longTailKeywords: longTailKw,
-    scenarioKeywords: scenarioKw,
-    audienceKeywords: audienceKw,
-    featureKeywords: featureKw,
-    sellingPoints,
-    targetAudience,
+    titleDrafts: safeTitles,
+    bulletPoints: safeBullets,
+    coreKeywords: safeCoreKw,
+    longTailKeywords: safeLongTailKw,
+    scenarioKeywords: safeScenarioKw,
+    audienceKeywords: safeAudienceKw,
+    featureKeywords: safeFeatureKw,
+    sellingPoints: safeSelling,
+    targetAudience: safeTarget,
     imageRequirements: IMAGE_REQUIREMENTS,
-    priceSuggestion,
+    priceSuggestion: sanitizeText(priceSuggestion),
     riskTerms: [...RISK_TERMS, ...extraRisks],
     prePublishChecklist: CHECKLIST,
     disclaimer: "This is a rule-based draft listing preparation pack. It does NOT auto-publish to any platform. All content must be reviewed against platform rules, IP compliance, product authenticity, cost data and supplier documentation before publishing. AI assists — humans make the final decision.",
