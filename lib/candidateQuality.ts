@@ -569,3 +569,122 @@ function summarizeQuality(results: CandidateQualityResult[]): QualitySummary {
     shouldAllowImport,
   };
 }
+
+// ── Phase Core-2: Commercialized Quality Model ──
+
+export type CandidateQualityTier = "recommended" | "caution" | "not_recommended";
+
+export const QUALITY_TIER_LABELS: Record<CandidateQualityTier, string> = {
+  recommended: "推荐分析",
+  caution: "谨慎观察",
+  not_recommended: "不建议",
+};
+
+export const QUALITY_TIER_TONES: Record<CandidateQualityTier, string> = {
+  recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  caution: "border-amber-200 bg-amber-50 text-amber-700",
+  not_recommended: "border-slate-200 bg-slate-50 text-slate-500",
+};
+
+export type CandidatePageType =
+  | "product_candidate"
+  | "category_hint"
+  | "navigation_page"
+  | "sitemap_page"
+  | "error_page"
+  | "content_page"
+  | "unknown";
+
+export const PAGE_TYPE_LABELS: Record<CandidatePageType, string> = {
+  product_candidate: "商品候选",
+  category_hint: "类目线索",
+  navigation_page: "导航页",
+  sitemap_page: "站点地图页",
+  error_page: "错误页",
+  content_page: "内容页",
+  unknown: "未知类型",
+};
+
+export const PAGE_TYPE_DESCRIPTIONS: Record<CandidatePageType, string> = {
+  product_candidate: "可以进入单品分析",
+  category_hint: "适合继续找具体商品，不建议直接分析",
+  navigation_page: "通常不是商品，建议过滤",
+  sitemap_page: "用于发现链接，不适合直接分析",
+  error_page: "页面不可用，不建议分析",
+  content_page: "可作为趋势参考，但需要人工提炼商品",
+  unknown: "信息不足，建议谨慎",
+};
+
+/** Detect page type from candidate quality input */
+export function detectPageType(input: CandidateQualityInput): CandidatePageType {
+  const ct = (input.candidateType || "").toLowerCase();
+  if (ct === "product_candidate") return "product_candidate";
+  if (ct === "category_hint") return "category_hint";
+
+  const title = (input.title || input.name || "").toLowerCase();
+  const url = (input.url || "").toLowerCase();
+
+  // Sitemap patterns
+  if (/sitemap/i.test(title) || /sitemap/i.test(url)) return "sitemap_page";
+  if (/\.xml(\?|$)/.test(url)) return "sitemap_page";
+
+  // Category/navigation
+  if (/category|categories|collection|all products|shop all/i.test(title)) return "category_hint";
+  if (/\/collections\/|\/category\/|\/categories\/|\/c\//i.test(url)) return "category_hint";
+  if (/\/$/.test(url) && !/\/products\/|\/item\/|\/detail\//i.test(url)) return "navigation_page";
+
+  // Error
+  if (/error|not found|404|403|500|unavailable/i.test(title)) return "error_page";
+
+  // Content
+  if (/blog|post|article|news|guide|how.to/i.test(title) || /\/blog\/|\/post\/|\/article\//i.test(url)) return "content_page";
+
+  // Product-like
+  if (/product|item|detail|goods/i.test(title) || /\/products\/|\/item\/|\/detail\//i.test(url)) return "product_candidate";
+
+  return "unknown";
+}
+
+export interface CandidateQualityDisplay {
+  tier: CandidateQualityTier;
+  tierLabel: string;
+  tierTone: string;
+  score: number;
+  pageType: CandidatePageType;
+  pageTypeLabel: string;
+  pageTypeDescription: string;
+  allowAnalysis: boolean;
+  primaryReason: string;
+  reasons: string[];
+  nextActionLabel: string;
+}
+
+/** Get display-friendly quality info for a candidate */
+export function getCandidateQualityDisplay(result: CandidateQualityResult, input?: CandidateQualityInput): CandidateQualityDisplay {
+  const tier: CandidateQualityTier =
+    result.level === "rejected" ? "not_recommended" :
+    result.level === "not_recommended" ? "not_recommended" :
+    result.level === "caution" ? "caution" : "recommended";
+
+  const pageType = input ? detectPageType(input) : "unknown";
+  const reasons = result.reasons.length > 0 ? result.reasons : ["暂无详细理由"];
+
+  let nextActionLabel = "查看详情";
+  if (tier === "recommended") nextActionLabel = "进入 AI 分析";
+  else if (tier === "caution") nextActionLabel = "谨慎评估";
+  else nextActionLabel = "不建议分析";
+
+  return {
+    tier,
+    tierLabel: QUALITY_TIER_LABELS[tier],
+    tierTone: QUALITY_TIER_TONES[tier],
+    score: result.score,
+    pageType,
+    pageTypeLabel: PAGE_TYPE_LABELS[pageType],
+    pageTypeDescription: PAGE_TYPE_DESCRIPTIONS[pageType],
+    allowAnalysis: tier === "recommended" || (tier === "caution" && result.shouldAllowImport),
+    primaryReason: reasons[0] || "",
+    reasons,
+    nextActionLabel,
+  };
+}

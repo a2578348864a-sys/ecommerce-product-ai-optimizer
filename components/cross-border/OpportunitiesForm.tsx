@@ -54,7 +54,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
-import { evaluateCandidateQuality, type CandidateQualityLevel } from "@/lib/candidateQuality";
+import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
 import { getAccessMode } from "@/lib/client/accessToken";
 
 const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
@@ -1184,8 +1184,8 @@ export function OpportunitiesForm() {
                 <Target className="size-5" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达 / 候选品池</h1>
-                <p className="muted-text mt-1 text-sm">把候选品沉淀下来，先筛选标记，再进入单品分析和任务跟进。</p>
+                <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达</h1>
+                <p className="muted-text mt-1 text-sm">把来源导入结果转成可判断的选品机会。系统先做质量分层和理由解释，再由人工决定是否进入 AI 分析。</p>
               </div>
             </div>
             <WorkspaceMobileNav />
@@ -1193,11 +1193,11 @@ export function OpportunitiesForm() {
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm">
-            <p className="font-semibold text-teal-800">📍 主路径：机会候选池 → 单品分析 → 人工复核 → 任务中心</p>
+            <p className="font-semibold text-teal-800">📍 主路径：机会雷达 → Agent 主链路 → 人工复核 → 任务中心</p>
             <p className="mt-1 text-xs text-teal-700">
               本页用于发现候选商品并标记状态。筛选出感兴趣的商品后，去
-              <Link href="/workflow" className="mx-0.5 font-semibold underline">单品分析</Link>
-              做深度判断，保存后进入
+              <Link href="/agent/run" className="mx-0.5 font-semibold underline">Agent 主链路</Link>
+              做 8 步深度分析，保存后进入
               <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>
               跟进。
             </p>
