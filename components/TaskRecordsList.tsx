@@ -19,6 +19,15 @@ import {
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import {
+  derivePipelineStatus,
+  deriveNextAction,
+  summarizePipeline,
+  PIPELINE_STATUS_LABELS,
+  PIPELINE_STATUS_TONES,
+  PIPELINE_BOARD_CARDS,
+  type PipelineStatus,
+} from "@/lib/productPipeline";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -673,6 +682,12 @@ export function TaskRecordsList() {
       batchGroups,
     };
   }, [visibleItems]);
+
+  const pipelineCounts = useMemo(() => {
+    const inputs = visibleItems.map((t) => ({ decisionStatus: t.decisionStatus, level: t.level, result: t.result }));
+    return summarizePipeline(inputs);
+  }, [visibleItems]);
+
   const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters;
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
@@ -689,10 +704,10 @@ export function TaskRecordsList() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Qingxuan Workspace</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务中心 / 运营跟进台</h1>
+                <p className="eyebrow">Qingxuan Pipeline</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">商品推进工作台</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  保存后的分析会沉淀为可跟进任务。这里优先看哪些值得继续、风险是什么、下一步做什么，关键动作仍由你人工确认。
+                  把候选、AI 分析和人工复核沉淀成可推进的选品任务。AI 负责生成建议，人负责最终确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -716,22 +731,23 @@ export function TaskRecordsList() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">运营跟进台</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">先处理最该看的任务</h2>
-                <p className="muted-text mt-1 text-sm">这里优先回答：哪条要先复核、风险是什么、下一步点哪里。</p>
+                <p className="text-sm font-bold text-teal-700">商品推进看板</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">哪些商品需要你的决策？</h2>
+                <p className="muted-text mt-1 text-sm">待复核、高风险、可推进 — 一眼看清每条任务的当前阶段和下一步动作。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
-                {agentStatus
-                  ? `已筛选 ${visibleItems.length}/${items.length} 条`
-                : page ? `${items.length}/${page.total} 条` : `${items.length} 条记录`}
+                {page ? `${page.total} 条任务` : `${items.length} 条`}
               </span>
             </div>
+
+            {/* Pipeline board */}
+            <PipelineBoard counts={pipelineCounts} />
 
             {priorityItem && prioritySummary && priorityAgentState ? (
               <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-teal-700">当前最该处理</p>
+                    <p className="text-xs font-bold text-teal-700">建议优先处理</p>
                     <h3 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight text-slate-950">
                       {prioritySummary.productName}
                     </h3>
@@ -763,7 +779,7 @@ export function TaskRecordsList() {
                       href={`/tasks/${priorityItem.id}`}
                       className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
                     >
-                      处理这条
+                      查看详情
                     </Link>
                   </div>
                 </div>
@@ -772,14 +788,14 @@ export function TaskRecordsList() {
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ["待复核", operationStats.needsReview, "需要人工看完再判断"],
-                ["可跟进", operationStats.followable, "适合继续核供应链/成本"],
-                ["高风险/需谨慎", operationStats.cautious, "先查风险，不急着推进"],
-                ["已决策", operationStats.decided, "人工状态已变更"],
+                ["待复核", pipelineCounts.needs_review, "AI 分析已完成，等待人工确认"],
+                ["可推进", pipelineCounts.ready_to_advance + pipelineCounts.ready_for_listing + pipelineCounts.listing_ready, "复核通过，可继续下一步"],
+                ["高风险", pipelineCounts.high_risk, "需人工确认是否继续"],
+                ["已放弃/已完成", pipelineCounts.abandoned + pipelineCounts.completed, "不再推进或已结束"],
               ].map(([label, value, hint]) => (
-                <div key={label} className="rounded-2xl border border-slate-200 bg-white/85 p-3">
+                <div key={label as string} className="rounded-2xl border border-slate-200 bg-white/85 p-3">
                   <p className="text-xs font-bold text-slate-400">{label}</p>
-                  <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value}</p>
+                  <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value as number}</p>
                   <p className="mt-1 text-xs leading-5 text-slate-500">{hint}</p>
                 </div>
               ))}
@@ -972,6 +988,8 @@ export function TaskRecordsList() {
                     const batchMeta = summary.batchMeta;
                     const sourceMeta = getTaskSourceMeta(item.result);
                     const batchGroup = batchMeta ? operationStats.batchGroups.get(batchMeta.batchId) : null;
+                    const pipelineStatus = derivePipelineStatus({ decisionStatus: item.decisionStatus, level: item.level, result: item.result });
+                    const nextAction = deriveNextAction({ decisionStatus: item.decisionStatus, level: item.level, result: item.result });
                     return (
                       <article
                         key={item.id}
@@ -980,8 +998,8 @@ export function TaskRecordsList() {
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-                              <span className={mainlineTaskTypes.has(item.type || "") ? "text-teal-700" : "text-slate-400"}>
-                                {mainlineTaskTypes.has(item.type || "") ? "主链路任务" : "旧版记录"}
+                              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${PIPELINE_STATUS_TONES[pipelineStatus]}`}>
+                                {PIPELINE_STATUS_LABELS[pipelineStatus]}
                               </span>
                               {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
                               {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
@@ -993,12 +1011,19 @@ export function TaskRecordsList() {
                             <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-700">
                               {summary.verdictLabel}
                             </p>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${nextAction.priority === "high" ? "border-rose-200 bg-rose-50 text-rose-700" : nextAction.priority === "medium" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                                下一步：{nextAction.label}
+                              </span>
+                              {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">8 步主链路</span> : null; } catch { return null; } })()}
+                              {item.type === "workflow" && <span className="text-xs text-slate-400">{formatDate(item.createdAt)}</span>}
+                            </div>
                             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                               {[
-                                ["优先级", summary.priorityLabel],
+                                ["AI 建议", summary.verdictLabel.slice(0, 20)],
                                 ["风险", summary.riskLabel],
                                 ["新手适配", summary.beginnerLabel],
-                                ["下一步", summary.primaryNextAction || getNextActionDisplay(item, agentState)],
+                                ["优先级", summary.priorityLabel],
                               ].map(([label, value]) => (
                                 <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                                   <p className="text-xs font-bold text-slate-400">{label}</p>
@@ -1178,5 +1203,27 @@ export function TaskRecordsList() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** Pipeline board showing task distribution by advancement status */
+function PipelineBoard({ counts }: { counts: Record<PipelineStatus, number> }) {
+  const cards = PIPELINE_BOARD_CARDS.filter(
+    (c) => counts[c.status] > 0 || c.status === "needs_review" || c.status === "high_risk"
+  );
+  if (cards.length === 0) return null;
+  return (
+    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {cards.map((card) => (
+        <div key={card.status} className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xl">{card.icon}</span>
+            <span className="text-2xl font-bold text-slate-800">{counts[card.status]}</span>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-slate-700">{PIPELINE_STATUS_LABELS[card.status]}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{card.description}</p>
+        </div>
+      ))}
+    </div>
   );
 }
