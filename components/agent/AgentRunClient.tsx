@@ -22,6 +22,7 @@ import {
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
@@ -383,7 +384,7 @@ export function AgentRunClient({
     try {
       const response = await fetch("/api/workflows/product-analysis", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           productName: name,
           source: sourceMeta ? "opportunity" : "manual",
@@ -454,7 +455,7 @@ export function AgentRunClient({
     try {
       const response = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify({
           accessPassword,
           workflowResult: result,

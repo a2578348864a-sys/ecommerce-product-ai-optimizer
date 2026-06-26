@@ -119,6 +119,20 @@ export function isAuthenticated(): boolean {
   return !!getAccessToken();
 }
 
+/**
+ * Build unified auth headers for API requests.
+ * Sends both x-access-token and x-access-password with the token
+ * for maximum backward compatibility with both new and old API routes.
+ */
+export function buildAccessHeaders(): Record<string, string> {
+  const token = getAccessToken();
+  if (!token) return {};
+  return {
+    "x-access-token": token,
+    "x-access-password": token,
+  };
+}
+
 // ── Clear ───────────────────────────────────────
 
 export function clearAccessSession(): void {

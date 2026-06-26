@@ -32,7 +32,7 @@ export function buildCandidateAgentRunHref(input: CandidateAgentRunLinkInput) {
   const params = new URLSearchParams({
     source: "opportunity",
     from: "opportunity",
-    entry: "candidate_to_agent_m1",
+    entry: "candidate_to_workflow",
   });
 
   if (productName) params.set("productName", productName);
@@ -54,5 +54,5 @@ export function buildCandidateAgentRunHref(input: CandidateAgentRunLinkInput) {
   if (rawInput) params.set("originalName", rawInput);
   if (analyzedName) params.set("analyzedName", analyzedName);
 
-  return `/agent/run?${params.toString()}`;
+  return `/workflow?${params.toString()}`;
 }
