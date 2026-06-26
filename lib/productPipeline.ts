@@ -101,7 +101,7 @@ export const NEXT_ACTIONS: Record<NextActionKey, ProductNextAction> = {
   generate_listing_pack: {
     key: "generate_listing_pack",
     label: "生成 AI Listing 包",
-    description: "Core-4 阶段将自动生成标题、五点描述、关键词、卖点、图片需求。",
+    description: "已支持规则草稿 Listing 包，可生成标题、五点描述、关键词、卖点、图片需求。",
     priority: "medium",
   },
   abandon: {
