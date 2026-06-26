@@ -112,11 +112,15 @@ export function checkAccessPassword(
   const headerPassword = (request.headers.get("x-access-password") || "").trim();
   if (headerPassword === configured) return null; // 通过
 
-  // 3) Also accept x-access-token with valid Owner or Demo session
-  const token = (request.headers.get("x-access-token") || "").trim();
-  if (token) {
-    const session = getAccessSession(token);
-    if (session && (session.mode === "owner" || session.mode === "demo")) return null; // 通过
+  // 3) Also accept x-access-token or x-access-password as a session token
+  // (x-access-password may carry the token after B+C login flow)
+  const tokenHeader = (request.headers.get("x-access-token") || "").trim();
+  const passwordHeaderAsToken = (request.headers.get("x-access-password") || "").trim();
+  for (const candidate of [tokenHeader, passwordHeaderAsToken]) {
+    if (candidate) {
+      const session = getAccessSession(candidate);
+      if (session && (session.mode === "owner" || session.mode === "demo")) return null; // 通过
+    }
   }
 
   return {
