@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessPassword } from "@/lib/server/accessPassword";
-import { findDemoAccessByPassword, isDemoAccessActive, getRemainingAiCalls } from "@/lib/server/demoAccess";
+import { findDemoAccessByPassword, isDemoAccessActive, getRemainingAiCalls, activateDemoAccessOnFirstLogin } from "@/lib/server/demoAccess";
 import { createOwnerSession, createDemoSession } from "@/lib/server/accessSession";
 
 export async function POST(request: NextRequest) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 2) Check Demo passwords (from file store)
-  const demoAccess = findDemoAccessByPassword(password);
+  let demoAccess = findDemoAccessByPassword(password);
   if (demoAccess) {
     if (!demoAccess.isActive) {
       return NextResponse.json(
@@ -54,7 +54,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (new Date(demoAccess.expiresAt) < new Date()) {
+    // Activate on first login: start 24h timer from now
+    if (!demoAccess.expiresAt) {
+      const activated = activateDemoAccessOnFirstLogin(demoAccess.id, 24);
+      if (activated) demoAccess = activated;
+    }
+
+    // Check expiry (only relevant after activation)
+    if (demoAccess.expiresAt && new Date(demoAccess.expiresAt) < new Date()) {
       return NextResponse.json(
         { ok: false, error: { code: "demo_access_expired", message: "该演示访问已超过 24 小时有效期。" } },
         { status: 403 }

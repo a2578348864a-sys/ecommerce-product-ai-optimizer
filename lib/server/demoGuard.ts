@@ -32,7 +32,7 @@ export type GuardResult =
 export interface DemoAccessSnapshot {
   id: string;
   label: string;
-  expiresAt: string;
+  expiresAt: string | null;
   maxAiCalls: number;
   usedAiCalls: number;
   remainingAiCalls: number;
@@ -184,7 +184,7 @@ export function ensureDemoAiQuota(
   if (!access.isActive) {
     return { ok: false, status: 403, code: "demo_access_inactive", message: "该临时访问码已被停用。" };
   }
-  if (new Date(access.expiresAt) < new Date()) {
+  if (access.expiresAt && new Date(access.expiresAt) < new Date()) {
     return { ok: false, status: 403, code: "demo_access_expired", message: "该临时访问已过期，请联系管理员获取新的访问码。" };
   }
   if (getRemainingAiCalls(access) < neededCount) {

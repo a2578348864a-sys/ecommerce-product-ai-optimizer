@@ -75,7 +75,7 @@ type ApiWorkflowResult = {
   demoAccess?: {
     id: string;
     label: string;
-    expiresAt: string;
+    expiresAt: string | null;
     maxAiCalls: number;
     usedAiCalls: number;
     remainingAiCalls: number;

@@ -62,7 +62,7 @@ export function getAccessContext(
             token: session.token,
             demoAccessId: demoAccess.id,
             isActive: demoAccess.isActive,
-            isExpired: new Date(demoAccess.expiresAt) < new Date(),
+            isExpired: demoAccess.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
             remainingAiCalls: getRemainingAiCalls(demoAccess),
           };
         }

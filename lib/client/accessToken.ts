@@ -17,7 +17,7 @@ import type { SessionMode } from "@/lib/server/accessSession";
 export interface DemoAccessInfo {
   id: string;
   label: string;
-  expiresAt: string;
+  expiresAt: string | null;
   maxAiCalls: number;
   usedAiCalls: number;
   remainingAiCalls: number;

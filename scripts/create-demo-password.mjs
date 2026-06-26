@@ -105,14 +105,13 @@ const plainPassword = generateDemoPassword();
 const salt = generateSalt();
 const passwordHash = hashPassword(plainPassword, salt);
 const now = new Date();
-const expiresAt = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
 const record = {
   id: generateDemoId(),
   label,
   passwordHash,
   salt,
-  expiresAt: expiresAt.toISOString(),
+  expiresAt: null, // starts from first login
   maxAiCalls,
   usedAiCalls: 0,
   isActive: true,
@@ -129,7 +128,7 @@ saveStore(store);
 
 console.log("Demo access created.");
 console.log(`  Label:      ${label}`);
-console.log(`  ExpiresAt:  ${expiresAt.toISOString()}`);
+console.log(`  有效期：    首次登录后 ${hours} 小时`);
 console.log(`  MaxAiCalls: ${maxAiCalls}`);
 console.log(`  Password:   ${plainPassword}`);
 console.log("");

@@ -24,7 +24,7 @@ export interface DemoAccessRecord {
   label: string;
   passwordHash: string;
   salt: string;
-  expiresAt: string; // ISO 8601
+  expiresAt: string | null; // ISO 8601 — null means not yet activated (first login starts timer)
   maxAiCalls: number;
   usedAiCalls: number;
   isActive: boolean;
@@ -43,6 +43,8 @@ export interface CreateDemoAccessInput {
   hours: number;
   maxAiCalls: number;
   notes?: string;
+  /** If true, expiry starts from creation. If false (default), starts from first login. */
+  startFromCreation?: boolean;
 }
 
 export interface CreateDemoAccessOutput {
@@ -130,14 +132,17 @@ export function createDemoAccess(input: CreateDemoAccessInput): CreateDemoAccess
   const salt = generateSalt();
   const passwordHash = hashPassword(plainPassword, salt);
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + input.hours * 60 * 60 * 1000);
+  // Expiry starts from first login by default; set `startFromCreation: true` for creation-time expiry
+  const expiresAt = input.startFromCreation
+    ? new Date(now.getTime() + input.hours * 60 * 60 * 1000).toISOString()
+    : null;
 
   const record: DemoAccessRecord = {
     id: generateDemoId(),
     label: input.label,
     passwordHash,
     salt,
-    expiresAt: expiresAt.toISOString(),
+    expiresAt,
     maxAiCalls: input.maxAiCalls,
     usedAiCalls: 0,
     isActive: true,
@@ -170,11 +175,32 @@ export function findDemoAccessByPassword(password: string): DemoAccessRecord | n
 // ── Status checks ───────────────────────────────
 
 export function isDemoAccessExpired(access: DemoAccessRecord): boolean {
+  // null = not yet activated (first login not happened yet)
+  if (!access.expiresAt) return false;
   return new Date(access.expiresAt) < new Date();
 }
 
 export function isDemoAccessActive(access: DemoAccessRecord): boolean {
+  // null expiresAt = not yet activated, still active
   return access.isActive && !isDemoAccessExpired(access);
+}
+
+/**
+ * Activate a demo access on first login.
+ * Sets expiresAt to now + hours, starting the 24h window from the first login time.
+ */
+export function activateDemoAccessOnFirstLogin(id: string, hours: number): DemoAccessRecord | null {
+  const store = loadDemoAccessStore();
+  const idx = store.accesses.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+
+  const access = store.accesses[idx];
+  // Only activate if not yet activated
+  if (!access.expiresAt) {
+    access.expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    saveDemoAccessStore(store);
+  }
+  return access;
 }
 
 export function getRemainingAiCalls(access: DemoAccessRecord): number {
