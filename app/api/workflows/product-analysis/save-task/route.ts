@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { createSandboxTask, sandboxTaskToDetail } from "@/lib/server/demoSandbox";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 
@@ -9,7 +10,7 @@ export const runtime = "nodejs";
 /* ── Types ─────────────────────────────────────── */
 
 type ApiResponse =
-  | { ok: true; data: { id: string; title: string; type: string; allReviewed: boolean } }
+  | { ok: true; data: { id: string; title: string; type: string; allReviewed: boolean; isSandbox?: boolean; sourceMode?: string } }
   | { ok: false; error: { code: string; message: string } };
 
 function jsonResponse(body: ApiResponse, status = 200) {
@@ -267,8 +268,8 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  // Demo-Login.1-F: Owner only (Demo forbidden)
-  const auth = requireOwnerOnly(request, body as Record<string, unknown>);
+  // Demo-Sandbox.1-B: Allow both Owner and Demo
+  const auth = requireAuthenticated(request, body as Record<string, unknown>);
   if (!auth.ok) {
     return NextResponse.json(
       { ok: false, error: { code: auth.code, message: auth.message } },
@@ -342,6 +343,34 @@ export async function POST(request: NextRequest) {
     ...(listingPrepSnapshot ? { listingPrepSnapshot } : {}),
   };
 
+  // Demo-Sandbox.1-B: Demo writes to sandbox, Owner writes to Prisma
+  if (auth.context.mode === "demo") {
+    const sandboxTask = createSandboxTask(auth.context.demoAccessId, {
+      type: "workflow",
+      title: `${productName} 一键分析`,
+      platform: "manual",
+      source: typeof body.source === "string" ? body.source : "ai",
+      score,
+      level: riskLevel,
+      oneLineSummary: finalVerdict,
+      resultJson: JSON.stringify(taskResult),
+      productLifecycle: JSON.stringify(body.productLifecycle || createInitialProductLifecycle()),
+    });
+
+    return jsonResponse({
+      ok: true,
+      data: {
+        id: sandboxTask.id,
+        title: sandboxTask.title || productName,
+        type: "workflow",
+        isSandbox: true,
+        sourceMode: "demo_sandbox",
+        allReviewed: taskResult.reviewState.allReviewed,
+      },
+    });
+  }
+
+  // Owner: write to Prisma DB (original logic)
   try {
     const record = await prisma.viralAnalysisRecord.create({
       data: {

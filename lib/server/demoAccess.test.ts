@@ -116,7 +116,8 @@ describe("store I/O", () => {
     expect(record.maxAiCalls).toBe(5);
     expect(record.usedAiCalls).toBe(0);
     expect(record.isActive).toBe(true);
-    expect(record.expiresAt).toBeTruthy();
+    // expiresAt is null by default — starts from first login
+    expect(record.expiresAt === null || typeof record.expiresAt === "string").toBe(true);
     expect(record.passwordHash).toMatch(/^sha256:/);
     expect(plainPassword).toBeTruthy();
   });

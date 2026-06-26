@@ -1,9 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
+import {
+  getSandboxTask,
+  updateSandboxTask,
+  deleteSandboxTask,
+  sandboxTaskToDetail,
+  isSandboxTaskId,
+} from "@/lib/server/demoSandbox";
 
 export const runtime = "nodejs";
 
@@ -154,6 +161,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const id = await getId(context);
   if (!id) return invalidIdResponse();
 
+  // Demo-Sandbox.1-B: handle sandbox task IDs
+  if (isSandboxTaskId(id)) {
+    const ctx = getAccessContext(request);
+    if (!ctx || ctx.mode !== "demo") return notFoundResponse();
+    const task = getSandboxTask(ctx.demoAccessId, id);
+    if (!task) return notFoundResponse();
+    return jsonResponse({ ok: true, data: sandboxTaskToDetail(task) });
+  }
+
   try {
     const record = await prisma.viralAnalysisRecord.findFirst({
       where: { id },
@@ -171,11 +187,25 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const auth = requireOwnerOnly(request);
-  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-
   const id = await getId(context);
   if (!id) return invalidIdResponse();
+
+  // Demo-Sandbox.1-B: allow sandbox delete for demo, block official
+  if (isSandboxTaskId(id)) {
+    const auth = requireAuthenticated(request);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    if (auth.context.mode === "demo") {
+      const deleted = deleteSandboxTask(auth.context.demoAccessId, id);
+      if (!deleted) return notFoundResponse();
+      return jsonResponse({ ok: true, data: { id } });
+    }
+    // Non-demo user with sandbox ID — not found
+    return notFoundResponse();
+  }
+
+  // Official task: Owner only
+  const auth = requireOwnerOnly(request);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {
     await prisma.viralAnalysisRecord.delete({
@@ -208,11 +238,26 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   const bodyRecord = isRecord(body) ? body : {};
 
-  const auth = requireOwnerOnly(request, bodyRecord);
-  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-
   const id = await getId(context);
   if (!id) return invalidIdResponse();
+
+  // Demo-Sandbox.1-B: allow sandbox PATCH for demo, block official
+  if (isSandboxTaskId(id)) {
+    const auth = requireAuthenticated(request, bodyRecord);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    if (auth.context.mode === "demo") {
+      const decisionStatus = bodyRecord.decisionStatus;
+      if (!isDecisionStatus(decisionStatus)) return invalidDecisionStatusResponse();
+      const updated = updateSandboxTask(auth.context.demoAccessId, id, { decisionStatus: decisionStatus as string });
+      if (!updated) return notFoundResponse();
+      return jsonResponse({ ok: true, data: { id: updated.id, decisionStatus: updated.decisionStatus as DecisionStatus } });
+    }
+    return notFoundResponse();
+  }
+
+  // Official task: Owner only
+  const auth = requireOwnerOnly(request, bodyRecord);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const decisionStatus = bodyRecord.decisionStatus;
 

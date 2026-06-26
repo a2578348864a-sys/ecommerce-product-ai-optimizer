@@ -3,8 +3,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import { listSandboxTasks, createSandboxTask, sandboxTaskToListItem } from "@/lib/server/demoSandbox";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { SEARCHABLE_TASK_TYPES } from "@/lib/taskConcepts";
 
@@ -231,14 +232,24 @@ export async function GET(request: NextRequest) {
       prisma.viralAnalysisRecord.count({ where }),
     ]);
 
-    const items = records.map(toTaskItem);
+    let items: Record<string, unknown>[] = records.map(toTaskItem) as unknown as Record<string, unknown>[];
+
+    // Demo-Sandbox.1-B: merge sandbox tasks for demo users
+    const ctx = getAccessContext(request);
+    if (ctx && ctx.mode === "demo") {
+      const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
+      const sandboxItems = sandboxTasks.map((t) => sandboxTaskToListItem(t));
+      // Sandbox tasks first (newest), then official
+      items = [...sandboxItems, ...(items.map((item) => ({ ...item, sourceMode: "official_readonly", isSandbox: false, canEdit: false, canDelete: false })))] as unknown as Record<string, unknown>[];
+    }
+
     const nextOffset = offset + items.length;
     const hasMore = nextOffset < total;
 
     return jsonResponse({
       ok: true,
-      records: items,
-      data: { items },
+      records: items as unknown as ViralTaskItem[],
+      data: { items: items as unknown as ViralTaskItem[] },
       page: {
         type: effectiveType,
         q,
@@ -281,8 +292,8 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  // Demo-Login.1-F: Owner only for task creation
-  const auth = requireOwnerOnly(request, body);
+  // Demo-Sandbox.1-B: Allow both Owner and Demo
+  const auth = requireAuthenticated(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const taskType = asString(body.type) || "viral";
@@ -320,6 +331,25 @@ export async function POST(request: NextRequest) {
 
   const resultSummary = getResultSummary(body.result);
 
+  // Demo-Sandbox.1-B: Demo writes to sandbox
+  if (auth.context.mode === "demo") {
+    const sandboxTask = createSandboxTask(auth.context.demoAccessId, {
+      type: taskType,
+      title: asOptionalString(body.title) || asOptionalString(body.productName),
+      platform: platform || "manual",
+      source,
+      score: resultSummary.score,
+      level: resultSummary.level,
+      oneLineSummary: resultSummary.oneLineSummary,
+      resultJson: JSON.stringify(body.result),
+    });
+    return jsonResponse({
+      ok: true,
+      data: sandboxTaskToListItem(sandboxTask) as unknown as ViralTaskItem,
+    });
+  }
+
+  // Owner: write to Prisma DB
   try {
     const record = await prisma.viralAnalysisRecord.create({
       data: {

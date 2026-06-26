@@ -44,3 +44,5 @@ test_*.py
 
 # Demo access credentials (contains password hashes — do not commit)
 data/demo-access.json
+# Demo sandbox data (contains demo user tasks/candidates — do not commit)
+data/demo-sandbox.json

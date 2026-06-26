@@ -5,7 +5,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import { isSandboxTaskId, updateSandboxTaskLifecycle, getSandboxTask } from "@/lib/server/demoSandbox";
 import { Prisma } from "@prisma/client";
 import {
   isValidLifecycleStatus,
@@ -61,12 +62,26 @@ export async function PATCH(
 
   const bodyRecord = isRecord(body) ? body : {};
 
-  // Auth — Demo-Login.1-F: Owner only
-  const auth = requireOwnerOnly(request, bodyRecord);
-  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-
   // Task ID
   const id = await getId(context);
+  if (!id) return jsonResponse({ ok: false, error: { code: "invalid_id", message: "缺少有效 task id。" } }, 400);
+
+  // Demo-Sandbox.1-B: allow sandbox lifecycle for demo
+  if (isSandboxTaskId(id)) {
+    const auth = requireAuthenticated(request, bodyRecord);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    if (auth.context.mode === "demo") {
+      const updated = updateSandboxTaskLifecycle(auth.context.demoAccessId, id, bodyRecord);
+      if (!updated) return jsonResponse({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, 404);
+      const parsed = (() => { try { return JSON.parse(updated.productLifecycle); } catch { return {}; } })();
+      return jsonResponse({ ok: true, taskId: updated.id, productLifecycle: parsed });
+    }
+    return jsonResponse({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, 404);
+  }
+
+  // Auth — Demo-Login.1-F: Owner only for official tasks
+  const auth = requireOwnerOnly(request, bodyRecord);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
   if (!id) {
     return jsonResponse({ ok: false, error: { code: "invalid_id", message: "无效的任务 ID。" } }, 400);
   }
