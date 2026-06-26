@@ -83,7 +83,10 @@ export function ListingPackCard({
           <p className="mt-0.5 text-sm text-indigo-500">基于当前商品分析生成上架准备草稿 · AI 生成，人负责最终确认，不会自动上架</p>
         </div>
         {pack && (
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">已生成</span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600">规则草稿</span>
+            <span className="text-xs text-slate-400">发布前必须人工复核</span>
+          </div>
         )}
       </div>
 
@@ -97,7 +100,7 @@ export function ListingPackCard({
           >
             {generating ? "生成中…" : "生成 AI Listing 包"}
           </button>
-          <p className="mt-2 text-xs text-slate-400">使用规则兜底生成器，不调用真实 AI。可复制 Markdown 后人工修改。</p>
+          <p className="mt-2 text-xs text-slate-400">当前为规则兜底草稿，用于快速整理上架准备材料。不会调用真实 AI，不会自动上架。</p>
         </div>
       ) : (
         <div className="mt-4 space-y-4">
