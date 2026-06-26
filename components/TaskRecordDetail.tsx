@@ -22,6 +22,13 @@ import {
 } from "@/lib/tasks/decisionStatus";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import {
+  derivePipelineStatus,
+  deriveNextAction,
+  PIPELINE_STATUS_LABELS,
+  PIPELINE_STATUS_TONES,
+  type PipelineStatus,
+} from "@/lib/productPipeline";
 import { deriveDisplayLifecycle, getAvailableTransitions, getLifecycleStatusLabel, getLifecycleStatusDescription, getLifecycleNextAction, transitionLifecycle, type LifecycleStatus, type ProductLifecycle } from "@/lib/workflowLifecycle";
 
 const extendedPlatformLabels: Record<string, string> = {
@@ -519,6 +526,27 @@ function WorkflowDecisionSummary({
           )}
         </section>
       ) : null}
+
+      {/* AI Listing 包承接 */}
+      <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4" data-testid="listing-pack-placeholder">
+        <div className="flex items-start gap-3">
+          <span className="linear-icon size-9 shrink-0 rounded-xl bg-indigo-100 text-indigo-600">
+            <svg className="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-bold text-indigo-900">AI Listing 包</h3>
+            <p className="mt-1 text-sm leading-6 text-indigo-700">
+              后续 Core-4 阶段将基于当前商品分析，自动生成：标题草稿、五点描述、核心关键词、长尾关键词、卖点、目标用户、图片需求、价格建议、风险用词提醒、上架前检查清单。
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-indigo-200 bg-white px-3 py-1 text-sm font-semibold text-indigo-500">
+                状态：未生成
+              </span>
+              <span className="text-sm text-indigo-400">下一阶段：Core-4 AI Listing 包自动生成</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
         <summary className="cursor-pointer font-semibold text-slate-600 select-none">
@@ -1088,13 +1116,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
                   <Link href="/tasks" className="hover:text-teal-600">任务中心</Link>
                   <span>/</span>
-                  <span className="text-slate-600">任务详情</span>
+                  <span className="text-slate-600">商品推进详情</span>
                   {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-                  任务详情{record ? `：${getTitle(record)}` : ""}
+                  商品推进详情{record ? `：${getTitle(record)}` : ""}
                 </h1>
-                <p className="mt-1 text-sm text-slate-500">查看商品分析结论、人工复核状态和下一步运营动作。</p>
+                <p className="mt-1 text-sm text-slate-500">把 AI 分析结果沉淀为可推进的选品任务。AI 负责生成建议，人负责最终确认。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
@@ -1130,9 +1158,38 @@ export function TaskRecordDetail({ id }: { id: string }) {
             </section>
           ) : record ? (
             <section className="surface-card p-5 sm:p-6">
+              {/* Pipeline status bar */}
+              {(() => {
+                const pipeStatus = derivePipelineStatus({ decisionStatus: record.decisionStatus, level: record.level, result: record.result });
+                const nextAct = deriveNextAction({ decisionStatus: record.decisionStatus, level: record.level, result: record.result });
+                const isAgentRun = (() => { try { const r = typeof record.result === "object" && record.result ? (record.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run"; } catch { return false; } })();
+                return (
+                  <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="pipeline-summary">
+                    <p className="text-sm font-bold text-teal-700">商品推进摘要</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${PIPELINE_STATUS_TONES[pipeStatus]}`}>
+                        当前状态：{PIPELINE_STATUS_LABELS[pipeStatus]}
+                      </span>
+                      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${nextAct.priority === "high" ? "border-rose-200 bg-rose-50 text-rose-700" : nextAct.priority === "medium" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+                        下一步：{nextAct.label}
+                      </span>
+                      {isAgentRun && (
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-700">8 步主链路</span>
+                      )}
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{nextAct.description}</p>
+                    {pipeStatus === "needs_review" && (
+                      <p className="mt-2 text-sm text-slate-500">该商品已有 AI 分析结果，但尚未完成人工确认。请逐项复核后决定下一步。</p>
+                    )}
+                    {pipeStatus === "high_risk" && (
+                      <p className="mt-2 text-sm text-rose-600">AI 分析中识别到较高风险，建议人工确认后再决定是否放弃。</p>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-teal-700">运营任务结果</p>
+                  <p className="text-sm font-bold text-teal-700">商品详情</p>
                   <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">
                     {getTitle(record)}
                   </h2>
