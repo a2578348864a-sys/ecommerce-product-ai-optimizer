@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiText, getAiConfig } from "@/lib/server/aiClient";
 import type { MaterialAgentCompleteness, MaterialAgentResult, MaterialInput } from "@/lib/types";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -197,7 +198,7 @@ function buildMaterialAgentPrompt(inputText: string) {
   ].join("\n");
 }
 
-async function runMaterialAgent(inputText: string): Promise<MaterialAgentResult> {
+async function runMaterialAgent(inputText: string): Promise<{ data: MaterialAgentResult; aiOk: boolean }> {
   const aiResult = await callAiText({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
@@ -215,10 +216,10 @@ async function runMaterialAgent(inputText: string): Promise<MaterialAgentResult>
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.message);
+    return { data: normalizeMaterialAgentResult({}), aiOk: false };
   }
 
-  return normalizeMaterialAgentResult(parseAiJson(aiResult.data));
+  return { data: normalizeMaterialAgentResult(parseAiJson(aiResult.data)), aiOk: true };
 }
 
 export async function POST(request: NextRequest) {
@@ -243,18 +244,26 @@ export async function POST(request: NextRequest) {
     return jsonError("请先放入素材。", 400);
   }
 
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonError("服务端未配置访问密码。", 500);
+  const authResult = requireAuthenticated(request, body as Record<string, unknown>);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
   }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
-  if (asString(body.accessPassword) !== configuredPassword) {
-    return jsonError("请先输入正确的访问密码。", 401);
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return NextResponse.json({ ok: false, error: { code: quota.code, message: quota.message } }, { status: quota.status });
+    }
   }
 
   try {
-    const result = await runMaterialAgent(inputText);
-    return NextResponse.json({ result });
+    const { data: result, aiOk } = await runMaterialAgent(inputText);
+    if (aiOk && accessCtx.mode === "demo") {
+      demoScreen = consumeDemoAiCalls(accessCtx, 1);
+    }
+    return NextResponse.json({ result, ...(demoScreen ? { demoAccess: demoScreen } : {}) });
   } catch (error) {
     console.error("Material Agent failed", getSafeLogPayload(error));
     return jsonError("素材识别失败，请补充商品信息后重试。", 500);

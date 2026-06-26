@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 import {
   isValidCandidateStatus,
   deleteCandidate,
@@ -41,8 +41,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  const authError = checkAccessPassword(request, body);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  const auth = requireOwnerOnly(request, body);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const update: CandidateUpdate = {};
 
@@ -88,8 +88,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   if (!id) return json({ ok: false, error: { code: "not_found", message: "缺少候选品 ID。" } }, 400);
 
-  const authError = checkAccessPassword(request);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  const auth = requireOwnerOnly(request);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {
     const deleted = await deleteCandidate(id);

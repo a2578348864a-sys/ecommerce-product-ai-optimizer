@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildCrossBorderAnalysisPrompt } from "@/lib/cross-border/prompts";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 import type {
   AiAnalysisResult,
   CrossBorderProductInput,
@@ -303,12 +303,23 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  const authError = checkAccessPassword(request, isRecord(rawBody) ? rawBody : undefined);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  const authResult = requireAuthenticated(request, isRecord(rawBody) ? rawBody : undefined);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
+  }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   const parsed = parseAnalysisRequest(rawBody);
   if (!parsed.value) {
     return jsonResponse({ ok: false, error: parsed.error || { code: "invalid_body", message: "请求参数不正确。" } }, 400);
+  }
+
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
   }
 
   const prompt = buildCrossBorderAnalysisPrompt(parsed.value);
@@ -337,8 +348,13 @@ export async function POST(request: NextRequest) {
     }, 500);
   }
 
+  if (accessCtx.mode === "demo") {
+    demoScreen = consumeDemoAiCalls(accessCtx, 1);
+  }
+
   return jsonResponse({
     ok: true,
     data: applyProductRiskGuards(normalizeAiAnalysisResult(aiResult.data), parsed.value),
+    ...(demoScreen ? { demoAccess: demoScreen } : {}),
   });
 }

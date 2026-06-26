@@ -99,6 +99,22 @@ export function getDemoAccessInfo(): DemoAccessInfo | null {
   }
 }
 
+/**
+ * Update demo access info in sessionStorage (after AI calls update remaining quota).
+ */
+export function updateDemoAccessInfo(update: Partial<DemoAccessInfo>): void {
+  const current = getDemoAccessInfo();
+  if (!current) return;
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    const merged = { ...current, ...update };
+    storage.setItem(DEMO_ACCESS_KEY, JSON.stringify(merged));
+  } catch {
+    // ignore
+  }
+}
+
 export function isAuthenticated(): boolean {
   return !!getAccessToken();
 }

@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 import { Prisma } from "@prisma/client";
 import {
   isValidLifecycleStatus,
@@ -61,9 +61,9 @@ export async function PATCH(
 
   const bodyRecord = isRecord(body) ? body : {};
 
-  // Auth
-  const authError = checkAccessPassword(request, bodyRecord);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  // Auth — Demo-Login.1-F: Owner only
+  const auth = requireOwnerOnly(request, bodyRecord);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   // Task ID
   const id = await getId(context);

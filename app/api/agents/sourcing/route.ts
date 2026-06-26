@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildSourcingPrompt, type SourcingPromptInput } from "@/lib/cross-border/prompts";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -175,7 +176,7 @@ function buildSourcingFallbackData(input: SourcingPromptInput): SourcingData {
   };
 }
 
-async function runSourcingAgent(input: SourcingPromptInput): Promise<SourcingData> {
+async function runSourcingAgent(input: SourcingPromptInput): Promise<{ data: SourcingData; aiOk: boolean }> {
   const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
@@ -187,9 +188,9 @@ async function runSourcingAgent(input: SourcingPromptInput): Promise<SourcingDat
 
   if (!aiResult.ok) {
     console.error("Sourcing Agent failed", aiResult.error.code);
-    return buildSourcingFallbackData(input);
+    return { data: buildSourcingFallbackData(input), aiOk: false };
   }
-  return normalizeSourcingData(aiResult.data);
+  return { data: normalizeSourcingData(aiResult.data), aiOk: true };
 }
 
 function getErrorMessage(code: string) {
@@ -220,14 +221,12 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "missing_access_password", message: "服务端访问密码未配置。" } }, 500);
+  const authResult = requireAuthenticated(request, body as Record<string, unknown>);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
   }
-
-  if (asString(body.accessPassword) !== configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "unauthorized", message: "访问密码错误或缺失。" } }, 401);
-  }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   const productName = asString(body.productName).slice(0, 200);
   if (!productName) {
@@ -242,9 +241,19 @@ export async function POST(request: NextRequest) {
     description: asString(body.description).slice(0, 1000),
   };
 
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
+  }
+
   try {
-    const data = await runSourcingAgent(input);
-    return jsonResponse({ ok: true, data });
+    const { data, aiOk } = await runSourcingAgent(input);
+    if (aiOk && accessCtx.mode === "demo") {
+      demoScreen = consumeDemoAiCalls(accessCtx, 1);
+    }
+    return jsonResponse({ ok: true, data, ...(demoScreen ? { demoAccess: demoScreen } : {}) });
   } catch (error) {
     const code = error instanceof Error ? error.message : "unknown_error";
     return toStructuredError(code);

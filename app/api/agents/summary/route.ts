@@ -3,6 +3,7 @@ import { callAiJson } from "@/lib/server/aiClient";
 import { buildSummaryPrompt, type SummaryPromptInput } from "@/lib/cross-border/prompts";
 import { applyHardGuard, type RiskGuardInput } from "@/lib/server/summaryRiskGuard";
 import { sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -153,7 +154,7 @@ function applyGuardToSummary(
 async function runSummaryAgent(
   promptInput: SummaryPromptInput,
   guardInputBase: RiskGuardInput,
-): Promise<SummaryData> {
+): Promise<{ data: SummaryData; aiOk: boolean }> {
   const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
@@ -172,13 +173,13 @@ async function runSummaryAgent(
 
   if (!aiResult.ok) {
     if (aiResult.error.code === "json_parse_error") {
-      return applyGuardToSummary(buildParseFallbackSummary(promptInput.productName), guardInputBase);
+      return { data: applyGuardToSummary(buildParseFallbackSummary(promptInput.productName), guardInputBase), aiOk: false };
     }
     throw new Error(aiResult.error.code);
   }
 
   const normalized = normalizeSummaryData(aiResult.data, promptInput.productName);
-  return applyGuardToSummary(normalized, guardInputBase);
+  return { data: applyGuardToSummary(normalized, guardInputBase), aiOk: true };
 }
 
 export async function POST(request: NextRequest) {
@@ -205,14 +206,12 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ ok: false, error: { code: "missing_product_name", message: "请先填写商品名称。" } }, 400);
   }
 
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "no_password", message: "服务端未配置访问密码。" } }, 500);
+  const authResult = requireAuthenticated(request, source);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
   }
-
-  if (asString(source.accessPassword) !== configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "wrong_password", message: "访问密码不正确。" } }, 401);
-  }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   const promptInput: SummaryPromptInput = {
     productName,
@@ -239,9 +238,19 @@ export async function POST(request: NextRequest) {
   // 构建硬规则输入（在调用 AI 前提取结构化字段，供 guard 使用）
   const guardInputBase = buildRiskGuardInput(productName, source);
 
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
+  }
+
   try {
-    const data = await runSummaryAgent(promptInput, guardInputBase);
-    return jsonResponse({ ok: true, data });
+    const { data, aiOk } = await runSummaryAgent(promptInput, guardInputBase);
+    if (aiOk && accessCtx.mode === "demo") {
+      demoScreen = consumeDemoAiCalls(accessCtx, 1);
+    }
+    return jsonResponse({ ok: true, data, ...(demoScreen ? { demoAccess: demoScreen } : {}) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";
     console.error("Summary Agent failed", message.slice(0, 240));

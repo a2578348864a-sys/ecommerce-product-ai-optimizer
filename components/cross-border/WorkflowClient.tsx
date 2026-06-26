@@ -72,6 +72,15 @@ type ApiWorkflowResult = {
     fallbackSteps: number;
   };
   warnings: string[];
+  demoAccess?: {
+    id: string;
+    label: string;
+    expiresAt: string;
+    maxAiCalls: number;
+    usedAiCalls: number;
+    remainingAiCalls: number;
+    isActive: boolean;
+  };
 };
 
 export type WorkflowSourceMeta = {
@@ -567,6 +576,16 @@ export function WorkflowClient({
       setStepStatuses(finalStatuses);
       setProgressExpanded(false);
       setResult(wf);
+
+      // Demo-Login.1-E: Update Banner after AI calls
+      if (wf.demoAccess) {
+        import("@/lib/client/accessToken").then(({ updateDemoAccessInfo }) => {
+          updateDemoAccessInfo({
+            remainingAiCalls: wf.demoAccess!.remainingAiCalls,
+            usedAiCalls: wf.demoAccess!.usedAiCalls,
+          });
+        });
+      }
 
       if (wf.warnings.length) {
         setError(wf.warnings.join("；"));

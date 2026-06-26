@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 
@@ -103,6 +104,12 @@ export async function POST(request: NextRequest) {
 
   if (!isPlainObject(body)) {
     return NextResponse.json({ error: "保存请求格式不正确。" }, { status: 400 });
+  }
+
+  // Demo-Login.1-F: Owner only — Demo forbidden from saving radar data
+  const auth = requireOwnerOnly(request, body as Record<string, unknown>);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
   }
 
   const configuredPassword = getAccessPassword();

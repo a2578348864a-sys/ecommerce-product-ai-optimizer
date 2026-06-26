@@ -4,6 +4,7 @@ import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { SEARCHABLE_TASK_TYPES } from "@/lib/taskConcepts";
 
@@ -280,8 +281,9 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  const authError = checkAccessPassword(request, body);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  // Demo-Login.1-F: Owner only for task creation
+  const auth = requireOwnerOnly(request, body);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const taskType = asString(body.type) || "viral";
   if (!allowedTypes.has(taskType)) {

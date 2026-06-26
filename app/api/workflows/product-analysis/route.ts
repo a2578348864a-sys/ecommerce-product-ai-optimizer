@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, getLatestDemoSnapshot, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 import {
   runSourcingStep,
   runRiskStep,
@@ -158,14 +158,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, { status: 400 });
   }
 
-  // Access password
-  const passwordResult = checkAccessPassword(request, body as Record<string, unknown>);
-  if (passwordResult) {
+  // Demo-Login.1-E: Authenticate (Owner or Demo)
+  const authResult = requireAuthenticated(request, body as Record<string, unknown>);
+  if (!authResult.ok) {
     return NextResponse.json(
-      { ok: false, error: { code: "unauthorized", message: "访问密码错误或缺失。" } },
-      { status: passwordResult.status },
+      { ok: false, error: { code: authResult.code, message: authResult.message } },
+      { status: authResult.status },
     );
   }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null; // updated after each AI consume
 
   // Reject batch before string normalization
   if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
@@ -202,13 +204,28 @@ export async function POST(request: NextRequest) {
   // Step 1: Sourcing
   let sourcingResult: SourcingStepOutput | null = null;
   if (runSourcing) {
-    aiStepsRequested++;
-    const startedAt = new Date().toISOString();
-    const result = await runSourcingStep(productName, productName);
-    sourcingResult = result.data;
-    if (result.status === "completed") aiStepsCompleted++;
-    else fallbackSteps++;
-    steps.push(stepResult("sourcing", "货源判断", result.status, sourcingResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    // Demo quota check
+    let sourcingSkipped = false;
+    if (accessCtx.mode === "demo") {
+      const quota = ensureDemoAiQuota(accessCtx, 1);
+      if (!quota.ok) {
+        steps.push(stepResult("sourcing", "货源判断", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
+        sourcingSkipped = true;
+      }
+    }
+    if (!sourcingSkipped) {
+      aiStepsRequested++;
+      const startedAt = new Date().toISOString();
+      const result = await runSourcingStep(productName, productName);
+      sourcingResult = result.data;
+      if (result.status === "completed") {
+        aiStepsCompleted++;
+        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
+      } else {
+        fallbackSteps++;
+      }
+      steps.push(stepResult("sourcing", "货源判断", result.status, sourcingResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    }
   } else {
     steps.push(stepResult("sourcing", "货源判断", "fallback", "已跳过（options.runSourcing=false）"));
   }
@@ -216,13 +233,27 @@ export async function POST(request: NextRequest) {
   // Step 2: Risk
   let riskResult: RiskStepOutput | null = null;
   if (runRisk) {
-    aiStepsRequested++;
-    const startedAt = new Date().toISOString();
-    const result = await runRiskStep(productName, productName);
-    riskResult = result.data;
-    if (result.status === "completed") aiStepsCompleted++;
-    else fallbackSteps++;
-    steps.push(stepResult("risk", "风险排查", result.status, riskResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    let riskSkipped = false;
+    if (accessCtx.mode === "demo") {
+      const quota = ensureDemoAiQuota(accessCtx, 1);
+      if (!quota.ok) {
+        steps.push(stepResult("risk", "风险排查", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
+        riskSkipped = true;
+      }
+    }
+    if (!riskSkipped) {
+      aiStepsRequested++;
+      const startedAt = new Date().toISOString();
+      const result = await runRiskStep(productName, productName);
+      riskResult = result.data;
+      if (result.status === "completed") {
+        aiStepsCompleted++;
+        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
+      } else {
+        fallbackSteps++;
+      }
+      steps.push(stepResult("risk", "风险排查", result.status, riskResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    }
   } else {
     steps.push(stepResult("risk", "风险排查", "fallback", "已跳过（options.runRisk=false）"));
   }
@@ -230,13 +261,27 @@ export async function POST(request: NextRequest) {
   // Step 3: Summary
   let summaryResult: SummaryStepOutput | null = null;
   if (runSummary) {
-    aiStepsRequested++;
-    const startedAt = new Date().toISOString();
-    const result = await runSummaryStep(productName, productName, sourcingResult, riskResult);
-    summaryResult = result.data;
-    if (result.status === "completed") aiStepsCompleted++;
-    else fallbackSteps++;
-    steps.push(stepResult("summary", "小白结论", result.status, summaryResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    let summarySkipped = false;
+    if (accessCtx.mode === "demo") {
+      const quota = ensureDemoAiQuota(accessCtx, 1);
+      if (!quota.ok) {
+        steps.push(stepResult("summary", "小白结论", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
+        summarySkipped = true;
+      }
+    }
+    if (!summarySkipped) {
+      aiStepsRequested++;
+      const startedAt = new Date().toISOString();
+      const result = await runSummaryStep(productName, productName, sourcingResult, riskResult);
+      summaryResult = result.data;
+      if (result.status === "completed") {
+        aiStepsCompleted++;
+        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
+      } else {
+        fallbackSteps++;
+      }
+      steps.push(stepResult("summary", "小白结论", result.status, summaryResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    }
   } else {
     steps.push(stepResult("summary", "小白结论", "fallback", "已跳过（options.runSummary=false）"));
   }
@@ -244,13 +289,27 @@ export async function POST(request: NextRequest) {
   // Step 4: Listing
   let listingResult: ListingStepOutput | null = null;
   if (runListing) {
-    aiStepsRequested++;
-    const startedAt = new Date().toISOString();
-    const result = await runListingStep(productName, summaryResult);
-    listingResult = result.data;
-    if (result.status === "completed") aiStepsCompleted++;
-    else fallbackSteps++;
-    steps.push(stepResult("listing", "上架文案/关键词", result.status, listingResult.title, result.warnings, startedAt, new Date().toISOString()));
+    let listingSkipped = false;
+    if (accessCtx.mode === "demo") {
+      const quota = ensureDemoAiQuota(accessCtx, 1);
+      if (!quota.ok) {
+        steps.push(stepResult("listing", "上架文案/关键词", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
+        listingSkipped = true;
+      }
+    }
+    if (!listingSkipped) {
+      aiStepsRequested++;
+      const startedAt = new Date().toISOString();
+      const result = await runListingStep(productName, summaryResult);
+      listingResult = result.data;
+      if (result.status === "completed") {
+        aiStepsCompleted++;
+        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
+      } else {
+        fallbackSteps++;
+      }
+      steps.push(stepResult("listing", "上架文案/关键词", result.status, listingResult.title, result.warnings, startedAt, new Date().toISOString()));
+    }
   } else {
     steps.push(stepResult("listing", "上架文案/关键词", "fallback", "已跳过（options.runListing=false）"));
   }
@@ -283,6 +342,8 @@ export async function POST(request: NextRequest) {
     finalReport,
     costGuard: { aiStepsRequested, aiStepsCompleted, fallbackSteps },
     warnings,
+    // Demo-Login.1-E: include latest demo snapshot for Banner update
+    ...(demoScreen ? { demoAccess: demoScreen } : {}),
   };
 
   return NextResponse.json(result, { status: 200 });

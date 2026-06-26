@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 import {
   isValidCandidateStatus,
   listCandidates,
@@ -67,8 +68,8 @@ export async function POST(request: NextRequest) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  const authError = checkAccessPassword(request, body);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  const auth = requireOwnerOnly(request, body);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   // Support both single item and items array
   const rawItems = Array.isArray(body.items) ? body.items : isRecord(body) && body.name ? [body] : [];

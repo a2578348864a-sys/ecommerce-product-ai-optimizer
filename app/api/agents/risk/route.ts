@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { buildRiskCheckPrompt, type RiskCheckPromptInput } from "@/lib/cross-border/prompts";
 import { classifyKeywordFallbackRisk, isHumanFoodContactProduct, isPetFoodContactProduct, sanitizeStringArray, sanitizeUnsupportedCertificationClaims } from "@/lib/server/alphaSafety";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -222,7 +223,7 @@ function buildPrompt(input: RiskCheckPromptInput) {
   return buildRiskCheckPrompt(input);
 }
 
-async function runRiskAgent(input: RiskCheckPromptInput): Promise<RiskCheckData> {
+async function runRiskAgent(input: RiskCheckPromptInput): Promise<{ data: RiskCheckData; aiOk: boolean }> {
   const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
@@ -240,10 +241,10 @@ async function runRiskAgent(input: RiskCheckPromptInput): Promise<RiskCheckData>
 
   if (!aiResult.ok) {
     console.error("Risk Agent failed", aiResult.error.code);
-    return buildRiskFallbackData(input, aiResult.error.code);
+    return { data: buildRiskFallbackData(input, aiResult.error.code), aiOk: false };
   }
 
-  return applyDeterministicRiskGuards(normalizeRiskCheckData(aiResult.data), input);
+  return { data: applyDeterministicRiskGuards(normalizeRiskCheckData(aiResult.data), input), aiOk: true };
 }
 
 function getErrorMessage(code: string) {
@@ -288,20 +289,12 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonResponse({
-      ok: false,
-      error: { code: "missing_access_password", message: "服务端访问密码未配置。" },
-    }, 500);
+  const authResult = requireAuthenticated(request, body as Record<string, unknown>);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
   }
-
-  if (asString(body.accessPassword) !== configuredPassword) {
-    return jsonResponse({
-      ok: false,
-      error: { code: "unauthorized", message: "访问密码错误或缺失。" },
-    }, 401);
-  }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   const productName = asString(body.productName).slice(0, 200);
   if (!productName) {
@@ -319,9 +312,19 @@ export async function POST(request: NextRequest) {
     description: asString(body.description).slice(0, 1000),
   };
 
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
+  }
+
   try {
-    const data = await runRiskAgent(input);
-    return jsonResponse({ ok: true, data });
+    const { data, aiOk } = await runRiskAgent(input);
+    if (aiOk && accessCtx.mode === "demo") {
+      demoScreen = consumeDemoAiCalls(accessCtx, 1);
+    }
+    return jsonResponse({ ok: true, data, ...(demoScreen ? { demoAccess: demoScreen } : {}) });
   } catch (error) {
     const code = error instanceof Error ? error.message : "unknown_error";
     return toStructuredError(code);

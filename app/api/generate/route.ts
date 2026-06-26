@@ -5,6 +5,7 @@ import {
   radarJsonSchema,
 } from "@/lib/prompt";
 import { callAiText, getAiConfig, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
 import {
   defaultPlatformStatus,
   inputLimits,
@@ -495,14 +496,12 @@ export async function POST(request: NextRequest) {
     return jsonError("请求体不是合法 JSON，请刷新页面后重试。", 400);
   }
 
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonError("服务端未配置访问密码，请在环境变量中添加 ACCESS_PASSWORD。", 500);
+  const authResult = requireAuthenticated(request, body as Record<string, unknown>);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
   }
-
-  if (!isPlainObject(body) || getTrimmedString(body, "accessPassword") !== configuredPassword) {
-    return jsonError("访问密码错误，请检查后重试。", 401, { accessPassword: "访问密码错误，请检查后重试。" });
-  }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   const { value, fieldErrors } = validateInput(body);
   if (!value || Object.keys(fieldErrors || {}).length > 0) {
@@ -512,6 +511,13 @@ export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   if (!checkRateLimit(ip)) {
     return jsonError("请求过于频繁，请 10 分钟后再试。", 429);
+  }
+
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return NextResponse.json({ ok: false, error: { code: quota.code, message: quota.message } }, { status: quota.status });
+    }
   }
 
   const aiResult = await callAiText({
@@ -551,5 +557,12 @@ export async function POST(request: NextRequest) {
     return jsonError("AI 返回结构不完整，请减少输入内容后重新生成。", 502);
   }
 
-  return NextResponse.json(normalizeResult(parsed, value));
+  if (accessCtx.mode === "demo") {
+    demoScreen = consumeDemoAiCalls(accessCtx, 1);
+  }
+
+  return NextResponse.json({
+    ...normalizeResult(parsed, value),
+    ...(demoScreen ? { demoAccess: demoScreen } : {}),
+  });
 }

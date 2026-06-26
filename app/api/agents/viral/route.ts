@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { callAiJson, getSafeAiClientErrorMessage } from "@/lib/server/aiClient";
 import { allPlatformLabels, platformLabels, platformOptions } from "@/lib/types";
 import type { EvidenceCard, MaterialAgentResult, MaterialInput, Platform, ViralAgentResult, ViralLevel } from "@/lib/types";
+import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -347,7 +349,7 @@ async function runViralAgent(params: {
   materialText: string;
   materialResult?: MaterialAgentResult | null;
   evidenceCards?: EvidenceCard[];
-}): Promise<ViralAiData> {
+}): Promise<{ data: ViralAiData; aiOk: boolean }> {
   const aiResult = await callAiJson<unknown>({
     maxTokens: MAX_OUTPUT_TOKENS,
     timeoutMs: OPENAI_TIMEOUT_MS,
@@ -364,10 +366,10 @@ async function runViralAgent(params: {
   });
 
   if (!aiResult.ok) {
-    throw new Error(aiResult.error.message);
+    return { data: defaultAiData, aiOk: false };
   }
 
-  return normalizeAiData(aiResult.data);
+  return { data: normalizeAiData(aiResult.data), aiOk: true };
 }
 
 function getErrorMessage(code: string) {
@@ -393,7 +395,11 @@ function isStandaloneViralRequest(body: Record<string, unknown>) {
   return "materialText" in body || "content" in body || "platform" in body || "productUrl" in body || "title" in body;
 }
 
-async function handleStandaloneRequest(body: Record<string, unknown>) {
+async function handleStandaloneRequest(
+  body: Record<string, unknown>,
+  accessCtx: AccessContext,
+  _demoScreen: DemoAccessSnapshot | null,
+) {
   const title = asString(body.title).slice(0, 160);
   const productUrl = asString(body.productUrl || body.url).slice(0, 400);
   const materialText = asString(body.materialText || body.content);
@@ -420,16 +426,31 @@ async function handleStandaloneRequest(body: Record<string, unknown>) {
     }, 400);
   }
 
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
+  }
+
   try {
-    const data = await runViralAgent({ title, productUrl, platform, materialText });
-    return jsonResponse({ ok: true, data });
+    const { data, aiOk } = await runViralAgent({ title, productUrl, platform, materialText });
+    if (!aiOk) {
+      return toStructuredError("ai_error");
+    }
+    const updatedScreen = accessCtx.mode === "demo" ? consumeDemoAiCalls(accessCtx, 1) : null;
+    return jsonResponse({ ok: true, data, ...(updatedScreen ? { demoAccess: updatedScreen } : {}) });
   } catch (error) {
     const code = error instanceof Error ? error.message : "unknown_error";
     return toStructuredError(code);
   }
 }
 
-async function handleLegacyRequest(body: Record<string, unknown>) {
+async function handleLegacyRequest(
+  body: Record<string, unknown>,
+  accessCtx: AccessContext,
+  _demoScreen: DemoAccessSnapshot | null,
+) {
   const materialText = buildLegacyInputText(body);
   if (!materialText) {
     return legacyJsonError("请先放入素材。", 400);
@@ -444,8 +465,15 @@ async function handleLegacyRequest(body: Record<string, unknown>) {
     return legacyJsonError("请先识别素材，再进行爆款拆解。", 400);
   }
 
+  if (accessCtx.mode === "demo") {
+    const quota = ensureDemoAiQuota(accessCtx, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
+  }
+
   try {
-    const data = await runViralAgent({
+    const { data, aiOk } = await runViralAgent({
       title: asString(body.keyword),
       productUrl: "",
       platform: "tiktok",
@@ -453,7 +481,11 @@ async function handleLegacyRequest(body: Record<string, unknown>) {
       materialResult,
       evidenceCards: normalizeEvidenceCards(body.evidenceCards),
     });
-    return jsonResponse({ ok: true, data, result: toLegacyViralResult(data) });
+    if (!aiOk) {
+      return legacyJsonError(getErrorMessage("ai_error"), 500);
+    }
+    const updatedScreen = accessCtx.mode === "demo" ? consumeDemoAiCalls(accessCtx, 1) : null;
+    return jsonResponse({ ok: true, data, result: toLegacyViralResult(data), ...(updatedScreen ? { demoAccess: updatedScreen } : {}) });
   } catch (error) {
     const code = error instanceof Error ? error.message : "unknown_error";
     return legacyJsonError(getErrorMessage(code), 500);
@@ -487,18 +519,16 @@ export async function POST(request: NextRequest) {
   }
 
   const standalone = isStandaloneViralRequest(body);
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return authError("missing_access_password", 500, standalone);
+  const authResult = requireAuthenticated(request, body as Record<string, unknown>);
+  if (!authResult.ok) {
+    return NextResponse.json({ ok: false, error: { code: authResult.code, message: authResult.message } }, { status: authResult.status });
   }
-
-  if (asString(body.accessPassword) !== configuredPassword) {
-    return authError("unauthorized", 401, standalone);
-  }
+  const accessCtx = authResult.context;
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   if (standalone) {
-    return handleStandaloneRequest(body);
+    return handleStandaloneRequest(body, accessCtx, demoScreen);
   }
 
-  return handleLegacyRequest(body);
+  return handleLegacyRequest(body, accessCtx, demoScreen);
 }

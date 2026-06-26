@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 
@@ -267,12 +267,12 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
-  // Access password
-  const passwordResult = checkAccessPassword(request, body as Record<string, unknown>);
-  if (passwordResult) {
+  // Demo-Login.1-F: Owner only (Demo forbidden)
+  const auth = requireOwnerOnly(request, body as Record<string, unknown>);
+  if (!auth.ok) {
     return NextResponse.json(
-      { ok: false, error: { code: "unauthorized", message: "访问密码错误或缺失。" } },
-      { status: passwordResult.status },
+      { ok: false, error: { code: auth.code, message: auth.message } },
+      { status: auth.status },
     );
   }
 

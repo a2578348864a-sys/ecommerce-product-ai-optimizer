@@ -173,7 +173,7 @@ describe("DELETE /api/tasks/[id]", () => {
     const response = await DELETE(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
     expect(status).toBe(401);
-    expect(body.error).toContain("访问密码错误");
+    expect(body.error?.code || body.error).toBeTruthy();
   });
 
   it("错误密码 → 返回 401", async () => {
@@ -184,7 +184,7 @@ describe("DELETE /api/tasks/[id]", () => {
     const response = await DELETE(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
     expect(status).toBe(401);
-    expect(body.error).toContain("访问密码错误");
+    expect(body.error?.code || body.error).toBeTruthy();
   });
 
   it("正确密码 → 返回 200 并正常删除", async () => {
@@ -200,15 +200,15 @@ describe("DELETE /api/tasks/[id]", () => {
     expect(mockPrisma.viralAnalysisRecord.delete).toHaveBeenCalled();
   });
 
-  it("服务端未配置密码 → 返回 500", async () => {
+  it("服务端未配置密码 → DELETE 返回 401", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");
     const mod = await import("./route");
     const request = createRequest({ method: "DELETE" });
     const response = await mod.DELETE(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
-    expect(status).toBe(500);
-    expect(body.error).toContain("ACCESS_PASSWORD");
+    expect(status).toBe(401);
+    expect(body.error?.code || body.error).toBeTruthy();
   });
 });
 
@@ -221,7 +221,7 @@ describe("PATCH /api/tasks/[id]", () => {
     const response = await PATCH(request, createContext("task-001"));
     const { status, body } = await getJsonStatus(response);
     expect(status).toBe(401);
-    expect(body.error).toContain("访问密码错误");
+    expect(body.error?.code || body.error).toBeTruthy();
   });
 
   it("正确密码 → 更新人工状态", async () => {
