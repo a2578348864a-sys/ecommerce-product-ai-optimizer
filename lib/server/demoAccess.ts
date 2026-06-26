@@ -52,12 +52,20 @@ export interface CreateDemoAccessOutput {
 
 // ── File path ───────────────────────────────────
 
-const DATA_DIR = resolve(process.cwd(), "data");
-const STORE_PATH = resolve(DATA_DIR, "demo-access.json");
+function getStorePath(): string {
+  // Allow tests to override via env var
+  if (process.env.DEMO_ACCESS_STORE_PATH) {
+    return process.env.DEMO_ACCESS_STORE_PATH;
+  }
+  const dataDir = resolve(process.cwd(), "data");
+  return resolve(dataDir, "demo-access.json");
+}
 
 function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
+  const p = getStorePath();
+  const dir = resolve(p, "..");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -92,12 +100,13 @@ export function generateDemoId(): string {
 // ── Store I/O ───────────────────────────────────
 
 export function loadDemoAccessStore(): DemoAccessStore {
+  const storePath = getStorePath();
   ensureDataDir();
-  if (!existsSync(STORE_PATH)) {
+  if (!existsSync(storePath)) {
     return { version: 1, accesses: [] };
   }
   try {
-    const raw = readFileSync(STORE_PATH, "utf-8");
+    const raw = readFileSync(storePath, "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed?.version === 1 && Array.isArray(parsed.accesses)) {
       return parsed as DemoAccessStore;
@@ -110,7 +119,7 @@ export function loadDemoAccessStore(): DemoAccessStore {
 
 export function saveDemoAccessStore(store: DemoAccessStore): void {
   ensureDataDir();
-  writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf-8");
+  writeFileSync(getStorePath(), JSON.stringify(store, null, 2), "utf-8");
 }
 
 // ── CRUD ────────────────────────────────────────

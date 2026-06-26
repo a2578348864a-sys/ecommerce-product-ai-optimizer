@@ -112,11 +112,11 @@ export function checkAccessPassword(
   const headerPassword = (request.headers.get("x-access-password") || "").trim();
   if (headerPassword === configured) return null; // 通过
 
-  // 3) Also accept x-access-token with a valid Owner session
+  // 3) Also accept x-access-token with valid Owner or Demo session
   const token = (request.headers.get("x-access-token") || "").trim();
   if (token) {
     const session = getAccessSession(token);
-    if (session && session.mode === "owner") return null; // 通过
+    if (session && (session.mode === "owner" || session.mode === "demo")) return null; // 通过
   }
 
   return {

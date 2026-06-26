@@ -1,4 +1,18 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { tmpdir } from "os";
+import { randomBytes } from "crypto";
+import { unlinkSync } from "fs";
+
+const TEST_STORE = `${tmpdir()}/demo-guard-test-${randomBytes(4).toString("hex")}.json`;
+
+beforeAll(() => {
+  process.env.DEMO_ACCESS_STORE_PATH = TEST_STORE;
+});
+
+afterAll(() => {
+  delete process.env.DEMO_ACCESS_STORE_PATH;
+  try { unlinkSync(TEST_STORE); } catch { /* ok */ }
+});
 import {
   createDemoAccess,
   saveDemoAccessStore,
