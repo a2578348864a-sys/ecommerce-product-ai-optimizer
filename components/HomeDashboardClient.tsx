@@ -103,9 +103,9 @@ const workflowSteps = [
     icon: Target,
   },
   {
-    title: "单品分析",
-    description: "从候选品进入 Agent 单品分析：数据清洗 → 市场判断 → 风险/利润/Listing → 人工确认保存。",
-    href: "/workflow",
+    title: "Agent 主链路",
+    description: "8 步受控流程：数据清洗 → 市场机会 → 供货可行性 → 成本利润 → 合规预筛 → Listing 准备 → 最终结论 → 人工确认保存。",
+    href: "/agent/run",
     icon: Sparkles,
   },
   {
@@ -383,8 +383,8 @@ export function HomeDashboardClient() {
                 description={recentSingleRun
                   ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到任务中心" : "尚未保存"}`
                   : "还没有可恢复的单品分析结果。"}
-                href="/workflow"
-                cta="继续单品分析"
+                href="/agent/run"
+                cta="进入 Agent 主链路"
                 tone={recentSingleRun?.savedTaskId ? "teal" : "amber"}
               />
             </div>

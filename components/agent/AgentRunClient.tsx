@@ -80,7 +80,7 @@ type ApiErrorResponse = {
 export type AgentRunSourceMeta = {
   source: "opportunity";
   from?: "opportunity";
-  entry?: "candidate_to_agent_m1";
+  entry?: "candidate_to_agent_m1" | "candidate_to_agent_run";
   opportunityTitle: string;
   opportunitySource?: string;
   opportunityScore?: number;

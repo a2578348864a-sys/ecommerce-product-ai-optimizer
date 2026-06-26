@@ -16,7 +16,7 @@ import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: House },
   { label: "找机会", href: "/opportunities", icon: Target },
-  { label: "单品分析", href: "/workflow", icon: Sparkles },
+  { label: "Agent 主链路", href: "/agent/run", icon: Sparkles },
   { label: "任务中心", href: "/tasks", icon: History },
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
 ] as const;

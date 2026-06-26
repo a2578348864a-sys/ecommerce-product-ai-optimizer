@@ -54,7 +54,7 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
   return {
     source: "opportunity",
     ...(from === "opportunity" ? { from } : {}),
-    ...(entry === "candidate_to_agent_m1" ? { entry } : {}),
+    ...(entry === "candidate_to_agent_m1" || entry === "candidate_to_agent_run" ? { entry } : {}),
     opportunityTitle,
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(opportunityScore !== undefined ? { opportunityScore } : {}),

@@ -1762,13 +1762,13 @@ export function OpportunitiesForm() {
                       })()}
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                      {/* Primary: 进入 Agent 单品分析 */}
+                      {/* Primary: 进入 Agent 主链路 */}
                       <Link
                         href={buildPoolAgentRunHref(item)}
                         data-testid={`candidate-agent-run-${item.id}`}
                         className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
                       >
-                        进入 Agent 单品分析
+                        进入 Agent 主链路
                         <ArrowRight className="size-3" />
                       </Link>
                       {/* More actions dropdown */}
@@ -2024,7 +2024,7 @@ export function OpportunitiesForm() {
                               data-testid={`candidate-agent-run-result-${c.index}`}
                               className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
                             >
-                              进入 Agent 单品分析
+                              进入 Agent 主链路
                               <ArrowRight className="size-3" />
                             </Link>
                           )}
