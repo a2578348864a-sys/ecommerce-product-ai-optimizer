@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, type CandidateQualityLevel } from "@/lib/candidateQuality";
+import { getAccessMode } from "@/lib/client/accessToken";
 
 const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
   recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -416,6 +417,7 @@ export function OpportunitiesForm() {
 
   // Phase 3-B.1: Try server first, fall back to localStorage
   const hasAccess = isAccessPasswordReady && canRequestWithAccessPassword(isAccessPasswordReady, accessPassword);
+  const demoMode = hasAccess ? (getAccessMode() === "demo") : false;
 
   const refreshServerPool = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch("/api/opportunity-candidates?limit=100", {
@@ -1704,7 +1706,11 @@ export function OpportunitiesForm() {
             </div>
           ) : (
             <div className="mt-4 grid gap-3 xl:grid-cols-2">
-              {visiblePoolItems.map((item) => (
+              {visiblePoolItems.map((item) => {
+                const itemSourceMode = (item as Record<string, unknown>).sourceMode as string | undefined;
+                const isOfficialReadonly = demoMode && itemSourceMode === "official_readonly";
+                const isDemoSandbox = demoMode && itemSourceMode === "demo_sandbox";
+                return (
                 <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
@@ -1713,6 +1719,13 @@ export function OpportunitiesForm() {
                         <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + candidateStatusClass(item.candidateStatus)}>
                           {candidateStatusLabels[item.candidateStatus]}
                         </span>
+                        {/* Demo-Sandbox.1-C-UI-Fix: source labels */}
+                        {isDemoSandbox && (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">访客数据</span>
+                        )}
+                        {isOfficialReadonly && (
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">只读样例</span>
+                        )}
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{item.summaryLabel}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
@@ -1793,6 +1806,11 @@ export function OpportunitiesForm() {
                               </Link>
                               <div className="mx-2 my-1 border-t border-slate-100" />
                               <span className="px-3 py-1 text-[10px] font-semibold text-slate-400">人工标记</span>
+                              {isOfficialReadonly ? (
+                                <span className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-300 cursor-not-allowed" title="访客体验模式下不能修改正式候选数据">
+                                  正式候选不可修改
+                                </span>
+                              ) : (<>
                               <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "analyzed"); setOpenMoreId(null); }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-indigo-600 hover:bg-indigo-50">
                                 人工标记为已分析
@@ -1820,12 +1838,20 @@ export function OpportunitiesForm() {
                                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
                                 人工标记为放弃
                               </button>
+                              </>)}
                               <div className="mx-2 my-1 border-t border-slate-100" />
-                              <button type="button" onClick={() => { void deletePoolCandidate(item); setOpenMoreId(null); }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
-                                <Trash2 className="size-3" />
-                                删除候选
-                              </button>
+                              {isOfficialReadonly ? (
+                                <span className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-300 cursor-not-allowed" title="访客体验模式下不能删除正式候选数据">
+                                  <Trash2 className="size-3" />
+                                  正式候选不可删除
+                                </span>
+                              ) : (
+                                <button type="button" onClick={() => { void deletePoolCandidate(item); setOpenMoreId(null); }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
+                                  <Trash2 className="size-3" />
+                                  删除候选
+                                </button>
+                              )}
                             </div>
                           </>
                         ) : null}
@@ -1834,7 +1860,7 @@ export function OpportunitiesForm() {
                     </div>
                   </div>
                 </article>
-              ))}
+              )})}
             </div>
           )}
         </section>
