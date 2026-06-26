@@ -66,9 +66,12 @@ const IMAGE_REQUIREMENTS = [
 
 const UNVERIFIED_CLAIMS: string[] = [
   "PFOA-Free", "PFOS-Free", "PFOA Free", "PFOS Free",
+  "PFOA", "PFOS",
   "BPA-Free", "BPA Free",
   "FDA Approved", "FDA Certified", "FDA Cleared",
+  "FDA",
   "LFGB Certified", "LFGB Approved",
+  "LFGB",
   "CE Certified", "FCC Certified", "RoHS Certified", "UL Certified",
   "Medical Grade", "Food Grade Safe",
   "100% Safe", "100% Non-toxic", "Completely Safe",
