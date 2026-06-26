@@ -178,8 +178,9 @@ export function HomeDashboardClient() {
       // Server validated — now save to in-memory state
       setAccessPassword(trimmed);
       setApiProbeStatus("ok");
-    } catch {
-      setPasswordError("网络连接失败，请检查网络后重试。");
+    } catch (err) {
+      console.error("密码验证 API 请求异常", err);
+      setPasswordError("请求失败，请检查网络连接后重试。");
       setApiProbeStatus("fail");
     } finally {
       setValidating(false);

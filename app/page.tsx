@@ -66,8 +66,9 @@ export default function Home() {
 
       saveAccessToken(json.accessToken, json.mode, demoAccess);
       setAuthenticated(true);
-    } catch {
-      setLoginError("网络连接失败，请检查网络后重试。");
+    } catch (err) {
+      console.error("登录 API 请求异常", err);
+      setLoginError("登录请求失败，请检查网络连接后重试。");
     } finally {
       setLoginLoading(false);
     }
