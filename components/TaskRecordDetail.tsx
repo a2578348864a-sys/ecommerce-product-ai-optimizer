@@ -85,6 +85,15 @@ function getAgentTypeLabel(item: TaskCenterItem) {
   return TASK_AGENT_LABEL_MAP[item.type || ""] || "规划 Agent";
 }
 
+/** Map raw risk level enum to Chinese display label with tone class */
+function formatRiskLevelLabel(level: string | undefined | null): { label: string; tone: string } {
+  const raw = (level || "").trim().toLowerCase();
+  if (raw === "red" || raw === "high") return { label: "高风险", tone: "border-rose-200 bg-rose-50 text-rose-700" };
+  if (raw === "yellow" || raw === "medium" || raw === "mid") return { label: "中风险", tone: "border-amber-200 bg-amber-50 text-amber-700" };
+  if (raw === "green" || raw === "low") return { label: "低风险", tone: "border-emerald-200 bg-emerald-50 text-emerald-700" };
+  return { label: raw || "未评级", tone: "border-slate-200 bg-slate-50 text-slate-600" };
+}
+
 function getStringArray(result: unknown, key: string) {
   if (typeof result !== "object" || result === null || Array.isArray(result)) return [];
   const value = Reflect.get(result, key);
@@ -296,12 +305,15 @@ function WorkflowDecisionSummary({
                 <p className="mt-0.5 text-sm font-bold text-indigo-900">{agentRunSnapshot.finalVerdict}</p>
               </div>
             )}
-            {agentRunSnapshot.riskLevel && (
-              <div className="rounded-xl border border-white/80 bg-white p-2">
-                <span className="text-xs font-semibold text-indigo-500">风险等级</span>
-                <p className="mt-0.5 text-sm font-bold text-indigo-900">{agentRunSnapshot.riskLevel}</p>
-              </div>
-            )}
+            {agentRunSnapshot.riskLevel && (() => {
+              const risk = formatRiskLevelLabel(agentRunSnapshot.riskLevel);
+              return (
+                <div className="rounded-xl border border-white/80 bg-white p-2">
+                  <span className="text-xs font-semibold text-indigo-500">风险等级</span>
+                  <p className={`mt-0.5 inline-block rounded-full border px-2 py-0.5 text-xs font-bold ${risk.tone}`}>{risk.label}</p>
+                </div>
+              );
+            })()}
             <div className="rounded-xl border border-white/80 bg-white p-2">
               <span className="text-xs font-semibold text-indigo-500">步骤完成</span>
               <p className="mt-0.5 text-sm font-bold text-indigo-900">
@@ -347,22 +359,164 @@ function WorkflowDecisionSummary({
             </div>
           )}
           {listingPrepSnapshot ? (
-            <div className="mt-3 rounded-xl border border-teal-200 bg-white p-3">
-              <h4 className="text-sm font-bold text-teal-900">Listing 上架准备包</h4>
-              <p className="mt-1 text-sm font-semibold text-slate-800">
-                {listingPrepSnapshot.titleStructure.recommendedTitle}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                {listingPrepSnapshot.keywordPool.coreWords.slice(0, 5).map((word) => (
-                  <span key={word} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-teal-700">
-                    {word}
-                  </span>
-                ))}
-                <span>五点草稿 {listingPrepSnapshot.bulletDrafts.length} 条</span>
-                <span>人工补充 {listingPrepSnapshot.manualSupplementChecklist.length} 项</span>
+            <div className="mt-3 rounded-xl border border-teal-200 bg-white p-4" data-testid="listing-prep-package">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-base font-bold text-teal-900">Listing 上架准备包</h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const lines: string[] = [];
+                    const lp = listingPrepSnapshot;
+                    lines.push(`建议标题：${lp.titleStructure.recommendedTitle}`);
+                    if (lp.keywordPool.coreWords.length) lines.push(`核心词：${lp.keywordPool.coreWords.join("、")}`);
+                    if (lp.keywordPool.longTailWords.length) lines.push(`长尾词：${lp.keywordPool.longTailWords.join("、")}`);
+                    if (lp.bulletDrafts.length) lines.push(`卖点要点：\n${lp.bulletDrafts.map((b, i) => `${i + 1}. ${b}`).join("\n")}`);
+                    if (lp.complianceExpressionReminders.length) lines.push(`合规提醒：\n${lp.complianceExpressionReminders.map((c) => `- ${c}`).join("\n")}`);
+                    const text = lines.join("\n\n");
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }}
+                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition"
+                >
+                  复制准备包
+                </button>
               </div>
+
+              {/* A. Suggested title */}
+              <div className="mt-3 rounded-lg border border-teal-100 bg-teal-50/50 p-2.5">
+                <p className="text-[10px] font-semibold text-teal-500 uppercase tracking-wide">建议标题</p>
+                <p className="mt-1 text-sm font-semibold text-slate-800">{listingPrepSnapshot.titleStructure.recommendedTitle}</p>
+                {listingPrepSnapshot.titleStructure.formula ? (
+                  <p className="mt-0.5 text-xs text-slate-400">公式：{listingPrepSnapshot.titleStructure.formula}</p>
+                ) : null}
+              </div>
+
+              {/* B. Keywords */}
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {listingPrepSnapshot.keywordPool.coreWords.length > 0 && (
+                  <div className="rounded-lg border border-slate-100 bg-white p-2.5">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">核心关键词</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {listingPrepSnapshot.keywordPool.coreWords.map((w) => (
+                        <span key={w} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{w}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {listingPrepSnapshot.keywordPool.longTailWords.length > 0 && (
+                  <div className="rounded-lg border border-slate-100 bg-white p-2.5">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">长尾词 / 扩展词</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {listingPrepSnapshot.keywordPool.longTailWords.map((w) => (
+                        <span key={w} className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">{w}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {(listingPrepSnapshot.keywordPool.coreWords.length === 0 && listingPrepSnapshot.keywordPool.longTailWords.length === 0) && (
+                <p className="mt-2 text-xs text-slate-400 italic">待补充关键词 — 回到 Agent 主链路重新分析，或人工整理关键词后填入。</p>
+              )}
+
+              {/* C. Bullet drafts */}
+              {listingPrepSnapshot.bulletDrafts.length > 0 && (
+                <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">卖点要点（五点草稿）</p>
+                  <ol className="mt-1.5 space-y-1">
+                    {listingPrepSnapshot.bulletDrafts.map((b, i) => (
+                      <li key={i} className="flex gap-1.5 text-xs leading-5 text-slate-600">
+                        <span className="shrink-0 font-semibold text-teal-500">{i + 1}.</span>
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {/* D. Compliance / risk reminders */}
+              {listingPrepSnapshot.complianceExpressionReminders.length > 0 && (
+                <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/50 p-2.5">
+                  <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">上架合规与风险注意</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {listingPrepSnapshot.complianceExpressionReminders.slice(0, 5).map((c, i) => (
+                      <li key={i} className="flex items-start gap-1 text-xs leading-5 text-amber-700">
+                        <span className="mt-0.5 shrink-0 text-amber-400">⚠</span>
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* E. Profit / cost summary */}
+              {hasProfitSnapshot && isRecordValue(result.profitSnapshot) ? (
+                <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">成本利润摘要</p>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                    {(() => {
+                      const ps = result.profitSnapshot as Record<string, unknown>;
+                      const currency = (ps.currency as string) || "¥";
+                      const purchaseCost = Number(ps.purchaseCost) || 0;
+                      const salePrice = Number(ps.salePrice) || 0;
+                      const estimatedProfit = Number(ps.estimatedProfit) || 0;
+                      const estimatedMarginRate = Number(ps.estimatedMarginRate) || 0;
+                      return (
+                        <>
+                          <span>采购成本：{currency}{purchaseCost.toFixed(2)}</span>
+                          <span>建议售价：{currency}{salePrice.toFixed(2)}</span>
+                          <span>预估利润：{currency}{estimatedProfit.toFixed(2)}</span>
+                          <span>毛利率：{(estimatedMarginRate * 100).toFixed(1)}%</span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-400 italic">待补充成本/售价信息 — 回到 Agent 主链路填写采购价和售价后重新保存。</p>
+              )}
+
+              {/* F. Image material needs */}
+              {listingPrepSnapshot.imageMaterialNeeds.length > 0 && (
+                <details className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+                  <summary className="cursor-pointer text-[10px] font-semibold text-slate-400 uppercase tracking-wide select-none">图片素材需求（{listingPrepSnapshot.imageMaterialNeeds.length} 项）</summary>
+                  <ul className="mt-1.5 space-y-0.5">
+                    {listingPrepSnapshot.imageMaterialNeeds.map((img, i) => (
+                      <li key={i} className="text-xs text-slate-500">- {img}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
+              {/* G. Search terms hint */}
+              {listingPrepSnapshot.searchTerms.draft && (
+                <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Search Terms 草稿</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600 break-all">{listingPrepSnapshot.searchTerms.draft}</p>
+                </div>
+              )}
+
+              {/* H. Manual supplement checklist */}
+              <details className="mt-2 rounded-lg border border-amber-100 bg-amber-50/30 p-2.5">
+                <summary className="cursor-pointer text-[10px] font-semibold text-amber-600 uppercase tracking-wide select-none">
+                  待补资料 / 上架前仍需确认（{listingPrepSnapshot.manualSupplementChecklist.length} 项）
+                </summary>
+                <ul className="mt-1.5 space-y-0.5">
+                  {listingPrepSnapshot.manualSupplementChecklist.map((item, i) => (
+                    <li key={i} className="flex items-start gap-1 text-xs leading-5 text-amber-700">
+                      <span className="mt-0.5 shrink-0 text-amber-400">☐</span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </div>
-          ) : null}
+          ) : (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-sm font-semibold text-slate-500">Listing 上架准备包</p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                该任务暂无 Listing 上架准备包。可回到 Agent 主链路重新分析并保存，或人工整理 Listing 资料。
+              </p>
+            </div>
+          )}
         </section>
       ) : null}
 
@@ -1005,9 +1159,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
                     {record.score}/100
                   </span>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-bold text-slate-700">
-                    {record.level}
-                  </span>
+                  {(() => {
+                    const risk = formatRiskLevelLabel(record.level);
+                    return (
+                      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${risk.tone}`}>
+                        {risk.label}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
 
