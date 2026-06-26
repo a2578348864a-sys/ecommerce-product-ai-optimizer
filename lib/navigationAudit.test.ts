@@ -57,8 +57,11 @@ describe("WorkspaceSidebar navigation", () => {
     expect(sidebarSource).not.toMatch(/项目说明/);
   });
 
-  it("keeps Agent 主流程 as a secondary backup entry", () => {
-    expect(sidebarSource).toMatch(/Agent 主流程（备用）/);
+  it("no longer shows Agent 主流程（备用）as a secondary backup entry", () => {
+    // Phase Direction-Recovery.2: /agent/run is no longer a sidebar entry.
+    // /workflow is the sole external-facing agent analysis entry.
+    expect(sidebarSource).not.toMatch(/Agent 主流程（备用）/);
+    expect(sidebarSource).not.toMatch(/\/agent\/run/);
   });
 
   it("does not contain dangerous copy in nav labels", () => {
@@ -96,9 +99,12 @@ describe("/agent archive page", () => {
     expect(agentSource).toMatch(/Agent 路线图已归档/);
   });
 
-  it("provides CTA to /agent/run", () => {
-    expect(agentSource).toMatch(/进入 Agent 主流程/);
-    expect(agentSource).toMatch(/\/agent\/run/);
+  it("provides CTA to /workflow as the sole external-facing entry", () => {
+    // Phase Direction-Recovery.2: /workflow is the sole external-facing agent analysis entry.
+    // /agent/run is no longer promoted as the main entry.
+    expect(agentSource).toMatch(/进入 Agent 单品分析/);
+    expect(agentSource).toMatch(/\/workflow/);
+    expect(agentSource).not.toMatch(/\/agent\/run/);
   });
 
   it("provides CTA to /opportunities", () => {

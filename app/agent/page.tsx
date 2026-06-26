@@ -10,12 +10,12 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 
 export const metadata: Metadata = {
   title: "Agent 路线图已归档 - 轻选 Agent",
-  description: "Agent 能力路线图已归档。当前主入口已迁移到 Agent 主流程，旧路线图能力已合并进主链路。",
+  description: "Agent 能力路线图已归档。当前主入口为 Agent 单品分析（/workflow），旧路线图能力已合并进主链路。",
 };
 
 const archiveNotes = [
   "候选发现 — 已并入 /opportunities 候选池",
-  "Agent 分析 — 已并入 /agent/run 主流程驾驶舱",
+  "Agent 分析 — 已并入 /workflow Agent 单品分析",
   "风险 / 利润 / Listing 准备包 — 已并入主链路分析结果",
   "人工确认 — 所有 AI 结论必须人工复核后保存",
   "任务沉淀 — 已并入 /tasks 任务中心与复盘",
@@ -35,7 +35,7 @@ export default function AgentPage() {
                 Agent 路线图已归档
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                当前主入口已迁移到 Agent 主流程。以下是旧路线图中已并入主链路的能力说明。
+                当前正式主入口为 Agent 单品分析（/workflow）。以下是旧路线图中已并入主链路的能力说明。
               </p>
             </div>
             <WorkspaceMobileNav />
@@ -69,24 +69,24 @@ export default function AgentPage() {
 
           {/* ── 跳转 CTA ── */}
           <section className="surface-card p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-slate-950">进入 Agent 主流程</h2>
+            <h2 className="text-lg font-semibold text-slate-950">当前正式主链路入口</h2>
             <p className="mt-1 text-sm text-slate-500">
-              旧路线图中的能力已合并进以下主链路入口：
+              旧路线图中的能力已合并进以下主链路入口。Agent 单品分析（/workflow）是当前唯一对外单品分析入口。
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <Link
-                href="/agent/run"
+                href="/workflow"
                 className="group rounded-2xl border border-teal-200 bg-teal-50/60 p-4 transition hover:border-teal-300 hover:shadow-md"
               >
                 <div className="flex items-center gap-2">
                   <Sparkles className="size-5 text-teal-600" />
-                  <h3 className="text-base font-semibold text-teal-900">Agent 主流程</h3>
+                  <h3 className="text-base font-semibold text-teal-900">Agent 单品分析</h3>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-teal-700">
                   输入商品，走完整 8 步分析链路：数据清洗 → 市场机会 → 供货可行性 → 成本利润 → 合规预筛 → Listing 准备 → 最终结论 → 人工确认保存。
                 </p>
                 <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-600 group-hover:text-teal-800">
-                  进入 Agent 主流程
+                  进入 Agent 单品分析
                   <ArrowRight className="size-4" />
                 </span>
               </Link>

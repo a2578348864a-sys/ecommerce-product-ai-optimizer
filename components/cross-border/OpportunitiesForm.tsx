@@ -269,18 +269,6 @@ function buildOpportunityWorkflowHref(candidate: CandidateData) {
   });
 }
 
-function buildPoolWorkflowHref(candidate: OpportunityCandidatePoolItem) {
-  return buildOpportunityWorkflowHrefFromParts({
-    name: candidate.name,
-    score: candidate.score,
-    sourceName: candidate.link || candidate.source,
-    keyword: candidate.keyword,
-    rawInput: candidate.rawInput,
-    candidateId: candidate.id,
-    sourceUrl: candidate.link ?? undefined,
-  });
-}
-
 function buildPoolAgentRunHref(candidate: OpportunityCandidatePoolItem) {
   return buildCandidateAgentRunHref({
     candidateId: candidate.id,
@@ -1774,13 +1762,13 @@ export function OpportunitiesForm() {
                       })()}
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                      {/* Primary: 进入 Agent 主链路 */}
+                      {/* Primary: 进入 Agent 单品分析 */}
                       <Link
                         href={buildPoolAgentRunHref(item)}
                         data-testid={`candidate-agent-run-${item.id}`}
                         className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
                       >
-                        进入 Agent 主链路
+                        进入 Agent 单品分析
                         <ArrowRight className="size-3" />
                       </Link>
                       {/* More actions dropdown */}
@@ -1797,15 +1785,6 @@ export function OpportunitiesForm() {
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setOpenMoreId(null)} />
                             <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                              <Link
-                                href={buildPoolWorkflowHref(item)}
-                                onClick={() => { setPoolCandidateStatus(item.id, "analyzed"); setOpenMoreId(null); }}
-                                className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
-                              >
-                                <TrendingUp className="size-3" />
-                                旧版单品分析
-                              </Link>
-                              <div className="mx-2 my-1 border-t border-slate-100" />
                               <span className="px-3 py-1 text-[10px] font-semibold text-slate-400">人工标记</span>
                               {isOfficialReadonly ? (
                                 <span className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-300 cursor-not-allowed" title="访客体验模式下不能修改正式候选数据">
@@ -2045,7 +2024,7 @@ export function OpportunitiesForm() {
                               data-testid={`candidate-agent-run-result-${c.index}`}
                               className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
                             >
-                              进入 Agent 主链路
+                              进入 Agent 单品分析
                               <ArrowRight className="size-3" />
                             </Link>
                           )}

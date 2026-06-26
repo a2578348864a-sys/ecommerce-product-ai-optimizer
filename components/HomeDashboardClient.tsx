@@ -11,7 +11,6 @@ import {
   Lock,
   Route,
   Search,
-  ShieldCheck,
   Sparkles,
   Target,
   Unlock,
@@ -105,7 +104,7 @@ const workflowSteps = [
   },
   {
     title: "单品分析",
-    description: "从候选品进入 Agent 主链路：数据清洗 → 市场判断 → 风险/利润/Listing → 人工确认保存。",
+    description: "从候选品进入 Agent 单品分析：数据清洗 → 市场判断 → 风险/利润/Listing → 人工确认保存。",
     href: "/workflow",
     icon: Sparkles,
   },
@@ -339,55 +338,21 @@ export function HomeDashboardClient() {
             </section>
           ) : null}
 
-          {/* ── Unlock status visualization ── */}
+          {/* ── Session status (compact) ── */}
           {unlocked ? (
-            <section className="surface-card border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-5 sm:p-6" data-testid="home-unlock-status">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                  <div className="linear-icon size-10 shrink-0 rounded-xl bg-emerald-100 text-emerald-700">
-                    <CheckCircle2 className="size-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-emerald-900">工作台已解锁</h2>
-                    <p className="mt-1 text-sm leading-6 text-emerald-700">
-                      你现在可以使用以下核心功能。访问密码在本次会话中有效，关闭网页后需重新输入。
-                    </p>
-                  </div>
+            <section className="surface-card border-emerald-200 bg-emerald-50/60 p-3 sm:p-4" data-testid="home-unlock-status">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-emerald-800">
+                  <CheckCircle2 className="size-4 text-emerald-500" />
+                  工作台已解锁 · 会话有效
                 </div>
-                <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                  <div className="size-2 rounded-full bg-emerald-400" />
-                  API 鉴权{apiProbeStatus === "ok" ? "已通过" : apiProbeStatus === "checking" ? "检测中…" : "待确认"}
+                <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                  <div className="size-1.5 rounded-full bg-emerald-400" />
+                  API{apiProbeStatus === "ok" ? " 已通过" : apiProbeStatus === "checking" ? " 检测中…" : " 待确认"}
                 </div>
               </div>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                {["1. 找机会", "2. 做分析", "3. 进任务中心"].map((step) => (
-                  <div
-                    key={step}
-                    className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-white px-3 py-2.5"
-                  >
-                    <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
-                    <span className="text-sm font-medium text-slate-700">{step}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* TTL info */}
-              {apiProbeStatus === "ok" && (
-                <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 text-xs leading-5 text-emerald-700">
-                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-                  <span>
-                    API 鉴权已确认 — 任务数据可正常读取。关闭网页后访问密码即失效，重新打开需重新输入。
-                  </span>
-                </div>
-              )}
               {apiProbeStatus === "fail" && (
-                <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50/50 p-3 text-xs leading-5 text-amber-700">
-                  <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-                  <span>
-                    前端访问状态已解锁，但 API 鉴权状态未能确认。如果你未配置服务端密码或密码不匹配，受保护 API 可能返回 401。请检查你的访问密码是否正确。
-                  </span>
-                </div>
+                <p className="mt-2 text-xs text-amber-700">API 鉴权未确认，受保护接口可能返回 401。</p>
               )}
             </section>
           ) : null}

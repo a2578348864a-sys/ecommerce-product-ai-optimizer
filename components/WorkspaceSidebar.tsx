@@ -7,7 +7,6 @@ import {
   House,
   ListChecks,
   Package,
-  Search,
   Sparkles,
   Target,
 } from "lucide-react";
@@ -22,8 +21,6 @@ export const workspaceNavItems = [
   { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
-const secondaryNavItem = { label: "Agent 主流程（备用）", href: "/agent/run", icon: Search } as const;
-
 const mobileNavItems = workspaceNavItems;
 
 function isActivePath(pathname: string, href: string) {
@@ -37,7 +34,7 @@ function NavLink({
   pathname,
   compact = false,
 }: {
-  item: (typeof workspaceNavItems)[number] | typeof secondaryNavItem;
+  item: (typeof workspaceNavItems)[number];
   pathname: string;
   compact?: boolean;
 }) {
@@ -110,8 +107,6 @@ export function WorkspaceSidebar() {
           {workspaceNavItems.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
-          <div className="mx-2 my-1 border-t border-slate-100" />
-          <NavLink item={secondaryNavItem} pathname={pathname} compact />
         </nav>
       </div>
     </aside>

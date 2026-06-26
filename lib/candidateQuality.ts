@@ -290,7 +290,7 @@ function checkNonProductPage(input: CandidateQualityInput): CandidateQualityResu
       flags: ["non_product_page", matched.source],
       shouldShowInPreview: false,
       shouldAllowImport: false,
-      suggestedAction: "不是具体商品候选，无法直接进入 Agent 主链路",
+      suggestedAction: "不是具体商品候选，无法直接进入 Agent 单品分析",
     };
   }
 
@@ -446,7 +446,7 @@ function checkCaution(input: CandidateQualityInput): CandidateQualityResult | nu
     flags,
     shouldShowInPreview: true,
     shouldAllowImport: true,
-    suggestedAction: "建议人工复核认证要求和平台规则后再进入 Agent 主链路",
+    suggestedAction: "建议人工复核认证要求和平台规则后再进入 Agent 单品分析",
   };
 }
 
@@ -515,8 +515,8 @@ export function evaluateCandidateQuality(input: CandidateQualityInput): Candidat
     shouldShowInPreview: true,
     shouldAllowImport: true,
     suggestedAction: title
-      ? `"${title}" 未命中高风险规则，可以进入 Agent 主链路做人工复核`
-      : "可以进入 Agent 主链路做人工复核",
+      ? `"${title}" 未命中高风险规则，可以进入 Agent 单品分析做人工复核`
+      : "可以进入 Agent 单品分析做人工复核",
   };
 }
 
