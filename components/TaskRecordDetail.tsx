@@ -25,6 +25,7 @@ import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/t
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { ListingPackCard } from "@/components/ListingPackCard";
+import type { ListingPack } from "@/lib/listingPack";
 import {
   derivePipelineStatus,
   deriveNextAction,
@@ -544,6 +545,16 @@ function WorkflowDecisionSummary({
         riskReviewSnapshot={hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined}
         profitSnapshot={hasProfitSnapshot ? result.profitSnapshot : undefined}
         disabled={decisionCard?.recommendation === "reject" || decisionCard?.recommendation === "needs_more_info"}
+        taskId={taskId}
+        existingSnapshot={(() => {
+          try {
+            const snap = (result as Record<string,unknown>)?.listingPackSnapshot as Record<string,unknown> | undefined;
+            if (snap?.pack) {
+              return { savedAt: snap.savedAt as string, source: snap.source as string, pack: snap.pack as ListingPack };
+            }
+          } catch { /* ignore */ }
+          return null;
+        })()}
       />
 
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
