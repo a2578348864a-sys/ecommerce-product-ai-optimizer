@@ -22,6 +22,8 @@ import {
 } from "@/lib/tasks/decisionStatus";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import { buildDecisionCard } from "@/lib/decisionCard";
+import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import {
   derivePipelineStatus,
   deriveNextAction,
@@ -185,9 +187,16 @@ function WorkflowDecisionSummary({
     agentRunSnapshot ? null : null // will try fallback from listing data below
   );
 
+  const decisionCard = useMemo(() => buildDecisionCard({
+    resultJson: result,
+    riskReviewSnapshot: hasRiskReviewSnapshot ? result.riskReviewSnapshot : undefined,
+    profitSnapshot: hasProfitSnapshot ? result.profitSnapshot : undefined,
+  }), [result, hasRiskReviewSnapshot, hasProfitSnapshot]);
+
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <DecisionCardUI card={decisionCard} compact />
+      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-bold text-teal-700">运营跟进面板 · AI 辅助判断，最终人工确认</p>
           <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">

@@ -28,6 +28,8 @@ import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChe
 import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
 import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
+import { buildDecisionCard } from "@/lib/decisionCard";
+import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { saveAgentRunCache, loadAgentRunCache, clearAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
@@ -785,7 +787,15 @@ export function AgentRunClient({
           ) : null}
 
           {result && report ? (
-            <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4">
+            <>
+              {/* AI Decision Card */}
+              <DecisionCardUI card={buildDecisionCard({
+                resultJson: result as Record<string, unknown>,
+                riskReviewSnapshot: riskReviewSnapshot,
+                profitSnapshot: profitSnapshot,
+                pipelineStatus: phase,
+              })} />
+              <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4 mt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Agent 主链路结论 · {result.productName}</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
@@ -951,6 +961,7 @@ export function AgentRunClient({
                 {saveError ? <p className="mt-2 text-xs font-semibold text-rose-600">{saveError}</p> : null}
               </div>
             </section>
+            </>
           ) : null}
 
           <p className="text-center text-xs text-slate-400">
