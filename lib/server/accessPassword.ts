@@ -64,7 +64,7 @@ export function getAccessContext(
         mode: "demo",
         token: session.token,
         demoAccessId: session.demoAccessId,
-        isActive: demoAccess?.isActive ?? true,
+        isActive: demoAccess?.isActive ?? false, // default inactive — AI routes re-read from store, safe
         isExpired: demoAccess?.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
         remainingAiCalls: demoAccess ? getRemainingAiCalls(demoAccess) : 0,
       };
