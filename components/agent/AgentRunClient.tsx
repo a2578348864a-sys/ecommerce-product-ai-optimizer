@@ -28,6 +28,7 @@ import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChe
 import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
 import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
+import { saveAgentRunCache, loadAgentRunCache, clearAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -329,6 +330,17 @@ export function AgentRunClient({
     setSaveError("");
     setSaving(false);
     setSavedTaskId("");
+    cacheRestoreAttempted.current = false;
+    // Clear agent run cache (all keys for this tab)
+    try {
+      const storage = window.sessionStorage;
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (key && key.startsWith("agent-run:v1:")) keysToRemove.push(key);
+      }
+      keysToRemove.forEach((k) => storage.removeItem(k));
+    } catch { /* ignore */ }
   }, []);
 
   useEffect(() => {
@@ -343,6 +355,69 @@ export function AgentRunClient({
       summaryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }, [result?.workflowId]);
+
+  // Cache restore: after auth hydration, try to restore a previously saved run.
+  // Uses initialProductName (from URL/server props) directly, not productName state,
+  // to avoid race with the setProductName useEffect.
+  const cacheRestoreAttempted = useRef(false);
+  useEffect(() => {
+    if (!isAccessPasswordReady) return;
+    if (cacheRestoreAttempted.current) return;
+
+    const nameFromUrl = (initialProductName || "").trim();
+    if (!nameFromUrl) {
+      cacheRestoreAttempted.current = true;
+      return;
+    }
+
+    const cached = loadAgentRunCache(nameFromUrl, initialSourceMeta || null);
+    if (!cached) {
+      cacheRestoreAttempted.current = true;
+      return;
+    }
+
+    // Batch restore all state in a single synchronous pass.
+    // Defensive: merge with INITIAL_STATUSES to fill any missing step keys.
+    cacheRestoreAttempted.current = true;
+    setProductName(cached.productName || nameFromUrl);
+    setPhase((cached.phase as RunPhase) || "idle");
+    setStepStatuses({
+      ...INITIAL_STATUSES,
+      ...(cached.stepStatuses as Partial<Record<TimelineStep["key"], TimelineStatus>> || {}),
+    });
+    setResult((cached.result as ApiWorkflowResult) || null);
+    if (cached.profitSnapshot) setProfitSnapshot(cached.profitSnapshot as ProfitSnapshot);
+    if (cached.riskReviewSnapshot) setRiskReviewSnapshot(cached.riskReviewSnapshot as RiskReviewSnapshot);
+    if (cached.manualChecked) {
+      setManualChecked({
+        sourcing: false, profit: false, risk: false, listing: false,
+        ...(cached.manualChecked as Partial<Record<ManualItemKey, boolean>> || {}),
+      });
+    }
+    if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
+  }, [isAccessPasswordReady]);
+
+  // Cache save: after analysis completes, persist to sessionStorage
+  const prevPhaseRef = useRef(phase);
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+
+    // Save when entering completed or needs_manual_review
+    if ((phase === "needs_manual_review" || phase === "completed") && prev !== phase) {
+      const currentName = productName.trim();
+      if (!currentName) return;
+      saveAgentRunCache(currentName, sourceMeta, {
+        phase,
+        stepStatuses,
+        result,
+        profitSnapshot: profitSnapshot as unknown,
+        riskReviewSnapshot: riskReviewSnapshot as unknown,
+        manualChecked,
+        savedTaskId,
+      });
+    }
+  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, savedTaskId]);
 
   async function handleRun() {
     const name = productName.trim();
@@ -643,6 +718,12 @@ export function AgentRunClient({
                 {error}
               </div>
             ) : null}
+            {cacheRestoreAttempted.current && (phase === "needs_manual_review" || phase === "completed") ? (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm leading-6 text-emerald-800" data-testid="agent-run-cache-restored">
+                <p className="font-semibold">已恢复上次分析结果</p>
+                <p className="mt-1">可继续人工确认或保存任务，无需重新调用 AI 分析。</p>
+              </div>
+            ) : null}
             {sourceMeta ? (
               <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-sm leading-6 text-indigo-800">
                 <p className="font-semibold">已带入候选池上下文</p>
@@ -732,7 +813,7 @@ export function AgentRunClient({
                 <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4">
                   <p className="text-sm font-bold text-teal-800">下一步动作</p>
                   <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-700">
-                    {report.nextSteps.slice(0, 5).map((item) => (
+                    {(Array.isArray(report.nextSteps) ? report.nextSteps : []).slice(0, 5).map((item) => (
                       <li key={item}>- {item}</li>
                     ))}
                   </ul>
@@ -740,7 +821,7 @@ export function AgentRunClient({
                 <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                   <p className="text-sm font-bold text-amber-800">需要人工查证的重点</p>
                   <ul className="mt-2 space-y-1.5 text-sm leading-6 text-amber-800">
-                    {report.mustCheckBeforeListing.slice(0, 5).map((item) => (
+                    {(Array.isArray(report.mustCheckBeforeListing) ? report.mustCheckBeforeListing : []).slice(0, 5).map((item) => (
                       <li key={item}>- {item}</li>
                     ))}
                   </ul>
