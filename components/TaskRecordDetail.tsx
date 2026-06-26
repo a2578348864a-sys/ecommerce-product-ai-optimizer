@@ -523,7 +523,7 @@ function WorkflowDecisionSummary({
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
         <summary className="cursor-pointer font-semibold text-slate-600 select-none">
           保存快照：成本利润 + 合规 / 侵权 AI 预筛
-          <span className="ml-2 font-normal text-slate-400">默认折叠，面试展示时可按需展开</span>
+          <span className="ml-2 font-normal text-slate-400">默认折叠，复核时可按需展开</span>
         </summary>
         <div className="mt-3 space-y-3">
           {hasProfitSnapshot ? (

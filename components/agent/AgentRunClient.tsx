@@ -350,7 +350,7 @@ export function AgentRunClient({
       return;
     }
     if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setError("访问密码缺失或已过期，请先回首页解锁。");
+      setError("会话未就绪，请返回首页重新登录后再操作。");
       return;
     }
 
@@ -446,7 +446,7 @@ export function AgentRunClient({
       return;
     }
     if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setSaveError("访问密码缺失或已过期，请先回首页解锁。");
+      setSaveError("会话未就绪，请返回首页重新登录后再操作。");
       return;
     }
 
@@ -498,6 +498,19 @@ export function AgentRunClient({
     } finally {
       setSaving(false);
     }
+  }
+
+  // Auth hydration guard: wait for sessionStorage read before showing locked prompt.
+  // Without this, a brief flash of the locked prompt appears on every refresh
+  // even when the user has a valid session token.
+  if (!isAccessPasswordReady) {
+    return (
+      <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-lg flex-col items-center gap-4 py-16 text-center">
+          <p className="text-sm text-slate-400">正在恢复工作台会话…</p>
+        </div>
+      </main>
+    );
   }
 
   if (!unlocked) {
@@ -641,7 +654,7 @@ export function AgentRunClient({
                 </h2>
               </div>
               <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
-                {phase === "failed" ? "失败待重试" : needsManualReview ? "等待人工确认" : isRunning ? "运行中" : "未开始"}
+                {phase === "failed" ? "分析未完成，可重新开始" : needsManualReview ? "等待人工确认" : isRunning ? "运行中" : "未开始"}
               </span>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
