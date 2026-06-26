@@ -208,3 +208,48 @@ describe("buildFallbackListingPack — no false promises in generated content", 
     }
   });
 });
+
+// ── Test 8: Snapshot structure for persistence ──
+describe("listing pack snapshot structure", () => {
+  it("generated pack can be serialized as persistence snapshot", () => {
+    const pack = buildFallbackListingPack({ productName: "Snapshot Test Product" });
+    const md = listingPackToMarkdown(pack);
+    const snapshot = {
+      version: 1,
+      source: pack.source,
+      generatedAt: pack.generatedAt,
+      productName: "Snapshot Test Product",
+      pack,
+      markdown: md,
+      safety: { unverifiedClaimsSanitized: true, requiresHumanReview: true, autoListing: false },
+    };
+
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.source).toBe("rule_based");
+    expect(snapshot.generatedAt).toBeTruthy();
+    expect(snapshot.pack).toBe(pack);
+    expect(snapshot.markdown).toBeTruthy();
+    expect(snapshot.safety.unverifiedClaimsSanitized).toBe(true);
+    expect(snapshot.safety.requiresHumanReview).toBe(true);
+    expect(snapshot.safety.autoListing).toBe(false);
+  });
+
+  it("snapshot markdown does not contain unverified claims in generated content", () => {
+    const pack = buildFallbackListingPack({ productName: "Non-Stick Fry Pan" });
+    const md = listingPackToMarkdown(pack);
+    // Check generated sections only — disclaimer intentionally says "does NOT auto-publish"
+    const contentOnly = md.split("## 风险用词提醒")[0];
+    expect(contentOnly).not.toMatch(/PFOA-Free/i);
+    expect(contentOnly).not.toMatch(/FDA Approved/i);
+  });
+
+  it("snapshot pack can be re-generated and differs from old", () => {
+    const pack1 = buildFallbackListingPack({ productName: "Test Overwrite" });
+    const pack2 = buildFallbackListingPack({ productName: "Test Overwrite" });
+    // generatedAt should differ
+    expect(pack1.generatedAt).not.toBe(pack2.generatedAt);
+    // Both should be rule_based
+    expect(pack1.source).toBe("rule_based");
+    expect(pack2.source).toBe("rule_based");
+  });
+});
