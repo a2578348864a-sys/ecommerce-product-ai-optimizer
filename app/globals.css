@@ -400,6 +400,11 @@ details > summary::-webkit-details-marker {
   display: none;
 }
 
+/* Demo banner body offset */
+body.demo-banner-visible {
+  padding-top: 32px;
+}
+
 @media (max-width: 640px) {
   .app-shell,
   .app-surface,
@@ -415,6 +420,10 @@ details > summary::-webkit-details-marker {
   .linear-button-soft,
   .premium-button {
     min-height: 44px;
+  }
+
+  body.demo-banner-visible {
+    padding-top: 36px;
   }
 }
 

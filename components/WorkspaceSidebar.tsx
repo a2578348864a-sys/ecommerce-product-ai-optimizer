@@ -12,6 +12,7 @@ import {
   Target,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
+import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 
 export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: House },
@@ -73,9 +74,11 @@ export function WorkspaceSidebar() {
   const [sharedProduct] = useSharedProduct();
 
   return (
-    <aside className="hidden lg:block">
-      <div className="sticky top-4 flex flex-col gap-3">
-        {sharedProduct.productName ? (
+    <>
+      <DemoAccessBanner />
+      <aside className="hidden lg:block">
+        <div className="sticky top-4 flex flex-col gap-3">
+          {sharedProduct.productName ? (
           <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
             <div className="flex items-center gap-2">
               <Package className="size-4 shrink-0 text-teal-600" />
@@ -112,6 +115,7 @@ export function WorkspaceSidebar() {
         </nav>
       </div>
     </aside>
+    </>
   );
 }
 
