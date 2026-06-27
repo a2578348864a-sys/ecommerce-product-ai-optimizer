@@ -37,10 +37,17 @@ function stringArray(value: unknown) {
     : null;
 }
 
+function isSupportedDraftSource(value: unknown): value is AiListingPackDraft["source"] {
+  return value === "mock_ai_draft" || value === "real_ai_draft";
+}
+
 function toFilterableDraft(input: unknown): AiListingPackDraft | null {
   if (!isRecord(input)) return null;
-  if (input.source !== "mock_ai_draft") return null;
-  if (input.model !== "mock") return null;
+  if (!isSupportedDraftSource(input.source)) return null;
+  const model = typeof input.model === "string" && input.model.trim() ? input.model.trim() : null;
+  if (!model) return null;
+  if (input.source === "mock_ai_draft" && model !== "mock") return null;
+  if (input.source === "real_ai_draft" && model === "mock") return null;
   if (input.humanReviewRequired !== true) return null;
 
   const version = typeof input.version === "number" && Number.isInteger(input.version) && input.version > 0
@@ -79,10 +86,10 @@ function toFilterableDraft(input: unknown): AiListingPackDraft | null {
   }
 
   return {
-    source: "mock_ai_draft",
+    source: input.source,
     version,
     generatedAt,
-    model: "mock",
+    model,
     humanReviewRequired: true,
     titles,
     bullets,

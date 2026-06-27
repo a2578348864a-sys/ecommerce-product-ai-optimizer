@@ -1,10 +1,12 @@
 import { containsListingBannedClaim } from "@/lib/listingClaimFilter";
 
+export type AiListingDraftSource = "mock_ai_draft" | "real_ai_draft";
+
 export type AiListingPackDraft = {
-  source: "mock_ai_draft";
+  source: AiListingDraftSource;
   version: number;
   generatedAt: string;
-  model: "mock";
+  model: string;
   humanReviewRequired: true;
   titles: string[];
   bullets: string[];
@@ -48,6 +50,10 @@ function fail(message: string): AiListingDraftValidationResult {
   return { ok: false, error: { code: "invalid_ai_listing_pack", message } };
 }
 
+function isAiListingDraftSource(value: unknown): value is AiListingDraftSource {
+  return value === "mock_ai_draft" || value === "real_ai_draft";
+}
+
 function checkArray(name: keyof AiListingPackDraft, value: unknown, min: number, max?: number): string[] | null {
   const values = stringArray(value);
   if (!Array.isArray(value)) return null;
@@ -70,8 +76,11 @@ function visibleDraftText(draft: Pick<AiListingPackDraft, "titles" | "bullets" |
 
 export function validateAiListingPackDraft(input: unknown): AiListingDraftValidationResult {
   if (!isRecord(input)) return fail("AI Listing draft must be an object.");
-  if (input.source !== "mock_ai_draft") return fail("AI Listing draft source must be mock_ai_draft.");
-  if (input.model !== "mock") return fail("AI Listing draft model must be mock.");
+  if (!isAiListingDraftSource(input.source)) return fail("AI Listing draft source must be mock_ai_draft or real_ai_draft.");
+  const model = text(input.model);
+  if (!model) return fail("AI Listing draft model must not be empty.");
+  if (input.source === "mock_ai_draft" && model !== "mock") return fail("Mock AI Listing draft model must be mock.");
+  if (input.source === "real_ai_draft" && model === "mock") return fail("Real AI Listing draft model must not be mock.");
   if (input.humanReviewRequired !== true) return fail("AI Listing draft must require human review.");
 
   const version = typeof input.version === "number" && Number.isInteger(input.version) && input.version > 0
@@ -103,10 +112,10 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
   if (!description) return fail("AI Listing draft description must not be empty.");
 
   const draft: AiListingPackDraft = {
-    source: "mock_ai_draft",
+    source: input.source,
     version,
     generatedAt,
-    model: "mock",
+    model,
     humanReviewRequired: true,
     titles,
     bullets,

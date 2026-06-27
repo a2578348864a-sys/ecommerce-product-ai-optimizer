@@ -48,6 +48,21 @@ describe("validateAiListingPackDraft", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("accepts a valid real AI draft shape for future guarded route integration", () => {
+    const result = validateAiListingPackDraft({
+      ...validDraft(),
+      source: "real_ai_draft",
+      model: "deepseek-chat",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.source).toBe("real_ai_draft");
+      expect(result.data.model).toBe("deepseek-chat");
+      expect(result.data.humanReviewRequired).toBe(true);
+    }
+  });
+
   it("rejects visible banned claims before filtering", () => {
     const result = validateAiListingPackDraft({
       ...validDraft(),

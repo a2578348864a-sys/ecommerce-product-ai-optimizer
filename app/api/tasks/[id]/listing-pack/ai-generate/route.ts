@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { isRealAiListingEnabled } from "@/lib/server/realAiListingGate";
 import { buildMockAiListingDraft, validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 
@@ -10,6 +11,9 @@ type ApiErrorCode =
   | "unauthorized"
   | "task_not_found"
   | "missing_task_context"
+  | "real_ai_confirmation_required"
+  | "real_ai_disabled"
+  | "real_ai_not_implemented"
   | "invalid_ai_listing_pack"
   | "ai_listing_generation_failed"
   | "invalid_json";
@@ -60,6 +64,44 @@ async function parseOptionalBody(request: NextRequest) {
   if (!raw.trim()) return {};
   const parsed = JSON.parse(raw);
   return isRecord(parsed) ? parsed : {};
+}
+
+function getGenerationMode(bodyRecord: Record<string, unknown>) {
+  return bodyRecord.mode === "real" ? "real" : "mock";
+}
+
+function realAiListingNotImplemented() {
+  return json({
+    ok: false,
+    error: {
+      code: "real_ai_not_implemented",
+      message: "真实 AI Listing 草稿生成尚未接入，本阶段不会调用真实 AI。",
+    },
+  }, 501);
+}
+
+function guardRealAiRequest(bodyRecord: Record<string, unknown>) {
+  if (bodyRecord.confirmRealAi !== true) {
+    return json({
+      ok: false,
+      error: {
+        code: "real_ai_confirmation_required",
+        message: "本次真实 AI 调用未确认，不会生成。",
+      },
+    }, 400);
+  }
+
+  if (!isRealAiListingEnabled()) {
+    return json({
+      ok: false,
+      error: {
+        code: "real_ai_disabled",
+        message: "真实 AI Listing 生成暂未开启。",
+      },
+    }, 403);
+  }
+
+  return null;
 }
 
 function getNestedRecord(source: Record<string, unknown>, key: string) {
@@ -137,6 +179,15 @@ export async function POST(
     const code = auth.status === 401 ? "unauthorized" : auth.code;
     const message = auth.status === 401 ? "请先回首页解锁工作台。" : auth.message;
     return json({ ok: false, error: { code, message } }, auth.status);
+  }
+
+  if (getGenerationMode(bodyRecord) === "real") {
+    const guarded = guardRealAiRequest(bodyRecord);
+    if (guarded) return guarded;
+
+    // Core-4-AI.8 only installs the safety shell. Future real AI output must
+    // flow through the same claim filter and schema validation used by mock.
+    return realAiListingNotImplemented();
   }
 
   try {

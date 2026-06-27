@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
+import { setRealAiListingEnabledForTests } from "@/lib/server/realAiListingGate";
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
@@ -7,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   delete: vi.fn(),
   requireOwnerOnly: vi.fn(),
+  callAiJson: vi.fn(),
 }));
 
 vi.mock("@/lib/server/db", () => ({
@@ -25,10 +27,12 @@ vi.mock("@/lib/server/demoGuard", () => ({
 }));
 
 vi.mock("@/lib/server/aiClient", () => ({
-  callAiJson: vi.fn(() => {
-    throw new Error("callAiJson must not be called in Core-4-AI.2");
-  }),
+  callAiJson: mocks.callAiJson,
 }));
+
+mocks.callAiJson.mockImplementation(() => {
+    throw new Error("callAiJson must not be called in Core-4-AI.2");
+});
 
 const TASK_RECORD = {
   title: "Desktop Phone Stand",
@@ -64,6 +68,10 @@ async function callPOST(taskId: string, body: unknown = {}) {
 describe("POST /api/tasks/[id]/listing-pack/ai-generate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setRealAiListingEnabledForTests(false);
+    mocks.callAiJson.mockImplementation(() => {
+      throw new Error("callAiJson must not be called in Core-4-AI.8");
+    });
     mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
     mocks.findUnique.mockResolvedValue(TASK_RECORD);
   });
@@ -131,6 +139,73 @@ describe("POST /api/tasks/[id]/listing-pack/ai-generate", () => {
     expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.delete).not.toHaveBeenCalled();
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
+  });
+
+  it("keeps mode=mock on the mock branch and does not call real AI", async () => {
+    const res = await callPOST("task-1", { mode: "mock" });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.ok).toBe(true);
+    expect(data.data.meta.mode).toBe("mock");
+    expect(data.data.listingPack.source).toBe("mock_ai_draft");
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects mode=real without confirmRealAi and does not call real AI", async () => {
+    const res = await callPOST("task-1", { mode: "real" });
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("real_ai_confirmation_required");
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects mode=real with confirmRealAi=false and does not call real AI", async () => {
+    const res = await callPOST("task-1", { mode: "real", confirmRealAi: false });
+    const data = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("real_ai_confirmation_required");
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects confirmed real mode when real AI listing is disabled and does not call real AI", async () => {
+    const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("real_ai_disabled");
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns real_ai_not_implemented when confirmed real mode is explicitly enabled for tests", async () => {
+    const route = await import("@/app/api/tasks/[id]/listing-pack/ai-generate/route");
+    setRealAiListingEnabledForTests(true);
+    try {
+      const req = new Request("http://localhost/api/tasks/task-1/listing-pack/ai-generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-access-token": "tok_test" },
+        body: JSON.stringify({ mode: "real", confirmRealAi: true }),
+      });
+      const res = await route.POST(req as any, { params: Promise.resolve({ id: "task-1" }) });
+      const data = await res.json();
+
+      expect(res.status).toBe(501);
+      expect(data.ok).toBe(false);
+      expect(data.error.code).toBe("real_ai_not_implemented");
+      expect(mocks.callAiJson).not.toHaveBeenCalled();
+      expect(mocks.findUnique).not.toHaveBeenCalled();
+    } finally {
+      setRealAiListingEnabledForTests(false);
+    }
   });
 
   it("filters banned claims from returned visible content and records blockedClaims", async () => {

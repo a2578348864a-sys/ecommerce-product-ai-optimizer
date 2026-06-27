@@ -60,6 +60,20 @@ describe("sanitizeAiListingPackForSave", () => {
     expect(sanitizeAiListingPackForSave({ ...draft(), titles: "bad" }).ok).toBe(false);
     expect(sanitizeAiListingPackForSave({ ...draft(), humanReviewRequired: false }).ok).toBe(false);
   });
+
+  it("allows future real AI drafts through the same save sanitization boundary", () => {
+    const result = sanitizeAiListingPackForSave(draft({
+      source: "real_ai_draft",
+      model: "deepseek-chat",
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.source).toBe("real_ai_draft");
+      expect(result.data.model).toBe("deepseek-chat");
+      expect(result.data.humanReviewRequired).toBe(true);
+    }
+  });
 });
 
 describe("buildAiListingPackSaveResult", () => {
