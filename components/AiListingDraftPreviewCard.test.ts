@@ -3,9 +3,11 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   AI_LISTING_DRAFT_PREVIEW_ENDPOINT,
+  AI_LISTING_DRAFT_REAL_CONFIRMATION_TEXT,
   AI_LISTING_DRAFT_SAVE_ENDPOINT,
   AiListingDraftPreviewCard,
   buildAiListingDraftMarkdown,
+  buildAiListingGenerateRequestBody,
   getAiListingDraftErrorMessage,
   getAiListingSaveErrorMessage,
 } from "@/components/AiListingDraftPreviewCard";
@@ -65,6 +67,17 @@ describe("AiListingDraftPreviewCard", () => {
     expect(html).not.toContain("Test Product for Small Batch Validation");
   });
 
+  it("renders a guarded real AI entry with quota, review, save, and launch warnings", () => {
+    const html = renderToString(React.createElement(AiListingDraftPreviewCard, { taskId: "task-1" }));
+
+    expect(html).toContain("真实 AI 生成草稿");
+    expect(html).toContain("会消耗真实 AI 额度");
+    expect(html).toContain("不会自动保存");
+    expect(html).toContain("必须人工复核");
+    expect(html).toContain("不会自动上架");
+    expect(AI_LISTING_DRAFT_REAL_CONFIRMATION_TEXT).toContain("可能消耗真实 AI 额度");
+  });
+
   it("renders generated draft sections from preview state", () => {
     const html = renderToString(React.createElement(AiListingDraftPreviewCard, { taskId: "task-1", initialDraft: draft() }));
 
@@ -101,6 +114,18 @@ describe("AiListingDraftPreviewCard", () => {
     expect(getAiListingDraftErrorMessage(500, "invalid_ai_listing_pack")).toBe("生成结果结构异常，请稍后重试。");
     expect(getAiListingDraftErrorMessage(500, "ai_listing_generation_failed")).toBe("Listing 草稿生成失败，请稍后重试。");
     expect(getAiListingDraftErrorMessage(0)).toBe("网络请求失败，请稍后重试。");
+  });
+
+  it("maps guarded real AI API errors to readable no-charge messages", () => {
+    expect(getAiListingDraftErrorMessage(403, "real_ai_disabled")).toContain("真实 AI 生成暂未开启");
+    expect(getAiListingDraftErrorMessage(403, "real_ai_disabled")).toContain("没有消耗 AI 额度");
+    expect(getAiListingDraftErrorMessage(501, "real_ai_not_implemented")).toContain("真实 AI Listing 生成尚未接入");
+    expect(getAiListingDraftErrorMessage(400, "real_ai_confirmation_required")).toContain("需要二次确认");
+  });
+
+  it("builds explicit request bodies so mock generation never sends real AI mode", () => {
+    expect(buildAiListingGenerateRequestBody("mock")).toEqual({ mode: "preview" });
+    expect(buildAiListingGenerateRequestBody("real")).toEqual({ mode: "real", confirmRealAi: true });
   });
 
   it("maps save API errors to readable retry messages", () => {

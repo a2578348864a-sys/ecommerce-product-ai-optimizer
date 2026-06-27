@@ -7,6 +7,15 @@ import type { AiListingPackSnapshot } from "@/lib/aiListingSnapshot";
 
 export const AI_LISTING_DRAFT_PREVIEW_ENDPOINT = "/listing-pack/ai-generate";
 export const AI_LISTING_DRAFT_SAVE_ENDPOINT = "/listing-pack/ai-save";
+export const AI_LISTING_DRAFT_REAL_CONFIRMATION_TEXT =
+  "这会尝试调用真实 AI Listing 生成能力，可能消耗真实 AI 额度。结果只是草稿，需要人工复核，不会自动保存或上架。";
+
+type AiListingGenerationMode = "mock" | "real";
+
+export function buildAiListingGenerateRequestBody(mode: AiListingGenerationMode) {
+  if (mode === "real") return { mode: "real", confirmRealAi: true };
+  return { mode: "preview" };
+}
 
 type GenerateResponse =
   | { ok: true; data: { listingPack: AiListingPackDraft; meta?: { saved?: boolean } } }
@@ -22,6 +31,9 @@ export function getAiListingDraftErrorMessage(status: number, code?: string) {
   if (code === "missing_task_context") return "当前任务信息不足，无法生成 Listing 草稿。";
   if (code === "invalid_ai_listing_pack") return "生成结果结构异常，请稍后重试。";
   if (code === "ai_listing_generation_failed") return "Listing 草稿生成失败，请稍后重试。";
+  if (code === "real_ai_confirmation_required") return "真实 AI 生成需要二次确认，本次没有发起真实 AI 请求。";
+  if (code === "real_ai_disabled") return "真实 AI 生成暂未开启，当前没有消耗 AI 额度。你可以继续使用模拟草稿，或等待后续开启。";
+  if (code === "real_ai_not_implemented") return "真实 AI Listing 生成尚未接入，当前没有消耗 AI 额度。请继续使用模拟草稿。";
   if (code === "invalid_json") return "请求内容格式异常，请稍后重试。";
   return "网络请求失败，请稍后重试。";
 }
@@ -149,6 +161,8 @@ export function AiListingDraftPreviewCard({
   const [savedSnapshot, setSavedSnapshot] = useState<AiListingPackSnapshot | null>(initialSavedSnapshot);
   const [draftSaved, setDraftSaved] = useState(Boolean(initialSavedSnapshot));
   const [loading, setLoading] = useState(false);
+  const [realLoading, setRealLoading] = useState(false);
+  const [realConfirmOpen, setRealConfirmOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -159,9 +173,14 @@ export function AiListingDraftPreviewCard({
   const markdown = useMemo(() => draft ? buildAiListingDraftMarkdown(draft) : "", [draft]);
   const hasBlockedClaims = Boolean(draft?.blockedClaims.length);
 
-  async function handleGenerate() {
-    if (loading) return;
-    setLoading(true);
+  async function handleGenerate(mode: AiListingGenerationMode = "mock") {
+    const isRealMode = mode === "real";
+    if (loading || realLoading) return;
+    if (isRealMode) {
+      setRealLoading(true);
+    } else {
+      setLoading(true);
+    }
     setError("");
     setCopyMessage("");
 
@@ -169,7 +188,7 @@ export function AiListingDraftPreviewCard({
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}${AI_LISTING_DRAFT_PREVIEW_ENDPOINT}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({ mode: "preview" }),
+        body: JSON.stringify(buildAiListingGenerateRequestBody(mode)),
       });
       const data = await response.json() as GenerateResponse;
       if (!response.ok || !data.ok) {
@@ -184,8 +203,27 @@ export function AiListingDraftPreviewCard({
     } catch {
       setError(getAiListingDraftErrorMessage(0));
     } finally {
-      setLoading(false);
+      if (isRealMode) {
+        setRealLoading(false);
+      } else {
+        setLoading(false);
+      }
     }
+  }
+
+  function handleRealGenerateClick() {
+    if (loading || realLoading) return;
+    setError("");
+    setRealConfirmOpen(true);
+  }
+
+  function handleCancelRealGenerate() {
+    setRealConfirmOpen(false);
+  }
+
+  async function handleConfirmRealGenerate() {
+    setRealConfirmOpen(false);
+    await handleGenerate("real");
   }
 
   async function handleCopy() {
@@ -261,8 +299,8 @@ export function AiListingDraftPreviewCard({
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={handleGenerate}
-          disabled={loading}
+          onClick={() => void handleGenerate("mock")}
+          disabled={loading || realLoading}
           className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
           data-testid="ai-listing-draft-generate"
         >
@@ -292,7 +330,53 @@ export function AiListingDraftPreviewCard({
         {copyMessage && copyMessage !== "已复制" ? <p className="text-sm font-semibold text-rose-600">{copyMessage}</p> : null}
       </div>
 
+      <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-sky-900">真实 AI 生成草稿</p>
+            <p className="mt-1 text-sm leading-6 text-sky-800">
+              会消耗真实 AI 额度，当前仅生成草稿，不会自动保存；生成内容必须人工复核，也不会自动上架。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRealGenerateClick}
+            disabled={loading || realLoading}
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-sky-300 bg-white px-4 text-sm font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+            data-testid="ai-listing-draft-real-open"
+          >
+            {realLoading ? "真实 AI 请求中..." : "真实 AI 生成草稿"}
+          </button>
+        </div>
+      </div>
+
+      {realConfirmOpen ? (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3" role="dialog" aria-modal="true" aria-label="真实 AI 生成二次确认">
+          <p className="text-sm font-bold text-amber-900">确认使用真实 AI 生成草稿？</p>
+          <p className="mt-1 text-sm leading-6 text-amber-800">{AI_LISTING_DRAFT_REAL_CONFIRMATION_TEXT}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleCancelRealGenerate}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              data-testid="ai-listing-draft-real-cancel"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleConfirmRealGenerate()}
+              className="inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-bold text-white transition hover:bg-amber-700"
+              data-testid="ai-listing-draft-real-confirm"
+            >
+              确认尝试真实 AI
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {loading ? <p className="mt-3 text-sm font-semibold text-emerald-700">正在生成草稿预览...</p> : null}
+      {realLoading ? <p className="mt-3 text-sm font-semibold text-sky-700">真实 AI 草稿请求中...</p> : null}
       {error ? <p className="mt-3 text-sm font-semibold text-rose-600">{error}</p> : null}
       {saveMessage ? <p className="mt-3 text-sm font-semibold text-teal-700">{saveMessage}</p> : null}
       {saveError ? <p className="mt-3 text-sm font-semibold text-rose-600">{saveError}</p> : null}
