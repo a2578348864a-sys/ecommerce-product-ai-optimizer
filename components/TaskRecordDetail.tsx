@@ -27,6 +27,7 @@ import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { ListingPackCard } from "@/components/ListingPackCard";
 import { AiListingDraftPreviewCard } from "@/components/AiListingDraftPreviewCard";
 import type { ListingPack } from "@/lib/listingPack";
+import type { AiListingPackSnapshot } from "@/lib/aiListingSnapshot";
 import {
   derivePipelineStatus,
   deriveNextAction,
@@ -566,7 +567,16 @@ function WorkflowDecisionSummary({
         })()}
       />
 
-      <AiListingDraftPreviewCard taskId={taskId} />
+      <AiListingDraftPreviewCard
+        taskId={taskId}
+        initialSavedSnapshot={(() => {
+          try {
+            const snap = (result as Record<string, unknown>)?.aiListingPackSnapshot as Record<string, unknown> | undefined;
+            if (snap?.snapshotType === "ai_listing_pack") return snap as AiListingPackSnapshot;
+          } catch { /* ignore */ }
+          return null;
+        })()}
+      />
 
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
         <summary className="cursor-pointer font-semibold text-slate-600 select-none">

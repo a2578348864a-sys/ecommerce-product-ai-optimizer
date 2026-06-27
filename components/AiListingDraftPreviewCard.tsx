@@ -3,11 +3,17 @@
 import { useMemo, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
+import type { AiListingPackSnapshot } from "@/lib/aiListingSnapshot";
 
 export const AI_LISTING_DRAFT_PREVIEW_ENDPOINT = "/listing-pack/ai-generate";
+export const AI_LISTING_DRAFT_SAVE_ENDPOINT = "/listing-pack/ai-save";
 
 type GenerateResponse =
   | { ok: true; data: { listingPack: AiListingPackDraft; meta?: { saved?: boolean } } }
+  | { ok: false; error?: { code?: string; message?: string } };
+
+type SaveResponse =
+  | { ok: true; data: { saved: true; savedAt: string; version: number; aiListingPackSnapshot: AiListingPackSnapshot } }
   | { ok: false; error?: { code?: string; message?: string } };
 
 export function getAiListingDraftErrorMessage(status: number, code?: string) {
@@ -18,6 +24,16 @@ export function getAiListingDraftErrorMessage(status: number, code?: string) {
   if (code === "ai_listing_generation_failed") return "Listing 草稿生成失败，请稍后重试。";
   if (code === "invalid_json") return "请求内容格式异常，请稍后重试。";
   return "网络请求失败，请稍后重试。";
+}
+
+export function getAiListingSaveErrorMessage(status: number, code?: string) {
+  if (status === 401 || code === "unauthorized") return "请先回首页解锁工作台。";
+  if (code === "task_not_found") return "当前任务不存在或已被删除。";
+  if (code === "invalid_ai_listing_pack") return "草稿结构异常，无法保存。";
+  if (code === "ai_listing_pack_already_exists") return "任务中已存在 AI Listing 草稿，请确认后再覆盖。";
+  if (code === "ai_listing_save_failed") return "保存失败，当前草稿仍保留在页面中，可稍后重试。";
+  if (code === "invalid_json") return "请求内容格式异常，请稍后重试。";
+  return "保存失败，当前草稿仍保留在页面中，可稍后重试。";
 }
 
 function listSection(title: string, items: string[]) {
@@ -123,13 +139,21 @@ function ChipList({ title, items }: { title: string; items: string[] }) {
 export function AiListingDraftPreviewCard({
   taskId,
   initialDraft = null,
+  initialSavedSnapshot = null,
 }: {
   taskId: string;
   initialDraft?: AiListingPackDraft | null;
+  initialSavedSnapshot?: AiListingPackSnapshot | null;
 }) {
-  const [draft, setDraft] = useState<AiListingPackDraft | null>(initialDraft);
+  const [draft, setDraft] = useState<AiListingPackDraft | null>(initialSavedSnapshot || initialDraft);
+  const [savedSnapshot, setSavedSnapshot] = useState<AiListingPackSnapshot | null>(initialSavedSnapshot);
+  const [draftSaved, setDraftSaved] = useState(Boolean(initialSavedSnapshot));
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saveMessage, setSaveMessage] = useState(initialSavedSnapshot ? "已保存到任务记录。" : "");
+  const [overwriteRequired, setOverwriteRequired] = useState(false);
   const [copyMessage, setCopyMessage] = useState("");
 
   const markdown = useMemo(() => draft ? buildAiListingDraftMarkdown(draft) : "", [draft]);
@@ -153,6 +177,10 @@ export function AiListingDraftPreviewCard({
         return;
       }
       setDraft(data.data.listingPack);
+      setDraftSaved(false);
+      setSaveMessage(savedSnapshot ? "已生成新的草稿预览，如需替换任务记录，请点击覆盖保存。" : "");
+      setSaveError("");
+      setOverwriteRequired(false);
     } catch {
       setError(getAiListingDraftErrorMessage(0));
     } finally {
@@ -165,6 +193,41 @@ export function AiListingDraftPreviewCard({
     const success = await copyText(markdown);
     setCopyMessage(success ? "已复制" : "复制失败，请手动复制");
     if (success) window.setTimeout(() => setCopyMessage(""), 1600);
+  }
+
+  async function handleSave() {
+    if (!draft || saving) return;
+    setSaving(true);
+    setSaveError("");
+    setSaveMessage("");
+
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}${AI_LISTING_DRAFT_SAVE_ENDPOINT}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
+        body: JSON.stringify({
+          listingPack: draft,
+          overwrite: Boolean(savedSnapshot) || overwriteRequired,
+        }),
+      });
+      const data = await response.json() as SaveResponse;
+      if (!response.ok || !data.ok) {
+        if (!data.ok && data.error?.code === "ai_listing_pack_already_exists") {
+          setOverwriteRequired(true);
+        }
+        setSaveError(getAiListingSaveErrorMessage(response.status, data.ok ? undefined : data.error?.code));
+        return;
+      }
+      setDraft(data.data.aiListingPackSnapshot);
+      setSavedSnapshot(data.data.aiListingPackSnapshot);
+      setDraftSaved(true);
+      setOverwriteRequired(false);
+      setSaveMessage("已保存到任务记录。");
+    } catch {
+      setSaveError(getAiListingSaveErrorMessage(0));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -181,10 +244,12 @@ export function AiListingDraftPreviewCard({
           error
             ? "border-rose-200 bg-rose-50 text-rose-700"
             : draft
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              ? draftSaved
+                ? "border-teal-200 bg-teal-50 text-teal-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-slate-200 bg-slate-50 text-slate-600"
         }`}>
-          {error ? "生成失败" : draft ? "草稿预览已生成" : "未生成"}
+          {error ? "生成失败" : draft ? draftSaved ? "已保存到任务记录" : "草稿预览已生成" : "未生成"}
         </span>
       </div>
 
@@ -213,11 +278,24 @@ export function AiListingDraftPreviewCard({
             {copyMessage === "已复制" ? "已复制" : "复制 Markdown"}
           </button>
         ) : null}
+        {draft ? (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || draftSaved}
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 px-4 text-sm font-bold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+            data-testid="ai-listing-draft-save"
+          >
+            {saving ? "保存中..." : draftSaved ? "已保存" : (savedSnapshot || overwriteRequired) ? "覆盖保存" : "保存到任务记录"}
+          </button>
+        ) : null}
         {copyMessage && copyMessage !== "已复制" ? <p className="text-sm font-semibold text-rose-600">{copyMessage}</p> : null}
       </div>
 
       {loading ? <p className="mt-3 text-sm font-semibold text-emerald-700">正在生成草稿预览...</p> : null}
       {error ? <p className="mt-3 text-sm font-semibold text-rose-600">{error}</p> : null}
+      {saveMessage ? <p className="mt-3 text-sm font-semibold text-teal-700">{saveMessage}</p> : null}
+      {saveError ? <p className="mt-3 text-sm font-semibold text-rose-600">{saveError}</p> : null}
 
       {draft ? (
         <div className="mt-4 space-y-3">
@@ -225,12 +303,13 @@ export function AiListingDraftPreviewCard({
             <span>source：{draft.source}</span>
             <span>model：{draft.model}</span>
             <span>{formatGeneratedAt(draft.generatedAt)}</span>
-            <span>当前为草稿预览，尚未保存到任务记录。刷新页面后需要重新生成。</span>
+            <span>{draftSaved ? "当前草稿已保存到任务记录，刷新后仍可查看。" : "当前为草稿预览，尚未保存到任务记录。刷新页面后需要重新生成。"}</span>
+            {savedSnapshot ? <span>已保存版本：{savedSnapshot.version}</span> : null}
           </div>
 
           {draft.humanReviewRequired ? (
             <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-sm font-semibold text-emerald-800">
-              草稿预览已生成，请人工复核后再使用。
+              {draftSaved ? "已保存到任务记录。请人工复核后再使用。" : "草稿预览已生成，请人工复核后再使用。"}
             </div>
           ) : null}
 

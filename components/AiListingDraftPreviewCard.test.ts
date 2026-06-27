@@ -3,11 +3,14 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   AI_LISTING_DRAFT_PREVIEW_ENDPOINT,
+  AI_LISTING_DRAFT_SAVE_ENDPOINT,
   AiListingDraftPreviewCard,
   buildAiListingDraftMarkdown,
   getAiListingDraftErrorMessage,
+  getAiListingSaveErrorMessage,
 } from "@/components/AiListingDraftPreviewCard";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
+import type { AiListingPackSnapshot } from "@/lib/aiListingSnapshot";
 
 function draft(overrides: Partial<AiListingPackDraft> = {}): AiListingPackDraft {
   return {
@@ -25,6 +28,16 @@ function draft(overrides: Partial<AiListingPackDraft> = {}): AiListingPackDraft 
     complianceWarnings: ["Blocked unverified listing claims. Human review is required before publishing."],
     blockedClaims: ["FDA Approved", "Medical Grade"],
     reviewChecklist: ["Confirm supplier documents.", "Check platform category rules."],
+    ...overrides,
+  };
+}
+
+function savedSnapshot(overrides: Partial<AiListingPackSnapshot> = {}): AiListingPackSnapshot {
+  return {
+    ...draft(),
+    savedAt: "2026-06-27T11:00:00.000Z",
+    savedBy: "owner",
+    snapshotType: "ai_listing_pack",
     ...overrides,
   };
 }
@@ -48,6 +61,7 @@ describe("AiListingDraftPreviewCard", () => {
     expect(html).toContain("生成草稿预览");
     expect(html).toContain("这是 AI 辅助草稿，不是最终上架文案");
     expect(html).toContain("未生成");
+    expect(html).not.toContain("保存到任务记录");
     expect(html).not.toContain("Test Product for Small Batch Validation");
   });
 
@@ -64,6 +78,20 @@ describe("AiListingDraftPreviewCard", () => {
     expect(html).toContain("人工复核清单");
     expect(html).toContain("被拦截的高风险声明");
     expect(html).toContain("复制 Markdown");
+    expect(html).toContain("保存到任务记录");
+  });
+
+  it("renders saved snapshot state on page refresh", () => {
+    const html = renderToString(React.createElement(AiListingDraftPreviewCard, {
+      taskId: "task-1",
+      initialSavedSnapshot: savedSnapshot({ version: 3 }),
+    }));
+
+    expect(html).toContain("已保存到任务记录");
+    expect(html).toContain("已保存");
+    expect(html).toContain("已保存版本：");
+    expect(html).toContain("3");
+    expect(html).toContain("当前草稿已保存到任务记录，刷新后仍可查看。");
   });
 
   it("maps API errors to readable retry messages", () => {
@@ -73,6 +101,15 @@ describe("AiListingDraftPreviewCard", () => {
     expect(getAiListingDraftErrorMessage(500, "invalid_ai_listing_pack")).toBe("生成结果结构异常，请稍后重试。");
     expect(getAiListingDraftErrorMessage(500, "ai_listing_generation_failed")).toBe("Listing 草稿生成失败，请稍后重试。");
     expect(getAiListingDraftErrorMessage(0)).toBe("网络请求失败，请稍后重试。");
+  });
+
+  it("maps save API errors to readable retry messages", () => {
+    expect(getAiListingSaveErrorMessage(401, "unauthorized")).toBe("请先回首页解锁工作台。");
+    expect(getAiListingSaveErrorMessage(404, "task_not_found")).toBe("当前任务不存在或已被删除。");
+    expect(getAiListingSaveErrorMessage(400, "invalid_ai_listing_pack")).toBe("草稿结构异常，无法保存。");
+    expect(getAiListingSaveErrorMessage(409, "ai_listing_pack_already_exists")).toBe("任务中已存在 AI Listing 草稿，请确认后再覆盖。");
+    expect(getAiListingSaveErrorMessage(500, "ai_listing_save_failed")).toBe("保存失败，当前草稿仍保留在页面中，可稍后重试。");
+    expect(getAiListingSaveErrorMessage(0)).toBe("保存失败，当前草稿仍保留在页面中，可稍后重试。");
   });
 
   it("builds copy markdown without mixing blocked claims into listing body", () => {
@@ -104,6 +141,7 @@ describe("AiListingDraftPreviewCard", () => {
 
   it("uses only the mock ai-generate endpoint and does not expose save or real AI calls", () => {
     expect(AI_LISTING_DRAFT_PREVIEW_ENDPOINT).toBe("/listing-pack/ai-generate");
+    expect(AI_LISTING_DRAFT_SAVE_ENDPOINT).toBe("/listing-pack/ai-save");
 
     const componentSource = AiListingDraftPreviewCard.toString();
     expect(componentSource).not.toContain("callAiJson");
