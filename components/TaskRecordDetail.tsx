@@ -25,6 +25,7 @@ import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/t
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { ListingPackCard } from "@/components/ListingPackCard";
+import { AiListingDraftPreviewCard } from "@/components/AiListingDraftPreviewCard";
 import type { ListingPack } from "@/lib/listingPack";
 import {
   derivePipelineStatus,
@@ -564,6 +565,8 @@ function WorkflowDecisionSummary({
           return null;
         })()}
       />
+
+      <AiListingDraftPreviewCard taskId={taskId} />
 
       <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
         <summary className="cursor-pointer font-semibold text-slate-600 select-none">
