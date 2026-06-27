@@ -100,17 +100,26 @@ export function ListingPackCard({
   function handleCopy() {
     if (!pack) return;
     const md = listingPackToMarkdown(pack);
-    navigator.clipboard.writeText(md).catch(() => {
+    let success = false;
+    navigator.clipboard.writeText(md).then(() => { success = true; }).catch(() => {
       const ta = document.createElement("textarea");
       ta.value = md; document.body.appendChild(ta); ta.select();
-      document.execCommand("copy"); ta.remove();
+      try { document.execCommand("copy"); success = true; } catch { /* fallback failed */ }
+      ta.remove();
+    }).finally(() => {
+      if (success) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     });
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   function formatTime(iso: string) {
-    try { return new Date(iso).toLocaleString("zh-CN"); } catch { return iso; }
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "未知时间";
+      return d.toLocaleString("zh-CN");
+    } catch { return "未知时间"; }
   }
 
   if (disabled) {

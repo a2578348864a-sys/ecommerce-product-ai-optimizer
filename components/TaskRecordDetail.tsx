@@ -81,7 +81,7 @@ function formatDate(value: string) {
 }
 
 function sourceLabel(source: string) {
-  return source === "ai" ? "AI 深度拆解" : "mock 模拟拆解";
+  return source === "ai" ? "AI 深度拆解" : source ? `系统分析 · ${source}` : "系统分析";
 }
 
 function getTitle(item: TaskCenterItem) {
@@ -361,7 +361,11 @@ function WorkflowDecisionSummary({
                   <span className="font-semibold text-slate-700">{step.label}</span>
                   <span className="text-sm text-slate-400">
                     {step.status === "completed" ? "已完成" :
-                     step.status === "needs_manual_review" ? "需人工复核" : step.status}
+                     step.status === "needs_manual_review" ? "需人工复核" :
+                     step.status === "failed" ? "失败" :
+                     step.status === "warning" ? "需留意" :
+                     (step.status as string) === "running" ? "进行中" :
+                     (step.status as string) === "pending" ? "待开始" : "待开始"}
                   </span>
                   {step.summary && <span className="text-sm text-slate-500">— {step.summary}</span>}
                 </div>
@@ -391,7 +395,11 @@ function WorkflowDecisionSummary({
                     if (lp.bulletDrafts.length) lines.push(`卖点要点：\n${lp.bulletDrafts.map((b, i) => `${i + 1}. ${b}`).join("\n")}`);
                     if (lp.complianceExpressionReminders.length) lines.push(`合规提醒：\n${lp.complianceExpressionReminders.map((c) => `- ${c}`).join("\n")}`);
                     const text = lines.join("\n\n");
-                    navigator.clipboard.writeText(text).catch(() => {});
+                    navigator.clipboard.writeText(text).catch(() => {
+                      const ta = document.createElement("textarea");
+                      ta.value = text; document.body.appendChild(ta); ta.select();
+                      document.execCommand("copy"); ta.remove();
+                    });
                   }}
                   className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition"
                 >
@@ -706,7 +714,7 @@ function WorkflowResultSection({ result }: { result: Record<string, unknown> }) 
             {(fr.finalVerdict as string) || "未评级"}
           </span>
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${riskColors[riskLevel] || riskColors.yellow}`}>
-            {riskLevel === "green" ? "低风险" : riskLevel === "red" ? "高风险" : "需注意"}
+            {riskLevel === "green" ? "低风险" : riskLevel === "red" ? "高风险" : riskLevel === "yellow" ? "中风险" : "未评级"}
           </span>
           <span className="rounded-full bg-white/80 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
             {(fr.beginnerFit as string) || ""}

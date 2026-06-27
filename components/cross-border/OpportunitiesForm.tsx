@@ -516,6 +516,7 @@ export function OpportunitiesForm() {
   const overLimit = validCount > 30;
 
   const handleAnalyze = useCallback(async () => {
+    if (loading) return;
     setError("");
     if (!rawText.trim()) {
       setError("请至少输入一个候选商品。");
@@ -554,7 +555,11 @@ export function OpportunitiesForm() {
       const json: ApiResponse = await res.json();
 
       if (!json.ok) {
-        setError(json.error.message);
+        if (res.status === 401 || res.status === 403 || json.error?.code === "invalid_access") {
+          setError("登录状态已失效，请回首页重新解锁。");
+        } else {
+          setError(json.error?.message || "分析失败，请稍后重试。");
+        }
         setLoading(false);
         return;
       }
@@ -594,7 +599,7 @@ export function OpportunitiesForm() {
       setError(e instanceof Error ? e.message : "网络请求失败，请检查服务是否在运行。");
       setLoading(false);
     }
-  }, [rawText, accessPassword, isAccessPasswordReady, hasAccess, serverAvailable, overLimit, validCount, refreshServerPool]);
+  }, [rawText, accessPassword, isAccessPasswordReady, hasAccess, serverAvailable, overLimit, validCount, loading, refreshServerPool]);
 
   // Phase 1E: Crawl public sources
   const handleCrawl = useCallback(async () => {
@@ -616,7 +621,11 @@ export function OpportunitiesForm() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        setCrawlWarnings([data.error?.message || "抓取失败"]);
+        if (res.status === 401 || res.status === 403 || data.error?.code === "invalid_access") {
+          setCrawlWarnings(["登录状态已失效，请回首页重新解锁。"]);
+        } else {
+          setCrawlWarnings([data.error?.message || "该来源暂时无法抓取，请换一个商品页或稍后重试。"]);
+        }
         return;
       }
 
@@ -918,6 +927,7 @@ export function OpportunitiesForm() {
   }, [sourceImportCandidates]);
 
   const handleConfirmImport = useCallback(async () => {
+    if (sourceConfirming) return;
     if (sourceImportChecked.size === 0) {
       setSourceImportError("请至少勾选一个候选品后再导入。");
       return;
@@ -942,7 +952,7 @@ export function OpportunitiesForm() {
         source: `${c.sourceType === "rss" ? "RSS抓取" : c.sourceType === "sitemap" ? "Sitemap抓取" : "网页抓取"} · ${c.sourceHost}`,
         keyword: c.keyword || c.categoryHint,
         riskLevel: c.riskLevel,
-        riskLabel: c.riskLevel === "red" ? "高风险" : c.riskLevel === "yellow" ? "需注意" : "低风险",
+        riskLabel: c.riskLevel === "red" ? "高风险" : c.riskLevel === "yellow" ? "需注意" : c.riskLevel === "green" ? "低风险" : "未评级",
         summaryLabel: c.summaryLabel,
         sourceMetaJson: JSON.stringify({
           sourceType: c.sourceType,
@@ -997,7 +1007,7 @@ export function OpportunitiesForm() {
     } finally {
       setSourceConfirming(false);
     }
-  }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable, refreshServerPool]);
+  }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable, sourceConfirming, refreshServerPool]);
 
   // Score helper
   const scoreLabel = (s: number) => s >= 80 ? "优先测试" : s >= 65 ? "可小单验证" : s >= 50 ? "谨慎观察" : "暂不建议";

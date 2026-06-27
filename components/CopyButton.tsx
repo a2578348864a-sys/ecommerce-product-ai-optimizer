@@ -26,9 +26,7 @@ export function CopyButton({ text, label = "复制结果", className = "" }: Cop
   }
 
   async function handleCopy() {
-    if (!text) {
-      return;
-    }
+    if (!text) return;
 
     let success = false;
     try {
@@ -46,6 +44,7 @@ export function CopyButton({ text, label = "复制结果", className = "" }: Cop
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     }
+    // Silently no-op on failure — button stays in original state rather than showing false "copied"
   }
 
   return (

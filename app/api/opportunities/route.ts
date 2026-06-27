@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { getOpportunityDisplayRiskLevel, runOpportunitiesPipeline } from "@/lib/agents/orchestrator";
-import { getAccessPassword } from "@/lib/server/accessPassword";
+import { getAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes for batch processing
@@ -41,7 +41,11 @@ export async function POST(request: NextRequest) {
   }
 
   if (asString(bodyObj.accessPassword) !== configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "unauthorized", message: "访问密码错误或缺失。" } }, 401);
+    // Try signed token auth as fallback (for token-based sessions)
+    const tokenCtx = getAccessContext(request, bodyObj);
+    if (!tokenCtx) {
+      return jsonResponse({ ok: false, error: { code: "unauthorized", message: "登录状态已失效，请回首页重新解锁。" } }, 401);
+    }
   }
 
   const rawText = asString(bodyObj.rawText);

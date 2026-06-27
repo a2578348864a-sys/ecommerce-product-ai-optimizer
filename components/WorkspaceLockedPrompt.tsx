@@ -38,6 +38,9 @@ export function WorkspaceLockedPrompt({ pageName, returnUrl }: WorkspaceLockedPr
               ? `「${pageName}」需要访问密码才能使用。请先回到首页输入访问密码。`
               : "请先回到首页输入访问密码后再使用此功能。"}
           </p>
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            访问密码有效期为 12 小时，过期后需重新输入。关闭标签页后也会自动锁定。
+          </p>
         </div>
 
         {/* CTA */}

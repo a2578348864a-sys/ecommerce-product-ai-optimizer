@@ -97,7 +97,7 @@ function getTitle(item: TaskCenterItem) {
 }
 
 function sourceLabel(source: string) {
-  return source === "ai" ? "AI" : "mock";
+  return source === "ai" ? "AI" : source ? source : "其他来源";
 }
 
 const typeLabelMap: Record<string, string> = {
@@ -125,11 +125,11 @@ const agentLabelMap: Record<string, string> = {
 };
 
 function getTaskTypeLabel(item: TaskCenterItem) {
-  return typeLabelMap[item.type || ""] || item.type || "未知任务";
+  return typeLabelMap[item.type || ""] || "未知任务";
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return agentLabelMap[item.type || ""] || "规划 Agent";
+  return agentLabelMap[item.type || ""] || "未知 Agent";
 }
 
 function getTaskStatusLabel() {
@@ -296,7 +296,7 @@ export function TaskRecordsList() {
       });
       const data = await response.json() as ApiResponse;
       if (!response.ok || !data.ok) {
-        setError(data.ok ? "任务记录读取失败。" : data.error.message);
+        setError(!data.ok && data.error?.message ? data.error.message : "任务记录读取失败，请稍后重试。");
         return;
       }
 

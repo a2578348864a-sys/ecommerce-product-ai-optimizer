@@ -98,7 +98,7 @@ export type AgentRunSourceMeta = {
 };
 
 type RunPhase = "idle" | "running" | "completed" | "failed" | "needs_manual_review";
-type TimelineStatus = "idle" | "running" | "completed" | "needs_manual_review" | "paused" | "failed";
+type TimelineStatus = "idle" | "pending" | "running" | "completed" | "needs_manual_review" | "paused" | "failed";
 
 type TimelineStep = {
   key: "normalize" | "market" | "sourcing" | "profit" | "risk" | "listing" | "report" | "manual";
@@ -247,7 +247,9 @@ function apiStatusToTimeline(status?: ApiStepStatus): TimelineStatus {
   if (status === "completed") return "completed";
   if (status === "fallback") return "needs_manual_review";
   if (status === "failed") return "failed";
-  return "completed";
+  if (status === "running") return "running";
+  if (status === "pending") return "pending";
+  return "pending"; // unrecognized → treat as pending (not prematurely completed)
 }
 
 function getApiStep(result: ApiWorkflowResult | null, key: ApiStepKey) {
