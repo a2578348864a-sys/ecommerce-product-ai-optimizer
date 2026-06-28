@@ -23,8 +23,10 @@ import {
 import {
   LISTING_PACK_ANCHOR_ID,
   LISTING_PACK_SHORTCUT_LABEL,
+  buildNoListingPackPrompt,
   buildTaskDeleteConfirmationMessage,
   getAiListingPackSnapshot,
+  hasAiListingPack,
   shouldShowListingPackShortcut,
 } from "@/lib/tasks/listingSnapshotUi";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
@@ -1044,6 +1046,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     record ? getAiListingPackSnapshot(record.result) : null
   ), [record]);
   const showListingPackShortcut = record ? shouldShowListingPackShortcut(record.result) : false;
+  const showNoListingPackPrompt = record ? !hasAiListingPack(record.result) : false;
   const recordSummary = useMemo(() => {
     if (!record) return null;
     return deriveTaskWorkflowSummary({
@@ -1369,6 +1372,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </details>
 
               {/* AI Listing 草稿包 — 对所有 task 类型展示已保存 snapshot */}
+              {showNoListingPackPrompt ? (
+                <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800">
+                  <p className="font-semibold">{buildNoListingPackPrompt()}</p>
+                </div>
+              ) : null}
               {aiListingPackSnapshot ? (
                 <section id={LISTING_PACK_ANCHOR_ID} className="scroll-mt-24">
                   <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} />

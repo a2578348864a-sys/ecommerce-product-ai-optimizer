@@ -22,7 +22,11 @@ import {
   buildBatchDeleteConfirmationMessage,
   buildListingPackBadges,
   buildTaskDeleteConfirmationMessage,
+  formatTaskIdSuffix,
   getAiListingPackSnapshot,
+  hasAiListingPack,
+  LISTING_PACK_FILTER_PARAM,
+  LISTING_PACK_FILTER_LABEL,
 } from "@/lib/tasks/listingSnapshotUi";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import {
@@ -193,12 +197,13 @@ function getPriorityScore(item: TaskCenterItem, highlightedTaskId: string, hasAc
   return score;
 }
 
-function updateBrowserQuery(type: string, q: string, decisionStatus: string, agentStatus: string) {
+function updateBrowserQuery(type: string, q: string, decisionStatus: string, agentStatus: string, hasListingPack: string) {
   const params = new URLSearchParams();
   if (type && type !== defaultType) params.set("type", type);
   if (q) params.set("q", q);
   if (decisionStatus && decisionStatus !== defaultDecisionStatus) params.set("decisionStatus", decisionStatus);
   if (agentStatus && agentStatus !== defaultAgentStatus) params.set("agentStatus", agentStatus);
+  if (hasListingPack === "1") params.set(LISTING_PACK_FILTER_PARAM, "1");
   const query = params.toString();
   window.history.pushState(null, "", query ? `/tasks?${query}` : "/tasks");
 }
@@ -226,6 +231,7 @@ export function TaskRecordsList() {
   const [type, setType] = useState(defaultType);
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
+  const [hasListingPackFilter, setHasListingPackFilter] = useState(false);
   const [queryInput, setQueryInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -324,7 +330,7 @@ export function TaskRecordsList() {
       setAgentStatus(nextAgentStatus);
       setActiveQuery(q);
       if (mode === "replace") setOpenId("");
-      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus, nextAgentStatus);
+      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus, nextAgentStatus, hasListingPackFilter ? "1" : "");
     } catch {
       setError("任务记录暂时无法读取，请稍后刷新。");
     } finally {
@@ -340,6 +346,7 @@ export function TaskRecordsList() {
     const initialAgentStatus = params.get("agentStatus") || defaultAgentStatus;
     const initialHighlight = (params.get("highlight") || params.get("recent") || "").trim();
     const initialQuery = (params.get("q") || "").trim();
+    const initialHasListingPack = params.get(LISTING_PACK_FILTER_PARAM) === "1";
     // 确保 initialType 在合法值范围内，否则回退到 defaultType
     const validTypes = taskTypes.map((t) => t.value);
     const safeType = validTypes.includes(initialType) ? initialType : defaultType;
@@ -354,6 +361,7 @@ export function TaskRecordsList() {
     setType(safeType);
     setDecisionStatus(safeDecisionStatus);
     setAgentStatus(safeAgentStatus);
+    setHasListingPackFilter(initialHasListingPack);
     setHighlightedTaskId(initialHighlight);
     setQueryInput(initialQuery);
     setActiveQuery(initialQuery);
@@ -410,12 +418,13 @@ export function TaskRecordsList() {
 
   function onAgentStatusChange(nextAgentStatus: "" | AgentStatusKey) {
     setAgentStatus(nextAgentStatus);
-    updateBrowserQuery(type, activeQuery, decisionStatus, nextAgentStatus);
+    updateBrowserQuery(type, activeQuery, decisionStatus, nextAgentStatus, hasListingPackFilter ? "1" : "");
     setOpenId("");
   }
 
   function clearFilters() {
     setQueryInput("");
+    setHasListingPackFilter(false);
     void loadTasks({
       nextType: defaultType,
       nextDecisionStatus: defaultDecisionStatus,
@@ -424,6 +433,14 @@ export function TaskRecordsList() {
       offset: 0,
       mode: "replace",
       syncUrl: true,
+    });
+  }
+
+  function toggleHasListingPackFilter() {
+    setHasListingPackFilter((prev) => {
+      const next = !prev;
+      updateBrowserQuery(type, activeQuery, decisionStatus, agentStatus, next ? "1" : "");
+      return next;
     });
   }
 
@@ -619,10 +636,13 @@ export function TaskRecordsList() {
     }
   }
 
-  const visibleItems = agentStatus
-    ? items.filter((item) => getAgentStatus(item).key === agentStatus)
-    : items;
-  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus);
+  const visibleItems = (() => {
+    let result = items;
+    if (agentStatus) result = result.filter((item) => getAgentStatus(item).key === agentStatus);
+    if (hasListingPackFilter) result = result.filter((item) => hasAiListingPack(item.result));
+    return result;
+  })();
+  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus || hasListingPackFilter);
   const highlightedItemExists = Boolean(highlightedTaskId && visibleItems.some((item) => item.id === highlightedTaskId));
   const displayItems = useMemo(() => [...visibleItems].sort((a, b) => {
     const priorityDiff = getPriorityScore(b, highlightedTaskId, hasActiveFilters) - getPriorityScore(a, highlightedTaskId, hasActiveFilters);
@@ -703,7 +723,8 @@ export function TaskRecordsList() {
     return summarizePipeline(inputs);
   }, [visibleItems]);
 
-  const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters;
+  const isListingPackEmpty = !loading && !error && visibleItems.length === 0 && hasListingPackFilter && items.length > 0;
+  const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters && !isListingPackEmpty;
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
   if (!unlocked) {
@@ -867,6 +888,15 @@ export function TaskRecordsList() {
                   ))}
                 </select>
               </label>
+              <label className="flex items-center gap-2 self-end">
+                <input
+                  type="checkbox"
+                  checked={hasListingPackFilter}
+                  onChange={toggleHasListingPackFilter}
+                  className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                />
+                <span className="text-xs font-bold text-slate-700">{LISTING_PACK_FILTER_LABEL}</span>
+              </label>
               <button
                 type="submit"
                 className="linear-button-primary inline-flex h-11 items-center justify-center self-end px-5 text-sm font-semibold"
@@ -894,6 +924,13 @@ export function TaskRecordsList() {
                 <span className="font-bold text-slate-800">
                   {agentStatusFilterOptions.find((item) => item.value === agentStatus)?.label || "未知状态"}
                 </span>
+                <span className="ml-2 text-xs text-slate-400">基于当前已加载任务前端筛选。</span>
+              </p>
+            ) : null}
+            {hasListingPackFilter ? (
+              <p className="mt-2 text-sm text-slate-500">
+                当前显示：
+                <span className="font-bold text-violet-700">{LISTING_PACK_FILTER_LABEL}</span>
                 <span className="ml-2 text-xs text-slate-400">基于当前已加载任务前端筛选。</span>
               </p>
             ) : null}
@@ -930,6 +967,20 @@ export function TaskRecordsList() {
                 >
                   返回工作台开始
                 </Link>
+              </div>
+            ) : isListingPackEmpty ? (
+              <div className="mt-6 rounded-3xl border border-dashed border-violet-200 bg-violet-50/60 p-8">
+                <p className="text-lg font-semibold text-slate-950">暂无已保存 Listing 包的任务</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  当前已加载的任务中没有包含已保存 Listing 包的记录。请加载更多任务，或关闭筛选查看全部任务。
+                </p>
+                <button
+                  type="button"
+                  onClick={toggleHasListingPackFilter}
+                  className="linear-button-primary mt-5 inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                >
+                  关闭筛选
+                </button>
               </div>
             ) : isSearchEmpty ? (
               <div className="mt-6 rounded-3xl border border-dashed border-slate-200 bg-white/70 p-8">
@@ -1020,6 +1071,7 @@ export function TaskRecordsList() {
                               {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
                               {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
                               <span>{formatDate(item.createdAt)}</span>
+                              <span className="text-slate-400" title={item.id}>ID:{formatTaskIdSuffix(item.id)}</span>
                             </div>
                             <h3 className="mt-2 truncate text-lg font-semibold tracking-tight text-slate-950">
                               {summary.productName}
@@ -1032,7 +1084,7 @@ export function TaskRecordsList() {
                                 下一步：{nextAction.label}
                               </span>
                               {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">8 步主链路</span> : null; } catch { return null; } })()}
-                              {item.type === "workflow" && <span className="text-xs text-slate-400">{formatDate(item.createdAt)}</span>}
+                              <span className="text-xs text-slate-400">{formatDate(item.createdAt)}</span>
                             </div>
                             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                               {[
