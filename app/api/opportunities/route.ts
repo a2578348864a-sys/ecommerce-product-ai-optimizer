@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { getOpportunityDisplayRiskLevel, runOpportunitiesPipeline } from "@/lib/agents/orchestrator";
-import { getAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes for batch processing
@@ -35,17 +35,9 @@ export async function POST(request: NextRequest) {
 
   const bodyObj = body as Record<string, unknown>;
 
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return jsonResponse({ ok: false, error: { code: "missing_access_password", message: "服务端访问密码未配置。" } }, 500);
-  }
-
-  if (asString(bodyObj.accessPassword) !== configuredPassword) {
-    // Try signed token auth as fallback (for token-based sessions)
-    const tokenCtx = getAccessContext(request, bodyObj);
-    if (!tokenCtx) {
-      return jsonResponse({ ok: false, error: { code: "unauthorized", message: "登录状态已失效，请回首页重新解锁。" } }, 401);
-    }
+  const auth = requireAuthenticated(request, bodyObj);
+  if (!auth.ok) {
+    return jsonResponse({ ok: false, error: { code: auth.code, message: auth.message } }, auth.status);
   }
 
   const rawText = asString(bodyObj.rawText);

@@ -21,10 +21,6 @@ function radarNotFoundResponse() {
   return NextResponse.json({ error: "Not found." }, { status: 404 });
 }
 
-function getAccessPassword() {
-  return process.env.ACCESS_PASSWORD || process.env.APP_ACCESS_PASSWORD;
-}
-
 function isLocalRequest(request: NextRequest) {
   const host = request.headers.get("host") || "";
   return host.startsWith("localhost:")
@@ -110,15 +106,6 @@ export async function POST(request: NextRequest) {
   const auth = requireAuthenticated(request, body as Record<string, unknown>);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-  }
-
-  const configuredPassword = getAccessPassword();
-  if (!configuredPassword) {
-    return NextResponse.json({ error: "服务端未配置访问密码，不能保存本地档案。" }, { status: 500 });
-  }
-
-  if (typeof body.accessPassword !== "string" || body.accessPassword !== configuredPassword) {
-    return NextResponse.json({ error: "访问密码错误，不能保存本地档案。" }, { status: 401 });
   }
 
   const keyword = cleanFilePart(typeof body.keyword === "string" ? body.keyword : "未命名选品");
