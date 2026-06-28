@@ -4,7 +4,7 @@ import { prisma } from "@/lib/server/db";
 import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
 import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
-import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { listSandboxTasks, createSandboxTask, sandboxTaskToListItem } from "@/lib/server/demoSandbox";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { SEARCHABLE_TASK_TYPES } from "@/lib/taskConcepts";

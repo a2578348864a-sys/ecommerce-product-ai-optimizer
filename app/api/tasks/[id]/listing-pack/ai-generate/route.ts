@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { generateRealAiListingDraft } from "@/lib/server/aiListingGenerator";
 import { isRealAiListingEnabled } from "@/lib/server/realAiListingGate";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
@@ -181,7 +181,7 @@ export async function POST(
     }, 400);
   }
 
-  const auth = requireOwnerOnly(request, bodyRecord);
+  const auth = requireAuthenticated(request, bodyRecord);
   if (!auth.ok) {
     const code = auth.status === 401 ? "unauthorized" : auth.code;
     const message = auth.status === 401 ? "请先回首页解锁工作台。" : auth.message;

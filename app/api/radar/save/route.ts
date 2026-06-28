@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Demo-Login.1-F: Owner only — Demo forbidden from saving radar data
-  const auth = requireOwnerOnly(request, body as Record<string, unknown>);
+  const auth = requireAuthenticated(request, body as Record<string, unknown>);
   if (!auth.ok) {
     return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
   }

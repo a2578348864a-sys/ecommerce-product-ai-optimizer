@@ -7,7 +7,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   getSandboxTask,
   updateSandboxTask,
@@ -64,7 +64,7 @@ export async function PATCH(
 
   // Demo sandbox
   if (isSandboxTaskId(id)) {
-    const auth = requireOwnerOnly(request, bodyRecord);
+    const auth = requireAuthenticated(request, bodyRecord);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
     const existing = getSandboxTask(auth.context.mode === "demo" ? auth.context.demoAccessId : "", id);
@@ -79,7 +79,7 @@ export async function PATCH(
   }
 
   // Owner: Prisma
-  const auth = requireOwnerOnly(request, bodyRecord);
+  const auth = requireAuthenticated(request, bodyRecord);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {

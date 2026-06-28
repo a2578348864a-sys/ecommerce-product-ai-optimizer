@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   getSandboxTask,
   isSandboxTaskId,
@@ -102,7 +102,7 @@ export async function POST(
     return json({ ok: false, error: { code: "invalid_json", message: "请求体不是合法 JSON。" } }, 400);
   }
 
-  const auth = requireOwnerOnly(request, bodyRecord);
+  const auth = requireAuthenticated(request, bodyRecord);
   if (!auth.ok) {
     const code = auth.status === 401 ? "unauthorized" : auth.code;
     const message = auth.status === 401 ? "请先回首页解锁工作台。" : auth.message;

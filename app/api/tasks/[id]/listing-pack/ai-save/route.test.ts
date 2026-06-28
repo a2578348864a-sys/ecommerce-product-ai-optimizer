@@ -4,7 +4,7 @@ import { buildMockAiListingDraft } from "@/lib/aiListingDraft";
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   update: vi.fn(),
-  requireOwnerOnly: vi.fn(),
+  requireAuthenticated: vi.fn(),
 }));
 
 vi.mock("@/lib/server/db", () => ({
@@ -17,7 +17,7 @@ vi.mock("@/lib/server/db", () => ({
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
-  requireOwnerOnly: mocks.requireOwnerOnly,
+  requireAuthenticated: mocks.requireAuthenticated,
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({
@@ -59,7 +59,7 @@ async function callPOST(taskId: string, body: unknown = {}) {
 describe("POST /api/tasks/[id]/listing-pack/ai-save", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "owner" } });
     mocks.findUnique.mockResolvedValue({
       resultJson: JSON.stringify({
         existingField: "keep-me",
@@ -71,7 +71,7 @@ describe("POST /api/tasks/[id]/listing-pack/ai-save", () => {
   });
 
   it("returns 401 unauthorized when owner auth fails", async () => {
-    mocks.requireOwnerOnly.mockReturnValue({
+    mocks.requireAuthenticated.mockReturnValue({
       ok: false,
       status: 401,
       code: "invalid_access",

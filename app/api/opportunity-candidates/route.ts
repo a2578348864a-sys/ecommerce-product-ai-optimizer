@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
-import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   listSandboxCandidates,
   createSandboxCandidate,

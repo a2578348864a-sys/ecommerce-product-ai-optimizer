@@ -21,7 +21,6 @@ vi.mock("@/lib/server/accessPassword", () => ({
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
-  requireOwnerOnly: () => ({ ok: true, context: { mode: "owner" } }),
   requireAuthenticated: () => ({ ok: true, context: { mode: "owner" } }),
 }));
 

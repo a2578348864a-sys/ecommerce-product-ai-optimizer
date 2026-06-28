@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwnerOnly, requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { importSandboxCandidates } from "@/lib/server/demoSandbox";
 import { importLocalCandidates, isValidCandidateStatus, type CandidateInput } from "@/lib/server/opportunityCandidateService";
 

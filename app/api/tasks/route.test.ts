@@ -266,7 +266,7 @@ describe("POST /api/tasks", () => {
     });
     const response = await mod.POST(request);
     const { status, body } = await getJsonStatus(response);
-    // requireOwnerOnly returns 401 when no auth is configured (couldn't verify owner)
+    // requireAuthenticated returns 401 when no auth is configured (couldn't verify owner)
     expect(status).toBe(401);
     expect(body.error?.code || body.error).toBeTruthy();
   });

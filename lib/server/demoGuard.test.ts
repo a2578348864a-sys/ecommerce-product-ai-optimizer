@@ -17,6 +17,7 @@ import {
   createDemoAccess,
   saveDemoAccessStore,
   loadDemoAccessStore,
+  activateDemoAccessOnFirstLogin,
   type DemoAccessStore,
 } from "@/lib/server/demoAccess";
 import {
@@ -184,6 +185,59 @@ describe("consumeDemoAiCalls", () => {
     const snap = consumeDemoAiCalls(ctx, 1); // try one more
     expect(snap!.usedAiCalls).toBe(3); // file allows it, guard should check first
     expect(snap!.remainingAiCalls).toBe(0);
+  });
+});
+
+// ── Guest-Access.1: Guest full-feature model ─────
+
+describe("Guest-Access.1 permission model", () => {
+  beforeEach(() => saveDemoAccessStore(emptyStore()));
+  afterEach(() => saveDemoAccessStore(emptyStore()));
+
+  it("Guest (demo) AI quota gate blocks 6th real AI call", () => {
+    const { record } = createDemoAccess({ label: "Guest", hours: 24, maxAiCalls: 5 });
+    const ctx = makeDemoCtx(record.id);
+
+    // Calls 1-5 pass
+    for (let i = 0; i < 5; i++) {
+      expect(ensureDemoAiQuota(ctx, 1)).toEqual({ ok: true });
+      consumeDemoAiCalls(ctx, 1);
+    }
+
+    // Call 6 fails
+    const result = ensureDemoAiQuota(ctx, 1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("demo_ai_quota_exceeded");
+  });
+
+  it("Owner never consumes AI quota from guest pool", () => {
+    const ownerCtx = makeOwnerCtx();
+    // ensureDemoAiQuota passes for any count
+    expect(ensureDemoAiQuota(ownerCtx, 100)).toEqual({ ok: true });
+    // consumeDemoAiCalls returns null (no guest record to update)
+    expect(consumeDemoAiCalls(ownerCtx, 1)).toBeNull();
+  });
+
+  it("Guest 24h activation only triggers on first login", () => {
+    const { record } = createDemoAccess({ label: "Fresh", hours: 24, maxAiCalls: 5 });
+    // Before first login: expiresAt is null
+    expect(record.expiresAt).toBeNull();
+    // First login activates
+    const activated = activateDemoAccessOnFirstLogin(record.id, 24);
+    expect(activated).not.toBeNull();
+    expect(activated!.expiresAt).not.toBeNull();
+    // expiresAt is ~24h from now
+    const expires = new Date(activated!.expiresAt!);
+    const expected = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    expect(Math.abs(expires.getTime() - expected.getTime())).toBeLessThan(5000);
+  });
+
+  it("Guest non-AI API calls do not consume quota", () => {
+    const { record } = createDemoAccess({ label: "G", hours: 24, maxAiCalls: 5 });
+    // Simulate page loads, GET requests, etc. — none should consume
+    const check = getLatestDemoSnapshot(makeDemoCtx(record.id));
+    expect(check!.remainingAiCalls).toBe(5);
+    expect(check!.usedAiCalls).toBe(0);
   });
 });
 

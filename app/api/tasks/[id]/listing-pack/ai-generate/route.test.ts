@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   create: vi.fn(),
   delete: vi.fn(),
-  requireOwnerOnly: vi.fn(),
+  requireAuthenticated: vi.fn(),
   callAiJson: vi.fn(),
 }));
 
@@ -24,7 +24,7 @@ vi.mock("@/lib/server/db", () => ({
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
-  requireOwnerOnly: mocks.requireOwnerOnly,
+  requireAuthenticated: mocks.requireAuthenticated,
 }));
 
 vi.mock("@/lib/server/aiClient", () => ({
@@ -74,12 +74,12 @@ describe("POST /api/tasks/[id]/listing-pack/ai-generate", () => {
     mocks.callAiJson.mockImplementation(() => {
       throw new Error("callAiJson must not be called in Core-4-AI.8");
     });
-    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "owner" } });
     mocks.findUnique.mockResolvedValue(TASK_RECORD);
   });
 
   it("returns 401 unauthorized when owner auth fails", async () => {
-    mocks.requireOwnerOnly.mockReturnValue({
+    mocks.requireAuthenticated.mockReturnValue({
       ok: false,
       status: 401,
       code: "invalid_access",
