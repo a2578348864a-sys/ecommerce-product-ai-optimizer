@@ -555,7 +555,12 @@ export function OpportunitiesForm() {
       const json: ApiResponse = await res.json();
 
       if (!json.ok) {
-        if (res.status === 401 || res.status === 403 || json.error?.code === "invalid_access") {
+        const code = json.error?.code;
+        if (code === "demo_access_expired" || code === "demo_access_inactive") {
+          setError(json.error?.message || "访客访问已过期或已停用。");
+        } else if (code === "demo_action_forbidden" || code === "demo_ai_quota_exceeded") {
+          setError(json.error?.message || "访客模式下该操作受限。");
+        } else if (res.status === 401 || code === "invalid_access" || code === "unauthorized") {
           setError("登录状态已失效，请回首页重新解锁。");
         } else {
           setError(json.error?.message || "分析失败，请稍后重试。");
@@ -621,7 +626,12 @@ export function OpportunitiesForm() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        if (res.status === 401 || res.status === 403 || data.error?.code === "invalid_access") {
+        const code = data.error?.code;
+        if (code === "demo_access_expired" || code === "demo_access_inactive") {
+          setCrawlWarnings([data.error?.message || "访客访问已过期或已停用。"]);
+        } else if (code === "demo_action_forbidden" || code === "demo_ai_quota_exceeded") {
+          setCrawlWarnings([data.error?.message || "访客模式下该操作受限。"]);
+        } else if (res.status === 401 || code === "invalid_access" || code === "unauthorized") {
           setCrawlWarnings(["登录状态已失效，请回首页重新解锁。"]);
         } else {
           setCrawlWarnings([data.error?.message || "该来源暂时无法抓取，请换一个商品页或稍后重试。"]);
