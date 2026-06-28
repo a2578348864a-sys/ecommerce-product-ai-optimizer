@@ -23,19 +23,25 @@ const OWNER_PLACEHOLDER = "输入 Owner 密码";
 const GUEST_PLACEHOLDER = "输入访客码";
 
 export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
-  const [password, setPassword] = useState("");
+  const [ownerPassword, setOwnerPassword] = useState("");
+  const [guestPassword, setGuestPassword] = useState("");
   const [activeTab, setActiveTab] = useState<LoginTab>("owner");
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleOwnerSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!password.trim() || loading) return;
-    onSubmit(password.trim());
+    if (!ownerPassword.trim() || loading) return;
+    onSubmit(ownerPassword.trim());
+  }
+
+  function handleGuestSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!guestPassword.trim() || loading) return;
+    onSubmit(guestPassword.trim());
   }
 
   function switchTab(tab: LoginTab) {
     if (loading) return;
     setActiveTab(tab);
-    setPassword("");
   }
 
   const isOwner = activeTab === "owner";
@@ -149,13 +155,13 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
               用于正式维护候选池、任务记录和 AI 工作流。
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
+            <form onSubmit={handleOwnerSubmit} className="mt-4 flex flex-col gap-3">
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={ownerPassword}
+                  onChange={(e) => setOwnerPassword(e.target.value)}
                   placeholder={OWNER_PLACEHOLDER}
                   disabled={loading}
                   autoFocus
@@ -165,7 +171,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
 
               <button
                 type="submit"
-                disabled={loading || !password.trim()}
+                disabled={loading || !ownerPassword.trim()}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 text-sm font-semibold text-white shadow-sm shadow-teal-200 transition hover:from-teal-600 hover:to-emerald-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? (
@@ -197,13 +203,13 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
               <p>· 可体验全部主要功能</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            <form onSubmit={handleGuestSubmit} className="flex flex-col gap-3">
               <div className="relative">
                 <Eye className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={guestPassword}
+                  onChange={(e) => setGuestPassword(e.target.value)}
                   placeholder={GUEST_PLACEHOLDER}
                   disabled={loading}
                   className="h-11 w-full rounded-xl border border-sky-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:opacity-50"
@@ -212,7 +218,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
 
               <button
                 type="submit"
-                disabled={loading || !password.trim()}
+                disabled={loading || !guestPassword.trim()}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm shadow-sky-200 transition hover:from-sky-600 hover:to-cyan-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {loading ? (
