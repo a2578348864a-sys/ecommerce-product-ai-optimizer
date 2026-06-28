@@ -8,6 +8,11 @@ out
 .env.*.local
 .local/
 .playwright-mcp/
+# Browser profiles and private local states
+.alpha-browser-profile/
+**/.alpha-browser-profile/
+.playwright-profile/
+**/.playwright-profile/
 radar-research/
 radar-browser-profile/
 *.har
