@@ -876,10 +876,17 @@ export function OpportunitiesForm() {
       }
 
       if (!json.ok) {
+        const code = json.error?.code;
         const msg = json.error?.message || "来源导入失败。";
-        if (res.status === 401 || json.error?.code === "unauthorized") {
+        if (code === "demo_access_expired" || code === "demo_access_inactive") {
+          setSourceImportError(msg);
+        } else if (code === "demo_action_forbidden" || code === "demo_ai_quota_exceeded") {
+          setSourceImportError(msg);
+        } else if (code === "invalid_access" || code === "unauthorized") {
           setSourceImportError("访问已失效，请重新输入访问密码。");
-        } else if (json.error?.code === "too_many_urls") {
+        } else if (res.status === 401 || res.status === 403) {
+          setSourceImportError("访问已失效，请重新输入访问密码。");
+        } else if (code === "too_many_urls") {
           setSourceImportError(msg);
         } else if (json.error?.code === "no_valid_urls") {
           setSourceImportError(msg);

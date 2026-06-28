@@ -95,7 +95,10 @@ export async function POST(request: NextRequest) {
   }
 
   const authResult = requireAuthenticated(request, body);
-  if (!authResult.ok) return NextResponse.json({ error: authResult.message }, { status: authResult.status });
+  if (!authResult.ok) return NextResponse.json(
+    { ok: false, error: { code: authResult.code, message: authResult.message } },
+    { status: authResult.status },
+  );
 
   // Parse URLs
   const rawInput = asString(body.input) || asString(body.urls);
