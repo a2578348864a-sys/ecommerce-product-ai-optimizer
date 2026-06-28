@@ -15,6 +15,8 @@ import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-bord
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard, type ListingPrepInput } from "@/components/cross-border/ListingPrepPackageCard";
 import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } from "@/lib/agentRunSnapshot";
+import { AgentRunTimeline } from "@/components/AgentRunTimeline";
+import { deriveAgentRunTimelineItems } from "@/lib/agentRunTimeline";
 import {
   decisionStatusOptions,
   getDecisionStatusOption,
@@ -199,6 +201,10 @@ function WorkflowDecisionSummary({
   const listingPrepSnapshot = extractListingPrepSnapshot(result) || (
     agentRunSnapshot ? null : null // will try fallback from listing data below
   );
+  const agentRunTimelineItems = useMemo(
+    () => deriveAgentRunTimelineItems({ result, decisionStatus }),
+    [result, decisionStatus],
+  );
 
   const decisionCard = useMemo(() => buildDecisionCard({
     resultJson: result,
@@ -356,7 +362,8 @@ function WorkflowDecisionSummary({
               </p>
             </div>
           </div>
-          <details className="mt-3 rounded-xl border border-white/80 bg-white p-3">
+          <AgentRunTimeline items={agentRunTimelineItems} className="mt-3" />
+          <details className="hidden">
             <summary className="cursor-pointer text-sm font-semibold text-indigo-700 select-none">
               8 步链路状态
             </summary>
