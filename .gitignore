@@ -42,6 +42,10 @@ prisma/*.db-journal
 fix_*.py
 test_*.py
 
+# DB Protection — local backups and audit logs
+.local-backups/
+logs/
+
 # Demo access credentials (contains password hashes — do not commit)
 data/demo-access.json
 # Demo sandbox data (contains demo user tasks/candidates — do not commit)

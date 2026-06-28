@@ -12,6 +12,7 @@ import {
   type AiListingPackSnapshot,
   type AiListingSaveErrorCode,
 } from "@/lib/aiListingSnapshot";
+import { buildAuditEntry, writeAuditLog } from "@/lib/server/listingSnapshotAudit";
 
 export const runtime = "nodejs";
 
@@ -144,6 +145,9 @@ export async function POST(
         return json({ ok: false, error: { code: "ai_listing_save_failed", message: "保存失败，当前草稿仍保留在页面中，可稍后重试。" } }, 500);
       }
 
+      // DB-Protection.1: post-save audit (best-effort, does not affect main flow)
+      try { writeAuditLog(buildAuditEntry(id, built.snapshot)); } catch { /* ignore */ }
+
       return json(success(built.snapshot));
     }
 
@@ -177,6 +181,9 @@ export async function POST(
       where: { id },
       data: { resultJson: JSON.stringify(built.resultJson) },
     });
+
+    // DB-Protection.1: post-save audit (best-effort, does not affect main flow)
+    try { writeAuditLog(buildAuditEntry(id, built.snapshot)); } catch { /* ignore */ }
 
     return json(success(built.snapshot));
   } catch (error) {
