@@ -143,7 +143,13 @@ export function checkAccessPassword(
   const isValidSession = (candidate: string): boolean => {
     if (!candidate) return false;
     const session = getAccessSession(candidate);
-    return !!(session && (session.mode === "owner" || session.mode === "demo"));
+    if (!session) return false;
+    if (session.mode === "owner") return true;
+    if (session.mode === "demo" && session.demoAccessId) {
+      const demoAccess = getDemoAccessById(session.demoAccessId);
+      return !!(demoAccess && isDemoAccessActive(demoAccess));
+    }
+    return false;
   };
 
   // 1) Try x-access-token header as token session

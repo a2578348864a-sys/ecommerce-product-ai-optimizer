@@ -28,6 +28,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
 
   beforeEach(() => {
     process.env.ACCESS_PASSWORD = "test-dummy-for-tasks-list";
+    process.env.DEMO_ACCESS_STORE_PATH = ".next/test-stores/demo-access.test-system-recovery3.json";
     process.env.DEMO_SANDBOX_STORE_PATH = "data/demo-sandbox.test-system-recovery3.json";
 
     // Start with empty sandbox
@@ -44,6 +45,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
 
   afterEach(() => {
     delete process.env.ACCESS_PASSWORD;
+    delete process.env.DEMO_ACCESS_STORE_PATH;
     delete process.env.DEMO_SANDBOX_STORE_PATH;
     if (ownerToken) deleteAccessSession(ownerToken);
     if (demoToken) deleteAccessSession(demoToken);

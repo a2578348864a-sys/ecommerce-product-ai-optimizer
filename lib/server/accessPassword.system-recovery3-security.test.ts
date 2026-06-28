@@ -44,7 +44,7 @@ describe("Security Gate — Fallback Demo Context", () => {
   beforeEach(() => {
     process.env.ACCESS_PASSWORD = "security-gate-test-pw";
     // Isolate demo access store from other test files
-    process.env.DEMO_ACCESS_STORE_PATH = "data/demo-access.security-gate-test.json";
+    process.env.DEMO_ACCESS_STORE_PATH = ".next/test-stores/demo-access.security-gate-test.json";
 
     const ownerSession = createOwnerSession();
     ownerToken = ownerSession.token;
@@ -184,9 +184,9 @@ describe("Security Gate — Fallback Demo Context", () => {
       const req = buildRequest({ "x-access-token": demoToken });
       const result = requireOwnerOnly(req);
       expect(result.ok).toBe(false);
-      expect(result.status).toBe(403);
+      expect(result.status).toBe(401);
       if (!result.ok) {
-        expect(result.code).toBe("demo_action_forbidden");
+        expect(result.code).toBe("invalid_access");
       }
     });
 
