@@ -20,6 +20,13 @@ import {
   getDecisionStatusOption,
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
+import {
+  LISTING_PACK_ANCHOR_ID,
+  LISTING_PACK_SHORTCUT_LABEL,
+  buildTaskDeleteConfirmationMessage,
+  getAiListingPackSnapshot,
+  shouldShowListingPackShortcut,
+} from "@/lib/tasks/listingSnapshotUi";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import { buildDecisionCard } from "@/lib/decisionCard";
@@ -1033,6 +1040,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
       return "结果内容暂时无法格式化。";
     }
   }, [record]);
+  const aiListingPackSnapshot = useMemo(() => (
+    record ? getAiListingPackSnapshot(record.result) : null
+  ), [record]);
+  const showListingPackShortcut = record ? shouldShowListingPackShortcut(record.result) : false;
   const recordSummary = useMemo(() => {
     if (!record) return null;
     return deriveTaskWorkflowSummary({
@@ -1053,7 +1064,9 @@ export function TaskRecordDetail({ id }: { id: string }) {
       return;
     }
 
-    const confirmed = window.confirm("确定删除这条任务记录吗？删除后无法恢复。");
+    const confirmed = window.confirm(buildTaskDeleteConfirmationMessage({
+      result: record.result,
+    }));
     if (!confirmed) return;
 
     setDeleting(true);
@@ -1243,6 +1256,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
+                  {showListingPackShortcut ? (
+                    <Link
+                      href={`#${LISTING_PACK_ANCHOR_ID}`}
+                      className="linear-button-primary inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
+                    >
+                      {LISTING_PACK_SHORTCUT_LABEL}
+                    </Link>
+                  ) : null}
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
                     {record.score}/100
                   </span>
@@ -1348,15 +1369,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </details>
 
               {/* AI Listing 草稿包 — 对所有 task 类型展示已保存 snapshot */}
-              {(() => {
-                try {
-                  const snap = (record.result as Record<string, unknown>)?.aiListingPackSnapshot as Record<string, unknown> | undefined;
-                  if (snap?.snapshotType === "ai_listing_pack") {
-                    return <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={snap as AiListingPackSnapshot} />;
-                  }
-                } catch { /* ignore */ }
-                return null;
-              })()}
+              {aiListingPackSnapshot ? (
+                <section id={LISTING_PACK_ANCHOR_ID} className="scroll-mt-24">
+                  <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} />
+                </section>
+              ) : null}
 
               <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
                 <summary className="cursor-pointer font-semibold text-slate-500 select-none">输入素材和原始链接</summary>

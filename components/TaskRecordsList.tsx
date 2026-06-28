@@ -18,6 +18,12 @@ import {
   getDecisionStatusOption,
   type DecisionStatus,
 } from "@/lib/tasks/decisionStatus";
+import {
+  buildBatchDeleteConfirmationMessage,
+  buildListingPackBadges,
+  buildTaskDeleteConfirmationMessage,
+  getAiListingPackSnapshot,
+} from "@/lib/tasks/listingSnapshotUi";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import {
   derivePipelineStatus,
@@ -453,7 +459,10 @@ export function TaskRecordsList() {
       return;
     }
 
-    const confirmed = window.confirm(`确定删除「${getTitle(item)}」这条任务记录吗？删除后无法恢复。`);
+    const confirmed = window.confirm(buildTaskDeleteConfirmationMessage({
+      title: getTitle(item),
+      result: item.result,
+    }));
     if (!confirmed) return;
 
     setDeletingId(item.id);
@@ -513,8 +522,14 @@ export function TaskRecordsList() {
   async function batchDeleteSelected() {
     if (selectedIds.size === 0 || batchDeleting) return;
     const ids = [...selectedIds];
+    const hasListingPackSnapshot = items.some((item) => (
+      selectedIds.has(item.id) && Boolean(getAiListingPackSnapshot(item.result))
+    ));
     const confirmed = window.confirm(
-      `确认删除选中的 ${ids.length} 条任务？此操作不可恢复。`
+      buildBatchDeleteConfirmationMessage({
+        count: ids.length,
+        hasListingPackSnapshot,
+      })
     );
     if (!confirmed) return;
 
@@ -987,6 +1002,7 @@ export function TaskRecordsList() {
                     });
                     const batchMeta = summary.batchMeta;
                     const sourceMeta = getTaskSourceMeta(item.result);
+                    const listingPackBadges = buildListingPackBadges(item.result);
                     const batchGroup = batchMeta ? operationStats.batchGroups.get(batchMeta.batchId) : null;
                     const pipelineStatus = derivePipelineStatus({ decisionStatus: item.decisionStatus, level: item.level, result: item.result });
                     const nextAction = deriveNextAction({ decisionStatus: item.decisionStatus, level: item.level, result: item.result });
@@ -1068,6 +1084,14 @@ export function TaskRecordsList() {
                             <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
                               {getDecisionStatusOption(item.decisionStatus).shortLabel}
                             </span>
+                            {listingPackBadges.map((badge) => (
+                              <span
+                                key={badge}
+                                className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
+                              >
+                                {badge}
+                              </span>
+                            ))}
                             {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
                             {sourceMeta ? (
                               <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
