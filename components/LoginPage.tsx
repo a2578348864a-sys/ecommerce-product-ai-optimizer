@@ -154,35 +154,27 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="password"
-                  value={isOwner ? password : ""}
-                  onChange={(e) => { if (isOwner) setPassword(e.target.value); }}
-                  onFocus={() => { if (!isOwner) switchTab("owner"); }}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder={OWNER_PLACEHOLDER}
-                  disabled={loading || !isOwner}
+                  disabled={loading}
                   autoFocus
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-50"
                 />
               </div>
 
-              {isOwner && (
-                <button
-                  type="submit"
-                  disabled={loading || !password.trim()}
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 text-sm font-semibold text-white shadow-sm shadow-teal-200 transition hover:from-teal-600 hover:to-emerald-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? (
-                    <><Loader2 className="size-4 animate-spin" />验证中…</>
-                  ) : (
-                    <>进入 Owner 工作台<ArrowRight className="size-4" /></>
-                  )}
-                </button>
-              )}
+              <button
+                type="submit"
+                disabled={loading || !password.trim()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-4 text-sm font-semibold text-white shadow-sm shadow-teal-200 transition hover:from-teal-600 hover:to-emerald-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? (
+                  <><Loader2 className="size-4 animate-spin" />验证中…</>
+                ) : (
+                  <>进入 Owner 工作台<ArrowRight className="size-4" /></>
+                )}
+              </button>
             </form>
-            {!isOwner && (
-              <p className="mt-3 text-center text-[11px] text-slate-300">
-                点击上方 Tab 切换至 Owner 登录
-              </p>
-            )}
           </div>
 
           {/* Guest card */}
@@ -210,34 +202,26 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 <Eye className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="password"
-                  value={!isOwner ? password : ""}
-                  onChange={(e) => { if (!isOwner) setPassword(e.target.value); }}
-                  onFocus={() => { if (isOwner) switchTab("guest"); }}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder={GUEST_PLACEHOLDER}
-                  disabled={loading || isOwner}
-                  className="h-11 w-full rounded-xl border border-sky-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={loading}
+                  className="h-11 w-full rounded-xl border border-sky-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:opacity-50"
                 />
               </div>
 
-              {!isOwner && (
-                <button
-                  type="submit"
-                  disabled={loading || !password.trim()}
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm shadow-sky-200 transition hover:from-sky-600 hover:to-cyan-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? (
-                    <><Loader2 className="size-4 animate-spin" />验证中…</>
-                  ) : (
-                    <>进入访客体验<ArrowRight className="size-4" /></>
-                  )}
-                </button>
-              )}
+              <button
+                type="submit"
+                disabled={loading || !password.trim()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm shadow-sky-200 transition hover:from-sky-600 hover:to-cyan-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? (
+                  <><Loader2 className="size-4 animate-spin" />验证中…</>
+                ) : (
+                  <>进入访客体验<ArrowRight className="size-4" /></>
+                )}
+              </button>
             </form>
-            {isOwner && (
-              <p className="mt-3 text-center text-[11px] text-slate-300">
-                点击上方 Tab 切换至访客体验
-              </p>
-            )}
           </div>
         </div>
 
