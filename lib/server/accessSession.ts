@@ -99,6 +99,7 @@ export function getAccessSession(token: string): AccessSession | null {
       return {
         token,
         mode: result.mode,
+        demoAccessId: result.payload.demoAccessId,
         createdAt: new Date(result.payload.iat).toISOString(),
         expiresAt: new Date(result.payload.exp).toISOString(),
       };

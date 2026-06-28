@@ -15,6 +15,7 @@ import {
   createDemoSession,
   deleteAccessSession,
 } from "@/lib/server/accessSession";
+import { generateSignedToken } from "@/lib/server/signedToken";
 import {
   createDemoAccess,
   loadDemoAccessStore,
@@ -103,6 +104,34 @@ describe("getAccessContext — token from x-access-token header", () => {
     const req = buildRequest({ "x-access-token": "" });
     const ctx = getAccessContext(req);
     expect(ctx).toBeNull();
+  });
+});
+
+describe("getAccessContext — signed token compatibility", () => {
+  it("returns owner context for a signed owner token", () => {
+    const signedOwnerToken = generateSignedToken("owner");
+    const req = buildRequest({ "x-access-token": signedOwnerToken });
+
+    const ctx = getAccessContext(req);
+
+    expect(ctx).not.toBeNull();
+    expect(ctx!.mode).toBe("owner");
+    expect(ctx!.token).toBe(signedOwnerToken);
+  });
+
+  it("returns demo context with demoAccessId for a signed demo token", () => {
+    const signedDemoToken = generateSignedToken("demo", demoAccessId);
+    const req = buildRequest({ "x-access-token": signedDemoToken });
+
+    const ctx = getAccessContext(req);
+
+    expect(ctx).not.toBeNull();
+    expect(ctx!.mode).toBe("demo");
+    if (ctx!.mode === "demo") {
+      expect(ctx!.demoAccessId).toBe(demoAccessId);
+      expect(ctx!.isActive).toBe(true);
+      expect(ctx!.remainingAiCalls).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

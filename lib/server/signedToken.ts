@@ -21,6 +21,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 export type SignedTokenPayload = {
   v: 1;             // version
   mode: "owner" | "demo";
+  demoAccessId?: string; // demo only
   iat: number;      // issued at (epoch ms)
   exp: number;      // expires at (epoch ms)
   jti: string;      // unique token id (16 random bytes, base64url)
@@ -65,7 +66,7 @@ function fromBase64url(str: string): Buffer {
 
 // ── Token generation ────────────────────────────
 
-export function generateSignedToken(mode: "owner" | "demo"): string {
+export function generateSignedToken(mode: "owner" | "demo", demoAccessId?: string): string {
   const now = Date.now();
   const jti = toBase64url(randomBytes(16));
 
@@ -76,6 +77,10 @@ export function generateSignedToken(mode: "owner" | "demo"): string {
     exp: now + OWNER_TTL_MS,
     jti,
   };
+
+  if (mode === "demo" && demoAccessId) {
+    payload.demoAccessId = demoAccessId;
+  }
 
   const payloadJson = JSON.stringify(payload);
   const payloadB64 = toBase64url(Buffer.from(payloadJson, "utf-8"));

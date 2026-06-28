@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Allow login even with 0 remaining AI calls — frontend shows 0, API will block actual AI calls later
-    const signedToken = generateSignedToken("demo");
+    const signedToken = generateSignedToken("demo", demoAccess.id);
     createDemoSession(demoAccess.id); // legacy session for backward compat
     return NextResponse.json({
       ok: true,
