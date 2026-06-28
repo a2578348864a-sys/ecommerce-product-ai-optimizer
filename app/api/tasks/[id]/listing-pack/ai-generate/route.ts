@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import { generateRealAiListingDraft } from "@/lib/server/aiListingGenerator";
 import { isRealAiListingEnabled } from "@/lib/server/realAiListingGate";
+import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { buildMockAiListingDraft, validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 
@@ -13,7 +15,10 @@ type ApiErrorCode =
   | "missing_task_context"
   | "real_ai_confirmation_required"
   | "real_ai_disabled"
-  | "real_ai_not_implemented"
+  | "ai_timeout"
+  | "ai_json_parse_failed"
+  | "ai_schema_invalid"
+  | "ai_provider_error"
   | "invalid_ai_listing_pack"
   | "ai_listing_generation_failed"
   | "invalid_json";
@@ -22,9 +27,9 @@ type ApiResponse =
   | {
     ok: true;
     data: {
-      listingPack: ReturnType<typeof buildMockAiListingDraft>;
+      listingPack: AiListingPackDraft;
       meta: {
-        mode: "mock";
+        mode: "mock" | "real";
         saved: false;
         nextStep: "review_before_save";
       };
@@ -70,16 +75,6 @@ function getGenerationMode(bodyRecord: Record<string, unknown>) {
   return bodyRecord.mode === "real" ? "real" : "mock";
 }
 
-function realAiListingNotImplemented() {
-  return json({
-    ok: false,
-    error: {
-      code: "real_ai_not_implemented",
-      message: "真实 AI Listing 草稿生成尚未接入，本阶段不会调用真实 AI。",
-    },
-  }, 501);
-}
-
 function guardRealAiRequest(bodyRecord: Record<string, unknown>) {
   if (bodyRecord.confirmRealAi !== true) {
     return json({
@@ -102,6 +97,18 @@ function guardRealAiRequest(bodyRecord: Record<string, unknown>) {
   }
 
   return null;
+}
+
+function realAiErrorStatus(code: string) {
+  if (
+    code === "ai_timeout"
+    || code === "ai_json_parse_failed"
+    || code === "ai_schema_invalid"
+    || code === "ai_provider_error"
+  ) {
+    return 502;
+  }
+  return 500;
 }
 
 function getNestedRecord(source: Record<string, unknown>, key: string) {
@@ -184,10 +191,6 @@ export async function POST(
   if (getGenerationMode(bodyRecord) === "real") {
     const guarded = guardRealAiRequest(bodyRecord);
     if (guarded) return guarded;
-
-    // Core-4-AI.8 only installs the safety shell. Future real AI output must
-    // flow through the same claim filter and schema validation used by mock.
-    return realAiListingNotImplemented();
   }
 
   try {
@@ -215,6 +218,28 @@ export async function POST(
         ok: false,
         error: { code: "missing_task_context", message: "当前任务信息不足，无法生成 Listing 草稿。" },
       }, 400);
+    }
+
+    if (getGenerationMode(bodyRecord) === "real") {
+      const generated = await generateRealAiListingDraft(context);
+      if (!generated.ok) {
+        return json({
+          ok: false,
+          error: { code: generated.error.code, message: generated.error.message },
+        }, realAiErrorStatus(generated.error.code));
+      }
+
+      return json({
+        ok: true,
+        data: {
+          listingPack: generated.data,
+          meta: {
+            mode: "real",
+            saved: false,
+            nextStep: "review_before_save",
+          },
+        },
+      });
     }
 
     const draft = buildMockAiListingDraft(context);
