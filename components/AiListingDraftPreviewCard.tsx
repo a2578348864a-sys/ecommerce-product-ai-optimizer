@@ -48,6 +48,20 @@ export function getAiListingSaveErrorMessage(status: number, code?: string) {
   return "保存失败，当前草稿仍保留在页面中，可稍后重试。";
 }
 
+function isGateCloseError(message: string) {
+  return message.includes("暂未开启") || message.includes("尚未接入") || message.includes("需要二次确认");
+}
+
+function draftPreviewLabel(source: string | undefined) {
+  return source === "real_ai_draft" ? "real AI draft" : "mock AI preview";
+}
+
+function statusBadgeLabel(error: string, draft: AiListingPackDraft | null, draftSaved: boolean) {
+  if (error) return isGateCloseError(error) ? "未消耗额度" : "生成失败";
+  if (draft) return draftSaved ? "已保存到任务记录" : "草稿预览已生成";
+  return "未生成";
+}
+
 function listSection(title: string, items: string[]) {
   if (!items.length) return [`## ${title}`, "", "暂无", ""];
   return [`## ${title}`, "", ...items.map((item) => `- ${item}`), ""];
@@ -272,7 +286,7 @@ export function AiListingDraftPreviewCard({
     <section className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4" data-testid="ai-listing-draft-preview">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">mock AI preview</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-600">{draftPreviewLabel(draft?.source)}</p>
           <h3 className="mt-1 text-base font-bold text-slate-950">AI Listing 草稿预览</h3>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             基于当前任务信息生成草稿，用于人工复核，不会自动上架。
@@ -280,14 +294,16 @@ export function AiListingDraftPreviewCard({
         </div>
         <span className={`w-fit rounded-full border px-3 py-1 text-sm font-semibold ${
           error
-            ? "border-rose-200 bg-rose-50 text-rose-700"
+            ? isGateCloseError(error)
+              ? "border-sky-200 bg-sky-50 text-sky-700"
+              : "border-rose-200 bg-rose-50 text-rose-700"
             : draft
               ? draftSaved
                 ? "border-teal-200 bg-teal-50 text-teal-700"
                 : "border-emerald-200 bg-emerald-50 text-emerald-700"
               : "border-slate-200 bg-slate-50 text-slate-600"
         }`}>
-          {error ? "生成失败" : draft ? draftSaved ? "已保存到任务记录" : "草稿预览已生成" : "未生成"}
+          {statusBadgeLabel(error, draft, draftSaved)}
         </span>
       </div>
 

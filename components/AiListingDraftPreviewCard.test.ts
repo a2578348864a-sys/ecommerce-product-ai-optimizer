@@ -107,6 +107,42 @@ describe("AiListingDraftPreviewCard", () => {
     expect(html).toContain("当前草稿已保存到任务记录，刷新后仍可查看。");
   });
 
+  it("shows real AI draft header when saved snapshot source is real_ai_draft", () => {
+    const html = renderToString(React.createElement(AiListingDraftPreviewCard, {
+      taskId: "task-1",
+      initialSavedSnapshot: savedSnapshot({ source: "real_ai_draft", model: "deepseek-chat" }),
+    }));
+
+    expect(html).toContain("real AI draft");
+    expect(html).not.toContain("mock AI preview");
+    expect(html).toContain("已保存到任务记录");
+    // React SSR inserts hydration comments between CJK punctuation and text.
+    expect(html.replace(/<!-- -->/g, "")).toContain("source：real_ai_draft");
+  });
+
+  it("keeps mock AI preview header for mock_ai_draft source", () => {
+    const html = renderToString(React.createElement(AiListingDraftPreviewCard, {
+      taskId: "task-1",
+      initialDraft: draft({ source: "mock_ai_draft" }),
+    }));
+
+    expect(html).toContain("mock AI preview");
+    expect(html).not.toContain("real AI draft");
+  });
+
+  it("shows 未消耗额度 badge for real_ai_disabled gate errors instead of 生成失败", () => {
+    // Gate-close errors are not failures — they correctly prevent AI calls.
+    const gateDisabledMsg = getAiListingDraftErrorMessage(403, "real_ai_disabled");
+    expect(gateDisabledMsg).toContain("暂未开启");
+    expect(gateDisabledMsg).toContain("没有消耗 AI 额度");
+
+    const gateNotImplementedMsg = getAiListingDraftErrorMessage(501, "real_ai_not_implemented");
+    expect(gateNotImplementedMsg).toContain("尚未接入");
+
+    const confirmationMsg = getAiListingDraftErrorMessage(400, "real_ai_confirmation_required");
+    expect(confirmationMsg).toContain("需要二次确认");
+  });
+
   it("maps API errors to readable retry messages", () => {
     expect(getAiListingDraftErrorMessage(401, "unauthorized")).toBe("登录状态已失效，请回首页重新解锁。");
     expect(getAiListingDraftErrorMessage(404, "task_not_found")).toBe("当前任务不存在或已被删除。");
