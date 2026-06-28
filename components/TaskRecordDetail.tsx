@@ -1347,6 +1347,17 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </div>
               </details>
 
+              {/* AI Listing 草稿包 — 对所有 task 类型展示已保存 snapshot */}
+              {(() => {
+                try {
+                  const snap = (record.result as Record<string, unknown>)?.aiListingPackSnapshot as Record<string, unknown> | undefined;
+                  if (snap?.snapshotType === "ai_listing_pack") {
+                    return <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={snap as AiListingPackSnapshot} />;
+                  }
+                } catch { /* ignore */ }
+                return null;
+              })()}
+
               <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
                 <summary className="cursor-pointer font-semibold text-slate-500 select-none">输入素材和原始链接</summary>
                 {record.productUrl ? (
