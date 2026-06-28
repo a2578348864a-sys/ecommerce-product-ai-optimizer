@@ -113,4 +113,87 @@ describe("generateRealAiListingDraft", () => {
     if (result.ok) throw new Error("Expected provider error.");
     expect(result.error.code).toBe("ai_provider_error");
   });
+
+  it("normalizes a provider draft wrapped in listingDraft", async () => {
+    mocks.callAiJson.mockResolvedValue({
+      ok: true,
+      data: {
+        listingDraft: providerPayload({
+          model: "deepseek-chat",
+          keywords: "desktop phone stand, workspace accessory, adjustable stand",
+        }),
+      },
+    });
+
+    const result = await generateRealAiListingDraft(context);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected wrapped listingDraft to normalize.");
+    expect(result.data.keywords).toEqual(["desktop phone stand", "workspace accessory", "adjustable stand"]);
+    expect(validateAiListingPackDraft(result.data).ok).toBe(true);
+  });
+
+  it("normalizes markdown code fence JSON from a fake provider string", async () => {
+    setRealAiListingClientForTests(vi.fn().mockResolvedValue(`\`\`\`json\n${JSON.stringify(providerPayload({ model: "fake-listing-model" }))}\n\`\`\``));
+
+    const result = await generateRealAiListingDraft(context);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected code fence JSON to normalize.");
+    expect(result.data.source).toBe("real_ai_draft");
+    expect(result.data.model).toBe("fake-listing-model");
+  });
+
+  it("splits string bullets and keywords when provider output is otherwise valid", async () => {
+    mocks.callAiJson.mockResolvedValue({
+      ok: true,
+      data: providerPayload({
+        model: "deepseek-chat",
+        bulletPoints: "- Adjustable desk viewing\n- Foldable storage use",
+        keywords: "desktop phone stand; foldable stand; workspace accessory",
+      }),
+    });
+
+    const result = await generateRealAiListingDraft(context);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected string lists to normalize.");
+    expect(result.data.bullets).toEqual(["Adjustable desk viewing", "Foldable storage use"]);
+    expect(result.data.keywords).toEqual(["desktop phone stand", "foldable stand", "workspace accessory"]);
+  });
+
+  it("adds conservative warnings and checklist when optional review fields are missing", async () => {
+    const { riskWarnings: _riskWarnings, reviewWarnings: _reviewWarnings, reviewChecklist: _reviewChecklist, ...payload } = providerPayload({ model: "deepseek-chat" });
+    mocks.callAiJson.mockResolvedValue({ ok: true, data: payload });
+
+    const result = await generateRealAiListingDraft(context);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected conservative warnings to be added.");
+    expect(result.data.riskNotes.length).toBeGreaterThan(0);
+    expect(result.data.complianceWarnings.length).toBeGreaterThan(0);
+    expect(result.data.reviewChecklist.length).toBeGreaterThan(0);
+  });
+
+  it("does not hard-pass output with missing core listing content", async () => {
+    mocks.callAiJson.mockResolvedValue({
+      ok: true,
+      data: {
+        source: "real_ai_draft",
+        titleCandidates: ["Desktop Phone Stand"],
+        description: "Draft without bullets should fail.",
+        keywords: ["desktop phone stand"],
+        sellingPoints: ["Adjustable angle"],
+        riskWarnings: ["Manual review required."],
+        reviewChecklist: ["Check supplier documents."],
+      },
+    });
+
+    const result = await generateRealAiListingDraft(context);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected missing bullets to fail.");
+    expect(result.error.code).toBe("ai_schema_invalid");
+    expect(result.error.message).toContain("bullets");
+  });
 });

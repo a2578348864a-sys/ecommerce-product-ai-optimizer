@@ -50,6 +50,19 @@ function stringArray(value: unknown) {
     : [];
 }
 
+function splitListText(value: string) {
+  return value
+    .split(/\r?\n|[;,，；]/)
+    .map((item) => item.replace(/^[-*•\d.)\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function flexibleStringArray(value: unknown) {
+  if (Array.isArray(value)) return stringArray(value);
+  if (typeof value === "string") return splitListText(value);
+  return [];
+}
+
 function fail(code: RealAiListingErrorCode, message: string): RealAiListingGenerateResult {
   return { ok: false, error: { code, message } };
 }
@@ -123,15 +136,52 @@ async function callDefaultRealAiListingClient({ context }: RealAiListingClientIn
 
 function parseClientPayload(value: unknown) {
   if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return isRecord(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
+    const parsed = parseJsonObjectFromText(value);
+    return isRecord(parsed) ? parsed : null;
   }
 
   return isRecord(value) ? value : null;
+}
+
+function stripJsonCodeFence(value: string) {
+  const trimmed = value.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+    || trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  return (fenced?.[1] ?? trimmed).trim();
+}
+
+function extractJsonObjectCandidate(value: string) {
+  const cleaned = stripJsonCodeFence(value).replace(/\u0000/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  return start >= 0 && end > start ? cleaned.slice(start, end + 1).trim() : cleaned;
+}
+
+function parseJsonObjectFromText(value: string) {
+  const candidates = [
+    value.trim(),
+    stripJsonCodeFence(value),
+    extractJsonObjectCandidate(value),
+    extractJsonObjectCandidate(value).replace(/,\s*([}\]])/g, "$1"),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Try the next safe candidate.
+    }
+  }
+
+  return null;
+}
+
+function unwrapDraftPayload(raw: Record<string, unknown>) {
+  for (const key of ["draft", "listingDraft", "result", "data", "listingPack"]) {
+    const nested = raw[key];
+    if (isRecord(nested)) return nested;
+  }
+  return raw;
 }
 
 function isTimeoutError(error: unknown) {
@@ -143,11 +193,25 @@ function isTimeoutError(error: unknown) {
   return false;
 }
 
-function normalizeRealAiDraft(raw: Record<string, unknown>): AiListingPackDraft {
-  const riskWarnings = stringArray(raw.riskWarnings);
-  const reviewWarnings = stringArray(raw.reviewWarnings);
-  const riskNotes = stringArray(raw.riskNotes);
-  const complianceWarnings = stringArray(raw.complianceWarnings);
+function firstNonEmptyArray(...values: unknown[]) {
+  for (const value of values) {
+    const array = flexibleStringArray(value);
+    if (array.length > 0) return array;
+  }
+  return [];
+}
+
+function normalizeRealAiDraft(rawInput: Record<string, unknown>, context: RealAiListingContext): AiListingPackDraft {
+  const raw = unwrapDraftPayload(rawInput);
+  const reviewWarnings = firstNonEmptyArray(raw.reviewWarnings, raw.review_warnings, raw.complianceWarnings);
+  const riskNotes = firstNonEmptyArray(raw.riskNotes, raw.risk_notes, raw.riskWarnings, raw.risk_warnings);
+  const safeReviewWarnings = reviewWarnings.length
+    ? reviewWarnings
+    : ["Human review is required before using this listing draft."];
+  const safeRiskNotes = riskNotes.length
+    ? riskNotes
+    : ["Verify supplier documents, platform rules, IP risk and local compliance before publishing."];
+  const sellingPoints = firstNonEmptyArray(raw.sellingPoints, raw.selling_points, context.sellingPoints);
 
   return {
     source: "real_ai_draft",
@@ -155,15 +219,20 @@ function normalizeRealAiDraft(raw: Record<string, unknown>): AiListingPackDraft 
     generatedAt: text(raw.generatedAt) && !Number.isNaN(Date.parse(text(raw.generatedAt))) ? text(raw.generatedAt) : new Date().toISOString(),
     model: text(raw.model) || "real-ai-provider",
     humanReviewRequired: true,
-    titles: stringArray(raw.titles).length ? stringArray(raw.titles) : stringArray(raw.titleCandidates),
-    bullets: stringArray(raw.bullets).length ? stringArray(raw.bullets) : stringArray(raw.bulletPoints),
-    description: text(raw.description),
-    keywords: stringArray(raw.keywords),
-    sellingPoints: stringArray(raw.sellingPoints),
-    riskNotes: riskNotes.length ? riskNotes : riskWarnings,
-    complianceWarnings: complianceWarnings.length ? complianceWarnings : reviewWarnings,
+    titles: firstNonEmptyArray(raw.titles, raw.titleCandidates, raw.title_candidates, raw.title),
+    bullets: firstNonEmptyArray(raw.bullets, raw.bulletPoints, raw.bullet_points),
+    description: text(raw.description) || text(raw.productDescription) || text(raw.listingDescription),
+    keywords: firstNonEmptyArray(raw.keywords, raw.searchTerms, raw.search_terms),
+    sellingPoints,
+    riskNotes: safeRiskNotes,
+    complianceWarnings: safeReviewWarnings,
     blockedClaims: stringArray(raw.blockedClaims),
-    reviewChecklist: stringArray(raw.reviewChecklist),
+    reviewChecklist: firstNonEmptyArray(raw.reviewChecklist, raw.review_checklist, raw.checklist).length
+      ? firstNonEmptyArray(raw.reviewChecklist, raw.review_checklist, raw.checklist)
+      : [
+        "Confirm supplier documents, material, dimensions and package contents before publishing.",
+        "Check platform category rules, IP risk, certification needs and local regulations.",
+      ],
   };
 }
 
@@ -186,10 +255,10 @@ export async function generateRealAiListingDraft(context: RealAiListingContext):
     return fail("ai_json_parse_failed", "AI Listing response was not valid JSON.");
   }
 
-  const filtered = filterListingClaims(normalizeRealAiDraft(raw));
+  const filtered = filterListingClaims(normalizeRealAiDraft(raw, context));
   const validation = validateAiListingPackDraft(filtered.cleaned);
   if (!validation.ok) {
-    return fail("ai_schema_invalid", "AI Listing response failed schema validation.");
+    return fail("ai_schema_invalid", `AI Listing response failed schema validation: ${validation.error.message}`);
   }
 
   return { ok: true, data: validation.data };
