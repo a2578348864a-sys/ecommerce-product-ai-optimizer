@@ -37,7 +37,15 @@ export async function POST(request: NextRequest) {
   // 1) Check Owner password (from env var)
   const ownerPassword = getAccessPassword();
   if (ownerPassword && password === ownerPassword) {
-    const signedToken = generateSignedToken("owner");
+    let signedToken: string;
+    try {
+      signedToken = generateSignedToken("owner");
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: { code: "server_error", message: "登录服务暂时不可用，请稍后重试。" } },
+        { status: 500 }
+      );
+    }
     // Also create legacy session for backward compat (no-op if unused)
     createOwnerSession();
     return NextResponse.json({
@@ -72,7 +80,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Allow login even with 0 remaining AI calls — frontend shows 0, API will block actual AI calls later
-    const signedToken = generateSignedToken("demo", demoAccess.id);
+    let signedToken: string;
+    try {
+      signedToken = generateSignedToken("demo", demoAccess.id);
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: { code: "server_error", message: "登录服务暂时不可用，请稍后重试。" } },
+        { status: 500 }
+      );
+    }
     createDemoSession(demoAccess.id); // legacy session for backward compat
     return NextResponse.json({
       ok: true,

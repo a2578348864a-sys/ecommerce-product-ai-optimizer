@@ -45,12 +45,13 @@ const OWNER_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (same as old sessionMap TTL)
 
 // ── Signing key (derived from ACCESS_PASSWORD, never exposed) ──
 
-function getSigningKey(): Buffer {
+function getSigningKey(): Buffer | null {
   // Derive a stable 32-byte key from the access password.
   // The password itself is never included in the token.
-  const password = (process.env.ACCESS_PASSWORD || process.env.APP_ACCESS_PASSWORD || "fallback-key").trim();
+  const raw = (process.env.ACCESS_PASSWORD || process.env.APP_ACCESS_PASSWORD || "").trim();
+  if (!raw) return null;
   return createHmac("sha256", "qx-agent-signing-key-v1")
-    .update(password)
+    .update(raw)
     .digest();
 }
 
@@ -67,6 +68,11 @@ function fromBase64url(str: string): Buffer {
 // ── Token generation ────────────────────────────
 
 export function generateSignedToken(mode: "owner" | "demo", demoAccessId?: string): string {
+  const key = getSigningKey();
+  if (!key) {
+    throw new Error("SIGNING_KEY_MISSING");
+  }
+
   const now = Date.now();
   const jti = toBase64url(randomBytes(16));
 
@@ -85,7 +91,7 @@ export function generateSignedToken(mode: "owner" | "demo", demoAccessId?: strin
   const payloadJson = JSON.stringify(payload);
   const payloadB64 = toBase64url(Buffer.from(payloadJson, "utf-8"));
   const signature = toBase64url(
-    createHmac("sha256", getSigningKey()).update(payloadB64).digest()
+    createHmac("sha256", key).update(payloadB64).digest()
   );
 
   return `${TOKEN_PREFIX}${payloadB64}.${signature}`;
@@ -94,6 +100,11 @@ export function generateSignedToken(mode: "owner" | "demo", demoAccessId?: strin
 // ── Token verification ──────────────────────────
 
 export function verifySignedToken(token: string): VerifiedToken {
+  const key = getSigningKey();
+  if (!key) {
+    return { ok: false, reason: "invalid_signature" };
+  }
+
   // Must have the correct prefix
   if (!token.startsWith(TOKEN_PREFIX)) {
     return { ok: false, reason: "malformed" };
@@ -110,7 +121,7 @@ export function verifySignedToken(token: string): VerifiedToken {
 
   // Verify signature
   const expectedSig = toBase64url(
-    createHmac("sha256", getSigningKey()).update(payloadB64).digest()
+    createHmac("sha256", key).update(payloadB64).digest()
   );
 
   try {

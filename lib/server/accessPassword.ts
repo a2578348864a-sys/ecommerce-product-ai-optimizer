@@ -59,14 +59,19 @@ export function getAccessContext(
     }
     if (session.mode === "demo" && session.demoAccessId) {
       const demoAccess = getDemoAccessById(session.demoAccessId);
-      // Phase System-Recovery.3: gracefully handle missing demo access record
+      // Auth-Hardening.1: fail closed — no demo record → reject
+      if (!demoAccess) return null;
+      // Fail closed — demo is inactive/disabled
+      if (!demoAccess.isActive) return null;
+      // Fail closed — demo is expired
+      if (demoAccess.expiresAt && new Date(demoAccess.expiresAt) < new Date()) return null;
       return {
         mode: "demo",
         token: session.token,
         demoAccessId: session.demoAccessId,
-        isActive: demoAccess?.isActive ?? false, // default inactive — AI routes re-read from store, safe
-        isExpired: demoAccess?.expiresAt ? new Date(demoAccess.expiresAt) < new Date() : false,
-        remainingAiCalls: demoAccess ? getRemainingAiCalls(demoAccess) : 0,
+        isActive: demoAccess.isActive,
+        isExpired: false,
+        remainingAiCalls: getRemainingAiCalls(demoAccess),
       };
     }
     return null; // session exists but not owner/demo

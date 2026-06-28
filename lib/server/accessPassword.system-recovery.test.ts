@@ -279,3 +279,78 @@ describe("getAccessContext — demo context fields", () => {
     expect((ctx as any).demoAccessId).toBeUndefined();
   });
 });
+
+// ═══════════════════════════════════════════════════
+// Auth-Hardening.1 — Guest fail-closed tests
+// ═══════════════════════════════════════════════════
+
+describe("getAccessContext — Guest fail-closed (Auth-Hardening.1)", () => {
+  let failDemoAccessId = "";
+  let failDemoToken = "";
+
+  beforeEach(() => {
+    process.env.ACCESS_PASSWORD = "test-dummy-password-for-unit-tests";
+
+    // Create a demo access we can manipulate
+    const { record } = createDemoAccess({
+      label: "fail-closed-test-demo",
+      hours: 24,
+      maxAiCalls: 5,
+    });
+    failDemoAccessId = record.id;
+    failDemoToken = generateSignedToken("demo", failDemoAccessId);
+
+    return () => {
+      delete process.env.ACCESS_PASSWORD;
+      if (failDemoToken) deleteAccessSession(failDemoToken);
+      const store = loadDemoAccessStore();
+      store.accesses = store.accesses.filter((a) => a.id !== failDemoAccessId);
+      saveDemoAccessStore(store);
+    };
+  });
+
+  it("returns null when demo access record is not found (fail-closed on missing record)", () => {
+    // Remove the record from the store
+    const store = loadDemoAccessStore();
+    store.accesses = store.accesses.filter((a) => a.id !== failDemoAccessId);
+    saveDemoAccessStore(store);
+
+    const req = buildRequest({ "x-access-token": failDemoToken });
+    const ctx = getAccessContext(req);
+    expect(ctx).toBeNull();
+  });
+
+  it("returns null when demo access is inactive/disabled (fail-closed on inactive)", () => {
+    // Set the demo to inactive
+    const store = loadDemoAccessStore();
+    const access = store.accesses.find((a) => a.id === failDemoAccessId);
+    if (access) access.isActive = false;
+    saveDemoAccessStore(store);
+
+    const req = buildRequest({ "x-access-token": failDemoToken });
+    const ctx = getAccessContext(req);
+    expect(ctx).toBeNull();
+  });
+
+  it("returns null when demo access is expired (fail-closed on expired)", () => {
+    // Set the demo to expired (1 hour ago)
+    const store = loadDemoAccessStore();
+    const access = store.accesses.find((a) => a.id === failDemoAccessId);
+    if (access) access.expiresAt = new Date(Date.now() - 3600000).toISOString();
+    saveDemoAccessStore(store);
+
+    const req = buildRequest({ "x-access-token": failDemoToken });
+    const ctx = getAccessContext(req);
+    expect(ctx).toBeNull();
+  });
+
+  it("returns context for active, non-expired demo (normal path unaffected)", () => {
+    const req = buildRequest({ "x-access-token": failDemoToken });
+    const ctx = getAccessContext(req);
+    expect(ctx).not.toBeNull();
+    if (ctx!.mode === "demo") {
+      expect(ctx!.isActive).toBe(true);
+      expect(ctx!.isExpired).toBe(false);
+    }
+  });
+});

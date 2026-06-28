@@ -110,7 +110,7 @@ describe("Security Gate — Fallback Demo Context", () => {
   });
 
   // ═══════════════════════════════════════════════════
-  // 2. Missing record: fallback
+  // 2. Missing record: fail-closed (Auth-Hardening.1)
   // ═══════════════════════════════════════════════════
 
   describe("missing demo access record", () => {
@@ -121,39 +121,26 @@ describe("Security Gate — Fallback Demo Context", () => {
       saveDemoAccessStore(store);
     });
 
-    it("fallback: getAccessContext still returns demo context", () => {
+    it("fail-closed: getAccessContext returns null when record missing", () => {
       const ctx = getDemoCtx();
-      expect(ctx).not.toBeNull();
-      expect(ctx!.mode).toBe("demo");
-      expect(ctx!.demoAccessId).toBe(demoAccessId);
+      // Auth-Hardening.1: missing record → fail closed, returns null
+      expect(ctx).toBeNull();
     });
 
-    it("fallback: isActive defaults to false (safe)", () => {
-      const ctx = getDemoCtx();
-      expect(ctx!.isActive).toBe(false);
-    });
-
-    it("fallback: isExpired defaults to false", () => {
-      const ctx = getDemoCtx();
-      expect(ctx!.isExpired).toBe(false);
-    });
-
-    it("fallback: remainingAiCalls defaults to 0 (safe)", () => {
-      const ctx = getDemoCtx();
-      expect(ctx!.remainingAiCalls).toBe(0);
-    });
-
-    it("fallback: checkAccessPassword still passes (session valid)", () => {
+    it("fail-closed: checkAccessPassword rejects when record missing", () => {
       const req = buildRequest({ "x-access-token": demoToken });
       const err = checkAccessPassword(req);
-      expect(err).toBeNull();
+      // Auth-Hardening.1: demo record not found → token session no longer valid
+      expect(err).not.toBeNull();
+      expect(err!.status).toBe(401);
     });
 
-    it("fallback: requireAuthenticated still passes demo", () => {
+    it("fail-closed: requireAuthenticated rejects when record missing", () => {
       const req = buildRequest({ "x-access-token": demoToken });
       const result = requireAuthenticated(req);
-      expect(result.ok).toBe(true);
-      expect(result.context.mode).toBe("demo");
+      // Auth-Hardening.1: getAccessContext returns null → requireAuthenticated rejects
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(401);
     });
   });
 
@@ -168,14 +155,10 @@ describe("Security Gate — Fallback Demo Context", () => {
       saveDemoAccessStore(store);
     });
 
-    it("ensureDemoAiQuota blocks AI when record is missing", () => {
-      const ctx = getDemoCtx()!;
-      const result = ensureDemoAiQuota(ctx, 1);
-      // Re-reads from store → not found → blocked
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.code).toBe("demo_access_not_found");
-      }
+    it("fail-closed: getAccessContext returns null → no context to check AI quota", () => {
+      const ctx = getDemoCtx();
+      // Auth-Hardening.1: missing record → null context, blocked at auth layer
+      expect(ctx).toBeNull();
     });
 
     it("owner AI quota check never blocked (always passes)", () => {
@@ -215,7 +198,7 @@ describe("Security Gate — Fallback Demo Context", () => {
   });
 
   // ═══════════════════════════════════════════════════
-  // 5. Security: expired record
+  // 5. Security: expired record — fail-closed (Auth-Hardening.1)
   // ═══════════════════════════════════════════════════
 
   describe("AI quota security — expired record", () => {
@@ -229,23 +212,21 @@ describe("Security Gate — Fallback Demo Context", () => {
       saveDemoAccessStore(store);
     });
 
-    it("ensureDemoAiQuota blocks AI when record expired", () => {
-      const ctx = getDemoCtx()!;
-      const result = ensureDemoAiQuota(ctx, 1);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.code).toBe("demo_access_expired");
-      }
+    it("fail-closed: getAccessContext returns null when expired", () => {
+      const ctx = getDemoCtx();
+      // Auth-Hardening.1: expired → fail closed at auth layer
+      expect(ctx).toBeNull();
     });
 
-    it("getAccessContext reflects expired state", () => {
+    it("ensureDemoAiQuota is unreachable via expired demo (context is null)", () => {
+      // Expired demos are blocked at getAccessContext — never reach ensureDemoAiQuota
       const ctx = getDemoCtx();
-      expect(ctx!.isExpired).toBe(true);
+      expect(ctx).toBeNull();
     });
   });
 
   // ═══════════════════════════════════════════════════
-  // 6. Security: inactive record
+  // 6. Security: inactive record — fail-closed (Auth-Hardening.1)
   // ═══════════════════════════════════════════════════
 
   describe("AI quota security — inactive record", () => {
@@ -258,13 +239,10 @@ describe("Security Gate — Fallback Demo Context", () => {
       saveDemoAccessStore(store);
     });
 
-    it("ensureDemoAiQuota blocks AI when record inactive", () => {
-      const ctx = getDemoCtx()!;
-      const result = ensureDemoAiQuota(ctx, 1);
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.code).toBe("demo_access_inactive");
-      }
+    it("fail-closed: getAccessContext returns null when inactive", () => {
+      const ctx = getDemoCtx();
+      // Auth-Hardening.1: inactive → fail closed at auth layer
+      expect(ctx).toBeNull();
     });
   });
 
