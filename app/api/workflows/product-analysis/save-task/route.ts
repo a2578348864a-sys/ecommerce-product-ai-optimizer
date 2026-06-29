@@ -4,6 +4,7 @@ import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { createSandboxTask, sandboxTaskToDetail } from "@/lib/server/demoSandbox";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
+import { normalizeProfitSnapshot } from "@/lib/profitSnapshot";
 
 export const runtime = "nodejs";
 
@@ -78,22 +79,6 @@ type SourceMeta = {
   analyzedName?: string;
 };
 
-type ProfitDecision = "testable" | "caution" | "not_recommended" | "unknown";
-
-type ProfitSnapshot = {
-  purchaseCost: number;
-  salePrice: number;
-  platformFeeRate: number;
-  platformFeeAmount: number;
-  estimatedProfit: number;
-  estimatedMarginRate: number;
-  decision: ProfitDecision;
-  note: string;
-  source: "manual_profit_mvp";
-  createdAt: string;
-  currency?: string;
-};
-
 /**
  * Parse and validate reviewState from the request body.
  * Server always recomputes allReviewed and reviewedCount to prevent client-side forgery.
@@ -137,56 +122,6 @@ function asBoundedInteger(value: unknown, min: number, max: number): number | nu
   const normalized = Math.trunc(numberValue);
   if (normalized < min || normalized > max) return null;
   return normalized;
-}
-
-function asFiniteNumber(value: unknown, fallback = 0): number {
-  const numberValue = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numberValue) ? numberValue : fallback;
-}
-
-function normalizeProfitDecision(value: unknown, estimatedProfit: number, estimatedMarginRate: number): ProfitDecision {
-  if (value === "testable" || value === "caution" || value === "not_recommended" || value === "unknown") {
-    return value;
-  }
-  if (value === "cautious") {
-    return "caution";
-  }
-  if (estimatedProfit <= 0) return "not_recommended";
-  if (estimatedMarginRate >= 0.25) return "testable";
-  if (estimatedProfit > 0) return "caution";
-  return "unknown";
-}
-
-function parseProfitSnapshot(raw: unknown): ProfitSnapshot | null {
-  if (!isRecord(raw)) return null;
-
-  const purchaseCost = asFiniteNumber(raw.purchaseCost ?? raw.estimatedPurchasePrice);
-  const salePrice = asFiniteNumber(raw.salePrice ?? raw.estimatedSellingPrice);
-  const rawRate = asFiniteNumber(raw.platformFeeRate ?? raw.commissionRate, 0.15);
-  const platformFeeRate = rawRate > 1 ? rawRate / 100 : rawRate;
-  const platformFeeAmount = asFiniteNumber(raw.platformFeeAmount, salePrice * platformFeeRate);
-  const estimatedProfit = asFiniteNumber(raw.estimatedProfit, salePrice - purchaseCost - platformFeeAmount);
-  const estimatedMarginRate = asFiniteNumber(
-    raw.estimatedMarginRate ?? raw.estimatedMargin,
-    salePrice > 0 ? estimatedProfit / salePrice : 0,
-  );
-  const note = asString(raw.note, "粗略估算，非真实市场价，需人工复核");
-  const createdAt = asString(raw.createdAt, new Date().toISOString());
-  const currency = asString(raw.currency, "");
-
-  return {
-    purchaseCost,
-    salePrice,
-    platformFeeRate,
-    platformFeeAmount,
-    estimatedProfit,
-    estimatedMarginRate,
-    decision: normalizeProfitDecision(raw.decision, estimatedProfit, estimatedMarginRate),
-    note,
-    source: "manual_profit_mvp",
-    createdAt,
-    ...(currency ? { currency } : {}),
-  };
 }
 
 function parseBatchMeta(raw: unknown): BatchMeta | null {
@@ -305,7 +240,7 @@ export async function POST(request: NextRequest) {
   const reviewState = parseReviewState(body.reviewState);
   const batchMeta = parseBatchMeta(body.batchMeta);
   const sourceMeta = parseSourceMeta(body.sourceMeta, productName);
-  const profitSnapshot = parseProfitSnapshot(body.profitSnapshot);
+  const profitSnapshot = normalizeProfitSnapshot(body.profitSnapshot);
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
   const listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
