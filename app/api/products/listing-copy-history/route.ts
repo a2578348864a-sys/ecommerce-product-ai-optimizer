@@ -4,7 +4,8 @@ import {
   listListingCopyHistories,
   type ListingCopyHistoryRecord,
 } from "@/lib/server/listingCopyHistoryStore";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { getAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 import type { ListingCopyResult } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -82,6 +83,10 @@ function databaseError() {
   }, 500);
 }
 
+function accessPasswordNotConfigured() {
+  return NextResponse.json({ error: "ACCESS_PASSWORD is not configured." }, { status: 500 });
+}
+
 function serverError() {
   return jsonResponse({
     ok: false,
@@ -102,8 +107,10 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = checkAccessPassword(request);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  if (!getAccessPassword()) return accessPasswordNotConfigured();
+
+  const auth = requireOwnerOnly(request);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   if (!isDatabaseReady()) return databaseError();
 
@@ -149,8 +156,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Auth first \u2014 do not expose DB readiness to unauthenticated callers
-  const authError = checkAccessPassword(request, rawBody);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  if (!getAccessPassword()) return accessPasswordNotConfigured();
+
+  const auth = requireOwnerOnly(request, rawBody);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   if (!isDatabaseReady()) return databaseError();
 
@@ -179,8 +188,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authError = checkAccessPassword(request);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  if (!getAccessPassword()) return accessPasswordNotConfigured();
+
+  const auth = requireOwnerOnly(request);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   return jsonResponse({
     ok: false,

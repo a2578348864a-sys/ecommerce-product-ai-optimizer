@@ -8,7 +8,7 @@
  * Does NOT: read .env, call AI, touch DB, use real passwords.
  */
 
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import {
   createOwnerSession,
@@ -35,10 +35,13 @@ function buildRequest(headers: Record<string, string>): NextRequest {
 let ownerToken = "";
 let demoToken = "";
 let demoAccessId = "";
+const TEST_DEMO_ACCESS_STORE_PATH = ".next/test-stores/access-password.system-recovery.json";
 
 beforeEach(() => {
   // Set a dummy password so checkAccessPassword doesn't return 500 "not configured"
   process.env.ACCESS_PASSWORD = "test-dummy-password-for-unit-tests";
+  process.env.DEMO_ACCESS_STORE_PATH = TEST_DEMO_ACCESS_STORE_PATH;
+  saveDemoAccessStore({ accesses: [] } as DemoAccessStore);
 
   // Clean up old sessions
   if (ownerToken) deleteAccessSession(ownerToken);
@@ -57,17 +60,14 @@ beforeEach(() => {
   demoAccessId = record.id;
   const demoSession = createDemoSession(demoAccessId);
   demoToken = demoSession.token;
+});
 
-  // Clean up store after test
-  return () => {
-    delete process.env.ACCESS_PASSWORD;
-    if (ownerToken) deleteAccessSession(ownerToken);
-    if (demoToken) deleteAccessSession(demoToken);
-    // Reset demo access store
-    const store = loadDemoAccessStore();
-    store.accesses = store.accesses.filter((a) => a.id !== demoAccessId);
-    saveDemoAccessStore(store);
-  };
+afterEach(() => {
+  if (ownerToken) deleteAccessSession(ownerToken);
+  if (demoToken) deleteAccessSession(demoToken);
+  saveDemoAccessStore({ accesses: [] } as DemoAccessStore);
+  delete process.env.ACCESS_PASSWORD;
+  delete process.env.DEMO_ACCESS_STORE_PATH;
 });
 
 // ═══════════════════════════════════════════════════

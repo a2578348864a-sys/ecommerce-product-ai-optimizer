@@ -190,8 +190,8 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 <Eye className="size-4" />
               </div>
               <div>
-                <p className="text-sm font-bold text-slate-900">访客体验模式</p>
-                <p className="text-[11px] text-slate-400">临时体验 · 全功能</p>
+                <p className="text-sm font-bold text-slate-900">HR 演示模式</p>
+                <p className="text-[11px] text-slate-400">完整流程沙盒体验</p>
               </div>
             </div>
 
@@ -200,7 +200,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
               <p>· 输入访客码即可登录</p>
               <p>· 首次登录后 <strong>24 小时</strong> 有效</p>
               <p>· 最多 <strong>5 次</strong> 真实 AI 体验</p>
-              <p>· 可体验全部主要功能</p>
+              <p>· 可体验完整主流程，新增和修改只保存到演示沙盒</p>
             </div>
 
             <form onSubmit={handleGuestSubmit} className="flex flex-col gap-3">

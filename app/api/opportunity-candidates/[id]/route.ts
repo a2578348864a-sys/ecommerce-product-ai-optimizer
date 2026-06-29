@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import {
   isSandboxCandidateId,
   getSandboxCandidate,
@@ -65,7 +65,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
 
-  const auth = requireAuthenticated(request, body);
+  const auth = requireOwnerOnly(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const update: CandidateUpdate = {};
@@ -124,7 +124,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
 
-  const auth = requireAuthenticated(request);
+  const auth = requireOwnerOnly(request);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {

@@ -1,7 +1,11 @@
 /**
  * Core-4-Fix.1-Test — PATCH /api/tasks/[id]/listing-pack route tests
  */
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+
+const authState = vi.hoisted(() => ({
+  mode: "owner" as "owner" | "demo",
+}));
 
 // Mock prisma
 vi.mock("@/lib/server/db", () => ({
@@ -21,7 +25,16 @@ vi.mock("@/lib/server/accessPassword", () => ({
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
-  requireAuthenticated: () => ({ ok: true, context: { mode: "owner" } }),
+  requireAuthenticated: () => (
+    authState.mode === "demo"
+      ? { ok: true, context: { mode: "demo", demoAccessId: "demo-hr" } }
+      : { ok: true, context: { mode: "owner" } }
+  ),
+  requireOwnerOnly: () => (
+    authState.mode === "demo"
+      ? { ok: false, status: 403, code: "demo_action_forbidden", message: "demo cannot write official data" }
+      : { ok: true, context: { mode: "owner" } }
+  ),
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({
@@ -54,6 +67,11 @@ async function callPATCH(taskId: string, body: unknown) {
 }
 
 describe("PATCH /api/tasks/[id]/listing-pack", () => {
+  beforeEach(() => {
+    authState.mode = "owner";
+    vi.clearAllMocks();
+  });
+
   it("saves valid listingPackSnapshot and returns savedAt", async () => {
     const mockFind = prisma.viralAnalysisRecord.findUnique as ReturnType<typeof vi.fn>;
     const mockUpdate = prisma.viralAnalysisRecord.update as ReturnType<typeof vi.fn>;
@@ -130,5 +148,18 @@ describe("PATCH /api/tasks/[id]/listing-pack", () => {
   it("returns 400 when task id is missing", async () => {
     const res = await callPATCH("", { listingPackSnapshot: VALID_SNAPSHOT });
     expect(res.status).toBe(400);
+  });
+
+  it("blocks demo from saving listing snapshot to an official task", async () => {
+    authState.mode = "demo";
+    const mockUpdate = prisma.viralAnalysisRecord.update as ReturnType<typeof vi.fn>;
+
+    const res = await callPATCH("task-official", { listingPackSnapshot: VALID_SNAPSHOT });
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("demo_action_forbidden");
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

@@ -7,7 +7,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import {
   getSandboxTask,
   updateSandboxTask,
@@ -79,7 +79,7 @@ export async function PATCH(
   }
 
   // Owner: Prisma
-  const auth = requireAuthenticated(request, bodyRecord);
+  const auth = requireOwnerOnly(request, bodyRecord);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {

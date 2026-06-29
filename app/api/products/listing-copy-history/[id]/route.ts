@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteListingCopyHistory } from "@/lib/server/listingCopyHistoryStore";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { getAccessPassword } from "@/lib/server/accessPassword";
+import { requireOwnerOnly } from "@/lib/server/demoGuard";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,10 @@ function databaseError() {
   }, 500);
 }
 
+function accessPasswordNotConfigured() {
+  return NextResponse.json({ error: "ACCESS_PASSWORD is not configured." }, { status: 500 });
+}
+
 function serverError() {
   return jsonResponse({
     ok: false,
@@ -57,8 +62,10 @@ function isDatabaseError(error: unknown) {
 }
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
-  const authError = checkAccessPassword(_request);
-  if (authError) return NextResponse.json(authError.body, { status: authError.status });
+  if (!getAccessPassword()) return accessPasswordNotConfigured();
+
+  const auth = requireOwnerOnly(_request);
+  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   if (!isDatabaseReady()) return databaseError();
 

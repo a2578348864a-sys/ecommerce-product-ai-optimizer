@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import {
   getSandboxTask,
@@ -204,7 +204,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   // Official task: Owner only
-  const auth = requireAuthenticated(request);
+  const auth = requireOwnerOnly(request);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {
@@ -256,7 +256,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   // Official task: Owner only
-  const auth = requireAuthenticated(request, bodyRecord);
+  const auth = requireOwnerOnly(request, bodyRecord);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   const decisionStatus = bodyRecord.decisionStatus;

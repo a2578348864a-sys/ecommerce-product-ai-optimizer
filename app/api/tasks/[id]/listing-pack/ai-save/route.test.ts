@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   update: vi.fn(),
   requireAuthenticated: vi.fn(),
+  requireOwnerOnly: vi.fn(),
 }));
 
 vi.mock("@/lib/server/db", () => ({
@@ -18,6 +19,7 @@ vi.mock("@/lib/server/db", () => ({
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
+  requireOwnerOnly: mocks.requireOwnerOnly,
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({
@@ -60,6 +62,7 @@ describe("POST /api/tasks/[id]/listing-pack/ai-save", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
     mocks.findUnique.mockResolvedValue({
       resultJson: JSON.stringify({
         existingField: "keep-me",
@@ -97,6 +100,25 @@ describe("POST /api/tasks/[id]/listing-pack/ai-save", () => {
     expect(res.status).toBe(404);
     expect(data.ok).toBe(false);
     expect(data.error.code).toBe("task_not_found");
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("blocks demo from saving AI listing pack to an official task", async () => {
+    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "demo", demoAccessId: "demo-hr" } });
+    mocks.requireOwnerOnly.mockReturnValue({
+      ok: false,
+      status: 403,
+      code: "demo_action_forbidden",
+      message: "demo cannot write official data",
+    });
+
+    const res = await callPOST("task-official", { listingPack: draft() });
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("demo_action_forbidden");
+    expect(mocks.findUnique).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
   });
 

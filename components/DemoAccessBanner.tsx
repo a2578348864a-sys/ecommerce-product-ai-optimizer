@@ -52,9 +52,9 @@ export function DemoAccessBanner() {
   if (isExpired) {
     content = "临时访问已过期，请联系管理员获取新的访问码";
   } else if (isQuotaExhausted) {
-    content = `访客体验模式 · AI 分析额度已用完 · 可继续浏览样例与复制报告`;
+    content = `HR 演示沙盒 · AI 分析额度已用完 · 正式数据只读`;
   } else {
-    content = `访客体验模式 · AI 分析额度 ${demo.remainingAiCalls}/${demo.maxAiCalls}${demo.expiresAt ? ` · 有效期至 ${formatExpiry(demo.expiresAt)}` : ""} · 部分数据操作受限`;
+    content = `HR 演示沙盒 · 正式数据只读 · 新增/修改仅保存到演示沙盒 · AI 额度 ${demo.remainingAiCalls}/${demo.maxAiCalls}${demo.expiresAt ? ` · 有效期至 ${formatExpiry(demo.expiresAt)}` : ""}`;
   }
 
   const tone = isExpired ? "border-rose-200 bg-rose-50/90 text-rose-700" : "border-amber-200 bg-amber-50/90 text-amber-700";

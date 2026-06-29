@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import {
   getSandboxTask,
   isSandboxTaskId,
@@ -149,6 +149,13 @@ export async function POST(
       try { writeAuditLog(buildAuditEntry(id, built.snapshot)); } catch { /* ignore */ }
 
       return json(success(built.snapshot));
+    }
+
+    const ownerAuth = requireOwnerOnly(request, bodyRecord);
+    if (!ownerAuth.ok) {
+      const code = ownerAuth.status === 401 ? "unauthorized" : ownerAuth.code;
+      const message = ownerAuth.status === 401 ? "璇峰厛鍥為椤佃В閿佸伐浣滃彴銆?" : ownerAuth.message;
+      return json({ ok: false, error: { code, message } }, ownerAuth.status);
     }
 
     const existing = await prisma.viralAnalysisRecord.findUnique({

@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isSandboxTaskId, updateSandboxTaskLifecycle, getSandboxTask } from "@/lib/server/demoSandbox";
 import { Prisma } from "@prisma/client";
 import {
@@ -80,7 +80,7 @@ export async function PATCH(
   }
 
   // Auth — Demo-Login.1-F: Owner only for official tasks
-  const auth = requireAuthenticated(request, bodyRecord);
+  const auth = requireOwnerOnly(request, bodyRecord);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
   if (!id) {
     return jsonResponse({ ok: false, error: { code: "invalid_id", message: "无效的任务 ID。" } }, 400);

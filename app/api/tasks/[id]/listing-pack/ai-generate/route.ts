@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import {
+  consumeDemoAiCalls,
+  ensureDemoAiQuota,
+  requireAuthenticated,
+  requireOwnerOnly,
+  type DemoAccessSnapshot,
+} from "@/lib/server/demoGuard";
 import { generateRealAiListingDraft } from "@/lib/server/aiListingGenerator";
 import { isRealAiListingEnabled } from "@/lib/server/realAiListingGate";
+import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { buildMockAiListingDraft, validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
@@ -23,18 +30,27 @@ type ApiErrorCode =
   | "ai_listing_generation_failed"
   | "invalid_json";
 
+type TaskContextRecord = {
+  title: string | null;
+  materialText: string;
+  level: string;
+  oneLineSummary: string;
+  resultJson: string;
+};
+
 type ApiResponse =
   | {
-    ok: true;
-    data: {
-      listingPack: AiListingPackDraft;
-      meta: {
-        mode: "mock" | "real";
-        saved: false;
-        nextStep: "review_before_save";
+      ok: true;
+      data: {
+        listingPack: AiListingPackDraft;
+        meta: {
+          mode: "mock" | "real";
+          saved: false;
+          nextStep: "review_before_save";
+        };
       };
-    };
-  }
+      demoAccess?: DemoAccessSnapshot;
+    }
   | { ok: false; error: { code: ApiErrorCode | string; message: string } };
 
 function json(body: ApiResponse, status = 200) {
@@ -81,7 +97,7 @@ function guardRealAiRequest(bodyRecord: Record<string, unknown>) {
       ok: false,
       error: {
         code: "real_ai_confirmation_required",
-        message: "本次真实 AI 调用未确认，不会生成。",
+        message: "Real AI generation was not confirmed.",
       },
     }, 400);
   }
@@ -91,7 +107,7 @@ function guardRealAiRequest(bodyRecord: Record<string, unknown>) {
       ok: false,
       error: {
         code: "real_ai_disabled",
-        message: "真实 AI Listing 生成暂未开启。",
+        message: "Real AI listing generation is disabled.",
       },
     }, 403);
   }
@@ -116,11 +132,7 @@ function getNestedRecord(source: Record<string, unknown>, key: string) {
   return isRecord(value) ? value : {};
 }
 
-function getProductName(record: {
-  title: string | null;
-  materialText: string;
-  resultJson: string;
-}) {
+function getProductName(record: TaskContextRecord) {
   const result = parseJsonObject(record.resultJson);
   const summary = getNestedRecord(result, "summary");
   return text(result.productName)
@@ -129,13 +141,7 @@ function getProductName(record: {
     || text(record.materialText);
 }
 
-function buildContext(record: {
-  title: string | null;
-  materialText: string;
-  level: string;
-  oneLineSummary: string;
-  resultJson: string;
-}) {
+function buildContext(record: TaskContextRecord) {
   const result = parseJsonObject(record.resultJson);
   const finalReport = getNestedRecord(result, "finalReport");
   const sourceMeta = getNestedRecord(result, "sourceMeta");
@@ -159,6 +165,59 @@ function buildContext(record: {
   };
 }
 
+async function loadTaskForGenerate(
+  request: NextRequest,
+  id: string,
+  bodyRecord: Record<string, unknown>,
+) {
+  if (isSandboxTaskId(id)) {
+    const auth = requireAuthenticated(request, bodyRecord);
+    if (!auth.ok) return { ok: false as const, response: json({ ok: false, error: { code: auth.status === 401 ? "unauthorized" : auth.code, message: auth.message } }, auth.status) };
+    if (auth.context.mode !== "demo") {
+      return { ok: false as const, response: json({ ok: false, error: { code: "task_not_found", message: "Task not found." } }, 404) };
+    }
+    const sandboxTask = getSandboxTask(auth.context.demoAccessId, id);
+    if (!sandboxTask) {
+      return { ok: false as const, response: json({ ok: false, error: { code: "task_not_found", message: "Task not found." } }, 404) };
+    }
+    return {
+      ok: true as const,
+      accessContext: auth.context,
+      task: {
+        title: sandboxTask.title,
+        materialText: sandboxTask.materialText,
+        level: sandboxTask.level,
+        oneLineSummary: sandboxTask.oneLineSummary,
+        resultJson: sandboxTask.resultJson,
+      },
+    };
+  }
+
+  const auth = requireOwnerOnly(request, bodyRecord);
+  if (!auth.ok) {
+    const code = auth.status === 401 ? "unauthorized" : auth.code;
+    const message = auth.status === 401 ? "Please unlock the workspace first." : auth.message;
+    return { ok: false as const, response: json({ ok: false, error: { code, message } }, auth.status) };
+  }
+
+  const task = await prisma.viralAnalysisRecord.findUnique({
+    where: { id },
+    select: {
+      title: true,
+      materialText: true,
+      level: true,
+      oneLineSummary: true,
+      resultJson: true,
+    },
+  });
+
+  if (!task) {
+    return { ok: false as const, response: json({ ok: false, error: { code: "task_not_found", message: "Task not found." } }, 404) };
+  }
+
+  return { ok: true as const, accessContext: auth.context, task };
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id?: string }> },
@@ -167,7 +226,7 @@ export async function POST(
   if (!id) {
     return json({
       ok: false,
-      error: { code: "missing_task_context", message: "当前任务信息不足，无法生成 Listing 草稿。" },
+      error: { code: "missing_task_context", message: "Missing task id." },
     }, 400);
   }
 
@@ -177,50 +236,36 @@ export async function POST(
   } catch {
     return json({
       ok: false,
-      error: { code: "invalid_json", message: "请求体不是合法 JSON。" },
+      error: { code: "invalid_json", message: "Request body must be valid JSON." },
     }, 400);
   }
 
-  const auth = requireAuthenticated(request, bodyRecord);
-  if (!auth.ok) {
-    const code = auth.status === 401 ? "unauthorized" : auth.code;
-    const message = auth.status === 401 ? "请先回首页解锁工作台。" : auth.message;
-    return json({ ok: false, error: { code, message } }, auth.status);
-  }
-
-  if (getGenerationMode(bodyRecord) === "real") {
-    const guarded = guardRealAiRequest(bodyRecord);
-    if (guarded) return guarded;
-  }
-
   try {
-    const task = await prisma.viralAnalysisRecord.findUnique({
-      where: { id },
-      select: {
-        title: true,
-        materialText: true,
-        level: true,
-        oneLineSummary: true,
-        resultJson: true,
-      },
-    });
-
-    if (!task) {
-      return json({
-        ok: false,
-        error: { code: "task_not_found", message: "当前任务不存在或已被删除。" },
-      }, 404);
+    const realMode = getGenerationMode(bodyRecord) === "real";
+    if (realMode) {
+      const guarded = guardRealAiRequest(bodyRecord);
+      if (guarded) return guarded;
     }
 
-    const context = buildContext(task);
+    const loaded = await loadTaskForGenerate(request, id, bodyRecord);
+    if (!loaded.ok) return loaded.response;
+
+    const context = buildContext(loaded.task);
     if (!text(context.productName)) {
       return json({
         ok: false,
-        error: { code: "missing_task_context", message: "当前任务信息不足，无法生成 Listing 草稿。" },
+        error: { code: "missing_task_context", message: "Task context is not enough to generate a listing draft." },
       }, 400);
     }
 
-    if (getGenerationMode(bodyRecord) === "real") {
+    if (realMode) {
+      if (loaded.accessContext.mode === "demo") {
+        const quota = ensureDemoAiQuota(loaded.accessContext, 1);
+        if (!quota.ok) {
+          return json({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+        }
+      }
+
       const generated = await generateRealAiListingDraft(context);
       if (!generated.ok) {
         return json({
@@ -228,6 +273,10 @@ export async function POST(
           error: { code: generated.error.code, message: generated.error.message },
         }, realAiErrorStatus(generated.error.code));
       }
+
+      const demoAccess = loaded.accessContext.mode === "demo"
+        ? consumeDemoAiCalls(loaded.accessContext, 1)
+        : null;
 
       return json({
         ok: true,
@@ -239,6 +288,7 @@ export async function POST(
             nextStep: "review_before_save",
           },
         },
+        ...(demoAccess ? { demoAccess } : {}),
       });
     }
 
@@ -249,7 +299,7 @@ export async function POST(
     if (!validation.ok) {
       return json({
         ok: false,
-        error: { code: "invalid_ai_listing_pack", message: "生成结果结构异常，请稍后重试。" },
+        error: { code: "invalid_ai_listing_pack", message: "Generated listing draft has invalid structure." },
       }, 500);
     }
 
@@ -267,7 +317,7 @@ export async function POST(
   } catch {
     return json({
       ok: false,
-      error: { code: "ai_listing_generation_failed", message: "Listing 草稿生成失败，请稍后重试。" },
+      error: { code: "ai_listing_generation_failed", message: "Listing draft generation failed." },
     }, 500);
   }
 }

@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { getOpportunityDisplayRiskLevel, runOpportunitiesPipeline } from "@/lib/agents/orchestrator";
-import { requireAuthenticated } from "@/lib/server/demoGuard";
+import {
+  getOpportunityDisplayRiskLevel,
+  runOpportunitiesPipeline,
+  type OpportunitiesResult,
+  type ProductCandidate,
+} from "@/lib/agents/orchestrator";
+import {
+  consumeDemoAiCalls,
+  ensureDemoAiQuota,
+  requireAuthenticated,
+  type DemoAccessSnapshot,
+} from "@/lib/server/demoGuard";
+import { createSandboxTask, sandboxTaskToListItem } from "@/lib/server/demoSandbox";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes for batch processing
@@ -16,25 +27,108 @@ function asString(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+function candidateSummary(candidate: ProductCandidate) {
+  return {
+    name: candidate.name,
+    rawInput: candidate.rawInput,
+    status: candidate.status,
+    score: candidate.score,
+    level: candidate.level,
+    levelLabel: candidate.levelLabel,
+    displayRiskLevel: candidate.displayRiskLevel ?? getOpportunityDisplayRiskLevel(candidate),
+    reasons: candidate.reasons,
+    risks: candidate.risks,
+    nextAction: candidate.nextAction,
+    sourcingSummary: candidate.sourcing?.summary,
+    riskSummary: candidate.risk?.summary,
+    summaryVerdict: candidate.summary?.verdict,
+  };
+}
+
+function buildTaskData(result: OpportunitiesResult, rawText: string) {
+  const topCandidate = result.candidates[0];
+  const leaderboardSummary = result.candidates.slice(0, 10).map((candidate, index) => {
+    const reason = candidate.reasons.slice(0, 2).join("; ") || "No summary";
+    return `${index + 1}. [${candidate.levelLabel}] ${candidate.name} (${candidate.score}) - ${reason}`;
+  }).join("\n");
+
+  return {
+    type: "opportunities",
+    title: `Opportunity Radar - ${result.totalCount} candidates`,
+    platform: "manual",
+    productUrl: null,
+    materialText: rawText.slice(0, 2000),
+    source: "ai",
+    score: topCandidate?.score ?? 0,
+    level: topCandidate?.levelLabel ?? "Unrated",
+    oneLineSummary: `Analyzed ${result.totalCount} candidates, ${result.completedCount} completed, ${result.failedCount} failed. Top candidate: ${topCandidate?.name ?? "none"} (${topCandidate?.score ?? 0}).`,
+    resultJson: JSON.stringify({
+      leaderboard: leaderboardSummary,
+      candidates: result.candidates.map(candidateSummary),
+    }),
+  };
+}
+
+function responseCandidate(candidate: ProductCandidate) {
+  return {
+    index: candidate.index,
+    name: candidate.name,
+    rawInput: candidate.rawInput,
+    link: candidate.link,
+    status: candidate.status,
+    errorMessage: candidate.errorMessage,
+    score: candidate.score,
+    level: candidate.level,
+    levelLabel: candidate.levelLabel,
+    reasons: candidate.reasons,
+    risks: candidate.risks,
+    nextAction: candidate.nextAction,
+    sourcing: candidate.sourcing ? {
+      feasibility: candidate.sourcing.feasibility,
+      summary: candidate.sourcing.summary,
+      searchKeywords: candidate.sourcing.searchKeywords,
+      moqEstimate: candidate.sourcing.moqEstimate,
+      beginnerFriendly: candidate.sourcing.beginnerFriendly,
+      beginnerFit: candidate.sourcing.beginnerFit,
+    } : null,
+    risk: candidate.risk ? {
+      overallLevel: candidate.risk.overallLevel,
+      displayLevel: candidate.displayRiskLevel ?? getOpportunityDisplayRiskLevel(candidate),
+      summary: candidate.risk.summary,
+      blacklistMatches: candidate.risk.blacklistMatches,
+    } : null,
+    summary: candidate.summary ? {
+      verdict: candidate.summary.verdict,
+      confidence: candidate.summary.confidence,
+      summary: candidate.summary.summary,
+      reasons: candidate.summary.reasons,
+      risks: candidate.summary.risks,
+      nextSteps: candidate.summary.nextSteps,
+      beginnerTip: candidate.summary.beginnerTip,
+      downgraded: candidate.summary.downgraded,
+      downgradeReasons: candidate.summary.downgradeReasons,
+    } : null,
+  };
+}
+
 export async function POST(request: NextRequest) {
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > REQUEST_BODY_LIMIT_BYTES) {
-    return jsonResponse({ ok: false, error: { code: "body_too_large", message: "请求体过大。" } }, 413);
+    return jsonResponse({ ok: false, error: { code: "body_too_large", message: "Request body is too large." } }, 413);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return jsonResponse({ ok: false, error: { code: "invalid_json", message: "请求格式不正确。" } }, 400);
+    return jsonResponse({ ok: false, error: { code: "invalid_json", message: "Request body must be valid JSON." } }, 400);
   }
 
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return jsonResponse({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
+    return jsonResponse({ ok: false, error: { code: "invalid_body", message: "Request body must be a JSON object." } }, 400);
   }
 
   const bodyObj = body as Record<string, unknown>;
-
   const auth = requireAuthenticated(request, bodyObj);
   if (!auth.ok) {
     return jsonResponse({ ok: false, error: { code: auth.code, message: auth.message } }, auth.status);
@@ -42,19 +136,25 @@ export async function POST(request: NextRequest) {
 
   const rawText = asString(bodyObj.rawText);
   if (!rawText) {
-    return jsonResponse({ ok: false, error: { code: "missing_input", message: "请输入候选商品列表。" } }, 400);
+    return jsonResponse({ ok: false, error: { code: "missing_input", message: "Please provide candidate products." } }, 400);
   }
 
-  const lines = rawText.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = rawText.split("\n").map((line) => line.trim()).filter(Boolean);
   if (lines.length > 30) {
     return jsonResponse({
       ok: false,
-      error: { code: "too_many", message: `每次最多分析 30 个候选品，当前输入 ${lines.length} 个。` },
+      error: { code: "too_many", message: `Analyze at most 30 candidates per run. Current input has ${lines.length}.` },
     }, 400);
   }
 
-  // Run the pipeline
-  let result;
+  if (auth.context.mode === "demo") {
+    const quota = ensureDemoAiQuota(auth.context, 1);
+    if (!quota.ok) {
+      return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
+    }
+  }
+
+  let result: OpportunitiesResult;
   try {
     result = await runOpportunitiesPipeline(rawText);
   } catch (error) {
@@ -62,98 +162,43 @@ export async function POST(request: NextRequest) {
       ok: false,
       error: {
         code: "pipeline_error",
-        message: error instanceof Error ? error.message : "机会雷达分析失败。",
+        message: error instanceof Error ? error.message : "Opportunity radar analysis failed.",
       },
     }, 500);
   }
 
-  // Save a summary task record
-  try {
-    const topCandidate = result.candidates[0];
-    const leaderboardSummary = result.candidates.slice(0, 10).map((c, i) =>
-      `${i + 1}. [${c.levelLabel}] ${c.name}（${c.score}分）- ${c.reasons.slice(0, 2).join("，") || "暂无摘要"}`
-    ).join("\n");
+  let demoAccess: DemoAccessSnapshot | null = null;
+  if (auth.context.mode === "demo") {
+    demoAccess = consumeDemoAiCalls(auth.context, 1);
+  }
 
-    await prisma.viralAnalysisRecord.create({
-      data: {
-        type: "opportunities",
-        title: `机会雷达 · ${result.totalCount} 个候选品`,
-        platform: "manual",
-        productUrl: null,
-        materialText: rawText.slice(0, 2000),
-        source: "ai",
-        score: topCandidate?.score ?? 0,
-        level: topCandidate?.levelLabel ?? "未评级",
-        oneLineSummary: `分析 ${result.totalCount} 个候选品，${result.completedCount} 完成，${result.failedCount} 失败。最高分：${topCandidate?.name ?? "无"}（${topCandidate?.score ?? 0}分）`,
-        resultJson: JSON.stringify({
-          leaderboard: leaderboardSummary,
-          candidates: result.candidates.map((c) => ({
-            name: c.name,
-            rawInput: c.rawInput,
-            status: c.status,
-            score: c.score,
-            level: c.level,
-            levelLabel: c.levelLabel,
-            displayRiskLevel: c.displayRiskLevel ?? getOpportunityDisplayRiskLevel(c),
-            reasons: c.reasons,
-            risks: c.risks,
-            nextAction: c.nextAction,
-            sourcingSummary: c.sourcing?.summary,
-            riskSummary: c.risk?.summary,
-            summaryVerdict: c.summary?.verdict,
-          })),
-        }),
-      },
-    });
+  const taskData = buildTaskData(result, rawText);
+  let savedTask: Record<string, unknown> | null = null;
+
+  try {
+    if (auth.context.mode === "demo") {
+      const sandboxTask = createSandboxTask(auth.context.demoAccessId, taskData);
+      savedTask = sandboxTaskToListItem(sandboxTask) as unknown as Record<string, unknown>;
+    } else {
+      await prisma.viralAnalysisRecord.create({ data: taskData });
+    }
   } catch {
-    // Task save failure is non-fatal — still return results
+    // Task save failure is non-fatal. Still return analysis results.
   }
 
   return jsonResponse({
     ok: true,
     data: {
-      candidates: result.candidates.map((c) => ({
-        index: c.index,
-        name: c.name,
-        rawInput: c.rawInput,
-        link: c.link,
-        status: c.status,
-        errorMessage: c.errorMessage,
-        score: c.score,
-        level: c.level,
-        levelLabel: c.levelLabel,
-        reasons: c.reasons,
-        risks: c.risks,
-        nextAction: c.nextAction,
-        sourcing: c.sourcing ? {
-          feasibility: c.sourcing.feasibility,
-          summary: c.sourcing.summary,
-          searchKeywords: c.sourcing.searchKeywords,
-          moqEstimate: c.sourcing.moqEstimate,
-          beginnerFriendly: c.sourcing.beginnerFriendly,
-          beginnerFit: c.sourcing.beginnerFit,
-        } : null,
-        risk: c.risk ? {
-          overallLevel: c.risk.overallLevel,
-          displayLevel: c.displayRiskLevel ?? getOpportunityDisplayRiskLevel(c),
-          summary: c.risk.summary,
-          blacklistMatches: c.risk.blacklistMatches,
-        } : null,
-        summary: c.summary ? {
-          verdict: c.summary.verdict,
-          confidence: c.summary.confidence,
-          summary: c.summary.summary,
-          reasons: c.summary.reasons,
-          risks: c.summary.risks,
-          nextSteps: c.summary.nextSteps,
-          beginnerTip: c.summary.beginnerTip,
-          downgraded: c.summary.downgraded,
-          downgradeReasons: c.summary.downgradeReasons,
-        } : null,
-      })),
+      candidates: result.candidates.map(responseCandidate),
       totalCount: result.totalCount,
       completedCount: result.completedCount,
       failedCount: result.failedCount,
+      ...(auth.context.mode === "demo" ? {
+        isSandbox: true,
+        sourceMode: "demo_sandbox",
+        savedTask,
+      } : {}),
     },
+    ...(demoAccess ? { demoAccess } : {}),
   });
 }

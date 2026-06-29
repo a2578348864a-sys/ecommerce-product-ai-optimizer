@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   delete: vi.fn(),
   requireAuthenticated: vi.fn(),
+  requireOwnerOnly: vi.fn(),
   callAiJson: vi.fn(),
 }));
 
@@ -25,6 +26,14 @@ vi.mock("@/lib/server/db", () => ({
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
+  requireOwnerOnly: mocks.requireOwnerOnly,
+  ensureDemoAiQuota: vi.fn(() => ({ ok: true })),
+  consumeDemoAiCalls: vi.fn(() => null),
+}));
+
+vi.mock("@/lib/server/demoSandbox", () => ({
+  isSandboxTaskId: () => false,
+  getSandboxTask: () => null,
 }));
 
 vi.mock("@/lib/server/aiClient", () => ({
@@ -75,11 +84,12 @@ describe("POST /api/tasks/[id]/listing-pack/ai-generate", () => {
       throw new Error("callAiJson must not be called in Core-4-AI.8");
     });
     mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
     mocks.findUnique.mockResolvedValue(TASK_RECORD);
   });
 
   it("returns 401 unauthorized when owner auth fails", async () => {
-    mocks.requireAuthenticated.mockReturnValue({
+    mocks.requireOwnerOnly.mockReturnValue({
       ok: false,
       status: 401,
       code: "invalid_access",
@@ -93,6 +103,24 @@ describe("POST /api/tasks/[id]/listing-pack/ai-generate", () => {
     expect(data.ok).toBe(false);
     expect(data.error.code).toBe("unauthorized");
     expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("blocks demo from generating a listing draft from an official task", async () => {
+    mocks.requireOwnerOnly.mockReturnValue({
+      ok: false,
+      status: 403,
+      code: "demo_action_forbidden",
+      message: "demo cannot read official task context",
+    });
+
+    const res = await callPOST("task-1");
+    const data = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("demo_action_forbidden");
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
   });
 
   it("returns task_not_found when task does not exist", async () => {
