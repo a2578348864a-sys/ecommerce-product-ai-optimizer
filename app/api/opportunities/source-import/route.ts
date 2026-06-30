@@ -9,6 +9,7 @@ import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { crawlUrls } from "@/lib/server/radarCrawler";
 import { normalizeResults } from "@/lib/server/radarNormalize";
 import { scoreCandidates } from "@/lib/server/radarScore";
+import { normalizeCandidateEvidence, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -32,6 +33,7 @@ type SourceImportCandidate = {
   beginnerFitScore: number;
   /** Phase 4-D.7: candidate quality classification */
   candidateType?: "product_candidate" | "category_hint" | "trend_signal" | "rejected";
+  evidenceSnapshot?: CandidateEvidenceSnapshot;
 };
 
 type SourceImportResult = {
@@ -161,6 +163,19 @@ export async function POST(request: NextRequest) {
       beginnerFitScore: item.scores.beginnerFitScore,
       // Phase 4-D.7: candidate quality classification
       candidateType: (item.candidateType as SourceImportCandidate["candidateType"]) || "product_candidate",
+      evidenceSnapshot: normalizeCandidateEvidence({
+        title: item.title,
+        sourceType: item.sourceType,
+        sourceName: item.sourceHost,
+        sourceUrl: item.sourceUrl,
+        candidateType: (item.candidateType as SourceImportCandidate["candidateType"]) || "product_candidate",
+        score: item.scores.finalScore,
+        demandSignalScore: item.scores.demandSignalScore,
+        supplyEaseScore: item.scores.supplyEaseScore,
+        riskScore: item.scores.riskScore,
+        beginnerFitScore: item.scores.beginnerFitScore,
+        riskHint: item.riskHint,
+      }),
     }));
 
     const okCount = crawlResults.filter((r) => r.status === "ok").length;

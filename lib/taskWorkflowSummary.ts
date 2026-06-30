@@ -1,4 +1,5 @@
 import { getDecisionStatusOption, type DecisionStatus } from "@/lib/tasks/decisionStatus";
+import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 
 export type TaskWorkflowSummaryInput = {
   type?: string | null;
@@ -35,7 +36,7 @@ export type TaskWorkflowSummary = {
 export type TaskSourceMeta = {
   source: "opportunity";
   from?: "opportunity";
-  entry?: "candidate_to_agent_m1";
+  entry?: "candidate_to_agent_m1" | "candidate_to_agent_run";
   opportunityTitle: string;
   opportunitySource?: string;
   opportunityScore?: number;
@@ -49,6 +50,7 @@ export type TaskSourceMeta = {
   sourceTitle?: string;
   originalName?: string;
   analyzedName?: string;
+  evidenceSnapshot?: CandidateEvidenceSnapshot;
 };
 
 const DEFAULT_WORKFLOW_ACTIONS = [
@@ -125,11 +127,12 @@ export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
   const sourceTitle = text(result.sourceMeta.sourceTitle);
   const originalName = text(result.sourceMeta.originalName);
   const analyzedName = text(result.sourceMeta.analyzedName);
+  const evidenceSnapshot = parseCandidateEvidenceSnapshot(result.sourceMeta.evidenceSnapshot);
 
   return {
     source: "opportunity",
     ...(from === "opportunity" ? { from } : {}),
-    ...(entry === "candidate_to_agent_m1" ? { entry } : {}),
+    ...(entry === "candidate_to_agent_m1" || entry === "candidate_to_agent_run" ? { entry } : {}),
     opportunityTitle,
     ...(opportunitySource ? { opportunitySource } : {}),
     ...(opportunityScore !== undefined ? { opportunityScore } : {}),
@@ -141,6 +144,7 @@ export function getTaskSourceMeta(result: unknown): TaskSourceMeta | null {
     ...(sourceTitle ? { sourceTitle } : {}),
     ...(originalName ? { originalName } : {}),
     ...(analyzedName ? { analyzedName } : {}),
+    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
   };
 }
 

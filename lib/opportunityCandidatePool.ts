@@ -1,3 +1,5 @@
+import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+
 export const OPPORTUNITY_CANDIDATE_POOL_STORAGE_KEY = "qx:opportunity-candidate-pool:v1";
 export const OPPORTUNITY_CANDIDATE_POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const OPPORTUNITY_CANDIDATE_POOL_VERSION = 1;
@@ -16,6 +18,7 @@ export type OpportunityCandidateInput = {
   riskLevel?: string;
   riskLabel?: string;
   summaryLabel?: string;
+  evidenceSnapshot?: CandidateEvidenceSnapshot | null;
 };
 
 export type OpportunityCandidatePoolItem = {
@@ -29,6 +32,7 @@ export type OpportunityCandidatePoolItem = {
   riskLevel: string;
   riskLabel: string;
   summaryLabel: string;
+  evidenceSnapshot?: CandidateEvidenceSnapshot | null;
   candidateStatus: CandidateStatus;
   createdAt: number;
   updatedAt: number;
@@ -110,6 +114,7 @@ export function normalizeCandidate(input: OpportunityCandidateInput, now = Date.
     riskLevel,
     riskLabel: text(input.riskLabel, riskLevel || "—"),
     summaryLabel: text(input.summaryLabel, "暂无摘要"),
+    ...(input.evidenceSnapshot ? { evidenceSnapshot: input.evidenceSnapshot } : {}),
     candidateStatus: getDefaultCandidateStatus({ score: input.score, riskLevel }),
     createdAt: now,
     updatedAt: now,
@@ -138,6 +143,7 @@ function normalizeStoredItem(value: unknown): OpportunityCandidatePoolItem | nul
     riskLevel: text(source.riskLevel),
     riskLabel: text(source.riskLabel),
     summaryLabel: text(source.summaryLabel),
+    evidenceSnapshot: source.evidenceSnapshot as CandidateEvidenceSnapshot | null | undefined,
   }, typeof source.updatedAt === "number" ? source.updatedAt : Date.now());
 
   if (!candidate) return null;
@@ -149,6 +155,7 @@ function normalizeStoredItem(value: unknown): OpportunityCandidatePoolItem | nul
   return {
     ...candidate,
     id: text(source.id, candidate.id),
+    evidenceSnapshot: candidate.evidenceSnapshot,
     candidateStatus: isCandidateStatus(source.candidateStatus) ? source.candidateStatus : candidate.candidateStatus,
     createdAt,
     updatedAt,

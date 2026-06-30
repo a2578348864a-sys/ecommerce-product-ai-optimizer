@@ -167,6 +167,45 @@ describe("getTaskSourceMeta", () => {
     });
   });
 
+  it("extracts candidate evidence snapshot and candidate_to_agent_run entry", () => {
+    expect(getTaskSourceMeta({
+      productName: "Desk Phone Stand",
+      sourceMeta: {
+        source: "opportunity",
+        from: "opportunity",
+        entry: "candidate_to_agent_run",
+        opportunityTitle: "Desk Phone Stand",
+        candidateId: "test-candidate",
+        evidenceSnapshot: {
+          version: 1,
+          sourceType: "web",
+          sourceName: "source importer",
+          sourceUrl: "https://example.com/item",
+          evidenceItems: ["product_page"],
+          extractionSignals: ["url_path_product"],
+          qualityScore: 86,
+          confidence: "high",
+          riskFlags: [],
+          decision: "recommended",
+          decisionReason: "Specific product page with usable source evidence.",
+          nextAction: "Continue to agent run after manual confirmation.",
+          generatedAt: "2026-06-30T10:00:00.000Z",
+        },
+      },
+    })).toMatchObject({
+      source: "opportunity",
+      from: "opportunity",
+      entry: "candidate_to_agent_run",
+      opportunityTitle: "Desk Phone Stand",
+      candidateId: "test-candidate",
+      evidenceSnapshot: {
+        qualityScore: 86,
+        decision: "recommended",
+        confidence: "high",
+      },
+    });
+  });
+
   it("ignores unsupported or incomplete source metadata", () => {
     expect(getTaskSourceMeta({ sourceMeta: { source: "manual" } })).toBeNull();
     expect(getTaskSourceMeta({ sourceMeta: { source: "opportunity" } })).toBeNull();

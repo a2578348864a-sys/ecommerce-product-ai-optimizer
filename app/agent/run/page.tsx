@@ -1,4 +1,5 @@
 import { AgentRunClient, type AgentRunSourceMeta } from "@/components/agent/AgentRunClient";
+import { parseCandidateEvidenceParam } from "@/lib/candidateEvidence";
 
 type AgentRunSearchParams = {
   product?: string | string[];
@@ -16,6 +17,7 @@ type AgentRunSearchParams = {
   candidateId?: string | string[];
   originalName?: string | string[];
   analyzedName?: string | string[];
+  evidence?: string | string[];
 };
 
 function firstParam(value: string | string[] | undefined) {
@@ -50,6 +52,7 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
   const entry = safeDecode(firstParam(params.entry));
   const originalName = safeDecode(firstParam(params.originalName));
   const analyzedName = safeDecode(firstParam(params.analyzedName));
+  const evidenceSnapshot = parseCandidateEvidenceParam(firstParam(params.evidence));
 
   return {
     source: "opportunity",
@@ -65,6 +68,7 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
     ...(sourceTitle ? { sourceTitle } : {}),
     ...(originalName ? { originalName } : {}),
     ...(analyzedName ? { analyzedName } : {}),
+    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
     importedAt: new Date().toISOString(),
   };
 }

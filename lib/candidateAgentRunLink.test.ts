@@ -29,4 +29,33 @@ describe("buildCandidateAgentRunHref", () => {
     expect(url.searchParams.get("originalName")).toBe("原始候选：phone stand");
     expect(url.searchParams.get("analyzedName")).toBe("桌面手机支架");
   });
+
+  it("carries compact candidate evidence snapshot to /agent/run", () => {
+    const href = buildCandidateAgentRunHref({
+      candidateId: "test-candidate",
+      name: "Desk Phone Stand",
+      sourceUrl: "https://example.com/item",
+      evidenceSnapshot: {
+        version: 1,
+        sourceType: "web",
+        sourceName: "source importer",
+        sourceUrl: "https://example.com/item",
+        evidenceItems: ["product_page", "price_seen"],
+        extractionSignals: ["url_path_product"],
+        qualityScore: 86,
+        confidence: "high",
+        riskFlags: [],
+        decision: "recommended",
+        decisionReason: "Specific product page with usable source evidence.",
+        nextAction: "Continue to agent run after manual confirmation.",
+        generatedAt: "2026-06-30T10:00:00.000Z",
+      },
+    });
+
+    const url = new URL(href, "http://localhost:3005");
+    const encoded = url.searchParams.get("evidence");
+    expect(encoded).toBeTruthy();
+    expect(decodeURIComponent(encoded || "")).toContain("qualityScore");
+    expect(decodeURIComponent(encoded || "")).not.toContain("cookie");
+  });
 });

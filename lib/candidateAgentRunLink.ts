@@ -1,3 +1,5 @@
+import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+
 export type CandidateAgentRunLinkInput = {
   candidateId?: string | null;
   name?: string | null;
@@ -8,6 +10,7 @@ export type CandidateAgentRunLinkInput = {
   source?: string | null;
   score?: number | null;
   keyword?: string | null;
+  evidenceSnapshot?: CandidateEvidenceSnapshot | null;
 };
 
 function cleanText(value: string | null | undefined, maxLength: number) {
@@ -56,6 +59,8 @@ export function buildCandidateAgentRunHref(input: CandidateAgentRunLinkInput) {
   if (keyword) params.set("keyword", keyword);
   if (rawInput) params.set("originalName", rawInput);
   if (analyzedName) params.set("analyzedName", analyzedName);
+  const evidenceSnapshot = parseCandidateEvidenceSnapshot(input.evidenceSnapshot);
+  if (evidenceSnapshot) params.set("evidence", JSON.stringify(evidenceSnapshot));
 
   return `/agent/run?${params.toString()}`;
 }

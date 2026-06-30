@@ -253,6 +253,19 @@ function WorkflowDecisionSummary({
                   查看来源链接
                 </a>
               )}
+              {sourceMeta.evidenceSnapshot ? (
+                <div className="rounded-lg border border-teal-100 bg-teal-50/70 px-2 py-1.5 text-xs text-teal-800">
+                  <p className="font-semibold">
+                    来源证据：{sourceMeta.evidenceSnapshot.decision} · {sourceMeta.evidenceSnapshot.qualityScore}/100 · {sourceMeta.evidenceSnapshot.confidence}
+                  </p>
+                  <p className="mt-1">{sourceMeta.evidenceSnapshot.decisionReason}</p>
+                  {sourceMeta.evidenceSnapshot.riskFlags.length > 0 ? (
+                    <p className="mt-1">风险标记：{sourceMeta.evidenceSnapshot.riskFlags.join(" / ")}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-[11px] text-teal-600">历史任务未记录标准化来源证据。</p>
+              )}
               {/* Phase Candidate-Status-M.1: Back to candidate pool link */}
               <div className="mt-1 border-t border-teal-100 pt-1.5">
                 <Link

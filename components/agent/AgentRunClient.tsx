@@ -31,6 +31,7 @@ import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunS
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { saveAgentRunCache, loadAgentRunCache, clearAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
+import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -94,6 +95,7 @@ export type AgentRunSourceMeta = {
   sourceTitle?: string;
   originalName?: string;
   analyzedName?: string;
+  evidenceSnapshot?: CandidateEvidenceSnapshot;
   importedAt: string;
 };
 
@@ -723,6 +725,14 @@ export function AgentRunClient({
                   <p className="mt-1 text-xs">
                     原始名称：{sourceMeta.originalName || "未提供"} · 分析名称：{sourceMeta.analyzedName || productName}
                   </p>
+                ) : null}
+                {sourceMeta.evidenceSnapshot ? (
+                  <div className="mt-2 rounded-lg border border-indigo-200 bg-white/70 px-2 py-1.5 text-xs">
+                    <p className="font-semibold">
+                      来源证据：{sourceMeta.evidenceSnapshot.decision} · {sourceMeta.evidenceSnapshot.qualityScore}/100 · {sourceMeta.evidenceSnapshot.confidence}
+                    </p>
+                    <p className="mt-1 text-indigo-700">{sourceMeta.evidenceSnapshot.decisionReason}</p>
+                  </div>
                 ) : null}
                 <p className="mt-1 text-xs font-semibold">
                   不会自动开始 AI 分析，仍需你手动点击“开始主链路分析”。

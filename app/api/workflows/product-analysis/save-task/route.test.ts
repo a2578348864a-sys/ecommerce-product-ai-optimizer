@@ -155,6 +155,22 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
         sourceTitle: "test-title",
         originalName: "原始候选：phone stand",
         analyzedName: "桌面手机支架",
+        evidenceSnapshot: {
+          version: 1,
+          sourceType: "web",
+          sourceName: "source importer",
+          sourceUrl: "https://example.com/item?token=secret-token",
+          evidenceItems: ["product_page", "price_seen"],
+          extractionSignals: ["url_path_product"],
+          qualityScore: 86,
+          confidence: "high",
+          riskFlags: [],
+          decision: "recommended",
+          decisionReason: "Specific product page with usable source evidence.",
+          nextAction: "Continue to agent run after manual confirmation.",
+          generatedAt: "2026-06-30T10:00:00.000Z",
+          cookie: "session=abc",
+        },
         importedAt: "2026-06-26T10:00:00.000Z",
       },
       agentRunSnapshot: { source: "agent_run", steps: [] },
@@ -178,9 +194,16 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
       sourceUrl: "https://example.com/item",
       candidateId: "test-candidate",
       sourceTitle: "test-title",
+      evidenceSnapshot: {
+        qualityScore: 86,
+        decision: "recommended",
+        confidence: "high",
+      },
       originalName: "原始候选：phone stand",
       analyzedName: "桌面手机支架",
     });
+    expect(JSON.stringify(result.sourceMeta)).not.toContain("secret-token");
+    expect(JSON.stringify(result.sourceMeta)).not.toContain("session=abc");
     expect(result.agentRunSnapshot.source).toBe("agent_run");
     expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual([]);
   });

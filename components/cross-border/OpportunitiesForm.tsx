@@ -56,6 +56,7 @@ import {
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
 import { getAccessMode } from "@/lib/client/accessToken";
+import { normalizeCandidateEvidence, parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 
 const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
   recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -153,6 +154,7 @@ type SourceImportCandidateData = {
   beginnerFitScore: number;
   /** Phase 4-D.8: candidate quality classification */
   candidateType?: string;
+  evidenceSnapshot?: CandidateEvidenceSnapshot;
 };
 
 type SourceImportResponse = {
@@ -280,6 +282,7 @@ function buildPoolAgentRunHref(candidate: OpportunityCandidatePoolItem) {
     source: candidate.source,
     score: candidate.score,
     keyword: candidate.keyword,
+    evidenceSnapshot: candidate.evidenceSnapshot,
   });
 }
 
@@ -293,6 +296,14 @@ function buildOpportunityAgentRunHref(candidate: CandidateData) {
     source: "机会雷达候选品",
     score: candidate.score,
     keyword: candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0),
+    evidenceSnapshot: normalizeCandidateEvidence({
+      title: candidate.name,
+      sourceType: "manual",
+      sourceName: "opportunity radar",
+      sourceUrl: candidate.link,
+      score: candidate.score,
+      riskHint: candidate.risk?.summary,
+    }),
   });
 }
 
@@ -308,6 +319,14 @@ function candidateToPoolInput(candidate: CandidateData): OpportunityCandidateInp
     riskLevel,
     riskLabel: riskSummaryText(riskLevel),
     summaryLabel: candidate.summary?.verdict || candidate.reasons.slice(0, 1).join("") || candidate.nextAction,
+    evidenceSnapshot: normalizeCandidateEvidence({
+      title: candidate.name,
+      sourceType: "manual",
+      sourceName: "opportunity radar",
+      sourceUrl: candidate.link,
+      score: candidate.score,
+      riskHint: candidate.risk?.summary,
+    }),
   };
 }
 
@@ -319,7 +338,18 @@ function candidateStatusClass(status: CandidateStatus) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function parseEvidenceSnapshotFromJson(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    return parseCandidateEvidenceSnapshot(parsed.evidenceSnapshot);
+  } catch {
+    return null;
+  }
+}
+
 function serverCandidateToPoolItem(item: Record<string, unknown>): OpportunityCandidatePoolItem {
+  const evidenceSnapshot = parseEvidenceSnapshotFromJson(item.sourceMetaJson);
   return {
     id: String(item.id || ""),
     name: String(item.name || ""),
@@ -331,6 +361,7 @@ function serverCandidateToPoolItem(item: Record<string, unknown>): OpportunityCa
     riskLevel: String(item.riskLevel || ""),
     riskLabel: String(item.riskLabel || ""),
     summaryLabel: String(item.summaryLabel || ""),
+    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
     candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
       ? String(item.status) : "pending") as CandidateStatus,
     createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
@@ -979,6 +1010,19 @@ export function OpportunitiesForm() {
           importMethod: "phase4b_source_importer_mvp",
           crawlStatus: "success",
           robotsAllowed: true,
+          evidenceSnapshot: c.evidenceSnapshot || normalizeCandidateEvidence({
+            title: c.title,
+            sourceType: c.sourceType,
+            sourceName: c.sourceHost,
+            sourceUrl: c.sourceUrl,
+            candidateType: c.candidateType,
+            score: c.score,
+            demandSignalScore: c.demandSignalScore,
+            supplyEaseScore: c.supplyEaseScore,
+            riskScore: c.riskScore,
+            beginnerFitScore: c.beginnerFitScore,
+            riskHint: c.riskHint,
+          }),
         }),
         analysisJson: JSON.stringify({
           title: c.title,
@@ -995,6 +1039,7 @@ export function OpportunitiesForm() {
             finalScore: c.score,
           },
           importedAt: now,
+          evidenceSnapshot: c.evidenceSnapshot,
         }),
       };
     });
@@ -1610,6 +1655,11 @@ export function OpportunitiesForm() {
                           <span>需求：{c.demandSignalScore} | 风险：{c.riskScore} | 新手：{c.beginnerFitScore}</span>
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs text-slate-500">{c.summaryLabel}</p>
+                        {c.evidenceSnapshot ? (
+                          <p className="mt-1 text-[11px] font-semibold text-indigo-600">
+                            来源证据：{c.evidenceSnapshot.decision} · {c.evidenceSnapshot.qualityScore}/100 · {c.evidenceSnapshot.confidence}
+                          </p>
+                        ) : null}
                         {c.riskHint && (
                           <p className="mt-1 text-[11px] text-amber-600">⚠ {c.riskHint}</p>
                         )}

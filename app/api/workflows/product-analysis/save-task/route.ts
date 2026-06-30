@@ -5,6 +5,7 @@ import { createSandboxTask, sandboxTaskToDetail } from "@/lib/server/demoSandbox
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 import { normalizeProfitSnapshot } from "@/lib/profitSnapshot";
+import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 
 export const runtime = "nodejs";
 
@@ -77,6 +78,7 @@ type SourceMeta = {
   sourceTitle?: string;
   originalName?: string;
   analyzedName?: string;
+  evidenceSnapshot?: CandidateEvidenceSnapshot;
 };
 
 /**
@@ -170,6 +172,7 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
   const sourceTitle = asString(raw.sourceTitle).slice(0, 160);
   const originalName = asString(raw.originalName).slice(0, 200);
   const analyzedName = asString(raw.analyzedName).slice(0, 120);
+  const evidenceSnapshot = parseCandidateEvidenceSnapshot(raw.evidenceSnapshot);
 
   return {
     source: "opportunity",
@@ -185,6 +188,7 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
     ...(sourceTitle ? { sourceTitle } : {}),
     ...(originalName ? { originalName } : {}),
     ...(analyzedName ? { analyzedName } : {}),
+    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
     importedAt,
   };
 }
