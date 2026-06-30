@@ -19,17 +19,33 @@ function extractNavLabels(source: string): string[] {
   return labels;
 }
 
+function extractConstBlock(source: string, constName: string): string {
+  const match = source.match(new RegExp(`const ${constName} = \\[[\\s\\S]*?\\] as const;`));
+  return match?.[0] || "";
+}
+
 // ── Sidebar / Navigation ──────────────────────────
 
 describe("WorkspaceSidebar navigation", () => {
   const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");
 
-  it("contains the five main workflow entries", () => {
-    expect(sidebarSource).toMatch(/label:\s*"工作台"/);
-    expect(sidebarSource).toMatch(/label:\s*"找机会"/);
-    expect(sidebarSource).toMatch(/label:\s*"Agent 主链路"/);
-    expect(sidebarSource).toMatch(/label:\s*"任务中心"/);
-    expect(sidebarSource).toMatch(/label:\s*"批量分析"/);
+  it("main navigation only highlights the three current workflow entries", () => {
+    const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
+    const mainLabels = extractNavLabels(mainNavBlock);
+    expect(mainLabels).toEqual(["机会雷达", "Agent 主链路", "任务中心"]);
+    expect(mainNavBlock).toMatch(/\/opportunities/);
+    expect(mainNavBlock).toMatch(/\/agent\/run/);
+    expect(mainNavBlock).toMatch(/\/tasks/);
+    expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
+    expect(mainNavBlock).not.toMatch(/label:\s*"工作台"/);
+  });
+
+  it("marks batch analysis as advanced Alpha instead of a main nav entry", () => {
+    const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
+    expect(advancedBlock).toMatch(/批量分析（高级 \/ Alpha）/);
+    expect(advancedBlock).toMatch(/\/workflow\/batch/);
+    expect(sidebarSource).toMatch(/高级 \/ Alpha/);
+    expect(sidebarSource).toMatch(/当前主流程仍以单个商品推进为主/);
   });
 
   it("does not show old direction entries in navigation", () => {
@@ -162,11 +178,23 @@ describe("HomeDashboardClient navigation", () => {
   it("shows three main CTAs: 找机会, Agent 主链路, 任务中心", () => {
     expect(homeSource).toMatch(/找机会/);
     expect(homeSource).toMatch(/Agent 主链路/);
-    expect(homeSource).toMatch(/进任务中心/);
+    expect(homeSource).toMatch(/任务中心/);
   });
 
   it("points to /agent/run for the Agent main flow step", () => {
     expect(homeSource).toMatch(/\/agent\/run/);
+  });
+
+  it("states the three-step workflow and links to each primary route", () => {
+    const workflowStepsSection = homeSource.match(/workflowSteps[\s\S]*?\] as const/);
+    expect(workflowStepsSection?.[0]).toMatch(/机会雷达/);
+    expect(workflowStepsSection?.[0]).toMatch(/Agent 主链路/);
+    expect(workflowStepsSection?.[0]).toMatch(/任务中心/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/agent\/run"/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);
+    expect(homeSource).toMatch(/轻选 Agent 是一个跨境电商运营 Agent 工作台/);
+    expect(homeSource).toMatch(/商品线索、AI 分析、Listing 准备和任务推进串成一条可复核流程/);
   });
 
   it("does not show old direction entries as primary CTAs", () => {
@@ -187,6 +215,53 @@ describe("HomeDashboardClient navigation", () => {
   it("does not use 无人值守全自动", () => {
     expect(homeSource).not.toMatch(/无人值守全自动/);
     expect(homeSource).not.toMatch(/AI 自动完成所有商业动作/);
+  });
+});
+
+// ── Agent run page ────────────────────────────────
+
+describe("AgentRunClient main flow links", () => {
+  const agentRunSource = readComponentSource("components/agent/AgentRunClient.tsx");
+
+  it("does not guide users back to /workflow from the current Agent main flow", () => {
+    expect(agentRunSource).not.toMatch(/<Link href="\/workflow"/);
+    expect(agentRunSource).not.toMatch(/return `\/workflow/);
+    expect(agentRunSource).not.toMatch(/返回单品分析页查看细节/);
+  });
+});
+
+// ── Workflow batch page ───────────────────────────
+
+describe("WorkflowBatchClient advanced Alpha positioning", () => {
+  const batchSource = readComponentSource("components/cross-border/WorkflowBatchClient.tsx");
+
+  it("marks batch analysis as advanced Alpha and not the current main flow", () => {
+    expect(batchSource).toMatch(/批量分析（高级 \/ Alpha）/);
+    expect(batchSource).toMatch(/非当前主链路/);
+    expect(batchSource).toMatch(/当前主流程仍以单个商品推进为主/);
+  });
+});
+
+// ── Tasks page copy ───────────────────────────────
+
+describe("TaskRecordsList operational positioning", () => {
+  const tasksSource = readComponentSource("components/TaskRecordsList.tsx");
+
+  it("describes task center as an operations follow-up surface, not a report archive", () => {
+    expect(tasksSource).toMatch(/任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态/);
+    expect(tasksSource).toMatch(/不只是 AI 报告仓库/);
+  });
+});
+
+// ── HR demo banner regression ─────────────────────
+
+describe("HR demo sandbox banner copy", () => {
+  const bannerSource = readComponentSource("components/DemoAccessBanner.tsx");
+
+  it("keeps the sandbox isolation message", () => {
+    expect(bannerSource).toMatch(/HR 演示沙盒/);
+    expect(bannerSource).toMatch(/正式数据只读/);
+    expect(bannerSource).toMatch(/新增\/修改仅保存到演示沙盒/);
   });
 });
 

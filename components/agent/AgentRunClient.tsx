@@ -256,21 +256,6 @@ function getApiStep(result: ApiWorkflowResult | null, key: ApiStepKey) {
   return result?.steps.find((step) => step.key === key) || null;
 }
 
-function buildWorkflowHref(productName: string, sourceMeta: AgentRunSourceMeta | null) {
-  const params = new URLSearchParams({ product: productName });
-  if (sourceMeta) {
-    params.set("source", "opportunity");
-    params.set("opportunityTitle", sourceMeta.opportunityTitle);
-    if (sourceMeta.opportunityScore !== undefined) params.set("opportunityScore", String(sourceMeta.opportunityScore));
-    if (sourceMeta.opportunitySource) params.set("opportunitySource", sourceMeta.opportunitySource);
-    if (sourceMeta.keyword) params.set("keyword", sourceMeta.keyword);
-    if (sourceMeta.candidateType) params.set("candidateType", sourceMeta.candidateType);
-    if (sourceMeta.sourceUrl) params.set("sourceUrl", sourceMeta.sourceUrl);
-    if (sourceMeta.candidateId) params.set("candidateId", sourceMeta.candidateId);
-  }
-  return `/workflow?${params.toString()}`;
-}
-
 export function AgentRunClient({
   initialProductName,
   initialSourceMeta,
@@ -304,7 +289,6 @@ export function AgentRunClient({
   const manualReady = MANUAL_ITEMS.every((item) => manualChecked[item.key]);
   const isRunning = phase === "running";
   const needsManualReview = phase === "needs_manual_review" || phase === "completed";
-  const workflowHref = buildWorkflowHref(productName.trim(), sourceMeta);
 
   const riskPrecheckInput: RiskPrecheckInput | undefined = useMemo(() => {
     if (!result) return undefined;
@@ -773,14 +757,14 @@ export function AgentRunClient({
                 <div>
                   <h2 className="text-lg font-semibold text-rose-900">主链路分析失败</h2>
                   <p className="mt-1 text-sm leading-6 text-rose-700">
-                    {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始或返回单品分析页查看细节。"}
+                    {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始，或进入任务中心查看已保存的运营记录。"}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={resetRun} className="linear-button-primary inline-flex h-10 items-center px-4 text-sm font-semibold">
                       重新开始
                     </button>
-                    <Link href="/workflow" className="linear-button inline-flex h-10 items-center px-4 text-sm font-semibold">
-                      返回单品分析页查看细节
+                    <Link href="/tasks" className="linear-button inline-flex h-10 items-center px-4 text-sm font-semibold">
+                      查看任务中心
                     </Link>
                   </div>
                 </div>
@@ -955,8 +939,8 @@ export function AgentRunClient({
                   <button type="button" onClick={resetRun} className="linear-button inline-flex h-11 items-center px-4 text-sm font-semibold">
                     暂不保存
                   </button>
-                  <Link href={workflowHref} className="linear-button-soft inline-flex h-11 items-center gap-2 px-4 text-sm font-semibold">
-                    返回单品分析页查看细节
+                  <Link href="/tasks" className="linear-button-soft inline-flex h-11 items-center gap-2 px-4 text-sm font-semibold">
+                    查看任务中心
                     <ArrowRight className="size-4" />
                   </Link>
                 </div>

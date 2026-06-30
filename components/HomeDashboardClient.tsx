@@ -97,8 +97,8 @@ function StatCard({
 
 const workflowSteps = [
   {
-    title: "找机会",
-    description: "先进入候选池，放 2-3 个可能值得深挖的商品。",
+    title: "机会雷达",
+    description: "发现、导入和管理商品线索，先把值得深挖的候选品放进池子。",
     href: "/opportunities",
     icon: Target,
   },
@@ -109,8 +109,8 @@ const workflowSteps = [
     icon: Sparkles,
   },
   {
-    title: "进任务中心",
-    description: "复核已保存结果，查看 Agent 主链路复盘，决定继续、补资料或淘汰。",
+    title: "任务中心",
+    description: "沉淀每个商品的推进状态、风险判断、下一步动作和复盘记录。",
     href: "/tasks",
     icon: History,
   },
@@ -267,7 +267,7 @@ export function HomeDashboardClient() {
                   轻选 Agent 工作台
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  从候选品发现，到单品深挖，再到任务跟进。AI 给建议和风险提醒，关键动作由你确认。
+                  轻选 Agent 是一个跨境电商运营 Agent 工作台，把商品线索、AI 分析、Listing 准备和任务推进串成一条可复核流程。
                 </p>
               </div>
               <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">受控自动化 · 人工确认</span>
@@ -425,7 +425,7 @@ export function HomeDashboardClient() {
               <div className="mt-5 grid gap-3 md:grid-cols-3">
                 {[
                   "去机会雷达输入 2-3 个候选品",
-                  "选择一个候选品进入单品分析",
+                  "选择一个候选品进入 Agent 主链路",
                   "保存到任务中心继续跟进",
                 ].map((item, index) => (
                   <div key={item} className="rounded-2xl border border-slate-200 bg-white p-4">

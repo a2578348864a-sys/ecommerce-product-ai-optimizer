@@ -741,17 +741,17 @@ export function TaskRecordsList() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Qingxuan Pipeline</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">商品推进工作台</h1>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务中心 · 商品推进工作台</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  把候选、AI 分析和人工复核沉淀成可推进的选品任务。AI 负责生成建议，人负责最终确认。
+                  任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态，不只是 AI 报告仓库。AI 负责生成建议，人负责最终确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
                   机会雷达
                 </Link>
-                <Link href="/workflow/batch" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  批量分析
+                <Link href="/agent/run" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
+                  Agent 主链路
                 </Link>
                 <Link
                   href="/"

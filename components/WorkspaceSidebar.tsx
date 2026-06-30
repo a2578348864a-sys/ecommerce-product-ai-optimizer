@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   History,
-  House,
   ListChecks,
   Package,
   Sparkles,
@@ -14,14 +13,17 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 
 export const workspaceNavItems = [
-  { label: "工作台", href: "/", icon: House },
-  { label: "找机会", href: "/opportunities", icon: Target },
+  { label: "机会雷达", href: "/opportunities", icon: Target },
   { label: "Agent 主链路", href: "/agent/run", icon: Sparkles },
   { label: "任务中心", href: "/tasks", icon: History },
-  { label: "批量分析", href: "/workflow/batch", icon: ListChecks },
+] as const;
+
+const advancedNavItems = [
+  { label: "批量分析（高级 / Alpha）", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
 const mobileNavItems = workspaceNavItems;
+type SidebarNavItem = (typeof workspaceNavItems)[number] | (typeof advancedNavItems)[number];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -34,7 +36,7 @@ function NavLink({
   pathname,
   compact = false,
 }: {
-  item: (typeof workspaceNavItems)[number];
+  item: SidebarNavItem;
   pathname: string;
   compact?: boolean;
 }) {
@@ -103,10 +105,19 @@ export function WorkspaceSidebar() {
         </div>
 
         <nav className="surface-card p-2" aria-label="工作台导航">
-          <p className="px-2 pb-1 text-xs font-semibold text-slate-400">主链路</p>
+          <p className="px-2 pb-1 text-xs font-semibold text-teal-700">主链路</p>
           {workspaceNavItems.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
+          <div className="mt-3 border-t border-slate-100 pt-3">
+            <p className="px-2 pb-1 text-xs font-semibold text-slate-400">高级 / Alpha</p>
+            {advancedNavItems.map((item) => (
+              <NavLink key={item.href} item={item} pathname={pathname} compact />
+            ))}
+            <p className="px-2 pt-1 text-xs leading-5 text-slate-400">
+              适合后续批量处理，当前主流程仍以单个商品推进为主。
+            </p>
+          </div>
         </nav>
       </div>
     </aside>
