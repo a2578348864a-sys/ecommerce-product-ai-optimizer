@@ -225,3 +225,64 @@ export function parseCandidateEvidenceParam(value: string | undefined) {
     return null;
   }
 }
+
+// ── Display helpers ──────────────────────────────────────────────
+
+const RISK_FLAG_LABELS: Record<string, string> = {
+  missing_source_url: "缺少标准化 URL",
+  battery: "含电池/充电品类",
+  children_product: "儿童品类",
+  ip_risk: "知识产权风险",
+  login_required: "需要登录",
+  source_unavailable: "来源不可用",
+  missing_price: "缺少价格信号",
+  category_page: "疑似类目页",
+  sitemap_page: "疑似 Sitemap 页面",
+  error_page: "错误页",
+  blocked_or_js_only: "页面受阻或依赖 JS",
+  low_text_signal: "页面文本信号不足",
+};
+
+/** Map an English risk flag code to a user-readable Chinese label. Falls back to the raw code. */
+export function getRiskFlagLabel(flag: string): string {
+  return RISK_FLAG_LABELS[flag] || flag;
+}
+
+const SENSITIVE_QUERY_KEYS = [
+  "token", "access_token", "key", "api_key", "apikey", "secret",
+  "password", "passwd", "session", "cookie", "auth", "signature",
+  "authorization", "signed_request", "hash", "sig",
+];
+
+/**
+ * Prepare a URL for display: redact sensitive query-param values,
+ * strip the hash, and keep the rest intact.
+ *
+ * This is a *display-only* helper — storage is handled separately.
+ */
+export function sanitizeUrlForDisplay(raw: string | null | undefined): string {
+  if (!raw || typeof raw !== "string" || !raw.trim()) return "";
+  try {
+    const url = new URL(raw.trim());
+    const params = url.searchParams;
+    // Build search manually so [redacted] stays literal (URLSearchParams encodes the brackets).
+    const parts: string[] = [];
+    let hadSensitive = false;
+    for (const [key, value] of params.entries()) {
+      const lower = key.toLowerCase();
+      if (SENSITIVE_QUERY_KEYS.some((k) => lower === k || lower.includes(k))) {
+        parts.push(`${encodeURIComponent(key)}=[redacted]`);
+        hadSensitive = true;
+      } else {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      }
+    }
+    url.search = parts.length > 0 ? `?${parts.join("&")}` : "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    // Not a valid URL — return trimmed plain text, capped for safety
+    const trimmed = raw.trim();
+    return trimmed.length > 200 ? trimmed.slice(0, 200) + "…" : trimmed;
+  }
+}

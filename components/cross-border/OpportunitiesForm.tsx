@@ -56,7 +56,7 @@ import {
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
 import { getAccessMode } from "@/lib/client/accessToken";
-import { normalizeCandidateEvidence, parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { normalizeCandidateEvidence, parseCandidateEvidenceSnapshot, getRiskFlagLabel, sanitizeUrlForDisplay, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 
 const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
   recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -1654,11 +1654,33 @@ export function OpportunitiesForm() {
                           <span>分数：{c.score}/100</span>
                           <span>需求：{c.demandSignalScore} | 风险：{c.riskScore} | 新手：{c.beginnerFitScore}</span>
                         </div>
+                        {/* Source URL */}
+                        <div className="mt-1 text-[10px] text-slate-500 flex items-start gap-1 min-w-0">
+                          <span className="shrink-0 text-slate-400">链接：</span>
+                          {c.sourceUrl ? (
+                            <span className="break-all" title={c.sourceUrl}>{sanitizeUrlForDisplay(c.sourceUrl)}</span>
+                          ) : (
+                            <span className="italic text-slate-400">暂无标准化 URL</span>
+                          )}
+                        </div>
                         <p className="mt-1 line-clamp-2 text-xs text-slate-500">{c.summaryLabel}</p>
                         {c.evidenceSnapshot ? (
-                          <p className="mt-1 text-[11px] font-semibold text-indigo-600">
-                            来源证据：{c.evidenceSnapshot.decision} · {c.evidenceSnapshot.qualityScore}/100 · {c.evidenceSnapshot.confidence}
-                          </p>
+                          <>
+                            <p className="mt-1 text-[11px] font-semibold text-indigo-600">
+                              来源证据：{c.evidenceSnapshot.decision} · {c.evidenceSnapshot.qualityScore}/100 · {c.evidenceSnapshot.confidence}
+                            </p>
+                            {/* Risk flags */}
+                            <div className="mt-1 flex items-start gap-1 flex-wrap">
+                              <span className="text-[10px] text-slate-400 shrink-0">风险标记：</span>
+                              {c.evidenceSnapshot.riskFlags && c.evidenceSnapshot.riskFlags.length > 0 ? (
+                                c.evidenceSnapshot.riskFlags.map((flag, j) => (
+                                  <span key={j} className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{getRiskFlagLabel(flag)}</span>
+                                ))
+                              ) : (
+                                <span className="text-[10px] italic text-slate-400">暂无明显风险</span>
+                              )}
+                            </div>
+                          </>
                         ) : null}
                         {c.riskHint && (
                           <p className="mt-1 text-[11px] text-amber-600">⚠ {c.riskHint}</p>
@@ -1799,6 +1821,30 @@ export function OpportunitiesForm() {
                         <span>风险：{item.riskLabel}</span>
                         {item.keyword ? <span>关键词：{item.keyword}</span> : null}
                         <span>来源：{item.source}</span>
+                      </div>
+                      {/* Source URL */}
+                      <div className="mt-1.5 text-xs flex items-start gap-1 min-w-0">
+                        <span className="text-slate-400 shrink-0">来源链接：</span>
+                        {(() => {
+                          const url = item.link || item.evidenceSnapshot?.sourceUrl;
+                          if (!url) return <span className="italic text-slate-400">历史候选未记录标准化 URL</span>;
+                          return (
+                            <span className="text-slate-600 break-all" title={url}>
+                              {sanitizeUrlForDisplay(url)}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                      {/* Risk flags */}
+                      <div className="mt-1 text-xs flex items-start gap-1 flex-wrap">
+                        <span className="text-slate-400 shrink-0">风险标记：</span>
+                        {item.evidenceSnapshot?.riskFlags && item.evidenceSnapshot.riskFlags.length > 0 ? (
+                          item.evidenceSnapshot.riskFlags.map((flag, j) => (
+                            <span key={j} className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{getRiskFlagLabel(flag)}</span>
+                          ))
+                        ) : (
+                          <span className="italic text-slate-400">暂无明显风险</span>
+                        )}
                       </div>
                       {item.candidateStatus === "analyzed" ? (
                         <p className="mt-2 text-xs font-semibold text-indigo-700">已进入单品分析，可继续深挖。</p>
