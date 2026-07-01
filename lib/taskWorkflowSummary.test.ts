@@ -74,6 +74,87 @@ describe("deriveTaskWorkflowSummary", () => {
     expect(summary.missingFields).toContain("finalReport");
   });
 
+  it("prefers agentOutputSnapshot for stable task summary fields", () => {
+    const summary = deriveTaskWorkflowSummary({
+      type: "workflow",
+      title: "旧标题",
+      materialText: "旧标题",
+      oneLineSummary: "旧摘要",
+      level: "A",
+      decisionStatus: "pending",
+      result: {
+        productName: "桌面手机支架",
+        agentOutputSnapshot: {
+          version: "agent-output-v1",
+          generatedAt: "2026-07-01T00:00:00.000Z",
+          fallbackUsed: false,
+          warnings: [],
+          sourcingSnapshot: {
+            supplierConclusion: "可找供应商",
+            sourceSignals: [],
+            priceSignals: [],
+            availabilitySignals: [],
+            assumptions: [],
+            missingInfo: [],
+            confidence: "medium",
+          },
+          riskSnapshot: {
+            riskLevel: "high",
+            riskFlags: ["ip_check"],
+            complianceConcerns: [],
+            ipConcerns: [],
+            logisticsConcerns: [],
+            safetyConcerns: [],
+            riskReason: "外观专利风险",
+            needsManualReview: true,
+          },
+          summarySnapshot: {
+            decision: "not_recommended",
+            decisionReason: "外观风险高",
+            targetUser: "",
+            sellingPoints: [],
+            concerns: ["外观专利"],
+            confidence: "medium",
+          },
+          listingSnapshot: {
+            titleDraft: "Phone Stand",
+            bulletDrafts: [],
+            keywordHints: [],
+            imageIdeas: [],
+            complianceNotes: [],
+            missingInputs: [],
+          },
+          nextActionSnapshot: {
+            primaryAction: "check_compliance",
+            actionLabel: "先查合规风险",
+            checklist: ["查专利"],
+            blockingIssues: ["ip_check"],
+            suggestedOwnerStep: "查专利",
+          },
+          humanReviewSnapshot: {
+            required: true,
+            reasons: ["风险或合规信息需要人工确认"],
+            reviewFocus: ["外观专利"],
+            defaultStatus: "needs_review",
+          },
+        },
+        finalReport: {
+          finalVerdict: "可以继续小单测试",
+          riskLevel: "green",
+          beginnerFit: "适合新手",
+          canTestSmallBatch: true,
+          nextSteps: ["联系供应商"],
+        },
+      },
+    });
+
+    expect(summary.verdictLabel).toBe("外观风险高");
+    expect(summary.riskLabel).toBe("高风险");
+    expect(summary.priorityLabel).toBe("暂缓/谨慎");
+    expect(summary.primaryNextAction).toBe("查专利");
+    expect(summary.missingFields).toEqual([]);
+  });
+
   it("uses decision status as a strong priority signal", () => {
     const summary = deriveTaskWorkflowSummary({
       type: "workflow",

@@ -32,6 +32,8 @@ import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { saveAgentRunCache, loadAgentRunCache, clearAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
 import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
+import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -307,6 +309,15 @@ export function AgentRunClient({
   const listingTitle = text(result?.listing?.title, "暂未生成 Listing 标题");
   const listingKeywords = stringArray(result?.listing?.keywords);
   const listingNotes = stringArray(result?.listing?.complianceNotes);
+  const agentOutputSnapshot = useMemo(() => {
+    if (!result) return null;
+    return normalizeAgentOutputSnapshot({
+      workflowResult: result,
+      sourceMeta,
+      profitSnapshot,
+      riskReviewSnapshot,
+    });
+  }, [result, sourceMeta, profitSnapshot, riskReviewSnapshot]);
 
   const resetRun = useCallback(() => {
     setPhase("idle");
@@ -791,6 +802,9 @@ export function AgentRunClient({
                 profitSnapshot: profitSnapshot,
                 pipelineStatus: phase,
               })} />
+              <div className="mt-4">
+                <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} />
+              </div>
               <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4 mt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Agent 主链路结论 · {result.productName}</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">

@@ -15,6 +15,8 @@ import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-bord
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard, type ListingPrepInput } from "@/components/cross-border/ListingPrepPackageCard";
 import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } from "@/lib/agentRunSnapshot";
+import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
+import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { deriveAgentRunTimelineItems } from "@/lib/agentRunTimeline";
 import {
@@ -195,6 +197,7 @@ function WorkflowDecisionSummary({
   const hasRiskReviewSnapshot = isRecordValue(result) && isRecordValue(result.riskReviewSnapshot);
   const hasListingData = isRecordValue(result) && isRecordValue(result.listing);
   const listingData = hasListingData ? (result.listing as { title?: string; keywords?: string[]; complianceNotes?: string[] }) : null;
+  const agentOutputSnapshot = extractAgentOutputSnapshotFromTask(result);
 
   // Phase Agent-Save-M.1: agent run snapshot
   const agentRunSnapshot = extractAgentRunSnapshot(result);
@@ -337,6 +340,10 @@ function WorkflowDecisionSummary({
             <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-4">
+        <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} compact />
       </div>
 
       {/* Phase Agent-Save-M.1: Agent 主链路复盘 */}

@@ -1,5 +1,6 @@
 import { getDecisionStatusOption, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 
 export type TaskWorkflowSummaryInput = {
   type?: string | null;
@@ -235,6 +236,13 @@ function getRisk(input: TaskWorkflowSummaryInput, finalReport: Record<string, un
   return { label: "暂无", tone: "slate" as const };
 }
 
+function riskFromAgentSnapshot(level: string | undefined) {
+  if (level === "low") return { label: "低风险", tone: "emerald" as const };
+  if (level === "medium") return { label: "中风险", tone: "amber" as const };
+  if (level === "high") return { label: "高风险", tone: "rose" as const };
+  return { label: "暂无", tone: "slate" as const };
+}
+
 function getPriority(
   input: TaskWorkflowSummaryInput,
   riskTone: TaskWorkflowSummary["riskTone"],
@@ -265,6 +273,36 @@ function getPriority(
 }
 
 export function deriveTaskWorkflowSummary(input: TaskWorkflowSummaryInput): TaskWorkflowSummary {
+  const agentOutputSnapshot = extractAgentOutputSnapshotFromTask(input.result);
+  if (agentOutputSnapshot) {
+    const risk = riskFromAgentSnapshot(agentOutputSnapshot.riskSnapshot.riskLevel);
+    const verdictLabel = text(agentOutputSnapshot.summarySnapshot.decisionReason) ||
+      text(agentOutputSnapshot.rawReportSummary) ||
+      text(input.oneLineSummary) ||
+      "暂无";
+    const nextActions = agentOutputSnapshot.nextActionSnapshot.checklist.length > 0
+      ? agentOutputSnapshot.nextActionSnapshot.checklist
+      : [agentOutputSnapshot.nextActionSnapshot.suggestedOwnerStep].filter(Boolean);
+    const safeActions = nextActions.length > 0 ? nextActions : DEFAULT_WORKFLOW_ACTIONS;
+    const priority = getPriority(input, risk.tone, verdictLabel, agentOutputSnapshot.nextActionSnapshot.primaryAction === "small_batch_test", []);
+
+    return {
+      productName: text(isRecord(input.result) ? input.result.productName : "") || text(input.title) || text(input.materialText) || "暂无",
+      verdictLabel,
+      riskLabel: risk.label,
+      riskTone: risk.tone,
+      beginnerLabel: agentOutputSnapshot.summarySnapshot.confidence === "high" ? "高置信度" : agentOutputSnapshot.summarySnapshot.confidence === "low" ? "低置信度" : "中置信度",
+      smallBatchLabel: agentOutputSnapshot.nextActionSnapshot.primaryAction === "small_batch_test" ? "可小单测试" : agentOutputSnapshot.nextActionSnapshot.actionLabel,
+      primaryNextAction: safeActions[0] || "打开详情复核结果",
+      nextActions: safeActions,
+      priorityLabel: priority.label,
+      priorityTone: priority.tone,
+      reason: priority.reason,
+      missingFields: [],
+      batchMeta: getTaskBatchMeta(input.result),
+    };
+  }
+
   const finalReport = getFinalReport(input.result);
   const missingFields: string[] = [];
   const productName = text(isRecord(input.result) ? input.result.productName : "") || text(input.title) || text(input.materialText) || "暂无";

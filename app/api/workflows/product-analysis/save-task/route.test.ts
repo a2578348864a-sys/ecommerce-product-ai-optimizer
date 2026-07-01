@@ -207,4 +207,51 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(result.agentRunSnapshot.source).toBe("agent_run");
     expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual([]);
   });
+
+  it("saves normalized agentOutputSnapshot while preserving B1 evidence", async () => {
+    const response = await POST(createRequest({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: {
+        ...workflowResult(),
+        sourcing: { conclusion: "可从阿里国际站找同类供应商", sourceSignals: ["多供应商"] },
+        risk: { overallLevel: "yellow", riskFlags: ["ip_check"], summary: "中风险" },
+        summary: { decision: "recommended", sellingPoints: ["可折叠"], concerns: ["同质化"] },
+        listing: { title: "Adjustable Phone Stand", bullets: ["Foldable"], keywords: ["phone stand"] },
+      },
+      reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
+      sourceMeta: {
+        source: "opportunity",
+        opportunityTitle: "桌面手机支架",
+        evidenceSnapshot: {
+          version: 1,
+          sourceType: "web",
+          sourceName: "source importer",
+          sourceUrl: "https://example.com/item?token=secret-token",
+          evidenceItems: ["product_page"],
+          extractionSignals: ["url_path_product"],
+          qualityScore: 86,
+          confidence: "high",
+          riskFlags: ["ip_check"],
+          decision: "recommended",
+          decisionReason: "Specific product page.",
+          nextAction: "Continue to agent run after manual confirmation.",
+          generatedAt: "2026-06-30T10:00:00.000Z",
+        },
+      },
+    }));
+
+    const { status, body } = await readJson(response);
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+
+    expect(result.agentOutputSnapshot.version).toBe("agent-output-v1");
+    expect(result.agentOutputSnapshot.sourcingSnapshot.supplierConclusion).toContain("阿里国际站");
+    expect(result.agentOutputSnapshot.riskSnapshot.riskLevel).toBe("medium");
+    expect(result.agentOutputSnapshot.summarySnapshot.decision).toBe("recommended");
+    expect(result.agentOutputSnapshot.listingSnapshot.titleDraft).toBe("Adjustable Phone Stand");
+    expect(result.agentOutputSnapshot.candidateEvidence.qualityScore).toBe(86);
+    expect(JSON.stringify(result.agentOutputSnapshot)).not.toContain("secret-token");
+    expect(result.sourceMeta.evidenceSnapshot.qualityScore).toBe(86);
+  });
 });

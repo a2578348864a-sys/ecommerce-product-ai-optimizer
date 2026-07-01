@@ -6,6 +6,7 @@ import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 import { normalizeProfitSnapshot } from "@/lib/profitSnapshot";
 import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 
 export const runtime = "nodejs";
 
@@ -248,6 +249,12 @@ export async function POST(request: NextRequest) {
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
   const listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
+  const agentOutputSnapshot = normalizeAgentOutputSnapshot({
+    workflowResult,
+    sourceMeta,
+    profitSnapshot,
+    riskReviewSnapshot,
+  });
 
   // Build a structured result for the task record
   const taskResult = {
@@ -276,6 +283,8 @@ export async function POST(request: NextRequest) {
     ...(profitSnapshot ? { profitSnapshot } : {}),
     // Phase Risk-Review-M.1: optional manual compliance / IP review snapshot
     ...(riskReviewSnapshot ? { riskReviewSnapshot } : {}),
+    // Phase B2: stable Agent output contract for replay and task summary
+    agentOutputSnapshot,
     // Phase Agent-Save-M.1: agent run snapshot for task replay
     ...(agentRunSnapshot ? { agentRunSnapshot } : {}),
     // Phase Listing-Prep-M.1: listing preparation snapshot
