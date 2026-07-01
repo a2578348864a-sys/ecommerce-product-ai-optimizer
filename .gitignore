@@ -55,3 +55,5 @@ logs/
 data/demo-access.json
 # Demo sandbox data (contains demo user tasks/candidates — do not commit)
 data/demo-sandbox.json
+# Local/demo security gate test artifacts
+data/demo-sandbox.test-system-recovery3.json

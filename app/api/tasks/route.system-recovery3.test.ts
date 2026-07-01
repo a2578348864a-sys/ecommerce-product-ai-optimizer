@@ -29,7 +29,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
   beforeEach(() => {
     process.env.ACCESS_PASSWORD = "test-dummy-for-tasks-list";
     process.env.DEMO_ACCESS_STORE_PATH = ".next/test-stores/demo-access.test-system-recovery3.json";
-    process.env.DEMO_SANDBOX_STORE_PATH = "data/demo-sandbox.test-system-recovery3.json";
+    process.env.DEMO_SANDBOX_STORE_PATH = ".next/test-stores/demo-sandbox.test-system-recovery3.json";
 
     // Start with empty sandbox
     saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] });
