@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
-import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
+import { useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
@@ -31,6 +31,7 @@ import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunS
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { saveAgentRunCache, loadAgentRunCache, loadLatestAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
+import { canSubmitAgentRunSave, getAgentRunSaveErrorMessage } from "@/lib/agentRunSave";
 import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
@@ -395,8 +396,7 @@ export function AgentRunClient({
     if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
   }, [isAccessPasswordReady]);
 
-  // Cache save: after analysis completes, persist to sessionStorage
-  useEffect(() => {
+  const persistCurrentRunCache = useCallback(() => {
     if (phase !== "needs_manual_review" && phase !== "completed") return;
     if (!result) return;
 
@@ -413,6 +413,11 @@ export function AgentRunClient({
     });
   }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, savedTaskId]);
 
+  // Cache save: after analysis completes, persist to sessionStorage
+  useEffect(() => {
+    persistCurrentRunCache();
+  }, [persistCurrentRunCache]);
+
   async function handleRun() {
     const name = productName.trim();
     if (isRunning) return;
@@ -420,7 +425,9 @@ export function AgentRunClient({
       setError("请输入至少 2 个字符的商品名称。");
       return;
     }
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+    const accessHeaders = buildAccessHeaders();
+    const currentAccessCredential = accessHeaders["x-access-token"] || accessPassword.trim();
+    if (!isAccessPasswordReady || !currentAccessCredential) {
       setAuthError("会话未就绪，请返回首页重新登录后再操作。");
       return;
     }
@@ -456,11 +463,12 @@ export function AgentRunClient({
     try {
       const response = await fetch("/api/workflows/product-analysis", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
+        headers: { "Content-Type": "application/json", ...accessHeaders },
         body: JSON.stringify({
           productName: name,
           source: sourceMeta ? "opportunity" : "manual",
-          accessPassword,
+          accessPassword: currentAccessCredential,
+          accessToken: accessHeaders["x-access-token"] || undefined,
         }),
       });
       const data = await response.json() as ApiWorkflowResult | ApiErrorResponse;
@@ -519,13 +527,18 @@ export function AgentRunClient({
   }
 
   async function saveToTasks() {
-    if (!result || saving || savedTaskId) return;
-    if (!manualReady) {
+    if (!result) return;
+    persistCurrentRunCache();
+    if (!canSubmitAgentRunSave({ hasResult: true, saving, savedTaskId, manualReady })) {
+      if (saving || savedTaskId) return;
       setSaveError("请先完成 4 项人工确认，再保存任务。");
       return;
     }
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setSaveError("会话未就绪，请返回首页重新登录后再操作。");
+
+    const saveAccessHeaders = buildAccessHeaders();
+    const saveAccessCredential = saveAccessHeaders["x-access-token"] || accessPassword.trim();
+    if (!isAccessPasswordReady || !saveAccessCredential) {
+      setSaveError(getAgentRunSaveErrorMessage(401, "invalid_access"));
       return;
     }
 
@@ -534,9 +547,10 @@ export function AgentRunClient({
     try {
       const response = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
+        headers: { "Content-Type": "application/json", ...saveAccessHeaders },
         body: JSON.stringify({
-          accessPassword,
+          accessPassword: saveAccessCredential,
+          accessToken: saveAccessHeaders["x-access-token"] || undefined,
           workflowResult: result,
           reviewState: {
             sourcingReviewed: manualChecked.sourcing,
@@ -564,9 +578,9 @@ export function AgentRunClient({
           }),
         }),
       });
-      const data = await response.json() as { ok?: boolean; data?: { id?: string }; error?: { message?: string } };
+      const data = await response.json() as { ok?: boolean; data?: { id?: string }; error?: { code?: string; message?: string } };
       if (!response.ok || !data.ok || !data.data?.id) {
-        setSaveError(data.error?.message || "保存任务失败，请稍后重试。");
+        setSaveError(getAgentRunSaveErrorMessage(response.status, data.error?.code, data.error?.message));
         return;
       }
       setSavedTaskId(data.data.id);

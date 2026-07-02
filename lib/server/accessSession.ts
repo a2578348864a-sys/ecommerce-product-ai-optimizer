@@ -44,8 +44,8 @@ function getSessionMap(): Map<string, AccessSession> {
   return g[globalKey] as Map<string, AccessSession>;
 }
 
-const OWNER_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
-const DEMO_SESSION_TTL_MS = 2 * 60 * 60 * 1000;  // 2 hours (or until demo expires)
+const OWNER_SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours, aligned with client unlock session
+const DEMO_SESSION_TTL_MS = 12 * 60 * 60 * 1000;  // 12 hours (or until demo expires)
 
 // ── Token generation ────────────────────────────
 

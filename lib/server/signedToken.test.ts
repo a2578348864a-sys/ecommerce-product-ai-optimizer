@@ -10,7 +10,7 @@
  * Does NOT: read .env, call AI, touch DB, print secrets/tokens.
  */
 
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { generateSignedToken, verifySignedToken } from "@/lib/server/signedToken";
 
 const TEST_SECRET = "test-signing-secret-for-unit-tests-do-not-use-in-production";
@@ -21,6 +21,7 @@ describe("signedToken — with signing key", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     delete process.env.ACCESS_PASSWORD;
   });
 
@@ -59,6 +60,23 @@ describe("signedToken — with signing key", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("invalid_signature");
+    }
+  });
+
+  it("keeps owner tokens valid for the 12-hour client session window", () => {
+    const now = new Date("2026-07-02T08:00:00.000Z");
+    vi.setSystemTime(now);
+
+    const token = generateSignedToken("owner");
+
+    vi.setSystemTime(new Date(now.getTime() + 11 * 60 * 60 * 1000 + 55 * 60 * 1000));
+    expect(verifySignedToken(token).ok).toBe(true);
+
+    vi.setSystemTime(new Date(now.getTime() + 12 * 60 * 60 * 1000 + 1000));
+    const expired = verifySignedToken(token);
+    expect(expired.ok).toBe(false);
+    if (!expired.ok) {
+      expect(expired.reason).toBe("expired");
     }
   });
 });

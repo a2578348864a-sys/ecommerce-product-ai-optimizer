@@ -41,7 +41,7 @@ export type VerifiedToken = {
 
 const TOKEN_VERSION = 1;
 const TOKEN_PREFIX = "stok_v1.";
-const OWNER_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours (same as old sessionMap TTL)
+const ACCESS_TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours, aligned with client unlock session
 
 // ── Signing key (derived from ACCESS_PASSWORD, never exposed) ──
 
@@ -80,7 +80,7 @@ export function generateSignedToken(mode: "owner" | "demo", demoAccessId?: strin
     v: TOKEN_VERSION,
     mode,
     iat: now,
-    exp: now + OWNER_TTL_MS,
+    exp: now + ACCESS_TOKEN_TTL_MS,
     jti,
   };
 

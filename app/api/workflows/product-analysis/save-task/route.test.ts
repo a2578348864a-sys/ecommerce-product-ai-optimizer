@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { generateSignedToken } from "@/lib/server/signedToken";
 
 const CORRECT_PASSWORD = "ci-test-password";
 
@@ -30,12 +31,12 @@ beforeEach(async () => {
   POST = mod.POST;
 });
 
-function createRequest(body: unknown) {
+function createRequest(body: unknown, headers?: Record<string, string>) {
   return {
     method: "POST",
     url: "http://localhost:3000/api/workflows/product-analysis/save-task",
     nextUrl: new URL("http://localhost:3000/api/workflows/product-analysis/save-task"),
-    headers: new Headers(),
+    headers: new Headers(headers),
     json: async () => body,
   };
 }
@@ -73,6 +74,19 @@ function savedResultJson() {
 }
 
 describe("POST /api/workflows/product-analysis/save-task", () => {
+  it("accepts the current signed auth token from headers without body accessPassword", async () => {
+    const token = generateSignedToken("owner");
+    const response = await POST(createRequest({
+      workflowResult: workflowResult(),
+      reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
+    }, { "x-access-token": token }));
+
+    const { status, body } = await readJson(response);
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(mockPrisma.viralAnalysisRecord.create).toHaveBeenCalledTimes(1);
+  });
+
   it("saves riskReviewSnapshot and profitSnapshot together", async () => {
     const response = await POST(createRequest({
       accessPassword: CORRECT_PASSWORD,

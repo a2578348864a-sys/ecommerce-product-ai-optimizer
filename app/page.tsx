@@ -9,6 +9,7 @@ import {
   isAuthenticated,
   type DemoAccessInfo,
 } from "@/lib/client/accessToken";
+import { getSafeLoginRedirect } from "@/lib/client/loginRedirect";
 
 export default function Home() {
   const [ready, setReady] = useState(false);
@@ -65,6 +66,11 @@ export default function Home() {
         : undefined;
 
       saveAccessToken(json.accessToken, json.mode, demoAccess);
+      const redirectTarget = getSafeLoginRedirect(window.location.search);
+      if (redirectTarget) {
+        window.location.assign(redirectTarget);
+        return;
+      }
       setAuthenticated(true);
     } catch (err) {
       console.error("登录 API 请求异常", err);

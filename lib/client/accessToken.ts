@@ -26,6 +26,7 @@ export interface DemoAccessInfo {
 const TOKEN_KEY = "qx:access-token:session:v1";
 const MODE_KEY = "qx:access-mode:session:v1";
 const DEMO_ACCESS_KEY = "qx:demo-access:session:v1";
+const ACCESS_TOKEN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -57,7 +58,7 @@ export function saveAccessToken(
     // Backward compat: also set the old password key so existing
     // useAccessPassword() hook sees a non-empty value.
     storage.setItem("qx:access-password:session:v2", token);
-    storage.setItem("qx:access-expires:session:v2", String(Date.now() + 24 * 60 * 60 * 1000));
+    storage.setItem("qx:access-expires:session:v2", String(Date.now() + ACCESS_TOKEN_SESSION_TTL_MS));
   } catch {
     // ignore
   }

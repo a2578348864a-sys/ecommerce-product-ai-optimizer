@@ -5,7 +5,7 @@
  * Does NOT: touch real storage, call AI, use real tokens.
  */
 
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 // ── Mock sessionStorage ────────────────────────────
 
@@ -39,6 +39,10 @@ beforeEach(async () => {
   clearAccessSession = mod.clearAccessSession;
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("buildAccessHeaders", () => {
   it("returns both x-access-token and x-access-password when token exists", () => {
     saveAccessToken("tok_test123", "owner");
@@ -46,6 +50,16 @@ describe("buildAccessHeaders", () => {
     expect(headers["x-access-token"]).toBe("tok_test123");
     expect(headers["x-access-password"]).toBe("tok_test123");
     expect(Object.keys(headers)).toHaveLength(2);
+  });
+
+  it("keeps the legacy unlock marker aligned to the 12-hour signed token window", () => {
+    const now = new Date("2026-07-02T08:00:00.000Z");
+    vi.setSystemTime(now);
+
+    saveAccessToken("tok_test123", "owner");
+
+    const expiresAt = Number(sessionStorage.getItem("qx:access-expires:session:v2"));
+    expect(expiresAt).toBe(now.getTime() + 12 * 60 * 60 * 1000);
   });
 
   it("returns empty object when no token is stored", () => {
