@@ -251,6 +251,30 @@ describe("TaskRecordsList operational positioning", () => {
     expect(tasksSource).toMatch(/任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态/);
     expect(tasksSource).toMatch(/不只是 AI 报告仓库/);
   });
+
+  it("shows B3 operations fields in task cards", () => {
+    expect(tasksSource).toMatch(/deriveTaskOperationSummary/);
+    expect(tasksSource).toMatch(/运营阶段/);
+    expect(tasksSource).toMatch(/AI 决策/);
+    expect(tasksSource).toMatch(/风险等级/);
+    expect(tasksSource).toMatch(/Listing 准备/);
+    expect(tasksSource).toMatch(/人工复核/);
+  });
+});
+
+describe("TaskRecordDetail operation overview", () => {
+  const detailSource = readComponentSource("components/TaskRecordDetail.tsx");
+
+  it("shows a B3 operation overview without removing B1 and B2 sections", () => {
+    expect(detailSource).toMatch(/deriveTaskOperationSummary/);
+    expect(detailSource).toMatch(/运营推进总览/);
+    expect(detailSource).toMatch(/当前阶段/);
+    expect(detailSource).toMatch(/阻塞项/);
+    expect(detailSource).toMatch(/人工复核重点/);
+    expect(detailSource).toMatch(/来源质量/);
+    expect(detailSource).toMatch(/AgentOutputSnapshotCard/);
+    expect(detailSource).toMatch(/来源证据/);
+  });
 });
 
 // ── HR demo banner regression ─────────────────────

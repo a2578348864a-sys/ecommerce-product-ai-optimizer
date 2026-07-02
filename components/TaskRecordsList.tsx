@@ -29,6 +29,7 @@ import {
   LISTING_PACK_FILTER_LABEL,
 } from "@/lib/tasks/listingSnapshotUi";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
 import {
   derivePipelineStatus,
   deriveNextAction,
@@ -1051,6 +1052,15 @@ export function TaskRecordsList() {
                       decisionStatus: item.decisionStatus,
                       result: item.result,
                     });
+                    const operationSummary = deriveTaskOperationSummary({
+                      type: item.type,
+                      title: item.title,
+                      materialText: item.materialText,
+                      oneLineSummary: item.oneLineSummary,
+                      level: item.level,
+                      decisionStatus: item.decisionStatus,
+                      result: item.result,
+                    });
                     const batchMeta = summary.batchMeta;
                     const sourceMeta = getTaskSourceMeta(item.result);
                     const listingPackBadges = buildListingPackBadges(item.result);
@@ -1088,16 +1098,29 @@ export function TaskRecordsList() {
                             </div>
                             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                               {[
-                                ["AI 建议", summary.verdictLabel.slice(0, 20)],
-                                ["风险", summary.riskLabel],
-                                ["新手适配", summary.beginnerLabel],
-                                ["优先级", summary.priorityLabel],
+                                ["运营阶段", operationSummary.stageLabel],
+                                ["AI 决策", operationSummary.decisionLabel],
+                                ["风险等级", operationSummary.riskLabel],
+                                ["下一步", operationSummary.actionLabel],
+                                ["Listing 准备", operationSummary.listingReadinessLabel],
+                                ["人工复核", operationSummary.stage === "needs_review" || operationSummary.reviewFocus.length > 0 ? "需要关注" : "常规复核"],
                               ].map(([label, value]) => (
                                 <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                                   <p className="text-xs font-bold text-slate-400">{label}</p>
                                   <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{value}</p>
                                 </div>
                               ))}
+                            </div>
+                            <div className="mt-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
+                              <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                                {operationSummary.sourceQualityScore !== undefined ? <span>来源质量 {operationSummary.sourceQualityScore}/100</span> : null}
+                                {operationSummary.confidence ? <span>置信度 {operationSummary.confidence}</span> : null}
+                                <span>阻塞项 {operationSummary.blockingIssues.length}</span>
+                                {operationSummary.fallbackUsed ? <span>历史任务 fallback</span> : null}
+                              </div>
+                              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
+                                {operationSummary.evidenceSummary}
+                              </p>
                             </div>
                             {batchMeta && batchGroup ? (
                               <div className="mt-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-3">

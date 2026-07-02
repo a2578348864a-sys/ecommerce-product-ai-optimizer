@@ -35,6 +35,7 @@ import {
 } from "@/lib/tasks/listingSnapshotUi";
 import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
+import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { ListingPackCard } from "@/components/ListingPackCard";
@@ -198,6 +199,15 @@ function WorkflowDecisionSummary({
   const hasListingData = isRecordValue(result) && isRecordValue(result.listing);
   const listingData = hasListingData ? (result.listing as { title?: string; keywords?: string[]; complianceNotes?: string[] }) : null;
   const agentOutputSnapshot = extractAgentOutputSnapshotFromTask(result);
+  const operationSummary = deriveTaskOperationSummary({
+    type: "workflow",
+    title: fallbackTitle,
+    materialText: fallbackTitle,
+    oneLineSummary: "",
+    level: "",
+    decisionStatus,
+    result,
+  });
 
   // Phase Agent-Save-M.1: agent run snapshot
   const agentRunSnapshot = extractAgentRunSnapshot(result);
@@ -218,6 +228,66 @@ function WorkflowDecisionSummary({
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
       <DecisionCardUI card={decisionCard} compact />
+      <section className="mt-4 rounded-2xl border border-white/80 bg-white p-4" data-testid="task-operation-overview">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-sm font-bold text-teal-700">运营推进总览</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              把来源证据、Agent 结构化结论和人工复核要求合并成下一步运营动作。
+            </p>
+          </div>
+          {operationSummary.fallbackUsed ? (
+            <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+              历史任务 fallback
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["当前阶段", operationSummary.stageLabel],
+            ["AI 决策", operationSummary.decisionLabel],
+            ["风险等级", operationSummary.riskLabel],
+            ["下一步动作", operationSummary.actionLabel],
+            ["Listing 准备度", operationSummary.listingReadinessLabel],
+            ["来源质量", operationSummary.sourceQualityScore !== undefined ? `${operationSummary.sourceQualityScore}/100` : "暂无"],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-xs font-bold text-slate-400">{label}</p>
+              <p className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-slate-800">{value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+            <p className="text-xs font-bold text-amber-700">阻塞项</p>
+            {operationSummary.blockingIssues.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-800">
+                {operationSummary.blockingIssues.map((item) => <li key={item}>- {item}</li>)}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-amber-800">暂无明确阻塞项，仍需人工确认关键商业动作。</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-teal-100 bg-teal-50/70 p-3">
+            <p className="text-xs font-bold text-teal-700">人工复核重点</p>
+            {operationSummary.reviewFocus.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-sm leading-6 text-teal-800">
+                {operationSummary.reviewFocus.map((item) => <li key={item}>- {item}</li>)}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-teal-800">历史任务未记录标准化复核重点，请人工查看完整结果。</p>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <p className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
+            推进 / 放弃依据：{operationSummary.agentReason}
+          </p>
+          <p className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
+            来源证据：{operationSummary.evidenceSummary}
+          </p>
+        </div>
+      </section>
       <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-bold text-teal-700">运营跟进面板 · AI 辅助判断，最终人工确认</p>
