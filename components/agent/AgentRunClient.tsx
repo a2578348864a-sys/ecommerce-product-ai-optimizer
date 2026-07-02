@@ -30,7 +30,7 @@ import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
-import { saveAgentRunCache, loadAgentRunCache, clearAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
+import { saveAgentRunCache, loadAgentRunCache, loadLatestAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
 import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
@@ -366,12 +366,9 @@ export function AgentRunClient({
     if (cacheRestoreAttempted.current) return;
 
     const nameFromUrl = (initialProductName || "").trim();
-    if (!nameFromUrl) {
-      cacheRestoreAttempted.current = true;
-      return;
-    }
-
-    const cached = loadAgentRunCache(nameFromUrl, initialSourceMeta || null);
+    const cached = nameFromUrl
+      ? loadAgentRunCache(nameFromUrl, initialSourceMeta || null)
+      : loadLatestAgentRunCache(initialSourceMeta || null);
     if (!cached) {
       cacheRestoreAttempted.current = true;
       return;
@@ -399,25 +396,21 @@ export function AgentRunClient({
   }, [isAccessPasswordReady]);
 
   // Cache save: after analysis completes, persist to sessionStorage
-  const prevPhaseRef = useRef(phase);
   useEffect(() => {
-    const prev = prevPhaseRef.current;
-    prevPhaseRef.current = phase;
+    if (phase !== "needs_manual_review" && phase !== "completed") return;
+    if (!result) return;
 
-    // Save when entering completed or needs_manual_review
-    if ((phase === "needs_manual_review" || phase === "completed") && prev !== phase) {
-      const currentName = productName.trim();
-      if (!currentName) return;
-      saveAgentRunCache(currentName, sourceMeta, {
-        phase,
-        stepStatuses,
-        result,
-        profitSnapshot: profitSnapshot as unknown,
-        riskReviewSnapshot: riskReviewSnapshot as unknown,
-        manualChecked,
-        savedTaskId,
-      });
-    }
+    const currentName = productName.trim() || result.productName.trim();
+    if (!currentName) return;
+    saveAgentRunCache(currentName, sourceMeta, {
+      phase,
+      stepStatuses,
+      result,
+      profitSnapshot: profitSnapshot as unknown,
+      riskReviewSnapshot: riskReviewSnapshot as unknown,
+      manualChecked,
+      savedTaskId,
+    });
   }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, savedTaskId]);
 
   async function handleRun() {

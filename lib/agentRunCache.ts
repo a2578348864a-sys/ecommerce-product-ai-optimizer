@@ -65,6 +65,15 @@ function buildCacheKey(productName: string, candidateId?: string | null): string
   return `${CACHE_PREFIX}:product:${normalized}`;
 }
 
+function parseCachedRun(raw: string | null): CachedAgentRun | null {
+  if (!raw) return null;
+  const cache = JSON.parse(raw) as CachedAgentRun;
+  if (!cache || cache.version !== 1) return null;
+  if (Date.now() - cache.savedAt > (cache.ttlMs || DEFAULT_TTL_MS)) return null;
+  if (typeof cache.productName !== "string" || !cache.productName.trim()) return null;
+  return cache;
+}
+
 // ── Public API ──────────────────────────────────
 
 /** Build the cache key from current context */
@@ -111,11 +120,8 @@ export function loadAgentRunCache(
     const raw = storage.getItem(key);
     if (!raw) return null;
 
-    const cache = JSON.parse(raw) as CachedAgentRun;
-    if (!cache || cache.version !== 1) return null;
-
-    // TTL check
-    if (Date.now() - cache.savedAt > (cache.ttlMs || DEFAULT_TTL_MS)) {
+    const cache = parseCachedRun(raw);
+    if (!cache) {
       storage.removeItem(key);
       return null;
     }
@@ -126,6 +132,44 @@ export function loadAgentRunCache(
     }
 
     return cache;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load the most recent cached run in this tab.
+ * Used only as a recovery fallback for bare /agent/run where there is no
+ * product query to build an exact cache key.
+ */
+export function loadLatestAgentRunCache(
+  sourceMeta?: CachedSourceMeta | null,
+): CachedAgentRun | null {
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    const candidateId = sourceMeta?.candidateId || null;
+    const matches: CachedAgentRun[] = [];
+    const expiredKeys: string[] = [];
+
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (!key || !key.startsWith(`${CACHE_PREFIX}:`)) continue;
+
+      const raw = storage.getItem(key);
+      const cache = parseCachedRun(raw);
+      if (!cache) {
+        expiredKeys.push(key);
+        continue;
+      }
+
+      if (candidateId && cache.sourceMeta?.candidateId !== candidateId) continue;
+      matches.push(cache);
+    }
+
+    expiredKeys.forEach((key) => storage.removeItem(key));
+    matches.sort((a, b) => b.savedAt - a.savedAt);
+    return matches[0] || null;
   } catch {
     return null;
   }
