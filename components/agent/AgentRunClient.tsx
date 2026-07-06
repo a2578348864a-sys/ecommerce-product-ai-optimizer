@@ -407,7 +407,7 @@ export function AgentRunClient({
       return info?.id || "demo";
     }
     return "owner";
-  }, [isAccessPasswordReady]);
+  }, [isAccessPasswordReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cache restore: after auth hydration, try to restore a previously saved run.
   // Uses initialProductName (from URL/server props) directly, not productName state,
@@ -468,7 +468,7 @@ export function AgentRunClient({
       manualDecisionNextAction,
       savedTaskId,
     }, cacheScope);
-  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, savedTaskId]);
+  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, savedTaskId, cacheScope]);
 
   // Cache save: after analysis completes, persist to sessionStorage
   useEffect(() => {
