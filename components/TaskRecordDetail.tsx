@@ -1012,6 +1012,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [updatingDecision, setUpdatingDecision] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState("");
+  // Prevent stale async responses from overwriting newer state
+  const reqIdRef = useRef(0);
   const [deleteError, setDeleteError] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
   const [copied, setCopied] = useState(false);
@@ -1037,24 +1039,38 @@ export function TaskRecordDetail({ id }: { id: string }) {
     }
 
     async function loadRecord() {
+      // Bump request id so any in-flight stale response is discarded
+      reqIdRef.current += 1;
+      const currentId = reqIdRef.current;
+
       setLoading(true);
       setError("");
-      setRecord(null); // Clear any stale data from previous task loads
+      setRecord(null);
       try {
         const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
           cache: "no-store",
           headers: { ...buildAccessHeaders() },
         });
+        // Discard if a newer request has already started
+        if (cancelled || currentId !== reqIdRef.current) return;
+
         const data = await response.json() as DetailResponse;
+        if (cancelled || currentId !== reqIdRef.current) return;
+
         if (!response.ok || !data.ok) {
-          if (!cancelled) setError(data.ok ? "任务详情读取失败。" : data.error.message);
+          setRecord(null);
+          setError(data.ok ? "任务详情读取失败。" : data.error.message);
           return;
         }
-        if (!cancelled) setRecord(data.data);
+        setRecord(data.data);
       } catch {
-        if (!cancelled) setError("任务详情暂时无法读取，请稍后刷新。");
+        if (cancelled || currentId !== reqIdRef.current) return;
+        setRecord(null);
+        setError("任务详情暂时无法读取，请稍后刷新。");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && currentId === reqIdRef.current) {
+          setLoading(false);
+        }
       }
     }
 
