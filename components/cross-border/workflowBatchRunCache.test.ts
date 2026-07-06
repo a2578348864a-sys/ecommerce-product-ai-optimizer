@@ -422,8 +422,9 @@ vi.stubGlobal("window", { localStorage: mockLocalStorage });
 vi.stubGlobal("localStorage", mockLocalStorage);
 
 const runCache = await import("@/components/cross-border/workflowBatchRunCache");
-const WORKFLOW_BATCH_RUN_KEY = runCache.WORKFLOW_BATCH_RUN_KEY;
 const WORKFLOW_BATCH_RUN_TTL_MS = runCache.WORKFLOW_BATCH_RUN_TTL_MS;
+// Access-Control-P2: scoped key is owner:{base} by default (no demo session)
+const SCOPED_KEY = "owner:qx:workflow-batch-run:v1";
 
 beforeEach(() => {
   store.clear();
@@ -432,10 +433,10 @@ beforeEach(() => {
 });
 
 describe("clearLocalRun", () => {
-  it("removes WORKFLOW_BATCH_RUN_KEY from localStorage", () => {
-    store.set(WORKFLOW_BATCH_RUN_KEY, "some data");
+  it("removes scoped SCOPED_KEY from localStorage", () => {
+    store.set(SCOPED_KEY, "some data");
     runCache.clearLocalRun();
-    expect(store.has(WORKFLOW_BATCH_RUN_KEY)).toBe(false);
+    expect(store.has(SCOPED_KEY)).toBe(false);
   });
 
   it("does not throw when localStorage is unavailable", () => {
@@ -489,14 +490,14 @@ describe("readLocalRun / writeLocalRun", () => {
       },
     });
 
-    store.set(WORKFLOW_BATCH_RUN_KEY, runPayload);
+    store.set(SCOPED_KEY, runPayload);
 
     const result = runCache.readLocalRun();
     expect(result.restored).toBe(false);
   });
 
   it("corrupted JSON does not crash and returns fallback", () => {
-    store.set(WORKFLOW_BATCH_RUN_KEY, "{not valid json");
+    store.set(SCOPED_KEY, "{not valid json");
     const result = runCache.readLocalRun();
     expect(result.restored).toBe(false);
   });

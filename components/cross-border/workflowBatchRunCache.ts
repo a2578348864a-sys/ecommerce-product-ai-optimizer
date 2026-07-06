@@ -10,6 +10,7 @@
  */
 
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
+import { getAccessMode, getDemoAccessInfo } from "@/lib/client/accessToken";
 
 /* ── Types ────────────────────────────────────── */
 
@@ -44,9 +45,21 @@ export type WorkflowBatchRun = {
 
 /* ── Constants ────────────────────────────────── */
 
-export const WORKFLOW_BATCH_RUN_KEY = "qx:workflow-batch-run:v1";
+const WORKFLOW_BATCH_RUN_BASE_KEY = "qx:workflow-batch-run:v1";
 export const WORKFLOW_BATCH_RUN_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 export const WORKFLOW_BATCH_RUN_VERSION = 1;
+
+/** @deprecated Use getScopedBatchRunKey() instead — unscoped key retained for migration */
+export const WORKFLOW_BATCH_RUN_KEY = WORKFLOW_BATCH_RUN_BASE_KEY;
+
+function getScopedBatchRunKey(): string {
+  const mode = getAccessMode();
+  if (mode === "demo") {
+    const info = getDemoAccessInfo();
+    return `demo:${info?.id || "unknown"}:${WORKFLOW_BATCH_RUN_BASE_KEY}`;
+  }
+  return `owner:${WORKFLOW_BATCH_RUN_BASE_KEY}`;
+}
 
 export const emptyWorkflowBatchRun: WorkflowBatchRun = {
   version: WORKFLOW_BATCH_RUN_VERSION,
@@ -214,19 +227,19 @@ export function sanitizeRun(raw: unknown): WorkflowBatchRun | null {
 
 export function readLocalRun() {
   return readLocalDraft<WorkflowBatchRun>(
-    WORKFLOW_BATCH_RUN_KEY,
+    getScopedBatchRunKey(),
     emptyWorkflowBatchRun,
     { ttlMs: WORKFLOW_BATCH_RUN_TTL_MS, version: WORKFLOW_BATCH_RUN_VERSION },
   );
 }
 
 export function writeLocalRun(run: WorkflowBatchRun) {
-  return writeLocalDraft(WORKFLOW_BATCH_RUN_KEY, run, {
+  return writeLocalDraft(getScopedBatchRunKey(), run, {
     ttlMs: WORKFLOW_BATCH_RUN_TTL_MS,
     version: WORKFLOW_BATCH_RUN_VERSION,
   });
 }
 
 export function clearLocalRun() {
-  clearLocalDraft(WORKFLOW_BATCH_RUN_KEY);
+  clearLocalDraft(getScopedBatchRunKey());
 }

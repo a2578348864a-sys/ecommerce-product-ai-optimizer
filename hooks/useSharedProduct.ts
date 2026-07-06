@@ -1,8 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getAccessMode, getDemoAccessInfo } from "@/lib/client/accessToken";
 
-const STORAGE_KEY = "qingxuan-current-product";
+const STORAGE_KEY_BASE = "qingxuan-current-product";
+
+function getScopedStorageKey(): string {
+  const mode = getAccessMode();
+  if (mode === "demo") {
+    const info = getDemoAccessInfo();
+    return `demo:${info?.id || "unknown"}:${STORAGE_KEY_BASE}`;
+  }
+  return `owner:${STORAGE_KEY_BASE}`;
+}
 
 export type SharedProduct = {
   productName: string;
@@ -25,7 +35,7 @@ const EMPTY: SharedProduct = {
 function readFromStorage(): SharedProduct {
   if (typeof window === "undefined") return { ...EMPTY };
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(getScopedStorageKey());
     if (!raw) return { ...EMPTY };
     const parsed = JSON.parse(raw);
     return {
@@ -44,7 +54,7 @@ function readFromStorage(): SharedProduct {
 function writeToStorage(value: SharedProduct) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+    window.localStorage.setItem(getScopedStorageKey(), JSON.stringify(value));
   } catch {
     // localStorage full or unavailable — silently ignore
   }

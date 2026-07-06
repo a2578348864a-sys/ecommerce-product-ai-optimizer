@@ -1,4 +1,5 @@
 import type { ListingCopyResult } from "@/lib/types";
+import { getAccessMode, getDemoAccessInfo } from "@/lib/client/accessToken";
 
 export type ListingCopyHistorySource = "database" | "local";
 
@@ -26,9 +27,30 @@ type ListingCopyHistoryPayload = {
 
 type LocalStorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export const listingCopyCacheKey = "cross-border:last-listing-copy";
-export const listingCopyHistoryKey = "cross-border:listing-copy-history";
+const listingCopyCacheKeyBase = "cross-border:last-listing-copy";
+const listingCopyHistoryKeyBase = "cross-border:listing-copy-history";
 export const listingCopyHistoryMaxItems = 10;
+
+function getListingCopyModePrefix(): string {
+  const mode = getAccessMode();
+  if (mode === "demo") {
+    const info = getDemoAccessInfo();
+    return `demo:${info?.id || "unknown"}:`;
+  }
+  return "owner:";
+}
+
+function scopedCacheKey(): string {
+  return `${getListingCopyModePrefix()}${listingCopyCacheKeyBase}`;
+}
+
+function scopedHistoryKey(): string {
+  return `${getListingCopyModePrefix()}${listingCopyHistoryKeyBase}`;
+}
+
+/** @deprecated Use scoped keys — unscoped keys retained for migration */
+export const listingCopyCacheKey = listingCopyCacheKeyBase;
+export const listingCopyHistoryKey = listingCopyHistoryKeyBase;
 
 const listingCopyCacheVersion = 1;
 const listingCopyHistoryVersion = 1;
@@ -39,7 +61,8 @@ export function getListingCopyProductKey(productName: string) {
 
 function getScopedListingCopyCacheKey(productName: string) {
   const productKey = getListingCopyProductKey(productName);
-  return productKey ? `${listingCopyCacheKey}:${encodeURIComponent(productKey)}` : listingCopyCacheKey;
+  const base = scopedCacheKey();
+  return productKey ? `${base}:${encodeURIComponent(productKey)}` : base;
 }
 
 function getBrowserLocalStorage(): LocalStorageLike | null {
@@ -226,7 +249,7 @@ export function readCachedListingCopyHistory(storage = getBrowserLocalStorage())
   if (!storage) return [];
 
   try {
-    const raw = storage.getItem(listingCopyHistoryKey);
+    const raw = storage.getItem(scopedHistoryKey());
     if (!raw) return [];
 
     const parsed: unknown = JSON.parse(raw);
@@ -255,7 +278,7 @@ export function writeCachedListingCopyHistory(
       version: listingCopyHistoryVersion,
       items: items.slice(0, listingCopyHistoryMaxItems),
     };
-    storage.setItem(listingCopyHistoryKey, JSON.stringify(payload));
+    storage.setItem(scopedHistoryKey(), JSON.stringify(payload));
     return true;
   } catch {
     return false;
