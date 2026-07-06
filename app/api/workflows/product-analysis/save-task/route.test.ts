@@ -447,4 +447,97 @@ describe("Listing-Persistence-Fix.1 — fallback snapshot", () => {
     expect(result.listingPrepSnapshot).toBeTruthy();
     expect(result.listingPrepSnapshot.keywordPool.coreWords).toContain("only-kw");
   });
+
+  // ── Predeploy guard: nullish + invalid input handling ──
+
+  it("falls back when listingPrepSnapshot is explicitly null", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "From Null Fallback", keywords: ["nk"] },
+      }),
+      listingPrepSnapshot: null,
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("From Null Fallback");
+  });
+
+  it("falls back when listingPrepSnapshot is completely omitted", async () => {
+    // Do not include listingPrepSnapshot key at all
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Omitted Key", keywords: ["ok"] },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeTruthy();
+  });
+
+  it("does not crash when listing.title is a number", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: 12345, keywords: ["valid-kw"] },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("does not crash when listing.keywords is a string instead of array", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Test", keywords: "not-an-array" },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("does not crash when listing.keywords is an object", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Test", keywords: { a: 1 } },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("complianceNotes-only with empty title and keywords does NOT generate snapshot", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "", keywords: [], complianceNotes: ["some note"] },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    // Only title and keywords are checked for content; complianceNotes alone is not enough
+    expect(result.listingPrepSnapshot).toBeUndefined();
+  });
 });
