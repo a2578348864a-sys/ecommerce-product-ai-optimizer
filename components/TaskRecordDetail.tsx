@@ -1039,6 +1039,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     async function loadRecord() {
       setLoading(true);
       setError("");
+      setRecord(null); // Clear any stale data from previous task loads
       try {
         const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
           cache: "no-store",
