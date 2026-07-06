@@ -221,6 +221,37 @@ export async function GET(request: NextRequest) {
   const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "";
   const effectiveDecisionStatus = isDecisionStatus(decisionStatusParam) ? decisionStatusParam : "";
 
+  // Access-Control-Fix.1: Resolve access context before any Prisma query.
+  // Demo users only see their own sandbox tasks — never Owner tasks.
+  const ctx = getAccessContext(request);
+
+  if (ctx && ctx.mode === "demo") {
+    try {
+      const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
+      const sandboxItems = sandboxTasks.map((t) => sandboxTaskToListItem(t));
+      const total = sandboxItems.length;
+      const paged = sandboxItems.slice(offset, offset + limit);
+
+      return jsonResponse({
+        ok: true,
+        records: paged as unknown as ViralTaskItem[],
+        data: { items: paged as unknown as ViralTaskItem[] },
+        page: {
+          type: effectiveType,
+          q,
+          limit,
+          offset,
+          total,
+          hasMore: offset + limit < total,
+          nextOffset: offset + limit < total ? offset + paged.length : null,
+          decisionStatus: effectiveDecisionStatus,
+        },
+      });
+    } catch (error) {
+      return isDatabaseError(error) ? databaseError() : serverError();
+    }
+  }
+
   try {
     const [records, total] = await Promise.all([
       prisma.viralAnalysisRecord.findMany({
@@ -232,16 +263,7 @@ export async function GET(request: NextRequest) {
       prisma.viralAnalysisRecord.count({ where }),
     ]);
 
-    let items: Record<string, unknown>[] = records.map(toTaskItem) as unknown as Record<string, unknown>[];
-
-    // Demo-Sandbox.1-B: merge sandbox tasks for demo users
-    const ctx = getAccessContext(request);
-    if (ctx && ctx.mode === "demo") {
-      const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
-      const sandboxItems = sandboxTasks.map((t) => sandboxTaskToListItem(t));
-      // Sandbox tasks first (newest), then official
-      items = [...sandboxItems, ...(items.map((item) => ({ ...item, sourceMode: "official_readonly", isSandbox: false, canEdit: false, canDelete: false })))] as unknown as Record<string, unknown>[];
-    }
+    const items = records.map(toTaskItem);
 
     const nextOffset = offset + items.length;
     const hasMore = nextOffset < total;

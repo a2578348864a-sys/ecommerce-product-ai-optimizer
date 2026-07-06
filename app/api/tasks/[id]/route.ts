@@ -170,6 +170,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return jsonResponse({ ok: true, data: sandboxTaskToDetail(task) });
   }
 
+  // Access-Control-Fix.1: Demo users cannot read official (Owner) task details.
+  // Check after sandbox ID path so sandbox tasks still work for Demo users.
+  const accessCtx = getAccessContext(request);
+  if (accessCtx?.mode === "demo") return notFoundResponse();
+
   try {
     const record = await prisma.viralAnalysisRecord.findFirst({
       where: { id },

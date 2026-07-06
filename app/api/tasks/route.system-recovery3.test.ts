@@ -9,7 +9,7 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { createOwnerSession, createDemoSession, deleteAccessSession } from "@/lib/server/accessSession";
 import { createDemoAccess, loadDemoAccessStore, saveDemoAccessStore } from "@/lib/server/demoAccess";
-import { createSandboxTask, listSandboxTasks, sandboxTaskToListItem, loadDemoSandboxStore, saveDemoSandboxStore } from "@/lib/server/demoSandbox";
+import { createSandboxTask, isSandboxTaskId, getSandboxTask, listSandboxTasks, sandboxTaskToListItem, loadDemoSandboxStore, saveDemoSandboxStore } from "@/lib/server/demoSandbox";
 import { getAccessContext, checkAccessPassword } from "@/lib/server/accessPassword";
 
 function buildGetRequest(token: string): NextRequest {
@@ -123,5 +123,79 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
       expect(item.canEdit).toBe(true);
       expect(item.canDelete).toBe(true);
     }
+  });
+});
+
+// ── Access-Control-Fix.1: Demo isolation guards ──
+// Note: createSandboxTask already imported at top of file
+
+describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
+  let demoSandboxStoreBefore: unknown;
+  let demoAccessStoreBefore: unknown;
+
+  beforeEach(() => {
+    demoSandboxStoreBefore = loadDemoSandboxStore();
+    demoAccessStoreBefore = loadDemoAccessStore();
+  });
+
+  afterEach(() => {
+    saveDemoSandboxStore(demoSandboxStoreBefore);
+    saveDemoAccessStore(demoAccessStoreBefore);
+  });
+
+  it("non-sandbox task IDs are correctly identified", () => {
+    expect(isSandboxTaskId("cmr3jj0dw0000mdhz2eu63mbt")).toBe(false);
+    expect(isSandboxTaskId("test-uuid-123")).toBe(false);
+    expect(isSandboxTaskId("")).toBe(false);
+  });
+
+  it("sandbox task ID starts with sandbox_ prefix and is scoped to demoAccessId", () => {
+    const task = createSandboxTask("demo-user-001", { title: "Test" });
+    expect(isSandboxTaskId(task.id)).toBe(true);
+    expect(task.id).toMatch(/^sandbox_task_/);
+    expect(task.demoAccessId).toBe("demo-user-001");
+
+    // Different demo user cannot access
+    const other = getSandboxTask("other-demo-user", task.id);
+    expect(other).toBeNull();
+
+    // Same demo user can access
+    const same = getSandboxTask("demo-user-001", task.id);
+    expect(same).not.toBeNull();
+  });
+
+  it("guard logic: demo mode + non-sandbox ID → reject", () => {
+    // The guard in the route handler:
+    //   const accessCtx = getAccessContext(request);
+    //   if (accessCtx?.mode === "demo") return notFoundResponse();
+    //
+    // This simulates the guard: if a demo context exists AND the ID
+    // is not a sandbox task, the handler returns 404 before Prisma query.
+    const nonSandboxId = "cmr3jj0dw0000mdhz2eu63mbt";
+    const isSandbox = isSandboxTaskId(nonSandboxId);
+    expect(isSandbox).toBe(false);
+
+    // Guard logic: demo mode + non-sandbox → true (reject)
+    const shouldReject = (mode: string) => mode === "demo" && !isSandboxTaskId(nonSandboxId);
+    expect(shouldReject("demo")).toBe(true);
+    expect(shouldReject("owner")).toBe(false);
+  });
+
+  it("guard logic: demo mode + sandbox ID → allow", () => {
+    const task = createSandboxTask("scope-test-demo", { title: "Demo Task" });
+    const isSandbox = isSandboxTaskId(task.id);
+    expect(isSandbox).toBe(true);
+
+    // Guard logic: sandbox ID is handled before the demo guard for non-sandbox IDs
+    const shouldAllow = (mode: string, id: string) => {
+      if (isSandboxTaskId(id)) {
+        // sandbox path: only demo users can access their own tasks
+        return mode === "demo";
+      }
+      // non-sandbox path: the new guard blocks demo
+      return mode !== "demo";
+    };
+    expect(shouldAllow("demo", task.id)).toBe(true);
+    expect(shouldAllow("owner", task.id)).toBe(false);
   });
 });

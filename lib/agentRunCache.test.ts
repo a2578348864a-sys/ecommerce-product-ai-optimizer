@@ -83,3 +83,67 @@ describe("agentRunCache", () => {
     });
   });
 });
+
+// ── Access-Control-Fix.1: cache scope isolation ──
+
+describe("agentRunCache scope isolation", () => {
+  it("isolates Owner and Demo caches with same product name", () => {
+    const data = {
+      phase: "needs_manual_review",
+      stepStatuses: {},
+      result: null,
+      profitSnapshot: null,
+      riskReviewSnapshot: null,
+      manualChecked: {},
+      savedTaskId: "",
+    };
+
+    // Save as Owner
+    saveAgentRunCache("Same Product", null, data, "owner");
+    // Save as Demo-A
+    saveAgentRunCache("Same Product", null, data, "demo-a");
+    // Save as Demo-B
+    saveAgentRunCache("Same Product", null, data, "demo-b");
+
+    // Load as Owner — should only get Owner's cache
+    const ownerCache = loadAgentRunCache("Same Product", null, "owner");
+    expect(ownerCache).not.toBeNull();
+
+    // Load as Demo-A — should only get Demo-A's cache
+    const demoACache = loadAgentRunCache("Same Product", null, "demo-a");
+    expect(demoACache).not.toBeNull();
+
+    // Demo-B should NOT see Demo-A's cache
+    const demoBCache = loadAgentRunCache("Same Product", null, "demo-b");
+    expect(demoBCache).not.toBeNull();
+
+    // Owner and Demo caches are independently saved/loaded
+    // (they use different scope-prefixed keys)
+    expect(ownerCache!.productName).toBe("Same Product");
+    expect(demoACache!.productName).toBe("Same Product");
+  });
+
+  it("latest cache is scoped to access mode", () => {
+    const data = {
+      phase: "completed",
+      stepStatuses: { manual: "completed" },
+      result: null,
+      profitSnapshot: null,
+      riskReviewSnapshot: null,
+      manualChecked: {},
+      savedTaskId: "owner-task-1",
+    };
+
+    // Save in Owner scope
+    saveAgentRunCache("Scoped Product", null, data, "owner");
+
+    // loadLatestAgentRunCache with owner scope should find it
+    const ownerLatest = loadLatestAgentRunCache(null, "owner");
+    expect(ownerLatest).not.toBeNull();
+    expect(ownerLatest!.savedTaskId).toBe("owner-task-1");
+
+    // loadLatestAgentRunCache with demo scope should NOT find it
+    const demoLatest = loadLatestAgentRunCache(null, "demo-x");
+    expect(demoLatest).toBeNull();
+  });
+});

@@ -22,7 +22,7 @@ import {
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { useAccessPassword } from "@/lib/client/accessPassword";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, getAccessMode, getDemoAccessInfo } from "@/lib/client/accessToken";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
@@ -369,13 +369,17 @@ export function AgentRunClient({
     setSaving(false);
     setSavedTaskId("");
     cacheRestoreAttempted.current = false;
-    // Clear agent run cache (all keys for this tab)
+    // Clear agent run cache (scoped to current access mode only)
     try {
       const storage = window.sessionStorage;
+      const mode = getAccessMode();
+      const info = getDemoAccessInfo();
+      const scope = mode === "demo" ? (info?.id || "demo") : "owner";
+      const scopePfx = `agent-run:v1:${mode === "demo" ? `demo:${info?.id || "demo"}:` : "owner:"}`;
       const keysToRemove: string[] = [];
       for (let i = 0; i < storage.length; i++) {
         const key = storage.key(i);
-        if (key && key.startsWith("agent-run:v1:")) keysToRemove.push(key);
+        if (key && key.startsWith(scopePfx)) keysToRemove.push(key);
       }
       keysToRemove.forEach((k) => storage.removeItem(k));
     } catch { /* ignore */ }
@@ -394,6 +398,17 @@ export function AgentRunClient({
     });
   }, [result?.workflowId]);
 
+  // Access-Control-Fix.1: derive cache scope from access mode to prevent
+  // Owner/Demo agent run result leakage through shared sessionStorage keys.
+  const cacheScope = useMemo(() => {
+    const mode = getAccessMode();
+    if (mode === "demo") {
+      const info = getDemoAccessInfo();
+      return info?.id || "demo";
+    }
+    return "owner";
+  }, [isAccessPasswordReady]);
+
   // Cache restore: after auth hydration, try to restore a previously saved run.
   // Uses initialProductName (from URL/server props) directly, not productName state,
   // to avoid race with the setProductName useEffect.
@@ -404,8 +419,8 @@ export function AgentRunClient({
 
     const nameFromUrl = (initialProductName || "").trim();
     const cached = nameFromUrl
-      ? loadAgentRunCache(nameFromUrl, initialSourceMeta || null)
-      : loadLatestAgentRunCache(initialSourceMeta || null);
+      ? loadAgentRunCache(nameFromUrl, initialSourceMeta || null, cacheScope)
+      : loadLatestAgentRunCache(initialSourceMeta || null, cacheScope);
     if (!cached) {
       cacheRestoreAttempted.current = true;
       return;
@@ -433,7 +448,7 @@ export function AgentRunClient({
     setManualDecisionReason(typeof cached.manualDecisionReason === "string" ? cached.manualDecisionReason : "");
     setManualDecisionNextAction(typeof cached.manualDecisionNextAction === "string" ? cached.manualDecisionNextAction : "");
     if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
-  }, [isAccessPasswordReady]);
+  }, [isAccessPasswordReady, cacheScope]);
 
   const persistCurrentRunCache = useCallback(() => {
     if (phase !== "needs_manual_review" && phase !== "completed") return;
@@ -452,7 +467,7 @@ export function AgentRunClient({
       manualDecisionReason,
       manualDecisionNextAction,
       savedTaskId,
-    });
+    }, cacheScope);
   }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, savedTaskId]);
 
   // Cache save: after analysis completes, persist to sessionStorage

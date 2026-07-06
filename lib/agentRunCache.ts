@@ -49,6 +49,11 @@ export type CachedAgentRun = {
 const CACHE_PREFIX = "agent-run:v1";
 const DEFAULT_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
+function scopePrefix(scope?: string | null): string {
+  if (!scope || scope === "owner") return "owner:";
+  return `demo:${scope}:`; // scope = demoAccessId for demo users
+}
+
 // ── Helpers ─────────────────────────────────────
 
 function getStorage(): Storage | null {
@@ -60,12 +65,13 @@ function getStorage(): Storage | null {
   }
 }
 
-function buildCacheKey(productName: string, candidateId?: string | null): string {
+function buildCacheKey(productName: string, candidateId?: string | null, scope?: string | null): string {
+  const sp = scopePrefix(scope);
   const normalized = (productName || "unknown").trim().slice(0, 80);
   if (candidateId) {
-    return `${CACHE_PREFIX}:${candidateId}`;
+    return `${CACHE_PREFIX}:${sp}${candidateId}`;
   }
-  return `${CACHE_PREFIX}:product:${normalized}`;
+  return `${CACHE_PREFIX}:${sp}product:${normalized}`;
 }
 
 function parseCachedRun(raw: string | null): CachedAgentRun | null {
@@ -83,8 +89,9 @@ function parseCachedRun(raw: string | null): CachedAgentRun | null {
 export function getAgentRunCacheKey(
   productName: string,
   sourceMeta?: CachedSourceMeta | null,
+  scope?: string | null,
 ): string {
-  return buildCacheKey(productName, sourceMeta?.candidateId || null);
+  return buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
 }
 
 /** Write the current run state to sessionStorage */
@@ -92,11 +99,12 @@ export function saveAgentRunCache(
   productName: string,
   sourceMeta: CachedSourceMeta | null,
   data: Omit<CachedAgentRun, "version" | "savedAt" | "ttlMs" | "productName" | "sourceMeta">,
+  scope?: string | null,
 ): void {
   const storage = getStorage();
   if (!storage) return;
   try {
-    const key = buildCacheKey(productName, sourceMeta?.candidateId || null);
+    const key = buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
     const cache: CachedAgentRun = {
       version: 1,
       savedAt: Date.now(),
@@ -115,11 +123,12 @@ export function saveAgentRunCache(
 export function loadAgentRunCache(
   productName: string,
   sourceMeta?: CachedSourceMeta | null,
+  scope?: string | null,
 ): CachedAgentRun | null {
   const storage = getStorage();
   if (!storage) return null;
   try {
-    const key = buildCacheKey(productName, sourceMeta?.candidateId || null);
+    const key = buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
     const raw = storage.getItem(key);
     if (!raw) return null;
 
@@ -141,23 +150,26 @@ export function loadAgentRunCache(
 }
 
 /**
- * Load the most recent cached run in this tab.
+ * Load the most recent cached run in this tab within the given scope.
  * Used only as a recovery fallback for bare /agent/run where there is no
  * product query to build an exact cache key.
  */
 export function loadLatestAgentRunCache(
   sourceMeta?: CachedSourceMeta | null,
+  scope?: string | null,
 ): CachedAgentRun | null {
   const storage = getStorage();
   if (!storage) return null;
   try {
+    const sp = scopePrefix(scope);
+    const prefix = `${CACHE_PREFIX}:${sp}`;
     const candidateId = sourceMeta?.candidateId || null;
     const matches: CachedAgentRun[] = [];
     const expiredKeys: string[] = [];
 
     for (let i = 0; i < storage.length; i += 1) {
       const key = storage.key(i);
-      if (!key || !key.startsWith(`${CACHE_PREFIX}:`)) continue;
+      if (!key || !key.startsWith(prefix)) continue;
 
       const raw = storage.getItem(key);
       const cache = parseCachedRun(raw);
@@ -182,11 +194,12 @@ export function loadLatestAgentRunCache(
 export function clearAgentRunCache(
   productName: string,
   sourceMeta?: CachedSourceMeta | null,
+  scope?: string | null,
 ): void {
   const storage = getStorage();
   if (!storage) return;
   try {
-    const key = buildCacheKey(productName, sourceMeta?.candidateId || null);
+    const key = buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
     storage.removeItem(key);
   } catch {
     // ignore
