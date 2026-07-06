@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { AgentNextStepPanel } from "@/components/AgentNextStepPanel";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
@@ -20,6 +20,7 @@ import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
+import { TaskDecisionHero } from "@/components/TaskDecisionHero";
 import { deriveAgentRunTimelineItems } from "@/lib/agentRunTimeline";
 import {
   decisionStatusOptions,
@@ -228,439 +229,227 @@ function WorkflowDecisionSummary({
     profitSnapshot: hasProfitSnapshot ? result.profitSnapshot : undefined,
   }), [result, hasRiskReviewSnapshot, hasProfitSnapshot]);
 
+  // Scroll refs for anchor navigation
+  const evidenceRef = useRef<HTMLDivElement | null>(null);
+  const listingRef = useRef<HTMLDivElement | null>(null);
+  const scrollToRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const pipeStatus = derivePipelineStatus({ decisionStatus, level: "", result });
+  const nextAct = deriveNextAction({ decisionStatus, level: "", result });
+  const hasListingPrep = !!listingPrepSnapshot || hasListingData;
+
   return (
-    <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
-      <DecisionCardUI card={decisionCard} compact />
-      <section className="mt-4 rounded-2xl border border-white/80 bg-white p-4" data-testid="task-operation-overview">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-sm font-bold text-teal-700">运营推进总览</p>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              把来源证据、Agent 结构化结论和人工复核要求合并成下一步运营动作。
-            </p>
-          </div>
-          {operationSummary.fallbackUsed ? (
-            <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-              历史任务 fallback
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            ["当前阶段", operationSummary.stageLabel],
-            ["AI 决策", operationSummary.decisionLabel],
-            ["风险等级", operationSummary.riskLabel],
-            ["下一步动作", operationSummary.actionLabel],
-            ["Listing 准备度", operationSummary.listingReadinessLabel],
-            ["来源质量", operationSummary.sourceQualityScore !== undefined ? `${operationSummary.sourceQualityScore}/100` : "暂无"],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-              <p className="text-xs font-bold text-slate-400">{label}</p>
-              <p className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-slate-800">{value}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-amber-100 bg-amber-50/70 p-3">
-            <p className="text-xs font-bold text-amber-700">阻塞项</p>
-            {operationSummary.blockingIssues.length > 0 ? (
-              <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-800">
-                {operationSummary.blockingIssues.map((item) => <li key={item}>- {item}</li>)}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-amber-800">暂无明确阻塞项，仍需人工确认关键商业动作。</p>
-            )}
-          </div>
-          <div className="rounded-xl border border-teal-100 bg-teal-50/70 p-3">
-            <p className="text-xs font-bold text-teal-700">人工复核重点</p>
-            {operationSummary.reviewFocus.length > 0 ? (
-              <ul className="mt-2 space-y-1 text-sm leading-6 text-teal-800">
-                {operationSummary.reviewFocus.map((item) => <li key={item}>- {item}</li>)}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-teal-800">历史任务未记录标准化复核重点，请人工查看完整结果。</p>
-            )}
-          </div>
-        </div>
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <p className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-            推进 / 放弃依据：{operationSummary.agentReason}
-          </p>
-          <p className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-            来源证据：{operationSummary.evidenceSummary}
-          </p>
-        </div>
-      </section>
-      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-teal-700">运营跟进面板 · AI 辅助判断，最终人工确认</p>
-          <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">
-            {summary.productName}
-          </h3>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">
-            {summary.verdictLabel}
-          </p>
-          <p className="mt-2 text-sm leading-6 text-teal-700">
-            {summary.reason}
-          </p>
-          {/* Phase 4-E.1: Enhanced source context + lifecycle status */}
-          {sourceMeta ? (
-            <div className="mt-3 flex flex-col gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 py-2 text-sm text-teal-800">
-              <div className="flex flex-wrap gap-2 font-semibold">
-                <span>来自候选池</span>
-                {sourceMeta.entry ? <span>入口：{sourceMeta.entry}</span> : null}
-                {sourceMeta.candidateId ? <span>候选 ID：{sourceMeta.candidateId}</span> : null}
-                {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
-                {sourceMeta.opportunitySource ? <span className="max-w-[200px] truncate">来源名称：{sourceMeta.opportunitySource}</span> : null}
-              </div>
-              {sourceMeta.originalName || sourceMeta.analyzedName ? (
-                <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-teal-700">
-                  {sourceMeta.originalName ? <span>原始名称：{sourceMeta.originalName}</span> : null}
-                  {sourceMeta.analyzedName ? <span>分析名称：{sourceMeta.analyzedName}</span> : null}
-                </div>
-              ) : null}
-              {sourceMeta.candidateType && (
-                <span className="inline-flex w-fit items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold">
-                  {sourceMeta.candidateType === "product_candidate" ? "商品候选" : sourceMeta.candidateType === "category_hint" ? "类目提示" : sourceMeta.candidateType === "trend_signal" ? "趋势信号" : sourceMeta.candidateType}
-                </span>
-              )}
-              {sourceMeta.sourceUrl && (
-                <a href={sourceMeta.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-teal-600 underline hover:text-teal-800">
-                  查看来源链接
-                </a>
-              )}
-              {sourceMeta.evidenceSnapshot ? (
-                <div className="rounded-lg border border-teal-100 bg-teal-50/70 px-2 py-1.5 text-xs text-teal-800">
-                  <p className="font-semibold">
-                    来源证据：{sourceMeta.evidenceSnapshot.decision} · {sourceMeta.evidenceSnapshot.qualityScore}/100 · {sourceMeta.evidenceSnapshot.confidence}
-                  </p>
-                  <p className="mt-1">{sourceMeta.evidenceSnapshot.decisionReason}</p>
-                  {sourceMeta.evidenceSnapshot.riskFlags.length > 0 ? (
-                    <p className="mt-1">风险标记：{sourceMeta.evidenceSnapshot.riskFlags.join(" / ")}</p>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-[11px] text-teal-600">历史任务未记录标准化来源证据。</p>
-              )}
-              {/* Phase Candidate-Status-M.1: Back to candidate pool link */}
-              <div className="mt-1 border-t border-teal-100 pt-1.5">
-                <Link
-                  href="/opportunities"
-                  className="inline-flex items-center gap-1 text-teal-700 font-semibold hover:text-teal-900 transition"
-                >
-                  回到候选池 →
-                </Link>
-                {sourceMeta.candidateId ? (
-                  <span className="ml-2 text-[10px] text-teal-500">候选 ID：{sourceMeta.candidateId}</span>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-          {/* Phase 4-E.2.1: Operation decision panel */}
-          {isWorkflow && productLifecycle && (
-            <OperationDecisionPanel taskId={taskId} lifecycle={productLifecycle} onUpdated={onLifecycleUpdated} />
-          )}
+    <section className="mt-5 space-y-4">
+      {/* ── Section 1: Hero — 当前决策与下一步 ── */}
+      <TaskDecisionHero
+        verdictLabel={summary.verdictLabel}
+        reason={summary.reason}
+        riskLabel={summary.riskLabel}
+        riskTone={summary.riskTone}
+        beginnerLabel={summary.beginnerLabel}
+        smallBatchLabel={summary.smallBatchLabel}
+        nextActions={summary.nextActions}
+        decisionStatus={decisionStatus}
+        stageLabel={operationSummary.stageLabel}
+        blockingIssues={operationSummary.blockingIssues}
+        reviewFocus={operationSummary.reviewFocus}
+        evidence={decisionEvidence}
+        pipelineStatus={pipeStatus}
+        primaryNextAction={nextAct.label}
+        hasListingPrep={hasListingPrep}
+        onScrollToEvidence={() => scrollToRef(evidenceRef)}
+        onScrollToListing={hasListingPrep ? () => scrollToRef(listingRef) : undefined}
+      />
 
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[360px] lg:justify-end">
-          <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.priorityTone)}>
-            {summary.priorityLabel}
-          </span>
-          <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(summary.riskTone)}>
-            {summary.riskLabel}
-          </span>
-          <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + decisionOption.className}>
-            {decisionOption.shortLabel}
-          </span>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ["风险等级", summary.riskLabel],
-          ["新手适配", summary.beginnerLabel],
-          ["小单判断", summary.smallBatchLabel],
-          ["当前决策", decisionOption.shortLabel],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-white/80 bg-white p-3">
-            <p className="text-xs font-bold text-slate-400">{label}</p>
-            <p className="mt-1 text-sm font-bold text-slate-800">{value}</p>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="rounded-xl border border-white/80 bg-white p-3">
-          <p className="text-xs font-bold text-slate-400">建议动作</p>
-          <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-700">
-            {summary.nextActions.slice(0, 5).map((item) => (
-              <li key={item}>- {item}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="rounded-xl border border-white/80 bg-white p-3">
-          <p className="text-xs font-bold text-slate-400">人工决策</p>
-          <select
-            value={decisionStatus}
-            onChange={(event) => onDecisionChange(event.target.value as DecisionStatus)}
-            disabled={updatingDecision}
-            className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {decisionStatusOptions.filter((option) => option.value).map((status) => (
-              <option key={status.value} value={status.value}>{status.shortLabel}</option>
-            ))}
-          </select>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{decisionOption.description}</p>
-          {decisionMessage ? (
-            <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} compact />
+      {/* ── Section 2: 为什么得到这个结论 — Evidence + Decision Card ── */}
+      <div ref={evidenceRef} className="scroll-mt-6">
+        <DecisionCardUI card={decisionCard} compact />
       </div>
       <div className="mt-4">
         <DecisionEvidencePanel evidence={decisionEvidence} compact />
       </div>
 
-      {/* Phase Agent-Save-M.1: Agent 主链路复盘 */}
-      {agentRunSnapshot ? (
-        <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4" data-testid="agent-run-review">
-          <h3 className="text-base font-bold text-indigo-900">Agent 主链路复盘</h3>
-          <p className="mt-0.5 text-sm leading-6 text-indigo-600">
-            来自 Agent 主链路驾驶舱 · 受控自动化 · {agentRunSnapshot.manualConfirmed ? "人工已确认" : "未完整确认"}
+      {/* ── Section 3: 接下来可以使用什么 — Listing ── */}
+      {hasListingPrep && (
+        <section ref={listingRef} className="scroll-mt-6 rounded-2xl border border-teal-200 bg-white p-4">
+          <p className="text-sm font-bold text-teal-700">接下来可以使用什么</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            基于当前分析整理的规则草稿和上架准备包。内容不会自动上架，必须人工复核。
           </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {agentRunSnapshot.finalVerdict && (
-              <div className="rounded-xl border border-white/80 bg-white p-2">
-                <span className="text-sm font-semibold text-indigo-500">最终结论</span>
-                <p className="mt-0.5 text-sm font-bold text-indigo-900">{agentRunSnapshot.finalVerdict}</p>
+        </section>
+      )}
+
+      {/* Listing 上架准备包 */}
+      {listingPrepSnapshot ? (
+        <section className="rounded-2xl border border-teal-200 bg-white p-4" data-testid="listing-prep-package">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h4 className="text-base font-bold text-teal-900">Listing 上架准备包</h4>
+              <p className="mt-0.5 text-xs text-slate-500">规则草稿 · 基于当前分析结果整理 · 不会自动上架</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const lines: string[] = [];
+                const lp = listingPrepSnapshot;
+                lines.push(`建议标题：${lp.titleStructure.recommendedTitle}`);
+                if (lp.keywordPool.coreWords.length) lines.push(`核心词：${lp.keywordPool.coreWords.join("、")}`);
+                if (lp.keywordPool.longTailWords.length) lines.push(`长尾词：${lp.keywordPool.longTailWords.join("、")}`);
+                if (lp.bulletDrafts.length) lines.push(`卖点要点：\n${lp.bulletDrafts.map((b, i) => `${i + 1}. ${b}`).join("\n")}`);
+                if (lp.complianceExpressionReminders.length) lines.push(`合规提醒：\n${lp.complianceExpressionReminders.map((c) => `- ${c}`).join("\n")}`);
+                const text = lines.join("\n\n");
+                navigator.clipboard.writeText(text).catch(() => {
+                  const ta = document.createElement("textarea");
+                  ta.value = text; document.body.appendChild(ta); ta.select();
+                  document.execCommand("copy"); ta.remove();
+                });
+              }}
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition"
+            >
+              复制准备包
+            </button>
+          </div>
+
+          {/* A. Suggested title */}
+          <div className="mt-3 rounded-lg border border-teal-100 bg-teal-50/50 p-2.5">
+            <p className="text-xs font-semibold text-teal-500 uppercase tracking-wide">建议标题</p>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{listingPrepSnapshot.titleStructure.recommendedTitle}</p>
+            {listingPrepSnapshot.titleStructure.formula ? (
+              <p className="mt-0.5 text-sm text-slate-400">公式：{listingPrepSnapshot.titleStructure.formula}</p>
+            ) : null}
+          </div>
+
+          {/* B. Keywords */}
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {listingPrepSnapshot.keywordPool.coreWords.length > 0 && (
+              <div className="rounded-lg border border-slate-100 bg-white p-2.5">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">核心关键词</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {listingPrepSnapshot.keywordPool.coreWords.map((w) => (
+                    <span key={w} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{w}</span>
+                  ))}
+                </div>
               </div>
             )}
-            {agentRunSnapshot.riskLevel && (() => {
-              const risk = formatRiskLevelLabel(agentRunSnapshot.riskLevel);
-              return (
-                <div className="rounded-xl border border-white/80 bg-white p-2">
-                  <span className="text-sm font-semibold text-indigo-500">风险等级</span>
-                  <p className={`mt-0.5 inline-block rounded-full border px-2 py-0.5 text-xs font-bold ${risk.tone}`}>{risk.label}</p>
+            {listingPrepSnapshot.keywordPool.longTailWords.length > 0 && (
+              <div className="rounded-lg border border-slate-100 bg-white p-2.5">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">长尾词 / 扩展词</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {listingPrepSnapshot.keywordPool.longTailWords.map((w) => (
+                    <span key={w} className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">{w}</span>
+                  ))}
                 </div>
-              );
-            })()}
-            <div className="rounded-xl border border-white/80 bg-white p-2">
-              <span className="text-sm font-semibold text-indigo-500">步骤完成</span>
-              <p className="mt-0.5 text-sm font-bold text-indigo-900">
-                {agentRunSnapshot.steps.filter((s) => s.status === "completed").length}/{agentRunSnapshot.steps.length}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/80 bg-white p-2">
-              <span className="text-sm font-semibold text-indigo-500">人工确认</span>
-              <p className="mt-0.5 text-sm font-bold text-indigo-900">
-                {agentRunSnapshot.manualConfirmed ? "已确认" : "未确认"}
-              </p>
-            </div>
+              </div>
+            )}
           </div>
-          <AgentRunTimeline items={agentRunTimelineItems} className="mt-3" />
-          <details className="hidden">
-            <summary className="cursor-pointer text-sm font-semibold text-indigo-700 select-none">
-              8 步链路状态
-            </summary>
-            <div className="mt-2 space-y-1">
-              {agentRunSnapshot.steps.map((step) => (
-                <div key={step.key} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm">
-                  <span className={`size-2 shrink-0 rounded-full ${
-                    step.status === "completed" ? "bg-emerald-500" :
-                    step.status === "needs_manual_review" ? "bg-amber-400" :
-                    step.status === "warning" ? "bg-amber-400" :
-                    "bg-slate-300"
-                  }`} />
-                  <span className="font-semibold text-slate-700">{step.label}</span>
-                  <span className="text-sm text-slate-400">
-                    {step.status === "completed" ? "已完成" :
-                     step.status === "needs_manual_review" ? "需人工复核" :
-                     step.status === "failed" ? "失败" :
-                     step.status === "warning" ? "需留意" :
-                     (step.status as string) === "running" ? "进行中" :
-                     (step.status as string) === "pending" ? "待开始" : "待开始"}
-                  </span>
-                  {step.summary && <span className="text-sm text-slate-500">— {step.summary}</span>}
-                </div>
-              ))}
+          {(listingPrepSnapshot.keywordPool.coreWords.length === 0 && listingPrepSnapshot.keywordPool.longTailWords.length === 0) && (
+            <p className="mt-2 text-sm text-slate-400 italic">待补充关键词 — 回到 Agent 主链路重新分析，或人工整理关键词后填入。</p>
+          )}
+
+          {/* C. Bullet drafts */}
+          {listingPrepSnapshot.bulletDrafts.length > 0 && (
+            <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">卖点要点（五点草稿）</p>
+              <ol className="mt-1.5 space-y-1">
+                {listingPrepSnapshot.bulletDrafts.map((b, i) => (
+                  <li key={i} className="flex gap-1.5 text-sm leading-6 text-slate-600">
+                    <span className="shrink-0 font-semibold text-teal-500">{i + 1}.</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
-          </details>
-          {agentRunSnapshot.nextSteps && agentRunSnapshot.nextSteps.length > 0 && (
-            <div className="mt-3 rounded-xl border border-white/80 bg-white p-3">
-              <p className="text-sm font-semibold text-slate-700">下一步动作</p>
+          )}
+
+          {/* D. Compliance / risk reminders */}
+          {listingPrepSnapshot.complianceExpressionReminders.length > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/50 p-2.5">
+              <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">上架合规与风险注意</p>
               <ul className="mt-1 space-y-0.5">
-                {agentRunSnapshot.nextSteps.map((s, i) => <li key={i} className="text-sm text-slate-600">- {s}</li>)}
+                {listingPrepSnapshot.complianceExpressionReminders.slice(0, 5).map((c, i) => (
+                  <li key={i} className="flex items-start gap-1 text-sm leading-6 text-amber-700">
+                    <span className="mt-0.5 shrink-0 text-amber-400">⚠</span>
+                    <span>{c}</span>
+                  </li>
+                ))}
               </ul>
             </div>
           )}
-          {listingPrepSnapshot ? (
-            <div className="mt-3 rounded-xl border border-teal-200 bg-white p-4" data-testid="listing-prep-package">
-              <div className="flex items-center justify-between gap-2">
-                <h4 className="text-base font-bold text-teal-900">Listing 上架准备包</h4>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const lines: string[] = [];
-                    const lp = listingPrepSnapshot;
-                    lines.push(`建议标题：${lp.titleStructure.recommendedTitle}`);
-                    if (lp.keywordPool.coreWords.length) lines.push(`核心词：${lp.keywordPool.coreWords.join("、")}`);
-                    if (lp.keywordPool.longTailWords.length) lines.push(`长尾词：${lp.keywordPool.longTailWords.join("、")}`);
-                    if (lp.bulletDrafts.length) lines.push(`卖点要点：\n${lp.bulletDrafts.map((b, i) => `${i + 1}. ${b}`).join("\n")}`);
-                    if (lp.complianceExpressionReminders.length) lines.push(`合规提醒：\n${lp.complianceExpressionReminders.map((c) => `- ${c}`).join("\n")}`);
-                    const text = lines.join("\n\n");
-                    navigator.clipboard.writeText(text).catch(() => {
-                      const ta = document.createElement("textarea");
-                      ta.value = text; document.body.appendChild(ta); ta.select();
-                      document.execCommand("copy"); ta.remove();
-                    });
-                  }}
-                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2 text-xs font-semibold text-teal-700 hover:bg-teal-100 transition"
-                >
-                  复制准备包
-                </button>
+
+          {/* E. Profit / cost summary */}
+          {hasProfitSnapshot && isRecordValue(result.profitSnapshot) ? (
+            <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">成本利润摘要</p>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                {(() => {
+                  const ps = result.profitSnapshot as Record<string, unknown>;
+                  const currency = (ps.currency as string) || "¥";
+                  const purchaseCost = Number(ps.purchaseCost) || 0;
+                  const salePrice = Number(ps.salePrice) || 0;
+                  const estimatedProfit = Number(ps.estimatedProfit) || 0;
+                  const estimatedMarginRate = Number(ps.estimatedMarginRate) || 0;
+                  return (
+                    <>
+                      <span>采购成本：{currency}{purchaseCost.toFixed(2)}</span>
+                      <span>建议售价：{currency}{salePrice.toFixed(2)}</span>
+                      <span>预估利润：{currency}{estimatedProfit.toFixed(2)}</span>
+                      <span>毛利率：{(estimatedMarginRate * 100).toFixed(1)}%</span>
+                    </>
+                  );
+                })()}
               </div>
-
-              {/* A. Suggested title */}
-              <div className="mt-3 rounded-lg border border-teal-100 bg-teal-50/50 p-2.5">
-                <p className="text-xs font-semibold text-teal-500 uppercase tracking-wide">建议标题</p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">{listingPrepSnapshot.titleStructure.recommendedTitle}</p>
-                {listingPrepSnapshot.titleStructure.formula ? (
-                  <p className="mt-0.5 text-sm text-slate-400">公式：{listingPrepSnapshot.titleStructure.formula}</p>
-                ) : null}
-              </div>
-
-              {/* B. Keywords */}
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {listingPrepSnapshot.keywordPool.coreWords.length > 0 && (
-                  <div className="rounded-lg border border-slate-100 bg-white p-2.5">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">核心关键词</p>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {listingPrepSnapshot.keywordPool.coreWords.map((w) => (
-                        <span key={w} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{w}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {listingPrepSnapshot.keywordPool.longTailWords.length > 0 && (
-                  <div className="rounded-lg border border-slate-100 bg-white p-2.5">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">长尾词 / 扩展词</p>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {listingPrepSnapshot.keywordPool.longTailWords.map((w) => (
-                        <span key={w} className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">{w}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {(listingPrepSnapshot.keywordPool.coreWords.length === 0 && listingPrepSnapshot.keywordPool.longTailWords.length === 0) && (
-                <p className="mt-2 text-sm text-slate-400 italic">待补充关键词 — 回到 Agent 主链路重新分析，或人工整理关键词后填入。</p>
-              )}
-
-              {/* C. Bullet drafts */}
-              {listingPrepSnapshot.bulletDrafts.length > 0 && (
-                <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">卖点要点（五点草稿）</p>
-                  <ol className="mt-1.5 space-y-1">
-                    {listingPrepSnapshot.bulletDrafts.map((b, i) => (
-                      <li key={i} className="flex gap-1.5 text-sm leading-6 text-slate-600">
-                        <span className="shrink-0 font-semibold text-teal-500">{i + 1}.</span>
-                        <span>{b}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-
-              {/* D. Compliance / risk reminders */}
-              {listingPrepSnapshot.complianceExpressionReminders.length > 0 && (
-                <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/50 p-2.5">
-                  <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide">上架合规与风险注意</p>
-                  <ul className="mt-1 space-y-0.5">
-                    {listingPrepSnapshot.complianceExpressionReminders.slice(0, 5).map((c, i) => (
-                      <li key={i} className="flex items-start gap-1 text-sm leading-6 text-amber-700">
-                        <span className="mt-0.5 shrink-0 text-amber-400">⚠</span>
-                        <span>{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* E. Profit / cost summary */}
-              {hasProfitSnapshot && isRecordValue(result.profitSnapshot) ? (
-                <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">成本利润摘要</p>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
-                    {(() => {
-                      const ps = result.profitSnapshot as Record<string, unknown>;
-                      const currency = (ps.currency as string) || "¥";
-                      const purchaseCost = Number(ps.purchaseCost) || 0;
-                      const salePrice = Number(ps.salePrice) || 0;
-                      const estimatedProfit = Number(ps.estimatedProfit) || 0;
-                      const estimatedMarginRate = Number(ps.estimatedMarginRate) || 0;
-                      return (
-                        <>
-                          <span>采购成本：{currency}{purchaseCost.toFixed(2)}</span>
-                          <span>建议售价：{currency}{salePrice.toFixed(2)}</span>
-                          <span>预估利润：{currency}{estimatedProfit.toFixed(2)}</span>
-                          <span>毛利率：{(estimatedMarginRate * 100).toFixed(1)}%</span>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-slate-400 italic">待补充成本/售价信息 — 回到 Agent 主链路填写采购价和售价后重新保存。</p>
-              )}
-
-              {/* F. Image material needs */}
-              {listingPrepSnapshot.imageMaterialNeeds.length > 0 && (
-                <details className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
-                  <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wide select-none">图片素材需求（{listingPrepSnapshot.imageMaterialNeeds.length} 项）</summary>
-                  <ul className="mt-1.5 space-y-0.5">
-                    {listingPrepSnapshot.imageMaterialNeeds.map((img, i) => (
-                      <li key={i} className="text-sm text-slate-500">- {img}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-
-              {/* G. Search terms hint */}
-              {listingPrepSnapshot.searchTerms.draft && (
-                <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Search Terms 草稿</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600 break-all">{listingPrepSnapshot.searchTerms.draft}</p>
-                </div>
-              )}
-
-              {/* H. Manual supplement checklist */}
-              <details className="mt-2 rounded-lg border border-amber-100 bg-amber-50/30 p-2.5">
-                <summary className="cursor-pointer text-xs font-semibold text-amber-600 uppercase tracking-wide select-none">
-                  待补资料 / 上架前仍需确认（{listingPrepSnapshot.manualSupplementChecklist.length} 项）
-                </summary>
-                <ul className="mt-1.5 space-y-0.5">
-                  {listingPrepSnapshot.manualSupplementChecklist.map((item, i) => (
-                    <li key={i} className="flex items-start gap-1 text-sm leading-6 text-amber-700">
-                      <span className="mt-0.5 shrink-0 text-amber-400">☐</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
             </div>
           ) : (
-            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm font-semibold text-slate-500">Listing 上架准备包</p>
-              <p className="mt-1 text-sm leading-6 text-slate-400">
-                该任务暂无 Listing 上架准备包。可回到 Agent 主链路重新分析并保存，或人工整理 Listing 资料。
-              </p>
+            <p className="mt-2 text-sm text-slate-400 italic">待补充成本/售价信息 — 回到 Agent 主链路填写采购价和售价后重新保存。</p>
+          )}
+
+          {/* F. Image material needs */}
+          {listingPrepSnapshot.imageMaterialNeeds.length > 0 && (
+            <details className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-400 uppercase tracking-wide select-none">图片素材需求（{listingPrepSnapshot.imageMaterialNeeds.length} 项）</summary>
+              <ul className="mt-1.5 space-y-0.5">
+                {listingPrepSnapshot.imageMaterialNeeds.map((img, i) => (
+                  <li key={i} className="text-sm text-slate-500">- {img}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {/* G. Search terms hint */}
+          {listingPrepSnapshot.searchTerms.draft && (
+            <div className="mt-2 rounded-lg border border-slate-100 bg-white p-2.5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Search Terms 草稿</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600 break-all">{listingPrepSnapshot.searchTerms.draft}</p>
             </div>
           )}
-        </section>
-      ) : null}
 
-      {/* AI Listing 包 — Core-4: real generator */}
+          {/* H. Manual supplement checklist */}
+          <details className="mt-2 rounded-lg border border-amber-100 bg-amber-50/30 p-2.5">
+            <summary className="cursor-pointer text-xs font-semibold text-amber-600 uppercase tracking-wide select-none">
+              待补资料 / 上架前仍需确认（{listingPrepSnapshot.manualSupplementChecklist.length} 项）
+            </summary>
+            <ul className="mt-1.5 space-y-0.5">
+              {listingPrepSnapshot.manualSupplementChecklist.map((item, i) => (
+                <li key={i} className="flex items-start gap-1 text-sm leading-6 text-amber-700">
+                  <span className="mt-0.5 shrink-0 text-amber-400">☐</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-500">Listing 上架准备包</p>
+          <p className="mt-1 text-sm leading-6 text-slate-400">
+            该任务暂无 Listing 上架准备包。可回到 Agent 主链路重新分析并保存，或人工整理 Listing 资料。
+          </p>
+        </div>
+      )}
+
+      {/* AI Listing 包 */}
       <ListingPackCard
         productName={summary.productName}
         resultJson={result}
@@ -690,46 +479,183 @@ function WorkflowDecisionSummary({
         })()}
       />
 
-      <details className="mt-4 rounded-xl border border-white/80 bg-white p-3 text-xs">
-        <summary className="cursor-pointer font-semibold text-slate-600 select-none">
-          保存快照：成本利润 + 合规 / 侵权 AI 预筛
-          <span className="ml-2 font-normal text-slate-400">默认折叠，复核时可按需展开</span>
+      {/* ── Section 4: 运营推进与状态 ── */}
+      <section className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-bold text-slate-900">运营推进与状态</p>
+        <p className="mt-1 text-sm text-slate-500">商品生命周期和人工决策状态追踪。</p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${toneClass(summary.priorityTone)}`}>
+            {summary.priorityLabel}
+          </span>
+          <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${toneClass(summary.riskTone)}`}>
+            {summary.riskLabel}
+          </span>
+          <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${decisionOption.className}`}>
+            {decisionOption.shortLabel}
+          </span>
+        </div>
+
+        {/* Source context */}
+        {sourceMeta ? (
+          <div className="mt-3 flex flex-col gap-2 rounded-xl border border-teal-200 bg-white/70 px-3 py-2 text-sm text-teal-800">
+            <div className="flex flex-wrap gap-2 font-semibold">
+              <span>来自候选池</span>
+              {sourceMeta.entry ? <span>入口：{sourceMeta.entry}</span> : null}
+              {sourceMeta.candidateId ? <span>候选 ID：{sourceMeta.candidateId}</span> : null}
+              {sourceMeta.opportunityScore !== undefined ? <span>来源分数 {sourceMeta.opportunityScore}/100</span> : null}
+            </div>
+            {sourceMeta.sourceUrl && (
+              <a href={sourceMeta.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-teal-600 underline hover:text-teal-800">
+                查看来源链接
+              </a>
+            )}
+            {sourceMeta.evidenceSnapshot ? (
+              <div className="rounded-lg border border-teal-100 bg-teal-50/70 px-2 py-1.5 text-xs text-teal-800">
+                <p className="font-semibold">
+                  来源证据：{sourceMeta.evidenceSnapshot.decision} · {sourceMeta.evidenceSnapshot.qualityScore}/100 · {sourceMeta.evidenceSnapshot.confidence}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-teal-600">历史任务未记录标准化来源证据。</p>
+            )}
+          </div>
+        ) : null}
+
+        {/* Lifecycle + Decision selector */}
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {isWorkflow && productLifecycle && (
+            <OperationDecisionPanel taskId={taskId} lifecycle={productLifecycle} onUpdated={onLifecycleUpdated} />
+          )}
+          <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+            <p className="text-xs font-bold text-slate-400">人工决策</p>
+            <select
+              value={decisionStatus}
+              onChange={(event) => onDecisionChange(event.target.value as DecisionStatus)}
+              disabled={updatingDecision}
+              className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {decisionStatusOptions.filter((option) => option.value).map((status) => (
+                <option key={status.value} value={status.value}>{status.shortLabel}</option>
+              ))}
+            </select>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{decisionOption.description}</p>
+            {decisionMessage ? (
+              <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
+            ) : null}
+          </div>
+        </div>
+
+        <Link
+          href="/opportunities"
+          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-900 transition"
+        >
+          回到候选池 →
+        </Link>
+      </section>
+
+      {/* ── Section 5: 过程与原始记录（默认折叠）── */}
+      <details className="rounded-2xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+          过程与原始记录
+          <span className="ml-2 text-xs font-medium text-slate-400">Agent 执行过程、完整分析、成本利润明细、JSON，默认折叠</span>
         </summary>
-        <div className="mt-3 space-y-3">
-          {hasProfitSnapshot ? (
-            <ProfitSnapshotCard
-              initial={result.profitSnapshot as unknown as ProfitSnapshot}
-              readonly
-            />
-          ) : (
-            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-500">
-              该任务尚未保存成本利润快照。
-            </p>
+
+        <div className="mt-4 space-y-4">
+          {/* AgentOutputSnapshotCard */}
+          {agentOutputSnapshot && (
+            <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} compact />
           )}
-          {hasRiskReviewSnapshot ? (
-            <RiskReviewChecklistCard
-              initial={result.riskReviewSnapshot}
-              readonly
-            />
-          ) : (
-            <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm leading-6 text-amber-700">
-              该任务尚未保存合规 / 侵权 AI 预筛记录。
-            </p>
-          )}
-          {hasListingData && listingData ? (
-            <ListingPrepPackageCard
-              embedded
-              listing={listingData as ListingPrepInput}
-              riskReviewSnapshot={hasRiskReviewSnapshot ? (result.riskReviewSnapshot as Record<string, unknown>) : null}
-            />
-          ) : (
-            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-500">
-              该任务暂无 Listing 准备包。可回到主链路重新分析，或人工补充关键词、五点描述和上架素材。
-            </p>
-          )}
+
+          {/* Agent 主链路复盘 */}
+          {agentRunSnapshot ? (
+            <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4" data-testid="agent-run-review">
+              <h3 className="text-base font-bold text-indigo-900">Agent 主链路复盘</h3>
+              <p className="mt-0.5 text-sm leading-6 text-indigo-600">
+                来自 Agent 主链路驾驶舱 · 受控自动化 · {agentRunSnapshot.manualConfirmed ? "人工已确认" : "未完整确认"}
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {agentRunSnapshot.finalVerdict && (
+                  <div className="rounded-xl border border-white/80 bg-white p-2">
+                    <span className="text-sm font-semibold text-indigo-500">最终结论</span>
+                    <p className="mt-0.5 text-sm font-bold text-indigo-900">{agentRunSnapshot.finalVerdict}</p>
+                  </div>
+                )}
+                {agentRunSnapshot.riskLevel && (() => {
+                  const risk = formatRiskLevelLabel(agentRunSnapshot.riskLevel);
+                  return (
+                    <div className="rounded-xl border border-white/80 bg-white p-2">
+                      <span className="text-sm font-semibold text-indigo-500">风险等级</span>
+                      <p className={`mt-0.5 inline-block rounded-full border px-2 py-0.5 text-xs font-bold ${risk.tone}`}>{risk.label}</p>
+                    </div>
+                  );
+                })()}
+                <div className="rounded-xl border border-white/80 bg-white p-2">
+                  <span className="text-sm font-semibold text-indigo-500">步骤完成</span>
+                  <p className="mt-0.5 text-sm font-bold text-indigo-900">
+                    {agentRunSnapshot.steps.filter((s) => s.status === "completed").length}/{agentRunSnapshot.steps.length}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/80 bg-white p-2">
+                  <span className="text-sm font-semibold text-indigo-500">人工确认</span>
+                  <p className="mt-0.5 text-sm font-bold text-indigo-900">
+                    {agentRunSnapshot.manualConfirmed ? "已确认" : "未确认"}
+                  </p>
+                </div>
+              </div>
+              <AgentRunTimeline items={agentRunTimelineItems} className="mt-3" />
+              {agentRunSnapshot.nextSteps && agentRunSnapshot.nextSteps.length > 0 && (
+                <div className="mt-3 rounded-xl border border-white/80 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-700">下一步动作</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {agentRunSnapshot.nextSteps.map((s, i) => <li key={i} className="text-sm text-slate-600">- {s}</li>)}
+                  </ul>
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {/* 成本利润 + 风险预筛快照 */}
+          <details className="rounded-xl border border-slate-200 bg-white p-3 text-xs">
+            <summary className="cursor-pointer font-semibold text-slate-600 select-none">
+              保存快照：成本利润 + 合规/侵权 AI 预筛
+              <span className="ml-2 font-normal text-slate-400">默认折叠，复核时可按需展开</span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              {hasProfitSnapshot ? (
+                <ProfitSnapshotCard
+                  initial={result.profitSnapshot as unknown as ProfitSnapshot}
+                  readonly
+                />
+              ) : (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-500">
+                  该任务尚未保存成本利润快照。
+                </p>
+              )}
+              {hasRiskReviewSnapshot ? (
+                <RiskReviewChecklistCard
+                  initial={result.riskReviewSnapshot}
+                  readonly
+                />
+              ) : (
+                <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm leading-6 text-amber-700">
+                  该任务尚未保存合规 / 侵权 AI 预筛记录。
+                </p>
+              )}
+              {hasListingData && listingData ? (
+                <ListingPrepPackageCard
+                  embedded
+                  listing={listingData as ListingPrepInput}
+                  riskReviewSnapshot={hasRiskReviewSnapshot ? (result.riskReviewSnapshot as Record<string, unknown>) : null}
+                />
+              ) : null}
+            </div>
+          </details>
         </div>
       </details>
-      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
+
+      {/* ── Section 6: 人工确认提醒 ── */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3">
         <p className="text-sm font-semibold text-amber-800">人工确认提醒</p>
         <p className="mt-1 text-sm leading-6 text-amber-700">
           AI 结果不能直接等于采购、上架或投放决策。请先确认供应商、成本、侵权、认证、物流和平台规则，再手动执行真实动作。
@@ -1311,28 +1237,18 @@ export function TaskRecordDetail({ id }: { id: string }) {
               {(() => {
                 const pipeStatus = derivePipelineStatus({ decisionStatus: record.decisionStatus, level: record.level, result: record.result });
                 const nextAct = deriveNextAction({ decisionStatus: record.decisionStatus, level: record.level, result: record.result });
-                const isAgentRun = (() => { try { const r = typeof record.result === "object" && record.result ? (record.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run"; } catch { return false; } })();
                 return (
                   <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="pipeline-summary">
                     <p className="text-sm font-bold text-teal-700">商品推进摘要</p>
                     <div className="mt-3 flex flex-wrap items-center gap-3">
                       <span className={`rounded-full border px-3 py-1 text-sm font-bold ${PIPELINE_STATUS_TONES[pipeStatus]}`}>
-                        当前状态：{PIPELINE_STATUS_LABELS[pipeStatus]}
+                        {PIPELINE_STATUS_LABELS[pipeStatus]}
                       </span>
                       <span className={`rounded-full border px-3 py-1 text-sm font-bold ${nextAct.priority === "high" ? "border-rose-200 bg-rose-50 text-rose-700" : nextAct.priority === "medium" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
                         下一步：{nextAct.label}
                       </span>
-                      {isAgentRun && (
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-700">8 步主链路</span>
-                      )}
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-600">{nextAct.description}</p>
-                    {pipeStatus === "needs_review" && (
-                      <p className="mt-2 text-sm text-slate-500">该商品已有 AI 分析结果，但尚未完成人工确认。请逐项复核后决定下一步。</p>
-                    )}
-                    {pipeStatus === "high_risk" && (
-                      <p className="mt-2 text-sm text-rose-600">AI 分析中识别到较高风险，建议人工确认后再决定是否放弃。</p>
-                    )}
                   </div>
                 );
               })()}
@@ -1344,11 +1260,19 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   </h2>
                   <p className="mt-3 text-sm leading-6 text-slate-600">{record.oneLineSummary}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="linear-pill linear-pill-brand px-3 py-1 text-xs">{getTaskTypeLabel(record)}</span>
-                    <span className="linear-pill px-3 py-1 text-xs text-slate-600">{getAgentTypeLabel(record)}</span>
-                    <span className="linear-pill border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700">已完成</span>
                     <span className={"linear-pill px-3 py-1 text-xs " + getDecisionStatusOption(record.decisionStatus).className}>
                       {getDecisionStatusOption(record.decisionStatus).shortLabel}
+                    </span>
+                    {(() => {
+                      const risk = formatRiskLevelLabel(record.level);
+                      return (
+                        <span className={`rounded-full border px-3 py-1 text-xs font-bold ${risk.tone}`}>
+                          {risk.label}
+                        </span>
+                      );
+                    })()}
+                    <span className="linear-pill border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+                      {record.score}/100
                     </span>
                     {(() => {
                       const batchMeta = getBatchMeta(record.result);
@@ -1365,22 +1289,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   {showListingPackShortcut ? (
                     <Link
                       href={`#${LISTING_PACK_ANCHOR_ID}`}
-                      className="linear-button-primary inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
+                      className="linear-button-soft inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
                     >
                       {LISTING_PACK_SHORTCUT_LABEL}
                     </Link>
                   ) : null}
-                  <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-800">
-                    {record.score}/100
-                  </span>
-                  {(() => {
-                    const risk = formatRiskLevelLabel(record.level);
-                    return (
-                      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${risk.tone}`}>
-                        {risk.label}
-                      </span>
-                    );
-                  })()}
                 </div>
               </div>
 

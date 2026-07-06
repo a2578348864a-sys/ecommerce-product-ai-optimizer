@@ -264,16 +264,23 @@ describe("TaskRecordsList operational positioning", () => {
 
 describe("TaskRecordDetail operation overview", () => {
   const detailSource = readComponentSource("components/TaskRecordDetail.tsx");
+  const heroSource = readComponentSource("components/TaskDecisionHero.tsx");
 
-  it("shows a B3 operation overview without removing B1 and B2 sections", () => {
+  it("retains all B1/B2/B3 sections and adds TaskDecisionHero", () => {
+    // B3 operation overview retained (renamed to 运营推进与状态)
     expect(detailSource).toMatch(/deriveTaskOperationSummary/);
-    expect(detailSource).toMatch(/运营推进总览/);
-    expect(detailSource).toMatch(/当前阶段/);
-    expect(detailSource).toMatch(/阻塞项/);
-    expect(detailSource).toMatch(/人工复核重点/);
-    expect(detailSource).toMatch(/来源质量/);
+    expect(detailSource).toMatch(/运营推进与状态/);
+    // B1/B2 sections retained
     expect(detailSource).toMatch(/AgentOutputSnapshotCard/);
+    expect(detailSource).toMatch(/DecisionEvidencePanel/);
     expect(detailSource).toMatch(/来源证据/);
+    expect(detailSource).toMatch(/agent-run-review/);
+    // New IA: TaskDecisionHero with stage/blocker/review info
+    expect(detailSource).toMatch(/TaskDecisionHero/);
+    expect(heroSource).toMatch(/当前决策与下一步/);
+    expect(heroSource).toMatch(/当前阶段/);
+    // Process info collapsed by default
+    expect(detailSource).toMatch(/过程与原始记录/);
   });
 });
 
