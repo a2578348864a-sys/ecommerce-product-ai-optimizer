@@ -329,3 +329,122 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(JSON.stringify(result.decisionEvidence)).not.toContain("secret-token");
   });
 });
+
+// ── Listing-Persistence-Fix.1: fallback snapshot generation ──
+
+async function postSaveTask(payload: Record<string, unknown>) {
+  const request = new Request("http://localhost/api/workflows/product-analysis/save-task", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-access-password": CORRECT_PASSWORD },
+    body: JSON.stringify(payload),
+  });
+  const { POST: handler } = await import("@/app/api/workflows/product-analysis/save-task/route");
+  return handler(request);
+}
+
+function listingBaseWorkflowResult(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    workflowId: "wf-listing-test",
+    productName: "Test Product",
+    status: "completed",
+    finalReport: { finalVerdict: "OK", riskLevel: "green", beginnerFit: "适合新手", nextSteps: [] },
+    steps: [],
+    costGuard: { aiStepsRequested: 4, aiStepsCompleted: 4, fallbackSteps: 0 },
+    ...overrides,
+  };
+}
+
+describe("Listing-Persistence-Fix.1 — fallback snapshot", () => {
+  it("auto-generates listingPrepSnapshot when missing but listing data exists", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Test Listing Title", keywords: ["kw1", "kw2"], complianceNotes: ["note"] },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Test Listing Title");
+    expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual(["kw1", "kw2"]);
+  });
+
+  it("does NOT override explicitly passed listingPrepSnapshot", async () => {
+    const explicitSnapshot = {
+      keywordPool: { coreWords: ["explicit-kw"] },
+      titleStructure: { recommendedTitle: "Explicit Title" },
+      bulletDrafts: [],
+      searchTerms: { draft: "" },
+      imageMaterialNeeds: [],
+      complianceExpressionReminders: [],
+      manualSupplementChecklist: [],
+    };
+
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Workflow Title", keywords: ["wk"] },
+      }),
+      listingPrepSnapshot: explicitSnapshot,
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Explicit Title");
+  });
+
+  it("saves safely when no listing data exists at all", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult(),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeUndefined();
+  });
+
+  it("does NOT generate snapshot when listing object is empty", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "", keywords: [] },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeUndefined();
+  });
+
+  it("works with only keywords (no title)", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "", keywords: ["only-kw"] },
+      }),
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    // Has keywords, so should generate snapshot (title falls back to productName)
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.keywordPool.coreWords).toContain("only-kw");
+  });
+});

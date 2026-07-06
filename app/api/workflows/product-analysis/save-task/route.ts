@@ -9,6 +9,7 @@ import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "
 import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { buildDecisionEvidenceSnapshot, normalizeHumanDecision } from "@/lib/decisionEvidence";
 import { isDecisionStatus, normalizeDecisionStatus } from "@/lib/tasks/decisionStatus";
+import { buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 
 export const runtime = "nodejs";
 
@@ -250,7 +251,24 @@ export async function POST(request: NextRequest) {
   const profitSnapshot = normalizeProfitSnapshot(body.profitSnapshot);
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
-  const listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
+  let listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
+
+  // Listing-Persistence-Fix.1: if caller did not pass listingPrepSnapshot but
+  // the workflow result has valid listing output, auto-generate a fallback
+  // snapshot so Listing data is never silently dropped.
+  if (!listingPrepSnapshot && isRecord(workflowResult.listing)) {
+    const listingOut = workflowResult.listing as Record<string, unknown>;
+    const hasListingContent =
+      (typeof listingOut.title === "string" && listingOut.title.trim().length > 0) ||
+      (Array.isArray(listingOut.keywords) && listingOut.keywords.length > 0);
+    if (hasListingContent) {
+      listingPrepSnapshot = buildListingPrepSnapshot({
+        listing: listingOut,
+        finalReport: finalReport as Record<string, unknown> | undefined,
+        productName,
+      });
+    }
+  }
   const decisionStatus = isDecisionStatus(body.decisionStatus) ? body.decisionStatus : "pending";
   const humanDecision = normalizeHumanDecision(isRecord(body.humanDecision) ? body.humanDecision : {
     status: decisionStatus,
