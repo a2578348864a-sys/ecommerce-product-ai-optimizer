@@ -156,3 +156,91 @@ describe("decision evidence snapshot", () => {
     expect(combos.size).toBe(snapshot.missingData.length);
   });
 });
+
+// ── Decision-Consistency.1: AI text must not produce rule evidence ──
+
+describe("Decision-Consistency.1 — Evidence consistency", () => {
+  function baseWorkflow() {
+    return {
+      productName: "桌面手机支架",
+      finalReport: { finalVerdict: "小单测试", riskLevel: "yellow", nextSteps: ["联系供应商"] },
+      summary: { decisionReason: "需求稳定" },
+      listing: { title: "桌面可调节手机支架" },
+    };
+  }
+
+  it("AI text with risk warnings does NOT produce rule evidence items", () => {
+    // AI outputs contain risk-related warnings
+    const snapshot = buildDecisionEvidenceSnapshot({
+      workflowResult: {
+        ...baseWorkflow(),
+        finalReport: {
+          finalVerdict: "小单测试",
+          riskLevel: "yellow",
+          nextSteps: ["建议确认是否属于儿童用品", "需要检查是否含有锂电池"],
+        },
+        risk: { summary: "需要确认危险品物流限制和平台是否禁售" },
+      },
+      riskReviewSnapshot: {
+        source: "rule_based_risk_precheck_mvp",
+        items: [
+          // Simulate risk precheck with only patent_design triggered
+          { key: "patent_design", status: "needs_check", precheckLevel: "medium", precheckReason: "外观结构风险", evidenceHint: "对比外观" },
+          { key: "children_product", status: "unchecked", precheckLevel: "not_triggered", precheckReason: "未触发", evidenceHint: "" },
+          { key: "logistics_hazmat", status: "unchecked", precheckLevel: "not_triggered", precheckReason: "未触发", evidenceHint: "" },
+          { key: "electronics_battery", status: "unchecked", precheckLevel: "not_triggered", precheckReason: "未触发", evidenceHint: "" },
+          { key: "platform_restricted", status: "unchecked", precheckLevel: "not_triggered", precheckReason: "未触发", evidenceHint: "" },
+        ],
+      },
+    });
+
+    // Evidence rule items should only include patent_design (medium), not the false positives
+    const ruleItems = snapshot.items.filter((item) => item.kind === "rule");
+    const ruleKeys = ruleItems.map((item) => item.field);
+    expect(ruleKeys).toContain("riskReviewSnapshot.items.patent_design");
+    expect(ruleKeys).not.toContain("riskReviewSnapshot.items.children_product");
+    expect(ruleKeys).not.toContain("riskReviewSnapshot.items.logistics_hazmat");
+    expect(ruleKeys).not.toContain("riskReviewSnapshot.items.electronics_battery");
+    expect(ruleKeys).not.toContain("riskReviewSnapshot.items.platform_restricted");
+  });
+
+  it("real risk product name still produces rule evidence", () => {
+    const snapshot = buildDecisionEvidenceSnapshot({
+      workflowResult: { ...baseWorkflow(), productName: "带锂电池的儿童手机支架" },
+      riskReviewSnapshot: {
+        source: "rule_based_risk_precheck_mvp",
+        items: [
+          { key: "patent_design", status: "needs_check", precheckLevel: "medium", precheckReason: "外观风险", evidenceHint: "" },
+          { key: "children_product", status: "needs_check", precheckLevel: "high", precheckReason: "命中儿童", evidenceHint: "需CPC" },
+          { key: "electronics_battery", status: "needs_check", precheckLevel: "medium", precheckReason: "命中电池", evidenceHint: "需认证" },
+          { key: "logistics_hazmat", status: "needs_check", precheckLevel: "high", precheckReason: "危险品", evidenceHint: "需MSDS" },
+        ],
+      },
+    });
+
+    const ruleItems = snapshot.items.filter((item) => item.kind === "rule");
+    const ruleKeys = ruleItems.map((item) => item.field);
+    expect(ruleKeys.length).toBeGreaterThanOrEqual(3);
+    expect(ruleKeys).toContain("riskReviewSnapshot.items.children_product");
+    expect(ruleKeys).toContain("riskReviewSnapshot.items.electronics_battery");
+  });
+
+  it("plain product only produces patent_design rule evidence", () => {
+    const snapshot = buildDecisionEvidenceSnapshot({
+      workflowResult: baseWorkflow(),
+      riskReviewSnapshot: {
+        source: "rule_based_risk_precheck_mvp",
+        items: [
+          { key: "patent_design", status: "needs_check", precheckLevel: "medium", precheckReason: "外观风险", evidenceHint: "" },
+          { key: "children_product", status: "unchecked", precheckLevel: "not_triggered", precheckReason: "", evidenceHint: "" },
+          { key: "logistics_hazmat", status: "unchecked", precheckLevel: "not_triggered", precheckReason: "", evidenceHint: "" },
+        ],
+      },
+    });
+
+    const ruleItems = snapshot.items.filter((item) => item.kind === "rule");
+    // Only patent_design should appear as a rule
+    expect(ruleItems.length).toBeGreaterThanOrEqual(1);
+    expect(ruleItems.every((item) => item.field.includes("children_product") || item.field.includes("logistics_hazmat") ? false : true)).toBe(true);
+  });
+});
