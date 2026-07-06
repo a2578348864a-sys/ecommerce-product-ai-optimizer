@@ -188,7 +188,7 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
         importedAt: "2026-06-26T10:00:00.000Z",
       },
       agentRunSnapshot: { source: "agent_run", steps: [] },
-      listingPrepSnapshot: { keywordPool: { coreWords: [] } },
+      listingPrepSnapshot: { titleStructure: { recommendedTitle: "Test Title" }, keywordPool: { coreWords: ["test"] } },
     }));
 
     const { status, body } = await readJson(response);
@@ -219,7 +219,7 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(JSON.stringify(result.sourceMeta)).not.toContain("secret-token");
     expect(JSON.stringify(result.sourceMeta)).not.toContain("session=abc");
     expect(result.agentRunSnapshot.source).toBe("agent_run");
-    expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual([]);
+    expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual(["test"]);
   });
 
   it("saves normalized agentOutputSnapshot while preserving B1 evidence", async () => {
@@ -601,6 +601,126 @@ describe("Listing-Persistence-Fix.1 — fallback snapshot", () => {
     const result = savedResultJson();
     // Valid explicit snapshot preserved — NOT overridden by workflow listing
     expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Explicit");
+  });
+
+  // ── Meaningful Content Guard: empty nested objects must not block fallback ──
+
+  it("{ titleStructure: {} } triggers fallback to workflow listing", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Fallback TS", keywords: ["fts"] },
+      }),
+      listingPrepSnapshot: { titleStructure: {} },
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Fallback TS");
+  });
+
+  it("{ keywordPool: {} } triggers fallback to workflow listing", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Fallback KP", keywords: ["fkp"] },
+      }),
+      listingPrepSnapshot: { keywordPool: {} },
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.keywordPool.coreWords).toContain("fkp");
+  });
+
+  it("blank-only recommendedTitle with empty keywords triggers fallback", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Real Title", keywords: ["rt"] },
+      }),
+      listingPrepSnapshot: {
+        titleStructure: { recommendedTitle: "   " },
+        keywordPool: { coreWords: [], longTailWords: [] },
+      },
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Real Title");
+  });
+
+  it("meaningless snapshot + no workflow listing → nothing saved", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult(),
+      listingPrepSnapshot: { titleStructure: { recommendedTitle: "" }, keywordPool: { coreWords: [""], longTailWords: [] } },
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeUndefined();
+  });
+
+  it("only non-empty recommendedTitle → valid snapshot, preserved", async () => {
+    const snapshot = {
+      titleStructure: { recommendedTitle: "Only Title", formula: "", breakdown: [] },
+      keywordPool: { coreWords: [], longTailWords: [] },
+      bulletDrafts: [],
+      searchTerms: { draft: "" },
+      imageMaterialNeeds: [],
+      complianceExpressionReminders: [],
+      manualSupplementChecklist: [],
+    };
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Should Not Win", keywords: ["no"] },
+      }),
+      listingPrepSnapshot: snapshot,
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Only Title");
+  });
+
+  it("only valid keywords → valid snapshot, preserved", async () => {
+    const snapshot = {
+      titleStructure: { recommendedTitle: "", formula: "", breakdown: [] },
+      keywordPool: { coreWords: ["valid-kw"], longTailWords: [] },
+      bulletDrafts: [],
+      searchTerms: { draft: "" },
+      imageMaterialNeeds: [],
+      complianceExpressionReminders: [],
+      manualSupplementChecklist: [],
+    };
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { keywords: ["should-not-appear"] },
+      }),
+      listingPrepSnapshot: snapshot,
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot.keywordPool.coreWords).toContain("valid-kw");
   });
 
   it("complianceNotes-only with empty title and keywords does NOT generate snapshot", async () => {

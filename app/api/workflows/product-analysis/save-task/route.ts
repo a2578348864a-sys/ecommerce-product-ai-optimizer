@@ -29,6 +29,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Returns true if the snapshot has meaningful Listing content (non-empty title or at least one real keyword). */
+function hasListingPrepContent(snapshot: Record<string, unknown>): boolean {
+  const ts = isRecord(snapshot.titleStructure) ? snapshot.titleStructure : null;
+  const kp = isRecord(snapshot.keywordPool) ? snapshot.keywordPool : null;
+
+  const hasTitle =
+    ts !== null &&
+    typeof ts.recommendedTitle === "string" &&
+    ts.recommendedTitle.trim().length > 0;
+
+  const hasCoreWords =
+    kp !== null &&
+    Array.isArray(kp.coreWords) &&
+    kp.coreWords.some((w: unknown) => typeof w === "string" && w.trim().length > 0);
+
+  const hasLongTailWords =
+    kp !== null &&
+    Array.isArray(kp.longTailWords) &&
+    kp.longTailWords.some((w: unknown) => typeof w === "string" && w.trim().length > 0);
+
+  return hasTitle || hasCoreWords || hasLongTailWords;
+}
+
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
@@ -252,16 +275,16 @@ export async function POST(request: NextRequest) {
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
 
-  // Listing-Persistence-Fix.1-Validation-Guard: only treat listingPrepSnapshot
-  // as valid if it has the expected structural fields (titleStructure.recommendedTitle
-  // or keywordPool). Empty objects, random fields, or partial junk must NOT
-  // block the workflowResult.listing fallback.
+  // Listing-Persistence-Fix.1-Meaningful-Content-Guard: only treat
+  // listingPrepSnapshot as valid if it contains actual Listing content
+  // (non-empty title, non-empty keywords, or non-empty longTailWords).
+  // Empty nested objects like { titleStructure: {} } or blank-only fields
+  // must NOT block the workflowResult.listing fallback.
   const rawListingPrep = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
   const listingPrepIsValid =
     rawListingPrep !== null &&
     isRecord(rawListingPrep) &&
-    (isRecord((rawListingPrep as Record<string, unknown>).titleStructure) ||
-     isRecord((rawListingPrep as Record<string, unknown>).keywordPool));
+    hasListingPrepContent(rawListingPrep as Record<string, unknown>);
   let listingPrepSnapshot = listingPrepIsValid ? rawListingPrep : null;
 
   // Listing-Persistence-Fix.1: if caller did not pass a valid listingPrepSnapshot
