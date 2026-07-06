@@ -525,6 +525,84 @@ describe("Listing-Persistence-Fix.1 — fallback snapshot", () => {
     expect(body.ok).toBe(true);
   });
 
+  // ── Validation Guard: junk snapshot objects must not block fallback ──
+
+  it("empty object {} listingPrepSnapshot triggers fallback to workflow listing", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Fallback Title", keywords: ["fb"] },
+      }),
+      listingPrepSnapshot: {},
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    // {} is NOT structurally valid → fallback triggers
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Fallback Title");
+  });
+
+  it("random-field snapshot triggers fallback to workflow listing", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Random Fallback", keywords: ["rf"] },
+      }),
+      listingPrepSnapshot: { randomField: "x" },
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    // { randomField: "x" } is NOT structurally valid → fallback triggers
+    expect(result.listingPrepSnapshot).toBeTruthy();
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Random Fallback");
+  });
+
+  it("junk snapshot with no workflow listing saves nothing", async () => {
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult(),
+      listingPrepSnapshot: { randomField: "x" },
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    expect(result.listingPrepSnapshot).toBeUndefined();
+  });
+
+  it("structurally valid explicit snapshot is preserved (not overridden)", async () => {
+    const validSnapshot = {
+      titleStructure: { recommendedTitle: "Explicit", formula: "", breakdown: [] },
+      keywordPool: { coreWords: [], longTailWords: [] },
+      bulletDrafts: [],
+      searchTerms: { draft: "" },
+      imageMaterialNeeds: [],
+      complianceExpressionReminders: [],
+      manualSupplementChecklist: [],
+    };
+    const res = await postSaveTask({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: listingBaseWorkflowResult({
+        listing: { title: "Should NOT Appear", keywords: ["no"] },
+      }),
+      listingPrepSnapshot: validSnapshot,
+      reviewState: {},
+      decisionStatus: "continue",
+    });
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    const result = savedResultJson();
+    // Valid explicit snapshot preserved — NOT overridden by workflow listing
+    expect(result.listingPrepSnapshot.titleStructure.recommendedTitle).toBe("Explicit");
+  });
+
   it("complianceNotes-only with empty title and keywords does NOT generate snapshot", async () => {
     const res = await postSaveTask({
       accessPassword: CORRECT_PASSWORD,

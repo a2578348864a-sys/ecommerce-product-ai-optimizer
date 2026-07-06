@@ -251,10 +251,21 @@ export async function POST(request: NextRequest) {
   const profitSnapshot = normalizeProfitSnapshot(body.profitSnapshot);
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
-  let listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
 
-  // Listing-Persistence-Fix.1: if caller did not pass listingPrepSnapshot but
-  // the workflow result has valid listing output, auto-generate a fallback
+  // Listing-Persistence-Fix.1-Validation-Guard: only treat listingPrepSnapshot
+  // as valid if it has the expected structural fields (titleStructure.recommendedTitle
+  // or keywordPool). Empty objects, random fields, or partial junk must NOT
+  // block the workflowResult.listing fallback.
+  const rawListingPrep = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
+  const listingPrepIsValid =
+    rawListingPrep !== null &&
+    isRecord(rawListingPrep) &&
+    (isRecord((rawListingPrep as Record<string, unknown>).titleStructure) ||
+     isRecord((rawListingPrep as Record<string, unknown>).keywordPool));
+  let listingPrepSnapshot = listingPrepIsValid ? rawListingPrep : null;
+
+  // Listing-Persistence-Fix.1: if caller did not pass a valid listingPrepSnapshot
+  // but the workflow result has valid listing output, auto-generate a fallback
   // snapshot so Listing data is never silently dropped.
   if (!listingPrepSnapshot && isRecord(workflowResult.listing)) {
     const listingOut = workflowResult.listing as Record<string, unknown>;
