@@ -267,14 +267,14 @@ function textFromUnknown(value: unknown, depth = 0): string[] {
 }
 
 function buildSearchText(input: RiskPrecheckInput) {
+  // Decision-Consistency.1: Only match against product fact fields.
+  // AI analysis output (finalReport, summary, sourcing, listing, risk)
+  // is NOT product attributes — AI warnings about possible risks must
+  // not self-trigger deterministic rule hits.
   return [
     input.productName,
     input.normalizedName,
-    ...textFromUnknown(input.finalReport),
-    ...textFromUnknown(input.riskResult),
-    ...textFromUnknown(input.listingResult),
-    ...textFromUnknown(input.sourcingResult),
-  ].filter(Boolean).join(" ").toLowerCase().slice(0, 8000);
+  ].filter(Boolean).join(" ").toLowerCase().slice(0, 2000);
 }
 
 function findMatchedTerms(text: string, terms: string[]) {

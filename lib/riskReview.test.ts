@@ -147,3 +147,94 @@ describe("risk review helpers", () => {
     expect(snapshot?.overallStatus).toBe("unknown");
   });
 });
+
+// ── Decision-Consistency.1: AI text must not self-trigger rules ──
+
+describe("Decision-Consistency.1 — AI text self-trigger prevention", () => {
+  it("AI caution about 儿童 does NOT trigger children_product", () => {
+    const result = generateRiskPrecheck({
+      productName: "桌面手机支架",
+      finalReport: { finalVerdict: "小单测试", nextSteps: ["建议确认是否属于儿童用品"] },
+    });
+    const children = result.allItems.find((i) => i.key === "children_product")!;
+    expect(children.precheckLevel).toBe("not_triggered");
+  });
+
+  it("AI caution about 锂电池 does NOT trigger logistics_hazmat or electronics_battery", () => {
+    const result = generateRiskPrecheck({
+      productName: "桌面手机支架",
+      finalReport: { finalVerdict: "小单测试", nextSteps: ["需要检查是否含有锂电池"] },
+    });
+    const hazmat = result.allItems.find((i) => i.key === "logistics_hazmat")!;
+    const battery = result.allItems.find((i) => i.key === "electronics_battery")!;
+    expect(hazmat.precheckLevel).toBe("not_triggered");
+    expect(battery.precheckLevel).toBe("not_triggered");
+  });
+
+  it("AI caution about 危险品物流 does NOT trigger logistics_hazmat", () => {
+    const result = generateRiskPrecheck({
+      productName: "桌面手机支架",
+      riskResult: { summary: "需要确认危险品物流限制" },
+    });
+    const hazmat = result.allItems.find((i) => i.key === "logistics_hazmat")!;
+    expect(hazmat.precheckLevel).toBe("not_triggered");
+  });
+
+  it("AI caution about 平台禁售 does NOT trigger platform_restricted", () => {
+    const result = generateRiskPrecheck({
+      productName: "桌面手机支架",
+      sourcingResult: { summary: "需要检查平台是否禁售该类产品" },
+    });
+    const restricted = result.allItems.find((i) => i.key === "platform_restricted")!;
+    expect(restricted.precheckLevel).toBe("not_triggered");
+  });
+
+  it("AI text '本产品不含锂电池' does NOT trigger electronics_battery", () => {
+    const result = generateRiskPrecheck({
+      productName: "桌面手机支架",
+      listingResult: { title: "桌面可调节手机支架", complianceNotes: ["本产品不含锂电池"] },
+    });
+    const battery = result.allItems.find((i) => i.key === "electronics_battery")!;
+    expect(battery.precheckLevel).toBe("not_triggered");
+  });
+
+  it("AI text '本产品不是儿童用品' does NOT trigger children_product", () => {
+    const result = generateRiskPrecheck({
+      productName: "桌面手机支架",
+      summaryResult: { decisionReason: "本产品不是儿童用品，无需CPC认证" },
+    });
+    const children = result.allItems.find((i) => i.key === "children_product")!;
+    expect(children.precheckLevel).toBe("not_triggered");
+  });
+
+  // ── Scenario B: Product fact fields still trigger correctly ──
+
+  it("productName '儿童手机支架' correctly triggers children_product", () => {
+    const result = generateRiskPrecheck({ productName: "儿童手机支架" });
+    const children = result.allItems.find((i) => i.key === "children_product")!;
+    expect(children.precheckLevel).toBe("high");
+  });
+
+  it("productName '带锂电池的手机支架' correctly triggers battery/logistics rules", () => {
+    const result = generateRiskPrecheck({ productName: "带锂电池的手机支架" });
+    const battery = result.allItems.find((i) => i.key === "electronics_battery")!;
+    const hazmat = result.allItems.find((i) => i.key === "logistics_hazmat")!;
+    expect(battery.precheckLevel).toBe("medium");
+    expect(hazmat.precheckLevel).toBe("high");
+  });
+
+  it("productName '桌面手机支架' does NOT trigger children/battery/hazmat/restricted", () => {
+    const result = generateRiskPrecheck({ productName: "桌面手机支架" });
+    expect(item(result, "children_product").precheckLevel).toBe("not_triggered");
+    expect(item(result, "logistics_hazmat").precheckLevel).toBe("not_triggered");
+    expect(item(result, "electronics_battery").precheckLevel).toBe("not_triggered");
+    expect(item(result, "platform_restricted").precheckLevel).toBe("not_triggered");
+  });
+
+  it("patent_design still triggers from productName (not in AI text scope fix)", () => {
+    const result = generateRiskPrecheck({ productName: "桌面手机支架" });
+    const patent = result.allItems.find((i) => i.key === "patent_design")!;
+    // patent_design matches '支架' in productName — this is correct behavior
+    expect(patent.precheckLevel).toBe("medium");
+  });
+});
