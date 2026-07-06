@@ -35,6 +35,9 @@ import { canSubmitAgentRunSave, getAgentRunSaveErrorMessage } from "@/lib/agentR
 import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
+import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
+import { buildDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
+import { decisionStatusOptions, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -283,6 +286,9 @@ export function AgentRunClient({
     risk: false,
     listing: false,
   });
+  const [manualDecisionStatus, setManualDecisionStatus] = useState<DecisionStatus>("need_info");
+  const [manualDecisionReason, setManualDecisionReason] = useState("");
+  const [manualDecisionNextAction, setManualDecisionNextAction] = useState("");
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState(""); // auth failures should never mark steps as failed
   const [saveError, setSaveError] = useState("");
@@ -319,6 +325,33 @@ export function AgentRunClient({
       riskReviewSnapshot,
     });
   }, [result, sourceMeta, profitSnapshot, riskReviewSnapshot]);
+  const humanDecisionDraft = useMemo(() => ({
+    status: manualDecisionStatus,
+    reason: manualDecisionReason,
+    nextAction: manualDecisionNextAction,
+    confirmedItems: MANUAL_ITEMS.filter((item) => manualChecked[item.key]).map((item) => item.label),
+    unconfirmedItems: MANUAL_ITEMS.filter((item) => !manualChecked[item.key]).map((item) => item.label),
+  }), [manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, manualChecked]);
+  const decisionEvidence = useMemo(() => {
+    if (!result) return null;
+    return buildDecisionEvidenceSnapshot({
+      workflowResult: result,
+      sourceMeta,
+      profitSnapshot,
+      riskReviewSnapshot,
+      reviewState: {
+        sourcingReviewed: manualChecked.sourcing,
+        riskReviewed: manualChecked.risk,
+        summaryReviewed: true,
+        listingReviewed: manualChecked.listing,
+        reviewedCount: MANUAL_ITEMS.filter((item) => manualChecked[item.key]).length,
+        totalReviewSteps: MANUAL_ITEMS.length,
+        allReviewed: manualReady,
+        reviewedAt: manualReady ? new Date().toISOString() : null,
+      },
+      humanDecision: humanDecisionDraft,
+    });
+  }, [result, sourceMeta, profitSnapshot, riskReviewSnapshot, manualChecked, manualReady, humanDecisionDraft]);
 
   const resetRun = useCallback(() => {
     setPhase("idle");
@@ -327,6 +360,9 @@ export function AgentRunClient({
     setProfitSnapshot(null);
     setRiskReviewSnapshot(null);
     setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
+    setManualDecisionStatus("need_info");
+    setManualDecisionReason("");
+    setManualDecisionNextAction("");
     setError("");
     setAuthError("");
     setSaveError("");
@@ -393,6 +429,9 @@ export function AgentRunClient({
         ...(cached.manualChecked as Partial<Record<ManualItemKey, boolean>> || {}),
       });
     }
+    setManualDecisionStatus(normalizeDecisionStatus(cached.manualDecisionStatus || "need_info"));
+    setManualDecisionReason(typeof cached.manualDecisionReason === "string" ? cached.manualDecisionReason : "");
+    setManualDecisionNextAction(typeof cached.manualDecisionNextAction === "string" ? cached.manualDecisionNextAction : "");
     if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
   }, [isAccessPasswordReady]);
 
@@ -409,9 +448,12 @@ export function AgentRunClient({
       profitSnapshot: profitSnapshot as unknown,
       riskReviewSnapshot: riskReviewSnapshot as unknown,
       manualChecked,
+      manualDecisionStatus,
+      manualDecisionReason,
+      manualDecisionNextAction,
       savedTaskId,
     });
-  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, savedTaskId]);
+  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, savedTaskId]);
 
   // Cache save: after analysis completes, persist to sessionStorage
   useEffect(() => {
@@ -441,6 +483,9 @@ export function AgentRunClient({
     setProfitSnapshot(null);
     setRiskReviewSnapshot(null);
     setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
+    setManualDecisionStatus("need_info");
+    setManualDecisionReason("");
+    setManualDecisionNextAction("");
 
     const runOrder: TimelineStep["key"][] = ["normalize", "market", "sourcing", "profit", "risk", "listing", "report", "manual"];
     let cursor = 0;
@@ -562,6 +607,11 @@ export function AgentRunClient({
           sourceMeta,
           profitSnapshot,
           riskReviewSnapshot,
+          decisionStatus: manualDecisionStatus,
+          humanDecision: {
+            ...humanDecisionDraft,
+            decidedAt: new Date().toISOString(),
+          },
           agentRunSnapshot: buildAgentRunSnapshot({
             workflowResult: result as Record<string, unknown>,
             riskReviewSnapshot,
@@ -812,6 +862,9 @@ export function AgentRunClient({
               <div className="mt-4">
                 <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} />
               </div>
+              <div className="mt-4">
+                <DecisionEvidencePanel evidence={decisionEvidence} />
+              </div>
               <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4 mt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Agent 主链路结论 · {result.productName}</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -939,6 +992,45 @@ export function AgentRunClient({
                       {item.label}
                     </label>
                   ))}
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+                  <div>
+                    <label className="text-xs font-bold text-amber-900" htmlFor="agent-run-decision-status">
+                      人工最终决定
+                    </label>
+                    <select
+                      id="agent-run-decision-status"
+                      value={manualDecisionStatus}
+                      onChange={(event) => setManualDecisionStatus(normalizeDecisionStatus(event.target.value))}
+                      className="mt-1 h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                    >
+                      {decisionStatusOptions.filter((option) => option.value).map((option) => (
+                        <option key={option.value} value={option.value}>{option.shortLabel}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block text-xs font-bold text-amber-900">
+                      决定原因
+                      <textarea
+                        value={manualDecisionReason}
+                        onChange={(event) => setManualDecisionReason(event.target.value.slice(0, 500))}
+                        rows={3}
+                        placeholder="例如：成本还缺物流/广告/退货率，先补资料；或风险可控，进入小单验证。"
+                        className="mt-1 w-full resize-none rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                    <label className="block text-xs font-bold text-amber-900">
+                      下一步动作
+                      <textarea
+                        value={manualDecisionNextAction}
+                        onChange={(event) => setManualDecisionNextAction(event.target.value.slice(0, 300))}
+                        rows={3}
+                        placeholder="例如：补供应商报价和平台认证；复核商标风险；整理小单测试清单。"
+                        className="mt-1 w-full resize-none rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                      />
+                    </label>
+                  </div>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   {savedTaskId ? (

@@ -268,4 +268,64 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(JSON.stringify(result.agentOutputSnapshot)).not.toContain("secret-token");
     expect(result.sourceMeta.evidenceSnapshot.qualityScore).toBe(86);
   });
+
+  it("saves decisionEvidence and humanDecision for V2 decision review", async () => {
+    const response = await POST(createRequest({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: {
+        ...workflowResult(),
+        productName: "Heated Gloves",
+        risk: { summary: "Battery certification needs manual review.", overallLevel: "yellow" },
+        summary: { decisionReason: "Winter outdoor use may have demand." },
+        listing: { title: "Rechargeable Heated Gloves", keywords: ["heated gloves"] },
+      },
+      reviewState: { sourcingReviewed: true, riskReviewed: false, summaryReviewed: true, listingReviewed: false },
+      decisionStatus: "need_info",
+      humanDecision: {
+        status: "need_info",
+        reason: "Need supplier certification and logistics quote.",
+        nextAction: "Ask supplier for certificate and shipping cost.",
+        decidedAt: "2026-07-04T09:00:00.000Z",
+        confirmedItems: ["source reviewed"],
+        unconfirmedItems: ["risk reviewed"],
+      },
+      sourceMeta: {
+        source: "opportunity",
+        sourceTitle: "Candidate page",
+        sourceUrl: "https://example.com/item?token=secret-token",
+        importedAt: "2026-07-04T08:00:00.000Z",
+      },
+      profitSnapshot: {
+        purchaseCost: 20,
+        salePrice: 49,
+        platformFeeRate: 0.15,
+        platformFeeAmount: 7.35,
+        estimatedProfit: 21.65,
+        estimatedMarginRate: 0.44,
+      },
+      riskReviewSnapshot: {
+        version: "risk_auto_mvp_v1",
+        source: "rule_based_risk_precheck_mvp",
+        mode: "ai_rule_precheck_with_manual_review",
+        overallPrecheckLevel: "medium",
+        summary: "Battery certification should be checked.",
+        items: [{ key: "trademark", status: "needs_check", precheckLevel: "medium", precheckReason: "Missing trademark check" }],
+      },
+    }));
+
+    const { status, body } = await readJson(response);
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    const createArg = mockPrisma.viralAnalysisRecord.create.mock.calls.at(-1)?.[0];
+    expect(createArg?.data?.decisionStatus).toBe("need_info");
+    const result = savedResultJson();
+    expect(result.decisionEvidence.version).toBe("decision-evidence-v1");
+    expect(result.humanDecision.status).toBe("need_info");
+    expect(result.humanDecision.reason).toContain("supplier certification");
+    expect(result.decisionEvidence.items.some((item: any) => item.kind === "ai_inference")).toBe(true);
+    expect(result.decisionEvidence.items.some((item: any) => item.kind === "calculation")).toBe(true);
+    expect(result.decisionEvidence.items.some((item: any) => item.kind === "rule")).toBe(true);
+    expect(result.decisionEvidence.missingData.some((item: any) => item.field === "profitSnapshot.logisticsCost")).toBe(true);
+    expect(JSON.stringify(result.decisionEvidence)).not.toContain("secret-token");
+  });
 });

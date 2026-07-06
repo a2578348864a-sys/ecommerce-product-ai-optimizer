@@ -38,6 +38,9 @@ export type CachedAgentRun = {
   profitSnapshot: unknown;
   riskReviewSnapshot: unknown;
   manualChecked: Record<string, boolean>;
+  manualDecisionStatus?: string;
+  manualDecisionReason?: string;
+  manualDecisionNextAction?: string;
   savedTaskId: string;
 };
 

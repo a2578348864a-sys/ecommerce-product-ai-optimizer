@@ -17,6 +17,8 @@ import { ListingPrepPackageCard, type ListingPrepInput } from "@/components/cros
 import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
+import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
+import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { deriveAgentRunTimelineItems } from "@/lib/agentRunTimeline";
 import {
@@ -199,6 +201,7 @@ function WorkflowDecisionSummary({
   const hasListingData = isRecordValue(result) && isRecordValue(result.listing);
   const listingData = hasListingData ? (result.listing as { title?: string; keywords?: string[]; complianceNotes?: string[] }) : null;
   const agentOutputSnapshot = extractAgentOutputSnapshotFromTask(result);
+  const decisionEvidence = extractDecisionEvidenceSnapshot(result);
   const operationSummary = deriveTaskOperationSummary({
     type: "workflow",
     title: fallbackTitle,
@@ -414,6 +417,9 @@ function WorkflowDecisionSummary({
 
       <div className="mt-4">
         <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} compact />
+      </div>
+      <div className="mt-4">
+        <DecisionEvidencePanel evidence={decisionEvidence} compact />
       </div>
 
       {/* Phase Agent-Save-M.1: Agent 主链路复盘 */}

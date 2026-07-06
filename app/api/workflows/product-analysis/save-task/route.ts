@@ -7,6 +7,8 @@ import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 import { normalizeProfitSnapshot } from "@/lib/profitSnapshot";
 import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
+import { buildDecisionEvidenceSnapshot, normalizeHumanDecision } from "@/lib/decisionEvidence";
+import { isDecisionStatus, normalizeDecisionStatus } from "@/lib/tasks/decisionStatus";
 
 export const runtime = "nodejs";
 
@@ -249,11 +251,27 @@ export async function POST(request: NextRequest) {
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
   const listingPrepSnapshot = isRecord(body.listingPrepSnapshot) ? body.listingPrepSnapshot : null;
+  const decisionStatus = isDecisionStatus(body.decisionStatus) ? body.decisionStatus : "pending";
+  const humanDecision = normalizeHumanDecision(isRecord(body.humanDecision) ? body.humanDecision : {
+    status: decisionStatus,
+    reason: "",
+    nextAction: "",
+    confirmedItems: [],
+    unconfirmedItems: [],
+  });
   const agentOutputSnapshot = normalizeAgentOutputSnapshot({
     workflowResult,
     sourceMeta,
     profitSnapshot,
     riskReviewSnapshot,
+  });
+  const decisionEvidence = buildDecisionEvidenceSnapshot({
+    workflowResult,
+    sourceMeta,
+    profitSnapshot,
+    riskReviewSnapshot,
+    reviewState,
+    humanDecision,
   });
 
   // Build a structured result for the task record
@@ -285,6 +303,9 @@ export async function POST(request: NextRequest) {
     ...(riskReviewSnapshot ? { riskReviewSnapshot } : {}),
     // Phase B2: stable Agent output contract for replay and task summary
     agentOutputSnapshot,
+    // Phase V2-Internal-Use.1: decision evidence metadata for fact/inference separation
+    decisionEvidence,
+    ...(humanDecision ? { humanDecision } : {}),
     // Phase Agent-Save-M.1: agent run snapshot for task replay
     ...(agentRunSnapshot ? { agentRunSnapshot } : {}),
     // Phase Listing-Prep-M.1: listing preparation snapshot
@@ -301,6 +322,7 @@ export async function POST(request: NextRequest) {
       score,
       level: riskLevel,
       oneLineSummary: finalVerdict,
+      decisionStatus: normalizeDecisionStatus(decisionStatus),
       resultJson: JSON.stringify(taskResult),
       productLifecycle: JSON.stringify(body.productLifecycle || createInitialProductLifecycle()),
     });
@@ -331,6 +353,7 @@ export async function POST(request: NextRequest) {
         score,
         level: riskLevel,
         oneLineSummary: finalVerdict,
+        decisionStatus: normalizeDecisionStatus(decisionStatus),
         resultJson: JSON.stringify(taskResult),
       },
     });
