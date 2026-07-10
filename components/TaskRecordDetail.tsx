@@ -43,6 +43,8 @@ import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { ListingPackCard } from "@/components/ListingPackCard";
 import { AiListingDraftPreviewCard } from "@/components/AiListingDraftPreviewCard";
+import { AiImageDraftCard } from "@/components/AiImageDraftCard";
+import { extractAiImageDraftSnapshot } from "@/lib/aiImageDraft";
 import type { ListingPack } from "@/lib/listingPack";
 import type { AiListingPackSnapshot } from "@/lib/aiListingSnapshot";
 import {
@@ -477,6 +479,11 @@ function WorkflowDecisionSummary({
           } catch { /* ignore */ }
           return null;
         })()}
+      />
+
+      <AiImageDraftCard
+        taskId={taskId}
+        initialSnapshot={extractAiImageDraftSnapshot(result)}
       />
 
       {/* ── Section 4: 运营推进与状态 ── */}

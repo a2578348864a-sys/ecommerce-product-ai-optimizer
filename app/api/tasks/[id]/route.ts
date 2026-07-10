@@ -11,6 +11,7 @@ import {
   sandboxTaskToDetail,
   isSandboxTaskId,
 } from "@/lib/server/demoSandbox";
+import { cleanupAiImageTask } from "@/lib/server/aiImageDraftStorage";
 
 export const runtime = "nodejs";
 
@@ -154,6 +155,21 @@ async function getId(context: RouteContext) {
   return typeof rawId === "string" ? rawId.trim() : "";
 }
 
+async function cleanupTaskImages(input: {
+  accessMode: "owner" | "visitor";
+  visitorAccessId?: string;
+  taskId: string;
+}) {
+  try {
+    await cleanupAiImageTask(input);
+  } catch {
+    console.error("[ai-image-draft] task cleanup failed", {
+      accessMode: input.accessMode,
+      taskId: input.taskId,
+    });
+  }
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const authError = checkAccessPassword(request);
   if (authError) return NextResponse.json(authError.body, { status: authError.status });
@@ -202,6 +218,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (auth.context.mode === "demo") {
       const deleted = deleteSandboxTask(auth.context.demoAccessId, id);
       if (!deleted) return notFoundResponse();
+      await cleanupTaskImages({
+        accessMode: "visitor",
+        visitorAccessId: auth.context.demoAccessId,
+        taskId: id,
+      });
       return jsonResponse({ ok: true, data: { id } });
     }
     // Non-demo user with sandbox ID — not found
@@ -216,6 +237,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     await prisma.viralAnalysisRecord.delete({
       where: { id },
     });
+    await cleanupTaskImages({ accessMode: "owner", taskId: id });
 
     return jsonResponse({
       ok: true,

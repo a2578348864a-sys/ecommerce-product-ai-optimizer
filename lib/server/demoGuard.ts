@@ -13,12 +13,16 @@
 
 import "server-only";
 import type { NextRequest } from "next/server";
+import { randomUUID } from "node:crypto";
 import {
   getDemoAccessById,
   isDemoAccessActive,
   isDemoAiQuotaExhausted,
   getRemainingAiCalls,
   incrementDemoAiCalls,
+  reserveDemoAiImageCalls,
+  commitDemoAiImageCalls,
+  refundDemoAiImageCalls,
   type DemoAccessRecord,
 } from "@/lib/server/demoAccess";
 import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
@@ -164,8 +168,10 @@ function getDemoForbiddenMessage(action: string): string {
 
 // ── AI quota checks ─────────────────────────────
 
+const pendingTextAiReservations = new WeakMap<object, Array<{ requestHash: string; count: number }>>();
+
 /**
- * Check if a Demo user has enough AI quota. Only checks, does NOT consume.
+ * Atomically reserve Demo AI quota before a text provider call.
  * Owner passes through automatically.
  */
 export function ensureDemoAiQuota(
@@ -175,27 +181,27 @@ export function ensureDemoAiQuota(
   if (ctx.mode === "owner") return { ok: true };
 
   const demoCtx = ctx as DemoAccessContext;
-
-  // Re-fetch from store for latest state
-  const access = getDemoAccessById(demoCtx.demoAccessId);
-  if (!access) {
-    return { ok: false, status: 403, code: "demo_access_not_found", message: "临时访问码不存在。" };
+  const requestHash = `text-${randomUUID()}`;
+  const reserved = reserveDemoAiImageCalls(demoCtx.demoAccessId, requestHash, neededCount);
+  if (!reserved.ok) {
+    const errors = {
+      access_not_found: { code: "demo_access_not_found", message: "临时访问码不存在。" },
+      access_inactive: { code: "demo_access_inactive", message: "该临时访问码已被停用。" },
+      access_expired: { code: "demo_access_expired", message: "该临时访问已过期，请联系管理员获取新的访问码。" },
+      quota_exceeded: { code: "demo_ai_quota_exceeded", message: "本临时访问码的 AI 分析额度已用完，可继续浏览样例与复制报告。" },
+      reservation_conflict: { code: "demo_ai_quota_conflict", message: "AI 额度预扣冲突，请稍后重试。" },
+    } as const;
+    return { ok: false, status: 403, ...errors[reserved.code] };
   }
-  if (!access.isActive) {
-    return { ok: false, status: 403, code: "demo_access_inactive", message: "该临时访问码已被停用。" };
-  }
-  if (access.expiresAt && new Date(access.expiresAt) < new Date()) {
-    return { ok: false, status: 403, code: "demo_access_expired", message: "该临时访问已过期，请联系管理员获取新的访问码。" };
-  }
-  if (getRemainingAiCalls(access) < neededCount) {
-    return { ok: false, status: 403, code: "demo_ai_quota_exceeded", message: "本临时访问码的 AI 分析额度已用完，可继续浏览样例与复制报告。" };
-  }
-
+  const pending = pendingTextAiReservations.get(ctx) || [];
+  pending.push({ requestHash, count: neededCount });
+  pendingTextAiReservations.set(ctx, pending);
   return { ok: true };
 }
 
 /**
- * Consume Demo AI calls after successful AI provider response.
+ * Commit an atomic reservation after a successful text AI provider response.
+ * The legacy increment fallback preserves callers that did not reserve first.
  * Returns updated snapshot for frontend, or null if owner.
  */
 export function consumeDemoAiCalls(
@@ -205,6 +211,15 @@ export function consumeDemoAiCalls(
   if (ctx.mode === "owner") return null;
 
   const demoCtx = ctx as DemoAccessContext;
+  const pending = pendingTextAiReservations.get(ctx) || [];
+  const reservationIndex = pending.findIndex((reservation) => reservation.count === count);
+  if (reservationIndex >= 0) {
+    const [reservation] = pending.splice(reservationIndex, 1);
+    if (pending.length > 0) pendingTextAiReservations.set(ctx, pending);
+    else pendingTextAiReservations.delete(ctx);
+    const committed = commitDemoAiImageCalls(demoCtx.demoAccessId, reservation.requestHash);
+    return committed ? buildDemoAccessSnapshot(committed) : null;
+  }
   const updated = incrementDemoAiCalls(demoCtx.demoAccessId, count);
   if (!updated) return null;
   return buildDemoAccessSnapshot(updated);
@@ -219,4 +234,40 @@ export function getLatestDemoSnapshot(ctx: AccessContext): DemoAccessSnapshot | 
   const access = getDemoAccessById(demoCtx.demoAccessId);
   if (!access) return null;
   return buildDemoAccessSnapshot(access);
+}
+
+export type VisitorImageQuotaResult =
+  | { ok: true; snapshot: DemoAccessSnapshot | null; duplicate: boolean }
+  | { ok: false; status: number; code: string; message: string };
+
+export function reserveVisitorImageAiCalls(
+  ctx: AccessContext,
+  requestHash: string,
+  count: number,
+): VisitorImageQuotaResult {
+  if (ctx.mode === "owner") return { ok: true, snapshot: null, duplicate: false };
+  const result = reserveDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash, count);
+  if (result.ok) {
+    return { ok: true, snapshot: buildDemoAccessSnapshot(result.record), duplicate: result.duplicate };
+  }
+  const messages: Record<typeof result.code, { status: number; code: string; message: string }> = {
+    access_not_found: { status: 403, code: "visitor_access_not_found", message: "临时访问不存在。" },
+    access_inactive: { status: 403, code: "visitor_access_inactive", message: "该临时访问已停用。" },
+    access_expired: { status: 403, code: "visitor_access_expired", message: "该临时访问已过期。" },
+    quota_exceeded: { status: 403, code: "visitor_ai_quota_exceeded", message: "共享真实 AI 体验次数已用完。" },
+    reservation_conflict: { status: 409, code: "image_request_conflict", message: "请求标识与已有请求不一致。" },
+  };
+  return { ok: false, ...messages[result.code] };
+}
+
+export function commitVisitorImageAiCalls(ctx: AccessContext, requestHash: string): DemoAccessSnapshot | null {
+  if (ctx.mode === "owner") return null;
+  const updated = commitDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash);
+  return updated ? buildDemoAccessSnapshot(updated) : null;
+}
+
+export function refundVisitorImageAiCalls(ctx: AccessContext, requestHash: string): DemoAccessSnapshot | null {
+  if (ctx.mode === "owner") return null;
+  const updated = refundDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash);
+  return updated ? buildDemoAccessSnapshot(updated) : null;
 }

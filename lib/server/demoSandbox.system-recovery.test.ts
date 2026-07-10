@@ -12,9 +12,10 @@
  * Does NOT: call real AI, write real DB, read .env.
  */
 
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { unlinkSync, existsSync } from "fs";
-import { resolve } from "path";
+import { describe, expect, it, beforeEach, afterEach, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   createOwnerSession,
   createDemoSession,
@@ -46,11 +47,10 @@ import {
 
 // ── Isolated store path ────────────────────────────
 
-const TEST_STORE_PATH = resolve(
-  process.cwd(),
-  "data",
-  "demo-sandbox.system-recovery.test.json"
-);
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "demo-sandbox-system-recovery-"));
+const TEST_STORE_PATH = join(TEST_ROOT, "sandbox.json");
+const TEST_ACCESS_STORE_PATH = join(TEST_ROOT, "access.json");
+process.env.DEMO_ACCESS_STORE_PATH = TEST_ACCESS_STORE_PATH;
 
 beforeEach(() => {
   process.env.DEMO_SANDBOX_STORE_PATH = TEST_STORE_PATH;
@@ -60,9 +60,11 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.DEMO_SANDBOX_STORE_PATH;
-  if (existsSync(TEST_STORE_PATH)) {
-    try { unlinkSync(TEST_STORE_PATH); } catch { /* ok */ }
-  }
+});
+
+afterAll(() => {
+  delete process.env.DEMO_ACCESS_STORE_PATH;
+  rmSync(TEST_ROOT, { recursive: true, force: true });
 });
 
 // ── Helpers ────────────────────────────────────────

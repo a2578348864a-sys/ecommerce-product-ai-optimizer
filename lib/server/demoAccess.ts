@@ -14,7 +14,7 @@
 
 import "server-only";
 import { randomBytes, createHash } from "crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { resolve } from "path";
 
 // ── Types ───────────────────────────────────────
@@ -31,6 +31,12 @@ export interface DemoAccessRecord {
   createdAt: string;
   lastUsedAt: string | null;
   notes: string;
+  aiImageQuotaReservations?: Record<string, {
+    count: number;
+    status: "reserved" | "committed" | "refunded";
+    createdAt: string;
+    updatedAt: string;
+  }>;
 }
 
 export interface DemoAccessStore {
@@ -121,7 +127,21 @@ export function loadDemoAccessStore(): DemoAccessStore {
 
 export function saveDemoAccessStore(store: DemoAccessStore): void {
   ensureDataDir();
-  writeFileSync(getStorePath(), JSON.stringify(store, null, 2), "utf-8");
+  const storePath = getStorePath();
+  const tempPath = `${storePath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf-8");
+    try {
+      renameSync(tempPath, storePath);
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "";
+      if (code !== "EPERM" && code !== "EEXIST") throw error;
+      if (existsSync(storePath)) unlinkSync(storePath);
+      renameSync(tempPath, storePath);
+    }
+  } finally {
+    if (existsSync(tempPath)) unlinkSync(tempPath);
+  }
 }
 
 // ── CRUD ────────────────────────────────────────
@@ -222,6 +242,64 @@ export function incrementDemoAiCalls(id: string, count: number): DemoAccessRecor
   store.accesses[idx].lastUsedAt = new Date().toISOString();
   saveDemoAccessStore(store);
   return store.accesses[idx];
+}
+
+export type DemoAiImageQuotaResult =
+  | { ok: true; record: DemoAccessRecord; duplicate: boolean }
+  | { ok: false; code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict" };
+
+export function reserveDemoAiImageCalls(id: string, requestHash: string, count: number): DemoAiImageQuotaResult {
+  const store = loadDemoAccessStore();
+  const idx = store.accesses.findIndex((access) => access.id === id);
+  if (idx === -1) return { ok: false, code: "access_not_found" };
+  const access = store.accesses[idx];
+  if (!access.isActive) return { ok: false, code: "access_inactive" };
+  if (isDemoAccessExpired(access)) return { ok: false, code: "access_expired" };
+  const reservations = access.aiImageQuotaReservations || {};
+  const existing = reservations[requestHash];
+  if (existing) {
+    if (existing.count !== count) return { ok: false, code: "reservation_conflict" };
+    return { ok: true, record: access, duplicate: true };
+  }
+  if (!Number.isInteger(count) || count <= 0 || getRemainingAiCalls(access) < count) {
+    return { ok: false, code: "quota_exceeded" };
+  }
+  const now = new Date().toISOString();
+  access.usedAiCalls += count;
+  access.lastUsedAt = now;
+  access.aiImageQuotaReservations = {
+    ...reservations,
+    [requestHash]: { count, status: "reserved", createdAt: now, updatedAt: now },
+  };
+  saveDemoAccessStore(store);
+  return { ok: true, record: access, duplicate: false };
+}
+
+export function commitDemoAiImageCalls(id: string, requestHash: string): DemoAccessRecord | null {
+  const store = loadDemoAccessStore();
+  const access = store.accesses.find((item) => item.id === id);
+  const reservation = access?.aiImageQuotaReservations?.[requestHash];
+  if (!access || !reservation) return null;
+  if (reservation.status === "reserved") {
+    reservation.status = "committed";
+    reservation.updatedAt = new Date().toISOString();
+    saveDemoAccessStore(store);
+  }
+  return access;
+}
+
+export function refundDemoAiImageCalls(id: string, requestHash: string): DemoAccessRecord | null {
+  const store = loadDemoAccessStore();
+  const access = store.accesses.find((item) => item.id === id);
+  const reservation = access?.aiImageQuotaReservations?.[requestHash];
+  if (!access || !reservation) return null;
+  if (reservation.status === "reserved") {
+    access.usedAiCalls = Math.max(0, access.usedAiCalls - reservation.count);
+    reservation.status = "refunded";
+    reservation.updatedAt = new Date().toISOString();
+    saveDemoAccessStore(store);
+  }
+  return access;
 }
 
 export function updateDemoLastUsed(id: string): void {

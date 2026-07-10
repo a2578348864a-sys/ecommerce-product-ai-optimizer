@@ -57,3 +57,5 @@ data/demo-access.json
 data/demo-sandbox.json
 # Local/demo security gate test artifacts
 data/demo-sandbox.test-system-recovery3.json
+# Private AI image drafts and request ledger
+data/ai-image-drafts/

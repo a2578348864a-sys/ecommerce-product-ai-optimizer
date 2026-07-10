@@ -8,7 +8,8 @@
  */
 
 import "server-only";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
+import { randomBytes } from "crypto";
 import { resolve } from "path";
 
 // ── Types ───────────────────────────────────────
@@ -115,7 +116,21 @@ export function loadDemoSandboxStore(): DemoSandboxStore {
 
 export function saveDemoSandboxStore(store: DemoSandboxStore): void {
   ensureDir();
-  writeFileSync(getStorePath(), JSON.stringify(store, null, 2), "utf-8");
+  const storePath = getStorePath();
+  const tempPath = `${storePath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf-8");
+    try {
+      renameSync(tempPath, storePath);
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "";
+      if (code !== "EPERM" && code !== "EEXIST") throw error;
+      if (existsSync(storePath)) unlinkSync(storePath);
+      renameSync(tempPath, storePath);
+    }
+  } finally {
+    if (existsSync(tempPath)) unlinkSync(tempPath);
+  }
 }
 
 // ── ID helpers ──────────────────────────────────
