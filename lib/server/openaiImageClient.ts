@@ -2,6 +2,12 @@ import "server-only";
 
 import OpenAI from "openai";
 import type { AiImageDraftType } from "@/lib/aiImageDraft";
+import {
+  downloadImageFromUrl,
+  getImageResultHostWhitelist,
+  ImageUrlFetchError,
+  validateImageResultUrl,
+} from "@/lib/server/aiImageUrlFetcher";
 
 export const ALLOWED_IMAGE_BASE_HOSTNAME = "api.65535.space";
 export const ALLOWED_IMAGE_MODELS = new Set(["gpt-image-2"]);
@@ -33,7 +39,15 @@ export class AiImageProviderError extends Error {
       | "empty_response"
       | "configuration_error"
       | "provider_error"
-      | "image_provider_incompatible_response",
+      | "image_provider_incompatible_response"
+      | "image_provider_untrusted_result_url"
+      | "image_provider_result_dns_rejected"
+      | "image_provider_result_redirect_rejected"
+      | "image_provider_result_download_failed"
+      | "image_provider_result_timeout"
+      | "image_provider_result_too_large"
+      | "image_provider_result_invalid_mime"
+      | "image_provider_result_invalid_image",
     message: string,
     public readonly retryable = false,
   ) {
@@ -121,6 +135,9 @@ export function validateImageModel(raw: string): string {
 
 function mapProviderError(error: unknown): AiImageProviderError {
   if (error instanceof AiImageProviderError) return error;
+  if (error instanceof ImageUrlFetchError) {
+    return new AiImageProviderError(error.code, error.message, false);
+  }
   const status =
     typeof error === "object" && error !== null && "status" in error
       ? Number((error as { status?: unknown }).status)
@@ -145,6 +162,42 @@ function mapProviderError(error: unknown): AiImageProviderError {
   return new AiImageProviderError("provider_error", "图片生成服务调用失败。", false);
 }
 
+/**
+ * Classify each provider response item as base64_result, relay_url_result, or incompatible.
+ * Only called when at least one item has a URL and no b64_json.
+ */
+type ImageResultItem =
+  | { kind: "base64_result"; base64: string }
+  | { kind: "relay_url_result"; url: string };
+
+function classifyImageResults(
+  data: Array<{ b64_json?: string; url?: string }>,
+): ImageResultItem[] {
+  const result: ImageResultItem[] = [];
+  for (const item of data) {
+    if (typeof item.b64_json === "string" && item.b64_json.length > 0) {
+      result.push({ kind: "base64_result", base64: item.b64_json });
+    } else if (typeof item.url === "string" && item.url.length > 0) {
+      result.push({ kind: "relay_url_result", url: item.url });
+    }
+    // else: drop incompatible silently — will be caught by count mismatch below
+  }
+  return result;
+}
+
+/**
+ * Convert a relay URL result to base64 via secure download.
+ * The downloaded bytes are validated through the full storage pipeline
+ * (magic numbers, dimensions, pixel limit, MIME consistency).
+ */
+async function fetchRelayUrlAsBase64(
+  url: string,
+  whitelist: Set<string>,
+): Promise<string> {
+  const result = await downloadImageFromUrl(url, whitelist);
+  return result.bytes.toString("base64");
+}
+
 export const generateOpenAiImage: AiImageProvider = async (input) => {
   const apiKey = (process.env.OPENAI_API_KEY || "").trim();
   if (!apiKey) throw new AiImageProviderError("configuration_error", "OpenAI 图片服务尚未配置。", false);
@@ -154,6 +207,8 @@ export const generateOpenAiImage: AiImageProvider = async (input) => {
 
   const client = new OpenAI({ apiKey, baseURL, timeout: timeoutMs(), maxRetries: 0 });
 
+  let responseData: Array<{ b64_json?: string; url?: string }>;
+  let requestId: string | undefined;
   try {
     const response = await client.images.generate({
       model,
@@ -166,31 +221,54 @@ export const generateOpenAiImage: AiImageProvider = async (input) => {
       background: input.imageType === "white_background_concept" ? "opaque" : "auto",
       moderation: "auto",
     });
-
-    const hasUrlOnly = (response.data || []).some(
-      (item) => !item.b64_json && typeof item.url === "string",
-    );
-    if (hasUrlOnly) {
-      throw new AiImageProviderError(
-        "image_provider_incompatible_response",
-        "图片中转站返回了 URL 而非 base64 数据，当前仅支持 base64 格式。",
-        false,
-      );
-    }
-
-    const images = (response.data || [])
-      .map((item) => (typeof item.b64_json === "string" ? { base64: item.b64_json } : null))
-      .filter((item): item is { base64: string } => Boolean(item));
-
-    if (images.length === 0) {
-      throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
-    }
-
-    const requestId = (response as unknown as { _request_id?: string })._request_id;
-    return { model, provider: "openai_compatible_relay", requestId, images };
+    responseData = response.data || [];
+    requestId = (response as unknown as { _request_id?: string })._request_id;
   } catch (error) {
     throw mapProviderError(error);
   }
+
+  if (responseData.length === 0) {
+    throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
+  }
+
+  // Classify each item
+  const classified = classifyImageResults(responseData);
+
+  // Incompatible: no valid items at all (neither b64_json nor url)
+  if (classified.length === 0) {
+    throw new AiImageProviderError(
+      "image_provider_incompatible_response",
+      "图片中转站返回了无法识别的响应格式。",
+      false,
+    );
+  }
+
+  // Pre-validate URL items and download them.
+  // All URL validation + download errors are mapped through mapProviderError
+  // so they surface as AiImageProviderError to the service layer.
+  const resultHostWhitelist = getImageResultHostWhitelist();
+  const images: Array<{ base64: string }> = [];
+  for (const item of classified) {
+    if (item.kind === "base64_result") {
+      images.push({ base64: item.base64 });
+    } else {
+      try {
+        // Validate URL structure and hostname whitelist (no DNS, no fetch yet)
+        validateImageResultUrl(item.url, resultHostWhitelist);
+        // Secure download → DNS check → SSRF guard → validate bytes → convert to base64
+        const base64 = await fetchRelayUrlAsBase64(item.url, resultHostWhitelist);
+        images.push({ base64 });
+      } catch (error) {
+        throw mapProviderError(error);
+      }
+    }
+  }
+
+  if (images.length === 0) {
+    throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
+  }
+
+  return { model, provider: "openai_compatible_relay", requestId, images };
 };
 
 export function getAiImageProvider(): AiImageProvider {

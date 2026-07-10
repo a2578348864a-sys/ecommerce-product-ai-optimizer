@@ -53,7 +53,16 @@ export type AiImageServiceErrorCode =
   | "image_response_invalid"
   | "image_storage_failed"
   | "image_snapshot_save_failed"
-  | "image_ledger_failed";
+  | "image_ledger_failed"
+  | "image_provider_untrusted_result_url"
+  | "image_provider_result_dns_rejected"
+  | "image_provider_result_redirect_rejected"
+  | "image_provider_result_download_failed"
+  | "image_provider_result_timeout"
+  | "image_provider_result_too_large"
+  | "image_provider_result_invalid_mime"
+  | "image_provider_result_invalid_image"
+  | "image_provider_incompatible_response";
 
 export type AiImageServiceResult =
   | {
@@ -98,13 +107,26 @@ function providerFailure(error: unknown): { code: AiImageServiceErrorCode; messa
       empty_response: "image_response_invalid",
       configuration_error: "image_provider_error",
       provider_error: "image_provider_error",
-      image_provider_incompatible_response: "image_provider_error",
+      image_provider_incompatible_response: "image_provider_incompatible_response",
+      image_provider_untrusted_result_url: "image_provider_untrusted_result_url",
+      image_provider_result_dns_rejected: "image_provider_result_dns_rejected",
+      image_provider_result_redirect_rejected: "image_provider_result_redirect_rejected",
+      image_provider_result_download_failed: "image_provider_result_download_failed",
+      image_provider_result_timeout: "image_provider_result_timeout",
+      image_provider_result_too_large: "image_provider_result_too_large",
+      image_provider_result_invalid_mime: "image_provider_result_invalid_mime",
+      image_provider_result_invalid_image: "image_provider_result_invalid_image",
     };
+    const nonRefundableCodes = new Set<AiImageProviderError["code"]>([
+      "content_blocked",
+      "image_provider_untrusted_result_url",
+      "image_provider_incompatible_response",
+    ]);
     return {
       code: mapped[error.code],
       message: error.message,
       retryable: error.retryable,
-      refundable: error.code !== "content_blocked",
+      refundable: !nonRefundableCodes.has(error.code),
     };
   }
   return { code: "image_provider_error", message: "图片生成失败，请稍后重试。", retryable: false, refundable: true };

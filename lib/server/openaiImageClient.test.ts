@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({
   options: null as Record<string, unknown> | null,
   generate: vi.fn(),
+  dnsResolve4: vi.fn(),
+  dnsResolve6: vi.fn(),
 }));
 
 vi.mock("openai", () => ({
@@ -13,6 +15,11 @@ vi.mock("openai", () => ({
       state.options = options;
     }
   },
+}));
+
+vi.mock("node:dns/promises", () => ({
+  resolve4: state.dnsResolve4,
+  resolve6: state.dnsResolve6,
 }));
 
 import {
@@ -185,42 +192,42 @@ describe("OpenAI image client relay configuration", () => {
     expect(result.images).toEqual([{ base64: "cmVsYXk=" }]);
   });
 
-  it("rejects a response where any item has only a URL but no base64", async () => {
+  it("rejects a response where any item has only a URL on a non-whitelisted hostname", async () => {
     state.generate.mockResolvedValue({ data: [{ url: "https://cdn.example.com/img.png" }] });
     await expect(
       generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
     ).rejects.toEqual(
       expect.objectContaining<AiImageProviderError>({
-        code: "image_provider_incompatible_response",
+        code: "image_provider_untrusted_result_url",
         retryable: false,
       }),
     );
   });
 
-  it("rejects a mixed response that includes both b64_json items and URL-only items", async () => {
+  it("rejects a mixed response with b64_json and a URL on a non-whitelisted hostname", async () => {
     state.generate.mockResolvedValue({
       data: [{ b64_json: "aW1hZ2U=" }, { url: "https://cdn.example.com/fallback.png" }],
     });
     await expect(
       generateOpenAiImage({ imageType: "white_background_concept", count: 2, prompt: "safe" }),
-    ).rejects.toEqual(
-      expect.objectContaining<AiImageProviderError>({
-        code: "image_provider_incompatible_response",
-      }),
-    );
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 2, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_untrusted_result_url");
+    }
   });
 
-  it("does NOT download arbitrary upstream URLs (SSRF prevention)", async () => {
+  it("does NOT download arbitrary upstream URLs — HTTP URL rejected by URL validator (SSRF prevention)", async () => {
     state.generate.mockResolvedValue({ data: [{ url: "http://169.254.169.254/latest/meta-data/" }] });
     await expect(
       generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
-    ).rejects.toEqual(
-      expect.objectContaining<AiImageProviderError>({
-        code: "image_provider_incompatible_response",
-      }),
-    );
-    // The client must not have attempted to fetch the URL — the mock generate just returns data.
-    // The rejection comes from our post-processing, not from an HTTP fetch.
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_untrusted_result_url");
+    }
   });
 
   it("throws configuration_error when OPENAI_API_KEY is missing", async () => {
@@ -390,6 +397,219 @@ describe("OpenAI image client error mapping", () => {
       expect(msg).not.toContain(longPrompt);
       expect(msg.length).toBeLessThan(200);
     }
+  });
+});
+
+const mockDownload = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/server/aiImageUrlFetcher", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/aiImageUrlFetcher")>();
+  return {
+    ...actual,
+    downloadImageFromUrl: mockDownload,
+  };
+});
+
+describe("relay URL result handling", () => {
+  const VALID_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.options = null;
+    process.env.OPENAI_API_KEY = "test-relay-key";
+    process.env.OPENAI_IMAGE_BASE_URL = "https://api.65535.space/v1";
+    process.env.OPENAI_IMAGE_MODEL = "gpt-image-2";
+    process.env.OPENAI_IMAGE_RESULT_HOSTS = "image.65535.space";
+    delete process.env.OPENAI_IMAGE_TIMEOUT_MS;
+    state.dnsResolve4.mockResolvedValue(["104.26.15.58"]);
+    state.dnsResolve6.mockResolvedValue(["2606:4700:20::681a:f3a"]);
+    // Default: downloadImageFromUrl returns a valid PNG
+    mockDownload.mockResolvedValue({
+      bytes: Buffer.from(VALID_PNG, "base64"),
+      mimeType: "image/png" as const,
+      sha256: "a".repeat(64),
+    });
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_IMAGE_BASE_URL;
+    delete process.env.OPENAI_IMAGE_MODEL;
+    delete process.env.OPENAI_IMAGE_RESULT_HOSTS;
+    delete process.env.OPENAI_IMAGE_TIMEOUT_MS;
+  });
+
+  it("downloads a relay URL image and returns it as base64", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://image.65535.space/result/img.png?token=sig" }],
+      _request_id: "relay-req-1",
+    });
+
+    const result = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    expect(result.provider).toBe("openai_compatible_relay");
+    expect(result.model).toBe("gpt-image-2");
+    expect(result.requestId).toBe("relay-req-1");
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].base64).toBe(VALID_PNG);
+    expect(mockDownload).toHaveBeenCalledTimes(1);
+    // Verify download was called with the correct URL and whitelist
+    expect(mockDownload).toHaveBeenCalledWith(
+      "https://image.65535.space/result/img.png?token=sig",
+      new Set(["image.65535.space"]),
+    );
+  });
+
+  it("rejects a relay URL on a non-whitelisted hostname", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://cdn.evil.com/img.png" }],
+    });
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_untrusted_result_url");
+      expect((e as AiImageProviderError).message).toMatch(/[一-鿿]/);
+    }
+    expect(mockDownload).not.toHaveBeenCalled();
+  });
+
+  it("rejects a relay URL on HTTP", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "http://image.65535.space/img.png" }],
+    });
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_untrusted_result_url");
+    }
+    expect(mockDownload).not.toHaveBeenCalled();
+  });
+
+  it("processes a mixed batch with b64_json and URL items", async () => {
+    state.generate.mockResolvedValue({
+      data: [
+        { b64_json: VALID_PNG },
+        { url: "https://image.65535.space/img2.png?token=sig" },
+      ],
+    });
+
+    const result = await generateOpenAiImage({ imageType: "lifestyle_scene", count: 2, prompt: "safe" });
+    expect(result.images).toHaveLength(2);
+    expect(mockDownload).toHaveBeenCalledTimes(1);
+    expect(result.images[0].base64).toBe(VALID_PNG);
+    expect(result.images[1].base64).toBe(VALID_PNG);
+  });
+
+  it("rejects when OPENAI_IMAGE_RESULT_HOSTS is not configured and relay returns a URL", async () => {
+    delete process.env.OPENAI_IMAGE_RESULT_HOSTS;
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://image.65535.space/img.png" }],
+    });
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_untrusted_result_url");
+    }
+    expect(mockDownload).not.toHaveBeenCalled();
+  });
+
+  it("rejects DNS rejection via downloadImageFromUrl mock", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://image.65535.space/img.png?token=sig" }],
+    });
+    // Mock downloadImageFromUrl to throw a DNS rejection
+    mockDownload.mockRejectedValue(
+      new (await import("@/lib/server/aiImageUrlFetcher")).ImageUrlFetchError(
+        "image_provider_result_dns_rejected",
+        "图片结果域名 DNS 解析失败。",
+      ),
+    );
+
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_result_dns_rejected");
+    }
+  });
+
+  it("rejects download returning 404 via mock", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://image.65535.space/img.png?token=sig" }],
+    });
+    mockDownload.mockRejectedValue(
+      new (await import("@/lib/server/aiImageUrlFetcher")).ImageUrlFetchError(
+        "image_provider_result_download_failed",
+        "图片下载失败。",
+      ),
+    );
+
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_result_download_failed");
+    }
+  });
+
+  it("still accepts b64_json responses (backward compat)", async () => {
+    state.generate.mockResolvedValue({ data: [{ b64_json: VALID_PNG }], _request_id: "b64-req" });
+
+    const result = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].base64).toBe(VALID_PNG);
+    expect(mockDownload).not.toHaveBeenCalled();
+  });
+
+  it("does not leak the relay URL or query signature in error messages", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://image.65535.space/img.png?token=secret-sig" }],
+    });
+    mockDownload.mockRejectedValue(
+      new (await import("@/lib/server/aiImageUrlFetcher")).ImageUrlFetchError(
+        "image_provider_result_download_failed",
+        "图片下载失败。",
+      ),
+    );
+
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      const msg = (e as AiImageProviderError).message;
+      expect(msg).not.toContain("token=secret-sig");
+      expect(msg).not.toContain("https://");
+      expect(msg).not.toContain("65535");
+      expect(msg).toMatch(/[一-鿿]/);
+    }
+  });
+
+  it("rejects a URL with credentials", async () => {
+    state.generate.mockResolvedValue({
+      data: [{ url: "https://user:pass@image.65535.space/img.png" }],
+    });
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toThrowError(AiImageProviderError);
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (e) {
+      expect((e as AiImageProviderError).code).toBe("image_provider_untrusted_result_url");
+      expect((e as AiImageProviderError).message).not.toContain("user");
+      expect((e as AiImageProviderError).message).not.toContain("pass");
+    }
+    expect(mockDownload).not.toHaveBeenCalled();
   });
 });
 
