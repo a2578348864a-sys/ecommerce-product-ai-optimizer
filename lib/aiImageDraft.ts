@@ -49,7 +49,7 @@ export type AiImageDraftItem = {
 export type AiImageDraftSnapshot = {
   version: 1;
   snapshotType: "ai_image_draft";
-  provider: "openai";
+  provider: "openai_compatible_relay";
   accessMode: AiImageAccessMode;
   humanReviewRequired: true;
   disclaimer: string;
@@ -220,7 +220,7 @@ export function normalizeAiImageDraftSnapshot(value: unknown): AiImageDraftSnaps
   if (
     value.version !== 1
     || value.snapshotType !== "ai_image_draft"
-    || value.provider !== "openai"
+    || (value.provider !== "openai" && value.provider !== "openai_compatible_relay")
     || !isAccessMode(value.accessMode)
     || value.humanReviewRequired !== true
     || !validDate(value.updatedAt)
@@ -238,7 +238,7 @@ export function normalizeAiImageDraftSnapshot(value: unknown): AiImageDraftSnaps
   return {
     version: 1,
     snapshotType: "ai_image_draft",
-    provider: "openai",
+    provider: "openai_compatible_relay",
     accessMode: value.accessMode,
     humanReviewRequired: true,
     disclaimer: cleanText(value.disclaimer, 500) || AI_IMAGE_DRAFT_DISCLAIMER,
@@ -273,7 +273,7 @@ export function mergeAiImageDraftSnapshot(input: {
   const snapshot: AiImageDraftSnapshot = {
     version: 1,
     snapshotType: "ai_image_draft",
-    provider: "openai",
+    provider: "openai_compatible_relay",
     accessMode: input.accessMode,
     humanReviewRequired: true,
     disclaimer: AI_IMAGE_DRAFT_DISCLAIMER,

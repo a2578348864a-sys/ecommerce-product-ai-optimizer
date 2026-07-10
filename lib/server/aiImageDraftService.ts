@@ -98,6 +98,7 @@ function providerFailure(error: unknown): { code: AiImageServiceErrorCode; messa
       empty_response: "image_response_invalid",
       configuration_error: "image_provider_error",
       provider_error: "image_provider_error",
+      image_provider_incompatible_response: "image_provider_error",
     };
     return {
       code: mapped[error.code],

@@ -12,6 +12,7 @@ export type MockAiImageScenario =
   | "network_error"
   | "content_blocked"
   | "empty"
+  | "url_only"
   | "invalid_base64"
   | "non_image"
   | "too_large"
@@ -29,14 +30,16 @@ export function createMockAiImageProvider(
     if (scenario === "network_error") throw new AiImageProviderError("provider_error", "图片生成服务调用失败。", false);
     if (scenario === "content_blocked") throw new AiImageProviderError("content_blocked", "图片请求未通过内容安全检查。", false);
     if (scenario === "empty") throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
-    if (scenario === "invalid_base64") return { model: "mock-image-v2", images: [{ base64: "***" }] };
-    if (scenario === "non_image") return { model: "mock-image-v2", images: [{ base64: Buffer.from("not an image").toString("base64") }] };
+    if (scenario === "url_only") return { model: "mock-image-v2", provider: "openai_compatible_relay" as const, images: [{ url: "https://cdn.example.com/img.png" } as any] };
+    if (scenario === "invalid_base64") return { model: "mock-image-v2", provider: "openai_compatible_relay" as const, images: [{ base64: "***" }] };
+    if (scenario === "non_image") return { model: "mock-image-v2", provider: "openai_compatible_relay" as const, images: [{ base64: Buffer.from("not an image").toString("base64") }] };
     if (scenario === "too_large") {
-      return { model: "mock-image-v2", images: [{ base64: Buffer.alloc(AI_IMAGE_MAX_FILE_BYTES + 1).toString("base64") }] };
+      return { model: "mock-image-v2", provider: "openai_compatible_relay" as const, images: [{ base64: Buffer.alloc(AI_IMAGE_MAX_FILE_BYTES + 1).toString("base64") }] };
     }
     const requestedCount = scenario === "count_mismatch" ? Math.max(0, input.count - 1) : input.count;
     return {
       model: "mock-image-v2",
+      provider: "openai_compatible_relay" as const,
       requestId: "mock-request-id",
       images: Array.from({ length: requestedCount }, () => ({ base64: VALID_ONE_PIXEL_PNG_BASE64 })),
     };
