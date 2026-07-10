@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { AiImageDraftCard } from "@/components/AiImageDraftCard";
+import { AiImageDraftCard, shouldRenewAiImageRequestKey } from "@/components/AiImageDraftCard";
 import { AI_IMAGE_DRAFT_DISCLAIMER } from "@/lib/aiImageDraft";
 
 describe("AiImageDraftCard", () => {
@@ -26,4 +26,25 @@ describe("AiImageDraftCard", () => {
     }
     expect(html).toContain("不会自动上架");
   });
+
+  it.each([
+    "image_provider_timeout",
+    "image_provider_rate_limited",
+    "image_provider_unavailable",
+    "image_content_blocked",
+    "image_provider_error",
+    "image_response_invalid",
+    "image_storage_failed",
+    "image_snapshot_save_failed",
+    "image_request_already_failed",
+  ])("requires a new idempotency key after terminal error %s", (errorCode) => {
+    expect(shouldRenewAiImageRequestKey(errorCode)).toBe(true);
+  });
+
+  it.each([undefined, "", "image_request_in_progress", "image_ledger_failed"])(
+    "keeps the idempotency key for response recovery when the error is %s",
+    (errorCode) => {
+      expect(shouldRenewAiImageRequestKey(errorCode)).toBe(false);
+    },
+  );
 });

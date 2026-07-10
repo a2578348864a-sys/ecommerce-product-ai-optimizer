@@ -39,6 +39,22 @@ const IMAGE_TYPE_DESCRIPTIONS: Record<AiImageDraftType, string> = {
   feature_infographic: "用于查看信息层级与留白区域，不填入未经验证的数据。",
 };
 
+const TERMINAL_IMAGE_REQUEST_ERROR_CODES = new Set([
+  "image_provider_timeout",
+  "image_provider_rate_limited",
+  "image_provider_unavailable",
+  "image_content_blocked",
+  "image_provider_error",
+  "image_response_invalid",
+  "image_storage_failed",
+  "image_snapshot_save_failed",
+  "image_request_already_failed",
+]);
+
+export function shouldRenewAiImageRequestKey(errorCode: unknown): boolean {
+  return typeof errorCode === "string" && TERMINAL_IMAGE_REQUEST_ERROR_CODES.has(errorCode);
+}
+
 function PrivateImage({ taskId, item }: { taskId: string; item: AiImageDraftItem }) {
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
@@ -152,7 +168,10 @@ export function AiImageDraftCard({
         }),
       });
       const body = await response.json();
-      if (!response.ok || !body.ok) throw new Error(body.error?.message || "图片草稿生成失败。");
+      if (!response.ok || !body.ok) {
+        if (shouldRenewAiImageRequestKey(body.error?.code)) setIdempotencyKey("");
+        throw new Error(body.error?.message || "图片草稿生成失败。");
+      }
       setSnapshot(body.data.snapshot as AiImageDraftSnapshot);
       if (body.data.visitorAccess) {
         setMetadata((current) => current ? { ...current, visitorAccess: body.data.visitorAccess } : current);

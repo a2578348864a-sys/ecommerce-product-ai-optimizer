@@ -9,6 +9,7 @@ export type MockAiImageScenario =
   | "rate_limited"
   | "server_error"
   | "timeout"
+  | "network_error"
   | "content_blocked"
   | "empty"
   | "invalid_base64"
@@ -22,11 +23,12 @@ export function createMockAiImageProvider(
 ): AiImageProvider {
   return async (input) => {
     onCall?.();
-    if (scenario === "rate_limited") throw new AiImageProviderError("rate_limited", "rate limited", true);
-    if (scenario === "server_error") throw new AiImageProviderError("provider_unavailable", "server error", true);
-    if (scenario === "timeout") throw new AiImageProviderError("timeout", "timeout", true);
-    if (scenario === "content_blocked") throw new AiImageProviderError("content_blocked", "blocked", false);
-    if (scenario === "empty") throw new AiImageProviderError("empty_response", "empty", true);
+    if (scenario === "rate_limited") throw new AiImageProviderError("rate_limited", "图片服务繁忙，请稍后重试。", true);
+    if (scenario === "server_error") throw new AiImageProviderError("provider_unavailable", "图片服务暂时不可用。", true);
+    if (scenario === "timeout") throw new AiImageProviderError("timeout", "图片生成超时。", true);
+    if (scenario === "network_error") throw new AiImageProviderError("provider_error", "图片生成服务调用失败。", false);
+    if (scenario === "content_blocked") throw new AiImageProviderError("content_blocked", "图片请求未通过内容安全检查。", false);
+    if (scenario === "empty") throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
     if (scenario === "invalid_base64") return { model: "mock-image-v2", images: [{ base64: "***" }] };
     if (scenario === "non_image") return { model: "mock-image-v2", images: [{ base64: Buffer.from("not an image").toString("base64") }] };
     if (scenario === "too_large") {

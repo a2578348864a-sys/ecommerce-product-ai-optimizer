@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createDemoAccess, getDemoAccessById, incrementDemoAiCalls, refundDemoAiImageCalls, reserveDemoAiImageCalls } from "@/lib/server/demoAccess";
-import { beginAiImageRequest, buildAiImageIdempotencyScopeHash, buildAiImageRequestHash } from "@/lib/server/aiImageDraftLedger";
+import { beginAiImageRequest, buildAiImageIdempotencyScopeHash, buildAiImageRequestHash, getAiImageRequest } from "@/lib/server/aiImageDraftLedger";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { consumeDemoAiCalls, ensureDemoAiQuota } from "@/lib/server/demoGuard";
 import { setRealAiImageEnabledForTests } from "@/lib/server/realAiImageGate";
@@ -72,7 +72,8 @@ afterEach(() => {
 describe("AI image draft service", () => {
   it("saves owner results, preserves task data, and returns the committed result for the same idempotency key", async () => {
     const loadedTask = ownerTask();
-    const provider = createMockAiImageProvider("success");
+    let providerCalls = 0;
+    const provider = createMockAiImageProvider("success", () => { providerCalls += 1; });
     const generateRequest = request(2);
     const first = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
     expect(first.ok).toBe(true);
@@ -81,11 +82,33 @@ describe("AI image draft service", () => {
     expect(first.data.snapshot.items).toHaveLength(2);
     expect(JSON.parse(loadedTask.task.resultJson).existingField).toBe("preserved");
     expect(JSON.stringify(first.data.snapshot)).not.toContain("base64");
+    expect(providerCalls).toBe(1);
 
-    let duplicateCalls = 0;
-    const duplicate = await generateAiImageDraft({ loadedTask, request: generateRequest, provider: createMockAiImageProvider("success", () => { duplicateCalls += 1; }) });
+    const duplicate = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
     expect(duplicate).toMatchObject({ ok: true, data: { duplicate: true } });
-    expect(duplicateCalls).toBe(0);
+    expect(providerCalls).toBe(1);
+    if (!duplicate.ok) return;
+    expect(duplicate.data.items.map((item) => item.storageKey)).toEqual(first.data.items.map((item) => item.storageKey));
+    expect(duplicate.data.snapshot.items).toHaveLength(2);
+  });
+
+  it("does not call the provider, charge quota, or save another image for a duplicate visitor request", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    let calls = 0;
+    const provider = createMockAiImageProvider("success", () => { calls += 1; });
+    const first = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    expect(first).toMatchObject({ ok: true, data: { duplicate: false } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+
+    const duplicate = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    expect(duplicate).toMatchObject({ ok: true, data: { duplicate: true } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    if (!duplicate.ok) return;
+    expect(duplicate.data.snapshot.items).toHaveLength(1);
   });
 
   it("rejects reuse of one idempotency key with different request semantics", async () => {
@@ -106,29 +129,79 @@ describe("AI image draft service", () => {
     ["rate_limited", "image_provider_rate_limited"],
     ["server_error", "image_provider_unavailable"],
     ["timeout", "image_provider_timeout"],
+    ["network_error", "image_provider_error"],
     ["empty", "image_response_invalid"],
-  ] as const)("retries %s once and returns a refundable error", async (scenario, expectedCode) => {
+  ] as const)("calls the provider once for %s and returns a refundable error", async (scenario, expectedCode) => {
     const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
     let calls = 0;
     const result = await generateAiImageDraft({
-      loadedTask: visitorTask(record.id),
-      request: request(),
+      loadedTask,
+      request: generateRequest,
       provider: createMockAiImageProvider(scenario, () => { calls += 1; }),
     });
     expect(result).toMatchObject({ ok: false, error: { code: expectedCode } });
-    expect(calls).toBe(2);
+    expect(result.ok ? "" : result.error.message).toMatch(/[\u4e00-\u9fff]/);
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+    expect(loadedTask.task.resultJson).toBe("{}");
+    expect(existsSync(process.env.AI_IMAGE_DRAFT_STORAGE_ROOT!)).toBe(false);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor",
+      accessScope: record.id,
+      taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey,
+      imageType: generateRequest.imageType,
+      count: generateRequest.count,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({ status: "refunded", errorCode: expectedCode });
+
+    const repeated = await generateAiImageDraft({
+      loadedTask,
+      request: generateRequest,
+      provider: createMockAiImageProvider(scenario, () => { calls += 1; }),
+    });
+    expect(repeated).toMatchObject({ ok: false, error: { code: "image_request_already_failed" } });
+    expect(calls).toBe(1);
     expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
   });
 
-  it("does not retry content blocks and keeps the visitor call charged", async () => {
+  it("calls the provider once for content blocks and keeps the visitor call charged", async () => {
     const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
     let calls = 0;
     const result = await generateAiImageDraft({
-      loadedTask: visitorTask(record.id),
-      request: request(),
+      loadedTask,
+      request: generateRequest,
       provider: createMockAiImageProvider("content_blocked", () => { calls += 1; }),
     });
     expect(result).toMatchObject({ ok: false, error: { code: "image_content_blocked" } });
+    expect(result.ok ? "" : result.error.message).toMatch(/[\u4e00-\u9fff]/);
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    expect(loadedTask.task.resultJson).toBe("{}");
+    expect(existsSync(process.env.AI_IMAGE_DRAFT_STORAGE_ROOT!)).toBe(false);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor",
+      accessScope: record.id,
+      taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey,
+      imageType: generateRequest.imageType,
+      count: generateRequest.count,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_non_refundable",
+      errorCode: "image_content_blocked",
+    });
+
+    const repeated = await generateAiImageDraft({
+      loadedTask,
+      request: generateRequest,
+      provider: createMockAiImageProvider("content_blocked", () => { calls += 1; }),
+    });
+    expect(repeated).toMatchObject({ ok: false, error: { code: "image_request_already_failed" } });
     expect(calls).toBe(1);
     expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
   });

@@ -53,8 +53,12 @@ describe("task image draft API", () => {
     expect(await response.json()).toMatchObject({ ok: true, data: { enabled: false, accessMode: "owner", maxCount: 2, snapshot: null } });
   });
 
-  it("rejects unsupported client fields before service execution", async () => {
-    const response = await post({ imageType: "white_background_concept", count: 1, confirmed: true, idempotencyKey: "123e4567-e89b-42d3-a456-426614174000", model: "client-model" });
+  it.each([
+    ["model", "client-model"],
+    ["maxRetries", 2],
+    ["retry", true],
+  ])("rejects unsupported client field %s before service execution", async (field, value) => {
+    const response = await post({ imageType: "white_background_concept", count: 1, confirmed: true, idempotencyKey: "123e4567-e89b-42d3-a456-426614174000", [field]: value });
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: "unsupported_request_field" } });
     expect(generateAiImageDraft).not.toHaveBeenCalled();

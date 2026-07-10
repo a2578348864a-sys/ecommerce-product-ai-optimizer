@@ -109,16 +109,8 @@ function providerFailure(error: unknown): { code: AiImageServiceErrorCode; messa
   return { code: "image_provider_error", message: "图片生成失败，请稍后重试。", retryable: false, refundable: true };
 }
 
-async function callProviderWithSingleRetry(provider: AiImageProvider, input: Parameters<AiImageProvider>[0]): Promise<AiImageProviderOutput> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      return await withProviderSlot(() => provider(input));
-    } catch (error) {
-      if (!(error instanceof AiImageProviderError) || !error.retryable || attempt === 1) throw error;
-      if (process.env.NODE_ENV !== "test") await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  }
-  throw new Error("UNREACHABLE_PROVIDER_RETRY");
+async function callProviderOnce(provider: AiImageProvider, input: Parameters<AiImageProvider>[0]): Promise<AiImageProviderOutput> {
+  return withProviderSlot(() => provider(input));
 }
 
 function duplicateResult(task: LoadedAiImageTask, requestHash: string, itemIds: string[]): AiImageServiceResult {
@@ -247,7 +239,7 @@ export async function generateAiImageDraft(input: {
     const provider = input.provider || getAiImageProvider();
     let providerResult: AiImageProviderOutput;
     try {
-      providerResult = await callProviderWithSingleRetry(provider, {
+      providerResult = await callProviderOnce(provider, {
         imageType: input.request.imageType,
         count: input.request.count,
         prompt,
