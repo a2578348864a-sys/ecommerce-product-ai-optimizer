@@ -17,6 +17,9 @@ import { randomBytes, createHash } from "crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { resolve } from "path";
 
+export const DEMO_TEXT_AI_RESERVATION_LEASE_MS = 5 * 60 * 1000;
+export const DEMO_IMAGE_AI_RESERVATION_LEASE_MS = 30 * 60 * 1000;
+
 // ── Types ───────────────────────────────────────
 
 export interface DemoAccessRecord {
@@ -36,6 +39,8 @@ export interface DemoAccessRecord {
     status: "reserved" | "committed" | "refunded";
     createdAt: string;
     updatedAt: string;
+    kind?: "text" | "image";
+    leaseExpiresAt?: string;
   }>;
 }
 
@@ -248,28 +253,72 @@ export type DemoAiImageQuotaResult =
   | { ok: true; record: DemoAccessRecord; duplicate: boolean }
   | { ok: false; code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict" };
 
-export function reserveDemoAiImageCalls(id: string, requestHash: string, count: number): DemoAiImageQuotaResult {
+function recoverExpiredReservations(access: DemoAccessRecord, nowMs: number): boolean {
+  let changed = false;
+  for (const reservation of Object.values(access.aiImageQuotaReservations || {})) {
+    if (reservation.status !== "reserved") continue;
+    const explicitExpiry = Date.parse(reservation.leaseExpiresAt || "");
+    const createdAt = Date.parse(reservation.createdAt);
+    const leaseExpiresAt = Number.isFinite(explicitExpiry)
+      ? explicitExpiry
+      : Number.isFinite(createdAt) ? createdAt + DEMO_IMAGE_AI_RESERVATION_LEASE_MS : Number.POSITIVE_INFINITY;
+    if (leaseExpiresAt > nowMs) continue;
+    access.usedAiCalls = Math.max(0, access.usedAiCalls - reservation.count);
+    reservation.status = "refunded";
+    reservation.updatedAt = new Date(nowMs).toISOString();
+    changed = true;
+  }
+  return changed;
+}
+
+export function recoverExpiredDemoAiReservations(id: string, nowMs = Date.now()): DemoAccessRecord | null {
+  const store = loadDemoAccessStore();
+  const access = store.accesses.find((item) => item.id === id);
+  if (!access) return null;
+  if (recoverExpiredReservations(access, nowMs)) saveDemoAccessStore(store);
+  return access;
+}
+
+export function reserveDemoAiImageCalls(
+  id: string,
+  requestHash: string,
+  count: number,
+  options: { kind?: "text" | "image"; leaseMs?: number; nowMs?: number } = {},
+): DemoAiImageQuotaResult {
   const store = loadDemoAccessStore();
   const idx = store.accesses.findIndex((access) => access.id === id);
   if (idx === -1) return { ok: false, code: "access_not_found" };
   const access = store.accesses[idx];
-  if (!access.isActive) return { ok: false, code: "access_inactive" };
-  if (isDemoAccessExpired(access)) return { ok: false, code: "access_expired" };
+  const nowMs = options.nowMs ?? Date.now();
+  const recovered = recoverExpiredReservations(access, nowMs);
+  const saveRecovery = () => { if (recovered) saveDemoAccessStore(store); };
+  if (!access.isActive) { saveRecovery(); return { ok: false, code: "access_inactive" }; }
+  if (isDemoAccessExpired(access)) { saveRecovery(); return { ok: false, code: "access_expired" }; }
   const reservations = access.aiImageQuotaReservations || {};
   const existing = reservations[requestHash];
   if (existing) {
-    if (existing.count !== count) return { ok: false, code: "reservation_conflict" };
+    if (existing.count !== count) { saveRecovery(); return { ok: false, code: "reservation_conflict" }; }
+    saveRecovery();
     return { ok: true, record: access, duplicate: true };
   }
   if (!Number.isInteger(count) || count <= 0 || getRemainingAiCalls(access) < count) {
+    saveRecovery();
     return { ok: false, code: "quota_exceeded" };
   }
-  const now = new Date().toISOString();
+  const now = new Date(nowMs).toISOString();
+  const leaseMs = options.leaseMs ?? (options.kind === "text" ? DEMO_TEXT_AI_RESERVATION_LEASE_MS : DEMO_IMAGE_AI_RESERVATION_LEASE_MS);
   access.usedAiCalls += count;
   access.lastUsedAt = now;
   access.aiImageQuotaReservations = {
     ...reservations,
-    [requestHash]: { count, status: "reserved", createdAt: now, updatedAt: now },
+    [requestHash]: {
+      count,
+      status: "reserved",
+      createdAt: now,
+      updatedAt: now,
+      kind: options.kind || "image",
+      leaseExpiresAt: new Date(nowMs + leaseMs).toISOString(),
+    },
   };
   saveDemoAccessStore(store);
   return { ok: true, record: access, duplicate: false };

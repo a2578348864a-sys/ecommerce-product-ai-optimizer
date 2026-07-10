@@ -6,6 +6,8 @@ import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path"
 import type { AiImageAccessMode, AiImageDraftItem } from "@/lib/aiImageDraft";
 
 export const AI_IMAGE_MAX_FILE_BYTES = 10 * 1024 * 1024;
+export const AI_IMAGE_MAX_BASE64_CHARS = Math.ceil(AI_IMAGE_MAX_FILE_BYTES / 3) * 4;
+export const AI_IMAGE_MAX_PIXELS = 8_294_400;
 export const AI_IMAGE_VISITOR_GRACE_MS = 24 * 60 * 60 * 1000;
 
 export type ValidatedImage = {
@@ -108,7 +110,13 @@ export function validateAiImageBytes(bytes: Buffer): ValidatedImage {
   } else {
     throw new Error("AI_IMAGE_UNSUPPORTED_CONTENT");
   }
-  if (!dimensions.width || !dimensions.height || dimensions.width > 4096 || dimensions.height > 4096) {
+  if (
+    !dimensions.width
+    || !dimensions.height
+    || dimensions.width > 4096
+    || dimensions.height > 4096
+    || dimensions.width * dimensions.height > AI_IMAGE_MAX_PIXELS
+  ) {
     throw new Error("AI_IMAGE_INVALID_DIMENSIONS");
   }
   return {
@@ -119,6 +127,21 @@ export function validateAiImageBytes(bytes: Buffer): ValidatedImage {
     height: dimensions.height,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
+}
+
+export function decodeAiImageBase64(value: string): Buffer {
+  if (
+    !value
+    || value.length > AI_IMAGE_MAX_BASE64_CHARS
+    || value.length % 4 !== 0
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
+  ) {
+    throw new Error(value.length > AI_IMAGE_MAX_BASE64_CHARS ? "AI_IMAGE_BASE64_TOO_LARGE" : "AI_IMAGE_INVALID_BASE64");
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (!bytes.length) throw new Error("AI_IMAGE_EMPTY_FILE");
+  if (bytes.length > AI_IMAGE_MAX_FILE_BYTES) throw new Error("AI_IMAGE_FILE_TOO_LARGE");
+  return bytes;
 }
 
 export async function storeAiImage(input: {
@@ -136,9 +159,9 @@ export async function storeAiImage(input: {
   const storageKey = `${scope}/${taskId}/${id}.${validated.extension}`;
   const finalPath = resolveAiImageStorageKey(storageKey);
   const tempPath = ensureInsideRoot(resolve(dirname(finalPath), `${id}.part`));
-  await mkdir(dirname(finalPath), { recursive: true });
+  await mkdir(dirname(finalPath), { recursive: true, mode: 0o700 });
   try {
-    await writeFile(tempPath, validated.bytes, { flag: "wx" });
+    await writeFile(tempPath, validated.bytes, { flag: "wx", mode: 0o600 });
     await rename(tempPath, finalPath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);

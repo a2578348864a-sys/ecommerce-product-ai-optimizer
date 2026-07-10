@@ -76,4 +76,30 @@ describe("private image GET", () => {
     state.loaded = { ok: false, status: 401, code: "unauthorized", message: "请先解锁。" };
     expect((await get()).status).toBe(401);
   });
+
+  it("fails closed when the snapshot key is tampered or the private file is missing", async () => {
+    const damaged = loaded();
+    damaged.data.task.resultJson = JSON.stringify({
+      aiImageDraftSnapshot: {
+        ...JSON.parse(damaged.data.task.resultJson).aiImageDraftSnapshot,
+        items: [{ ...item, storageKey: "../outside.png" }],
+      },
+    });
+    state.loaded = damaged;
+    expect((await get()).status).toBe(404);
+    expect(readAiImage).not.toHaveBeenCalled();
+
+    state.loaded = loaded();
+    vi.mocked(readAiImage).mockRejectedValueOnce(new Error("missing"));
+    expect((await get()).status).toBe(404);
+  });
+
+  it("ignores range requests and still returns a private non-cacheable full response", async () => {
+    const response = await GET(new Request("http://localhost", { headers: { range: "bytes=0-3" } }) as any, {
+      params: Promise.resolve({ id: "task-1", imageId }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-length")).toBe(String(Buffer.from("image-bytes").length));
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
 });

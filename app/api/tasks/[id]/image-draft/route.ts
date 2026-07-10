@@ -24,7 +24,7 @@ async function taskIdFrom(context: RouteContext): Promise<string> {
 
 function errorStatus(code: string): number {
   if (code === "real_ai_disabled" || code === "visitor_ai_quota_exceeded") return 403;
-  if (code === "image_request_in_progress" || code === "image_request_already_failed") return 409;
+  if (["image_request_in_progress", "image_request_already_failed", "image_request_conflict"].includes(code)) return 409;
   if (code === "image_provider_rate_limited") return 429;
   if (["image_provider_timeout", "image_provider_unavailable", "image_provider_error", "image_response_invalid"].includes(code)) return 502;
   if (code === "image_content_blocked") return 422;

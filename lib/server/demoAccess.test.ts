@@ -25,6 +25,8 @@ import {
   getRemainingAiCalls,
   isDemoAiQuotaExhausted,
   incrementDemoAiCalls,
+  reserveDemoAiImageCalls,
+  recoverExpiredDemoAiReservations,
   loadDemoAccessStore,
   saveDemoAccessStore,
   generateDemoPassword,
@@ -293,6 +295,25 @@ describe("incrementDemoAiCalls", () => {
     incrementDemoAiCalls(record.id, 3);
     const readBack = getDemoAccessById(record.id);
     expect(readBack!.usedAiCalls).toBe(3);
+  });
+});
+
+describe("AI quota reservation leases", () => {
+  beforeEach(() => {
+    saveDemoAccessStore(emptyStore());
+  });
+
+  afterEach(() => {
+    saveDemoAccessStore(emptyStore());
+  });
+
+  it("refunds an interrupted reservation exactly once after its lease expires", () => {
+    const { record } = createDemoAccess({ label: "Lease", hours: 24, maxAiCalls: 1 });
+    expect(reserveDemoAiImageCalls(record.id, "lease-request", 1, { kind: "text", leaseMs: 1_000, nowMs: 10_000 }).ok).toBe(true);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    expect(recoverExpiredDemoAiReservations(record.id, 10_999)?.usedAiCalls).toBe(1);
+    expect(recoverExpiredDemoAiReservations(record.id, 11_000)?.usedAiCalls).toBe(0);
+    expect(recoverExpiredDemoAiReservations(record.id, 12_000)?.usedAiCalls).toBe(0);
   });
 });
 

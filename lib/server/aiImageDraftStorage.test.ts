@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   AI_IMAGE_MAX_FILE_BYTES,
+  AI_IMAGE_MAX_BASE64_CHARS,
+  decodeAiImageBase64,
   AI_IMAGE_VISITOR_GRACE_MS,
   aiImageExists,
   cleanupAiImageTask,
@@ -55,5 +57,15 @@ describe("private AI image storage", () => {
     const badPng = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
     badPng.writeUInt32BE(0, 16);
     expect(() => validateAiImageBytes(badPng)).toThrow("AI_IMAGE_INVALID_DIMENSIONS");
+    const excessivePixels = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
+    excessivePixels.writeUInt32BE(4096, 16);
+    excessivePixels.writeUInt32BE(4096, 20);
+    expect(() => validateAiImageBytes(excessivePixels)).toThrow("AI_IMAGE_INVALID_DIMENSIONS");
+  });
+
+  it("rejects oversized or non-canonical base64 before allocating an image buffer", () => {
+    expect(() => decodeAiImageBase64("A".repeat(AI_IMAGE_MAX_BASE64_CHARS + 4))).toThrow("AI_IMAGE_BASE64_TOO_LARGE");
+    expect(() => decodeAiImageBase64(`${VALID_ONE_PIXEL_PNG_BASE64}\n`)).toThrow("AI_IMAGE_INVALID_BASE64");
+    expect(decodeAiImageBase64(VALID_ONE_PIXEL_PNG_BASE64)).toEqual(Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64"));
   });
 });

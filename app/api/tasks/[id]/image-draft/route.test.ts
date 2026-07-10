@@ -76,6 +76,8 @@ describe("task image draft API", () => {
     expect(generateAiImageDraft).toHaveBeenCalledOnce();
     mocks.generated = { ok: false, error: { code: "image_provider_rate_limited", message: "繁忙", retryable: true } };
     expect((await post({ ...body, idempotencyKey: "123e4567-e89b-42d3-a456-426614174001" })).status).toBe(429);
+    mocks.generated = { ok: false, error: { code: "image_request_conflict", message: "冲突", retryable: false } };
+    expect((await post({ ...body, idempotencyKey: "123e4567-e89b-42d3-a456-426614174002" })).status).toBe(409);
   });
 
   it("returns authentication and expiry errors from the server-side task loader", async () => {

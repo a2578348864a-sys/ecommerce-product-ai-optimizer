@@ -15,7 +15,7 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import {
-  getDemoAccessById,
+  recoverExpiredDemoAiReservations,
   isDemoAccessActive,
   isDemoAiQuotaExhausted,
   getRemainingAiCalls,
@@ -23,6 +23,8 @@ import {
   reserveDemoAiImageCalls,
   commitDemoAiImageCalls,
   refundDemoAiImageCalls,
+  DEMO_TEXT_AI_RESERVATION_LEASE_MS,
+  DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
   type DemoAccessRecord,
 } from "@/lib/server/demoAccess";
 import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
@@ -182,7 +184,10 @@ export function ensureDemoAiQuota(
 
   const demoCtx = ctx as DemoAccessContext;
   const requestHash = `text-${randomUUID()}`;
-  const reserved = reserveDemoAiImageCalls(demoCtx.demoAccessId, requestHash, neededCount);
+  const reserved = reserveDemoAiImageCalls(demoCtx.demoAccessId, requestHash, neededCount, {
+    kind: "text",
+    leaseMs: DEMO_TEXT_AI_RESERVATION_LEASE_MS,
+  });
   if (!reserved.ok) {
     const errors = {
       access_not_found: { code: "demo_access_not_found", message: "临时访问码不存在。" },
@@ -231,7 +236,7 @@ export function consumeDemoAiCalls(
 export function getLatestDemoSnapshot(ctx: AccessContext): DemoAccessSnapshot | null {
   if (ctx.mode === "owner") return null;
   const demoCtx = ctx as DemoAccessContext;
-  const access = getDemoAccessById(demoCtx.demoAccessId);
+  const access = recoverExpiredDemoAiReservations(demoCtx.demoAccessId);
   if (!access) return null;
   return buildDemoAccessSnapshot(access);
 }
@@ -246,7 +251,10 @@ export function reserveVisitorImageAiCalls(
   count: number,
 ): VisitorImageQuotaResult {
   if (ctx.mode === "owner") return { ok: true, snapshot: null, duplicate: false };
-  const result = reserveDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash, count);
+  const result = reserveDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash, count, {
+    kind: "image",
+    leaseMs: DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
+  });
   if (result.ok) {
     return { ok: true, snapshot: buildDemoAccessSnapshot(result.record), duplicate: result.duplicate };
   }

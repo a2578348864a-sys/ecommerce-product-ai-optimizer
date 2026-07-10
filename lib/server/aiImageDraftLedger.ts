@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { AiImageAccessMode } from "@/lib/aiImageDraft";
+import type { AiImageAccessMode, AiImageDraftType } from "@/lib/aiImageDraft";
 
 export type AiImageLedgerStatus =
   | "reserved"
@@ -15,6 +15,7 @@ export type AiImageLedgerStatus =
 
 export type AiImageLedgerEntry = {
   requestHash: string;
+  idempotencyScopeHash?: string;
   taskId: string;
   accessMode: AiImageAccessMode;
   status: AiImageLedgerStatus;
@@ -58,29 +59,48 @@ function saveStore(store: AiImageLedgerStore): void {
   }
 }
 
-export function buildAiImageRequestHash(input: {
+type AiImageRequestIdentity = {
   accessMode: AiImageAccessMode;
   accessScope: string;
   taskId: string;
   idempotencyKey: string;
-}): string {
+};
+
+export function buildAiImageIdempotencyScopeHash(input: AiImageRequestIdentity): string {
   return createHash("sha256")
     .update(`${input.accessMode}\0${input.accessScope}\0${input.taskId}\0${input.idempotencyKey}`)
     .digest("hex");
 }
 
+export function buildAiImageRequestHash(input: AiImageRequestIdentity & {
+  imageType: AiImageDraftType;
+  count: 1 | 2;
+  additionalDirection?: string;
+}): string {
+  return createHash("sha256")
+    .update(`${buildAiImageIdempotencyScopeHash(input)}\0${input.imageType}\0${input.count}\0${input.additionalDirection || ""}`)
+    .digest("hex");
+}
+
 export function beginAiImageRequest(input: {
   requestHash: string;
+  idempotencyScopeHash: string;
   taskId: string;
   accessMode: AiImageAccessMode;
   now?: string;
-}): { created: true; entry: AiImageLedgerEntry } | { created: false; entry: AiImageLedgerEntry } {
+}): { created: true; entry: AiImageLedgerEntry } | { created: false; conflict: boolean; entry: AiImageLedgerEntry } {
   const store = loadStore();
   const existing = store.entries.find((entry) => entry.requestHash === input.requestHash);
-  if (existing) return { created: false, entry: existing };
+  if (existing) return { created: false, conflict: false, entry: existing };
+  const conflicting = store.entries.find((entry) => (
+    entry.idempotencyScopeHash === input.idempotencyScopeHash
+    || (!entry.idempotencyScopeHash && entry.requestHash === input.idempotencyScopeHash)
+  ));
+  if (conflicting) return { created: false, conflict: true, entry: conflicting };
   const now = input.now || new Date().toISOString();
   const entry: AiImageLedgerEntry = {
     requestHash: input.requestHash,
+    idempotencyScopeHash: input.idempotencyScopeHash,
     taskId: input.taskId,
     accessMode: input.accessMode,
     status: "reserved",

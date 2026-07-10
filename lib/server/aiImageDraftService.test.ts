@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createDemoAccess, getDemoAccessById, incrementDemoAiCalls, refundDemoAiImageCalls, reserveDemoAiImageCalls } from "@/lib/server/demoAccess";
+import { beginAiImageRequest, buildAiImageIdempotencyScopeHash, buildAiImageRequestHash } from "@/lib/server/aiImageDraftLedger";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { consumeDemoAiCalls, ensureDemoAiQuota } from "@/lib/server/demoGuard";
 import { setRealAiImageEnabledForTests } from "@/lib/server/realAiImageGate";
@@ -85,6 +86,20 @@ describe("AI image draft service", () => {
     const duplicate = await generateAiImageDraft({ loadedTask, request: generateRequest, provider: createMockAiImageProvider("success", () => { duplicateCalls += 1; }) });
     expect(duplicate).toMatchObject({ ok: true, data: { duplicate: true } });
     expect(duplicateCalls).toBe(0);
+  });
+
+  it("rejects reuse of one idempotency key with different request semantics", async () => {
+    const loadedTask = ownerTask();
+    const generateRequest = request();
+    expect((await generateAiImageDraft({ loadedTask, request: generateRequest, provider: createMockAiImageProvider("success") })).ok).toBe(true);
+    let calls = 0;
+    const conflict = await generateAiImageDraft({
+      loadedTask,
+      request: { ...generateRequest, imageType: "lifestyle_scene" },
+      provider: createMockAiImageProvider("success", () => { calls += 1; }),
+    });
+    expect(conflict).toMatchObject({ ok: false, error: { code: "image_request_conflict" } });
+    expect(calls).toBe(0);
   });
 
   it.each([
@@ -179,6 +194,37 @@ describe("AI image draft service", () => {
     expect(reserveDemoAiImageCalls(record.id, reservationHash, 1).ok).toBe(true);
     refundDemoAiImageCalls(record.id, reservationHash);
     refundDemoAiImageCalls(record.id, reservationHash);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+  });
+
+  it("recovers a stale interrupted request after a process restart boundary", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 1 });
+    const loadedTask = visitorTask(record.id, "visitor-stale-task");
+    const generateRequest = request();
+    const identity = {
+      accessMode: "visitor" as const,
+      accessScope: record.id,
+      taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey,
+    };
+    const requestHash = buildAiImageRequestHash({ ...identity, imageType: generateRequest.imageType, count: generateRequest.count });
+    beginAiImageRequest({
+      requestHash,
+      idempotencyScopeHash: buildAiImageIdempotencyScopeHash(identity),
+      taskId: loadedTask.taskId,
+      accessMode: "visitor",
+      now: "2026-07-10T00:00:00.000Z",
+    });
+    expect(reserveDemoAiImageCalls(record.id, requestHash, 1).ok).toBe(true);
+    let calls = 0;
+    const recovered = await generateAiImageDraft({
+      loadedTask,
+      request: generateRequest,
+      provider: createMockAiImageProvider("success", () => { calls += 1; }),
+      now: "2026-07-10T00:31:00.000Z",
+    });
+    expect(recovered).toMatchObject({ ok: false, error: { code: "image_request_already_failed" } });
+    expect(calls).toBe(0);
     expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
   });
 

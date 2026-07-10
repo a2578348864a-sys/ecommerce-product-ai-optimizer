@@ -13,11 +13,13 @@ import {
 } from "@/lib/aiImageDraft";
 import {
   beginAiImageRequest,
+  buildAiImageIdempotencyScopeHash,
   buildAiImageRequestHash,
   updateAiImageRequest,
 } from "@/lib/server/aiImageDraftLedger";
 import {
   cleanupAiImageTask,
+  decodeAiImageBase64,
   deleteAiImage,
   storeAiImage,
 } from "@/lib/server/aiImageDraftStorage";
@@ -40,6 +42,7 @@ export type AiImageServiceErrorCode =
   | "real_ai_disabled"
   | "missing_task_context"
   | "image_request_in_progress"
+  | "image_request_conflict"
   | "image_request_already_failed"
   | "visitor_ai_quota_exceeded"
   | "image_provider_timeout"
@@ -66,6 +69,7 @@ export type AiImageServiceResult =
 
 const inFlightTasks = new Set<string>();
 let providerTail: Promise<void> = Promise.resolve();
+const AI_IMAGE_REQUEST_STALE_MS = 30 * 60 * 1000;
 
 async function withProviderSlot<T>(operation: () => Promise<T>): Promise<T> {
   const previous = providerTail;
@@ -81,16 +85,6 @@ async function withProviderSlot<T>(operation: () => Promise<T>): Promise<T> {
 
 function fail(code: AiImageServiceErrorCode | string, message: string, retryable = false): AiImageServiceResult {
   return { ok: false, error: { code, message, retryable } };
-}
-
-function decodeBase64(value: string): Buffer {
-  const compact = value.replace(/\s+/g, "");
-  if (!compact || compact.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
-    throw new Error("INVALID_BASE64");
-  }
-  const bytes = Buffer.from(compact, "base64");
-  if (!bytes.length) throw new Error("EMPTY_BASE64");
-  return bytes;
 }
 
 function providerFailure(error: unknown): { code: AiImageServiceErrorCode; message: string; retryable: boolean; refundable: boolean } {
@@ -129,11 +123,37 @@ async function callProviderWithSingleRetry(provider: AiImageProvider, input: Par
 
 function duplicateResult(task: LoadedAiImageTask, requestHash: string, itemIds: string[]): AiImageServiceResult {
   const snapshot = extractAiImageDraftSnapshot(task.task.resultJson);
-  const items = snapshot?.items.filter((item) => item.requestKeyHash === requestHash && itemIds.includes(item.id)) || [];
+  const items = snapshot?.items.filter((item) => (
+    item.requestKeyHash === requestHash && (itemIds.length === 0 || itemIds.includes(item.id))
+  )) || [];
   if (!snapshot || items.length === 0) {
     return fail("image_request_already_failed", "该请求已有记录，但结果不可用，请使用新的请求重新生成。", false);
   }
   return { ok: true, data: { snapshot, items, duplicate: true, visitorAccess: null } };
+}
+
+function safeUpdateLedger(input: Parameters<typeof updateAiImageRequest>[0]): void {
+  try {
+    updateAiImageRequest(input);
+  } catch {
+    // The provider result and task snapshot are authoritative after persistence.
+  }
+}
+
+function safeCommitVisitorQuota(task: LoadedAiImageTask, requestHash: string): DemoAccessSnapshot | null {
+  try {
+    return commitVisitorImageAiCalls(task.accessContext, requestHash);
+  } catch {
+    return null;
+  }
+}
+
+function safeRefundVisitorQuota(task: LoadedAiImageTask, requestHash: string): DemoAccessSnapshot | null {
+  try {
+    return refundVisitorImageAiCalls(task.accessContext, requestHash);
+  } catch {
+    return null;
+  }
 }
 
 export async function generateAiImageDraft(input: {
@@ -147,11 +167,18 @@ export async function generateAiImageDraft(input: {
   if (!basis.productName) return fail("missing_task_context", "当前任务信息不足，无法生成图片草稿。", false);
 
   const accessScope = input.loadedTask.accessMode === "owner" ? "owner" : input.loadedTask.visitorAccessId || "";
-  const requestHash = buildAiImageRequestHash({
+  const requestIdentity = {
     accessMode: input.loadedTask.accessMode,
     accessScope,
     taskId: input.loadedTask.taskId,
     idempotencyKey: input.request.idempotencyKey,
+  };
+  const idempotencyScopeHash = buildAiImageIdempotencyScopeHash(requestIdentity);
+  const requestHash = buildAiImageRequestHash({
+    ...requestIdentity,
+    imageType: input.request.imageType,
+    count: input.request.count,
+    additionalDirection: input.request.additionalDirection,
   });
   const taskLockKey = `${input.loadedTask.accessMode}:${accessScope}:${input.loadedTask.taskId}`;
   if (inFlightTasks.has(taskLockKey)) return fail("image_request_in_progress", "当前任务已有图片正在生成，请稍候。", true);
@@ -164,6 +191,7 @@ export async function generateAiImageDraft(input: {
     try {
       ledger = beginAiImageRequest({
         requestHash,
+        idempotencyScopeHash,
         taskId: input.loadedTask.taskId,
         accessMode: input.loadedTask.accessMode,
         now: input.now,
@@ -172,8 +200,32 @@ export async function generateAiImageDraft(input: {
       return fail("image_ledger_failed", "图片请求账本不可用，本次没有调用 AI。", false);
     }
     if (!ledger.created) {
-      if (ledger.entry.status === "committed") return duplicateResult(input.loadedTask, requestHash, ledger.entry.itemIds);
+      if (ledger.conflict) {
+        return fail("image_request_conflict", "同一请求标识不能用于不同的图片参数，请重新发起。", false);
+      }
+      if (ledger.entry.status === "committed") {
+        const duplicate = duplicateResult(input.loadedTask, requestHash, ledger.entry.itemIds);
+        if (duplicate.ok && input.loadedTask.accessMode === "visitor") {
+          duplicate.data.visitorAccess = safeCommitVisitorQuota(input.loadedTask, requestHash);
+        }
+        return duplicate;
+      }
       if (["reserved", "provider_succeeded", "stored"].includes(ledger.entry.status)) {
+        const recovered = duplicateResult(input.loadedTask, requestHash, ledger.entry.itemIds);
+        if (recovered.ok) {
+          safeUpdateLedger({ requestHash, status: "committed", itemIds: recovered.data.items.map((item) => item.id), now: input.now });
+          if (input.loadedTask.accessMode === "visitor") {
+            recovered.data.visitorAccess = safeCommitVisitorQuota(input.loadedTask, requestHash);
+          }
+          return recovered;
+        }
+        const nowMs = Date.parse(input.now || new Date().toISOString());
+        const updatedAtMs = Date.parse(ledger.entry.updatedAt);
+        if (Number.isFinite(updatedAtMs) && nowMs - updatedAtMs >= AI_IMAGE_REQUEST_STALE_MS) {
+          if (input.loadedTask.accessMode === "visitor") safeRefundVisitorQuota(input.loadedTask, requestHash);
+          safeUpdateLedger({ requestHash, status: "refunded", errorCode: "image_request_stale", now: input.now });
+          return fail("image_request_already_failed", "上一次请求已中断且额度已恢复，请刷新后重新发起。", false);
+        }
         return fail("image_request_in_progress", "同一请求正在处理中，请勿重复提交。", true);
       }
       return fail("image_request_already_failed", "同一请求已失败，请修改后使用新的请求标识。", false);
@@ -181,7 +233,7 @@ export async function generateAiImageDraft(input: {
 
     const reservation = reserveVisitorImageAiCalls(input.loadedTask.accessContext, requestHash, input.request.count);
     if (!reservation.ok) {
-      updateAiImageRequest({ requestHash, status: "refunded", errorCode: reservation.code, now: input.now });
+      safeUpdateLedger({ requestHash, status: "refunded", errorCode: reservation.code, now: input.now });
       return fail(reservation.code, reservation.message, false);
     }
     quotaReserved = input.loadedTask.accessMode === "visitor";
@@ -202,9 +254,9 @@ export async function generateAiImageDraft(input: {
       });
     } catch (error) {
       const mapped = providerFailure(error);
-      if (mapped.refundable && quotaReserved) refundVisitorImageAiCalls(input.loadedTask.accessContext, requestHash);
-      if (!mapped.refundable && quotaReserved) commitVisitorImageAiCalls(input.loadedTask.accessContext, requestHash);
-      updateAiImageRequest({
+      if (mapped.refundable && quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      if (!mapped.refundable && quotaReserved) safeCommitVisitorQuota(input.loadedTask, requestHash);
+      safeUpdateLedger({
         requestHash,
         status: mapped.refundable ? "refunded" : "failed_non_refundable",
         errorCode: mapped.code,
@@ -214,11 +266,11 @@ export async function generateAiImageDraft(input: {
     }
 
     if (providerResult.images.length !== input.request.count) {
-      if (quotaReserved) refundVisitorImageAiCalls(input.loadedTask.accessContext, requestHash);
-      updateAiImageRequest({ requestHash, status: "refunded", errorCode: "image_response_invalid", now: input.now });
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      safeUpdateLedger({ requestHash, status: "refunded", errorCode: "image_response_invalid", now: input.now });
       return fail("image_response_invalid", "图片服务返回数量异常，本次额度已返还。", true);
     }
-    updateAiImageRequest({ requestHash, status: "provider_succeeded", now: input.now });
+    safeUpdateLedger({ requestHash, status: "provider_succeeded", now: input.now });
 
     const createdAt = input.now || new Date().toISOString();
     const items: AiImageDraftItem[] = [];
@@ -228,7 +280,7 @@ export async function generateAiImageDraft(input: {
           accessMode: input.loadedTask.accessMode,
           visitorAccessId: input.loadedTask.visitorAccessId,
           taskId: input.loadedTask.taskId,
-          bytes: decodeBase64(image.base64),
+          bytes: decodeAiImageBase64(image.base64),
         });
         storedKeys.push(stored.storageKey);
         items.push({
@@ -258,11 +310,11 @@ export async function generateAiImageDraft(input: {
       }
     } catch {
       await Promise.all(storedKeys.map((key) => deleteAiImage(key).catch(() => undefined)));
-      if (quotaReserved) refundVisitorImageAiCalls(input.loadedTask.accessContext, requestHash);
-      updateAiImageRequest({ requestHash, status: "refunded", errorCode: "image_storage_failed", now: input.now });
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      safeUpdateLedger({ requestHash, status: "refunded", errorCode: "image_storage_failed", now: input.now });
       return fail("image_storage_failed", "图片保存失败，本次额度已返还。", true);
     }
-    updateAiImageRequest({ requestHash, status: "stored", itemIds: items.map((item) => item.id), now: input.now });
+    safeUpdateLedger({ requestHash, status: "stored", itemIds: items.map((item) => item.id), now: input.now });
 
     const merged = mergeAiImageDraftSnapshot({
       resultJson: input.loadedTask.task.resultJson,
@@ -274,14 +326,14 @@ export async function generateAiImageDraft(input: {
       await input.loadedTask.persistResult(merged.result);
     } catch {
       await Promise.all(storedKeys.map((key) => deleteAiImage(key).catch(() => undefined)));
-      if (quotaReserved) refundVisitorImageAiCalls(input.loadedTask.accessContext, requestHash);
-      updateAiImageRequest({ requestHash, status: "refunded", errorCode: "image_snapshot_save_failed", now: input.now });
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      safeUpdateLedger({ requestHash, status: "refunded", errorCode: "image_snapshot_save_failed", now: input.now });
       return fail("image_snapshot_save_failed", "任务图片快照保存失败，本次额度已返还。", true);
     }
 
-    updateAiImageRequest({ requestHash, status: "committed", itemIds: items.map((item) => item.id), now: input.now });
+    safeUpdateLedger({ requestHash, status: "committed", itemIds: items.map((item) => item.id), now: input.now });
     const visitorAccess = quotaReserved
-      ? commitVisitorImageAiCalls(input.loadedTask.accessContext, requestHash)
+      ? safeCommitVisitorQuota(input.loadedTask, requestHash) || reservation.snapshot
       : null;
     return { ok: true, data: { snapshot: merged.snapshot, items, duplicate: false, visitorAccess } };
   } finally {
