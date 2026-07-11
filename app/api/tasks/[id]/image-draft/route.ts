@@ -3,7 +3,7 @@ import { extractAiImageDraftSnapshot, validateAiImageGenerateRequest } from "@/l
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { loadAiImageTask } from "@/lib/server/aiImageTaskAccess";
 import { getLatestDemoSnapshot } from "@/lib/server/demoGuard";
-import { isRealAiImageEnabled } from "@/lib/server/realAiImageGate";
+import { isRealAiImageEnabled, isRealAiVisitorImageEnabled } from "@/lib/server/realAiImageGate";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ async function taskIdFrom(context: RouteContext): Promise<string> {
 }
 
 function errorStatus(code: string): number {
-  if (code === "real_ai_disabled" || code === "visitor_ai_quota_exceeded") return 403;
+  if (code === "real_ai_disabled" || code === "visitor_ai_quota_exceeded" || code === "visitor_image_generation_disabled") return 403;
   if (["image_request_in_progress", "image_request_already_failed", "image_request_conflict"].includes(code)) return 409;
   if (code === "image_provider_rate_limited") return 429;
   if (["image_provider_timeout", "image_provider_unavailable", "image_provider_error", "image_response_invalid"].includes(code)) return 502;
@@ -45,6 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     ok: true,
     data: {
       enabled: isRealAiImageEnabled(),
+      visitorEnabled: loaded.data.accessMode === "visitor" ? isRealAiVisitorImageEnabled() : null,
       accessMode: loaded.data.accessMode,
       maxCount: loaded.data.accessMode === "owner" ? 2 : 1,
       snapshot: extractAiImageDraftSnapshot(loaded.data.task.resultJson),
@@ -66,6 +67,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const bodyRecord = isRecord(body) ? body : {};
   const loaded = await loadAiImageTask({ request, taskId, body: bodyRecord });
   if (!loaded.ok) return json({ ok: false, error: { code: loaded.code, message: loaded.message } }, loaded.status);
+
+  // Visitor gate: checked before validation to avoid leaking task details
+  if (loaded.data.accessMode === "visitor" && !isRealAiVisitorImageEnabled()) {
+    return json({ ok: false, error: { code: "visitor_image_generation_disabled", message: "图片生成暂未对访客开放。" } }, 403);
+  }
 
   const validated = validateAiImageGenerateRequest(body, loaded.data.accessMode);
   if (!validated.ok) return json({ ok: false, error: { code: validated.code, message: validated.message } }, 400);

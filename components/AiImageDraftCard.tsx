@@ -21,6 +21,7 @@ type VisitorAccess = {
 
 type Metadata = {
   enabled: boolean;
+  visitorEnabled: boolean | null;
   accessMode: AiImageAccessMode;
   maxCount: 1 | 2;
   snapshot: AiImageDraftSnapshot | null;
@@ -278,7 +279,7 @@ export function AiImageDraftCard({
             <button
               type="button"
               onClick={() => void handleGenerate()}
-              disabled={!metadata?.enabled || !confirmed || loading || exhausted}
+              disabled={!metadata?.enabled || (metadata?.accessMode === "visitor" && metadata?.visitorEnabled === false) || !confirmed || loading || exhausted}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 text-sm font-bold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="ai-image-draft-generate"
             >
@@ -288,6 +289,7 @@ export function AiImageDraftCard({
             {metadata?.accessMode === "visitor" && typeof remaining === "number" ? <span className="text-xs font-semibold text-slate-500">共享真实 AI 体验剩余 {remaining} 次</span> : null}
           </div>
           {metadata && !metadata.enabled ? <p className="text-sm font-semibold text-amber-700">当前未开启真实图片生成，本次不会消耗额度。</p> : null}
+          {metadata && metadata.enabled && metadata.accessMode === "visitor" && metadata.visitorEnabled === false ? <p className="text-sm font-semibold text-amber-700">图片生成暂未对访客开放，本次不会消耗额度。</p> : null}
           {message ? <p className="text-sm font-semibold text-emerald-700">{message}</p> : null}
           {error ? <p className="text-sm font-semibold text-rose-600">{error}</p> : null}
 

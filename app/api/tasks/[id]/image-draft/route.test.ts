@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   loaded: null as any,
   generated: null as any,
   enabled: false,
+  visitorEnabled: false,
 }));
 
 vi.mock("@/lib/server/aiImageTaskAccess", () => ({
@@ -14,6 +15,7 @@ vi.mock("@/lib/server/aiImageDraftService", () => ({
 }));
 vi.mock("@/lib/server/realAiImageGate", () => ({
   isRealAiImageEnabled: () => mocks.enabled,
+  isRealAiVisitorImageEnabled: () => mocks.visitorEnabled,
 }));
 vi.mock("@/lib/server/demoGuard", () => ({
   getLatestDemoSnapshot: () => ({ maxAiCalls: 5, usedAiCalls: 2, remainingAiCalls: 3 }),
@@ -43,6 +45,7 @@ describe("task image draft API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.enabled = false;
+    mocks.visitorEnabled = false;
     mocks.loaded = { ok: true, data: ownerTask };
     mocks.generated = { ok: true, data: { snapshot: null, items: [], duplicate: false, visitorAccess: null } };
   });
@@ -65,6 +68,7 @@ describe("task image draft API", () => {
   });
 
   it("enforces visitor count and exposes only visitor mode plus the shared counter", async () => {
+    mocks.visitorEnabled = true;
     mocks.loaded = { ok: true, data: { ...ownerTask, accessMode: "visitor", visitorAccessId: "visitor-1", accessContext: { mode: "demo", demoAccessId: "visitor-1" } } };
     const blocked = await post({ imageType: "white_background_concept", count: 2, confirmed: true, idempotencyKey: "123e4567-e89b-42d3-a456-426614174000" });
     expect(blocked.status).toBe(400);
