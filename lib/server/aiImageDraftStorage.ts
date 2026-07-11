@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep as pathSep } from "node:path";
 import sharp from "sharp";
 import type { AiImageAccessMode, AiImageDraftItem } from "@/lib/aiImageDraft";
@@ -229,6 +229,14 @@ export async function storeAiImage(input: {
   const tempPath = ensureInsideRoot(resolve(dirname(finalPath), `${id}.part`));
   const targetDir = dirname(finalPath);
 
+  // Record whether targetDir existed before this call so we know
+  // whether it is safe to clean up on failure.
+  let targetDirExisted = false;
+  try {
+    const s = await stat(targetDir);
+    if (s.isDirectory()) targetDirExisted = true;
+  } catch { /* directory does not exist yet */ }
+
   // 1. create directories (recursive) with mode 0o700
   await mkdir(targetDir, { recursive: true, mode: 0o700 });
 
@@ -237,9 +245,13 @@ export async function storeAiImage(input: {
   try {
     await ensurePrivateDir(targetDir);
   } catch {
-    // dir chmod failed — don't leave half-created directories
-    // (only remove the leaf task dir, not the whole scope)
-    await rm(targetDir, { recursive: true, force: true }).catch(() => undefined);
+    // dir chmod failed.
+    // Only clean up if we created targetDir and it is empty.
+    // NEVER recursively delete a pre-existing directory — it contains
+    // other images from earlier successful calls for the same task.
+    if (!targetDirExisted) {
+      await rmdir(targetDir).catch(() => undefined);
+    }
     throw new Error("AI_IMAGE_CHMOD_DIR_FAILED");
   }
 
@@ -258,12 +270,16 @@ export async function storeAiImage(input: {
     throw error;
   }
 
-  // 5. enforce 0o600 on the final file (rename preserves source perms,
-  //    but umask or fs quirks could still leave it readable)
+  // 5. enforce 0o600 on the final file.
+  //    On Linux, mode=0o600 in writeFile is narrowed by umask — if umask
+  //    is 0o022 the result is 0o600, not 0o644. An explicit chmod after
+  //    rename guarantees the final mode regardless of platform or umask.
   try {
     await ensurePrivateFile(finalPath);
   } catch {
-    // file chmod failed → clean up both files and re-throw
+    // file chmod failed → clean up only this call's files.
+    // finalPath is always a new UUID name so it cannot collide with
+    // existing images in the same task directory.
     await rm(finalPath, { force: true }).catch(() => undefined);
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw new Error("AI_IMAGE_CHMOD_FILE_FAILED");

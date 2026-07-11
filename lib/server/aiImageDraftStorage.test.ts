@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -83,107 +83,233 @@ describe("private AI image storage", () => {
   });
 });
 
-describe("private file permissions", () => {
+describe("cleanup safety — never deletes existing images", () => {
   const bytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
 
-  it("calls mkdir with mode 0o700 for the target directory", async () => {
-    await storeAiImage({ accessMode: "owner", taskId: "perm-task", bytes });
-    // The real mkdir was called; we verify chmod covered the full chain (see next tests).
-    expect(mockChmod).toHaveBeenCalled();
+  function fakePng(name: string, taskDir: string) {
+    writeFileSync(join(taskDir, name), bytes);
+  }
+
+  function taskDirPath(taskId: string) {
+    return join(root, "owner", taskId);
+  }
+
+  // ---- dir chmod failure on PRE-EXISTING directory ----
+
+  it("preserves old images in an existing taskDir when dir chmod fails", async () => {
+    const td = taskDirPath("existing-task");
+    mkdirSync(td, { recursive: true });
+    fakePng("old-image.png", td);
+
+    // All dir chmod calls fail (first one = storage root)
+    mockChmod.mockRejectedValue(new Error("EACCES"));
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "existing-task", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_DIR_FAILED");
+
+    // Old image MUST still exist
+    const oldExists = (() => {
+      try { statSync(join(td, "old-image.png")); return true; } catch { return false; }
+    })();
+    expect(oldExists).toBe(true);
+    // The task directory itself MUST still exist
+    expect(statSync(td).isDirectory()).toBe(true);
   });
 
-  it("chmods the storage root directory to 0o700", async () => {
-    await storeAiImage({ accessMode: "owner", taskId: "perm-root", bytes });
-    const rootCalls = mockChmod.mock.calls.filter(([path, mode]: [string, number]) =>
-      path === root && mode === 0o700,
+  it("preserves all old images when dir chmod fails on an existing taskDir", async () => {
+    const td = taskDirPath("multi-image-task");
+    mkdirSync(td, { recursive: true });
+    fakePng("img-a.png", td);
+    fakePng("img-b.png", td);
+    fakePng("img-c.png", td);
+
+    mockChmod.mockRejectedValue(new Error("EACCES"));
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "multi-image-task", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_DIR_FAILED");
+
+    const files = readdirSync(td);
+    expect(files).toContain("img-a.png");
+    expect(files).toContain("img-b.png");
+    expect(files).toContain("img-c.png");
+    expect(files.length).toBe(3);
+  });
+
+  // ---- dir chmod failure on NEWLY-CREATED directory ----
+
+  it("removes an empty newly-created taskDir when dir chmod fails", async () => {
+    const td = taskDirPath("new-task");
+    // Ensure it doesn't exist
+    try { rmSync(td, { recursive: true, force: true }); } catch {}
+
+    mockChmod.mockRejectedValue(new Error("EACCES"));
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "new-task", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_DIR_FAILED");
+
+    // Newly-created empty dir should be cleaned up
+    const dirExists = (() => {
+      try { statSync(td); return true; } catch { return false; }
+    })();
+    expect(dirExists).toBe(false);
+  });
+
+  it("does NOT delete storage root when dir chmod fails", async () => {
+    mockChmod.mockRejectedValue(new Error("EACCES"));
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "root-safe", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_DIR_FAILED");
+
+    // Storage root MUST still exist
+    expect(statSync(root).isDirectory()).toBe(true);
+  });
+
+  it("does NOT delete the Owner scope directory when dir chmod fails", async () => {
+    // Pre-populate to ensure owner dir exists
+    await storeAiImage({ accessMode: "owner", taskId: "prepop", bytes });
+    mockChmod.mockReset();
+    mockChmod.mockRejectedValue(new Error("EACCES"));
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "owner-safe", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_DIR_FAILED");
+
+    const ownerDir = join(root, "owner");
+    expect(statSync(ownerDir).isDirectory()).toBe(true);
+  });
+
+  // ---- file chmod failure ----
+
+  it("only deletes this call's finalPath on file chmod failure, preserves old images", async () => {
+    const td = taskDirPath("file-fail-task");
+    mkdirSync(td, { recursive: true });
+    fakePng("old-image.png", td);
+
+    // All dir chmod calls succeed, file chmod fails
+    mockChmod.mockResolvedValueOnce(undefined); // root
+    mockChmod.mockResolvedValueOnce(undefined); // owner
+    mockChmod.mockResolvedValueOnce(undefined); // task dir
+    mockChmod.mockRejectedValueOnce(new Error("EACCES")); // final file
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "file-fail-task", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_FILE_FAILED");
+
+    // Old image MUST still exist
+    expect(statSync(join(td, "old-image.png")).isFile()).toBe(true);
+    // Task directory MUST still exist
+    expect(statSync(td).isDirectory()).toBe(true);
+    // Only 1 file (the old image) should remain
+    const files = readdirSync(td);
+    expect(files).toEqual(["old-image.png"]);
+  });
+
+  it("deletes finalPath and tempPath on file chmod failure", async () => {
+    // All dir chmod calls succeed, file chmod fails
+    mockChmod.mockResolvedValueOnce(undefined); // root
+    mockChmod.mockResolvedValueOnce(undefined); // owner
+    mockChmod.mockResolvedValueOnce(undefined); // task dir
+    mockChmod.mockRejectedValueOnce(new Error("EACCES")); // file
+
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "file-fail-cleanup", bytes }),
+    ).rejects.toThrow("AI_IMAGE_CHMOD_FILE_FAILED");
+
+    // No .part or .png files should remain
+    const td = taskDirPath("file-fail-cleanup");
+    const files = readdirSync(td);
+    const partFiles = files.filter((f) => f.endsWith(".part"));
+    const pngFiles = files.filter((f) => f.endsWith(".png"));
+    expect(partFiles.length).toBe(0);
+    expect(pngFiles.length).toBe(0);
+  });
+
+  // ---- other tasks completely preserved ----
+
+  it("does not affect other task directories on failure", async () => {
+    // Successfully store an image for task-A
+    mockChmod.mockResolvedValue(undefined);
+    await storeAiImage({ accessMode: "owner", taskId: "task-A", bytes });
+
+    // Now try task-B with chmod failure
+    mockChmod.mockReset();
+    mockChmod.mockRejectedValue(new Error("EACCES"));
+    await expect(
+      storeAiImage({ accessMode: "owner", taskId: "task-B", bytes }),
+    ).rejects.toThrow();
+
+    // task-A must be completely intact
+    const taskADir = taskDirPath("task-A");
+    expect(statSync(taskADir).isDirectory()).toBe(true);
+    const taskAFiles = readdirSync(taskADir);
+    expect(taskAFiles.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // ---- chmod 0700/0600 logic still passes ----
+
+  it("chmods root to 0o700", async () => {
+    await storeAiImage({ accessMode: "owner", taskId: "chmod-root", bytes });
+    const rootCalls = mockChmod.mock.calls.filter(
+      ([p, m]: [string, number]) => p === root && m === 0o700,
     );
     expect(rootCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("chmods each directory in the chain to 0o700 (root, scope, task dir)", async () => {
-    await storeAiImage({ accessMode: "owner", taskId: "perm-chain", bytes });
-    const dirCalls = mockChmod.mock.calls.filter(([_path, mode]: [string, number]) => mode === 0o700);
-    // root + owner + task dir = at least 3 chmod calls
+  it("chmods the dir chain to 0o700 (root + scope + task-dir)", async () => {
+    await storeAiImage({ accessMode: "owner", taskId: "chmod-chain", bytes });
+    const dirCalls = mockChmod.mock.calls.filter(
+      ([_p, m]: [string, number]) => m === 0o700,
+    );
     expect(dirCalls.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("chmods the final image file to 0o600 after rename", async () => {
-    await storeAiImage({ accessMode: "owner", taskId: "perm-file", bytes });
-    const fileCalls = mockChmod.mock.calls.filter(([_path, mode]: [string, number]) => mode === 0o600);
+  it("chmods the final file to 0o600", async () => {
+    await storeAiImage({ accessMode: "owner", taskId: "chmod-file", bytes });
+    const fileCalls = mockChmod.mock.calls.filter(
+      ([_p, m]: [string, number]) => m === 0o600,
+    );
     expect(fileCalls.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("creates temp file with mode 0o600 (verified via writeFile args in real fs)", async () => {
-    // We can't spy on writeFile easily, but the stored result + file existence
-    // plus chmod calls confirm the flow. The actual mode is verified on Linux.
-    const stored = await storeAiImage({ accessMode: "owner", taskId: "perm-temp", bytes });
-    expect(stored.storageKey).toMatch(/^owner\/perm-temp\/[0-9a-f-]+\.png$/);
-    expect(mockChmod).toHaveBeenCalled();
-  });
+  // ---- Owner/Visitor isolation ----
 
-  it("deletes the task directory and throws when chmod on a directory fails", async () => {
-    mockChmod.mockRejectedValueOnce(new Error("EACCES: permission denied"));
-    await expect(
-      storeAiImage({ accessMode: "owner", taskId: "perm-chmod-dir-fail", bytes }),
-    ).rejects.toThrow("AI_IMAGE_CHMOD_DIR_FAILED");
-    // After dir chmod failure, the task directory should be cleaned up
-    const taskDirExists = (() => {
-      try { statSync(join(root, "owner", "perm-chmod-dir-fail")); return true; } catch { return false; }
-    })();
-    expect(taskDirExists).toBe(false);
-  });
+  it("preserves Owner/Visitor directory isolation", async () => {
+    await storeAiImage({ accessMode: "owner", taskId: "isolated", bytes });
+    await storeAiImage({ accessMode: "visitor", visitorAccessId: "vid-1", taskId: "isolated", bytes });
 
-  it("deletes both temp and final files and throws when chmod on the final file fails", async () => {
-    // First 3 chmod calls succeed (root + scope dirs), then file chmod fails
-    mockChmod.mockResolvedValueOnce(undefined); // root
-    mockChmod.mockResolvedValueOnce(undefined); // scope
-    mockChmod.mockResolvedValueOnce(undefined); // task dir
-    mockChmod.mockRejectedValueOnce(new Error("EACCES: permission denied")); // final file
-    await expect(
-      storeAiImage({ accessMode: "owner", taskId: "perm-chmod-file-fail", bytes }),
-    ).rejects.toThrow("AI_IMAGE_CHMOD_FILE_FAILED");
-  });
-
-  it("preserves Owner/Visitor directory isolation with correct permissions", async () => {
-    await storeAiImage({ accessMode: "owner", taskId: "perm-isolation", bytes });
-    await storeAiImage({ accessMode: "visitor", visitorAccessId: "vid-1", taskId: "perm-isolation", bytes });
-
-    const ownerCalls = mockChmod.mock.calls.filter(([path]: [string, number]) => path.includes("owner"));
-    const visitorCalls = mockChmod.mock.calls.filter(([path]: [string, number]) => path.includes("visitor"));
+    const ownerCalls = mockChmod.mock.calls.filter(([p]: [string, number]) =>
+      p.includes("owner") && !p.includes("visitor"),
+    );
+    const visitorCalls = mockChmod.mock.calls.filter(([p]: [string, number]) =>
+      p.includes("visitor"),
+    );
     expect(ownerCalls.length).toBeGreaterThan(0);
     expect(visitorCalls.length).toBeGreaterThan(0);
-    // Owner and visitor paths must not overlap
-    const hasOverlap = ownerCalls.some(([op]: [string]) =>
-      visitorCalls.some(([vp]: [string]) => op.startsWith(vp) || vp.startsWith(op)),
-    );
-    // Root is shared, so there IS an overlap (the root dir). That's expected.
-    // But the scope dirs must be different.
-    const ownerScopePaths = ownerCalls.map(([p]: [string]) => p).filter((p: string) => p.includes("owner") && !p.includes("visitor"));
-    const visitorScopePaths = visitorCalls.map(([p]: [string]) => p).filter((p: string) => p.includes("visitor"));
-    expect(ownerScopePaths.length).toBeGreaterThan(0);
-    expect(visitorScopePaths.length).toBeGreaterThan(0);
   });
 
-  it("still blocks path traversal after permission changes", async () => {
+  // ---- path traversal still blocked ----
+
+  it("still blocks path traversal", async () => {
     await expect(readAiImage("../outside.png")).rejects.toThrow("AI_IMAGE_INVALID_STORAGE_KEY");
   });
 
-  it("can read back a stored image after permission enforcement", async () => {
-    const stored = await storeAiImage({ accessMode: "owner", taskId: "perm-readback", bytes });
+  // ---- read-back works ----
+
+  it("can read back a stored image after safe storage", async () => {
+    const stored = await storeAiImage({ accessMode: "owner", taskId: "readback", bytes });
     const result = await readAiImage(stored.storageKey);
     expect(result).toEqual(bytes);
   });
-});
 
-describe("Windows permission boundary", () => {
-  it("calls chmod on Linux; on Windows chmod is best-effort and should not crash", async () => {
-    // On Windows, chmod's POSIX mode bits have no effect on ACLs,
-    // but the function must still be called and must not throw on success.
-    const bytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
-    const stored = await storeAiImage({ accessMode: "owner", taskId: "win-perm", bytes });
-    expect(stored.storageKey).toBeTruthy();
-    expect(mockChmod).toHaveBeenCalled();
-    // This test explicitly notes: Windows test passing ≠ Linux permission correctness.
-    // Linux enforcement must be verified in production deployment.
+  // ---- chmod ok, write ok, everything works ----
+
+  it("stores successfully and returns correct storageKey", async () => {
+    const stored = await storeAiImage({ accessMode: "owner", taskId: "success", bytes });
+    expect(stored.storageKey).toMatch(/^owner\/success\/[0-9a-f-]+\.png$/);
+    expect(stored.mimeType).toBe("image/png");
   });
 });
