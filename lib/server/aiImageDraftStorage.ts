@@ -1,8 +1,8 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve, sep as pathSep } from "node:path";
 import sharp from "sharp";
 import type { AiImageAccessMode, AiImageDraftItem } from "@/lib/aiImageDraft";
 
@@ -178,6 +178,40 @@ export function decodeAiImageBase64(value: string): Buffer {
   return bytes;
 }
 
+/**
+ * Recursively walk up from `dir` to `root` and ensure every directory is 0o700.
+ * On Windows, chmod is a best-effort no-op; the real enforcement happens on Linux.
+ */
+async function ensurePrivateDir(dir: string): Promise<void> {
+  const root = storageRoot();
+  let current = resolve(dir);
+  const targets: string[] = [];
+  while (current.startsWith(root + pathSep) || current === root) {
+    targets.push(current);
+    if (current === root) break;
+    current = resolve(current, "..");
+  }
+  for (const target of targets.reverse()) {
+    try {
+      await chmod(target, 0o700);
+    } catch (error) {
+      throw new Error(`AI_IMAGE_CHMOD_DIR_FAILED:${(error as Error).message || "unknown"}`);
+    }
+  }
+}
+
+/**
+ * Ensure final file mode is exactly 0o600 regardless of umask.
+ * Called after rename so the target file is the one we just persisted.
+ */
+async function ensurePrivateFile(filePath: string): Promise<void> {
+  try {
+    await chmod(filePath, 0o600);
+  } catch (error) {
+    throw new Error(`AI_IMAGE_CHMOD_FILE_FAILED:${(error as Error).message || "unknown"}`);
+  }
+}
+
 export async function storeAiImage(input: {
   accessMode: AiImageAccessMode;
   visitorAccessId?: string;
@@ -193,14 +227,48 @@ export async function storeAiImage(input: {
   const storageKey = `${scope}/${taskId}/${id}.${validated.extension}`;
   const finalPath = resolveAiImageStorageKey(storageKey);
   const tempPath = ensureInsideRoot(resolve(dirname(finalPath), `${id}.part`));
-  await mkdir(dirname(finalPath), { recursive: true, mode: 0o700 });
+  const targetDir = dirname(finalPath);
+
+  // 1. create directories (recursive) with mode 0o700
+  await mkdir(targetDir, { recursive: true, mode: 0o700 });
+
+  // 2. correct permissions on the whole directory chain (mkdir recursive
+  //    only sets mode on newly-created leaf dirs, not existing parents)
+  try {
+    await ensurePrivateDir(targetDir);
+  } catch {
+    // dir chmod failed — don't leave half-created directories
+    // (only remove the leaf task dir, not the whole scope)
+    await rm(targetDir, { recursive: true, force: true }).catch(() => undefined);
+    throw new Error("AI_IMAGE_CHMOD_DIR_FAILED");
+  }
+
+  // 3. write temp file with mode 0o600
   try {
     await writeFile(tempPath, validated.bytes, { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    throw error;
+  }
+
+  // 4. atomic rename
+  try {
     await rename(tempPath, finalPath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
     throw error;
   }
+
+  // 5. enforce 0o600 on the final file (rename preserves source perms,
+  //    but umask or fs quirks could still leave it readable)
+  try {
+    await ensurePrivateFile(finalPath);
+  } catch {
+    // file chmod failed → clean up both files and re-throw
+    await rm(finalPath, { force: true }).catch(() => undefined);
+    await rm(tempPath, { force: true }).catch(() => undefined);
+    throw new Error("AI_IMAGE_CHMOD_FILE_FAILED");
+  }
+
   return {
     id,
     storageKey,
