@@ -7,11 +7,30 @@ import type { AiImageAccessMode, AiImageDraftType } from "@/lib/aiImageDraft";
 
 export type AiImageLedgerStatus =
   | "reserved"
+  | "provider_called"
+  | "provider_result_received"
+  | "asset_ingested"
   | "provider_succeeded"
   | "stored"
   | "committed"
   | "refunded"
-  | "failed_non_refundable";
+  | "failed_non_refundable"
+  | "failed_after_provider_result";
+
+export type AiImageProviderStage =
+  | "provider_not_called"
+  | "provider_called"
+  | "provider_result_received"
+  | "asset_ingested"
+  | "completed";
+
+export type AiImageFailureStage =
+  | "provider_call"
+  | "provider_response"
+  | "asset_download"
+  | "asset_validation"
+  | "asset_storage"
+  | "snapshot_persistence";
 
 export type AiImageLedgerEntry = {
   requestHash: string;
@@ -23,6 +42,9 @@ export type AiImageLedgerEntry = {
   updatedAt: string;
   itemIds: string[];
   errorCode?: string;
+  providerStage?: AiImageProviderStage;
+  providerCostConsumed?: boolean;
+  failureStage?: AiImageFailureStage;
 };
 
 type AiImageLedgerStore = {
@@ -107,6 +129,8 @@ export function beginAiImageRequest(input: {
     createdAt: now,
     updatedAt: now,
     itemIds: [],
+    providerStage: "provider_not_called",
+    providerCostConsumed: false,
   };
   store.entries.push(entry);
   saveStore(store);
@@ -118,18 +142,26 @@ export function updateAiImageRequest(input: {
   status: AiImageLedgerStatus;
   itemIds?: string[];
   errorCode?: string;
+  providerStage?: AiImageProviderStage;
+  providerCostConsumed?: boolean;
+  failureStage?: AiImageFailureStage;
   now?: string;
 }): AiImageLedgerEntry | null {
   const store = loadStore();
   const entry = store.entries.find((item) => item.requestHash === input.requestHash);
   if (!entry) return null;
-  if (entry.status === "committed" || entry.status === "refunded" || entry.status === "failed_non_refundable") {
+  if (["committed", "refunded", "failed_non_refundable", "failed_after_provider_result"].includes(entry.status)) {
     return entry;
   }
   entry.status = input.status;
   entry.updatedAt = input.now || new Date().toISOString();
   if (input.itemIds) entry.itemIds = [...new Set(input.itemIds)].slice(0, 2);
   if (input.errorCode) entry.errorCode = input.errorCode.slice(0, 100);
+  if (input.providerStage) entry.providerStage = input.providerStage;
+  if (input.providerCostConsumed !== undefined) {
+    entry.providerCostConsumed = Boolean(entry.providerCostConsumed || input.providerCostConsumed);
+  }
+  if (input.failureStage) entry.failureStage = input.failureStage;
   saveStore(store);
   return entry;
 }

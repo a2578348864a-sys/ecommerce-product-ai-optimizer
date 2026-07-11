@@ -44,6 +44,20 @@ export type PinnedImageRequest = (
   signal: AbortSignal,
 ) => Promise<Response>;
 
+export type ImageMimeAuditEvent = {
+  event: "image_mime_normalized";
+  headerMime: string;
+  actualMime: ImageUrlFetchResult["mimeType"];
+  fileSize: number;
+  requestId: string;
+  elapsedMs: number;
+};
+
+export type ImageDownloadAuditOptions = {
+  requestId?: string;
+  logger?: (event: ImageMimeAuditEvent) => void;
+};
+
 /* ── hostname whitelist ─────────────────────────────────── */
 
 export function getImageResultHostWhitelist(): Set<string> {
@@ -326,12 +340,21 @@ export async function requestPinnedHttpsResponse(
 
 /* ── supported MIME ───────────────────────────────────── */
 
-const SUPPORTED_MIME_PREFIXES = ["image/png", "image/jpeg", "image/webp"] as const;
+const AUXILIARY_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
 
-function isSupportedContentType(header: string | null): boolean {
-  if (!header) return false;
-  const mime = header.split(";")[0]?.trim().toLowerCase() || "";
-  return SUPPORTED_MIME_PREFIXES.some((prefix) => mime === prefix);
+function normalizeHeaderMime(header: string | null): string {
+  const mime = (header || "").split(";")[0]?.trim().toLowerCase() || "missing";
+  return mime === "image/jpg" ? "image/jpeg" : mime;
+}
+
+function isAllowedAuxiliaryContentType(headerMime: string): boolean {
+  return headerMime === "missing" || AUXILIARY_IMAGE_MIME_TYPES.has(headerMime);
 }
 
 /* ── download ──────────────────────────────────────────── */
@@ -358,7 +381,9 @@ export async function downloadImageFromUrl(
   rawUrl: string,
   whitelist: Set<string>,
   requestFn: PinnedImageRequest = requestPinnedHttpsResponse,
+  audit: ImageDownloadAuditOptions = {},
 ): Promise<ImageUrlFetchResult> {
+  const startedAt = Date.now();
   let currentUrl = rawUrl;
   let redirects = 0;
 
@@ -426,8 +451,8 @@ export async function downloadImageFromUrl(
       );
     }
 
-    // Validate Content-Type
-    if (!isSupportedContentType(response.headers.get("content-type"))) {
+    const headerMime = normalizeHeaderMime(response.headers.get("content-type"));
+    if (!isAllowedAuxiliaryContentType(headerMime)) {
       await response.body?.cancel().catch(() => undefined);
       throw new ImageUrlFetchError(
         "image_provider_result_invalid_mime",
@@ -490,7 +515,7 @@ export async function downloadImageFromUrl(
     // Re-validate with existing storage validator (magic numbers, dimensions, pixels)
     let validated;
     try {
-      validated = validateAiImageBytes(buffer);
+      validated = await validateAiImageBytes(buffer);
     } catch (storageError) {
       const msg = storageError instanceof Error ? storageError.message : "";
       if (msg.includes("TOO_LARGE")) {
@@ -502,13 +527,16 @@ export async function downloadImageFromUrl(
       );
     }
 
-    // Double-check that MIME from Content-Type matches actual content type
-    const responseMime = (response.headers.get("content-type") || "").split(";")[0]?.trim().toLowerCase();
-    if (responseMime && responseMime !== validated.mimeType) {
-      throw new ImageUrlFetchError(
-        "image_provider_result_invalid_mime",
-        "图片 Content-Type 与实际格式不符。",
-      );
+    if (headerMime !== validated.mimeType) {
+      const event: ImageMimeAuditEvent = {
+        event: "image_mime_normalized",
+        headerMime,
+        actualMime: validated.mimeType,
+        fileSize: validated.bytes.length,
+        requestId: audit.requestId || "unavailable",
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+      };
+      (audit.logger || console.info)(event);
     }
 
     return {

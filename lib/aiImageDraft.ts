@@ -14,6 +14,7 @@ export const AI_IMAGE_DRAFT_TYPES = [
 export type AiImageAccessMode = "owner" | "visitor";
 export type AiImageDraftType = (typeof AI_IMAGE_DRAFT_TYPES)[number];
 export type AiImageReviewStatus = "needs_human_review" | "approved" | "rejected";
+export type AiImageActualFormat = "png" | "jpeg" | "webp";
 
 export type AiImageGenerationBasis = {
   productName?: string;
@@ -31,6 +32,8 @@ export type AiImageDraftItem = {
   createdAt: string;
   storageKey: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
+  requestedFormat?: "webp";
+  actualFormat?: AiImageActualFormat;
   width?: number;
   height?: number;
   fileSizeBytes: number;
@@ -143,6 +146,10 @@ function isMimeType(value: unknown): value is AiImageDraftItem["mimeType"] {
   return value === "image/png" || value === "image/jpeg" || value === "image/webp";
 }
 
+function actualFormatForMimeType(mimeType: AiImageDraftItem["mimeType"]): AiImageActualFormat {
+  return mimeType === "image/png" ? "png" : mimeType === "image/jpeg" ? "jpeg" : "webp";
+}
+
 export function isSafeAiImageStorageKey(value: unknown): value is string {
   return typeof value === "string"
     && value.length <= 300
@@ -168,6 +175,12 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
   if (!isRecord(value)) return null;
   const generationBasis = normalizeGenerationBasis(value.generationBasis);
   const promptSummary = cleanText(value.promptSummary, AI_IMAGE_PROMPT_SUMMARY_MAX_LENGTH);
+  const requestedFormat = value.requestedFormat === undefined ? undefined : value.requestedFormat === "webp" ? "webp" : null;
+  const actualFormat = value.actualFormat === undefined
+    ? undefined
+    : value.actualFormat === "png" || value.actualFormat === "jpeg" || value.actualFormat === "webp"
+      ? value.actualFormat
+      : null;
   if (
     !UUID_PATTERN.test(cleanText(value.id, 50))
     || !isImageDraftType(value.imageType)
@@ -185,6 +198,9 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
     || !/^[0-9a-f]{64}$/i.test(cleanText(value.promptHash, 64))
     || !/^[0-9a-f]{64}$/i.test(cleanText(value.requestKeyHash, 64))
     || !generationBasis
+    || requestedFormat === null
+    || actualFormat === null
+    || (isMimeType(value.mimeType) && actualFormat !== undefined && actualFormat !== actualFormatForMimeType(value.mimeType))
   ) {
     return null;
   }
@@ -199,6 +215,8 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
     createdAt: value.createdAt,
     storageKey: value.storageKey,
     mimeType: value.mimeType,
+    requestedFormat: requestedFormat || undefined,
+    actualFormat: actualFormat || undefined,
     width,
     height,
     fileSizeBytes: Number(value.fileSizeBytes),

@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import sharp from "sharp";
 import type { AiImageAccessMode, AiImageDraftItem } from "@/lib/aiImageDraft";
 
 export const AI_IMAGE_MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -88,7 +89,7 @@ function webpDimensions(bytes: Buffer): { width?: number; height?: number } {
   return {};
 }
 
-export function validateAiImageBytes(bytes: Buffer): ValidatedImage {
+export async function validateAiImageBytes(bytes: Buffer): Promise<ValidatedImage> {
   if (!Buffer.isBuffer(bytes) || bytes.length === 0) throw new Error("AI_IMAGE_EMPTY_FILE");
   if (bytes.length > AI_IMAGE_MAX_FILE_BYTES) throw new Error("AI_IMAGE_FILE_TOO_LARGE");
 
@@ -119,12 +120,45 @@ export function validateAiImageBytes(bytes: Buffer): ValidatedImage {
   ) {
     throw new Error("AI_IMAGE_INVALID_DIMENSIONS");
   }
+
+  let decoded: Awaited<ReturnType<ReturnType<typeof sharp>["metadata"]>>;
+  try {
+    const image = sharp(bytes, {
+      failOn: "error",
+      limitInputPixels: AI_IMAGE_MAX_PIXELS,
+    });
+    decoded = await image.metadata();
+    if ((decoded.pages || 1) !== 1) throw new Error("AI_IMAGE_MULTIPAGE_UNSUPPORTED");
+    await image.clone().raw().toBuffer();
+  } catch {
+    throw new Error("AI_IMAGE_DECODE_FAILED");
+  }
+
+  const decodedMime = decoded.format === "png"
+    ? "image/png"
+    : decoded.format === "jpeg"
+      ? "image/jpeg"
+      : decoded.format === "webp"
+        ? "image/webp"
+        : null;
+  if (decodedMime !== mimeType) throw new Error("AI_IMAGE_FORMAT_MISMATCH");
+  if (
+    !decoded.width
+    || !decoded.height
+    || decoded.width !== dimensions.width
+    || decoded.height !== dimensions.height
+    || decoded.width > 4096
+    || decoded.height > 4096
+    || decoded.width * decoded.height > AI_IMAGE_MAX_PIXELS
+  ) {
+    throw new Error("AI_IMAGE_INVALID_DIMENSIONS");
+  }
   return {
     bytes,
     mimeType,
     extension,
-    width: dimensions.width,
-    height: dimensions.height,
+    width: decoded.width,
+    height: decoded.height,
     sha256: createHash("sha256").update(bytes).digest("hex"),
   };
 }
@@ -154,7 +188,7 @@ export async function storeAiImage(input: {
   const scope = input.accessMode === "owner"
     ? "owner"
     : `visitor/${safeSegment(buildVisitorImageScope(input.visitorAccessId || ""), "visitor_scope")}`;
-  const validated = validateAiImageBytes(input.bytes);
+  const validated = await validateAiImageBytes(input.bytes);
   const id = randomUUID();
   const storageKey = `${scope}/${taskId}/${id}.${validated.extension}`;
   const finalPath = resolveAiImageStorageKey(storageKey);

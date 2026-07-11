@@ -34,6 +34,22 @@ describe("AI image request ledger", () => {
     expect(getAiImageRequest(hash)?.status).toBe("committed");
   });
 
+  it("keeps provider cost and failure stage immutable after a consumed failure", () => {
+    const hash = "c".repeat(64);
+    beginAiImageRequest({ requestHash: hash, idempotencyScopeHash: "d".repeat(64), taskId: "task-cost", accessMode: "owner" });
+    updateAiImageRequest({ requestHash: hash, status: "provider_called", providerStage: "provider_called" });
+    updateAiImageRequest({ requestHash: hash, status: "provider_result_received", providerStage: "provider_result_received", providerCostConsumed: true });
+    updateAiImageRequest({ requestHash: hash, status: "failed_after_provider_result", providerCostConsumed: true, failureStage: "asset_validation", errorCode: "image_provider_result_invalid_mime" });
+    expect(getAiImageRequest(hash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerStage: "provider_result_received",
+      providerCostConsumed: true,
+      failureStage: "asset_validation",
+    });
+    updateAiImageRequest({ requestHash: hash, status: "refunded", providerCostConsumed: false });
+    expect(getAiImageRequest(hash)?.status).toBe("failed_after_provider_result");
+  });
+
   it("fails closed when the durable ledger is corrupt", () => {
     writeFileSync(process.env.AI_IMAGE_DRAFT_LEDGER_PATH!, "not-json", "utf8");
     expect(() => beginAiImageRequest({ requestHash: "a".repeat(64), idempotencyScopeHash: "b".repeat(64), taskId: "task-1", accessMode: "owner" })).toThrow("AI_IMAGE_LEDGER_CORRUPT");

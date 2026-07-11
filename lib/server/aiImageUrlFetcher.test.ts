@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
 
 const mockDns = vi.hoisted(() => ({
   lookup: vi.fn(),
@@ -563,7 +564,7 @@ describe("downloadImageFromUrl", () => {
     }
   });
 
-  it("rejects a JPEG served as image/png (MIME mismatch with actual format)", async () => {
+  it("accepts a JPEG served as image/png and trusts the decoded format", async () => {
     // Minimal valid JPEG: SOI marker + APP0 + DQT + SOF0 + DHT + SOS + EOI
     const jpegBytes = Buffer.from([
       0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
@@ -590,13 +591,96 @@ describe("downloadImageFromUrl", () => {
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xd9,
     ]);
     await expect(
-      downloadImageFromUrl("https://image.65535.space/real.jpg", WHITELIST, mockFetchStreaming([jpegBytes], { "content-type": "image/png" })),
-    ).rejects.toThrowError(ImageUrlFetchError);
-    try {
-      await downloadImageFromUrl("https://image.65535.space/real.jpg", WHITELIST, mockFetchStreaming([jpegBytes], { "content-type": "image/png" }));
-    } catch (e) {
-      expect((e as ImageUrlFetchError).code).toBe("image_provider_result_invalid_mime");
-    }
+      downloadImageFromUrl("https://image.65535.space/claimed.webp", WHITELIST, mockFetchStreaming([jpegBytes], { "content-type": "image/png" })),
+    ).resolves.toMatchObject({ mimeType: "image/jpeg" });
+  });
+
+  it.each([
+    "image/webp",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "application/octet-stream",
+    "binary/octet-stream",
+    null,
+  ])("accepts actual WebP with auxiliary header %s", async (headerMime) => {
+    const png = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
+    const webp = await sharp(png).webp().toBuffer();
+    const headers = headerMime ? { "content-type": headerMime } : {};
+    const result = await downloadImageFromUrl(
+      "https://image.65535.space/result-without-extension",
+      WHITELIST,
+      mockFetchStreaming([webp], headers),
+    );
+    expect(result.mimeType).toBe("image/webp");
+  });
+
+  it.each([
+    ["image/webp", "png", "image/png"],
+    ["image/webp", "jpeg", "image/jpeg"],
+  ] as const)("stores actual %s content independently from a WebP header", async (headerMime, format, actualMime) => {
+    const png = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
+    const bytes = format === "png" ? png : await sharp(png).jpeg().toBuffer();
+    const result = await downloadImageFromUrl(
+      "https://image.65535.space/declared.webp",
+      WHITELIST,
+      mockFetchStreaming([bytes], { "content-type": headerMime }),
+    );
+    expect(result.mimeType).toBe(actualMime);
+  });
+
+  it.each([
+    "text/html",
+    "application/json",
+    "text/plain",
+    "image/svg+xml",
+    "application/xml",
+    "text/xml",
+    "application/javascript",
+    "multipart/form-data",
+  ])("rejects explicit non-raster response header %s", async (contentType) => {
+    await expect(downloadImageFromUrl(
+      "https://image.65535.space/result",
+      WHITELIST,
+      mockFetch(200, "not a raster image", { "content-type": contentType }),
+    )).rejects.toMatchObject({ code: "image_provider_result_invalid_mime" });
+  });
+
+  it("rejects valid magic bytes when the image cannot be fully decoded", async () => {
+    const truncatedPng = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64").subarray(0, 33);
+    await expect(downloadImageFromUrl(
+      "https://image.65535.space/truncated.png",
+      WHITELIST,
+      mockFetchStreaming([truncatedPng], { "content-type": "image/png" }),
+    )).rejects.toMatchObject({ code: "image_provider_result_invalid_image" });
+  });
+
+  it("logs only normalized MIME audit fields without URL, query, key, or prompt", async () => {
+    const logger = vi.fn();
+    const png = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
+    const download = downloadImageFromUrl as (...args: unknown[]) => Promise<unknown>;
+    await download(
+      "https://image.65535.space/private/result.webp?token=secret",
+      WHITELIST,
+      mockFetchStreaming([png], { "content-type": "image/webp" }),
+      { requestId: "req-safe", logger },
+    );
+    expect(logger).toHaveBeenCalledOnce();
+    const auditEvent = logger.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(Object.keys(auditEvent).sort()).toEqual([
+      "actualMime",
+      "elapsedMs",
+      "event",
+      "fileSize",
+      "headerMime",
+      "requestId",
+    ]);
+    const serialized = JSON.stringify(auditEvent);
+    expect(serialized).toContain("image_mime_normalized");
+    expect(serialized).toContain("image/webp");
+    expect(serialized).toContain("image/png");
+    expect(serialized).toContain("req-safe");
+    expect(serialized).not.toMatch(/65535|private|token|secret|prompt|api.?key|[A-Z]:\\\\/i);
   });
 
   it("rejects a redirect to a non-whitelisted domain", async () => {

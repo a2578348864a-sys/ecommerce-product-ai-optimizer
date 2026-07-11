@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -10,6 +10,7 @@ import { consumeDemoAiCalls, ensureDemoAiQuota } from "@/lib/server/demoGuard";
 import { setRealAiImageEnabledForTests } from "@/lib/server/realAiImageGate";
 import type { LoadedAiImageTask } from "@/lib/server/aiImageTaskAccess";
 import type { AiImageProvider } from "@/lib/server/openaiImageClient";
+import { AiImageProviderError } from "@/lib/server/openaiImageClient";
 import { createMockAiImageProvider } from "@/tests/helpers/mockAiImageProvider";
 
 let root = "";
@@ -80,6 +81,7 @@ describe("AI image draft service", () => {
     if (!first.ok) return;
     expect(first.data.items).toHaveLength(2);
     expect(first.data.snapshot.items).toHaveLength(2);
+    expect(first.data.items[0]).toMatchObject({ requestedFormat: "webp", actualFormat: "png", mimeType: "image/png" });
     expect(JSON.parse(loadedTask.task.resultJson).existingField).toBe("preserved");
     expect(JSON.stringify(first.data.snapshot)).not.toContain("base64");
     expect(providerCalls).toBe(1);
@@ -210,12 +212,138 @@ describe("AI image draft service", () => {
     ["invalid_base64", "image_storage_failed"],
     ["non_image", "image_storage_failed"],
     ["too_large", "image_storage_failed"],
-    ["count_mismatch", "image_response_invalid"],
-  ] as const)("rejects the %s mock response and refunds visitor quota", async (scenario, expectedCode) => {
+  ] as const)("rejects the %s provider result without refunding consumed quota", async (scenario, expectedCode) => {
     const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
-    const result = await generateAiImageDraft({ loadedTask: visitorTask(record.id), request: request(), provider: createMockAiImageProvider(scenario) });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    const result = await generateAiImageDraft({ loadedTask, request: generateRequest, provider: createMockAiImageProvider(scenario) });
     expect(result).toMatchObject({ ok: false, error: { code: expectedCode } });
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor",
+      accessScope: record.id,
+      taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey,
+      imageType: generateRequest.imageType,
+      count: generateRequest.count,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerCostConsumed: true,
+      failureStage: "asset_validation",
+    });
+  });
+
+  it("refunds a count mismatch when the provider returned no candidate result", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const result = await generateAiImageDraft({ loadedTask: visitorTask(record.id), request: request(), provider: createMockAiImageProvider("count_mismatch") });
+    expect(result).toMatchObject({ ok: false, error: { code: "image_response_invalid" } });
     expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+  });
+
+  it("charges once when the provider returns a partial candidate batch", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    let calls = 0;
+    const provider: AiImageProvider = async () => {
+      calls += 1;
+      return createMockAiImageProvider("success")({ imageType: "white_background_concept", count: 2, prompt: "safe" });
+    };
+    const result = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    expect(result).toMatchObject({ ok: false, error: { code: "image_response_invalid" } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor", accessScope: record.id, taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey, imageType: generateRequest.imageType, count: 1,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerCostConsumed: true,
+      failureStage: "provider_response",
+    });
+  });
+
+  it("charges once and records asset_storage when private storage I/O fails", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    const blockedRoot = join(root, "blocked-storage-file");
+    writeFileSync(blockedRoot, "not-a-directory", "utf8");
+    process.env.AI_IMAGE_DRAFT_STORAGE_ROOT = blockedRoot;
+    const result = await generateAiImageDraft({ loadedTask, request: generateRequest, provider: createMockAiImageProvider("success") });
+    expect(result).toMatchObject({ ok: false, error: { code: "image_storage_failed" } });
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor", accessScope: record.id, taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey, imageType: generateRequest.imageType, count: 1,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerCostConsumed: true,
+      failureStage: "asset_storage",
+    });
+  });
+
+  it.each([
+    ["image_provider_result_dns_rejected", "asset_download"],
+    ["image_provider_result_download_failed", "asset_download"],
+    ["image_provider_result_invalid_mime", "asset_validation"],
+  ] as const)("does not refund after a relay candidate fails with %s", async (providerCode, failureStage) => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    let calls = 0;
+    const provider: AiImageProvider = async () => {
+      calls += 1;
+      throw Object.assign(new AiImageProviderError(providerCode, "图片后处理失败。", false), {
+        providerCostConsumed: true,
+        failureStage,
+      });
+    };
+    const result = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    expect(result).toMatchObject({ ok: false, error: { code: providerCode } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor", accessScope: record.id, taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey, imageType: generateRequest.imageType, count: 1,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerCostConsumed: true,
+      failureStage,
+    });
+    const repeated = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    expect(repeated).toMatchObject({ ok: false, error: { code: "image_request_already_failed" } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+  });
+
+  it("persists consumed cost as soon as the provider reports a candidate", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    let calls = 0;
+    const provider: AiImageProvider = async (providerInput) => {
+      calls += 1;
+      providerInput.onResultReceived?.(1);
+      throw new AiImageProviderError("provider_error", "connection ended after result", false);
+    };
+    const result = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    expect(result).toMatchObject({ ok: false, error: { code: "image_provider_error" } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor", accessScope: record.id, taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey, imageType: generateRequest.imageType, count: 1,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerStage: "provider_result_received",
+      providerCostConsumed: true,
+    });
   });
 
   it("atomically precharges one shared visitor call under concurrent requests", async () => {
@@ -341,6 +469,25 @@ describe("AI image draft service", () => {
       ? readdirSync(imageRoot, { recursive: true }).filter((name) => String(name).endsWith(".png"))
       : [];
     expect(files).toHaveLength(0);
+  });
+
+  it("charges a visitor once when snapshot persistence fails after a provider result", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    loadedTask.persistResult = async () => { throw new Error("test persistence failure"); };
+    const result = await generateAiImageDraft({ loadedTask, request: generateRequest, provider: createMockAiImageProvider("success") });
+    expect(result).toMatchObject({ ok: false, error: { code: "image_snapshot_save_failed" } });
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor", accessScope: record.id, taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey, imageType: generateRequest.imageType, count: 1,
+    });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_after_provider_result",
+      providerCostConsumed: true,
+      failureStage: "snapshot_persistence",
+    });
   });
 
   it("refuses empty task context before provider access", async () => {

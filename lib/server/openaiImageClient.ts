@@ -17,6 +17,7 @@ export type AiImageProviderInput = {
   imageType: AiImageDraftType;
   count: 1 | 2;
   prompt: string;
+  onResultReceived?: (candidateCount: number) => void;
 };
 
 export type AiImageProviderOutput = {
@@ -24,7 +25,14 @@ export type AiImageProviderOutput = {
   provider: "openai_compatible_relay";
   requestId?: string;
   images: Array<{ base64: string }>;
+  requestedFormat?: "webp";
 };
+
+export type AiImageProviderFailureStage =
+  | "provider_call"
+  | "provider_response"
+  | "asset_download"
+  | "asset_validation";
 
 export type AiImageProvider = (input: AiImageProviderInput) => Promise<AiImageProviderOutput>;
 
@@ -50,6 +58,8 @@ export class AiImageProviderError extends Error {
       | "image_provider_result_invalid_image",
     message: string,
     public readonly retryable = false,
+    public readonly providerCostConsumed = false,
+    public readonly failureStage: AiImageProviderFailureStage = "provider_call",
   ) {
     super(message);
   }
@@ -133,10 +143,25 @@ export function validateImageModel(raw: string): string {
   return model;
 }
 
-function mapProviderError(error: unknown): AiImageProviderError {
+function assetFailureStage(code: ImageUrlFetchError["code"]): AiImageProviderFailureStage {
+  if ([
+    "image_provider_result_too_large",
+    "image_provider_result_invalid_mime",
+    "image_provider_result_invalid_image",
+  ].includes(code)) return "asset_validation";
+  return code === "image_provider_untrusted_result_url" ? "provider_response" : "asset_download";
+}
+
+function mapProviderError(error: unknown, providerResultReceived = false): AiImageProviderError {
   if (error instanceof AiImageProviderError) return error;
   if (error instanceof ImageUrlFetchError) {
-    return new AiImageProviderError(error.code, error.message, false);
+    return new AiImageProviderError(
+      error.code,
+      error.message,
+      false,
+      providerResultReceived,
+      assetFailureStage(error.code),
+    );
   }
   const status =
     typeof error === "object" && error !== null && "status" in error
@@ -193,8 +218,9 @@ function classifyImageResults(
 async function fetchRelayUrlAsBase64(
   url: string,
   whitelist: Set<string>,
+  requestId?: string,
 ): Promise<string> {
-  const result = await downloadImageFromUrl(url, whitelist);
+  const result = await downloadImageFromUrl(url, whitelist, undefined, { requestId });
   return result.bytes.toString("base64");
 }
 
@@ -243,6 +269,8 @@ export const generateOpenAiImage: AiImageProvider = async (input) => {
     );
   }
 
+  input.onResultReceived?.(classified.length);
+
   // Pre-validate URL items and download them.
   // All URL validation + download errors are mapped through mapProviderError
   // so they surface as AiImageProviderError to the service layer.
@@ -256,10 +284,10 @@ export const generateOpenAiImage: AiImageProvider = async (input) => {
         // Validate URL structure and hostname whitelist (no DNS, no fetch yet)
         validateImageResultUrl(item.url, resultHostWhitelist);
         // Secure download → DNS check → SSRF guard → validate bytes → convert to base64
-        const base64 = await fetchRelayUrlAsBase64(item.url, resultHostWhitelist);
+        const base64 = await fetchRelayUrlAsBase64(item.url, resultHostWhitelist, requestId);
         images.push({ base64 });
       } catch (error) {
-        throw mapProviderError(error);
+        throw mapProviderError(error, true);
       }
     }
   }
@@ -268,7 +296,7 @@ export const generateOpenAiImage: AiImageProvider = async (input) => {
     throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
   }
 
-  return { model, provider: "openai_compatible_relay", requestId, images };
+  return { model, provider: "openai_compatible_relay", requestId, images, requestedFormat: "webp" };
 };
 
 export function getAiImageProvider(): AiImageProvider {

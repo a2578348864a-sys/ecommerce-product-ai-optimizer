@@ -31,7 +31,7 @@ afterEach(() => {
 describe("private AI image storage", () => {
   it("validates content, stores an owner image atomically, and deletes by task", async () => {
     const bytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
-    expect(validateAiImageBytes(bytes)).toMatchObject({ mimeType: "image/png", width: 1, height: 1 });
+    await expect(validateAiImageBytes(bytes)).resolves.toMatchObject({ mimeType: "image/png", width: 1, height: 1 });
     const stored = await storeAiImage({ accessMode: "owner", taskId: "task-1", bytes });
     expect(stored.storageKey).toMatch(/^owner\/task-1\/[0-9a-f-]+\.png$/);
     expect(await readAiImage(stored.storageKey)).toEqual(bytes);
@@ -52,15 +52,15 @@ describe("private AI image storage", () => {
 
   it("rejects traversal, non-images, invalid dimensions, and oversized files", async () => {
     await expect(readAiImage("../outside.png")).rejects.toThrow("AI_IMAGE_INVALID_STORAGE_KEY");
-    expect(() => validateAiImageBytes(Buffer.from("not-image"))).toThrow("AI_IMAGE_UNSUPPORTED_CONTENT");
-    expect(() => validateAiImageBytes(Buffer.alloc(AI_IMAGE_MAX_FILE_BYTES + 1))).toThrow("AI_IMAGE_FILE_TOO_LARGE");
+    await expect(validateAiImageBytes(Buffer.from("not-image"))).rejects.toThrow("AI_IMAGE_UNSUPPORTED_CONTENT");
+    await expect(validateAiImageBytes(Buffer.alloc(AI_IMAGE_MAX_FILE_BYTES + 1))).rejects.toThrow("AI_IMAGE_FILE_TOO_LARGE");
     const badPng = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
     badPng.writeUInt32BE(0, 16);
-    expect(() => validateAiImageBytes(badPng)).toThrow("AI_IMAGE_INVALID_DIMENSIONS");
+    await expect(validateAiImageBytes(badPng)).rejects.toThrow("AI_IMAGE_INVALID_DIMENSIONS");
     const excessivePixels = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
     excessivePixels.writeUInt32BE(4096, 16);
     excessivePixels.writeUInt32BE(4096, 20);
-    expect(() => validateAiImageBytes(excessivePixels)).toThrow("AI_IMAGE_INVALID_DIMENSIONS");
+    await expect(validateAiImageBytes(excessivePixels)).rejects.toThrow("AI_IMAGE_INVALID_DIMENSIONS");
   });
 
   it("rejects oversized or non-canonical base64 before allocating an image buffer", () => {

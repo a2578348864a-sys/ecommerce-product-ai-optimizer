@@ -182,6 +182,7 @@ describe("OpenAI image client relay configuration", () => {
       model: "gpt-image-2",
       provider: "openai_compatible_relay",
       requestId: "req-2",
+      requestedFormat: "webp",
       images: [{ base64: "aW1hZ2U=" }],
     });
   });
@@ -456,6 +457,8 @@ describe("relay URL result handling", () => {
     expect(mockDownload).toHaveBeenCalledWith(
       "https://image.65535.space/result/img.png?token=sig",
       new Set(["image.65535.space"]),
+      undefined,
+      { requestId: "relay-req-1" },
     );
   });
 
@@ -533,10 +536,15 @@ describe("relay URL result handling", () => {
       ),
     );
 
-    const error = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" })
+    const onResultReceived = vi.fn();
+    const error = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe", onResultReceived })
       .catch((caught) => caught as AiImageProviderError);
     expect(error).toBeInstanceOf(AiImageProviderError);
     expect(error.code).toBe("image_provider_result_dns_rejected");
+    expect(error.providerCostConsumed).toBe(true);
+    expect(error.failureStage).toBe("asset_download");
+    expect(onResultReceived).toHaveBeenCalledOnce();
+    expect(onResultReceived).toHaveBeenCalledWith(1);
     expect(state.generate).toHaveBeenCalledTimes(1);
     expect(mockDownload).toHaveBeenCalledTimes(1);
   });
@@ -556,6 +564,8 @@ describe("relay URL result handling", () => {
       .catch((caught) => caught as AiImageProviderError);
     expect(error).toBeInstanceOf(AiImageProviderError);
     expect(error.code).toBe("image_provider_result_download_failed");
+    expect(error.providerCostConsumed).toBe(true);
+    expect(error.failureStage).toBe("asset_download");
     expect(state.generate).toHaveBeenCalledTimes(1);
     expect(mockDownload).toHaveBeenCalledTimes(1);
   });
