@@ -533,14 +533,12 @@ describe("relay URL result handling", () => {
       ),
     );
 
-    await expect(
-      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
-    ).rejects.toThrowError(AiImageProviderError);
-    try {
-      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
-    } catch (e) {
-      expect((e as AiImageProviderError).code).toBe("image_provider_result_dns_rejected");
-    }
+    const error = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" })
+      .catch((caught) => caught as AiImageProviderError);
+    expect(error).toBeInstanceOf(AiImageProviderError);
+    expect(error.code).toBe("image_provider_result_dns_rejected");
+    expect(state.generate).toHaveBeenCalledTimes(1);
+    expect(mockDownload).toHaveBeenCalledTimes(1);
   });
 
   it("rejects download returning 404 via mock", async () => {
@@ -554,14 +552,12 @@ describe("relay URL result handling", () => {
       ),
     );
 
-    await expect(
-      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
-    ).rejects.toThrowError(AiImageProviderError);
-    try {
-      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
-    } catch (e) {
-      expect((e as AiImageProviderError).code).toBe("image_provider_result_download_failed");
-    }
+    const error = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" })
+      .catch((caught) => caught as AiImageProviderError);
+    expect(error).toBeInstanceOf(AiImageProviderError);
+    expect(error.code).toBe("image_provider_result_download_failed");
+    expect(state.generate).toHaveBeenCalledTimes(1);
+    expect(mockDownload).toHaveBeenCalledTimes(1);
   });
 
   it("still accepts b64_json responses (backward compat)", async () => {

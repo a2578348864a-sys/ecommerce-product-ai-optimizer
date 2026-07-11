@@ -1,18 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockDns = vi.hoisted(() => ({
-  resolve4: vi.fn(),
-  resolve6: vi.fn(),
+  lookup: vi.fn(),
 }));
 
 vi.mock("node:dns/promises", () => ({
   default: mockDns,
-  resolve4: mockDns.resolve4,
-  resolve6: mockDns.resolve6,
+  lookup: mockDns.lookup,
 }));
 
 import {
   downloadImageFromUrl,
+  createPinnedHttpsRequestOptions,
   getImageResultHostWhitelist,
   ImageUrlFetchError,
   validateImageResultDns,
@@ -21,16 +20,18 @@ import {
 import { VALID_ONE_PIXEL_PNG_BASE64 } from "@/tests/helpers/mockAiImageProvider";
 
 const WHITELIST = new Set(["image.65535.space"]);
+type ResolvedAddress = { address: string; family: 4 | 6 };
+type PinnedRequest = (url: URL, address: ResolvedAddress, signal: AbortSignal) => Promise<Response>;
 
-function mockFetch(status: number, body: string | Uint8Array, headers: Record<string, string> = {}): typeof globalThis.fetch {
-  return (async (_url: string | URL | Request, _init?: RequestInit) => {
+function mockFetch(status: number, body: string | Uint8Array, headers: Record<string, string> = {}): PinnedRequest {
+  return async () => {
     const content = typeof body === "string" ? new TextEncoder().encode(body) : body;
     return new Response(content, { status, headers: new Headers(headers) });
-  }) as unknown as typeof globalThis.fetch;
+  };
 }
 
-function mockFetchStreaming(chunks: Uint8Array[], headers: Record<string, string> = {}): typeof globalThis.fetch {
-  return (async (_url: string | URL | Request, _init?: RequestInit) => {
+function mockFetchStreaming(chunks: Uint8Array[], headers: Record<string, string> = {}): PinnedRequest {
+  return async () => {
     let closed = false;
     const body = new ReadableStream({
       pull(controller) {
@@ -43,12 +44,12 @@ function mockFetchStreaming(chunks: Uint8Array[], headers: Record<string, string
       },
     });
     return new Response(body, { status: 200, headers: new Headers(headers) });
-  }) as unknown as typeof globalThis.fetch;
+  };
 }
 
-function mockFetchRedirect(location: string, redirectCount = 0): typeof globalThis.fetch {
+function mockFetchRedirect(location: string, redirectCount = 0): PinnedRequest {
   let calls = 0;
-  return (async (_url: string | URL | Request, _init?: RequestInit) => {
+  return async () => {
     calls += 1;
     if (calls <= redirectCount + 1 && calls === 1) {
       return new Response(null, { status: 302, headers: new Headers({ location }) });
@@ -56,19 +57,22 @@ function mockFetchRedirect(location: string, redirectCount = 0): typeof globalTh
     // Return a valid 1-pixel PNG after redirect
     const pngBytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
     return new Response(pngBytes, { status: 200, headers: new Headers({ "content-type": "image/png" }) });
-  }) as unknown as typeof globalThis.fetch;
+  };
 }
 
-function validPngResponse(): typeof globalThis.fetch {
+function validPngResponse(): PinnedRequest {
   const pngBytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
   return mockFetchStreaming([pngBytes], { "content-type": "image/png", "content-length": String(pngBytes.length) });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockDns.lookup.mockReset();
   process.env.OPENAI_IMAGE_RESULT_HOSTS = "image.65535.space";
-  mockDns.resolve4.mockResolvedValue(["104.26.15.58"]);
-  mockDns.resolve6.mockResolvedValue(["2606:4700:20::681a:f3a"]);
+  mockDns.lookup.mockResolvedValue([
+    { address: "104.26.15.58", family: 4 },
+    { address: "2606:4700:20::681a:f3a", family: 6 },
+  ]);
 });
 
 afterEach(() => {
@@ -210,30 +214,52 @@ describe("validateImageResultUrl", () => {
 
 describe("validateImageResultDns", () => {
   it("resolves a hostname with public IPv4 and IPv6 addresses", async () => {
-    mockDns.resolve4.mockResolvedValue(["104.26.15.58"]);
-    mockDns.resolve6.mockResolvedValue(["2606:4700:20::681a:f3a"]);
-    await expect(validateImageResultDns("image.65535.space")).resolves.toBeUndefined();
+    mockDns.lookup.mockResolvedValue([
+      { address: "104.26.15.58", family: 4 },
+      { address: "2606:4700:20::681a:f3a", family: 6 },
+    ]);
+    await expect(validateImageResultDns("image.65535.space")).resolves.toEqual([
+      { address: "104.26.15.58", family: 4 },
+      { address: "2606:4700:20::681a:f3a", family: 6 },
+    ]);
+    expect(mockDns.lookup).toHaveBeenCalledWith("image.65535.space", { all: true, verbatim: true });
   });
 
-  it("resolves with only IPv4", async () => {
-    mockDns.resolve4.mockResolvedValue(["104.26.15.58"]);
-    mockDns.resolve6.mockRejectedValue(new Error("ENODATA"));
-    await expect(validateImageResultDns("image.65535.space")).resolves.toBeUndefined();
+  it("resolves a single public IPv4 address", async () => {
+    mockDns.lookup.mockResolvedValue([{ address: "104.26.15.58", family: 4 }]);
+    await expect(validateImageResultDns("image.65535.space")).resolves.toEqual([
+      { address: "104.26.15.58", family: 4 },
+    ]);
+  });
+
+  it("accepts the public 172.67 IPv4 range used by the relay hostname", async () => {
+    mockDns.lookup.mockResolvedValue([{ address: "172.67.70.1", family: 4 }]);
+    await expect(validateImageResultDns("image.65535.space")).resolves.toEqual([
+      { address: "172.67.70.1", family: 4 },
+    ]);
   });
 
   it("resolves with only IPv6", async () => {
-    mockDns.resolve4.mockRejectedValue(new Error("ENODATA"));
-    mockDns.resolve6.mockResolvedValue(["2606:4700:20::681a:f3a"]);
-    await expect(validateImageResultDns("image.65535.space")).resolves.toBeUndefined();
+    mockDns.lookup.mockResolvedValue([{ address: "2606:4700:20::681a:f3a", family: 6 }]);
+    await expect(validateImageResultDns("image.65535.space")).resolves.toEqual([
+      { address: "2606:4700:20::681a:f3a", family: 6 },
+    ]);
   });
 
   it("rejects when DNS resolution returns no addresses", async () => {
-    mockDns.resolve4.mockRejectedValue(new Error("ENOTFOUND"));
-    mockDns.resolve6.mockRejectedValue(new Error("ENOTFOUND"));
+    mockDns.lookup.mockResolvedValue([]);
     await expect(validateImageResultDns("image.65535.space")).rejects.toThrowError(ImageUrlFetchError);
     try { await validateImageResultDns("image.65535.space"); } catch (e) {
       expect((e as ImageUrlFetchError).code).toBe("image_provider_result_dns_rejected");
     }
+  });
+
+  it.each(["ECONNREFUSED", "ENOTFOUND"])("rejects lookup %s without leaking resolver details", async (code) => {
+    mockDns.lookup.mockRejectedValue(Object.assign(new Error("resolver detail"), { code }));
+    await expect(validateImageResultDns("image.65535.space")).rejects.toMatchObject({
+      code: "image_provider_result_dns_rejected",
+      message: "图片结果域名 DNS 解析失败。",
+    });
   });
 
   it.each([
@@ -256,8 +282,7 @@ describe("validateImageResultDns", () => {
     ["0.0.0.0", "this network"],
     ["0.255.255.255", "0/8"],
   ])("rejects IPv4 %s (%s)", async (addr) => {
-    mockDns.resolve4.mockResolvedValue([addr]);
-    mockDns.resolve6.mockRejectedValue(new Error("ENODATA"));
+    mockDns.lookup.mockResolvedValue([{ address: addr, family: 4 }]);
     await expect(validateImageResultDns("bad.example")).rejects.toThrowError(ImageUrlFetchError);
     try { await validateImageResultDns("bad.example"); } catch (e) {
       expect((e as ImageUrlFetchError).code).toBe("image_provider_result_dns_rejected");
@@ -274,8 +299,7 @@ describe("validateImageResultDns", () => {
     ["fc00::1", "IPv6 ULA"],
     ["fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "IPv6 ULA edge"],
   ])("rejects IPv6 %s (%s)", async (addr) => {
-    mockDns.resolve4.mockRejectedValue(new Error("ENODATA"));
-    mockDns.resolve6.mockResolvedValue([addr]);
+    mockDns.lookup.mockResolvedValue([{ address: addr, family: 6 }]);
     await expect(validateImageResultDns("bad.example")).rejects.toThrowError(ImageUrlFetchError);
     try { await validateImageResultDns("bad.example"); } catch (e) {
       expect((e as ImageUrlFetchError).code).toBe("image_provider_result_dns_rejected");
@@ -283,8 +307,11 @@ describe("validateImageResultDns", () => {
   });
 
   it("rejects DNS with multiple addresses where one is private", async () => {
-    mockDns.resolve4.mockResolvedValue(["104.26.15.58", "10.0.0.1"]);
-    mockDns.resolve6.mockResolvedValue(["2606:4700:20::681a:f3a"]);
+    mockDns.lookup.mockResolvedValue([
+      { address: "104.26.15.58", family: 4 },
+      { address: "10.0.0.1", family: 4 },
+      { address: "2606:4700:20::681a:f3a", family: 6 },
+    ]);
     await expect(validateImageResultDns("bad.example")).rejects.toThrowError(ImageUrlFetchError);
     try { await validateImageResultDns("bad.example"); } catch (e) {
       expect((e as ImageUrlFetchError).code).toBe("image_provider_result_dns_rejected");
@@ -292,21 +319,130 @@ describe("validateImageResultDns", () => {
   });
 
   it("rejects DNS with public IPv4 but private IPv6", async () => {
-    mockDns.resolve4.mockResolvedValue(["104.26.15.58"]);
-    mockDns.resolve6.mockResolvedValue(["::1"]);
+    mockDns.lookup.mockResolvedValue([
+      { address: "104.26.15.58", family: 4 },
+      { address: "::1", family: 6 },
+    ]);
     await expect(validateImageResultDns("bad.example")).rejects.toThrowError(ImageUrlFetchError);
   });
 
   it("rejects DNS with public IPv6 but private IPv4", async () => {
-    mockDns.resolve4.mockResolvedValue(["192.168.0.1"]);
-    mockDns.resolve6.mockResolvedValue(["2606:4700:20::681a:f3a"]);
+    mockDns.lookup.mockResolvedValue([
+      { address: "192.168.0.1", family: 4 },
+      { address: "2606:4700:20::681a:f3a", family: 6 },
+    ]);
     await expect(validateImageResultDns("bad.example")).rejects.toThrowError(ImageUrlFetchError);
   });
 });
 
 /* ── download ──────────────────────────────────────────── */
 
+describe("pinned HTTPS request options", () => {
+  it("keeps the original hostname for SNI and Host while returning only the validated IP", async () => {
+    const address: ResolvedAddress = { address: "104.26.15.58", family: 4 };
+    const options = createPinnedHttpsRequestOptions(
+      new URL("https://image.65535.space/result.png?token=redacted"),
+      address,
+    );
+
+    expect(options.hostname).toBe("image.65535.space");
+    expect(options.servername).toBe("image.65535.space");
+    expect(options.rejectUnauthorized).toBe(true);
+    expect(options.headers).toEqual({ Host: "image.65535.space" });
+    expect(options.path).toBe("/result.png?token=redacted");
+
+    const lookup = options.lookup as NonNullable<typeof options.lookup>;
+    const resolved = await new Promise<{ address: string; family: number }>((resolve, reject) => {
+      lookup("image.65535.space", { all: false }, ((error: Error | null, selected: string, family: number) => {
+        if (error) reject(error);
+        else resolve({ address: selected, family });
+      }) as never);
+    });
+    expect(resolved).toEqual(address);
+  });
+});
+
 describe("downloadImageFromUrl", () => {
+  it("uses the validated public IP for the actual download and resolves only once", async () => {
+    mockDns.lookup.mockResolvedValue([{ address: "104.26.15.58", family: 4 }]);
+    const request = vi.fn<PinnedRequest>(async (_url, address, signal) => {
+      expect(address).toEqual({ address: "104.26.15.58", family: 4 });
+      return validPngResponse()(_url, address, signal);
+    });
+
+    await expect(downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, request)).resolves.toMatchObject({
+      mimeType: "image/png",
+    });
+    expect(mockDns.lookup).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails over only across the validated address list", async () => {
+    const validated = [
+      { address: "104.26.15.58", family: 4 as const },
+      { address: "172.67.70.1", family: 4 as const },
+    ];
+    mockDns.lookup.mockResolvedValue(validated);
+    const attempted: ResolvedAddress[] = [];
+    const request: PinnedRequest = async (url, address, signal) => {
+      attempted.push(address);
+      if (attempted.length === 1) throw Object.assign(new Error("connect failed"), { code: "ECONNREFUSED" });
+      return validPngResponse()(url, address, signal);
+    };
+
+    await expect(downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, request)).resolves.toBeDefined();
+    expect(attempted).toEqual(validated);
+  });
+
+  it("does not switch to an address that was not returned by the validated lookup", async () => {
+    mockDns.lookup.mockResolvedValue([{ address: "104.26.15.58", family: 4 }]);
+    const attempted: ResolvedAddress[] = [];
+    const request: PinnedRequest = async (_url, address) => {
+      attempted.push(address);
+      throw new Error("connect failed");
+    };
+
+    await expect(downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, request)).rejects.toMatchObject({
+      code: "image_provider_result_download_failed",
+    });
+    expect(attempted).toEqual([{ address: "104.26.15.58", family: 4 }]);
+  });
+
+  it("does not perform a second DNS lookup after validation (DNS rebinding simulation)", async () => {
+    mockDns.lookup
+      .mockResolvedValueOnce([{ address: "104.26.15.58", family: 4 }])
+      .mockResolvedValueOnce([{ address: "127.0.0.1", family: 4 }]);
+    const request = vi.fn<PinnedRequest>(async (url, address, signal) => validPngResponse()(url, address, signal));
+
+    await expect(downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, request)).resolves.toBeDefined();
+    expect(mockDns.lookup).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]?.[1]).toEqual({ address: "104.26.15.58", family: 4 });
+  });
+
+  it("revalidates and pins the redirect target before the second connection", async () => {
+    mockDns.lookup
+      .mockResolvedValueOnce([{ address: "104.26.15.58", family: 4 }])
+      .mockResolvedValueOnce([{ address: "172.67.70.1", family: 4 }]);
+    const attempted: ResolvedAddress[] = [];
+    const request: PinnedRequest = async (url, address, signal) => {
+      attempted.push(address);
+      if (attempted.length === 1) {
+        return new Response(null, {
+          status: 302,
+          headers: new Headers({ location: "https://image.65535.space/final.png" }),
+        });
+      }
+      return validPngResponse()(url, address, signal);
+    };
+
+    await expect(downloadImageFromUrl("https://image.65535.space/redirect", WHITELIST, request)).resolves.toBeDefined();
+    expect(mockDns.lookup).toHaveBeenCalledTimes(2);
+    expect(attempted).toEqual([
+      { address: "104.26.15.58", family: 4 },
+      { address: "172.67.70.1", family: 4 },
+    ]);
+  });
+
   it("downloads a valid PNG image from a whitelisted hostname", async () => {
     const result = await downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, validPngResponse());
     expect(result.mimeType).toBe("image/png");
@@ -332,8 +468,7 @@ describe("downloadImageFromUrl", () => {
   });
 
   it("rejects a DNS resolution to localhost", async () => {
-    mockDns.resolve4.mockResolvedValue(["127.0.0.1"]);
-    mockDns.resolve6.mockRejectedValue(new Error("ENODATA"));
+    mockDns.lookup.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
     await expect(
       downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, mockFetch(200, "")),
     ).rejects.toThrowError(ImageUrlFetchError);
@@ -345,8 +480,7 @@ describe("downloadImageFromUrl", () => {
   });
 
   it("rejects a DNS resolution to private IPv4", async () => {
-    mockDns.resolve4.mockResolvedValue(["10.0.0.1"]);
-    mockDns.resolve6.mockRejectedValue(new Error("ENODATA"));
+    mockDns.lookup.mockResolvedValue([{ address: "10.0.0.1", family: 4 }]);
     await expect(
       downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, mockFetch(200, "")),
     ).rejects.toThrowError(ImageUrlFetchError);
@@ -466,9 +600,9 @@ describe("downloadImageFromUrl", () => {
   });
 
   it("rejects a redirect to a non-whitelisted domain", async () => {
-    const fetch302ToEvil = (async (_url: string | URL | Request, _init?: RequestInit) => {
+    const fetch302ToEvil: PinnedRequest = async () => {
       return new Response(null, { status: 302, headers: new Headers({ location: "https://cdn.evil.com/real.png" }) });
-    }) as unknown as typeof globalThis.fetch;
+    };
     await expect(
       downloadImageFromUrl("https://image.65535.space/redirect", WHITELIST, fetch302ToEvil),
     ).rejects.toThrowError(ImageUrlFetchError);
@@ -476,7 +610,7 @@ describe("downloadImageFromUrl", () => {
 
   it("rejects more than one redirect", async () => {
     let callCount = 0;
-    const doubleRedirect = (async (_url: string | URL | Request, _init?: RequestInit) => {
+    const doubleRedirect: PinnedRequest = async () => {
       callCount += 1;
       if (callCount === 1) {
         return new Response(null, { status: 302, headers: new Headers({ location: "https://image.65535.space/step2" }) });
@@ -486,7 +620,7 @@ describe("downloadImageFromUrl", () => {
       }
       const pngBytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
       return new Response(pngBytes, { status: 200, headers: new Headers({ "content-type": "image/png" }) });
-    }) as unknown as typeof globalThis.fetch;
+    };
     await expect(
       downloadImageFromUrl("https://image.65535.space/step1", WHITELIST, doubleRedirect),
     ).rejects.toThrowError(ImageUrlFetchError);
@@ -500,21 +634,21 @@ describe("downloadImageFromUrl", () => {
   it("follows a single redirect within the same whitelisted domain", async () => {
     const pngBytes = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
     let firstCall = true;
-    const singleRedirect = (async (_url: string | URL | Request, _init?: RequestInit) => {
+    const singleRedirect: PinnedRequest = async () => {
       if (firstCall) {
         firstCall = false;
         return new Response(null, { status: 302, headers: new Headers({ location: "https://image.65535.space/real.png?token=sig" }) });
       }
       return new Response(pngBytes, { status: 200, headers: new Headers({ "content-type": "image/png" }) });
-    }) as unknown as typeof globalThis.fetch;
+    };
     const result = await downloadImageFromUrl("https://image.65535.space/redirect", WHITELIST, singleRedirect);
     expect(result.mimeType).toBe("image/png");
   });
 
   it("rejects a redirect to an HTTP URL", async () => {
-    const redirectToHttp = (async (_url: string | URL | Request, _init?: RequestInit) => {
+    const redirectToHttp: PinnedRequest = async () => {
       return new Response(null, { status: 302, headers: new Headers({ location: "http://image.65535.space/real.png" }) });
-    }) as unknown as typeof globalThis.fetch;
+    };
     await expect(
       downloadImageFromUrl("https://image.65535.space/redirect", WHITELIST, redirectToHttp),
     ).rejects.toThrowError(ImageUrlFetchError);
@@ -566,14 +700,27 @@ describe("error message safety", () => {
   });
 
   it("does not leak hostname in DNS rejected error messages", async () => {
-    mockDns.resolve4.mockResolvedValue(["127.0.0.1"]);
-    mockDns.resolve6.mockRejectedValue(new Error("ENODATA"));
+    mockDns.lookup.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
     try {
       await validateImageResultDns("secret.internal");
     } catch (e) {
       const msg = (e as ImageUrlFetchError).message;
       expect(msg).not.toContain("secret.internal");
       expect(msg).not.toContain("127.0.0.1");
+    }
+  });
+
+  it("does not leak a URL, query, validated IP, key, or prompt from connection errors", async () => {
+    mockDns.lookup.mockResolvedValue([{ address: "104.26.15.58", family: 4 }]);
+    const request: PinnedRequest = async () => {
+      throw new Error("https://image.65535.space/private.png?token=secret 104.26.15.58 api-key prompt-text");
+    };
+    try {
+      await downloadImageFromUrl("https://image.65535.space/private.png?token=secret", WHITELIST, request);
+    } catch (error) {
+      const message = (error as ImageUrlFetchError).message;
+      expect(message).toBe("图片下载失败。");
+      expect(message).not.toMatch(/https:|token|104\.26|api-key|prompt-text/i);
     }
   });
 
@@ -584,8 +731,7 @@ describe("error message safety", () => {
       expect((e as ImageUrlFetchError).message).toMatch(/[一-鿿]/);
     }
 
-    mockDns.resolve4.mockResolvedValue(["127.0.0.1"]);
-    mockDns.resolve6.mockRejectedValue(new Error("ENODATA"));
+    mockDns.lookup.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
     try {
       await downloadImageFromUrl("https://image.65535.space/img.png", WHITELIST, mockFetch(200, ""));
     } catch (e) {

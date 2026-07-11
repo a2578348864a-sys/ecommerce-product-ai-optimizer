@@ -1,6 +1,9 @@
 import "server-only";
 
 import dns from "node:dns/promises";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { isIP } from "node:net";
+import { Readable } from "node:stream";
 import { validateAiImageBytes } from "@/lib/server/aiImageDraftStorage";
 
 export const AI_IMAGE_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024; // 10 MiB
@@ -29,6 +32,17 @@ export type ImageUrlFetchResult = {
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   sha256: string;
 };
+
+export type ValidatedImageAddress = {
+  address: string;
+  family: 4 | 6;
+};
+
+export type PinnedImageRequest = (
+  url: URL,
+  address: ValidatedImageAddress,
+  signal: AbortSignal,
+) => Promise<Response>;
 
 /* ── hostname whitelist ─────────────────────────────────── */
 
@@ -191,25 +205,25 @@ function isPublicIPv6(addr: string): boolean {
   if (/^fe[89ab]/i.test(normalized)) return false;
   // fc00::/7 — unique local (ULA)
   if (/^f[c-d]/i.test(normalized)) return false;
+  // IPv4-mapped IPv6 can otherwise hide a private or loopback IPv4 address.
+  if (normalized.startsWith("::ffff:")) return false;
   return true;
 }
 
-export async function validateImageResultDns(hostname: string): Promise<void> {
-  // resolve hostname to verify it points to public IPs only
-  const [v4, v6] = await Promise.allSettled([
-    dns.resolve4(hostname),
-    dns.resolve6(hostname),
-  ]);
-
-  const addresses: string[] = [];
-
-  if (v4.status === "fulfilled") {
-    addresses.push(...v4.value);
-  }
-  if (v6.status === "fulfilled") {
-    addresses.push(...v6.value);
+export async function validateImageResultDns(hostname: string): Promise<ValidatedImageAddress[]> {
+  let resolved: Array<{ address: string; family: number }>;
+  try {
+    resolved = await dns.lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    throw new ImageUrlFetchError(
+      "image_provider_result_dns_rejected",
+      "图片结果域名 DNS 解析失败。",
+    );
   }
 
+  const addresses = [...new Map(
+    resolved.map((entry) => [`${entry.family}:${entry.address}`, entry]),
+  ).values()];
   if (addresses.length === 0) {
     throw new ImageUrlFetchError(
       "image_provider_result_dns_rejected",
@@ -217,24 +231,97 @@ export async function validateImageResultDns(hostname: string): Promise<void> {
     );
   }
 
-  for (const addr of addresses) {
-    const isV6 = addr.includes(":");
-    if (isV6) {
-      if (!isPublicIPv6(addr)) {
-        throw new ImageUrlFetchError(
-          "image_provider_result_dns_rejected",
-          "图片结果域名解析到非公网地址。",
-        );
-      }
-    } else {
-      if (!isPublicIPv4(addr)) {
-        throw new ImageUrlFetchError(
-          "image_provider_result_dns_rejected",
-          "图片结果域名解析到非公网地址。",
-        );
-      }
+  for (const entry of addresses) {
+    const family = entry.family === 6 ? 6 : entry.family === 4 ? 4 : 0;
+    const actualFamily = isIP(entry.address);
+    const isPublic = family === 4
+      ? actualFamily === 4 && isPublicIPv4(entry.address)
+      : family === 6 && actualFamily === 6 && isPublicIPv6(entry.address);
+    if (!isPublic) {
+      throw new ImageUrlFetchError(
+        "image_provider_result_dns_rejected",
+        "图片结果域名解析到非公网地址。",
+      );
     }
   }
+
+  return addresses.map((entry) => ({
+    address: entry.address,
+    family: entry.family as 4 | 6,
+  }));
+}
+
+export function createPinnedHttpsRequestOptions(
+  url: URL,
+  address: ValidatedImageAddress,
+): RequestOptions {
+  return {
+    protocol: "https:",
+    hostname: url.hostname,
+    port: 443,
+    method: "GET",
+    path: `${url.pathname}${url.search}`,
+    servername: url.hostname,
+    rejectUnauthorized: true,
+    family: address.family,
+    headers: { Host: url.hostname },
+    lookup: (_hostname, options, callback) => {
+      if (typeof options === "object" && options.all) {
+        (callback as (error: NodeJS.ErrnoException | null, addresses: ValidatedImageAddress[]) => void)(null, [address]);
+        return;
+      }
+      (callback as (error: NodeJS.ErrnoException | null, selectedAddress: string, family: number) => void)(
+        null,
+        address.address,
+        address.family,
+      );
+    },
+  };
+}
+
+export async function requestPinnedHttpsResponse(
+  url: URL,
+  address: ValidatedImageAddress,
+  signal: AbortSignal,
+): Promise<Response> {
+  return new Promise<Response>((resolve, reject) => {
+    let responseStream: import("node:http").IncomingMessage | null = null;
+    const abortError = () => new DOMException("The operation was aborted.", "AbortError");
+    const request = httpsRequest(createPinnedHttpsRequestOptions(url, address), (incoming) => {
+      responseStream = incoming;
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(incoming.headers)) {
+        if (Array.isArray(value)) {
+          for (const item of value) headers.append(name, item);
+        } else if (value !== undefined) {
+          headers.set(name, String(value));
+        }
+      }
+      const body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
+      resolve(new Response(body, {
+        status: incoming.statusCode || 502,
+        statusText: incoming.statusMessage,
+        headers,
+      }));
+    });
+
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      const error = abortError();
+      responseStream?.destroy(error);
+      request.destroy(error);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    request.once("error", (error) => {
+      cleanup();
+      reject(error);
+    });
+    request.once("close", () => {
+      if (!responseStream || responseStream.complete) cleanup();
+    });
+    if (signal.aborted) onAbort();
+    else request.end();
+  });
 }
 
 /* ── supported MIME ───────────────────────────────────── */
@@ -248,33 +335,46 @@ function isSupportedContentType(header: string | null): boolean {
 }
 
 /* ── download ──────────────────────────────────────────── */
-/* fetchFn is injectable for testing only; defaults to global fetch. */
+
+async function requestFromValidatedAddresses(
+  url: URL,
+  addresses: ValidatedImageAddress[],
+  signal: AbortSignal,
+  requestFn: PinnedImageRequest,
+): Promise<Response> {
+  let lastError: unknown;
+  for (const address of addresses) {
+    try {
+      return await requestFn(url, address, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("PINNED_IMAGE_CONNECTION_FAILED");
+}
 
 export async function downloadImageFromUrl(
   rawUrl: string,
   whitelist: Set<string>,
-  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+  requestFn: PinnedImageRequest = requestPinnedHttpsResponse,
 ): Promise<ImageUrlFetchResult> {
   let currentUrl = rawUrl;
   let redirects = 0;
 
   for (;;) {
     const parsed = validateImageResultUrl(currentUrl, whitelist);
-    await validateImageResultDns(parsed.hostname);
+    const addresses = await validateImageResultDns(parsed.hostname);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AI_IMAGE_DOWNLOAD_TIMEOUT_MS);
 
     let response: Response;
     try {
-      response = await fetchFn(currentUrl, {
-        signal: controller.signal,
-        redirect: "manual",
-        // do NOT send Authorization, Cookie, Referer, or API Key
-      });
+      response = await requestFromValidatedAddresses(parsed, addresses, controller.signal, requestFn);
     } catch (error) {
       clearTimeout(timer);
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
         throw new ImageUrlFetchError(
           "image_provider_result_timeout",
           "图片下载超时。",
