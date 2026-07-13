@@ -201,7 +201,7 @@ describe("Decision-Consistency.1 — AI text self-trigger prevention", () => {
   it("AI text '本产品不是儿童用品' does NOT trigger children_product", () => {
     const result = generateRiskPrecheck({
       productName: "桌面手机支架",
-      summaryResult: { decisionReason: "本产品不是儿童用品，无需CPC认证" },
+      finalReport: { decisionReason: "本产品不是儿童用品，无需CPC认证" },
     });
     const children = result.allItems.find((i) => i.key === "children_product")!;
     expect(children.precheckLevel).toBe("not_triggered");

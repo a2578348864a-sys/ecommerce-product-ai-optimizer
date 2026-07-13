@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
-import { createSandboxTask, sandboxTaskToDetail } from "@/lib/server/demoSandbox";
+import {
+  createSandboxTask,
+  createSandboxTaskAndLinkCandidate,
+  SandboxCandidateTaskLinkError,
+} from "@/lib/server/demoSandbox";
+import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 import { normalizeProfitSnapshot } from "@/lib/profitSnapshot";
@@ -10,6 +15,33 @@ import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { buildDecisionEvidenceSnapshot, normalizeHumanDecision } from "@/lib/decisionEvidence";
 import { isDecisionStatus, normalizeDecisionStatus } from "@/lib/tasks/decisionStatus";
 import { buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
+import {
+  getAuthoritativeCandidate,
+  type AuthoritativeCandidate,
+} from "@/lib/server/candidateAuthority";
+import {
+  buildWorkflowRunSubject,
+  createWorkflowInputHash,
+  createWorkflowResultHash,
+  normalizeWorkflowRunInput,
+  verifyWorkflowRunProof,
+  type WorkflowRunInput,
+  type WorkflowRunStatus,
+} from "@/lib/server/workflowRunProof";
+import {
+  buildCandidateAnalysisContext,
+  createCandidateAnalysisBindingHash,
+  type CandidateAnalysisContextV1,
+} from "@/lib/server/candidateAnalysisContext";
+import {
+  evaluateR22StoredCandidateStage2Gate,
+  parseR22CommercialRunSnapshot,
+  type R22CommercialRunSnapshot,
+} from "@/lib/r22CommercialValidation";
+import {
+  parseR22MarketDecisionFromAnalysisJson,
+  type R22MarketDecisionSnapshot,
+} from "@/lib/r22DecisionModel";
 
 export const runtime = "nodejs";
 
@@ -106,6 +138,22 @@ type SourceMeta = {
   originalName?: string;
   analyzedName?: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot;
+  r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot;
+  candidateSnapshot?: {
+    version: 1;
+    id: string;
+    name: string;
+    rawInput: string;
+    status: string;
+    source: string;
+    score: number;
+    link: string | null;
+    keyword: string;
+    riskLevel: string;
+    riskLabel: string;
+    summaryLabel: string;
+    capturedAt: string;
+  };
 };
 
 /**
@@ -220,6 +268,100 @@ function parseSourceMeta(raw: unknown, fallbackTitle: string): SourceMeta | null
   };
 }
 
+type CandidateConversionErrorCode =
+  | "candidate_not_found"
+  | "candidate_not_ready_for_conversion"
+  | "candidate_already_converted"
+  | "candidate_conversion_conflict"
+  | "candidate_changed_since_analysis"
+  | "candidate_context_changed_since_analysis"
+  | "candidate_r22_stage2_blocked";
+
+class CandidateConversionError extends Error {
+  constructor(
+    public readonly code: CandidateConversionErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CandidateConversionError";
+  }
+}
+
+function candidateConversionStatus(code: CandidateConversionErrorCode): number {
+  return code === "candidate_not_found" ? 404 : 409;
+}
+
+function parseStoredCandidateMeta(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildAuthoritativeSourceMeta(candidate: AuthoritativeCandidate, capturedAt: string): SourceMeta {
+  const storedMeta = parseStoredCandidateMeta(candidate.sourceMetaJson);
+  const evidenceSnapshot = parseCandidateEvidenceSnapshot(storedMeta.evidenceSnapshot);
+  const candidateType = asString(storedMeta.candidateType).slice(0, 40);
+  const sourceUrl = sanitizeCandidateSourceUrl(candidate.link);
+  const r22MarketDecisionSnapshot = parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
+
+  return {
+    source: "opportunity",
+    from: "opportunity",
+    entry: "candidate_to_agent_run",
+    opportunityTitle: candidate.name,
+    opportunitySource: candidate.source,
+    opportunityScore: Math.min(100, Math.max(0, Math.round(candidate.score))),
+    keyword: candidate.keyword,
+    importedAt: capturedAt,
+    candidateId: candidate.id,
+    sourceTitle: candidate.summaryLabel || candidate.name,
+    originalName: candidate.rawInput,
+    analyzedName: candidate.name,
+    ...(sourceUrl ? { sourceUrl } : {}),
+    ...(candidateType ? { candidateType } : {}),
+    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
+    ...(r22MarketDecisionSnapshot ? { r22MarketDecisionSnapshot } : {}),
+    candidateSnapshot: {
+      version: 1,
+      id: candidate.id,
+      name: candidate.name,
+      rawInput: candidate.rawInput,
+      status: candidate.status,
+      source: candidate.source,
+      score: Math.min(100, Math.max(0, Math.round(candidate.score))),
+      link: sourceUrl,
+      keyword: candidate.keyword,
+      riskLevel: candidate.riskLevel,
+      riskLabel: candidate.riskLabel,
+      summaryLabel: candidate.summaryLabel,
+      capturedAt,
+    },
+  };
+}
+
+function normalizeComparableProductName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function sanitizeCandidateSourceUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    for (const key of Array.from(url.searchParams.keys())) {
+      const normalized = key.toLowerCase();
+      if (["token", "key", "secret", "password", "cookie", "session"].some((item) => normalized.includes(item))) {
+        url.searchParams.set(key, "[redacted]");
+      }
+    }
+    return url.toString().slice(0, 500);
+  } catch {
+    return value.slice(0, 500);
+  }
+}
+
 /* ── POST handler ──────────────────────────────── */
 
 export async function POST(request: NextRequest) {
@@ -263,14 +405,172 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ ok: false, error: { code: "missing_product_name", message: "工作流结果缺少商品名，无法保存。" } }, 400);
   }
 
+  const runProof = asString(body.runProof);
+  if (!runProof) {
+    return jsonResponse({ ok: false, error: { code: "missing_run_proof", message: "分析结果缺少服务端可信凭证，请重新分析后再保存。" } }, 400);
+  }
+  const runId = asString(workflowResult.runId);
+  const workflowId = asString(workflowResult.workflowId);
+  const workflowStatus = asString(workflowResult.status) as WorkflowRunStatus;
+  const rawWorkflowInput = workflowResult.input;
+  if (!runId || runId !== workflowId || !isRecord(rawWorkflowInput)) {
+    return jsonResponse({ ok: false, error: { code: "invalid_run_binding", message: "分析运行标识无效，请重新分析后再保存。" } }, 400);
+  }
+  const inputSource = asString(rawWorkflowInput.source);
+  if (inputSource !== "manual" && inputSource !== "opportunity" && inputSource !== "task") {
+    return jsonResponse({ ok: false, error: { code: "invalid_run_input", message: "分析输入来源无效，请重新分析后再保存。" } }, 400);
+  }
+  const rawCandidateId = rawWorkflowInput.candidateId;
+  if (rawCandidateId !== null && typeof rawCandidateId !== "string") {
+    return jsonResponse({ ok: false, error: { code: "invalid_run_input", message: "分析候选绑定无效，请重新分析后再保存。" } }, 400);
+  }
+  const rawContextHash = rawWorkflowInput.contextHash;
+  if (rawContextHash !== undefined
+    && (typeof rawContextHash !== "string" || !/^[a-f0-9]{64}$/i.test(rawContextHash.trim()))) {
+    return jsonResponse({ ok: false, error: { code: "invalid_run_input", message: "分析证据上下文无效，请重新分析后再保存。" } }, 400);
+  }
+  const workflowInput: WorkflowRunInput = normalizeWorkflowRunInput({
+    productName: asString(rawWorkflowInput.productName),
+    source: inputSource,
+    candidateId: rawCandidateId,
+    ...(typeof rawContextHash === "string" ? { contextHash: rawContextHash } : {}),
+  });
+  const normalizedResultProductName = normalizeWorkflowRunInput({
+    productName,
+    source: inputSource,
+    candidateId: rawCandidateId,
+  }).productName;
+  if (!workflowInput.productName || workflowInput.productName !== normalizedResultProductName) {
+    return jsonResponse({ ok: false, error: { code: "input_product_mismatch", message: "分析输入与结果商品不一致，无法保存。" } }, 409);
+  }
+  if (workflowInput.source === "opportunity" && !workflowInput.candidateId) {
+    return jsonResponse({ ok: false, error: { code: "candidate_id_required", message: "机会候选分析缺少 Candidate 绑定，请从候选品池重新进入。" } }, 409);
+  }
+  if (!workflowInput.candidateId && workflowInput.contextHash) {
+    return jsonResponse({ ok: false, error: { code: "invalid_run_input", message: "手工分析不能附加 Candidate 证据上下文。" } }, 400);
+  }
+
+  const clientSourceMeta = parseSourceMeta(body.sourceMeta, productName);
+  const clientSourceCandidateId = clientSourceMeta?.candidateId ?? null;
+  if (clientSourceCandidateId && clientSourceCandidateId !== workflowInput.candidateId) {
+    return jsonResponse({ ok: false, error: { code: "candidate_binding_mismatch", message: "候选商品与可信分析结果不一致，无法保存。" } }, 409);
+  }
+
+  const verifiedProof = verifyWorkflowRunProof(runProof);
+  if (!verifiedProof.ok) {
+    const code = verifiedProof.reason === "expired" ? "run_proof_expired" : "invalid_run_proof";
+    const message = verifiedProof.reason === "expired"
+      ? "分析结果凭证已过期，请重新分析后再保存。"
+      : "分析结果可信凭证无效，请重新分析后再保存。";
+    return jsonResponse({ ok: false, error: { code, message } }, 403);
+  }
+
+  const expectedSubject = buildWorkflowRunSubject(auth.context);
+  const inputHash = createWorkflowInputHash(workflowInput);
+  const resultHash = createWorkflowResultHash(workflowResult);
+  const proofPayload = verifiedProof.payload;
+  if (proofPayload.subject !== expectedSubject) {
+    return jsonResponse({ ok: false, error: { code: "run_subject_mismatch", message: "该分析结果不属于当前访问主体。" } }, 403);
+  }
+  if (proofPayload.runId !== runId
+    || proofPayload.candidateId !== workflowInput.candidateId
+    || proofPayload.inputHash !== inputHash
+    || proofPayload.resultHash !== resultHash
+    || proofPayload.status !== workflowStatus) {
+    return jsonResponse({ ok: false, error: { code: "run_proof_mismatch", message: "分析结果已发生变化，无法保存。" } }, 409);
+  }
+  if (workflowStatus !== "completed" && workflowStatus !== "partial_failed") {
+    return jsonResponse({ ok: false, error: { code: "workflow_status_not_savable", message: "当前分析未达到可保存状态，请重新分析或补充证据。" } }, 409);
+  }
+
+  const candidateCapturedAt = new Date().toISOString();
+  let sourceMeta: SourceMeta | null = null;
+  let candidateAnalysisContext: CandidateAnalysisContextV1 | null = null;
+  let r22CommercialValidation: R22CommercialRunSnapshot | null = null;
+  if (workflowInput.candidateId) {
+    const candidate = await getAuthoritativeCandidate(auth.context, workflowInput.candidateId);
+    if (!candidate) {
+      return jsonResponse({ ok: false, error: { code: "candidate_not_found", message: "候选商品不存在或不属于当前访问主体。" } }, 404);
+    }
+    if (normalizeComparableProductName(candidate.name) !== normalizeComparableProductName(workflowInput.productName)) {
+      return jsonResponse({ ok: false, error: { code: "candidate_changed_since_analysis", message: "候选商品在分析后已发生变化，请重新分析后再保存。" } }, 409);
+    }
+    const r22Stage2Gate = evaluateR22StoredCandidateStage2Gate({
+      candidateId: candidate.id,
+      analysisJson: candidate.analysisJson,
+    });
+    if (!r22Stage2Gate.allowed) {
+      const gateCode = r22Stage2Gate.reasons.includes("invalid_analysis_json")
+        ? "candidate_context_changed_since_analysis"
+        : "candidate_r22_stage2_blocked";
+      return jsonResponse({
+        ok: false,
+        error: {
+          code: gateCode,
+          message: "该候选未通过 R2.2 市场晋级门禁，不能保存为商业深挖任务。",
+        },
+      }, 409);
+    }
+    candidateAnalysisContext = buildCandidateAnalysisContext(candidate);
+    if (workflowInput.contextHash !== createCandidateAnalysisBindingHash(candidate, candidateAnalysisContext)) {
+      return jsonResponse({
+        ok: false,
+        error: {
+          code: "candidate_context_changed_since_analysis",
+          message: "候选来源证据在分析后已发生变化，请重新分析后再保存。",
+        },
+      }, 409);
+    }
+    const r22MarketDecision = parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
+    if (r22MarketDecision) {
+      const commercialSnapshot = parseR22CommercialRunSnapshot(workflowResult.r22CommercialValidation);
+      if (!commercialSnapshot
+        || commercialSnapshot.runId !== runId
+        || commercialSnapshot.candidateId !== candidate.id
+        || commercialSnapshot.stage1InputHash !== r22MarketDecision.inputHash
+        || commercialSnapshot.ruleVersion !== r22MarketDecision.ruleVersion
+        || commercialSnapshot.evidenceVersion !== r22MarketDecision.evidenceVersion
+        || commercialSnapshot.marketDecision !== r22MarketDecision.marketDecision
+        || Date.parse(commercialSnapshot.createdAt) <= Date.parse(r22MarketDecision.createdAt)) {
+        return jsonResponse({
+          ok: false,
+          error: {
+            code: "candidate_r22_commercial_snapshot_invalid",
+            message: "R2.2 商业验证运行快照缺失或与服务端候选不一致，不能保存任务。",
+          },
+        }, 409);
+      }
+      r22CommercialValidation = commercialSnapshot;
+    } else if (workflowResult.r22CommercialValidation !== undefined) {
+      return jsonResponse({
+        ok: false,
+        error: {
+          code: "candidate_r22_commercial_snapshot_invalid",
+          message: "非 R2.2 候选不能附加 R2.2 商业验证快照。",
+        },
+      }, 409);
+    }
+    sourceMeta = buildAuthoritativeSourceMeta(candidate, candidateCapturedAt);
+  } else if (clientSourceMeta) {
+    return jsonResponse({ ok: false, error: { code: "candidate_binding_mismatch", message: "手工分析不能附加未签名候选关系。" } }, 409);
+  }
+
   const finalVerdict = asString(finalReport.finalVerdict, "未评级");
   const riskLevel = asString(finalReport.riskLevel, "yellow");
   const score = workflowScoreFromRiskLevel(riskLevel);
 
   // Parse and validate reviewState
   const reviewState = parseReviewState(body.reviewState);
+  if (workflowInput.candidateId && (body.humanConfirmed !== true || !reviewState?.allReviewed)) {
+    return jsonResponse({
+      ok: false,
+      error: {
+        code: "candidate_human_confirmation_required",
+        message: "候选商品必须完成全部人工复核并明确确认后，才能创建任务。",
+      },
+    }, 409);
+  }
   const batchMeta = parseBatchMeta(body.batchMeta);
-  const sourceMeta = parseSourceMeta(body.sourceMeta, productName);
   const profitSnapshot = normalizeProfitSnapshot(body.profitSnapshot);
   const riskReviewSnapshot = normalizeRiskReviewSnapshot(body.riskReviewSnapshot);
   const agentRunSnapshot = isRecord(body.agentRunSnapshot) ? body.agentRunSnapshot : null;
@@ -303,13 +603,21 @@ export async function POST(request: NextRequest) {
       });
     }
   }
-  const decisionStatus = isDecisionStatus(body.decisionStatus) ? body.decisionStatus : "pending";
-  const humanDecision = normalizeHumanDecision(isRecord(body.humanDecision) ? body.humanDecision : {
+  const requestedDecisionStatus = isDecisionStatus(body.decisionStatus) ? body.decisionStatus : "pending";
+  const decisionStatus = workflowStatus === "partial_failed" ? "need_info" : requestedDecisionStatus;
+  const humanDecisionInput = isRecord(body.humanDecision) ? body.humanDecision : {
     status: decisionStatus,
     reason: "",
     nextAction: "",
     confirmedItems: [],
     unconfirmedItems: [],
+  };
+  const humanDecision = normalizeHumanDecision({
+    ...humanDecisionInput,
+    status: decisionStatus,
+    ...(workflowStatus === "partial_failed"
+      ? { nextAction: "补充失败步骤所需证据并重新分析，当前任务不得进入正常推进流程。" }
+      : {}),
   });
   const agentOutputSnapshot = normalizeAgentOutputSnapshot({
     workflowResult,
@@ -329,9 +637,10 @@ export async function POST(request: NextRequest) {
   // Build a structured result for the task record
   const taskResult = {
     type: "workflow",
-    workflowId: asString(workflowResult.workflowId),
+    workflowId,
+    runId,
     productName,
-    status: asString(workflowResult.status),
+    status: workflowStatus,
     finalReport,
     steps: Array.isArray(workflowResult.steps) ? workflowResult.steps : [],
     costGuard: isRecord(workflowResult.costGuard) ? workflowResult.costGuard : {},
@@ -347,6 +656,17 @@ export async function POST(request: NextRequest) {
     },
     ...(batchMeta ? { batchMeta } : {}),
     ...(sourceMeta ? { sourceMeta } : {}),
+    ...(workflowInput.candidateId ? {
+      candidateToTask: {
+        version: 1,
+        candidateId: workflowInput.candidateId,
+        analysisRunId: runId,
+        confirmation: "human_review",
+        confirmedAt: candidateCapturedAt,
+      },
+    } : {}),
+    ...(candidateAnalysisContext ? { candidateAnalysisContext } : {}),
+    ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
     // Phase 4-E.2.1: initialize product lifecycle
     productLifecycle: createInitialProductLifecycle(),
     // Phase Profit-M.1: optional profit snapshot from in-line estimate card
@@ -366,49 +686,152 @@ export async function POST(request: NextRequest) {
 
   // Demo-Sandbox.1-B: Demo writes to sandbox, Owner writes to Prisma
   if (auth.context.mode === "demo") {
-    const sandboxTask = createSandboxTask(auth.context.demoAccessId, {
-      type: "workflow",
-      title: `${productName} 一键分析`,
-      platform: "manual",
-      source: typeof body.source === "string" ? body.source : "ai",
-      score,
-      level: riskLevel,
-      oneLineSummary: finalVerdict,
-      decisionStatus: normalizeDecisionStatus(decisionStatus),
-      resultJson: JSON.stringify(taskResult),
-      productLifecycle: JSON.stringify(body.productLifecycle || createInitialProductLifecycle()),
-    });
-
-    return jsonResponse({
-      ok: true,
-      data: {
-        id: sandboxTask.id,
-        title: sandboxTask.title || productName,
-        type: "workflow",
-        isSandbox: true,
-        sourceMode: "demo_sandbox",
-        allReviewed: taskResult.reviewState.allReviewed,
-      },
-    });
-  }
-
-  // Owner: write to Prisma DB (original logic)
-  try {
-    const record = await prisma.viralAnalysisRecord.create({
-      data: {
+    try {
+      const sandboxInput = {
         type: "workflow",
         title: `${productName} 一键分析`,
         platform: "manual",
-        productUrl: null,
-        materialText: productName,
         source: typeof body.source === "string" ? body.source : "ai",
         score,
         level: riskLevel,
         oneLineSummary: finalVerdict,
         decisionStatus: normalizeDecisionStatus(decisionStatus),
         resultJson: JSON.stringify(taskResult),
-      },
-    });
+        productLifecycle: JSON.stringify(body.productLifecycle || createInitialProductLifecycle()),
+      };
+      const sandboxTask = workflowInput.candidateId
+        ? createSandboxTaskAndLinkCandidate(
+          auth.context.demoAccessId,
+          workflowInput.candidateId,
+          sandboxInput,
+          {
+            expectedProductName: workflowInput.productName,
+            expectedContextHash: workflowInput.contextHash!,
+          },
+        )
+        : createSandboxTask(auth.context.demoAccessId, sandboxInput);
+
+      return jsonResponse({
+        ok: true,
+        data: {
+          id: sandboxTask.id,
+          title: sandboxTask.title || productName,
+          type: "workflow",
+          isSandbox: true,
+          sourceMode: "demo_sandbox",
+          allReviewed: taskResult.reviewState.allReviewed,
+        },
+      });
+    } catch (error) {
+      if (error instanceof SandboxCandidateTaskLinkError) {
+        return jsonResponse({
+          ok: false,
+          error: { code: error.code, message: error.message },
+        }, candidateConversionStatus(error.code));
+      }
+      return jsonResponse({
+        ok: false,
+        error: { code: "sandbox_write_error", message: "访客任务保存失败，请稍后重试。" },
+      }, 500);
+    }
+  }
+
+  const ownerTaskData = {
+    type: "workflow",
+    title: `${productName} 一键分析`,
+    platform: "manual",
+    productUrl: null,
+    materialText: productName,
+    source: typeof body.source === "string" ? body.source : "ai",
+    score,
+    level: riskLevel,
+    oneLineSummary: finalVerdict,
+    decisionStatus: normalizeDecisionStatus(decisionStatus),
+    resultJson: JSON.stringify(taskResult),
+  };
+
+  // Owner Candidate conversion is one transaction; manual Tasks remain a single create.
+  try {
+    const record = workflowInput.candidateId
+      ? await prisma.$transaction(async (tx) => {
+        const currentCandidate = await tx.opportunityCandidate.findUnique({
+          where: { id: workflowInput.candidateId! },
+          select: {
+            id: true,
+            name: true,
+            link: true,
+            status: true,
+            sourceMetaJson: true,
+            analysisJson: true,
+            convertedTaskId: true,
+          },
+        });
+        if (!currentCandidate) {
+          throw new CandidateConversionError(
+            "candidate_not_found",
+            "候选商品不存在或不属于当前访问主体。",
+          );
+        }
+        if (currentCandidate.convertedTaskId) {
+          throw new CandidateConversionError(
+            "candidate_already_converted",
+            "该候选已经转为任务，不能重复创建。",
+          );
+        }
+        if (!isCandidateReadyForAgent(currentCandidate.status)) {
+          throw new CandidateConversionError(
+            "candidate_not_ready_for_conversion",
+            "候选状态已变化，当前不能创建任务。",
+          );
+        }
+        const currentR22Stage2Gate = evaluateR22StoredCandidateStage2Gate({
+          candidateId: currentCandidate.id,
+          analysisJson: currentCandidate.analysisJson,
+        });
+        if (!currentR22Stage2Gate.allowed) {
+          throw new CandidateConversionError(
+            currentR22Stage2Gate.reasons.includes("invalid_analysis_json")
+              ? "candidate_context_changed_since_analysis"
+              : "candidate_r22_stage2_blocked",
+            "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
+          );
+        }
+        if (normalizeComparableProductName(currentCandidate.name)
+          !== normalizeComparableProductName(workflowInput.productName)) {
+          throw new CandidateConversionError(
+            "candidate_changed_since_analysis",
+            "候选商品在分析后已发生变化，请重新分析后再保存。",
+          );
+        }
+        const currentContext = buildCandidateAnalysisContext(currentCandidate);
+        if (createCandidateAnalysisBindingHash(currentCandidate, currentContext) !== workflowInput.contextHash) {
+          throw new CandidateConversionError(
+            "candidate_context_changed_since_analysis",
+            "候选来源证据在分析后已发生变化，请重新分析后再保存。",
+          );
+        }
+
+        const task = await tx.viralAnalysisRecord.create({ data: ownerTaskData });
+        const linked = await tx.opportunityCandidate.updateMany({
+          where: {
+            id: workflowInput.candidateId!,
+            convertedTaskId: null,
+            status: { in: ["worth_analyzing", "analyzed"] },
+          },
+          data: {
+            convertedTaskId: task.id,
+            lastActionAt: new Date(),
+          },
+        });
+        if (linked.count !== 1) {
+          throw new CandidateConversionError(
+            "candidate_conversion_conflict",
+            "候选状态刚刚发生变化，请刷新后重试。",
+          );
+        }
+        return task;
+      })
+      : await prisma.viralAnalysisRecord.create({ data: ownerTaskData });
 
     return jsonResponse({
       ok: true,
@@ -420,6 +843,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof CandidateConversionError) {
+      return jsonResponse({
+        ok: false,
+        error: { code: error.code, message: error.message },
+      }, candidateConversionStatus(error.code));
+    }
     return jsonResponse({
       ok: false,
       error: {

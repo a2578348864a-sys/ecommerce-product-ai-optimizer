@@ -1,10 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuthenticated, ensureDemoAiQuota, consumeDemoAiCalls, getLatestDemoSnapshot, type DemoAccessSnapshot } from "@/lib/server/demoGuard";
+import { randomUUID } from "crypto";
+import {
+  requireAuthenticated,
+  reserveDemoAiCalls,
+  settleDemoAiCalls,
+  type DemoAccessSnapshot,
+  type DemoAiQuotaReservation,
+} from "@/lib/server/demoGuard";
+import {
+  getAuthoritativeCandidate,
+  type AuthoritativeCandidate,
+} from "@/lib/server/candidateAuthority";
+import {
+  buildCandidateAnalysisContext,
+  createCandidateAnalysisBindingHash,
+  formatCandidateAnalysisPromptContext,
+} from "@/lib/server/candidateAnalysisContext";
+import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
+import {
+  buildR22PendingCommercialRunSnapshot,
+  evaluateR22StoredCandidateStage2Gate,
+  type R22CommercialRunSnapshot,
+} from "@/lib/r22CommercialValidation";
+import {
+  parseR22MarketDecisionFromAnalysisJson,
+  type R22MarketDecisionSnapshot,
+} from "@/lib/r22DecisionModel";
+import {
+  buildWorkflowRunSubject,
+  createWorkflowInputHash,
+  createWorkflowResultHash,
+  createWorkflowRunProof,
+  normalizeWorkflowRunInput,
+  type WorkflowRunInput,
+} from "@/lib/server/workflowRunProof";
 import {
   runSourcingStep,
   runRiskStep,
   runSummaryStep,
   runListingStep,
+  PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
   type SourcingStepOutput,
   type RiskStepOutput,
   type SummaryStepOutput,
@@ -46,6 +81,8 @@ type FinalReport = {
 type WorkflowResult = {
   ok: boolean;
   workflowId: string;
+  runId: string;
+  input: WorkflowRunInput;
   productName: string;
   status: "completed" | "partial_failed" | "failed";
   steps: WorkflowStep[];
@@ -60,6 +97,7 @@ type WorkflowResult = {
     fallbackSteps: number;
   };
   warnings: string[];
+  r22CommercialValidation?: R22CommercialRunSnapshot;
 };
 
 /* ── Helpers ───────────────────────────────────── */
@@ -73,10 +111,7 @@ function asString(value: unknown, fallback = ""): string {
 }
 
 function makeWorkflowId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `wf-${crypto.randomUUID()}`;
-  }
-  return `wf-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  return `wf-${randomUUID()}`;
 }
 
 function stepResult(
@@ -167,36 +202,149 @@ export async function POST(request: NextRequest) {
     );
   }
   const accessCtx = authResult.context;
-  let demoScreen: DemoAccessSnapshot | null = null; // updated after each AI consume
+  let demoScreen: DemoAccessSnapshot | null = null;
 
   // Reject batch before string normalization
   if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
     return NextResponse.json({ ok: false, error: { code: "batch_not_supported", message: "当前只支持单品工作流，暂不支持批量输入。" } }, { status: 400 });
   }
 
-  // Validate productName
-  const productNameRaw = asString(body.productName).slice(0, MAX_PRODUCT_NAME_LENGTH).trim();
-  if (!productNameRaw) {
+  const sourceRaw = asString(body.source);
+  const candidateId = asString(body.candidateId).slice(0, 80) || null;
+  const source: WorkflowRunInput["source"] = candidateId
+    ? "opportunity"
+    : sourceRaw === "opportunity" || sourceRaw === "task"
+      ? sourceRaw
+      : "manual";
+  if (source === "opportunity" && !candidateId) {
+    return NextResponse.json(
+      { ok: false, error: { code: "candidate_id_required", message: "请从候选品池选择商品后进入 Agent。" } },
+      { status: 400 },
+    );
+  }
+  const clientProductName = asString(body.productName).slice(0, MAX_PRODUCT_NAME_LENGTH).trim();
+  let productName = clientProductName;
+  let candidateForAnalysis: AuthoritativeCandidate | null = null;
+  let r22MarketDecision: R22MarketDecisionSnapshot | null = null;
+  if (candidateId) {
+    const candidate = await getAuthoritativeCandidate(accessCtx, candidateId);
+    if (!candidate) {
+      return NextResponse.json(
+        { ok: false, error: { code: "candidate_not_found", message: "候选商品不存在或不属于当前访问主体。" } },
+        { status: 404 },
+      );
+    }
+    if (!isCandidateReadyForAgent(candidate.status)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "candidate_not_ready",
+            message: candidate.status === "rejected"
+              ? "该候选已放弃，请先恢复并重新选择后再分析。"
+              : "该候选尚未进入待分析队列，请先在候选品池中确认。",
+          },
+        },
+        { status: 409 },
+      );
+    }
+    const r22Stage2Gate = evaluateR22StoredCandidateStage2Gate({
+      candidateId: candidate.id,
+      analysisJson: candidate.analysisJson,
+    });
+    if (!r22Stage2Gate.allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "candidate_r22_stage2_blocked",
+            message: "该候选未通过 R2.2 市场晋级门禁，不能进入商业深挖。",
+            reasons: r22Stage2Gate.reasons,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    r22MarketDecision = parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
+    productName = candidate.name.trim().slice(0, MAX_PRODUCT_NAME_LENGTH);
+    candidateForAnalysis = candidate;
+  }
+  if (!productName) {
     return NextResponse.json({ ok: false, error: { code: "missing_product_name", message: "请填写商品名称。" } }, { status: 400 });
   }
-  if (productNameRaw.length < 2) {
+  if (productName.length < 2) {
     return NextResponse.json({ ok: false, error: { code: "product_name_too_short", message: "商品名称至少需要 2 个字符。" } }, { status: 400 });
   }
-
-  const productName = productNameRaw;
-  const source = ["manual", "opportunity", "task"].includes(asString(body.source)) ? asString(body.source) : "manual";
+  const candidateAnalysisContext = candidateForAnalysis
+    ? buildCandidateAnalysisContext(candidateForAnalysis)
+    : null;
+  const analysisDescription = candidateAnalysisContext
+    ? formatCandidateAnalysisPromptContext(candidateAnalysisContext)
+    : productName;
+  const candidateContextHash = candidateForAnalysis && candidateAnalysisContext
+    ? createCandidateAnalysisBindingHash(candidateForAnalysis, candidateAnalysisContext)
+    : null;
+  const workflowInput = normalizeWorkflowRunInput({
+    productName,
+    source,
+    candidateId,
+    ...(candidateContextHash
+      ? { contextHash: candidateContextHash }
+      : {}),
+  });
   const options = isPlainObject(body.options) ? body.options : {};
   const runSourcing = options.runSourcing !== false;
   const runRisk = options.runRisk !== false;
   const runSummary = options.runSummary !== false;
   const runListing = options.runListing !== false;
+  const plannedAiCalls = [runSourcing, runRisk, runSummary, runListing].filter(Boolean).length;
+  let quotaReservation: DemoAiQuotaReservation | null = null;
+  if (accessCtx.mode === "demo" && plannedAiCalls > 0) {
+    const quota = reserveDemoAiCalls(accessCtx, plannedAiCalls, {
+      leaseMs: plannedAiCalls * PRODUCT_ANALYSIS_AI_TIMEOUT_MS + 60_000,
+    });
+    if (!quota.ok) {
+      return NextResponse.json(
+        { ok: false, error: { code: quota.code, message: quota.message } },
+        { status: quota.status },
+      );
+    }
+    quotaReservation = quota.reservation;
+  }
 
   const workflowId = makeWorkflowId();
+  const runCreatedAt = new Date().toISOString();
+  const r22CommercialValidation = r22MarketDecision
+    ? buildR22PendingCommercialRunSnapshot(r22MarketDecision, workflowId, runCreatedAt)
+    : null;
   const steps: WorkflowStep[] = [];
   const warnings: string[] = [];
   let aiStepsRequested = 0;
   let aiStepsCompleted = 0;
   let fallbackSteps = 0;
+  let providerCallStartedCount = 0;
+
+  const settleUnexpectedFailure = (error: unknown) => {
+    if (accessCtx.mode === "demo" && quotaReservation) {
+      const settlement = settleDemoAiCalls(accessCtx, quotaReservation, providerCallStartedCount);
+      if (!settlement.ok) {
+        return NextResponse.json(
+          { ok: false, error: { code: settlement.code, message: settlement.message } },
+          { status: settlement.status },
+        );
+      }
+    }
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "pipeline_error",
+          message: error instanceof Error ? error.message : "商品分析流程异常。",
+        },
+      },
+      { status: 500 },
+    );
+  };
 
   // Step 0: Normalize
   steps.push(stepResult("normalize", "标准化输入", "completed", `商品名：${productName}，来源：${source}`, [], new Date().toISOString(), new Date().toISOString()));
@@ -204,28 +352,22 @@ export async function POST(request: NextRequest) {
   // Step 1: Sourcing
   let sourcingResult: SourcingStepOutput | null = null;
   if (runSourcing) {
-    // Demo quota check
-    let sourcingSkipped = false;
-    if (accessCtx.mode === "demo") {
-      const quota = ensureDemoAiQuota(accessCtx, 1);
-      if (!quota.ok) {
-        steps.push(stepResult("sourcing", "货源判断", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
-        sourcingSkipped = true;
-      }
+    aiStepsRequested++;
+    const startedAt = new Date().toISOString();
+    let result;
+    try {
+      result = await runSourcingStep(productName, analysisDescription);
+    } catch (error) {
+      return settleUnexpectedFailure(error);
     }
-    if (!sourcingSkipped) {
-      aiStepsRequested++;
-      const startedAt = new Date().toISOString();
-      const result = await runSourcingStep(productName, productName);
-      sourcingResult = result.data;
-      if (result.status === "completed") {
-        aiStepsCompleted++;
-        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
-      } else {
-        fallbackSteps++;
-      }
-      steps.push(stepResult("sourcing", "货源判断", result.status, sourcingResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    if (result.providerCallStarted) providerCallStartedCount++;
+    sourcingResult = result.data;
+    if (result.status === "completed") {
+      aiStepsCompleted++;
+    } else {
+      fallbackSteps++;
     }
+    steps.push(stepResult("sourcing", "货源判断", result.status, sourcingResult.summary, result.warnings, startedAt, new Date().toISOString()));
   } else {
     steps.push(stepResult("sourcing", "货源判断", "fallback", "已跳过（options.runSourcing=false）"));
   }
@@ -233,27 +375,22 @@ export async function POST(request: NextRequest) {
   // Step 2: Risk
   let riskResult: RiskStepOutput | null = null;
   if (runRisk) {
-    let riskSkipped = false;
-    if (accessCtx.mode === "demo") {
-      const quota = ensureDemoAiQuota(accessCtx, 1);
-      if (!quota.ok) {
-        steps.push(stepResult("risk", "风险排查", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
-        riskSkipped = true;
-      }
+    aiStepsRequested++;
+    const startedAt = new Date().toISOString();
+    let result;
+    try {
+      result = await runRiskStep(productName, analysisDescription);
+    } catch (error) {
+      return settleUnexpectedFailure(error);
     }
-    if (!riskSkipped) {
-      aiStepsRequested++;
-      const startedAt = new Date().toISOString();
-      const result = await runRiskStep(productName, productName);
-      riskResult = result.data;
-      if (result.status === "completed") {
-        aiStepsCompleted++;
-        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
-      } else {
-        fallbackSteps++;
-      }
-      steps.push(stepResult("risk", "风险排查", result.status, riskResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    if (result.providerCallStarted) providerCallStartedCount++;
+    riskResult = result.data;
+    if (result.status === "completed") {
+      aiStepsCompleted++;
+    } else {
+      fallbackSteps++;
     }
+    steps.push(stepResult("risk", "风险排查", result.status, riskResult.summary, result.warnings, startedAt, new Date().toISOString()));
   } else {
     steps.push(stepResult("risk", "风险排查", "fallback", "已跳过（options.runRisk=false）"));
   }
@@ -261,27 +398,22 @@ export async function POST(request: NextRequest) {
   // Step 3: Summary
   let summaryResult: SummaryStepOutput | null = null;
   if (runSummary) {
-    let summarySkipped = false;
-    if (accessCtx.mode === "demo") {
-      const quota = ensureDemoAiQuota(accessCtx, 1);
-      if (!quota.ok) {
-        steps.push(stepResult("summary", "小白结论", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
-        summarySkipped = true;
-      }
+    aiStepsRequested++;
+    const startedAt = new Date().toISOString();
+    let result;
+    try {
+      result = await runSummaryStep(productName, analysisDescription, sourcingResult, riskResult);
+    } catch (error) {
+      return settleUnexpectedFailure(error);
     }
-    if (!summarySkipped) {
-      aiStepsRequested++;
-      const startedAt = new Date().toISOString();
-      const result = await runSummaryStep(productName, productName, sourcingResult, riskResult);
-      summaryResult = result.data;
-      if (result.status === "completed") {
-        aiStepsCompleted++;
-        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
-      } else {
-        fallbackSteps++;
-      }
-      steps.push(stepResult("summary", "小白结论", result.status, summaryResult.summary, result.warnings, startedAt, new Date().toISOString()));
+    if (result.providerCallStarted) providerCallStartedCount++;
+    summaryResult = result.data;
+    if (result.status === "completed") {
+      aiStepsCompleted++;
+    } else {
+      fallbackSteps++;
     }
+    steps.push(stepResult("summary", "小白结论", result.status, summaryResult.summary, result.warnings, startedAt, new Date().toISOString()));
   } else {
     steps.push(stepResult("summary", "小白结论", "fallback", "已跳过（options.runSummary=false）"));
   }
@@ -289,29 +421,35 @@ export async function POST(request: NextRequest) {
   // Step 4: Listing
   let listingResult: ListingStepOutput | null = null;
   if (runListing) {
-    let listingSkipped = false;
-    if (accessCtx.mode === "demo") {
-      const quota = ensureDemoAiQuota(accessCtx, 1);
-      if (!quota.ok) {
-        steps.push(stepResult("listing", "上架文案/关键词", "fallback", `AI 分析额度不足：${quota.message}`, [quota.message]));
-        listingSkipped = true;
-      }
+    aiStepsRequested++;
+    const startedAt = new Date().toISOString();
+    let result;
+    try {
+      result = await runListingStep(productName, summaryResult);
+    } catch (error) {
+      return settleUnexpectedFailure(error);
     }
-    if (!listingSkipped) {
-      aiStepsRequested++;
-      const startedAt = new Date().toISOString();
-      const result = await runListingStep(productName, summaryResult);
-      listingResult = result.data;
-      if (result.status === "completed") {
-        aiStepsCompleted++;
-        if (accessCtx.mode === "demo") demoScreen = consumeDemoAiCalls(accessCtx, 1);
-      } else {
-        fallbackSteps++;
-      }
-      steps.push(stepResult("listing", "上架文案/关键词", result.status, listingResult.title, result.warnings, startedAt, new Date().toISOString()));
+    if (result.providerCallStarted) providerCallStartedCount++;
+    listingResult = result.data;
+    if (result.status === "completed") {
+      aiStepsCompleted++;
+    } else {
+      fallbackSteps++;
     }
+    steps.push(stepResult("listing", "上架文案/关键词", result.status, listingResult.title, result.warnings, startedAt, new Date().toISOString()));
   } else {
     steps.push(stepResult("listing", "上架文案/关键词", "fallback", "已跳过（options.runListing=false）"));
+  }
+
+  if (accessCtx.mode === "demo" && quotaReservation) {
+    const settlement = settleDemoAiCalls(accessCtx, quotaReservation, providerCallStartedCount);
+    if (!settlement.ok) {
+      return NextResponse.json(
+        { ok: false, error: { code: settlement.code, message: settlement.message } },
+        { status: settlement.status },
+      );
+    }
+    demoScreen = settlement.snapshot;
   }
 
   // Step 5: Final Report
@@ -332,6 +470,8 @@ export async function POST(request: NextRequest) {
   const result: WorkflowResult = {
     ok: true,
     workflowId,
+    runId: workflowId,
+    input: workflowInput,
     productName,
     status: overallStatus,
     steps,
@@ -342,9 +482,25 @@ export async function POST(request: NextRequest) {
     finalReport,
     costGuard: { aiStepsRequested, aiStepsCompleted, fallbackSteps },
     warnings,
+    ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
     // Demo-Login.1-E: include latest demo snapshot for Banner update
     ...(demoScreen ? { demoAccess: demoScreen } : {}),
   };
 
-  return NextResponse.json(result, { status: 200 });
+  try {
+    const runProof = createWorkflowRunProof({
+      runId: workflowId,
+      subject: buildWorkflowRunSubject(accessCtx),
+      candidateId,
+      inputHash: createWorkflowInputHash(workflowInput),
+      resultHash: createWorkflowResultHash(result),
+      status: overallStatus,
+    });
+    return NextResponse.json({ ...result, runProof }, { status: 200 });
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: { code: "run_proof_unavailable", message: "分析结果暂时无法生成可信凭证，请稍后重试。" } },
+      { status: 500 },
+    );
+  }
 }

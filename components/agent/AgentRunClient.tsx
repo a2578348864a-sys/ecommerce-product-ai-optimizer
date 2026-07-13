@@ -32,7 +32,10 @@ import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
 import { saveAgentRunCache, loadAgentRunCache, loadLatestAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
 import { canSubmitAgentRunSave, getAgentRunSaveErrorMessage } from "@/lib/agentRunSave";
+import { isAuthoritativeCandidateId } from "@/lib/opportunityCandidatePool";
 import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import type { R22MarketDecisionSnapshot } from "@/lib/r22DecisionModel";
+import type { R22CommercialRunSnapshot } from "@/lib/r22CommercialValidation";
 import { normalizeAgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
@@ -63,6 +66,13 @@ type ApiFinalReport = {
 type ApiWorkflowResult = {
   ok: true;
   workflowId: string;
+  runId: string;
+  runProof: string;
+  input: {
+    productName: string;
+    source: "manual" | "opportunity" | "task";
+    candidateId: string | null;
+  };
   productName: string;
   status: "completed" | "partial_failed" | "failed";
   steps: ApiStep[];
@@ -77,6 +87,7 @@ type ApiWorkflowResult = {
     fallbackSteps: number;
   };
   warnings: string[];
+  r22CommercialValidation?: R22CommercialRunSnapshot;
 };
 
 type ApiErrorResponse = {
@@ -102,6 +113,7 @@ export type AgentRunSourceMeta = {
   originalName?: string;
   analyzedName?: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot;
+  r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot;
   importedAt: string;
 };
 
@@ -478,6 +490,10 @@ export function AgentRunClient({
   async function handleRun() {
     const name = productName.trim();
     if (isRunning) return;
+    if (sourceMeta && !isAuthoritativeCandidateId(sourceMeta.candidateId)) {
+      setError("该候选仅存在于本浏览器草稿中，请返回候选品池保存为服务端 Candidate 后再进入 Agent。");
+      return;
+    }
     if (name.length < 2) {
       setError("请输入至少 2 个字符的商品名称。");
       return;
@@ -527,6 +543,7 @@ export function AgentRunClient({
         body: JSON.stringify({
           productName: name,
           source: sourceMeta ? "opportunity" : "manual",
+          candidateId: sourceMeta?.candidateId || undefined,
           accessPassword: currentAccessCredential,
           accessToken: accessHeaders["x-access-token"] || undefined,
         }),
@@ -557,6 +574,7 @@ export function AgentRunClient({
 
       const workflowResult = data;
       const riskLevel = workflowResult.finalReport?.riskLevel;
+      setProductName(workflowResult.productName);
       setResult(workflowResult);
       setPhase("needs_manual_review");
       setStepStatuses({
@@ -612,6 +630,7 @@ export function AgentRunClient({
           accessPassword: saveAccessCredential,
           accessToken: saveAccessHeaders["x-access-token"] || undefined,
           workflowResult: result,
+          runProof: result.runProof,
           reviewState: {
             sourcingReviewed: manualChecked.sourcing,
             riskReviewed: manualChecked.risk,
@@ -623,6 +642,7 @@ export function AgentRunClient({
           profitSnapshot,
           riskReviewSnapshot,
           decisionStatus: manualDecisionStatus,
+          humanConfirmed: true,
           humanDecision: {
             ...humanDecisionDraft,
             decidedAt: new Date().toISOString(),
@@ -632,14 +652,14 @@ export function AgentRunClient({
             riskReviewSnapshot,
             profitSnapshot,
             manualChecked,
-            productName: productName.trim(),
+            productName: result.productName,
             sourceMeta,
           }),
           listingPrepSnapshot: buildListingPrepSnapshot({
             listing: result?.listing as Record<string, unknown> | undefined,
             riskReviewSnapshot,
             finalReport: result?.finalReport as Record<string, unknown> | undefined,
-            productName: productName.trim(),
+            productName: result.productName,
           }),
         }),
       });
@@ -928,6 +948,9 @@ export function AgentRunClient({
                 <SummaryMetric label="兜底步骤" value={String(result.costGuard.fallbackSteps)} />
                 <SummaryMetric label="工作流状态" value={result.status === "completed" ? "已完成" : "需复核"} />
                 <SummaryMetric label="保存状态" value={savedTaskId ? "已保存" : "未保存"} />
+                {result.r22CommercialValidation ? (
+                  <SummaryMetric label="商业决策" value="待真实供应与成本资料" />
+                ) : null}
               </div>
 
               <details className="mt-5 rounded-xl border border-slate-200 bg-white/80 p-3">
@@ -1051,7 +1074,9 @@ export function AgentRunClient({
                   {savedTaskId ? (
                     <Link href={`/tasks/${savedTaskId}`} className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold">
                       <CheckCircle2 className="size-4" />
-                      已保存，进入运营跟进
+                      {result.r22CommercialValidation
+                        ? "已保存商业验证任务"
+                        : "已保存，进入运营跟进"}
                     </Link>
                   ) : (
                     <button

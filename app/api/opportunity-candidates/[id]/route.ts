@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  CandidateSourcePolicyError,
+  type CandidateSourcePolicyErrorCode,
+} from "@/lib/candidateSourceIntegrity";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import {
   isSandboxCandidateId,
@@ -13,6 +17,7 @@ import {
   updateCandidate,
   type CandidateUpdate,
 } from "@/lib/server/opportunityCandidateService";
+import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceReview";
 
 export const runtime = "nodejs";
 
@@ -29,6 +34,53 @@ function json(body: ApiResponse, status = 200) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sourcePolicyErrorResponse(error: unknown) {
+  const code: CandidateSourcePolicyErrorCode | null = error instanceof CandidateSourcePolicyError
+    ? error.code
+    : isRecord(error)
+      && (error.code === "source_review_required" || error.code === "verified_source_fields_locked")
+      ? error.code
+      : null;
+  if (!code) return null;
+  const message = code === "source_review_required"
+    ? "未验证来源必须经过明确人工确认后才能进入待分析。"
+    : "已验证公开来源的事实字段不能通过候选编辑修改。";
+  return json({ ok: false, error: { code, message } }, 409);
+}
+
+function candidateTaskLinkLockedResponse(body: Record<string, unknown>) {
+  if (!Object.prototype.hasOwnProperty.call(body, "convertedTaskId")) return null;
+  return json({
+    ok: false,
+    error: {
+      code: "candidate_task_link_locked",
+      message: "Candidate 与 Task 的关联只能由可信任务保存流程创建。",
+    },
+  }, 409);
+}
+
+type CandidateDeleteResult = "deleted" | "not_found" | "linked_task";
+
+function candidateDeleteResponse(
+  result: CandidateDeleteResult,
+  id: string,
+  notFoundMessage: string,
+) {
+  if (result === "linked_task") {
+    return json({
+      ok: false,
+      error: {
+        code: "candidate_has_linked_task",
+        message: "该候选已转为任务，需保留来源证据，不能删除。",
+      },
+    }, 409);
+  }
+  if (result === "not_found") {
+    return json({ ok: false, error: { code: "not_found", message: notFoundMessage } }, 404);
+  }
+  return json({ ok: true, data: { id } });
 }
 
 /* ── PATCH ────────────────────────────────────── */
@@ -53,20 +105,37 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const auth = requireAuthenticated(request, body);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     if (auth.context.mode === "demo") {
+      const taskLinkResponse = candidateTaskLinkLockedResponse(body);
+      if (taskLinkResponse) return taskLinkResponse;
       const update: Record<string, unknown> = {};
       if (typeof body.status === "string" && isValidCandidateStatus(body.status)) update.status = body.status;
       if (typeof body.score === "number") update.score = body.score;
       if (typeof body.name === "string") update.name = body.name;
       if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
-      const updated = updateSandboxCandidate(auth.context.demoAccessId, id, update);
-      if (!updated) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
-      return json({ ok: true, candidate: sandboxCandidateToListItem(updated) });
+      try {
+        const updated = updateSandboxCandidate(auth.context.demoAccessId, id, update, {
+          sourceReviewAcknowledged: body.sourceReviewAcknowledged === true ? true : undefined,
+          requestedFields: Object.keys(body),
+        });
+        if (!updated) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
+        return json({
+          ok: true,
+          candidate: toPublicOpportunityCandidate(sandboxCandidateToListItem(updated)),
+        });
+      } catch (error) {
+        const policyResponse = sourcePolicyErrorResponse(error);
+        if (policyResponse) return policyResponse;
+        return json({ ok: false, error: { code: "server_error", message: "更新失败，请稍后重试。" } }, 500);
+      }
     }
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
 
   const auth = requireOwnerOnly(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+
+  const taskLinkResponse = candidateTaskLinkLockedResponse(body);
+  if (taskLinkResponse) return taskLinkResponse;
 
   const update: CandidateUpdate = {};
 
@@ -77,23 +146,25 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     update.status = body.status;
   }
 
-  if (body.convertedTaskId !== undefined) {
-    update.convertedTaskId = typeof body.convertedTaskId === "string" && body.convertedTaskId.trim()
-      ? body.convertedTaskId.trim()
-      : null;
-  }
-
   if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
   if (typeof body.score === "number") update.score = body.score;
   if (typeof body.keyword === "string") update.keyword = body.keyword;
 
   try {
-    const candidate = await updateCandidate(id, update);
+    const candidate = await updateCandidate(id, update, {
+      sourceReviewAcknowledged: body.sourceReviewAcknowledged === true ? true : undefined,
+      requestedFields: Object.keys(body),
+    });
     if (!candidate) {
       return json({ ok: false, error: { code: "not_found", message: "候选品不存在。" } }, 404);
     }
-    return json({ ok: true, candidate });
+    return json({
+      ok: true,
+      candidate: toPublicOpportunityCandidate(candidate),
+    });
   } catch (error) {
+    const policyResponse = sourcePolicyErrorResponse(error);
+    if (policyResponse) return policyResponse;
     return json({
       ok: false,
       error: {
@@ -117,9 +188,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     const auth = requireAuthenticated(request);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     if (auth.context.mode === "demo") {
-      const deleted = deleteSandboxCandidate(auth.context.demoAccessId, id);
-      if (!deleted) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
-      return json({ ok: true, data: { id } });
+      const result = deleteSandboxCandidate(auth.context.demoAccessId, id);
+      return candidateDeleteResponse(result, id, "未找到该候选。");
     }
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
   }
@@ -128,11 +198,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {
-    const deleted = await deleteCandidate(id);
-    if (!deleted) {
-      return json({ ok: false, error: { code: "not_found", message: "候选品不存在。" } }, 404);
-    }
-    return json({ ok: true, data: { id } });
+    const result = await deleteCandidate(id);
+    return candidateDeleteResponse(result, id, "候选品不存在。");
   } catch (error) {
     return json({
       ok: false,

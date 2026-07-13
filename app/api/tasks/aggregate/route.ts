@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
-import { checkAccessPassword } from "@/lib/server/accessPassword";
+import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
+import { listSandboxTasks } from "@/lib/server/demoSandbox";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,7 @@ function extractResultFields(record: {
   score: number;
   level: string;
   resultJson: string;
-  createdAt: Date;
+  createdAt: Date | string;
 }) {
   const parsed = safeParseJson(record.resultJson);
   return {
@@ -44,7 +45,7 @@ function extractResultFields(record: {
     oneLineSummary: record.oneLineSummary,
     score: record.score,
     level: record.level,
-    createdAt: record.createdAt.toISOString(),
+    createdAt: typeof record.createdAt === "string" ? record.createdAt : record.createdAt.toISOString(),
     ...parsed,
   };
 }
@@ -52,6 +53,14 @@ function extractResultFields(record: {
 export async function GET(request: NextRequest) {
   const authError = checkAccessPassword(request);
   if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
+  const ctx = getAccessContext(request);
+  if (!ctx) {
+    return NextResponse.json(
+      { ok: false, error: { code: "invalid_access", message: "请先登录后再操作。" } },
+      { status: 401 },
+    );
+  }
 
   const { searchParams } = new URL(request.url);
   const productName = (searchParams.get("productName") || "").trim();
@@ -64,13 +73,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Find all task records whose title matches the product name
-    const records = await prisma.viralAnalysisRecord.findMany({
-      where: {
-        title: productName,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const records = ctx.mode === "demo"
+      ? listSandboxTasks(ctx.demoAccessId).filter((task) => task.title === productName)
+      : await prisma.viralAnalysisRecord.findMany({
+        where: {
+          title: productName,
+        },
+        orderBy: { createdAt: "desc" },
+      });
 
     const result: AggregateResult = {
       productName,

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, beforeAll, afterAll, vi } from "vitest";
 import { tmpdir } from "os";
 import { randomBytes } from "crypto";
 import { unlinkSync } from "fs";
@@ -28,6 +28,8 @@ import {
   buildDemoAccessSnapshot,
   ensureDemoAiQuota,
   consumeDemoAiCalls,
+  reserveDemoAiCalls,
+  settleDemoAiCalls,
   getLatestDemoSnapshot,
   type GuardResult,
 } from "@/lib/server/demoGuard";
@@ -164,6 +166,7 @@ describe("consumeDemoAiCalls", () => {
   it("Demo consumes and returns updated snapshot", () => {
     const { record } = createDemoAccess({ label: "D", hours: 24, maxAiCalls: 5 });
     const ctx = makeDemoCtx(record.id);
+    expect(ensureDemoAiQuota(ctx, 1)).toEqual({ ok: true });
     const snap = consumeDemoAiCalls(ctx, 1);
     expect(snap).not.toBeNull();
     expect(snap!.usedAiCalls).toBe(1);
@@ -173,18 +176,103 @@ describe("consumeDemoAiCalls", () => {
   it("consuming multiple works", () => {
     const { record } = createDemoAccess({ label: "E", hours: 24, maxAiCalls: 10 });
     const ctx = makeDemoCtx(record.id);
+    expect(ensureDemoAiQuota(ctx, 3)).toEqual({ ok: true });
     const snap = consumeDemoAiCalls(ctx, 3);
     expect(snap!.usedAiCalls).toBe(3);
     expect(snap!.remainingAiCalls).toBe(7);
   });
 
-  it("consuming beyond max is prevented by file I/O", () => {
+  it("fails closed when consume has no reservation", () => {
     const { record } = createDemoAccess({ label: "F", hours: 24, maxAiCalls: 2 });
     const ctx = makeDemoCtx(record.id);
-    consumeDemoAiCalls(ctx, 2); // use all
-    const snap = consumeDemoAiCalls(ctx, 1); // try one more
-    expect(snap!.usedAiCalls).toBe(3); // file allows it, guard should check first
-    expect(snap!.remainingAiCalls).toBe(0);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(() => consumeDemoAiCalls(ctx, 1)).toThrow("demo_ai_quota_reservation_missing");
+    expect(getLatestDemoSnapshot(ctx)?.usedAiCalls).toBe(0);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Demo AI quota settlement failed",
+      expect.objectContaining({ code: "reservation_missing", demoAccessId: record.id, count: 1 }),
+    );
+    errorSpy.mockRestore();
+  });
+});
+
+describe("explicit Demo AI quota reservations", () => {
+  beforeEach(() => saveDemoAccessStore(emptyStore()));
+  afterEach(() => saveDemoAccessStore(emptyStore()));
+
+  it("settles only started calls and releases unused planned quota", () => {
+    const { record } = createDemoAccess({ label: "Batch", hours: 24, maxAiCalls: 10 });
+    const ctx = makeDemoCtx(record.id);
+    const reserved = reserveDemoAiCalls(ctx, 6);
+
+    expect(reserved.ok).toBe(true);
+    if (!reserved.ok || !reserved.reservation) return;
+    const settled = settleDemoAiCalls(ctx, reserved.reservation, 4);
+
+    expect(settled.ok).toBe(true);
+    if (settled.ok) {
+      expect(settled.snapshot?.usedAiCalls).toBe(4);
+      expect(settled.snapshot?.remainingAiCalls).toBe(6);
+    }
+    const storedReservation = loadDemoAccessStore().accesses[0]
+      .aiImageQuotaReservations?.[reserved.reservation.reservationId];
+    expect(storedReservation).toMatchObject({
+      status: "committed",
+      count: 6,
+      chargedCount: 4,
+      kind: "text",
+    });
+  });
+
+  it("rejects a missing reservation without changing quota", () => {
+    const { record } = createDemoAccess({ label: "Missing", hours: 24, maxAiCalls: 5 });
+    const ctx = makeDemoCtx(record.id);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const reserved = reserveDemoAiCalls(ctx, 3);
+    expect(reserved.ok).toBe(true);
+    expect(getLatestDemoSnapshot(ctx)?.usedAiCalls).toBe(3);
+
+    const settled = settleDemoAiCalls(ctx, { reservationId: "missing", plannedCount: 3 }, 3);
+
+    expect(settled.ok).toBe(false);
+    expect(getLatestDemoSnapshot(ctx)?.usedAiCalls).toBe(3);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("allows only one concurrent reservation within the remaining quota", async () => {
+    const { record } = createDemoAccess({ label: "Concurrent", hours: 24, maxAiCalls: 3 });
+    const ctxA = makeDemoCtx(record.id);
+    const ctxB = makeDemoCtx(record.id);
+
+    const [first, second] = await Promise.all([
+      Promise.resolve().then(() => reserveDemoAiCalls(ctxA, 3)),
+      Promise.resolve().then(() => reserveDemoAiCalls(ctxB, 3)),
+    ]);
+
+    expect([first.ok, second.ok].filter(Boolean)).toHaveLength(1);
+    expect(getLatestDemoSnapshot(ctxA)?.usedAiCalls).toBe(3);
+  });
+
+  it("keeps a longer batch reservation lease for serial Provider calls", () => {
+    const { record } = createDemoAccess({ label: "Long batch", hours: 24, maxAiCalls: 6 });
+    const ctx = makeDemoCtx(record.id);
+    const reserved = reserveDemoAiCalls(ctx, 6, { leaseMs: 600_000, nowMs: 10_000 });
+
+    expect(reserved.ok).toBe(true);
+    if (!reserved.ok || !reserved.reservation) return;
+    const stored = loadDemoAccessStore().accesses[0]
+      .aiImageQuotaReservations?.[reserved.reservation.reservationId];
+    expect(stored?.leaseExpiresAt).toBe(new Date(610_000).toISOString());
+  });
+
+  it("does not reserve or settle Owner quota", () => {
+    const owner = makeOwnerCtx();
+    const reserved = reserveDemoAiCalls(owner, 100);
+
+    expect(reserved).toEqual({ ok: true, reservation: null });
+    expect(settleDemoAiCalls(owner, null, 100)).toEqual({ ok: true, snapshot: null });
   });
 });
 

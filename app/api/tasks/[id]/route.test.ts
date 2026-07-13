@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { NextRequest } from "next/server";
 
 /**
  * /api/tasks/[id] route 测试
@@ -78,7 +79,7 @@ function createRequest(params: {
   headers?: Record<string, string>;
   method?: string;
   body?: unknown;
-}) {
+}): NextRequest {
   const urlStr = params.url ?? "http://localhost:3000/api/tasks/task-001";
   const url = new URL(urlStr);
   const headers = new Headers(params.headers);
@@ -89,7 +90,7 @@ function createRequest(params: {
     nextUrl: url,
     headers,
     json: async () => params.body ?? {},
-  };
+  } as unknown as NextRequest;
 }
 
 function createContext(id: string) {

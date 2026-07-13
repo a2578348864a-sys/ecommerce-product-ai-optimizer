@@ -26,7 +26,7 @@ function mockSessionStorage() {
 
 // We need to import after mocking
 let buildAccessHeaders: () => Record<string, string>;
-let saveAccessToken: (token: string, mode: string) => void;
+let saveAccessToken: typeof import("@/lib/client/accessToken").saveAccessToken;
 let clearAccessSession: () => void;
 
 beforeEach(async () => {

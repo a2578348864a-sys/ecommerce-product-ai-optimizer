@@ -94,6 +94,12 @@ const FAILURE_REASON_MAP: Record<string, FailureReasonLabel> = {
     description: "来源响应过慢，超过当前等待限制。",
     recommendation: "建议换用响应更快的来源，或稍后重试。",
   },
+  batch_timeout: {
+    reason: "batch_timeout",
+    title: "批次超时",
+    description: "本批公开 URL 的总抓取时间已达到安全上限。",
+    recommendation: "请减少本次 URL 数量，或分批重试。",
+  },
   response_too_large: {
     reason: "response_too_large",
     title: "页面内容过大",
@@ -105,6 +111,24 @@ const FAILURE_REASON_MAP: Record<string, FailureReasonLabel> = {
     title: "请求失败",
     description: "可能被来源阻断，或当前网络环境不稳定。",
     recommendation: "该来源可能限制自动访问，建议换用其他公开可访问来源。",
+  },
+  http_error: {
+    reason: "http_error",
+    title: "来源返回错误",
+    description: "公开来源返回了 4xx、429 或 5xx 状态，未将错误页当作证据。",
+    recommendation: "请确认页面可公开访问，或稍后换用其他来源。",
+  },
+  unsupported_content_type: {
+    reason: "unsupported_content_type",
+    title: "内容类型不支持",
+    description: "该地址返回的不是受支持的 HTML、文本、XML、RSS 或 JSON。",
+    recommendation: "请改用具体的公开网页、RSS 或 sitemap 地址。",
+  },
+  unsupported_content_encoding: {
+    reason: "unsupported_content_encoding",
+    title: "压缩格式不支持",
+    description: "来源未按安全请求返回可直接检查的文本内容。",
+    recommendation: "请换用无需特殊压缩处理的公开来源。",
   },
   js_rendered_source_not_supported: {
     reason: "js_rendered_source_not_supported",
@@ -124,6 +148,12 @@ const FAILURE_REASON_MAP: Record<string, FailureReasonLabel> = {
     description: "该来源的 robots.txt 不允许自动抓取当前路径。",
     recommendation: "当前遵守 robots 协议，不会强行抓取。",
   },
+  robots_unavailable: {
+    reason: "robots_unavailable",
+    title: "robots.txt 无法确认",
+    description: "系统无法可靠读取或判断该来源的抓取规则，因此已停止访问正文。",
+    recommendation: "请稍后重试，或换用抓取规则明确的公开来源。",
+  },
   ssrf_blocked: {
     reason: "ssrf_blocked",
     title: "安全限制",
@@ -135,6 +165,12 @@ const FAILURE_REASON_MAP: Record<string, FailureReasonLabel> = {
     title: "URL 无效",
     description: "无法解析该地址，请检查格式。",
     recommendation: "URL 应以 http:// 或 https:// 开头。",
+  },
+  redirect_invalid: {
+    reason: "redirect_invalid",
+    title: "重定向被阻止",
+    description: "来源跳转次数过多、目标无效或目标未通过安全检查。",
+    recommendation: "请直接提交最终公开页面地址。",
   },
 };
 

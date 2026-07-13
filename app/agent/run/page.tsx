@@ -1,5 +1,6 @@
 import { AgentRunClient, type AgentRunSourceMeta } from "@/components/agent/AgentRunClient";
 import { parseCandidateEvidenceParam } from "@/lib/candidateEvidence";
+import { parseR22MarketDecisionSnapshot } from "@/lib/r22DecisionModel";
 
 type AgentRunSearchParams = {
   product?: string | string[];
@@ -18,6 +19,7 @@ type AgentRunSearchParams = {
   originalName?: string | string[];
   analyzedName?: string | string[];
   evidence?: string | string[];
+  r22Market?: string | string[];
 };
 
 function firstParam(value: string | string[] | undefined) {
@@ -53,6 +55,15 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
   const originalName = safeDecode(firstParam(params.originalName));
   const analyzedName = safeDecode(firstParam(params.analyzedName));
   const evidenceSnapshot = parseCandidateEvidenceParam(firstParam(params.evidence));
+  let r22MarketDecisionSnapshot = null;
+  const r22MarketRaw = firstParam(params.r22Market);
+  if (r22MarketRaw) {
+    try {
+      r22MarketDecisionSnapshot = parseR22MarketDecisionSnapshot(JSON.parse(r22MarketRaw));
+    } catch {
+      r22MarketDecisionSnapshot = null;
+    }
+  }
 
   return {
     source: "opportunity",
@@ -69,6 +80,7 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
     ...(originalName ? { originalName } : {}),
     ...(analyzedName ? { analyzedName } : {}),
     ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
+    ...(r22MarketDecisionSnapshot ? { r22MarketDecisionSnapshot } : {}),
     importedAt: new Date().toISOString(),
   };
 }

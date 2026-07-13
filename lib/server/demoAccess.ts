@@ -41,6 +41,7 @@ export interface DemoAccessRecord {
     updatedAt: string;
     kind?: "text" | "image";
     leaseExpiresAt?: string;
+    chargedCount?: number;
   }>;
 }
 
@@ -69,6 +70,9 @@ function getStorePath(): string {
   // Allow tests to override via env var
   if (process.env.DEMO_ACCESS_STORE_PATH) {
     return process.env.DEMO_ACCESS_STORE_PATH;
+  }
+  if (process.env.NODE_ENV === "test") {
+    return resolve(process.cwd(), ".next", "test-stores", "demo-access.default.json");
   }
   const dataDir = resolve(process.cwd(), "data");
   return resolve(dataDir, "demo-access.json");
@@ -335,6 +339,48 @@ export function commitDemoAiImageCalls(id: string, requestHash: string): DemoAcc
     saveDemoAccessStore(store);
   }
   return access;
+}
+
+export type DemoAiCallSettlementResult =
+  | { ok: true; record: DemoAccessRecord; duplicate: boolean }
+  | {
+      ok: false;
+      code: "access_not_found" | "reservation_not_found" | "reservation_conflict" | "invalid_started_count";
+    };
+
+export function settleDemoAiCallReservation(
+  id: string,
+  requestHash: string,
+  startedCount: number,
+): DemoAiCallSettlementResult {
+  const store = loadDemoAccessStore();
+  const access = store.accesses.find((item) => item.id === id);
+  if (!access) return { ok: false, code: "access_not_found" };
+
+  const reservation = access.aiImageQuotaReservations?.[requestHash];
+  if (!reservation) return { ok: false, code: "reservation_not_found" };
+  if (reservation.kind && reservation.kind !== "text") {
+    return { ok: false, code: "reservation_conflict" };
+  }
+  if (!Number.isInteger(startedCount) || startedCount < 0 || startedCount > reservation.count) {
+    return { ok: false, code: "invalid_started_count" };
+  }
+
+  if (reservation.status !== "reserved") {
+    const chargedCount = reservation.chargedCount
+      ?? (reservation.status === "committed" ? reservation.count : 0);
+    return chargedCount === startedCount
+      ? { ok: true, record: access, duplicate: true }
+      : { ok: false, code: "reservation_conflict" };
+  }
+
+  const unusedCount = reservation.count - startedCount;
+  access.usedAiCalls = Math.max(0, access.usedAiCalls - unusedCount);
+  reservation.status = startedCount > 0 ? "committed" : "refunded";
+  reservation.chargedCount = startedCount;
+  reservation.updatedAt = new Date().toISOString();
+  saveDemoAccessStore(store);
+  return { ok: true, record: access, duplicate: false };
 }
 
 export function refundDemoAiImageCalls(id: string, requestHash: string): DemoAccessRecord | null {

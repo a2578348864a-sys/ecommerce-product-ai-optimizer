@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildWorkflowBatchSavePayload,
   hasRunContent,
   makeRunId,
   sanitizeRun,
@@ -258,6 +259,37 @@ describe("sanitizeRun", () => {
   });
 });
 
+describe("buildWorkflowBatchSavePayload", () => {
+  const batchMeta = {
+    batchId: "batch-proof-001",
+    batchName: "批量分析",
+    batchIndex: 1,
+    batchTotal: 1,
+    source: "workflow_batch_mvp" as const,
+  };
+
+  it("places the server runProof at the save-task top level", () => {
+    const workflowResult = { ok: true, workflowId: "wf-1", runProof: "proof-1" };
+    const payload = buildWorkflowBatchSavePayload({
+      accessPassword: "test-access",
+      workflowResult,
+      reviewState: { sourcingReviewed: true },
+      batchMeta,
+    });
+
+    expect(payload).toMatchObject({ runProof: "proof-1", workflowResult, batchMeta });
+  });
+
+  it("fails closed when restored analysis has no runProof", () => {
+    expect(buildWorkflowBatchSavePayload({
+      accessPassword: "test-access",
+      workflowResult: { ok: true, workflowId: "legacy-wf" },
+      reviewState: {},
+      batchMeta,
+    })).toBeNull();
+  });
+});
+
 /* ── stripLargeResult ─────────────────────────── */
 
 describe("stripLargeResult", () => {
@@ -274,6 +306,7 @@ describe("stripLargeResult", () => {
       listing: { title: "Product Title" },
       costGuard: { aiStepsRequested: 4, aiStepsCompleted: 4, fallbackSteps: 0 },
       warnings: ["small warning"],
+      runProof: "proof-preserved-for-save",
     };
 
     const result = stripLargeResult(input);
@@ -284,6 +317,7 @@ describe("stripLargeResult", () => {
     expect(result.listing).toBeDefined();
     expect(result.costGuard).toBeDefined();
     expect(result.warnings).toEqual(["small warning"]);
+    expect(result.runProof).toBe("proof-preserved-for-save");
     expect(result.ok).toBe(true);
     expect(result.workflowId).toBe("wf-1");
     expect(result.productName).toBe("test");

@@ -20,7 +20,6 @@ import {
   createDemoAccess,
   loadDemoAccessStore,
   saveDemoAccessStore,
-  type DemoAccessStore,
 } from "@/lib/server/demoAccess";
 import { getAccessContext, checkAccessPassword } from "@/lib/server/accessPassword";
 
@@ -41,7 +40,7 @@ beforeEach(() => {
   // Set a dummy password so checkAccessPassword doesn't return 500 "not configured"
   process.env.ACCESS_PASSWORD = "test-dummy-password-for-unit-tests";
   process.env.DEMO_ACCESS_STORE_PATH = TEST_DEMO_ACCESS_STORE_PATH;
-  saveDemoAccessStore({ accesses: [] } as DemoAccessStore);
+  saveDemoAccessStore({ version: 1, accesses: [] });
 
   // Clean up old sessions
   if (ownerToken) deleteAccessSession(ownerToken);
@@ -65,7 +64,7 @@ beforeEach(() => {
 afterEach(() => {
   if (ownerToken) deleteAccessSession(ownerToken);
   if (demoToken) deleteAccessSession(demoToken);
-  saveDemoAccessStore({ accesses: [] } as DemoAccessStore);
+  saveDemoAccessStore({ version: 1, accesses: [] });
   delete process.env.ACCESS_PASSWORD;
   delete process.env.DEMO_ACCESS_STORE_PATH;
 });

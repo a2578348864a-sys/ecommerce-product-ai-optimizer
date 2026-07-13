@@ -1,5 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { safeParseJsonFromAiText } from "@/lib/server/aiClient";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const openAiMocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  clientOptions: null as Record<string, unknown> | null,
+}));
+
+vi.mock("openai", () => ({
+  default: class MockOpenAI {
+    chat = { completions: { create: openAiMocks.create } };
+
+    constructor(options: Record<string, unknown>) {
+      openAiMocks.clientOptions = options;
+    }
+  },
+}));
+
+import { callAiJson, callAiText, safeParseJsonFromAiText } from "@/lib/server/aiClient";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv("AI_PROVIDER", "openai");
+  vi.stubEnv("AI_API_KEY", "unit-test-key");
+  vi.stubEnv("AI_MODEL", "unit-test-model");
+  vi.stubEnv("AI_BASE_URL", "https://provider.invalid/v1");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("safeParseJsonFromAiText", () => {
   it("AI 返回 fenced JSON 时能解析", () => {
@@ -28,5 +56,60 @@ describe("safeParseJsonFromAiText", () => {
       expect(result.error.code).toBe("json_parse_error");
       expect(result.error.detail?.length).toBeLessThanOrEqual(240);
     }
+  });
+});
+
+describe("providerCallStarted", () => {
+  it("sets maxRetries=0 and marks a successful SDK call as started", async () => {
+    openAiMocks.create.mockResolvedValueOnce({ choices: [{ message: { content: "ok" } }] });
+
+    const result = await callAiText({ messages: [{ role: "user", content: "test" }] });
+
+    expect(result.providerCallStarted).toBe(true);
+    expect(openAiMocks.create).toHaveBeenCalledOnce();
+    expect(openAiMocks.clientOptions).toEqual(expect.objectContaining({ maxRetries: 0 }));
+  });
+
+  it.each([
+    ["rate_limited", Object.assign(new Error("429 rate limited"), { status: 429 })],
+    ["timeout", Object.assign(new Error("request timed out"), { name: "TimeoutError" })],
+  ])("marks %s after the SDK call starts", async (_label, error) => {
+    openAiMocks.create.mockRejectedValueOnce(error);
+
+    const result = await callAiText({ messages: [{ role: "user", content: "test" }] });
+
+    expect(result.ok).toBe(false);
+    expect(result.providerCallStarted).toBe(true);
+  });
+
+  it("marks an empty provider response as started", async () => {
+    openAiMocks.create.mockResolvedValueOnce({ choices: [{ message: { content: "" } }] });
+
+    const result = await callAiText({ messages: [{ role: "user", content: "test" }] });
+
+    expect(result.ok).toBe(false);
+    expect(result.providerCallStarted).toBe(true);
+    if (!result.ok) expect(result.error.code).toBe("empty_response");
+  });
+
+  it("preserves the started marker when JSON parsing fails", async () => {
+    openAiMocks.create.mockResolvedValueOnce({ choices: [{ message: { content: "not-json" } }] });
+
+    const result = await callAiJson({ messages: [{ role: "user", content: "test" }] });
+
+    expect(result.ok).toBe(false);
+    expect(result.providerCallStarted).toBe(true);
+    if (!result.ok) expect(result.error.code).toBe("json_parse_error");
+  });
+
+  it("does not mark or invoke the SDK when configuration fails first", async () => {
+    vi.stubEnv("AI_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "");
+
+    const result = await callAiText({ messages: [{ role: "user", content: "test" }] });
+
+    expect(result.ok).toBe(false);
+    expect(result.providerCallStarted).toBe(false);
+    expect(openAiMocks.create).not.toHaveBeenCalled();
   });
 });

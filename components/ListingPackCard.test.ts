@@ -4,6 +4,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildFallbackListingPack, listingPackToMarkdown } from "@/lib/listingPack";
 
+function restoreSnapshot(existingSnapshot: { pack: unknown; savedAt: string } | null) {
+  return {
+    pack: existingSnapshot?.pack ?? null,
+    savedAt: existingSnapshot?.savedAt ?? null,
+  };
+}
+
+function isListingDisabled(decisionRecommendation: string) {
+  return decisionRecommendation === "reject" || decisionRecommendation === "needs_more_info";
+}
+
 // ── Helpers for testing component logic without full React render ──
 // We test the core logic functions that drive the component states directly.
 
@@ -52,9 +63,7 @@ describe("ListingPackCard — save state logic", () => {
     });
 
     it("existingSnapshot with null means unsaved state", () => {
-      const existingSnapshot = null;
-      const pack = existingSnapshot?.pack ?? null;
-      const savedAt = existingSnapshot?.savedAt ?? null;
+      const { pack, savedAt } = restoreSnapshot(null);
       expect(pack).toBeNull();
       expect(savedAt).toBeNull();
     });
@@ -137,14 +146,12 @@ describe("ListingPackCard — save state logic", () => {
     it("does not generate listing for reject recommendation", () => {
       // The component receives disabled={true} for reject/needs_more_info
       // This is a prop test — the logic is in TaskRecordDetail
-      const decisionRecommendation = "reject";
-      const isDisabled = decisionRecommendation === "reject" || decisionRecommendation === "needs_more_info";
+      const isDisabled = isListingDisabled("reject");
       expect(isDisabled).toBe(true);
     });
 
     it("does not disable for advance recommendation", () => {
-      const decisionRecommendation = "advance";
-      const isDisabled = decisionRecommendation === "reject" || decisionRecommendation === "needs_more_info";
+      const isDisabled = isListingDisabled("advance");
       expect(isDisabled).toBe(false);
     });
   });

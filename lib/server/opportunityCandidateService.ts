@@ -1,9 +1,23 @@
 import { prisma } from "@/lib/server/db";
 import type { Prisma } from "@prisma/client";
+import {
+  assertCandidateSourceUpdateAllowed,
+  getCandidateSourceIntegrity,
+  type CandidateSourceIntegrity,
+} from "@/lib/candidateSourceIntegrity";
+import {
+  CandidateSourceSaveError,
+  normalizeCandidateIdentity,
+  parseStoredCandidateSourceMeta,
+  type CandidateSaveItem,
+} from "@/lib/server/candidateSourceSave";
+import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
 
 /* ── Types ─────────────────────────────────────── */
 
 export type CandidateStatus = "pending" | "worth_analyzing" | "analyzed" | "paused" | "rejected";
+
+export type CandidateDeleteResult = "deleted" | "not_found" | "linked_task";
 
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   "pending",
@@ -42,6 +56,11 @@ export type CandidateUpdate = {
   keyword?: string;
 };
 
+export type CandidateUpdatePolicyContext = {
+  sourceReviewAcknowledged?: unknown;
+  requestedFields?: readonly string[];
+};
+
 export type CandidateItem = {
   id: string;
   name: string;
@@ -60,6 +79,7 @@ export type CandidateItem = {
   createdAt: string;
   updatedAt: string;
   lastActionAt: string | null;
+  sourceIntegrity: CandidateSourceIntegrity;
 };
 
 export type CandidateListResult = {
@@ -126,6 +146,7 @@ function toCandidateItem(record: {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
     lastActionAt: record.lastActionAt?.toISOString() ?? null,
+    sourceIntegrity: getCandidateSourceIntegrity(record.sourceMetaJson),
   };
 }
 
@@ -236,12 +257,192 @@ export async function upsertCandidates(inputs: CandidateInput[]): Promise<{
   return { items: results, created, updated };
 }
 
+export async function saveSignedCandidates(inputs: CandidateSaveItem[]): Promise<{
+  items: CandidateItem[];
+  created: number;
+  updated: 0;
+  unchanged: number;
+}> {
+  return prisma.$transaction(async (tx) => {
+    const existingRecords = await tx.opportunityCandidate.findMany();
+    const existingByIdentity = new Map<string, typeof existingRecords>();
+    for (const record of existingRecords) {
+      const identity = normalizeCandidateIdentity(record.name);
+      const matches = existingByIdentity.get(identity);
+      if (matches) matches.push(record);
+      else existingByIdentity.set(identity, [record]);
+    }
+
+    const decisions: Array<
+      | { kind: "unchanged"; record: typeof existingRecords[number] }
+      | { kind: "create"; input: CandidateSaveItem }
+    > = [];
+    let unchanged = 0;
+
+    for (const input of inputs) {
+      if (!input.evidenceHash || !/^[a-f0-9]{64}$/.test(input.evidenceHash)) {
+        throw new CandidateSourceSaveError("candidate_batch_invalid", "Signed Candidate 缺少有效 Evidence Hash。");
+      }
+      const matches = existingByIdentity.get(normalizeCandidateIdentity(input.name)) ?? [];
+      if (matches.length > 1) {
+        throw new CandidateSourceSaveError("candidate_source_conflict", "候选池已有重复身份，无法安全写入。");
+      }
+      if (matches.length === 1) {
+        const stored = parseStoredCandidateSourceMeta(matches[0].sourceMetaJson);
+        if (stored.integrity !== "signed_source_v2" || stored.evidenceHash !== input.evidenceHash) {
+          throw new CandidateSourceSaveError("candidate_source_conflict", "同名 Candidate 来源证据冲突。");
+        }
+        decisions.push({ kind: "unchanged", record: matches[0] });
+        unchanged += 1;
+      } else {
+        decisions.push({ kind: "create", input });
+      }
+    }
+
+    const items: CandidateItem[] = [];
+    let created = 0;
+    for (const decision of decisions) {
+      if (decision.kind === "unchanged") {
+        items.push(toCandidateItem(decision.record));
+        continue;
+      }
+      const input = decision.input;
+      const createdRecord = await tx.opportunityCandidate.create({
+        data: {
+          name: input.name,
+          rawInput: input.rawInput,
+          link: input.link,
+          score: clampScore(input.score),
+          source: input.source,
+          keyword: input.keyword,
+          riskLevel: input.riskLevel,
+          riskLabel: input.riskLabel,
+          summaryLabel: input.summaryLabel,
+          status: "pending",
+          sourceMetaJson: input.sourceMetaJson,
+          analysisJson: input.analysisJson,
+          convertedTaskId: null,
+          lastActionAt: new Date(),
+        },
+      });
+      items.push(toCandidateItem(createdRecord));
+      created += 1;
+    }
+
+    return { items, created, updated: 0 as const, unchanged };
+  });
+}
+
+export async function saveLegacyCandidates(inputs: CandidateSaveItem[]): Promise<{
+  items: CandidateItem[];
+  created: number;
+  updated: number;
+}> {
+  return prisma.$transaction(async (tx) => {
+    const existingRecords = await tx.opportunityCandidate.findMany();
+    const existingByIdentity = new Map<string, typeof existingRecords>();
+    for (const record of existingRecords) {
+      const identity = normalizeCandidateIdentity(record.name);
+      const matches = existingByIdentity.get(identity);
+      if (matches) matches.push(record);
+      else existingByIdentity.set(identity, [record]);
+    }
+
+    const batchIdentities = new Set<string>();
+    const decisions: Array<
+      | { kind: "update"; record: typeof existingRecords[number]; input: CandidateSaveItem }
+      | { kind: "create"; input: CandidateSaveItem }
+    > = [];
+    for (const input of inputs) {
+      const identity = normalizeCandidateIdentity(input.name);
+      if (batchIdentities.has(identity)) {
+        throw new CandidateSourceSaveError("candidate_source_conflict", "Legacy Candidate 批次包含重复身份。");
+      }
+      batchIdentities.add(identity);
+      const matches = existingByIdentity.get(identity) ?? [];
+      if (matches.length > 1) {
+        throw new CandidateSourceSaveError("candidate_source_conflict", "候选池已有重复身份，无法安全写入。");
+      }
+      if (matches.length === 1) {
+        const stored = parseStoredCandidateSourceMeta(matches[0].sourceMetaJson);
+        if (stored.integrity === "signed_source_v2") {
+          throw new CandidateSourceSaveError("candidate_source_conflict", "未验证来源不能覆盖已验证 Candidate。");
+        }
+        decisions.push({ kind: "update", record: matches[0], input });
+      } else {
+        decisions.push({ kind: "create", input });
+      }
+    }
+
+    const items: CandidateItem[] = [];
+    let created = 0;
+    let updated = 0;
+    for (const decision of decisions) {
+      const input = decision.input;
+      if (decision.kind === "update") {
+        const updatedRecord = await tx.opportunityCandidate.update({
+          where: { id: decision.record.id },
+          data: {
+            score: clampScore(input.score),
+            rawInput: input.rawInput,
+            link: input.link,
+            source: input.source,
+            keyword: input.keyword,
+            riskLevel: input.riskLevel,
+            riskLabel: input.riskLabel,
+            summaryLabel: input.summaryLabel,
+            sourceMetaJson: input.sourceMetaJson,
+            analysisJson: input.analysisJson,
+            status: "pending",
+            lastActionAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+        items.push(toCandidateItem(updatedRecord));
+        updated += 1;
+        continue;
+      }
+      const createdRecord = await tx.opportunityCandidate.create({
+        data: {
+          name: input.name,
+          rawInput: input.rawInput,
+          link: input.link,
+          score: clampScore(input.score),
+          source: input.source,
+          keyword: input.keyword,
+          riskLevel: input.riskLevel,
+          riskLabel: input.riskLabel,
+          summaryLabel: input.summaryLabel,
+          status: input.status,
+          sourceMetaJson: input.sourceMetaJson,
+          analysisJson: input.analysisJson,
+          convertedTaskId: input.convertedTaskId,
+          lastActionAt: new Date(),
+        },
+      });
+      items.push(toCandidateItem(createdRecord));
+      created += 1;
+    }
+    return { items, created, updated };
+  });
+}
+
 export async function updateCandidate(
   id: string,
   update: CandidateUpdate,
+  policy: CandidateUpdatePolicyContext = {},
 ): Promise<CandidateItem | null> {
   const existing = await prisma.opportunityCandidate.findUnique({ where: { id } });
   if (!existing) return null;
+
+  assertCandidateSourceUpdateAllowed({
+    sourceMetaJson: existing.sourceMetaJson,
+    reviewIntegrity: buildCandidateEvidenceReview(existing).integrity,
+    currentStatus: existing.status,
+    targetStatus: update.status,
+    sourceReviewAcknowledged: policy.sourceReviewAcknowledged,
+    requestedFields: policy.requestedFields ?? Object.keys(update),
+  });
 
   const data: Prisma.OpportunityCandidateUpdateInput = {};
 
@@ -275,11 +476,17 @@ export async function updateCandidate(
   return toCandidateItem(updated);
 }
 
-export async function deleteCandidate(id: string): Promise<boolean> {
-  const existing = await prisma.opportunityCandidate.findUnique({ where: { id } });
-  if (!existing) return false;
-  await prisma.opportunityCandidate.delete({ where: { id } });
-  return true;
+export async function deleteCandidate(id: string): Promise<CandidateDeleteResult> {
+  const deleted = await prisma.opportunityCandidate.deleteMany({
+    where: { id, convertedTaskId: null },
+  });
+  if (deleted.count === 1) return "deleted";
+
+  const remaining = await prisma.opportunityCandidate.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  return remaining ? "linked_task" : "not_found";
 }
 
 export async function importLocalCandidates(

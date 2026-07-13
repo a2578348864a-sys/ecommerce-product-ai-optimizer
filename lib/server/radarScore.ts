@@ -13,6 +13,12 @@ export type ScoreResult = {
   finalScore: number;          // 0-100 weighted composite
 };
 
+export type EvidenceScoreInput = {
+  title: string;
+  signalText?: string | null;
+  categoryHint?: string | null;
+};
+
 // -- Keyword dictionaries --
 
 // Higher demand signal
@@ -85,8 +91,7 @@ function clamp(n: number, lo: number, hi: number): number {
  * Score a single candidate item.
  * Pure rules — no AI, no I/O.
  */
-export function scoreCandidate(item: CandidateItem): ScoreResult {
-  const searchText = `${item.title} ${item.signalText} ${item.categoryHint} ${item.riskHint}`.toLowerCase();
+function scoreSearchText(searchText: string): ScoreResult {
 
   // Demand signal: more keyword matches = higher demand likelihood
   const demandMatches = countMatches(searchText, HIGH_DEMAND_WORDS);
@@ -130,6 +135,19 @@ export function scoreCandidate(item: CandidateItem): ScoreResult {
     beginnerFitScore,
     finalScore,
   };
+}
+
+/** Score only facts persisted in SourceEvidenceV2 observations. */
+export function scoreEvidenceSignals(input: EvidenceScoreInput): ScoreResult {
+  return scoreSearchText(
+    `${input.title} ${input.signalText || ""} ${input.categoryHint || ""}`.toLowerCase(),
+  );
+}
+
+export function scoreCandidate(item: CandidateItem): ScoreResult {
+  return scoreSearchText(
+    `${item.title} ${item.signalText} ${item.categoryHint} ${item.riskHint}`.toLowerCase(),
+  );
 }
 
 /**

@@ -8,8 +8,8 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { createOwnerSession, createDemoSession, deleteAccessSession } from "@/lib/server/accessSession";
-import { createDemoAccess, loadDemoAccessStore, saveDemoAccessStore } from "@/lib/server/demoAccess";
-import { createSandboxTask, isSandboxTaskId, getSandboxTask, listSandboxTasks, sandboxTaskToListItem, loadDemoSandboxStore, saveDemoSandboxStore } from "@/lib/server/demoSandbox";
+import { createDemoAccess, loadDemoAccessStore, saveDemoAccessStore, type DemoAccessStore } from "@/lib/server/demoAccess";
+import { createSandboxTask, isSandboxTaskId, getSandboxTask, listSandboxTasks, sandboxTaskToListItem, loadDemoSandboxStore, saveDemoSandboxStore, type DemoSandboxStore } from "@/lib/server/demoSandbox";
 import { getAccessContext, checkAccessPassword } from "@/lib/server/accessPassword";
 
 function buildGetRequest(token: string): NextRequest {
@@ -57,7 +57,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
     const ctx = getAccessContext(req);
     expect(ctx).not.toBeNull();
     expect(ctx!.mode).toBe("demo");
-    if (ctx!.mode === "demo") {
+    if (ctx?.mode === "demo") {
       expect(ctx!.demoAccessId).toBe(demoAccessId);
     }
   });
@@ -111,7 +111,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
     expect(ctx!.mode).toBe("demo");
 
     // Step 5: List sandbox tasks
-    if (ctx!.mode === "demo") {
+    if (ctx?.mode === "demo") {
       const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
       expect(sandboxTasks.length).toBeGreaterThanOrEqual(1);
       expect(sandboxTasks.some(t => t.id === task.id)).toBe(true);
@@ -130,8 +130,8 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
 // Note: createSandboxTask already imported at top of file
 
 describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
-  let demoSandboxStoreBefore: unknown;
-  let demoAccessStoreBefore: unknown;
+  let demoSandboxStoreBefore: DemoSandboxStore;
+  let demoAccessStoreBefore: DemoAccessStore;
 
   beforeEach(() => {
     demoSandboxStoreBefore = loadDemoSandboxStore();

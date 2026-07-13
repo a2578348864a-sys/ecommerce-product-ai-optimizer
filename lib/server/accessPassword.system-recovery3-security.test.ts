@@ -100,7 +100,7 @@ describe("Security Gate — Fallback Demo Context", () => {
     const req = buildRequest({ "x-access-token": demoToken });
     const result = requireOwnerOnly(req);
     expect(result.ok).toBe(false);
-    expect(result.status).toBe(403);
+    if (!result.ok) expect(result.status).toBe(403);
   });
 
   it("normal: owner passes requireOwnerOnly", () => {
@@ -140,7 +140,7 @@ describe("Security Gate — Fallback Demo Context", () => {
       const result = requireAuthenticated(req);
       // Auth-Hardening.1: getAccessContext returns null → requireAuthenticated rejects
       expect(result.ok).toBe(false);
-      expect(result.status).toBe(401);
+      if (!result.ok) expect(result.status).toBe(401);
     });
   });
 
@@ -184,8 +184,8 @@ describe("Security Gate — Fallback Demo Context", () => {
       const req = buildRequest({ "x-access-token": demoToken });
       const result = requireOwnerOnly(req);
       expect(result.ok).toBe(false);
-      expect(result.status).toBe(401);
       if (!result.ok) {
+        expect(result.status).toBe(401);
         expect(result.code).toBe("invalid_access");
       }
     });

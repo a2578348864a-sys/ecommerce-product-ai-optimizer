@@ -119,6 +119,17 @@ describe("getFailureReasonLabel", () => {
     expect(r.title).toBe("安全限制");
   });
 
+  it.each([
+    ["batch_timeout", "批次超时"],
+    ["http_error", "来源返回错误"],
+    ["unsupported_content_type", "内容类型不支持"],
+    ["unsupported_content_encoding", "压缩格式不支持"],
+    ["redirect_invalid", "重定向被阻止"],
+    ["robots_unavailable", "robots.txt 无法确认"],
+  ])("returns a specific label for %s", (reason, title) => {
+    expect(getFailureReasonLabel(reason).title).toBe(title);
+  });
+
   it("returns fallback for unknown reason without error", () => {
     const r = getFailureReasonLabel("nonexistent_reason");
     expect(r.reason).toBe("nonexistent_reason");

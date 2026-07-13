@@ -10,17 +10,27 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
-import { buildCandidateTaskLinkMap, type LinkedTaskInfo } from "@/lib/candidateTaskLinks";
 import {
+  buildCandidateTaskLinkMap,
+  resolveCandidateTaskLinks,
+  type LinkedTaskInfo,
+} from "@/lib/candidateTaskLinks";
+import {
+  buildCandidateStatusUpdatePayload,
+  canCandidateEnterAgent,
   filterCandidatePool,
+  getCandidateQueuePresentation,
+  getCandidateSourceIntegrityPresentation,
   mergeCandidatesIntoPool,
-  normalizeCandidate,
+  mergeServerCandidatesWithLocalDrafts,
   readCandidatePool,
+  serverCandidateToPoolItem,
   sortCandidatePool,
   updateCandidateStatus,
   writeCandidatePool,
   type CandidatePoolFilter,
   type CandidatePoolSort,
+  type CandidateQueueState,
   type CandidateStatus,
   type OpportunityCandidateInput,
   type OpportunityCandidatePoolItem,
@@ -56,7 +66,17 @@ import {
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
 import { getAccessMode } from "@/lib/client/accessToken";
-import { normalizeCandidateEvidence, parseCandidateEvidenceSnapshot, getRiskFlagLabel, sanitizeUrlForDisplay, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { normalizeCandidateEvidence, getRiskFlagLabel, sanitizeUrlForDisplay, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { CandidateEvidenceReviewPanel } from "@/components/cross-border/CandidateEvidenceReviewPanel";
+import {
+  buildSourceImportCandidateSaveInput,
+  sourceImportSaveSuccessMessage,
+  type SourceImportCandidateSaveData,
+} from "@/lib/client/sourceImportCandidateSave";
+import {
+  getSignedSourceQueuePolicy,
+  type SignedSourceQueuePolicyReason,
+} from "@/lib/ruleAssessmentPolicy";
 
 const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
   recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -137,25 +157,51 @@ const RISK_BADGE: Record<string, string> = {
   red: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
-type SourceImportCandidateData = {
-  title: string;
-  sourceUrl: string;
-  sourceType: string;
-  sourceHost: string;
-  categoryHint: string;
-  keyword: string;
-  riskHint: string;
-  riskLevel: string;
-  summaryLabel: string;
-  score: number;
-  demandSignalScore: number;
-  supplyEaseScore: number;
-  riskScore: number;
-  beginnerFitScore: number;
+type SourceImportCandidateData = SourceImportCandidateSaveData & {
   /** Phase 4-D.8: candidate quality classification */
-  candidateType?: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot;
 };
+
+function sourceQueueMessage(reason: SignedSourceQueuePolicyReason): string {
+  if (reason === "ready_for_review") return "可进入人工复核，已纳入批量选择";
+  if (reason === "manual_watch") return "证据或规则分有限，仅允许逐条人工选择";
+  if (reason === "not_product_candidate") return "仅作为方向线索展示，不能保存为 Candidate";
+  if (reason === "unsupported_algorithm") return "规则版本不受支持，请重新抓取";
+  return "规则建议暂不推进，不能保存为 Candidate";
+}
+
+export function getCandidateDeletePresentation(input: {
+  isOfficialReadonly: boolean;
+  isLocalDraft: boolean;
+  hasLinkedTask: boolean;
+}) {
+  if (input.isLocalDraft) {
+    return {
+      canDelete: true,
+      label: "删除候选",
+      title: "从当前浏览器候选池删除。",
+    };
+  }
+  if (input.hasLinkedTask) {
+    return {
+      canDelete: false,
+      label: "已转任务，候选来源证据需保留",
+      title: "已转任务的候选承载来源证据，不能硬删除。",
+    };
+  }
+  if (input.isOfficialReadonly) {
+    return {
+      canDelete: false,
+      label: "正式候选不可删除",
+      title: "访客体验模式下不能删除正式候选数据。",
+    };
+  }
+  return {
+    canDelete: true,
+    label: "删除候选",
+    title: "删除候选。",
+  };
+}
 
 type SourceImportResponse = {
   ok: true;
@@ -166,21 +212,13 @@ type SourceImportResponse = {
 
 const DRAFT_KEY = "qx:opportunities-draft:v1";
 
-const candidateStatusLabels: Record<CandidateStatus, string> = {
-  pending: "待判断",
-  worth_analyzing: "值得深挖",
-  analyzed: "已进入单品分析",
-  paused: "暂缓",
-  rejected: "已标记放弃",
-};
-
 const candidateFilterOptions: { value: CandidatePoolFilter; label: string }[] = [
   { value: "all", label: "全部" },
-  { value: "worth_analyzing", label: "值得深挖" },
-  { value: "pending", label: "待判断" },
-  { value: "paused", label: "暂缓/高风险" },
-  { value: "analyzed", label: "已进入单品分析" },
-  { value: "rejected", label: "已标记放弃" },
+  { value: "pending", label: "待查看" },
+  { value: "worth_analyzing", label: "待分析" },
+  { value: "analyzed", label: "分析中" },
+  { value: "paused", label: "待查看（历史暂缓）" },
+  { value: "rejected", label: "已放弃" },
 ];
 
 function displayRiskLevel(candidate?: Pick<CandidateData, "risk">) {
@@ -234,43 +272,6 @@ async function copyTextToClipboard(text: string) {
   }
 }
 
-function buildOpportunityWorkflowHrefFromParts(input: {
-  name: string;
-  score: number;
-  sourceName?: string | null;
-  keyword?: string;
-  rawInput?: string;
-  candidateId?: string;
-  sourceUrl?: string;
-  candidateType?: string;
-}) {
-  const productName = input.name.trim();
-  const params = new URLSearchParams({
-    product: productName,
-    source: "opportunity",
-    opportunityTitle: productName,
-    opportunityScore: String(Math.round(input.score)),
-    opportunitySource: input.sourceName?.trim().slice(0, 180) || "机会雷达候选品",
-  });
-  const keyword = input.keyword?.trim() || input.rawInput?.trim();
-  if (keyword) params.set("keyword", keyword.slice(0, 80));
-  // Phase 4-E.1: enhanced context
-  if (input.sourceUrl?.trim()) params.set("sourceUrl", input.sourceUrl.trim().slice(0, 500));
-  if (input.candidateType?.trim()) params.set("candidateType", input.candidateType.trim());
-  if (input.candidateId?.trim()) params.set("candidateId", input.candidateId.trim());
-  return `/workflow?${params.toString()}`;
-}
-
-function buildOpportunityWorkflowHref(candidate: CandidateData) {
-  return buildOpportunityWorkflowHrefFromParts({
-    name: candidate.name,
-    score: candidate.score,
-    sourceName: candidate.link,
-    keyword: candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0),
-    rawInput: candidate.rawInput,
-  });
-}
-
 function buildPoolAgentRunHref(candidate: OpportunityCandidatePoolItem) {
   return buildCandidateAgentRunHref({
     candidateId: candidate.id,
@@ -283,27 +284,7 @@ function buildPoolAgentRunHref(candidate: OpportunityCandidatePoolItem) {
     score: candidate.score,
     keyword: candidate.keyword,
     evidenceSnapshot: candidate.evidenceSnapshot,
-  });
-}
-
-function buildOpportunityAgentRunHref(candidate: CandidateData) {
-  return buildCandidateAgentRunHref({
-    name: candidate.name,
-    rawInput: candidate.rawInput,
-    analyzedName: candidate.name,
-    sourceTitle: candidate.summary?.verdict || candidate.reasons.slice(0, 1).join("") || candidate.name,
-    sourceUrl: candidate.link,
-    source: "机会雷达候选品",
-    score: candidate.score,
-    keyword: candidate.sourcing?.searchKeywords?.find((item) => item.trim().length > 0),
-    evidenceSnapshot: normalizeCandidateEvidence({
-      title: candidate.name,
-      sourceType: "manual",
-      sourceName: "opportunity radar",
-      sourceUrl: candidate.link,
-      score: candidate.score,
-      riskHint: candidate.risk?.summary,
-    }),
+    marketDecisionSnapshot: candidate.r22MarketDecisionSnapshot,
   });
 }
 
@@ -330,44 +311,12 @@ function candidateToPoolInput(candidate: CandidateData): OpportunityCandidateInp
   };
 }
 
-function candidateStatusClass(status: CandidateStatus) {
-  if (status === "worth_analyzing") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "analyzed") return "border-indigo-200 bg-indigo-50 text-indigo-700";
-  if (status === "paused") return "border-amber-200 bg-amber-50 text-amber-700";
+function candidateStatusClass(status: CandidateQueueState) {
+  if (status === "pending_analysis") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "analyzing") return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (status === "converted") return "border-teal-200 bg-teal-50 text-teal-700";
   if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
   return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function parseEvidenceSnapshotFromJson(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return null;
-  try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    return parseCandidateEvidenceSnapshot(parsed.evidenceSnapshot);
-  } catch {
-    return null;
-  }
-}
-
-function serverCandidateToPoolItem(item: Record<string, unknown>): OpportunityCandidatePoolItem {
-  const evidenceSnapshot = parseEvidenceSnapshotFromJson(item.sourceMetaJson);
-  return {
-    id: String(item.id || ""),
-    name: String(item.name || ""),
-    rawInput: String(item.rawInput || item.name || ""),
-    link: typeof item.link === "string" ? item.link : null,
-    score: typeof item.score === "number" ? item.score : 0,
-    source: String(item.source || "机会雷达"),
-    keyword: String(item.keyword || ""),
-    riskLevel: String(item.riskLevel || ""),
-    riskLabel: String(item.riskLabel || ""),
-    summaryLabel: String(item.summaryLabel || ""),
-    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
-    candidateStatus: (["pending", "worth_analyzing", "analyzed", "paused", "rejected"].includes(String(item.status))
-      ? String(item.status) : "pending") as CandidateStatus,
-    createdAt: typeof item.createdAt === "string" ? new Date(item.createdAt).getTime() : Date.now(),
-    updatedAt: typeof item.updatedAt === "string" ? new Date(item.updatedAt).getTime() : Date.now(),
-    lastActionAt: typeof item.lastActionAt === "string" ? new Date(item.lastActionAt).getTime() : null,
-  };
 }
 
 function getApiErrorMessage(value: unknown, fallback: string) {
@@ -412,6 +361,11 @@ export function OpportunitiesForm() {
   const [sourceImportSummary, setSourceImportSummary] = useState<{ totalUrls: number; okUrls: number; failedUrls: number; totalCandidates: number } | null>(null);
   const [sourceConfirming, setSourceConfirming] = useState(false);
   const [sourceConfirmResult, setSourceConfirmResult] = useState("");
+  const sourceReviewSelectionKeys = useMemo(() => sourceImportCandidates.flatMap((candidate, index) => (
+    getSignedSourceQueuePolicy(candidate.ruleAssessment).defaultSelected ? [String(index)] : []
+  )), [sourceImportCandidates]);
+  const allSourceReviewsSelected = sourceReviewSelectionKeys.length > 0
+    && sourceReviewSelectionKeys.every((key) => sourceImportChecked.has(key));
 
   // Phase Candidate-Status-M.1: candidate ↔ task links
   const [candidateTaskLinks, setCandidateTaskLinks] = useState<Map<string, LinkedTaskInfo[]>>(new Map());
@@ -461,10 +415,12 @@ export function OpportunitiesForm() {
     const serverItems = items
       .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item))
       .map(serverCandidateToPoolItem);
-    setPoolItems(serverItems);
+    const cachedItems = readCandidatePool(typeof window === "undefined" ? null : window.localStorage);
+    const mergedItems = mergeServerCandidatesWithLocalDrafts(serverItems, cachedItems);
+    setPoolItems(mergedItems);
     setServerAvailable(true);
-    writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, serverItems);
-    return serverItems;
+    writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, mergedItems);
+    return mergedItems;
   }, [accessPassword]);
 
   useEffect(() => {
@@ -533,9 +489,11 @@ export function OpportunitiesForm() {
     return () => { cancelled = true; };
   }, [hasAccess, serverAvailable, accessPassword]);
 
-  // Check if localStorage has items that server might not have
-  const localPoolCount = typeof window === "undefined" ? 0 : readCandidatePool(window.localStorage).length;
-  const showImportButton = serverAvailable === true && localPoolCount > 0;
+  const localDraftCount = useMemo(
+    () => poolItems.filter((item) => item.identitySource === "local_draft").length,
+    [poolItems],
+  );
+  const showImportButton = serverAvailable === true && localDraftCount > 0;
 
   const handleInputChange = useCallback((value: string) => {
     setRawText(value);
@@ -785,18 +743,20 @@ export function OpportunitiesForm() {
     setPoolItems((current) => updateCandidateStatus(current, id, status));
     setPoolSyncNotice("");
 
-    if (!id) return;
+    if (!id) return false;
 
     if (!hasAccess || serverAvailable !== true || id.startsWith("opp-")) {
       setPoolSyncNotice("当前状态仅保存在本浏览器候选池，清缓存会丢失。连接服务端候选池后可持久保存。");
-      return;
+      return true;
     }
 
     try {
       const res = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(previous
+          ? buildCandidateStatusUpdatePayload(previous, status)
+          : { status }),
       });
       const json: unknown = await res.json().catch(() => null);
       if (!res.ok || !json || typeof json !== "object" || Array.isArray(json) || (json as Record<string, unknown>).ok !== true) {
@@ -804,6 +764,7 @@ export function OpportunitiesForm() {
       }
       await refreshServerPool();
       setPoolSyncNotice("候选品状态已保存到服务端。");
+      return true;
     } catch (updateError) {
       if (previous) {
         setPoolItems((current) => updateCandidateStatus(current, id, previous.candidateStatus));
@@ -811,6 +772,7 @@ export function OpportunitiesForm() {
       setPoolSyncNotice(updateError instanceof Error
         ? updateError.message
         : "候选品状态保存失败，请稍后重试。");
+      return false;
     }
   }, [poolItems, hasAccess, serverAvailable, accessPassword, refreshServerPool]);
 
@@ -850,16 +812,6 @@ export function OpportunitiesForm() {
         : "候选删除失败，请稍后重试。");
     }
   }, [hasAccess, serverAvailable, accessPassword]);
-
-  const markCandidateAnalyzed = useCallback((candidate: CandidateData) => {
-    const input = candidateToPoolInput(candidate);
-    const normalized = normalizeCandidate(input);
-    if (!normalized) return;
-    setPoolItems((current) => {
-      const merged = mergeCandidatesIntoPool(current, [input]);
-      return updateCandidateStatus(merged, normalized.id, "analyzed");
-    });
-  }, []);
 
   // Phase 4-B: Source import handlers
   const handleSourceImport = useCallback(async () => {
@@ -936,6 +888,9 @@ export function OpportunitiesForm() {
       }
 
       setSourceImportCandidates(candidates);
+      setSourceImportChecked(new Set(candidates.flatMap((candidate, index) => (
+        getSignedSourceQueuePolicy(candidate.ruleAssessment).defaultSelected ? [String(index)] : []
+      ))));
       setSourceImportSummary(json.summary);
       if (json.warnings?.length) setSourceImportWarnings(json.warnings);
     } catch (e) {
@@ -951,26 +906,25 @@ export function OpportunitiesForm() {
   }, [sourceImportUrls, accessPassword]);
 
   const toggleSourceCandidate = useCallback((index: number) => {
+    const candidate = sourceImportCandidates[index];
+    if (!candidate || !getSignedSourceQueuePolicy(candidate.ruleAssessment).canSave) return;
     setSourceImportChecked((prev) => {
       const next = new Set(prev);
       const key = String(index);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
-  }, []);
+  }, [sourceImportCandidates]);
 
   const toggleAllSourceCandidates = useCallback(() => {
     setSourceImportChecked((prev) => {
-      // Re-select all only if every importable candidate is already checked
-      const importableIndices = sourceImportCandidates
+      const defaultIndices = sourceImportCandidates
         .map((c, i) => ({ c, i }))
-        .filter(({ c }) => {
-          const q = evaluateCandidateQuality({ title: c.title, url: c.sourceUrl, candidateType: c.candidateType });
-          return q.shouldAllowImport;
-        })
+        .filter(({ c }) => getSignedSourceQueuePolicy(c.ruleAssessment).defaultSelected)
         .map(({ i }) => String(i));
-      if (prev.size >= importableIndices.length) return new Set<string>();
-      return new Set(importableIndices);
+      const allDefaultsSelected = defaultIndices.length > 0
+        && defaultIndices.every((index) => prev.has(index));
+      return allDefaultsSelected ? new Set<string>() : new Set(defaultIndices);
     });
   }, [sourceImportCandidates]);
 
@@ -990,59 +944,13 @@ export function OpportunitiesForm() {
     setSourceImportError("");
 
     const selected = sourceImportCandidates.filter((_, i) => sourceImportChecked.has(String(i)));
-    const inputs = selected.map((c) => {
-      const now = new Date().toISOString();
-      return {
-        name: c.title,
-        rawInput: c.title,
-        link: c.sourceUrl || null,
-        score: c.score,
-        source: `${c.sourceType === "rss" ? "RSS抓取" : c.sourceType === "sitemap" ? "Sitemap抓取" : "网页抓取"} · ${c.sourceHost}`,
-        keyword: c.keyword || c.categoryHint,
-        riskLevel: c.riskLevel,
-        riskLabel: c.riskLevel === "red" ? "高风险" : c.riskLevel === "yellow" ? "需注意" : c.riskLevel === "green" ? "低风险" : "未评级",
-        summaryLabel: c.summaryLabel,
-        sourceMetaJson: JSON.stringify({
-          sourceType: c.sourceType,
-          sourceUrl: c.sourceUrl,
-          sourceHost: c.sourceHost,
-          importedAt: now,
-          importMethod: "phase4b_source_importer_mvp",
-          crawlStatus: "success",
-          robotsAllowed: true,
-          evidenceSnapshot: c.evidenceSnapshot || normalizeCandidateEvidence({
-            title: c.title,
-            sourceType: c.sourceType,
-            sourceName: c.sourceHost,
-            sourceUrl: c.sourceUrl,
-            candidateType: c.candidateType,
-            score: c.score,
-            demandSignalScore: c.demandSignalScore,
-            supplyEaseScore: c.supplyEaseScore,
-            riskScore: c.riskScore,
-            beginnerFitScore: c.beginnerFitScore,
-            riskHint: c.riskHint,
-          }),
-        }),
-        analysisJson: JSON.stringify({
-          title: c.title,
-          sourceUrl: c.sourceUrl,
-          sourceType: c.sourceType,
-          sourceHost: c.sourceHost,
-          categoryHint: c.categoryHint,
-          riskHint: c.riskHint,
-          scores: {
-            demandSignalScore: c.demandSignalScore,
-            supplyEaseScore: c.supplyEaseScore,
-            riskScore: c.riskScore,
-            beginnerFitScore: c.beginnerFitScore,
-            finalScore: c.score,
-          },
-          importedAt: now,
-          evidenceSnapshot: c.evidenceSnapshot,
-        }),
-      };
-    });
+    if (selected.length !== sourceImportChecked.size
+      || selected.some((candidate) => !getSignedSourceQueuePolicy(candidate.ruleAssessment).canSave)) {
+      setSourceImportError("所选结果包含不能保存的来源线索，请重新选择。");
+      setSourceConfirming(false);
+      return;
+    }
+    const inputs = selected.map((candidate) => buildSourceImportCandidateSaveInput(candidate));
 
     try {
       const res = await fetch("/api/opportunity-candidates", {
@@ -1056,11 +964,11 @@ export function OpportunitiesForm() {
         return;
       }
       const created = Number((json as Record<string, unknown>).created ?? 0);
-      const updated = Number((json as Record<string, unknown>).updated ?? 0);
+      const unchanged = Number((json as Record<string, unknown>).unchanged ?? 0);
 
       try {
         await refreshServerPool();
-        setSourceConfirmResult(`已导入候选池，可在下方候选池查看。新增 ${created} 个，更新 ${updated} 个。`);
+        setSourceConfirmResult(sourceImportSaveSuccessMessage(created, unchanged));
       } catch {
         setSourceConfirmResult("已导入服务端，但刷新候选池失败，请手动刷新页面查看。");
       }
@@ -1562,32 +1470,18 @@ export function OpportunitiesForm() {
                       </p>
                     );
                   })()}
-                  {/* Candidate-Quality-M.1: quality summary */}
-                  {(() => {
-                    const qs = sourceImportCandidates.map(c => evaluateCandidateQuality({ title: c.title, url: c.sourceUrl, candidateType: c.candidateType }));
-                    const rec = qs.filter(q => q.level === "recommended").length;
-                    const cau = qs.filter(q => q.level === "caution").length;
-                    const nr = qs.filter(q => q.level === "not_recommended").length;
-                    const rej = qs.filter(q => q.level === "rejected").length;
-                    if (rec + cau + nr + rej === 0) return null;
-                    return (
-                      <p className="mt-1 text-xs text-slate-400">
-                        候选质量：
-                        {rec > 0 && <span className="ml-1 text-emerald-600">推荐入池 {rec}</span>}
-                        {cau > 0 && <span className="ml-1 text-amber-600">谨慎 {cau}</span>}
-                        {nr > 0 && <span className="ml-1 text-slate-500">不建议 {nr}</span>}
-                        {rej > 0 && <span className="ml-1 text-rose-500">拒绝 {rej}</span>}
-                      </p>
-                    );
-                  })()}
+                  <p className="mt-1 text-xs text-slate-400">
+                    仅商品候选可保存；观察项需逐条选择，类目、趋势和拒绝项只展示。
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={toggleAllSourceCandidates}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+                    disabled={sourceReviewSelectionKeys.length === 0}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {sourceImportChecked.size === sourceImportCandidates.length ? "取消全选" : "全选"}
+                    {allSourceReviewsSelected ? "取消批量选择" : "选择建议复核项"}
                   </button>
                   <button
                     type="button"
@@ -1613,46 +1507,42 @@ export function OpportunitiesForm() {
               <div className="grid gap-2 max-h-[500px] overflow-y-auto">
                 {sourceImportCandidates.map((c, i) => {
                   const checked = sourceImportChecked.has(String(i));
+                  const queuePolicy = getSignedSourceQueuePolicy(c.ruleAssessment);
+                  const candidateTypeLabel = getCandidateTypeLabel(c.candidateType);
+                  const queueTone = queuePolicy.canSave
+                    ? queuePolicy.defaultSelected
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-slate-200 bg-slate-50 text-slate-500";
                   return (
                     <label
                       key={`${c.title}-${i}`}
-                      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${checked ? "border-teal-300 bg-teal-50/60" : "border-slate-200 bg-white hover:border-teal-200"}`}
+                      className={`flex items-start gap-3 rounded-xl border p-3 transition ${queuePolicy.canSave ? "cursor-pointer" : "cursor-not-allowed opacity-75"} ${checked ? "border-teal-300 bg-teal-50/60" : "border-slate-200 bg-white"}`}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleSourceCandidate(i)}
-                        className="mt-1 size-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                        disabled={!queuePolicy.canSave}
+                        className="mt-1 size-4 shrink-0 rounded border-slate-300 text-teal-600 focus:ring-teal-500 disabled:cursor-not-allowed"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900 truncate">{c.title}</p>
-                          {/* Phase Candidate-Quality-M.1: quality badge */}
-                          {(() => {
-                            const quality = evaluateCandidateQuality({ title: c.title, url: c.sourceUrl, candidateType: c.candidateType });
-                            return (
-                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${QUALITY_TONE[quality.level]}`}>
-                                {quality.label}
-                              </span>
-                            );
-                          })()}
-                          {/* Phase 4-D.8: candidateType badge */}
-                          {(() => {
-                            const ctLabel = getCandidateTypeLabel(c.candidateType);
-                            return (
-                              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getCandidateTypeBadgeClass(ctLabel.tone)}`}>
-                                {ctLabel.label}
-                              </span>
-                            );
-                          })()}
+                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${getCandidateTypeBadgeClass(candidateTypeLabel.tone)}`}>
+                            {candidateTypeLabel.label}
+                          </span>
+                          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${queueTone}`}>
+                            {sourceQueueMessage(queuePolicy.reason)}
+                          </span>
                           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold ${c.riskLevel === "red" ? "border-rose-200 bg-rose-50 text-rose-700" : c.riskLevel === "yellow" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
                             风险{riskText(c.riskLevel)}
                           </span>
                         </div>
                         <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-400">
                           <span>来源：{c.sourceHost} · {c.sourceType}</span>
-                          <span>分数：{c.score}/100</span>
-                          <span>需求：{c.demandSignalScore} | 风险：{c.riskScore} | 新手：{c.beginnerFitScore}</span>
+                          <span>页面规则分：{c.score}/100</span>
+                          <span>页面需求线索：{c.demandSignalScore} | 规则风险：{c.riskScore} | 新手适配：{c.beginnerFitScore}</span>
                         </div>
                         {/* Source URL */}
                         <div className="mt-1 text-[10px] text-slate-500 flex items-start gap-1 min-w-0">
@@ -1664,24 +1554,19 @@ export function OpportunitiesForm() {
                           )}
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs text-slate-500">{c.summaryLabel}</p>
-                        {c.evidenceSnapshot ? (
-                          <>
-                            <p className="mt-1 text-[11px] font-semibold text-indigo-600">
-                              来源证据：{c.evidenceSnapshot.decision} · {c.evidenceSnapshot.qualityScore}/100 · {c.evidenceSnapshot.confidence}
-                            </p>
-                            {/* Risk flags */}
-                            <div className="mt-1 flex items-start gap-1 flex-wrap">
-                              <span className="text-[10px] text-slate-400 shrink-0">风险标记：</span>
-                              {c.evidenceSnapshot.riskFlags && c.evidenceSnapshot.riskFlags.length > 0 ? (
-                                c.evidenceSnapshot.riskFlags.map((flag, j) => (
-                                  <span key={j} className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{getRiskFlagLabel(flag)}</span>
-                                ))
-                              ) : (
-                                <span className="text-[10px] italic text-slate-400">暂无明显风险</span>
-                              )}
-                            </div>
-                          </>
-                        ) : null}
+                        <p className="mt-1 text-[11px] font-semibold text-indigo-600">
+                          来源证据链已验证；仅证明本次抓取事实与规则结果的完整性，不代表商品真实性或市场需求已验证。
+                        </p>
+                        <div className="mt-1 flex items-start gap-1 flex-wrap">
+                          <span className="text-[10px] text-slate-400 shrink-0">规则风险：</span>
+                          {c.ruleAssessment.riskFlags.length > 0 ? (
+                            c.ruleAssessment.riskFlags.map((flag, j) => (
+                              <span key={j} className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{flag}</span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] italic text-slate-400">未发现明显规则风险，仍需人工核对</span>
+                          )}
+                        </div>
                         {c.riskHint && (
                           <p className="mt-1 text-[11px] text-amber-600">⚠ {c.riskHint}</p>
                         )}
@@ -1692,7 +1577,7 @@ export function OpportunitiesForm() {
               </div>
 
               <p className="mt-3 text-xs text-slate-400">
-                ⚠ 以上结果由系统规则评分生成，不代表最终选品决策。关键动作需人工确认。本次不会自动采购、自动上架或自动投广告。
+                ⚠ 以上仅为公开页面事实和可重算规则结果，不代表商品真实性、市场需求或最终选品结论。关键动作仍需人工确认。
               </p>
             </div>
           )}
@@ -1706,7 +1591,9 @@ export function OpportunitiesForm() {
               <h2 className="mt-1 text-lg font-semibold text-slate-950">先筛选，再深挖</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
                 {serverAvailable === true
-                  ? "已解锁 / 服务端候选池。当前数据已从服务端候选池加载，刷新后仍保留。"
+                  ? localDraftCount > 0
+                    ? `已连接服务端候选池；另有 ${localDraftCount} 个本地草稿仅供展示，保存为服务端 Candidate 后才能进入 Agent。`
+                    : "已解锁 / 服务端候选池。当前候选均具备服务端权威身份，刷新后仍保留。"
                   : serverAvailable === false
                     ? "未解锁 / 本浏览器候选池。当前数据仅保存在本浏览器，清缓存或换设备会丢失。"
                     : "候选品会保存在本浏览器 7 天。这里不自动采购、不自动上架，只帮你记录判断状态。"}
@@ -1719,7 +1606,7 @@ export function OpportunitiesForm() {
                   onClick={async () => {
                     setImportingLocal(true);
                     setImportResult("");
-                    const localItems = readCandidatePool(window.localStorage);
+                    const localItems = poolItems.filter((item) => item.identitySource === "local_draft");
                     try {
                       const res = await fetch("/api/opportunity-candidates/import-local", {
                         method: "POST",
@@ -1747,7 +1634,7 @@ export function OpportunitiesForm() {
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {importingLocal ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-                  导入本浏览器候选池
+                  保存 {localDraftCount} 个本地草稿为正式 Candidate
                 </button>
               ) : null}
               {importResult ? (
@@ -1798,14 +1685,41 @@ export function OpportunitiesForm() {
                 const itemSourceMode = (item as Record<string, unknown>).sourceMode as string | undefined;
                 const isOfficialReadonly = demoMode && itemSourceMode === "official_readonly";
                 const isDemoSandbox = demoMode && itemSourceMode === "demo_sandbox";
+                const isLocalDraft = item.identitySource === "local_draft";
+                const canManageAuthoritativeCandidate = !isOfficialReadonly
+                  && !isLocalDraft
+                  && serverAvailable === true;
+                const linkedTasks = resolveCandidateTaskLinks(
+                  item,
+                  candidateTaskLinks.get(item.id) ?? [],
+                );
+                const latestLinkedTask = linkedTasks[0] ?? null;
+                const deletePresentation = getCandidateDeletePresentation({
+                  isOfficialReadonly,
+                  isLocalDraft,
+                  hasLinkedTask: linkedTasks.length > 0,
+                });
+                const queuePresentation = getCandidateQueuePresentation(item.candidateStatus, linkedTasks.length > 0);
+                const sourceIntegrityPresentation = getCandidateSourceIntegrityPresentation(item.sourceIntegrity);
+                const sourceReview = item.sourceReview ?? {
+                  version: "candidate-evidence-review-v1" as const,
+                  integrity: "unverified" as const,
+                  reason: "legacy_or_invalid" as const,
+                };
+                const needsUnverifiedReview = !sourceIntegrityPresentation.verified
+                  && (item.candidateStatus === "pending" || item.candidateStatus === "paused")
+                  && canManageAuthoritativeCandidate;
+                const agentHref = !isOfficialReadonly && canCandidateEnterAgent(item, serverAvailable, linkedTasks.length > 0)
+                  ? buildPoolAgentRunHref(item)
+                  : null;
                 return (
                 <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="break-words text-base font-semibold text-slate-950">{item.name}</h3>
-                        <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + candidateStatusClass(item.candidateStatus)}>
-                          {candidateStatusLabels[item.candidateStatus]}
+                        <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + candidateStatusClass(queuePresentation.state)}>
+                          {queuePresentation.label}
                         </span>
                         {/* Demo-Sandbox.1-C-UI-Fix: source labels */}
                         {isDemoSandbox && (
@@ -1814,6 +1728,28 @@ export function OpportunitiesForm() {
                         {isOfficialReadonly && (
                           <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">只读样例</span>
                         )}
+                        {isLocalDraft && (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">本地草稿</span>
+                        )}
+                        <span
+                          title={sourceIntegrityPresentation.description}
+                          className={"rounded-full border px-2 py-0.5 text-[11px] font-semibold " + (sourceIntegrityPresentation.verified
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-amber-200 bg-amber-50 text-amber-700")}
+                        >
+                          {sourceIntegrityPresentation.verified ? "✓ " : "! "}{sourceIntegrityPresentation.label}
+                        </span>
+                        {item.r22MarketDecisionSnapshot ? (
+                          <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                            {item.r22MarketDecisionSnapshot.marketDecision === "market_shortlisted"
+                              ? "市场初筛：晋级"
+                              : item.r22MarketDecisionSnapshot.marketDecision === "market_watch"
+                                ? "市场初筛：观察"
+                                : item.r22MarketDecisionSnapshot.marketDecision === "market_reject"
+                                  ? "市场初筛：拒绝"
+                                  : "市场初筛：数据不足"}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{item.summaryLabel}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
@@ -1846,21 +1782,23 @@ export function OpportunitiesForm() {
                           <span className="italic text-slate-400">暂无明显风险</span>
                         )}
                       </div>
-                      {item.candidateStatus === "analyzed" ? (
-                        <p className="mt-2 text-xs font-semibold text-indigo-700">已进入单品分析，可继续深挖。</p>
+                      <CandidateEvidenceReviewPanel review={sourceReview} />
+                      {needsUnverifiedReview ? (
+                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-5 text-amber-800">
+                          继续前请人工核对商品页、价格和合规风险；确认不会把来源升级为已验证。
+                        </p>
+                      ) : null}
+                      {queuePresentation.state === "analyzing" ? (
+                        <p className="mt-2 text-xs font-semibold text-indigo-700">分析对象已确认，可继续 Agent 分析。</p>
                       ) : null}
                       {/* Phase Candidate-Status-M.1: Linked tasks display */}
-                      {(() => {
-                        const linkedTasks = candidateTaskLinks.get(item.id);
-                        if (!linkedTasks || linkedTasks.length === 0) return null;
-                        const latest = linkedTasks[0];
-                        return (
+                      {latestLinkedTask ? (
                           <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50/60 px-3 py-2">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="rounded-full border border-teal-200 bg-teal-100 px-2 py-0.5 text-[11px] font-semibold text-teal-700">
                                 已关联任务
                               </span>
-                              {latest.source === "agent_run" ? (
+                              {latestLinkedTask.source === "agent_run" ? (
                                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600">
                                   来自 Agent 主链路
                                 </span>
@@ -1869,31 +1807,75 @@ export function OpportunitiesForm() {
                                 <span className="text-[10px] text-slate-400">共 {linkedTasks.length} 条</span>
                               ) : null}
                             </div>
-                            <p className="mt-1 truncate text-xs font-semibold text-slate-700">{latest.title}</p>
+                            <p className="mt-1 truncate text-xs font-semibold text-slate-700">{latestLinkedTask.title}</p>
                             <div className="mt-1.5 flex flex-wrap items-center gap-2">
                               <Link
-                                href={`/tasks/${latest.taskId}`}
+                                href={`/tasks/${latestLinkedTask.taskId}`}
                                 className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-white px-2 py-1 text-[11px] font-semibold text-teal-700 transition hover:bg-teal-100"
                               >
                                 查看任务详情
                                 <ArrowRight className="size-3" />
                               </Link>
-                              <span className="text-[10px] text-slate-400">ID: {latest.taskId.slice(0, 12)}…</span>
+                              <span className="text-[10px] text-slate-400">ID: {latestLinkedTask.taskId.slice(0, 12)}…</span>
                             </div>
                           </div>
-                        );
-                      })()}
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                      {/* Primary: 进入 Agent 主链路 */}
-                      <Link
-                        href={buildPoolAgentRunHref(item)}
-                        data-testid={`candidate-agent-run-${item.id}`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                      >
-                        进入 Agent 主链路
-                        <ArrowRight className="size-3" />
-                      </Link>
+                      {/* Primary: only authoritative server Candidates enter Agent */}
+                      {latestLinkedTask ? (
+                        <Link
+                          href={`/tasks/${latestLinkedTask.taskId}`}
+                          data-testid={`candidate-linked-task-${item.id}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                        >
+                          查看关联任务
+                          <ArrowRight className="size-3" />
+                        </Link>
+                      ) : item.candidateStatus === "rejected" && canManageAuthoritativeCandidate ? (
+                        <button
+                          type="button"
+                          onClick={() => { void setPoolCandidateStatus(item.id, "pending"); }}
+                          data-testid={`candidate-restore-${item.id}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                        >
+                          恢复为待查看
+                        </button>
+                      ) : (item.candidateStatus === "pending" || item.candidateStatus === "paused") && canManageAuthoritativeCandidate ? (
+                        <button
+                          type="button"
+                          onClick={() => { void setPoolCandidateStatus(item.id, "worth_analyzing"); }}
+                          data-testid={`candidate-select-${item.id}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                        >
+                          {sourceIntegrityPresentation.verified ? "选择为待分析" : "确认并选择为待分析"}
+                        </button>
+                      ) : agentHref ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ready = item.candidateStatus === "analyzed"
+                              || await setPoolCandidateStatus(item.id, "analyzed");
+                            if (ready) window.location.assign(agentHref);
+                          }}
+                          data-testid={`candidate-agent-run-${item.id}`}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                        >
+                          {queuePresentation.nextAction}
+                          <ArrowRight className="size-3" />
+                        </button>
+                      ) : (
+                        <span
+                          data-testid={`candidate-agent-blocked-${item.id}`}
+                          className="inline-flex min-h-9 max-w-48 items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-center text-[11px] font-semibold leading-4 text-amber-700"
+                        >
+                          {isLocalDraft
+                            ? serverAvailable === true
+                              ? "请先导入本浏览器候选池"
+                              : "连接服务端并保存后进入 Agent"
+                            : "服务端身份未确认，暂不能进入 Agent"}
+                        </span>
+                      )}
                       {/* More actions dropdown */}
                       <div className="relative">
                         <button
@@ -1914,45 +1896,47 @@ export function OpportunitiesForm() {
                                   正式候选不可修改
                                 </span>
                               ) : (<>
-                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "analyzed"); setOpenMoreId(null); }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-indigo-600 hover:bg-indigo-50">
-                                人工标记为已分析
-                              </button>
-                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "worth_analyzing"); setOpenMoreId(null); }}
+                              {item.candidateStatus !== "worth_analyzing" && item.candidateStatus !== "rejected" ? (
+                              <button type="button" onClick={() => { void setPoolCandidateStatus(item.id, "worth_analyzing"); setOpenMoreId(null); }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-emerald-600 hover:bg-emerald-50">
-                                人工标记为值得深挖
+                                {sourceIntegrityPresentation.verified ? "选择为待分析" : "确认并选择为待分析"}
                               </button>
-                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "pending"); setOpenMoreId(null); }}
+                              ) : null}
+                              {item.candidateStatus !== "pending" ? (
+                              <button type="button" onClick={() => { void setPoolCandidateStatus(item.id, "pending"); setOpenMoreId(null); }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
-                                人工标记为待判断
+                                {item.candidateStatus === "rejected" ? "恢复为待查看" : "移回待查看"}
                               </button>
-                              <button type="button" onClick={() => { setPoolCandidateStatus(item.id, "paused"); setOpenMoreId(null); }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-amber-600 hover:bg-amber-50">
-                                人工标记为暂缓
-                              </button>
+                              ) : null}
+                              {item.candidateStatus !== "rejected" ? (
                               <button type="button" onClick={() => {
                                 const confirmed = window.confirm(
                                   `确认将「${item.name}」标记为放弃？这不会删除候选，只会改变状态。如需彻底移除，请使用"删除候选"。`
                                 );
                                 if (!confirmed) return;
-                                setPoolCandidateStatus(item.id, "rejected");
+                                void setPoolCandidateStatus(item.id, "rejected");
                                 setOpenMoreId(null);
                               }}
                                 className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
-                                人工标记为放弃
+                                放弃候选
                               </button>
+                              ) : null}
                               </>)}
                               <div className="mx-2 my-1 border-t border-slate-100" />
-                              {isOfficialReadonly ? (
-                                <span className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-300 cursor-not-allowed" title="访客体验模式下不能删除正式候选数据">
+                              {!deletePresentation.canDelete ? (
+                                <span
+                                  data-testid={`candidate-delete-blocked-${item.id}`}
+                                  className="flex w-full cursor-not-allowed items-center gap-2 px-3 py-2 text-xs text-slate-400"
+                                  title={deletePresentation.title}
+                                >
                                   <Trash2 className="size-3" />
-                                  正式候选不可删除
+                                  {deletePresentation.label}
                                 </span>
                               ) : (
                                 <button type="button" onClick={() => { void deletePoolCandidate(item); setOpenMoreId(null); }}
                                   className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
                                   <Trash2 className="size-3" />
-                                  删除候选
+                                  {deletePresentation.label}
                                 </button>
                               )}
                             </div>
@@ -2131,26 +2115,9 @@ export function OpportunitiesForm() {
                           <TrendingUp className="size-3.5 text-teal-600 shrink-0" />
                           <span className="font-semibold text-teal-700">下一步：</span>
                           <span className="text-teal-700">{c.nextAction}</span>
-                          {c.name?.trim() && (
-                            <Link
-                              href={buildOpportunityWorkflowHref(c)}
-                              onClick={() => markCandidateAnalyzed(c)}
-                              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-700"
-                            >
-                              用单品分析深挖
-                              <TrendingUp className="size-3" />
-                            </Link>
-                          )}
-                          {c.name?.trim() && (
-                            <Link
-                              href={buildOpportunityAgentRunHref(c)}
-                              data-testid={`candidate-agent-run-result-${c.index}`}
-                              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
-                            >
-                              进入 Agent 主链路
-                              <ArrowRight className="size-3" />
-                            </Link>
-                          )}
+                          <span className="ml-auto text-[11px] font-semibold text-indigo-700">
+                            请在候选品池中人工确认后进入 Agent
+                          </span>
                         </div>
                         {c.summary?.downgradeReasons && c.summary.downgradeReasons.length > 0 && (
                           <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/50 p-2">

@@ -198,7 +198,7 @@ describe("OpenAI image client relay configuration", () => {
     await expect(
       generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
     ).rejects.toEqual(
-      expect.objectContaining<AiImageProviderError>({
+      expect.objectContaining({
         code: "image_provider_untrusted_result_url",
         retryable: false,
       }),
@@ -303,7 +303,7 @@ describe("OpenAI image client error mapping", () => {
     await expect(
       generateOpenAiImage({ imageType: "lifestyle_scene", count: 1, prompt: "safe" }),
     ).rejects.toEqual(
-      expect.objectContaining<AiImageProviderError>({ code: "rate_limited", retryable: true }),
+      expect.objectContaining({ code: "rate_limited", retryable: true }),
     );
   });
 
@@ -537,12 +537,16 @@ describe("relay URL result handling", () => {
     );
 
     const onResultReceived = vi.fn();
-    const error = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe", onResultReceived })
-      .catch((caught) => caught as AiImageProviderError);
+    let error: AiImageProviderError | null = null;
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe", onResultReceived });
+    } catch (caught) {
+      if (caught instanceof AiImageProviderError) error = caught;
+    }
     expect(error).toBeInstanceOf(AiImageProviderError);
-    expect(error.code).toBe("image_provider_result_dns_rejected");
-    expect(error.providerCostConsumed).toBe(true);
-    expect(error.failureStage).toBe("asset_download");
+    expect(error!.code).toBe("image_provider_result_dns_rejected");
+    expect(error!.providerCostConsumed).toBe(true);
+    expect(error!.failureStage).toBe("asset_download");
     expect(onResultReceived).toHaveBeenCalledOnce();
     expect(onResultReceived).toHaveBeenCalledWith(1);
     expect(state.generate).toHaveBeenCalledTimes(1);
@@ -560,12 +564,16 @@ describe("relay URL result handling", () => {
       ),
     );
 
-    const error = await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" })
-      .catch((caught) => caught as AiImageProviderError);
+    let error: AiImageProviderError | null = null;
+    try {
+      await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
+    } catch (caught) {
+      if (caught instanceof AiImageProviderError) error = caught;
+    }
     expect(error).toBeInstanceOf(AiImageProviderError);
-    expect(error.code).toBe("image_provider_result_download_failed");
-    expect(error.providerCostConsumed).toBe(true);
-    expect(error.failureStage).toBe("asset_download");
+    expect(error!.code).toBe("image_provider_result_download_failed");
+    expect(error!.providerCostConsumed).toBe(true);
+    expect(error!.failureStage).toBe("asset_download");
     expect(state.generate).toHaveBeenCalledTimes(1);
     expect(mockDownload).toHaveBeenCalledTimes(1);
   });

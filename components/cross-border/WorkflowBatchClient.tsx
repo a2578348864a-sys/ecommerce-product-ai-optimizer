@@ -20,6 +20,7 @@ import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { clearLocalDraft, readLocalDraft, writeLocalDraft } from "@/hooks/useLocalDraft";
 import {
   clearLocalRun,
+  buildWorkflowBatchSavePayload,
   hasRunContent,
   makeRunId,
   readLocalRun,
@@ -42,6 +43,13 @@ type ApiFinalReport = {
 type ApiWorkflowResult = {
   ok: boolean;
   workflowId: string;
+  runId: string;
+  runProof: string;
+  input: {
+    productName: string;
+    source: "manual" | "opportunity" | "task";
+    candidateId: string | null;
+  };
   productName: string;
   status: "completed" | "partial_failed" | "failed";
   steps: Array<Record<string, unknown>>;
@@ -357,16 +365,22 @@ export function WorkflowBatchClient() {
       return;
     }
 
+    const savePayload = buildWorkflowBatchSavePayload({
+      accessPassword,
+      workflowResult: item.result,
+      reviewState: makeReviewState(),
+      batchMeta: item.batchMeta,
+    });
+    if (!savePayload) {
+      updateItem(item.id, { status: "save_failed", error: "分析结果缺少可信凭证，请重新分析后保存。" });
+      return;
+    }
+
     try {
       const response = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({
-          accessPassword,
-          workflowResult: item.result,
-          reviewState: makeReviewState(),
-          batchMeta: item.batchMeta,
-        }),
+        body: JSON.stringify(savePayload),
       });
       const data = await response.json() as
         | { ok: true; data: { id: string; title: string; type: string; allReviewed: boolean } }

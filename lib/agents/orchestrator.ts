@@ -99,12 +99,18 @@ export type OpportunitiesResult = {
   totalCount: number;
   completedCount: number;
   failedCount: number;
+  providerCallStartedCount: number;
+};
+
+export type OpportunitiesPipelineHooks = {
+  onProviderCallStarted?: () => void;
 };
 
 // ── Constants ──
 
 const MAX_CANDIDATES = 30;
-const AI_TIMEOUT_MS = 45 * 1000;
+export const OPPORTUNITY_AI_CALLS_PER_CANDIDATE = 3;
+export const OPPORTUNITY_AI_CALL_TIMEOUT_MS = 45 * 1000;
 const MAX_OUTPUT_TOKENS = 2000;
 
 // ── Helpers ──
@@ -154,7 +160,10 @@ function extractName(line: string): string {
 
 // ── Agent callers ──
 
-async function runSourcing(productName: string, description: string): Promise<SourcingSummary> {
+async function runSourcing(
+  productName: string,
+  description: string,
+): Promise<{ data: SourcingSummary; providerCallStarted: boolean }> {
   const input: SourcingPromptInput = {
     productName,
     category: "",
@@ -163,15 +172,17 @@ async function runSourcing(productName: string, description: string): Promise<So
     description: description.slice(0, 1000),
   };
 
+  let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
       maxTokens: MAX_OUTPUT_TOKENS,
-      timeoutMs: AI_TIMEOUT_MS,
+      timeoutMs: OPPORTUNITY_AI_CALL_TIMEOUT_MS,
       messages: [
         { role: "system", content: "你只输出严格 JSON object。不要输出 Markdown、解释、代码块或额外文本。" },
         { role: "user", content: buildSourcingPrompt(input) },
       ],
     });
+    providerCallStarted = result.providerCallStarted === true;
 
     if (!result.ok) throw new Error(result.error.message);
     const data = isPlainObject(result.data) ? result.data : {};
@@ -183,7 +194,7 @@ async function runSourcing(productName: string, description: string): Promise<So
         }))
       : [];
 
-    return {
+    return { data: {
       feasibility: asString(data.feasibility, "medium"),
       summary: asString(data.summary, "暂未获取到货源判断结果。"),
       searchKeywords: asStringArray(data.searchKeywords).slice(0, 8),
@@ -194,9 +205,9 @@ async function runSourcing(productName: string, description: string): Promise<So
       logisticsDifficulty: asString(data.logisticsDifficulty, "low"),
       afterSalesRisk: asString(data.afterSalesRisk, "low"),
       suggestedEntryLevel: asString(data.suggestedEntryLevel, "beginner"),
-    };
+    }, providerCallStarted };
   } catch {
-    return {
+    return { data: {
       feasibility: "medium",
       summary: "AI 分析超时或失败，请稍后重试。",
       searchKeywords: [],
@@ -207,11 +218,14 @@ async function runSourcing(productName: string, description: string): Promise<So
       logisticsDifficulty: "low",
       afterSalesRisk: "low",
       suggestedEntryLevel: "beginner",
-    };
+    }, providerCallStarted };
   }
 }
 
-async function runRisk(productName: string, description: string): Promise<RiskSummary> {
+async function runRisk(
+  productName: string,
+  description: string,
+): Promise<{ data: RiskSummary; providerCallStarted: boolean }> {
   const input: RiskCheckPromptInput = {
     productName,
     category: "",
@@ -220,15 +234,17 @@ async function runRisk(productName: string, description: string): Promise<RiskSu
     targetPlatform: "",
   };
 
+  let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
       maxTokens: MAX_OUTPUT_TOKENS,
-      timeoutMs: AI_TIMEOUT_MS,
+      timeoutMs: OPPORTUNITY_AI_CALL_TIMEOUT_MS,
       messages: [
         { role: "system", content: "你只输出严格 JSON object。不要输出 Markdown、解释、代码块或额外文本。" },
         { role: "user", content: buildRiskCheckPrompt(input) },
       ],
     });
+    providerCallStarted = result.providerCallStarted === true;
 
     if (!result.ok) {
       // Fallback: keyword-based risk classification
@@ -236,12 +252,12 @@ async function runRisk(productName: string, description: string): Promise<RiskSu
       const fallbackLevel = classifyKeywordFallbackRisk(riskInput);
       const petContact = isPetFoodContactProduct(riskInput);
       const overallLevel = petContact ? "yellow" : fallbackLevel;
-      return {
+      return { data: {
         overallLevel,
         summary: `AI 风险分析暂时不可用，以下为基于关键词的保守判断。`,
         blacklistMatches: [],
         beginnerFriendly: overallLevel !== "red",
-      };
+      }, providerCallStarted };
     }
 
     const data = isPlainObject(result.data) ? result.data : {};
@@ -264,21 +280,21 @@ async function runRisk(productName: string, description: string): Promise<RiskSu
       ? "yellow"
       : overallLevel;
 
-    return {
+    return { data: {
       overallLevel: effectiveLevel,
       summary: sanitizeUnsupportedCertificationClaims(asString(data.summary, "风险分析未返回有效结论。")),
       blacklistMatches: asStringArray(data.blacklistMatches),
       beginnerFriendly: effectiveLevel !== "red" && data.beginnerFriendly !== false,
-    };
+    }, providerCallStarted };
   } catch {
     const riskInput = { productName, description };
     const fallbackLevel = classifyKeywordFallbackRisk(riskInput);
-    return {
+    return { data: {
       overallLevel: fallbackLevel,
       summary: "AI 风险分析请求失败，以下为基于关键词的保守判断。",
       blacklistMatches: [],
       beginnerFriendly: fallbackLevel !== "red",
-    };
+    }, providerCallStarted };
   }
 }
 
@@ -287,7 +303,7 @@ async function runSummary(
   description: string,
   sourcing: SourcingSummary | undefined,
   risk: RiskSummary | undefined,
-): Promise<SummaryVerdict> {
+): Promise<{ data: SummaryVerdict; providerCallStarted: boolean }> {
   const sourcingFindings = sourcing
     ? `货源可行性：${sourcing.feasibility}。${sourcing.summary} MOQ：${sourcing.moqEstimate}。合规门槛：${sourcing.complianceBarrier}。建议入门级别：${sourcing.suggestedEntryLevel}。`
     : "未进行货源分析。";
@@ -304,15 +320,17 @@ async function runSummary(
     extraNotes: "",
   };
 
+  let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
       maxTokens: 1200,
-      timeoutMs: AI_TIMEOUT_MS,
+      timeoutMs: OPPORTUNITY_AI_CALL_TIMEOUT_MS,
       messages: [
         { role: "system", content: "你只输出严格 JSON object。不要输出 Markdown、解释、代码块或额外文本。" },
         { role: "user", content: buildSummaryPrompt(input) },
       ],
     });
+    providerCallStarted = result.providerCallStarted === true;
 
     if (!result.ok) throw new Error(result.error.message);
     const data = isPlainObject(result.data) ? result.data : {};
@@ -335,7 +353,7 @@ async function runSummary(
 
     const guarded = applyHardGuard(guardInput);
 
-    return {
+    return { data: {
       verdict: guarded.safeVerdict,
       confidence: asString(data.confidence, "medium"),
       summary: sanitizeUnsupportedCertificationClaims(asString(data.summary, "未获取到综合结论。")),
@@ -348,9 +366,9 @@ async function runSummary(
       downgraded: guarded.downgraded,
       downgradeReasons: guarded.downgradeReasons,
       parseFailed: data.parseFailed === true,
-    };
+    }, providerCallStarted };
   } catch {
-    return {
+    return { data: {
       verdict: "可做但需控制成本",
       confidence: "low",
       summary: "AI 综合总结暂时不可用，请基于货源和风险结果人工判断。",
@@ -359,7 +377,7 @@ async function runSummary(
       nextSteps: ["人工复核货源和风险结果", "补充商品信息后重试"],
       beginnerTip: "当前信息不足以给出确定结论，建议先完善商品描述。",
       parseFailed: true,
-    };
+    }, providerCallStarted };
   }
 }
 
@@ -516,6 +534,7 @@ function buildNextAction(candidate: ProductCandidate): string {
 
 export async function runOpportunitiesPipeline(
   rawText: string,
+  hooks: OpportunitiesPipelineHooks = {},
 ): Promise<OpportunitiesResult> {
   const lines = parseCandidateLines(rawText);
   if (lines.length === 0) {
@@ -541,6 +560,7 @@ export async function runOpportunitiesPipeline(
       nextAction: "",
     };
   });
+  let providerCallStartedCount = 0;
 
   // Process serially
   for (const candidate of candidates) {
@@ -550,13 +570,28 @@ export async function runOpportunitiesPipeline(
       const description = candidate.rawInput;
 
       // Step 1: Sourcing
-      candidate.sourcing = await runSourcing(candidate.name, description);
+      const sourcing = await runSourcing(candidate.name, description);
+      candidate.sourcing = sourcing.data;
+      if (sourcing.providerCallStarted) {
+        providerCallStartedCount += 1;
+        hooks.onProviderCallStarted?.();
+      }
 
       // Step 2: Risk
-      candidate.risk = await runRisk(candidate.name, description);
+      const risk = await runRisk(candidate.name, description);
+      candidate.risk = risk.data;
+      if (risk.providerCallStarted) {
+        providerCallStartedCount += 1;
+        hooks.onProviderCallStarted?.();
+      }
 
       // Step 3: Summary (with sourcing + risk context)
-      candidate.summary = await runSummary(candidate.name, description, candidate.sourcing, candidate.risk);
+      const summary = await runSummary(candidate.name, description, candidate.sourcing, candidate.risk);
+      candidate.summary = summary.data;
+      if (summary.providerCallStarted) {
+        providerCallStartedCount += 1;
+        hooks.onProviderCallStarted?.();
+      }
 
       // Compute score and level
       candidate.score = calculateScore(candidate);
@@ -584,5 +619,5 @@ export async function runOpportunitiesPipeline(
   const completedCount = candidates.filter((c) => c.status === "completed").length;
   const failedCount = candidates.filter((c) => c.status === "failed").length;
 
-  return { candidates, totalCount: candidates.length, completedCount, failedCount };
+  return { candidates, totalCount: candidates.length, completedCount, failedCount, providerCallStartedCount };
 }

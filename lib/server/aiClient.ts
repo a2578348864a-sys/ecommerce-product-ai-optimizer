@@ -43,8 +43,8 @@ export type AiClientError = {
 };
 
 export type AiResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: AiClientError };
+  | { ok: true; data: T; providerCallStarted?: boolean }
+  | { ok: false; error: AiClientError; providerCallStarted?: boolean };
 
 export type AiConfig = {
   provider: AiProvider;
@@ -169,6 +169,7 @@ export function createAiClient(config = getAiConfig()): AiResult<OpenAI> {
     apiKey,
     baseURL,
     timeout: timeoutMs,
+    maxRetries: 0,
   });
   cachedClientKey = cacheKey;
 
@@ -448,12 +449,12 @@ function makeChatParams(config: AiConfig, params: CallAiTextParams): ChatComplet
 export async function callAiText(params: CallAiTextParams): Promise<AiResult<string>> {
   const configResult = getAiConfig();
   if (!configResult.ok) {
-    return configResult;
+    return { ...configResult, providerCallStarted: false };
   }
 
   const clientResult = createAiClient(configResult);
   if (!clientResult.ok) {
-    return clientResult;
+    return { ...clientResult, providerCallStarted: false };
   }
 
   try {
@@ -465,17 +466,17 @@ export async function callAiText(params: CallAiTextParams): Promise<AiResult<str
     const text = typeof content === "string" ? content.trim() : "";
 
     if (!text) {
-      return fail({
+      return { ...fail({
         code: "empty_response",
         message: "AI returned empty text.",
         provider: configResult.data.provider,
         model: params.model || configResult.data.model,
-      });
+      }), providerCallStarted: true };
     }
 
-    return ok(text);
+    return { ...ok(text), providerCallStarted: true };
   } catch (error) {
-    return fail(classifyAiError(error, configResult.data));
+    return { ...fail(classifyAiError(error, configResult.data)), providerCallStarted: true };
   }
 }
 
@@ -548,5 +549,8 @@ export async function callAiJson<T>(params: Omit<CallAiTextParams, "responseForm
     return textResult;
   }
 
-  return safeParseJsonFromAiText<T>(textResult.data);
+  return {
+    ...safeParseJsonFromAiText<T>(textResult.data),
+    providerCallStarted: textResult.providerCallStarted === true,
+  };
 }

@@ -32,6 +32,24 @@ function text(value: unknown): string {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
 }
 
+function createdAtTimestamp(value: string): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function compareLinkedTasksNewestFirst(a: LinkedTaskInfo, b: LinkedTaskInfo): number {
+  const aTimestamp = createdAtTimestamp(a.createdAt);
+  const bTimestamp = createdAtTimestamp(b.createdAt);
+
+  if (aTimestamp !== null && bTimestamp !== null && aTimestamp !== bTimestamp) {
+    return bTimestamp - aTimestamp;
+  }
+  if (aTimestamp !== null && bTimestamp === null) return -1;
+  if (aTimestamp === null && bTimestamp !== null) return 1;
+  return b.taskId.localeCompare(a.taskId);
+}
+
 /**
  * Extract candidate sourceMeta from a single task record.
  * Handles result being an object, JSON string, null, or absent.
@@ -103,12 +121,44 @@ export function buildCandidateTaskLinkMap(
     const existing = map.get(meta.candidateId);
     if (existing) {
       existing.push(info);
-      // Keep sorted by taskId descending (newest first, approximate)
-      existing.sort((a, b) => b.taskId.localeCompare(a.taskId));
+      existing.sort(compareLinkedTasksNewestFirst);
     } else {
       map.set(meta.candidateId, [info]);
     }
   }
 
   return map;
+}
+
+const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9_-]{1,120}$/;
+
+function canonicalTaskId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return SAFE_TASK_ID_PATTERN.test(normalized) ? normalized : null;
+}
+
+export function resolveCandidateTaskLinks<T extends { convertedTaskId?: unknown }>(
+  candidate: T,
+  snapshotLinks: readonly LinkedTaskInfo[],
+): LinkedTaskInfo[] {
+  const taskId = canonicalTaskId(candidate.convertedTaskId);
+  if (!taskId) return [...snapshotLinks];
+
+  const canonical = snapshotLinks.find((task) => task.taskId === taskId) ?? {
+    taskId,
+    title: "关联任务",
+    createdAt: "",
+    source: "",
+  };
+  const seen = new Set([taskId]);
+  const resolved = [canonical];
+
+  for (const task of snapshotLinks) {
+    if (seen.has(task.taskId)) continue;
+    seen.add(task.taskId);
+    resolved.push(task);
+  }
+
+  return resolved;
 }

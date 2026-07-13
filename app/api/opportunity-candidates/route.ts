@@ -3,20 +3,28 @@ import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPasswo
 import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   listSandboxCandidates,
-  createSandboxCandidate,
+  saveLegacySandboxCandidates,
+  saveSignedSandboxCandidates,
   sandboxCandidateToListItem,
 } from "@/lib/server/demoSandbox";
 import {
   isValidCandidateStatus,
   listCandidates,
-  upsertCandidates,
+  saveLegacyCandidates,
+  saveSignedCandidates,
 } from "@/lib/server/opportunityCandidateService";
+import {
+  CandidateSourceSaveError,
+  preflightCandidateSaveBatch,
+  type CandidateSourceSaveErrorCode,
+} from "@/lib/server/candidateSourceSave";
+import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceReview";
 
 export const runtime = "nodejs";
 
 type ApiResponse =
   | { ok: true; items: unknown[]; total: number; hasMore: boolean; nextOffset: number | null }
-  | { ok: true; items: unknown[]; created: number; updated: number; isSandbox?: boolean; sourceMode?: string }
+  | { ok: true; items: unknown[]; created: number; updated: number; unchanged?: number; isSandbox?: boolean; sourceMode?: string }
   | { ok: false; error: { code: string; message: string } };
 
 function json(body: ApiResponse, status = 200) {
@@ -31,11 +39,45 @@ function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+const CANDIDATE_SAVE_CODES = new Set<CandidateSourceSaveErrorCode>([
+  "invalid_payload",
+  "candidate_batch_invalid",
+  "source_proof_invalid",
+  "candidate_source_conflict",
+]);
+
+function candidateSaveErrorCode(error: unknown): CandidateSourceSaveErrorCode | null {
+  if (error instanceof CandidateSourceSaveError) return error.code;
+  if (isRecord(error) && typeof error.code === "string" && CANDIDATE_SAVE_CODES.has(error.code as CandidateSourceSaveErrorCode)) {
+    return error.code as CandidateSourceSaveErrorCode;
+  }
+  return null;
+}
+
+function candidateSaveErrorResponse(error: unknown) {
+  const code = candidateSaveErrorCode(error);
+  if (!code) return null;
+  const status = code === "invalid_payload" ? 400 : 409;
+  const message = code === "candidate_source_conflict"
+    ? "候选品已存在不同来源记录，请检查候选池后重试。"
+    : code === "source_proof_invalid"
+      ? "来源证明无效或已过期，请重新抓取。"
+      : code === "candidate_batch_invalid"
+        ? "候选批次不完整或无效，请重新抓取。"
+        : "候选品请求无效。";
+  return json({ ok: false, error: { code, message } }, status);
+}
+
 /* ── GET ──────────────────────────────────────── */
 
 export async function GET(request: NextRequest) {
   const authError = checkAccessPassword(request);
   if (authError) return NextResponse.json(authError.body, { status: authError.status });
+
+  const ctx = getAccessContext(request);
+  if (!ctx) {
+    return json({ ok: false, error: { code: "invalid_access", message: "请先登录后再操作。" } }, 401);
+  }
 
   const status = asString(request.nextUrl.searchParams.get("status")) || undefined;
   const q = asString(request.nextUrl.searchParams.get("q")) || undefined;
@@ -44,18 +86,36 @@ export async function GET(request: NextRequest) {
   const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
 
   try {
-    const result = await listCandidates({ status, q, sort, limit, offset });
-    let items = result.items as Record<string, unknown>[];
+    if (ctx.mode === "demo") {
+      const normalizedQuery = q?.toLowerCase();
+      const normalizedLimit = Math.min(Math.max(1, limit), 100);
+      const normalizedOffset = Math.max(0, offset);
+      const sandboxItems = listSandboxCandidates(ctx.demoAccessId)
+        .filter((candidate) => !isValidCandidateStatus(status) || candidate.status === status)
+        .filter((candidate) => !normalizedQuery || candidate.name.toLowerCase().includes(normalizedQuery))
+        .sort((a, b) => sort === "score" ? b.score - a.score : 0);
+      const pagedItems = sandboxItems
+        .slice(normalizedOffset, normalizedOffset + normalizedLimit)
+        .map((candidate) => toPublicOpportunityCandidate(sandboxCandidateToListItem(candidate)));
+      const nextOffset = normalizedOffset + pagedItems.length;
 
-    // Demo-Sandbox.1-C: merge sandbox candidates for demo
-    const ctx = getAccessContext(request);
-    if (ctx && ctx.mode === "demo") {
-      const sandboxCands = listSandboxCandidates(ctx.demoAccessId);
-      const sandboxItems = sandboxCands.map((c) => sandboxCandidateToListItem(c)) as unknown as Record<string, unknown>[];
-      items = [...sandboxItems, ...items.map((item) => ({ ...item, sourceMode: "official_readonly", isSandbox: false, canEdit: false, canDelete: false }))];
+      return json({
+        ok: true,
+        items: pagedItems,
+        total: sandboxItems.length,
+        hasMore: nextOffset < sandboxItems.length,
+        nextOffset: nextOffset < sandboxItems.length ? nextOffset : null,
+      });
     }
 
-    return json({ ok: true, items, total: result.total, hasMore: result.hasMore, nextOffset: result.nextOffset });
+    const result = await listCandidates({ status, q, sort, limit, offset });
+    return json({
+      ok: true,
+      items: result.items.map(toPublicOpportunityCandidate),
+      total: result.total,
+      hasMore: result.hasMore,
+      nextOffset: result.nextOffset,
+    });
   } catch (error) {
     return json({
       ok: false,
@@ -92,54 +152,79 @@ export async function POST(request: NextRequest) {
     return json({ ok: false, error: { code: "invalid_payload", message: "请提供至少一个候选品。" } }, 400);
   }
 
-  // Demo-Sandbox.1-C: Demo writes to sandbox
-  if (auth.context.mode === "demo") {
-    let created = 0;
-    for (const item of rawItems.filter(isRecord)) {
-      createSandboxCandidate(auth.context.demoAccessId, {
-        name: asString(item.name),
-        rawInput: asString(item.rawInput),
-        link: item.link ? asString(item.link) || null : null,
-        score: typeof item.score === "number" ? item.score : undefined,
-        source: asString(item.source) || "访客输入",
-        keyword: asString(item.keyword),
-        riskLevel: asString(item.riskLevel),
-        riskLabel: asString(item.riskLabel),
-        summaryLabel: asString(item.summaryLabel),
-        status: asString(item.status) || "pending",
-        sourceMetaJson: typeof item.sourceMetaJson === "string" ? item.sourceMetaJson : undefined,
-        analysisJson: typeof item.analysisJson === "string" ? item.analysisJson : undefined,
-      });
-      created++;
-    }
-    return json({ ok: true, items: [], created, updated: 0, isSandbox: true, sourceMode: "demo_sandbox" });
+  let preflight;
+  try {
+    preflight = preflightCandidateSaveBatch(rawItems, auth.context);
+  } catch (error) {
+    return candidateSaveErrorResponse(error) ?? json({
+      ok: false,
+      error: { code: "server_error", message: "候选品保存失败，请稍后重试。" },
+    }, 500);
   }
 
-  const inputs = rawItems.filter(isRecord).map((item) => ({
-    name: asString(item.name),
-    rawInput: asString(item.rawInput),
-    link: item.link ? asString(item.link) || null : undefined,
-    score: typeof item.score === "number" ? item.score : undefined,
-    source: asString(item.source),
-    keyword: asString(item.keyword),
-    riskLevel: asString(item.riskLevel),
-    riskLabel: asString(item.riskLabel),
-    summaryLabel: asString(item.summaryLabel),
-    status: isValidCandidateStatus(item.status) ? item.status : undefined,
-    sourceMetaJson: asString(item.sourceMetaJson),
-    analysisJson: asString(item.analysisJson),
-    convertedTaskId: item.convertedTaskId ? asString(item.convertedTaskId) || null : undefined,
-  })).filter((item) => item.name.length > 0);
+  if (preflight.mode === "signed_source_v2") {
+    try {
+      if (auth.context.mode === "demo") {
+        const result = saveSignedSandboxCandidates(auth.context.demoAccessId, preflight.items);
+        return json({
+          ok: true,
+          items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),
+          created: result.created,
+          updated: 0,
+          unchanged: result.unchanged,
+          isSandbox: true,
+          sourceMode: "signed_source_v2",
+        });
+      }
 
-  if (inputs.length === 0) {
-    return json({ ok: false, error: { code: "invalid_payload", message: "候选品名称为空。" } }, 400);
+      const result = await saveSignedCandidates(preflight.items);
+      return json({
+        ok: true,
+        items: result.items.map(toPublicOpportunityCandidate),
+        created: result.created,
+        updated: result.updated,
+        unchanged: result.unchanged,
+        sourceMode: "signed_source_v2",
+      });
+    } catch (error) {
+      return candidateSaveErrorResponse(error) ?? json({
+        ok: false,
+        error: { code: "server_error", message: "候选品保存失败，请稍后重试。" },
+      }, 500);
+    }
+  }
+
+  // Demo-Sandbox.1-C: Demo writes to sandbox
+  if (auth.context.mode === "demo") {
+    try {
+      const result = saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
+      return json({
+        ok: true,
+        items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),
+        created: result.created,
+        updated: 0,
+        isSandbox: true,
+        sourceMode: "legacy_unverified",
+      });
+    } catch (error) {
+      return candidateSaveErrorResponse(error) ?? json({
+        ok: false,
+        error: { code: "server_error", message: "候选品保存失败，请稍后重试。" },
+      }, 500);
+    }
   }
 
   try {
-    const result = await upsertCandidates(inputs);
-    return json({ ok: true, items: result.items, created: result.created, updated: result.updated });
-  } catch (error) {
+    const result = await saveLegacyCandidates(preflight.items);
     return json({
+      ok: true,
+      items: result.items.map(toPublicOpportunityCandidate),
+      created: result.created,
+      updated: result.updated,
+      sourceMode: "legacy_unverified",
+    });
+  } catch (error) {
+    return candidateSaveErrorResponse(error) ?? json({
       ok: false,
       error: {
         code: "server_error",

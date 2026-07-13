@@ -1,14 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateSignedToken } from "@/lib/server/signedToken";
+import {
+  createWorkflowInputHash,
+  createWorkflowResultHash,
+  createWorkflowRunProof,
+  normalizeWorkflowRunInput,
+} from "@/lib/server/workflowRunProof";
+import {
+  buildCandidateAnalysisContext,
+  createCandidateAnalysisContextHash,
+} from "@/lib/server/candidateAnalysisContext";
 
 const CORRECT_PASSWORD = "ci-test-password";
 
 const mockPrisma = {
+  $transaction: vi.fn(),
   viralAnalysisRecord: {
     create: vi.fn().mockResolvedValue({
       id: "task-risk-review-001",
       title: "桌面手机支架 一键分析",
     }),
+  },
+  opportunityCandidate: {
+    findUnique: vi.fn(),
+    updateMany: vi.fn(),
   },
 };
 
@@ -27,17 +42,88 @@ beforeEach(async () => {
     id: "task-risk-review-001",
     title: "桌面手机支架 一键分析",
   });
+  mockPrisma.$transaction.mockImplementation(async (callback: (tx: typeof mockPrisma) => Promise<unknown>) => (
+    callback(mockPrisma)
+  ));
+  mockPrisma.opportunityCandidate.updateMany.mockResolvedValue({ count: 1 });
+  mockPrisma.opportunityCandidate.findUnique.mockResolvedValue({
+    id: "test-candidate",
+    name: "桌面手机支架",
+    rawInput: "原始候选：phone stand",
+    link: "https://example.com/item",
+    score: 86,
+    source: "机会雷达候选品",
+    keyword: "phone stand",
+    riskLevel: "yellow",
+    riskLabel: "中风险",
+    summaryLabel: "test-title",
+    status: "worth_analyzing",
+    sourceMetaJson: JSON.stringify({
+      evidenceSnapshot: {
+        version: 1,
+        sourceType: "web",
+        sourceName: "source importer",
+        sourceUrl: "https://example.com/item",
+        evidenceItems: ["product_page", "price_seen"],
+        extractionSignals: ["url_path_product"],
+        qualityScore: 86,
+        confidence: "high",
+        riskFlags: [],
+        decision: "recommended",
+        decisionReason: "Specific product page with usable source evidence.",
+        nextAction: "Continue to agent run after manual confirmation.",
+        generatedAt: "2026-06-30T10:00:00.000Z",
+      },
+    }),
+    analysisJson: "{}",
+  });
   const mod = await import("./route");
   POST = mod.POST;
 });
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
+  let requestBody = body;
+  if (typeof body === "object" && body !== null && !Array.isArray(body)) {
+    const record = body as Record<string, unknown>;
+    const workflow = record.workflowResult;
+    if (typeof workflow === "object" && workflow !== null && !Array.isArray(workflow)
+      && !Object.prototype.hasOwnProperty.call(record, "runProof")) {
+      const workflowRecord = workflow as Record<string, unknown>;
+      const sourceMeta = typeof record.sourceMeta === "object" && record.sourceMeta !== null
+        ? record.sourceMeta as Record<string, unknown>
+        : null;
+      const candidateId = typeof sourceMeta?.candidateId === "string" ? sourceMeta.candidateId : null;
+      const input = normalizeWorkflowRunInput({
+        productName: String(workflowRecord.productName || ""),
+        source: sourceMeta ? "opportunity" : "manual",
+        candidateId,
+        ...(candidateId ? {
+          contextHash: createCandidateAnalysisContextHash(buildCandidateAnalysisContext({
+            sourceMetaJson: "{}",
+            analysisJson: "{}",
+            link: null,
+          })),
+        } : {}),
+      });
+      const runId = String(workflowRecord.runId || workflowRecord.workflowId || "wf-test-run-0001");
+      const signedWorkflow = { ...workflowRecord, workflowId: runId, runId, input };
+      const runProof = createWorkflowRunProof({
+        runId,
+        subject: "owner",
+        candidateId,
+        inputHash: createWorkflowInputHash(input),
+        resultHash: createWorkflowResultHash(signedWorkflow),
+        status: String(workflowRecord.status) as "completed" | "partial_failed" | "failed",
+      });
+      requestBody = { ...record, workflowResult: { ...signedWorkflow, runProof }, runProof };
+    }
+  }
   return {
     method: "POST",
     url: "http://localhost:3000/api/workflows/product-analysis/save-task",
     nextUrl: new URL("http://localhost:3000/api/workflows/product-analysis/save-task"),
     headers: new Headers(headers),
-    json: async () => body,
+    json: async () => requestBody,
   };
 }
 
@@ -155,6 +241,7 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
       accessPassword: CORRECT_PASSWORD,
       workflowResult: workflowResult(),
       reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
+      humanConfirmed: true,
       source: "agent_run",
       sourceMeta: {
         source: "opportunity",
@@ -200,7 +287,7 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(result.sourceMeta).toMatchObject({
       source: "opportunity",
       from: "opportunity",
-      entry: "candidate_to_agent_m1",
+      entry: "candidate_to_agent_run",
       opportunityTitle: "桌面手机支架",
       opportunitySource: "机会雷达候选品",
       opportunityScore: 86,
@@ -218,6 +305,16 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     });
     expect(JSON.stringify(result.sourceMeta)).not.toContain("secret-token");
     expect(JSON.stringify(result.sourceMeta)).not.toContain("session=abc");
+    expect(result.sourceMeta.candidateSnapshot).toMatchObject({
+      version: 1,
+      id: "test-candidate",
+      name: "桌面手机支架",
+      status: "worth_analyzing",
+    });
+    expect(result.candidateToTask).toMatchObject({
+      candidateId: "test-candidate",
+      confirmation: "human_review",
+    });
     expect(result.agentRunSnapshot.source).toBe("agent_run");
     expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual(["test"]);
   });
@@ -235,6 +332,7 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
       reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
       sourceMeta: {
         source: "opportunity",
+        candidateId: "test-candidate",
         opportunityTitle: "桌面手机支架",
         evidenceSnapshot: {
           version: 1,
@@ -252,6 +350,7 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
           generatedAt: "2026-06-30T10:00:00.000Z",
         },
       },
+      humanConfirmed: true,
     }));
 
     const { status, body } = await readJson(response);
@@ -288,12 +387,6 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
         decidedAt: "2026-07-04T09:00:00.000Z",
         confirmedItems: ["source reviewed"],
         unconfirmedItems: ["risk reviewed"],
-      },
-      sourceMeta: {
-        source: "opportunity",
-        sourceTitle: "Candidate page",
-        sourceUrl: "https://example.com/item?token=secret-token",
-        importedAt: "2026-07-04T08:00:00.000Z",
       },
       profitSnapshot: {
         purchaseCost: 20,
@@ -333,13 +426,34 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
 // ── Listing-Persistence-Fix.1: fallback snapshot generation ──
 
 async function postSaveTask(payload: Record<string, unknown>) {
+  const workflow = payload.workflowResult as Record<string, unknown>;
+  const runId = String(workflow.runId || workflow.workflowId || "wf-listing-test");
+  const input = normalizeWorkflowRunInput({
+    productName: String(workflow.productName || ""),
+    source: "manual",
+    candidateId: null,
+  });
+  const signedWorkflow = { ...workflow, workflowId: runId, runId, input };
+  const runProof = createWorkflowRunProof({
+    runId,
+    subject: "owner",
+    candidateId: null,
+    inputHash: createWorkflowInputHash(input),
+    resultHash: createWorkflowResultHash(signedWorkflow),
+    status: String(workflow.status) as "completed" | "partial_failed" | "failed",
+  });
+  const signedPayload = {
+    ...payload,
+    workflowResult: { ...signedWorkflow, runProof },
+    runProof,
+  };
   const request = new Request("http://localhost/api/workflows/product-analysis/save-task", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-access-password": CORRECT_PASSWORD },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(signedPayload),
   });
   const { POST: handler } = await import("@/app/api/workflows/product-analysis/save-task/route");
-  return handler(request);
+  return handler(request as never);
 }
 
 function listingBaseWorkflowResult(overrides: Record<string, unknown> = {}) {

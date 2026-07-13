@@ -55,6 +55,9 @@ export async function POST(request: NextRequest) {
   if (!input) {
     return jsonResponse({ ok: false, error: { code: "missing_input", message: "请提供 URL、RSS 或 sitemap 地址。" } }, 400);
   }
+  if (new TextEncoder().encode(input).length > REQUEST_BODY_LIMIT_BYTES) {
+    return jsonResponse({ ok: false, error: { code: "body_too_large", message: "请求体过大。" } }, 413);
+  }
 
   // Parse URLs from input (one per line)
   const rawUrls = input

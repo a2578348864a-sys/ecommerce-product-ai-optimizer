@@ -1,4 +1,19 @@
-import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import {
+  parseCandidateEvidenceSnapshot,
+  type CandidateEvidenceSnapshot,
+} from "@/lib/candidateEvidence";
+import {
+  parseCandidateEvidenceReviewV1,
+  type CandidateEvidenceReviewV1,
+} from "@/lib/candidateEvidenceReview";
+import {
+  requiresCandidateSourceReview,
+  type CandidateSourceIntegrity,
+} from "@/lib/candidateSourceIntegrity";
+import {
+  parseR22MarketDecisionSnapshot,
+  type R22MarketDecisionSnapshot,
+} from "@/lib/r22DecisionModel";
 
 export const OPPORTUNITY_CANDIDATE_POOL_STORAGE_KEY = "qx:opportunity-candidate-pool:v1";
 export const OPPORTUNITY_CANDIDATE_POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -7,6 +22,14 @@ export const OPPORTUNITY_CANDIDATE_POOL_VERSION = 1;
 export type CandidateStatus = "pending" | "worth_analyzing" | "analyzed" | "paused" | "rejected";
 export type CandidatePoolFilter = "all" | CandidateStatus;
 export type CandidatePoolSort = "score" | "updated";
+export type CandidateIdentitySource = "server" | "local_draft";
+export type CandidateQueueState = "pending_review" | "pending_analysis" | "analyzing" | "converted" | "rejected";
+
+export type CandidateQueuePresentation = {
+  state: CandidateQueueState;
+  label: "待查看" | "待分析" | "分析中" | "已转任务" | "已放弃";
+  nextAction: string;
+};
 
 export type OpportunityCandidateInput = {
   name: string;
@@ -19,10 +42,14 @@ export type OpportunityCandidateInput = {
   riskLabel?: string;
   summaryLabel?: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot | null;
+  r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot | null;
 };
 
 export type OpportunityCandidatePoolItem = {
   id: string;
+  identitySource: CandidateIdentitySource;
+  sourceIntegrity: CandidateSourceIntegrity;
+  sourceReview?: CandidateEvidenceReviewV1;
   name: string;
   rawInput: string;
   link: string | null;
@@ -33,7 +60,10 @@ export type OpportunityCandidatePoolItem = {
   riskLabel: string;
   summaryLabel: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot | null;
+  /** Trusted only when received from the current authenticated server response; never restored from localStorage. */
+  r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot | null;
   candidateStatus: CandidateStatus;
+  convertedTaskId?: string | null;
   createdAt: number;
   updatedAt: number;
   lastActionAt: number | null;
@@ -62,6 +92,26 @@ function clampScore(value: unknown) {
   return Math.min(100, Math.max(0, Math.round(numberValue)));
 }
 
+const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9_-]{1,120}$/;
+
+function canonicalTaskId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return SAFE_TASK_ID_PATTERN.test(normalized) ? normalized : null;
+}
+
+function timestamp(value: unknown, fallback: number): number {
+  if (typeof value !== "string") return fallback;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function optionalTimestamp(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizeKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -87,6 +137,82 @@ export function makeCandidateId(input: Pick<OpportunityCandidateInput, "name" | 
   return `opp-${hashText(getCandidateDedupeKey(input))}`;
 }
 
+export function isLocalDraftCandidateId(candidateId: string | null | undefined) {
+  return typeof candidateId === "string" && candidateId.startsWith("opp-");
+}
+
+export function isAuthoritativeCandidateId(candidateId: string | null | undefined) {
+  return typeof candidateId === "string" && candidateId.trim().length > 0 && !isLocalDraftCandidateId(candidateId);
+}
+
+export function isCandidateReadyForAgent(status: unknown): status is Extract<CandidateStatus, "worth_analyzing" | "analyzed"> {
+  return status === "worth_analyzing" || status === "analyzed";
+}
+
+export function getCandidateQueuePresentation(
+  candidateStatus: CandidateStatus,
+  hasLinkedTask = false,
+): CandidateQueuePresentation {
+  if (hasLinkedTask) {
+    return { state: "converted", label: "已转任务", nextAction: "查看关联任务" };
+  }
+  if (candidateStatus === "rejected") {
+    return { state: "rejected", label: "已放弃", nextAction: "恢复为待查看" };
+  }
+  if (candidateStatus === "analyzed") {
+    return { state: "analyzing", label: "分析中", nextAction: "继续分析" };
+  }
+  if (candidateStatus === "worth_analyzing") {
+    return { state: "pending_analysis", label: "待分析", nextAction: "开始分析" };
+  }
+  return { state: "pending_review", label: "待查看", nextAction: "选择为待分析" };
+}
+
+export function canCandidateEnterAgent(
+  candidate: Pick<OpportunityCandidatePoolItem, "id" | "identitySource" | "candidateStatus" | "r22MarketDecisionSnapshot">,
+  serverAvailable: boolean | null,
+  hasLinkedTask = false,
+  explicitMarketWatchReview = false,
+) {
+  const snapshot = candidate.r22MarketDecisionSnapshot
+    ? parseR22MarketDecisionSnapshot(candidate.r22MarketDecisionSnapshot)
+    : null;
+  const r22Allowed = !candidate.r22MarketDecisionSnapshot
+    || Boolean(snapshot
+      && snapshot.candidateId === candidate.id
+      && (snapshot.marketDecision === "market_shortlisted"
+        || (snapshot.marketDecision === "market_watch" && explicitMarketWatchReview)));
+  return r22Allowed
+    && serverAvailable === true
+    && candidate.identitySource === "server"
+    && isAuthoritativeCandidateId(candidate.id)
+    && isCandidateReadyForAgent(candidate.candidateStatus)
+    && !hasLinkedTask;
+}
+
+export function getCandidateSourceIntegrityPresentation(sourceIntegrity: CandidateSourceIntegrity) {
+  return sourceIntegrity === "verified_public"
+    ? {
+      verified: true as const,
+      label: "来源证据链已验证",
+      description: "仅证明保存时来源证据链完整，不代表商品真实性、市场需求或页面当前状态。",
+    }
+    : {
+      verified: false as const,
+      label: "来源未验证",
+      description: "继续前请人工核对商品页、价格和合规风险；确认不会把来源升级为已验证。",
+    };
+}
+
+export function buildCandidateStatusUpdatePayload(
+  candidate: Pick<OpportunityCandidatePoolItem, "candidateStatus" | "sourceIntegrity">,
+  status: CandidateStatus,
+): { status: CandidateStatus; sourceReviewAcknowledged?: true } {
+  return requiresCandidateSourceReview(candidate.sourceIntegrity, candidate.candidateStatus, status)
+    ? { status, sourceReviewAcknowledged: true }
+    : { status };
+}
+
 export function getDefaultCandidateStatus(input: Pick<OpportunityCandidateInput, "score" | "riskLevel">): CandidateStatus {
   const risk = text(input.riskLevel).toLowerCase();
   const score = clampScore(input.score);
@@ -105,6 +231,8 @@ export function normalizeCandidate(input: OpportunityCandidateInput, now = Date.
 
   return {
     id: makeCandidateId({ name, link, rawInput }),
+    identitySource: "local_draft",
+    sourceIntegrity: "unverified",
     name,
     rawInput,
     link,
@@ -119,6 +247,37 @@ export function normalizeCandidate(input: OpportunityCandidateInput, now = Date.
     createdAt: now,
     updatedAt: now,
     lastActionAt: null,
+  };
+}
+
+export function serverCandidateToPoolItem(
+  item: Record<string, unknown>,
+): OpportunityCandidatePoolItem {
+  const now = Date.now();
+  const sourceReview = parseCandidateEvidenceReviewV1(item.sourceReview);
+  const evidenceSnapshot = parseCandidateEvidenceSnapshot(item.evidenceSnapshot);
+  const r22MarketDecisionSnapshot = parseR22MarketDecisionSnapshot(item.r22MarketDecisionSnapshot);
+  return {
+    id: text(item.id),
+    identitySource: "server",
+    sourceIntegrity: sourceReview.integrity,
+    sourceReview,
+    name: text(item.name),
+    rawInput: text(item.rawInput, text(item.name)),
+    link: text(item.link) || null,
+    score: clampScore(item.score),
+    source: text(item.source, "机会雷达"),
+    keyword: text(item.keyword),
+    riskLevel: text(item.riskLevel),
+    riskLabel: text(item.riskLabel),
+    summaryLabel: text(item.summaryLabel),
+    ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
+    ...(r22MarketDecisionSnapshot ? { r22MarketDecisionSnapshot } : {}),
+    candidateStatus: isCandidateStatus(item.status) ? item.status : "pending",
+    convertedTaskId: canonicalTaskId(item.convertedTaskId),
+    createdAt: timestamp(item.createdAt, now),
+    updatedAt: timestamp(item.updatedAt, now),
+    lastActionAt: optionalTimestamp(item.lastActionAt),
   };
 }
 
@@ -152,9 +311,18 @@ function normalizeStoredItem(value: unknown): OpportunityCandidatePoolItem | nul
   const updatedAt = typeof source.updatedAt === "number" && Number.isFinite(source.updatedAt) ? source.updatedAt : candidate.updatedAt;
   const lastActionAt = typeof source.lastActionAt === "number" && Number.isFinite(source.lastActionAt) ? source.lastActionAt : null;
 
+  const identitySource: CandidateIdentitySource = source.identitySource === "server" || source.identitySource === "local_draft"
+    ? source.identitySource
+    : isLocalDraftCandidateId(text(source.id, candidate.id))
+      ? "local_draft"
+      : "server";
+
   return {
     ...candidate,
     id: text(source.id, candidate.id),
+    identitySource,
+    // localStorage is client-modifiable and cannot prove a server-verified Evidence chain.
+    sourceIntegrity: "unverified",
     evidenceSnapshot: candidate.evidenceSnapshot,
     candidateStatus: isCandidateStatus(source.candidateStatus) ? source.candidateStatus : candidate.candidateStatus,
     createdAt,
@@ -191,7 +359,15 @@ export function serializeCandidatePool(items: OpportunityCandidatePoolItem[], no
   const payload: StoredCandidatePool = {
     version: OPPORTUNITY_CANDIDATE_POOL_VERSION,
     updatedAt: now,
-    value: dedupeCandidates(items),
+    value: dedupeCandidates(items).map(({
+      sourceReview: _sourceReview,
+      convertedTaskId: _convertedTaskId,
+      r22MarketDecisionSnapshot: _r22MarketDecisionSnapshot,
+      ...item
+    }) => ({
+      ...item,
+      sourceIntegrity: "unverified",
+    })),
   };
   return JSON.stringify(payload);
 }
@@ -213,11 +389,23 @@ export function dedupeCandidates(items: OpportunityCandidatePoolItem[]) {
   for (const item of items) {
     const key = getCandidateDedupeKey(item);
     const current = byName.get(key);
-    if (!current || item.updatedAt >= current.updatedAt) {
+    const replacesLocalWithServer = current?.identitySource === "local_draft" && item.identitySource === "server";
+    const sameIdentityAndNewer = current?.identitySource === item.identitySource && item.updatedAt >= current.updatedAt;
+    if (!current || replacesLocalWithServer || sameIdentityAndNewer) {
       byName.set(key, item);
     }
   }
   return Array.from(byName.values());
+}
+
+export function mergeServerCandidatesWithLocalDrafts(
+  serverItems: OpportunityCandidatePoolItem[],
+  cachedItems: OpportunityCandidatePoolItem[],
+) {
+  return sortCandidatePool(dedupeCandidates([
+    ...cachedItems.filter((item) => item.identitySource === "local_draft"),
+    ...serverItems.map((item) => ({ ...item, identitySource: "server" as const })),
+  ]), "updated");
 }
 
 export function mergeCandidatesIntoPool(
@@ -242,7 +430,9 @@ export function mergeCandidatesIntoPool(
     byKey.set(key, {
       ...next,
       id: current.id,
+      identitySource: current.identitySource,
       candidateStatus: current.candidateStatus,
+      convertedTaskId: current.convertedTaskId,
       createdAt: current.createdAt,
       lastActionAt: current.lastActionAt,
       updatedAt: now,

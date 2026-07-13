@@ -27,7 +27,7 @@ type PinnedRequest = (url: URL, address: ResolvedAddress, signal: AbortSignal) =
 function mockFetch(status: number, body: string | Uint8Array, headers: Record<string, string> = {}): PinnedRequest {
   return async () => {
     const content = typeof body === "string" ? new TextEncoder().encode(body) : body;
-    return new Response(content, { status, headers: new Headers(headers) });
+    return new Response(content as BodyInit, { status, headers: new Headers(headers) });
   };
 }
 
@@ -606,7 +606,7 @@ describe("downloadImageFromUrl", () => {
   ])("accepts actual WebP with auxiliary header %s", async (headerMime) => {
     const png = Buffer.from(VALID_ONE_PIXEL_PNG_BASE64, "base64");
     const webp = await sharp(png).webp().toBuffer();
-    const headers = headerMime ? { "content-type": headerMime } : {};
+    const headers: Record<string, string> = headerMime ? { "content-type": headerMime } : {};
     const result = await downloadImageFromUrl(
       "https://image.65535.space/result-without-extension",
       WHITELIST,

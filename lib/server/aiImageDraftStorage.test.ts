@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const mockChmod = vi.hoisted(() => vi.fn());
+const mockChmod = vi.hoisted(() => vi.fn<(path: string, mode: number) => Promise<void>>());
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -253,25 +253,19 @@ describe("cleanup safety — never deletes existing images", () => {
 
   it("chmods root to 0o700", async () => {
     await storeAiImage({ accessMode: "owner", taskId: "chmod-root", bytes });
-    const rootCalls = mockChmod.mock.calls.filter(
-      ([p, m]: [string, number]) => p === root && m === 0o700,
-    );
+    const rootCalls = mockChmod.mock.calls.filter(([p, m]) => p === root && m === 0o700);
     expect(rootCalls.length).toBeGreaterThanOrEqual(1);
   });
 
   it("chmods the dir chain to 0o700 (root + scope + task-dir)", async () => {
     await storeAiImage({ accessMode: "owner", taskId: "chmod-chain", bytes });
-    const dirCalls = mockChmod.mock.calls.filter(
-      ([_p, m]: [string, number]) => m === 0o700,
-    );
+    const dirCalls = mockChmod.mock.calls.filter(([_p, m]) => m === 0o700);
     expect(dirCalls.length).toBeGreaterThanOrEqual(3);
   });
 
   it("chmods the final file to 0o600", async () => {
     await storeAiImage({ accessMode: "owner", taskId: "chmod-file", bytes });
-    const fileCalls = mockChmod.mock.calls.filter(
-      ([_p, m]: [string, number]) => m === 0o600,
-    );
+    const fileCalls = mockChmod.mock.calls.filter(([_p, m]) => m === 0o600);
     expect(fileCalls.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -281,10 +275,10 @@ describe("cleanup safety — never deletes existing images", () => {
     await storeAiImage({ accessMode: "owner", taskId: "isolated", bytes });
     await storeAiImage({ accessMode: "visitor", visitorAccessId: "vid-1", taskId: "isolated", bytes });
 
-    const ownerCalls = mockChmod.mock.calls.filter(([p]: [string, number]) =>
+    const ownerCalls = mockChmod.mock.calls.filter(([p]) =>
       p.includes("owner") && !p.includes("visitor"),
     );
-    const visitorCalls = mockChmod.mock.calls.filter(([p]: [string, number]) =>
+    const visitorCalls = mockChmod.mock.calls.filter(([p]) =>
       p.includes("visitor"),
     );
     expect(ownerCalls.length).toBeGreaterThan(0);

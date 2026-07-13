@@ -199,7 +199,7 @@ describe("Demo sandbox — candidate CRUD", () => {
   it("deleteSandboxCandidate removes the candidate", () => {
     const c = createSandboxCandidate(demoAccessId, { name: "To Delete" });
     const deleted = deleteSandboxCandidate(demoAccessId, c.id);
-    expect(deleted).toBe(true);
+    expect(deleted).toBe("deleted");
     const remaining = listSandboxCandidates(demoAccessId);
     expect(remaining).toHaveLength(0);
   });
@@ -207,7 +207,7 @@ describe("Demo sandbox — candidate CRUD", () => {
   it("deleteSandboxCandidate returns false for wrong demoAccessId", () => {
     const c = createSandboxCandidate(demoAccessId, { name: "Protected" });
     const deleted = deleteSandboxCandidate("wrong_id", c.id);
-    expect(deleted).toBe(false);
+    expect(deleted).toBe("not_found");
   });
 
   it("isSandboxCandidateId distinguishes sandbox from real IDs", () => {

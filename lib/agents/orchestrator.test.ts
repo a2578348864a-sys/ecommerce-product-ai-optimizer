@@ -1,5 +1,24 @@
-import { describe, expect, it } from "vitest";
-import { getOpportunityDisplayRiskLevel, type ProductCandidate } from "./orchestrator";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const aiMocks = vi.hoisted(() => ({
+  callAiJson: vi.fn(),
+}));
+
+vi.mock("@/lib/server/aiClient", () => ({
+  callAiJson: aiMocks.callAiJson,
+}));
+
+import {
+  getOpportunityDisplayRiskLevel,
+  OPPORTUNITY_AI_CALLS_PER_CANDIDATE,
+  runOpportunitiesPipeline,
+  type ProductCandidate,
+} from "./orchestrator";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  aiMocks.callAiJson.mockResolvedValue({ ok: true, data: {}, providerCallStarted: true });
+});
 
 function candidate(overrides: Partial<ProductCandidate>): ProductCandidate {
   return {
@@ -122,5 +141,44 @@ describe("getOpportunityDisplayRiskLevel", () => {
     }));
 
     expect(result).toBe("red");
+  });
+});
+
+describe("runOpportunitiesPipeline provider call accounting", () => {
+  it("counts three started Provider calls for one candidate", async () => {
+    const result = await runOpportunitiesPipeline("Phone stand");
+
+    expect(OPPORTUNITY_AI_CALLS_PER_CANDIDATE).toBe(3);
+    expect(aiMocks.callAiJson).toHaveBeenCalledTimes(3);
+    expect(result.providerCallStartedCount).toBe(3);
+  });
+
+  it("counts N x 3 started Provider calls for multiple candidates", async () => {
+    const result = await runOpportunitiesPipeline("Phone stand\nDesk lamp");
+
+    expect(aiMocks.callAiJson).toHaveBeenCalledTimes(6);
+    expect(result.providerCallStartedCount).toBe(6);
+  });
+
+  it("reports each started Provider call through the progress hook", async () => {
+    const onProviderCallStarted = vi.fn();
+
+    const result = await runOpportunitiesPipeline("Phone stand", { onProviderCallStarted });
+
+    expect(result.providerCallStartedCount).toBe(3);
+    expect(onProviderCallStarted).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not count calls that fail before the Provider SDK starts", async () => {
+    aiMocks.callAiJson.mockResolvedValue({
+      ok: false,
+      error: { code: "missing_api_key", message: "missing" },
+      providerCallStarted: false,
+    });
+
+    const result = await runOpportunitiesPipeline("Phone stand");
+
+    expect(aiMocks.callAiJson).toHaveBeenCalledTimes(3);
+    expect(result.providerCallStartedCount).toBe(0);
   });
 });

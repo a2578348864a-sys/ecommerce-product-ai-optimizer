@@ -43,6 +43,27 @@ export type WorkflowBatchRun = {
   lastSavedProductName: string;
 };
 
+export function buildWorkflowBatchSavePayload<T>(input: {
+  accessPassword: string;
+  workflowResult: T;
+  reviewState: Record<string, boolean>;
+  batchMeta: NonNullable<WorkflowBatchRunItem["batchMeta"]>;
+}) {
+  const workflowResult = input.workflowResult as T & { runProof?: unknown };
+  const runProof = typeof workflowResult.runProof === "string"
+    ? workflowResult.runProof.trim()
+    : "";
+  if (!runProof) return null;
+
+  return {
+    accessPassword: input.accessPassword,
+    workflowResult,
+    runProof,
+    reviewState: input.reviewState,
+    batchMeta: input.batchMeta,
+  };
+}
+
 /* ── Constants ────────────────────────────────── */
 
 const WORKFLOW_BATCH_RUN_BASE_KEY = "qx:workflow-batch-run:v1";

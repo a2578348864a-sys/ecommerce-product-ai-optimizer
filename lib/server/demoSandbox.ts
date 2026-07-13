@@ -11,6 +11,23 @@ import "server-only";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
 import { randomBytes } from "crypto";
 import { resolve } from "path";
+import {
+  assertCandidateSourceUpdateAllowed,
+  getCandidateSourceIntegrity,
+} from "@/lib/candidateSourceIntegrity";
+import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
+import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
+import { evaluateR22StoredCandidateStage2Gate } from "@/lib/r22CommercialValidation";
+import {
+  buildCandidateAnalysisContext,
+  createCandidateAnalysisBindingHash,
+} from "@/lib/server/candidateAnalysisContext";
+import {
+  CandidateSourceSaveError,
+  normalizeCandidateIdentity,
+  parseStoredCandidateSourceMeta,
+  type CandidateSaveItem,
+} from "@/lib/server/candidateSourceSave";
 
 // ── Types ───────────────────────────────────────
 
@@ -49,6 +66,8 @@ export interface SandboxCandidate {
   sourceMetaJson: string;
   analysisJson: string;
   createdAt: string;
+  convertedTaskId?: string | null;
+  lastActionAt?: string | null;
 }
 
 export interface DemoSandboxStore {
@@ -82,11 +101,34 @@ export interface SandboxTaskPatch {
   productLifecycle?: string;
 }
 
+export type SandboxCandidateTaskLinkErrorCode =
+  | "candidate_not_found"
+  | "candidate_not_ready_for_conversion"
+  | "candidate_already_converted"
+  | "candidate_changed_since_analysis"
+  | "candidate_context_changed_since_analysis"
+  | "candidate_r22_stage2_blocked";
+
+export type SandboxCandidateDeleteResult = "deleted" | "not_found" | "linked_task";
+
+export class SandboxCandidateTaskLinkError extends Error {
+  constructor(
+    public readonly code: SandboxCandidateTaskLinkErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SandboxCandidateTaskLinkError";
+  }
+}
+
 // ── File path ───────────────────────────────────
 
 function getStorePath(): string {
   if (process.env.DEMO_SANDBOX_STORE_PATH) {
     return process.env.DEMO_SANDBOX_STORE_PATH;
+  }
+  if (process.env.NODE_ENV === "test") {
+    return resolve(process.cwd(), ".next", "test-stores", "demo-sandbox.default.json");
   }
   const dataDir = resolve(process.cwd(), "data");
   return resolve(dataDir, "demo-sandbox.json");
@@ -98,11 +140,21 @@ function ensureDir(): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
+function recoverDemoSandboxBackup(storePath: string): void {
+  const backupPath = `${storePath}.backup`;
+  if (existsSync(storePath)) {
+    if (existsSync(backupPath)) unlinkSync(backupPath);
+    return;
+  }
+  if (existsSync(backupPath)) renameSync(backupPath, storePath);
+}
+
 // ── Store I/O ───────────────────────────────────
 
 export function loadDemoSandboxStore(): DemoSandboxStore {
   ensureDir();
   const p = getStorePath();
+  recoverDemoSandboxBackup(p);
   if (!existsSync(p)) return { version: 1, tasks: [], candidates: [] };
   try {
     const raw = readFileSync(p, "utf-8");
@@ -114,10 +166,33 @@ export function loadDemoSandboxStore(): DemoSandboxStore {
   return { version: 1, tasks: [], candidates: [] };
 }
 
+function loadDemoSandboxStoreStrict(): DemoSandboxStore {
+  ensureDir();
+  const p = getStorePath();
+  recoverDemoSandboxBackup(p);
+  if (!existsSync(p)) return { version: 1, tasks: [], candidates: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(p, "utf-8"));
+  } catch {
+    throw new Error("DEMO_SANDBOX_STORE_INVALID");
+  }
+  if (typeof parsed !== "object"
+    || parsed === null
+    || (parsed as { version?: unknown }).version !== 1
+    || !Array.isArray((parsed as { tasks?: unknown }).tasks)
+    || !Array.isArray((parsed as { candidates?: unknown }).candidates)) {
+    throw new Error("DEMO_SANDBOX_STORE_INVALID");
+  }
+  return parsed as DemoSandboxStore;
+}
+
 export function saveDemoSandboxStore(store: DemoSandboxStore): void {
   ensureDir();
   const storePath = getStorePath();
+  const backupPath = `${storePath}.backup`;
   const tempPath = `${storePath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  recoverDemoSandboxBackup(storePath);
   try {
     writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf-8");
     try {
@@ -125,8 +200,24 @@ export function saveDemoSandboxStore(store: DemoSandboxStore): void {
     } catch (error) {
       const code = error instanceof Error && "code" in error ? String(error.code) : "";
       if (code !== "EPERM" && code !== "EEXIST") throw error;
-      if (existsSync(storePath)) unlinkSync(storePath);
-      renameSync(tempPath, storePath);
+      let originalMoved = false;
+      if (existsSync(storePath)) {
+        renameSync(storePath, backupPath);
+        originalMoved = true;
+      }
+      try {
+        renameSync(tempPath, storePath);
+      } catch (replacementError) {
+        if (originalMoved && existsSync(backupPath) && !existsSync(storePath)) {
+          try {
+            renameSync(backupPath, storePath);
+          } catch {
+            // Keep the controlled backup for recovery on the next load.
+          }
+        }
+        throw replacementError;
+      }
+      if (originalMoved && existsSync(backupPath)) unlinkSync(backupPath);
     }
   } finally {
     if (existsSync(tempPath)) unlinkSync(tempPath);
@@ -148,14 +239,12 @@ function generateSandboxTaskId(): string {
 
 // ── Task CRUD ───────────────────────────────────
 
-export function createSandboxTask(
+function buildSandboxTask(
   demoAccessId: string,
   input: CreateSandboxTaskInput,
+  now = new Date().toISOString(),
 ): SandboxTask {
-  const store = loadDemoSandboxStore();
-  const now = new Date().toISOString();
-
-  const task: SandboxTask = {
+  return {
     id: generateSandboxTaskId(),
     demoAccessId,
     type: input.type || "workflow",
@@ -173,9 +262,95 @@ export function createSandboxTask(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function createSandboxTask(
+  demoAccessId: string,
+  input: CreateSandboxTaskInput,
+): SandboxTask {
+  const store = loadDemoSandboxStore();
+  const now = new Date().toISOString();
+
+  const task = buildSandboxTask(demoAccessId, input, now);
 
   store.tasks.push(task);
   saveDemoSandboxStore(store);
+  return task;
+}
+
+export function createSandboxTaskAndLinkCandidate(
+  demoAccessId: string,
+  candidateId: string,
+  input: CreateSandboxTaskInput,
+  guard: {
+    expectedProductName: string;
+    expectedContextHash: string;
+  },
+): SandboxTask {
+  const store = loadDemoSandboxStoreStrict();
+  const candidateIndex = store.candidates.findIndex(
+    (candidate) => candidate.id === candidateId && candidate.demoAccessId === demoAccessId,
+  );
+  if (candidateIndex === -1) {
+    throw new SandboxCandidateTaskLinkError(
+      "candidate_not_found",
+      "候选商品不存在或不属于当前访问主体。",
+    );
+  }
+
+  const candidate = store.candidates[candidateIndex];
+  if (candidate.convertedTaskId) {
+    throw new SandboxCandidateTaskLinkError(
+      "candidate_already_converted",
+      "该候选已经转为任务，不能重复创建。",
+    );
+  }
+  if (!isCandidateReadyForAgent(candidate.status)) {
+    throw new SandboxCandidateTaskLinkError(
+      "candidate_not_ready_for_conversion",
+      "候选状态已变化，当前不能创建任务。",
+    );
+  }
+  const r22Stage2Gate = evaluateR22StoredCandidateStage2Gate({
+    candidateId: candidate.id,
+    analysisJson: candidate.analysisJson,
+  });
+  if (!r22Stage2Gate.allowed) {
+    throw new SandboxCandidateTaskLinkError(
+      "candidate_r22_stage2_blocked",
+      "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
+    );
+  }
+  if (normalizeCandidateIdentity(candidate.name) !== normalizeCandidateIdentity(guard.expectedProductName)) {
+    throw new SandboxCandidateTaskLinkError(
+      "candidate_changed_since_analysis",
+      "候选商品在分析后已发生变化，请重新分析后再保存。",
+    );
+  }
+  const currentContext = buildCandidateAnalysisContext(candidate);
+  if (createCandidateAnalysisBindingHash(candidate, currentContext) !== guard.expectedContextHash) {
+    throw new SandboxCandidateTaskLinkError(
+      "candidate_context_changed_since_analysis",
+      "候选来源证据在分析后已发生变化，请重新分析后再保存。",
+    );
+  }
+
+  const now = new Date().toISOString();
+  const task = buildSandboxTask(demoAccessId, input, now);
+  const linkedCandidate: SandboxCandidate = {
+    ...candidate,
+    convertedTaskId: task.id,
+    lastActionAt: now,
+  };
+  const nextStore: DemoSandboxStore = {
+    version: 1,
+    tasks: [...store.tasks, task],
+    candidates: store.candidates.map((item, index) => (
+      index === candidateIndex ? linkedCandidate : item
+    )),
+  };
+
+  saveDemoSandboxStore(nextStore);
   return task;
 }
 
@@ -371,11 +546,149 @@ export function createSandboxCandidate(
     sourceMetaJson: input.sourceMetaJson || "{}",
     analysisJson: input.analysisJson || "{}",
     createdAt: now,
+    convertedTaskId: null,
+    lastActionAt: null,
   };
 
   store.candidates.push(candidate);
   saveDemoSandboxStore(store);
   return candidate;
+}
+
+export function saveSignedSandboxCandidates(
+  demoAccessId: string,
+  inputs: CandidateSaveItem[],
+): { items: SandboxCandidate[]; created: number; unchanged: number } {
+  const store = loadDemoSandboxStoreStrict();
+  const existingByIdentity = new Map<string, SandboxCandidate[]>();
+  for (const candidate of store.candidates) {
+    if (candidate.demoAccessId !== demoAccessId) continue;
+    const identity = normalizeCandidateIdentity(candidate.name);
+    const matches = existingByIdentity.get(identity);
+    if (matches) matches.push(candidate);
+    else existingByIdentity.set(identity, [candidate]);
+  }
+
+  const decisions: Array<
+    | { kind: "unchanged"; candidate: SandboxCandidate }
+    | { kind: "create"; input: CandidateSaveItem }
+  > = [];
+  let unchanged = 0;
+
+  for (const input of inputs) {
+    if (!input.evidenceHash || !/^[a-f0-9]{64}$/.test(input.evidenceHash)) {
+      throw new CandidateSourceSaveError("candidate_batch_invalid", "Signed Candidate 缺少有效 Evidence Hash。");
+    }
+    const matches = existingByIdentity.get(normalizeCandidateIdentity(input.name)) ?? [];
+    if (matches.length > 1) {
+      throw new CandidateSourceSaveError("candidate_source_conflict", "访客候选池已有重复身份，无法安全写入。");
+    }
+    if (matches.length === 1) {
+      const stored = parseStoredCandidateSourceMeta(matches[0].sourceMetaJson);
+      if (stored.integrity !== "signed_source_v2" || stored.evidenceHash !== input.evidenceHash) {
+        throw new CandidateSourceSaveError("candidate_source_conflict", "同名 Candidate 来源证据冲突。");
+      }
+      decisions.push({ kind: "unchanged", candidate: matches[0] });
+      unchanged += 1;
+    } else {
+      decisions.push({ kind: "create", input });
+    }
+  }
+
+  if (decisions.every((decision) => decision.kind === "unchanged")) {
+    return {
+      items: decisions.map((decision) => (decision as { kind: "unchanged"; candidate: SandboxCandidate }).candidate),
+      created: 0,
+      unchanged,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const items: SandboxCandidate[] = [];
+  let created = 0;
+  for (const decision of decisions) {
+    if (decision.kind === "unchanged") {
+      items.push(decision.candidate);
+      continue;
+    }
+    const input = decision.input;
+    const candidate: SandboxCandidate = {
+      id: generateSandboxCandidateId(),
+      demoAccessId,
+      name: input.name,
+      rawInput: input.rawInput,
+      link: input.link,
+      score: input.score,
+      source: input.source,
+      keyword: input.keyword,
+      riskLevel: input.riskLevel,
+      riskLabel: input.riskLabel,
+      summaryLabel: input.summaryLabel,
+      status: "pending",
+      sourceMetaJson: input.sourceMetaJson,
+      analysisJson: input.analysisJson,
+      createdAt: now,
+      convertedTaskId: null,
+      lastActionAt: null,
+    };
+    store.candidates.push(candidate);
+    items.push(candidate);
+    created += 1;
+  }
+  saveDemoSandboxStore(store);
+  return { items, created, unchanged };
+}
+
+export function saveLegacySandboxCandidates(
+  demoAccessId: string,
+  inputs: CandidateSaveItem[],
+): { items: SandboxCandidate[]; created: number } {
+  const store = loadDemoSandboxStoreStrict();
+  const existingByIdentity = new Map<string, SandboxCandidate[]>();
+  for (const candidate of store.candidates) {
+    if (candidate.demoAccessId !== demoAccessId) continue;
+    const identity = normalizeCandidateIdentity(candidate.name);
+    const matches = existingByIdentity.get(identity);
+    if (matches) matches.push(candidate);
+    else existingByIdentity.set(identity, [candidate]);
+  }
+
+  const batchIdentities = new Set<string>();
+  for (const input of inputs) {
+    const identity = normalizeCandidateIdentity(input.name);
+    if (batchIdentities.has(identity)) {
+      throw new CandidateSourceSaveError("candidate_source_conflict", "Legacy Candidate 批次包含重复身份。");
+    }
+    batchIdentities.add(identity);
+    const matches = existingByIdentity.get(identity) ?? [];
+    if (matches.some((candidate) => parseStoredCandidateSourceMeta(candidate.sourceMetaJson).integrity === "signed_source_v2")) {
+      throw new CandidateSourceSaveError("candidate_source_conflict", "未验证来源不能覆盖已验证 Candidate。");
+    }
+  }
+
+  const now = new Date().toISOString();
+  const items = inputs.map((input): SandboxCandidate => ({
+    id: generateSandboxCandidateId(),
+    demoAccessId,
+    name: input.name,
+    rawInput: input.rawInput,
+    link: input.link,
+    score: input.score,
+    source: input.source,
+    keyword: input.keyword,
+    riskLevel: input.riskLevel,
+    riskLabel: input.riskLabel,
+    summaryLabel: input.summaryLabel,
+    status: input.status,
+    sourceMetaJson: input.sourceMetaJson,
+    analysisJson: input.analysisJson,
+    createdAt: now,
+    convertedTaskId: null,
+    lastActionAt: null,
+  }));
+  store.candidates.push(...items);
+  saveDemoSandboxStore(store);
+  return { items, created: items.length };
 }
 
 export function listSandboxCandidates(demoAccessId: string): SandboxCandidate[] {
@@ -394,12 +707,24 @@ export function updateSandboxCandidate(
   demoAccessId: string,
   candidateId: string,
   patch: SandboxCandidatePatch,
+  policy: {
+    sourceReviewAcknowledged?: unknown;
+    requestedFields?: readonly string[];
+  } = {},
 ): SandboxCandidate | null {
   const store = loadDemoSandboxStore();
   const idx = store.candidates.findIndex((c) => c.id === candidateId && c.demoAccessId === demoAccessId);
   if (idx === -1) return null;
 
   const c = store.candidates[idx];
+  assertCandidateSourceUpdateAllowed({
+    sourceMetaJson: c.sourceMetaJson,
+    reviewIntegrity: buildCandidateEvidenceReview(c).integrity,
+    currentStatus: c.status,
+    targetStatus: patch.status,
+    sourceReviewAcknowledged: policy.sourceReviewAcknowledged,
+    requestedFields: policy.requestedFields ?? Object.keys(patch),
+  });
   if (patch.status !== undefined) c.status = patch.status;
   if (patch.score !== undefined) c.score = patch.score;
   if (patch.riskLevel !== undefined) c.riskLevel = patch.riskLevel;
@@ -414,13 +739,20 @@ export function updateSandboxCandidate(
   return c;
 }
 
-export function deleteSandboxCandidate(demoAccessId: string, candidateId: string): boolean {
-  const store = loadDemoSandboxStore();
+export function deleteSandboxCandidate(
+  demoAccessId: string,
+  candidateId: string,
+): SandboxCandidateDeleteResult {
+  const store = loadDemoSandboxStoreStrict();
   const idx = store.candidates.findIndex((c) => c.id === candidateId && c.demoAccessId === demoAccessId);
-  if (idx === -1) return false;
-  store.candidates.splice(idx, 1);
-  saveDemoSandboxStore(store);
-  return true;
+  if (idx === -1) return "not_found";
+  if (store.candidates[idx].convertedTaskId) return "linked_task";
+
+  saveDemoSandboxStore({
+    ...store,
+    candidates: store.candidates.filter((_, index) => index !== idx),
+  });
+  return "deleted";
 }
 
 export function importSandboxCandidates(
@@ -450,6 +782,8 @@ export function importSandboxCandidates(
       sourceMetaJson: "{}",
       analysisJson: "{}",
       createdAt: now,
+      convertedTaskId: null,
+      lastActionAt: null,
     });
     imported++;
   }
@@ -477,6 +811,9 @@ export function sandboxCandidateToListItem(candidate: SandboxCandidate) {
     analysisJson: candidate.analysisJson,
     createdAt: candidate.createdAt,
     updatedAt: candidate.createdAt,
+    convertedTaskId: candidate.convertedTaskId ?? null,
+    lastActionAt: candidate.lastActionAt ?? null,
+    sourceIntegrity: getCandidateSourceIntegrity(candidate.sourceMetaJson),
     sourceMode: "demo_sandbox" as const,
     isSandbox: true,
     canEdit: true,

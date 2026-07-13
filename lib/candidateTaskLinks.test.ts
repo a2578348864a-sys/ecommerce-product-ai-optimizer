@@ -3,6 +3,7 @@ import {
   extractCandidateSourceMeta,
   isTaskFromCandidate,
   buildCandidateTaskLinkMap,
+  resolveCandidateTaskLinks,
   type LinkedTaskInfo,
 } from "./candidateTaskLinks";
 
@@ -155,9 +156,69 @@ describe("buildCandidateTaskLinkMap", () => {
     expect(map.size).toBe(1);
     const linked = map.get("cand-1")!;
     expect(linked).toHaveLength(2);
-    // Should be sorted by taskId descending
+    // Missing createdAt falls back to stable taskId descending order.
     expect(linked[0].taskId).toBe("task-2");
     expect(linked[1].taskId).toBe("task-1");
+  });
+
+  it("sorts linked tasks by createdAt descending even when taskId order conflicts", () => {
+    const tasks = [
+      {
+        id: "task-z-older",
+        title: "较早分析",
+        createdAt: "2026-06-20T08:00:00.000Z",
+        result: { sourceMeta: { candidateId: "cand-1", from: "opportunity" } },
+      },
+      {
+        id: "task-a-newer",
+        title: "最新分析",
+        createdAt: "2026-07-10T08:00:00.000Z",
+        result: { sourceMeta: { candidateId: "cand-1", from: "opportunity" } },
+      },
+    ];
+
+    const linked = buildCandidateTaskLinkMap(tasks).get("cand-1")!;
+
+    expect(linked.map((task) => task.taskId)).toEqual(["task-a-newer", "task-z-older"]);
+  });
+
+  it("places valid createdAt before invalid timestamps", () => {
+    const tasks = [
+      {
+        id: "task-z-invalid",
+        createdAt: "not-a-date",
+        result: { sourceMeta: { candidateId: "cand-1", from: "opportunity" } },
+      },
+      {
+        id: "task-a-valid",
+        createdAt: "2026-07-10T08:00:00.000Z",
+        result: { sourceMeta: { candidateId: "cand-1", from: "opportunity" } },
+      },
+    ];
+
+    const linked = buildCandidateTaskLinkMap(tasks).get("cand-1")!;
+
+    expect(linked.map((task) => task.taskId)).toEqual(["task-a-valid", "task-z-invalid"]);
+  });
+
+  it("uses taskId descending as a stable tie-breaker for equal timestamps", () => {
+    const createdAt = "2026-07-10T08:00:00.000Z";
+    const tasks = [
+      {
+        id: "task-a",
+        createdAt,
+        result: { sourceMeta: { candidateId: "cand-1", from: "opportunity" } },
+      },
+      {
+        id: "task-z",
+        createdAt,
+        result: { sourceMeta: { candidateId: "cand-1", from: "opportunity" } },
+      },
+    ];
+
+    const linked = buildCandidateTaskLinkMap(tasks).get("cand-1")!;
+
+    expect(linked.map((task) => task.taskId)).toEqual(["task-z", "task-a"]);
   });
 
   it("handles mixed valid and invalid tasks", () => {
@@ -201,5 +262,54 @@ describe("buildCandidateTaskLinkMap", () => {
     const info = map.get("cand-1")![0];
     expect(info.sourceTitle).toBe("来源标题");
     expect(info.analyzedName).toBe("分析名称");
+  });
+});
+
+describe("resolveCandidateTaskLinks", () => {
+  it("creates a minimal direct link when the canonical Task is outside the recent Snapshot window", () => {
+    expect(resolveCandidateTaskLinks({
+      id: "candidate-1",
+      name: "桌面手机支架",
+      convertedTaskId: "task-canonical-001",
+    }, [])).toEqual([{
+      taskId: "task-canonical-001",
+      title: "关联任务",
+      createdAt: "",
+      source: "",
+    }]);
+  });
+
+  it("reuses canonical Snapshot metadata, places it first and removes duplicate Task ids", () => {
+    const links: LinkedTaskInfo[] = [
+      { taskId: "task-history", title: "历史分析", createdAt: "2026-07-10T00:00:00Z", source: "agent_run" },
+      { taskId: "task-canonical", title: "最新可信任务", createdAt: "2026-07-11T00:00:00Z", source: "ai" },
+      { taskId: "task-canonical", title: "重复快照", createdAt: "", source: "" },
+    ];
+
+    const resolved = resolveCandidateTaskLinks({
+      id: "candidate-1",
+      name: "桌面手机支架",
+      convertedTaskId: "task-canonical",
+    }, links);
+
+    expect(resolved.map((task) => task.taskId)).toEqual(["task-canonical", "task-history"]);
+    expect(resolved[0].title).toBe("最新可信任务");
+  });
+
+  it("keeps legacy Snapshot links unchanged when no valid canonical Task id exists", () => {
+    const links: LinkedTaskInfo[] = [
+      { taskId: "task-history", title: "历史任务", createdAt: "", source: "agent_run" },
+    ];
+
+    expect(resolveCandidateTaskLinks({
+      id: "candidate-1",
+      name: "历史 Candidate",
+      convertedTaskId: null,
+    }, links)).toEqual(links);
+    expect(resolveCandidateTaskLinks({
+      id: "candidate-1",
+      name: "损坏 Candidate",
+      convertedTaskId: "../tasks/forged",
+    }, links)).toEqual(links);
   });
 });

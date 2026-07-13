@@ -86,6 +86,14 @@ describe("isPrivateIPv4", () => {
     expect(guard.isPrivateIPv4("93.184.216.34")).toBe(false);
   });
 
+  it("100.64.0.1 → true (CGNAT)", () => {
+    expect(guard.isPrivateIPv4("100.64.0.1")).toBe(true);
+  });
+
+  it("224.0.0.1 → true (multicast)", () => {
+    expect(guard.isPrivateIPv4("224.0.0.1")).toBe(true);
+  });
+
   it("malformed → true (block)", () => {
     expect(guard.isPrivateIPv4("not.an.ip")).toBe(true);
   });
@@ -120,6 +128,12 @@ describe("isPrivateIPv6", () => {
 
   it("2001:4860:4860::8888 → false (public)", () => {
     expect(guard.isPrivateIPv6("2001:4860:4860::8888")).toBe(false);
+  });
+
+  it(":: and multicast/mapped IPv6 → true", () => {
+    expect(guard.isPrivateIPv6("::")).toBe(true);
+    expect(guard.isPrivateIPv6("ff02::1")).toBe(true);
+    expect(guard.isPrivateIPv6("::ffff:127.0.0.1")).toBe(true);
   });
 });
 
@@ -293,6 +307,54 @@ describe("resolveToPublicIp", () => {
     vi.spyOn(dns, "resolve6").mockResolvedValueOnce(["2001:4860:4860::8888"]);
     const result = await guard.resolveToPublicIp("dual-stack.example");
     expect(result).toBe("8.8.8.8");
+  });
+});
+
+// ── validateTargetUrlForRequest / DNS pinning ──
+
+describe("validateTargetUrlForRequest", () => {
+  it("returns every validated public address for the actual pinned connection", async () => {
+    const lookup = vi.fn().mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+      { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
+    ]);
+
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://example.com/products/item"),
+      lookup,
+    )).resolves.toEqual({
+      url: new URL("https://example.com/products/item"),
+      addresses: [
+        { address: "93.184.216.34", family: 4 },
+        { address: "2606:2800:220:1:248:1893:25c8:1946", family: 6 },
+      ],
+    });
+  });
+
+  it("rejects the whole target when DNS mixes public and private addresses", async () => {
+    const lookup = vi.fn().mockResolvedValue([
+      { address: "93.184.216.34", family: 4 },
+      { address: "127.0.0.1", family: 4 },
+    ]);
+
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://rebind.example/path"),
+      lookup,
+    )).resolves.toBeNull();
+  });
+
+  it("rejects credentials and non-standard ports before DNS", async () => {
+    const lookup = vi.fn();
+
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://user:pass@example.com/item"),
+      lookup,
+    )).resolves.toBeNull();
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://example.com:8443/item"),
+      lookup,
+    )).resolves.toBeNull();
+    expect(lookup).not.toHaveBeenCalled();
   });
 });
 

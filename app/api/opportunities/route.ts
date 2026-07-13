@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/server/db";
 import {
   getOpportunityDisplayRiskLevel,
+  OPPORTUNITY_AI_CALLS_PER_CANDIDATE,
+  OPPORTUNITY_AI_CALL_TIMEOUT_MS,
   runOpportunitiesPipeline,
   type OpportunitiesResult,
   type ProductCandidate,
 } from "@/lib/agents/orchestrator";
 import {
-  consumeDemoAiCalls,
-  ensureDemoAiQuota,
+  reserveDemoAiCalls,
   requireAuthenticated,
+  settleDemoAiCalls,
+  type DemoAiQuotaReservation,
   type DemoAccessSnapshot,
 } from "@/lib/server/demoGuard";
-import { createSandboxTask, sandboxTaskToListItem } from "@/lib/server/demoSandbox";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minutes for batch processing
 
 const REQUEST_BODY_LIMIT_BYTES = 64 * 1024;
+const QUOTA_LEASE_BUFFER_MS = 60 * 1000;
 
 function jsonResponse(body: unknown, status = 200) {
   return NextResponse.json(body, { status });
@@ -25,48 +27,6 @@ function jsonResponse(body: unknown, status = 200) {
 
 function asString(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
-}
-
-function candidateSummary(candidate: ProductCandidate) {
-  return {
-    name: candidate.name,
-    rawInput: candidate.rawInput,
-    status: candidate.status,
-    score: candidate.score,
-    level: candidate.level,
-    levelLabel: candidate.levelLabel,
-    displayRiskLevel: candidate.displayRiskLevel ?? getOpportunityDisplayRiskLevel(candidate),
-    reasons: candidate.reasons,
-    risks: candidate.risks,
-    nextAction: candidate.nextAction,
-    sourcingSummary: candidate.sourcing?.summary,
-    riskSummary: candidate.risk?.summary,
-    summaryVerdict: candidate.summary?.verdict,
-  };
-}
-
-function buildTaskData(result: OpportunitiesResult, rawText: string) {
-  const topCandidate = result.candidates[0];
-  const leaderboardSummary = result.candidates.slice(0, 10).map((candidate, index) => {
-    const reason = candidate.reasons.slice(0, 2).join("; ") || "No summary";
-    return `${index + 1}. [${candidate.levelLabel}] ${candidate.name} (${candidate.score}) - ${reason}`;
-  }).join("\n");
-
-  return {
-    type: "opportunities",
-    title: `Opportunity Radar - ${result.totalCount} candidates`,
-    platform: "manual",
-    productUrl: null,
-    materialText: rawText.slice(0, 2000),
-    source: "ai",
-    score: topCandidate?.score ?? 0,
-    level: topCandidate?.levelLabel ?? "Unrated",
-    oneLineSummary: `Analyzed ${result.totalCount} candidates, ${result.completedCount} completed, ${result.failedCount} failed. Top candidate: ${topCandidate?.name ?? "none"} (${topCandidate?.score ?? 0}).`,
-    resultJson: JSON.stringify({
-      leaderboard: leaderboardSummary,
-      candidates: result.candidates.map(candidateSummary),
-    }),
-  };
 }
 
 function responseCandidate(candidate: ProductCandidate) {
@@ -147,17 +107,40 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
+  let quotaReservation: DemoAiQuotaReservation | null = null;
   if (auth.context.mode === "demo") {
-    const quota = ensureDemoAiQuota(auth.context, 1);
+    const plannedCount = lines.length * OPPORTUNITY_AI_CALLS_PER_CANDIDATE;
+    const quota = reserveDemoAiCalls(auth.context, plannedCount, {
+      leaseMs: plannedCount * OPPORTUNITY_AI_CALL_TIMEOUT_MS + QUOTA_LEASE_BUFFER_MS,
+    });
     if (!quota.ok) {
       return jsonResponse({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
     }
+    quotaReservation = quota.reservation;
   }
 
   let result: OpportunitiesResult;
+  let providerCallStartedBeforeFailure = 0;
   try {
-    result = await runOpportunitiesPipeline(rawText);
+    result = await runOpportunitiesPipeline(rawText, {
+      onProviderCallStarted: () => {
+        providerCallStartedBeforeFailure += 1;
+      },
+    });
   } catch (error) {
+    if (auth.context.mode === "demo") {
+      const settlement = settleDemoAiCalls(
+        auth.context,
+        quotaReservation,
+        providerCallStartedBeforeFailure,
+      );
+      if (!settlement.ok) {
+        return jsonResponse(
+          { ok: false, error: { code: settlement.code, message: settlement.message } },
+          settlement.status,
+        );
+      }
+    }
     return jsonResponse({
       ok: false,
       error: {
@@ -169,21 +152,18 @@ export async function POST(request: NextRequest) {
 
   let demoAccess: DemoAccessSnapshot | null = null;
   if (auth.context.mode === "demo") {
-    demoAccess = consumeDemoAiCalls(auth.context, 1);
-  }
-
-  const taskData = buildTaskData(result, rawText);
-  let savedTask: Record<string, unknown> | null = null;
-
-  try {
-    if (auth.context.mode === "demo") {
-      const sandboxTask = createSandboxTask(auth.context.demoAccessId, taskData);
-      savedTask = sandboxTaskToListItem(sandboxTask) as unknown as Record<string, unknown>;
-    } else {
-      await prisma.viralAnalysisRecord.create({ data: taskData });
+    const settlement = settleDemoAiCalls(
+      auth.context,
+      quotaReservation,
+      result.providerCallStartedCount,
+    );
+    if (!settlement.ok) {
+      return jsonResponse(
+        { ok: false, error: { code: settlement.code, message: settlement.message } },
+        settlement.status,
+      );
     }
-  } catch {
-    // Task save failure is non-fatal. Still return analysis results.
+    demoAccess = settlement.snapshot;
   }
 
   return jsonResponse({
@@ -196,7 +176,6 @@ export async function POST(request: NextRequest) {
       ...(auth.context.mode === "demo" ? {
         isSandbox: true,
         sourceMode: "demo_sandbox",
-        savedTask,
       } : {}),
     },
     ...(demoAccess ? { demoAccess } : {}),

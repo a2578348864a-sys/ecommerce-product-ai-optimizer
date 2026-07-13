@@ -4,7 +4,18 @@
  * 不依赖 cheerio/jsdom，使用正则和字符串匹配。
  */
 
-import type { CrawlResult } from "./radarCrawler";
+import { normalizeEvidenceUrl } from "@/lib/sourceEvidenceContract";
+import type { CrawlProvenance, CrawlResult } from "./radarCrawler";
+
+export type CandidateSourceRelation = "document" | "document_item";
+
+export type CandidateProvenance = {
+  documentUrl: string;
+  candidateUrl: string | null;
+  sourceRelation: CandidateSourceRelation;
+  crawl: CrawlProvenance;
+  extractionSignals: string[];
+};
 
 export type CandidateItem = {
   title: string;
@@ -20,6 +31,7 @@ export type CandidateItem = {
   candidateType?: "product_candidate" | "category_hint" | "trend_signal" | "rejected";
   /** Phase 4-D.7: Reason for rejection or classification */
   rejectionReason?: string;
+  provenance: CandidateProvenance;
 };
 
 const MAX_CANDIDATES_PER_URL = 20;
@@ -41,6 +53,7 @@ const LOW_QUALITY_PATTERNS: RegExp[] = [
   /^(sign\s*in|log\s*in|register|create\s*account|my\s*account|wish\s*list|cart|checkout)$/i, // Account pages
   /^(home|about|contact(\s*us)?|faq|help|support|blog)$/i, // Generic pages
   /^\s*(just\s*a\s*moment\.*|one\s*moment\.*|please\s*wait\.*|verifying.*|checking\s*your\s*browser\.*)\s*$/i, // Anti-bot pages
+  /^(error\s+page|page\s+not\s+found|not\s+found|service\s+unavailable)(?:\s*[|–—-].*)?$/i, // Error documents
   /^.{1,2}$/,                                   // Too short (1-2 chars)
   /^\d+$/,                                      // Only digits
 ];
@@ -49,7 +62,7 @@ const LOW_QUALITY_PATTERNS: RegExp[] = [
  * Phase 4-D.7: Check if a candidate title looks like a product/opportunity signal
  * rather than a category name or navigation label.
  */
-function isLowQualityCandidate(title: string): { rejected: boolean; reason?: string; candidateType: CandidateItem["candidateType"] } {
+export function classifyRadarCandidateTitle(title: string): { rejected: boolean; reason?: string; candidateType: NonNullable<CandidateItem["candidateType"]> } {
   const trimmed = title.trim();
 
   for (const pattern of LOW_QUALITY_PATTERNS) {
@@ -80,6 +93,38 @@ function extractHost(url: string): string {
   }
 }
 
+function documentUrlOf(result: CrawlResult): string {
+  const normalized = normalizeEvidenceUrl(result.provenance?.finalUrl, "document_url");
+  if (!normalized) throw new Error("RADAR_PROVENANCE_DOCUMENT_URL_INVALID");
+  return normalized;
+}
+
+function candidateUrlOf(raw: string | null | undefined, documentUrl: string): string | null {
+  const text = stripHtml(raw || "");
+  if (!text) return null;
+  try {
+    return normalizeEvidenceUrl(new URL(text, documentUrl).toString(), "candidate_url");
+  } catch {
+    return null;
+  }
+}
+
+function itemProvenance(
+  result: CrawlResult,
+  candidateUrl: string | null,
+  sourceRelation: CandidateSourceRelation,
+  extractionSignal: string,
+): CandidateProvenance {
+  if (!result.provenance) throw new Error("RADAR_PROVENANCE_MISSING");
+  return {
+    documentUrl: documentUrlOf(result),
+    candidateUrl,
+    sourceRelation,
+    crawl: result.provenance,
+    extractionSignals: [extractionSignal],
+  };
+}
+
 function stripHtml(raw: string): string {
   return raw
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -99,15 +144,22 @@ function truncate(text: string, maxLen: number): string {
   return text.length <= maxLen ? text : text.slice(0, maxLen - 3) + "...";
 }
 
+function isProductDetailHtml(body: string): boolean {
+  return /["']@type["']\s*:\s*["']Product["']/i.test(body)
+    || /<body[^>]+class=["'][^"']*\b(?:single-product|product-template-default)\b/i.test(body)
+    || /class=["'][^"']*\bsingle_add_to_cart_button\b/i.test(body);
+}
+
 /**
  * Extract candidates from HTML content
  */
 function extractFromHtml(result: CrawlResult): CandidateItem[] {
-  const { body, url } = result;
+  const { body } = result;
   if (!body) return [];
 
-  const host = extractHost(url);
-  const now = new Date().toISOString();
+  const documentUrl = documentUrlOf(result);
+  const host = extractHost(documentUrl);
+  const now = result.provenance!.capturedAt;
   const candidates: CandidateItem[] = [];
 
   // Extract meta description
@@ -117,7 +169,10 @@ function extractFromHtml(result: CrawlResult): CandidateItem[] {
 
   // Extract title
   const titleMatch = body.match(/<title>([^<]+)<\/title>/i);
-  const pageTitle = titleMatch?.[1]?.trim() || "";
+  const pageTitle = stripHtml(titleMatch?.[1] || "").trim();
+  const h1Match = body.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const productHeading = stripHtml(h1Match?.[1] || "").trim();
+  const productDetail = isProductDetailHtml(body);
 
   // Extract h1/h2
   const headings: string[] = [];
@@ -138,29 +193,37 @@ function extractFromHtml(result: CrawlResult): CandidateItem[] {
     if (textBlocks.length >= 30) break;
   }
 
-  // Build primary candidate from page title
-  if (pageTitle && pageTitle.length > 2) {
+  // Product detail documents have one authoritative product subject. Section
+  // headings and related-product cards are context, not additional candidates.
+  const primaryTitle = productDetail && productHeading ? productHeading : pageTitle;
+  if (primaryTitle && primaryTitle.length > 2) {
     const signalText = [description, ...headings.slice(0, 2)].filter(Boolean).join("; ");
     candidates.push({
-      title: truncate(pageTitle, 120),
-      sourceUrl: url,
+      title: truncate(primaryTitle, 120),
+      sourceUrl: documentUrl,
       sourceType: "html",
       sourceHost: host,
-      categoryHint: guessCategory(pageTitle + " " + description + " " + headings.join(" ")),
-      signalText: truncate(signalText || pageTitle, 300),
-      riskHint: guessRisk(pageTitle + " " + description + " " + textBlocks.join(" ")),
+      categoryHint: guessCategory(primaryTitle + " " + description + " " + headings.join(" ")),
+      signalText: truncate(signalText || primaryTitle, 300),
+      riskHint: guessRisk(primaryTitle + " " + description + " " + textBlocks.join(" ")),
       extractedAt: now,
       rawSnippet: truncate(body.slice(0, 1000), 500),
+      provenance: itemProvenance(
+        result,
+        documentUrl,
+        "document",
+        productDetail && productHeading ? "html_product_title" : "html_title",
+      ),
     });
   }
 
   // Build candidates from headings
-  for (const heading of headings) {
+  for (const heading of productDetail ? [] : headings) {
     if (candidates.length >= MAX_CANDIDATES_PER_URL) break;
     if (heading === pageTitle) continue;
     candidates.push({
       title: truncate(heading, 120),
-      sourceUrl: url,
+      sourceUrl: documentUrl,
       sourceType: "html",
       sourceHost: host,
       categoryHint: guessCategory(heading),
@@ -168,6 +231,7 @@ function extractFromHtml(result: CrawlResult): CandidateItem[] {
       riskHint: guessRisk(heading),
       extractedAt: now,
       rawSnippet: truncate(heading, 200),
+      provenance: itemProvenance(result, documentUrl, "document", "html_heading"),
     });
   }
 
@@ -178,11 +242,12 @@ function extractFromHtml(result: CrawlResult): CandidateItem[] {
  * Extract candidates from RSS feed
  */
 function extractFromRss(result: CrawlResult): CandidateItem[] {
-  const { body, url } = result;
+  const { body } = result;
   if (!body) return [];
 
-  const host = extractHost(url);
-  const now = new Date().toISOString();
+  const documentUrl = documentUrlOf(result);
+  const host = extractHost(documentUrl);
+  const now = result.provenance!.capturedAt;
   const candidates: CandidateItem[] = [];
 
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -196,10 +261,11 @@ function extractFromRss(result: CrawlResult): CandidateItem[] {
 
     const title = titleMatch?.[1]?.trim() || "";
     if (!title || title.length < 3) continue;
+    const candidateUrl = candidateUrlOf(linkMatch?.[1], documentUrl);
 
     candidates.push({
       title: truncate(title, 120),
-      sourceUrl: linkMatch?.[1]?.trim() || url,
+      sourceUrl: candidateUrl || documentUrl,
       sourceType: "rss",
       sourceHost: host,
       categoryHint: guessCategory(title + " " + (descMatch?.[1] || "")),
@@ -207,6 +273,7 @@ function extractFromRss(result: CrawlResult): CandidateItem[] {
       riskHint: guessRisk(title + " " + (descMatch?.[1] || "")),
       extractedAt: now,
       rawSnippet: truncate(stripHtml(itemXml), 500),
+      provenance: itemProvenance(result, candidateUrl, "document_item", "rss_item"),
     });
   }
 
@@ -217,11 +284,12 @@ function extractFromRss(result: CrawlResult): CandidateItem[] {
  * Extract candidates from sitemap XML
  */
 function extractFromSitemap(result: CrawlResult): CandidateItem[] {
-  const { body, url } = result;
+  const { body } = result;
   if (!body) return [];
 
-  const host = extractHost(url);
-  const now = new Date().toISOString();
+  const documentUrl = documentUrlOf(result);
+  const host = extractHost(documentUrl);
+  const now = result.provenance!.capturedAt;
   const candidates: CandidateItem[] = [];
 
   const locRegex = /<loc>([^<]+)<\/loc>/gi;
@@ -230,6 +298,7 @@ function extractFromSitemap(result: CrawlResult): CandidateItem[] {
     if (candidates.length >= MAX_CANDIDATES_PER_URL) break;
     const loc = match[1].trim();
     if (!loc) continue;
+    const candidateUrl = candidateUrlOf(loc, documentUrl);
 
     // Extract keywords from URL path
     const pathParts = loc
@@ -244,7 +313,7 @@ function extractFromSitemap(result: CrawlResult): CandidateItem[] {
 
     candidates.push({
       title: truncate(title, 120),
-      sourceUrl: loc,
+      sourceUrl: candidateUrl || documentUrl,
       sourceType: "sitemap",
       sourceHost: host,
       categoryHint: guessCategory(title),
@@ -252,6 +321,7 @@ function extractFromSitemap(result: CrawlResult): CandidateItem[] {
       riskHint: guessRisk(title),
       extractedAt: now,
       rawSnippet: truncate(loc, 200),
+      provenance: itemProvenance(result, candidateUrl, "document_item", "sitemap_loc"),
     });
   }
 
@@ -302,42 +372,59 @@ export type NormalizeResult = {
  * Normalize crawl results into candidate opportunities.
  * Handles auto-detection of content type (HTML/RSS/sitemap/JSON).
  */
-export function normalizeResults(crawlResults: CrawlResult[]): NormalizeResult {
+export function normalizeResults(
+  crawlResults: CrawlResult[],
+  options: { includeRejected?: boolean } = {},
+): NormalizeResult {
   const items: CandidateItem[] = [];
   const warnings: string[] = [];
+  let missingProvenanceCount = 0;
 
   for (const result of crawlResults) {
     if (result.status !== "ok" || !result.body) continue;
-
-    const body = result.body;
-    const trimmed = body.trim();
-
-    // Auto-detect content type
-    if (/<rss\b/i.test(trimmed) || /<feed\b/i.test(trimmed) || /<channel>/i.test(trimmed)) {
-      items.push(...extractFromRss(result));
-    } else if (/<urlset\b/i.test(trimmed) || /<sitemapindex\b/i.test(trimmed)) {
-      items.push(...extractFromSitemap(result));
-    } else if (/<html\b/i.test(trimmed) || /<!DOCTYPE\s+html/i.test(trimmed) || /<head\b/i.test(trimmed)) {
-      items.push(...extractFromHtml(result));
-    } else {
-      // Try as plain text — create one candidate
-      const host = extractHost(result.url);
-      const now = new Date().toISOString();
-      const text = stripHtml(trimmed).slice(0, 500);
-      if (text.length > 5) {
-        items.push({
-          title: truncate(text.split(/\n|。/)[0]?.trim() || text, 120),
-          sourceUrl: result.url,
-          sourceType: "html",
-          sourceHost: host,
-          categoryHint: guessCategory(text),
-          signalText: truncate(text, 300),
-          riskHint: guessRisk(text),
-          extractedAt: now,
-          rawSnippet: truncate(text, 500),
-        });
-      }
+    if (!result.provenance) {
+      missingProvenanceCount += 1;
+      continue;
     }
+
+    try {
+      const body = result.body;
+      const trimmed = body.trim();
+
+      // Auto-detect content type
+      if (/<rss\b/i.test(trimmed) || /<feed\b/i.test(trimmed) || /<channel>/i.test(trimmed)) {
+        items.push(...extractFromRss(result));
+      } else if (/<urlset\b/i.test(trimmed) || /<sitemapindex\b/i.test(trimmed)) {
+        items.push(...extractFromSitemap(result));
+      } else if (/<html\b/i.test(trimmed) || /<!DOCTYPE\s+html/i.test(trimmed) || /<head\b/i.test(trimmed)) {
+        items.push(...extractFromHtml(result));
+      } else {
+        // Try as plain text — create one candidate
+        const documentUrl = documentUrlOf(result);
+        const host = extractHost(documentUrl);
+        const text = stripHtml(trimmed).slice(0, 500);
+        if (text.length > 5) {
+          items.push({
+            title: truncate(text.split(/\n|。/)[0]?.trim() || text, 120),
+            sourceUrl: documentUrl,
+            sourceType: "html",
+            sourceHost: host,
+            categoryHint: guessCategory(text),
+            signalText: truncate(text, 300),
+            riskHint: guessRisk(text),
+            extractedAt: result.provenance.capturedAt,
+            rawSnippet: truncate(text, 500),
+            provenance: itemProvenance(result, documentUrl, "document", "plain_text"),
+          });
+        }
+      }
+    } catch {
+      missingProvenanceCount += 1;
+    }
+  }
+
+  if (missingProvenanceCount > 0) {
+    warnings.push(`忽略 ${missingProvenanceCount} 条缺少可信抓取来源的数据`);
   }
 
   if (items.length > MAX_TOTAL_CANDIDATES) {
@@ -355,7 +442,7 @@ export function normalizeResults(crawlResults: CrawlResult[]): NormalizeResult {
 
   // Phase 4-D.7: Classify and filter low-quality candidates
   const classified = deduped.map((item) => {
-    const quality = isLowQualityCandidate(item.title);
+    const quality = classifyRadarCandidateTitle(item.title);
     return { ...item, candidateType: quality.candidateType, rejectionReason: quality.reason };
   });
 
@@ -364,8 +451,11 @@ export function normalizeResults(crawlResults: CrawlResult[]): NormalizeResult {
   const kept = classified.filter((c) => c.candidateType !== "rejected");
 
   if (rejected.length > 0) {
-    warnings.push(`过滤 ${rejected.length} 条低质候选（类目/导航/非商品文本）`);
+    warnings.push(options.includeRejected
+      ? `识别 ${rejected.length} 条低质或非商品文本，仅供预览`
+      : `过滤 ${rejected.length} 条低质候选（类目/导航/非商品文本）`);
   }
 
-  return { items: kept.slice(0, MAX_TOTAL_CANDIDATES), warnings };
+  const output = options.includeRejected ? classified : kept;
+  return { items: output.slice(0, MAX_TOTAL_CANDIDATES), warnings };
 }

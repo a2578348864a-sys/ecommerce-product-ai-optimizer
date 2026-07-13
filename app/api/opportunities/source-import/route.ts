@@ -4,17 +4,32 @@
  * 不写数据库，不调用 AI。用户确认后再由前端调用候选池 API 入池。
  */
 
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { crawlUrls } from "@/lib/server/radarCrawler";
-import { normalizeResults } from "@/lib/server/radarNormalize";
-import { scoreCandidates } from "@/lib/server/radarScore";
+import { normalizeResults, type CandidateItem } from "@/lib/server/radarNormalize";
+import { assessSourceEvidenceV2 } from "@/lib/server/sourceEvidenceAssessment";
 import { normalizeCandidateEvidence, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import {
+  createAssessmentHash,
+  createEvidenceHash,
+  normalizeEvidenceUrl,
+  normalizeSourceEvidenceV2,
+  type RuleAssessmentV1,
+  type SourceEvidenceSourceType,
+  type SourceEvidenceV2,
+} from "@/lib/sourceEvidenceContract";
+import {
+  buildSourceProofSubject,
+  createSourceProof,
+} from "@/lib/server/sourceProof";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
 
 const MAX_URLS = 5;
+const REQUEST_BODY_LIMIT_BYTES = 32 * 1024;
 
 type SourceImportCandidate = {
   title: string;
@@ -34,6 +49,9 @@ type SourceImportCandidate = {
   /** Phase 4-D.7: candidate quality classification */
   candidateType?: "product_candidate" | "category_hint" | "trend_signal" | "rejected";
   evidenceSnapshot?: CandidateEvidenceSnapshot;
+  sourceEvidence: SourceEvidenceV2;
+  ruleAssessment: RuleAssessmentV1;
+  sourceProof: string;
 };
 
 type SourceImportResult = {
@@ -71,12 +89,6 @@ function riskLevelFromScore(riskScore: number): string {
   return "green";
 }
 
-function riskLabel(riskScore: number): string {
-  if (riskScore >= 70) return "高风险";
-  if (riskScore >= 40) return "需注意";
-  return "低风险";
-}
-
 function summaryLabel(score: number, riskLevel: string): string {
   if (riskLevel === "red") return "风险较高，建议人工判断后再入池";
   if (score >= 80) return "高分候选，建议优先评估";
@@ -84,7 +96,116 @@ function summaryLabel(score: number, riskLevel: string): string {
   return "分数偏低，可入池备用";
 }
 
+class SourceContractFatalError extends Error {}
+
+function sourceTypeOf(value: CandidateItem["sourceType"]): SourceEvidenceSourceType | null {
+  return value === "html" || value === "rss" || value === "sitemap" || value === "json"
+    ? value
+    : null;
+}
+
+function buildSignedCandidate(
+  item: CandidateItem,
+  subject: string,
+  computedAt: string,
+): SourceImportCandidate {
+  const sourceType = sourceTypeOf(item.sourceType);
+  if (!sourceType || !item.provenance) throw new Error("SOURCE_CANDIDATE_PROVENANCE_INVALID");
+  const normalizedDocumentUrl = normalizeEvidenceUrl(item.provenance.documentUrl, "document_url");
+  const normalizedFinalUrl = normalizeEvidenceUrl(item.provenance.crawl.finalUrl, "final_url");
+  if (!normalizedDocumentUrl || normalizedDocumentUrl !== normalizedFinalUrl) {
+    throw new Error("SOURCE_DOCUMENT_URL_MISMATCH");
+  }
+
+  const sourceEvidence = normalizeSourceEvidenceV2({
+    version: "candidate-source-v2",
+    evidenceId: `source-${randomUUID()}`,
+    origin: "public_url",
+    capturedAt: item.provenance.crawl.capturedAt,
+    submittedUrl: item.provenance.crawl.submittedUrl,
+    finalUrl: item.provenance.crawl.finalUrl,
+    candidateUrl: item.provenance.candidateUrl,
+    sourceRelation: item.provenance.sourceRelation,
+    sourceHost: item.sourceHost,
+    sourceType,
+    transportSecurity: item.provenance.crawl.transportSecurity,
+    retrieval: {
+      status: "retrieved",
+      httpStatus: item.provenance.crawl.httpStatus,
+      contentType: item.provenance.crawl.contentType,
+      robots: item.provenance.crawl.robots,
+      redirectCount: item.provenance.crawl.redirectCount,
+    },
+    observations: {
+      title: item.title,
+      categoryHint: item.categoryHint,
+      signalText: item.signalText,
+      priceText: null,
+      hasImage: null,
+    },
+    extractionSignals: item.provenance.extractionSignals,
+  });
+  const evidenceHash = createEvidenceHash(sourceEvidence);
+  const ruleAssessment = assessSourceEvidenceV2(sourceEvidence, computedAt);
+  const assessmentHash = createAssessmentHash(ruleAssessment);
+  const candidateType = ruleAssessment.candidateType as NonNullable<SourceImportCandidate["candidateType"]>;
+  const riskFlags = ruleAssessment.riskFlags;
+  const riskHint = riskFlags.join("、") || "未发现明显规则风险";
+  const scores = ruleAssessment.scores;
+
+  let sourceProof: string;
+  try {
+    sourceProof = createSourceProof({
+      subject,
+      evidenceHash,
+      assessmentHash,
+      sourceType,
+    });
+  } catch {
+    throw new SourceContractFatalError("SOURCE_PROOF_CREATION_FAILED");
+  }
+
+  return {
+    title: item.title,
+    sourceUrl: item.sourceUrl,
+    sourceType: item.sourceType,
+    sourceHost: item.sourceHost,
+    categoryHint: item.categoryHint || "日用百货",
+    keyword: item.categoryHint || "",
+    riskHint,
+    riskLevel: riskLevelFromScore(scores.risk),
+    summaryLabel: summaryLabel(scores.final, riskLevelFromScore(scores.risk)),
+    score: scores.final,
+    demandSignalScore: scores.demandSignal,
+    supplyEaseScore: scores.supplyEase,
+    riskScore: scores.risk,
+    beginnerFitScore: scores.beginnerFit,
+    candidateType,
+    evidenceSnapshot: normalizeCandidateEvidence({
+      title: item.title,
+      sourceType: item.sourceType,
+      sourceName: item.sourceHost,
+      sourceUrl: item.sourceUrl,
+      candidateType,
+      score: scores.final,
+      demandSignalScore: scores.demandSignal,
+      supplyEaseScore: scores.supplyEase,
+      riskScore: scores.risk,
+      beginnerFitScore: scores.beginnerFit,
+      riskHint,
+    }),
+    sourceEvidence,
+    ruleAssessment,
+    sourceProof,
+  };
+}
+
 export async function POST(request: NextRequest) {
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (contentLength > REQUEST_BODY_LIMIT_BYTES) {
+    return json({ ok: false, error: { code: "body_too_large", message: "请求体过大。" } }, 413);
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -106,6 +227,9 @@ export async function POST(request: NextRequest) {
   const rawInput = asString(body.input) || asString(body.urls);
   if (!rawInput) {
     return json({ ok: false, error: { code: "missing_input", message: "请提供至少一个公开 URL。" } }, 400);
+  }
+  if (new TextEncoder().encode(rawInput).length > REQUEST_BODY_LIMIT_BYTES) {
+    return json({ ok: false, error: { code: "body_too_large", message: "请求体过大。" } }, 413);
   }
 
   const rawUrls = rawInput
@@ -129,54 +253,38 @@ export async function POST(request: NextRequest) {
     const { results: crawlResults, warnings: crawlWarnings } = await crawlUrls(rawUrls);
 
     // Normalize
-    const { items, warnings: normWarnings } = normalizeResults(crawlResults);
-
-    // Score
-    const scored = scoreCandidates(items);
+    const { items, warnings: normWarnings } = normalizeResults(crawlResults, { includeRejected: true });
 
     // Collect warnings with machine-readable failure reasons
     const allWarnings = [...crawlWarnings, ...normWarnings];
-    const failureReasons: string[] = [];
     for (const cr of crawlResults) {
       if (cr.status !== "ok" && cr.error) {
         const reasonTag = cr.failureReason ? ` [${cr.failureReason}]` : "";
         allWarnings.push(`${cr.url}: ${cr.error}${reasonTag}`);
-        if (cr.failureReason) failureReasons.push(cr.failureReason);
       }
     }
 
-    // Map to candidate format (Phase 4-D.7: include candidateType)
-    const candidates: SourceImportCandidate[] = scored.map((item) => ({
-      title: item.title,
-      sourceUrl: item.sourceUrl,
-      sourceType: item.sourceType,
-      sourceHost: item.sourceHost,
-      categoryHint: item.categoryHint || "日用百货",
-      keyword: item.categoryHint || "",
-      riskHint: item.riskHint || "",
-      riskLevel: riskLevelFromScore(item.scores.riskScore),
-      summaryLabel: summaryLabel(item.scores.finalScore, riskLevelFromScore(item.scores.riskScore)),
-      score: item.scores.finalScore,
-      demandSignalScore: item.scores.demandSignalScore,
-      supplyEaseScore: item.scores.supplyEaseScore,
-      riskScore: item.scores.riskScore,
-      beginnerFitScore: item.scores.beginnerFitScore,
-      // Phase 4-D.7: candidate quality classification
-      candidateType: (item.candidateType as SourceImportCandidate["candidateType"]) || "product_candidate",
-      evidenceSnapshot: normalizeCandidateEvidence({
-        title: item.title,
-        sourceType: item.sourceType,
-        sourceName: item.sourceHost,
-        sourceUrl: item.sourceUrl,
-        candidateType: (item.candidateType as SourceImportCandidate["candidateType"]) || "product_candidate",
-        score: item.scores.finalScore,
-        demandSignalScore: item.scores.demandSignalScore,
-        supplyEaseScore: item.scores.supplyEaseScore,
-        riskScore: item.scores.riskScore,
-        beginnerFitScore: item.scores.beginnerFitScore,
-        riskHint: item.riskHint,
-      }),
-    }));
+    let subject: string;
+    try {
+      subject = buildSourceProofSubject(authResult.context);
+    } catch {
+      throw new SourceContractFatalError("SOURCE_SUBJECT_INVALID");
+    }
+    const computedAt = new Date().toISOString();
+    const candidates: SourceImportCandidate[] = [];
+    let rejectedContractCandidates = 0;
+    for (const item of items) {
+      try {
+        candidates.push(buildSignedCandidate(item, subject, computedAt));
+      } catch (error) {
+        if (error instanceof SourceContractFatalError) throw error;
+        rejectedContractCandidates += 1;
+      }
+    }
+    if (rejectedContractCandidates > 0) {
+      allWarnings.push(`忽略 ${rejectedContractCandidates} 条无法建立可信来源契约的候选`);
+    }
+    candidates.sort((a, b) => b.score - a.score);
 
     const okCount = crawlResults.filter((r) => r.status === "ok").length;
 
@@ -192,11 +300,20 @@ export async function POST(request: NextRequest) {
       warnings: allWarnings,
     });
   } catch (error) {
+    if (error instanceof SourceContractFatalError) {
+      return json({
+        ok: false,
+        error: {
+          code: "source_contract_failed",
+          message: "来源证明暂时无法生成，请稍后重试。",
+        },
+      }, 500);
+    }
     return json({
       ok: false,
       error: {
         code: "server_error",
-        message: error instanceof Error ? error.message : "来源导入失败，请稍后重试。",
+        message: "来源导入失败，请稍后重试。",
       },
     }, 500);
   }

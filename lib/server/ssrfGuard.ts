@@ -11,6 +11,22 @@
  */
 
 import { promises as dns } from "dns";
+import { isIP } from "node:net";
+
+export type ValidatedTargetAddress = {
+  address: string;
+  family: 4 | 6;
+};
+
+export type TargetDnsLookup = (
+  hostname: string,
+  options: { all: true; verbatim: true },
+) => Promise<Array<{ address: string; family: number }>>;
+
+export type ValidatedTarget = {
+  url: URL;
+  addresses: ValidatedTargetAddress[];
+};
 
 // ── IPv4 helpers ──
 
@@ -51,6 +67,12 @@ export function isPrivateIPv4(ip: string): boolean {
   // 192.168.0.0/16 — private
   if (a === 192 && b === 168) return true;
 
+  // 100.64.0.0/10 — carrier-grade NAT
+  if (a === 100 && b >= 64 && b <= 127) return true;
+
+  // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved/broadcast
+  if (a >= 224) return true;
+
   return false;
 }
 
@@ -65,11 +87,20 @@ export function isPrivateIPv6(ip: string): boolean {
   // ::1 — loopback
   if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
 
+  // :: — unspecified
+  if (normalized === "::" || normalized === "0:0:0:0:0:0:0:0") return true;
+
+  // ff00::/8 — multicast
+  if (normalized.startsWith("ff")) return true;
+
   // fe80::/10 — link-local
   if (normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true;
 
   // fc00::/7 — unique local (fc00:: to fdff:...)
   if (/^f[c-d]/.test(normalized)) return true;
+
+  // IPv4-mapped IPv6 must not bypass IPv4 range checks.
+  if (normalized.startsWith("::ffff:")) return true;
 
   return false;
 }
@@ -119,6 +150,8 @@ export function isAllowedProtocol(protocol: string): boolean {
  *
  * @param hostname — 不含方括号的纯 hostname
  * @returns 解析到的公网 IP 地址，或 null（解析失败 / 任一内网 IP / 无结果）
+ * @deprecated 只保留旧测试/兼容用途。发起网络连接必须使用
+ * validateTargetUrlForRequest() 返回的全部地址并固定 socket lookup。
  */
 export async function resolveToPublicIp(hostname: string): Promise<string | null> {
   const allAddresses: string[] = [];
@@ -155,6 +188,63 @@ export async function resolveToPublicIp(hostname: string): Promise<string | null
   return allAddresses[0];
 }
 
+/**
+ * Resolve and retain every public address that may be used by the actual
+ * connection. Returning the addresses (instead of a boolean) lets callers pin
+ * the socket lookup and closes DNS rebinding / validation-to-fetch TOCTOU.
+ */
+export async function validateTargetUrlForRequest(
+  inputUrl: URL,
+  lookup: TargetDnsLookup = dns.lookup.bind(dns) as TargetDnsLookup,
+): Promise<ValidatedTarget | null> {
+  if (!isAllowedProtocol(inputUrl.protocol)) return null;
+  if (inputUrl.username || inputUrl.password) return null;
+
+  const defaultPort = inputUrl.protocol === "https:" ? "443" : "80";
+  if (inputUrl.port && inputUrl.port !== defaultPort) return null;
+
+  const hostname = inputUrl.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!hostname || hostname.endsWith(".") || isBlockedHostname(hostname)) return null;
+
+  const literalFamily = isIP(hostname);
+  if (literalFamily === 4) {
+    if (isPrivateIPv4(hostname)) return null;
+    return { url: new URL(inputUrl.toString()), addresses: [{ address: hostname, family: 4 }] };
+  }
+  if (literalFamily === 6) {
+    if (isPrivateIPv6(hostname)) return null;
+    return { url: new URL(inputUrl.toString()), addresses: [{ address: hostname, family: 6 }] };
+  }
+
+  let resolved: Array<{ address: string; family: number }>;
+  try {
+    resolved = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    return null;
+  }
+
+  const unique = [...new Map(
+    resolved.map((entry) => [`${entry.family}:${entry.address}`, entry]),
+  ).values()];
+  if (unique.length === 0) return null;
+
+  const addresses: ValidatedTargetAddress[] = [];
+  for (const entry of unique) {
+    const actualFamily = isIP(entry.address);
+    if (entry.family === 4 && actualFamily === 4 && !isPrivateIPv4(entry.address)) {
+      addresses.push({ address: entry.address, family: 4 });
+      continue;
+    }
+    if (entry.family === 6 && actualFamily === 6 && !isPrivateIPv6(entry.address)) {
+      addresses.push({ address: entry.address, family: 6 });
+      continue;
+    }
+    return null;
+  }
+
+  return { url: new URL(inputUrl.toString()), addresses };
+}
+
 // ── Combined validation ──
 
 /**
@@ -162,6 +252,8 @@ export async function resolveToPublicIp(hostname: string): Promise<string | null
  *
  * @param url — 要校验的 URL 对象
  * @returns true 表示安全可访问，false 表示应阻止
+ * @deprecated 布尔结果无法关闭 DNS validation-to-fetch TOCTOU。
+ * 网络请求必须使用 validateTargetUrlForRequest() 并固定连接地址。
  */
 export async function isValidTargetUrl(url: URL): Promise<boolean> {
   // 1. Protocol check

@@ -10,6 +10,8 @@ import type { OpportunityCandidatePoolItem } from "@/lib/opportunityCandidatePoo
 function candidate(overrides: Partial<OpportunityCandidatePoolItem>): OpportunityCandidatePoolItem {
   return {
     id: "c-1",
+    identitySource: "local_draft",
+    sourceIntegrity: "unverified",
     name: "桌面手机支架",
     rawInput: "桌面手机支架",
     link: null,

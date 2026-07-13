@@ -19,10 +19,10 @@ import {
   isDemoAccessActive,
   isDemoAiQuotaExhausted,
   getRemainingAiCalls,
-  incrementDemoAiCalls,
   reserveDemoAiImageCalls,
   commitDemoAiImageCalls,
   refundDemoAiImageCalls,
+  settleDemoAiCallReservation,
   DEMO_TEXT_AI_RESERVATION_LEASE_MS,
   DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
   type DemoAccessRecord,
@@ -44,6 +44,11 @@ export interface DemoAccessSnapshot {
   remainingAiCalls: number;
   isActive: boolean;
 }
+
+export type DemoAiQuotaReservation = {
+  reservationId: string;
+  plannedCount: number;
+};
 
 // ── Error helpers ───────────────────────────────
 
@@ -204,9 +209,88 @@ export function ensureDemoAiQuota(
   return { ok: true };
 }
 
+function quotaReservationError(
+  code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict",
+) {
+  const errors = {
+    access_not_found: { code: "demo_access_not_found", message: "临时访问码不存在。" },
+    access_inactive: { code: "demo_access_inactive", message: "该临时访问码已被停用。" },
+    access_expired: { code: "demo_access_expired", message: "该临时访问已过期，请联系管理员获取新的访问码。" },
+    quota_exceeded: { code: "demo_ai_quota_exceeded", message: "本临时访问码的 AI 分析额度不足。" },
+    reservation_conflict: { code: "demo_ai_quota_conflict", message: "AI 额度预扣冲突，请稍后重试。" },
+  } as const;
+  return { ok: false as const, status: 403, ...errors[code] };
+}
+
+export function reserveDemoAiCalls(
+  ctx: AccessContext,
+  plannedCount: number,
+  options: { leaseMs?: number; nowMs?: number } = {},
+):
+  | { ok: true; reservation: DemoAiQuotaReservation | null }
+  | { ok: false; status: number; code: string; message: string } {
+  if (ctx.mode === "owner") return { ok: true, reservation: null };
+
+  const reservationId = `text-${randomUUID()}`;
+  const leaseMs = Math.max(DEMO_TEXT_AI_RESERVATION_LEASE_MS, options.leaseMs ?? 0);
+  const reserved = reserveDemoAiImageCalls(ctx.demoAccessId, reservationId, plannedCount, {
+    kind: "text",
+    leaseMs,
+    nowMs: options.nowMs,
+  });
+  if (!reserved.ok) return quotaReservationError(reserved.code);
+  return { ok: true, reservation: { reservationId, plannedCount } };
+}
+
+export function settleDemoAiCalls(
+  ctx: AccessContext,
+  reservation: DemoAiQuotaReservation | null,
+  startedCount: number,
+):
+  | { ok: true; snapshot: DemoAccessSnapshot | null }
+  | { ok: false; status: number; code: string; message: string } {
+  if (ctx.mode === "owner") return { ok: true, snapshot: null };
+
+  if (!reservation) {
+    console.error("Demo AI quota settlement failed", {
+      code: "reservation_missing",
+      demoAccessId: ctx.demoAccessId,
+      plannedCount: null,
+      startedCount,
+    });
+    return {
+      ok: false,
+      status: 500,
+      code: "demo_ai_quota_reservation_missing",
+      message: "AI 额度结算状态缺失，请稍后重试。",
+    };
+  }
+
+  const settled = settleDemoAiCallReservation(ctx.demoAccessId, reservation.reservationId, startedCount);
+  if (!settled.ok) {
+    console.error("Demo AI quota settlement failed", {
+      code: settled.code,
+      demoAccessId: ctx.demoAccessId,
+      reservationId: reservation.reservationId,
+      plannedCount: reservation.plannedCount,
+      startedCount,
+    });
+    return {
+      ok: false,
+      status: 500,
+      code: settled.code === "reservation_not_found"
+        ? "demo_ai_quota_reservation_missing"
+        : "demo_ai_quota_settlement_failed",
+      message: "AI 额度结算失败，请稍后重试。",
+    };
+  }
+
+  return { ok: true, snapshot: buildDemoAccessSnapshot(settled.record) };
+}
+
 /**
  * Commit an atomic reservation after a successful text AI provider response.
- * The legacy increment fallback preserves callers that did not reserve first.
+ * Missing reservations fail closed so callers cannot silently bypass the quota gate.
  * Returns updated snapshot for frontend, or null if owner.
  */
 export function consumeDemoAiCalls(
@@ -225,9 +309,12 @@ export function consumeDemoAiCalls(
     const committed = commitDemoAiImageCalls(demoCtx.demoAccessId, reservation.requestHash);
     return committed ? buildDemoAccessSnapshot(committed) : null;
   }
-  const updated = incrementDemoAiCalls(demoCtx.demoAccessId, count);
-  if (!updated) return null;
-  return buildDemoAccessSnapshot(updated);
+  console.error("Demo AI quota settlement failed", {
+    code: "reservation_missing",
+    demoAccessId: demoCtx.demoAccessId,
+    count,
+  });
+  throw new Error("demo_ai_quota_reservation_missing");
 }
 
 /**
