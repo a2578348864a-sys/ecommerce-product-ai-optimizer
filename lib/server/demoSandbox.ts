@@ -408,6 +408,13 @@ export function deleteSandboxTask(demoAccessId: string, taskId: string): boolean
   const store = loadDemoSandboxStore();
   const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
   if (idx === -1) return false;
+  const now = new Date().toISOString();
+  for (const candidate of store.candidates) {
+    if (candidate.demoAccessId === demoAccessId && candidate.convertedTaskId === taskId) {
+      candidate.convertedTaskId = null;
+      candidate.lastActionAt = now;
+    }
+  }
   store.tasks.splice(idx, 1);
   saveDemoSandboxStore(store);
   return true;
@@ -663,6 +670,9 @@ export function saveLegacySandboxCandidates(
     const matches = existingByIdentity.get(identity) ?? [];
     if (matches.some((candidate) => parseStoredCandidateSourceMeta(candidate.sourceMetaJson).integrity === "signed_source_v2")) {
       throw new CandidateSourceSaveError("candidate_source_conflict", "未验证来源不能覆盖已验证 Candidate。");
+    }
+    if (matches.some((candidate) => Boolean(candidate.convertedTaskId))) {
+      throw new CandidateSourceSaveError("candidate_source_conflict", "已转为任务的 Candidate 不能被同名 Legacy 输入覆盖。");
     }
   }
 

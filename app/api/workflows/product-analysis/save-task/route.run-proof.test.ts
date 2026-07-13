@@ -208,6 +208,7 @@ function signedBody(input: {
   candidateId?: string | null;
   candidate?: ReturnType<typeof authoritativeCandidate>;
   omitR22CommercialValidation?: boolean;
+  zeroRequestedSteps?: boolean;
 }) {
   const status = input.status ?? "completed";
   const candidateId = input.candidateId ?? null;
@@ -228,7 +229,9 @@ function signedBody(input: {
     productName: runInput.productName,
     status,
     steps: [],
-    costGuard: {},
+    costGuard: input.zeroRequestedSteps
+      ? { aiStepsRequested: 0, aiStepsCompleted: 0, fallbackSteps: 0 }
+      : { aiStepsRequested: 1, aiStepsCompleted: 1, fallbackSteps: 0 },
     finalReport: {
       finalVerdict: "建议补齐证据后小单测试",
       riskLevel: "yellow",
@@ -316,6 +319,16 @@ beforeEach(() => {
 });
 
 describe("save-task runProof trust boundary", () => {
+  it("independently rejects a signed workflow snapshot with zero requested AI steps", async () => {
+    const result = await responseJson(await POST(createRequest(signedBody({
+      zeroRequestedSteps: true,
+    })) as never));
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("no_ai_steps_requested");
+    expect(mocks.prismaCreate).not.toHaveBeenCalled();
+  });
+
   it("persists a run-bound R2.2 not-evaluated commercial snapshot without claiming profit", async () => {
     const candidate = r22Candidate();
     mocks.candidateFindUnique.mockResolvedValue(candidate);

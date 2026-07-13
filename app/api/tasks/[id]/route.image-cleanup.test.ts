@@ -1,8 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ mode: "owner" as "owner" | "demo", cleanupFails: false }));
+const db = vi.hoisted(() => ({
+  viralAnalysisRecord: { delete: vi.fn(async () => ({ id: "task-1" })) },
+  opportunityCandidate: { updateMany: vi.fn(async () => ({ count: 1 })) },
+}));
 
-vi.mock("@/lib/server/db", () => ({ prisma: { viralAnalysisRecord: { delete: vi.fn(async () => ({ id: "task-1" })) } } }));
+vi.mock("@/lib/server/db", () => ({
+  prisma: {
+    ...db,
+    $transaction: vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => callback(db)),
+  },
+}));
 vi.mock("@/lib/server/accessPassword", () => ({
   checkAccessPassword: () => null,
   getAccessContext: () => null,

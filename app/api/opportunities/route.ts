@@ -9,6 +9,7 @@ import {
 } from "@/lib/agents/orchestrator";
 import {
   reserveDemoAiCalls,
+  markDemoAiProviderCallStarted,
   requireAuthenticated,
   settleDemoAiCalls,
   type DemoAiQuotaReservation,
@@ -123,8 +124,11 @@ export async function POST(request: NextRequest) {
   let providerCallStartedBeforeFailure = 0;
   try {
     result = await runOpportunitiesPipeline(rawText, {
-      onProviderCallStarted: () => {
-        providerCallStartedBeforeFailure += 1;
+      onProviderCallStarted: async () => {
+        const nextStartedCount = providerCallStartedBeforeFailure + 1;
+        const marked = markDemoAiProviderCallStarted(auth.context, quotaReservation, nextStartedCount);
+        if (!marked.ok) throw new Error(marked.code);
+        providerCallStartedBeforeFailure = nextStartedCount;
       },
     });
   } catch (error) {

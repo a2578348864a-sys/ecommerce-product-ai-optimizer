@@ -234,8 +234,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
   try {
-    await prisma.viralAnalysisRecord.delete({
-      where: { id },
+    await prisma.$transaction(async (tx) => {
+      await tx.viralAnalysisRecord.delete({
+        where: { id },
+      });
+      await tx.opportunityCandidate.updateMany({
+        where: { convertedTaskId: id },
+        data: { convertedTaskId: null, lastActionAt: new Date() },
+      });
     });
     await cleanupTaskImages({ accessMode: "owner", taskId: id });
 

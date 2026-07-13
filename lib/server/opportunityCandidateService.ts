@@ -368,6 +368,9 @@ export async function saveLegacyCandidates(inputs: CandidateSaveItem[]): Promise
         if (stored.integrity === "signed_source_v2") {
           throw new CandidateSourceSaveError("candidate_source_conflict", "未验证来源不能覆盖已验证 Candidate。");
         }
+        if (matches[0].convertedTaskId) {
+          throw new CandidateSourceSaveError("candidate_source_conflict", "已转为任务的 Candidate 不能被同名 Legacy 输入覆盖。");
+        }
         decisions.push({ kind: "update", record: matches[0], input });
       } else {
         decisions.push({ kind: "create", input });

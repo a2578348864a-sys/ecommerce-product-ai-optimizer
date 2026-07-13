@@ -42,6 +42,8 @@ export interface DemoAccessRecord {
     kind?: "text" | "image";
     leaseExpiresAt?: string;
     chargedCount?: number;
+    providerStartedCount?: number;
+    providerStartedAt?: string;
   }>;
 }
 
@@ -267,8 +269,13 @@ function recoverExpiredReservations(access: DemoAccessRecord, nowMs: number): bo
       ? explicitExpiry
       : Number.isFinite(createdAt) ? createdAt + DEMO_IMAGE_AI_RESERVATION_LEASE_MS : Number.POSITIVE_INFINITY;
     if (leaseExpiresAt > nowMs) continue;
-    access.usedAiCalls = Math.max(0, access.usedAiCalls - reservation.count);
-    reservation.status = "refunded";
+    const persistedStartedCount = reservation.kind === "text"
+      && Number.isInteger(reservation.providerStartedCount)
+      ? Math.max(0, Math.min(reservation.count, reservation.providerStartedCount || 0))
+      : 0;
+    access.usedAiCalls = Math.max(0, access.usedAiCalls - (reservation.count - persistedStartedCount));
+    reservation.status = persistedStartedCount > 0 ? "committed" : "refunded";
+    reservation.chargedCount = persistedStartedCount;
     reservation.updatedAt = new Date(nowMs).toISOString();
     changed = true;
   }
@@ -335,6 +342,7 @@ export function commitDemoAiImageCalls(id: string, requestHash: string): DemoAcc
   if (!access || !reservation) return null;
   if (reservation.status === "reserved") {
     reservation.status = "committed";
+    reservation.chargedCount = reservation.providerStartedCount ?? reservation.count;
     reservation.updatedAt = new Date().toISOString();
     saveDemoAccessStore(store);
   }
@@ -347,6 +355,55 @@ export type DemoAiCallSettlementResult =
       ok: false;
       code: "access_not_found" | "reservation_not_found" | "reservation_conflict" | "invalid_started_count";
     };
+
+export type DemoAiProviderStartResult = DemoAiCallSettlementResult;
+
+/**
+ * Persist one text Provider start before the external SDK call.
+ * `startedCount` is the cumulative count, making repeated delivery idempotent
+ * while rejecting skipped or out-of-order boundaries.
+ */
+export function markDemoAiCallProviderStarted(
+  id: string,
+  requestHash: string,
+  startedCount: number,
+  nowMs = Date.now(),
+): DemoAiProviderStartResult {
+  const store = loadDemoAccessStore();
+  const access = store.accesses.find((item) => item.id === id);
+  if (!access) return { ok: false, code: "access_not_found" };
+
+  const reservation = access.aiImageQuotaReservations?.[requestHash];
+  if (!reservation) return { ok: false, code: "reservation_not_found" };
+  if (reservation.kind && reservation.kind !== "text") {
+    return { ok: false, code: "reservation_conflict" };
+  }
+  if (!Number.isInteger(startedCount) || startedCount <= 0 || startedCount > reservation.count) {
+    return { ok: false, code: "invalid_started_count" };
+  }
+  if (reservation.status !== "reserved") {
+    const chargedCount = reservation.chargedCount
+      ?? (reservation.status === "committed" ? reservation.count : 0);
+    return chargedCount === startedCount
+      ? { ok: true, record: access, duplicate: true }
+      : { ok: false, code: "reservation_conflict" };
+  }
+
+  const currentCount = reservation.providerStartedCount ?? 0;
+  if (startedCount === currentCount) {
+    return { ok: true, record: access, duplicate: true };
+  }
+  if (startedCount !== currentCount + 1) {
+    return { ok: false, code: "reservation_conflict" };
+  }
+
+  const now = new Date(nowMs).toISOString();
+  reservation.providerStartedCount = startedCount;
+  reservation.providerStartedAt = reservation.providerStartedAt || now;
+  reservation.updatedAt = now;
+  saveDemoAccessStore(store);
+  return { ok: true, record: access, duplicate: false };
+}
 
 export function settleDemoAiCallReservation(
   id: string,
@@ -364,6 +421,10 @@ export function settleDemoAiCallReservation(
   }
   if (!Number.isInteger(startedCount) || startedCount < 0 || startedCount > reservation.count) {
     return { ok: false, code: "invalid_started_count" };
+  }
+  if (reservation.providerStartedCount !== undefined
+    && reservation.providerStartedCount !== startedCount) {
+    return { ok: false, code: "reservation_conflict" };
   }
 
   if (reservation.status !== "reserved") {

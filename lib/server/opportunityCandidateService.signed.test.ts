@@ -365,6 +365,21 @@ describe("saveSignedCandidates", () => {
 });
 
 describe("saveLegacyCandidates downgrade guard", () => {
+  it("rejects a same-name legacy update after the Candidate has converted to a Task", async () => {
+    const existing = {
+      ...record("legacy-converted", "Product A", { legacy: true }),
+      status: "analyzed",
+      convertedTaskId: "task-existing",
+    };
+    mocks.findMany.mockResolvedValue([existing]);
+    mocks.update.mockResolvedValue({ ...existing, convertedTaskId: "task-existing" });
+    installTransaction();
+
+    await expect(saveLegacyCandidates([legacyDraft("Product A")]))
+      .rejects.toMatchObject({ code: "candidate_source_conflict" });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("rejects the whole legacy batch before writes when a signed identity exists", async () => {
     mocks.findMany.mockResolvedValue([
       record("signed-a", "Product A", { evidenceHash: HASH_A }),

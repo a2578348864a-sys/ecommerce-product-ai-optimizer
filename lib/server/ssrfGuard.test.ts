@@ -26,6 +26,17 @@ afterEach(() => {
 // ── isPrivateIPv4 ──
 
 describe("isPrivateIPv4", () => {
+  it.each([
+    "192.0.0.1",
+    "192.0.2.10",
+    "198.18.0.1",
+    "198.19.255.254",
+    "198.51.100.7",
+    "203.0.113.9",
+  ])("%s → true (non-global special-use range)", (address) => {
+    expect(guard.isPrivateIPv4(address)).toBe(true);
+  });
+
   it("127.0.0.1 → true (loopback)", () => {
     expect(guard.isPrivateIPv4("127.0.0.1")).toBe(true);
   });
@@ -102,6 +113,10 @@ describe("isPrivateIPv4", () => {
 // ── isPrivateIPv6 ──
 
 describe("isPrivateIPv6", () => {
+  it.each(["fec0::1", "feff::abcd"])("%s → true (deprecated site-local)", (address) => {
+    expect(guard.isPrivateIPv6(address)).toBe(true);
+  });
+
   it("::1 → true (loopback)", () => {
     expect(guard.isPrivateIPv6("::1")).toBe(true);
   });
@@ -313,6 +328,27 @@ describe("resolveToPublicIp", () => {
 // ── validateTargetUrlForRequest / DNS pinning ──
 
 describe("validateTargetUrlForRequest", () => {
+  it.each([
+    "http://192.0.0.1/item",
+    "http://198.18.0.1/item",
+    "http://[fec0::1]/item",
+  ])("rejects a literal non-global target %s without DNS", async (url) => {
+    const lookup = vi.fn();
+    await expect(guard.validateTargetUrlForRequest(new URL(url), lookup)).resolves.toBeNull();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { addresses: [{ address: "198.19.0.1", family: 4 }] },
+    { addresses: [{ address: "fec0::1234", family: 6 }] },
+  ])("rejects DNS results in non-global special-use ranges", async ({ addresses }) => {
+    const lookup = vi.fn().mockResolvedValue(addresses);
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://special-use.example/item"),
+      lookup,
+    )).resolves.toBeNull();
+  });
+
   it("returns every validated public address for the actual pinned connection", async () => {
     const lookup = vi.fn().mockResolvedValue([
       { address: "93.184.216.34", family: 4 },

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const state: { mode: "owner" | "demo" } = { mode: "demo" };
 const mocks = vi.hoisted(() => ({
   reserve: vi.fn(),
+  markStarted: vi.fn(),
   settle: vi.fn(),
   sourcing: vi.fn(),
   risk: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock("@/lib/server/demoGuard", () => ({
     ? { ok: true, context: { mode: "demo", demoAccessId: "visitor-quota" } }
     : { ok: true, context: { mode: "owner", token: "owner-token" } },
   reserveDemoAiCalls: mocks.reserve,
+  markDemoAiProviderCallStarted: mocks.markStarted,
   settleDemoAiCalls: mocks.settle,
 }));
 
@@ -116,14 +118,27 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.mode = "demo";
   mocks.reserve.mockReturnValue({ ok: true, reservation: { reservationId: "product-run-1", plannedCount: 4 } });
+  mocks.markStarted.mockReturnValue({ ok: true });
   mocks.settle.mockReturnValue({
     ok: true,
     snapshot: { id: "visitor-quota", maxAiCalls: 10, usedAiCalls: 4, remainingAiCalls: 6, isActive: true },
   });
-  mocks.sourcing.mockResolvedValue(sourcingResult());
-  mocks.risk.mockResolvedValue(riskResult());
-  mocks.summary.mockResolvedValue(summaryResult());
-  mocks.listing.mockResolvedValue(listingResult());
+  mocks.sourcing.mockImplementation(async (_name, _description, options) => {
+    await options?.onProviderCallStart?.();
+    return sourcingResult();
+  });
+  mocks.risk.mockImplementation(async (_name, _description, options) => {
+    await options?.onProviderCallStart?.();
+    return riskResult();
+  });
+  mocks.summary.mockImplementation(async (_name, _description, _sourcing, _risk, options) => {
+    await options?.onProviderCallStart?.();
+    return summaryResult();
+  });
+  mocks.listing.mockImplementation(async (_name, _summary, options) => {
+    await options?.onProviderCallStart?.();
+    return listingResult();
+  });
 });
 
 describe("product-analysis Visitor Provider-call quota settlement", () => {
@@ -141,6 +156,7 @@ describe("product-analysis Visitor Provider-call quota settlement", () => {
       { reservationId: "product-run-1", plannedCount: 4 },
       4,
     );
+    expect(mocks.markStarted).toHaveBeenCalledTimes(4);
     expect(result.body.runProof).toEqual(expect.any(String));
   });
 
@@ -148,7 +164,10 @@ describe("product-analysis Visitor Provider-call quota settlement", () => {
     "charges a started Provider call after %s fallback",
     async () => {
       mocks.reserve.mockReturnValueOnce({ ok: true, reservation: { reservationId: "failure-run", plannedCount: 1 } });
-      mocks.sourcing.mockResolvedValueOnce(sourcingResult(true, "fallback"));
+      mocks.sourcing.mockImplementationOnce(async (_name, _description, options) => {
+        await options?.onProviderCallStart?.();
+        return sourcingResult(true, "fallback");
+      });
 
       const result = await readJson(await POST(createRequest({
         runRisk: false,

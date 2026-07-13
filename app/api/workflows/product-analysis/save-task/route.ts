@@ -479,6 +479,11 @@ export async function POST(request: NextRequest) {
     || proofPayload.status !== workflowStatus) {
     return jsonResponse({ ok: false, error: { code: "run_proof_mismatch", message: "分析结果已发生变化，无法保存。" } }, 409);
   }
+  const costGuard = isRecord(workflowResult.costGuard) ? workflowResult.costGuard : {};
+  const aiStepsRequested = costGuard.aiStepsRequested;
+  if (!Number.isInteger(aiStepsRequested) || (aiStepsRequested as number) < 1) {
+    return jsonResponse({ ok: false, error: { code: "no_ai_steps_requested", message: "分析结果未执行任何 AI 步骤，不能保存为任务。" } }, 409);
+  }
   if (workflowStatus !== "completed" && workflowStatus !== "partial_failed") {
     return jsonResponse({ ok: false, error: { code: "workflow_status_not_savable", message: "当前分析未达到可保存状态，请重新分析或补充证据。" } }, 409);
   }

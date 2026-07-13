@@ -23,11 +23,13 @@ import {
   commitDemoAiImageCalls,
   refundDemoAiImageCalls,
   settleDemoAiCallReservation,
+  markDemoAiCallProviderStarted,
   DEMO_TEXT_AI_RESERVATION_LEASE_MS,
   DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
   type DemoAccessRecord,
 } from "@/lib/server/demoAccess";
 import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
+import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
 
 // ── Types ───────────────────────────────────────
 
@@ -206,6 +208,10 @@ export function ensureDemoAiQuota(
   const pending = pendingTextAiReservations.get(ctx) || [];
   pending.push({ requestHash, count: neededCount });
   pendingTextAiReservations.set(ctx, pending);
+  bindProviderCallStartBoundary(() => {
+    const marked = markDemoAiCallProviderStarted(demoCtx.demoAccessId, requestHash, neededCount);
+    if (!marked.ok) throw new Error(`demo_ai_quota_provider_start_failed:${marked.code}`);
+  });
   return { ok: true };
 }
 
@@ -286,6 +292,48 @@ export function settleDemoAiCalls(
   }
 
   return { ok: true, snapshot: buildDemoAccessSnapshot(settled.record) };
+}
+
+export function markDemoAiProviderCallStarted(
+  ctx: AccessContext,
+  reservation: DemoAiQuotaReservation | null,
+  startedCount: number,
+):
+  | { ok: true }
+  | { ok: false; status: number; code: string; message: string } {
+  if (ctx.mode === "owner") return { ok: true };
+  if (!reservation) {
+    return {
+      ok: false,
+      status: 500,
+      code: "demo_ai_quota_reservation_missing",
+      message: "AI quota reservation is missing.",
+    };
+  }
+
+  const marked = markDemoAiCallProviderStarted(
+    ctx.demoAccessId,
+    reservation.reservationId,
+    startedCount,
+  );
+  if (!marked.ok) {
+    console.error("Demo AI Provider-start boundary failed", {
+      code: marked.code,
+      demoAccessId: ctx.demoAccessId,
+      reservationId: reservation.reservationId,
+      plannedCount: reservation.plannedCount,
+      startedCount,
+    });
+    return {
+      ok: false,
+      status: 500,
+      code: marked.code === "reservation_not_found"
+        ? "demo_ai_quota_reservation_missing"
+        : "demo_ai_quota_provider_start_failed",
+      message: "AI quota Provider-start boundary could not be persisted.",
+    };
+  }
+  return { ok: true };
 }
 
 /**

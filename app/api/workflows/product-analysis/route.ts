@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import {
   requireAuthenticated,
   reserveDemoAiCalls,
+  markDemoAiProviderCallStarted,
   settleDemoAiCalls,
   type DemoAccessSnapshot,
   type DemoAiQuotaReservation,
@@ -298,6 +299,12 @@ export async function POST(request: NextRequest) {
   const runSummary = options.runSummary !== false;
   const runListing = options.runListing !== false;
   const plannedAiCalls = [runSourcing, runRisk, runSummary, runListing].filter(Boolean).length;
+  if (plannedAiCalls === 0) {
+    return NextResponse.json(
+      { ok: false, error: { code: "no_ai_steps_requested", message: "请至少选择一个 AI 分析步骤。" } },
+      { status: 400 },
+    );
+  }
   let quotaReservation: DemoAiQuotaReservation | null = null;
   if (accessCtx.mode === "demo" && plannedAiCalls > 0) {
     const quota = reserveDemoAiCalls(accessCtx, plannedAiCalls, {
@@ -323,6 +330,12 @@ export async function POST(request: NextRequest) {
   let aiStepsCompleted = 0;
   let fallbackSteps = 0;
   let providerCallStartedCount = 0;
+  const persistProviderCallStart = async () => {
+    const nextStartedCount = providerCallStartedCount + 1;
+    const marked = markDemoAiProviderCallStarted(accessCtx, quotaReservation, nextStartedCount);
+    if (!marked.ok) throw new Error(marked.code);
+    providerCallStartedCount = nextStartedCount;
+  };
 
   const settleUnexpectedFailure = (error: unknown) => {
     if (accessCtx.mode === "demo" && quotaReservation) {
@@ -356,11 +369,12 @@ export async function POST(request: NextRequest) {
     const startedAt = new Date().toISOString();
     let result;
     try {
-      result = await runSourcingStep(productName, analysisDescription);
+      result = await runSourcingStep(productName, analysisDescription, {
+        onProviderCallStart: persistProviderCallStart,
+      });
     } catch (error) {
       return settleUnexpectedFailure(error);
     }
-    if (result.providerCallStarted) providerCallStartedCount++;
     sourcingResult = result.data;
     if (result.status === "completed") {
       aiStepsCompleted++;
@@ -379,11 +393,12 @@ export async function POST(request: NextRequest) {
     const startedAt = new Date().toISOString();
     let result;
     try {
-      result = await runRiskStep(productName, analysisDescription);
+      result = await runRiskStep(productName, analysisDescription, {
+        onProviderCallStart: persistProviderCallStart,
+      });
     } catch (error) {
       return settleUnexpectedFailure(error);
     }
-    if (result.providerCallStarted) providerCallStartedCount++;
     riskResult = result.data;
     if (result.status === "completed") {
       aiStepsCompleted++;
@@ -402,11 +417,12 @@ export async function POST(request: NextRequest) {
     const startedAt = new Date().toISOString();
     let result;
     try {
-      result = await runSummaryStep(productName, analysisDescription, sourcingResult, riskResult);
+      result = await runSummaryStep(productName, analysisDescription, sourcingResult, riskResult, {
+        onProviderCallStart: persistProviderCallStart,
+      });
     } catch (error) {
       return settleUnexpectedFailure(error);
     }
-    if (result.providerCallStarted) providerCallStartedCount++;
     summaryResult = result.data;
     if (result.status === "completed") {
       aiStepsCompleted++;
@@ -425,11 +441,12 @@ export async function POST(request: NextRequest) {
     const startedAt = new Date().toISOString();
     let result;
     try {
-      result = await runListingStep(productName, summaryResult);
+      result = await runListingStep(productName, summaryResult, {
+        onProviderCallStart: persistProviderCallStart,
+      });
     } catch (error) {
       return settleUnexpectedFailure(error);
     }
-    if (result.providerCallStarted) providerCallStartedCount++;
     listingResult = result.data;
     if (result.status === "completed") {
       aiStepsCompleted++;

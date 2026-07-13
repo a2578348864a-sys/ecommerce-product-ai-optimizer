@@ -228,6 +228,18 @@ describe("saveSignedSandboxCandidates", () => {
 });
 
 describe("saveLegacySandboxCandidates downgrade guard", () => {
+  it("rejects a same-name legacy save after the Visitor Candidate has converted", () => {
+    const candidate = saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]).items[0];
+    const store = loadDemoSandboxStore();
+    store.candidates[0] = { ...candidate, convertedTaskId: "sandbox_task_existing" };
+    saveDemoSandboxStore(store);
+    const before = readFileSync(TEST_STORE_PATH, "utf8");
+
+    expect(() => saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]))
+      .toThrowError(expect.objectContaining({ code: "candidate_source_conflict" }));
+    expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
+  });
+
   it("rejects the whole legacy batch when the current Visitor already has a signed identity", () => {
     saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
     const before = readFileSync(TEST_STORE_PATH, "utf8");

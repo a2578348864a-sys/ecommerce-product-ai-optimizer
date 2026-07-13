@@ -134,7 +134,7 @@ function workflowResult() {
     productName: "桌面手机支架",
     status: "completed",
     steps: [],
-    costGuard: {},
+    costGuard: { aiStepsRequested: 1, aiStepsCompleted: 1, fallbackSteps: 0 },
     finalReport: {
       finalVerdict: "建议小单测试",
       riskLevel: "yellow",

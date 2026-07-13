@@ -47,7 +47,7 @@ export function isPrivateIPv4(ip: string): boolean {
   const octets = ipv4ToOctets(ip);
   if (!octets) return true; // malformed → block
 
-  const [a, b] = octets;
+  const [a, b, c] = octets;
 
   // 0.0.0.0/8 — current network (block 0.0.0.0 specifically)
   if (a === 0) return true;
@@ -66,6 +66,13 @@ export function isPrivateIPv4(ip: string): boolean {
 
   // 192.168.0.0/16 — private
   if (a === 192 && b === 168) return true;
+
+  // Non-global special-use and documentation ranges.
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+  if (a === 192 && b === 88 && c === 99) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a === 198 && b === 51 && c === 100) return true;
+  if (a === 203 && b === 0 && c === 113) return true;
 
   // 100.64.0.0/10 — carrier-grade NAT
   if (a === 100 && b >= 64 && b <= 127) return true;
@@ -98,6 +105,9 @@ export function isPrivateIPv6(ip: string): boolean {
 
   // fc00::/7 — unique local (fc00:: to fdff:...)
   if (/^f[c-d]/.test(normalized)) return true;
+
+  // fec0::/10 — deprecated site-local, never a global destination.
+  if (/^fe[c-f]/.test(normalized)) return true;
 
   // IPv4-mapped IPv6 must not bypass IPv4 range checks.
   if (normalized.startsWith("::ffff:")) return true;

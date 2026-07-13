@@ -29,10 +29,14 @@ const mockRecord = {
 };
 
 const mockPrisma = {
+  $transaction: vi.fn(),
   viralAnalysisRecord: {
     findFirst: vi.fn().mockResolvedValue(mockRecord),
     update: vi.fn().mockResolvedValue({ id: "task-001", decisionStatus: "continue" }),
     delete: vi.fn().mockResolvedValue(mockRecord),
+  },
+  opportunityCandidate: {
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
 };
 
@@ -64,6 +68,8 @@ beforeEach(async () => {
   mockPrisma.viralAnalysisRecord.findFirst.mockResolvedValue(mockRecord);
   mockPrisma.viralAnalysisRecord.update.mockResolvedValue({ id: "task-001", decisionStatus: "continue" });
   mockPrisma.viralAnalysisRecord.delete.mockResolvedValue(mockRecord);
+  mockPrisma.opportunityCandidate.updateMany.mockResolvedValue({ count: 1 });
+  mockPrisma.$transaction.mockImplementation(async (callback: (tx: typeof mockPrisma) => Promise<unknown>) => callback(mockPrisma));
   const mod = await import("./route");
   GET = mod.GET;
   PATCH = mod.PATCH;
@@ -199,6 +205,11 @@ describe("DELETE /api/tasks/[id]", () => {
     expect(body.ok).toBe(true);
     expect(body.data.id).toBe("task-001");
     expect(mockPrisma.viralAnalysisRecord.delete).toHaveBeenCalled();
+    expect(mockPrisma.$transaction).toHaveBeenCalledOnce();
+    expect(mockPrisma.opportunityCandidate.updateMany).toHaveBeenCalledWith({
+      where: { convertedTaskId: "task-001" },
+      data: { convertedTaskId: null, lastActionAt: expect.any(Date) },
+    });
   });
 
   it("服务端未配置密码 → DELETE 返回 401", async () => {

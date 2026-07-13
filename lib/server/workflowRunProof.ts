@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
-import { getAccessPassword } from "@/lib/server/accessPassword";
+import { getProofSigningKey } from "@/lib/server/proofSigningSecret";
 
 export type WorkflowRunStatus =
   | "completed"
@@ -47,11 +47,7 @@ const VALID_STATUSES = new Set<WorkflowRunStatus>([
 ]);
 
 function getSigningKey(): Buffer | null {
-  const password = getAccessPassword();
-  if (!password) return null;
-  return createHmac("sha256", "qx-agent-workflow-run-proof-v1")
-    .update(password)
-    .digest();
+  return getProofSigningKey("qx-agent-workflow-run-proof-v1");
 }
 
 function canonicalJson(value: unknown): string {

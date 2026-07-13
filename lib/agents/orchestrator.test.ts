@@ -17,7 +17,10 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  aiMocks.callAiJson.mockResolvedValue({ ok: true, data: {}, providerCallStarted: true });
+  aiMocks.callAiJson.mockImplementation(async (params: { onProviderCallStart?: () => void | Promise<void> }) => {
+    await params.onProviderCallStart?.();
+    return { ok: true, data: {}, providerCallStarted: true };
+  });
 });
 
 function candidate(overrides: Partial<ProductCandidate>): ProductCandidate {
@@ -167,6 +170,25 @@ describe("runOpportunitiesPipeline provider call accounting", () => {
 
     expect(result.providerCallStartedCount).toBe(3);
     expect(onProviderCallStarted).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports the started boundary before each mocked Provider result resolves", async () => {
+    const events: string[] = [];
+    aiMocks.callAiJson.mockImplementation(async (params: { onProviderCallStart?: () => void | Promise<void> }) => {
+      await params.onProviderCallStart?.();
+      events.push("provider-result");
+      return { ok: true, data: {}, providerCallStarted: true };
+    });
+
+    await runOpportunitiesPipeline("Phone stand", {
+      onProviderCallStarted: () => { events.push("persisted"); },
+    });
+
+    expect(events).toEqual([
+      "persisted", "provider-result",
+      "persisted", "provider-result",
+      "persisted", "provider-result",
+    ]);
   });
 
   it("does not count calls that fail before the Provider SDK starts", async () => {

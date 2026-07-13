@@ -18,12 +18,14 @@ const mocks = vi.hoisted(() => ({
   runRiskStep: vi.fn(),
   runSummaryStep: vi.fn(),
   runListingStep: vi.fn(),
+  reserveDemoAiCalls: vi.fn(),
+  settleDemoAiCalls: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: () => ({ ok: true, context: authState.context }),
-  reserveDemoAiCalls: vi.fn(),
-  settleDemoAiCalls: vi.fn(),
+  reserveDemoAiCalls: mocks.reserveDemoAiCalls,
+  settleDemoAiCalls: mocks.settleDemoAiCalls,
 }));
 
 vi.mock("@/lib/server/db", () => ({
@@ -61,6 +63,10 @@ function createRequest(body: Record<string, unknown>) {
 
 function noAiOptions() {
   return { runSourcing: false, runRisk: false, runSummary: false, runListing: false };
+}
+
+function oneAiStepOptions() {
+  return { runSourcing: true, runRisk: false, runSummary: false, runListing: false };
 }
 
 function signedCandidate() {
@@ -158,9 +164,38 @@ beforeEach(() => {
     sourceMetaJson: "{}",
     analysisJson: "{}",
   });
+  mocks.runSourcingStep.mockResolvedValue(successfulStep({
+    feasibility: "medium",
+    summary: "待人工复核",
+    searchKeywords: [],
+    moqEstimate: "未获得",
+    beginnerFriendly: true,
+    beginnerFit: "medium",
+    complianceBarrier: "medium",
+    logisticsDifficulty: "low",
+    afterSalesRisk: "medium",
+    suggestedEntryLevel: "intermediate",
+    nextSteps: [],
+  }));
+  mocks.reserveDemoAiCalls.mockReturnValue({
+    ok: true,
+    reservation: { reservationId: "text-test", plannedCount: 1 },
+  });
+  mocks.settleDemoAiCalls.mockReturnValue({ ok: true, snapshot: null });
 });
 
 describe("product-analysis trusted run creation", () => {
+  it("rejects a workflow request that disables every AI step before issuing a proof", async () => {
+    const result = await readJson(await POST(createRequest({
+      productName: "桌面手机支架",
+      options: noAiOptions(),
+    }) as never));
+
+    expect(result.status).toBe(400);
+    expect(result.body.error.code).toBe("no_ai_steps_requested");
+    expect(result.body.runProof).toBeUndefined();
+  });
+
   it("feeds only the server-derived evidence context to sourcing, risk and summary", async () => {
     mocks.candidateFindUnique.mockResolvedValue(signedCandidate());
     mocks.runSourcingStep.mockResolvedValue(successfulStep({
@@ -242,7 +277,7 @@ describe("product-analysis trusted run creation", () => {
       productName: "桌面手机支架",
       source: "opportunity",
       candidateId: "candidate-owner-001",
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(200);
@@ -257,7 +292,7 @@ describe("product-analysis trusted run creation", () => {
         status: "completed",
       });
     }
-    expect(mocks.runSourcingStep).not.toHaveBeenCalled();
+    expect(mocks.runSourcingStep).toHaveBeenCalledOnce();
   });
 
   it("uses the authoritative Candidate name when the client tampers with productName", async () => {
@@ -280,19 +315,23 @@ describe("product-analysis trusted run creation", () => {
       productName: "客户端篡改名称",
       source: "opportunity",
       candidateId: "candidate-owner-001",
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(200);
     expect(result.body.productName).toBe("权威商品名称");
     expect(result.body.input.productName).toBe("权威商品名称");
-    expect(mocks.runSourcingStep).not.toHaveBeenCalled();
+    expect(mocks.runSourcingStep).toHaveBeenCalledWith(
+      "权威商品名称",
+      expect.any(String),
+      expect.objectContaining({ onProviderCallStart: expect.any(Function) }),
+    );
   });
 
   it("accepts candidateId without a client product name", async () => {
     const result = await readJson(await POST(createRequest({
       candidateId: "candidate-owner-001",
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(200);
@@ -330,7 +369,7 @@ describe("product-analysis trusted run creation", () => {
 
     const result = await readJson(await POST(createRequest({
       candidateId: candidate.id,
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(409);
@@ -370,7 +409,7 @@ describe("product-analysis trusted run creation", () => {
 
     const result = await readJson(await POST(createRequest({
       candidateId: candidate.id,
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(200);
@@ -394,7 +433,7 @@ describe("product-analysis trusted run creation", () => {
     });
     const result = await readJson(await POST(createRequest({
       candidateId: candidate.id,
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
     expect(result.status).toBe(409);
     expect(result.body.error.reasons).toEqual(["invalid_market_snapshot"]);
@@ -486,7 +525,7 @@ describe("product-analysis trusted run creation", () => {
       productName: "桌面手机支架",
       source: "opportunity",
       candidateId: "sandbox_candidate_a",
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(200);

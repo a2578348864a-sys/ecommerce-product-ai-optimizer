@@ -103,7 +103,11 @@ export type OpportunitiesResult = {
 };
 
 export type OpportunitiesPipelineHooks = {
-  onProviderCallStarted?: () => void;
+  onProviderCallStarted?: () => void | Promise<void>;
+};
+
+type ProviderCallOptions = {
+  onProviderCallStart?: () => void | Promise<void>;
 };
 
 // ── Constants ──
@@ -163,6 +167,7 @@ function extractName(line: string): string {
 async function runSourcing(
   productName: string,
   description: string,
+  options: ProviderCallOptions = {},
 ): Promise<{ data: SourcingSummary; providerCallStarted: boolean }> {
   const input: SourcingPromptInput = {
     productName,
@@ -175,6 +180,7 @@ async function runSourcing(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: OPPORTUNITY_AI_CALL_TIMEOUT_MS,
       messages: [
@@ -225,6 +231,7 @@ async function runSourcing(
 async function runRisk(
   productName: string,
   description: string,
+  options: ProviderCallOptions = {},
 ): Promise<{ data: RiskSummary; providerCallStarted: boolean }> {
   const input: RiskCheckPromptInput = {
     productName,
@@ -237,6 +244,7 @@ async function runRisk(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: OPPORTUNITY_AI_CALL_TIMEOUT_MS,
       messages: [
@@ -303,6 +311,7 @@ async function runSummary(
   description: string,
   sourcing: SourcingSummary | undefined,
   risk: RiskSummary | undefined,
+  options: ProviderCallOptions = {},
 ): Promise<{ data: SummaryVerdict; providerCallStarted: boolean }> {
   const sourcingFindings = sourcing
     ? `货源可行性：${sourcing.feasibility}。${sourcing.summary} MOQ：${sourcing.moqEstimate}。合规门槛：${sourcing.complianceBarrier}。建议入门级别：${sourcing.suggestedEntryLevel}。`
@@ -323,6 +332,7 @@ async function runSummary(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: 1200,
       timeoutMs: OPPORTUNITY_AI_CALL_TIMEOUT_MS,
       messages: [
@@ -561,6 +571,10 @@ export async function runOpportunitiesPipeline(
     };
   });
   let providerCallStartedCount = 0;
+  const onProviderCallStart = async () => {
+    await hooks.onProviderCallStarted?.();
+    providerCallStartedCount += 1;
+  };
 
   // Process serially
   for (const candidate of candidates) {
@@ -570,28 +584,16 @@ export async function runOpportunitiesPipeline(
       const description = candidate.rawInput;
 
       // Step 1: Sourcing
-      const sourcing = await runSourcing(candidate.name, description);
+      const sourcing = await runSourcing(candidate.name, description, { onProviderCallStart });
       candidate.sourcing = sourcing.data;
-      if (sourcing.providerCallStarted) {
-        providerCallStartedCount += 1;
-        hooks.onProviderCallStarted?.();
-      }
 
       // Step 2: Risk
-      const risk = await runRisk(candidate.name, description);
+      const risk = await runRisk(candidate.name, description, { onProviderCallStart });
       candidate.risk = risk.data;
-      if (risk.providerCallStarted) {
-        providerCallStartedCount += 1;
-        hooks.onProviderCallStarted?.();
-      }
 
       // Step 3: Summary (with sourcing + risk context)
-      const summary = await runSummary(candidate.name, description, candidate.sourcing, candidate.risk);
+      const summary = await runSummary(candidate.name, description, candidate.sourcing, candidate.risk, { onProviderCallStart });
       candidate.summary = summary.data;
-      if (summary.providerCallStarted) {
-        providerCallStartedCount += 1;
-        hooks.onProviderCallStarted?.();
-      }
 
       // Compute score and level
       candidate.score = calculateScore(candidate);

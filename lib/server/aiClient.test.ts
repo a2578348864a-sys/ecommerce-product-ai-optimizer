@@ -15,7 +15,12 @@ vi.mock("openai", () => ({
   },
 }));
 
-import { callAiJson, callAiText, safeParseJsonFromAiText } from "@/lib/server/aiClient";
+import {
+  bindProviderCallStartBoundary,
+  callAiJson,
+  callAiText,
+  safeParseJsonFromAiText,
+} from "@/lib/server/aiClient";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -60,6 +65,44 @@ describe("safeParseJsonFromAiText", () => {
 });
 
 describe("providerCallStarted", () => {
+  it("persists the started boundary immediately before invoking the Provider SDK", async () => {
+    const events: string[] = [];
+    openAiMocks.create.mockImplementationOnce(async () => {
+      events.push("provider");
+      return { choices: [{ message: { content: "ok" } }] };
+    });
+
+    await callAiText({
+      messages: [{ role: "user", content: "test" }],
+      onProviderCallStart: () => { events.push("persisted"); },
+    });
+
+    expect(events).toEqual(["persisted", "provider"]);
+  });
+
+  it("does not invoke the Provider when persisting the started boundary fails", async () => {
+    await expect(callAiText({
+      messages: [{ role: "user", content: "test" }],
+      onProviderCallStart: () => { throw new Error("quota boundary unavailable"); },
+    })).rejects.toThrow("quota boundary unavailable");
+
+    expect(openAiMocks.create).not.toHaveBeenCalled();
+  });
+
+  it("uses a one-shot request boundary for legacy quota callers", async () => {
+    const boundary = vi.fn();
+    bindProviderCallStartBoundary(boundary);
+    openAiMocks.create
+      .mockResolvedValueOnce({ choices: [{ message: { content: "first" } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: "second" } }] });
+
+    await callAiText({ messages: [{ role: "user", content: "first" }] });
+    await callAiText({ messages: [{ role: "user", content: "second" }] });
+
+    expect(boundary).toHaveBeenCalledOnce();
+    expect(openAiMocks.create).toHaveBeenCalledTimes(2);
+  });
+
   it("sets maxRetries=0 and marks a successful SDK call as started", async () => {
     openAiMocks.create.mockResolvedValueOnce({ choices: [{ message: { content: "ok" } }] });
 

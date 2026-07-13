@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   authMode: "demo" as "owner" | "demo",
   runPipeline: vi.fn(),
   reserveDemoAiCalls: vi.fn(),
+  markDemoAiProviderCallStarted: vi.fn(),
   settleDemoAiCalls: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ vi.mock("@/lib/server/demoGuard", () => ({
       : { ok: true, context: { mode: "owner", token: "owner-token" } }
   ),
   reserveDemoAiCalls: mocks.reserveDemoAiCalls,
+  markDemoAiProviderCallStarted: mocks.markDemoAiProviderCallStarted,
   settleDemoAiCalls: mocks.settleDemoAiCalls,
 }));
 
@@ -81,6 +83,7 @@ describe("POST /api/opportunities HR demo sandbox writes", () => {
       ok: true,
       reservation: { reservationId: "reservation-1", plannedCount: 3 },
     });
+    mocks.markDemoAiProviderCallStarted.mockReturnValue({ ok: true });
     mocks.settleDemoAiCalls.mockReturnValue({
       ok: true,
       snapshot: {
@@ -93,7 +96,12 @@ describe("POST /api/opportunities HR demo sandbox writes", () => {
         isActive: true,
       },
     });
-    mocks.runPipeline.mockResolvedValue(pipelineResult());
+    mocks.runPipeline.mockImplementation(async (_rawText: string, hooks: { onProviderCallStarted?: () => void | Promise<void> }) => {
+      await hooks.onProviderCallStarted?.();
+      await hooks.onProviderCallStarted?.();
+      await hooks.onProviderCallStarted?.();
+      return pipelineResult();
+    });
   });
 
   it("returns demo scan results without creating a Task", async () => {
@@ -120,6 +128,7 @@ describe("POST /api/opportunities HR demo sandbox writes", () => {
       { reservationId: "reservation-1", plannedCount: 3 },
       3,
     );
+    expect(mocks.markDemoAiProviderCallStarted).toHaveBeenCalledTimes(3);
   });
 
   it("rejects demo opportunity radar when quota is exhausted before pipeline runs", async () => {
@@ -144,7 +153,10 @@ describe("POST /api/opportunities HR demo sandbox writes", () => {
       ok: true,
       reservation: { reservationId: "reservation-2", plannedCount: 6 },
     });
-    mocks.runPipeline.mockResolvedValueOnce(pipelineResult(6));
+    mocks.runPipeline.mockImplementationOnce(async (_rawText: string, hooks: { onProviderCallStarted?: () => void | Promise<void> }) => {
+      for (let count = 0; count < 6; count += 1) await hooks.onProviderCallStarted?.();
+      return pipelineResult(6);
+    });
 
     const res = await callPOST("Phone Stand\nDesk Lamp");
 

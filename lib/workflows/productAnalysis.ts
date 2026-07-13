@@ -23,6 +23,10 @@ import {
   isPetFoodContactProduct,
 } from "@/lib/server/alphaSafety";
 
+export type ProductAnalysisStepOptions = {
+  onProviderCallStart?: () => void | Promise<void>;
+};
+
 /* ── Config ────────────────────────────────────── */
 
 export const PRODUCT_ANALYSIS_AI_TIMEOUT_MS = 45_000;
@@ -146,6 +150,7 @@ function buildSourcingFallback(productName: string, description: string): Sourci
 export async function runSourcingStep(
   productName: string,
   description: string,
+  options: ProductAnalysisStepOptions = {},
 ): Promise<ProductAnalysisStepResult<SourcingStepOutput>> {
   const input: SourcingPromptInput = {
     productName,
@@ -158,6 +163,7 @@ export async function runSourcingStep(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
       messages: [
@@ -232,6 +238,7 @@ function buildRiskFallback(
 export async function runRiskStep(
   productName: string,
   description: string,
+  options: ProductAnalysisStepOptions = {},
 ): Promise<ProductAnalysisStepResult<RiskStepOutput>> {
   const input: RiskCheckPromptInput = {
     productName,
@@ -244,6 +251,7 @@ export async function runRiskStep(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
       messages: [
@@ -298,6 +306,7 @@ export async function runSummaryStep(
   description: string,
   sourcingResult: SourcingStepOutput | null,
   riskResult: RiskStepOutput | null,
+  options: ProductAnalysisStepOptions = {},
 ): Promise<ProductAnalysisStepResult<SummaryStepOutput>> {
   const sourcingFindings = sourcingResult
     ? `货源可行性：${sourcingResult.feasibility}。${sourcingResult.summary} MOQ：${sourcingResult.moqEstimate}。合规门槛：${sourcingResult.complianceBarrier}。建议入门级别：${sourcingResult.suggestedEntryLevel}。`
@@ -318,6 +327,7 @@ export async function runSummaryStep(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: 1200,
       timeoutMs: PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
       messages: [
@@ -392,6 +402,7 @@ export async function runSummaryStep(
 export async function runListingStep(
   productName: string,
   summaryResult: SummaryStepOutput | null,
+  options: ProductAnalysisStepOptions = {},
 ): Promise<ProductAnalysisStepResult<ListingStepOutput>> {
   const summaryContext = summaryResult
     ? `商品结论：${summaryResult.verdict}。风险：${(summaryResult.risks || []).join("、") || "未标记"}。`
@@ -400,6 +411,7 @@ export async function runListingStep(
   let providerCallStarted = false;
   try {
     const result = await callAiJson<unknown>({
+      onProviderCallStart: options.onProviderCallStart,
       maxTokens: 1500,
       timeoutMs: PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
       messages: [

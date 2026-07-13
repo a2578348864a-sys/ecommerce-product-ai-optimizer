@@ -11,6 +11,7 @@ const PASSWORD = "workflow-proof-test-password";
 beforeEach(() => {
   vi.unstubAllEnvs();
   vi.stubEnv("ACCESS_PASSWORD", PASSWORD);
+  vi.stubEnv("PROOF_SIGNING_SECRET", "workflow-proof-server-only-secret");
 });
 
 function signedFixture(status: "completed" | "partial_failed" = "completed") {
@@ -41,6 +42,21 @@ function signedFixture(status: "completed" | "partial_failed" = "completed") {
 }
 
 describe("workflowRunProof", () => {
+  it("fails closed in production when the server-only proof secret is missing", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PROOF_SIGNING_SECRET", "");
+
+    expect(() => signedFixture()).toThrow("WORKFLOW_RUN_PROOF_KEY_MISSING");
+  });
+
+  it("does not derive production proofs from the Owner login password", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const fixture = signedFixture();
+    vi.stubEnv("ACCESS_PASSWORD", "changed-owner-password");
+
+    expect(verifyWorkflowRunProof(fixture.proof, 1_000_001).ok).toBe(true);
+  });
+
   it("creates a verifiable HMAC proof with all trust bindings", () => {
     const fixture = signedFixture();
     const verified = verifyWorkflowRunProof(fixture.proof, 1_000_001);

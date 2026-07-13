@@ -5,6 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createSandboxCandidate,
   createSandboxTaskAndLinkCandidate,
+  deleteSandboxCandidate,
+  deleteSandboxTask,
   listSandboxCandidates,
   listSandboxTasks,
   sandboxCandidateToListItem,
@@ -65,6 +67,56 @@ function expectLinkError(action: () => unknown, code: string) {
 }
 
 describe("Visitor Candidate → Task atomic link", () => {
+  it("unlinks a Candidate when its Task is deleted so it can be converted again", () => {
+    const candidate = createSandboxCandidate("visitor-a", {
+      name: "Re-convertible Widget",
+      status: "worth_analyzing",
+    });
+    const first = createSandboxTaskAndLinkCandidate(
+      "visitor-a",
+      candidate.id,
+      taskInput(),
+      conversionGuard(candidate),
+    );
+
+    expect(deleteSandboxTask("visitor-a", first.id)).toBe(true);
+    const unlinked = listSandboxCandidates("visitor-a")[0];
+    expect(unlinked.convertedTaskId).toBeNull();
+    const second = createSandboxTaskAndLinkCandidate(
+      "visitor-a",
+      candidate.id,
+      taskInput(),
+      conversionGuard(unlinked),
+    );
+    expect(second.id).not.toBe(first.id);
+  });
+
+  it("makes a Candidate deletable after deleting its linked Task", () => {
+    const candidate = createSandboxCandidate("visitor-a", {
+      name: "Delete after Task",
+      status: "worth_analyzing",
+    });
+    const task = createSandboxTaskAndLinkCandidate(
+      "visitor-a", candidate.id, taskInput(), conversionGuard(candidate),
+    );
+
+    expect(deleteSandboxTask("visitor-a", task.id)).toBe(true);
+    expect(deleteSandboxCandidate("visitor-a", candidate.id)).toBe("deleted");
+  });
+
+  it("does not unlink another Visitor's Candidate when a cross-scope Task delete is attempted", () => {
+    const candidate = createSandboxCandidate("visitor-b", {
+      name: "Visitor B linked product",
+      status: "worth_analyzing",
+    });
+    const task = createSandboxTaskAndLinkCandidate(
+      "visitor-b", candidate.id, taskInput(), conversionGuard(candidate),
+    );
+
+    expect(deleteSandboxTask("visitor-a", task.id)).toBe(false);
+    expect(listSandboxCandidates("visitor-b")[0].convertedTaskId).toBe(task.id);
+  });
+
   it("persists the Task and Candidate link in the same Store publication", () => {
     const candidate = createSandboxCandidate("visitor-a", {
       name: "Foldable Widget",

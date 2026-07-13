@@ -25,6 +25,7 @@ import {
   getRemainingAiCalls,
   isDemoAiQuotaExhausted,
   incrementDemoAiCalls,
+  markDemoAiCallProviderStarted,
   reserveDemoAiImageCalls,
   recoverExpiredDemoAiReservations,
   loadDemoAccessStore,
@@ -314,6 +315,33 @@ describe("AI quota reservation leases", () => {
     expect(recoverExpiredDemoAiReservations(record.id, 10_999)?.usedAiCalls).toBe(1);
     expect(recoverExpiredDemoAiReservations(record.id, 11_000)?.usedAiCalls).toBe(0);
     expect(recoverExpiredDemoAiReservations(record.id, 12_000)?.usedAiCalls).toBe(0);
+  });
+
+  it("keeps already-started text calls charged when a process crashes before settlement", () => {
+    const { record } = createDemoAccess({ label: "Started lease", hours: 24, maxAiCalls: 2 });
+    expect(reserveDemoAiImageCalls(record.id, "started-request", 2, {
+      kind: "text",
+      leaseMs: 1_000,
+      nowMs: 10_000,
+    }).ok).toBe(true);
+
+    expect(markDemoAiCallProviderStarted(record.id, "started-request", 1, 10_100)).toMatchObject({
+      ok: true,
+      duplicate: false,
+    });
+    expect(markDemoAiCallProviderStarted(record.id, "started-request", 1, 10_200)).toMatchObject({
+      ok: true,
+      duplicate: true,
+    });
+
+    const recovered = recoverExpiredDemoAiReservations(record.id, 11_000);
+    expect(recovered?.usedAiCalls).toBe(1);
+    expect(recovered?.aiImageQuotaReservations?.["started-request"]).toMatchObject({
+      status: "committed",
+      chargedCount: 1,
+      providerStartedCount: 1,
+    });
+    expect(recoverExpiredDemoAiReservations(record.id, 12_000)?.usedAiCalls).toBe(1);
   });
 });
 

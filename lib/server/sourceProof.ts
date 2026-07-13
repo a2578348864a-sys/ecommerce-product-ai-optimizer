@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import type { SourceEvidenceSourceType } from "@/lib/sourceEvidenceContract";
-import { getAccessPassword } from "@/lib/server/accessPassword";
+import { getProofSigningKey } from "@/lib/server/proofSigningSecret";
 
 export type SourceProofPayload = {
   v: 1;
@@ -39,11 +39,7 @@ const BASE64URL_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const SOURCE_TYPES = new Set<SourceEvidenceSourceType>(["html", "rss", "sitemap", "json", "manual"]);
 
 function getSigningKey(): Buffer | null {
-  const password = getAccessPassword();
-  if (!password) return null;
-  return createHmac("sha256", "qx-agent-source-proof-v1")
-    .update(password)
-    .digest();
+  return getProofSigningKey("qx-agent-source-proof-v1");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

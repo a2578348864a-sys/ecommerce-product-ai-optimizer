@@ -13,6 +13,7 @@ const NOW = Date.parse("2026-07-11T00:00:00.000Z");
 beforeEach(() => {
   vi.unstubAllEnvs();
   vi.stubEnv("ACCESS_PASSWORD", PASSWORD);
+  vi.stubEnv("PROOF_SIGNING_SECRET", "source-proof-server-only-secret");
 });
 
 function createOwnerProof() {
@@ -33,6 +34,21 @@ const ownerBindings = {
 };
 
 describe("SourceProof", () => {
+  it("fails closed in production when the server-only proof secret is missing", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PROOF_SIGNING_SECRET", "");
+
+    expect(() => createOwnerProof()).toThrow("SOURCE_PROOF_KEY_MISSING");
+  });
+
+  it("does not derive production proofs from the Owner login password", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const proof = createOwnerProof();
+    vi.stubEnv("ACCESS_PASSWORD", "changed-owner-password");
+
+    expect(verifySourceProof(proof, ownerBindings, NOW + 1).ok).toBe(true);
+  });
+
   it("issues and verifies a proof with all source trust bindings", () => {
     const verified = verifySourceProof(createOwnerProof(), ownerBindings, NOW + 1);
 

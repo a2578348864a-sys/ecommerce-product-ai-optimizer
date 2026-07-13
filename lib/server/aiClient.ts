@@ -1,6 +1,7 @@
 import "server-only";
 
 import OpenAI from "openai";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
@@ -57,12 +58,37 @@ export type AiConfig = {
 
 export type CallAiTextParams = {
   messages: ChatCompletionMessageParam[];
+  /** Persist any non-refundable quota boundary before the SDK call begins. */
+  onProviderCallStart?: () => void | Promise<void>;
   temperature?: number;
   responseFormat?: ChatCompletionCreateParamsNonStreaming["response_format"];
   maxTokens?: number;
   model?: string;
   timeoutMs?: number;
 };
+
+type ProviderCallStartBoundary = {
+  callback: () => void | Promise<void>;
+  consumed: boolean;
+};
+
+const providerCallStartBoundary = new AsyncLocalStorage<ProviderCallStartBoundary>();
+
+/** Bind one legacy request-scoped quota boundary to the next text Provider call. */
+export function bindProviderCallStartBoundary(callback: () => void | Promise<void>): void {
+  providerCallStartBoundary.enterWith({ callback, consumed: false });
+}
+
+async function persistProviderCallStart(params: CallAiTextParams): Promise<void> {
+  if (params.onProviderCallStart) {
+    await params.onProviderCallStart();
+    return;
+  }
+  const boundary = providerCallStartBoundary.getStore();
+  if (!boundary || boundary.consumed) return;
+  boundary.consumed = true;
+  await boundary.callback();
+}
 
 let cachedClient: OpenAI | null = null;
 let cachedClientKey = "";
@@ -456,6 +482,9 @@ export async function callAiText(params: CallAiTextParams): Promise<AiResult<str
   if (!clientResult.ok) {
     return { ...clientResult, providerCallStarted: false };
   }
+
+  // The caller's durable boundary must succeed before any external request is made.
+  await persistProviderCallStart(params);
 
   try {
     const response = await clientResult.data.chat.completions.create(
