@@ -5,19 +5,24 @@
  * No production data, no env secrets, no AI calls.
  */
 
-import { describe, expect, it } from "vitest";
-import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { PrismaClient } from "@prisma/client";
 
-const SCRIPT = "scripts/db/protect-sqlite-db.mjs";
-const DEV_DB_PATH = resolve("prisma/dev.db");
+const SCRIPT = resolve("scripts/db/protect-sqlite-db.mjs");
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "db-guard-test-"));
+const TEST_DB_PATH = join(TEST_ROOT, "test.db");
+const PRISMA_TEST_DB_URL = `file:${TEST_DB_PATH.replaceAll("\\", "/")}`;
+const TEST_DB_URL = PRISMA_TEST_DB_URL;
 
 function runGuard(args: string, dbUrl?: string): { exitCode: number; stdout: string; stderr: string } {
-  const url = dbUrl ?? `file:${DEV_DB_PATH}`;
+  const url = dbUrl ?? TEST_DB_URL;
   try {
-    const stdio = execSync(`node ${SCRIPT} ${args}`, {
-      cwd: resolve("."),
+    const stdio = execFileSync(process.execPath, [SCRIPT, ...args.split(" ")], {
+      cwd: TEST_ROOT,
       env: { ...process.env, DATABASE_URL: url },
       stdio: "pipe",
       timeout: 15000,
@@ -32,10 +37,24 @@ function runGuard(args: string, dbUrl?: string): { exitCode: number; stdout: str
   }
 }
 
-// Ensure dev.db exists before running tests
-if (!existsSync(DEV_DB_PATH)) {
-  throw new Error("dev.db not found — DB guard tests need the project dev database.");
-}
+beforeAll(async () => {
+  const prisma = new PrismaClient({ datasources: { db: { url: PRISMA_TEST_DB_URL } } });
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "ViralAnalysisRecord" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "resultJson" TEXT NOT NULL
+      )
+    `);
+  } finally {
+    await prisma.$disconnect();
+  }
+  expect(existsSync(TEST_DB_PATH)).toBe(true);
+});
+
+afterAll(() => {
+  rmSync(TEST_ROOT, { recursive: true, force: true });
+});
 
 describe("DB Guard — summary", () => {
   it("summary completes without error", () => {
@@ -87,7 +106,7 @@ describe("DB Guard — predeploy / postdeploy", () => {
   it("postdeploy passes against current state", () => {
     // First run predeploy to create baseline
     runGuard("predeploy");
-    const baselinePath = resolve(".local-backups/db-guard/baseline.json");
+    const baselinePath = join(TEST_ROOT, ".local-backups", "db-guard", "baseline.json");
     expect(existsSync(baselinePath)).toBe(true);
 
     const result = runGuard(`postdeploy --baseline ${baselinePath}`);
