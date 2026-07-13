@@ -146,6 +146,31 @@ details > summary::-webkit-details-marker {
   box-shadow: none;
 }
 
+/* Opportunities decision desk: compact comparison list + focused detail. */
+.opportunity-decision-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.opportunity-decision-grid > :last-child {
+  border-top: 1px solid var(--line);
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+@media (min-width: 1280px) {
+  .opportunity-decision-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(330px, 360px);
+  }
+
+  .opportunity-decision-grid > :last-child {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+    max-height: 720px;
+    overflow-y: auto;
+  }
+}
+
 .glass-panel,
 .premium-shell {
   border-radius: 20px;

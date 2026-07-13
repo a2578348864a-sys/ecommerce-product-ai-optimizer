@@ -62,6 +62,7 @@ import {
   FileText,
   BarChart3,
   Lightbulb,
+  Plus,
 } from "lucide-react";
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_TIERS, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
@@ -77,6 +78,14 @@ import {
   getSignedSourceQueuePolicy,
   type SignedSourceQueuePolicyReason,
 } from "@/lib/ruleAssessmentPolicy";
+import {
+  buildDecisionDeskSummary,
+  getDecisionDeskEvidencePresentation,
+  getDecisionDeskMarketPresentation,
+  getDecisionDeskRiskPresentation,
+  getDecisionDeskScorePresentation,
+  resolveDecisionDeskSelection,
+} from "@/lib/opportunityDecisionDesk";
 
 const QUALITY_TONE: Record<CandidateQualityLevel, string> = {
   recommended: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -319,6 +328,13 @@ function candidateStatusClass(status: CandidateQueueState) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function decisionDeskToneClass(tone: "positive" | "warning" | "danger" | "neutral") {
+  if (tone === "positive") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (tone === "danger") return "border-rose-200 bg-rose-50 text-rose-700";
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
 function getApiErrorMessage(value: unknown, fallback: string) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const error = (value as Record<string, unknown>).error;
@@ -327,26 +343,73 @@ function getApiErrorMessage(value: unknown, fallback: string) {
   return typeof message === "string" && message.trim().length > 0 ? message.trim() : fallback;
 }
 
-export function OpportunitiesForm() {
+type OpportunitiesFormProps = {
+  visualFixture?: OpportunityCandidatePoolItem[];
+};
+
+type OpportunitiesFormContentProps = OpportunitiesFormProps & {
+  accessPassword: string;
+  isAccessPasswordReady: boolean;
+  draftVal: string;
+  setDraft: (value: string) => void;
+  draftRestored: boolean;
+};
+
+export function OpportunitiesForm({ visualFixture }: OpportunitiesFormProps = {}) {
+  if (visualFixture) {
+    return <OpportunitiesFormContent
+      visualFixture={visualFixture}
+      accessPassword=""
+      isAccessPasswordReady={false}
+      draftVal=""
+      setDraft={() => {}}
+      draftRestored={true}
+    />;
+  }
+  return <OpportunitiesFormWithLocalAccess />;
+}
+
+function OpportunitiesFormWithLocalAccess() {
+  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
+    storageKey: DRAFT_KEY,
+    ttlMs: 10 * 60 * 1000,
+    initialValue: "",
+  });
+  return <OpportunitiesFormContent
+    accessPassword={accessPassword}
+    isAccessPasswordReady={isAccessPasswordReady}
+    draftVal={draftVal}
+    setDraft={setDraft}
+    draftRestored={draftRestored}
+  />;
+}
+
+function OpportunitiesFormContent({
+  visualFixture,
+  accessPassword,
+  isAccessPasswordReady,
+  draftVal,
+  setDraft,
+  draftRestored,
+}: OpportunitiesFormContentProps) {
+  const visualFixtureMode = Boolean(visualFixture);
   const [rawText, setRawText] = useState("");
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
-  const [poolItems, setPoolItems] = useState<OpportunityCandidatePoolItem[]>([]);
-  const [poolHydrated, setPoolHydrated] = useState(false);
+  const [poolItems, setPoolItems] = useState<OpportunityCandidatePoolItem[]>(() => visualFixture ? [...visualFixture] : []);
+  const [poolHydrated, setPoolHydrated] = useState(visualFixtureMode);
   const [poolFilter, setPoolFilter] = useState<CandidatePoolFilter>("all");
   const [poolSort, setPoolSort] = useState<CandidatePoolSort>("updated");
+  const [selectedPoolCandidateId, setSelectedPoolCandidateId] = useState<string | null>(null);
+  const [showCandidateIntake, setShowCandidateIntake] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState("");
   const [error, setError] = useState("");
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Phase 1E: Crawl state
-  const [crawlInput, setCrawlInput] = useState("");
-  const [crawling, setCrawling] = useState(false);
-  const [crawlWarnings, setCrawlWarnings] = useState<string[]>([]);
-
   // Phase 3-B.1: Server candidate pool state
-  const [serverAvailable, setServerAvailable] = useState<boolean | null>(null); // null = checking
+  const [serverAvailable, setServerAvailable] = useState<boolean | null>(visualFixtureMode ? false : null); // null = checking
   const [importingLocal, setImportingLocal] = useState(false);
   const [importResult, setImportResult] = useState("");
   const [poolSyncNotice, setPoolSyncNotice] = useState("");
@@ -372,13 +435,7 @@ export function OpportunitiesForm() {
   const [taskLinksLoading, setTaskLinksLoading] = useState(false);
   const [openMoreId, setOpenMoreId] = useState<string | null>(null);
 
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
-  const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
-    storageKey: DRAFT_KEY,
-    ttlMs: 10 * 60 * 1000, // Phase 1E: 10 minutes
-    initialValue: "",
-  });
+  const unlocked = visualFixtureMode || (isAccessPasswordReady && accessPassword.trim().length > 0);
 
   // Restore draft on mount (only once)
   const didRestore = useRef(false);
@@ -390,7 +447,9 @@ export function OpportunitiesForm() {
   }, [draftRestored, draftVal]);
 
   // Phase 3-B.1: Try server first, fall back to localStorage
-  const hasAccess = isAccessPasswordReady && canRequestWithAccessPassword(isAccessPasswordReady, accessPassword);
+  const hasAccess = !visualFixtureMode
+    && isAccessPasswordReady
+    && canRequestWithAccessPassword(isAccessPasswordReady, accessPassword);
   const demoMode = hasAccess ? (getAccessMode() === "demo") : false;
 
   const refreshServerPool = useCallback(async (signal?: AbortSignal) => {
@@ -424,6 +483,12 @@ export function OpportunitiesForm() {
   }, [accessPassword]);
 
   useEffect(() => {
+    if (visualFixture) {
+      setPoolItems([...visualFixture]);
+      setPoolHydrated(true);
+      setServerAvailable(false);
+      return;
+    }
     if (!hasAccess) {
       // No access password: use localStorage only
       setPoolItems(readCandidatePool(typeof window === "undefined" ? null : window.localStorage));
@@ -450,12 +515,12 @@ export function OpportunitiesForm() {
 
     void loadFromServer();
     return () => controller.abort();
-  }, [hasAccess, refreshServerPool]);
+  }, [hasAccess, refreshServerPool, visualFixture]);
 
   useEffect(() => {
-    if (!poolHydrated) return;
+    if (!poolHydrated || visualFixtureMode) return;
     writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, poolItems);
-  }, [poolHydrated, poolItems]);
+  }, [poolHydrated, poolItems, visualFixtureMode]);
 
   // Phase Candidate-Status-M.1: Load recent tasks to build candidate→task link map
   useEffect(() => {
@@ -595,63 +660,6 @@ export function OpportunitiesForm() {
     }
   }, [rawText, accessPassword, isAccessPasswordReady, hasAccess, serverAvailable, overLimit, validCount, loading, refreshServerPool]);
 
-  // Phase 1E: Crawl public sources
-  const handleCrawl = useCallback(async () => {
-    if (!crawlInput.trim() || crawling || loading) return;
-    if (!isAccessPasswordReady || !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setCrawlWarnings(["访问密码缺失或已过期。"]);
-      return;
-    }
-
-    setCrawling(true);
-    setCrawlWarnings([]);
-    setError("");
-
-    try {
-      const res = await fetch("/api/opportunities/crawl", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({ input: crawlInput, accessPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        const code = data.error?.code;
-        if (code === "demo_access_expired" || code === "demo_access_inactive") {
-          setCrawlWarnings([data.error?.message || "访客访问已过期或已停用。"]);
-        } else if (code === "demo_action_forbidden" || code === "demo_ai_quota_exceeded") {
-          setCrawlWarnings([data.error?.message || "访客模式下该操作受限。"]);
-        } else if (res.status === 401 || code === "invalid_access" || code === "unauthorized") {
-          setCrawlWarnings(["登录状态已失效，请回首页重新解锁。"]);
-        } else {
-          setCrawlWarnings([data.error?.message || "该来源暂时无法抓取，请换一个商品页或稍后重试。"]);
-        }
-        return;
-      }
-
-      // Convert crawl items to plain text lines, append to rawText
-      const crawlLines = (data.items || []).map(
-        (item: { title: string; sourceHost: string; scores: { finalScore: number } }) =>
-          `${item.title} [${item.sourceHost}] score:${item.scores.finalScore}`
-      );
-      if (crawlLines.length > 0) {
-        const newText = [rawText, ...crawlLines].filter(Boolean).join("\n");
-        setRawText(newText);
-        setDraft(newText);
-      }
-
-      if (data.warnings?.length) {
-        setCrawlWarnings(data.warnings);
-      }
-      if (crawlLines.length > 0) {
-        setCrawlWarnings((prev) => [...prev, `已抓取 ${crawlLines.length} 条公开线索，已填入候选列表。可继续手动编辑后点「开始分析」。`]);
-      }
-    } catch {
-      setCrawlWarnings(["网络异常，抓取失败。"]);
-    } finally {
-      setCrawling(false);
-    }
-  }, [crawlInput, accessPassword, isAccessPasswordReady, crawling, loading, rawText, setDraft]);
-
   const handleExportMarkdown = useCallback(() => {
     const lines: string[] = [
       "# 机会雷达 · 候选品排行榜",
@@ -737,6 +745,14 @@ export function OpportunitiesForm() {
       rejected: filterCandidatePool(poolItems, "rejected").length,
     };
   }, [poolItems]);
+  const decisionDeskSummary = useMemo(
+    () => buildDecisionDeskSummary(poolItems),
+    [poolItems],
+  );
+  const selectedPoolCandidate = useMemo(
+    () => resolveDecisionDeskSelection(visiblePoolItems, selectedPoolCandidateId),
+    [visiblePoolItems, selectedPoolCandidateId],
+  );
 
   const setPoolCandidateStatus = useCallback(async (id: string, status: CandidateStatus) => {
     const previous = poolItems.find((item) => item.id === id);
@@ -1159,14 +1175,30 @@ export function OpportunitiesForm() {
 
         <div className="min-w-0 space-y-5">
           <header className="workspace-header">
-            <div className="flex items-center gap-3">
-              <div className="linear-icon size-10 shrink-0 rounded-xl">
-                <Target className="size-5" />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="linear-icon size-10 shrink-0 rounded-xl">
+                  <Target className="size-5" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达</h1>
+                  <p className="muted-text mt-1 text-sm">先看市场信号，再决定是否进入商业深挖。</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达</h1>
-                <p className="muted-text mt-1 text-sm">把来源导入结果转成可判断的选品机会。系统先做质量分层和理由解释，再由人工决定是否进入 AI 分析。</p>
-              </div>
+              {!visualFixtureMode ? <button
+                type="button"
+                data-testid="candidate-intake-toggle"
+                aria-expanded={showCandidateIntake}
+                onClick={() => setShowCandidateIntake((current) => !current)}
+                className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+              >
+                <Plus className="size-4" />
+                {showCandidateIntake ? "收起添加区" : "添加候选"}
+              </button> : (
+                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+                  隔离视觉验收数据
+                </span>
+              )}
             </div>
             <WorkspaceMobileNav />
           </header>
@@ -1184,7 +1216,12 @@ export function OpportunitiesForm() {
           </div>
 
           {/* Phase 3-B.1: Server connection indicator */}
-          {serverAvailable !== null ? (
+          {visualFixtureMode ? (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3 text-sm text-indigo-800">
+              <p className="font-semibold">隔离视觉验收模式</p>
+              <p className="mt-1 text-xs text-indigo-700">仅使用本地 fixture；不读取密码、Cookie、localStorage、生产数据或服务端 API。</p>
+            </div>
+          ) : serverAvailable !== null ? (
             <div className={`rounded-xl border p-3 text-sm ${serverAvailable ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}>
               <div className="flex items-center gap-2">
                 {serverAvailable ? <Wifi className="size-4 text-emerald-600" /> : <WifiOff className="size-4 text-amber-600" />}
@@ -1209,34 +1246,12 @@ export function OpportunitiesForm() {
             </div>
           ) : null}
 
-        {/* Phase 1E: Crawl input */}
-        <div className="surface-card p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1">
-              <label className="mb-1 block text-xs font-semibold text-slate-600">
-                抓取公开线索（可选）
-                <span className="ml-1 font-normal text-slate-400">粘贴公开 URL / RSS / sitemap，每行一个，最多 5 个</span>
-              </label>
-              <input
-                type="text"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100"
-                placeholder="https://example.com/sitemap.xml"
-                value={crawlInput}
-                onChange={(e) => setCrawlInput(e.target.value)}
-                disabled={loading || crawling}
-              />
-            </div>
-            <button type="button" onClick={handleCrawl} disabled={loading || crawling || !crawlInput.trim()}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-4 text-sm font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50">
-              {crawling ? <><Loader2 className="size-3.5 animate-spin" />抓取中</> : <><Search className="size-3.5" />抓取公开线索</>}
-            </button>
-          </div>
-          <p className="mt-1 text-xs text-slate-400">不调用 AI，不保存任务，仅整理候选机会。不支持登录态页面。</p>
-          {crawlWarnings.length > 0 && (
-            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
-              {crawlWarnings.map((w, i) => <p key={i}>{w}</p>)}
-            </div>
-          )}
+        {showCandidateIntake ? (
+        <section className="space-y-5" data-testid="candidate-intake-panel">
+        <div className="surface-card-soft border border-teal-100 p-4 sm:p-5">
+          <p className="linear-kicker">添加候选</p>
+          <h2 className="mt-2 text-lg font-semibold text-slate-950">选择一种录入方式</h2>
+          <p className="mt-1 text-sm text-slate-500">手动输入适合少量候选；公开 URL 导入适合已有商品页、RSS 或 Sitemap。</p>
         </div>
 
         {/* Input Area */}
@@ -1582,6 +1597,8 @@ export function OpportunitiesForm() {
             </div>
           )}
         </section>
+        </section>
+        ) : null}
 
         {/* Candidate pool */}
         <section className="surface-card p-4 sm:p-5" data-testid="opportunity-candidate-pool">
@@ -1590,7 +1607,9 @@ export function OpportunitiesForm() {
               <p className="linear-kicker">候选品池</p>
               <h2 className="mt-1 text-lg font-semibold text-slate-950">先筛选，再深挖</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                {serverAvailable === true
+                {visualFixtureMode
+                  ? "隔离视觉验收数据不会读取或写入浏览器、服务端与生产数据。"
+                  : serverAvailable === true
                   ? localDraftCount > 0
                     ? `已连接服务端候选池；另有 ${localDraftCount} 个本地草稿仅供展示，保存为服务端 Candidate 后才能进入 Agent。`
                     : "已解锁 / 服务端候选池。当前候选均具备服务端权威身份，刷新后仍保留。"
@@ -1652,6 +1671,21 @@ export function OpportunitiesForm() {
             </div>
           </div>
 
+          <div className="mt-5 grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70 sm:grid-cols-5">
+            {[
+              { label: "全部候选", value: decisionDeskSummary.all },
+              { label: "待查看", value: decisionDeskSummary.pending },
+              { label: "待分析", value: decisionDeskSummary.worthAnalyzing },
+              { label: "分析中", value: decisionDeskSummary.analyzing },
+              { label: "已转任务", value: decisionDeskSummary.converted },
+            ].map((item) => (
+              <div key={item.label} className="border-b border-r border-slate-200 px-4 py-3 last:border-r-0 sm:border-b-0">
+                <p className="text-[11px] font-semibold text-slate-500">{item.label}</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-slate-950">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="mt-4 flex flex-wrap gap-2">
             {candidateFilterOptions.map((option) => {
               const active = poolFilter === option.value;
@@ -1661,6 +1695,7 @@ export function OpportunitiesForm() {
                   key={option.value}
                   type="button"
                   onClick={() => setPoolFilter(option.value)}
+                  aria-pressed={active}
                   className={"rounded-full border px-3 py-1.5 text-xs font-semibold transition " + (active
                     ? "border-teal-300 bg-teal-50 text-teal-700"
                     : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50")}
@@ -1680,8 +1715,87 @@ export function OpportunitiesForm() {
               当前筛选下没有候选品。
             </div>
           ) : (
-            <div className="mt-4 grid gap-3 xl:grid-cols-2">
-              {visiblePoolItems.map((item) => {
+            <div
+              className="opportunity-decision-grid mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white"
+              data-testid="opportunity-decision-desk"
+            >
+              <div className="min-w-0 divide-y divide-slate-100">
+                <div className="hidden grid-cols-[minmax(170px,1.5fr)_84px_84px_48px_86px_70px] items-center gap-2 bg-slate-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 md:grid">
+                  <span>候选商品</span>
+                  <span>市场状态</span>
+                  <span>处理状态</span>
+                  <span>机会分</span>
+                  <span>证据</span>
+                  <span>风险</span>
+                </div>
+                {visiblePoolItems.map((item) => {
+                  const linkedTasks = resolveCandidateTaskLinks(
+                    item,
+                    candidateTaskLinks.get(item.id) ?? [],
+                  );
+                  const hasLinkedTask = linkedTasks.length > 0 || Boolean(item.convertedTaskId);
+                  const queuePresentation = getCandidateQueuePresentation(item.candidateStatus, hasLinkedTask);
+                  const marketPresentation = getDecisionDeskMarketPresentation(item);
+                  const evidencePresentation = getDecisionDeskEvidencePresentation(item);
+                  const riskPresentation = getDecisionDeskRiskPresentation(item);
+                  const selected = selectedPoolCandidate?.id === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      data-testid={`decision-row-${item.id}`}
+                      aria-pressed={selected}
+                      onClick={() => {
+                        setSelectedPoolCandidateId(item.id);
+                        setOpenMoreId(null);
+                      }}
+                      className={
+                        "grid w-full gap-2 px-4 py-3 text-left transition md:grid-cols-[minmax(170px,1.5fr)_84px_84px_48px_86px_70px] md:items-center " +
+                        (selected ? "bg-teal-50/80 shadow-[inset_3px_0_0_#0f766e]" : "bg-white hover:bg-slate-50")
+                      }
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-slate-950">{item.name}</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-slate-500">
+                          {item.keyword || item.source || "来源待核对"}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2 md:block">
+                        <span className="w-16 text-[10px] font-semibold text-slate-400 md:hidden">市场状态</span>
+                        <span className={"inline-flex w-fit rounded-full border px-2 py-1 text-[11px] font-semibold " + decisionDeskToneClass(marketPresentation.tone)}>
+                          {marketPresentation.label}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2 md:block">
+                        <span className="w-16 text-[10px] font-semibold text-slate-400 md:hidden">处理状态</span>
+                        <span className={"inline-flex w-fit rounded-full border px-2 py-1 text-[11px] font-semibold " + candidateStatusClass(queuePresentation.state)}>
+                          {queuePresentation.label}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2 md:block">
+                        <span className="w-16 text-[10px] font-semibold text-slate-400 md:hidden">机会分</span>
+                        <span className="text-base font-semibold text-slate-900">{getDecisionDeskScorePresentation(item)}</span>
+                      </span>
+                      <span className="flex items-center gap-2 md:block">
+                        <span className="w-16 text-[10px] font-semibold text-slate-400 md:hidden">证据</span>
+                        <span className={"inline-flex w-fit rounded-full border px-2 py-1 text-[11px] font-semibold " + decisionDeskToneClass(evidencePresentation.tone)}>
+                          {evidencePresentation.label}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-2 md:block">
+                        <span className="w-16 text-[10px] font-semibold text-slate-400 md:hidden">风险</span>
+                        <span className={"inline-flex w-fit rounded-full border px-2 py-1 text-[11px] font-semibold " + decisionDeskToneClass(riskPresentation.tone)}>
+                          {riskPresentation.label}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="min-w-0 bg-slate-50/50" aria-live="polite">
+              {[selectedPoolCandidate]
+                .filter((item): item is OpportunityCandidatePoolItem => item !== null)
+                .map((item) => {
                 const itemSourceMode = (item as Record<string, unknown>).sourceMode as string | undefined;
                 const isOfficialReadonly = demoMode && itemSourceMode === "official_readonly";
                 const isDemoSandbox = demoMode && itemSourceMode === "demo_sandbox";
@@ -1694,12 +1808,16 @@ export function OpportunitiesForm() {
                   candidateTaskLinks.get(item.id) ?? [],
                 );
                 const latestLinkedTask = linkedTasks[0] ?? null;
+                const hasLinkedTask = linkedTasks.length > 0 || Boolean(item.convertedTaskId);
                 const deletePresentation = getCandidateDeletePresentation({
                   isOfficialReadonly,
                   isLocalDraft,
-                  hasLinkedTask: linkedTasks.length > 0,
+                  hasLinkedTask,
                 });
-                const queuePresentation = getCandidateQueuePresentation(item.candidateStatus, linkedTasks.length > 0);
+                const queuePresentation = getCandidateQueuePresentation(item.candidateStatus, hasLinkedTask);
+                const marketPresentation = getDecisionDeskMarketPresentation(item);
+                const riskPresentation = getDecisionDeskRiskPresentation(item);
+                const scorePresentation = getDecisionDeskScorePresentation(item);
                 const sourceIntegrityPresentation = getCandidateSourceIntegrityPresentation(item.sourceIntegrity);
                 const sourceReview = item.sourceReview ?? {
                   version: "candidate-evidence-review-v1" as const,
@@ -1709,17 +1827,21 @@ export function OpportunitiesForm() {
                 const needsUnverifiedReview = !sourceIntegrityPresentation.verified
                   && (item.candidateStatus === "pending" || item.candidateStatus === "paused")
                   && canManageAuthoritativeCandidate;
-                const agentHref = !isOfficialReadonly && canCandidateEnterAgent(item, serverAvailable, linkedTasks.length > 0)
+                const agentHref = !isOfficialReadonly && canCandidateEnterAgent(item, serverAvailable, hasLinkedTask)
                   ? buildPoolAgentRunHref(item)
                   : null;
                 return (
-                <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <article
+                  key={item.id}
+                  data-testid={`decision-detail-${item.id}`}
+                  className="h-full min-w-0 overflow-hidden bg-white p-4 sm:p-5"
+                >
+                  <div className="flex flex-col gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="break-words text-base font-semibold text-slate-950">{item.name}</h3>
                         <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + candidateStatusClass(queuePresentation.state)}>
-                          {queuePresentation.label}
+                          处理：{queuePresentation.label}
                         </span>
                         {/* Demo-Sandbox.1-C-UI-Fix: source labels */}
                         {isDemoSandbox && (
@@ -1741,20 +1863,14 @@ export function OpportunitiesForm() {
                         </span>
                         {item.r22MarketDecisionSnapshot ? (
                           <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-                            {item.r22MarketDecisionSnapshot.marketDecision === "market_shortlisted"
-                              ? "市场初筛：晋级"
-                              : item.r22MarketDecisionSnapshot.marketDecision === "market_watch"
-                                ? "市场初筛：观察"
-                                : item.r22MarketDecisionSnapshot.marketDecision === "market_reject"
-                                  ? "市场初筛：拒绝"
-                                  : "市场初筛：数据不足"}
+                            市场：{marketPresentation.label}
                           </span>
                         ) : null}
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">{item.summaryLabel}</p>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                        <span>分数 {item.score}/100</span>
-                        <span>风险：{item.riskLabel}</span>
+                        <span>机会分 {scorePresentation === "—" ? "—" : `${scorePresentation}/100`}</span>
+                        <span>风险：{riskPresentation.label}</span>
                         {item.keyword ? <span>关键词：{item.keyword}</span> : null}
                         <span>来源：{item.source}</span>
                       </div>
@@ -1779,7 +1895,7 @@ export function OpportunitiesForm() {
                             <span key={j} className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{getRiskFlagLabel(flag)}</span>
                           ))
                         ) : (
-                          <span className="italic text-slate-400">暂无明显风险</span>
+                          <span className="italic text-slate-400">未发现规则风险，仍需人工核对</span>
                         )}
                       </div>
                       <CandidateEvidenceReviewPanel review={sourceReview} />
@@ -1948,6 +2064,7 @@ export function OpportunitiesForm() {
                   </div>
                 </article>
               )})}
+              </div>
             </div>
           )}
         </section>

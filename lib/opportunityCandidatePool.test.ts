@@ -309,6 +309,17 @@ describe("opportunity candidate pool", () => {
     expect(sortCandidatePool(candidates, "updated").map((candidate) => candidate.name)).toEqual(["C", "A", "B"]);
   });
 
+  it("does not count a converted Candidate as still analyzing", () => {
+    const analyzing = item("分析中候选", 80, 1000, "analyzed");
+    const converted = {
+      ...item("已转任务候选", 85, 1100, "analyzed"),
+      convertedTaskId: "task-001",
+    };
+
+    expect(filterCandidatePool([analyzing, converted], "analyzed").map((candidate) => candidate.name))
+      .toEqual(["分析中候选"]);
+  });
+
   it("parses storage safely and clears invalid or expired payloads", () => {
     const stored = serializeCandidatePool([item("桌面手机支架", 80, 1000)], 1000);
     expect(parseCandidatePool(stored, 2000).items).toHaveLength(1);

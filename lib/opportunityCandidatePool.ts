@@ -36,6 +36,7 @@ export type OpportunityCandidateInput = {
   rawInput?: string;
   link?: string | null;
   score?: number;
+  scoreAvailable?: boolean;
   source?: string;
   keyword?: string;
   riskLevel?: string;
@@ -54,6 +55,8 @@ export type OpportunityCandidatePoolItem = {
   rawInput: string;
   link: string | null;
   score: number;
+  /** False only when the original score field was missing or invalid; legacy items may omit it. */
+  scoreAvailable?: boolean;
   source: string;
   keyword: string;
   riskLevel: string;
@@ -90,6 +93,12 @@ function clampScore(value: unknown) {
   const numberValue = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numberValue)) return 0;
   return Math.min(100, Math.max(0, Math.round(numberValue)));
+}
+
+function hasValidScore(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "string" || value.trim().length === 0) return false;
+  return Number.isFinite(Number(value));
 }
 
 const SAFE_TASK_ID_PATTERN = /^[A-Za-z0-9_-]{1,120}$/;
@@ -237,6 +246,7 @@ export function normalizeCandidate(input: OpportunityCandidateInput, now = Date.
     rawInput,
     link,
     score: clampScore(input.score),
+    scoreAvailable: input.scoreAvailable ?? hasValidScore(input.score),
     source: text(input.source, "机会雷达"),
     keyword: text(input.keyword),
     riskLevel,
@@ -266,6 +276,7 @@ export function serverCandidateToPoolItem(
     rawInput: text(item.rawInput, text(item.name)),
     link: text(item.link) || null,
     score: clampScore(item.score),
+    scoreAvailable: hasValidScore(item.score),
     source: text(item.source, "机会雷达"),
     keyword: text(item.keyword),
     riskLevel: text(item.riskLevel),
@@ -297,6 +308,9 @@ function normalizeStoredItem(value: unknown): OpportunityCandidatePoolItem | nul
     rawInput: text(source.rawInput),
     link: text(source.link),
     score: clampScore(source.score),
+    scoreAvailable: typeof source.scoreAvailable === "boolean"
+      ? source.scoreAvailable
+      : hasValidScore(source.score),
     source: text(source.source),
     keyword: text(source.keyword),
     riskLevel: text(source.riskLevel),
@@ -455,6 +469,9 @@ export function updateCandidateStatus(
 
 export function filterCandidatePool(items: OpportunityCandidatePoolItem[], filter: CandidatePoolFilter) {
   if (filter === "all") return items;
+  if (filter === "analyzed") {
+    return items.filter((item) => item.candidateStatus === "analyzed" && !item.convertedTaskId);
+  }
   return items.filter((item) => item.candidateStatus === filter);
 }
 

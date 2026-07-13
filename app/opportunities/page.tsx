@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OpportunitiesForm } from "@/components/cross-border/OpportunitiesForm";
+import { OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE } from "@/lib/opportunityDecisionDeskVisualFixture";
 
 export const metadata: Metadata = {
   title: "机会雷达 - 轻选 Agent",
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function OpportunitiesPage() {
-  return <OpportunitiesForm />;
+  const visualFixture = process.env.NODE_ENV === "development"
+    && process.env.OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE === "1"
+    ? OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE
+    : undefined;
+  return <OpportunitiesForm visualFixture={visualFixture} />;
 }
