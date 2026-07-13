@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 
@@ -434,6 +435,7 @@ function OpportunitiesFormContent({
   const [candidateTaskLinks, setCandidateTaskLinks] = useState<Map<string, LinkedTaskInfo[]>>(new Map());
   const [taskLinksLoading, setTaskLinksLoading] = useState(false);
   const [openMoreId, setOpenMoreId] = useState<string | null>(null);
+  const [moreMenuStyle, setMoreMenuStyle] = useState<React.CSSProperties>({ display: "none" });
 
   const unlocked = visualFixtureMode || (isAccessPasswordReady && accessPassword.trim().length > 0);
 
@@ -553,6 +555,48 @@ function OpportunitiesFormContent({
     void loadTaskLinks();
     return () => { cancelled = true; };
   }, [hasAccess, serverAvailable, accessPassword]);
+
+  // Position "更多操作" dropdown relative to viewport so it escapes parent overflow clipping.
+  useEffect(() => {
+    if (!openMoreId) {
+      setMoreMenuStyle({ display: "none" });
+      return;
+    }
+
+    const button = document.querySelector(`[data-more-button="${openMoreId}"]`) as HTMLElement | null;
+    if (!button) {
+      setMoreMenuStyle({ display: "none" });
+      return;
+    }
+
+    function recalc() {
+      const rect = button!.getBoundingClientRect();
+      const menuWidth = 192; // w-48
+      const menuHeight = 220; // approximate max height
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top = spaceBelow >= menuHeight
+        ? rect.bottom + 4
+        : Math.max(4, rect.top - menuHeight - 4);
+      const left = Math.max(4, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 4));
+
+      setMoreMenuStyle({
+        position: "fixed",
+        top,
+        left,
+        zIndex: 20,
+      });
+    }
+
+    recalc();
+
+    const close = () => setOpenMoreId(null);
+    window.addEventListener("scroll", close, { capture: true });
+    window.addEventListener("resize", recalc);
+    return () => {
+      window.removeEventListener("scroll", close, { capture: true });
+      window.removeEventListener("resize", recalc);
+    };
+  }, [openMoreId]);
 
   const localDraftCount = useMemo(
     () => poolItems.filter((item) => item.identitySource === "local_draft").length,
@@ -1992,72 +2036,79 @@ function OpportunitiesFormContent({
                             : "服务端身份未确认，暂不能进入 Agent"}
                         </span>
                       )}
-                      {/* More actions dropdown */}
-                      <div className="relative">
+                      {/* More actions dropdown — portalled to document.body to escape parent overflow clipping */}
+                      <div>
                         <button
                           type="button"
+                          data-more-button={item.id}
                           onClick={() => setOpenMoreId(openMoreId === item.id ? null : item.id)}
                           className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                         >
                           更多操作
                           <ChevronDown className="size-3" />
                         </button>
-                        {openMoreId === item.id ? (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setOpenMoreId(null)} />
-                            <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                              <span className="px-3 py-1 text-[10px] font-semibold text-slate-400">人工标记</span>
-                              {isOfficialReadonly ? (
-                                <span className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-300 cursor-not-allowed" title="访客体验模式下不能修改正式候选数据">
-                                  正式候选不可修改
-                                </span>
-                              ) : (<>
-                              {item.candidateStatus !== "worth_analyzing" && item.candidateStatus !== "rejected" ? (
-                              <button type="button" onClick={() => { void setPoolCandidateStatus(item.id, "worth_analyzing"); setOpenMoreId(null); }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-emerald-600 hover:bg-emerald-50">
-                                {sourceIntegrityPresentation.verified ? "选择为待分析" : "确认并选择为待分析"}
-                              </button>
-                              ) : null}
-                              {item.candidateStatus !== "pending" ? (
-                              <button type="button" onClick={() => { void setPoolCandidateStatus(item.id, "pending"); setOpenMoreId(null); }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
-                                {item.candidateStatus === "rejected" ? "恢复为待查看" : "移回待查看"}
-                              </button>
-                              ) : null}
-                              {item.candidateStatus !== "rejected" ? (
-                              <button type="button" onClick={() => {
-                                const confirmed = window.confirm(
-                                  `确认将「${item.name}」标记为放弃？这不会删除候选，只会改变状态。如需彻底移除，请使用"删除候选"。`
-                                );
-                                if (!confirmed) return;
-                                void setPoolCandidateStatus(item.id, "rejected");
-                                setOpenMoreId(null);
-                              }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
-                                放弃候选
-                              </button>
-                              ) : null}
-                              </>)}
-                              <div className="mx-2 my-1 border-t border-slate-100" />
-                              {!deletePresentation.canDelete ? (
-                                <span
-                                  data-testid={`candidate-delete-blocked-${item.id}`}
-                                  className="flex w-full cursor-not-allowed items-center gap-2 px-3 py-2 text-xs text-slate-400"
-                                  title={deletePresentation.title}
-                                >
-                                  <Trash2 className="size-3" />
-                                  {deletePresentation.label}
-                                </span>
-                              ) : (
-                                <button type="button" onClick={() => { void deletePoolCandidate(item); setOpenMoreId(null); }}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
-                                  <Trash2 className="size-3" />
-                                  {deletePresentation.label}
+                        {openMoreId === item.id && moreMenuStyle.display !== "none"
+                          ? createPortal(
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setOpenMoreId(null)} />
+                              <div
+                                className="z-20 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                                style={moreMenuStyle}
+                              >
+                                <span className="px-3 py-1 text-[10px] font-semibold text-slate-400">人工标记</span>
+                                {isOfficialReadonly ? (
+                                  <span className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-300 cursor-not-allowed" title="访客体验模式下不能修改正式候选数据">
+                                    正式候选不可修改
+                                  </span>
+                                ) : (<>
+                                {item.candidateStatus !== "worth_analyzing" && item.candidateStatus !== "rejected" ? (
+                                <button type="button" onClick={() => { void setPoolCandidateStatus(item.id, "worth_analyzing"); setOpenMoreId(null); }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-emerald-600 hover:bg-emerald-50">
+                                  {sourceIntegrityPresentation.verified ? "选择为待分析" : "确认并选择为待分析"}
                                 </button>
-                              )}
-                            </div>
-                          </>
-                        ) : null}
+                                ) : null}
+                                {item.candidateStatus !== "pending" ? (
+                                <button type="button" onClick={() => { void setPoolCandidateStatus(item.id, "pending"); setOpenMoreId(null); }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                  {item.candidateStatus === "rejected" ? "恢复为待查看" : "移回待查看"}
+                                </button>
+                                ) : null}
+                                {item.candidateStatus !== "rejected" ? (
+                                <button type="button" onClick={() => {
+                                  const confirmed = window.confirm(
+                                    `确认将「${item.name}」标记为放弃？这不会删除候选，只会改变状态。如需彻底移除，请使用"删除候选"。`
+                                  );
+                                  if (!confirmed) return;
+                                  void setPoolCandidateStatus(item.id, "rejected");
+                                  setOpenMoreId(null);
+                                }}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
+                                  放弃候选
+                                </button>
+                                ) : null}
+                                </>)}
+                                <div className="mx-2 my-1 border-t border-slate-100" />
+                                {!deletePresentation.canDelete ? (
+                                  <span
+                                    data-testid={`candidate-delete-blocked-${item.id}`}
+                                    className="flex w-full cursor-not-allowed items-center gap-2 px-3 py-2 text-xs text-slate-400"
+                                    title={deletePresentation.title}
+                                  >
+                                    <Trash2 className="size-3" />
+                                    {deletePresentation.label}
+                                  </span>
+                                ) : (
+                                  <button type="button" onClick={() => { void deletePoolCandidate(item); setOpenMoreId(null); }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50">
+                                    <Trash2 className="size-3" />
+                                    {deletePresentation.label}
+                                  </button>
+                                )}
+                              </div>
+                            </>,
+                            document.body,
+                          )
+                        : null}
                       </div>
                       <span className="text-xs text-slate-400">不会自动开始 AI</span>
                     </div>
