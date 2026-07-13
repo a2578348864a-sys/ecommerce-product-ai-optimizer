@@ -86,33 +86,72 @@ export function isPrivateIPv4(ip: string): boolean {
 // ── IPv6 helpers ──
 
 /**
- * 判断 IPv6 地址是否在私有/环回/链路本地范围内。
+ * Fail closed for every IPv6 address that is not globally reachable.
+ * The legacy name is retained for callers that already treat `true` as blocked.
  */
+function parseIPv6Words(ip: string): number[] | null {
+  let normalized = ip.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isIP(normalized) !== 6 || normalized.includes("%")) return null;
+
+  if (normalized.includes(".")) {
+    const separator = normalized.lastIndexOf(":");
+    const octets = ipv4ToOctets(normalized.slice(separator + 1));
+    if (separator < 0 || !octets) return null;
+    const high = (octets[0] << 8) | octets[1];
+    const low = (octets[2] << 8) | octets[3];
+    normalized = `${normalized.slice(0, separator + 1)}${high.toString(16)}:${low.toString(16)}`;
+  }
+
+  const halves = normalized.split("::");
+  if (halves.length > 2) return null;
+  const parseHalf = (half: string) => half
+    ? half.split(":").map((word) => /^[0-9a-f]{1,4}$/.test(word) ? Number.parseInt(word, 16) : -1)
+    : [];
+  const left = parseHalf(halves[0]);
+  const right = halves.length === 2 ? parseHalf(halves[1]) : [];
+  if ([...left, ...right].some((word) => word < 0)) return null;
+
+  if (halves.length === 1) return left.length === 8 ? left : null;
+  const omitted = 8 - left.length - right.length;
+  if (omitted < 1) return null;
+  return [...left, ...Array<number>(omitted).fill(0), ...right];
+}
+
+function mappedIPv4(words: number[]): string | null {
+  if (words.length !== 8
+    || words.slice(0, 5).some((word) => word !== 0)
+    || words[5] !== 0xffff) return null;
+  return [
+    words[6] >> 8,
+    words[6] & 0xff,
+    words[7] >> 8,
+    words[7] & 0xff,
+  ].join(".");
+}
+
+function isGlobalReachableIPv6(ip: string): boolean {
+  const words = parseIPv6Words(ip);
+  if (!words) return false;
+
+  // IPv4-mapped addresses inherit the embedded IPv4 reachability decision.
+  const embeddedIPv4 = mappedIPv4(words);
+  if (embeddedIPv4) return !isPrivateIPv4(embeddedIPv4);
+
+  // Native addresses must be in global unicast 2000::/3.
+  if ((words[0] & 0xe000) !== 0x2000) return false;
+
+  // Exclude protocol, documentation and transition allocations inside 2000::/3.
+  if (words[0] === 0x2001 && words[1] < 0x0200) return false;
+  if (words[0] === 0x2001 && words[1] === 0x0db8) return false;
+  if (words[0] === 0x2002) return false;
+  if (words[0] === 0x3ffe) return false;
+  if (words[0] === 0x3fff && (words[1] & 0xf000) === 0) return false;
+
+  return true;
+}
+
 export function isPrivateIPv6(ip: string): boolean {
-  const normalized = ip.toLowerCase().replace(/^\[|\]$/g, "");
-
-  // ::1 — loopback
-  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
-
-  // :: — unspecified
-  if (normalized === "::" || normalized === "0:0:0:0:0:0:0:0") return true;
-
-  // ff00::/8 — multicast
-  if (normalized.startsWith("ff")) return true;
-
-  // fe80::/10 — link-local
-  if (normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true;
-
-  // fc00::/7 — unique local (fc00:: to fdff:...)
-  if (/^f[c-d]/.test(normalized)) return true;
-
-  // fec0::/10 — deprecated site-local, never a global destination.
-  if (/^fe[c-f]/.test(normalized)) return true;
-
-  // IPv4-mapped IPv6 must not bypass IPv4 range checks.
-  if (normalized.startsWith("::ffff:")) return true;
-
-  return false;
+  return !isGlobalReachableIPv6(ip);
 }
 
 // ── Hostname patterns ──

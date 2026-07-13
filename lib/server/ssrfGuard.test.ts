@@ -113,6 +113,18 @@ describe("isPrivateIPv4", () => {
 // ── isPrivateIPv6 ──
 
 describe("isPrivateIPv6", () => {
+  it.each([
+    "64:ff9b::7f00:1",
+    "64:ff9b:1::7f00:1",
+    "100::1",
+    "2001:2::1",
+    "2001:db8::1",
+    "2002:7f00:1::",
+    "3fff::1",
+  ])("%s → true (non-global or IPv4-transition range)", (address) => {
+    expect(guard.isPrivateIPv6(address)).toBe(true);
+  });
+
   it.each(["fec0::1", "feff::abcd"])("%s → true (deprecated site-local)", (address) => {
     expect(guard.isPrivateIPv6(address)).toBe(true);
   });
@@ -145,7 +157,14 @@ describe("isPrivateIPv6", () => {
     expect(guard.isPrivateIPv6("2001:4860:4860::8888")).toBe(false);
   });
 
-  it(":: and multicast/mapped IPv6 → true", () => {
+  it("handles IPv4-mapped IPv6 by validating the embedded IPv4 address", () => {
+    expect(guard.isPrivateIPv6("::ffff:127.0.0.1")).toBe(true);
+    expect(guard.isPrivateIPv6("::ffff:7f00:1")).toBe(true);
+    expect(guard.isPrivateIPv6("::ffff:8.8.8.8")).toBe(false);
+    expect(guard.isPrivateIPv6("::ffff:808:808")).toBe(false);
+  });
+
+  it("unspecified, multicast and private mapped IPv6 → true", () => {
     expect(guard.isPrivateIPv6("::")).toBe(true);
     expect(guard.isPrivateIPv6("ff02::1")).toBe(true);
     expect(guard.isPrivateIPv6("::ffff:127.0.0.1")).toBe(true);
@@ -329,6 +348,45 @@ describe("resolveToPublicIp", () => {
 
 describe("validateTargetUrlForRequest", () => {
   it.each([
+    "http://[64:ff9b:1::7f00:1]/item",
+    "http://[100::1]/item",
+    "http://[2001:db8::1]/item",
+    "http://[2002:7f00:1::]/item",
+  ])("rejects a literal non-global IPv6 target %s without DNS", async (url) => {
+    const lookup = vi.fn();
+    await expect(guard.validateTargetUrlForRequest(new URL(url), lookup)).resolves.toBeNull();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("allows a globally routable IPv6 literal", async () => {
+    const lookup = vi.fn();
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://[2001:4860:4860::8888]/"),
+      lookup,
+    )).resolves.toEqual({
+      url: new URL("https://[2001:4860:4860::8888]/"),
+      addresses: [{ address: "2001:4860:4860::8888", family: 6 }],
+    });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("rejects private IPv4-mapped literals and allows public mapped literals", async () => {
+    const lookup = vi.fn();
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("http://[::ffff:127.0.0.1]/"),
+      lookup,
+    )).resolves.toBeNull();
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://[::ffff:8.8.8.8]/"),
+      lookup,
+    )).resolves.toEqual({
+      url: new URL("https://[::ffff:8.8.8.8]/"),
+      addresses: [{ address: "::ffff:808:808", family: 6 }],
+    });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it.each([
     "http://192.0.0.1/item",
     "http://198.18.0.1/item",
     "http://[fec0::1]/item",
@@ -341,12 +399,36 @@ describe("validateTargetUrlForRequest", () => {
   it.each([
     { addresses: [{ address: "198.19.0.1", family: 4 }] },
     { addresses: [{ address: "fec0::1234", family: 6 }] },
+    { addresses: [{ address: "64:ff9b:1::7f00:1", family: 6 }] },
+    { addresses: [{ address: "100::1", family: 6 }] },
+    { addresses: [{ address: "2001:db8::1", family: 6 }] },
   ])("rejects DNS results in non-global special-use ranges", async ({ addresses }) => {
     const lookup = vi.fn().mockResolvedValue(addresses);
     await expect(guard.validateTargetUrlForRequest(
       new URL("https://special-use.example/item"),
       lookup,
     )).resolves.toBeNull();
+  });
+
+  it("applies embedded IPv4 reachability to IPv4-mapped DNS results", async () => {
+    const privateLookup = vi.fn().mockResolvedValue([
+      { address: "::ffff:7f00:1", family: 6 },
+    ]);
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://mapped-private.example/item"),
+      privateLookup,
+    )).resolves.toBeNull();
+
+    const publicLookup = vi.fn().mockResolvedValue([
+      { address: "::ffff:808:808", family: 6 },
+    ]);
+    await expect(guard.validateTargetUrlForRequest(
+      new URL("https://mapped-public.example/item"),
+      publicLookup,
+    )).resolves.toEqual({
+      url: new URL("https://mapped-public.example/item"),
+      addresses: [{ address: "::ffff:808:808", family: 6 }],
+    });
   });
 
   it("returns every validated public address for the actual pinned connection", async () => {
