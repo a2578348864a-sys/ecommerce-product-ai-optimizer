@@ -81,10 +81,12 @@ import {
 } from "@/lib/ruleAssessmentPolicy";
 import {
   buildDecisionDeskSummary,
+  createLatestRequestGuard,
   getDecisionDeskEvidencePresentation,
   getDecisionDeskMarketPresentation,
   getDecisionDeskRiskPresentation,
   getDecisionDeskScorePresentation,
+  runLatestRequest,
   resolveDecisionDeskSelection,
 } from "@/lib/opportunityDecisionDesk";
 
@@ -210,6 +212,22 @@ export function getCandidateDeletePresentation(input: {
     canDelete: true,
     label: "删除候选",
     title: "删除候选。",
+  };
+}
+
+export function getServerPoolConnectionPresentation(serverAvailable: boolean) {
+  if (serverAvailable) {
+    return {
+      label: "已解锁 / 服务端候选池",
+      description: "当前数据已从服务端候选池加载，刷新后仍保留。",
+      poolDescription: "已解锁 / 服务端候选池。当前候选均具备服务端权威身份，刷新后仍保留。",
+    };
+  }
+
+  return {
+    label: "服务端连接失败 / 本浏览器候选池",
+    description: "当前仅显示本浏览器候选；登录状态可能仍然有效，请刷新或检查本地服务后重试。",
+    poolDescription: "服务端连接失败 / 本浏览器候选池。当前数据仅保存在本浏览器，清缓存或换设备会丢失。",
   };
 }
 
@@ -408,6 +426,7 @@ function OpportunitiesFormContent({
   const [error, setError] = useState("");
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const serverPoolRefreshGuard = useRef(createLatestRequestGuard());
 
   // Phase 3-B.1: Server candidate pool state
   const [serverAvailable, setServerAvailable] = useState<boolean | null>(visualFixtureMode ? false : null); // null = checking
@@ -454,7 +473,15 @@ function OpportunitiesFormContent({
     && canRequestWithAccessPassword(isAccessPasswordReady, accessPassword);
   const demoMode = hasAccess ? (getAccessMode() === "demo") : false;
 
-  const refreshServerPool = useCallback(async (signal?: AbortSignal) => {
+  const refreshServerPool = useCallback(async (
+    signal?: AbortSignal,
+    handlers: {
+      onStart?: () => void;
+      onSuccess?: () => void;
+      onError?: (error: unknown) => void;
+      onSettled?: () => void;
+    } = {},
+  ) => runLatestRequest(serverPoolRefreshGuard.current, async () => {
     const res = await fetch("/api/opportunity-candidates?limit=100", {
       headers: { ...buildAccessHeaders() },
       signal,
@@ -477,46 +504,55 @@ function OpportunitiesFormContent({
       .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item))
       .map(serverCandidateToPoolItem);
     const cachedItems = readCandidatePool(typeof window === "undefined" ? null : window.localStorage);
-    const mergedItems = mergeServerCandidatesWithLocalDrafts(serverItems, cachedItems);
-    setPoolItems(mergedItems);
-    setServerAvailable(true);
-    writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, mergedItems);
-    return mergedItems;
-  }, [accessPassword]);
+    return mergeServerCandidatesWithLocalDrafts(serverItems, cachedItems);
+  }, {
+    onStart: handlers.onStart,
+    onSuccess: (mergedItems) => {
+      setPoolItems(mergedItems);
+      setServerAvailable(true);
+      writeCandidatePool(typeof window === "undefined" ? null : window.localStorage, mergedItems);
+      handlers.onSuccess?.();
+    },
+    onError: handlers.onError,
+    onSettled: handlers.onSettled,
+  }), []);
 
   useEffect(() => {
+    const refreshGuard = serverPoolRefreshGuard.current;
+    refreshGuard.activate();
     if (visualFixture) {
       setPoolItems([...visualFixture]);
       setPoolHydrated(true);
       setServerAvailable(false);
-      return;
+      return () => refreshGuard.invalidate();
     }
     if (!hasAccess) {
       // No access password: use localStorage only
       setPoolItems(readCandidatePool(typeof window === "undefined" ? null : window.localStorage));
       setPoolHydrated(true);
       setServerAvailable(false);
-      return;
+      return () => refreshGuard.invalidate();
     }
 
     // Try server first
     const controller = new AbortController();
-    async function loadFromServer() {
-      try {
-        await refreshServerPool(controller.signal);
+    void refreshServerPool(controller.signal, {
+      onStart: () => setPoolHydrated(false),
+      onSuccess: () => {
         setPoolSyncNotice("");
-      } catch (e) {
+      },
+      onError: (e) => {
         if (e instanceof DOMException && e.name === "AbortError") return;
         setPoolItems(readCandidatePool(window.localStorage));
         setServerAvailable(false);
-        setPoolSyncNotice("候选池服务端读取失败，当前仅显示本浏览器候选池；刷新或重新输入访问密码后会再次尝试连接。");
-      } finally {
-        setPoolHydrated(true);
-      }
-    }
-
-    void loadFromServer();
-    return () => controller.abort();
+        setPoolSyncNotice("候选池服务端读取失败，当前仅显示本浏览器候选池；刷新或检查本地服务后会再次尝试连接。");
+      },
+      onSettled: () => setPoolHydrated(true),
+    });
+    return () => {
+      controller.abort();
+      refreshGuard.invalidate();
+    };
   }, [hasAccess, refreshServerPool, visualFixture]);
 
   useEffect(() => {
@@ -602,6 +638,9 @@ function OpportunitiesFormContent({
     () => poolItems.filter((item) => item.identitySource === "local_draft").length,
     [poolItems],
   );
+  const serverPoolConnectionPresentation = serverAvailable === null
+    ? null
+    : getServerPoolConnectionPresentation(serverAvailable);
   const showImportButton = serverAvailable === true && localDraftCount > 0;
 
   const handleInputChange = useCallback((value: string) => {
@@ -686,8 +725,9 @@ function OpportunitiesFormContent({
           if (!saveRes.ok || !saveJson || typeof saveJson !== "object" || Array.isArray(saveJson) || (saveJson as Record<string, unknown>).ok !== true) {
             throw new Error(getApiErrorMessage(saveJson, "分析已完成，但候选品保存到服务端失败。"));
           }
-          await refreshServerPool();
-          setPoolSyncNotice("分析结果已保存到服务端候选池。");
+          const refreshResult = await refreshServerPool();
+          if (refreshResult.status === "error") throw refreshResult.error;
+          if (refreshResult.status === "success") setPoolSyncNotice("分析结果已保存到服务端候选池。");
         } catch (saveError) {
           setPoolSyncNotice(saveError instanceof Error
             ? saveError.message
@@ -822,8 +862,9 @@ function OpportunitiesFormContent({
       if (!res.ok || !json || typeof json !== "object" || Array.isArray(json) || (json as Record<string, unknown>).ok !== true) {
         throw new Error(getApiErrorMessage(json, "候选品状态保存失败，请稍后重试。"));
       }
-      await refreshServerPool();
-      setPoolSyncNotice("候选品状态已保存到服务端。");
+      const refreshResult = await refreshServerPool();
+      if (refreshResult.status === "error") throw refreshResult.error;
+      if (refreshResult.status === "success") setPoolSyncNotice("候选品状态已保存到服务端。");
       return true;
     } catch (updateError) {
       if (previous) {
@@ -834,7 +875,7 @@ function OpportunitiesFormContent({
         : "候选品状态保存失败，请稍后重试。");
       return false;
     }
-  }, [poolItems, hasAccess, serverAvailable, accessPassword, refreshServerPool]);
+  }, [poolItems, hasAccess, serverAvailable, refreshServerPool]);
 
   const deletePoolCandidate = useCallback(async (item: OpportunityCandidatePoolItem) => {
     if (!item.id) return;
@@ -871,7 +912,7 @@ function OpportunitiesFormContent({
         ? deleteError.message
         : "候选删除失败，请稍后重试。");
     }
-  }, [hasAccess, serverAvailable, accessPassword]);
+  }, [hasAccess, serverAvailable]);
 
   // Phase 4-B: Source import handlers
   const handleSourceImport = useCallback(async () => {
@@ -1027,7 +1068,8 @@ function OpportunitiesFormContent({
       const unchanged = Number((json as Record<string, unknown>).unchanged ?? 0);
 
       try {
-        await refreshServerPool();
+        const refreshResult = await refreshServerPool();
+        if (refreshResult.status === "error") throw refreshResult.error;
         setSourceConfirmResult(sourceImportSaveSuccessMessage(created, unchanged));
       } catch {
         setSourceConfirmResult("已导入服务端，但刷新候选池失败，请手动刷新页面查看。");
@@ -1037,7 +1079,7 @@ function OpportunitiesFormContent({
     } finally {
       setSourceConfirming(false);
     }
-  }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable, sourceConfirming, refreshServerPool]);
+  }, [sourceImportCandidates, sourceImportChecked, hasAccess, serverAvailable, sourceConfirming, refreshServerPool]);
 
   // Score helper
   const scoreLabel = (s: number) => s >= 80 ? "优先测试" : s >= 65 ? "可小单验证" : s >= 50 ? "谨慎观察" : "暂不建议";
@@ -1270,13 +1312,11 @@ function OpportunitiesFormContent({
               <div className="flex items-center gap-2">
                 {serverAvailable ? <Wifi className="size-4 text-emerald-600" /> : <WifiOff className="size-4 text-amber-600" />}
                 <span className={`font-semibold ${serverAvailable ? "text-emerald-800" : "text-amber-800"}`}>
-                  {serverAvailable ? "已解锁 / 服务端候选池" : "未解锁 / 本浏览器候选池"}
+                  {serverPoolConnectionPresentation?.label}
                 </span>
               </div>
               <p className={`mt-1 text-xs ${serverAvailable ? "text-emerald-700" : "text-amber-700"}`}>
-                {serverAvailable
-                  ? "当前数据已从服务端候选池加载，刷新后仍保留。"
-                  : "当前数据仅保存在本浏览器，清缓存或换设备会丢失。输入访问密码后可切换到服务端候选池。"}
+                {serverPoolConnectionPresentation?.description}
               </p>
             </div>
           ) : null}
@@ -1656,9 +1696,9 @@ function OpportunitiesFormContent({
                   : serverAvailable === true
                   ? localDraftCount > 0
                     ? `已连接服务端候选池；另有 ${localDraftCount} 个本地草稿仅供展示，保存为服务端 Candidate 后才能进入 Agent。`
-                    : "已解锁 / 服务端候选池。当前候选均具备服务端权威身份，刷新后仍保留。"
+                    : serverPoolConnectionPresentation?.poolDescription
                   : serverAvailable === false
-                    ? "未解锁 / 本浏览器候选池。当前数据仅保存在本浏览器，清缓存或换设备会丢失。"
+                    ? serverPoolConnectionPresentation?.poolDescription
                     : "候选品会保存在本浏览器 7 天。这里不自动采购、不自动上架，只帮你记录判断状态。"}
               </p>
             </div>
@@ -1680,7 +1720,8 @@ function OpportunitiesFormContent({
                       if (json.ok) {
                         setImportResult(`已导入 ${json.imported} 个候选品`);
                         try {
-                          await refreshServerPool();
+                          const refreshResult = await refreshServerPool();
+                          if (refreshResult.status === "error") throw refreshResult.error;
                         } catch {
                           setImportResult("已导入服务端，但刷新候选池失败，请手动刷新页面查看。");
                         }
@@ -1939,7 +1980,7 @@ function OpportunitiesFormContent({
                             <span key={j} className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">{getRiskFlagLabel(flag)}</span>
                           ))
                         ) : (
-                          <span className="italic text-slate-400">未发现规则风险，仍需人工核对</span>
+                          <span className="italic text-slate-400">未确认（未记录明确风险标记）</span>
                         )}
                       </div>
                       <CandidateEvidenceReviewPanel review={sourceReview} />

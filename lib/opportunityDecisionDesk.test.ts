@@ -2,12 +2,24 @@ import { describe, expect, it } from "vitest";
 import type { OpportunityCandidatePoolItem } from "@/lib/opportunityCandidatePool";
 import {
   buildDecisionDeskSummary,
+  createLatestRequestGuard,
   getDecisionDeskEvidencePresentation,
   getDecisionDeskMarketPresentation,
   getDecisionDeskRiskPresentation,
   getDecisionDeskScorePresentation,
+  runLatestRequest,
   resolveDecisionDeskSelection,
 } from "@/lib/opportunityDecisionDesk";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
+}
 
 function marketSnapshot(
   candidateId: string,
@@ -138,6 +150,115 @@ describe("opportunity decision desk presentation", () => {
       label: "未确认",
       tone: "neutral",
     });
+
+    expect(getDecisionDeskRiskPresentation(candidate("legacy-green", {
+      riskLevel: "green",
+      riskLabel: "低风险",
+      evidenceSnapshot: evidenceWithFlags([]),
+    }))).toEqual({
+      label: "未确认",
+      tone: "neutral",
+    });
+  });
+
+  it("accepts only the newest server refresh result", () => {
+    const guard = createLatestRequestGuard();
+    const olderRequest = guard.begin();
+    const newerRequest = guard.begin();
+
+    expect(guard.isCurrent(olderRequest)).toBe(false);
+    expect(guard.isCurrent(newerRequest)).toBe(true);
+  });
+
+  it("keeps a newer success when an older success resolves later", async () => {
+    const guard = createLatestRequestGuard();
+    const older = deferred<string>();
+    const newer = deferred<string>();
+    const visible: string[] = [];
+    const run = (promise: Promise<string>) => runLatestRequest(guard, () => promise, {
+      onSuccess: (value) => visible.push(value),
+    });
+
+    const olderRun = run(older.promise);
+    const newerRun = run(newer.promise);
+    newer.resolve("newer");
+    await newerRun;
+    older.resolve("older");
+    await olderRun;
+    expect(visible).toEqual(["newer"]);
+  });
+
+  it("does not let an older failure roll back a newer success", async () => {
+    const guard = createLatestRequestGuard();
+    const older = deferred<string>();
+    const newer = deferred<string>();
+    const states: string[] = [];
+    const run = (promise: Promise<string>) => runLatestRequest(guard, () => promise, {
+      onSuccess: (value) => states.push(`success:${value}`),
+      onError: () => states.push("fallback"),
+    });
+
+    const olderRun = run(older.promise);
+    const newerRun = run(newer.promise);
+    newer.resolve("newer");
+    await newerRun;
+    older.reject(new Error("old failure"));
+    await olderRun;
+    expect(states).toEqual(["success:newer"]);
+  });
+
+  it("keeps the newest failure when an older success resolves later", async () => {
+    const guard = createLatestRequestGuard();
+    const older = deferred<string>();
+    const newer = deferred<string>();
+    const states: string[] = [];
+    const run = (promise: Promise<string>) => runLatestRequest(guard, () => promise, {
+      onSuccess: (value) => states.push(`success:${value}`),
+      onError: () => states.push("newest-failure"),
+    });
+
+    const olderRun = run(older.promise);
+    const newerRun = run(newer.promise);
+    newer.reject(new Error("new failure"));
+    await newerRun;
+    older.resolve("older");
+    await olderRun;
+    expect(states).toEqual(["newest-failure"]);
+  });
+
+  it("ignores success, failure, and finally callbacks after unmount", async () => {
+    const guard = createLatestRequestGuard();
+    const pending = deferred<string>();
+    const callbacks: string[] = [];
+    const running = runLatestRequest(guard, () => pending.promise, {
+      onSuccess: () => callbacks.push("success"),
+      onError: () => callbacks.push("error"),
+      onSettled: () => callbacks.push("settled"),
+    });
+    guard.invalidate();
+    pending.resolve("late");
+    await running;
+    expect(callbacks).toEqual([]);
+  });
+
+  it("does not let an older request end loading while the newest request is pending", async () => {
+    const guard = createLatestRequestGuard();
+    const older = deferred<string>();
+    const newer = deferred<string>();
+    let loading = false;
+    const run = (promise: Promise<string>) => runLatestRequest(guard, () => promise, {
+      onStart: () => { loading = true; },
+      onSettled: () => { loading = false; },
+    });
+
+    const olderRun = run(older.promise);
+    const newerRun = run(newer.promise);
+    older.resolve("older");
+    await olderRun;
+    expect(loading).toBe(true);
+    newer.resolve("newer");
+    await newerRun;
+    expect(loading).toBe(false);
   });
 
   it("distinguishes a legitimate zero score from missing or invalid scores", () => {

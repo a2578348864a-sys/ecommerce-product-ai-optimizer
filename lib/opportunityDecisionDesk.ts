@@ -7,6 +7,64 @@ export type DecisionDeskPresentation = {
   tone: DecisionDeskTone;
 };
 
+export function createLatestRequestGuard() {
+  let latestRequestId = 0;
+  let active = true;
+
+  return {
+    begin() {
+      latestRequestId += 1;
+      return latestRequestId;
+    },
+    isCurrent(requestId: number) {
+      return active && requestId === latestRequestId;
+    },
+    activate() {
+      active = true;
+      latestRequestId += 1;
+    },
+    invalidate() {
+      active = false;
+      latestRequestId += 1;
+    },
+  };
+}
+
+type LatestRequestGuard = ReturnType<typeof createLatestRequestGuard>;
+
+type LatestRequestHandlers<T> = {
+  onStart?: () => void;
+  onSuccess?: (value: T) => void;
+  onError?: (error: unknown) => void;
+  onSettled?: () => void;
+};
+
+export type LatestRequestResult<T> =
+  | { status: "success"; value: T }
+  | { status: "error"; error: unknown }
+  | { status: "stale" };
+
+export async function runLatestRequest<T>(
+  guard: LatestRequestGuard,
+  request: () => Promise<T>,
+  handlers: LatestRequestHandlers<T> = {},
+): Promise<LatestRequestResult<T>> {
+  const requestId = guard.begin();
+  if (guard.isCurrent(requestId)) handlers.onStart?.();
+  try {
+    const value = await request();
+    if (!guard.isCurrent(requestId)) return { status: "stale" };
+    handlers.onSuccess?.(value);
+    return { status: "success", value };
+  } catch (error) {
+    if (!guard.isCurrent(requestId)) return { status: "stale" };
+    handlers.onError?.(error);
+    return { status: "error", error };
+  } finally {
+    if (guard.isCurrent(requestId)) handlers.onSettled?.();
+  }
+}
+
 export type DecisionDeskSummary = {
   all: number;
   pending: number;
@@ -70,9 +128,6 @@ export function getDecisionDeskRiskPresentation(
   }
   if (flags.length) {
     return { label: "待核对", tone: "warning" };
-  }
-  if (risk.includes("green") || risk.includes("低风险")) {
-    return { label: "低风险", tone: "positive" };
   }
   return { label: "未确认", tone: "neutral" };
 }

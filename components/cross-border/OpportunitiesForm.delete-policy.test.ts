@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getCandidateDeletePresentation } from "@/components/cross-border/OpportunitiesForm";
+import {
+  getCandidateDeletePresentation,
+  getServerPoolConnectionPresentation,
+} from "@/components/cross-border/OpportunitiesForm";
 
 const opportunitiesSource = readFileSync(
   resolve(process.cwd(), "components/cross-border/OpportunitiesForm.tsx"),
@@ -99,5 +102,31 @@ describe("Opportunity decision desk structure", () => {
     expect(opportunitiesSource).toContain('data-testid="candidate-intake-toggle"');
     expect(opportunitiesSource).toContain("showCandidateIntake");
     expect(opportunitiesSource).not.toContain("抓取公开线索（可选）");
+  });
+
+  it("drops stale server-pool refresh responses before they can replace newer state", () => {
+    expect(opportunitiesSource).toContain("runLatestRequest(serverPoolRefreshGuard.current");
+    expect(opportunitiesSource).toContain("refreshGuard.invalidate()");
+    expect(opportunitiesSource).toContain("onSettled: () => setPoolHydrated(true)");
+  });
+
+  it("labels an empty risk-flag set as unconfirmed instead of no observed risk", () => {
+    expect(opportunitiesSource).not.toContain("未发现规则风险，仍需人工核对");
+    expect(opportunitiesSource).toContain("未确认（未记录明确风险标记）");
+  });
+});
+
+describe("Server candidate pool connection presentation", () => {
+  it("does not describe an authenticated server failure as locked", () => {
+    expect(getServerPoolConnectionPresentation(false)).toEqual({
+      label: "服务端连接失败 / 本浏览器候选池",
+      description: "当前仅显示本浏览器候选；登录状态可能仍然有效，请刷新或检查本地服务后重试。",
+      poolDescription: "服务端连接失败 / 本浏览器候选池。当前数据仅保存在本浏览器，清缓存或换设备会丢失。",
+    });
+  });
+
+  it("does not tell an authenticated user that a generic server read failure is a password failure", () => {
+    expect(opportunitiesSource).not.toContain("刷新或重新输入访问密码后会再次尝试连接");
+    expect(opportunitiesSource).toContain("刷新或检查本地服务后会再次尝试连接");
   });
 });
