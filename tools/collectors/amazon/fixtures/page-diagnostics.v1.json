@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "amazon-page-diagnostic-fixture.v1",
+  "base": {
+    "requestedUrl": "https://www.amazon.com/",
+    "finalUrl": "https://www.amazon.com/",
+    "redirectUrls": [],
+    "mainDocumentHttpStatus": 200,
+    "mainDocumentContentType": "text/html; charset=UTF-8",
+    "navigationElapsedMs": 420,
+    "domWaitElapsedMs": 180,
+    "readyState": "complete",
+    "title": "Amazon.com. Spend less. Smile more.",
+    "visibleText": "Amazon Search Deliver to New York 10001",
+    "markerSources": {
+      "amazonBrand": "primary",
+      "searchBox": "primary",
+      "deliveryEntry": "primary"
+    },
+    "markers": {
+      "amazonBrand": true,
+      "searchBox": true,
+      "deliveryEntry": true,
+      "regionSelection": false,
+      "privacyPrompt": {
+        "state": "absent",
+        "markerSource": "none",
+        "selectorCategory": null,
+        "tagName": null,
+        "role": null,
+        "visible": null,
+        "hasInteractiveControls": null,
+        "insideFooter": null,
+        "blocksMainContent": null,
+        "matchedText": null,
+        "reasonCodes": ["privacy_signal_absent"]
+      },
+      "captcha": false,
+      "loginWall": false,
+      "errorPage": false,
+      "browserInternalError": false
+    }
+  },
+  "cases": [
+    { "name": "normal_home", "expected": "amazon_normal", "override": {} },
+    {
+      "name": "normal_selector_variant",
+      "expected": "amazon_normal_variant",
+      "override": {
+        "markerSources": { "amazonBrand": "alternate", "searchBox": "alternate", "deliveryEntry": "alternate" }
+      }
+    },
+    {
+      "name": "loading",
+      "expected": "loading",
+      "override": { "readyState": "loading", "domWaitElapsedMs": 20000 }
+    },
+    {
+      "name": "region_selection",
+      "expected": "region_selection",
+      "override": {
+        "title": "Choose your location",
+        "visibleText": "Choose your location Select your address",
+        "markers": { "regionSelection": true }
+      }
+    },
+    {
+      "name": "privacy_prompt_visible",
+      "expected": "privacy_prompt_visible",
+      "override": {
+        "title": "Amazon Privacy Notice",
+        "visibleText": "Before you continue choose your cookie preferences",
+        "markers": {
+          "privacyPrompt": {
+            "state": "visible_blocking_prompt",
+            "markerSource": "known_generic_container",
+            "selectorCategory": "generic_consent_banner",
+            "tagName": "div",
+            "role": "banner",
+            "visible": true,
+            "hasInteractiveControls": true,
+            "insideFooter": false,
+            "blocksMainContent": false,
+            "matchedText": "Before you continue choose your cookie preferences",
+            "reasonCodes": ["privacy_visible_interactive_prompt"]
+          }
+        }
+      }
+    },
+    {
+      "name": "privacy_prompt_unknown",
+      "expected": "privacy_prompt_unknown",
+      "override": {
+        "title": "Amazon Privacy Notice",
+        "visibleText": "Privacy choices",
+        "markers": {
+          "privacyPrompt": {
+            "state": "unknown",
+            "markerSource": "semantic_candidate",
+            "selectorCategory": "semantic_dialog_or_banner",
+            "tagName": "aside",
+            "role": "dialog",
+            "visible": true,
+            "hasInteractiveControls": true,
+            "insideFooter": false,
+            "blocksMainContent": true,
+            "matchedText": "Privacy choices",
+            "reasonCodes": ["privacy_candidate_selector_unconfirmed"]
+          }
+        }
+      }
+    },
+    {
+      "name": "login_wall",
+      "expected": "login_wall",
+      "override": {
+        "title": "Amazon Sign-In",
+        "visibleText": "Sign in to continue",
+        "markers": { "amazonBrand": true, "searchBox": false, "deliveryEntry": false, "loginWall": true }
+      }
+    },
+    {
+      "name": "robot_check",
+      "expected": "captcha",
+      "override": {
+        "title": "Amazon.com",
+        "visibleText": "Robot Check Enter the characters you see below",
+        "markers": { "amazonBrand": true, "searchBox": false, "deliveryEntry": false, "captcha": true }
+      }
+    },
+    {
+      "name": "access_denied",
+      "expected": "access_denied",
+      "override": {
+        "mainDocumentHttpStatus": 403,
+        "title": "Access Denied",
+        "visibleText": "Access Denied",
+        "markers": { "amazonBrand": false, "searchBox": false, "deliveryEntry": false, "errorPage": true }
+      }
+    },
+    {
+      "name": "service_unavailable",
+      "expected": "access_denied",
+      "override": {
+        "mainDocumentHttpStatus": 503,
+        "title": "Service Unavailable",
+        "visibleText": "Service Unavailable",
+        "markers": { "amazonBrand": false, "searchBox": false, "deliveryEntry": false, "errorPage": true }
+      }
+    },
+    {
+      "name": "chrome_error",
+      "expected": "browser_error_page",
+      "override": {
+        "finalUrl": "chrome-error://chromewebdata/",
+        "mainDocumentHttpStatus": null,
+        "mainDocumentContentType": "text/html",
+        "title": "This site can't be reached",
+        "visibleText": "This site can't be reached ERR_FAILED",
+        "markers": { "amazonBrand": false, "searchBox": false, "deliveryEntry": false, "browserInternalError": true }
+      }
+    },
+    {
+      "name": "blank",
+      "expected": "blank_page",
+      "override": {
+        "finalUrl": "about:blank",
+        "mainDocumentHttpStatus": null,
+        "mainDocumentContentType": "text/html",
+        "title": "",
+        "visibleText": "",
+        "markers": { "amazonBrand": false, "searchBox": false, "deliveryEntry": false }
+      }
+    },
+    {
+      "name": "unexpected_redirect",
+      "expected": "unexpected_redirect",
+      "override": {
+        "finalUrl": "https://example.invalid/landing?token=secret",
+        "redirectUrls": ["https://www.amazon.com/", "https://example.invalid/landing?token=secret"],
+        "title": "Unexpected",
+        "visibleText": "Unexpected destination",
+        "markers": { "amazonBrand": false, "searchBox": false, "deliveryEntry": false }
+      }
+    },
+    {
+      "name": "unknown",
+      "expected": "unknown_page",
+      "override": {
+        "title": "Welcome",
+        "visibleText": "Unrecognized page variant",
+        "markers": { "amazonBrand": false, "searchBox": false, "deliveryEntry": false }
+      }
+    }
+  ]
+}

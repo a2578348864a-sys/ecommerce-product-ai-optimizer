@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "amazon-privacy-diagnostic-fixture.v1",
+  "cases": [
+    {
+      "name": "visible_cookie_banner_with_accept_reject",
+      "expected": "visible_blocking_prompt",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "known_generic_container",
+        "selectorCategory": "generic_consent_banner",
+        "tagName": "div",
+        "role": "banner",
+        "visible": true,
+        "hasInteractiveControls": true,
+        "insideFooter": false,
+        "blocksMainContent": false,
+        "matchedText": "We use cookies Accept Reject Manage preferences"
+      }]
+    },
+    {
+      "name": "visible_privacy_modal_overlay",
+      "expected": "visible_blocking_prompt",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "known_generic_container",
+        "selectorCategory": "generic_consent_banner",
+        "tagName": "section",
+        "role": "dialog",
+        "visible": true,
+        "hasInteractiveControls": true,
+        "insideFooter": false,
+        "blocksMainContent": true,
+        "matchedText": "Privacy choices Accept all Reject all"
+      }]
+    },
+    {
+      "name": "footer_privacy_notice_link_only",
+      "expected": "page_text_only",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "footer_link",
+        "selectorCategory": "footer_privacy_link",
+        "tagName": "a",
+        "role": null,
+        "visible": true,
+        "hasInteractiveControls": false,
+        "insideFooter": true,
+        "blocksMainContent": false,
+        "matchedText": "Privacy Notice"
+      }]
+    },
+    {
+      "name": "body_mentions_privacy",
+      "expected": "page_text_only",
+      "pageTextMatched": true,
+      "candidates": []
+    },
+    {
+      "name": "hidden_cookie_node",
+      "expected": "page_text_only",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "known_amazon_container",
+        "selectorCategory": "amazon_cookie_container",
+        "tagName": "div",
+        "role": "banner",
+        "visible": false,
+        "hasInteractiveControls": true,
+        "insideFooter": false,
+        "blocksMainContent": false,
+        "matchedText": "Cookie preferences Accept Reject"
+      }]
+    },
+    {
+      "name": "closed_prompt_node_retained",
+      "expected": "page_text_only",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "known_generic_container",
+        "selectorCategory": "generic_consent_banner",
+        "tagName": "div",
+        "role": "dialog",
+        "visible": false,
+        "hasInteractiveControls": false,
+        "insideFooter": false,
+        "blocksMainContent": false,
+        "matchedText": "Privacy choices"
+      }]
+    },
+    {
+      "name": "normal_amazon_search_page",
+      "expected": "absent",
+      "pageTextMatched": false,
+      "candidates": []
+    },
+    {
+      "name": "changed_privacy_selector_unconfirmed",
+      "expected": "unknown",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "semantic_candidate",
+        "selectorCategory": "semantic_dialog_or_banner",
+        "tagName": "aside",
+        "role": "dialog",
+        "visible": true,
+        "hasInteractiveControls": true,
+        "insideFooter": false,
+        "blocksMainContent": true,
+        "matchedText": "Cookie choices Accept Reject"
+      }]
+    },
+    {
+      "name": "visible_privacy_element_without_controls",
+      "expected": "unknown",
+      "pageTextMatched": true,
+      "candidates": [{
+        "markerSource": "known_generic_container",
+        "selectorCategory": "generic_consent_banner",
+        "tagName": "div",
+        "role": "banner",
+        "visible": true,
+        "hasInteractiveControls": false,
+        "insideFooter": false,
+        "blocksMainContent": false,
+        "matchedText": "Privacy notice"
+      }]
+    },
+    {
+      "name": "non_privacy_dialog",
+      "expected": "absent",
+      "pageTextMatched": false,
+      "candidates": []
+    }
+  ]
+}

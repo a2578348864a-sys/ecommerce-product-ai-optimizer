@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "amazon-login-wall-diagnostics-fixture.v1",
+  "cases": [
+    {
+      "name": "visible_blocking_signin_form",
+      "candidate": "signin_form",
+      "visible": true,
+      "insideNavigation": false,
+      "hasInteractiveControls": true,
+      "blocksMainContent": true,
+      "bodyText": "Sign in to continue",
+      "expectedState": "visible_blocking_login",
+      "expectedClassification": "login_wall"
+    },
+    {
+      "name": "hidden_signin_form_retained_in_dom",
+      "candidate": "signin_form",
+      "visible": false,
+      "insideNavigation": false,
+      "hasInteractiveControls": true,
+      "blocksMainContent": false,
+      "bodyText": "Amazon Search Deliver to New York 10001",
+      "expectedState": "hidden_or_navigation_signin",
+      "expectedClassification": "amazon_normal"
+    },
+    {
+      "name": "navigation_signin_form",
+      "candidate": "signin_form",
+      "visible": true,
+      "insideNavigation": true,
+      "hasInteractiveControls": true,
+      "blocksMainContent": false,
+      "bodyText": "Amazon Search Deliver to New York 10001",
+      "expectedState": "hidden_or_navigation_signin",
+      "expectedClassification": "amazon_normal"
+    },
+    {
+      "name": "visible_unconfirmed_login_candidate",
+      "candidate": "signin_form",
+      "visible": true,
+      "insideNavigation": false,
+      "hasInteractiveControls": false,
+      "blocksMainContent": false,
+      "bodyText": "Amazon Search Deliver to New York 10001",
+      "expectedState": "unknown",
+      "expectedClassification": "login_wall"
+    },
+    {
+      "name": "explicit_continue_text_without_container",
+      "candidate": null,
+      "visible": false,
+      "insideNavigation": false,
+      "hasInteractiveControls": false,
+      "blocksMainContent": false,
+      "bodyText": "Sign in to continue",
+      "expectedState": "unknown",
+      "expectedClassification": "login_wall"
+    },
+    {
+      "name": "ordinary_navigation_signin_text",
+      "candidate": null,
+      "visible": false,
+      "insideNavigation": false,
+      "hasInteractiveControls": false,
+      "blocksMainContent": false,
+      "bodyText": "Amazon Search Deliver to New York 10001 Hello, sign in Account and Lists",
+      "expectedState": "absent",
+      "expectedClassification": "amazon_normal"
+    },
+    {
+      "name": "no_login_signal",
+      "candidate": null,
+      "visible": false,
+      "insideNavigation": false,
+      "hasInteractiveControls": false,
+      "blocksMainContent": false,
+      "bodyText": "Amazon Search Deliver to New York 10001",
+      "expectedState": "absent",
+      "expectedClassification": "amazon_normal"
+    }
+  ]
+}

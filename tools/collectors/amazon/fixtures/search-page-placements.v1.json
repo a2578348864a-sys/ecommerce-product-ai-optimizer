@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "amazon-search-page-placements-fixture.v1",
+  "bodyText": "Amazon search results for closet organizer",
+  "allVisiblePriceNodeCount": 7,
+  "expectedSponsoredDiagnostics": [
+    {
+      "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+      "state": true,
+      "markerSource": "known_dom_selector",
+      "selectorCategory": "aria_label_sponsored",
+      "reasonCode": "sponsored_marker_present",
+      "matchedText": "Sponsored"
+    },
+    {
+      "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+      "state": false,
+      "markerSource": "known_card_structure",
+      "selectorCategory": "standard_search_result_card",
+      "reasonCode": "known_organic_structure",
+      "matchedText": null
+    },
+    {
+      "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+      "state": null,
+      "markerSource": "visible_text",
+      "selectorCategory": "ambiguous_ad_text",
+      "reasonCode": "ambiguous_ad_text_without_known_marker",
+      "matchedText": "Promoted"
+    }
+  ],
+  "cards": [
+    {
+      "asin": "B0DOM00001",
+      "text": "Sponsored Adjustable Closet Organizer $29.99",
+      "nodes": {
+        "h2 a span": "Adjustable Closet Organizer",
+        ".a-price .a-offscreen": "$29.99",
+        ".a-icon-alt": "4.5 out of 5 stars",
+        "a[href*=customerReviews] span": "120",
+        "img.s-image": "https://m.media-amazon.com/images/I/fixture-sponsored.jpg",
+        "[aria-label=Sponsored]": "Sponsored"
+      }
+    },
+    {
+      "asin": "B0DOM00001",
+      "text": "Adjustable Closet Organizer $29.99",
+      "nodes": {
+        "h2 a span": "Adjustable Closet Organizer",
+        ".a-price .a-offscreen": "$29.99",
+        ".a-icon-alt": "4.5 out of 5 stars",
+        "a[href*=customerReviews] span": "120",
+        "img.s-image": "https://m.media-amazon.com/images/I/fixture-organic.jpg"
+      }
+    },
+    {
+      "asin": "B0DOM00002",
+      "text": "Promoted placement with changed markup $18.99",
+      "nodes": {
+        "h2 a span": "Changed Label Closet Shelf",
+        ".a-price .a-offscreen": "$18.99",
+        ".a-icon-alt": "4.1 out of 5 stars",
+        "img.s-image": "https://m.media-amazon.com/images/I/fixture-unknown.jpg",
+        "[data-new-ad-label]": "Promoted"
+      }
+    }
+  ]
+}
