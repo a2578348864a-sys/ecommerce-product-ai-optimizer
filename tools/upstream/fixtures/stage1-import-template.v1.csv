@@ -1,0 +1,2 @@
+marketplace,market,query,sourceUrl,platformProductId,parentProductId,title,price,currency,rating,reviewCount,sponsored,brand,imageUrl,capturedAt,deliveryRegion,language,page,position
+amazon.com,US,closet organizer,https://www.amazon.com/dp/B0EXAMPLE1,B0EXAMPLE1,,Example closet organizer,29.99,USD,4.5,120,unknown,Example Brand,https://images.example.invalid/B0EXAMPLE1.jpg,2026-07-14T00:00:00.000Z,New York 10001,en-us,1,1
