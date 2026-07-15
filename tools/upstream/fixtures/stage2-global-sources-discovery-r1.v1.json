@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "stage2-global-sources-discovery-r1-fixture.v1",
+  "baseNavigation": {
+    "requestedUrl": "https://www.globalsources.com/",
+    "finalUrl": "https://www.globalsources.com/",
+    "redirectOrigins": [],
+    "redirectCount": 0,
+    "mainDocumentHttpStatus": 200,
+    "mainDocumentContentType": "text/html; charset=utf-8",
+    "navigationElapsedMs": 420,
+    "domWaitElapsedMs": 120,
+    "readyState": "complete",
+    "allowedFinalOrigin": true
+  },
+  "baseSignals": {
+    "pageUrl": "https://www.globalsources.com/",
+    "title": "Global Sources - Product Search",
+    "visibleTextLength": 5000,
+    "brandMarker": true,
+    "brandTitleMarker": true,
+    "searchFormMarker": true,
+    "searchInputMarker": true,
+    "registrationMarker": false,
+    "loginMarker": false,
+    "captchaMarker": false,
+    "accessDeniedMarker": false,
+    "serviceUnavailableMarker": false,
+    "candidateSearchLinks": [
+      "https://www.globalsources.com/search?query=closet%20organizer#results"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenarioId": "normal_homepage",
+      "expectedClassification": "homepage_discovery_ready",
+      "expectedReasonCodes": ["homepage_markers_and_safe_search_path_present"]
+    },
+    {
+      "scenarioId": "normal_homepage_mild_selector_change",
+      "signalsPatch": { "brandMarker": false, "searchFormMarker": false },
+      "expectedClassification": "homepage_discovery_ready",
+      "expectedReasonCodes": ["homepage_markers_and_safe_search_path_present"]
+    },
+    {
+      "scenarioId": "page_loading",
+      "navigationPatch": { "readyState": "loading" },
+      "expectedClassification": "loading",
+      "expectedReasonCodes": ["page_still_loading"]
+    },
+    {
+      "scenarioId": "captcha",
+      "signalsPatch": { "captchaMarker": true },
+      "expectedClassification": "captcha_or_robot_check",
+      "expectedReasonCodes": ["captcha_marker_present"]
+    },
+    {
+      "scenarioId": "login_wall",
+      "signalsPatch": { "loginMarker": true },
+      "expectedClassification": "login_or_registration_required",
+      "expectedReasonCodes": ["login_marker_present"]
+    },
+    {
+      "scenarioId": "registration_wall",
+      "signalsPatch": { "registrationMarker": true },
+      "expectedClassification": "login_or_registration_required",
+      "expectedReasonCodes": ["registration_marker_present"]
+    },
+    {
+      "scenarioId": "access_denied",
+      "navigationPatch": { "mainDocumentHttpStatus": 403 },
+      "expectedClassification": "access_denied",
+      "expectedReasonCodes": ["access_denied_http_status"]
+    },
+    {
+      "scenarioId": "service_unavailable",
+      "navigationPatch": { "mainDocumentHttpStatus": 503 },
+      "expectedClassification": "service_unavailable",
+      "expectedReasonCodes": ["service_unavailable_http_status"]
+    },
+    {
+      "scenarioId": "browser_internal_error",
+      "signalsPatch": { "pageUrl": "chrome-error://chromewebdata/" },
+      "expectedClassification": "browser_internal_error",
+      "expectedReasonCodes": ["browser_internal_error_page"]
+    },
+    {
+      "scenarioId": "unexpected_origin",
+      "navigationPatch": { "finalUrl": "https://example.com/", "allowedFinalOrigin": false },
+      "signalsPatch": { "pageUrl": "https://example.com/" },
+      "expectedClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": ["final_or_dom_origin_not_allowed"]
+    },
+    {
+      "scenarioId": "unexpected_path",
+      "navigationPatch": { "finalUrl": "https://www.globalsources.com/products" },
+      "signalsPatch": { "pageUrl": "https://www.globalsources.com/products" },
+      "expectedClassification": "unexpected_path_redirect",
+      "expectedReasonCodes": ["final_or_dom_path_not_allowed"]
+    },
+    {
+      "scenarioId": "same_origin_redirect",
+      "navigationPatch": { "redirectCount": 1, "redirectOrigins": ["https://www.globalsources.com"] },
+      "expectedClassification": "unexpected_redirect",
+      "expectedReasonCodes": ["redirect_not_allowed"]
+    },
+    {
+      "scenarioId": "unknown_page",
+      "signalsPatch": {
+        "brandMarker": false,
+        "brandTitleMarker": false,
+        "searchFormMarker": false,
+        "searchInputMarker": false,
+        "candidateSearchLinks": []
+      },
+      "expectedClassification": "unknown_page",
+      "expectedReasonCodes": ["brand_marker_missing", "search_marker_missing", "candidate_search_path_missing"]
+    },
+    {
+      "scenarioId": "external_candidate_search_path",
+      "signalsPatch": { "candidateSearchLinks": ["https://example.com/search?q=closet"] },
+      "expectedClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": ["candidate_search_path_origin_not_allowed"]
+    }
+  ]
+}

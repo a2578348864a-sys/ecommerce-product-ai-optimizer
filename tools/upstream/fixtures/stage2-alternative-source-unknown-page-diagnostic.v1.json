@@ -1,0 +1,132 @@
+{
+  "schemaVersion": "stage2-alternative-source-unknown-page-diagnostic-fixtures.v1",
+  "baseNavigation": {
+    "requestedUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "finalUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "redirectOrigins": [],
+    "redirectCount": 0,
+    "mainDocumentHttpStatus": 200,
+    "mainDocumentContentType": "text/html; charset=UTF-8",
+    "navigationElapsedMs": 240,
+    "domWaitElapsedMs": 80,
+    "readyState": "complete",
+    "allowedFinalOrigin": true
+  },
+  "baseSignals": {
+    "pageUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "title": "Hanging Organizer Manufacturers & Suppliers - Made-in-China.com",
+    "visibleTextLength": 6200,
+    "mainElementCount": 1,
+    "headingCount": 12,
+    "imageCount": 36,
+    "anchorCount": 84,
+    "sameOriginAnchorCount": 60,
+    "knownSearchContainerCount": 0,
+    "genericProductClassElementCount": 18,
+    "exactAllowedProductPathCount": 0,
+    "looseSameOriginProductPathCount": 12,
+    "supplierSubdomainProductPathCount": 0,
+    "safeSameOriginPathSamples": [
+      "/unrecognized-product/example-a.html",
+      "/unrecognized-product/example-b.html"
+    ],
+    "missingReasons": []
+  },
+  "scenarios": [
+    {
+      "scenarioId": "generic_structure_without_known_selector",
+      "expectedStatus": "diagnostic_evidence_present",
+      "expectedReasonCodes": [
+        "known_search_container_absent",
+        "generic_product_class_elements_present",
+        "loose_same_origin_product_paths_present"
+      ]
+    },
+    {
+      "scenarioId": "loose_paths_only",
+      "signalsPatch": {
+        "genericProductClassElementCount": 0,
+        "looseSameOriginProductPathCount": 4
+      },
+      "expectedStatus": "diagnostic_evidence_present",
+      "expectedReasonCodes": ["loose_same_origin_product_paths_present"]
+    },
+    {
+      "scenarioId": "supplier_subdomain_paths_only",
+      "signalsPatch": {
+        "genericProductClassElementCount": 0,
+        "looseSameOriginProductPathCount": 0,
+        "supplierSubdomainProductPathCount": 3,
+        "safeSameOriginPathSamples": []
+      },
+      "expectedStatus": "diagnostic_evidence_present",
+      "expectedReasonCodes": [
+        "supplier_subdomain_product_paths_present",
+        "unsafe_supplier_subdomain_paths_observed"
+      ]
+    },
+    {
+      "scenarioId": "no_product_structure_indicators",
+      "signalsPatch": {
+        "genericProductClassElementCount": 0,
+        "looseSameOriginProductPathCount": 0,
+        "supplierSubdomainProductPathCount": 0,
+        "safeSameOriginPathSamples": []
+      },
+      "expectedStatus": "diagnostic_evidence_absent",
+      "expectedReasonCodes": [
+        "generic_product_class_elements_absent",
+        "loose_same_origin_product_paths_absent"
+      ]
+    },
+    {
+      "scenarioId": "historical_canary_evidence_missing_independent_counts",
+      "signalsPatch": {
+        "mainElementCount": null,
+        "headingCount": null,
+        "imageCount": null,
+        "anchorCount": null,
+        "sameOriginAnchorCount": null,
+        "knownSearchContainerCount": null,
+        "genericProductClassElementCount": null,
+        "exactAllowedProductPathCount": null,
+        "looseSameOriginProductPathCount": null,
+        "supplierSubdomainProductPathCount": null,
+        "safeSameOriginPathSamples": [],
+        "missingReasons": ["historical_run_did_not_capture_independent_structure_counts"]
+      },
+      "expectedStatus": "diagnostic_evidence_insufficient",
+      "expectedReasonCodes": ["required_structure_counts_missing"]
+    },
+    {
+      "scenarioId": "page_still_loading",
+      "navigationPatch": { "readyState": "loading" },
+      "expectedStatus": "diagnostic_context_blocked",
+      "expectedReasonCodes": ["diagnostic_page_not_stable"]
+    },
+    {
+      "scenarioId": "unexpected_origin",
+      "navigationPatch": {
+        "finalUrl": "https://example.com/products-search/example",
+        "allowedFinalOrigin": false
+      },
+      "signalsPatch": { "pageUrl": "https://example.com/products-search/example" },
+      "expectedStatus": "diagnostic_context_blocked",
+      "expectedReasonCodes": ["diagnostic_origin_or_path_not_allowed"]
+    },
+    {
+      "scenarioId": "unsafe_path_sample",
+      "signalsPatch": {
+        "safeSameOriginPathSamples": ["https://example.com/private?token=secret"]
+      },
+      "expectedStatus": "diagnostic_input_invalid",
+      "expectedReasonCodes": ["diagnostic_safe_path_sample_invalid"]
+    },
+    {
+      "scenarioId": "not_unknown_primary_classification",
+      "parentClassification": "search_results_ready",
+      "expectedStatus": "not_applicable",
+      "expectedReasonCodes": ["primary_classification_not_unknown_page"]
+    }
+  ]
+}

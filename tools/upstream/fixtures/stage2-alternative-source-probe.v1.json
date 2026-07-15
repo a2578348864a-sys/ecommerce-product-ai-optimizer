@@ -1,0 +1,238 @@
+{
+  "schemaVersion": "stage2-alternative-source-probe-fixtures.v1",
+  "baseNavigation": {
+    "requestedUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "finalUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "redirectOrigins": [],
+    "redirectCount": 0,
+    "mainDocumentHttpStatus": 200,
+    "mainDocumentContentType": "text/html; charset=UTF-8",
+    "navigationElapsedMs": 240,
+    "domWaitElapsedMs": 80,
+    "readyState": "complete",
+    "allowedFinalOrigin": true
+  },
+  "baseSignals": {
+    "pageUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "title": "Hanging Organizer Manufacturers & Suppliers - Made-in-China.com",
+    "visibleTextLength": 6200,
+    "brandMarker": true,
+    "brandTitleMarker": true,
+    "searchContainerMarker": true,
+    "alternateSearchContainerMarker": false,
+    "captchaMarker": false,
+    "loginOrInquiryMarker": false,
+    "accessDeniedMarker": false,
+    "serviceUnavailableMarker": false,
+    "candidateProductLinks": [
+      "https://www.made-in-china.com/price/prodetail_example-ABC123.html?source=search"
+    ]
+  },
+  "pageScenarios": [
+    {
+      "scenarioId": "normal_search_page",
+      "expectedClassification": "search_results_ready",
+      "expectedReasonCodes": ["search_page_markers_and_allowed_links_present"]
+    },
+    {
+      "scenarioId": "normal_page_mild_selector_change",
+      "signalsPatch": {
+        "brandMarker": false,
+        "brandTitleMarker": true,
+        "searchContainerMarker": false,
+        "alternateSearchContainerMarker": true
+      },
+      "expectedClassification": "search_results_ready",
+      "expectedReasonCodes": ["search_page_markers_and_allowed_links_present"]
+    },
+    {
+      "scenarioId": "page_still_loading",
+      "navigationPatch": { "readyState": "loading" },
+      "expectedClassification": "loading",
+      "expectedReasonCodes": ["page_still_loading"]
+    },
+    {
+      "scenarioId": "captcha_robot_check",
+      "signalsPatch": { "captchaMarker": true },
+      "expectedClassification": "captcha_or_robot_check",
+      "expectedReasonCodes": ["captcha_marker_present"]
+    },
+    {
+      "scenarioId": "login_or_inquiry_wall",
+      "signalsPatch": { "loginOrInquiryMarker": true },
+      "expectedClassification": "login_or_inquiry_required",
+      "expectedReasonCodes": ["login_or_inquiry_marker_present"]
+    },
+    {
+      "scenarioId": "access_denied_http_status",
+      "navigationPatch": { "mainDocumentHttpStatus": 403 },
+      "expectedClassification": "access_denied",
+      "expectedReasonCodes": ["access_denied_http_status"]
+    },
+    {
+      "scenarioId": "access_denied_dom_marker",
+      "signalsPatch": { "accessDeniedMarker": true },
+      "expectedClassification": "access_denied",
+      "expectedReasonCodes": ["access_denied_marker_present"]
+    },
+    {
+      "scenarioId": "service_unavailable_http_status",
+      "navigationPatch": { "mainDocumentHttpStatus": 503 },
+      "expectedClassification": "service_unavailable",
+      "expectedReasonCodes": ["service_unavailable_http_status"]
+    },
+    {
+      "scenarioId": "service_unavailable_dom_marker",
+      "signalsPatch": { "serviceUnavailableMarker": true },
+      "expectedClassification": "service_unavailable",
+      "expectedReasonCodes": ["service_unavailable_marker_present"]
+    },
+    {
+      "scenarioId": "chrome_internal_error_page",
+      "navigationPatch": {
+        "finalUrl": "chrome-error://chromewebdata/",
+        "allowedFinalOrigin": false
+      },
+      "signalsPatch": { "pageUrl": "chrome-error://chromewebdata/" },
+      "expectedClassification": "browser_internal_error",
+      "expectedReasonCodes": ["browser_internal_error_page"]
+    },
+    {
+      "scenarioId": "unexpected_final_origin",
+      "navigationPatch": {
+        "finalUrl": "https://example.com/products-search/example",
+        "allowedFinalOrigin": false
+      },
+      "signalsPatch": { "pageUrl": "https://example.com/products-search/example" },
+      "expectedClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": ["final_or_dom_origin_not_allowed"]
+    },
+    {
+      "scenarioId": "unexpected_intermediate_redirect_origin",
+      "navigationPatch": {
+        "redirectOrigins": ["http://www.made-in-china.com"],
+        "redirectCount": 1
+      },
+      "expectedClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": ["intermediate_redirect_origin_not_allowed"]
+    },
+    {
+      "scenarioId": "unknown_brand_marker",
+      "signalsPatch": {
+        "brandMarker": false,
+        "brandTitleMarker": false
+      },
+      "expectedClassification": "unknown_page",
+      "expectedReasonCodes": ["brand_marker_missing"]
+    },
+    {
+      "scenarioId": "no_allowed_product_links",
+      "signalsPatch": { "candidateProductLinks": [] },
+      "expectedClassification": "unknown_page",
+      "expectedReasonCodes": ["no_allowed_product_links"]
+    },
+    {
+      "scenarioId": "unsafe_selected_product_link",
+      "signalsPatch": {
+        "candidateProductLinks": [
+          "https://supplier.en.made-in-china.com/product/example.html"
+        ]
+      },
+      "expectedClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": ["candidate_product_link_origin_not_allowed"]
+    },
+    {
+      "scenarioId": "non_html_main_document",
+      "navigationPatch": { "mainDocumentContentType": "application/json" },
+      "expectedClassification": "unknown_page",
+      "expectedReasonCodes": ["main_document_content_type_not_html"]
+    },
+    {
+      "scenarioId": "unknown_main_document_status",
+      "navigationPatch": { "mainDocumentHttpStatus": null },
+      "expectedClassification": "unknown_page",
+      "expectedReasonCodes": ["main_document_status_not_confirmed"]
+    }
+  ],
+  "urlScenarios": [
+    {
+      "scenarioId": "allowed_search_path",
+      "kind": "search",
+      "url": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+      "expectedAllowed": true,
+      "expectedReasonCode": null
+    },
+    {
+      "scenarioId": "allowed_price_product_path",
+      "kind": "product",
+      "url": "https://www.made-in-china.com/price/prodetail_example-ABC123.html",
+      "expectedAllowed": true,
+      "expectedReasonCode": null
+    },
+    {
+      "scenarioId": "allowed_showroom_product_path",
+      "kind": "product",
+      "url": "https://www.made-in-china.com/showroom/acme/product-detailABC123/China-Closet-Organizer.html",
+      "expectedAllowed": true,
+      "expectedReasonCode": null
+    },
+    {
+      "scenarioId": "http_rejected",
+      "kind": "product",
+      "url": "http://www.made-in-china.com/price/prodetail_example-ABC123.html",
+      "expectedAllowed": false,
+      "expectedReasonCode": "http_not_allowed"
+    },
+    {
+      "scenarioId": "supplier_subdomain_rejected",
+      "kind": "product",
+      "url": "https://supplier.en.made-in-china.com/product/example.html",
+      "expectedAllowed": false,
+      "expectedReasonCode": "origin_not_allowed"
+    },
+    {
+      "scenarioId": "over_broad_showroom_path_rejected",
+      "kind": "product",
+      "url": "https://www.made-in-china.com/showroom/",
+      "expectedAllowed": false,
+      "expectedReasonCode": "product_path_not_allowed"
+    }
+  ],
+  "policyScenarios": [
+    {
+      "scenarioId": "robots_allows_search_path",
+      "robotsText": "User-agent: *\nDisallow: /private/\nAllow: /products-search/\n",
+      "termsDecision": "reviewed_allows_public_capability_probe",
+      "expectedStatus": "allowed",
+      "expectedReasonCodes": []
+    },
+    {
+      "scenarioId": "robots_disallows_all",
+      "robotsText": "User-agent: *\nDisallow: /\n",
+      "termsDecision": "reviewed_allows_public_capability_probe",
+      "expectedStatus": "blocked",
+      "expectedReasonCodes": ["robots_disallows_search_path"]
+    },
+    {
+      "scenarioId": "robots_unknown_empty",
+      "robotsText": "",
+      "termsDecision": "reviewed_allows_public_capability_probe",
+      "expectedStatus": "blocked",
+      "expectedReasonCodes": ["robots_policy_unknown"]
+    },
+    {
+      "scenarioId": "terms_unknown",
+      "robotsText": "User-agent: *\nAllow: /products-search/\n",
+      "termsDecision": "unknown",
+      "expectedStatus": "blocked",
+      "expectedReasonCodes": ["terms_policy_unknown"]
+    },
+    {
+      "scenarioId": "terms_prohibits_probe",
+      "robotsText": "User-agent: *\nAllow: /products-search/\n",
+      "termsDecision": "prohibited",
+      "expectedStatus": "blocked",
+      "expectedReasonCodes": ["terms_policy_prohibits_probe"]
+    }
+  ]
+}
