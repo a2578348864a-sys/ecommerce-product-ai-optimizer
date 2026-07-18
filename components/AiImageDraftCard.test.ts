@@ -1,10 +1,20 @@
 import React from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AiImageDraftCard, shouldRenewAiImageRequestKey } from "@/components/AiImageDraftCard";
 import { AI_IMAGE_DRAFT_DISCLAIMER } from "@/lib/aiImageDraft";
 
 describe("AiImageDraftCard", () => {
+  it("uses a full-width review gallery without cropping generated drafts", () => {
+    const source = readFileSync(resolve(process.cwd(), "components/AiImageDraftCard.tsx"), "utf8");
+
+    expect(source).toContain('className="mt-3 grid gap-4"');
+    expect(source).toContain('className="aspect-square w-full bg-slate-100 object-contain"');
+    expect(source).not.toContain('className="mt-3 grid gap-3 sm:grid-cols-2"');
+    expect(source).not.toContain('className="aspect-square w-full object-cover"');
+  });
   it("is collapsed by default while keeping the safety statement visible", () => {
     const html = renderToStaticMarkup(React.createElement(AiImageDraftCard, { taskId: "task-1" }));
     expect(html).toContain("AI 图片素材草稿");

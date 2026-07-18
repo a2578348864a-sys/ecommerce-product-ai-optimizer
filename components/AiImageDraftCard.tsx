@@ -99,7 +99,7 @@ function PrivateImage({ taskId, item }: { taskId: string; item: AiImageDraftItem
       width={item.width || 1024}
       height={item.height || 1024}
       unoptimized
-      className="aspect-square w-full object-cover"
+      className="aspect-square w-full bg-slate-100 object-contain"
     />
   );
 }
@@ -296,7 +296,7 @@ export function AiImageDraftCard({
           {snapshot?.items.length ? (
             <div>
               <p className="text-sm font-bold text-slate-800">已保存草稿</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-4">
                 {[...snapshot.items].reverse().map((item) => (
                   <article key={item.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                     <PrivateImage taskId={taskId} item={item} />
