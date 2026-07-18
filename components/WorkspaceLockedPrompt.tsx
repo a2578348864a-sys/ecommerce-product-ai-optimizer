@@ -19,43 +19,32 @@ type WorkspaceLockedPromptProps = {
 export function WorkspaceLockedPrompt({ pageName, returnUrl }: WorkspaceLockedPromptProps) {
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-lg flex-col items-center gap-6 py-16 text-center">
-        {/* Icon */}
-        <div className="linear-icon size-16 rounded-2xl bg-slate-100 text-slate-400">
-          <Lock className="size-8" />
-        </div>
+      <div className="mx-auto flex min-h-[70dvh] max-w-md items-center justify-center">
+        <section className="surface-card-strong w-full p-6 text-left sm:p-8">
+          <div className="linear-icon size-11 rounded-xl bg-slate-50 text-slate-600">
+            <Lock className="size-5" />
+          </div>
 
-        {/* Message */}
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800 sm:text-2xl">
-            当前工作台未解锁
+          <h1 className="mt-5 text-2xl font-semibold tracking-tight text-slate-950">
+            先解锁工作台
           </h1>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            轻选 Agent — 跨境电商运营工作台，用 AI 辅助找机会、分析产品、沉淀任务和人工复核。
-          </p>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
+          <p className="mt-3 text-sm leading-6 text-slate-600">
             {pageName
-              ? `「${pageName}」需要访问密码才能使用。请先回到首页输入访问密码。`
-              : "请先回到首页输入访问密码后再使用此功能。"}
+              ? `${pageName}需要访问密码。返回首页输入密码，解锁后会自动回到这里。`
+              : "这个页面需要访问密码。返回首页输入密码，解锁后会自动回到这里。"}
           </p>
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            访问密码有效期为 12 小时，过期后需重新输入。关闭标签页后也会自动锁定。
+            密码只保存在当前会话。
           </p>
-        </div>
 
-        {/* CTA */}
-        <Link
-          href={returnUrl ? `/?redirect=${encodeURIComponent(returnUrl)}` : "/"}
-          className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-6 text-sm font-semibold"
-        >
-          返回首页解锁
-          <ArrowRight className="size-4" />
-        </Link>
-
-        {/* Footer note */}
-        <p className="text-xs text-slate-400">
-          轻选 Agent · 受控自动化 · 人工复核版
-        </p>
+          <Link
+            href={returnUrl ? `/?redirect=${encodeURIComponent(returnUrl)}` : "/"}
+            className="linear-button-primary mt-6 inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+          >
+            返回首页
+            <ArrowRight className="size-4" />
+          </Link>
+        </section>
       </div>
     </main>
   );

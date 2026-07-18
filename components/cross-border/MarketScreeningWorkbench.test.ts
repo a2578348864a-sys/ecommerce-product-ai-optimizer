@@ -23,7 +23,7 @@ function render(result: MarketScreeningBatchLoadResult, preview?: ReturnType<typ
 }
 
 describe("MarketScreeningWorkbench", () => {
-  it("renders seven read-only regions, honest evidence, exact partition, and local images", () => {
+  it("leads with the screening conclusion, keeps run details secondary, and preserves evidence", () => {
     const { result, preview } = readyFixture();
     const html = render(result, preview);
 
@@ -36,11 +36,14 @@ describe("MarketScreeningWorkbench", () => {
       "Stage 1.5 调查短名单",
       "高级导入 / 历史候选",
     ]) expect(html).toContain(region);
-    expect(html).toContain("advance 5");
-    expect(html).toContain("watch 11");
-    expect(html).toContain("reject 3");
-    expect(html).toContain("insufficient 1");
-    expect(html).toContain("最多 5 个继续调查对象，不是商业候选");
+    expect(html).toContain("data-region=\"screening-summary\"");
+    expect(html).toContain("20 个商品已完成初筛");
+    expect(html).toContain("建议继续调查 5 个，还不是商业候选");
+    expect(html).toContain("继续调查");
+    expect(html).toContain("暂时观察");
+    expect(html).toContain("不建议继续");
+    expect(html).toContain("证据不足");
+    expect(html).toContain("查看本批调查范围与运行信息");
     expect(html).toContain("可选详情证据：已验证");
     expect(html).toContain("data:image/jpeg;base64,");
     expect(html).toContain("图片未缓存");
@@ -50,6 +53,7 @@ describe("MarketScreeningWorkbench", () => {
     expect(html).not.toContain("保存 Candidate");
     expect(html).not.toContain("创建 Task");
     expect(html).not.toContain("启动 Stage 2");
+    expect(html).not.toContain("frozen_validation_batch");
   });
 
   it("shows limitations in both header and Stage region for ready_partial", () => {

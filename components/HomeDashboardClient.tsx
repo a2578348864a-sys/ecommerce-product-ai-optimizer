@@ -10,7 +10,6 @@ import {
   Loader2,
   Lock,
   Route,
-  Search,
   Sparkles,
   Target,
   Unlock,
@@ -62,32 +61,19 @@ function StatCard({
   description,
   href,
   cta,
-  tone = "teal",
 }: {
   title: string;
   value: string;
   description: string;
   href: string;
   cta: string;
-  tone?: "teal" | "amber" | "indigo" | "slate";
 }) {
-  const toneClass = tone === "amber"
-    ? "border-amber-200 bg-amber-50/65 text-amber-700"
-    : tone === "indigo"
-      ? "border-indigo-200 bg-indigo-50/65 text-indigo-700"
-      : tone === "slate"
-        ? "border-slate-200 bg-slate-50 text-slate-700"
-        : "border-teal-200 bg-teal-50/70 text-teal-700";
-
   return (
-    <article className="surface-card-strong flex min-h-[190px] min-w-0 flex-col p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-600">{title}</p>
-        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${toneClass}`}>{cta}</span>
-      </div>
-      <p className="mt-4 text-3xl font-semibold text-slate-950">{value}</p>
-      <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{description}</p>
-      <Link href={href} className="linear-button mt-4 inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
+    <article className="surface-card flex min-w-0 flex-col p-4">
+      <p className="text-sm font-semibold text-slate-600">{title}</p>
+      <p className="mt-3 truncate text-2xl font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 flex-1 text-xs leading-5 text-slate-500">{description}</p>
+      <Link href={href} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700 hover:text-teal-800">
         {cta}
         <ArrowRight className="size-4" />
       </Link>
@@ -245,8 +231,6 @@ export function HomeDashboardClient() {
     recentSingleRun,
   }), [candidateSummary, taskSummary, recentSingleRun]);
 
-  const isNewUser = candidateSummary.total === 0 && !recentSingleRun && (!taskSummary || taskSummary.total === 0);
-
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8" data-testid="home-dashboard">
       <div className="workspace-page workspace-layout">
@@ -254,17 +238,13 @@ export function HomeDashboardClient() {
 
         <div className="flex min-w-0 flex-col gap-5">
           <header className="workspace-header">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="eyebrow">Qingxuan Agent Alpha</p>
-                <h1 className="mt-2 max-w-3xl text-2xl font-semibold text-slate-950 sm:text-3xl">
-                  轻选 Agent 工作台
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  轻选 Agent 以市场证据为起点，先缩小调查范围，再由人工决定是否继续推进。
-                </p>
-              </div>
-              <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">受控自动化 · 人工确认</span>
+            <div className="min-w-0">
+              <h1 className="max-w-3xl text-2xl font-semibold text-slate-950 sm:text-3xl">
+                轻选 Agent 工作台
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                先用市场证据缩小范围，再由你决定是否继续。
+              </p>
             </div>
             <WorkspaceMobileNav />
           </header>
@@ -343,17 +323,40 @@ export function HomeDashboardClient() {
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700">
                   <div className="size-1.5 rounded-full bg-emerald-400" />
-                  API{apiProbeStatus === "ok" ? " 已通过" : apiProbeStatus === "checking" ? " 检测中…" : " 待确认"}
+                  {apiProbeStatus === "ok" ? "访问已确认" : apiProbeStatus === "checking" ? "正在确认访问…" : "访问待确认"}
                 </div>
               </div>
               {apiProbeStatus === "fail" && (
-                <p className="mt-2 text-xs text-amber-700">API 鉴权未确认，受保护接口可能返回 401。</p>
+                <p className="mt-2 text-xs text-amber-700">访问状态尚未确认，部分功能可能暂时不可用。</p>
               )}
             </section>
           ) : null}
 
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-            <div className="grid min-w-0 gap-4 md:grid-cols-3">
+          <section className="surface-card-strong overflow-hidden" data-testid="dashboard-recommendation">
+            <div className="grid md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div className="p-5 sm:p-6">
+                <div className="flex items-center gap-2 text-sm font-semibold text-teal-700">
+                  <Sparkles className="size-4" />
+                  推荐下一步
+                </div>
+                <h2 className="mt-3 max-w-3xl text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">
+                  {recommendation.title}
+                </h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">{recommendation.description}</p>
+              </div>
+              <div className="border-t border-slate-200 bg-slate-50/70 p-5 md:border-l md:border-t-0 sm:p-6">
+                <Link href={recommendation.href} className="linear-button-primary inline-flex h-11 w-full items-center justify-center gap-2 px-5 text-sm font-semibold md:w-auto">
+                  {recommendation.cta}
+                  <ArrowRight className="size-4" />
+                </Link>
+                <p className="mt-3 max-w-xs text-xs leading-5 text-slate-400">
+                  系统不会自动采购、上架或投放广告。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid min-w-0 gap-3 md:grid-cols-3" data-testid="dashboard-stats" aria-label="工作台状态摘要">
               <StatCard
                 title="候选池"
                 value={formatNumber(candidateSummary.total)}
@@ -369,7 +372,6 @@ export function HomeDashboardClient() {
                   : taskLoad.message}
                 href="/tasks"
                 cta="进入任务中心"
-                tone={taskSummary ? "indigo" : "slate"}
               />
               <StatCard
                 title="最近分析"
@@ -379,64 +381,15 @@ export function HomeDashboardClient() {
                   : "还没有可恢复的单品分析结果。"}
                 href="/agent/run"
                 cta="高级临时分析"
-                tone={recentSingleRun?.savedTaskId ? "teal" : "amber"}
               />
-            </div>
-
-            <aside className="surface-card-strong min-w-0 p-5" data-testid="dashboard-recommendation">
-              <div className="flex items-center gap-2">
-                <div className="linear-icon size-9 rounded-xl">
-                  <Sparkles className="size-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-teal-700">推荐下一步</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-950">{recommendation.title}</h2>
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-slate-500">{recommendation.description}</p>
-              <Link href={recommendation.href} className="linear-button-primary mt-5 inline-flex h-11 w-full items-center justify-center gap-2 px-4 text-sm font-semibold">
-                {recommendation.cta}
-                <ArrowRight className="size-4" />
-              </Link>
-              <p className="mt-3 text-xs leading-5 text-slate-400">
-                本页只读取浏览器本地状态和任务列表，不自动采购、不自动上架、不自动投广告。
-              </p>
-            </aside>
           </section>
-
-          {isNewUser ? (
-            <section className="surface-card p-5 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="linear-kicker">新手三步开始</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-950">没产品时，先把候选池建起来</h2>
-                </div>
-                <Link href="/opportunities" className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
-                  开始市场预筛
-                  <ArrowRight className="size-4" />
-                </Link>
-              </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-4">
-                {[
-                  "定义调查目标",
-                  "获取一批市场商品",
-                  "系统整理证据并缩小范围",
-                  "人工决定继续调查哪些",
-                ].map((item, index) => (
-                  <div key={item} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-semibold text-teal-700">第 {index + 1} 步</p>
-                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
 
           <section className="surface-card p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <Route className="size-5 text-teal-700" />
-              <h2 className="text-xl font-semibold text-slate-950">三步主路径</h2>
+              <h2 className="text-xl font-semibold text-slate-950">工作路径</h2>
             </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">先缩小调查范围，再把值得继续的对象交给任务中心跟进。</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {workflowSteps.map((step, index) => {
                 const Icon = step.icon;
