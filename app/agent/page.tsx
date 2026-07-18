@@ -10,13 +10,13 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 
 export const metadata: Metadata = {
   title: "Agent 路线图已归档 - 轻选 Agent",
-  description: "Agent 能力路线图已归档。当前主入口为 Agent 主链路（/agent/run），8 步受控流程，旧路线图能力已合并进主链路。",
+  description: "Agent 能力路线图已归档。/agent/run 当前仅作为未接入新 Evidence 的高级临时分析工具。",
 };
 
 const archiveNotes = [
   "候选发现 — 已并入 /opportunities 候选池",
-  "Agent 分析 — 已并入 /agent/run Agent 主链路（8 步受控流程）",
-  "风险 / 利润 / Listing 准备包 — 已并入主链路分析结果",
+  "Agent 分析 — 已并入 /agent/run 高级临时分析（既有 8 步受控流程）",
+  "风险 / 利润 / Listing 准备包 — 保留在高级临时分析结果中",
   "人工确认 — 所有 AI 结论必须人工复核后保存",
   "任务沉淀 — 已并入 /tasks 任务中心与复盘",
 ];
@@ -35,7 +35,7 @@ export default function AgentPage() {
                 Agent 路线图已归档
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                当前正式主入口为 Agent 主链路（/agent/run），8 步受控流程。以下是旧路线图中已并入主链路的能力说明。
+                当前正式产品方向是市场预筛。/agent/run 尚未接入新 Evidence，仅保留为高级临时分析。
               </p>
             </div>
             <WorkspaceMobileNav />
@@ -53,7 +53,7 @@ export default function AgentPage() {
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   旧路线图中标注的「规划中」能力不会在当前版本执行，也不会自动下单、自动铺货、自动投流。
-                  所有 AI 结论必须人工复核。以下能力已合并进主链路：
+                  所有 AI 结论必须人工复核。以下能力仅说明旧功能去向：
                 </p>
               </div>
             </div>
@@ -69,9 +69,9 @@ export default function AgentPage() {
 
           {/* ── 跳转 CTA ── */}
           <section className="surface-card p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-slate-950">当前正式主链路入口</h2>
+            <h2 className="text-lg font-semibold text-slate-950">现有入口说明</h2>
             <p className="mt-1 text-sm text-slate-500">
-              旧路线图中的能力已合并进以下主链路入口。Agent 主链路（/agent/run）是当前唯一对外 8 步受控分析入口。
+              市场预筛仍在分阶段接入。高级临时分析未接入新 Evidence，不代表已完成市场预筛。
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <Link
@@ -80,13 +80,13 @@ export default function AgentPage() {
               >
                 <div className="flex items-center gap-2">
                   <Sparkles className="size-5 text-teal-600" />
-                  <h3 className="text-base font-semibold text-teal-900">Agent 主链路</h3>
+                  <h3 className="text-base font-semibold text-teal-900">高级临时分析</h3>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-teal-700">
                   8 步受控流程：数据清洗 → 市场机会 → 供货可行性 → 成本利润 → 合规预筛 → Listing 准备 → 最终结论 → 人工确认保存。
                 </p>
                 <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-600 group-hover:text-teal-800">
-                  进入 Agent 主链路
+                  进入高级临时分析
                   <ArrowRight className="size-4" />
                 </span>
               </Link>

@@ -190,8 +190,8 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 <Eye className="size-4" />
               </div>
               <div>
-                <p className="text-sm font-bold text-slate-900">HR 演示模式</p>
-                <p className="text-[11px] text-slate-400">完整流程沙盒体验</p>
+                <p className="text-sm font-bold text-slate-900">访客体验</p>
+                <p className="text-[11px] text-slate-400">隔离沙盒体验</p>
               </div>
             </div>
 

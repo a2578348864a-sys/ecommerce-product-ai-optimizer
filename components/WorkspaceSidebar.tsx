@@ -13,16 +13,16 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 
 export const workspaceNavItems = [
-  { label: "机会雷达", href: "/opportunities", icon: Target },
-  { label: "Agent 主链路", href: "/agent/run", icon: Sparkles },
+  { label: "市场预筛", href: "/opportunities", icon: Target },
   { label: "任务中心", href: "/tasks", icon: History },
 ] as const;
 
 const advancedNavItems = [
+  { label: "高级临时分析", href: "/agent/run", icon: Sparkles },
   { label: "批量分析（高级 / Alpha）", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
-const mobileNavItems = workspaceNavItems;
+const mobileNavItems = [...workspaceNavItems, advancedNavItems[0]] as const;
 type SidebarNavItem = (typeof workspaceNavItems)[number] | (typeof advancedNavItems)[number];
 
 function isActivePath(pathname: string, href: string) {
@@ -115,7 +115,7 @@ export function WorkspaceSidebar() {
               <NavLink key={item.href} item={item} pathname={pathname} compact />
             ))}
             <p className="px-2 pt-1 text-xs leading-5 text-slate-400">
-              适合后续批量处理，当前主流程仍以单个商品推进为主。
+              高级工具不代表已完成市场预筛，结果必须人工复核。
             </p>
           </div>
         </nav>

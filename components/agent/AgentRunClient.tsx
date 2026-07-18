@@ -692,7 +692,7 @@ export function AgentRunClient({
   }
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="Agent 主链路驾驶舱" returnUrl="/agent/run" />;
+    return <WorkspaceLockedPrompt pageName="高级临时分析" returnUrl="/agent/run" />;
   }
 
   return (
@@ -705,9 +705,9 @@ export function AgentRunClient({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="eyebrow">受控自动化 · Alpha MVP</p>
-                <h1 className="section-title mt-1 text-2xl">Agent 主链路驾驶舱</h1>
+                <h1 className="section-title mt-1 text-2xl">高级临时分析</h1>
                 <p className="muted-text mt-1 max-w-3xl text-sm leading-6">
-                  从一个商品出发，完成选品判断、风险预筛、Listing 准备与人工复核。
+                  从一个商品出发运行既有 8 步受控流程。未接入新 Evidence，不代表已完成市场预筛。
                   当前为受控自动化工作流，AI 负责预筛和建议，最终商业动作需人工确认。
                 </p>
               </div>
@@ -1114,7 +1114,7 @@ export function AgentRunClient({
           ) : null}
 
           <p className="text-center text-xs text-slate-400">
-            Agent 主链路驾驶舱 · 受控自动化 · AI / 规则预筛 · 人工最终确认
+            高级临时分析 · 未接入新 Evidence · AI / 规则预筛 · 人工最终确认
           </p>
         </div>
       </div>

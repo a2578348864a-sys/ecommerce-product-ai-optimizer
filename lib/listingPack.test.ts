@@ -1,7 +1,7 @@
 /**
  * Acceptance-Fix.1-Test — Unverified Listing Claim Sanitization Regression Tests
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildFallbackListingPack, listingPackToMarkdown } from "@/lib/listingPack";
 
 // ── Test 1: Titles must NOT output unverified claims ──
@@ -244,12 +244,19 @@ describe("listing pack snapshot structure", () => {
   });
 
   it("snapshot pack can be re-generated and differs from old", () => {
-    const pack1 = buildFallbackListingPack({ productName: "Test Overwrite" });
-    const pack2 = buildFallbackListingPack({ productName: "Test Overwrite" });
-    // generatedAt should differ
-    expect(pack1.generatedAt).not.toBe(pack2.generatedAt);
-    // Both should be rule_based
-    expect(pack1.source).toBe("rule_based");
-    expect(pack2.source).toBe("rule_based");
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-07-17T00:00:00.000Z"));
+      const pack1 = buildFallbackListingPack({ productName: "Test Overwrite" });
+      vi.advanceTimersByTime(1);
+      const pack2 = buildFallbackListingPack({ productName: "Test Overwrite" });
+      // generatedAt should differ when a later generation happens at a later time.
+      expect(pack1.generatedAt).not.toBe(pack2.generatedAt);
+      // Both should be rule_based
+      expect(pack1.source).toBe("rule_based");
+      expect(pack2.source).toBe("rule_based");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

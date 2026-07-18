@@ -276,6 +276,7 @@ describe("source-import signed source contract", () => {
 
   it("fails closed with a generic error when SourceProof signing is unavailable", async () => {
     mockSuccessfulCandidate();
+    vi.stubEnv("PROOF_SIGNING_SECRET", "");
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");
 

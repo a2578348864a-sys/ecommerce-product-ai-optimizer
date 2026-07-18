@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   getCandidateDeletePresentation,
+  getOpportunitiesSurfaceCopy,
   getServerPoolConnectionPresentation,
 } from "@/components/cross-border/OpportunitiesForm";
 
@@ -128,5 +129,15 @@ describe("Server candidate pool connection presentation", () => {
   it("does not tell an authenticated user that a generic server read failure is a password failure", () => {
     expect(opportunitiesSource).not.toContain("刷新或重新输入访问密码后会再次尝试连接");
     expect(opportunitiesSource).toContain("刷新或检查本地服务后会再次尝试连接");
+  });
+});
+
+describe("Opportunities surface compatibility copy", () => {
+  it("keeps the advanced import boundary separate from Evidence screening", () => {
+    expect(getOpportunitiesSurfaceCopy("advanced_import")).toEqual({
+      eyebrow: "高级工具",
+      title: "手工导入外部来源",
+      description: "保留现有 URL、RSS、Sitemap 与历史候选流程；导入不等于完成 Evidence 筛选或进入调查短名单。",
+    });
   });
 });

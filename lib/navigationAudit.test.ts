@@ -29,23 +29,25 @@ function extractConstBlock(source: string, constName: string): string {
 describe("WorkspaceSidebar navigation", () => {
   const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");
 
-  it("main navigation only highlights the three current workflow entries", () => {
+  it("main navigation only exposes market screening and task follow-up", () => {
     const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
     const mainLabels = extractNavLabels(mainNavBlock);
-    expect(mainLabels).toEqual(["机会雷达", "Agent 主链路", "任务中心"]);
+    expect(mainLabels).toEqual(["市场预筛", "任务中心"]);
     expect(mainNavBlock).toMatch(/\/opportunities/);
-    expect(mainNavBlock).toMatch(/\/agent\/run/);
     expect(mainNavBlock).toMatch(/\/tasks/);
+    expect(mainNavBlock).not.toMatch(/\/agent\/run/);
     expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
     expect(mainNavBlock).not.toMatch(/label:\s*"工作台"/);
   });
 
-  it("marks batch analysis as advanced Alpha instead of a main nav entry", () => {
+  it("marks ad hoc analysis and batch analysis as advanced entries", () => {
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
+    expect(advancedBlock).toMatch(/高级临时分析/);
+    expect(advancedBlock).toMatch(/\/agent\/run/);
     expect(advancedBlock).toMatch(/批量分析（高级 \/ Alpha）/);
     expect(advancedBlock).toMatch(/\/workflow\/batch/);
     expect(sidebarSource).toMatch(/高级 \/ Alpha/);
-    expect(sidebarSource).toMatch(/当前主流程仍以单个商品推进为主/);
+    expect(sidebarSource).toMatch(/高级工具不代表已完成市场预筛/);
   });
 
   it("does not show old direction entries in navigation", () => {
@@ -73,12 +75,12 @@ describe("WorkspaceSidebar navigation", () => {
     expect(sidebarSource).not.toMatch(/项目说明/);
   });
 
-  it("shows Agent 主链路 as the main sidebar entry", () => {
-    // Phase Direction-Recovery.3: /agent/run is the sole external-facing Gen2 Agent main flow entry.
-    // "Agent 主流程（备用）" is permanently removed.
-    expect(sidebarSource).not.toMatch(/Agent 主流程（备用）/);
-    expect(sidebarSource).toMatch(/Agent 主链路/);
-    expect(sidebarSource).toMatch(/\/agent\/run/);
+  it("shows /agent/run only as advanced temporary analysis", () => {
+    const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
+    const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
+    expect(mainNavBlock).not.toMatch(/\/agent\/run/);
+    expect(advancedBlock).toMatch(/高级临时分析/);
+    expect(advancedBlock).toMatch(/\/agent\/run/);
   });
 
   it("does not contain dangerous copy in nav labels", () => {
@@ -116,10 +118,8 @@ describe("/agent archive page", () => {
     expect(agentSource).toMatch(/Agent 路线图已归档/);
   });
 
-  it("provides CTA to /agent/run as the sole external-facing entry", () => {
-    // Phase Direction-Recovery.3: /agent/run is the sole external-facing 8-step Agent main flow entry.
-    // /workflow redirects to /agent/run.
-    expect(agentSource).toMatch(/进入 Agent 主链路/);
+  it("provides a downgraded advanced CTA to /agent/run", () => {
+    expect(agentSource).toMatch(/进入高级临时分析/);
     expect(agentSource).toMatch(/\/agent\/run/);
     expect(agentSource).not.toMatch(/\/workflow/);
   });
@@ -175,26 +175,28 @@ describe("/agent archive page", () => {
 describe("HomeDashboardClient navigation", () => {
   const homeSource = readComponentSource("components/HomeDashboardClient.tsx");
 
-  it("shows three main CTAs: 找机会, Agent 主链路, 任务中心", () => {
-    expect(homeSource).toMatch(/找机会/);
-    expect(homeSource).toMatch(/Agent 主链路/);
+  it("shows market screening and task center as the primary workflow", () => {
+    expect(homeSource).toMatch(/市场预筛/);
     expect(homeSource).toMatch(/任务中心/);
   });
 
-  it("points to /agent/run for the Agent main flow step", () => {
+  it("keeps /agent/run only as advanced temporary analysis", () => {
+    expect(homeSource).toMatch(/高级临时分析/);
     expect(homeSource).toMatch(/\/agent\/run/);
   });
 
-  it("states the three-step workflow and links to each primary route", () => {
+  it("states the evidence-first onboarding and primary routes", () => {
     const workflowStepsSection = homeSource.match(/workflowSteps[\s\S]*?\] as const/);
-    expect(workflowStepsSection?.[0]).toMatch(/机会雷达/);
-    expect(workflowStepsSection?.[0]).toMatch(/Agent 主链路/);
+    expect(workflowStepsSection?.[0]).toMatch(/市场预筛/);
     expect(workflowStepsSection?.[0]).toMatch(/任务中心/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
-    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/agent\/run"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);
-    expect(homeSource).toMatch(/轻选 Agent 是一个跨境电商运营 Agent 工作台/);
-    expect(homeSource).toMatch(/商品线索、AI 分析、Listing 准备和任务推进串成一条可复核流程/);
+    expect(workflowStepsSection?.[0]).not.toMatch(/href:\s*"\/agent\/run"/);
+    expect(homeSource).toMatch(/定义调查目标/);
+    expect(homeSource).toMatch(/获取一批市场商品/);
+    expect(homeSource).toMatch(/系统整理证据并缩小范围/);
+    expect(homeSource).toMatch(/人工决定继续调查哪些/);
+    expect(homeSource).not.toMatch(/输入 2-3 个候选品/);
   });
 
   it("does not show old direction entries as primary CTAs", () => {
@@ -227,6 +229,16 @@ describe("AgentRunClient main flow links", () => {
     expect(agentRunSource).not.toMatch(/<Link href="\/workflow"/);
     expect(agentRunSource).not.toMatch(/return `\/workflow/);
     expect(agentRunSource).not.toMatch(/返回单品分析页查看细节/);
+  });
+
+  it("labels the route as advanced ad hoc analysis without Evidence screening status", () => {
+    expect(agentRunSource).toMatch(/高级临时分析/);
+    expect(agentRunSource).toMatch(/未接入新 Evidence，不代表已完成市场预筛/);
+    expect(agentRunSource).toMatch(/8 步受控流程/);
+    expect(agentRunSource).toMatch(/saveAgentRunCache/);
+    expect(agentRunSource).toMatch(/loadAgentRunCache/);
+    expect(agentRunSource).toMatch(/\/api\/workflows\/product-analysis/);
+    expect(agentRunSource).toMatch(/\/api\/workflows\/product-analysis\/save-task/);
   });
 });
 
@@ -286,13 +298,36 @@ describe("TaskRecordDetail operation overview", () => {
 
 // ── HR demo banner regression ─────────────────────
 
-describe("HR demo sandbox banner copy", () => {
+describe("visitor experience copy", () => {
   const bannerSource = readComponentSource("components/DemoAccessBanner.tsx");
+  const loginSource = readComponentSource("components/LoginPage.tsx");
 
   it("keeps the sandbox isolation message", () => {
-    expect(bannerSource).toMatch(/HR 演示沙盒/);
+    expect(bannerSource).toMatch(/访客体验/);
+    expect(bannerSource).not.toMatch(/HR 演示/);
     expect(bannerSource).toMatch(/正式数据只读/);
-    expect(bannerSource).toMatch(/新增\/修改仅保存到演示沙盒/);
+    expect(bannerSource).toMatch(/新增\/修改仅保存到访客沙盒/);
+    expect(loginSource).toMatch(/访客体验/);
+    expect(loginSource).not.toMatch(/HR 演示/);
+  });
+});
+
+describe("screening preview is internal-only", () => {
+  const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");
+  const homeSource = readComponentSource("components/HomeDashboardClient.tsx");
+  const agentRunSource = readComponentSource("components/agent/AgentRunClient.tsx");
+  const previewSource = readComponentSource("app/opportunities/screening-preview/page.tsx");
+
+  it("never links the diagnostic route from user-facing navigation or guidance", () => {
+    expect(sidebarSource).not.toMatch(/screening-preview/);
+    expect(homeSource).not.toMatch(/screening-preview/);
+    expect(agentRunSource).not.toMatch(/screening-preview/);
+  });
+
+  it("is visibly internal and calls the loader with an explicit environment and root", () => {
+    expect(previewSource).toMatch(/内部诊断 · 非正式导航/);
+    expect(previewSource).toMatch(/environment:\s*"development"/);
+    expect(previewSource).toMatch(/projectMaterialsRoot:\s*resolve\(process\.cwd\(\),\s*"\.\."\)/);
   });
 });
 

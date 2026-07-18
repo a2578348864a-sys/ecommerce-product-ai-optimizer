@@ -97,20 +97,14 @@ function StatCard({
 
 const workflowSteps = [
   {
-    title: "机会雷达",
-    description: "发现、导入和管理商品线索，先把值得深挖的候选品放进池子。",
+    title: "市场预筛",
+    description: "定义调查目标，获取一批市场商品，由系统整理证据并缩小范围。",
     href: "/opportunities",
     icon: Target,
   },
   {
-    title: "Agent 主链路",
-    description: "8 步受控流程：数据清洗 → 市场机会 → 供货可行性 → 成本利润 → 合规预筛 → Listing 准备 → 最终结论 → 人工确认保存。",
-    href: "/agent/run",
-    icon: Sparkles,
-  },
-  {
     title: "任务中心",
-    description: "沉淀每个商品的推进状态、风险判断、下一步动作和复盘记录。",
+    description: "人工决定继续调查哪些，并在后续任务中记录推进状态与复盘。",
     href: "/tasks",
     icon: History,
   },
@@ -267,7 +261,7 @@ export function HomeDashboardClient() {
                   轻选 Agent 工作台
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  轻选 Agent 是一个跨境电商运营 Agent 工作台，把商品线索、AI 分析、Listing 准备和任务推进串成一条可复核流程。
+                  轻选 Agent 以市场证据为起点，先缩小调查范围，再由人工决定是否继续推进。
                 </p>
               </div>
               <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">受控自动化 · 人工确认</span>
@@ -384,7 +378,7 @@ export function HomeDashboardClient() {
                   ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到任务中心" : "尚未保存"}`
                   : "还没有可恢复的单品分析结果。"}
                 href="/agent/run"
-                cta="进入 Agent 主链路"
+                cta="高级临时分析"
                 tone={recentSingleRun?.savedTaskId ? "teal" : "amber"}
               />
             </div>
@@ -418,15 +412,16 @@ export function HomeDashboardClient() {
                   <h2 className="mt-2 text-xl font-semibold text-slate-950">没产品时，先把候选池建起来</h2>
                 </div>
                 <Link href="/opportunities" className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
-                  开始找机会
+                  开始市场预筛
                   <ArrowRight className="size-4" />
                 </Link>
               </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="mt-5 grid gap-3 md:grid-cols-4">
                 {[
-                  "去机会雷达输入 2-3 个候选品",
-                  "选择一个候选品进入 Agent 主链路",
-                  "保存到任务中心继续跟进",
+                  "定义调查目标",
+                  "获取一批市场商品",
+                  "系统整理证据并缩小范围",
+                  "人工决定继续调查哪些",
                 ].map((item, index) => (
                   <div key={item} className="rounded-2xl border border-slate-200 bg-white p-4">
                     <p className="text-xs font-semibold text-teal-700">第 {index + 1} 步</p>
@@ -442,7 +437,7 @@ export function HomeDashboardClient() {
               <Route className="size-5 text-teal-700" />
               <h2 className="text-xl font-semibold text-slate-950">三步主路径</h2>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               {workflowSteps.map((step, index) => {
                 const Icon = step.icon;
                 return (
