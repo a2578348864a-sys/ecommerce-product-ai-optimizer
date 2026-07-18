@@ -28,13 +28,13 @@ describe("MarketScreeningWorkbench", () => {
     const html = render(result, preview);
 
     for (const region of [
-      "工作台状态",
-      "Selection Brief",
+      "预筛已完成",
+      "调查范围",
       "来源健康",
-      "Evidence / Quality Gate",
-      "Stage 1 初筛",
-      "Stage 1.5 调查短名单",
-      "高级导入 / 历史候选",
+      "证据质量",
+      "初筛结果",
+      "商品结果",
+      "更多入口",
     ]) expect(html).toContain(region);
     expect(html).toContain("data-region=\"screening-summary\"");
     expect(html).toContain("20 个商品已完成初筛");
@@ -44,10 +44,13 @@ describe("MarketScreeningWorkbench", () => {
     expect(html).toContain("不建议继续");
     expect(html).toContain("证据不足");
     expect(html).toContain("查看本批调查范围与运行信息");
+    expect(html).toContain("只看继续调查");
+    expect(html).toContain("带入临时分析");
+    expect(html).toContain("不会创建候选或任务");
     expect(html).toContain("可选详情证据：已验证");
     expect(html).toContain("data:image/jpeg;base64,");
     expect(html).toContain("图片未缓存");
-    expect((html.match(/data-testid="market-screening-item"/gu) ?? [])).toHaveLength(20);
+    expect((html.match(/data-testid="market-screening-item"/gu) ?? [])).toHaveLength(5);
     expect(html).not.toContain("m.media-amazon.com");
     expect(html).not.toContain("<form");
     expect(html).not.toContain("保存 Candidate");
@@ -93,10 +96,10 @@ describe("MarketScreeningWorkbench", () => {
       },
     };
     const html = render(upstream);
-    expect(html).toContain("上游证据可信，Stage 尚未就绪");
-    expect(html).toContain("Selection Brief");
+    expect(html).toContain("来源证据可用，初筛尚未完成");
+    expect(html).toContain("调查范围");
     expect(html).toContain("来源健康");
-    expect(html).not.toContain("Stage 1 初筛");
+    expect(html).not.toContain("初筛结果");
     expect(html).not.toContain("data-testid=\"market-screening-item\"");
   });
 
@@ -114,7 +117,7 @@ describe("MarketScreeningWorkbench", () => {
     const html = render(blocked);
     expect(html).toContain("批次已阻断");
     expect(html).toContain("artifact_identity_conflict");
-    expect(html).not.toContain("Selection Brief");
+    expect(html).not.toContain("调查范围");
     expect(html).not.toContain("data-testid=\"market-screening-item\"");
   });
 });

@@ -204,7 +204,7 @@ export function MaterialsForm() {
         <div className="min-w-0 space-y-6">
           <header className="workspace-header">
             <div>
-              <p className="eyebrow">Qingxuan Workspace</p>
+              <p className="eyebrow">轻选工作台</p>
               <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">素材接收</h1>
               <p className="muted-text mt-1 text-sm">
                 粘贴商品链接、截图描述或选品想法，AI 自动提取商品信息，帮你快速整理素材。

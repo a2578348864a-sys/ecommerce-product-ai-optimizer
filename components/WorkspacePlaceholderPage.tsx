@@ -8,7 +8,7 @@ type WorkspacePlaceholderPageProps = {
 
 const statusCards = [
   { title: "当前状态", text: "页面入口已保留，当前仅展示规划说明。" },
-  { title: "可用能力", text: "可从首页和爆款拆解页继续使用跨境电商运营 Agent 工作台 Alpha MVP 的受控自动化流程。" },
+  { title: "可用能力", text: "可从首页和趋势拆解页继续使用现有分析工具。" },
   { title: "下一步", text: "后续按业务优先级接入真实表单、记录和结果区。" },
   { title: "规划能力", text: "多 Agent 协同和自动流程仍为规划中，不触发真实任务。" },
 ];
@@ -22,7 +22,7 @@ export function WorkspacePlaceholderPage({ title, description }: WorkspacePlaceh
         <div className="flex min-w-0 flex-col gap-4">
           <header className="workspace-header">
             <div>
-              <p className="eyebrow">Qingxuan Workspace</p>
+              <p className="eyebrow">轻选工作台</p>
               <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{title}</h1>
               <p className="muted-text mt-1 text-sm">工作台子页面已预留，当前以规划说明为主。</p>
             </div>

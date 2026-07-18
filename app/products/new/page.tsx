@@ -18,7 +18,7 @@ export default function NewProductPage() {
           <div className="workspace-header mb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="eyebrow">Qingxuan Workspace</p>
+                <p className="eyebrow">轻选工作台</p>
                 <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">利润试算</h1>
                 <p className="mt-1 text-sm muted-text">辅助工具：只做利润测算，主链路请先去单品分析。</p>
               </div>
@@ -42,26 +42,15 @@ export default function NewProductPage() {
 
           <section className="mb-6 overflow-hidden surface-card-strong">
           <div className="border-b border-slate-100 px-6 py-6">
-            <p className="text-sm font-semibold text-teal-700">辅助工具 · 利润测算</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">跨境商品利润试算</h1>
+            <p className="text-sm font-semibold text-teal-700">开始试算</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">填写商品成本和预期售价</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 muted-text">
               先用程序公式测算成本、售价、利润和风险提示。当前页面只是辅助试算草稿，不会保存数据、
               不会调用 AI、不会自动上架；完整选品判断请回到单品分析主链路。
             </p>
           </div>
-          <div className="grid gap-3 px-6 py-4 text-sm sm:grid-cols-3">
-            <div className="surface-card-soft rounded-[22px] px-4 py-3">
-              <p className="font-semibold text-slate-900">程序公式优先</p>
-              <p className="mt-1 leading-6 muted-text">利润数字由本地函数计算，不交给 AI 猜。</p>
-            </div>
-            <div className="surface-card-soft rounded-[22px] px-4 py-3">
-              <p className="font-semibold text-slate-900">不会保存数据</p>
-              <p className="mt-1 leading-6 muted-text">刷新页面后输入内容不会写入数据库。</p>
-            </div>
-            <div className="surface-card-soft rounded-[22px] px-4 py-3">
-              <p className="font-semibold text-slate-900">不做自动上架</p>
-              <p className="mt-1 leading-6 muted-text">这里只辅助判断，最终仍由你人工确认。</p>
-            </div>
+          <div className="border-t border-slate-100 px-6 py-4 text-sm leading-6 text-slate-600">
+            数字由本地公式计算，刷新后不会保存；试算结果只用于人工判断。
           </div>
           </section>
 

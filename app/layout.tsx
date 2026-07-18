@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "轻选 Agent",
-  description: "跨境电商运营全流程 Agent 工作台 Alpha MVP。AI 给建议、生成资料、提示风险，关键动作人工确认，未来逐步走向受控自动化。当前不会自动采购、上架或投广告。",
+  description: "跨境电商选品与运营辅助工作台。系统整理证据、生成建议并提示风险，关键动作由人工确认。",
 };
 
 export default function RootLayout({
