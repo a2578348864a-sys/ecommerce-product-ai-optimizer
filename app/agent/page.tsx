@@ -10,12 +10,12 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 
 export const metadata: Metadata = {
   title: "Agent 路线图已归档 - 轻选 Agent",
-  description: "Agent 能力路线图已归档。/agent/run 当前仅作为未接入新 Evidence 的高级临时分析工具。",
+  description: "旧版能力路线图已归档，当前请使用市场预筛、临时分析和任务中心。",
 };
 
 const archiveNotes = [
-  "候选发现 — 已并入 /opportunities 候选池",
-  "Agent 分析 — 已并入 /agent/run 高级临时分析（既有 8 步受控流程）",
+  "候选发现 — 已并入市场预筛",
+  "深入分析 — 已并入临时分析",
   "风险 / 利润 / Listing 准备包 — 保留在高级临时分析结果中",
   "人工确认 — 所有 AI 结论必须人工复核后保存",
   "任务沉淀 — 已并入 /tasks 任务中心与复盘",
@@ -35,7 +35,7 @@ export default function AgentPage() {
                 Agent 路线图已归档
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                当前正式产品方向是市场预筛。/agent/run 尚未接入新 Evidence，仅保留为高级临时分析。
+                当前请从市场预筛开始；需要深入判断时，再进入临时分析。
               </p>
             </div>
             <WorkspaceMobileNav />
@@ -71,7 +71,7 @@ export default function AgentPage() {
           <section className="surface-card p-5 sm:p-6">
             <h2 className="text-lg font-semibold text-slate-950">现有入口说明</h2>
             <p className="mt-1 text-sm text-slate-500">
-              市场预筛仍在分阶段接入。高级临时分析未接入新 Evidence，不代表已完成市场预筛。
+              市场预筛、临时分析和任务中心分别对应发现、判断和跟进。
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <Link
@@ -80,13 +80,13 @@ export default function AgentPage() {
               >
                 <div className="flex items-center gap-2">
                   <Sparkles className="size-5 text-teal-600" />
-                  <h3 className="text-base font-semibold text-teal-900">高级临时分析</h3>
+                  <h3 className="text-base font-semibold text-teal-900">临时分析</h3>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-teal-700">
-                  8 步受控流程：数据清洗 → 市场机会 → 供货可行性 → 成本利润 → 合规预筛 → Listing 准备 → 最终结论 → 人工确认保存。
+                  深入检查供货、利润、合规和上架准备，确认后再保存。
                 </p>
                 <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-600 group-hover:text-teal-800">
-                  进入高级临时分析
+                  进入临时分析
                   <ArrowRight className="size-4" />
                 </span>
               </Link>
@@ -100,7 +100,7 @@ export default function AgentPage() {
                   <h3 className="text-base font-semibold text-slate-900">查看候选池</h3>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  从公开线索中发现候选商品，放入候选池标记状态，再选择进入 Agent 主链路深挖。
+                  查看来源证据和初筛状态，选择值得继续调查的商品。
                 </p>
                 <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 group-hover:text-teal-600">
                   进入候选池

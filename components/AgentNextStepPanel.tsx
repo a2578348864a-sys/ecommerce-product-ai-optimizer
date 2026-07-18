@@ -39,7 +39,7 @@ function buildCopyText(state: ReturnType<typeof deriveAgentNextStepPanelState>) 
   }
   lines.push("");
   lines.push("## 边界");
-  lines.push("- 当前 Alpha MVP 只提供受控自动化建议，不会自动采购、下单、上架、投广告或联系供应商。");
+  lines.push("- 当前只提供分析建议，不会自动采购、下单、上架、投广告或联系供应商。");
   return lines.join("\n");
 }
 
@@ -178,7 +178,7 @@ export function AgentNextStepPanel({
             <div className="min-w-0">
               <h4 className="text-sm font-bold text-slate-950">禁止自动执行区</h4>
               <p className="mt-1 text-sm leading-6 text-rose-800">
-                当前 Alpha MVP 不会自动执行以下商业动作，只允许复制建议、导出报告，再由人工线下确认。
+                系统不会自动执行以下商业动作。你可以复制建议或导出报告，再在线下确认。
               </p>
             </div>
           </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, CircleDot, ShieldAlert } from "lucide-react";
 import {
   agentStatusFilterOptions,
   deriveAgentNextStepPanelState,
@@ -741,18 +742,18 @@ export function TaskRecordsList() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Qingxuan Pipeline</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务中心 · 商品推进工作台</h1>
+                <p className="eyebrow">轻选工作台</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务中心</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态，不只是 AI 报告仓库。AI 负责生成建议，人负责最终确认。
+                  跟进每个商品的当前状态和下一步。AI 提供建议，最终由你确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  机会雷达
+                  市场预筛
                 </Link>
                 <Link href="/agent/run" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  Agent 主链路
+                  临时分析
                 </Link>
                 <Link
                   href="/"
@@ -822,21 +823,6 @@ export function TaskRecordsList() {
                 </div>
               </div>
             ) : null}
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["待复核", pipelineCounts.needs_review, "AI 分析已完成，等待人工确认"],
-                ["可推进", pipelineCounts.ready_to_advance + pipelineCounts.ready_for_listing + pipelineCounts.listing_ready, "复核通过，可继续下一步"],
-                ["高风险", pipelineCounts.high_risk, "需人工确认是否继续"],
-                ["已放弃/已完成", pipelineCounts.abandoned + pipelineCounts.completed, "不再推进或已结束"],
-              ].map(([label, value, hint]) => (
-                <div key={label as string} className="rounded-2xl border border-slate-200 bg-white/85 p-3">
-                  <p className="text-xs font-bold text-slate-400">{label}</p>
-                  <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value as number}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{hint}</p>
-                </div>
-              ))}
-            </div>
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
@@ -942,8 +928,16 @@ export function TaskRecordsList() {
             ) : null}
 
             {loading ? (
-              <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8 text-sm text-teal-800">
-                正在读取本地任务记录...
+              <div className="mt-6 space-y-3" aria-busy="true" aria-label="正在读取任务">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="h-3 w-24 rounded-full bg-slate-200" />
+                    <div className="mt-3 h-5 w-2/3 rounded-full bg-slate-200" />
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[0, 1, 2, 3].map((cell) => <div key={cell} className="h-12 rounded-xl bg-slate-100" />)}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : error ? (
               <div className="mt-6 rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm text-rose-700">
@@ -1311,18 +1305,27 @@ function PipelineBoard({ counts }: { counts: Record<PipelineStatus, number> }) {
     (c) => counts[c.status] > 0 || c.status === "needs_review" || c.status === "high_risk"
   );
   if (cards.length === 0) return null;
+  const statusIcons: Partial<Record<PipelineStatus, typeof CircleDot>> = {
+    needs_review: CircleDot,
+    high_risk: ShieldAlert,
+    ready_to_advance: CheckCircle2,
+    ready_for_listing: CheckCircle2,
+    listing_ready: CheckCircle2,
+    completed: CheckCircle2,
+  };
   return (
     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {cards.map((card) => (
-        <div key={card.status} className="rounded-2xl border border-slate-200 bg-white p-4">
+      {cards.map((card) => {
+        const Icon = statusIcons[card.status] ?? CircleDot;
+        return <div key={card.status} className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xl">{card.icon}</span>
+            <span className="linear-icon size-9 rounded-xl"><Icon className="size-4" aria-hidden="true" /></span>
             <span className="text-2xl font-bold text-slate-800">{counts[card.status]}</span>
           </div>
           <p className="mt-2 text-sm font-semibold text-slate-700">{PIPELINE_STATUS_LABELS[card.status]}</p>
           <p className="mt-1 text-xs leading-5 text-slate-500">{card.description}</p>
-        </div>
-      ))}
+        </div>;
+      })}
     </div>
   );
 }

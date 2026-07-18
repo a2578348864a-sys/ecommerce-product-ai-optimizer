@@ -42,12 +42,12 @@ describe("WorkspaceSidebar navigation", () => {
 
   it("marks ad hoc analysis and batch analysis as advanced entries", () => {
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
-    expect(advancedBlock).toMatch(/高级临时分析/);
+    expect(advancedBlock).toMatch(/临时分析/);
     expect(advancedBlock).toMatch(/\/agent\/run/);
-    expect(advancedBlock).toMatch(/批量分析（高级 \/ Alpha）/);
+    expect(advancedBlock).toMatch(/批量分析/);
     expect(advancedBlock).toMatch(/\/workflow\/batch/);
-    expect(sidebarSource).toMatch(/高级 \/ Alpha/);
-    expect(sidebarSource).toMatch(/高级工具不代表已完成市场预筛/);
+    expect(sidebarSource).toMatch(/高级工具/);
+    expect(sidebarSource).toMatch(/这些工具不替代市场预筛/);
   });
 
   it("does not show old direction entries in navigation", () => {
@@ -79,7 +79,7 @@ describe("WorkspaceSidebar navigation", () => {
     const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
     expect(mainNavBlock).not.toMatch(/\/agent\/run/);
-    expect(advancedBlock).toMatch(/高级临时分析/);
+    expect(advancedBlock).toMatch(/临时分析/);
     expect(advancedBlock).toMatch(/\/agent\/run/);
   });
 
@@ -119,7 +119,7 @@ describe("/agent archive page", () => {
   });
 
   it("provides a downgraded advanced CTA to /agent/run", () => {
-    expect(agentSource).toMatch(/进入高级临时分析/);
+    expect(agentSource).toMatch(/进入临时分析/);
     expect(agentSource).toMatch(/\/agent\/run/);
     expect(agentSource).not.toMatch(/\/workflow/);
   });
@@ -209,9 +209,9 @@ describe("HomeDashboardClient navigation", () => {
     }
   });
 
-  it("uses 受控自动化 and 人工复核 copy", () => {
-    expect(homeSource).toMatch(/受控自动化/);
-    expect(homeSource).toMatch(/人工复核/);
+  it("keeps system suggestions separate from human decisions", () => {
+    expect(homeSource).toMatch(/系统整理证据/);
+    expect(homeSource).toMatch(/人工决定继续调查哪些/);
   });
 
   it("does not use 无人值守全自动", () => {
@@ -231,10 +231,10 @@ describe("AgentRunClient main flow links", () => {
     expect(agentRunSource).not.toMatch(/返回单品分析页查看细节/);
   });
 
-  it("labels the route as advanced ad hoc analysis without Evidence screening status", () => {
-    expect(agentRunSource).toMatch(/高级临时分析/);
-    expect(agentRunSource).toMatch(/未接入新 Evidence，不代表已完成市场预筛/);
-    expect(agentRunSource).toMatch(/8 步受控流程/);
+  it("labels the route as an advanced analysis tool that does not replace screening", () => {
+    expect(agentRunSource).toMatch(/高级工具/);
+    expect(agentRunSource).toMatch(/这里不会替代市场预筛/);
+    expect(agentRunSource).toMatch(/分析会经过这些步骤/);
     expect(agentRunSource).toMatch(/saveAgentRunCache/);
     expect(agentRunSource).toMatch(/loadAgentRunCache/);
     expect(agentRunSource).toMatch(/\/api\/workflows\/product-analysis/);
@@ -244,13 +244,13 @@ describe("AgentRunClient main flow links", () => {
 
 // ── Workflow batch page ───────────────────────────
 
-describe("WorkflowBatchClient advanced Alpha positioning", () => {
+describe("WorkflowBatchClient advanced positioning", () => {
   const batchSource = readComponentSource("components/cross-border/WorkflowBatchClient.tsx");
 
-  it("marks batch analysis as advanced Alpha and not the current main flow", () => {
-    expect(batchSource).toMatch(/批量分析（高级 \/ Alpha）/);
-    expect(batchSource).toMatch(/非当前主链路/);
-    expect(batchSource).toMatch(/当前主流程仍以单个商品推进为主/);
+  it("marks batch analysis as an advanced tool for a short product list", () => {
+    expect(batchSource).toMatch(/高级工具/);
+    expect(batchSource).toMatch(/一次处理 1 至 3 个商品/);
+    expect(batchSource).toMatch(/日常使用建议从市场预筛选择单个商品开始/);
   });
 });
 
@@ -260,8 +260,8 @@ describe("TaskRecordsList operational positioning", () => {
   const tasksSource = readComponentSource("components/TaskRecordsList.tsx");
 
   it("describes task center as an operations follow-up surface, not a report archive", () => {
-    expect(tasksSource).toMatch(/任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态/);
-    expect(tasksSource).toMatch(/不只是 AI 报告仓库/);
+    expect(tasksSource).toMatch(/跟进每个商品的当前状态和下一步/);
+    expect(tasksSource).toMatch(/AI 提供建议，最终由你确认/);
   });
 
   it("shows B3 operations fields in task cards", () => {
@@ -307,7 +307,8 @@ describe("visitor experience copy", () => {
     expect(bannerSource).not.toMatch(/HR 演示/);
     expect(bannerSource).toMatch(/正式数据只读/);
     expect(bannerSource).toMatch(/新增\/修改仅保存到访客沙盒/);
-    expect(loginSource).toMatch(/访客体验/);
+    expect(loginSource).toMatch(/体验版/);
+    expect(loginSource).toMatch(/独立沙盒/);
     expect(loginSource).not.toMatch(/HR 演示/);
   });
 });

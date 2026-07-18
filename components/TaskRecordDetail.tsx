@@ -1211,12 +1211,12 @@ export function TaskRecordDetail({ id }: { id: string }) {
         <div className="flex min-w-0 flex-col gap-5">
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <nav className="flex items-center gap-1.5 text-sm text-slate-400">
-                  <Link href="/tasks" className="hover:text-teal-600">任务中心</Link>
+              <div className="min-w-0">
+                <nav className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-sm text-slate-400">
+                  <Link href="/tasks" className="shrink-0 hover:text-teal-600">任务中心</Link>
                   <span>/</span>
-                  <span className="text-slate-600">商品推进详情</span>
-                  {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
+                  <span className="shrink-0 text-slate-600">任务详情</span>
+                  {record && <><span className="hidden sm:inline">/</span><span className="hidden max-w-[200px] truncate font-medium text-slate-700 sm:inline">{getTitle(record)}</span></>}
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
                   商品推进详情{record ? `：${getTitle(record)}` : ""}
@@ -1245,8 +1245,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
           </header>
 
           {loading ? (
-            <section className="surface-card p-6 text-sm text-teal-800">
-              正在读取任务详情...
+            <section className="surface-card space-y-4 p-5 sm:p-6" aria-busy="true" aria-label="正在读取任务详情">
+              <div className="h-4 w-28 rounded-full bg-slate-200" />
+              <div className="h-8 w-3/4 rounded-xl bg-slate-200" />
+              <div className="h-20 rounded-2xl bg-slate-100" />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[0, 1, 2, 3].map((item) => <div key={item} className="h-24 rounded-2xl bg-slate-100" />)}
+              </div>
             </section>
           ) : error ? (
             <section className="surface-card p-6">
@@ -1464,22 +1469,30 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </details>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={deleteRecord}
-                  disabled={deleting}
-                  className="inline-flex h-11 items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {deleting ? "删除中..." : "删除这条记录"}
-                </button>
                 <Link href="/tasks" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   返回运营任务中心
                 </Link>
                 <Link href="/workflow/batch" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   继续批量分析
                 </Link>
-                {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>
+              <section className="mt-6 border-t border-rose-100 pt-5" aria-labelledby="danger-zone-title">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 id="danger-zone-title" className="text-sm font-semibold text-rose-800">危险操作</h2>
+                    <p className="mt-1 text-sm text-slate-500">删除后无法在任务中心恢复，请确认这条记录不再需要。</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={deleteRecord}
+                    disabled={deleting}
+                    className="inline-flex h-11 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-rose-200 bg-rose-50 px-5 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deleting ? "删除中..." : "删除这条记录"}
+                  </button>
+                </div>
+                {deleteError ? <p className="mt-3 text-sm font-bold text-rose-700">{deleteError}</p> : null}
+              </section>
             </section>
           ) : null}
         </div>

@@ -13,13 +13,13 @@ import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 
 export const workspaceNavItems = [
-  { label: "市场预筛", href: "/opportunities", icon: Target },
-  { label: "任务中心", href: "/tasks", icon: History },
+  { label: "市场预筛", mobileLabel: "预筛", href: "/opportunities", icon: Target },
+  { label: "任务中心", mobileLabel: "任务", href: "/tasks", icon: History },
 ] as const;
 
 const advancedNavItems = [
-  { label: "高级临时分析", href: "/agent/run", icon: Sparkles },
-  { label: "批量分析（高级 / Alpha）", href: "/workflow/batch", icon: ListChecks },
+  { label: "临时分析", mobileLabel: "分析", href: "/agent/run", icon: Sparkles },
+  { label: "批量分析", mobileLabel: "批量", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
 const mobileNavItems = [...workspaceNavItems, advancedNavItems[0]] as const;
@@ -110,12 +110,12 @@ export function WorkspaceSidebar() {
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
           <div className="mt-3 border-t border-slate-100 pt-3">
-            <p className="px-2 pb-1 text-xs font-semibold text-slate-400">高级 / Alpha</p>
+            <p className="px-2 pb-1 text-xs font-semibold text-slate-400">高级工具</p>
             {advancedNavItems.map((item) => (
               <NavLink key={item.href} item={item} pathname={pathname} compact />
             ))}
             <p className="px-2 pt-1 text-xs leading-5 text-slate-400">
-              高级工具不代表已完成市场预筛，结果必须人工复核。
+              这些工具不替代市场预筛，结果仍需人工复核。
             </p>
           </div>
         </nav>
@@ -129,7 +129,7 @@ export function WorkspaceMobileNav() {
   const pathname = usePathname() || "/";
 
   return (
-    <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
+    <nav className="mt-4 grid grid-cols-3 gap-2 lg:hidden" aria-label="工作台移动导航">
       {mobileNavItems.map((item) => {
         const Icon = item.icon;
         const active = isActivePath(pathname, item.href);
@@ -139,12 +139,12 @@ export function WorkspaceMobileNav() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={
-              "inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-semibold transition " +
+              "inline-flex h-11 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border px-2 text-xs font-semibold transition sm:text-sm " +
               (active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-600")
             }
           >
-            <Icon className="size-4" />
-            {item.label}
+            <Icon className="size-4 shrink-0" />
+            <span className="truncate">{item.mobileLabel}</span>
           </Link>
         );
       })}

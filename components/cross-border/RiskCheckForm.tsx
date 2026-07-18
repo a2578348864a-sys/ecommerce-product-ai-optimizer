@@ -262,7 +262,7 @@ export function RiskCheckForm() {
         <div className="min-w-0 space-y-6">
           <header className="workspace-header">
             <div>
-              <p className="eyebrow">Qingxuan Workspace</p>
+              <p className="eyebrow">轻选工作台</p>
               <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">风险排查</h1>
               <p className="muted-text mt-1 text-sm">检查侵权、功效宣称、品类、物流和售后风险，仅做参考不做最终法律判断。</p>
             </div>

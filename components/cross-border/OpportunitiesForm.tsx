@@ -1269,7 +1269,7 @@ function OpportunitiesFormContent({
                   <ArrowRight className="size-4" />
                 </Link>
                 <p className="text-xs text-slate-400">
-                  轻选 Agent · Alpha MVP · 受控自动化 + 人工复核
+                  轻选 Agent · 分析辅助 · 人工复核
                 </p>
               </div>
             </div>

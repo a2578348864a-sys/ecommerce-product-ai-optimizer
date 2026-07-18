@@ -628,7 +628,7 @@ export function WorkflowBatchClient() {
   const failedCount = queueItems.filter((item) => item.status === "failed" || item.status === "save_failed").length;
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="批量分析（高级 / Alpha）" returnUrl="/workflow/batch" />;
+    return <WorkspaceLockedPrompt pageName="批量分析" returnUrl="/workflow/batch" />;
   }
 
   return (
@@ -640,10 +640,10 @@ export function WorkflowBatchClient() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">高级 / Alpha · 非当前主链路</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">批量分析（高级 / Alpha）</h1>
+                <p className="eyebrow">高级工具</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">批量分析</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  输入 1 个商品或最多 3 个商品清单，进行后续批量处理验证。当前主流程仍以单个商品推进为主：机会雷达 → Agent 主链路 → 任务中心。
+                  一次处理 1 至 3 个商品。日常使用建议从市场预筛选择单个商品开始。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -660,14 +660,12 @@ export function WorkflowBatchClient() {
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm">
-            <p className="font-semibold text-indigo-800">批量分析是高级 Alpha，不是当前主链路入口</p>
+            <p className="font-semibold text-indigo-800">批量分析适合已有明确商品清单时使用</p>
             <p className="mt-1 text-xs text-indigo-700">
               可从
-              <Link href="/opportunities" className="mx-0.5 font-semibold underline">机会雷达</Link>
-              复制候选商品，也可以直接输入 1 个商品或导入最多 3 个商品。适合后续批量处理，当前主流程仍以单个商品进入
-              <Link href="/agent/run" className="mx-0.5 font-semibold underline">Agent 主链路</Link>
-              后保存到
-              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link> 为主。
+              <Link href="/opportunities" className="mx-0.5 font-semibold underline">市场预筛</Link>
+              选择商品，也可以直接输入或导入最多 3 个商品。分析结果确认后可保存到
+              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>。
             </p>
           </div>
 

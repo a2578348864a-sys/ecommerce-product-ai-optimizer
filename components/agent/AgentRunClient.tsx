@@ -182,7 +182,7 @@ const TIMELINE_STEPS: TimelineStep[] = [
     key: "manual",
     title: "人工确认与任务沉淀",
     description: "人工确认后保存任务，进入运营跟进。",
-    detail: "当前 Alpha 阶段不会自动执行商业动作。",
+    detail: "系统不会自动执行商业动作。",
     icon: ClipboardCheck,
   },
 ];
@@ -704,11 +704,10 @@ export function AgentRunClient({
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="eyebrow">受控自动化 · Alpha MVP</p>
-                <h1 className="section-title mt-1 text-2xl">高级临时分析</h1>
+                <p className="eyebrow">高级工具</p>
+                <h1 className="section-title mt-1 text-2xl">临时分析</h1>
                 <p className="muted-text mt-1 max-w-3xl text-sm leading-6">
-                  从一个商品出发运行既有 8 步受控流程。未接入新 Evidence，不代表已完成市场预筛。
-                  当前为受控自动化工作流，AI 负责预筛和建议，最终商业动作需人工确认。
+                  深入分析一个商品。这里不会替代市场预筛，结论和后续动作都需要人工确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -727,10 +726,9 @@ export function AgentRunClient({
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-700" />
               <div>
-                <p className="text-sm font-bold text-amber-900">Alpha 安全口径</p>
+                <p className="text-sm font-bold text-amber-900">使用范围</p>
                 <p className="mt-1 text-sm leading-6 text-amber-800">
-                  当前 Alpha 阶段不会自动执行商业动作。不会自动保存任务、不会自动修改任务状态、不会自动采购、不会自动上架。
-                  合规 / 侵权 AI / 规则预筛只能做提醒，不能替代商标专利平台规则和当地法规核查。
+                  系统不会自动保存任务、修改状态、采购或上架。合规与侵权提示不能替代平台规则和当地法规核查。
                 </p>
               </div>
             </div>
@@ -778,12 +776,12 @@ export function AgentRunClient({
                   {isRunning ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
-                      主链路分析中
+                      正在分析
                     </>
                   ) : (
                     <>
                       <Sparkles className="size-4" />
-                      开始主链路分析
+                      开始分析
                     </>
                   )}
                 </button>
@@ -838,7 +836,7 @@ export function AgentRunClient({
                   </div>
                 ) : null}
                 <p className="mt-1 text-xs font-semibold">
-                  不会自动开始 AI 分析，仍需你手动点击“开始主链路分析”。
+                  商品名已带入，请检查后手动开始分析。
                 </p>
               </div>
             ) : null}
@@ -847,9 +845,9 @@ export function AgentRunClient({
           <section className="surface-card p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="linear-kicker">一条主链路</p>
+                <p className="linear-kicker">分析过程</p>
                 <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                  从输入到任务沉淀的 8 步受控流程
+                  分析会经过这些步骤
                 </h2>
               </div>
               <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
@@ -868,7 +866,7 @@ export function AgentRunClient({
               <div className="flex items-start gap-3">
                 <XCircle className="mt-0.5 size-5 shrink-0 text-rose-600" />
                 <div>
-                  <h2 className="text-lg font-semibold text-rose-900">主链路分析失败</h2>
+                  <h2 className="text-lg font-semibold text-rose-900">分析失败</h2>
                   <p className="mt-1 text-sm leading-6 text-rose-700">
                     {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始，或进入任务中心查看已保存的运营记录。"}
                   </p>
@@ -901,7 +899,7 @@ export function AgentRunClient({
                 <DecisionEvidencePanel evidence={decisionEvidence} />
               </div>
               <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4 mt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Agent 主链路结论 · {result.productName}</p>
+              <p className="text-xs font-semibold text-teal-600">分析结论 · {result.productName}</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <h2 className="break-words text-2xl font-bold tracking-tight text-slate-950">
@@ -1114,7 +1112,7 @@ export function AgentRunClient({
           ) : null}
 
           <p className="text-center text-xs text-slate-400">
-            高级临时分析 · 未接入新 Evidence · AI / 规则预筛 · 人工最终确认
+            临时分析不替代市场预筛，结果需人工确认
           </p>
         </div>
       </div>
