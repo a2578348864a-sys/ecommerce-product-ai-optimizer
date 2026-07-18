@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// Keep this executable module on LF; see .gitattributes.
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 import { resolve } from "node:path";

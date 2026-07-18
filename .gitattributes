@@ -1,0 +1,2 @@
+# Vitest dynamic import on Windows requires this shebang module to stay LF.
+scripts/local-next-runtime.mjs text eol=lf
