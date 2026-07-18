@@ -222,8 +222,8 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
               aria-pressed={statusFilter === value}
               onClick={() => setStatusFilter(value)}
               className={statusFilter === value
-                ? "inline-flex h-10 items-center whitespace-nowrap rounded-full border border-teal-200 bg-teal-50 px-3 text-sm font-semibold text-teal-800"
-                : "inline-flex h-10 items-center whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:border-slate-300"}
+                ? "inline-flex h-11 items-center whitespace-nowrap rounded-full border border-teal-200 bg-teal-50 px-3 text-sm font-semibold text-teal-800"
+                : "inline-flex h-11 items-center whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:border-slate-300"}
             >
               {label} · {count}
             </button>
