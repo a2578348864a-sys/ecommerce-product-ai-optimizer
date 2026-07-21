@@ -1,8 +1,7 @@
-// ═══ Family-aware Top 5 — Read-only data contract ═══
-// Frozen from: Provider-Aware-Family-Top5-Review-07
-// Do not modify field meanings without updating the upstream generator.
-
 export const FAMILY_TOP5_SCHEMA_VERSION = "investigation-product-family-data.v1" as const;
+export const FAMILY_TOP5_PROVENANCE_SCHEMA_VERSION = "family-top5-provenance.v1" as const;
+export const FAMILY_TOP5_MANIFEST_SCHEMA_VERSION = "family-top5-review-manifest.v2" as const;
+export const FAMILY_REVIEW_EXPORT_SCHEMA_VERSION = "family-top5-human-review.v1" as const;
 
 export interface FamilyListing {
   stableId: string;
@@ -24,9 +23,7 @@ export interface RepresentativeListing extends FamilyListing {
   dimensions: string[];
 }
 
-export interface MemberListing extends FamilyListing {
-  // same as FamilyListing, kept for clarity
-}
+export type MemberListing = FamilyListing;
 
 export interface ProductFamily {
   familyId: string;
@@ -66,24 +63,89 @@ export interface ProductFamilyReviewDataV1 {
   remainingFamilies: ProductFamily[];
 }
 
+export interface FamilyTop5ProvenanceV1 {
+  schemaVersion: typeof FAMILY_TOP5_PROVENANCE_SCHEMA_VERSION;
+  probe: {
+    probeCommit: string;
+    probeTree: string;
+    artifactId: string;
+    inputHash: string;
+    runBindingHash: string;
+    fixturePath: string;
+    fixtureSha256: string;
+    manifestSha256: string;
+  };
+  providerAwareV2: {
+    version: string;
+    inputHash: string;
+    contentHash: string;
+    sourceProbeInputHash: string;
+    sourceFixtureSha256: string;
+  };
+  familyPackage: {
+    familyGrouperVersion: string;
+    sourceV2InputHash: string;
+    sourceV2ContentHash: string;
+    familyDataSha256: string;
+    familyManifestSha256: string;
+    generatedHtmlSha256: string;
+    familyCount: number;
+    topFamilyCount: number;
+    remainingFamilyCount: number;
+  };
+  appFixture: {
+    sourceArtifactId: string;
+    copiedFromPath: string;
+    sourceSha256: string;
+    localFixtureSha256: string;
+    provenanceSchemaVersion: typeof FAMILY_TOP5_PROVENANCE_SCHEMA_VERSION;
+  };
+}
+
+export interface SourceArtifactBinding {
+  sourceArtifactId: string;
+  probeInputHash: string;
+  probeRunBindingHash: string;
+  providerAwareV2InputHash: string;
+  providerAwareV2ContentHash: string;
+  familyDataSha256: string;
+  familyManifestSha256: string;
+  appManifestSha256: string;
+  provenanceSha256: string;
+}
+
 export type DataReadiness =
   | "ready"
   | "artifact_missing"
   | "artifact_integrity_failed"
+  | "provenance_invalid"
   | "schema_unsupported";
+
+export type FamilyReviewDecisionValue = "continue_research" | "watch" | "reject";
 
 export interface FamilyReviewDecision {
   familyId: string;
   representativeStableId: string;
   memberStableIds: string[];
-  decision: "继续调查" | "暂时观察" | "不继续调查";
+  decision: FamilyReviewDecisionValue;
   notes: string;
 }
 
+export interface SelectedFamily {
+  familyId: string;
+  representativeStableId: string;
+  memberStableIds: string[];
+}
+
 export interface FamilyReviewExport {
-  schemaVersion: "family-review-response.v1";
-  exportedAt: string;
-  codeBaseline: { commit: string; tree: string };
+  schemaVersion: typeof FAMILY_REVIEW_EXPORT_SCHEMA_VERSION;
+  reviewedAt: string;
   reviewedFamilies: FamilyReviewDecision[];
-  overall: { topPicks: string[]; comments: string };
+  selectedFamilyIds: string[];
+  selectedFamilies: SelectedFamily[];
+  reviewerConfirmation: {
+    confirmedByHuman: true;
+    statement: "人工已逐项复核上述 5 个商品家族";
+  };
+  sourceArtifactBinding: SourceArtifactBinding;
 }

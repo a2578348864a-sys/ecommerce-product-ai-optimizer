@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "family-top5-provenance.v1",
+  "probe": {
+    "probeCommit": "157b7536a0634c9151a45b75bcd6642ccc90faa0",
+    "probeTree": "5f632bbde5934d2cd8e3ccb3f92ffd45af7aaf4c",
+    "artifactId": "Provider-Capability-Probe-Real-157b753-06",
+    "inputHash": "ae00aa98457399478aae6a8bcc1d30b6eb213776061465bd7d4748c8b21ebb4c",
+    "runBindingHash": "c3bebbb9c00626ee44afbd14ebd3cfd02ef0ae8c5a32cd87a38e38067753aa61",
+    "fixturePath": "Provider-Capability-Probe-Real-157b753-06/fixtures/page-1.json",
+    "fixtureSha256": "767a7e4c720c25489945af0736941b80cce3d2162e7635b4d6e98b4475a78f7e",
+    "manifestSha256": "2475e6cfe2d9f10cf2e4429fb44b7af6207e122eca1004a77db458c2448605c6"
+  },
+  "providerAwareV2": {
+    "version": "provider-aware-market-screening.v2",
+    "inputHash": "a8950d22210978bd39b7c83e25d55b02c26a126d33f892248e4e287bf63d5328",
+    "contentHash": "35d5527f69ecf7c82354eae4736a55932853b4693211b9afdce3e6d1c7065b5a",
+    "sourceProbeInputHash": "ae00aa98457399478aae6a8bcc1d30b6eb213776061465bd7d4748c8b21ebb4c",
+    "sourceFixtureSha256": "767a7e4c720c25489945af0736941b80cce3d2162e7635b4d6e98b4475a78f7e"
+  },
+  "familyPackage": {
+    "familyGrouperVersion": "provider-product-family-grouper.v1",
+    "sourceV2InputHash": "a8950d22210978bd39b7c83e25d55b02c26a126d33f892248e4e287bf63d5328",
+    "sourceV2ContentHash": "35d5527f69ecf7c82354eae4736a55932853b4693211b9afdce3e6d1c7065b5a",
+    "familyDataSha256": "8c8f27543c98084e54dc560ba38c1d4ca02b9fcb231e315c1f055b6fe3037d6e",
+    "familyManifestSha256": "22659991089c5b0c9e274d0f97d85a56eff324186e7ed0b23417a245e2543928",
+    "generatedHtmlSha256": "d55b8da9fc56e94427948484ee49369ff507fcb443a477b4a67aac207d86ee68",
+    "familyCount": 22,
+    "topFamilyCount": 5,
+    "remainingFamilyCount": 17
+  },
+  "appFixture": {
+    "sourceArtifactId": "2026-07-21-Provider-Aware-Family-Top5-Review-07",
+    "copiedFromPath": "06_测试与验证/2026-07-21-Provider-Aware-Family-Top5-Review-07/investigation-product-family-data.v1.json",
+    "sourceSha256": "8c8f27543c98084e54dc560ba38c1d4ca02b9fcb231e315c1f055b6fe3037d6e",
+    "localFixtureSha256": "8c8f27543c98084e54dc560ba38c1d4ca02b9fcb231e315c1f055b6fe3037d6e",
+    "provenanceSchemaVersion": "family-top5-provenance.v1"
+  }
+}

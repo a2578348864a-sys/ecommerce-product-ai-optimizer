@@ -15,6 +15,7 @@ const opportunitiesPageSource = readFileSync(
 describe("advanced opportunities import compatibility entry", () => {
   it("renders the existing form in the advanced import surface", () => {
     expect(importPageSource).toContain('<OpportunitiesForm surface="advanced_import" />');
+    expect(importPageSource).toContain("sourceArtifactBinding={sourceArtifactBinding}");
     expect(getOpportunitiesSurfaceCopy("advanced_import")).toEqual({
       eyebrow: "高级工具",
       title: "手工导入外部来源",

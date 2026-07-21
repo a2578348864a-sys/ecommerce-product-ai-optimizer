@@ -10,16 +10,16 @@ export const metadata: Metadata = {
 
 export default function OpportunitiesImportPage() {
   // Attempt to load frozen Family Top 5 review data
-  const { data, readiness } = loadFamilyTop5Data();
+  const { data, readiness, sourceArtifactBinding } = loadFamilyTop5Data();
 
   // If family review data is available and valid, show it as an additional section
-  if (readiness === "ready" && data) {
+  if (readiness === "ready" && data && sourceArtifactBinding) {
     return (
       <div>
         <FamilyTop5Review
           topFamilies={data.topFamilies}
           remainingFamilies={data.remainingFamilies}
-          baseline={data.codeBaseline}
+          sourceArtifactBinding={sourceArtifactBinding}
         />
         {/* Existing import form below the review */}
         <div style={{ maxWidth: 960, margin: "0 auto", padding: "0 16px 40px" }}>

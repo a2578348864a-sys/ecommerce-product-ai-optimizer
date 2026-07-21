@@ -1,2 +1,12 @@
 # Vitest dynamic import on Windows requires this shebang module to stay LF.
 scripts/local-next-runtime.mjs text eol=lf
+
+# Audited Family Top 5 fixture bytes are content-addressed and must remain stable on Windows.
+lib/upstream/fixtures/family-top5-review.v1.json text eol=lf
+lib/upstream/fixtures/family-top5-review.v1.json.sha256 text eol=lf
+lib/upstream/fixtures/family-top5-review-manifest.v1.json text eol=lf
+lib/upstream/fixtures/family-top5-review-manifest.v1.json.sha256 text eol=lf
+lib/upstream/fixtures/family-top5-provenance.v1.json text eol=lf
+lib/upstream/fixtures/family-top5-provenance.v1.json.sha256 text eol=lf
+lib/upstream/fixtures/family-top5-human-review-schema.v1.json text eol=lf
+lib/upstream/fixtures/family-top5-human-review-schema.v1.json.sha256 text eol=lf

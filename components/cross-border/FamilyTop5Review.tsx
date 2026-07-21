@@ -1,207 +1,457 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Image from "next/image";
-import type { ProductFamily, FamilyReviewDecision } from "@/lib/upstream/family-top5-types";
+import { useEffect, useMemo, useReducer } from "react";
+import {
+  FAMILY_REVIEW_EXPORT_SCHEMA_VERSION,
+  type FamilyReviewDecision,
+  type FamilyReviewDecisionValue,
+  type FamilyReviewExport,
+  type ProductFamily,
+  type SourceArtifactBinding,
+} from "@/lib/upstream/family-top5-types";
 
-const LS_KEY = "opportunities-family-review-v1";
+const REVIEWER_CONFIRMATION = "人工已逐项复核上述 5 个商品家族" as const;
 
-function loadDecisions(): Record<string, FamilyReviewDecision> {
-  if (typeof window === "undefined") return {};
-  try { const s = localStorage.getItem(LS_KEY); return s ? JSON.parse(s) : {}; } catch { return {}; }
+export interface FamilyTop5ReviewState {
+  decisions: Record<string, FamilyReviewDecision>;
+  selectedFamilyIds: string[];
+  remoteImagesEnabled: boolean;
+  failedImageUrls: string[];
+  reviewerConfirmed: boolean;
 }
-function saveDecisions(d: Record<string, FamilyReviewDecision>) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch {}
+
+export type FamilyTop5ReviewAction =
+  | { type: "restore"; decisions: Record<string, FamilyReviewDecision>; selectedFamilyIds: string[] }
+  | { type: "decide"; family: ProductFamily; decision: FamilyReviewDecisionValue }
+  | { type: "note"; family: ProductFamily; notes: string }
+  | { type: "toggle_selected"; familyId: string; selected: boolean }
+  | { type: "enable_remote_images" }
+  | { type: "image_failed"; url: string }
+  | { type: "confirm_review"; confirmed: boolean };
+
+export const INITIAL_FAMILY_TOP5_REVIEW_STATE: FamilyTop5ReviewState = {
+  decisions: {},
+  selectedFamilyIds: [],
+  remoteImagesEnabled: false,
+  failedImageUrls: [],
+  reviewerConfirmed: false,
+};
+
+export function isAllowedThumbnailUrl(value: string | null): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "images.thdstatic.com" &&
+      url.port === "" &&
+      url.username === "" &&
+      url.password === ""
+    );
+  } catch {
+    return false;
+  }
 }
 
-export default function FamilyTop5Review({ topFamilies, remainingFamilies, baseline }: {
+export function familyTop5ReviewReducer(
+  state: FamilyTop5ReviewState,
+  action: FamilyTop5ReviewAction,
+): FamilyTop5ReviewState {
+  switch (action.type) {
+    case "restore":
+      return {
+        ...state,
+        decisions: action.decisions,
+        selectedFamilyIds: action.selectedFamilyIds.filter(
+          (familyId) => action.decisions[familyId]?.decision === "continue_research",
+        ),
+      };
+    case "decide": {
+      const current = state.decisions[action.family.familyId];
+      const decisions = {
+        ...state.decisions,
+        [action.family.familyId]: {
+          familyId: action.family.familyId,
+          representativeStableId: action.family.representativeStableId,
+          memberStableIds: [...action.family.memberStableIds],
+          decision: action.decision,
+          notes: current?.notes ?? "",
+        },
+      };
+      return {
+        ...state,
+        decisions,
+        selectedFamilyIds:
+          action.decision === "continue_research"
+            ? state.selectedFamilyIds
+            : state.selectedFamilyIds.filter((familyId) => familyId !== action.family.familyId),
+        reviewerConfirmed: false,
+      };
+    }
+    case "note": {
+      const current = state.decisions[action.family.familyId];
+      if (!current) return state;
+      return {
+        ...state,
+        decisions: {
+          ...state.decisions,
+          [action.family.familyId]: { ...current, notes: action.notes.slice(0, 500) },
+        },
+        reviewerConfirmed: false,
+      };
+    }
+    case "toggle_selected": {
+      if (state.decisions[action.familyId]?.decision !== "continue_research") return state;
+      const without = state.selectedFamilyIds.filter((familyId) => familyId !== action.familyId);
+      return {
+        ...state,
+        selectedFamilyIds: action.selected ? [...without, action.familyId].slice(0, 5) : without,
+        reviewerConfirmed: false,
+      };
+    }
+    case "enable_remote_images":
+      return { ...state, remoteImagesEnabled: true };
+    case "image_failed":
+      return state.failedImageUrls.includes(action.url)
+        ? state
+        : { ...state, failedImageUrls: [...state.failedImageUrls, action.url] };
+    case "confirm_review":
+      return { ...state, reviewerConfirmed: action.confirmed };
+  }
+}
+
+export function buildFamilyReviewExport(args: {
+  topFamilies: ProductFamily[];
+  state: FamilyTop5ReviewState;
+  reviewedAt: string;
+  sourceArtifactBinding: SourceArtifactBinding;
+}): FamilyReviewExport {
+  const { topFamilies, state, reviewedAt, sourceArtifactBinding } = args;
+  if (topFamilies.length !== 5 || new Set(topFamilies.map((family) => family.familyId)).size !== 5) {
+    throw new Error("family_review_contract_invalid");
+  }
+  const reviewedFamilies = topFamilies.map((family) => {
+    const saved = state.decisions[family.familyId];
+    if (
+      !saved ||
+      !(["continue_research", "watch", "reject"] as const).includes(saved.decision) ||
+      typeof saved.notes !== "string" ||
+      saved.notes.length > 500
+    ) throw new Error("human_review_incomplete");
+    return {
+      familyId: family.familyId,
+      representativeStableId: family.representativeStableId,
+      memberStableIds: [...family.memberStableIds],
+      decision: saved.decision,
+      notes: saved.notes,
+    };
+  });
+  if (!state.reviewerConfirmed) {
+    throw new Error("human_review_incomplete");
+  }
+  const knownIds = new Set(topFamilies.map((family) => family.familyId));
+  if (
+    state.selectedFamilyIds.length > 5 ||
+    new Set(state.selectedFamilyIds).size !== state.selectedFamilyIds.length ||
+    state.selectedFamilyIds.some(
+      (familyId) => !knownIds.has(familyId) || state.decisions[familyId]?.decision !== "continue_research",
+    )
+  ) throw new Error("selected_family_contract_invalid");
+
+  const selectedFamilies = state.selectedFamilyIds.map((familyId) => {
+    const family = topFamilies.find((candidate) => candidate.familyId === familyId);
+    if (!family) throw new Error("selected_family_contract_invalid");
+    return {
+      familyId,
+      representativeStableId: family.representativeStableId,
+      memberStableIds: [...family.memberStableIds],
+    };
+  });
+
+  return {
+    schemaVersion: FAMILY_REVIEW_EXPORT_SCHEMA_VERSION,
+    reviewedAt,
+    reviewedFamilies,
+    selectedFamilyIds: [...state.selectedFamilyIds],
+    selectedFamilies,
+    reviewerConfirmation: { confirmedByHuman: true, statement: REVIEWER_CONFIRMATION },
+    sourceArtifactBinding,
+  };
+}
+
+function storageKey(binding: SourceArtifactBinding): string {
+  return `family-top5-human-review-v1:${binding.familyDataSha256}`;
+}
+
+function loadStoredState(binding: SourceArtifactBinding): Pick<FamilyTop5ReviewState, "decisions" | "selectedFamilyIds"> | null {
+  try {
+    const raw = window.localStorage.getItem(storageKey(binding));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<FamilyTop5ReviewState>;
+    if (!parsed.decisions || !Array.isArray(parsed.selectedFamilyIds)) return null;
+    return { decisions: parsed.decisions, selectedFamilyIds: parsed.selectedFamilyIds };
+  } catch {
+    return null;
+  }
+}
+
+function downloadReview(exported: FamilyReviewExport): void {
+  const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
+  const anchor = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+  anchor.href = objectUrl;
+  anchor.download = "family-top5-human-review.v1.json";
+  anchor.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export default function FamilyTop5Review(props: {
   topFamilies: ProductFamily[];
   remainingFamilies: ProductFamily[];
-  baseline: { commit: string; tree: string };
+  sourceArtifactBinding: SourceArtifactBinding;
 }) {
-  const [decisions, setDecisions] = useState<Record<string, FamilyReviewDecision>>({});
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [expandedRest, setExpandedRest] = useState(false);
-  const [topPicks, setTopPicks] = useState<string[]>([]);
-  const [comments, setComments] = useState("");
+  const [state, dispatch] = useReducer(familyTop5ReviewReducer, INITIAL_FAMILY_TOP5_REVIEW_STATE);
 
-  useEffect(() => { setDecisions(loadDecisions()); }, []);
+  useEffect(() => {
+    const stored = loadStoredState(props.sourceArtifactBinding);
+    if (stored) dispatch({ type: "restore", ...stored });
+  }, [props.sourceArtifactBinding]);
 
-  const save = useCallback((d: Record<string, FamilyReviewDecision>) => { setDecisions(d); saveDecisions(d); }, []);
-
-  const decide = (f: ProductFamily, decision: string) => {
-    const next = { ...decisions, [f.familyId]: { familyId: f.familyId, representativeStableId: f.representativeStableId, memberStableIds: f.memberStableIds, decision: decision as FamilyReviewDecision["decision"], notes: notes[f.familyId] || "" } };
-    save(next);
-  };
-  const setNote = (fid: string, n: string) => { setNotes(prev => { const next = { ...prev, [fid]: n }; if (decisions[fid]) { const d = { ...decisions, [fid]: { ...decisions[fid], notes: n } }; saveDecisions(d); setDecisions(d); } return next; }); };
-
-  const exportJSON = () => {
-    const rev = topFamilies.map(f => decisions[f.familyId] || { familyId: f.familyId, representativeStableId: f.representativeStableId, memberStableIds: f.memberStableIds, decision: "暂时观察", notes: notes[f.familyId] || "" });
-    const exp = { schemaVersion: "family-review-response.v1", exportedAt: new Date().toISOString(), codeBaseline: baseline, reviewedFamilies: rev, overall: { topPicks, comments } };
-    const blob = new Blob([JSON.stringify(exp, null, 2)], { type: "application/json" });
-    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "family-review-" + new Date().toISOString().slice(0, 10) + ".json"; a.click();
-  };
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        storageKey(props.sourceArtifactBinding),
+        JSON.stringify({ decisions: state.decisions, selectedFamilyIds: state.selectedFamilyIds }),
+      );
+    } catch {
+      // Browser-local persistence is optional; no server or database write is attempted.
+    }
+  }, [props.sourceArtifactBinding, state.decisions, state.selectedFamilyIds]);
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px", background: "#FFFEF9", color: "#2c3e50", lineHeight: 1.6, fontSize: 17, fontFamily: "system-ui, sans-serif" }}>
-      <h1 style={{ fontSize: "1.3em", color: "#2E7D32", marginBottom: 4 }}>商品家族 Top 5 视觉复核</h1>
-      <div style={{ background: "#E8F5E9", borderLeft: "3px solid #4CAF50", padding: "12px 16px", borderRadius: 4, margin: "12px 0", fontSize: ".9em", color: "#555" }}>
-        当前结果仅用于公开市场预筛与人工继续调查，<strong>不代表采购、利润、合规或上架结论。</strong>
-      </div>
-
-      {/* ═══ Batch Header ═══ */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "8px 0", fontSize: ".85em", color: "#888" }}>
-        <span>Listing: 23</span> <span>家族: 22</span> <span>Top: 5</span> <span>剩余: 17</span>
-        <span>Commit: {baseline.commit.slice(0, 7)}</span>
-        <span style={{ color: "#E65100" }}>只读验收样本</span>
-      </div>
-      <div style={{ fontSize: ".8em", color: "#E65100", margin: "4px 0 12px", padding: "6px 10px", background: "#FFF3E0", borderRadius: 4 }}>
-        本批次Top候选品牌集中度较高（Everbilt占4/5），结果可能受单关键词、单平台和单页样本影响。
-      </div>
-
-      {/* ═══ Top 5 Cards ═══ */}
-      {topFamilies.map(f => {
-        const rl = f.representativeListing;
-        const dec = decisions[f.familyId];
-        return (
-          <div key={f.familyId} style={{ background: "#fff", border: "1px solid #C8E6C9", borderRadius: 8, padding: 16, margin: "12px 0", boxShadow: "0 1px 3px rgba(0,0,0,.04)" }}>
-            <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-              {rl.thumbnailUrl ? (
-                <div style={{ flexShrink: 0, width: 100, height: 100, position: "relative", borderRadius: 6, overflow: "hidden", border: "1px solid #E0E0E0" }}>
-                  <Image src={rl.thumbnailUrl} alt="" fill style={{ objectFit: "contain" }} unoptimized referrerPolicy="no-referrer"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                </div>
-              ) : <div style={{ flexShrink: 0, width: 100, height: 100, background: "#ECEFF1", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".7em", color: "#999" }}>无图片</div>}
-              <div style={{ flex: 1 }}>
-                <h3 style={{ fontSize: "1.05em", color: "#2E7D32", marginBottom: 2 }}>家族#{f.familyRank} {rl.parsedNameZh}</h3>
-                <div style={{ fontSize: ".78em", color: "#888", marginBottom: 6, wordBreak: "break-all" }}>{rl.title}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: "4px 0" }}>
-                  <span style={tagStyle}>{f.normalizedBrand}</span>
-                  <span style={tagStyle}>{rl.installation}</span>
-                  <span style={tagStyle}>{rl.packInfo}</span>
-                  {f.familyStatus === "variant_or_listing_conflict" && <span style={{ ...tagStyle, background: "#FFF3E0", color: "#E65100" }}>检测到{f.memberCount}条相关Listing</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Facts grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 4, margin: "8px 0" }}>
-              <Fact label="价格" value={`$${rl.price.toFixed(2)}`} note="币种:市场推断" />
-              <Fact label="评分" value={`${rl.rating} / 5`} />
-              <Fact label="评论数" value={`${rl.reviewCount}`} />
-              {rl.dimensions.length > 0 && <Fact label="尺寸" value={rl.dimensions.join(" x ")} />}
-              {rl.capacities.length > 0 && <Fact label="承重" value={`${rl.capacities.join(", ")} 磅`} />}
-              {rl.materials.length > 0 && <Fact label="材质" value={rl.materials.join(", ")} />}
-            </div>
-
-            {/* Detail grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8, margin: "10px 0" }}>
-              <DetailBox type="why" title="进入Top 5原因"><ul>{f.factualReasons.map((r, i) => <li key={i}>{r}</li>)}</ul></DetailBox>
-              <DetailBox type="caution" title="需要谨慎"><ul>{f.cautionReasons.map((r, i) => <li key={i}>{r}</li>)}</ul></DetailBox>
-              <DetailBox type="unknown" title="还不知道"><ul>{f.unknowns.slice(0, 6).map((r, i) => <li key={i}>{r}</li>)}</ul></DetailBox>
-            </div>
-
-            {/* Member table for multi-listing families */}
-            {f.familyStatus === "variant_or_listing_conflict" && (
-              <div style={{ margin: "10px 0", padding: "8px 0", borderTop: "1px solid #f0f0f0" }}>
-                <h4 style={{ fontSize: ".9em", color: "#2E7D32", marginBottom: 6 }}>📦 同家族Listing差异表</h4>
-                <div style={{ fontSize: ".8em", color: "#E65100", marginBottom: 4 }}>同品牌、同型号，但包装描述存在差异。目前无法确认是包装版本、重复Listing还是不同销售来源。</div>
-                <div style={{ fontSize: ".8em", color: "#888", marginBottom: 6 }}>{f.sellerWarning}</div>
-                <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".82em", minWidth: 720 }}>
-                    <thead>
-                      <tr style={{ background: "#ECEFF1" }}>
-                        <th style={thStyle}></th><th style={thStyle}>stableId</th><th style={thStyle}>原排名</th><th style={thStyle}>价格</th><th style={thStyle}>包装</th><th style={thStyle}>评分</th><th style={thStyle}>评论</th><th style={thStyle}>图片</th><th style={thStyle}>链接</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {f.memberListings.map(ml => (
-                        <tr key={ml.stableId}>
-                          <td style={tdStyle}>{ml.stableId === f.representativeStableId ? "⭐代表" : "成员"}</td>
-                          <td style={tdStyle}>{ml.stableId}</td><td style={tdStyle}>#{ml.originalRank}</td><td style={tdStyle}>${ml.price.toFixed(2)}</td><td style={tdStyle}>{ml.packInfo}</td><td style={tdStyle}>{ml.rating}</td><td style={tdStyle}>{ml.reviewCount}</td>
-                          <td style={tdStyle}>{ml.thumbnailUrl ? <Image src={ml.thumbnailUrl} alt="" width={60} height={60} style={{ objectFit: "contain", borderRadius: 4 }} unoptimized referrerPolicy="no-referrer" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} /> : <span style={{ fontSize: ".7em", color: "#999" }}>无图</span>}</td>
-                          <td style={tdStyle}><a href={ml.link} target="_blank" rel="noopener noreferrer" style={{ color: "#1565C0" }}>打开</a></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* Source + disclaimer */}
-            <div style={{ fontSize: ".75em", color: "#888", marginTop: 6 }}>
-              <a href={rl.link} target="_blank" rel="noopener noreferrer" style={{ color: "#1565C0" }}>打开原商品页(外部)</a> | ID: {f.representativeStableId}
-            </div>
-            <p style={{ fontSize: ".7em", color: "#999", fontStyle: "italic" }}>需人工复核。不代表采购或上架建议。</p>
-
-            {/* Decision */}
-            <div style={{ display: "flex", gap: 8, margin: "8px 0", flexWrap: "wrap" }}>
-              {["继续调查", "暂时观察", "不继续调查"].map(opt => (
-                <button key={opt} onClick={() => decide(f, opt)}
-                  style={{ padding: "8px 18px", border: "2px solid " + (dec?.decision === opt ? "#4CAF50" : "#C8E6C9"), background: dec?.decision === opt ? "#4CAF50" : "#fff", color: dec?.decision === opt ? "#fff" : "#2c3e50", borderRadius: 20, cursor: "pointer", fontSize: ".88em", fontFamily: "inherit" }}>
-                  {opt}
-                </button>
-              ))}
-            </div>
-            <textarea placeholder="备注（可选）" value={notes[f.familyId] || ""} onChange={e => setNote(f.familyId, e.target.value)}
-              style={{ width: "100%", padding: 6, border: "1px solid #E0E0E0", borderRadius: 4, fontSize: ".85em", minHeight: 32, resize: "vertical", fontFamily: "inherit" }} />
-          </div>
-        );
-      })}
-
-      {/* ═══ Rest 17 ═══ */}
-      <div style={{ margin: "20px 0", border: "1px solid #E0E0E0", borderRadius: 8, overflow: "hidden" }}>
-        <button onClick={() => setExpandedRest(!expandedRest)} style={{ width: "100%", padding: "12px 16px", background: "#FAFAFA", border: "none", textAlign: "left", fontSize: ".95em", cursor: "pointer", fontFamily: "inherit", color: "#555" }}>
-          📋 查看其余{remainingFamilies.length}个家族摘要 ▸
-        </button>
-        {expandedRest && (
-          <div style={{ padding: 8, maxWidth: "100%", overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".82em" }}>
-              <thead><tr style={{ background: "#ECEFF1" }}><th style={thStyle}>排名</th><th style={thStyle}>家族ID</th><th style={thStyle}>代表商品</th><th style={thStyle}>品牌</th><th style={thStyle}>价格</th><th style={thStyle}>评分</th><th style={thStyle}>评论</th><th style={thStyle}>未进入Top5原因</th></tr></thead>
-              <tbody>
-                {remainingFamilies.map(r => (
-                  <tr key={r.familyId}><td style={tdStyle}>#{r.familyRank}</td><td style={tdStyle}>{r.familyId}</td><td style={tdStyle}>{r.representativeListing.parsedNameZh}</td><td style={tdStyle}>{r.normalizedBrand}</td><td style={tdStyle}>${r.representativeListing.price.toFixed(2)}</td><td style={tdStyle}>{r.representativeListing.rating}</td><td style={tdStyle}>{r.representativeListing.reviewCount}</td><td style={{ ...tdStyle, fontSize: ".8em", color: "#888" }}>{r.notTopFamilyReason}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ═══ Overall ═══ */}
-      <div style={{ background: "#E8F5E9", border: "1px solid #4CAF50", borderRadius: 8, padding: 16, margin: "16px 0" }}>
-        <h2 style={{ color: "#2E7D32", marginTop: 0, fontSize: "1.1em" }}>📝 我的结论</h2>
-        <div style={{ margin: "8px 0" }}><strong>最愿意继续调查的家族（最多5个）</strong></div>
-        {topFamilies.map(f => (
-          <label key={f.familyId} style={{ display: "block", fontSize: ".9em", padding: "3px 0", cursor: "pointer" }}>
-            <input type="checkbox" checked={topPicks.includes(f.familyId)} onChange={e => { if (e.target.checked && topPicks.length >= 5) return; setTopPicks(e.target.checked ? [...topPicks, f.familyId] : topPicks.filter(x => x !== f.familyId)); }} /> 家族#{f.familyRank} {f.representativeListing.parsedNameZh}
-          </label>
-        ))}
-        <div style={{ margin: "8px 0" }}><strong>总体意见（可选）</strong></div>
-        <textarea value={comments} onChange={e => setComments(e.target.value)} maxLength={1000} style={{ width: "100%", minHeight: 60, padding: 8, border: "1px solid #C8E6C9", borderRadius: 4, fontSize: ".9em", fontFamily: "inherit", resize: "vertical" }} />
-        <button onClick={exportJSON} style={{ display: "inline-block", padding: "10px 24px", margin: "6px 4px", background: "#4CAF50", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: ".95em", fontFamily: "inherit" }}>📥 导出评价结果JSON</button>
-      </div>
-
-      <p style={{ fontSize: ".8em", color: "#888", marginTop: 16 }}>当前决定仅保存在本浏览器，尚未写入正式任务或候选数据库。这些能力不属于当前公开市场预筛MVP。</p>
-    </div>
+    <FamilyTop5ReviewView
+      {...props}
+      state={state}
+      dispatch={dispatch}
+      onExport={(reviewedAt) =>
+        downloadReview(
+          buildFamilyReviewExport({
+            topFamilies: props.topFamilies,
+            state,
+            reviewedAt,
+            sourceArtifactBinding: props.sourceArtifactBinding,
+          }),
+        )
+      }
+    />
   );
 }
 
-const tagStyle: React.CSSProperties = { display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: ".75em", background: "#E8F5E9", color: "#388E3C" };
-const thStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #E0E0E0", textAlign: "left", fontSize: ".8em", whiteSpace: "nowrap" };
-const tdStyle: React.CSSProperties = { padding: "6px 8px", border: "1px solid #E0E0E0", fontSize: ".82em" };
+export function FamilyTop5ReviewView(props: {
+  topFamilies: ProductFamily[];
+  remainingFamilies: ProductFamily[];
+  sourceArtifactBinding: SourceArtifactBinding;
+  state: FamilyTop5ReviewState;
+  dispatch: (action: FamilyTop5ReviewAction) => void;
+  onExport: (reviewedAt: string) => void;
+}) {
+  const { topFamilies, remainingFamilies, state, dispatch } = props;
+  const reviewComplete = topFamilies.every((family) => Boolean(state.decisions[family.familyId]));
+  const selected = useMemo(() => new Set(state.selectedFamilyIds), [state.selectedFamilyIds]);
 
-function Fact({ label, value, note }: { label: string; value: string; note?: string }) {
-  return <div style={{ padding: "4px 8px", background: "#FAFAFA", borderRadius: 4, fontSize: ".82em" }}>
-    <strong>{label}</strong> {value}{note && <span style={{ color: "#E65100", fontSize: ".8em" }}> ({note})</span>}
-  </div>;
+  return (
+    <section data-testid="family-top5-review" style={pageStyle}>
+      <h1 style={{ fontSize: "1.35rem", color: "#245c3a", marginBottom: 4 }}>商品家族 Top 5 人工复核</h1>
+      <p style={noticeStyle}>
+        当前结果仅用于公开市场预筛与人工继续调查，不代表采购、利润、合规或上架结论。
+      </p>
+      <div style={metaStyle}>
+        <span>Listing：23</span><span>商品家族：22</span><span>Top：5</span><span>其余：{remainingFamilies.length}</span>
+        <span>状态：默认离线展示，可选加载公开缩略图</span>
+      </div>
+      <p style={{ fontSize: 13, color: "#7a4f12" }}>缩略图来自公开远程地址，点击加载后将产生网络请求。</p>
+      {!state.remoteImagesEnabled && (
+        <button type="button" onClick={() => dispatch({ type: "enable_remote_images" })} style={primaryButtonStyle}>
+          加载公开商品缩略图
+        </button>
+      )}
+
+      {topFamilies.map((family) => {
+        const representative = family.representativeListing;
+        const decision = state.decisions[family.familyId];
+        return (
+          <article key={family.familyId} data-testid="family-card" data-family-id={family.familyId} style={cardStyle}>
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+              <SafeThumbnail
+                url={representative.thumbnailUrl}
+                alt={representative.parsedNameZh}
+                enabled={state.remoteImagesEnabled}
+                failed={Boolean(representative.thumbnailUrl && state.failedImageUrls.includes(representative.thumbnailUrl))}
+                onError={(url) => dispatch({ type: "image_failed", url })}
+              />
+              <div>
+                <h2 style={{ fontSize: "1.08rem", margin: 0, color: "#245c3a" }}>
+                  家族 #{family.familyRank} · {representative.parsedNameZh}
+                </h2>
+                <p style={{ margin: "4px 0", color: "#5b6470", fontSize: 14 }}>{representative.title}</p>
+                <p style={{ margin: "4px 0", fontSize: 13 }}>
+                  Family ID：{family.familyId} · 代表商品：{family.representativeStableId} · 成员：{family.memberStableIds.join("、")}
+                </p>
+              </div>
+            </div>
+
+            <div style={factsStyle}>
+              <span>品牌：{family.normalizedBrand}</span>
+              <span>价格：${representative.price.toFixed(2)}</span>
+              <span>评分：{representative.rating}</span>
+              <span>评论：{representative.reviewCount}</span>
+              <span>包装：{representative.packInfo}</span>
+            </div>
+
+            {family.memberListings.length > 1 && (
+              <div data-testid="family-members">
+                <strong>同一家族 Listing 差异</strong>
+                <ul>{family.variantDifferences.map((difference) => <li key={difference}>{difference}</li>)}</ul>
+                {family.memberListings.map((member) => (
+                  <div key={member.stableId} style={{ display: "flex", gap: 8, alignItems: "center", margin: "6px 0" }}>
+                    <SafeThumbnail
+                      url={member.thumbnailUrl}
+                      alt={member.title}
+                      enabled={state.remoteImagesEnabled}
+                      failed={Boolean(member.thumbnailUrl && state.failedImageUrls.includes(member.thumbnailUrl))}
+                      onError={(url) => dispatch({ type: "image_failed", url })}
+                      small
+                    />
+                    <span>{member.stableId} · {member.packInfo}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              {([
+                ["continue_research", "继续调查"],
+                ["watch", "观察"],
+                ["reject", "不继续调查"],
+              ] as const).map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={decision?.decision === value}
+                  onClick={() => dispatch({ type: "decide", family, decision: value })}
+                  style={decision?.decision === value ? selectedDecisionStyle : decisionButtonStyle}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <textarea
+              aria-label={`${family.familyId} 备注`}
+              placeholder="人工备注（可选）"
+              maxLength={500}
+              value={decision?.notes ?? ""}
+              disabled={!decision}
+              onChange={(event) => dispatch({ type: "note", family, notes: event.target.value })}
+              style={{ width: "100%", minHeight: 48, marginTop: 8, padding: 8 }}
+            />
+            <label style={{ display: "block", marginTop: 8 }}>
+              <input
+                type="checkbox"
+                disabled={decision?.decision !== "continue_research"}
+                checked={selected.has(family.familyId)}
+                onChange={(event) =>
+                  dispatch({ type: "toggle_selected", familyId: family.familyId, selected: event.target.checked })
+                }
+              />{" "}
+              选为继续调查对象
+            </label>
+          </article>
+        );
+      })}
+
+      <details style={{ marginTop: 16 }}>
+        <summary>查看其余 {remainingFamilies.length} 个商品家族</summary>
+        <ol>
+          {remainingFamilies.map((family) => (
+            <li key={family.familyId}>{family.familyRank}. {family.representativeListing.parsedNameZh}（{family.familyId}）</li>
+          ))}
+        </ol>
+      </details>
+
+      <div style={{ ...noticeStyle, marginTop: 18 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={state.reviewerConfirmed}
+            disabled={!reviewComplete}
+            onChange={(event) => dispatch({ type: "confirm_review", confirmed: event.target.checked })}
+          />{" "}
+          {REVIEWER_CONFIRMATION}
+        </label>
+        <p>已选择 {state.selectedFamilyIds.length} / 5 个继续调查对象；允许最终选择 0～5 个。</p>
+        <button
+          type="button"
+          disabled={!reviewComplete || !state.reviewerConfirmed}
+          onClick={() => props.onExport(new Date().toISOString())}
+          style={primaryButtonStyle}
+        >
+          导出人工复核结果
+        </button>
+      </div>
+      <p style={{ color: "#64707c", fontSize: 13 }}>
+        当前决定仅保存在本浏览器并可下载 JSON；不会创建 Candidate、Task，不会写数据库，也不会调用 Provider。
+      </p>
+    </section>
+  );
 }
 
-function DetailBox({ type, title, children }: { type: "why" | "caution" | "unknown"; title: string; children: React.ReactNode }) {
-  const colors = { why: { bg: "#E8F5E9", color: "#2E7D32" }, caution: { bg: "#FFF3E0", color: "#E65100" }, unknown: { bg: "#ECEFF1", color: "#607D8B" } };
-  return <div style={{ padding: 8, borderRadius: 6, fontSize: ".82em", background: colors[type].bg }}>
-    <h4 style={{ fontSize: ".88em", marginBottom: 4, color: colors[type].color }}>{title}</h4>
-    <div style={{ listStyle: "none", padding: 0 }}>{children}</div>
-  </div>;
+function SafeThumbnail(props: {
+  url: string | null;
+  alt: string;
+  enabled: boolean;
+  failed: boolean;
+  onError: (url: string) => void;
+  small?: boolean;
+}) {
+  const size = props.small ? 56 : 112;
+  const safeUrl = isAllowedThumbnailUrl(props.url) ? props.url : null;
+  if (!props.enabled || props.failed || !safeUrl) {
+    return (
+      <div data-testid="thumbnail-placeholder" style={{ ...placeholderStyle, width: size, height: size }}>
+        {props.failed ? "图片加载失败" : "缩略图未加载"}
+      </div>
+    );
+  }
+  return (
+    // Raw img avoids Next.js image optimization proxy and only appears after explicit consent.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      data-testid="remote-thumbnail"
+      src={safeUrl}
+      alt={props.alt}
+      width={size}
+      height={size}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => props.onError(safeUrl)}
+      style={{ objectFit: "contain", border: "1px solid #d6dadd", borderRadius: 8 }}
+    />
+  );
 }
+
+const pageStyle: React.CSSProperties = {
+  maxWidth: 960,
+  margin: "0 auto",
+  padding: "24px 16px",
+  background: "#fffdf7",
+  color: "#24313b",
+  fontFamily: "system-ui, sans-serif",
+};
+const noticeStyle: React.CSSProperties = { background: "#eef7ef", borderLeft: "4px solid #4f8a5b", padding: 12 };
+const metaStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: "#5b6470" };
+const cardStyle: React.CSSProperties = { background: "white", border: "1px solid #cbdccb", borderRadius: 10, padding: 16, marginTop: 14 };
+const factsStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 12, margin: "12px 0", fontSize: 14 };
+const primaryButtonStyle: React.CSSProperties = { padding: "9px 16px", border: 0, borderRadius: 6, background: "#2e7d4a", color: "white", cursor: "pointer" };
+const decisionButtonStyle: React.CSSProperties = { padding: "7px 14px", border: "1px solid #90a498", borderRadius: 18, background: "white" };
+const selectedDecisionStyle: React.CSSProperties = { ...decisionButtonStyle, background: "#2e7d4a", color: "white" };
+const placeholderStyle: React.CSSProperties = { flexShrink: 0, display: "grid", placeItems: "center", background: "#edf0f2", color: "#6f7880", fontSize: 12, borderRadius: 8 };
