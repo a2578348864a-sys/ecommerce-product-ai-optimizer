@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "family-top5-review-manifest.v1",
+  "codeBaseline": {
+    "commit": "21f30cee168bccc8956b55de3f361df08ad5d9c9",
+    "tree": "56cb678c849621f211148b4725e8df19a0d6aa15",
+    "branch": "codex/pipeline-provider-probe-v1"
+  },
+  "artifacts": [
+    {
+      "path": "investigation-product-family-data.v1.json",
+      "bytes": 51024,
+      "sha256": "8c8f27543c98084e54dc560ba38c1d4ca02b9fcb231e315c1f055b6fe3037d6e"
+    },
+    {
+      "path": "family-top5-review.html",
+      "bytes": 56466,
+      "sha256": "d55b8da9fc56e94427948484ee49369ff507fcb443a477b4a67aac207d86ee68"
+    },
+    {
+      "path": "family-review-response-schema.v1.json",
+      "bytes": 2708,
+      "sha256": "38b4c31bb3697ffd2d00005d51e1035f664d5e48e30bff6d5ede482d9766a1a1"
+    },
+    {
+      "path": "README.md",
+      "bytes": 133,
+      "sha256": "a73da810bc9b7dfc0054d035a099cb3b5d287fac655036dafa810f69bbe5370c"
+    }
+  ]
+}
