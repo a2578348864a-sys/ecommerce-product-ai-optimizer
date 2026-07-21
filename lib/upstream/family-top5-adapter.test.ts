@@ -109,6 +109,15 @@ describe("Family Top 5 audited fixture adapter", () => {
     expect(load(directory).readiness).toBe("artifact_missing");
   });
 
+  it("reports artifact_missing when the audited data fixture is absent", () => {
+    const directory = fixtureCopy();
+    unlinkSync(join(directory, "family-top5-review.v1.json"));
+    const result = load(directory);
+    expect(result.readiness).toBe("artifact_missing");
+    expect(result.data).toBeNull();
+    expect(result.sourceArtifactBinding).toBeNull();
+  });
+
   it("reports artifact_integrity_failed for a bad manifest hash", () => {
     const directory = fixtureCopy();
     writeFileSync(join(directory, `${MANIFEST_FILE}.sha256`), `${"0".repeat(64)}  ${MANIFEST_FILE}\n`);

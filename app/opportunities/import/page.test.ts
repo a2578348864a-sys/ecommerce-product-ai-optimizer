@@ -23,6 +23,16 @@ describe("advanced opportunities import compatibility entry", () => {
     });
   });
 
+  it("renders Family Top 5 only behind the complete audited-data readiness gate", () => {
+    expect(importPageSource).toContain(
+      'if (readiness === "ready" && data && sourceArtifactBinding)',
+    );
+    expect(importPageSource).toContain("topFamilies={data.topFamilies}");
+    expect(importPageSource).toContain("remainingFamilies={data.remainingFamilies}");
+    expect(importPageSource).toContain("公开市场预筛数据完整性校验失败");
+    expect(importPageSource).toContain("请勿使用本页面做商业判断");
+  });
+
   it("keeps import advanced after the formal route switches to the read-only workbench", () => {
     expect(opportunitiesPageSource).toContain("<MarketScreeningWorkbench");
     expect(opportunitiesPageSource).toContain('environment: "production"');
