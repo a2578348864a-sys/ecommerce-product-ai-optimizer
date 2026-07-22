@@ -1,0 +1,163 @@
+import { createElement } from "react";
+import type { ComponentType } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+import { OpportunitiesForm } from "@/components/cross-border/OpportunitiesForm";
+import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
+import { buildCandidateTaskLinkMap, resolveCandidateTaskLinks } from "@/lib/candidateTaskLinks";
+import {
+  canCandidateEnterAgent,
+  normalizeCandidate,
+  parseCandidatePool,
+  serializeCandidatePool,
+  serverCandidateToPoolItem,
+} from "@/lib/opportunityCandidatePool";
+import { OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE } from "@/lib/opportunityDecisionDeskVisualFixture";
+import type { R22MarketDecisionSnapshot } from "@/lib/r22DecisionModel";
+
+type OpportunitiesFormProps = NonNullable<Parameters<typeof OpportunitiesForm>[0]>;
+const OpportunitiesFormComponent = OpportunitiesForm as ComponentType<OpportunitiesFormProps>;
+
+function marketShortlisted(candidateId: string): R22MarketDecisionSnapshot {
+  return {
+    schemaVersion: "r22-market-decision-v1",
+    evidenceVersion: "r22-evidence-semantics-v1",
+    candidateId,
+    asin: "B000000001",
+    briefId: "A",
+    frozenRank: 1,
+    marketDecision: "market_shortlisted",
+    decisionReasons: ["behavior_contract_fixture"],
+    supportingEvidenceRefs: ["fixture:market"],
+    opposingEvidenceRefs: [],
+    marketMissingFields: [],
+    dataCompleteness: 1,
+    confidence: "high",
+    stabilityStatus: "stable",
+    ruleVersion: "r22-stage1-market-v1",
+    inputHash: "a".repeat(64),
+    createdAt: "2026-07-23T00:00:00.000Z",
+  };
+}
+
+describe("OpportunitiesForm public behavior", () => {
+  it("keeps the default and advanced surfaces distinct through the public interface", () => {
+    const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, { visualFixture: [] }));
+    const advancedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      surface: "advanced_import",
+      visualFixture: [],
+    }));
+
+    expect(defaultMarkup).toContain("机会雷达");
+    expect(defaultMarkup).not.toContain("高级工具");
+    expect(advancedMarkup).toContain("高级工具");
+    expect(advancedMarkup).toContain("手工导入外部来源");
+  });
+
+  it("renders the isolated fixture without render-phase network or intake behavior", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    try {
+      const markup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+        visualFixture: OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE,
+      }));
+
+      expect(markup).toContain("隔离视觉验收模式");
+      expect(markup).toContain('data-testid="opportunity-decision-desk"');
+      expect(markup.match(/data-testid="decision-row-/g)).toHaveLength(
+        OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE.length,
+      );
+      expect(markup).not.toContain('data-testid="candidate-intake-toggle"');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe("Candidate authority handoff behavior", () => {
+  it("blocks a local draft, then permits only the confirmed server Candidate", () => {
+    const localDraft = normalizeCandidate({
+      name: "桌面收纳架",
+      rawInput: "desk organizer",
+      score: 88,
+      riskLevel: "green",
+    }, 1_000);
+    if (!localDraft) throw new Error("expected local draft fixture");
+
+    expect(localDraft.identitySource).toBe("local_draft");
+    expect(canCandidateEnterAgent(localDraft, true)).toBe(false);
+    expect(buildCandidateAgentRunHref({
+      candidateId: localDraft.id,
+      name: localDraft.name,
+    })).toBeNull();
+
+    const candidateId = "candidate-owner-001";
+    const confirmed = serverCandidateToPoolItem({
+      id: candidateId,
+      name: localDraft.name,
+      rawInput: localDraft.rawInput,
+      status: "worth_analyzing",
+      score: localDraft.score,
+      r22MarketDecisionSnapshot: marketShortlisted(candidateId),
+    });
+    const href = buildCandidateAgentRunHref({
+      candidateId: confirmed.id,
+      name: confirmed.name,
+      rawInput: confirmed.rawInput,
+      score: confirmed.score,
+      marketDecisionSnapshot: confirmed.r22MarketDecisionSnapshot,
+    });
+
+    expect(confirmed.identitySource).toBe("server");
+    expect(canCandidateEnterAgent(confirmed, true)).toBe(true);
+    expect(href).toContain("/agent/run?");
+    expect(href).toContain(`candidateId=${candidateId}`);
+  });
+
+  it("blocks another Agent handoff once the Candidate has a Task relation", () => {
+    const candidateId = "sandbox_candidate_visitor-001";
+    const candidate = serverCandidateToPoolItem({
+      id: candidateId,
+      name: "访客候选",
+      status: "analyzed",
+      r22MarketDecisionSnapshot: marketShortlisted(candidateId),
+    });
+    const taskMap = buildCandidateTaskLinkMap([{
+      id: "sandbox_task_001",
+      title: "访客候选分析",
+      createdAt: "2026-07-23T01:00:00.000Z",
+      source: "agent_run",
+      result: {
+        sourceMeta: {
+          candidateId,
+          from: "opportunity",
+          entry: "candidate_to_agent_run",
+        },
+      },
+    }]);
+    const links = resolveCandidateTaskLinks(candidate, taskMap.get(candidateId) ?? []);
+
+    expect(links).toHaveLength(1);
+    expect(links[0].taskId).toBe("sandbox_task_001");
+    expect(canCandidateEnterAgent(candidate, true, links.length > 0)).toBe(false);
+  });
+
+  it("does not let a browser-restored Candidate bypass the server availability gate", () => {
+    const candidateId = "candidate-owner-002";
+    const serverCandidate = serverCandidateToPoolItem({
+      id: candidateId,
+      name: "折叠收纳盒",
+      status: "worth_analyzing",
+      convertedTaskId: "task-owner-002",
+      r22MarketDecisionSnapshot: marketShortlisted(candidateId),
+    });
+    const restored = parseCandidatePool(serializeCandidatePool([serverCandidate], 1_000), 1_001).items[0];
+
+    expect(restored).toBeDefined();
+    expect(restored).not.toHaveProperty("convertedTaskId", "task-owner-002");
+    expect(restored).not.toHaveProperty("r22MarketDecisionSnapshot");
+    expect(canCandidateEnterAgent(restored, false)).toBe(false);
+  });
+});
