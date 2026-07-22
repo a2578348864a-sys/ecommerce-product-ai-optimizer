@@ -3,9 +3,10 @@
 > Production baseline Commit：`2d4562aea234543ef3862b0d10a07e0ac40039b0`（短哈希 `2d4562a`）
 > Production baseline Tree：`f1b4d9bebc51ddca01bd70ab615e02fe90833aa0`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/retire-unreachable-code` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
+> 退役候选边界：本页统计已纳入删除 Commit `a22548930748649fa44458c82d0daacfee75f885` 与 `be07046920a09308410fb590be3170ceba0b205f`；合入 main 前不改变生产部署状态。
 
 ## 1. 分类定义
 
@@ -26,15 +27,15 @@
 
 |目录|PRODUCTION|COMPATIBILITY|EXPERIMENTAL|ARCHIVED|UNKNOWN|合计|
 |-|-:|-:|-:|-:|-:|-:|
-|`components/`|26|12|3|2|2|45|
+|`components/`|26|12|3|0|0|41|
 |`lib/`|82|2|1|0|2|87|
 |`hooks/`|2|0|0|0|1|3|
 |`scripts/`|2|0|1|0|2|5|
-|总计|112|14|5|2|7|140|
+|总计|112|14|5|0|5|136|
 
 ## 3. components/
 
-`PRODUCTION` 是 45 个非测试文件中除下列非生产项外的 26 个文件。核心包括 `AgentRunClient`、`OpportunitiesForm`、`FamilyTop5Review`、`HomeDashboardClient`、`TaskRecordsList`、`TaskRecordDetail`、导航、登录与决策/Listing/图片卡片。
+`PRODUCTION` 是 41 个非测试文件中除下列非生产项外的 26 个文件。核心包括 `AgentRunClient`、`OpportunitiesForm`、`FamilyTop5Review`、`HomeDashboardClient`、`TaskRecordsList`、`TaskRecordDetail`、导航、登录与决策/Listing/图片卡片。
 
 ### COMPATIBILITY（12）
 
@@ -57,15 +58,10 @@
 - `components/cross-border/WorkflowBatchClient.tsx`
 - `components/cross-border/workflowBatchRunCache.ts`
 
-### ARCHIVED（2）
+### 已退役（4，不计入当前分支统计）
 
-- `components/cross-border/WorkflowClient.tsx`：0 个非测试 import；`/workflow` 已明确 redirect 到 `/agent/run`。
-- `components/CopyButton.tsx`：1 个非测试 import，唯一调用者是不可达的 `WorkflowClient`。
-
-### UNKNOWN（2）
-
-- `components/ResultSection.tsx`：0 个非测试 import，没有足够证据确认正式退役。
-- `components/WorkspacePlaceholderPage.tsx`：0 个非测试 import，没有足够证据确认正式退役。
+- `components/cross-border/WorkflowClient.tsx` 与 `components/CopyButton.tsx`：由 `a22548930748649fa44458c82d0daacfee75f885` 删除；`/workflow` 已 redirect 到 `/agent/run`，前者运行、动态、测试和配置引用为 0，后者唯一调用者是前者。
+- `components/ResultSection.tsx` 与 `components/WorkspacePlaceholderPage.tsx`：由 `be07046920a09308410fb590be3170ceba0b205f` 删除；运行、动态、测试和配置引用均为 0，Git 历史分别证明旧首页引用已移除、所有占位页面消费者已被真实页面替换。
 
 ## 4. lib/
 
