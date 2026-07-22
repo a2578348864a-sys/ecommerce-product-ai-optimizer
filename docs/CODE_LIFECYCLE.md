@@ -105,7 +105,7 @@
 
 ## 7. Artifact 文件
 
-`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入 140 个运行时代码统计：
+`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 136 个运行时代码统计：
 
 - Manifest + Manifest Sidecar；
 - Family 数据 + Sidecar；
