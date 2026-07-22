@@ -1,7 +1,8 @@
-import { createElement } from "react";
+import { act, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  default as FamilyTop5Review,
   FamilyTop5ReviewView,
   INITIAL_FAMILY_TOP5_REVIEW_STATE,
   buildFamilyReviewExport,
@@ -10,7 +11,20 @@ import {
   type FamilyTop5ReviewState,
 } from "@/components/cross-border/FamilyTop5Review";
 import { loadFamilyTop5Data } from "@/lib/upstream/family-top5-adapter";
-import type { FamilyReviewDecisionValue, ProductFamily } from "@/lib/upstream/family-top5-types";
+import type {
+  FamilyReviewDecisionValue,
+  ProductFamily,
+  SourceArtifactBinding,
+} from "@/lib/upstream/family-top5-types";
+import {
+  TestElement,
+  TestEvent,
+  findAll,
+  findByText,
+  installTestDom,
+  setNativeValue,
+  type TestDom,
+} from "@/tests/helpers/minimal-react-dom";
 
 function readyData() {
   const result = loadFamilyTop5Data();
@@ -179,5 +193,307 @@ describe("FamilyTop5Review", () => {
     render();
     expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("FamilyTop5Review mounted browser behavior", () => {
+  let dom: TestDom;
+  let container: TestElement;
+  let root: import("react-dom/client").Root | null;
+
+  beforeEach(() => {
+    dom = installTestDom();
+    container = dom.document.createElement("div");
+    dom.document.body.appendChild(container);
+    root = null;
+  });
+
+  afterEach(async () => {
+    if (root) await act(async () => root?.unmount());
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    dom.restore();
+  });
+
+  function monitorNetwork() {
+    const fetch = vi.fn();
+    const xhr = vi.fn();
+    const sendBeacon = vi.fn(() => true);
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("XMLHttpRequest", class {
+      constructor() {
+        xhr();
+      }
+    });
+    Object.defineProperty(globalThis.navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeacon,
+    });
+    return { fetch, xhr, sendBeacon };
+  }
+
+  async function mountReview() {
+    const { data, binding } = readyData();
+    const client = await import("react-dom/client");
+    root = client.createRoot(container as unknown as Element);
+    await act(async () => {
+      root?.render(createElement(FamilyTop5Review, {
+        topFamilies: data.topFamilies,
+        remainingFamilies: data.remainingFamilies,
+        sourceArtifactBinding: binding,
+      }));
+    });
+    return { data, binding };
+  }
+
+  async function click(element: TestElement): Promise<void> {
+    await act(async () => element.click());
+  }
+
+  function reviewStorageKey(binding: SourceArtifactBinding): string {
+    return `family-top5-human-review-v1:${binding.familyDataSha256}`;
+  }
+
+  function confirmationCheckbox(): TestElement {
+    const checkbox = findAll(
+      container,
+      (element) => element.localName === "input" && element.type === "checkbox",
+    ).at(-1);
+    if (!checkbox) throw new Error("missing_confirmation_checkbox");
+    return checkbox;
+  }
+
+  async function remountReview(): Promise<void> {
+    await act(async () => root?.unmount());
+    root = null;
+    container = dom.document.createElement("div");
+    dom.document.body.appendChild(container);
+    await mountReview();
+  }
+
+  function familyCard(familyId: string): TestElement {
+    const card = findAll(container, (element) => element.getAttribute("data-family-id") === familyId)[0];
+    if (!card) throw new Error(`missing_family_card:${familyId}`);
+    return card;
+  }
+
+  async function decideAll(firstDecision: FamilyReviewDecisionValue = "continue_research") {
+    const { data } = readyData();
+    for (const [index, family] of data.topFamilies.entries()) {
+      const decision = index === 0 ? firstDecision : "watch";
+      const label = decision === "continue_research" ? "继续调查" : "观察";
+      await click(findByText(familyCard(family.familyId), "button", label));
+    }
+    return data;
+  }
+
+  async function createConfirmedReview() {
+    const { data, binding } = await mountReview();
+    await decideAll();
+    const firstCard = familyCard(data.topFamilies[0].familyId);
+    const note = findAll(firstCard, (element) => element.localName === "textarea")[0];
+    await act(async () => {
+      setNativeValue(note, "人工复核备注");
+      note.dispatchEvent(new TestEvent("input"));
+    });
+    await click(findAll(firstCard, (element) => element.localName === "input" && element.type === "checkbox")[0]);
+    await click(confirmationCheckbox());
+    const key = reviewStorageKey(binding);
+    const stored = JSON.parse(dom.localStorage.getItem(key) ?? "null") as Record<string, unknown>;
+    return { data, binding, key, stored };
+  }
+
+  function expectNoNetwork(network: ReturnType<typeof monitorNetwork>): void {
+    expect(network.fetch).not.toHaveBeenCalled();
+    expect(network.xhr).not.toHaveBeenCalled();
+    expect(network.sendBeacon).not.toHaveBeenCalled();
+  }
+
+  it("restores decisions, notes, selection, and the saved confirmation without network writes", async () => {
+    const network = monitorNetwork();
+    const { data, stored } = await createConfirmedReview();
+    expect(stored).toMatchObject({
+      schemaVersion: "family-top5-review-state.v2",
+      reviewerConfirmed: true,
+    });
+    expect(typeof stored.sourceBindingFingerprint).toBe("string");
+    expect(typeof stored.confirmationFingerprint).toBe("string");
+
+    await remountReview();
+
+    const firstCard = familyCard(data.topFamilies[0].familyId);
+    const note = findAll(firstCard, (element) => element.localName === "textarea")[0];
+    const selected = findAll(firstCard, (element) => element.localName === "input" && element.type === "checkbox")[0];
+    expect(findByText(firstCard, "button", "继续调查").getAttribute("aria-pressed")).toBe("true");
+    expect(note.value).toBe("人工复核备注");
+    expect(selected.checked).toBe(true);
+    expect(confirmationCheckbox().checked).toBe(true);
+    expectNoNetwork(network);
+  });
+
+  it("restores legacy decisions and selection but never trusts a legacy confirmation", async () => {
+    const { data, binding } = readyData();
+    const legacy = reviewedState("watch", [data.topFamilies[0].familyId]);
+    dom.localStorage.setItem(reviewStorageKey(binding), JSON.stringify({
+      decisions: legacy.decisions,
+      selectedFamilyIds: legacy.selectedFamilyIds,
+      reviewerConfirmed: true,
+    }));
+    const network = monitorNetwork();
+
+    await mountReview();
+
+    expect(findByText(familyCard(data.topFamilies[0].familyId), "button", "继续调查").getAttribute("aria-pressed")).toBe("true");
+    expect(confirmationCheckbox().checked).toBe(false);
+    expectNoNetwork(network);
+  });
+
+  it.each([
+    ["invalid JSON", (_stored: Record<string, unknown>): string => "{not-json"],
+    ["unsupported schema", (stored: Record<string, unknown>): string => JSON.stringify({ ...stored, schemaVersion: "unknown" })],
+    ["source binding mismatch", (stored: Record<string, unknown>): string => JSON.stringify({ ...stored, sourceBindingFingerprint: "mismatch" })],
+    ["confirmation fingerprint mismatch", (stored: Record<string, unknown>): string => JSON.stringify({ ...stored, confirmationFingerprint: "mismatch" })],
+    ["invalid decisions", (stored: Record<string, unknown>): string => {
+      const decisions = structuredClone(stored.decisions) as Record<string, Record<string, unknown>>;
+      const familyId = Object.keys(decisions)[0];
+      decisions[familyId] = { ...decisions[familyId], notes: 42 };
+      return JSON.stringify({ ...stored, decisions });
+    }],
+    ["unknown selected family", (stored: Record<string, unknown>): string => JSON.stringify({ ...stored, selectedFamilyIds: ["unknown-family"] })],
+    ["more than five selections", (stored: Record<string, unknown>): string => JSON.stringify({ ...stored, selectedFamilyIds: ["1", "2", "3", "4", "5", "6"] })],
+  ] as const)("fails closed for %s stored state", async (_label, corrupt) => {
+    const network = monitorNetwork();
+    const { key, stored } = await createConfirmedReview();
+    dom.localStorage.setItem(key, corrupt(stored));
+
+    await remountReview();
+
+    expect(confirmationCheckbox().checked).toBe(false);
+    expectNoNetwork(network);
+  });
+
+  it.each(["decision", "note", "selection"] as const)(
+    "invalidates and persists the cleared confirmation after a %s change",
+    async (change) => {
+      const network = monitorNetwork();
+      const { data, key } = await createConfirmedReview();
+      const firstCard = familyCard(data.topFamilies[0].familyId);
+
+      if (change === "decision") {
+        await click(findByText(firstCard, "button", "不继续调查"));
+      } else if (change === "note") {
+        const note = findAll(firstCard, (element) => element.localName === "textarea")[0];
+        await act(async () => {
+          setNativeValue(note, "changed after confirmation");
+          note.dispatchEvent(new TestEvent("input"));
+        });
+      } else {
+        await click(findAll(firstCard, (element) => element.localName === "input" && element.type === "checkbox")[0]);
+      }
+
+      expect(confirmationCheckbox().checked).toBe(false);
+      const stored = JSON.parse(dom.localStorage.getItem(key) ?? "null") as Record<string, unknown>;
+      expect(stored.reviewerConfirmed).toBe(false);
+      expect(stored.confirmationFingerprint).toBeNull();
+      await remountReview();
+      expect(confirmationCheckbox().checked).toBe(false);
+      expectNoNetwork(network);
+    },
+  );
+
+  it("allows a fresh confirmation after an edit and restores only the new confirmation", async () => {
+    const network = monitorNetwork();
+    const { data, key } = await createConfirmedReview();
+    const firstCard = familyCard(data.topFamilies[0].familyId);
+    const note = findAll(firstCard, (element) => element.localName === "textarea")[0];
+    await act(async () => {
+      setNativeValue(note, "new confirmed note");
+      note.dispatchEvent(new TestEvent("input"));
+    });
+    expect(confirmationCheckbox().checked).toBe(false);
+    await click(confirmationCheckbox());
+    const stored = JSON.parse(dom.localStorage.getItem(key) ?? "null") as Record<string, unknown>;
+    expect(stored.reviewerConfirmed).toBe(true);
+
+    await remountReview();
+
+    expect(confirmationCheckbox().checked).toBe(true);
+    expect(findAll(familyCard(data.topFamilies[0].familyId), (element) => element.localName === "textarea")[0].value).toBe("new confirmed note");
+    expectNoNetwork(network);
+  });
+
+  it("persists real decisions and notes, then restores them after remounting without business requests", async () => {
+    const network = monitorNetwork();
+    const { data } = await mountReview();
+    await decideAll();
+
+    const firstCard = familyCard(data.topFamilies[0].familyId);
+    const note = findAll(firstCard, (element) => element.localName === "textarea")[0];
+    await act(async () => {
+      setNativeValue(note, "继续核对包装差异");
+      note.dispatchEvent(new TestEvent("input"));
+    });
+    const selection = findAll(firstCard, (element) => element.localName === "input" && element.type === "checkbox")[0];
+    await click(selection);
+
+    const stored = JSON.parse(dom.localStorage.getItem(0 === dom.localStorage.length ? "" : dom.localStorage.key(0)!) ?? "null") as FamilyTop5ReviewState;
+    expect(stored.decisions[data.topFamilies[0].familyId].notes).toBe("继续核对包装差异");
+    expect(stored.selectedFamilyIds).toEqual([data.topFamilies[0].familyId]);
+
+    await act(async () => root?.unmount());
+    root = null;
+    container = dom.document.createElement("div");
+    dom.document.body.appendChild(container);
+    await mountReview();
+    const restoredCard = familyCard(data.topFamilies[0].familyId);
+    expect(findAll(restoredCard, (element) => element.localName === "textarea")[0].value).toBe("继续核对包装差异");
+    expect(findAll(restoredCard, (element) => element.localName === "input" && element.type === "checkbox")[0].checked).toBe(true);
+    expect(network.fetch).not.toHaveBeenCalled();
+    expect(network.xhr).not.toHaveBeenCalled();
+    expect(network.sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it("downloads the real schema-bound JSON and revokes its object URL without network writes", async () => {
+    const network = monitorNetwork();
+    const objectUrl = "blob:family-review-test";
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue(objectUrl);
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { data, binding } = await mountReview();
+    await decideAll();
+
+    const firstCard = familyCard(data.topFamilies[0].familyId);
+    await click(findAll(firstCard, (element) => element.localName === "input" && element.type === "checkbox")[0]);
+    const confirmation = findAll(container, (element) => element.localName === "input" && element.type === "checkbox").at(-1);
+    if (!confirmation) throw new Error("missing_confirmation_checkbox");
+    await click(confirmation);
+    await click(findByText(container, "button", "导出人工复核结果"));
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    const blob = createObjectURL.mock.calls[0][0];
+    expect(blob).toBeInstanceOf(Blob);
+    if (!(blob instanceof Blob)) throw new Error("export_is_not_blob");
+    const exported = JSON.parse(await blob.text());
+    expect(exported.schemaVersion).toBe("family-top5-human-review.v1");
+    expect(exported.reviewedFamilies).toHaveLength(5);
+    expect(exported.selectedFamilyIds).toEqual([data.topFamilies[0].familyId]);
+    expect(exported.selectedFamilies.map((family: { familyId: string }) => family.familyId)).toEqual(exported.selectedFamilyIds);
+    expect(exported.sourceArtifactBinding).toEqual(binding);
+    const anchor = dom.document.createdElements.filter((element) => element.localName === "a").at(-1);
+    expect(anchor).toMatchObject({ href: objectUrl, download: "family-top5-human-review.v1.json", clickCount: 1 });
+    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
+    expect(network.fetch).not.toHaveBeenCalled();
+    expect(network.xhr).not.toHaveBeenCalled();
+    expect(network.sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it("mounts the real client component and runs its effects", async () => {
+    const network = monitorNetwork();
+    await mountReview();
+
+    expect(findAll(container, (element) => element.getAttribute("data-testid") === "family-card")).toHaveLength(5);
+    expect(dom.localStorage.length).toBe(1);
+    expect(network.fetch).not.toHaveBeenCalled();
+    expect(network.xhr).not.toHaveBeenCalled();
+    expect(network.sendBeacon).not.toHaveBeenCalled();
   });
 });

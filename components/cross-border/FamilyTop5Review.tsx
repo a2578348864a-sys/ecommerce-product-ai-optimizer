@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import {
   FAMILY_REVIEW_EXPORT_SCHEMA_VERSION,
   type FamilyReviewDecision,
@@ -11,6 +11,16 @@ import {
 } from "@/lib/upstream/family-top5-types";
 
 const REVIEWER_CONFIRMATION = "人工已逐项复核上述 5 个商品家族" as const;
+const FAMILY_REVIEW_STORAGE_SCHEMA_VERSION = "family-top5-review-state.v2" as const;
+
+interface StoredFamilyTop5ReviewState {
+  schemaVersion?: unknown;
+  sourceBindingFingerprint?: unknown;
+  decisions?: unknown;
+  selectedFamilyIds?: unknown;
+  reviewerConfirmed?: unknown;
+  confirmationFingerprint?: unknown;
+}
 
 export interface FamilyTop5ReviewState {
   decisions: Record<string, FamilyReviewDecision>;
@@ -21,7 +31,12 @@ export interface FamilyTop5ReviewState {
 }
 
 export type FamilyTop5ReviewAction =
-  | { type: "restore"; decisions: Record<string, FamilyReviewDecision>; selectedFamilyIds: string[] }
+  | {
+      type: "restore";
+      decisions: Record<string, FamilyReviewDecision>;
+      selectedFamilyIds: string[];
+      reviewerConfirmed: boolean;
+    }
   | { type: "decide"; family: ProductFamily; decision: FamilyReviewDecisionValue }
   | { type: "note"; family: ProductFamily; notes: string }
   | { type: "toggle_selected"; familyId: string; selected: boolean }
@@ -65,6 +80,7 @@ export function familyTop5ReviewReducer(
         selectedFamilyIds: action.selectedFamilyIds.filter(
           (familyId) => action.decisions[familyId]?.decision === "continue_research",
         ),
+        reviewerConfirmed: action.reviewerConfirmed,
       };
     case "decide": {
       const current = state.decisions[action.family.familyId];
@@ -183,16 +199,154 @@ function storageKey(binding: SourceArtifactBinding): string {
   return `family-top5-human-review-v1:${binding.familyDataSha256}`;
 }
 
-function loadStoredState(binding: SourceArtifactBinding): Pick<FamilyTop5ReviewState, "decisions" | "selectedFamilyIds"> | null {
+function sourceBindingFingerprint(binding: SourceArtifactBinding): string {
+  return JSON.stringify([
+    binding.sourceArtifactId,
+    binding.probeInputHash,
+    binding.probeRunBindingHash,
+    binding.providerAwareV2InputHash,
+    binding.providerAwareV2ContentHash,
+    binding.familyDataSha256,
+    binding.familyManifestSha256,
+    binding.appManifestSha256,
+    binding.provenanceSha256,
+  ]);
+}
+
+function confirmationFingerprint(args: {
+  topFamilies: ProductFamily[];
+  decisions: Record<string, FamilyReviewDecision>;
+  selectedFamilyIds: string[];
+  sourceArtifactBinding: SourceArtifactBinding;
+}): string {
+  return JSON.stringify({
+    sourceBinding: sourceBindingFingerprint(args.sourceArtifactBinding),
+    families: [...args.topFamilies]
+      .sort((left, right) => left.familyId.localeCompare(right.familyId))
+      .map((family) => {
+        const decision = args.decisions[family.familyId];
+        return {
+          familyId: family.familyId,
+          representativeStableId: family.representativeStableId,
+          memberStableIds: [...family.memberStableIds].sort(),
+          decision: decision
+            ? {
+                decision: decision.decision,
+                notes: decision.notes,
+                representativeStableId: decision.representativeStableId,
+                memberStableIds: [...decision.memberStableIds].sort(),
+              }
+            : null,
+        };
+      }),
+    selectedFamilyIds: [...args.selectedFamilyIds].sort(),
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sameStrings(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeStoredContent(
+  stored: StoredFamilyTop5ReviewState,
+  topFamilies: ProductFamily[],
+): Pick<FamilyTop5ReviewState, "decisions" | "selectedFamilyIds"> | null {
+  if (!isRecord(stored.decisions) || !Array.isArray(stored.selectedFamilyIds)) return null;
+  const families = new Map(topFamilies.map((family) => [family.familyId, family]));
+  const decisions: Record<string, FamilyReviewDecision> = {};
+
+  for (const [familyId, candidate] of Object.entries(stored.decisions)) {
+    const family = families.get(familyId);
+    if (
+      !family ||
+      !isRecord(candidate) ||
+      candidate.familyId !== familyId ||
+      candidate.representativeStableId !== family.representativeStableId ||
+      !Array.isArray(candidate.memberStableIds) ||
+      !candidate.memberStableIds.every((value) => typeof value === "string") ||
+      !sameStrings(candidate.memberStableIds, family.memberStableIds) ||
+      !(candidate.decision === "continue_research" || candidate.decision === "watch" || candidate.decision === "reject") ||
+      typeof candidate.notes !== "string" ||
+      candidate.notes.length > 500
+    ) return null;
+    decisions[familyId] = {
+      familyId,
+      representativeStableId: candidate.representativeStableId,
+      memberStableIds: [...candidate.memberStableIds],
+      decision: candidate.decision,
+      notes: candidate.notes,
+    };
+  }
+
+  if (
+    stored.selectedFamilyIds.length > 5 ||
+    !stored.selectedFamilyIds.every((value) => typeof value === "string") ||
+    new Set(stored.selectedFamilyIds).size !== stored.selectedFamilyIds.length ||
+    stored.selectedFamilyIds.some(
+      (familyId) => !families.has(familyId) || decisions[familyId]?.decision !== "continue_research",
+    )
+  ) return null;
+
+  return { decisions, selectedFamilyIds: [...stored.selectedFamilyIds] };
+}
+
+function loadStoredState(
+  binding: SourceArtifactBinding,
+  topFamilies: ProductFamily[],
+): Pick<FamilyTop5ReviewState, "decisions" | "selectedFamilyIds" | "reviewerConfirmed"> | null {
   try {
     const raw = window.localStorage.getItem(storageKey(binding));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<FamilyTop5ReviewState>;
-    if (!parsed.decisions || !Array.isArray(parsed.selectedFamilyIds)) return null;
-    return { decisions: parsed.decisions, selectedFamilyIds: parsed.selectedFamilyIds };
+    const parsed = JSON.parse(raw) as StoredFamilyTop5ReviewState;
+    if (!isRecord(parsed)) return null;
+    const content = normalizeStoredContent(parsed, topFamilies);
+    if (!content) return null;
+    const expectedBindingFingerprint = sourceBindingFingerprint(binding);
+    const expectedConfirmationFingerprint = confirmationFingerprint({
+      topFamilies,
+      decisions: content.decisions,
+      selectedFamilyIds: content.selectedFamilyIds,
+      sourceArtifactBinding: binding,
+    });
+    const reviewComplete = topFamilies.every((family) => Boolean(content.decisions[family.familyId]));
+    const reviewerConfirmed =
+      parsed.schemaVersion === FAMILY_REVIEW_STORAGE_SCHEMA_VERSION &&
+      parsed.reviewerConfirmed === true &&
+      parsed.sourceBindingFingerprint === expectedBindingFingerprint &&
+      parsed.confirmationFingerprint === expectedConfirmationFingerprint &&
+      reviewComplete;
+    return { ...content, reviewerConfirmed };
   } catch {
     return null;
   }
+}
+
+function storedState(args: {
+  topFamilies: ProductFamily[];
+  state: FamilyTop5ReviewState;
+  sourceArtifactBinding: SourceArtifactBinding;
+}): StoredFamilyTop5ReviewState {
+  const reviewComplete = args.topFamilies.every((family) => Boolean(args.state.decisions[family.familyId]));
+  const reviewerConfirmed = args.state.reviewerConfirmed && reviewComplete;
+  return {
+    schemaVersion: FAMILY_REVIEW_STORAGE_SCHEMA_VERSION,
+    sourceBindingFingerprint: sourceBindingFingerprint(args.sourceArtifactBinding),
+    decisions: args.state.decisions,
+    selectedFamilyIds: args.state.selectedFamilyIds,
+    reviewerConfirmed,
+    confirmationFingerprint: reviewerConfirmed
+      ? confirmationFingerprint({
+          topFamilies: args.topFamilies,
+          decisions: args.state.decisions,
+          selectedFamilyIds: args.state.selectedFamilyIds,
+          sourceArtifactBinding: args.sourceArtifactBinding,
+        })
+      : null,
+  };
 }
 
 function downloadReview(exported: FamilyReviewExport): void {
@@ -211,22 +365,43 @@ export default function FamilyTop5Review(props: {
   sourceArtifactBinding: SourceArtifactBinding;
 }) {
   const [state, dispatch] = useReducer(familyTop5ReviewReducer, INITIAL_FAMILY_TOP5_REVIEW_STATE);
+  const currentStorageKey = storageKey(props.sourceArtifactBinding);
+  const currentSourceBindingFingerprint = sourceBindingFingerprint(props.sourceArtifactBinding);
+  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = loadStoredState(props.sourceArtifactBinding);
-    if (stored) dispatch({ type: "restore", ...stored });
-  }, [props.sourceArtifactBinding]);
+    const restored = loadStoredState(props.sourceArtifactBinding, props.topFamilies);
+    dispatch({
+      type: "restore",
+      decisions: restored?.decisions ?? {},
+      selectedFamilyIds: restored?.selectedFamilyIds ?? [],
+      reviewerConfirmed: restored?.reviewerConfirmed ?? false,
+    });
+    setHydratedStorageKey(currentStorageKey);
+  }, [currentSourceBindingFingerprint, currentStorageKey, props.sourceArtifactBinding, props.topFamilies]);
 
   useEffect(() => {
+    if (hydratedStorageKey !== currentStorageKey) return;
     try {
       window.localStorage.setItem(
-        storageKey(props.sourceArtifactBinding),
-        JSON.stringify({ decisions: state.decisions, selectedFamilyIds: state.selectedFamilyIds }),
+        currentStorageKey,
+        JSON.stringify(storedState({
+          topFamilies: props.topFamilies,
+          state,
+          sourceArtifactBinding: props.sourceArtifactBinding,
+        })),
       );
     } catch {
       // Browser-local persistence is optional; no server or database write is attempted.
     }
-  }, [props.sourceArtifactBinding, state.decisions, state.selectedFamilyIds]);
+  }, [
+    currentSourceBindingFingerprint,
+    currentStorageKey,
+    hydratedStorageKey,
+    props.sourceArtifactBinding,
+    props.topFamilies,
+    state,
+  ]);
 
   return (
     <FamilyTop5ReviewView
