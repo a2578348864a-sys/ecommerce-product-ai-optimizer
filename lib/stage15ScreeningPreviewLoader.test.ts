@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../tests/helpers/project-materials";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -20,7 +21,7 @@ import {
 import { loadMarketScreeningBatch } from "@/lib/marketScreeningBatchLoader";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 
-const authoritativeProjectRoot = resolve(process.cwd(), "..");
+const authoritativeProjectRoot = TEST_PROJECT_MATERIALS_ROOT;
 const temporaryRoots: string[] = [];
 
 function loadManifest(root = authoritativeProjectRoot): MarketScreeningBatchManifest {

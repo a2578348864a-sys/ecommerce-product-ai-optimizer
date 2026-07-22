@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateNoviceMarketScreening } from "./generate-novice-market-screening";
 
-const projectRoot = resolve(process.cwd(), "..");
+const projectRoot = TEST_PROJECT_MATERIALS_ROOT;
 const canaryDirectory = resolve(
   projectRoot,
   "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15",

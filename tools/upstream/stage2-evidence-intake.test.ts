@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stableHash } from "../../lib/upstream/pipeline";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import {
   STAGE2_OBJECTIVE_EVIDENCE_FIELDS,
   buildStage2CalibrationFromSubmission,
@@ -12,9 +13,8 @@ import {
   type Stage2EvidenceSubmission,
 } from "./stage2-evidence-intake";
 
-const INVENTORY_PATH = resolve(
-  process.cwd(),
-  "../06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/05-Stage2证据缺口清单/stage2-evidence-gap-inventory.v1.json",
+const INVENTORY_PATH = projectMaterialPath(
+  "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/05-Stage2证据缺口清单/stage2-evidence-gap-inventory.v1.json",
 );
 const CAPTURED_AT = "2026-07-14T12:00:00.000Z";
 

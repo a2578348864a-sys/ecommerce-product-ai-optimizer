@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import {
   validateStage2EvidenceCollectionBrief,
 } from "./stage2-evidence-collection-brief";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;

@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../tests/helpers/project-materials";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildStage15NoviceGuidance } from "@/lib/stage15ScreeningPreviewGuidance";
@@ -7,7 +8,7 @@ import type { Stage15ScreeningPreviewItem } from "@/lib/stage15ScreeningPreview"
 function realItems() {
   const result = loadStage15ScreeningPreview({
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot: TEST_PROJECT_MATERIALS_ROOT,
   });
   if (result.status !== "ready") throw new Error(result.errorCode);
   return result.preview.items;

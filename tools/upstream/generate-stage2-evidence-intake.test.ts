@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import { generateStage2EvidenceIntakeArtifacts } from "./generate-stage2-evidence-intake";
 
 const temporaryDirectories: string[] = [];
-const INVENTORY_FILE = resolve(
-  process.cwd(),
-  "../06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/05-Stage2证据缺口清单/stage2-evidence-gap-inventory.v1.json",
+const INVENTORY_FILE = projectMaterialPath(
+  "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/05-Stage2证据缺口清单/stage2-evidence-gap-inventory.v1.json",
 );
 
 afterEach(() => {

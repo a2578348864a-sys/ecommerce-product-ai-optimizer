@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,12 +6,12 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateStage2AdvancementMaterials } from "./generate-stage2-advancement-materials";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
 const INPUTS = {
   inventoryFile: resolve(ROOT, "05-Stage2证据缺口清单/stage2-evidence-gap-inventory.v1.json"),
   evidenceSubmissionFile: resolve(ROOT, "06-Stage2证据录入/stage2-evidence-submission.template.v1.json"),
   stage2PacketFile: resolve(ROOT, "02-盲评完成后再打开/stage2-objective-calibration-packet.v1.json"),
-  rankingFile: resolve(process.cwd(), "../06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-ranking.v1.json"),
+  rankingFile: resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-ranking.v1.json"),
   decidedAt: "2026-07-14T13:00:00.000Z",
 };
 const temporaryDirectories: string[] = [];

@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import {
   type Stage15PreviewImageInput,
 } from "@/lib/stage15ScreeningPreview";
 
-const projectRoot = resolve(process.cwd(), "..");
+const projectRoot = TEST_PROJECT_MATERIALS_ROOT;
 const screeningDirectory = resolve(
   projectRoot,
   "06_测试与验证",

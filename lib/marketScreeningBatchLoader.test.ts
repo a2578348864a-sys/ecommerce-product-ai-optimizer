@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../tests/helpers/project-materials";
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import {
@@ -22,7 +23,7 @@ import {
   mapManifestErrorCode,
 } from "@/lib/marketScreeningBatchLoader";
 
-const sourceRoot = resolve(process.cwd(), "..");
+const sourceRoot = TEST_PROJECT_MATERIALS_ROOT;
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

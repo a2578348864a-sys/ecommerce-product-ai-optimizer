@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,7 +15,7 @@ import {
   type Stage2SourcePacket,
 } from "./stage2-advancement";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
@@ -25,7 +26,7 @@ function sources() {
   const incomplete = readJson<Stage2EvidenceSubmission>(resolve(ROOT, "06-Stage2证据录入/stage2-evidence-submission.template.v1.json"));
   const synthetic = readJson<Stage2EvidenceSubmission>(resolve(ROOT, "06-Stage2证据录入/synthetic-fixture/stage2-evidence-submission.synthetic.v1.json"));
   const stage2Packet = readJson<Stage2SourcePacket>(resolve(ROOT, "02-盲评完成后再打开/stage2-objective-calibration-packet.v1.json"));
-  const ranking = readJson<RankingRun>(resolve(process.cwd(), "../06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-ranking.v1.json"));
+  const ranking = readJson<RankingRun>(resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-ranking.v1.json"));
   return { inventory, incomplete, synthetic, stage2Packet, ranking };
 }
 

@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../tests/helpers/project-materials";
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
 import { loadMarketScreeningBatchManifest } from "@/lib/marketScreeningBatchManifest";
@@ -9,7 +10,7 @@ import {
 function realManifest() {
   const result = loadMarketScreeningBatchManifest({
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot: TEST_PROJECT_MATERIALS_ROOT,
   });
   if (result.status !== "ready") throw new Error(result.errorCode);
   return result.manifest;

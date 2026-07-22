@@ -2,11 +2,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import { generatePhase2AcceptanceReport } from "./generate-phase2-acceptance-report";
 
-const SOURCE_FILE = resolve(
-  process.cwd(),
-  "../06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/human-assisted-amazon-run.v2.json",
+const SOURCE_FILE = projectMaterialPath(
+  "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/human-assisted-amazon-run.v2.json",
 );
 const temporaryDirectories: string[] = [];
 

@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generatePhase3AcceptanceReport } from "./generate-phase3-acceptance-report";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证");
 const temporaryDirectories: string[] = [];
 
 afterEach(() => temporaryDirectories.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true })));

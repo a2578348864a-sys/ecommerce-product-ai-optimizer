@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateStage2EvidenceCollectionBrief } from "./generate-stage2-evidence-collection-brief";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01");
 const temporaryDirectories: string[] = [];
 
 afterEach(() => temporaryDirectories.splice(0).forEach((path) => rmSync(path, { recursive: true, force: true })));

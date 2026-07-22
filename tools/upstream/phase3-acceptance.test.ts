@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -7,7 +8,7 @@ import {
   phase3AcceptanceReportHashIsValid,
 } from "./phase3-acceptance";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证");
 
 function readJson(path: string) {
   const content = readFileSync(resolve(ROOT, path));

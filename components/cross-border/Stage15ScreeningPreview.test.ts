@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { createElement } from "react";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,7 +12,7 @@ import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader
 function realPreview() {
   const result = loadStage15ScreeningPreview({
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot: TEST_PROJECT_MATERIALS_ROOT,
   });
   if (result.status !== "ready") throw new Error(result.errorCode);
   return result.preview;

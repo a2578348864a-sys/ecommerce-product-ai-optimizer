@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,7 +9,7 @@ import {
   type Stage2NextEvidenceHandoffInput,
 } from "./stage2-next-evidence-handoff";
 
-const PROJECT = resolve(process.cwd(), "..");
+const PROJECT = TEST_PROJECT_MATERIALS_ROOT;
 const read = <T>(relative: string) => JSON.parse(readFileSync(join(PROJECT, relative), "utf8")) as T;
 
 function input(): Stage2NextEvidenceHandoffInput {

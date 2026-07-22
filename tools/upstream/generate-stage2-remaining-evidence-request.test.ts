@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -6,7 +7,7 @@ import { generateStage2RemainingEvidenceRequest } from "./generate-stage2-remain
 
 describe("Stage 2 remaining evidence request generator", () => {
   it("writes an idempotent machine request and beginner handoff", () => {
-    const project = resolve(process.cwd(), "..");
+    const project = TEST_PROJECT_MATERIALS_ROOT;
     const source = join(project, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Application-01");
     const output = mkdtempSync(join(tmpdir(), "stage2-remaining-evidence-"));
     const input = {
@@ -25,7 +26,7 @@ describe("Stage 2 remaining evidence request generator", () => {
   });
 
   it("does not ask the user to choose 3.5 versus 3.8 again after height confirmation", () => {
-    const project = resolve(process.cwd(), "..");
+    const project = TEST_PROJECT_MATERIALS_ROOT;
     const source = join(project, "06_测试与验证/2026-07-15-Phase-Stage2-Package-Height-Confirmation-01");
     const output = mkdtempSync(join(tmpdir(), "stage2-remaining-evidence-height-confirmed-"));
     generateStage2RemainingEvidenceRequest({

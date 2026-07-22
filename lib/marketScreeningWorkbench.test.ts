@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../tests/helpers/project-materials";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -11,7 +12,7 @@ import {
   buildMarketScreeningWorkbenchView,
 } from "@/lib/marketScreeningWorkbench";
 
-const projectMaterialsRoot = resolve(process.cwd(), "..");
+const projectMaterialsRoot = TEST_PROJECT_MATERIALS_ROOT;
 
 function readyFixture() {
   const result = loadMarketScreeningBatch({ environment: "development", projectMaterialsRoot });
