@@ -108,11 +108,24 @@ describe("ListingPackCard — save state logic", () => {
 
   describe("re-generation overwrite", () => {
     it("new generation produces different timestamp", () => {
-      const pack1 = buildFallbackListingPack({ productName: "Overwrite" });
-      const pack2 = buildFallbackListingPack({ productName: "Overwrite" });
-      expect(pack1.generatedAt).not.toBe(pack2.generatedAt);
-      expect(pack1.source).toBe("rule_based");
-      expect(pack2.source).toBe("rule_based");
+      vi.useFakeTimers();
+      try {
+        const firstGenerationTime = new Date("2026-01-01T00:00:00.000Z");
+        const secondGenerationTime = new Date("2026-01-01T00:00:00.001Z");
+
+        vi.setSystemTime(firstGenerationTime);
+        const pack1 = buildFallbackListingPack({ productName: "Overwrite" });
+        vi.setSystemTime(secondGenerationTime);
+        const pack2 = buildFallbackListingPack({ productName: "Overwrite" });
+
+        expect(pack1.generatedAt).toBe(firstGenerationTime.toISOString());
+        expect(pack2.generatedAt).toBe(secondGenerationTime.toISOString());
+        expect(pack1.generatedAt).not.toBe(pack2.generatedAt);
+        expect(pack1.source).toBe("rule_based");
+        expect(pack2.source).toBe("rule_based");
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
