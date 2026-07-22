@@ -90,8 +90,20 @@ describe("advanced opportunities import compatibility entry", () => {
   it("keeps the advanced import surface copy explicit", () => {
     expect(getOpportunitiesSurfaceCopy("advanced_import")).toEqual({
       eyebrow: "高级工具",
-      title: "手工导入外部来源",
-      description: "保留现有 URL、RSS、Sitemap 与历史候选流程；导入不等于完成 Evidence 筛选或进入调查短名单。",
+      lockedTitle: "手工导入外部来源 · 功能预览",
+      lockedDescription: "保留现有 URL、RSS、Sitemap 与历史候选流程；导入不等于完成 Evidence 筛选或进入调查短名单。",
+      unlockedTitle: "手工导入外部来源",
+      unlockedDescription: "保留现有 URL、RSS、Sitemap 与历史候选流程；导入不等于完成 Evidence 筛选或进入调查短名单。",
+    });
+  });
+
+  it("preserves the existing opportunities surface copy", () => {
+    expect(getOpportunitiesSurfaceCopy("legacy_default")).toEqual({
+      eyebrow: null,
+      lockedTitle: "机会雷达 / 候选品池 · 功能预览",
+      lockedDescription: "跨境电商机会来源导入与候选池 — 未解锁时可浏览功能说明和示例",
+      unlockedTitle: "机会雷达",
+      unlockedDescription: "先看市场信号，再决定是否进入商业深挖。",
     });
   });
 });
