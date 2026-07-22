@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "stage2-alternative-source-decision-brief.v1",
+  "decisionBriefId": "stage2-alternative-source-decision-3ccc79d67157a2b8072fce4e",
+  "status": "pending_user_decision",
+  "createdAt": "2026-07-15T04:10:00.000Z",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "probe1RunId": "stage2-alternative-real-af9c48d815372e46cdd45c17",
+  "probe1RunEvidenceHash": "58470053c6bda144372308a0c1603eb34c02465daa31de43ef55e6c7a887d445",
+  "probe2RunId": "stage2-alternative-real-047400cb65b91817d672d75b",
+  "probe2RunEvidenceHash": "83efb21ee25ea51df59c739ad7e107568f106374c98f92b3af4dc87ac740244a",
+  "currentConclusion": "unchanged_capability_probe_retry_not_supported",
+  "observedFacts": {
+    "probe1": {
+      "status": "failed_closed",
+      "classification": "unknown_page",
+      "reasonCodes": [
+        "search_container_marker_missing"
+      ],
+      "allowedProductUrlCount": 0
+    },
+    "probe2": {
+      "status": "failed_closed",
+      "classification": "unknown_page",
+      "reasonCodes": [
+        "search_container_marker_missing"
+      ],
+      "allowedProductUrlCount": 0,
+      "diagnosticStatus": "diagnostic_evidence_present",
+      "genericProductClassElementCount": 177,
+      "exactAllowedProductPathCount": 0,
+      "looseSameOriginProductPathCount": 97,
+      "supplierSubdomainProductPathCount": 292
+    }
+  },
+  "options": [
+    {
+      "optionId": "stop_made_in_china_current_policy",
+      "meaning": "停止按当前精确 Origin/路径策略使用 Made-in-China，不再原样重试。",
+      "requiresNewAuthorization": false,
+      "automaticallySelected": false
+    },
+    {
+      "optionId": "design_supplier_subdomain_policy_probe",
+      "meaning": "单独设计供应商子域名的政策、安全和可持续性探针；设计与任何真实访问均需新授权。",
+      "requiresNewAuthorization": true,
+      "automaticallySelected": false
+    },
+    {
+      "optionId": "select_different_public_source",
+      "meaning": "放弃当前来源，重新调查并冻结另一个公开来源 Brief；真实调查需新授权。",
+      "requiresNewAuthorization": true,
+      "automaticallySelected": false
+    }
+  ],
+  "recommendedAction": "do_not_retry_unchanged_request_user_source_decision",
+  "selectedOption": null,
+  "approvedBy": null,
+  "sourceCapabilityValidated": false,
+  "supplierSubdomainPolicyAuthorized": false,
+  "realSupplierEvidenceCollected": false,
+  "supplierFieldsCollected": 0,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "boundaries": [
+    "supplier_subdomain_observation_is_not_policy_approval",
+    "path_counts_do_not_prove_all_relevant_links_use_supplier_subdomains",
+    "unknown_page_diagnostic_does_not_validate_source_capability",
+    "historical_probe_failures_are_not_reclassified",
+    "no_external_action_authorized_by_this_brief"
+  ],
+  "evidenceHash": "e494a9fd1e08151d279e7d6535dc1c07d93411853b16a72f40d6aeacf2314c33"
+}

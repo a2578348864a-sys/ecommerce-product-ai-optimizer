@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "candidate-advancement-preview.v1",
+  "status": "blocked_by_evidence",
+  "inputHash": "e0a134152546f0ce6ab4db5d471234e8210c16eac214ef5942407b0bf4c2f068",
+  "boundary": {
+    "previewOnly": true,
+    "databaseWritten": false,
+    "apiCalled": false,
+    "authorizationProven": false,
+    "databaseTransactionProven": false,
+    "serverSourceProofCreated": false,
+    "candidateCreated": false,
+    "stage1RankingModified": false
+  },
+  "decisionSummary": {
+    "sampleCount": 7,
+    "readyCount": 0,
+    "pendingCount": 7,
+    "rejectedCount": 0,
+    "continueCount": 0,
+    "stopCount": 0,
+    "holdCount": 0
+  },
+  "excluded": [],
+  "candidates": [],
+  "evidenceHash": "81a0366b5514e44d726e82702348e635481e36e39821e25b0fae14a443960474"
+}

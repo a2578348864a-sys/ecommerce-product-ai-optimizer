@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "stage2-public-cost-evidence.v1",
+  "evidenceId": "stage2-public-cost-evidence-efb551bdfb38b068fc2dbd88",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "sampleId": "stage2-high-01",
+  "productKey": "amazon:US:B07SYPLVTG",
+  "status": "partial",
+  "capturedAt": "2026-07-15T17:55:00+08:00",
+  "boundary": {
+    "officialPublicEvidenceOnly": true,
+    "rawAndDerivedValuesSeparated": true,
+    "stage2SubmissionMutated": false,
+    "profitCalculated": false,
+    "candidateCreated": false,
+    "databaseWritten": false
+  },
+  "observations": {
+    "supplierUnitPriceCny": {
+      "value": 18.5,
+      "missingReason": null,
+      "evidence": {
+        "sourceType": "manual",
+        "sourceUrl": "https://detail.1688.com/offer/980209804939.html",
+        "capturedAt": "2026-07-15T15:36:38.469+08:00",
+        "note": "用户提供的1688灰色六层变体公开页面证据；原始截图采集时间未知，以证据接收时间记录。",
+        "contentHash": "4d2b4e9db0a51df0010c5a658fdc5e489f54baa21a08a143f475a2ddb229068b"
+      }
+    },
+    "exchangeRate": {
+      "value": {
+        "quoteDirection": "CNY_PER_USD",
+        "rate": 6.7766,
+        "effectiveDate": "2026-07-10"
+      },
+      "missingReason": null,
+      "evidence": {
+        "sourceType": "direct_observation",
+        "sourceUrl": "https://www.federalreserve.gov/releases/h10/current/",
+        "capturedAt": "2026-07-15T17:55:00+08:00",
+        "note": "Federal Reserve H.10 2026-07-13 发布；中国人民币 2026-07-10 为每美元 6.7766 元。",
+        "contentHash": "c08b34c6a0b85b93d2a8c84a17e3c5b480cb4726191a11dcb208d3bc1c3e9992"
+      }
+    },
+    "referralFee": {
+      "value": null,
+      "missingReason": "amazon_fee_category_not_confirmed_for_product",
+      "evidence": null
+    },
+    "fbaFulfillmentFee": {
+      "value": null,
+      "missingReason": "exact_fba_fee_not_observed_and_package_height_conflicts",
+      "evidence": null
+    }
+  }
+}

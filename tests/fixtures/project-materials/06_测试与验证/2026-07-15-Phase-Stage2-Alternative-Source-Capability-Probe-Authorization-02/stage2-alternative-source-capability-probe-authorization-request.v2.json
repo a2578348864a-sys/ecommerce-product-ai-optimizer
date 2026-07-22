@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-authorization-request.v2",
+  "authorizationRequestId": "stage2-alternative-probe-auth-02-b200d083d789600c5315d26b",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-15T04:30:00.000Z",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "baselineOfflineValidationEvidenceHash": "1dd441ec54068216a192270ea1e76c77caad5485e4ebbf8682c6effe9231c9a6",
+  "priorAuthorizationEvidenceHash": "fab6b91f25891ecb0b36e2656e867c56067c31e27678b5de2375705a1a2de0bd",
+  "priorRunEvidenceHash": "58470053c6bda144372308a0c1603eb34c02465daa31de43ef55e6c7a887d445",
+  "priorRunId": "stage2-alternative-real-af9c48d815372e46cdd45c17",
+  "unknownPageDiagnosticValidationEvidenceHash": "4da5a85b2206064fe0fdd91e194093828acf218b1130f9f656dc6767753b53cd",
+  "supersedesAuthorizationRequestId": "stage2-alternative-probe-auth-77838cd6b63bb7f9330ed35b",
+  "purpose": "public_source_unknown_page_revalidation_only",
+  "selectedOrigin": "https://www.made-in-china.com",
+  "policyRequest": {
+    "url": "https://www.made-in-china.com/robots.txt",
+    "maximumRequests": 1
+  },
+  "browserScope": {
+    "startUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "maximumSearchPageNavigations": 1,
+    "maximumProductPageNavigations": 0,
+    "maximumTotalNavigations": 1
+  },
+  "maximumTotalExternalRequests": 2,
+  "automaticRetryCount": 0,
+  "maximumDiscoveredProductUrls": 2,
+  "supplierFieldsCollected": 0,
+  "stopConditions": [
+    "robots_policy_unknown_or_disallows",
+    "captcha_or_robot_check",
+    "login_wall_or_inquiry_required",
+    "access_denied_or_service_unavailable",
+    "unexpected_final_origin",
+    "unexpected_intermediate_redirect_origin",
+    "browser_internal_error",
+    "unknown_page_state_after_diagnostic",
+    "request_budget_exhausted",
+    "cleanup_incomplete"
+  ],
+  "authorizationPhrase": "我明确授权按 Capability-Probe-02 固定范围，使用独立临时 Chrome 对 Made-in-China.com 执行一次 unknown_page 重新验证；最多1次 robots 请求、1次搜索页导航、0次商品页、0次重试，不采集供应商字段。",
+  "authorization": {
+    "status": "not_granted",
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "boundary": {
+    "thisRequestIsNotAuthorization": true,
+    "userMustAuthorizeInCurrentConversation": true,
+    "singleUseOnly": true,
+    "diagnosticCannotAuthorizeCollection": true,
+    "noProductPageNavigation": true,
+    "noSupplierFieldCollection": true,
+    "noLoginOrInquiry": true,
+    "noCaptchaHandling": true,
+    "noAutomaticRetry": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noExternalAiOrPaidApi": true
+  },
+  "requestHash": "8146ef5875ed81095ffffbe01c2233a3630976c5470a8dcd47e63fed7dcbe140"
+}

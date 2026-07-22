@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "stage2-public-cost-review-request.v1",
+  "requestId": "stage2-public-cost-review-f55759319e537a3ffe67b5cc",
+  "status": "pending_user_review",
+  "createdAt": "2026-07-15T18:03:00+08:00",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "runId": "stage2-public-cost-run-d1d2d8f269cebf153a239eab",
+  "runHash": "11c06fdd28d4275888250969fd85a4098ee81a502f541e0fa692207bf75be8fc",
+  "evidenceHash": "dd1e663a2755034d0360e0f61fdecfda2051472ba4bcb3bda69f8853a6a40d3d",
+  "derivationPreviewHash": "f4c611ff1717ecfac9c04126829eba08d11509fff351c7495dfbe9bb4a89d5c1",
+  "patchPreviewHash": "4c3c338bfbedb3ebda244105385082b93109abe5136b63e03c6458b17d97ddaf",
+  "proposedBom": {
+    "value": 2.73,
+    "currency": "USD",
+    "unit": "per_item"
+  },
+  "exactConfirmationText": "我确认将 BOM 2.73 USD/件作为 Stage 2 暂定派生输入；它不代表最终报价，其余未知成本继续保持 null。",
+  "stage2SubmissionMutated": false,
+  "requestHash": "8a4d26279578da35f215b805bc8d8835919f7f2105ed45edf596529fc3c26102"
+}

@@ -1,0 +1,447 @@
+{
+  "schemaVersion": "solo-stage2-objective-calibration-packet.v1",
+  "status": "pending_evidence",
+  "revealBoundary": "open_only_after_novice_blind_review_is_locked",
+  "selectionMethod": "deterministic_stratified_v1",
+  "sourceRankingRunId": "ranking-3e915b7638c43def68f22948",
+  "sourceRankingInputHash": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a",
+  "sourceBlindReviewId": "blind-e44d4faf476637758ab3e888",
+  "selectionCounts": {
+    "high": 2,
+    "medium": 2,
+    "low": 2,
+    "insufficient_evidence": 1
+  },
+  "requiredEvidenceBoundary": {
+    "supplierAndCostValuesRequireSource": true,
+    "complianceRequiresHumanVerification": true,
+    "missingCommercialInputsResult": "profit_insufficient_evidence",
+    "stage1RankingMayNotBeRewritten": true
+  },
+  "samples": [
+    {
+      "sampleId": "stage2-high-01",
+      "calibrationGroup": "high",
+      "candidateId": "candidate-4d7f7c7849791595166c",
+      "productKey": "amazon:US:B07SYPLVTG",
+      "systemContext": {
+        "rank": 1,
+        "promotionDecision": "promoted",
+        "recommendationTier": "high",
+        "confidence": "high"
+      },
+      "sourceEvidence": {
+        "title": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+        "sourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 15.98,
+        "currency": "USD",
+        "rating": 4.5,
+        "reviewCount": 17100,
+        "missingEvidence": []
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-4d7f7c7849791595166c",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-high-02",
+      "calibrationGroup": "high",
+      "candidateId": "candidate-7c40902cf1d313241836",
+      "productKey": "amazon:US:B09ZV2TX28",
+      "systemContext": {
+        "rank": 2,
+        "promotionDecision": "promoted",
+        "recommendationTier": "high",
+        "confidence": "high"
+      },
+      "sourceEvidence": {
+        "title": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+        "sourceUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 16.99,
+        "currency": "USD",
+        "rating": 4.5,
+        "reviewCount": 109600,
+        "missingEvidence": []
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-7c40902cf1d313241836",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-medium-01",
+      "calibrationGroup": "medium",
+      "candidateId": "candidate-49271bcb3c1431d0fdf9",
+      "productKey": "amazon:US:B01F2II920",
+      "systemContext": {
+        "rank": 12,
+        "promotionDecision": "promoted",
+        "recommendationTier": "medium",
+        "confidence": "high"
+      },
+      "sourceEvidence": {
+        "title": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+        "sourceUrl": "https://www.amazon.com/dp/B01F2II920",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 127.28,
+        "currency": "USD",
+        "rating": 4.5,
+        "reviewCount": 2000,
+        "missingEvidence": []
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-49271bcb3c1431d0fdf9",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-medium-02",
+      "calibrationGroup": "medium",
+      "candidateId": "candidate-504f2804edc8759a97cd",
+      "productKey": "amazon:US:B07FX8RZJZ",
+      "systemContext": {
+        "rank": 13,
+        "promotionDecision": "promoted",
+        "recommendationTier": "medium",
+        "confidence": "high"
+      },
+      "sourceEvidence": {
+        "title": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+        "sourceUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 11.98,
+        "currency": "USD",
+        "rating": 4.6,
+        "reviewCount": 14300,
+        "missingEvidence": []
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-504f2804edc8759a97cd",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-low-01",
+      "calibrationGroup": "low",
+      "candidateId": "candidate-f4dbb1668698326e5361",
+      "productKey": "amazon:US:B0CNGTZ3B5",
+      "systemContext": {
+        "rank": 17,
+        "promotionDecision": "rejected",
+        "recommendationTier": "low",
+        "confidence": "high"
+      },
+      "sourceEvidence": {
+        "title": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+        "sourceUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 9.99,
+        "currency": "USD",
+        "rating": 4.4,
+        "reviewCount": 14800,
+        "missingEvidence": []
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-f4dbb1668698326e5361",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-low-02",
+      "calibrationGroup": "low",
+      "candidateId": "candidate-81d50ff4391590f91196",
+      "productKey": "amazon:US:B0FWBX39KX",
+      "systemContext": {
+        "rank": 18,
+        "promotionDecision": "rejected",
+        "recommendationTier": "low",
+        "confidence": "high"
+      },
+      "sourceEvidence": {
+        "title": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+        "sourceUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 45.88,
+        "currency": "USD",
+        "rating": 4.2,
+        "reviewCount": 1700,
+        "missingEvidence": []
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-81d50ff4391590f91196",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-insufficient-evidence-01",
+      "calibrationGroup": "insufficient_evidence",
+      "candidateId": "candidate-b1a91e3c81cbe884a4d6",
+      "productKey": "amazon:US:B0GZVHB1XW",
+      "systemContext": {
+        "rank": null,
+        "promotionDecision": "insufficient_evidence",
+        "recommendationTier": "not_ranked",
+        "confidence": "low"
+      },
+      "sourceEvidence": {
+        "title": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+        "sourceUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 39.99,
+        "currency": "USD",
+        "rating": null,
+        "reviewCount": null,
+        "missingEvidence": [
+          "rating",
+          "review_count"
+        ]
+      },
+      "evidenceInputs": {
+        "supplierUrl": null,
+        "supplierCapturedAt": null,
+        "moq": null,
+        "bom": null,
+        "firstMile": null,
+        "platformCommission": null,
+        "fba": null,
+        "packaging": null,
+        "storage": null,
+        "returnReserve": null,
+        "packageLengthCm": null,
+        "packageWidthCm": null,
+        "packageHeightCm": null,
+        "packageWeightKg": null,
+        "logisticsEvidenceUrl": null,
+        "complianceEvidenceUrl": null,
+        "executionRiskNotes": null,
+        "humanContinueDecision": null,
+        "humanDecisionReason": null
+      },
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "candidate-b1a91e3c81cbe884a4d6",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    }
+  ],
+  "packetHash": "b3854b9983a2270d398b1380cd603914a0bc81f313eb3770f6654645035ce899"
+}

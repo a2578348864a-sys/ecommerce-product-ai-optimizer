@@ -1,0 +1,182 @@
+{
+  "schemaVersion": "stage2-alternative-source-unknown-page-diagnostic-offline-validation.v1",
+  "status": "offline_validation_passed",
+  "proofLevel": "offline_fixture_only",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "createdAt": "2026-07-15T03:40:00.000Z",
+  "fixtureSchemaVersion": "stage2-alternative-source-unknown-page-diagnostic-fixtures.v1",
+  "fixtureHash": "781c636ff84423ce041284368cdc27116b85d0609ec254afffdd4afd02d0f763",
+  "inputHash": "70012d4dd7f1e845274a784b7e3fdecaa10691a35f785085b516eb9b5b6d1fef",
+  "scenarioCount": 9,
+  "statusCounts": {
+    "diagnostic_evidence_present": 3,
+    "diagnostic_evidence_absent": 1,
+    "diagnostic_evidence_insufficient": 1,
+    "diagnostic_context_blocked": 2,
+    "diagnostic_input_invalid": 1,
+    "not_applicable": 1
+  },
+  "failedScenarioIds": [],
+  "scenarioResults": [
+    {
+      "scenarioId": "generic_structure_without_known_selector",
+      "expectedStatus": "diagnostic_evidence_present",
+      "actualStatus": "diagnostic_evidence_present",
+      "expectedReasonCodes": [
+        "known_search_container_absent",
+        "generic_product_class_elements_present",
+        "loose_same_origin_product_paths_present"
+      ],
+      "actualReasonCodes": [
+        "known_search_container_absent",
+        "main_structure_present",
+        "generic_product_class_elements_present",
+        "exact_allowed_product_paths_absent",
+        "loose_same_origin_product_paths_present",
+        "supplier_subdomain_product_paths_absent"
+      ],
+      "parentPageInputHash": "c90c2d173310fe72c3a6c437bdf639c885f93bf77323b8775d7ea91861792e69",
+      "diagnosticInputHash": "683e9b578c8493ea756b140eb92ed36feccdc793939b70c0d9e74748021c0bed",
+      "passed": true
+    },
+    {
+      "scenarioId": "loose_paths_only",
+      "expectedStatus": "diagnostic_evidence_present",
+      "actualStatus": "diagnostic_evidence_present",
+      "expectedReasonCodes": [
+        "loose_same_origin_product_paths_present"
+      ],
+      "actualReasonCodes": [
+        "known_search_container_absent",
+        "main_structure_present",
+        "generic_product_class_elements_absent",
+        "exact_allowed_product_paths_absent",
+        "loose_same_origin_product_paths_present",
+        "supplier_subdomain_product_paths_absent"
+      ],
+      "parentPageInputHash": "8a5e1906be48d547701832333874e76896b367ad34aea439d329122d17af2eec",
+      "diagnosticInputHash": "e1aa1d9b2bd9851573e587edb1327d0fe4706f253bd26336f073732137f1eccb",
+      "passed": true
+    },
+    {
+      "scenarioId": "supplier_subdomain_paths_only",
+      "expectedStatus": "diagnostic_evidence_present",
+      "actualStatus": "diagnostic_evidence_present",
+      "expectedReasonCodes": [
+        "supplier_subdomain_product_paths_present",
+        "unsafe_supplier_subdomain_paths_observed"
+      ],
+      "actualReasonCodes": [
+        "known_search_container_absent",
+        "main_structure_present",
+        "generic_product_class_elements_absent",
+        "exact_allowed_product_paths_absent",
+        "loose_same_origin_product_paths_absent",
+        "supplier_subdomain_product_paths_present",
+        "unsafe_supplier_subdomain_paths_observed"
+      ],
+      "parentPageInputHash": "c398757b69f55dc3ac433fdc55505ead3e10d27b7047c9ff835faeb18b1bb5bf",
+      "diagnosticInputHash": "9260e120d2a54ee12fbbe8acc94b9112eb62f66489a7e2839d56eb4c446024fe",
+      "passed": true
+    },
+    {
+      "scenarioId": "no_product_structure_indicators",
+      "expectedStatus": "diagnostic_evidence_absent",
+      "actualStatus": "diagnostic_evidence_absent",
+      "expectedReasonCodes": [
+        "generic_product_class_elements_absent",
+        "loose_same_origin_product_paths_absent"
+      ],
+      "actualReasonCodes": [
+        "known_search_container_absent",
+        "main_structure_present",
+        "generic_product_class_elements_absent",
+        "exact_allowed_product_paths_absent",
+        "loose_same_origin_product_paths_absent",
+        "supplier_subdomain_product_paths_absent"
+      ],
+      "parentPageInputHash": "13033dd3ecc0da9cc7df770753680e74ab8cfac8fd53019462ca342e691dce26",
+      "diagnosticInputHash": "54787171c3a420095971d66e9c9aede0193fc458fb10471da55abfc6aef300f6",
+      "passed": true
+    },
+    {
+      "scenarioId": "historical_canary_evidence_missing_independent_counts",
+      "expectedStatus": "diagnostic_evidence_insufficient",
+      "actualStatus": "diagnostic_evidence_insufficient",
+      "expectedReasonCodes": [
+        "required_structure_counts_missing"
+      ],
+      "actualReasonCodes": [
+        "required_structure_counts_missing"
+      ],
+      "parentPageInputHash": "c5fc18ab3c23c63f13dae75cad3c60d89b40ab3795bb366de95780fc5aaf6d98",
+      "diagnosticInputHash": "c1f2b5d79342ed7ce2e5703c1c59e1b3fe0879b19bf09e404951d4122dd53f40",
+      "passed": true
+    },
+    {
+      "scenarioId": "page_still_loading",
+      "expectedStatus": "diagnostic_context_blocked",
+      "actualStatus": "diagnostic_context_blocked",
+      "expectedReasonCodes": [
+        "diagnostic_page_not_stable"
+      ],
+      "actualReasonCodes": [
+        "diagnostic_page_not_stable"
+      ],
+      "parentPageInputHash": "bcddd8f43514159ef7ff0d34f6b11f9d6fd0aaeeb802f2cabb8aed6154772406",
+      "diagnosticInputHash": "1b7ad51e2cd3e7290a0dde4fc46dc2e78f638d435362a3a2e0e872eb4a08eeb9",
+      "passed": true
+    },
+    {
+      "scenarioId": "unexpected_origin",
+      "expectedStatus": "diagnostic_context_blocked",
+      "actualStatus": "diagnostic_context_blocked",
+      "expectedReasonCodes": [
+        "diagnostic_origin_or_path_not_allowed"
+      ],
+      "actualReasonCodes": [
+        "diagnostic_origin_or_path_not_allowed"
+      ],
+      "parentPageInputHash": "99f3a4a948e3671f079267e01cca888a7cbe5fa98e74aa6e9d66d45d3ea5dcc2",
+      "diagnosticInputHash": "740bcab04912ffe59d34865cef4ab8ed5bfe1d9913696bee291ade7c8330bb52",
+      "passed": true
+    },
+    {
+      "scenarioId": "unsafe_path_sample",
+      "expectedStatus": "diagnostic_input_invalid",
+      "actualStatus": "diagnostic_input_invalid",
+      "expectedReasonCodes": [
+        "diagnostic_safe_path_sample_invalid"
+      ],
+      "actualReasonCodes": [
+        "diagnostic_safe_path_sample_invalid"
+      ],
+      "parentPageInputHash": "a38fad07f74e12bee158130620c5c19eed5e972827f41cbecb821e078b031621",
+      "diagnosticInputHash": "a0100f5f03ebf6b5baead63bd6813eaf58244d819646b23b666391ddad83a392",
+      "passed": true
+    },
+    {
+      "scenarioId": "not_unknown_primary_classification",
+      "expectedStatus": "not_applicable",
+      "actualStatus": "not_applicable",
+      "expectedReasonCodes": [
+        "primary_classification_not_unknown_page"
+      ],
+      "actualReasonCodes": [
+        "primary_classification_not_unknown_page"
+      ],
+      "parentPageInputHash": "db19175491da4bf02638362832c61a577c19368428e4c3f4aa92b970a67103cf",
+      "diagnosticInputHash": "e1eb98e29fcde5bba68010b2c9d33b2a59d37d060073862c4ca2af073b422c42",
+      "passed": true
+    }
+  ],
+  "diagnosticWiredIntoFutureProbeRunV3": true,
+  "selectorOrThresholdChanged": false,
+  "failClosedPreserved": true,
+  "realWebsiteAccessed": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "evidenceHash": "4da5a85b2206064fe0fdd91e194093828acf218b1130f9f656dc6767753b53cd"
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-authorization-request.v1",
+  "authorizationRequestId": "stage2-alternative-probe-auth-77838cd6b63bb7f9330ed35b",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-15T03:00:00.000Z",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "offlineValidationEvidenceHash": "1dd441ec54068216a192270ea1e76c77caad5485e4ebbf8682c6effe9231c9a6",
+  "purpose": "public_source_capability_probe_only",
+  "selectedOrigin": "https://www.made-in-china.com",
+  "policyRequest": {
+    "url": "https://www.made-in-china.com/robots.txt",
+    "maximumRequests": 1
+  },
+  "browserScope": {
+    "startUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "maximumSearchPageNavigations": 1,
+    "maximumProductPageNavigations": 0,
+    "maximumTotalNavigations": 1
+  },
+  "maximumTotalExternalRequests": 2,
+  "automaticRetryCount": 0,
+  "maximumDiscoveredProductUrls": 2,
+  "supplierFieldsCollected": 0,
+  "stopConditions": [
+    "robots_policy_unknown_or_disallows",
+    "captcha_or_robot_check",
+    "login_wall_or_inquiry_required",
+    "access_denied_or_service_unavailable",
+    "unexpected_final_origin",
+    "unexpected_intermediate_redirect_origin",
+    "browser_internal_error",
+    "unknown_page_state",
+    "request_budget_exhausted",
+    "cleanup_incomplete"
+  ],
+  "authorizationPhrase": "我明确授权按 Capability-Probe-01 固定范围，使用独立临时 Chrome 对 Made-in-China.com 执行一次真实来源能力探针；最多1次 robots 请求、1次搜索页导航、0次商品页、0次重试，不采集供应商字段。",
+  "authorization": {
+    "status": "not_granted",
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "boundary": {
+    "thisRequestIsNotAuthorization": true,
+    "userMustAuthorizeInCurrentConversation": true,
+    "singleUseOnly": true,
+    "noProductPageNavigation": true,
+    "noSupplierFieldCollection": true,
+    "noLoginOrInquiry": true,
+    "noCaptchaHandling": true,
+    "noAutomaticRetry": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noExternalAiOrPaidApi": true
+  },
+  "requestHash": "ad17d91216a29dc8455d9cffd74ac975dd484b6a358f2e9334c9d9ff76e5d5e5"
+}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "stage2-package-height-confirmation-application.v1",
+  "status": "package_height_manual_confirmation_applied_locally",
+  "appliedAt": "2026-07-15T19:11:24+08:00",
+  "targetSampleId": "stage2-high-01",
+  "sourceSubmissionHash": "bd7587fcc7ff2da3b52e68de22914ad184a623e8a4ad3afd7d9f380302930c97",
+  "sourceValidationHash": "99fbc06d5bf458bc2e8c892d29c8e8dd57d4e2b3d4b55a29a5ca91a29d6821cc",
+  "sourceConflictEvidenceHash": "ad8e8f64f4257d0398469269d5d6fb261a3a3bcc9abd833efc2df2a3e5ef4e64",
+  "sourceDecisionHash": "7cd2173a7a29a7e7f9db1548bab50e2d86177d3b8c6da3a9c691b8bc76e1b7e6",
+  "acceptedProvisionalBomUsd": 2.73,
+  "appliedField": {
+    "field": "packageHeightCm",
+    "value": 3.5,
+    "unit": "cm",
+    "sourceType": "manual"
+  },
+  "derivedDiagnostics": {
+    "packageVolumeCm3": 3363.5,
+    "packageWeightKg": 0.58,
+    "fbaFee": null,
+    "fbaFeeMissingReason": "amazon_fee_category_and_applicable_rate_not_confirmed"
+  },
+  "outputSubmissionHash": "7b8dfa1be939d6696d618ce5241cc84176a2367a0121f75b4f7bc55322e96169",
+  "outputValidationHash": "8fc736415fba8ff25e47f00e8dad09c49969add2b32bb066a6c41ada4805c69f",
+  "outputCalibrationHash": "ff8e38af1d0f276d24efa3e6679bcd9cef536a4cb032a44657e1624bd2de7350",
+  "boundary": {
+    "originalConflictEvidencePreserved": true,
+    "supplierConfirmationClaimed": false,
+    "otherUnknownFieldsRemainNull": true,
+    "fbaCalculated": false,
+    "profitCalculated": false,
+    "candidateCreated": false,
+    "databaseWritten": false,
+    "stage1RankingModified": false
+  },
+  "applicationHash": "9cc035d3d00e384eab33434996d8d34d94aec1d44eaa18ad4af3a7366f470a56"
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-reauthorization-generation-summary.v1",
+  "status": "pending_user_authorization",
+  "authorizationRequestId": "stage2-alternative-probe-auth-02-b200d083d789600c5315d26b",
+  "requestHash": "8146ef5875ed81095ffffbe01c2233a3630976c5470a8dcd47e63fed7dcbe140",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "baselineOfflineValidationEvidenceHash": "1dd441ec54068216a192270ea1e76c77caad5485e4ebbf8682c6effe9231c9a6",
+  "priorAuthorizationEvidenceHash": "fab6b91f25891ecb0b36e2656e867c56067c31e27678b5de2375705a1a2de0bd",
+  "priorRunEvidenceHash": "58470053c6bda144372308a0c1603eb34c02465daa31de43ef55e6c7a887d445",
+  "unknownPageDiagnosticValidationEvidenceHash": "4da5a85b2206064fe0fdd91e194093828acf218b1130f9f656dc6767753b53cd",
+  "validationInputHash": "f6d3e1bb625400fc6c7b2f2d6354946262d85613f7d0c160021d7f6380ff20d0",
+  "authorizationGranted": false,
+  "realWebsiteAccessedDuringGeneration": false,
+  "runtimeProbeExecuted": false,
+  "supplierFieldsCollected": 0,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "files": [
+    "stage2-alternative-source-capability-probe-authorization-request.v2.json",
+    "stage2-alternative-source-capability-probe-authorization-validation.v2.json",
+    "01-用户授权交接.md",
+    "02-执行范围核对清单.md",
+    "generation-summary.stage2-alternative-source-probe-reauthorization.v1.json"
+  ],
+  "evidenceHash": "f16cedde01f8fd3ad0ed17f56628def3debd47f1c0308b44038a9b0570f68f48"
+}

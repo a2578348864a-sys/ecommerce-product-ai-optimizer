@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "stage2-alternative-source-policy-preflight.v1",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "evaluatedAt": "2026-07-15T02:03:34.4026392Z",
+  "status": "allowed",
+  "robotsDecision": "allowed",
+  "termsDecision": "reviewed_allows_public_capability_probe",
+  "requestCount": 1,
+  "robotsBodyHash": "52625db88ebd3a50fb4074f463b28886928ec1c6f728a2e3b67bd665d361d043",
+  "reasonCodes": [],
+  "inputHash": "02c5f87bcd2d9c5938ab7c08973440344e0fcdc60e44f65315e1c0e7b39f97df"
+}

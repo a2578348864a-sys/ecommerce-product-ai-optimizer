@@ -1,0 +1,2106 @@
+{
+  "schemaVersion": "solo-stage2-evidence-gap-inventory.v1",
+  "status": "evidence_collection_required",
+  "sourcePacketHash": "b3854b9983a2270d398b1380cd603914a0bc81f313eb3770f6654645035ce899",
+  "sourceRankingRunId": "ranking-3e915b7638c43def68f22948",
+  "sourceBlindReviewId": "blind-e44d4faf476637758ab3e888",
+  "boundary": {
+    "stage1RankingMayNotBeRewritten": true,
+    "missingValuesMayNotBeEstimated": true,
+    "supplierAndCostValuesRequireSource": true,
+    "complianceRequiresHumanVerification": true,
+    "thisInventoryIsNotCommercialValidation": true
+  },
+  "summary": {
+    "sampleCount": 7,
+    "samplesBlockedForProfit": 7,
+    "missingEvidenceFieldCount": 119,
+    "pendingHumanDecisionFieldCount": 14,
+    "readyForProfitCalculationCount": 0
+  },
+  "samples": [
+    {
+      "sampleId": "stage2-high-01",
+      "calibrationGroup": "high",
+      "productKey": "amazon:US:B07SYPLVTG",
+      "sourceEvidence": {
+        "title": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+        "sourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 15.98,
+        "currency": "USD",
+        "rating": 4.5,
+        "reviewCount": 17100,
+        "missingEvidence": []
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    },
+    {
+      "sampleId": "stage2-high-02",
+      "calibrationGroup": "high",
+      "productKey": "amazon:US:B09ZV2TX28",
+      "sourceEvidence": {
+        "title": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+        "sourceUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 16.99,
+        "currency": "USD",
+        "rating": 4.5,
+        "reviewCount": 109600,
+        "missingEvidence": []
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    },
+    {
+      "sampleId": "stage2-medium-01",
+      "calibrationGroup": "medium",
+      "productKey": "amazon:US:B01F2II920",
+      "sourceEvidence": {
+        "title": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+        "sourceUrl": "https://www.amazon.com/dp/B01F2II920",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 127.28,
+        "currency": "USD",
+        "rating": 4.5,
+        "reviewCount": 2000,
+        "missingEvidence": []
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    },
+    {
+      "sampleId": "stage2-medium-02",
+      "calibrationGroup": "medium",
+      "productKey": "amazon:US:B07FX8RZJZ",
+      "sourceEvidence": {
+        "title": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+        "sourceUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 11.98,
+        "currency": "USD",
+        "rating": 4.6,
+        "reviewCount": 14300,
+        "missingEvidence": []
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    },
+    {
+      "sampleId": "stage2-low-01",
+      "calibrationGroup": "low",
+      "productKey": "amazon:US:B0CNGTZ3B5",
+      "sourceEvidence": {
+        "title": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+        "sourceUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 9.99,
+        "currency": "USD",
+        "rating": 4.4,
+        "reviewCount": 14800,
+        "missingEvidence": []
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    },
+    {
+      "sampleId": "stage2-low-02",
+      "calibrationGroup": "low",
+      "productKey": "amazon:US:B0FWBX39KX",
+      "sourceEvidence": {
+        "title": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+        "sourceUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 45.88,
+        "currency": "USD",
+        "rating": 4.2,
+        "reviewCount": 1700,
+        "missingEvidence": []
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    },
+    {
+      "sampleId": "stage2-insufficient-evidence-01",
+      "calibrationGroup": "insufficient_evidence",
+      "productKey": "amazon:US:B0GZVHB1XW",
+      "sourceEvidence": {
+        "title": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+        "sourceUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "salePrice": 39.99,
+        "currency": "USD",
+        "rating": null,
+        "reviewCount": null,
+        "missingEvidence": [
+          "rating",
+          "review_count"
+        ]
+      },
+      "currentProfitStatus": "profit_insufficient_evidence",
+      "evidenceGaps": [
+        {
+          "field": "supplierUrl",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "确认供应商和报价对应同一商品变体。",
+          "acceptableEvidenceZh": "可公开核验的供应商商品页 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "supplierCapturedAt",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "证明供应商页面证据的时间有效性。",
+          "acceptableEvidenceZh": "供应商页面的实际采集时间。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "moq",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "判断最低起订量是否超过当前资金能力。",
+          "acceptableEvidenceZh": "与目标变体对应的供应商 MOQ。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "bom",
+          "category": "supplier_identity_and_cost",
+          "whyNeededZh": "计算广告前单件贡献利润。",
+          "acceptableEvidenceZh": "与目标变体和 MOQ 对应的单件采购成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageLengthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱长度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWidthCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱宽度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageHeightCm",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定计费体积和物流边界。",
+          "acceptableEvidenceZh": "目标包装的外箱高度。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packageWeightKg",
+          "category": "package_and_logistics",
+          "whyNeededZh": "确定头程和履约计费重量。",
+          "acceptableEvidenceZh": "目标包装的实际毛重。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "firstMile",
+          "category": "package_and_logistics",
+          "whyNeededZh": "计算商品进入目标市场前的单件物流成本。",
+          "acceptableEvidenceZh": "与包装尺寸、重量和运输方案匹配的单件头程成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "logisticsEvidenceUrl",
+          "category": "package_and_logistics",
+          "whyNeededZh": "让物流费用和边界可追溯。",
+          "acceptableEvidenceZh": "承运商报价、物流计算结果或可复核来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "platformCommission",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算 Amazon 平台佣金。",
+          "acceptableEvidenceZh": "适用类目的官方费率或可复核费用结果。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "fba",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算目标包装对应的履约费用。",
+          "acceptableEvidenceZh": "与尺寸重量匹配的 FBA 单件费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "packaging",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "计算单件包装材料和处理成本。",
+          "acceptableEvidenceZh": "目标包装方案的单件成本。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "storage",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "预留合理的单件仓储成本。",
+          "acceptableEvidenceZh": "基于体积和周转假设的可复核仓储费用。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "returnReserve",
+          "category": "platform_costs_and_reserves",
+          "whyNeededZh": "避免把退货损失错误当成利润。",
+          "acceptableEvidenceZh": "有来源或明确假设边界的单件退货准备金。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "complianceEvidenceUrl",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "核实监管、认证和知识产权待办。",
+          "acceptableEvidenceZh": "官方规则、专业检索或人工核实来源 URL。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        },
+        {
+          "field": "executionRiskNotes",
+          "category": "compliance_and_execution",
+          "whyNeededZh": "记录安装、质量、耐用性和执行风险的已核实结果。",
+          "acceptableEvidenceZh": "带来源边界的人工核实备注；未知必须明确写未知。",
+          "status": "missing",
+          "currentValue": null,
+          "sourceRequired": true,
+          "doNotInferFrom": [
+            "amazon_search_price",
+            "rating",
+            "review_count",
+            "ai_generated_text"
+          ]
+        }
+      ],
+      "pendingHumanDecision": {
+        "humanContinueDecision": {
+          "status": "pending_user_input",
+          "currentValue": null
+        },
+        "humanDecisionReason": {
+          "status": "pending_user_input",
+          "currentValue": null
+        }
+      },
+      "gates": {
+        "readyForProfitCalculation": false,
+        "readyForHumanDecision": false,
+        "blockingReasonCodes": [
+          "profit_insufficient_evidence",
+          "missing_bom",
+          "missing_firstMile",
+          "missing_platformCommission",
+          "missing_fba",
+          "missing_packaging",
+          "missing_storage",
+          "missing_returnReserve"
+        ]
+      }
+    }
+  ],
+  "packetHash": "bd57f6402c76c6cc7c50232f1e7d311ab4460228c9209efbc0f8b77d724111ca"
+}

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "stage2-remaining-evidence-request.v1",
+  "requestId": "stage2-remaining-evidence-5b2f44518f7792915c9e4656",
+  "status": "pending_user_evidence",
+  "createdAt": "2026-07-15T19:11:24+08:00",
+  "sourceApplicationHash": "9cc035d3d00e384eab33434996d8d34d94aec1d44eaa18ad4af3a7366f470a56",
+  "sourceValidationHash": "8fc736415fba8ff25e47f00e8dad09c49969add2b32bb066a6c41ada4805c69f",
+  "target": {
+    "sampleId": "stage2-high-01",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "acceptedProvisionalBomUsd": 2.73
+  },
+  "missingFields": [
+    "supplierCapturedAt",
+    "firstMile",
+    "logisticsEvidenceUrl",
+    "platformCommission",
+    "fba",
+    "packaging",
+    "storage",
+    "returnReserve",
+    "complianceEvidenceUrl"
+  ],
+  "evidenceGroups": [
+    {
+      "groupId": "supplier_variant_confirmation",
+      "fields": [
+        "supplierCapturedAt"
+      ],
+      "beginnerInstruction": "请提供当前供应商页面或材料的可确认时间证据；包装高度3.5cm已由项目所有者作为人工工作值确认，但不冒充供应商确认。",
+      "acceptedEvidence": [
+        "供应商当前页截图",
+        "变体对应包装参数表",
+        "供应商文字确认的脱敏截图"
+      ]
+    },
+    {
+      "groupId": "first_mile_quote",
+      "fields": [
+        "firstMile",
+        "logisticsEvidenceUrl"
+      ],
+      "beginnerInstruction": "请提供这一个变体从供应地到备货/仓库节点的单件头程报价及其公开或脱敏来源；只给总价但没有数量时不能换算。",
+      "acceptedEvidence": [
+        "货代报价单脱敏截图",
+        "公开物流报价页",
+        "含数量和币种的人工报价记录"
+      ]
+    },
+    {
+      "groupId": "amazon_fee_confirmation",
+      "fields": [
+        "platformCommission",
+        "fba"
+      ],
+      "beginnerInstruction": "需要确认该商品实际 Amazon fee category，并用准确包装尺寸和重量匹配当前 FBA 费用；Home and Kitchen 展示费率不能直接当作本商品已确认费率。",
+      "acceptedEvidence": [
+        "Amazon 官方费用页",
+        "官方 Revenue Calculator 脱敏结果",
+        "实际 fee category 与尺寸档位证据"
+      ]
+    },
+    {
+      "groupId": "operating_reserves_and_compliance",
+      "fields": [
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl"
+      ],
+      "beginnerInstruction": "分别提供包装、仓储、退货准备金和合规依据；不知道就保持空，不要按经验随便填。",
+      "acceptedEvidence": [
+        "包装报价",
+        "仓储费表",
+        "有计算依据的退货准备金",
+        "官方合规规则页"
+      ]
+    }
+  ],
+  "hardRules": [
+    "unknown_values_remain_null",
+    "do_not_convert_total_quote_without_quantity",
+    "do_not_use_unconfirmed_amazon_fee_category",
+    "preserve_raw_evidence_before_derived_values"
+  ],
+  "boundary": {
+    "unknownValuesRemainNull": true,
+    "profitMayNotBeCalculated": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage1Rewrite": true
+  },
+  "requestHash": "3b2aed5d95fd6a9acb8b163c12d348e7cd44d7308e2574124eb3f2ac9828b6d7"
+}

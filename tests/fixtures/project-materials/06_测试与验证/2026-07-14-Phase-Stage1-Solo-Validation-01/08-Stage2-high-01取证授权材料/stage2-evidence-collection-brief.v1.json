@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "stage2-evidence-collection-brief.v1",
+  "briefId": "stage2-collection-e0c227e99fcaa560b77c6544",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-14T14:00:00.000Z",
+  "sourceGapInventoryHash": "bd57f6402c76c6cc7c50232f1e7d311ab4460228c9209efbc0f8b77d724111ca",
+  "sourceStage2PacketHash": "b3854b9983a2270d398b1380cd603914a0bc81f313eb3770f6654645035ce899",
+  "sample": {
+    "sampleId": "stage2-high-01",
+    "candidateId": "candidate-4d7f7c7849791595166c",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "amazonObservedTitle": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+    "amazonSourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+    "amazonCapturedAt": "2026-07-14T10:31:54.838Z",
+    "evaluationVariantStatus": "requires_same_variant_confirmation"
+  },
+  "decisionPurpose": "validate_supplier_identity_variant_and_procurement_inputs",
+  "requestedEvidenceFields": [
+    "supplierUrl",
+    "supplierCapturedAt",
+    "moq",
+    "bom",
+    "packageLengthCm",
+    "packageWidthCm",
+    "packageHeightCm",
+    "packageWeightKg"
+  ],
+  "requestedScope": {
+    "requestedOrigin": "https://www.alibaba.com",
+    "maxTotalNavigations": 4,
+    "maxSearchResultPages": 1,
+    "maxSupplierProductPages": 3,
+    "maxSamples": 1,
+    "automaticRetryCount": 0
+  },
+  "authorization": {
+    "status": "not_granted",
+    "allowedOrigins": [],
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "missingValuePolicy": {
+    "keepNullWithReason": true,
+    "noEstimationFromAmazonSignals": true,
+    "noCurrencyConversionToFillMissingCost": true
+  },
+  "stopConditions": [
+    "captcha_or_robot_check",
+    "login_wall",
+    "access_denied_or_service_unavailable",
+    "unexpected_origin_redirect",
+    "unknown_page_state",
+    "variant_identity_cannot_be_confirmed",
+    "requested_navigation_budget_exhausted"
+  ],
+  "boundary": {
+    "noLogin": true,
+    "noCookieOrPrivateProfile": true,
+    "noCaptchaBypass": true,
+    "noProxyOrAntiDetection": true,
+    "noPaidApi": true,
+    "noExternalAi": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage1Rewrite": true,
+    "thisBriefIsNotAuthorization": true
+  },
+  "expectedOutput": {
+    "schemaVersion": "stage2-evidence-submission.v1",
+    "evidenceMode": "real_evidence",
+    "humanDecisionExcluded": true
+  },
+  "briefHash": "54823dbbb5eaf27989f4e257fb9b9a77732bd0dcd2392956fc0ec3b19d88e20b"
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "stage2-public-cost-research-generation-summary.v1",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "sampleId": "stage2-high-01",
+  "status": "valid_pending_authorization",
+  "unresolvedOutsideThisResearch": [
+    "supplierCapturedAt",
+    "packageHeightCm",
+    "firstMile",
+    "logisticsEvidenceUrl",
+    "packaging",
+    "storage",
+    "returnReserve",
+    "complianceEvidenceUrl"
+  ],
+  "boundary": {
+    "userAuthorizationGranted": false,
+    "externalWebsiteAccessed": false,
+    "evidenceCollected": false,
+    "stage2SubmissionMutated": false,
+    "profitCalculated": false,
+    "candidateCreated": false,
+    "databaseWritten": false,
+    "externalAiApiCalled": false
+  },
+  "files": [
+    "stage2-public-cost-research-brief.v1.json",
+    "stage2-public-cost-evidence.template.v1.json",
+    "stage2-public-cost-derivation-preview.template.v1.json",
+    "README-醒来后只需确认.md",
+    "generation-summary.stage2-public-cost-research.v1.json"
+  ],
+  "evidenceHash": "b5706b21a68f0787e79e29f8e9287847e17068a232316dae4ebb356a14516ea4"
+}

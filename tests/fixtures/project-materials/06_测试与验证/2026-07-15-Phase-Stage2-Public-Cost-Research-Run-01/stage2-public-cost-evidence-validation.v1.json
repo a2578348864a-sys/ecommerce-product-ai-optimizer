@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "stage2-public-cost-evidence-validation.v1",
+  "status": "valid_partial",
+  "reasonCodes": [],
+  "evidenceHash": "dd1e663a2755034d0360e0f61fdecfda2051472ba4bcb3bda69f8853a6a40d3d",
+  "inputHash": "db79ebdb40ddde607214d3dddbb7aacf699aff3897509f3406b0c2252fccaf5e"
+}

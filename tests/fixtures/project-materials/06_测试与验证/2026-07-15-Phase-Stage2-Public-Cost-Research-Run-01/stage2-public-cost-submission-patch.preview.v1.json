@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "stage2-public-cost-submission-patch-preview.v1",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "runId": "stage2-public-cost-run-d1d2d8f269cebf153a239eab",
+  "runHash": "11c06fdd28d4275888250969fd85a4098ee81a502f541e0fa692207bf75be8fc",
+  "sourceEvidenceHash": "dd1e663a2755034d0360e0f61fdecfda2051472ba4bcb3bda69f8853a6a40d3d",
+  "status": "partial_patch_requires_manual_review",
+  "proposedStage2Fields": {
+    "bom": {
+      "value": 2.73,
+      "currency": "USD",
+      "unit": "per_item",
+      "status": "review_required",
+      "inputHash": "dcfb81772ce0917f4288062c2693f17d2fb5c499cf6574dfcb57b693fe15e7eb"
+    },
+    "platformCommission": {
+      "value": null,
+      "status": "blocked_fee_category_unconfirmed"
+    },
+    "fba": {
+      "value": null,
+      "status": "blocked_package_height_conflict_and_no_exact_fee"
+    }
+  },
+  "remainingEvidence": [
+    "actual_amazon_fee_category_for_product",
+    "exact_package_height",
+    "applicable_fba_fulfillment_fee",
+    "supplierCapturedAt",
+    "packageHeightCm",
+    "firstMile",
+    "logisticsEvidenceUrl",
+    "packaging",
+    "storage",
+    "returnReserve",
+    "complianceEvidenceUrl"
+  ],
+  "boundary": {
+    "previewOnly": true,
+    "stage2SubmissionMutated": false,
+    "profitCalculated": false,
+    "humanDecisionRecorded": false,
+    "candidateCreated": false,
+    "databaseWritten": false
+  },
+  "previewHash": "4c3c338bfbedb3ebda244105385082b93109abe5136b63e03c6458b17d97ddaf"
+}

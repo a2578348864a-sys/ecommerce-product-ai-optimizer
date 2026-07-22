@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "stage2-public-revalidation-authorization.v1",
+  "status": "granted",
+  "briefId": "stage2-revalidation-36188e72d8858b8f64378fd8",
+  "briefHash": "662342c0268602d555039bf7af0ebeb7914c95ba5d6b7904ff0cf8f044570533",
+  "authorizedAt": "2026-07-14T16:42:18.8522382Z",
+  "authorizedBy": "project_owner",
+  "grantSource": "explicit_current_thread_user_instruction",
+  "scope": {
+    "allowedOrigin": "https://www.alibaba.com",
+    "maxTotalNavigations": 4,
+    "maxSearchResultPages": 1,
+    "maxSupplierProductPages": 3,
+    "maxSamples": 1,
+    "automaticRetryCount": 0
+  },
+  "acknowledgedBoundaries": {
+    "noLoginOrPrivateProfile": true,
+    "noCookieOrStorageRead": true,
+    "noCaptchaBypass": true,
+    "noProxyOrAntiDetection": true,
+    "noPaidApiOrExternalAi": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage1Rewrite": true
+  },
+  "evidenceHash": "86775027d655172cc8eebe149e5da04f8faad06607d00599a005d0184aa8a4b4"
+}

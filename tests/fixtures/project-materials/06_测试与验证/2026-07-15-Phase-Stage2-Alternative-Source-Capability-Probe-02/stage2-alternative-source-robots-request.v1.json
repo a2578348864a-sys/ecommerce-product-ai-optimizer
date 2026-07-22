@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "stage2-alternative-source-robots-request.v1",
+  "requestUrlOrigin": "https://www.made-in-china.com",
+  "requestUrlPath": "/robots.txt",
+  "requestCount": 1,
+  "finalUrlOrigin": "https://www.made-in-china.com",
+  "finalUrlPath": "/robots.txt",
+  "httpStatus": 200,
+  "contentType": "text/plain",
+  "bodyByteLength": 2088,
+  "bodyHash": "52625db88ebd3a50fb4074f463b28886928ec1c6f728a2e3b67bd665d361d043",
+  "elapsedMs": 121,
+  "errorCode": null,
+  "responseBodyStored": false,
+  "inputHash": "482b787251255974fd97acdead065d19fd23dc6989af899ca2949c1d75c3f940"
+}

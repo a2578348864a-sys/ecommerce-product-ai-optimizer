@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "stage2-public-cost-derivation-preview.v1",
+  "status": "partial_cost_inputs",
+  "inputHash": "dcfb81772ce0917f4288062c2693f17d2fb5c499cf6574dfcb57b693fe15e7eb",
+  "reasonCodes": [],
+  "derivedStage2Fields": {
+    "bom": {
+      "value": 2.73,
+      "status": "derived",
+      "inputHash": "dcfb81772ce0917f4288062c2693f17d2fb5c499cf6574dfcb57b693fe15e7eb"
+    },
+    "platformCommission": {
+      "value": null,
+      "status": "missing_official_fee",
+      "inputHash": "dcfb81772ce0917f4288062c2693f17d2fb5c499cf6574dfcb57b693fe15e7eb"
+    },
+    "fba": {
+      "value": null,
+      "status": "missing_official_fee",
+      "inputHash": "dcfb81772ce0917f4288062c2693f17d2fb5c499cf6574dfcb57b693fe15e7eb"
+    }
+  },
+  "boundary": {
+    "stage2SubmissionMutated": false,
+    "profitCalculated": false,
+    "humanDecisionRecorded": false,
+    "candidateCreated": false,
+    "databaseWritten": false
+  }
+}

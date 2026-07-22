@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "stage2-public-cost-research-brief.v1",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-15T16:30:00+08:00",
+  "sourceGapInventoryHash": "bd57f6402c76c6cc7c50232f1e7d311ab4460228c9209efbc0f8b77d724111ca",
+  "sourceSubmissionHash": "6fbffb4065108c9215d52b2351c6bb60d437d6178e76fba5434748b842874e86",
+  "sourceValidationHash": "242f75506ecf05fbfc1f3e0176705ad355023b4b6b35e82c5240d07a11481a65",
+  "sample": {
+    "sampleId": "stage2-high-01",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "salePriceUsd": 15.98,
+    "currentEvidenceStatus": "incomplete",
+    "currentMissingFields": [
+      "supplierCapturedAt",
+      "bom",
+      "packageHeightCm",
+      "firstMile",
+      "logisticsEvidenceUrl",
+      "platformCommission",
+      "fba",
+      "packaging",
+      "storage",
+      "returnReserve",
+      "complianceEvidenceUrl"
+    ]
+  },
+  "decisionPurpose": "obtain_official_exchange_rate_and_amazon_us_fee_evidence",
+  "requestedResearch": [
+    {
+      "researchKey": "cny_usd_exchange_rate",
+      "sourcePolicy": "official_primary_source_only",
+      "requiredObservations": [
+        "rate_value",
+        "quote_direction",
+        "effective_date",
+        "source_url",
+        "captured_at",
+        "content_hash"
+      ],
+      "mayPopulateStage2Field": "bom",
+      "directPopulationAllowed": false
+    },
+    {
+      "researchKey": "amazon_us_referral_fee",
+      "sourcePolicy": "official_primary_source_only",
+      "requiredObservations": [
+        "matched_category",
+        "fee_rate",
+        "minimum_fee_usd",
+        "effective_date",
+        "source_url",
+        "captured_at",
+        "content_hash"
+      ],
+      "mayPopulateStage2Field": "platformCommission",
+      "directPopulationAllowed": false
+    },
+    {
+      "researchKey": "amazon_us_fba_fulfillment_fee",
+      "sourcePolicy": "official_primary_source_only",
+      "requiredObservations": [
+        "fee_schedule_version",
+        "size_tier",
+        "shipping_weight_basis",
+        "fee_usd",
+        "effective_date",
+        "source_url",
+        "captured_at",
+        "content_hash"
+      ],
+      "mayPopulateStage2Field": "fba",
+      "directPopulationAllowed": false
+    }
+  ],
+  "requestedScope": {
+    "allowedOrigins": [
+      "https://www.federalreserve.gov",
+      "https://sell.amazon.com"
+    ],
+    "maxTotalNavigations": 6,
+    "automaticRetryCount": 0,
+    "maxSamples": 1
+  },
+  "authorization": {
+    "status": "not_granted",
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "unresolvedOutsideThisResearch": [
+    "supplierCapturedAt",
+    "packageHeightCm",
+    "firstMile",
+    "logisticsEvidenceUrl",
+    "packaging",
+    "storage",
+    "returnReserve",
+    "complianceEvidenceUrl"
+  ],
+  "applicationRules": {
+    "preserveRawSupplierPriceCny": true,
+    "preserveRawExchangeRate": true,
+    "derivedBomRequiresBothInputs": true,
+    "referralFeeRequiresMatchingCategory": true,
+    "fbaFeeRequiresExactPackageDimensionsAndWeight": true,
+    "packageHeightConflictRemainsBlocking": true,
+    "noAutomaticStage2Decision": true,
+    "noCandidateCreation": true
+  },
+  "stopConditions": [
+    "login_required",
+    "captcha_or_robot_check",
+    "access_denied_or_service_unavailable",
+    "unexpected_origin_redirect",
+    "official_source_cannot_be_confirmed",
+    "fee_category_or_effective_date_unknown",
+    "navigation_budget_exhausted"
+  ],
+  "boundary": {
+    "publicReadOnlySourcesOnly": true,
+    "noLogin": true,
+    "noCookieOrPrivateProfile": true,
+    "noCaptchaBypass": true,
+    "noProxyOrAntiDetection": true,
+    "noPaidApi": true,
+    "noExternalAi": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage1Rewrite": true,
+    "thisBriefIsNotAuthorization": true
+  },
+  "expectedOutput": {
+    "schemaVersion": "stage2-public-cost-evidence.v1",
+    "missingValuesRemainNull": true,
+    "rawAndDerivedValuesSeparated": true,
+    "stage2SubmissionIsNotAutomaticallyMutated": true
+  },
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a"
+}

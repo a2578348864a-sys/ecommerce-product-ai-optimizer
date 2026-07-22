@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-authorization.v2",
+  "authorizationRequestId": "stage2-alternative-probe-auth-02-b200d083d789600c5315d26b",
+  "authorizationRequestHash": "8146ef5875ed81095ffffbe01c2233a3630976c5470a8dcd47e63fed7dcbe140",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "baselineOfflineValidationEvidenceHash": "1dd441ec54068216a192270ea1e76c77caad5485e4ebbf8682c6effe9231c9a6",
+  "priorAuthorizationEvidenceHash": "fab6b91f25891ecb0b36e2656e867c56067c31e27678b5de2375705a1a2de0bd",
+  "priorRunEvidenceHash": "58470053c6bda144372308a0c1603eb34c02465daa31de43ef55e6c7a887d445",
+  "unknownPageDiagnosticValidationEvidenceHash": "4da5a85b2206064fe0fdd91e194093828acf218b1130f9f656dc6767753b53cd",
+  "status": "granted_single_use",
+  "authorizedAt": "2026-07-15T04:04:25.7004094Z",
+  "authorizedBy": "user_current_conversation",
+  "authorizationPhraseHash": "aa244f4795c3866f90bff29c986890fd30aa3b9ba032f142cfb9315a2642c4ad",
+  "scope": {
+    "policyRequests": 1,
+    "searchPageNavigations": 1,
+    "productPageNavigations": 0,
+    "automaticRetries": 0,
+    "supplierFieldsCollected": 0,
+    "maximumTotalExternalActions": 2
+  },
+  "consumption": {
+    "status": "consumed",
+    "consumedAt": "2026-07-15T04:04:25.7004094Z",
+    "runId": "stage2-alternative-real-047400cb65b91817d672d75b"
+  },
+  "evidenceHash": "9238936b5cb47edcfad374ed248ce99bc61db1e5003f7684135a8d9a66d1a5a4"
+}

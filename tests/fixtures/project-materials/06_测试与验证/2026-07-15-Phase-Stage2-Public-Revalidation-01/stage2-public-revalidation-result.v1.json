@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "stage2-public-revalidation-result.v1",
+  "resultId": "stage2-revalidation-result-3e9d4d4149bb92a7d753ee6b",
+  "revalidationBriefId": "stage2-revalidation-36188e72d8858b8f64378fd8",
+  "revalidationBriefHash": "662342c0268602d555039bf7af0ebeb7914c95ba5d6b7904ff0cf8f044570533",
+  "authorizationEvidenceHash": "86775027d655172cc8eebe149e5da04f8faad06607d00599a005d0184aa8a4b4",
+  "runEvidenceHash": "5bafbed0fbf6f92cd4dcbe787f6af84ff12ddbc9c80fa3ba24b785d25a4b13d3",
+  "reviewEvidenceHash": "4d3b2e616f5595546038d4a543bf643b69ffa06c2af443c9a7a0e4c63508c97d",
+  "runId": "stage2-public-dee36a474de582e22fd798ef",
+  "capturedAt": "2026-07-14T16:42:18.8522382Z",
+  "status": "failed_closed",
+  "errorCode": "unexpected_origin_redirect",
+  "reasonCodes": [
+    "search_intermediate_redirect_origin_not_allowed"
+  ],
+  "proofLevel": "authoritative_failure_evidence",
+  "navigationBudget": {
+    "maximum": 4,
+    "used": 1
+  },
+  "pageEvidenceCount": 0,
+  "stage2EvidenceReady": false,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "cleanup": {
+    "pageClosed": true,
+    "browserClosed": true,
+    "forcedTerminationUsed": false,
+    "debugPortReleased": true,
+    "profileRemoved": true,
+    "browserProcessBaselineRestored": true
+  },
+  "inputHash": "3e9d4d4149bb92a7d753ee6b26fbb2f0dc73a0686afbaf7f6dc01f2130c6982b",
+  "evidenceHash": "a2b358fc32f571c9e42d4375aecda33a33520b0925270f617d2b398cf6eb6a95"
+}

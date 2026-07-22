@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "stage2-public-revalidation-brief.v1",
+  "briefId": "stage2-revalidation-36188e72d8858b8f64378fd8",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-14T16:29:49.6430744Z",
+  "sampleId": "stage2-high-01",
+  "productKey": "amazon:US:B07SYPLVTG",
+  "query": "hanging closet organizer 6 shelf grey",
+  "sourceEvidence": {
+    "originalBriefId": "stage2-collection-e0c227e99fcaa560b77c6544",
+    "originalBriefHash": "54823dbbb5eaf27989f4e257fb9b9a77732bd0dcd2392956fc0ec3b19d88e20b",
+    "failedRunId": "stage2-public-c8dd576cf02c756ae2b05cc4",
+    "failedRunEvidenceHash": "28c6dffaf335dc87ecd19f2eb613ccf2a1f355cd6bb935e10f02ba41e83da9ad",
+    "failedReviewEvidenceHash": "a375fcf1410ba0a047dd6735fd29a3249429b6f593f09f3a3caa96e6fb53bc1d",
+    "failedReviewReasonCodes": [
+      "unexpected_intermediate_redirect_origin",
+      "collector_continued_after_fail_closed_redirect",
+      "page_classification_conflicts_with_recorded_final_origin"
+    ]
+  },
+  "requestedEvidenceFields": [
+    "supplierUrl",
+    "supplierCapturedAt",
+    "moq",
+    "bom",
+    "packageLengthCm",
+    "packageWidthCm",
+    "packageHeightCm",
+    "packageWeightKg"
+  ],
+  "requestedScope": {
+    "allowedOrigin": "https://www.alibaba.com",
+    "maxTotalNavigations": 4,
+    "maxSearchResultPages": 1,
+    "maxSupplierProductPages": 3,
+    "maxSamples": 1,
+    "automaticRetryCount": 0
+  },
+  "fixProof": {
+    "everyRedirectOriginFailClosed": true,
+    "chromeInternalErrorClassified": true,
+    "diagnosticFinalUrlUsesDomLocation": true,
+    "privateBrowserStateProbeRejected": true,
+    "browserCleanupVerified": true,
+    "proofLevel": "offline_unit_and_full_regression_only"
+  },
+  "stopConditions": [
+    "captcha_or_robot_check",
+    "login_wall",
+    "access_denied_or_service_unavailable",
+    "unexpected_final_origin",
+    "unexpected_intermediate_redirect_origin",
+    "browser_internal_error",
+    "unknown_page_state",
+    "variant_identity_cannot_be_confirmed",
+    "requested_navigation_budget_exhausted"
+  ],
+  "authorization": {
+    "status": "not_granted",
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "boundary": {
+    "thisBriefIsNotAuthorization": true,
+    "priorRunRemainsNonAuthoritative": true,
+    "noAutomaticWebsiteAccess": true,
+    "noLoginOrPrivateProfile": true,
+    "noCookieOrStorageRead": true,
+    "noCaptchaBypass": true,
+    "noProxyOrAntiDetection": true,
+    "noPaidApiOrExternalAi": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage1Rewrite": true,
+    "stage2SubmissionRequiresConfirmedVariant": true
+  },
+  "expectedResult": {
+    "successRequiresConfirmedSameVariant": true,
+    "failureStillWritesSanitizedRunEvidence": true,
+    "stage2SubmissionGeneratedAutomatically": false,
+    "candidateGenerated": false,
+    "databaseWritten": false
+  },
+  "briefHash": "662342c0268602d555039bf7af0ebeb7914c95ba5d6b7904ff0cf8f044570533"
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "stage2-public-cost-research-authorization-request.v1",
+  "requestId": "stage2-public-cost-auth-cf4ff51ae31439a7e9e7a2b2",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "status": "not_granted",
+  "createdAt": "2026-07-15T17:42:00+08:00",
+  "exactAuthorizationText": "我明确授权按 Stage2-Public-Cost-Research-01 固定范围执行一次只读公开研究；仅访问 Federal Reserve 与 Amazon 官方公开页面，最多6次导航、0次重试，不登录、不绕过阻断、不写数据库、不调用AI、不Commit、不Push、不部署。",
+  "requestedScope": {
+    "allowedOrigins": [
+      "https://www.federalreserve.gov",
+      "https://sell.amazon.com"
+    ],
+    "maxTotalNavigations": 6,
+    "automaticRetryCount": 0,
+    "maxSamples": 1
+  },
+  "authorizationGrantGenerated": false,
+  "requestHash": "df1f61b2f14daf745685ad184553d447247030dce0ccd8add7874a737796f903"
+}

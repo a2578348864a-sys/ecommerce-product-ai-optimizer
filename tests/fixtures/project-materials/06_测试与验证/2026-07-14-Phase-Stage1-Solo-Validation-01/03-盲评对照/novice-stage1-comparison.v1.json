@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "solo-novice-stage1-comparison.v1",
+  "createdAt": "2026-07-14T20:27:18.9165875+08:00",
+  "source": {
+    "blindReviewId": "blind-e44d4faf476637758ab3e888",
+    "rankingRunId": "ranking-3e915b7638c43def68f22948",
+    "rankingRuleVersion": "stage1-deterministic-v1.1",
+    "novicePacketHash": "93f16bda6762d3b35e85aad764017c62c890249d1da8bf96d6d50dc9b7e23f44",
+    "responseFileSha256": "e04f22bb211e69ef627eda54a909a88eb85cfe329da6f3416c028e2a99a51f7b"
+  },
+  "reviewMethod": {
+    "reviewerProfile": "solo_project_owner_without_amazon_operating_experience",
+    "expertReview": false,
+    "systemRankingHiddenUntilResponsesLocked": true,
+    "itemCount": 20,
+    "textOnlyItems": 9,
+    "imageAssistedItems": 11,
+    "localImageCount": 11,
+    "mixedPresentation": true,
+    "elapsedSeconds": 4753,
+    "elapsedTimeIsCleanDecisionTime": false
+  },
+  "humanSummary": {
+    "productUnderstood": {
+      "yes": 19,
+      "no": 1,
+      "uncertain": 0
+    },
+    "evidenceSufficient": {
+      "yes": 15,
+      "no": 3,
+      "uncertain": 2
+    },
+    "investigateNext10Minutes": {
+      "yes": 16,
+      "no": 3,
+      "uncertain": 1
+    },
+    "confidence": {
+      "high": 12,
+      "medium": 7,
+      "low": 1
+    }
+  },
+  "systemSummary": {
+    "promoted": 16,
+    "rejected": 3,
+    "insufficient_evidence": 1
+  },
+  "comparison": {
+    "sharedHumanYesAndSystemPromoted": 13,
+    "humanYesSystemRejected": 2,
+    "humanYesSystemInsufficientEvidence": 1,
+    "humanUncertainSystemPromoted": 1,
+    "humanNoSystemPromoted": 2,
+    "humanNoSystemRejected": 1,
+    "directWillingnessAlignmentCount": 14,
+    "directWillingnessAlignmentRate": 0.7,
+    "promotedSetJaccard": 0.6842,
+    "systemReductionCount": 4,
+    "systemReductionRate": 0.2
+  },
+  "notableDivergences": [
+    {
+      "blindItemNumber": 1,
+      "human": "investigate_yes_low_confidence_evidence_uncertain",
+      "system": "rejected_rank_18"
+    },
+    {
+      "blindItemNumber": 5,
+      "human": "investigate_yes_with_durability_concern",
+      "system": "rejected_rank_17"
+    },
+    {
+      "blindItemNumber": 7,
+      "human": "investigate_yes_but_product_not_understood",
+      "system": "promoted_rank_16"
+    },
+    {
+      "blindItemNumber": 15,
+      "human": "investigate_uncertain_due_to_size_and_quality_evidence",
+      "system": "promoted_rank_12"
+    },
+    {
+      "blindItemNumber": 18,
+      "human": "investigate_no_due_to_unverified_visual_durability_concern",
+      "system": "promoted_rank_6"
+    },
+    {
+      "blindItemNumber": 20,
+      "human": "investigate_no_due_to_size_price_and_rating_concern",
+      "system": "promoted_rank_7"
+    }
+  ],
+  "conclusion": {
+    "stage1NarrowedCount": true,
+    "stage1ReliablyNarrowedHumanInvestigation": false,
+    "status": "limited_scope_reduction_not_business_validated",
+    "reasonCodes": [
+      "only_twenty_percent_reduction",
+      "promoted_set_overlap_thirteen_of_sixteen",
+      "mixed_text_and_image_presentation",
+      "novice_not_expert_review",
+      "human_visual_concerns_not_objectively_verified",
+      "no_stage2_commercial_evidence"
+    ]
+  },
+  "boundaries": [
+    "This comparison does not validate profitability, compliance, logistics, IP clearance, or product value.",
+    "Human image-based durability concerns are manual impressions, not confirmed product facts.",
+    "Items 1-9 were text-only; items 10-20 used local copies of search-result thumbnails, so elapsed time and agreement are not a clean controlled experiment.",
+    "No Stage 1 rule, weight, threshold, Candidate, Task, database record, or historical Canary was changed."
+  ]
+}

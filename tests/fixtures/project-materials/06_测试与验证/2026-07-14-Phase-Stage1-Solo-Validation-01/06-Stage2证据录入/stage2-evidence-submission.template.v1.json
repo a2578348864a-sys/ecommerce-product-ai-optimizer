@@ -1,0 +1,702 @@
+{
+  "schemaVersion": "stage2-evidence-submission.v1",
+  "submissionId": "stage2-real-evidence-template-01",
+  "sourceGapInventoryHash": "bd57f6402c76c6cc7c50232f1e7d311ab4460228c9209efbc0f8b77d724111ca",
+  "createdAt": "2026-07-14T12:00:00.000Z",
+  "submittedBy": "pending_manual_evidence_collection",
+  "evidenceMode": "real_evidence",
+  "boundary": {
+    "objectiveEvidenceOnly": true,
+    "humanDecisionExcluded": true,
+    "stage1RankingMayNotBeRewritten": true,
+    "missingValuesMayNotBeEstimated": true
+  },
+  "samples": [
+    {
+      "sampleId": "stage2-high-01",
+      "productKey": "amazon:US:B07SYPLVTG",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-high-02",
+      "productKey": "amazon:US:B09ZV2TX28",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-medium-01",
+      "productKey": "amazon:US:B01F2II920",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-medium-02",
+      "productKey": "amazon:US:B07FX8RZJZ",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-low-01",
+      "productKey": "amazon:US:B0CNGTZ3B5",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-low-02",
+      "productKey": "amazon:US:B0FWBX39KX",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-insufficient-evidence-01",
+      "productKey": "amazon:US:B0GZVHB1XW",
+      "variantIdentity": {
+        "status": "unknown",
+        "amazonVariant": null,
+        "supplierVariant": null,
+        "confirmedAt": null,
+        "evidence": null
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "supplierCapturedAt": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "moq": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "bom": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageLengthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWidthCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageHeightCm": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packageWeightKg": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "firstMile": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "logisticsEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "platformCommission": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "fba": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "packaging": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "storage": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "returnReserve": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "complianceEvidenceUrl": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        },
+        "executionRiskNotes": {
+          "value": null,
+          "missingReason": "not_collected",
+          "evidence": null
+        }
+      }
+    }
+  ]
+}

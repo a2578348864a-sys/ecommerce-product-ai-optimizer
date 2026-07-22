@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "stage2-public-evidence-run-review.v1",
+  "sourceRunId": "stage2-public-c8dd576cf02c756ae2b05cc4",
+  "sourceRunEvidenceHash": "28c6dffaf335dc87ecd19f2eb613ccf2a1f355cd6bb935e10f02ba41e83da9ad",
+  "status": "non_authoritative_failed_evidence",
+  "reasonCodes": [
+    "unexpected_intermediate_redirect_origin",
+    "collector_continued_after_fail_closed_redirect",
+    "page_classification_conflicts_with_recorded_final_origin"
+  ],
+  "historicalRunModified": false,
+  "realWebsiteRerunPerformed": false,
+  "stage2SubmissionEligible": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "evidenceHash": "a375fcf1410ba0a047dd6735fd29a3249429b6f593f09f3a3caa96e6fb53bc1d"
+}

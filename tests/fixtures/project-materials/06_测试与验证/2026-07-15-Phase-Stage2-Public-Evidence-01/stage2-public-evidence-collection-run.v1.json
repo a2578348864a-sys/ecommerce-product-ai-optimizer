@@ -1,0 +1,108 @@
+{
+  "schemaVersion": "stage2-public-evidence-collection-run.v1",
+  "runId": "stage2-public-c8dd576cf02c756ae2b05cc4",
+  "briefId": "stage2-collection-e0c227e99fcaa560b77c6544",
+  "briefHash": "54823dbbb5eaf27989f4e257fb9b9a77732bd0dcd2392956fc0ec3b19d88e20b",
+  "capturedAt": "2026-07-14T15:55:48.8047317Z",
+  "status": "failed",
+  "errorCode": "unexpected_origin_redirect",
+  "reasonCodes": [
+    "final_origin_not_allowed"
+  ],
+  "pages": [
+    {
+      "requestedOrigin": "https://www.alibaba.com",
+      "requestedPath": "/trade/search",
+      "finalOrigin": "https://www.alibaba.com",
+      "finalPath": "/trade/search",
+      "redirectCount": 2,
+      "redirectOrigins": [
+        "http://www.alibaba.com",
+        "https://www.alibaba.com"
+      ],
+      "httpStatus": 200,
+      "contentType": "text/html",
+      "navigationElapsedMs": 10694,
+      "domWaitElapsedMs": 9958,
+      "readyState": "complete",
+      "title": "Alibaba.com",
+      "visibleTextLength": 6608,
+      "diagnosticTextHash": "5e26fd0bb2a2b6d7022efd242d5dce3f68be7d7593cb8da256402029997af790",
+      "classification": "search_results",
+      "classificationReasonCodes": [
+        "search_path_and_product_links_present"
+      ],
+      "productLinks": [
+        "https://www.alibaba.com/product-detail/Closets-Para-Habitacion-En-Oferta-Guarda_1601757550486.html",
+        "https://www.alibaba.com/product-detail/Iron-Over-The-Door-Hook-Rack_10000043198259.html",
+        "https://www.alibaba.com/product-detail/Kids-Wooden-Wardrobe-With-Mirror-Toddler_1601806618374.html",
+        "https://www.alibaba.com/product-detail/Custom-Boutique-Black-Clothing-Racks-Garment_1601804880063.html",
+        "https://www.alibaba.com/product-detail/6-Door-Metal-Wardrobe-Heat-Transfer_1601835967605.html"
+      ],
+      "productTitle": null,
+      "objectiveFields": null,
+      "variantIdentity": null
+    },
+    {
+      "requestedOrigin": "https://www.alibaba.com",
+      "requestedPath": "/product-detail/Closets-Para-Habitacion-En-Oferta-Guarda_1601757550486.html",
+      "finalOrigin": "https://www.alibaba.com",
+      "finalPath": "/product-detail/Closets-Para-Habitacion-En-Oferta-Guarda_1601757550486.html",
+      "redirectCount": 0,
+      "redirectOrigins": [],
+      "httpStatus": 200,
+      "contentType": "text/html",
+      "navigationElapsedMs": 122,
+      "domWaitElapsedMs": 59,
+      "readyState": "complete",
+      "title": "Alibaba制造商目录——供应商、制造商、出口商和进口商",
+      "visibleTextLength": 0,
+      "diagnosticTextHash": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+      "classification": "unexpected_origin_redirect",
+      "classificationReasonCodes": [
+        "final_origin_not_allowed"
+      ],
+      "productLinks": [],
+      "productTitle": null,
+      "objectiveFields": null,
+      "variantIdentity": null
+    }
+  ],
+  "navigationBudget": {
+    "maximum": 4,
+    "used": 2
+  },
+  "cleanup": {
+    "pageClosed": true,
+    "browserClosed": true,
+    "forcedTerminationUsed": false,
+    "debugPortReleased": true,
+    "profileRemoved": true,
+    "browserProcessBaselineRestored": true
+  },
+  "allowedOrigin": "https://www.alibaba.com",
+  "sampleId": "stage2-high-01",
+  "requestedEvidenceFields": [
+    "supplierUrl",
+    "supplierCapturedAt",
+    "moq",
+    "bom",
+    "packageLengthCm",
+    "packageWidthCm",
+    "packageHeightCm",
+    "packageWeightKg"
+  ],
+  "boundary": {
+    "loginUsed": false,
+    "privateProfileUsed": false,
+    "cookieOrStorageRead": false,
+    "captchaBypassed": false,
+    "proxyOrAntiDetectionUsed": false,
+    "databaseWritten": false,
+    "candidateCreated": false,
+    "stage1Modified": false,
+    "paidApiOrExternalAiCalled": false,
+    "automaticRetryCount": 0
+  },
+  "evidenceHash": "28c6dffaf335dc87ecd19f2eb613ccf2a1f355cd6bb935e10f02ba41e83da9ad"
+}

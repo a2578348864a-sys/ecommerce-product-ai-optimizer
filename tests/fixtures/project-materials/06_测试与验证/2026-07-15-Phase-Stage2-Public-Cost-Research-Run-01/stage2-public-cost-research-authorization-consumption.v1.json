@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "stage2-public-cost-research-authorization-consumption.v1",
+  "grantId": "stage2-public-cost-grant-ccefe17f7d6c9b55999543e3",
+  "grantHash": "941a4411def8c4cea41d3bbbc96cef2c23026d00cb1c79845cdbf2629600d42a",
+  "requestId": "stage2-public-cost-auth-cf4ff51ae31439a7e9e7a2b2",
+  "requestHash": "df1f61b2f14daf745685ad184553d447247030dce0ccd8add7874a737796f903",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "runId": "stage2-public-cost-run-d1d2d8f269cebf153a239eab",
+  "consumedAt": "2026-07-15T17:53:01+08:00",
+  "consumed": true,
+  "requestedScope": {
+    "allowedOrigins": [
+      "https://www.federalreserve.gov",
+      "https://sell.amazon.com"
+    ],
+    "maxTotalNavigations": 6,
+    "automaticRetryCount": 0,
+    "maxSamples": 1
+  },
+  "consumptionHash": "a623602512f8aa5f47552cd4164743f05862c8189a4fd8b8c288102680691089"
+}

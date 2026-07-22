@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "stage2-public-evidence-run-review.v1",
+  "sourceRunId": "stage2-public-dee36a474de582e22fd798ef",
+  "sourceRunEvidenceHash": "5bafbed0fbf6f92cd4dcbe787f6af84ff12ddbc9c80fa3ba24b785d25a4b13d3",
+  "status": "authoritative_failed_or_completed_evidence",
+  "reasonCodes": [],
+  "historicalRunModified": false,
+  "realWebsiteRerunPerformed": false,
+  "stage2SubmissionEligible": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "evidenceHash": "4d3b2e616f5595546038d4a543bf643b69ffa06c2af443c9a7a0e4c63508c97d"
+}

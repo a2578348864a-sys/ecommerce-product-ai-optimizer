@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "stage2-public-cost-research-authorization-generation-summary.v1",
+  "requestId": "stage2-public-cost-auth-cf4ff51ae31439a7e9e7a2b2",
+  "requestHash": "df1f61b2f14daf745685ad184553d447247030dce0ccd8add7874a737796f903",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "status": "valid_not_granted",
+  "boundary": {
+    "authorizationGranted": false,
+    "authorizationGrantGenerated": false,
+    "externalWebsiteAccessed": false,
+    "evidenceCollected": false,
+    "databaseWritten": false,
+    "externalAiApiCalled": false
+  },
+  "files": [
+    "stage2-public-cost-research-authorization-request.v1.json",
+    "README-授权语句.md",
+    "generation-summary.stage2-public-cost-authorization.v1.json"
+  ],
+  "evidenceHash": "967d5826bd68d9d66ed4d2f0de3fc148a1fa051464ff760cf8c9ebf192f18f5e"
+}

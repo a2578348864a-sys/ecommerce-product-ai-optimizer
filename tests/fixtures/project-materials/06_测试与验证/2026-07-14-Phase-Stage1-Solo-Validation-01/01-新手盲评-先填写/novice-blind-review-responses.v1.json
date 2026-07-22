@@ -1,0 +1,216 @@
+{
+  "schemaVersion": "solo-novice-blind-review-responses.v1",
+  "sourcePacketHash": "93f16bda6762d3b35e85aad764017c62c890249d1da8bf96d6d50dc9b7e23f44",
+  "reviewerProfile": {
+    "role": "solo_project_owner",
+    "amazonOperatingExperience": "none",
+    "expertReview": false
+  },
+  "status": "completed",
+  "startedAt": "2026-07-14T19:08:04.7875745+08:00",
+  "completedAt": "2026-07-14T20:27:18.9165875+08:00",
+  "currentBlindItemId": null,
+  "currentItemStartedAt": null,
+  "answers": [
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-01",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "uncertain",
+      "obviousConcern": "uncertain",
+      "investigateNext10Minutes": "yes",
+      "confidence": "low",
+      "elapsedSeconds": 692,
+      "note": "需要中文功能与用途说明；在没有预先判断标准时无法判断明显问题和证据充分性。本条不代表专家运营判断。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-02",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 215,
+      "note": "在明确商品用途并将评分与评论数仅视为页面调查信号后，愿意继续调查；不代表已证明销量、利润或值得销售。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-03",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 173,
+      "note": "商品用途清楚，评分与评论数可作为继续调查的页面信号，未发现当前证据中的明确淘汰理由。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-04",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "no",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 150,
+      "note": "缺少评分与评论数，当前只能理解商品用途和价格；愿意补查页面评价信号，不据此淘汰商品。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-05",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 258,
+      "note": "评分与评论数支持继续调查；需要重点核实承重、结构牢固程度和长期耐用性，当前证据不能确认质量可靠。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-06",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 70,
+      "note": "商品用途清楚，评分与评论数可作为继续调查的页面信号；当前未提出明确关注点。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-07",
+      "productUnderstood": "no",
+      "evidenceSufficient": "no",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 102,
+      "note": "即使提供中文文字仍无法明确理解商品；原标题存在乱码且缺少图片、层数和尺寸说明，愿意补证后再判断。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-08",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 136,
+      "note": "商品用途和页面评价信号支持继续调查；原标题中的专利声明必须进一步核实，当前不据此认定侵权或直接淘汰。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-09",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 114,
+      "note": "商品用途清楚，评分与评论数可作为继续调查的页面信号；当前未提出明确关注点，重复判断时选择可能变化。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-10",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 438,
+      "note": "远程图片未显示后，使用 Canary 已记录的公开搜索缩略图下载为本地图片；结合图片后商品可理解，页面评价信号支持继续调查，重复判断时选择可能变化。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-11",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 173,
+      "note": "结合本地商品图后可理解商品；评审者认为 5.0 分和 4 条评论仍可作为继续调查信号，未提出明确关注点。该判断不等于评论样本具有统计代表性。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-12",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 294,
+      "note": "结合本地商品图并澄清前开门结构后理解商品；评分与评论数支持继续调查，未留下明确关注点，重复判断时选择可能变化。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-13",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 149,
+      "note": "结合本地商品图后可理解商品；评分与评论数支持继续调查，当前未提出明确关注点。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-14",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "medium",
+      "elapsedSeconds": 355,
+      "note": "结合本地商品图后可理解商品；评分与评论数支持继续调查，未提出明确关注点，重复判断时选择可能变化。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-15",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "no",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "uncertain",
+      "confidence": "high",
+      "elapsedSeconds": 363,
+      "note": "结合本地商品图后可理解商品；尺寸适配和板材、结构质量是关键缺失证据，另需核实安装与运输风险，因此暂列待补证据。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-16",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "no",
+      "confidence": "high",
+      "elapsedSeconds": 171,
+      "note": "大型高价衣帽间系统需要核实尺寸、安装便利性、包装体积、运费、破损退货风险和可靠利润；评审者因验证负担较高选择当前不继续调查。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-17",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 101,
+      "note": "结合本地商品图后可理解商品；页面评价信号支持继续调查，需核对标题层数与图片结构以及准确尺寸和承重。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-18",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "uncertain",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "no",
+      "confidence": "high",
+      "elapsedSeconds": 341,
+      "note": "认可模块化拼装创意，但从图片担忧塑料面板承重、连接稳定性和使用寿命，因此不继续调查；该理由是人工视觉担忧，未被实际质量证据证实。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-19",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "no",
+      "investigateNext10Minutes": "yes",
+      "confidence": "high",
+      "elapsedSeconds": 329,
+      "note": "结合本地商品图后可理解商品；愿意继续调查，当前未提出明确关注点，重复判断时预计仍会保持相同选择。"
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-20",
+      "productUnderstood": "yes",
+      "evidenceSufficient": "yes",
+      "obviousConcern": "yes",
+      "investigateNext10Minutes": "no",
+      "confidence": "high",
+      "elapsedSeconds": 129,
+      "note": "因商品体积较大、售价相对结构显得偏低且评分 4.1 在本批中偏低，评审者选择不继续调查；质量担忧为人工判断，未被实际质量证据证实。"
+    }
+  ]
+}

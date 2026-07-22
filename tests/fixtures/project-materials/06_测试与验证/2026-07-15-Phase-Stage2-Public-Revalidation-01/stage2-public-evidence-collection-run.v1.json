@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "stage2-public-evidence-collection-run.v1",
+  "runId": "stage2-public-dee36a474de582e22fd798ef",
+  "briefId": "stage2-collection-e0c227e99fcaa560b77c6544",
+  "briefHash": "54823dbbb5eaf27989f4e257fb9b9a77732bd0dcd2392956fc0ec3b19d88e20b",
+  "capturedAt": "2026-07-14T16:42:18.8522382Z",
+  "status": "failed",
+  "errorCode": "unexpected_origin_redirect",
+  "reasonCodes": [
+    "search_intermediate_redirect_origin_not_allowed"
+  ],
+  "pages": [],
+  "navigationBudget": {
+    "maximum": 4,
+    "used": 1
+  },
+  "cleanup": {
+    "pageClosed": true,
+    "browserClosed": true,
+    "forcedTerminationUsed": false,
+    "debugPortReleased": true,
+    "profileRemoved": true,
+    "browserProcessBaselineRestored": true
+  },
+  "allowedOrigin": "https://www.alibaba.com",
+  "sampleId": "stage2-high-01",
+  "requestedEvidenceFields": [
+    "supplierUrl",
+    "supplierCapturedAt",
+    "moq",
+    "bom",
+    "packageLengthCm",
+    "packageWidthCm",
+    "packageHeightCm",
+    "packageWeightKg"
+  ],
+  "boundary": {
+    "loginUsed": false,
+    "privateProfileUsed": false,
+    "cookieOrStorageRead": false,
+    "captchaBypassed": false,
+    "proxyOrAntiDetectionUsed": false,
+    "databaseWritten": false,
+    "candidateCreated": false,
+    "stage1Modified": false,
+    "paidApiOrExternalAiCalled": false,
+    "automaticRetryCount": 0
+  },
+  "evidenceHash": "5bafbed0fbf6f92cd4dcbe787f6af84ff12ddbc9c80fa3ba24b785d25a4b13d3"
+}

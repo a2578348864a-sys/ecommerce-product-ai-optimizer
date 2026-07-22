@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "stage2-alternative-source-research.v1",
+  "status": "selected_pending_authorization",
+  "createdAt": "2026-07-14T17:30:00.000Z",
+  "decisionPurpose": "select_https_only_public_supplier_source_for_stage2_high_01",
+  "selectedPlatform": "made_in_china",
+  "selectedOrigin": "https://www.made-in-china.com",
+  "realProductEvidenceCollected": false,
+  "candidates": [
+    {
+      "platform": "made_in_china",
+      "decision": "selected",
+      "officialEvidence": [
+        {
+          "url": "https://www.made-in-china.com/",
+          "supports": "official_b2b_product_and_supplier_directory"
+        },
+        {
+          "url": "https://www.made-in-china.com/help/faq/",
+          "supports": "official_keyword_search_and_supplier_discovery_workflow"
+        },
+        {
+          "url": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+          "supports": "public_https_result_page_exposes_listing_price_and_moq"
+        },
+        {
+          "url": "https://www.made-in-china.com/help/terms/",
+          "supports": "supplier_listing_information_requires_independent_evaluation"
+        }
+      ],
+      "limitations": [
+        "supplier_subdomains_are_not_allowed_by_this_brief",
+        "public_listing_price_is_not_a_confirmed_quotation",
+        "platform_does_not_guarantee_each_supplier_claim",
+        "amazon_source_title_does_not_observe_material",
+        "attribute_match_alone_cannot_confirm_same_variant",
+        "robots_policy_must_be_checked_at_runtime_before_navigation"
+      ]
+    },
+    {
+      "platform": "global_sources",
+      "decision": "deferred",
+      "officialEvidence": [
+        {
+          "url": "https://s.globalsources.com/HELP/GSOLHELP/SUPPTIP.HTM",
+          "supports": "official_supplier_search_exists"
+        }
+      ],
+      "limitations": [
+        "exact_single_origin_product_route_not_frozen",
+        "registration_bound_services_are_out_of_scope"
+      ]
+    },
+    {
+      "platform": "alibaba",
+      "decision": "blocked_for_current_route",
+      "officialEvidence": [],
+      "limitations": [
+        "authoritative_run_observed_unexpected_http_intermediate_origin"
+      ]
+    }
+  ],
+  "boundary": {
+    "researchUsedOnlyPublicOfficialPages": true,
+    "noProductDetailEvidenceCollected": true,
+    "noLoginOrInquiry": true,
+    "noCookieOrPrivateProfile": true,
+    "noProxyOrAntiDetection": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noExternalAiOrPaidApi": true
+  },
+  "evidenceHash": "4f8628edf27a63b28ab88057b542d595a14c55a52c9aae084126fa18c2f277f0"
+}

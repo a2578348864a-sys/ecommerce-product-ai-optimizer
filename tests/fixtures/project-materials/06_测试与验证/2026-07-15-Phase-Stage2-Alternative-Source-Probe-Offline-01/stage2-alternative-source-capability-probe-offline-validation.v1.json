@@ -1,0 +1,386 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-offline-validation.v1",
+  "status": "offline_validation_passed",
+  "proofLevel": "offline_fixture_only",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "createdAt": "2026-07-15T02:30:00.000Z",
+  "fixtureSchemaVersion": "stage2-alternative-source-probe-fixtures.v1",
+  "fixtureHash": "cfe90ab76348bead710dfb58aa0ec79f0acebc5bf992439737a10ee0215bfd22",
+  "inputHash": "b11cd6f15cd9ab7a3e917648cc908b2d9231bc03a0f6237a43cdeb9139f3889c",
+  "scenarioCounts": {
+    "page": 17,
+    "url": 6,
+    "policy": 5,
+    "total": 28
+  },
+  "pageClassificationCounts": {
+    "search_results_ready": 2,
+    "loading": 1,
+    "captcha_or_robot_check": 1,
+    "login_or_inquiry_required": 1,
+    "access_denied": 2,
+    "service_unavailable": 2,
+    "browser_internal_error": 1,
+    "unexpected_origin_redirect": 3,
+    "unknown_page": 4
+  },
+  "failedScenarioIds": [],
+  "pageResults": [
+    {
+      "scenarioId": "normal_search_page",
+      "expectedClassification": "search_results_ready",
+      "actualClassification": "search_results_ready",
+      "expectedReasonCodes": [
+        "search_page_markers_and_allowed_links_present"
+      ],
+      "actualReasonCodes": [
+        "search_page_markers_and_allowed_links_present"
+      ],
+      "pageInputHash": "fb4bf57292607f87d8f6f8fa99137674f18fffb0013b2d7ffd04d00417753654",
+      "passed": true
+    },
+    {
+      "scenarioId": "normal_page_mild_selector_change",
+      "expectedClassification": "search_results_ready",
+      "actualClassification": "search_results_ready",
+      "expectedReasonCodes": [
+        "search_page_markers_and_allowed_links_present"
+      ],
+      "actualReasonCodes": [
+        "search_page_markers_and_allowed_links_present"
+      ],
+      "pageInputHash": "a89aa2d5c0e2c2719be5aea46c22f000decf1d01b2fe2bdfe110e7f76b19e619",
+      "passed": true
+    },
+    {
+      "scenarioId": "page_still_loading",
+      "expectedClassification": "loading",
+      "actualClassification": "loading",
+      "expectedReasonCodes": [
+        "page_still_loading"
+      ],
+      "actualReasonCodes": [
+        "page_still_loading"
+      ],
+      "pageInputHash": "64f8e6d5e10f5158c70ff6c0a6393767f8995d002110525f151c23e6760b40eb",
+      "passed": true
+    },
+    {
+      "scenarioId": "captcha_robot_check",
+      "expectedClassification": "captcha_or_robot_check",
+      "actualClassification": "captcha_or_robot_check",
+      "expectedReasonCodes": [
+        "captcha_marker_present"
+      ],
+      "actualReasonCodes": [
+        "captcha_marker_present"
+      ],
+      "pageInputHash": "1ffbe038154b4985edf29252a0747bc88a640fe1a07790be145fc9de23b359eb",
+      "passed": true
+    },
+    {
+      "scenarioId": "login_or_inquiry_wall",
+      "expectedClassification": "login_or_inquiry_required",
+      "actualClassification": "login_or_inquiry_required",
+      "expectedReasonCodes": [
+        "login_or_inquiry_marker_present"
+      ],
+      "actualReasonCodes": [
+        "login_or_inquiry_marker_present"
+      ],
+      "pageInputHash": "5dbf25bbb40b04d3599ae6f92921e4ae5f369d15c0f75c76ea1b46c8ac28dfba",
+      "passed": true
+    },
+    {
+      "scenarioId": "access_denied_http_status",
+      "expectedClassification": "access_denied",
+      "actualClassification": "access_denied",
+      "expectedReasonCodes": [
+        "access_denied_http_status"
+      ],
+      "actualReasonCodes": [
+        "access_denied_http_status"
+      ],
+      "pageInputHash": "78ce8522848dff37aec3b87707e6dc893ed1f523432aa16c278560558836ff2a",
+      "passed": true
+    },
+    {
+      "scenarioId": "access_denied_dom_marker",
+      "expectedClassification": "access_denied",
+      "actualClassification": "access_denied",
+      "expectedReasonCodes": [
+        "access_denied_marker_present"
+      ],
+      "actualReasonCodes": [
+        "access_denied_marker_present"
+      ],
+      "pageInputHash": "15a0177fe8a9890c739ffe3f7e12b08a8d65df75f975c675f5bc6c654e82fe43",
+      "passed": true
+    },
+    {
+      "scenarioId": "service_unavailable_http_status",
+      "expectedClassification": "service_unavailable",
+      "actualClassification": "service_unavailable",
+      "expectedReasonCodes": [
+        "service_unavailable_http_status"
+      ],
+      "actualReasonCodes": [
+        "service_unavailable_http_status"
+      ],
+      "pageInputHash": "bc036a7deb09c7c53680b59f0c8d5c40f76696fd7bbf9b411dace49d15949aad",
+      "passed": true
+    },
+    {
+      "scenarioId": "service_unavailable_dom_marker",
+      "expectedClassification": "service_unavailable",
+      "actualClassification": "service_unavailable",
+      "expectedReasonCodes": [
+        "service_unavailable_marker_present"
+      ],
+      "actualReasonCodes": [
+        "service_unavailable_marker_present"
+      ],
+      "pageInputHash": "8884f7b449d1253b46317dce4e384594e0a0e2f03a6746f419fa9d51272c3be1",
+      "passed": true
+    },
+    {
+      "scenarioId": "chrome_internal_error_page",
+      "expectedClassification": "browser_internal_error",
+      "actualClassification": "browser_internal_error",
+      "expectedReasonCodes": [
+        "browser_internal_error_page"
+      ],
+      "actualReasonCodes": [
+        "browser_internal_error_page"
+      ],
+      "pageInputHash": "33ff66e0851361e7f6852250eb241f40405a00e0508d5febfb217c00ec2e0ea4",
+      "passed": true
+    },
+    {
+      "scenarioId": "unexpected_final_origin",
+      "expectedClassification": "unexpected_origin_redirect",
+      "actualClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": [
+        "final_or_dom_origin_not_allowed"
+      ],
+      "actualReasonCodes": [
+        "final_or_dom_origin_not_allowed"
+      ],
+      "pageInputHash": "7f93925f5977275cb93d40f755fdd7c740134a6110124adde28b95bb84b6a081",
+      "passed": true
+    },
+    {
+      "scenarioId": "unexpected_intermediate_redirect_origin",
+      "expectedClassification": "unexpected_origin_redirect",
+      "actualClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": [
+        "intermediate_redirect_origin_not_allowed"
+      ],
+      "actualReasonCodes": [
+        "intermediate_redirect_origin_not_allowed"
+      ],
+      "pageInputHash": "90d1e91763cfbce2cff35c249ccc640fb83d20f7b1df1c056fcc82cbd3465581",
+      "passed": true
+    },
+    {
+      "scenarioId": "unknown_brand_marker",
+      "expectedClassification": "unknown_page",
+      "actualClassification": "unknown_page",
+      "expectedReasonCodes": [
+        "brand_marker_missing"
+      ],
+      "actualReasonCodes": [
+        "brand_marker_missing"
+      ],
+      "pageInputHash": "73b453726dff1469152a4d17ff398b472bda121ac630045335d0244c49c8897e",
+      "passed": true
+    },
+    {
+      "scenarioId": "no_allowed_product_links",
+      "expectedClassification": "unknown_page",
+      "actualClassification": "unknown_page",
+      "expectedReasonCodes": [
+        "no_allowed_product_links"
+      ],
+      "actualReasonCodes": [
+        "no_allowed_product_links"
+      ],
+      "pageInputHash": "095e4449247b5c26dbefe810e797eb53a976c0a54e19173837e66f5a8b852416",
+      "passed": true
+    },
+    {
+      "scenarioId": "unsafe_selected_product_link",
+      "expectedClassification": "unexpected_origin_redirect",
+      "actualClassification": "unexpected_origin_redirect",
+      "expectedReasonCodes": [
+        "candidate_product_link_origin_not_allowed"
+      ],
+      "actualReasonCodes": [
+        "candidate_product_link_origin_not_allowed"
+      ],
+      "pageInputHash": "e8dbc2d4bbda6d18e34a0817974448ba3677fa7f57fe8e0effe8f01f27100d4f",
+      "passed": true
+    },
+    {
+      "scenarioId": "non_html_main_document",
+      "expectedClassification": "unknown_page",
+      "actualClassification": "unknown_page",
+      "expectedReasonCodes": [
+        "main_document_content_type_not_html"
+      ],
+      "actualReasonCodes": [
+        "main_document_content_type_not_html"
+      ],
+      "pageInputHash": "3c8014d9f3464e7c71c9019ebc253b307b61b19a8b80bb62042d3fcc7526b8c3",
+      "passed": true
+    },
+    {
+      "scenarioId": "unknown_main_document_status",
+      "expectedClassification": "unknown_page",
+      "actualClassification": "unknown_page",
+      "expectedReasonCodes": [
+        "main_document_status_not_confirmed"
+      ],
+      "actualReasonCodes": [
+        "main_document_status_not_confirmed"
+      ],
+      "pageInputHash": "6837373ad12597514fc805bdfd161f6443dc6199e7dff5e7cc49062085d92bec",
+      "passed": true
+    }
+  ],
+  "urlResults": [
+    {
+      "scenarioId": "allowed_search_path",
+      "kind": "search",
+      "expectedAllowed": true,
+      "actualAllowed": true,
+      "expectedReasonCode": null,
+      "actualReasonCode": null,
+      "passed": true
+    },
+    {
+      "scenarioId": "allowed_price_product_path",
+      "kind": "product",
+      "expectedAllowed": true,
+      "actualAllowed": true,
+      "expectedReasonCode": null,
+      "actualReasonCode": null,
+      "passed": true
+    },
+    {
+      "scenarioId": "allowed_showroom_product_path",
+      "kind": "product",
+      "expectedAllowed": true,
+      "actualAllowed": true,
+      "expectedReasonCode": null,
+      "actualReasonCode": null,
+      "passed": true
+    },
+    {
+      "scenarioId": "http_rejected",
+      "kind": "product",
+      "expectedAllowed": false,
+      "actualAllowed": false,
+      "expectedReasonCode": "http_not_allowed",
+      "actualReasonCode": "http_not_allowed",
+      "passed": true
+    },
+    {
+      "scenarioId": "supplier_subdomain_rejected",
+      "kind": "product",
+      "expectedAllowed": false,
+      "actualAllowed": false,
+      "expectedReasonCode": "origin_not_allowed",
+      "actualReasonCode": "origin_not_allowed",
+      "passed": true
+    },
+    {
+      "scenarioId": "over_broad_showroom_path_rejected",
+      "kind": "product",
+      "expectedAllowed": false,
+      "actualAllowed": false,
+      "expectedReasonCode": "product_path_not_allowed",
+      "actualReasonCode": "product_path_not_allowed",
+      "passed": true
+    }
+  ],
+  "policyResults": [
+    {
+      "scenarioId": "robots_allows_search_path",
+      "expectedStatus": "allowed",
+      "actualStatus": "allowed",
+      "expectedReasonCodes": [],
+      "actualReasonCodes": [],
+      "robotsBodyHash": "5519d27570432e0939e6653dd5ed5eb0aa90c9bfbeb4ae9c2537e6b6e59c8b14",
+      "policyInputHash": "cbaf1379c9bec4e61cbbb23ed589990a026916921c3ee4ae9a60e2f4c952c091",
+      "passed": true
+    },
+    {
+      "scenarioId": "robots_disallows_all",
+      "expectedStatus": "blocked",
+      "actualStatus": "blocked",
+      "expectedReasonCodes": [
+        "robots_disallows_search_path"
+      ],
+      "actualReasonCodes": [
+        "robots_disallows_search_path"
+      ],
+      "robotsBodyHash": "90d5d7a945d18fdf7242d90fa21320bc79a95fdbd0101e9af97daee56870c822",
+      "policyInputHash": "82c5ffde93d59bd521055726f81858d7a21356438bd046c7392cf15d70f2c1ad",
+      "passed": true
+    },
+    {
+      "scenarioId": "robots_unknown_empty",
+      "expectedStatus": "blocked",
+      "actualStatus": "blocked",
+      "expectedReasonCodes": [
+        "robots_policy_unknown"
+      ],
+      "actualReasonCodes": [
+        "robots_policy_unknown"
+      ],
+      "robotsBodyHash": null,
+      "policyInputHash": "9beda256a144825d491f98e432b04d0e09443b29294af78fbd60efc2f0ceec4a",
+      "passed": true
+    },
+    {
+      "scenarioId": "terms_unknown",
+      "expectedStatus": "blocked",
+      "actualStatus": "blocked",
+      "expectedReasonCodes": [
+        "terms_policy_unknown"
+      ],
+      "actualReasonCodes": [
+        "terms_policy_unknown"
+      ],
+      "robotsBodyHash": "dc73438ff3430bf313cdc7f70d8b7fa10ba149221901d5a4566f0d0d2dce2813",
+      "policyInputHash": "a34d9fa26003d56a41c2c4af23ccc7ee8341b6130bb548ed480a135bc6815dee",
+      "passed": true
+    },
+    {
+      "scenarioId": "terms_prohibits_probe",
+      "expectedStatus": "blocked",
+      "actualStatus": "blocked",
+      "expectedReasonCodes": [
+        "terms_policy_prohibits_probe"
+      ],
+      "actualReasonCodes": [
+        "terms_policy_prohibits_probe"
+      ],
+      "robotsBodyHash": "dc73438ff3430bf313cdc7f70d8b7fa10ba149221901d5a4566f0d0d2dce2813",
+      "policyInputHash": "4cd297d90503d9c7127b948c57d8eb4c0ccb3316c78faad9e96e6cc39926ee68",
+      "passed": true
+    }
+  ],
+  "browserControlContractReused": true,
+  "realWebsiteAccessed": false,
+  "runtimeAuthorizationGranted": false,
+  "runtimeProbeExecuted": false,
+  "supplierFieldsCollected": 0,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "evidenceHash": "1dd441ec54068216a192270ea1e76c77caad5485e4ebbf8682c6effe9231c9a6"
+}

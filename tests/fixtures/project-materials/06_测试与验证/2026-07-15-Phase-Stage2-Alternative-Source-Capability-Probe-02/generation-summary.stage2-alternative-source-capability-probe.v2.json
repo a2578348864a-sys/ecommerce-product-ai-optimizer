@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-summary.v2",
+  "runId": "stage2-alternative-real-047400cb65b91817d672d75b",
+  "runEvidenceHash": "83efb21ee25ea51df59c739ad7e107568f106374c98f92b3af4dc87ac740244a",
+  "authorizationEvidenceHash": "9238936b5cb47edcfad374ed248ce99bc61db1e5003f7684135a8d9a66d1a5a4",
+  "status": "failed_closed",
+  "errorCode": "unknown_page",
+  "unknownPageDiagnosticInputHash": "65b6b005606551f06e7a0bb99b6481a0c822ee3fd4c7af055f4bb1355e1dc4dd",
+  "policyRequests": 1,
+  "searchPageNavigations": 1,
+  "productPageNavigations": 0,
+  "supplierFieldsCollected": 0,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "evidenceHash": "912362cbbeee0ebd8e26c7bcdc9f02aa2c648c51519ca0d99d41f01cf7d86db5"
+}

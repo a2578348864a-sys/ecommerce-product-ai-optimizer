@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "stage2-public-cost-evidence.v1",
+  "evidenceId": "stage2-public-cost-evidence-efb551bdfb38b068fc2dbd88",
+  "briefId": "stage2-public-cost-fc415e4f9962e4ed9e1e9bc9",
+  "briefHash": "efb551bdfb38b068fc2dbd8802d80e23b04a26a90a7218a498fdcf541ffd798a",
+  "sampleId": "stage2-high-01",
+  "productKey": "amazon:US:B07SYPLVTG",
+  "status": "not_collected",
+  "capturedAt": null,
+  "boundary": {
+    "officialPublicEvidenceOnly": true,
+    "rawAndDerivedValuesSeparated": true,
+    "stage2SubmissionMutated": false,
+    "profitCalculated": false,
+    "candidateCreated": false,
+    "databaseWritten": false
+  },
+  "observations": {
+    "supplierUnitPriceCny": {
+      "value": null,
+      "missingReason": "pending_authorized_research",
+      "evidence": null
+    },
+    "exchangeRate": {
+      "value": null,
+      "missingReason": "pending_authorized_research",
+      "evidence": null
+    },
+    "referralFee": {
+      "value": null,
+      "missingReason": "pending_authorized_research",
+      "evidence": null
+    },
+    "fbaFulfillmentFee": {
+      "value": null,
+      "missingReason": "pending_authorized_research",
+      "evidence": null
+    }
+  }
+}

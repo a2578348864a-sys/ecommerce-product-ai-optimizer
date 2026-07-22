@@ -1,0 +1,200 @@
+{
+  "schemaVersion": "stage2-manual-source-evidence.v1",
+  "evidenceId": "stage2-high-01-1688-manual-20260715-01",
+  "receivedAt": "2026-07-15T15:36:38.469+08:00",
+  "sourceCapturedAt": null,
+  "sourceCapturedAtMissingReason": "exact_screenshot_capture_time_not_available",
+  "target": {
+    "sampleId": "stage2-high-01",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "amazonObservedTitle": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+    "amazonSourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+    "amazonObservedPrice": {
+      "value": 15.98,
+      "currency": "USD"
+    }
+  },
+  "supplierSource": {
+    "platform": "1688",
+    "supplierName": "义乌市蒙霖家居用品有限公司",
+    "listingTitle": "悬挂式多层收纳挂袋衣柜收纳袋居家卧室清洁整理储物柜便携日用袋",
+    "sourceUrl": "https://detail.1688.com/offer/980209804939.html",
+    "sourceUrlMissingReason": null,
+    "listingPriceRange": {
+      "minimum": 7.5,
+      "maximum": 18.5,
+      "currency": "CNY",
+      "binding": "listing_range_only"
+    },
+    "moq": 1,
+    "visibleSoldCountText": "300+件"
+  },
+  "variantIdentity": {
+    "status": "confirmed_at_evaluation_variant_level",
+    "targetVariant": "grey six-shelf hanging closet organizer",
+    "supplierVariant": "灰色六层",
+    "matchedFacts": [
+      "grey",
+      "six_shelves",
+      "two_hanging_hooks",
+      "vertical_hanging_form",
+      "side_storage_pockets",
+      "nonwoven_fabric"
+    ],
+    "unresolvedFacts": [
+      "exact_material_weight_and_internal_support_structure",
+      "same_manufacturer_or_same_product_identity"
+    ],
+    "confirmationBoundary": "Confirms the grey six-shelf hanging evaluation variant only; does not prove the same manufacturer, quality, load capacity or durability."
+  },
+  "observedPublicFacts": {
+    "selectedVariantPrice": {
+      "variant": "灰色六层",
+      "value": 18.5,
+      "currency": "CNY",
+      "unit": "per_item",
+      "usdValue": null,
+      "usdValueMissingReason": "no_sourced_exchange_rate"
+    },
+    "material": "无纺布",
+    "model": "ZPGD-001",
+    "itemNumber": "SNGD2025-9-22",
+    "productDimensions": {
+      "lengthCm": 30,
+      "widthCm": 30,
+      "heightCm": 120
+    },
+    "packageDimensions": {
+      "lengthCm": 31,
+      "widthCm": 31,
+      "heightCm": null,
+      "heightObservedValuesCm": [
+        3.5,
+        3.8
+      ],
+      "heightMissingReason": "conflicting_page_values"
+    },
+    "packageWeightKg": 0.58,
+    "masterCarton": {
+      "units": 22,
+      "lengthCm": 62,
+      "widthCm": 32,
+      "heightCm": 34,
+      "grossWeightKg": 13.6
+    },
+    "domesticShippingDisplay": {
+      "value": 4,
+      "currency": "CNY",
+      "qualifier": "起",
+      "destinationContext": "China domestic address shown on page",
+      "acceptedAsFirstMileToAmazonUS": false
+    },
+    "cleaningClaim": "可水洗不可机洗"
+  },
+  "stage2FieldMapping": {
+    "acceptedIntoPartialSubmission": {
+      "supplierUrl": "https://detail.1688.com/offer/980209804939.html",
+      "moq": 1,
+      "packageLengthCm": 31,
+      "packageWidthCm": 31,
+      "packageWeightKg": 0.58
+    },
+    "keptMissing": {
+      "supplierCapturedAt": "exact_screenshot_capture_time_not_available",
+      "bom": "supplier_price_is_cny_and_no_sourced_usd_conversion",
+      "packageHeightCm": "conflicting_page_values_3_5_vs_3_8",
+      "firstMile": "domestic_shipping_display_is_not_us_first_mile",
+      "logisticsEvidenceUrl": "not_collected",
+      "platformCommission": "not_collected",
+      "fba": "not_collected",
+      "packaging": "not_collected",
+      "storage": "not_collected",
+      "returnReserve": "not_collected",
+      "complianceEvidenceUrl": "not_collected"
+    }
+  },
+  "dataQuality": {
+    "status": "partial_real_evidence_formally_validated",
+    "severity": "medium",
+    "confidence": "medium",
+    "reasonCodes": [
+      "supplier_capture_time_exact_value_missing",
+      "package_height_conflicting_values",
+      "supplier_price_currency_conversion_missing",
+      "domestic_shipping_not_first_mile"
+    ],
+    "formalStage2SubmissionGenerated": true,
+    "formalStage2SubmissionStatus": "incomplete",
+    "qualityGate": "passed_for_partial_evidence",
+    "profitStatus": "profit_insufficient_evidence"
+  },
+  "attachments": [
+    {
+      "name": "codex-clipboard-9d8c5d2c-5729-4d2a-a75c-31bbcb23d220.png",
+      "bytes": 1649257,
+      "sha256": "635B5EF65E6CFBB16D000E74AC720E1A72A9FF0BA85F7DFB4E8B57440E3B0CD7",
+      "rawRetained": false,
+      "retentionReason": "excluded_page_account_avatar_and_data_minimization"
+    },
+    {
+      "name": "codex-clipboard-59e80c64-6893-4248-970f-c68afbe383a3.png",
+      "bytes": 361823,
+      "sha256": "CA65F95179335579091C1007B32A0DD0EF0E0DDF0FC8551C0573B9E1AA3296AF",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    },
+    {
+      "name": "codex-clipboard-8bfd54e9-618d-4dd7-ab27-b521510ea3ab.png",
+      "bytes": 184298,
+      "sha256": "FD615FE27BB8C1815506CC535C1ADF710C54A45276546DBB9AC8A299C7590477",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    },
+    {
+      "name": "codex-clipboard-015774e8-e9d5-41d2-8b2c-edfe3539c603.png",
+      "bytes": 137267,
+      "sha256": "F2A81C5172001F1D122969927D32D6199EA8E3EB6559B5BDDEC9A0D30555F7F7",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    },
+    {
+      "name": "codex-clipboard-4b4d1604-a163-4c0f-9fca-22ceaa5f809e.png",
+      "bytes": 71165,
+      "sha256": "E79A016811DC26DC9E600422EB0ADA1C4E9B807AEA93C0648B43B25A0991A6F4",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    },
+    {
+      "name": "codex-clipboard-328ff389-cfa0-4044-8fc4-0f3088c1b184.png",
+      "bytes": 72581,
+      "sha256": "7F54AF9037E6CC98795DFD9B1BD729E952E95E6D431CA97320A65A619223328A",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    },
+    {
+      "name": "codex-clipboard-7d4a5eff-0721-4b5e-82fb-25646f39dfa6.png",
+      "bytes": 145762,
+      "sha256": "6B2ABE757ABEC9517EB4E03EE16A2AEEB92C94EDCB4342B1274448AFF0219C5F",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    },
+    {
+      "name": "codex-clipboard-24598edf-62d2-4d16-befa-c0d5279a9de5.png",
+      "bytes": 382888,
+      "sha256": "C65C9CBEDF7492A906BFB6D333C1C11987A0F16DB204159548D15596F5BD6E0F",
+      "rawRetained": false,
+      "retentionReason": "data_minimization"
+    }
+  ],
+  "boundary": {
+    "rawScreenshotsCopiedIntoProject": false,
+    "fullHtmlStored": false,
+    "cookiesOrTokensStored": false,
+    "databaseWritten": false,
+    "candidateCreated": false,
+    "stage1Modified": false,
+    "externalWebsiteAccessedByCodex": false,
+    "externalAiCalled": false
+  },
+  "nextRequiredInput": "No immediate user input. Remaining commercial cost fields require separately sourced evidence; unknown values stay null."
+}

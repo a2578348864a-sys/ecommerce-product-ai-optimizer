@@ -1,0 +1,1458 @@
+{
+  "schemaVersion": "stage2-evidence-submission.v1",
+  "submissionId": "stage2-synthetic-fixture-01",
+  "sourceGapInventoryHash": "bd57f6402c76c6cc7c50232f1e7d311ab4460228c9209efbc0f8b77d724111ca",
+  "createdAt": "2026-07-14T12:00:00.000Z",
+  "submittedBy": "offline_synthetic_fixture_generator",
+  "evidenceMode": "synthetic_fixture",
+  "boundary": {
+    "objectiveEvidenceOnly": true,
+    "humanDecisionExcluded": true,
+    "stage1RankingMayNotBeRewritten": true,
+    "missingValuesMayNotBeEstimated": true
+  },
+  "samples": [
+    {
+      "sampleId": "stage2-high-01",
+      "productKey": "amazon:US:B07SYPLVTG",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-high-02",
+      "productKey": "amazon:US:B09ZV2TX28",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-medium-01",
+      "productKey": "amazon:US:B01F2II920",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-medium-02",
+      "productKey": "amazon:US:B07FX8RZJZ",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-low-01",
+      "productKey": "amazon:US:B0CNGTZ3B5",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-low-02",
+      "productKey": "amazon:US:B0FWBX39KX",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    },
+    {
+      "sampleId": "stage2-insufficient-evidence-01",
+      "productKey": "amazon:US:B0GZVHB1XW",
+      "variantIdentity": {
+        "status": "confirmed",
+        "amazonVariant": "synthetic-variant-a",
+        "supplierVariant": "synthetic-variant-a",
+        "confirmedAt": "2026-07-14T12:00:00.000Z",
+        "evidence": {
+          "sourceType": "manual",
+          "sourceUrl": "https://fixture.invalid/variant-match/variant-a",
+          "capturedAt": "2026-07-14T12:00:00.000Z",
+          "note": "仅用于离线测试的合成同变体确认。",
+          "inputHash": null
+        }
+      },
+      "fields": {
+        "supplierUrl": {
+          "value": "https://fixture.invalid/supplier/variant-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierUrl",
+            "inputHash": null
+          }
+        },
+        "supplierCapturedAt": {
+          "value": "2026-07-14T12:00:00.000Z",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/supplierCapturedAt",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：supplierCapturedAt",
+            "inputHash": null
+          }
+        },
+        "moq": {
+          "value": 100,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/moq",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：moq",
+            "inputHash": null
+          }
+        },
+        "bom": {
+          "value": 4.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/bom",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：bom",
+            "inputHash": null
+          }
+        },
+        "packageLengthCm": {
+          "value": 30,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageLengthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageLengthCm",
+            "inputHash": null
+          }
+        },
+        "packageWidthCm": {
+          "value": 20,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWidthCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWidthCm",
+            "inputHash": null
+          }
+        },
+        "packageHeightCm": {
+          "value": 8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageHeightCm",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageHeightCm",
+            "inputHash": null
+          }
+        },
+        "packageWeightKg": {
+          "value": 0.9,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packageWeightKg",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packageWeightKg",
+            "inputHash": null
+          }
+        },
+        "firstMile": {
+          "value": 1.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/firstMile",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：firstMile",
+            "inputHash": null
+          }
+        },
+        "logisticsEvidenceUrl": {
+          "value": "https://fixture.invalid/logistics/quote-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/logisticsEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：logisticsEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "platformCommission": {
+          "value": 2.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/platformCommission",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：platformCommission",
+            "inputHash": null
+          }
+        },
+        "fba": {
+          "value": 3.2,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/fba",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：fba",
+            "inputHash": null
+          }
+        },
+        "packaging": {
+          "value": 0.4,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/packaging",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：packaging",
+            "inputHash": null
+          }
+        },
+        "storage": {
+          "value": 0.25,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/storage",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：storage",
+            "inputHash": null
+          }
+        },
+        "returnReserve": {
+          "value": 0.8,
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/returnReserve",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：returnReserve",
+            "inputHash": null
+          }
+        },
+        "complianceEvidenceUrl": {
+          "value": "https://fixture.invalid/compliance/rule-a",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/complianceEvidenceUrl",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：complianceEvidenceUrl",
+            "inputHash": null
+          }
+        },
+        "executionRiskNotes": {
+          "value": "仅用于离线测试计算路径；不是供应链、物流、合规或质量事实。",
+          "missingReason": null,
+          "evidence": {
+            "sourceType": "direct_observation",
+            "sourceUrl": "https://fixture.invalid/evidence/executionRiskNotes",
+            "capturedAt": "2026-07-14T12:00:00.000Z",
+            "note": "仅用于离线测试的合成来源：executionRiskNotes",
+            "inputHash": null
+          }
+        }
+      }
+    }
+  ]
+}

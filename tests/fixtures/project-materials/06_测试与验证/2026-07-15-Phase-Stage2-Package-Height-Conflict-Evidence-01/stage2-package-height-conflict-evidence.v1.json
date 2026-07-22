@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "stage2-package-height-conflict-evidence.v1",
+  "evidenceId": "stage2-package-height-conflict-a7044379987005a5e386ad06",
+  "status": "valid_counterevidence_not_applied",
+  "receivedAt": "2026-07-15T18:51:13+08:00",
+  "sourceCapturedAt": null,
+  "sourceCapturedAtMissingReason": "exact_screenshot_capture_time_not_available",
+  "sourcePageUrl": "https://detail.1688.com/offer/980209804939.html",
+  "sourcePageUrlBasis": "bound_from_existing_submission_not_visible_in_new_screenshot",
+  "sourceImage": {
+    "sha256": "a511cbd9d40eeac971cd8cfbdb175a88ddb56f8a65ff7c2c2f91d9c5c507ea5c",
+    "copiedIntoProject": false,
+    "fullImagePathStored": false
+  },
+  "sourceRequestHash": "e1f3f73d5cb9cba2789bea42d95463cab66139b71a08e6c42f04d699d5e62363",
+  "sourceValidationHash": "99fbc06d5bf458bc2e8c892d29c8e8dd57d4e2b3d4b55a29a5ca91a29d6821cc",
+  "sourceSubmissionHash": "bd7587fcc7ff2da3b52e68de22914ad184a623e8a4ad3afd7d9f380302930c97",
+  "target": {
+    "sampleId": "stage2-high-01",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "supplierUrl": "https://detail.1688.com/offer/980209804939.html"
+  },
+  "observation": {
+    "tableSection": "商品件重尺",
+    "tableVariantText": "灰色六层",
+    "currentSelectorText": "米色六层",
+    "packageLengthCm": 31,
+    "packageWidthCm": 31,
+    "packageHeightCm": 3.5,
+    "packageVolumeCm3": 3363.5,
+    "packageWeightKg": 0.58,
+    "priceRevalidatedForGreySixLayer": false
+  },
+  "conflictAssessment": {
+    "existingObservedHeightsCm": [
+      3.5,
+      3.8
+    ],
+    "newStructuredTableValueCm": 3.5,
+    "status": "conflict_confirmed_not_resolved",
+    "packageHeightCmApplied": null,
+    "nextRequiredEvidence": "supplier_variant_specific_confirmation_or_current_packaging_document"
+  },
+  "reasonCodes": [
+    "structured_table_supports_3_5",
+    "earlier_product_image_supports_3_8",
+    "current_selector_is_beige_six_layer",
+    "supplier_confirmation_absent"
+  ],
+  "boundary": {
+    "screenshotCopied": false,
+    "fullHtmlStored": false,
+    "privateSessionDataStored": false,
+    "submissionMutated": false,
+    "fbaCalculationAllowed": false,
+    "databaseWritten": false,
+    "candidateCreated": false
+  },
+  "evidenceHash": "ad8e8f64f4257d0398469269d5d6fb261a3a3bcc9abd833efc2df2a3e5ef4e64"
+}
