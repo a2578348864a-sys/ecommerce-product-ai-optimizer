@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "human-assisted-stage1-offline-run-summary.v1",
+  "sourceRunSchemaVersion": "human-assisted-amazon-run.v2",
+  "sourceRunCapturedAt": "2026-07-14T10:31:54.838Z",
+  "sourceInputHash": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b",
+  "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+  "importPackageHash": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a",
+  "rankingRunId": "ranking-3e915b7638c43def68f22948",
+  "rankingRuleVersion": "stage1-deterministic-v1.1",
+  "inputObservationCount": 20,
+  "importPreviewCandidateCount": 20,
+  "resultCount": 20,
+  "decisionCounts": {
+    "promoted": 16,
+    "rejected": 3,
+    "insufficient_evidence": 1
+  },
+  "deterministicReplayMatched": true,
+  "blindReviewItemCount": 20,
+  "humanReviewResultsRecorded": false,
+  "formalCandidateGenerated": false,
+  "productionDatabaseWritten": false,
+  "aiCalled": false,
+  "evidenceHash": "63d7cd8e9e65e5540f3b48337cd9b90f145c382375d1df3de42185ad43dd41ec"
+}

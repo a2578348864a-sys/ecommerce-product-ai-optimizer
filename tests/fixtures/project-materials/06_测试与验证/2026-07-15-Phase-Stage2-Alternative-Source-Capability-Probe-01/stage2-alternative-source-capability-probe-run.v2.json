@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "stage2-alternative-source-capability-probe-run.v2",
+  "runId": "stage2-alternative-real-af9c48d815372e46cdd45c17",
+  "proofLevel": "real_public_capability_probe",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe",
+  "authorizationEvidenceHash": "fab6b91f25891ecb0b36e2656e867c56067c31e27678b5de2375705a1a2de0bd",
+  "policyRequestInputHash": "e4c3a5ad3bd357ae1c8c3ab96825544554295692734607a50dcc5750b9b755e5",
+  "policyPreflightInputHash": "02c5f87bcd2d9c5938ab7c08973440344e0fcdc60e44f65315e1c0e7b39f97df",
+  "termsEvidenceHash": "4f8628edf27a63b28ab88057b542d595a14c55a52c9aae084126fa18c2f277f0",
+  "capturedAt": "2026-07-15T02:03:34.4026392Z",
+  "status": "failed_closed",
+  "errorCode": "unknown_page",
+  "reasonCodes": [
+    "search_container_marker_missing"
+  ],
+  "realWebsiteAccessed": true,
+  "browserSessionStarted": true,
+  "navigationBudget": {
+    "maximum": 1,
+    "used": 1,
+    "productPageNavigations": 0,
+    "automaticRetryCount": 0
+  },
+  "externalActionBudget": {
+    "countingUnit": "top_level_policy_request_and_main_frame_navigation",
+    "maximum": 2,
+    "policyUsed": 1,
+    "navigationUsed": 1,
+    "totalUsed": 2
+  },
+  "page": {
+    "schemaVersion": "stage2-alternative-source-probe-page.v1",
+    "requestedOrigin": "https://www.made-in-china.com",
+    "requestedPath": "/products-search/hot-china-products/Hanging_Organizer.html",
+    "finalOrigin": "https://www.made-in-china.com",
+    "finalPath": "/products-search/hot-china-products/Hanging_Organizer.html",
+    "redirectCount": 0,
+    "redirectOrigins": [],
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "navigationElapsedMs": 1623,
+    "domWaitElapsedMs": 1106,
+    "readyState": "complete",
+    "title": "China Hanging Organizer, Hanging Organizer Wholesale, Manufacturers, Price | Made-in-China.com",
+    "visibleTextLength": 11733,
+    "markers": {
+      "brand": true,
+      "brandTitle": true,
+      "searchContainer": false,
+      "alternateSearchContainer": false,
+      "captcha": false,
+      "loginOrInquiry": false,
+      "accessDenied": false,
+      "serviceUnavailable": false
+    },
+    "classification": "unknown_page",
+    "classificationReasonCodes": [
+      "search_container_marker_missing"
+    ],
+    "allowedProductUrls": [],
+    "rejectedProductLinkCount": 0,
+    "inputHash": "48ea8287ff4821830d50ba26445eb19f0f645d33c5139f5b919c444ed8dd40c4"
+  },
+  "allowedProductUrls": [],
+  "supplierFieldsCollected": 0,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "cleanup": {
+    "pageClosed": true,
+    "browserClosed": true,
+    "forcedTerminationUsed": false,
+    "debugPortReleased": true,
+    "profileRemoved": true,
+    "browserProcessBaselineRestored": true
+  },
+  "evidenceHash": "58470053c6bda144372308a0c1603eb34c02465daa31de43ef55e6c7a887d445"
+}

@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "stage2-alternative-source-brief.v1",
+  "briefId": "stage2-alternative-source-d37056962122414e7ef2872f",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-14T17:30:00.000Z",
+  "sample": {
+    "sampleId": "stage2-high-01",
+    "candidateId": "candidate-4d7f7c7849791595166c",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "amazonObservedTitle": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+    "amazonSourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+    "amazonCapturedAt": "2026-07-14T10:31:54.838Z",
+    "evaluationVariantStatus": "requires_same_variant_confirmation"
+  },
+  "sourceEvidence": {
+    "originalBriefId": "stage2-collection-e0c227e99fcaa560b77c6544",
+    "originalBriefHash": "54823dbbb5eaf27989f4e257fb9b9a77732bd0dcd2392956fc0ec3b19d88e20b",
+    "failedRevalidationResultId": "stage2-revalidation-result-3e9d4d4149bb92a7d753ee6b",
+    "failedRevalidationEvidenceHash": "a2b358fc32f571c9e42d4375aecda33a33520b0925270f617d2b398cf6eb6a95"
+  },
+  "sourceDecision": {
+    "selectedPlatform": "made_in_china",
+    "selectedOrigin": "https://www.made-in-china.com",
+    "priorBlockedOrigin": "https://www.alibaba.com",
+    "evidenceClass": "public_platform_capability_only",
+    "supplierClaimsRequireIndependentVerification": true,
+    "officialSourceUrls": [
+      "https://www.made-in-china.com/",
+      "https://www.made-in-china.com/help/faq/",
+      "https://www.made-in-china.com/help/terms/",
+      "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html"
+    ]
+  },
+  "search": {
+    "query": "6 shelf hanging closet organizer grey",
+    "startUrl": "https://www.made-in-china.com/products-search/hot-china-products/Hanging_Organizer.html",
+    "allowedSearchPathPrefix": "/products-search/",
+    "allowedProductPathPatterns": [
+      "^/price/prodetail_[A-Za-z0-9_-]+\\.html$",
+      "^/showroom/[A-Za-z0-9_-]+/product-detail[A-Za-z0-9_-]+/China-[^/?#]+\\.html$"
+    ],
+    "forbiddenOriginPatterns": [
+      "http://*",
+      "https://*.en.made-in-china.com"
+    ]
+  },
+  "requestedEvidenceFields": [
+    "supplierUrl",
+    "supplierCapturedAt",
+    "moq",
+    "bom",
+    "packageLengthCm",
+    "packageWidthCm",
+    "packageHeightCm",
+    "packageWeightKg"
+  ],
+  "requestedScope": {
+    "allowedOrigins": [
+      "https://www.made-in-china.com"
+    ],
+    "maxTotalNavigations": 3,
+    "maxPolicyRequests": 1,
+    "maxTotalExternalRequests": 4,
+    "maxSearchResultPages": 1,
+    "maxSupplierProductPages": 2,
+    "maxSamples": 1,
+    "automaticRetryCount": 0
+  },
+  "identityPolicy": {
+    "sameVariantRequired": true,
+    "titleSimilarityIsInsufficient": true,
+    "attributeMatchAloneConfirmsVariant": false,
+    "explicitSupplierLinkageRequired": true,
+    "targetObservedAttributes": {
+      "tierCount": {
+        "value": 6,
+        "source": "amazon_observed_title"
+      },
+      "color": {
+        "value": "grey",
+        "source": "amazon_observed_title"
+      },
+      "hangingConfiguration": {
+        "value": true,
+        "source": "amazon_observed_title"
+      },
+      "material": {
+        "value": null,
+        "missingReason": "not_observed_in_amazon_source_title"
+      }
+    },
+    "requiredComparableAttributes": [
+      "tier_count",
+      "color",
+      "hanging_configuration"
+    ],
+    "unresolvedIdentityResult": "variant_identity_cannot_be_confirmed"
+  },
+  "policyPreflight": {
+    "termsUrl": "https://www.made-in-china.com/help/terms/",
+    "robotsUrl": "https://www.made-in-china.com/robots.txt",
+    "robotsStatus": "unknown_pending_runtime_check",
+    "robotsUnknownOrDisallowsBlocksProbe": true
+  },
+  "evidencePolicy": {
+    "acceptedSourceType": "direct_observation",
+    "publicListingIsSupplierConfirmation": false,
+    "publicPriceIsConfirmedQuotation": false,
+    "missingValuesRemainNullWithReason": true,
+    "noCurrencyConversionToFillMissingCost": true,
+    "noAmazonSignalInference": true
+  },
+  "stopConditions": [
+    "captcha_or_robot_check",
+    "login_wall_or_inquiry_required",
+    "access_denied_or_service_unavailable",
+    "unexpected_final_origin",
+    "unexpected_intermediate_redirect_origin",
+    "supplier_subdomain_not_allowed",
+    "browser_internal_error",
+    "unknown_page_state",
+    "variant_identity_cannot_be_confirmed",
+    "requested_navigation_budget_exhausted",
+    "robots_policy_unknown_or_disallows"
+  ],
+  "authorization": {
+    "status": "not_granted",
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "boundary": {
+    "thisBriefIsNotAuthorization": true,
+    "noAutomaticWebsiteAccess": true,
+    "noLoginOrInquiry": true,
+    "noCookieOrStorageRead": true,
+    "noCaptchaBypass": true,
+    "noProxyOrAntiDetection": true,
+    "noPaidApiOrExternalAi": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage1Rewrite": true,
+    "noStage2SubmissionWithoutConfirmedVariant": true,
+    "runtimePolicyPreflightRequired": true
+  },
+  "briefHash": "3691edd6b35a70ad9d802d05ebdfa0de56832bc9200e0b928f3d35ce9ff9b2fe"
+}

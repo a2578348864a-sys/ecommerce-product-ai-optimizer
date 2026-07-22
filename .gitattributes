@@ -10,3 +10,6 @@ lib/upstream/fixtures/family-top5-provenance.v1.json text eol=lf
 lib/upstream/fixtures/family-top5-provenance.v1.json.sha256 text eol=lf
 lib/upstream/fixtures/family-top5-human-review-schema.v1.json text eol=lf
 lib/upstream/fixtures/family-top5-human-review-schema.v1.json.sha256 text eol=lf
+
+# Project-material fixtures are hash-locked byte artifacts, not text to normalize.
+tests/fixtures/project-materials/** -text -whitespace

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "novice-market-screening-generation-summary.v1",
+  "createdAt": "2026-07-15T12:40:00.000Z",
+  "sourceFiles": [
+    {
+      "name": "human-assisted-amazon-run.v2.json",
+      "sha256": "8ac0235ee3c39d9a653f1d5d9212c62f93ed65b5e7afa27f85f1ea12f4138b47"
+    },
+    {
+      "name": "stage1-ranking.v1.json",
+      "sha256": "ad36ddf2f1e5c902013359b586516f28065f741076fb039602fb08e3720bd8d5"
+    },
+    {
+      "name": "stage1-blind-review-material.v1.json",
+      "sha256": "93bdb99a0551674b64b625040d99674f05a7df26c9ba1c5275b7e97c9cddafac"
+    },
+    {
+      "name": "novice-blind-review-packet.v1.json",
+      "sha256": "278ed9ae54b5059dd9fde40d03cb8dc59084d9207e2081d77aa38d96e3ee9f08"
+    },
+    {
+      "name": "novice-blind-review-responses.v1.json",
+      "sha256": "e04f22bb211e69ef627eda54a909a88eb85cfe329da6f3416c028e2a99a51f7b"
+    }
+  ],
+  "inputHash": "e5b9f617a9316c4e34956abda281278eaa9c367043921dddb4e22e821db0d680",
+  "screeningHash": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8",
+  "acceptanceEvidenceHash": "f0f287135a92ed8562e0c4fb4e2af202de75104d2ab46640a8652a1274180834",
+  "itemCounts": {
+    "advance": 5,
+    "watch": 11,
+    "reject": 3,
+    "insufficient": 1
+  },
+  "engineeringConclusion": "deterministic_scope_reduction_verified",
+  "effectivenessConclusion": "screening_effectiveness_not_validated",
+  "selectionMechanism": "deterministic_top_k_quota",
+  "formalCandidateGenerated": false,
+  "productionDatabaseWritten": false,
+  "externalWebsiteAccessed": false,
+  "externalAiApiCalled": false,
+  "stage2FieldsConsumed": false,
+  "files": [
+    "novice-market-screening-run.v1.json",
+    "novice-market-screening-acceptance.v1.json",
+    "generation-summary.novice-market-screening.v1.json",
+    "README-调查短名单预览.md"
+  ],
+  "evidenceHash": "03488bcd8affdf402f3c4b495bd783773b5b67198fcb4b18dad6bde184dee5e7"
+}

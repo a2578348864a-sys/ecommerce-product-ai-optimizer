@@ -1,16 +1,15 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { projectMaterialPath, repositoryPath } from "../../tests/helpers/project-materials";
 import { generateStage2GlobalSourcesDiscoveryR1Materials } from "./generate-stage2-global-sources-discovery-r1";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
-const historicalSelection = resolve(PROJECT_ROOT,
+const historicalSelection = projectMaterialPath(
   "06_测试与验证/2026-07-15-Phase-Stage2-Global-Sources-Discovery-C1A-01/stage2-alternative-source-selection.v1.json");
-const historicalBrief = resolve(PROJECT_ROOT,
+const historicalBrief = projectMaterialPath(
   "06_测试与验证/2026-07-15-Phase-Stage2-Global-Sources-Discovery-C1A-01/stage2-global-sources-discovery-brief.v1.json");
-const fixture = resolve(PROJECT_ROOT,
-  "电商工具/tools/upstream/fixtures/stage2-global-sources-discovery-r1.v1.json");
+const fixture = repositoryPath("tools/upstream/fixtures/stage2-global-sources-discovery-r1.v1.json");
 const tempDirectories: string[] = [];
 
 afterEach(() => {

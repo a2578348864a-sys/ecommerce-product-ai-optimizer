@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "stage2-next-evidence-handoff.v1",
+  "handoffId": "stage2-next-evidence-handoff-130b031b79e9f89bbb23544c",
+  "status": "pending_manual_evidence_capture",
+  "createdAt": "2026-07-15T19:31:20+08:00",
+  "sourceSubmissionHash": "7b8dfa1be939d6696d618ce5241cc84176a2367a0121f75b4f7bc55322e96169",
+  "sourceValidationHash": "8fc736415fba8ff25e47f00e8dad09c49969add2b32bb066a6c41ada4805c69f",
+  "sourceRequestHash": "3b2aed5d95fd6a9acb8b163c12d348e7cd44d7308e2574124eb3f2ac9828b6d7",
+  "target": {
+    "sampleId": "stage2-high-01",
+    "productKey": "amazon:US:B07SYPLVTG",
+    "asin": "B07SYPLVTG"
+  },
+  "knownInputs": {
+    "salePriceUsd": 15.98,
+    "provisionalBomUsdPerItem": 2.73,
+    "packageMetric": {
+      "lengthCm": 31,
+      "widthCm": 31,
+      "heightCm": 3.5,
+      "weightKg": 0.58
+    },
+    "packageImperialDiagnostic": {
+      "lengthIn": 12.2,
+      "widthIn": 12.2,
+      "heightIn": 1.38,
+      "weightLb": 1.28,
+      "weightOz": 20.46
+    },
+    "packageHeightBasis": "project_owner_manual_working_value_not_supplier_confirmation"
+  },
+  "tracks": [
+    {
+      "trackId": "amazon_fee_evidence",
+      "priority": 1,
+      "requestedFields": [
+        "platformCommission",
+        "fba"
+      ],
+      "manualAction": "在Amazon官方Revenue Calculator或官方费用工具中查询ASIN并保存结果截图。",
+      "prefilledInputs": {
+        "asin": "B07SYPLVTG",
+        "salePriceUsd": 15.98
+      },
+      "returnEvidence": [
+        "official_tool_result_screenshot",
+        "result_captured_at",
+        "fee_category_or_referral_rate",
+        "referral_fee_usd_per_item",
+        "fba_fee_usd_per_item",
+        "calculator_dimensions_and_weight_if_visible"
+      ],
+      "caution": "现有ASIN计算结果仅作为参考证据；若工具使用Amazon目录尺寸，不能冒充未来自有商品的最终包装费用。"
+    },
+    {
+      "trackId": "first_mile_quote",
+      "priority": 2,
+      "requestedFields": [
+        "firstMile",
+        "logisticsEvidenceUrl"
+      ],
+      "manualAction": "把预填报价文字发给货代，并返回包含数量、币种、路线、费用组成和有效期的脱敏截图。",
+      "prefilledInputs": {
+        "packageLengthCm": 31,
+        "packageWidthCm": 31,
+        "packageHeightCm": 3.5,
+        "packageWeightKg": 0.58,
+        "quoteQuantityUnits": null
+      },
+      "returnEvidence": [
+        "quoted_quantity_units",
+        "route_and_transport_mode",
+        "total_quote_and_currency",
+        "included_and_excluded_charges",
+        "quote_valid_until",
+        "redacted_quote_screenshot_or_public_url"
+      ],
+      "caution": "数量或费用组成不明确时不得换算单件头程；页面国内运费不能代替美国头程。"
+    }
+  ],
+  "remainingLaterFields": [
+    "supplierCapturedAt",
+    "packaging",
+    "storage",
+    "returnReserve",
+    "complianceEvidenceUrl"
+  ],
+  "boundary": {
+    "doesNotCalculateAmazonFees": true,
+    "doesNotCalculateFreight": true,
+    "doesNotCalculateProfit": true,
+    "doesNotMutateSubmission": true,
+    "doesNotCreateCandidate": true,
+    "doesNotWriteDatabase": true,
+    "externalWebsiteAccessed": false,
+    "externalAiCalled": false
+  },
+  "handoffHash": "d2381561584fd491addae832f2cf6cb2fd0866288f5020291b38d1219dd8cbe8"
+}

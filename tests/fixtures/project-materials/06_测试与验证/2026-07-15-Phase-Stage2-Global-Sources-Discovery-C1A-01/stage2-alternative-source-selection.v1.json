@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "stage2-alternative-source-selection.v1",
+  "selectionId": "stage2-source-selection-33bcf1730dbf870139dd280f",
+  "status": "selected_pending_source_discovery",
+  "approvedAt": "2026-07-15T04:38:56.901Z",
+  "approvedBy": "project_owner",
+  "userSelection": "C",
+  "selectedOption": "select_different_public_source",
+  "selectedApproach": "global_sources_minimal_discovery",
+  "selectedPlatform": "global_sources",
+  "sourceEvidence": {
+    "decisionBriefEvidenceHash": "e494a9fd1e08151d279e7d6535dc1c07d93411853b16a72f40d6aeacf2314c33",
+    "researchEvidenceHash": "4f8628edf27a63b28ab88057b542d595a14c55a52c9aae084126fa18c2f277f0",
+    "probe1RunEvidenceHash": "58470053c6bda144372308a0c1603eb34c02465daa31de43ef55e6c7a887d445",
+    "probe2RunEvidenceHash": "83efb21ee25ea51df59c739ad7e107568f106374c98f92b3af4dc87ac740244a"
+  },
+  "sourceCapabilityValidated": false,
+  "realWebsiteAccessedDuringSelection": false,
+  "productPagesAccessed": 0,
+  "supplierFieldsCollected": 0,
+  "stage2SubmissionGenerated": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "historicalEvidenceReclassified": false,
+  "boundaries": [
+    "historical_decision_brief_remains_unselected",
+    "made_in_china_probe_failures_are_not_reclassified",
+    "global_sources_help_reference_does_not_validate_current_runtime_capability",
+    "selection_does_not_authorize_external_access"
+  ],
+  "selectionHash": "bbd3bfa2809df0829dabcc01a4902e13e384957665d064c307d0b7a980d97cd0"
+}

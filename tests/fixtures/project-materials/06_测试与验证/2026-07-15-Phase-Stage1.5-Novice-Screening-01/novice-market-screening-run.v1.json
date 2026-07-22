@@ -1,0 +1,860 @@
+{
+  "schemaVersion": "novice-market-screening-run.v1",
+  "displayName": "调查短名单预览",
+  "status": "completed",
+  "advanceMeaning": "top_k_investigation_quota_not_quality_or_commercial_approval",
+  "selectionMechanism": "deterministic_top_k_quota",
+  "rankingRunId": "ranking-3e915b7638c43def68f22948",
+  "rankingRuleVersion": "stage1-deterministic-v1.1",
+  "briefId": "brief-human-assisted-20260714103154",
+  "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+  "sourceBatchId": "source-batch-4e6574b31b375cc2af96b971",
+  "inputHash": "e5b9f617a9316c4e34956abda281278eaa9c367043921dddb4e22e821db0d680",
+  "createdAt": "2026-07-15T12:40:00.000Z",
+  "configuration": {
+    "advanceFloor": 3,
+    "advanceLimit": 5
+  },
+  "summary": {
+    "advance": 5,
+    "watch": 11,
+    "reject": 3,
+    "insufficient": 1
+  },
+  "items": [
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-4d7f7c7849791595166c",
+      "productKey": "amazon:US:B07SYPLVTG",
+      "stage1Rank": 1,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-14",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 355,
+        "note": "结合本地商品图后可理解商品；评分与评论数支持继续调查，未提出明确关注点，重复判断时选择可能变化。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "advance",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "进入调查短名单；专业商业验证仍为独立后续决定"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-7c40902cf1d313241836",
+      "productKey": "amazon:US:B09ZV2TX28",
+      "stage1Rank": 2,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-10",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 438,
+        "note": "远程图片未显示后，使用 Canary 已记录的公开搜索缩略图下载为本地图片；结合图片后商品可理解，页面评价信号支持继续调查，重复判断时选择可能变化。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "advance",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "进入调查短名单；专业商业验证仍为独立后续决定"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-9ef975e54b25ef82f262",
+      "productKey": "amazon:US:B0BR7MSWN2",
+      "stage1Rank": 3,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-19",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 329,
+        "note": "结合本地商品图后可理解商品；愿意继续调查，当前未提出明确关注点，重复判断时预计仍会保持相同选择。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "advance",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "进入调查短名单；专业商业验证仍为独立后续决定"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-5d3263a69633d3ce127b",
+      "productKey": "amazon:US:B0CGJJJC4M",
+      "stage1Rank": 4,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-06",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 70,
+        "note": "商品用途清楚，评分与评论数可作为继续调查的页面信号；当前未提出明确关注点。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "advance",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "进入调查短名单；专业商业验证仍为独立后续决定"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-9886a018815fb308942a",
+      "productKey": "amazon:US:B0CL9NHS27",
+      "stage1Rank": 5,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-02",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 215,
+        "note": "在明确商品用途并将评分与评论数仅视为页面调查信号后，愿意继续调查；不代表已证明销量、利润或值得销售。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "advance",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "进入调查短名单；专业商业验证仍为独立后续决定"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-8a722d1a6731bcc14a19",
+      "productKey": "amazon:US:B09DX3QGPT",
+      "stage1Rank": 6,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": false,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-18",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "uncertain",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "no",
+        "confidence": "high",
+        "elapsedSeconds": 341,
+        "note": "认可模块化拼装创意，但从图片担忧塑料面板承重、连接稳定性和使用寿命，因此不继续调查；该理由是人工视觉担忧，未被实际质量证据证实。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "continue_research_no"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "continue_research_no"
+      ],
+      "nextValidationPlan": [
+        "保留观察；先解决理解、调查意愿或调查配额限制"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-8fed7a8ad6bddf806bb5",
+      "productKey": "amazon:US:B0D25KNJQ8",
+      "stage1Rank": 7,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": false,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-20",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "no",
+        "confidence": "high",
+        "elapsedSeconds": 129,
+        "note": "因商品体积较大、售价相对结构显得偏低且评分 4.1 在本批中偏低，评审者选择不继续调查；质量担忧为人工判断，未被实际质量证据证实。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "continue_research_no"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "continue_research_no"
+      ],
+      "nextValidationPlan": [
+        "保留观察；先解决理解、调查意愿或调查配额限制"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-68d08a8ba080cd1f0e7f",
+      "productKey": "amazon:US:B0DHG6KNJF",
+      "stage1Rank": 8,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-08",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 136,
+        "note": "商品用途和页面评价信号支持继续调查；原标题中的专利声明必须进一步核实，当前不据此认定侵权或直接淘汰。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-a64ce38e4e0fde51ea18",
+      "productKey": "amazon:US:B0FRF56CM2",
+      "stage1Rank": 9,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-17",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 101,
+        "note": "结合本地商品图后可理解商品；页面评价信号支持继续调查，需核对标题层数与图片结构以及准确尺寸和承重。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-45f73631a57c2795d653",
+      "productKey": "amazon:US:B0FXXG1LVK",
+      "stage1Rank": 10,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-12",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 294,
+        "note": "结合本地商品图并澄清前开门结构后理解商品；评分与评论数支持继续调查，未留下明确关注点，重复判断时选择可能变化。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-73fb6b6432f15cc83c52",
+      "productKey": "amazon:US:B0GZ344C3P",
+      "stage1Rank": 11,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-11",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 173,
+        "note": "结合本地商品图后可理解商品；评审者认为 5.0 分和 4 条评论仍可作为继续调查信号，未提出明确关注点。该判断不等于评论样本具有统计代表性。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-49271bcb3c1431d0fdf9",
+      "productKey": "amazon:US:B01F2II920",
+      "stage1Rank": 12,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": false,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-15",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "no",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "uncertain",
+        "confidence": "high",
+        "elapsedSeconds": 363,
+        "note": "结合本地商品图后可理解商品；尺寸适配和板材、结构质量是关键缺失证据，另需核实安装与运输风险，因此暂列待补证据。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "continue_research_uncertain"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "continue_research_uncertain"
+      ],
+      "nextValidationPlan": [
+        "保留观察；先解决理解、调查意愿或调查配额限制"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-504f2804edc8759a97cd",
+      "productKey": "amazon:US:B07FX8RZJZ",
+      "stage1Rank": 13,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-13",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 149,
+        "note": "结合本地商品图后可理解商品；评分与评论数支持继续调查，当前未提出明确关注点。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-4193268dddaa8e71a577",
+      "productKey": "amazon:US:B082K8XTBS",
+      "stage1Rank": 14,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-09",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 114,
+        "note": "商品用途清楚，评分与评论数可作为继续调查的页面信号；当前未提出明确关注点，重复判断时选择可能变化。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-ae80f30b17b4b17afd48",
+      "productKey": "amazon:US:B0BRKHCLGZ",
+      "stage1Rank": 15,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-03",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "no",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 173,
+        "note": "商品用途清楚，评分与评论数可作为继续调查的页面信号，未发现当前证据中的明确淘汰理由。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "top_k_quota_not_allocated"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [
+        "top_k_quota_not_allocated"
+      ],
+      "nextValidationPlan": [
+        "本批未获得调查配额；保留观察，不解释为质量或商业失败"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-148ee6aca70a8016d1bd",
+      "productKey": "amazon:US:B0DHMJSDXM",
+      "stage1Rank": 16,
+      "stage1PromotionDecision": "promoted",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": false,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-07",
+        "productUnderstood": "no",
+        "evidenceSufficient": "no",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 102,
+        "note": "即使提供中文文字仍无法明确理解商品；原标题存在乱码且缺少图片、层数和尺寸说明，愿意补证后再判断。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "product_understood_no"
+      ],
+      "status": "watch",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "product_understood_no"
+      ],
+      "nextValidationPlan": [
+        "保留观察；先解决理解、调查意愿或调查配额限制"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-f4dbb1668698326e5361",
+      "productKey": "amazon:US:B0CNGTZ3B5",
+      "stage1Rank": 17,
+      "stage1PromotionDecision": "rejected",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-05",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "yes",
+        "confidence": "medium",
+        "elapsedSeconds": 258,
+        "note": "评分与评论数支持继续调查；需要重点核实承重、结构牢固程度和长期耐用性，当前证据不能确认质量可靠。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "reject",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "仅在硬阻断或 Stage 1 淘汰依据被可靠新证据推翻后重评"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-81d50ff4391590f91196",
+      "productKey": "amazon:US:B0FWBX39KX",
+      "stage1Rank": 18,
+      "stage1PromotionDecision": "rejected",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-01",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "uncertain",
+        "obviousConcern": "uncertain",
+        "investigateNext10Minutes": "yes",
+        "confidence": "low",
+        "elapsedSeconds": 692,
+        "note": "需要中文功能与用途说明；在没有预先判断标准时无法判断明显问题和证据充分性。本条不代表专家运营判断。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [],
+      "status": "reject",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [],
+      "missingEvidence": [],
+      "nextValidationPlan": [
+        "仅在硬阻断或 Stage 1 淘汰依据被可靠新证据推翻后重评"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-4fd0e3863ae0081a6e74",
+      "productKey": "amazon:US:B0F389CJRD",
+      "stage1Rank": 19,
+      "stage1PromotionDecision": "rejected",
+      "screeningEvidenceSufficient": true,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": false,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-16",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "yes",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "no",
+        "confidence": "high",
+        "elapsedSeconds": 171,
+        "note": "大型高价衣帽间系统需要核实尺寸、安装便利性、包装体积、运费、破损退货风险和可靠利润；评审者因验证负担较高选择当前不继续调查。"
+      },
+      "marketEvidenceReasons": [],
+      "humanGateReasons": [
+        "continue_research_no"
+      ],
+      "status": "reject",
+      "supportingEvidence": [
+        "页面可见评分",
+        "页面可见评论数",
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "continue_research_no"
+      ],
+      "nextValidationPlan": [
+        "仅在硬阻断或 Stage 1 淘汰依据被可靠新证据推翻后重评"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    },
+    {
+      "schemaVersion": "novice-market-screening-item.v1",
+      "candidateId": "candidate-b1a91e3c81cbe884a4d6",
+      "productKey": "amazon:US:B0GZVHB1XW",
+      "stage1Rank": null,
+      "stage1PromotionDecision": "insufficient_evidence",
+      "screeningEvidenceSufficient": false,
+      "userUnderstandsProduct": true,
+      "willingToContinueResearch": true,
+      "rawHumanAnswer": {
+        "blindItemId": "blind-e44d4faf476637758ab3e888-04",
+        "productUnderstood": "yes",
+        "evidenceSufficient": "no",
+        "obviousConcern": "yes",
+        "investigateNext10Minutes": "yes",
+        "confidence": "high",
+        "elapsedSeconds": 150,
+        "note": "缺少评分与评论数，当前只能理解商品用途和价格；愿意补查页面评价信号，不据此淘汰商品。"
+      },
+      "marketEvidenceReasons": [
+        "minimum_evidence_incomplete"
+      ],
+      "humanGateReasons": [],
+      "status": "insufficient",
+      "supportingEvidence": [
+        "存在明确自然位页面出现"
+      ],
+      "counterEvidence": [
+        "新手报告存在需进一步核实的直观担忧"
+      ],
+      "missingEvidence": [
+        "rating",
+        "review_count",
+        "minimum_evidence_incomplete"
+      ],
+      "nextValidationPlan": [
+        "补齐市场层最低证据并重新绑定来源"
+      ],
+      "killCriteria": [
+        "关键页面证据无法复核",
+        "供应链或物流证据显示不可执行",
+        "压力情景贡献利润不成立"
+      ]
+    }
+  ],
+  "formalCandidateGenerated": false,
+  "productionDatabaseWritten": false,
+  "externalAiApiCalled": false,
+  "screeningHash": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8"
+}

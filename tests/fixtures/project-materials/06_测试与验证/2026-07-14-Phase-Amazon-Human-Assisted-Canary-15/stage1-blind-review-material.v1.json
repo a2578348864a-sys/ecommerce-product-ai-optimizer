@@ -1,0 +1,296 @@
+{
+  "schemaVersion": "blind-review-material.v1",
+  "blindReviewId": "blind-e44d4faf476637758ab3e888",
+  "criteria": [
+    "是否值得进一步调查",
+    "证据是否充分",
+    "是否存在明显淘汰原因",
+    "机会强度：高／中／低",
+    "信心：高／中／低"
+  ],
+  "items": [
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-01",
+      "candidateId": "candidate-81d50ff4391590f91196",
+      "evidenceSnapshotId": "evidence-350d081171f6bbc2c72f6283",
+      "title": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+      "sourceUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 45.88,
+        "rating": 4.2,
+        "reviewCount": 1700,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-02",
+      "candidateId": "candidate-9886a018815fb308942a",
+      "evidenceSnapshotId": "evidence-612a9716d81ed0c6619b2765",
+      "title": "5 Pack Stackable Closet Storage Basket - Stackable Storage Bins, Multifunctional & Foldable Closet Organizer Waterproof, Wardrobe Cupboard Space-Saving Hat Storage Drawer Organizer, White",
+      "sourceUrl": "https://www.amazon.com/dp/B0CL9NHS27",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 35.99,
+        "rating": 4.6,
+        "reviewCount": 2400,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-03",
+      "candidateId": "candidate-ae80f30b17b4b17afd48",
+      "evidenceSnapshotId": "evidence-8875aa7ea4396c7773ff8228",
+      "title": "Closet Organizers and Storage,3 Pack Organization and Storage Pants-Hangers-Space-Saving,Velvet Hanger for Dorm Room for College Students Girls Boys Guys Hanging Jean Scarf",
+      "sourceUrl": "https://www.amazon.com/dp/B0BRKHCLGZ",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 12.74,
+        "rating": 4.5,
+        "reviewCount": 2900,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-04",
+      "candidateId": "candidate-b1a91e3c81cbe884a4d6",
+      "evidenceSnapshotId": "evidence-63aeef7eb4287d855ffabdcd",
+      "title": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+      "sourceUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 39.99,
+        "rating": null,
+        "reviewCount": null,
+        "missingEvidence": [
+          "rating",
+          "review_count"
+        ]
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-05",
+      "candidateId": "candidate-f4dbb1668698326e5361",
+      "evidenceSnapshotId": "evidence-8f964bf5a6eac88fd7226fdb",
+      "title": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+      "sourceUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 9.99,
+        "rating": 4.4,
+        "reviewCount": 14800,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-06",
+      "candidateId": "candidate-5d3263a69633d3ce127b",
+      "evidenceSnapshotId": "evidence-3598794064aba4acf65a1d07",
+      "title": "SNSLXH 5 Pack Stackable Closet Storage Basket, Multifunctional & Foldable Closet Organizer for Bathroom Kitchen Laundry Room Wardrobe Storage, Space-Saving Clothes Storage Drawer Organizer, White",
+      "sourceUrl": "https://www.amazon.com/dp/B0CGJJJC4M",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 35.99,
+        "rating": 4.6,
+        "reviewCount": 4500,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-07",
+      "candidateId": "candidate-148ee6aca70a8016d1bd",
+      "evidenceSnapshotId": "evidence-e86b08993d8295075d44e81c",
+      "title": "BOOMIBOO Hanging Closet Organize and Shelves，5-Hanging Shelf with 2 Side Pockets，Storage Foldable （Grey）",
+      "sourceUrl": "https://www.amazon.com/dp/B0DHMJSDXM",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 9.99,
+        "rating": 4.6,
+        "reviewCount": 2400,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-08",
+      "candidateId": "candidate-68d08a8ba080cd1f0e7f",
+      "evidenceSnapshotId": "evidence-4fb05f77c3b3ef1aea588e84",
+      "title": "Yociyoga 4-Tier Stackable Closet Organizers and Storage Basket, Foldable Closet Shelf Organizer System, Space-Saving Clothes Storage Drawer Organizer for Wardrobe, White ((Patent 30022416))",
+      "sourceUrl": "https://www.amazon.com/dp/B0DHG6KNJF",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 39.99,
+        "rating": 4.7,
+        "reviewCount": 341,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-09",
+      "candidateId": "candidate-4193268dddaa8e71a577",
+      "evidenceSnapshotId": "evidence-f1400bdc459de86e2d7ffad2",
+      "title": "AMKUFO 6 Pack-Closet-Organizers-and-Storage, Magic-Hangers-Space-Saving-for-Clothes, Closer-Organizer-for-Closet-Organization, Space-Saver-Hanger-Organizer-for-Multipurpose, Dorm-Room-Essentials",
+      "sourceUrl": "https://www.amazon.com/dp/B082K8XTBS",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 7.11,
+        "rating": 4.5,
+        "reviewCount": 5500,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-10",
+      "candidateId": "candidate-7c40902cf1d313241836",
+      "evidenceSnapshotId": "evidence-15f5b1d187ec11830652b111",
+      "title": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+      "sourceUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 16.99,
+        "rating": 4.5,
+        "reviewCount": 109600,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-11",
+      "candidateId": "candidate-73fb6b6432f15cc83c52",
+      "evidenceSnapshotId": "evidence-2b3346b91c8fe0140c63c799",
+      "title": "Hongtamoya Stackable Closet Organizer Shelf,6 Cube Bins Storage Basket for Clothes, Handbags Sweaters Jeans Pants Shirt, Space Saving Closet Organizer for Bedroom Wardobe, Closet System-Grey",
+      "sourceUrl": "https://www.amazon.com/dp/B0GZ344C3P",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 29.99,
+        "rating": 5,
+        "reviewCount": 4,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-12",
+      "candidateId": "candidate-45f73631a57c2795d653",
+      "evidenceSnapshotId": "evidence-23bf6d99d2e7e1bd22cfeb30",
+      "title": "YFXCVSL 4 Tier Plastic Storage Bins with Lid 28QT - Stackable Storage Containers with Wheels, Folding Storage Boxes, Collapsible Storage Bins, Closet Organizers and Storage",
+      "sourceUrl": "https://www.amazon.com/dp/B0FXXG1LVK",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 41.51,
+        "rating": 4.4,
+        "reviewCount": 7400,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-13",
+      "candidateId": "candidate-504f2804edc8759a97cd",
+      "evidenceSnapshotId": "evidence-86654c5b8dafa9df062a3f82",
+      "title": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+      "sourceUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 11.98,
+        "rating": 4.6,
+        "reviewCount": 14300,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-14",
+      "candidateId": "candidate-4d7f7c7849791595166c",
+      "evidenceSnapshotId": "evidence-db37a93871a5b6c117b3821f",
+      "title": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+      "sourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 15.98,
+        "rating": 4.5,
+        "reviewCount": 17100,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-15",
+      "candidateId": "candidate-49271bcb3c1431d0fdf9",
+      "evidenceSnapshotId": "evidence-0fe687c03caca6af6020703e",
+      "title": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+      "sourceUrl": "https://www.amazon.com/dp/B01F2II920",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 127.28,
+        "rating": 4.5,
+        "reviewCount": 2000,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-16",
+      "candidateId": "candidate-4fd0e3863ae0081a6e74",
+      "evidenceSnapshotId": "evidence-0d7f28a3f20f84eb220c2993",
+      "title": "Vomavex Closet System with 4 sets, 101.9\" Closet Organizer Systems with 6 Drawers & 8 Hanging Rods & Adjustable Shelves, Walk in Closet Standing Closet System, Corner Closet System Set, White",
+      "sourceUrl": "https://www.amazon.com/dp/B0F389CJRD",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 586.45,
+        "rating": 4.4,
+        "reviewCount": 108,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-17",
+      "candidateId": "candidate-a64ce38e4e0fde51ea18",
+      "evidenceSnapshotId": "evidence-9284670f73db56a2a4a5a9d4",
+      "title": "Hanging Closet Organizer 4 Shelf Collapsible Bedroom Closet Organizers and Storage Hanging with Mesh Pockets for Clothes, Fabric Hanging Storage Bins for Wardrobe Closet Organization and Storage, Grey",
+      "sourceUrl": "https://www.amazon.com/dp/B0FRF56CM2",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 21.99,
+        "rating": 4.8,
+        "reviewCount": 161,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-18",
+      "candidateId": "candidate-8a722d1a6731bcc14a19",
+      "evidenceSnapshotId": "evidence-e9c5790b19d8a39371208e73",
+      "title": "AWTATOS Cube Storage Organizer, Storage Cubes Shelves Bookshelf, 6 Cube Closet Organizers and Storage, DIY Stackable Plastic Clothes Organizer Shelving for Bedroom, Home, White",
+      "sourceUrl": "https://www.amazon.com/dp/B09DX3QGPT",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 29.99,
+        "rating": 4.4,
+        "reviewCount": 4400,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-19",
+      "candidateId": "candidate-9ef975e54b25ef82f262",
+      "evidenceSnapshotId": "evidence-b89c058e40c13b9af6ec6051",
+      "title": "Homsorout Closet Organizers Bins 6 Packs - Large Closet Shelf Organizer with Handles, Fabric Trapezoid Storage Bins, Collapsible Storage Cubes for Clothes, Towels, Light Gray",
+      "sourceUrl": "https://www.amazon.com/dp/B0BR7MSWN2",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 29.99,
+        "rating": 4.7,
+        "reviewCount": 1600,
+        "missingEvidence": []
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-20",
+      "candidateId": "candidate-8fed7a8ad6bddf806bb5",
+      "evidenceSnapshotId": "evidence-86a2b54a4f13734c642150e0",
+      "title": "VTRIN Portable Closet for Hanging Clothes 67 Inch Wide Large Capacity Portable Wardrobe Closet with Cover, 4 Storage Shelves and 4 Hanging Rod Sturdy Free Standing Closet for Bedroom, Black",
+      "sourceUrl": "https://www.amazon.com/dp/B0D25KNJQ8",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "evidence": {
+        "price": 39.09,
+        "rating": 4.1,
+        "reviewCount": 2400,
+        "missingEvidence": []
+      }
+    }
+  ]
+}

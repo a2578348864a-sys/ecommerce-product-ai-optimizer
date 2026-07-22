@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import {
   buildStage2NextEvidencePatchPreview,
   buildStage2NextEvidenceReceiptTemplate,
@@ -11,9 +12,7 @@ import {
   type Stage2NextEvidenceReceipt,
 } from "./stage2-next-evidence-receipt";
 
-const PROJECT = resolve(process.cwd(), "..");
-const HANDOFF = readFileSync(join(
-  PROJECT,
+const HANDOFF = readFileSync(projectMaterialPath(
   "06_测试与验证/2026-07-15-Phase-Stage2-Next-Evidence-Handoff-02/stage2-next-evidence-handoff.v1.json",
 ), "utf8");
 const handoff = JSON.parse(HANDOFF) as Stage2NextEvidenceHandoff;

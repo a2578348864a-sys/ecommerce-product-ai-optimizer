@@ -1,15 +1,14 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stableHash } from "../../lib/upstream/pipeline";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import type { Stage2AlternativeSourceBrief } from "./stage2-alternative-source-brief";
 import {
   buildStage2AlternativeSourceDecisionBrief,
   validateStage2AlternativeSourceDecisionBrief,
 } from "./stage2-alternative-source-decision-brief";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
-const readJson = <T>(path: string): T => JSON.parse(readFileSync(resolve(PROJECT_ROOT, path), "utf8")) as T;
+const readJson = <T>(path: string): T => JSON.parse(readFileSync(projectMaterialPath(path), "utf8")) as T;
 const brief = readJson<Stage2AlternativeSourceBrief>(
   "06_测试与验证/2026-07-15-Phase-Stage2-Alternative-Source-Brief-02-Authoritative/stage2-alternative-source-brief.v1.json",
 );

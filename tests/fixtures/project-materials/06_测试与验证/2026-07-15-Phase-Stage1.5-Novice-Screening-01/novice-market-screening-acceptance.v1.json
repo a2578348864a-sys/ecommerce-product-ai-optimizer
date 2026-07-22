@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "novice-market-screening-acceptance.v1",
+  "sourceScreeningHash": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8",
+  "engineering": {
+    "status": "passed",
+    "conclusion": "deterministic_scope_reduction_verified",
+    "checks": {
+      "schemaValid": true,
+      "screeningHashValid": true,
+      "deterministicReplayVerified": true,
+      "inputCountIsTwenty": true,
+      "partitionComplete": true,
+      "advanceWithinTarget": true,
+      "noFormalWrites": true,
+      "topKMeaningExplicit": true
+    },
+    "reasonCodes": []
+  },
+  "effectiveness": {
+    "status": "not_validated",
+    "conclusion": "screening_effectiveness_not_validated",
+    "reasonCodes": [
+      "mechanical_top_k_quota_only",
+      "no_downstream_commercial_outcome",
+      "no_expert_ground_truth"
+    ]
+  },
+  "evidenceHash": "f0f287135a92ed8562e0c4fb4e2af202de75104d2ab46640a8652a1274180834"
+}

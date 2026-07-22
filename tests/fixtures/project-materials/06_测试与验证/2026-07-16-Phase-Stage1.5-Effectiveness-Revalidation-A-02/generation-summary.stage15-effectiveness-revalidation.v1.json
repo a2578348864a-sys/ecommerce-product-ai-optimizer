@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "stage15-effectiveness-revalidation-summary.v1",
+  "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+  "runEvidenceHash": "68919051983d3a81c635ad5890df0449ad50d88c556d6e4916e08e430345f4a7",
+  "authorizationEvidenceHash": "91214a3b842eb129df19ce4db762bdff8e8ab9b3017e2ea7cc9be5336f5ff63e",
+  "status": "evidence_collected_pending_human_evaluation",
+  "errorCode": null,
+  "navigationUsed": 10,
+  "evidenceCount": 10,
+  "targetCount": 10,
+  "outcomeAutoDecisionGenerated": false,
+  "stage1OrStage15Mutated": false,
+  "stage2FieldsConsumed": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "evidenceHash": "6cddb8f665008d834b5e6f3cf6414a5ed83710825de49858c6e991358c5cb9d3"
+}

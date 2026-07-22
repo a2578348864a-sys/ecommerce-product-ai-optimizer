@@ -1,0 +1,1270 @@
+{
+  "schemaVersion": "stage15-effectiveness-revalidation-run.v1",
+  "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+  "proofLevel": "real_public_product_detail_evidence_only",
+  "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+  "briefHash": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38",
+  "authorizationEvidenceHash": "91214a3b842eb129df19ce4db762bdff8e8ab9b3017e2ea7cc9be5336f5ff63e",
+  "capturedAt": "2026-07-16T11:45:57.7077277Z",
+  "status": "evidence_collected_pending_human_evaluation",
+  "errorCode": null,
+  "reasonCodes": [],
+  "realWebsiteAccessed": true,
+  "navigationBudget": {
+    "maximum": 10,
+    "used": 10,
+    "productDetailNavigations": 10,
+    "searchNavigations": 0,
+    "retries": 0
+  },
+  "evidenceCount": 10,
+  "pages": [
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-0252f90086a133de",
+      "expectedAsin": "B0BR7MSWN2",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0BR7MSWN2"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0BR7MSWN2"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0BR7MSWN2"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0BR7MSWN2"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 3635,
+        "domWaitElapsedMs": 3135,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: Homsorout 衣柜收纳箱 6 件装 - 带把手的大型衣柜置物架 织物梯形储物箱 可折叠收纳块 衣服、毛巾、浅灰色 : 家居、厨具、家装",
+        "visibleTextLength": 6999,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 加入购物车 shift 键 + alt 键 + K 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装",
+        "diagnosticTextHash": "bdceb31d057fb3e8887d87d9e1e253661dd29d61ecad3dd7307163d07afc027c",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "883dfbc19c749e0d21e0bdc3d2f64457254af48423b7fd593f925623e80ba32f"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0BR7MSWN2",
+        "identityConfirmed": true,
+        "title": "Homsorout 衣柜收纳箱 6 件装 - 带把手的大型衣柜置物架 织物梯形储物箱 可折叠收纳块 衣服、毛巾、浅灰色",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "独特的梯形设计:我们的衣柜垃圾箱采用独特的梯形设计,正面较低,便于查看和取用。 Homsorout 搁板收纳架现有 10 种新颜色,可为您的空间提供更多选择",
+          "坚固的篮子由厚纸板加固,用于侧壁和底部,这些储物箱坚固且不易变形。 精致的针脚增强了其坚固性,防止撕裂",
+          "坚固的提手:采用两个精致缝制的把手设计,便于从架子上取下。 不用时可轻松折叠存放，节省宝贵空间",
+          "【优质材料】整理收纳篮均采用优质无纺布制成,结实易清洁。 Homsorout 立方体收纳箱是保持空间整洁的绝佳选择",
+          "多功能收纳包:尺寸为 16.53\" 长 x 11\" 宽 x 7.87\" 高,这些装饰收纳盒非常适合存放衣服、毛巾、书籍、纱线等。 我们的织物储物箱适用于客厅、卧室、办公室、壁橱"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "d2d7be4df7343bbe452b264724ea21d1beba7fc4c60b50f290b8911cb457d0a5"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-348d460da6191349",
+      "expectedAsin": "B07SYPLVTG",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B07SYPLVTG"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B07SYPLVTG"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B07SYPLVTG"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B07SYPLVTG"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2675,
+        "domWaitElapsedMs": 2277,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: YOUDENOVA 悬挂式衣柜收纳架 6 层衣柜挂架 灰色 : 家居、厨具、家装",
+        "visibleTextLength": 5695,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 加入购物车 shift 键 + alt 键 + K 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装",
+        "diagnosticTextHash": "33aa4d9290663ed7be58e03ee6de241d791a4242cb59d69a00d396df007292dd",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "715dc902aae8c9f41dbf58e6e0dea8c2664b67b5eba6e99bab6015620793be49"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B07SYPLVTG",
+        "identityConfirmed": true,
+        "title": "YOUDENOVA 悬挂式衣柜收纳架 6 层衣柜挂架 灰色",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "高品质:这款悬挂式衣柜收纳袋由结实厚实的无纺布制成,经久耐用。 与一些类似的产品不同,这款产品在每个架子上有 2 个坚固的竹纤维插件,顶部和底部有 MDF 板,可以避免隔间弯曲。",
+          "节省空间:采用立体空间设计,侧面口袋方便悬挂,通常很难找到的小物件。 它使整理变得如此简单,但不会同时占用太多空间。",
+          "方便:六个隔层可以提前放置您的衣服。 查看十天天气预报,并用这款出色的悬挂式分类器为您安排一周的衣服。 为您在早晨节省大量时间。",
+          "适用:衣柜悬挂式储物空间让您在衣柜里有更多空间。 它有六个架子单元。 这款搁板收纳架适合那些需要更多存储空间但他们衣柜里没有空间的人。 此外,也适合想要更有效地利用空间的人。",
+          "温馨提示:购买前,请测量您的衣柜杆和地板之间的距离,看看哪种型号最适合您。"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "a280a7df1575644f615c62f436da1b6a635b745f98995cee056ee987e00263bf"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-5a60d7a36e57468f",
+      "expectedAsin": "B0BRKHCLGZ",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0BRKHCLGZ"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0BRKHCLGZ"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0BRKHCLGZ"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0BRKHCLGZ"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2509,
+        "domWaitElapsedMs": 2118,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: 衣柜收纳和收纳,3 件装收纳和收纳裤子 - 衣架 - 节省空间,天鹅绒衣架适用于宿舍房间适合大学生女孩男孩男孩男士悬挂牛仔围巾 : 家居、厨具、家装",
+        "visibleTextLength": 7966,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 加入购物车 shift 键 + alt 键 + K 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装",
+        "diagnosticTextHash": "dd505e99555010d3a36316b483eea148347d57c1f2f29ca462fde83e23a1f229",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "2fdfe03f44a20222aa9479b0ff4c2440e01fd8dbf57b106c7e65b89b82c41fec"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0BRKHCLGZ",
+        "identityConfirmed": true,
+        "title": "衣柜收纳和收纳,3 件装收纳和收纳裤子 - 衣架 - 节省空间,天鹅绒衣架适用于宿舍房间适合大学生女孩男孩男孩男士悬挂牛仔围巾",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "裤子衣架节省空间:在同一个裤子衣架上放置几条牛仔裤是一个聪明的解决方案,适合那些衣服比空间多的人,让裤子井然有序。 裤子衣架节省空间,由 ABS 材料制成,坚固且不易变形,天鹅绒衣架是很好的选择。 衣柜整理衣架 360 度旋转挂钩提供清晰的视野,轻松整理裤子,并决定穿什么。 每个牛仔裤衣架可以挂起 5 条裤子。 无需折叠裤子,最大化衣柜空间",
+          "衣柜收纳用的防滑衣架:我们的黑色天鹅绒裤子衣架的柔软质地,不褪色,不脱落植绒裤架,100% 呵护您的衣服。 节省空间的衣架轻便且非常耐用,不变形,承载能力强且耐用。 围巾衣架可以牢牢固定衣服并保持良好的形状，当您折叠它们时，裤子上不会留下任何折痕。 衣架非常适合搭配长裤、裤子、裙子、围巾、领带毛巾",
+          "整理和收纳卧室的天鹅绒衣架:5层多用途衣架,最大化衣柜空间,整齐地整理衣服。 衣服收纳栏是等距的,宽到足以轻松悬挂和带上裤子。 一层一层旋转悬挂表面可以最大限度地提高衣柜空间。 衣架整理器超薄设计允许完全使用衣柜和房间,使其整洁有序。 衣橱空间节省钩直径为:1.97 英寸(约 4.9 厘米),适合衣柜杆,节省 80% 的壁橱空间",
+          "家庭组织必备:不要让你的裤子堆在地板上! 用这样的挂钩在你的衣柜里给他们一个属于自己的地方! 衣柜的裤子收纳袋是一个很好的帮手，存储和整理衣架每个架子可以容纳 5 双牛仔裤、裤子或其他衣服、围巾、领带、毛巾和长裙。 这意味着裤子衣架、裙子衣架和衬衫衣架合二为一。 3 件套衣架可满足大多数存储需求。 不易变形且耐用,挂钩可承受 8 磅",
+          "多功能裤架衣架:裤子的衣架可用于衣柜或衣帽间,也是大学宿舍的不错选择,是宿舍必备品,公寓必备品,也是家庭组织必备品,阁楼或卧室,帮助您创造更多物品的空间。 作为大学宿舍的必备品,衣橱的牛仔裤衣架是很棒的大学女生和男孩的学生礼物。 使用这些升级的 5 层防滑衣架帮助您享受真正舒适的生活"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "e89e65058f670b4e3e998655e8c15a80b00715a49094b9493804e81c37cde7db"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-5f845ec9db1d1b09",
+      "expectedAsin": "B09ZV2TX28",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B09ZV2TX28"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B09ZV2TX28"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B09ZV2TX28"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B09ZV2TX28"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2686,
+        "domWaitElapsedMs": 2306,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: Lifewit 6 件装带盖衣物收纳箱,可折叠毛毯收纳袋带拉链,透明窗口和加固手柄,衣柜和整理衣服、毛衣、被子、床上用品。 : 家居、厨具、家装",
+        "visibleTextLength": 6954,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 加入购物车 shift 键 + alt 键 + K 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装",
+        "diagnosticTextHash": "2fccfb8ee858638712aa72ad6f898ed3260e7bd6e379355f3d0172f5e8786e3f",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "649655665d1777766f7a567cec6abf1d1fb47a83d8cd3843a64eead4a83ba5fc"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B09ZV2TX28",
+        "identityConfirmed": true,
+        "title": "Lifewit 6 件装带盖衣物收纳箱,可折叠毛毯收纳袋带拉链,透明窗口和加固手柄,衣柜和整理衣服、毛衣、被子、床上用品。",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "加固手柄：储物袋手柄采用双层厚面料缝制，承重能力加倍。 加固缝线也被用于增加强度,不易破损,可以长时间使用",
+          "【优质材料】带盖子的收纳箱采用优质、无异味、透气的无纺布制成,柔软强韧,能促进通风,保护存放的物品。 透明窗口让您轻松识别存放的物品",
+          "结实的拉链:采用不易破损的#5不锈钢拉链,可长时间使用。 双向拉链使它在使用时可以轻松沿着闭合处滑动,无论毛毯的存储量有多大",
+          "节省空间：每个衣物收纳盒的尺寸为 21.6 x 13.7 x 12.4 英寸，容量为 60 升。凭借其易折叠设计，您可以保持衣物整洁，同时节省存储空间。",
+          "【多功能性】收纳容器可用于衣柜或衣帽间,也适合大学宿舍、卧室使用。 它们只是布袋，内部没有金属支撑，可以轻松折叠后放入抽屉或橱柜中以节省空间。"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "3614a167e443566b592241917cf05396c5d812cbcd8825821ba63999b0cc5942"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-5f99cf4e11cf2d5f",
+      "expectedAsin": "B0GZ344C3P",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0GZ344C3P"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0GZ344C3P"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0GZ344C3P"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0GZ344C3P"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2408,
+        "domWaitElapsedMs": 2007,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: Hongtamoya 可堆叠衣柜收纳架 6 个立方体收纳篮 衣服手袋 毛衣牛仔裤 裤子 衬衫 卧室衣柜 壁橱收纳 壁橱系统 灰色 : 家居、厨具、家装",
+        "visibleTextLength": 3965,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 加入购物车 shift 键 + alt 键 + K 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装",
+        "diagnosticTextHash": "4d51bb3903b1aca8ace776c8e28426fcb217bc8d8d60e779ca8fb368dfc7d7e8",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "268b2e3ef574ca4c8a306b178c527e450088302423abec79a11fc62d9e65df7c"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0GZ344C3P",
+        "identityConfirmed": true,
+        "title": "Hongtamoya 可堆叠衣柜收纳架 6 个立方体收纳篮 衣服手袋 毛衣牛仔裤 裤子 衬衫 卧室衣柜 壁橱收纳 壁橱系统 灰色",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "【可堆叠设计和最大化空间】可堆叠的衣柜收纳袋可让您向上搭建和定制您的储物布局。 为衣服、包、床单和配件创造更多空间,同时充分利用衣柜空间",
+          "【耐用稳定的结构】这款衣柜架采用金属框架和加固面板,为牛仔裤裤子衬衫提供可靠的支撑。 衣服架即使满载也不会弯曲,确保您的卧室保持整洁。",
+          "【面料包裹设计减少灰尘】织物包裹的衣架增添了柔软现代的触感,同时有助于减少储存物品的灰尘堆积,保持衣柜整洁有序",
+          "【多功能存储解决方案】除了 6 个收纳立方体外，坚固的顶部表面为折叠衣服、手提包、帽子提供额外的空间。 非常适合卧室、步入式衣橱、客厅和玄关。",
+          "易于组装和尺寸:只需几个螺丝即可拧紧,几分钟内即可组装这款衣柜储物架(长 36.7 英寸 x 宽 11.9 英寸 x 高 16.56 英寸)。"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "5e2962463e69dcf8d62a095081e8405ccb0781e2ba2842bea7cd03bd65cecff2"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-63679bec7dabf3b2",
+      "expectedAsin": "B0CL9NHS27",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0CL9NHS27"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0CL9NHS27"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0CL9NHS27"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0CL9NHS27"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2957,
+        "domWaitElapsedMs": 2569,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: 5 件装可堆叠衣柜储物篮 - 可堆叠储物箱,多功能可折叠衣柜收纳器,防水,衣柜橱柜节省空间的帽子储物抽屉收纳盒,白色 : 家居、厨具、家装",
+        "visibleTextLength": 4395,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装饰 工艺品 影视 汽车 玩具与游戏 电子产品 男士时",
+        "diagnosticTextHash": "ba9ec95213ea87698f1d0c22f71cb8273f278c07aa51b13b3ecc8269c9cd0e13",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "76a41269fc2a207d486b45aa39cf7ea53d4916efecba377110662e2f149ed4c4"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0CL9NHS27",
+        "identityConfirmed": true,
+        "title": "5 件装可堆叠衣柜储物篮 - 可堆叠储物箱,多功能可折叠衣柜收纳器,防水,衣柜橱柜节省空间的帽子储物抽屉收纳盒,白色",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "【多功能】衣柜抽屉方便存放您的轻质物品，如鞋子、衣服、玩具、零食、书籍、文件等。 适用于卧室、浴室、厨房、客厅、办公室或书房区域。 时尚的中性风格,适合任何场合。",
+          "【滑轨设计】衣柜底部的滑轨方便，即使在最里面的部分，您也可以轻松取出物品。盒子只能半途拉出，因此不会像抽屉一样完全滑出。 如果您想像抽屉一样使用它们,请尝试将它们靠在墙壁上,这样墙壁就可以支撑其中的一部分",
+          "【组装方便和堆叠】衣柜衣服收纳架,易于安装,按照图片中的步骤轻松折叠。如果您不想使用它们,可以将它们拆开并存放,而不会占用空间。设置时每个尺寸:16.6 英寸 x 13.1 英寸 x 7.32 英寸(长 x 宽 x 高)",
+          "【耐用坚固】这些可堆叠的储物抽屉由硬质PP塑料制成,防水,只需用湿布擦拭即可进行日常清洁。",
+          "【易于使用】搁板底部的滑动导轨有助于拾取东西，即使是在大多数内部。 只需 3 步即可设置一个衣篮或折叠并放入角落而不占用空间"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "59647797da04bfc14330eb33c61023ac038b0d3c4667d06283f7d9193b3ae9f7"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-8e530ae706f6eb57",
+      "expectedAsin": "B0DHG6KNJF",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0DHG6KNJF"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0DHG6KNJF"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0DHG6KNJF"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0DHG6KNJF"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2360,
+        "domWaitElapsedMs": 1982,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: Yociyoga 4 层可堆叠衣柜收纳收纳收纳篮 可折叠衣柜架收纳系统 节省空间的衣柜储物抽屉收纳架 白色 ( 专利 30022416 )) : 家居、厨具、家装",
+        "visibleTextLength": 6437,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 加入购物车 shift 键 + alt 键 + K 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装",
+        "diagnosticTextHash": "d81d427eaf543901afa8f2e2ac5cbc619d81b7c5202452c61dd01321002d6112",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "3416b66e5b6f4163fb790c33208531e12e3c96c6cfb159ca0c401a135bee6124"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0DHG6KNJF",
+        "identityConfirmed": true,
+        "title": "Yociyoga 4 层可堆叠衣柜收纳收纳收纳篮 可折叠衣柜架收纳系统 节省空间的衣柜储物抽屉收纳架 白色 ( 专利 30022416 ))",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "【升级的宽口设计】尺寸为15.7\"x11.8\"x8.7\"(长 x 深 x 高) 由于适当的深度(11.8 英寸),放在大多数衣柜里时,篮子不会突出。 衣服收纳架适合大多数尺寸的衣服,尤其是大衣服、裤子和牛仔裤(专利 30022416)。",
+          "【可叠放和折叠】这些可折叠衣柜架收纳架可堆叠和折叠。 折叠后可放入角落,不占空间。 您可以将多个单元堆叠在一起或只使用一个来满足您的不同需求。",
+          "【坚固的铁网】采用优质铁网制成,这些衣柜储物箱坚固、耐用、透气、可见、无异味。 不会像塑料或布质储物篮一样弯曲或损坏。",
+          "【有效且方便】可轻松查看存放物品，以便您快速选择适合您工作日的西装。 帮助您恢复对衣柜的控制,让您的生活空间井然有序。 非常适合存放裤子、T 恤、短裙、短裤或其他物品,如玩具、包、书籍等。",
+          "【组装简单】附带安装说明，衣柜收纳架和储物架非常易于安装。 (扣紧时,需要向上提起前栅栏线,以便更好地安装。)"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 5,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "6f7b2915fb30804b76c7ae37ef5785bf60911301793d4ea54dbd6db743c3f278"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-a2325692289633ab",
+      "expectedAsin": "B0FRF56CM2",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0FRF56CM2"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0FRF56CM2"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0FRF56CM2"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0FRF56CM2"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2877,
+        "domWaitElapsedMs": 2487,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: 悬挂式衣柜收纳包 4 层可折叠卧室壁橱收纳袋和储物挂带网眼口袋,用于衣柜收纳和存放的织物悬挂储物箱,灰色 : 婴儿用品",
+        "visibleTextLength": 5738,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装饰 工艺品 影视 汽车 玩具与游戏 电子产品 男士时",
+        "diagnosticTextHash": "fbb18210c0fe754eee7561d499498c5614eba827fc2e6d4e94dd6a671156a477",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "d5d97445e09406d02a2125b94c2a92a054b2d2c2b42032a5cc1fc76f4c3a9727"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0FRF56CM2",
+        "identityConfirmed": true,
+        "title": "悬挂式衣柜收纳包 4 层可折叠卧室壁橱收纳袋和储物挂带网眼口袋,用于衣柜收纳和存放的织物悬挂储物箱,灰色",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "包装包含：1 个挂衣柜收纳架（原创专利设计）",
+          "多功能壁橱悬挂收纳架(不适用于门后):Wawocs 悬挂式储物架可以容纳各种衣服、鞋子、帽子、玩具、袜子、毛巾和其他您想要存放的产品。 小贴士：我们的悬挂式衣柜收纳用品不能清洗，我们建议您首先测量衣柜内部尺寸，以确保选择合适尺寸的产品",
+          "悬挂式衣柜架尺寸：4层悬挂式衣物整理架（包括挂钩）的尺寸为50.39英寸 x 12.6英寸 x 9.45英寸，单层架的高度为11.42英寸，每侧有2个网袋用于存放小物品",
+          "升级的悬挂收纳架设计:这款壁橱挂架采用结实厚实的无纺布制成,独特的开放式梯形框架设计不仅可以防止物品掉落,而且最大化了可用的存储空间。 每个搁板底部都配备了加固的 MDF 板,以防止隔间弯曲",
+          "挂挂式收纳架的便携性和节省空间: 灵活的金属挂钩可以将壁橱悬挂式搁板挂在衣柜或晾衣架上,悬挂式衣物收纳可以最大化利用垂直空间,即使是非常窄的衣柜也是如此,因此它同样适合需要额外存储但衣柜地面或搁板空间有限的人。",
+          "挂衣柜收纳盒的可折叠设计：我们的悬挂式衣柜收纳盒易于安装，无需安装即可使用。 它们可在需要时轻松折叠以便紧凑存放或携带"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 6,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "cd5447aedc638d779259a4beab53ac16aff6bf3c7abab8309c2f393224216b7c"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-d4a18c1c8b971e06",
+      "expectedAsin": "B0CGJJJC4M",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0CGJJJC4M"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0CGJJJC4M"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0CGJJJC4M"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0CGJJJC4M"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2749,
+        "domWaitElapsedMs": 2348,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: SNSLXH 5 件装 可堆叠衣柜储物篮 多功能可折叠衣柜收纳架 适用于浴室厨房洗衣房衣柜收纳 节省空间的衣物储物抽屉 白色 : 家居、厨具、家装",
+        "visibleTextLength": 5985,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装饰 工艺品 影视 汽车 玩具与游戏 电子产品 男士时",
+        "diagnosticTextHash": "0b5cceddd57d903a03a4467634695adfd68b266ce28193e23afd8f2d995919ad",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "a9141d0bf6c14a1e243400fc337e9762cb3233862538258cf63a39f85910f5ba"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0CGJJJC4M",
+        "identityConfirmed": true,
+        "title": "SNSLXH 5 件装 可堆叠衣柜储物篮 多功能可折叠衣柜收纳架 适用于浴室厨房洗衣房衣柜收纳 节省空间的衣物储物抽屉 白色",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "closet organizer",
+          "【多功能和时尚】这款折叠衣柜收纳架是一款全面的存储和分类解决方案,非常适合整理您的轻质物品,如衣服、玩具、文件等。 凭借其时尚中性的设计，它轻松适配任何家居、卧室、浴室、厨房、办公室或书房区域。",
+          "【可堆叠且节省空间】这款5件装壁橱收纳盒和储物设计易于相互堆叠，根据您的喜好和想法，您可以将这些收纳盒堆叠成2至4层进行存储管理，单个壁橱收纳盒的尺寸为16.73*13.11*7.2英寸（约42.5*33.3*18.3厘米），提供充足的存储空间。",
+          "【安装方便】我们的衣柜储物架设计简洁方便,只需几个简单的步骤即可轻松安装。 此外，这款塑料衣橱收纳架采用可折叠设计。 不使用时将其收起来,确保不占用不必要的空间。",
+          "【耐用坚固】这款衣柜收纳箱采用优质防水PP塑料制成，不仅提供充足的空间，而且还可确保长久耐用性。 壁橱加固侧缝的搁板加固结构,确保为您的存储需求提供环保和省钱的解决方案。 日常维护非常简单，只需用湿布快速擦拭即可。",
+          "【请注意】可堆叠储物箱底部导轨非常方便，让您更方便地存放和取回物品。 【注意：这些箱子只能拉到一半，因此它们不能像抽屉一样完全滑出。 如果想像抽屉柜一样使用它们,请尝试将它们靠在墙壁上,这样墙壁就可以支撑其中一部分。"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 6,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "f01c9e6b65eab93a41a7e768c358a2a3c3661ed3aa971009699fcb2247c1cca2"
+    },
+    {
+      "schemaVersion": "stage15-effectiveness-product-evidence.v1",
+      "runId": "stage15-effectiveness-a-91de911e94bf22fef5077538",
+      "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+      "pilotItemId": "pilot-d4c7cd39a0bec803",
+      "expectedAsin": "B0FXXG1LVK",
+      "sourceType": "direct_observation",
+      "capturedAt": "2026-07-16T11:45:57.7077277Z",
+      "requestedUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0FXXG1LVK"
+      },
+      "finalUrl": {
+        "origin": "https://www.amazon.com",
+        "path": "/dp/B0FXXG1LVK"
+      },
+      "pageDiagnostic": {
+        "schemaVersion": "amazon-page-diagnostic.v2",
+        "requestedUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0FXXG1LVK"
+        },
+        "finalUrl": {
+          "origin": "https://www.amazon.com",
+          "path": "/dp/B0FXXG1LVK"
+        },
+        "redirectCount": 0,
+        "redirectOrigins": [],
+        "mainDocumentHttpStatus": 200,
+        "mainDocumentContentType": "text/html",
+        "navigationElapsedMs": 2819,
+        "domWaitElapsedMs": 2436,
+        "documentReadyState": "complete",
+        "title": "Amazon.com: YFXCVSL 4 层带盖塑料储物箱 28QT - 带轮子的可堆叠储物容器,折叠储物盒,可折叠储物箱,壁橱收纳和储物箱 : 家居、厨具、家装",
+        "visibleTextLength": 4811,
+        "diagnosticTextSnippet": "跳至 主要内容 关于该商品 购买选项 视频 评论 键盘快捷键 搜索 alt 键 + / 购物车 shift 键 + alt 键 + C 主页 shift 键 + alt 键 + H 订单 shift 键 + alt 键 + O 商品摘要 shift 键 + alt 键 + D 显示/隐藏快捷键 shift 键 + alt 键 + Z 请使用键盘的上下箭头移动。 配送至: 日本 全部分类 全部分类 Kindle商店 MP3 音乐 Prime Video Sales & Angebote 健康和家居用品 图书 女士时尚 女童时尚 婴儿用品 宠物用品 家居厨房用品 工业科技 工具与家居装饰 工艺品 影视 汽车 玩具与游戏 电子产品 男士时",
+        "diagnosticTextHash": "6ce01b8302db6cb9348f09a7770e483245ba8cb45b56344c88b23301e10ba348",
+        "amazonBrandMarker": true,
+        "searchBoxMarker": true,
+        "deliveryEntryMarker": true,
+        "regionSelectionMarker": false,
+        "privacyPrompt": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideFooter": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "privacy_signal_absent"
+          ]
+        },
+        "captchaRobotCheckMarker": false,
+        "loginWall": {
+          "state": "absent",
+          "markerSource": "none",
+          "selectorCategory": null,
+          "tagName": null,
+          "role": null,
+          "visible": null,
+          "hasInteractiveControls": null,
+          "insideNavigation": null,
+          "blocksMainContent": null,
+          "matchedText": null,
+          "reasonCodes": [
+            "login_signal_absent"
+          ]
+        },
+        "loginWallMarker": false,
+        "errorUnavailableMarker": false,
+        "browserInternalErrorMarker": false,
+        "markerSources": {
+          "amazonBrand": "primary",
+          "searchBox": "primary",
+          "deliveryEntry": "primary"
+        },
+        "classification": "amazon_normal",
+        "classificationReasonCodes": [
+          "required_markers_present"
+        ],
+        "evidenceHash": "855b0ff98fc272ccadbb359b51403366c46595bd22341d2be09ddd92715a10c8"
+      },
+      "gate": {
+        "status": "passed",
+        "errorCode": null,
+        "reasonCodes": []
+      },
+      "productEvidence": {
+        "observedAsin": "B0FXXG1LVK",
+        "identityConfirmed": true,
+        "title": "YFXCVSL 4 层带盖塑料储物箱 28QT - 带轮子的可堆叠储物容器,折叠储物盒,可折叠储物箱,壁橱收纳和储物箱",
+        "variantText": null,
+        "dimensionsAndWeight": [],
+        "materialAndConstruction": [],
+        "assemblyUsageAndRiskFacts": [],
+        "featureBullets": [
+          "【112QT储物箱】总容量为112QT，每层储物箱的尺寸为16.2英寸*12.6英寸*9.15英寸。这些储物箱适合整理工艺品、照片、药品、零食、化妆品等。 也可用作车库、教室、衣柜、卧室、浴室、办公室或食品储藏室的额外存储空间。 兼具美观和实用性",
+          "【可折叠&免安装】可堆叠的带盖储物箱是一个可折叠且无需安装的储物箱。 不使用时可以折叠平放,您不需要保留说明来记住如何组装和重新组装,或使用工具在需要使用时进行操作。",
+          "【高品质材料】采用优质PP制成,产品组装后可以牢固使用,也可以拆卸单独使用。 优质材料使产品使用寿命更长，无疑是同等价格下的首选。",
+          "【两种打开方式】带盖子的储物箱可以通过两种方式打开。 您可以打开顶部盖子或从前门打开。前门开关配有磁铁，确保门不会自动打开。 前门方便拿取里面的所有东西,无需拉下或取出顶盖上的东西。 防止物体接触灰尘",
+          "【可移动储物箱】储物箱底部有 4 个轮子,可在需要时轻松移动。 此外,收纳架的 2 个轮子有搭扣,可固定轮子,防止其移动",
+          "根据美国专利编号许可的产品 12,103,576, 12,275,446 和 12,304,546"
+        ],
+        "reviewSnippets": [],
+        "markerCounts": {
+          "title": 1,
+          "detailRows": 0,
+          "featureBullets": 6,
+          "reviewSnippets": 0
+        },
+        "missingReasons": {
+          "variantText": "variant_not_visible",
+          "dimensionsAndWeight": "dimensions_or_weight_not_visible",
+          "materialAndConstruction": "material_or_construction_not_visible",
+          "assemblyUsageAndRiskFacts": "assembly_usage_or_capacity_not_visible",
+          "reviewSnippets": "counter_evidence_not_visible"
+        }
+      },
+      "evidenceHash": "da096c17b34963e57fde0f433e2053787573ecb29a381e531f0d63bbe5e93263"
+    }
+  ],
+  "stage1OrStage15Mutated": false,
+  "stage2FieldsConsumed": false,
+  "candidateGenerated": false,
+  "databaseWritten": false,
+  "externalAiOrPaidApiCalled": false,
+  "cleanup": {
+    "pageClosed": true,
+    "browserClosed": true,
+    "forcedTerminationUsed": false,
+    "debugPortReleased": true,
+    "profileRemoved": true,
+    "browserProcessBaselineRestored": true
+  },
+  "evidenceHash": "68919051983d3a81c635ad5890df0449ad50d88c556d6e4916e08e430345f4a7"
+}

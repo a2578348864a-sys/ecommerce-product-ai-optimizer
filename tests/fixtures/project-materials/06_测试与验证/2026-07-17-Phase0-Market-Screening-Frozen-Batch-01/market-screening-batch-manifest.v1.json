@@ -1,0 +1,497 @@
+{
+  "schemaVersion": "market-screening-batch-manifest.v1",
+  "batchMode": "frozen_validation_batch",
+  "manifestId": "phase0-market-screening-frozen-20260717-01",
+  "environment": "development",
+  "identities": {
+    "briefId": "brief-human-assisted-20260714103154",
+    "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+    "sourceBatchIds": [
+      "source-batch-4e6574b31b375cc2af96b971"
+    ],
+    "importBatchId": "batch-239c01df5d9eb963d4ef",
+    "importPackageHash": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a",
+    "rankingRunId": "ranking-3e915b7638c43def68f22948",
+    "screeningHash": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8"
+  },
+  "artifacts": [
+    {
+      "key": "selectionBrief",
+      "requirementLevel": "upstream_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/human-assisted-amazon-run.v2.json",
+      "fileSha256": "8ac0235ee3c39d9a653f1d5d9212c62f93ed65b5e7afa27f85f1ea12f4138b47",
+      "containerSchemaVersion": "human-assisted-amazon-run.v2",
+      "jsonPointer": "/sourceAdapter/pipeline/brief",
+      "artifactSchemaVersion": "selection-brief.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/briefId",
+          "equals": "brief-human-assisted-20260714103154"
+        },
+        {
+          "jsonPointer": "/marketplace",
+          "equals": "amazon.com"
+        },
+        {
+          "jsonPointer": "/market",
+          "equals": "US"
+        },
+        {
+          "jsonPointer": "/rankingRuleVersion",
+          "equals": "stage1-deterministic-v1.1"
+        }
+      ]
+    },
+    {
+      "key": "collectionRun",
+      "requirementLevel": "upstream_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/human-assisted-amazon-run.v2.json",
+      "fileSha256": "8ac0235ee3c39d9a653f1d5d9212c62f93ed65b5e7afa27f85f1ea12f4138b47",
+      "containerSchemaVersion": "human-assisted-amazon-run.v2",
+      "jsonPointer": "/sourceAdapter/pipeline/run",
+      "artifactSchemaVersion": "collection-run.v2",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/collectionRunId",
+          "equals": "run-amazon-live-711cbbfc894b9a38d14081ba"
+        },
+        {
+          "jsonPointer": "/briefId",
+          "equals": "brief-human-assisted-20260714103154"
+        },
+        {
+          "jsonPointer": "/contentHash",
+          "equals": "bb08f1bb9d67d5056f12cecedd85d87495be06f8eb0c54278f1acd5f416fe20b"
+        },
+        {
+          "jsonPointer": "/status",
+          "equals": "completed"
+        }
+      ]
+    },
+    {
+      "key": "sourceAdapterResult",
+      "requirementLevel": "upstream_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/human-assisted-amazon-run.v2.json",
+      "fileSha256": "8ac0235ee3c39d9a653f1d5d9212c62f93ed65b5e7afa27f85f1ea12f4138b47",
+      "containerSchemaVersion": "human-assisted-amazon-run.v2",
+      "jsonPointer": "/sourceAdapter",
+      "artifactSchemaVersion": "source-adapter-result.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/sourceType",
+          "equals": "human_assisted_amazon"
+        },
+        {
+          "jsonPointer": "/sourceInputHash",
+          "equals": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b"
+        },
+        {
+          "jsonPointer": "/sourceBatchId",
+          "equals": "source-batch-4e6574b31b375cc2af96b971"
+        },
+        {
+          "jsonPointer": "/acceptedCount",
+          "equals": 20
+        },
+        {
+          "jsonPointer": "/quarantinedCount",
+          "equals": 0
+        }
+      ]
+    },
+    {
+      "key": "importPackage",
+      "requirementLevel": "upstream_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/human-assisted-amazon-run.v2.json",
+      "fileSha256": "8ac0235ee3c39d9a653f1d5d9212c62f93ed65b5e7afa27f85f1ea12f4138b47",
+      "containerSchemaVersion": "human-assisted-amazon-run.v2",
+      "jsonPointer": "/sourceAdapter/pipeline/importPackage",
+      "artifactSchemaVersion": "import-package.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/briefId",
+          "equals": "brief-human-assisted-20260714103154"
+        },
+        {
+          "jsonPointer": "/collectionRunId",
+          "equals": "run-amazon-live-711cbbfc894b9a38d14081ba"
+        },
+        {
+          "jsonPointer": "/importBatchId",
+          "equals": "batch-239c01df5d9eb963d4ef"
+        },
+        {
+          "jsonPointer": "/importPackageHash",
+          "equals": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a"
+        }
+      ]
+    },
+    {
+      "key": "stage1BlindReviewMaterial",
+      "requirementLevel": "presentation_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-blind-review-material.v1.json",
+      "fileSha256": "93bdb99a0551674b64b625040d99674f05a7df26c9ba1c5275b7e97c9cddafac",
+      "containerSchemaVersion": "blind-review-material.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "blind-review-material.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/blindReviewId",
+          "equals": "blind-e44d4faf476637758ab3e888"
+        }
+      ]
+    },
+    {
+      "key": "stage1Ranking",
+      "requirementLevel": "stage_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-ranking.v1.json",
+      "fileSha256": "ad36ddf2f1e5c902013359b586516f28065f741076fb039602fb08e3720bd8d5",
+      "containerSchemaVersion": "ranking-run.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "ranking-run.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/rankingRunId",
+          "equals": "ranking-3e915b7638c43def68f22948"
+        },
+        {
+          "jsonPointer": "/briefId",
+          "equals": "brief-human-assisted-20260714103154"
+        },
+        {
+          "jsonPointer": "/collectionRunId",
+          "equals": "run-amazon-live-711cbbfc894b9a38d14081ba"
+        },
+        {
+          "jsonPointer": "/inputHash",
+          "equals": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a"
+        }
+      ]
+    },
+    {
+      "key": "stage1Summary",
+      "requirementLevel": "stage_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-offline-run-summary.v1.json",
+      "fileSha256": "79969503762e49267a5e60fa6ac33ccad6e62a7727851f5080c16897628fc84f",
+      "containerSchemaVersion": "human-assisted-stage1-offline-run-summary.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "human-assisted-stage1-offline-run-summary.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/sourceInputHash",
+          "equals": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b"
+        },
+        {
+          "jsonPointer": "/collectionRunId",
+          "equals": "run-amazon-live-711cbbfc894b9a38d14081ba"
+        },
+        {
+          "jsonPointer": "/importPackageHash",
+          "equals": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a"
+        },
+        {
+          "jsonPointer": "/rankingRunId",
+          "equals": "ranking-3e915b7638c43def68f22948"
+        },
+        {
+          "jsonPointer": "/resultCount",
+          "equals": 20
+        }
+      ]
+    },
+    {
+      "key": "stage15Run",
+      "requirementLevel": "stage_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-15-Phase-Stage1.5-Novice-Screening-01/novice-market-screening-run.v1.json",
+      "fileSha256": "6c58470266e6e6cf00177896e535405642fd74fea4012bcc033840d98cc167d6",
+      "containerSchemaVersion": "novice-market-screening-run.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "novice-market-screening-run.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/rankingRunId",
+          "equals": "ranking-3e915b7638c43def68f22948"
+        },
+        {
+          "jsonPointer": "/briefId",
+          "equals": "brief-human-assisted-20260714103154"
+        },
+        {
+          "jsonPointer": "/collectionRunId",
+          "equals": "run-amazon-live-711cbbfc894b9a38d14081ba"
+        },
+        {
+          "jsonPointer": "/sourceBatchId",
+          "equals": "source-batch-4e6574b31b375cc2af96b971"
+        },
+        {
+          "jsonPointer": "/screeningHash",
+          "equals": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8"
+        }
+      ]
+    },
+    {
+      "key": "stage15Acceptance",
+      "requirementLevel": "stage_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-15-Phase-Stage1.5-Novice-Screening-01/novice-market-screening-acceptance.v1.json",
+      "fileSha256": "3277912137d2004ff0e5d2bb62206612a12000de7828e13fc78487302cdae6ca",
+      "containerSchemaVersion": "novice-market-screening-acceptance.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "novice-market-screening-acceptance.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/sourceScreeningHash",
+          "equals": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8"
+        },
+        {
+          "jsonPointer": "/engineering/status",
+          "equals": "passed"
+        }
+      ]
+    },
+    {
+      "key": "stage15GenerationSummary",
+      "requirementLevel": "presentation_required",
+      "groupId": "core",
+      "relativePath": "06_测试与验证/2026-07-15-Phase-Stage1.5-Novice-Screening-01/generation-summary.novice-market-screening.v1.json",
+      "fileSha256": "6a926d03d034067daa6fda437ea2cb6d48344a22bb7ecb28679f32a290119616",
+      "containerSchemaVersion": "novice-market-screening-generation-summary.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "novice-market-screening-generation-summary.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/screeningHash",
+          "equals": "edbdc1bd7e0fe9d5e394dbce90707411ceb77d36fad5150c679abf1a29b318c8"
+        }
+      ]
+    },
+    {
+      "key": "visualPresentationInput",
+      "requirementLevel": "presentation_required",
+      "groupId": "visual_presentation",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/04-视觉盲评V2/novice-visual-presentation-input.v1.json",
+      "fileSha256": "2215a84638666444c5058bf9cac7a2256f363d17ab180a8f3bce8d6d0fa78807",
+      "containerSchemaVersion": "solo-novice-visual-presentation-input.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "solo-novice-visual-presentation-input.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/sourceBlindReviewId",
+          "equals": "blind-e44d4faf476637758ab3e888"
+        },
+        {
+          "jsonPointer": "/sourceVisualEvidenceHash",
+          "equals": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b"
+        }
+      ]
+    },
+    {
+      "key": "visualPacket",
+      "requirementLevel": "presentation_required",
+      "groupId": "visual_presentation",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/04-视觉盲评V2/novice-visual-blind-review-packet.v2.json",
+      "fileSha256": "20359deeb4968dc2def4bdb8cfca33f884d4ab703ea1177871846ae695949783",
+      "containerSchemaVersion": "solo-novice-visual-blind-review-packet.v2",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "solo-novice-visual-blind-review-packet.v2",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/sourceBlindReviewId",
+          "equals": "blind-e44d4faf476637758ab3e888"
+        },
+        {
+          "jsonPointer": "/sourceEvidenceHash",
+          "equals": "1278022857dac6b2f0f2e81d8403c1c76bb985ba0c42c2fb054366d105b409c7"
+        },
+        {
+          "jsonPointer": "/sourceVisualEvidenceHash",
+          "equals": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b"
+        },
+        {
+          "jsonPointer": "/packetHash",
+          "equals": "d1e1982d44c0d8333d94ae3f41cc6c35a83533c099195265472fa99a203426f3"
+        }
+      ]
+    },
+    {
+      "key": "visualGenerationSummary",
+      "requirementLevel": "presentation_required",
+      "groupId": "visual_presentation",
+      "relativePath": "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/04-视觉盲评V2/generation-summary.v2.json",
+      "fileSha256": "e959612923174e12c99dab8f196b4975fb1195c1a8866e1bad138883026f80e8",
+      "containerSchemaVersion": "solo-visual-validation-generation-summary.v2",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "solo-visual-validation-generation-summary.v2",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/sourceBlindReviewId",
+          "equals": "blind-e44d4faf476637758ab3e888"
+        },
+        {
+          "jsonPointer": "/sourceEvidenceHash",
+          "equals": "1278022857dac6b2f0f2e81d8403c1c76bb985ba0c42c2fb054366d105b409c7"
+        },
+        {
+          "jsonPointer": "/sourceVisualEvidenceHash",
+          "equals": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b"
+        },
+        {
+          "jsonPointer": "/packetHash",
+          "equals": "d1e1982d44c0d8333d94ae3f41cc6c35a83533c099195265472fa99a203426f3"
+        }
+      ]
+    },
+    {
+      "key": "detailBrief",
+      "requirementLevel": "optional_detail",
+      "groupId": "detail_evidence_a02",
+      "relativePath": "06_测试与验证/2026-07-15-Phase-Stage1.5-Effectiveness-Revalidation-Brief-01/stage15-effectiveness-revalidation-brief.v1.json",
+      "fileSha256": "8470f7791d4baa3734df8d44375716c2ebcc4f28f01506b636c9b71e047c566a",
+      "containerSchemaVersion": "stage15-effectiveness-revalidation-brief.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "stage15-effectiveness-revalidation-brief.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/briefId",
+          "equals": "stage15-revalidation-358a647f9047eefa4fb3"
+        },
+        {
+          "jsonPointer": "/briefHash",
+          "equals": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38"
+        }
+      ]
+    },
+    {
+      "key": "detailBriefGenerationSummary",
+      "requirementLevel": "optional_detail",
+      "groupId": "detail_evidence_a02",
+      "relativePath": "06_测试与验证/2026-07-15-Phase-Stage1.5-Effectiveness-Revalidation-Brief-01/generation-summary.stage15-effectiveness-revalidation-brief.v1.json",
+      "fileSha256": "88240226f2966ab87a85ace2760c69a8f3e0533f406757d9d0ee9bd81e5b9aed",
+      "containerSchemaVersion": "stage15-effectiveness-revalidation-brief-generation-summary.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "stage15-effectiveness-revalidation-brief-generation-summary.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/briefHash",
+          "equals": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38"
+        }
+      ]
+    },
+    {
+      "key": "detailAuthorization",
+      "requirementLevel": "optional_detail",
+      "groupId": "detail_evidence_a02",
+      "relativePath": "06_测试与验证/2026-07-16-Phase-Stage1.5-Effectiveness-Revalidation-A-02/stage15-effectiveness-revalidation-authorization.v1.json",
+      "fileSha256": "7f4758912c18270e11a7d9d693b8831f6c3a05257704f88b93a96846f3f76442",
+      "containerSchemaVersion": "stage15-effectiveness-revalidation-authorization.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "stage15-effectiveness-revalidation-authorization.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/briefId",
+          "equals": "stage15-revalidation-358a647f9047eefa4fb3"
+        },
+        {
+          "jsonPointer": "/briefHash",
+          "equals": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38"
+        },
+        {
+          "jsonPointer": "/evidenceHash",
+          "equals": "91214a3b842eb129df19ce4db762bdff8e8ab9b3017e2ea7cc9be5336f5ff63e"
+        }
+      ]
+    },
+    {
+      "key": "detailRun",
+      "requirementLevel": "optional_detail",
+      "groupId": "detail_evidence_a02",
+      "relativePath": "06_测试与验证/2026-07-16-Phase-Stage1.5-Effectiveness-Revalidation-A-02/stage15-effectiveness-revalidation-run.v1.json",
+      "fileSha256": "aa4e52bda7dbb48041d536fb0be0a0c2efccff78b27438d1228a050925ca993f",
+      "containerSchemaVersion": "stage15-effectiveness-revalidation-run.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "stage15-effectiveness-revalidation-run.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/runId",
+          "equals": "stage15-effectiveness-a-91de911e94bf22fef5077538"
+        },
+        {
+          "jsonPointer": "/briefId",
+          "equals": "stage15-revalidation-358a647f9047eefa4fb3"
+        },
+        {
+          "jsonPointer": "/briefHash",
+          "equals": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38"
+        },
+        {
+          "jsonPointer": "/authorizationEvidenceHash",
+          "equals": "91214a3b842eb129df19ce4db762bdff8e8ab9b3017e2ea7cc9be5336f5ff63e"
+        },
+        {
+          "jsonPointer": "/evidenceHash",
+          "equals": "68919051983d3a81c635ad5890df0449ad50d88c556d6e4916e08e430345f4a7"
+        }
+      ]
+    },
+    {
+      "key": "detailGenerationSummary",
+      "requirementLevel": "optional_detail",
+      "groupId": "detail_evidence_a02",
+      "relativePath": "06_测试与验证/2026-07-16-Phase-Stage1.5-Effectiveness-Revalidation-A-02/generation-summary.stage15-effectiveness-revalidation.v1.json",
+      "fileSha256": "f928bf78578d204e96abc7f24654cbd928a240bccc7ae09014c61e8014216035",
+      "containerSchemaVersion": "stage15-effectiveness-revalidation-summary.v1",
+      "jsonPointer": "",
+      "artifactSchemaVersion": "stage15-effectiveness-revalidation-summary.v1",
+      "bindingAssertions": [
+        {
+          "jsonPointer": "/runId",
+          "equals": "stage15-effectiveness-a-91de911e94bf22fef5077538"
+        },
+        {
+          "jsonPointer": "/runEvidenceHash",
+          "equals": "68919051983d3a81c635ad5890df0449ad50d88c556d6e4916e08e430345f4a7"
+        },
+        {
+          "jsonPointer": "/authorizationEvidenceHash",
+          "equals": "91214a3b842eb129df19ce4db762bdff8e8ab9b3017e2ea7cc9be5336f5ff63e"
+        }
+      ]
+    }
+  ],
+  "imageAssetRoot": {
+    "relativePath": "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01"
+  },
+  "sourcePolicy": {
+    "requiredSourceIds": [
+      "human_assisted_amazon"
+    ],
+    "optionalSourceIds": [],
+    "minimumSuccessfulSourceCount": 1,
+    "minimumStage1InputCount": 20,
+    "allowStageOutputsWhenPartial": false
+  },
+  "expectedCounts": {
+    "acceptedUniqueProductCount": 20,
+    "stage1InputCount": 20,
+    "stage15": {
+      "advance": 5,
+      "watch": 11,
+      "reject": 3,
+      "insufficient": 1,
+      "total": 20
+    }
+  },
+  "createdAt": "2026-07-17T00:00:00.000Z",
+  "frozenAt": "2026-07-17T00:00:00.000Z"
+}
+

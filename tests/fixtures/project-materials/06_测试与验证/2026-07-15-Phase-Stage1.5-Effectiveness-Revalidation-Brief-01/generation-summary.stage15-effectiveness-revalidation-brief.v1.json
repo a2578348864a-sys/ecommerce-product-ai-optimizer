@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "stage15-effectiveness-revalidation-brief-generation-summary.v1",
+  "createdAt": "2026-07-15T16:13:10.4159723Z",
+  "sourceFiles": [
+    {
+      "name": "stage15-effectiveness-pilot-protocol.v1.json",
+      "sha256": "4068e28fd53b352622911f677af318c116487b8196ec2a4c91b6ec1f1f323628"
+    },
+    {
+      "name": "stage15-effectiveness-pilot-blind-packet.v1.json",
+      "sha256": "783b24d97454647fa29be423d5ca6414b12af40ccc549590ece5600d391cc689"
+    }
+  ],
+  "briefHash": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38",
+  "status": "pending_user_authorization",
+  "targetCount": 10,
+  "productDetailNavigationBudget": 10,
+  "retryBudget": 0,
+  "userAuthorizationPresent": false,
+  "externalWebsiteAccessed": false,
+  "stage2FieldsConsumed": false,
+  "productionDatabaseWritten": false,
+  "externalAiApiCalled": false,
+  "files": [
+    "stage15-effectiveness-revalidation-brief.v1.json",
+    "01-用户授权交接.md",
+    "generation-summary.stage15-effectiveness-revalidation-brief.v1.json"
+  ],
+  "evidenceHash": "fe412d5653b1576962c6c1c1027f5026736dc36b67ea5641911609ab0b6c71c7"
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "stage15-effectiveness-revalidation-authorization.v1",
+  "status": "granted_single_use",
+  "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+  "briefHash": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38",
+  "authorizedAt": "2026-07-16T11:45:57.7077277Z",
+  "authorizationPhraseHash": "8d4ab28410996b22ba91d291c7e0cc1f46687d39960dcf76f521fbc406dfbc07",
+  "navigationBudget": {
+    "productDetailNavigations": 10,
+    "searchNavigations": 0,
+    "retries": 0
+  },
+  "evidenceHash": "91214a3b842eb129df19ce4db762bdff8e8ab9b3017e2ea7cc9be5336f5ff63e"
+}

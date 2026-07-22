@@ -1,0 +1,311 @@
+{
+  "schemaVersion": "stage2-evidence-validation-result.v1",
+  "status": "incomplete",
+  "sourceGapInventoryHash": "bd57f6402c76c6cc7c50232f1e7d311ab4460228c9209efbc0f8b77d724111ca",
+  "submissionHash": "bd7587fcc7ff2da3b52e68de22914ad184a623e8a4ad3afd7d9f380302930c97",
+  "inputHash": "2390f899dcb1f9892d895eddf4c1e3caa5bc2194713e117f554ab580ae50ea9c",
+  "evidenceMode": "real_evidence",
+  "packageReasonCodes": [],
+  "boundary": {
+    "businessValidationProven": false,
+    "databaseTransactionProven": false,
+    "apiAuthorizationProven": false,
+    "stage1RankingModified": false
+  },
+  "summary": {
+    "sampleCount": 7,
+    "readyForCalibrationCount": 0,
+    "incompleteCount": 7,
+    "rejectedCount": 0,
+    "profitInsufficientEvidenceCount": 7
+  },
+  "samples": [
+    {
+      "sampleId": "stage2-high-01",
+      "productKey": "amazon:US:B07SYPLVTG",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierCapturedAt",
+        "packageHeightCm",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-high-01",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-high-02",
+      "productKey": "amazon:US:B09ZV2TX28",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierUrl",
+        "supplierCapturedAt",
+        "moq",
+        "bom",
+        "packageLengthCm",
+        "packageWidthCm",
+        "packageHeightCm",
+        "packageWeightKg",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl",
+        "executionRiskNotes"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-high-02",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-medium-01",
+      "productKey": "amazon:US:B01F2II920",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierUrl",
+        "supplierCapturedAt",
+        "moq",
+        "bom",
+        "packageLengthCm",
+        "packageWidthCm",
+        "packageHeightCm",
+        "packageWeightKg",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl",
+        "executionRiskNotes"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-medium-01",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-medium-02",
+      "productKey": "amazon:US:B07FX8RZJZ",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierUrl",
+        "supplierCapturedAt",
+        "moq",
+        "bom",
+        "packageLengthCm",
+        "packageWidthCm",
+        "packageHeightCm",
+        "packageWeightKg",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl",
+        "executionRiskNotes"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-medium-02",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-low-01",
+      "productKey": "amazon:US:B0CNGTZ3B5",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierUrl",
+        "supplierCapturedAt",
+        "moq",
+        "bom",
+        "packageLengthCm",
+        "packageWidthCm",
+        "packageHeightCm",
+        "packageWeightKg",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl",
+        "executionRiskNotes"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-low-01",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-low-02",
+      "productKey": "amazon:US:B0FWBX39KX",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierUrl",
+        "supplierCapturedAt",
+        "moq",
+        "bom",
+        "packageLengthCm",
+        "packageWidthCm",
+        "packageHeightCm",
+        "packageWeightKg",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl",
+        "executionRiskNotes"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-low-02",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    },
+    {
+      "sampleId": "stage2-insufficient-evidence-01",
+      "productKey": "amazon:US:B0GZVHB1XW",
+      "status": "incomplete",
+      "missingFields": [
+        "supplierUrl",
+        "supplierCapturedAt",
+        "moq",
+        "bom",
+        "packageLengthCm",
+        "packageWidthCm",
+        "packageHeightCm",
+        "packageWeightKg",
+        "firstMile",
+        "logisticsEvidenceUrl",
+        "platformCommission",
+        "fba",
+        "packaging",
+        "storage",
+        "returnReserve",
+        "complianceEvidenceUrl",
+        "executionRiskNotes"
+      ],
+      "reasonCodes": [],
+      "calibration": {
+        "schemaVersion": "stage2-calibration.v1",
+        "candidateId": "stage2-insufficient-evidence-01",
+        "status": "profit_insufficient_evidence",
+        "missingInputs": [
+          "bom",
+          "firstMile",
+          "platformCommission",
+          "fba",
+          "packaging",
+          "storage",
+          "returnReserve"
+        ],
+        "normalContributionMargin": null,
+        "stressContributionMargin": null,
+        "breakEvenAcos": null
+      }
+    }
+  ],
+  "evidenceHash": "99fbc06d5bf458bc2e8c892d29c8e8dd57d4e2b3d4b55a29a5ca91a29d6821cc"
+}

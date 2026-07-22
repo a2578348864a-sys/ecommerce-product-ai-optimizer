@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "solo-visual-validation-generation-summary.v2",
+  "sourceBlindReviewId": "blind-e44d4faf476637758ab3e888",
+  "sourceEvidenceHash": "1278022857dac6b2f0f2e81d8403c1c76bb985ba0c42c2fb054366d105b409c7",
+  "sourceVisualEvidenceHash": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b",
+  "packetHash": "d1e1982d44c0d8333d94ae3f41cc6c35a83533c099195265472fa99a203426f3",
+  "visualSummary": {
+    "totalItemCount": 20,
+    "localImageAvailableCount": 11,
+    "localImageCompleteness": 0.55,
+    "reviewReadiness": "incomplete_visual_evidence"
+  },
+  "files": [
+    "novice-visual-blind-review-packet.v2.json",
+    "README-视觉盲评说明.md",
+    "generation-summary.v2.json"
+  ],
+  "legacyV1ResponseModified": false,
+  "externalWebsiteAccessed": false,
+  "productionDatabaseWritten": false,
+  "externalAiApiCalled": false,
+  "presentationTextSourceType": "ai_generated",
+  "evidenceHash": "10754e73cd8594442308c9551494c8b1f55f61cef0692f803d254740b964163c"
+}

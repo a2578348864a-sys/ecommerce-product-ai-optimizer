@@ -1,0 +1,915 @@
+{
+  "schemaVersion": "solo-novice-visual-blind-review-packet.v2",
+  "sourceBlindReviewId": "blind-e44d4faf476637758ab3e888",
+  "sourceEvidenceHash": "1278022857dac6b2f0f2e81d8403c1c76bb985ba0c42c2fb054366d105b409c7",
+  "sourceVisualEvidenceHash": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b",
+  "purpose": "用商品图和中文用途说明帮助非专业用户理解商品，再评价是否值得继续调查。",
+  "boundary": {
+    "validates": [
+      "visual_comprehensibility",
+      "evidence_comprehensibility",
+      "investigation_willingness"
+    ],
+    "doesNotValidate": [
+      "expert_operational_judgment",
+      "profitability",
+      "durability",
+      "legal_or_ip_clearance",
+      "product_value"
+    ],
+    "chinesePresentationIsSourceFact": false
+  },
+  "questions": [
+    "我是否看懂这个商品是什么？",
+    "只看当前证据，我是否认为信息足够继续判断？",
+    "我是否看到了明确需要进一步核实的问题？",
+    "我是否愿意再花 10 分钟调查这个商品？",
+    "我对以上判断的信心如何？",
+    "完成本条判断实际用了多少秒？"
+  ],
+  "allowedAnswers": {
+    "ternary": [
+      "yes",
+      "no",
+      "uncertain"
+    ],
+    "confidence": [
+      "high",
+      "medium",
+      "low"
+    ]
+  },
+  "reviewState": "pending_user_input",
+  "visualSummary": {
+    "totalItemCount": 20,
+    "localImageAvailableCount": 11,
+    "localImageCompleteness": 0.55,
+    "reviewReadiness": "incomplete_visual_evidence"
+  },
+  "items": [
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-01",
+      "title": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+      "sourceUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/8178y9phN7L._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "九抽屉布艺收纳柜",
+        "primaryUseZh": "放在卧室或衣帽间，用多个布抽屉分类收纳衣物和日常杂物。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 45.88,
+        "rating": 4.2,
+        "reviewCount": 1700,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-02",
+      "title": "5 Pack Stackable Closet Storage Basket - Stackable Storage Bins, Multifunctional & Foldable Closet Organizer Waterproof, Wardrobe Cupboard Space-Saving Hat Storage Drawer Organizer, White",
+      "sourceUrl": "https://www.amazon.com/dp/B0CL9NHS27",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71j55FnA0SL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "五个装可折叠叠放收纳篮",
+        "primaryUseZh": "放在衣柜或橱柜中，分类收纳衣服、帽子和小件物品。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 35.99,
+        "rating": 4.6,
+        "reviewCount": 2400,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-03",
+      "title": "Closet Organizers and Storage,3 Pack Organization and Storage Pants-Hangers-Space-Saving,Velvet Hanger for Dorm Room for College Students Girls Boys Guys Hanging Jean Scarf",
+      "sourceUrl": "https://www.amazon.com/dp/B0BRKHCLGZ",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71apXFP2ReL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "三件装多层植绒裤架",
+        "primaryUseZh": "在衣柜中集中悬挂裤子、牛仔裤或围巾，减少横向占用。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 12.74,
+        "rating": 4.5,
+        "reviewCount": 2900,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-04",
+      "title": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+      "sourceUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71nX768yXPL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "两件装金属悬挂式衣柜置物架",
+        "primaryUseZh": "挂在衣柜中分层放衣服、鞋、毛衣和包，并用挂钩挂小件。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 39.99,
+        "rating": null,
+        "reviewCount": null,
+        "missingEvidence": [
+          "rating",
+          "review_count"
+        ]
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-05",
+      "title": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+      "sourceUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/614DfIW6jFL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "三层无纺布鞋架",
+        "primaryUseZh": "放在衣柜、玄关或车库中分层摆放鞋子。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 9.99,
+        "rating": 4.4,
+        "reviewCount": 14800,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-06",
+      "title": "SNSLXH 5 Pack Stackable Closet Storage Basket, Multifunctional & Foldable Closet Organizer for Bathroom Kitchen Laundry Room Wardrobe Storage, Space-Saving Clothes Storage Drawer Organizer, White",
+      "sourceUrl": "https://www.amazon.com/dp/B0CGJJJC4M",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/718gPdLAncL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "五个装可折叠叠放收纳篮",
+        "primaryUseZh": "用于衣柜、浴室、厨房或洗衣房中分类收纳衣物和杂物。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 35.99,
+        "rating": 4.6,
+        "reviewCount": 4500,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-07",
+      "title": "BOOMIBOO Hanging Closet Organize and Shelves，5-Hanging Shelf with 2 Side Pockets，Storage Foldable （Grey）",
+      "sourceUrl": "https://www.amazon.com/dp/B0DHMJSDXM",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71WIkiANaxL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "带侧袋的五层布艺悬挂收纳架",
+        "primaryUseZh": "挂在衣柜横杆上分层放叠好的衣物，侧袋可放小件。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 9.99,
+        "rating": 4.6,
+        "reviewCount": 2400,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-08",
+      "title": "Yociyoga 4-Tier Stackable Closet Organizers and Storage Basket, Foldable Closet Shelf Organizer System, Space-Saving Clothes Storage Drawer Organizer for Wardrobe, White ((Patent 30022416))",
+      "sourceUrl": "https://www.amazon.com/dp/B0DHG6KNJF",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/81+gGhIDjgL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "四层可折叠叠放收纳篮",
+        "primaryUseZh": "放进衣柜中分层收纳衣服，篮筐可以按需要叠放。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 39.99,
+        "rating": 4.7,
+        "reviewCount": 341,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-09",
+      "title": "AMKUFO 6 Pack-Closet-Organizers-and-Storage, Magic-Hangers-Space-Saving-for-Clothes, Closer-Organizer-for-Closet-Organization, Space-Saver-Hanger-Organizer-for-Multipurpose, Dorm-Room-Essentials",
+      "sourceUrl": "https://www.amazon.com/dp/B082K8XTBS",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/712T34l+u4L._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "not_cached",
+          "relativePath": null,
+          "contentSha256": null,
+          "bytes": null,
+          "missingReason": "not_cached_offline_no_external_access"
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六个装多孔省空间衣架",
+        "primaryUseZh": "把多件衣服集中挂在同一个多孔衣架上，减少衣柜占用。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 7.11,
+        "rating": 4.5,
+        "reviewCount": 5500,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-10",
+      "title": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+      "sourceUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/81ATH1p6zWL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-10-B09ZV2TX28.jpg",
+          "contentSha256": "0d0d5c05a083d14a6241d4e09bd143dcd573d6b71b9ff56bd7ee02eecb1067df",
+          "bytes": 13659,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六个装带拉链透明窗衣物收纳袋",
+        "primaryUseZh": "收纳衣服、毛衣、被子和床品，透明窗方便查看内部物品。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 16.99,
+        "rating": 4.5,
+        "reviewCount": 109600,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-11",
+      "title": "Hongtamoya Stackable Closet Organizer Shelf,6 Cube Bins Storage Basket for Clothes, Handbags Sweaters Jeans Pants Shirt, Space Saving Closet Organizer for Bedroom Wardobe, Closet System-Grey",
+      "sourceUrl": "https://www.amazon.com/dp/B0GZ344C3P",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71r4BU9fNML._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-11-B0GZ344C3P.jpg",
+          "contentSha256": "50017669d5e096b9aab957f2357c59392b5d7b8599e6ef4528ef9d46e9e36d1d",
+          "bytes": 16720,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六格组合式衣柜收纳架",
+        "primaryUseZh": "在衣柜或卧室里分格放叠好的衣物、包和裤子。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 29.99,
+        "rating": 5,
+        "reviewCount": 4,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-12",
+      "title": "YFXCVSL 4 Tier Plastic Storage Bins with Lid 28QT - Stackable Storage Containers with Wheels, Folding Storage Boxes, Collapsible Storage Bins, Closet Organizers and Storage",
+      "sourceUrl": "https://www.amazon.com/dp/B0FXXG1LVK",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71MQgBuEYbL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-12-B0FXXG1LVK.jpg",
+          "contentSha256": "d0f20c28009d3b75d22e1b92f1f0ae9bf2ebe4140bfd13c09ea2e267af005f57",
+          "bytes": 9716,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "四层带轮可折叠塑料收纳箱",
+        "primaryUseZh": "分层收纳衣物和杂物；每层带前开门，取下层物品时通常不用搬开上层。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 41.51,
+        "rating": 4.4,
+        "reviewCount": 7400,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-13",
+      "title": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+      "sourceUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71-1hxOVmBL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-13-B07FX8RZJZ.jpg",
+          "contentSha256": "a7faad6ff1d24ba18a49bfd9e1cba59a8abecf5a52cfab067307a8624c9f13e4",
+          "bytes": 8058,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六层布艺悬挂式衣柜收纳架",
+        "primaryUseZh": "挂在衣柜横杆上，分层放叠好的衣服、毛巾或鞋。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 11.98,
+        "rating": 4.6,
+        "reviewCount": 14300,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-14",
+      "title": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+      "sourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/61+pb4y2RLL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-14-B07SYPLVTG.jpg",
+          "contentSha256": "c7f148d15f4016e8d9e88e3dd8d9bbc9b5b1a7f40f86fc6b95c14b43c35e26ed",
+          "bytes": 7885,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六层布艺悬挂式收纳架",
+        "primaryUseZh": "挂在衣柜内，把叠好的衣服或毛巾按层分类。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 15.98,
+        "rating": 4.5,
+        "reviewCount": 17100,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-15",
+      "title": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+      "sourceUrl": "https://www.amazon.com/dp/B01F2II920",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/61T-PBjjokL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-15-B01F2II920.jpg",
+          "contentSha256": "15da37db098695afdb13e0361a09cb24278f41db0bf293ba6a5439cf2527172b",
+          "bytes": 4597,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "木质衣柜组合系统",
+        "primaryUseZh": "安装在步入式或普通衣柜中，用中间层架和三根挂杆组合收纳衣物。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 127.28,
+        "rating": 4.5,
+        "reviewCount": 2000,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-16",
+      "title": "Vomavex Closet System with 4 sets, 101.9\" Closet Organizer Systems with 6 Drawers & 8 Hanging Rods & Adjustable Shelves, Walk in Closet Standing Closet System, Corner Closet System Set, White",
+      "sourceUrl": "https://www.amazon.com/dp/B0F389CJRD",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/712e7HQ4m3L._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-16-B0F389CJRD.jpg",
+          "contentSha256": "4f275f5fed80d7d633208deac33d6a46611636557c83c7badcf100725ce7b324",
+          "bytes": 19588,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "大型转角步入式衣柜系统",
+        "primaryUseZh": "用抽屉、层板和多根挂杆搭建大容量转角衣柜，集中收纳大量衣物。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 586.45,
+        "rating": 4.4,
+        "reviewCount": 108,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-17",
+      "title": "Hanging Closet Organizer 4 Shelf Collapsible Bedroom Closet Organizers and Storage Hanging with Mesh Pockets for Clothes, Fabric Hanging Storage Bins for Wardrobe Closet Organization and Storage, Grey",
+      "sourceUrl": "https://www.amazon.com/dp/B0FRF56CM2",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71iDPQ8uvSL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-17-B0FRF56CM2.jpg",
+          "contentSha256": "a6b2ed2ec8a9f250fc4d97ea4ae213c0aa73273732ede9bab638f0f516bea08e",
+          "bytes": 12621,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "四层布艺悬挂收纳架",
+        "primaryUseZh": "挂在衣柜中分层放衣物，网袋可放较小的物品。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 21.99,
+        "rating": 4.8,
+        "reviewCount": 161,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-18",
+      "title": "AWTATOS Cube Storage Organizer, Storage Cubes Shelves Bookshelf, 6 Cube Closet Organizers and Storage, DIY Stackable Plastic Clothes Organizer Shelving for Bedroom, Home, White",
+      "sourceUrl": "https://www.amazon.com/dp/B09DX3QGPT",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/512QzfMHnUL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-18-B09DX3QGPT.jpg",
+          "contentSha256": "99ff355518c13fc1f559c0a404bd777910c39ddce2ac2a38a65195601cab68ea",
+          "bytes": 6676,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六格可拼装塑料板收纳架",
+        "primaryUseZh": "把塑料板拼成不同格子，用来分格放衣物、书或轻型杂物。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 29.99,
+        "rating": 4.4,
+        "reviewCount": 4400,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-19",
+      "title": "Homsorout Closet Organizers Bins 6 Packs - Large Closet Shelf Organizer with Handles, Fabric Trapezoid Storage Bins, Collapsible Storage Cubes for Clothes, Towels, Light Gray",
+      "sourceUrl": "https://www.amazon.com/dp/B0BR7MSWN2",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/811-2Uy3e1L._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-19-B0BR7MSWN2.jpg",
+          "contentSha256": "1892e6faa324e81417743c79fe9599480eef50567925ae27edcc1a5e4598e0ef",
+          "bytes": 13290,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "六个装带提手梯形布艺收纳箱",
+        "primaryUseZh": "放在衣柜层板上，分类装衣服、毛巾等物品，并可用提手拉出。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 29.99,
+        "rating": 4.7,
+        "reviewCount": 1600,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    },
+    {
+      "blindItemId": "blind-e44d4faf476637758ab3e888-20",
+      "title": "VTRIN Portable Closet for Hanging Clothes 67 Inch Wide Large Capacity Portable Wardrobe Closet with Cover, 4 Storage Shelves and 4 Hanging Rod Sturdy Free Standing Closet for Bedroom, Black",
+      "sourceUrl": "https://www.amazon.com/dp/B0D25KNJQ8",
+      "capturedAt": "2026-07-14T10:31:54.838Z",
+      "image": {
+        "imageUrl": "https://m.media-amazon.com/images/I/71G+1XobjmL._AC_UL320_.jpg",
+        "sourceType": "direct_observation",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "missingReason": null,
+        "localAsset": {
+          "status": "available",
+          "relativePath": "01-新手盲评-先填写/商品图/blind-item-20-B0D25KNJQ8.jpg",
+          "contentSha256": "135db01cbb21710dd90bd9adfeafbf4d2e7b29ceaa7a771cbe5ef2a36356680c",
+          "bytes": 21592,
+          "missingReason": null
+        }
+      },
+      "chinesePresentation": {
+        "productTypeZh": "带布罩的大型简易衣柜",
+        "primaryUseZh": "放在卧室中，用四根挂杆和四层置物架收纳悬挂及折叠衣物。",
+        "sourceType": "ai_generated",
+        "status": "presentation_aid_not_source_fact",
+        "basedOnFields": [
+          "title"
+        ]
+      },
+      "evidence": {
+        "price": 39.09,
+        "rating": 4.1,
+        "reviewCount": 2400,
+        "missingEvidence": []
+      },
+      "response": {
+        "productUnderstood": null,
+        "evidenceSufficient": null,
+        "obviousConcern": null,
+        "investigateNext10Minutes": null,
+        "confidence": null,
+        "elapsedSeconds": null,
+        "note": null
+      }
+    }
+  ],
+  "packetHash": "d1e1982d44c0d8333d94ae3f41cc6c35a83533c099195265472fa99a203426f3"
+}

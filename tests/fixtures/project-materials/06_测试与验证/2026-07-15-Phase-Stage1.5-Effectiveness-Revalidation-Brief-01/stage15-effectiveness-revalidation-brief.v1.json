@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "stage15-effectiveness-revalidation-brief.v1",
+  "briefId": "stage15-revalidation-358a647f9047eefa4fb3",
+  "status": "pending_user_authorization",
+  "sourceProtocolHash": "b14da0badda6f8ac57129d1c268adadbdcf8b160ff09859b74b4a41ffcd17c74",
+  "sourceBlindPacketHash": "e2e17952bacba1ab7d04feaf1be32cfc9336d1378b03fed399a4cd30a530c800",
+  "createdAt": "2026-07-15T16:13:10.4159723Z",
+  "browserIsolation": {
+    "browser": "system_chrome",
+    "profile": "new_temporary_anonymous_profile",
+    "control": "loopback_dynamic_cdp",
+    "initialPage": "about:blank",
+    "dailyProfileForbidden": true,
+    "loginForbidden": true
+  },
+  "accessBudget": {
+    "runs": 1,
+    "initialPages": 1,
+    "productDetailNavigations": 10,
+    "searchNavigations": 0,
+    "retries": 0
+  },
+  "allowedScope": {
+    "origin": "https://www.amazon.com",
+    "pathPattern": "/dp/{boundASIN}",
+    "targetCount": 10,
+    "redirectsOutsideOriginAllowed": false,
+    "productVariantsOrAdditionalLinksAllowed": false
+  },
+  "targets": [
+    {
+      "pilotItemId": "pilot-0252f90086a133de",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0BR7MSWN2",
+      "sourceUrlHash": "d6f28d7d196a7ee0d3941ba4dbf494d94790a3fc0374a5abf46b058c801a3fd8"
+    },
+    {
+      "pilotItemId": "pilot-348d460da6191349",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B07SYPLVTG",
+      "sourceUrlHash": "5a0b1ad869de6455ad105cf648d0c08db7d0acd86d1af566d10df8bba095e77d"
+    },
+    {
+      "pilotItemId": "pilot-5a60d7a36e57468f",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0BRKHCLGZ",
+      "sourceUrlHash": "a0ea62e4a927d92a8c39f1af8de0fabd4f6fe1ba11ae168d703a25b0a3044d87"
+    },
+    {
+      "pilotItemId": "pilot-5f845ec9db1d1b09",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B09ZV2TX28",
+      "sourceUrlHash": "71a12012cbc6f8fcb70f56fa6a7303a30bf8575ac2b93c7ba0e321c38992824b"
+    },
+    {
+      "pilotItemId": "pilot-5f99cf4e11cf2d5f",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0GZ344C3P",
+      "sourceUrlHash": "4a1d07e63d324e34792775bab3a025024801f23a385f317bfc1e330c96c921df"
+    },
+    {
+      "pilotItemId": "pilot-63679bec7dabf3b2",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0CL9NHS27",
+      "sourceUrlHash": "80c6b899cb025a3192724a84cbd01c36a08c8aa18ed01cb1ab67ccc4ef9ef7c7"
+    },
+    {
+      "pilotItemId": "pilot-8e530ae706f6eb57",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0DHG6KNJF",
+      "sourceUrlHash": "0c29bd423a9fec8a90bc65f60f514858f5c927dbd7305f968605fa132c6c0121"
+    },
+    {
+      "pilotItemId": "pilot-a2325692289633ab",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0FRF56CM2",
+      "sourceUrlHash": "429171918f06bac73f085bdb43db0bb4137075a8c6cedb355caab44adb0255d9"
+    },
+    {
+      "pilotItemId": "pilot-d4a18c1c8b971e06",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0CGJJJC4M",
+      "sourceUrlHash": "18a882b4fdb333238445e35596dc5d85eaee6b719d40a8c1dbb115cf28373dc3"
+    },
+    {
+      "pilotItemId": "pilot-d4c7cd39a0bec803",
+      "origin": "https://www.amazon.com",
+      "safePath": "/dp/B0FXXG1LVK",
+      "sourceUrlHash": "b20bad3d794c6ca37762d645d88e084a6d91bd594333a76dd2cd71adbb95ad30"
+    }
+  ],
+  "evidenceWhitelist": [
+    "identity_reconfirmed_by_new_traceable_evidence",
+    "product_function_and_variant_clarified",
+    "dimensions_weight_or_missing_reason_recorded",
+    "material_construction_or_missing_reason_recorded",
+    "assembly_usage_and_execution_risks_checked",
+    "independent_counter_evidence_checked"
+  ],
+  "prohibitedInputs": [
+    "same_snapshot_price_rating_review_or_sponsored",
+    "stage1_rank_or_score",
+    "stage1_5_status_or_group_during_blind_review",
+    "locked_human_answers",
+    "stage2_cost_profit_or_supplier_fields",
+    "ai_generated_inference_as_source_fact",
+    "full_html_or_full_page_text",
+    "cookie_token_authorization_or_browser_storage",
+    "account_order_address_or_private_data",
+    "unbound_links_search_results_or_product_recommendations"
+  ],
+  "stopConditions": [
+    "captcha_or_robot_check",
+    "login_wall",
+    "access_denied_or_service_unavailable",
+    "unexpected_origin_or_path_redirect",
+    "unknown_page_or_layout",
+    "private_or_account_data_visible",
+    "browser_cleanup_incomplete"
+  ],
+  "outputBoundary": {
+    "evidenceOnly": true,
+    "outcomeAutoDecisionAllowed": false,
+    "stage1OrStage15MutationAllowed": false,
+    "stage2OrCandidateCreationAllowed": false,
+    "databaseWriteAllowed": false
+  },
+  "cleanupRequired": [
+    "close_pages_and_browser",
+    "release_dynamic_port",
+    "delete_temporary_profile",
+    "restore_chrome_process_baseline"
+  ],
+  "userAuthorization": null,
+  "externalWebsiteAccessed": false,
+  "stage2FieldsConsumed": false,
+  "productionDatabaseWritten": false,
+  "externalAiApiCalled": false,
+  "briefHash": "e099a2e57379c8f171134c9e8ba150083b4d552cfcac1735b13771269bc1ca38"
+}

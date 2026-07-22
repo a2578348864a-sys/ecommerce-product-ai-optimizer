@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import { buildStage2RemainingEvidenceRequest } from "./stage2-remaining-evidence-request";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Application-01");
-const read = (name: string) => JSON.parse(readFileSync(resolve(ROOT, name), "utf8"));
+const read = (name: string) => JSON.parse(readFileSync(projectMaterialPath(
+  `06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Application-01/${name}`,
+), "utf8"));
 
 describe("Stage 2 remaining evidence request", () => {
   it("binds the current application and groups only real missing fields", () => {

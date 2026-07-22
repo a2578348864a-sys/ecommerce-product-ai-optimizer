@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "stage2-global-sources-discovery-brief.v1",
+  "briefId": "stage2-global-sources-discovery-bbd3bfa2809df0829dabcc01",
+  "status": "pending_user_authorization",
+  "createdAt": "2026-07-15T04:38:56.901Z",
+  "selectedPlatform": "global_sources",
+  "purpose": "public_source_discovery_only",
+  "selectionId": "stage2-source-selection-33bcf1730dbf870139dd280f",
+  "selectionHash": "bbd3bfa2809df0829dabcc01a4902e13e384957665d064c307d0b7a980d97cd0",
+  "policyPreflight": {
+    "robotsUrl": "https://www.globalsources.com/robots.txt",
+    "robotsStatus": "unknown_pending_runtime_check",
+    "robotsUnknownOrDisallowsBlocksNavigation": true
+  },
+  "navigationTargets": [
+    {
+      "purpose": "primary_homepage_capability",
+      "origin": "https://www.globalsources.com",
+      "path": "/",
+      "url": "https://www.globalsources.com/"
+    },
+    {
+      "purpose": "official_supplier_search_help_reference",
+      "origin": "https://s.globalsources.com",
+      "path": "/HELP/GSOLHELP/SUPPTIP.HTM",
+      "url": "https://s.globalsources.com/HELP/GSOLHELP/SUPPTIP.HTM"
+    }
+  ],
+  "requestedScope": {
+    "maxRobotsRequests": 1,
+    "maxBrowserNavigations": 2,
+    "maxTotalExternalRequests": 3,
+    "maxProductPageNavigations": 0,
+    "maxSupplierFields": 0,
+    "automaticRetryCount": 0
+  },
+  "outputPolicy": {
+    "allowedDiagnosticFields": [
+      "requested_origin",
+      "requested_path",
+      "final_origin",
+      "final_path",
+      "redirect_count",
+      "redirect_origins",
+      "http_status",
+      "content_type",
+      "classification",
+      "reason_codes",
+      "search_marker",
+      "form_marker",
+      "registration_marker",
+      "login_marker",
+      "captcha_marker",
+      "error_marker",
+      "candidate_search_paths"
+    ],
+    "maxCandidateSearchPaths": 5,
+    "safePathsExcludeQueryAndHash": true
+  },
+  "evidencePolicy": {
+    "existingHelpPageEvidenceClass": "offline_reference_only",
+    "capabilityMustBeObservedAtRuntime": true,
+    "publicSearchPathIsProductEvidence": false,
+    "missingValuesRemainNullWithReason": true
+  },
+  "stopConditions": [
+    "robots_policy_unknown_or_disallows",
+    "unexpected_final_origin_or_path",
+    "unexpected_redirect",
+    "login_registration_or_inquiry_required",
+    "captcha_or_robot_check",
+    "access_denied_or_service_unavailable",
+    "browser_internal_error",
+    "unknown_page_state",
+    "external_request_budget_exhausted"
+  ],
+  "authorization": {
+    "status": "not_granted",
+    "authorizedAt": null,
+    "authorizedBy": null
+  },
+  "boundary": {
+    "thisBriefIsNotAuthorization": true,
+    "noAutomaticWebsiteAccess": true,
+    "exactHttpsTargetsOnly": true,
+    "redirectsFailClosed": true,
+    "noLoginRegistrationOrInquiry": true,
+    "noCaptchaBypass": true,
+    "noCookieStorageOrCredentialRead": true,
+    "noProxyOrAntiDetection": true,
+    "noProductPageNavigation": true,
+    "noSupplierFieldCollection": true,
+    "noFullHtmlOrBodyStorage": true,
+    "noExternalAiOrPaidApi": true,
+    "noDatabaseWrite": true,
+    "noCandidateCreation": true,
+    "noStage2Submission": true
+  },
+  "sourceCapabilityValidated": false,
+  "briefHash": "a0ceccd38b6e651caf45e8206ae56f183df05fbc5815b8aae1a9d0c55bc066b2"
+}

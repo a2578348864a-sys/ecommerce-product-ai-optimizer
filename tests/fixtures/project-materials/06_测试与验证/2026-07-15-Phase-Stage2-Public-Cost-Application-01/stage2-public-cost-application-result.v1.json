@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "stage2-public-cost-application-result.v1",
+  "status": "provisional_bom_applied_locally",
+  "appliedAt": "2026-07-15T18:37:16+08:00",
+  "targetSampleId": "stage2-high-01",
+  "sourceSubmissionHash": "6fbffb4065108c9215d52b2351c6bb60d437d6178e76fba5434748b842874e86",
+  "sourceRequestHash": "8a4d26279578da35f215b805bc8d8835919f7f2105ed45edf596529fc3c26102",
+  "sourceDecisionHash": "db132cbdb55a7657872317d18ed5508a2021e8c4aa21ac124eeb0a86bb4e0d7f",
+  "sourcePatchPreviewHash": "4c3c338bfbedb3ebda244105385082b93109abe5136b63e03c6458b17d97ddaf",
+  "appliedField": {
+    "field": "bom",
+    "value": 2.73,
+    "currency": "USD",
+    "unit": "per_item",
+    "inputHash": "dcfb81772ce0917f4288062c2693f17d2fb5c499cf6574dfcb57b693fe15e7eb"
+  },
+  "outputSubmissionHash": "bd7587fcc7ff2da3b52e68de22914ad184a623e8a4ad3afd7d9f380302930c97",
+  "outputValidationHash": "99fbc06d5bf458bc2e8c892d29c8e8dd57d4e2b3d4b55a29a5ca91a29d6821cc",
+  "outputCalibrationHash": "a2909ca23339e1a55bde6690d1829a9cc10c54010f11e6c836f4ec206da5982f",
+  "boundary": {
+    "provisionalBomOnly": true,
+    "profitCalculated": false,
+    "humanDecisionPreserved": true,
+    "candidateCreated": false,
+    "databaseWritten": false,
+    "stage1RankingModified": false
+  },
+  "applicationHash": "4d95a720b7acca34b50d66603e8cdf6ab170b3388b0e4d6713e77c0e4af6a648"
+}

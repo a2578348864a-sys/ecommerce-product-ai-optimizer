@@ -15,6 +15,10 @@ import {
   loadMarketScreeningBatchManifest,
 } from "@/lib/marketScreeningBatchManifest";
 import { stableHash } from "@/lib/upstream/pipeline";
+import {
+  readProjectMaterial,
+  TEST_PROJECT_MATERIALS_ROOT,
+} from "@/tests/helpers/project-materials";
 
 const roots: string[] = [];
 
@@ -308,10 +312,9 @@ describe("loadMarketScreeningBatchManifest", () => {
   });
 
   it("uses the existing canonical stable hash implementation for the real Stage 1 fixture", () => {
-    const rawFixture = readFileSync(resolve(
-      process.cwd(),
-      "../06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-blind-review-material.v1.json",
-    ));
+    const rawFixture = readProjectMaterial(
+      "06_测试与验证/2026-07-14-Phase-Amazon-Human-Assisted-Canary-15/stage1-blind-review-material.v1.json",
+    );
     const fixture = JSON.parse(rawFixture.toString("utf8"));
 
     expect(createHash("sha256").update(rawFixture).digest("hex"))
@@ -320,7 +323,7 @@ describe("loadMarketScreeningBatchManifest", () => {
   });
 
   it("loads the frozen real batch as a complete 18-artifact closure", () => {
-    const projectMaterialsRoot = resolve(process.cwd(), "..");
+    const projectMaterialsRoot = TEST_PROJECT_MATERIALS_ROOT;
     const result = loadMarketScreeningBatchManifest({
       environment: "development",
       projectMaterialsRoot,

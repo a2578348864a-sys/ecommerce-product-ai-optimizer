@@ -1,0 +1,3201 @@
+{
+  "schemaVersion": "human-assisted-amazon-run.v2",
+  "status": "completed",
+  "errorCode": null,
+  "collectorVersion": "amazon-human-assisted-cdp.v1",
+  "capturedAt": "2026-07-14T10:31:54.838Z",
+  "explicitTriggerConfirmed": true,
+  "pageReadCount": 1,
+  "paginationNavigationCount": 0,
+  "detailNavigationCount": 0,
+  "diagnostic": {
+    "schemaVersion": "amazon-page-diagnostic.v2",
+    "requestedUrl": {
+      "origin": "https://www.amazon.com",
+      "path": "/s"
+    },
+    "finalUrl": {
+      "origin": "https://www.amazon.com",
+      "path": "/s"
+    },
+    "redirectCount": 3,
+    "redirectOrigins": [
+      "https://amazon.com",
+      "https://www.amazon.com",
+      "https://www.amazon.com"
+    ],
+    "mainDocumentHttpStatus": 200,
+    "mainDocumentContentType": "text/html",
+    "navigationElapsedMs": 0,
+    "domWaitElapsedMs": 53,
+    "documentReadyState": "complete",
+    "title": "Amazon.com : closet organizer",
+    "visibleTextLength": 33790,
+    "diagnosticTextSnippet": "Skip to Main content Results Filters Keyboard shortcuts Search alt + / Cart shift + alt + C Home shift + alt + H Orders shift + alt + O Show/Hide shortcuts shift + alt + Z To move between items, use your keyboard's up or down arrows. Deliver to New York 10001 All All Departments Alexa Skills Amazon Autos Amazon Devices",
+    "diagnosticTextHash": "4e3cc1c2147d995c6f1e39c18ea0c846fbb52664b8e4c252fe36ee597bb9e265",
+    "amazonBrandMarker": true,
+    "searchBoxMarker": true,
+    "deliveryEntryMarker": true,
+    "regionSelectionMarker": false,
+    "privacyPrompt": {
+      "state": "page_text_only",
+      "markerSource": "known_amazon_container",
+      "selectorCategory": "amazon_cookie_container",
+      "tagName": "div",
+      "role": null,
+      "visible": false,
+      "hasInteractiveControls": false,
+      "insideFooter": false,
+      "blocksMainContent": false,
+      "matchedText": "Test: sp-cc",
+      "reasonCodes": [
+        "privacy_inactive_dom_only"
+      ]
+    },
+    "captchaRobotCheckMarker": false,
+    "loginWall": {
+      "state": "absent",
+      "markerSource": "none",
+      "selectorCategory": null,
+      "tagName": null,
+      "role": null,
+      "visible": null,
+      "hasInteractiveControls": null,
+      "insideNavigation": null,
+      "blocksMainContent": null,
+      "matchedText": null,
+      "reasonCodes": [
+        "login_signal_absent"
+      ]
+    },
+    "loginWallMarker": false,
+    "errorUnavailableMarker": false,
+    "browserInternalErrorMarker": false,
+    "markerSources": {
+      "amazonBrand": "primary",
+      "searchBox": "primary",
+      "deliveryEntry": "primary"
+    },
+    "classification": "amazon_normal",
+    "classificationReasonCodes": [
+      "required_markers_present"
+    ],
+    "evidenceHash": "98d8b69d5e7c782a6a609818014d572a6cf930463e60b4c58eec631311f8810b"
+  },
+  "environmentGate": {
+    "status": "passed",
+    "failedStage": null,
+    "errorCodes": [],
+    "canSearch": true,
+    "observed": {
+      "marketplace": "amazon.com",
+      "market": "US",
+      "deliveryRegion": "Deliver to New York 10001‌",
+      "language": "en-us",
+      "currency": "USD"
+    },
+    "observedEvidence": {
+      "marketplace": {
+        "value": "amazon.com",
+        "evidenceSource": "final_url_and_amazon_brand_marker",
+        "confidence": "high",
+        "satisfiesFieldGate": true
+      },
+      "market": {
+        "value": "US",
+        "evidenceSource": "marketplace_and_delivery_region",
+        "confidence": "high",
+        "satisfiesFieldGate": true
+      },
+      "deliveryRegion": {
+        "value": "Deliver to New York 10001‌",
+        "evidenceSource": "delivery_entry_text",
+        "confidence": "high",
+        "satisfiesFieldGate": true
+      },
+      "language": {
+        "value": "en-us",
+        "evidenceSource": "document_language",
+        "confidence": "high",
+        "satisfiesFieldGate": true
+      },
+      "currency": {
+        "value": "USD",
+        "evidenceSource": "explicit_currency_observation",
+        "confidence": "high",
+        "satisfiesFieldGate": true
+      }
+    }
+  },
+  "extractionAttempt": {
+    "schemaVersion": "human-assisted-extraction-attempt.v1",
+    "captureMode": "human_current_page",
+    "collectorNavigationPerformed": false,
+    "requestedSampleLimit": 20,
+    "rawCardCount": 48,
+    "expectedSampleCount": 20,
+    "extractedObservationCount": 20,
+    "samplingCoverage": {
+      "observedCount": 20,
+      "denominator": 20,
+      "ratio": 1,
+      "missingReason": null
+    },
+    "sampledObservationIds": [
+      "canary-p1-01",
+      "canary-p1-02",
+      "canary-p1-03",
+      "canary-p1-04",
+      "canary-p1-05",
+      "canary-p1-06",
+      "canary-p1-07",
+      "canary-p1-08",
+      "canary-p1-09",
+      "canary-p1-10",
+      "canary-p1-11",
+      "canary-p1-12",
+      "canary-p1-13",
+      "canary-p1-14",
+      "canary-p1-15",
+      "canary-p1-16",
+      "canary-p1-17",
+      "canary-p1-18",
+      "canary-p1-19",
+      "canary-p1-20"
+    ],
+    "identityCompleteness": {
+      "observedCount": 20,
+      "denominator": 20,
+      "ratio": 1,
+      "missingReason": null
+    },
+    "titleCompleteness": {
+      "observedCount": 20,
+      "denominator": 20,
+      "ratio": 1,
+      "missingReason": null
+    },
+    "priceCompleteness": {
+      "observedCount": 20,
+      "denominator": 20,
+      "ratio": 1,
+      "missingReason": null
+    },
+    "ratingCompleteness": {
+      "observedCount": 19,
+      "denominator": 20,
+      "ratio": 0.95,
+      "missingReason": null
+    },
+    "reviewCountCompleteness": {
+      "observedCount": 19,
+      "denominator": 20,
+      "ratio": 0.95,
+      "missingReason": null
+    },
+    "imageCompleteness": {
+      "observedCount": 20,
+      "denominator": 20,
+      "ratio": 1,
+      "missingReason": null
+    },
+    "sponsoredKnownCompleteness": {
+      "observedCount": 20,
+      "denominator": 20,
+      "ratio": 1,
+      "missingReason": null
+    },
+    "sponsoredCounts": {
+      "true": 0,
+      "false": 20,
+      "null": 0
+    },
+    "sponsoredDiagnostics": [
+      {
+        "appearanceKey": "canary-p1-01",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-02",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-03",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-04",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-05",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-06",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-07",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-08",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-09",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-10",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-11",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-12",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-13",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-14",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-15",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-16",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-17",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-18",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-19",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      },
+      {
+        "appearanceKey": "canary-p1-20",
+        "schemaVersion": "amazon-sponsored-placement-diagnostic.v1",
+        "state": false,
+        "markerSource": "known_card_structure",
+        "selectorCategory": "standard_search_result_card",
+        "reasonCode": "known_organic_structure",
+        "matchedText": null
+      }
+    ],
+    "layoutMetrics": {
+      "rawCardCount": 48,
+      "requestedSampleLimit": 20,
+      "expectedSampleCount": 20,
+      "extractedObservationCount": 20,
+      "samplingCoverage": {
+        "observedCount": 20,
+        "denominator": 20,
+        "ratio": 1,
+        "missingReason": null
+      },
+      "identitySuccessCount": 20,
+      "priceVisibleCount": 20,
+      "ratingVisibleCount": 19,
+      "reviewVisibleCount": 19,
+      "sponsoredKnownCount": 20,
+      "quarantinedCount": 0,
+      "uniqueProductCount": 20,
+      "keyContainerFound": true,
+      "blockedPage": false
+    },
+    "qualityGate": {
+      "schemaVersion": "quality-gate-result.v1",
+      "status": "passed",
+      "errorCodes": [],
+      "missingReasons": []
+    },
+    "layoutGate": {
+      "schemaVersion": "layout-gate-evaluation.v1",
+      "status": "passed",
+      "errorCodes": [],
+      "reasonCodes": [],
+      "thresholds": {
+        "minimumRawCardsForRateChecks": 5,
+        "minimumIdentityCompleteness": 0.6,
+        "minimumPriceCompleteness": 0.4,
+        "minimumSponsoredKnownCompleteness": 0.4
+      },
+      "rateChecksApplied": true,
+      "observedRates": {
+        "identityCompleteness": 1,
+        "priceCompleteness": 1,
+        "sponsoredKnownCompleteness": 1
+      }
+    },
+    "thresholds": {
+      "minimumRawCardsForRateChecks": 5,
+      "minimumIdentityCompleteness": 0.6,
+      "minimumPriceCompleteness": 0.4,
+      "minimumSponsoredKnownCompleteness": 0.4
+    },
+    "reasonCodes": [],
+    "missingReasons": {},
+    "diagnosticEvidenceHash": "98d8b69d5e7c782a6a609818014d572a6cf930463e60b4c58eec631311f8810b",
+    "environmentGateHash": "30a29816c3ab46e72136da965db1d1fb8ac14a9b6fca19b753ba76a77bcd465d",
+    "collectorVersion": "amazon-human-assisted-cdp.v1",
+    "inputHash": "03b53a2e4c8238006aef0c231d46f71fbb6f5fa1ee702c557ee4fd213e711eb2",
+    "evidenceHash": "4398f9e2dd543ac22adc2fd5f0d99bf6dee24e6cd8941644100945ce4bd1c24a"
+  },
+  "sourceAdapter": {
+    "schemaVersion": "source-adapter-result.v1",
+    "sourceType": "human_assisted_amazon",
+    "sourceSchemaVersion": "amazon-search-page-extraction.v2",
+    "sourceInputHash": "e44d4faf476637758ab3e8885e7582fb052f0532175229e7f1d5d3cc2816908b",
+    "sourceBatchId": "source-batch-4e6574b31b375cc2af96b971",
+    "acceptedCount": 20,
+    "quarantinedCount": 0,
+    "quarantinedRows": [],
+    "qualitySummary": {
+      "status": "passed",
+      "errorCodes": []
+    },
+    "pipeline": {
+      "brief": {
+        "schemaVersion": "selection-brief.v1",
+        "briefId": "brief-human-assisted-20260714103154",
+        "marketplace": "amazon.com",
+        "market": "US",
+        "query": "closet organizer",
+        "category": null,
+        "targetScenario": "small-space closet organization",
+        "targetPriceRange": {
+          "currency": "USD",
+          "min": 15,
+          "max": 45
+        },
+        "requiredEvidence": [
+          "identity",
+          "title",
+          "price",
+          "rating",
+          "review_count"
+        ],
+        "hardExclusions": [
+          "confirmed_ip_risk",
+          "regulated_product",
+          "price_out_of_budget"
+        ],
+        "sampleBudget": {
+          "maxPages": 1,
+          "maxAppearances": 20
+        },
+        "rankingRuleVersion": "stage1-deterministic-v1.1",
+        "createdAt": "2026-07-14T10:31:54.838Z",
+        "approvedBy": "pending_user_explicit_current_page_trigger"
+      },
+      "run": {
+        "schemaVersion": "collection-run.v2",
+        "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+        "briefId": "brief-human-assisted-20260714103154",
+        "requested": {
+          "marketplace": "amazon.com",
+          "market": "US",
+          "currency": "USD"
+        },
+        "observed": {
+          "marketplace": "amazon.com",
+          "market": "US",
+          "currency": "USD",
+          "deliveryRegion": "Deliver to New York 10001‌",
+          "deliveryRegionMarket": "US",
+          "language": "en-us"
+        },
+        "sampledObservationIds": [
+          "canary-p1-01",
+          "canary-p1-02",
+          "canary-p1-03",
+          "canary-p1-04",
+          "canary-p1-05",
+          "canary-p1-06",
+          "canary-p1-07",
+          "canary-p1-08",
+          "canary-p1-09",
+          "canary-p1-10",
+          "canary-p1-11",
+          "canary-p1-12",
+          "canary-p1-13",
+          "canary-p1-14",
+          "canary-p1-15",
+          "canary-p1-16",
+          "canary-p1-17",
+          "canary-p1-18",
+          "canary-p1-19",
+          "canary-p1-20"
+        ],
+        "diagnosticVisiblePriceNodeCount": 106,
+        "pageStatus": "ok",
+        "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "collectorVersion": "amazon-human-assisted-cdp.v1",
+        "status": "completed",
+        "errorCode": null,
+        "contentHash": "bb08f1bb9d67d5056f12cecedd85d87495be06f8eb0c54278f1acd5f416fe20b"
+      },
+      "rawObservations": [
+        {
+          "appearanceKey": "canary-p1-01",
+          "page": 1,
+          "position": 1,
+          "sponsored": false,
+          "asin": "B0CGJJJC4M",
+          "parentAsin": null,
+          "title": "SNSLXH 5 Pack Stackable Closet Storage Basket, Multifunctional & Foldable Closet Organizer for Bathroom Kitchen Laundry Room Wardrobe Storage, Space-Saving Clothes Storage Drawer Organizer, White",
+          "price": 35.99,
+          "priceCurrency": "USD",
+          "rating": 4.6,
+          "reviewCount": 4500,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0CGJJJC4M",
+          "imageUrl": "https://m.media-amazon.com/images/I/718gPdLAncL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "29bbd601a58974d32202f7c99b0f72bd0006c2506c7245cc560e10e4b55520e1",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-02",
+          "page": 1,
+          "position": 2,
+          "sponsored": false,
+          "asin": "B07SYPLVTG",
+          "parentAsin": null,
+          "title": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+          "price": 15.98,
+          "priceCurrency": "USD",
+          "rating": 4.5,
+          "reviewCount": 17100,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+          "imageUrl": "https://m.media-amazon.com/images/I/61+pb4y2RLL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "bf921bdf24c38b17211b0c6afc4cb868e3dab2c032fd462efa735b2b30b348ba",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-03",
+          "page": 1,
+          "position": 3,
+          "sponsored": false,
+          "asin": "B0GZ344C3P",
+          "parentAsin": null,
+          "title": "Hongtamoya Stackable Closet Organizer Shelf,6 Cube Bins Storage Basket for Clothes, Handbags Sweaters Jeans Pants Shirt, Space Saving Closet Organizer for Bedroom Wardobe, Closet System-Grey",
+          "price": 29.99,
+          "priceCurrency": "USD",
+          "rating": 5,
+          "reviewCount": 4,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0GZ344C3P",
+          "imageUrl": "https://m.media-amazon.com/images/I/71r4BU9fNML._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "a0356eb1b93b1f54b7b319e11df1c38d09178075f9a5f2708942056e6b03aa5d",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-04",
+          "page": 1,
+          "position": 4,
+          "sponsored": false,
+          "asin": "B0DHMJSDXM",
+          "parentAsin": null,
+          "title": "BOOMIBOO Hanging Closet Organize and Shelves，5-Hanging Shelf with 2 Side Pockets，Storage Foldable （Grey）",
+          "price": 9.99,
+          "priceCurrency": "USD",
+          "rating": 4.6,
+          "reviewCount": 2400,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0DHMJSDXM",
+          "imageUrl": "https://m.media-amazon.com/images/I/71WIkiANaxL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "c259ffa93ce1a9fa3c97c3b302c04efa7ffd1987c886fcf2323d39d18c8b812e",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-05",
+          "page": 1,
+          "position": 5,
+          "sponsored": false,
+          "asin": "B0CNGTZ3B5",
+          "parentAsin": null,
+          "title": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+          "price": 9.99,
+          "priceCurrency": "USD",
+          "rating": 4.4,
+          "reviewCount": 14800,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+          "imageUrl": "https://m.media-amazon.com/images/I/614DfIW6jFL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "b13d152b22fa5315e774e79610353070ab868ed1528203a0f669a5d3ab9743ab",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-06",
+          "page": 1,
+          "position": 6,
+          "sponsored": false,
+          "asin": "B082K8XTBS",
+          "parentAsin": null,
+          "title": "AMKUFO 6 Pack-Closet-Organizers-and-Storage, Magic-Hangers-Space-Saving-for-Clothes, Closer-Organizer-for-Closet-Organization, Space-Saver-Hanger-Organizer-for-Multipurpose, Dorm-Room-Essentials",
+          "price": 7.11,
+          "priceCurrency": "USD",
+          "rating": 4.5,
+          "reviewCount": 5500,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B082K8XTBS",
+          "imageUrl": "https://m.media-amazon.com/images/I/712T34l+u4L._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "e73791f41fbd42cac4d34f2800fead5da0a68c78f29c9f4d4a8909e3c0bee802",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-07",
+          "page": 1,
+          "position": 7,
+          "sponsored": false,
+          "asin": "B0GZVHB1XW",
+          "parentAsin": null,
+          "title": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+          "price": 39.99,
+          "priceCurrency": "USD",
+          "rating": null,
+          "reviewCount": null,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+          "imageUrl": "https://m.media-amazon.com/images/I/71nX768yXPL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card",
+            "rating": "not_visible",
+            "reviewCount": "not_visible"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "3549513c0c274cca2217c000362d79c8b960fbfbbfb558fdb5f35ddb339714bc",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-08",
+          "page": 1,
+          "position": 8,
+          "sponsored": false,
+          "asin": "B0BRKHCLGZ",
+          "parentAsin": null,
+          "title": "Closet Organizers and Storage,3 Pack Organization and Storage Pants-Hangers-Space-Saving,Velvet Hanger for Dorm Room for College Students Girls Boys Guys Hanging Jean Scarf",
+          "price": 12.74,
+          "priceCurrency": "USD",
+          "rating": 4.5,
+          "reviewCount": 2900,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0BRKHCLGZ",
+          "imageUrl": "https://m.media-amazon.com/images/I/71apXFP2ReL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "eaf8d152a52e6c194bd3539b68259730f250d5a24bd3d4fdc5b0ebd875964006",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-09",
+          "page": 1,
+          "position": 9,
+          "sponsored": false,
+          "asin": "B0CL9NHS27",
+          "parentAsin": null,
+          "title": "5 Pack Stackable Closet Storage Basket - Stackable Storage Bins, Multifunctional & Foldable Closet Organizer Waterproof, Wardrobe Cupboard Space-Saving Hat Storage Drawer Organizer, White",
+          "price": 35.99,
+          "priceCurrency": "USD",
+          "rating": 4.6,
+          "reviewCount": 2400,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0CL9NHS27",
+          "imageUrl": "https://m.media-amazon.com/images/I/71j55FnA0SL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "9b5f3bc8a8f2d4c18c664aa785b7ebeb461604fa7a6f127bdb123a7970fa7092",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-10",
+          "page": 1,
+          "position": 10,
+          "sponsored": false,
+          "asin": "B0DHG6KNJF",
+          "parentAsin": null,
+          "title": "Yociyoga 4-Tier Stackable Closet Organizers and Storage Basket, Foldable Closet Shelf Organizer System, Space-Saving Clothes Storage Drawer Organizer for Wardrobe, White ((Patent 30022416))",
+          "price": 39.99,
+          "priceCurrency": "USD",
+          "rating": 4.7,
+          "reviewCount": 341,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0DHG6KNJF",
+          "imageUrl": "https://m.media-amazon.com/images/I/81+gGhIDjgL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "b1878e4e757dfef2fdc4d801d18bd66656f0c891703c04a3d01e86b07bb30e5f",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-11",
+          "page": 1,
+          "position": 11,
+          "sponsored": false,
+          "asin": "B07FX8RZJZ",
+          "parentAsin": null,
+          "title": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+          "price": 11.98,
+          "priceCurrency": "USD",
+          "rating": 4.6,
+          "reviewCount": 14300,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+          "imageUrl": "https://m.media-amazon.com/images/I/71-1hxOVmBL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "0f7fb80ef93f96d52a043518746c400dec93f0e0d97a732ea94eef5be4042ab8",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-12",
+          "page": 1,
+          "position": 12,
+          "sponsored": false,
+          "asin": "B0D25KNJQ8",
+          "parentAsin": null,
+          "title": "VTRIN Portable Closet for Hanging Clothes 67 Inch Wide Large Capacity Portable Wardrobe Closet with Cover, 4 Storage Shelves and 4 Hanging Rod Sturdy Free Standing Closet for Bedroom, Black",
+          "price": 39.09,
+          "priceCurrency": "USD",
+          "rating": 4.1,
+          "reviewCount": 2400,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0D25KNJQ8",
+          "imageUrl": "https://m.media-amazon.com/images/I/71G+1XobjmL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "17a286112be8c7c054959d64da94540ffd95e299a9a1bae7ee5ad9cf08845a8b",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-13",
+          "page": 1,
+          "position": 13,
+          "sponsored": false,
+          "asin": "B0BR7MSWN2",
+          "parentAsin": null,
+          "title": "Homsorout Closet Organizers Bins 6 Packs - Large Closet Shelf Organizer with Handles, Fabric Trapezoid Storage Bins, Collapsible Storage Cubes for Clothes, Towels, Light Gray",
+          "price": 29.99,
+          "priceCurrency": "USD",
+          "rating": 4.7,
+          "reviewCount": 1600,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0BR7MSWN2",
+          "imageUrl": "https://m.media-amazon.com/images/I/811-2Uy3e1L._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "11ea97fc3c64a24fdc1c92f1b555697f9c6219cd7fff22ca3083df33591ec50f",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-14",
+          "page": 1,
+          "position": 14,
+          "sponsored": false,
+          "asin": "B0F389CJRD",
+          "parentAsin": null,
+          "title": "Vomavex Closet System with 4 sets, 101.9\" Closet Organizer Systems with 6 Drawers & 8 Hanging Rods & Adjustable Shelves, Walk in Closet Standing Closet System, Corner Closet System Set, White",
+          "price": 586.45,
+          "priceCurrency": "USD",
+          "rating": 4.4,
+          "reviewCount": 108,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0F389CJRD",
+          "imageUrl": "https://m.media-amazon.com/images/I/712e7HQ4m3L._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "694d6971fe52856a1bd0ec86e43119076c1cba2e47bebbcaf0a1f7d791d4a5f2",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-15",
+          "page": 1,
+          "position": 15,
+          "sponsored": false,
+          "asin": "B0FXXG1LVK",
+          "parentAsin": null,
+          "title": "YFXCVSL 4 Tier Plastic Storage Bins with Lid 28QT - Stackable Storage Containers with Wheels, Folding Storage Boxes, Collapsible Storage Bins, Closet Organizers and Storage",
+          "price": 41.51,
+          "priceCurrency": "USD",
+          "rating": 4.4,
+          "reviewCount": 7400,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0FXXG1LVK",
+          "imageUrl": "https://m.media-amazon.com/images/I/71MQgBuEYbL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "9d13257f6f697a9272a19fbc4e269e14c9465333570536807afa3d4b6c73a4d0",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-16",
+          "page": 1,
+          "position": 16,
+          "sponsored": false,
+          "asin": "B09DX3QGPT",
+          "parentAsin": null,
+          "title": "AWTATOS Cube Storage Organizer, Storage Cubes Shelves Bookshelf, 6 Cube Closet Organizers and Storage, DIY Stackable Plastic Clothes Organizer Shelving for Bedroom, Home, White",
+          "price": 29.99,
+          "priceCurrency": "USD",
+          "rating": 4.4,
+          "reviewCount": 4400,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B09DX3QGPT",
+          "imageUrl": "https://m.media-amazon.com/images/I/512QzfMHnUL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "e9a418d5ba55cc69c5a0a86d2153af1bca8f20e88fe3739f8adf95005d12effd",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-17",
+          "page": 1,
+          "position": 17,
+          "sponsored": false,
+          "asin": "B0FRF56CM2",
+          "parentAsin": null,
+          "title": "Hanging Closet Organizer 4 Shelf Collapsible Bedroom Closet Organizers and Storage Hanging with Mesh Pockets for Clothes, Fabric Hanging Storage Bins for Wardrobe Closet Organization and Storage, Grey",
+          "price": 21.99,
+          "priceCurrency": "USD",
+          "rating": 4.8,
+          "reviewCount": 161,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0FRF56CM2",
+          "imageUrl": "https://m.media-amazon.com/images/I/71iDPQ8uvSL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "cf8c224f1f9fa73f37c739468f415ce080e063661e519063e4f60eaeefa69783",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-18",
+          "page": 1,
+          "position": 18,
+          "sponsored": false,
+          "asin": "B09ZV2TX28",
+          "parentAsin": null,
+          "title": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+          "price": 16.99,
+          "priceCurrency": "USD",
+          "rating": 4.5,
+          "reviewCount": 109600,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+          "imageUrl": "https://m.media-amazon.com/images/I/81ATH1p6zWL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "e795b5ed0534b3ea7cf17816dab873c3bfb0e13776354bc64b7e6785e5ff2bc6",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-19",
+          "page": 1,
+          "position": 19,
+          "sponsored": false,
+          "asin": "B0FWBX39KX",
+          "parentAsin": null,
+          "title": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+          "price": 45.88,
+          "priceCurrency": "USD",
+          "rating": 4.2,
+          "reviewCount": 1700,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+          "imageUrl": "https://m.media-amazon.com/images/I/8178y9phN7L._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "377f2c324d45207eef9f7c94a361e2a9c24c4241008ab741d8bffde0424c7f44",
+          "status": "observed",
+          "errorCode": null
+        },
+        {
+          "appearanceKey": "canary-p1-20",
+          "page": 1,
+          "position": 20,
+          "sponsored": false,
+          "asin": "B01F2II920",
+          "parentAsin": null,
+          "title": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+          "price": 127.28,
+          "priceCurrency": "USD",
+          "rating": 4.5,
+          "reviewCount": 2000,
+          "brand": null,
+          "productUrl": "https://www.amazon.com/dp/B01F2II920",
+          "imageUrl": "https://m.media-amazon.com/images/I/61T-PBjjokL._AC_UL320_.jpg",
+          "identityMissingReason": null,
+          "fieldMissingReasons": {
+            "brand": "not_exposed_on_search_card"
+          },
+          "observedRiskFlags": [],
+          "schemaVersion": "raw-observation.v1",
+          "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+          "marketplace": "amazon.com",
+          "market": "US",
+          "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+          "capturedAt": "2026-07-14T10:31:54.838Z",
+          "contentHash": "7c59ae53a56385cfa57ae53dc60cc96e3f5620317269f05fd477e4aaab0c25be",
+          "status": "observed",
+          "errorCode": null
+        }
+      ],
+      "rawObservationCount": 20,
+      "uniqueProductCount": 20,
+      "quarantined": [],
+      "metrics": {
+        "rawCardCount": 20,
+        "requestedSampleLimit": 20,
+        "expectedSampleCount": 20,
+        "extractedObservationCount": 20,
+        "samplingCoverage": {
+          "observedCount": 20,
+          "denominator": 20,
+          "ratio": 1,
+          "missingReason": null
+        },
+        "identitySuccessCount": 20,
+        "priceVisibleCount": 20,
+        "ratingVisibleCount": 19,
+        "reviewVisibleCount": 19,
+        "sponsoredKnownCount": 20,
+        "quarantinedCount": 0,
+        "uniqueProductCount": 20,
+        "keyContainerFound": true,
+        "blockedPage": false
+      },
+      "contextGate": {
+        "schemaVersion": "quality-gate-result.v1",
+        "status": "passed",
+        "errorCodes": [],
+        "missingReasons": []
+      },
+      "layoutGate": {
+        "schemaVersion": "quality-gate-result.v1",
+        "status": "passed",
+        "errorCodes": [],
+        "missingReasons": []
+      },
+      "importPackage": {
+        "schemaVersion": "import-package.v1",
+        "briefId": "brief-human-assisted-20260714103154",
+        "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+        "marketplace": "amazon.com",
+        "market": "US",
+        "sourceUrl": "https://www.amazon.com/s?k=closet+organizer",
+        "capturedAt": "2026-07-14T10:31:54.838Z",
+        "importBatchId": "batch-239c01df5d9eb963d4ef",
+        "candidates": [
+          {
+            "candidateId": "candidate-49271bcb3c1431d0fdf9",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B01F2II920",
+            "variantGroupKey": "amazon:US:B01F2II920",
+            "appearanceKeys": [
+              "canary-p1-20"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-20",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-0fe687c03caca6af6020703e",
+              "productKey": "amazon:US:B01F2II920",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B01F2II920",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "f87466a27a49c24de2c818587e4d9a78cc8488968b7b4a219f7c5f4c91ec1cd0",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B01F2II920",
+                "variantGroupKey": "amazon:US:B01F2II920",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B01F2II920",
+                "sourceUrl": "https://www.amazon.com/dp/B01F2II920",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "f87466a27a49c24de2c818587e4d9a78cc8488968b7b4a219f7c5f4c91ec1cd0",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+                  "normalizedValue": "ClosetMaid SuiteSymphony Wood Closet Organizer System, 25-Inch Starter Kit with Tower and 3 Hang Rods and Shelving, Adjustable Shelves, Customizable Insert, Reach-in or Walk-in Closets, Pure White",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 127.28,
+                  "normalizedValue": 127.28,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.5,
+                  "normalizedValue": 4.5,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 2000,
+                  "normalizedValue": 2000,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/61T-PBjjokL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/61T-PBjjokL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B01F2II920",
+              "evidenceSnapshotId": "evidence-0fe687c03caca6af6020703e",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-504f2804edc8759a97cd",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B07FX8RZJZ",
+            "variantGroupKey": "amazon:US:B07FX8RZJZ",
+            "appearanceKeys": [
+              "canary-p1-11"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-11",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-86654c5b8dafa9df062a3f82",
+              "productKey": "amazon:US:B07FX8RZJZ",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "0e976765910406d7a120d7f61053d3ce1a4f6bcc8a3b73ab029ac2b800e984e5",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B07FX8RZJZ",
+                "variantGroupKey": "amazon:US:B07FX8RZJZ",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B07FX8RZJZ",
+                "sourceUrl": "https://www.amazon.com/dp/B07FX8RZJZ",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "0e976765910406d7a120d7f61053d3ce1a4f6bcc8a3b73ab029ac2b800e984e5",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+                  "normalizedValue": "MAX Houser 6 Tier Shelf Hanging Closet Organizer, Closet Hanging Shelf with 2 Sturdy Hooks for Storage, Foldable (Grey)",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 11.98,
+                  "normalizedValue": 11.98,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.6,
+                  "normalizedValue": 4.6,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 14300,
+                  "normalizedValue": 14300,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71-1hxOVmBL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71-1hxOVmBL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B07FX8RZJZ",
+              "evidenceSnapshotId": "evidence-86654c5b8dafa9df062a3f82",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-4d7f7c7849791595166c",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B07SYPLVTG",
+            "variantGroupKey": "amazon:US:B07SYPLVTG",
+            "appearanceKeys": [
+              "canary-p1-02"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-02",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-db37a93871a5b6c117b3821f",
+              "productKey": "amazon:US:B07SYPLVTG",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "7b7b09f192fcfdd51661b6cc4dcb2d8bfd4beb88be0bf72973567cc16fb19f2e",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B07SYPLVTG",
+                "variantGroupKey": "amazon:US:B07SYPLVTG",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B07SYPLVTG",
+                "sourceUrl": "https://www.amazon.com/dp/B07SYPLVTG",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "7b7b09f192fcfdd51661b6cc4dcb2d8bfd4beb88be0bf72973567cc16fb19f2e",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+                  "normalizedValue": "YOUDENOVA Hanging Closet Organizer and Storage, 6-Shelf Closet Hanging Storage Shelves, Grey",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 15.98,
+                  "normalizedValue": 15.98,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.5,
+                  "normalizedValue": 4.5,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 17100,
+                  "normalizedValue": 17100,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/61+pb4y2RLL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/61+pb4y2RLL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B07SYPLVTG",
+              "evidenceSnapshotId": "evidence-db37a93871a5b6c117b3821f",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-4193268dddaa8e71a577",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B082K8XTBS",
+            "variantGroupKey": "amazon:US:B082K8XTBS",
+            "appearanceKeys": [
+              "canary-p1-06"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-06",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-f1400bdc459de86e2d7ffad2",
+              "productKey": "amazon:US:B082K8XTBS",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B082K8XTBS",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "a6f9f1a53955a5677c9c93dadc0e46375b6bf21e2c35b2245aec4e2792cb6fb3",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B082K8XTBS",
+                "variantGroupKey": "amazon:US:B082K8XTBS",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B082K8XTBS",
+                "sourceUrl": "https://www.amazon.com/dp/B082K8XTBS",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "a6f9f1a53955a5677c9c93dadc0e46375b6bf21e2c35b2245aec4e2792cb6fb3",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "AMKUFO 6 Pack-Closet-Organizers-and-Storage, Magic-Hangers-Space-Saving-for-Clothes, Closer-Organizer-for-Closet-Organization, Space-Saver-Hanger-Organizer-for-Multipurpose, Dorm-Room-Essentials",
+                  "normalizedValue": "AMKUFO 6 Pack-Closet-Organizers-and-Storage, Magic-Hangers-Space-Saving-for-Clothes, Closer-Organizer-for-Closet-Organization, Space-Saver-Hanger-Organizer-for-Multipurpose, Dorm-Room-Essentials",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 7.11,
+                  "normalizedValue": 7.11,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.5,
+                  "normalizedValue": 4.5,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 5500,
+                  "normalizedValue": 5500,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/712T34l+u4L._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/712T34l+u4L._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B082K8XTBS",
+              "evidenceSnapshotId": "evidence-f1400bdc459de86e2d7ffad2",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-8a722d1a6731bcc14a19",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B09DX3QGPT",
+            "variantGroupKey": "amazon:US:B09DX3QGPT",
+            "appearanceKeys": [
+              "canary-p1-16"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-16",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-e9c5790b19d8a39371208e73",
+              "productKey": "amazon:US:B09DX3QGPT",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B09DX3QGPT",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "68ad8d67eb1f9340c3fd5908f7b8f01064d1774bbba5ffca624cc32b861909b9",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B09DX3QGPT",
+                "variantGroupKey": "amazon:US:B09DX3QGPT",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B09DX3QGPT",
+                "sourceUrl": "https://www.amazon.com/dp/B09DX3QGPT",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "68ad8d67eb1f9340c3fd5908f7b8f01064d1774bbba5ffca624cc32b861909b9",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "AWTATOS Cube Storage Organizer, Storage Cubes Shelves Bookshelf, 6 Cube Closet Organizers and Storage, DIY Stackable Plastic Clothes Organizer Shelving for Bedroom, Home, White",
+                  "normalizedValue": "AWTATOS Cube Storage Organizer, Storage Cubes Shelves Bookshelf, 6 Cube Closet Organizers and Storage, DIY Stackable Plastic Clothes Organizer Shelving for Bedroom, Home, White",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 29.99,
+                  "normalizedValue": 29.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.4,
+                  "normalizedValue": 4.4,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4400,
+                  "normalizedValue": 4400,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/512QzfMHnUL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/512QzfMHnUL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B09DX3QGPT",
+              "evidenceSnapshotId": "evidence-e9c5790b19d8a39371208e73",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-7c40902cf1d313241836",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B09ZV2TX28",
+            "variantGroupKey": "amazon:US:B09ZV2TX28",
+            "appearanceKeys": [
+              "canary-p1-18"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-18",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-15f5b1d187ec11830652b111",
+              "productKey": "amazon:US:B09ZV2TX28",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "c781403a6a834ff048395eec9239e2881394d6eecf4ce6f06d49d4c20b1f81fc",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B09ZV2TX28",
+                "variantGroupKey": "amazon:US:B09ZV2TX28",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B09ZV2TX28",
+                "sourceUrl": "https://www.amazon.com/dp/B09ZV2TX28",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "c781403a6a834ff048395eec9239e2881394d6eecf4ce6f06d49d4c20b1f81fc",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+                  "normalizedValue": "Lifewit 6 Pack Clothes Storage Bins with Lids, Foldable Blanket Storage Bags with Zippers, Clear Window and Reinforced Handles, Closet and Organization for Clothing, Sweater, Comforter, Bedding",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 16.99,
+                  "normalizedValue": 16.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.5,
+                  "normalizedValue": 4.5,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 109600,
+                  "normalizedValue": 109600,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/81ATH1p6zWL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/81ATH1p6zWL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B09ZV2TX28",
+              "evidenceSnapshotId": "evidence-15f5b1d187ec11830652b111",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-9ef975e54b25ef82f262",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0BR7MSWN2",
+            "variantGroupKey": "amazon:US:B0BR7MSWN2",
+            "appearanceKeys": [
+              "canary-p1-13"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-13",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-b89c058e40c13b9af6ec6051",
+              "productKey": "amazon:US:B0BR7MSWN2",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0BR7MSWN2",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "2480aa7c3821c850705c0bcc1f3aba9b3ffdfd8d5a74e6ea56107ed983217388",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0BR7MSWN2",
+                "variantGroupKey": "amazon:US:B0BR7MSWN2",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0BR7MSWN2",
+                "sourceUrl": "https://www.amazon.com/dp/B0BR7MSWN2",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "2480aa7c3821c850705c0bcc1f3aba9b3ffdfd8d5a74e6ea56107ed983217388",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Homsorout Closet Organizers Bins 6 Packs - Large Closet Shelf Organizer with Handles, Fabric Trapezoid Storage Bins, Collapsible Storage Cubes for Clothes, Towels, Light Gray",
+                  "normalizedValue": "Homsorout Closet Organizers Bins 6 Packs - Large Closet Shelf Organizer with Handles, Fabric Trapezoid Storage Bins, Collapsible Storage Cubes for Clothes, Towels, Light Gray",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 29.99,
+                  "normalizedValue": 29.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.7,
+                  "normalizedValue": 4.7,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 1600,
+                  "normalizedValue": 1600,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/811-2Uy3e1L._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/811-2Uy3e1L._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0BR7MSWN2",
+              "evidenceSnapshotId": "evidence-b89c058e40c13b9af6ec6051",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-ae80f30b17b4b17afd48",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0BRKHCLGZ",
+            "variantGroupKey": "amazon:US:B0BRKHCLGZ",
+            "appearanceKeys": [
+              "canary-p1-08"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-08",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-8875aa7ea4396c7773ff8228",
+              "productKey": "amazon:US:B0BRKHCLGZ",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0BRKHCLGZ",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "8da18ac2255d10605e8ae6e30254f6b610869429f635efb2863deebdfada6a98",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0BRKHCLGZ",
+                "variantGroupKey": "amazon:US:B0BRKHCLGZ",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0BRKHCLGZ",
+                "sourceUrl": "https://www.amazon.com/dp/B0BRKHCLGZ",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "8da18ac2255d10605e8ae6e30254f6b610869429f635efb2863deebdfada6a98",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Closet Organizers and Storage,3 Pack Organization and Storage Pants-Hangers-Space-Saving,Velvet Hanger for Dorm Room for College Students Girls Boys Guys Hanging Jean Scarf",
+                  "normalizedValue": "Closet Organizers and Storage,3 Pack Organization and Storage Pants-Hangers-Space-Saving,Velvet Hanger for Dorm Room for College Students Girls Boys Guys Hanging Jean Scarf",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 12.74,
+                  "normalizedValue": 12.74,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.5,
+                  "normalizedValue": 4.5,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 2900,
+                  "normalizedValue": 2900,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71apXFP2ReL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71apXFP2ReL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0BRKHCLGZ",
+              "evidenceSnapshotId": "evidence-8875aa7ea4396c7773ff8228",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-5d3263a69633d3ce127b",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0CGJJJC4M",
+            "variantGroupKey": "amazon:US:B0CGJJJC4M",
+            "appearanceKeys": [
+              "canary-p1-01"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-01",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-3598794064aba4acf65a1d07",
+              "productKey": "amazon:US:B0CGJJJC4M",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0CGJJJC4M",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "ed27ff644d281bbd4352b8b3fdec2c30fad7b167de9f861ab42847a7fb7d5399",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0CGJJJC4M",
+                "variantGroupKey": "amazon:US:B0CGJJJC4M",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0CGJJJC4M",
+                "sourceUrl": "https://www.amazon.com/dp/B0CGJJJC4M",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "ed27ff644d281bbd4352b8b3fdec2c30fad7b167de9f861ab42847a7fb7d5399",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "SNSLXH 5 Pack Stackable Closet Storage Basket, Multifunctional & Foldable Closet Organizer for Bathroom Kitchen Laundry Room Wardrobe Storage, Space-Saving Clothes Storage Drawer Organizer, White",
+                  "normalizedValue": "SNSLXH 5 Pack Stackable Closet Storage Basket, Multifunctional & Foldable Closet Organizer for Bathroom Kitchen Laundry Room Wardrobe Storage, Space-Saving Clothes Storage Drawer Organizer, White",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 35.99,
+                  "normalizedValue": 35.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.6,
+                  "normalizedValue": 4.6,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4500,
+                  "normalizedValue": 4500,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/718gPdLAncL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/718gPdLAncL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0CGJJJC4M",
+              "evidenceSnapshotId": "evidence-3598794064aba4acf65a1d07",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-9886a018815fb308942a",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0CL9NHS27",
+            "variantGroupKey": "amazon:US:B0CL9NHS27",
+            "appearanceKeys": [
+              "canary-p1-09"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-09",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-612a9716d81ed0c6619b2765",
+              "productKey": "amazon:US:B0CL9NHS27",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0CL9NHS27",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "999738e54c09cdd377b5b5053313145b9b4ce4bbb66ae5d9ac0ad2dec02bc1fa",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0CL9NHS27",
+                "variantGroupKey": "amazon:US:B0CL9NHS27",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0CL9NHS27",
+                "sourceUrl": "https://www.amazon.com/dp/B0CL9NHS27",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "999738e54c09cdd377b5b5053313145b9b4ce4bbb66ae5d9ac0ad2dec02bc1fa",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "5 Pack Stackable Closet Storage Basket - Stackable Storage Bins, Multifunctional & Foldable Closet Organizer Waterproof, Wardrobe Cupboard Space-Saving Hat Storage Drawer Organizer, White",
+                  "normalizedValue": "5 Pack Stackable Closet Storage Basket - Stackable Storage Bins, Multifunctional & Foldable Closet Organizer Waterproof, Wardrobe Cupboard Space-Saving Hat Storage Drawer Organizer, White",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 35.99,
+                  "normalizedValue": 35.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.6,
+                  "normalizedValue": 4.6,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 2400,
+                  "normalizedValue": 2400,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71j55FnA0SL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71j55FnA0SL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0CL9NHS27",
+              "evidenceSnapshotId": "evidence-612a9716d81ed0c6619b2765",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-f4dbb1668698326e5361",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0CNGTZ3B5",
+            "variantGroupKey": "amazon:US:B0CNGTZ3B5",
+            "appearanceKeys": [
+              "canary-p1-05"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-05",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-8f964bf5a6eac88fd7226fdb",
+              "productKey": "amazon:US:B0CNGTZ3B5",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "dd4c78ddce5eb988d11d181f41769c5bfc55c0d99a8a678fb86400e8c18686a6",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0CNGTZ3B5",
+                "variantGroupKey": "amazon:US:B0CNGTZ3B5",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0CNGTZ3B5",
+                "sourceUrl": "https://www.amazon.com/dp/B0CNGTZ3B5",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "dd4c78ddce5eb988d11d181f41769c5bfc55c0d99a8a678fb86400e8c18686a6",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+                  "normalizedValue": "Kitsure Shoe Rack - Non-Woven Shoe Rack Shelf, Shoe Organizer for Closet, Entryway, Garage & Corridor, Stackable Shoe Shelves, 27.5\" Wide - 3 Tier, Black",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 9.99,
+                  "normalizedValue": 9.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.4,
+                  "normalizedValue": 4.4,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 14800,
+                  "normalizedValue": 14800,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/614DfIW6jFL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/614DfIW6jFL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0CNGTZ3B5",
+              "evidenceSnapshotId": "evidence-8f964bf5a6eac88fd7226fdb",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-8fed7a8ad6bddf806bb5",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0D25KNJQ8",
+            "variantGroupKey": "amazon:US:B0D25KNJQ8",
+            "appearanceKeys": [
+              "canary-p1-12"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-12",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-86a2b54a4f13734c642150e0",
+              "productKey": "amazon:US:B0D25KNJQ8",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0D25KNJQ8",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "5d570b6185a1bed5ca800b5b0ac5c79a2d0c7223fe5504fb5d9e1049008ded79",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0D25KNJQ8",
+                "variantGroupKey": "amazon:US:B0D25KNJQ8",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0D25KNJQ8",
+                "sourceUrl": "https://www.amazon.com/dp/B0D25KNJQ8",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "5d570b6185a1bed5ca800b5b0ac5c79a2d0c7223fe5504fb5d9e1049008ded79",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "VTRIN Portable Closet for Hanging Clothes 67 Inch Wide Large Capacity Portable Wardrobe Closet with Cover, 4 Storage Shelves and 4 Hanging Rod Sturdy Free Standing Closet for Bedroom, Black",
+                  "normalizedValue": "VTRIN Portable Closet for Hanging Clothes 67 Inch Wide Large Capacity Portable Wardrobe Closet with Cover, 4 Storage Shelves and 4 Hanging Rod Sturdy Free Standing Closet for Bedroom, Black",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 39.09,
+                  "normalizedValue": 39.09,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.1,
+                  "normalizedValue": 4.1,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 2400,
+                  "normalizedValue": 2400,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71G+1XobjmL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71G+1XobjmL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0D25KNJQ8",
+              "evidenceSnapshotId": "evidence-86a2b54a4f13734c642150e0",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-68d08a8ba080cd1f0e7f",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0DHG6KNJF",
+            "variantGroupKey": "amazon:US:B0DHG6KNJF",
+            "appearanceKeys": [
+              "canary-p1-10"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-10",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-4fb05f77c3b3ef1aea588e84",
+              "productKey": "amazon:US:B0DHG6KNJF",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0DHG6KNJF",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "e17599c0473aabf8f7f92e2d9cc124af176bc87f3aedac742e336191e52c6e60",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0DHG6KNJF",
+                "variantGroupKey": "amazon:US:B0DHG6KNJF",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0DHG6KNJF",
+                "sourceUrl": "https://www.amazon.com/dp/B0DHG6KNJF",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "e17599c0473aabf8f7f92e2d9cc124af176bc87f3aedac742e336191e52c6e60",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Yociyoga 4-Tier Stackable Closet Organizers and Storage Basket, Foldable Closet Shelf Organizer System, Space-Saving Clothes Storage Drawer Organizer for Wardrobe, White ((Patent 30022416))",
+                  "normalizedValue": "Yociyoga 4-Tier Stackable Closet Organizers and Storage Basket, Foldable Closet Shelf Organizer System, Space-Saving Clothes Storage Drawer Organizer for Wardrobe, White ((Patent 30022416))",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 39.99,
+                  "normalizedValue": 39.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.7,
+                  "normalizedValue": 4.7,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 341,
+                  "normalizedValue": 341,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/81+gGhIDjgL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/81+gGhIDjgL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0DHG6KNJF",
+              "evidenceSnapshotId": "evidence-4fb05f77c3b3ef1aea588e84",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-148ee6aca70a8016d1bd",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0DHMJSDXM",
+            "variantGroupKey": "amazon:US:B0DHMJSDXM",
+            "appearanceKeys": [
+              "canary-p1-04"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-04",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-e86b08993d8295075d44e81c",
+              "productKey": "amazon:US:B0DHMJSDXM",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0DHMJSDXM",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "00319e457ee04ec1d68354c3e286a5c534ead1d73207f448ca4855442aa9645e",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0DHMJSDXM",
+                "variantGroupKey": "amazon:US:B0DHMJSDXM",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0DHMJSDXM",
+                "sourceUrl": "https://www.amazon.com/dp/B0DHMJSDXM",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "00319e457ee04ec1d68354c3e286a5c534ead1d73207f448ca4855442aa9645e",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "BOOMIBOO Hanging Closet Organize and Shelves，5-Hanging Shelf with 2 Side Pockets，Storage Foldable （Grey）",
+                  "normalizedValue": "BOOMIBOO Hanging Closet Organize and Shelves，5-Hanging Shelf with 2 Side Pockets，Storage Foldable （Grey）",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 9.99,
+                  "normalizedValue": 9.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.6,
+                  "normalizedValue": 4.6,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 2400,
+                  "normalizedValue": 2400,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71WIkiANaxL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71WIkiANaxL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0DHMJSDXM",
+              "evidenceSnapshotId": "evidence-e86b08993d8295075d44e81c",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-4fd0e3863ae0081a6e74",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0F389CJRD",
+            "variantGroupKey": "amazon:US:B0F389CJRD",
+            "appearanceKeys": [
+              "canary-p1-14"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-14",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-0d7f28a3f20f84eb220c2993",
+              "productKey": "amazon:US:B0F389CJRD",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0F389CJRD",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "8523542b06f6659d6d2ad05c443747e8bc61a16e895680ba50c081b64a0b9157",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0F389CJRD",
+                "variantGroupKey": "amazon:US:B0F389CJRD",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0F389CJRD",
+                "sourceUrl": "https://www.amazon.com/dp/B0F389CJRD",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "8523542b06f6659d6d2ad05c443747e8bc61a16e895680ba50c081b64a0b9157",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Vomavex Closet System with 4 sets, 101.9\" Closet Organizer Systems with 6 Drawers & 8 Hanging Rods & Adjustable Shelves, Walk in Closet Standing Closet System, Corner Closet System Set, White",
+                  "normalizedValue": "Vomavex Closet System with 4 sets, 101.9\" Closet Organizer Systems with 6 Drawers & 8 Hanging Rods & Adjustable Shelves, Walk in Closet Standing Closet System, Corner Closet System Set, White",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 586.45,
+                  "normalizedValue": 586.45,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.4,
+                  "normalizedValue": 4.4,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 108,
+                  "normalizedValue": 108,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/712e7HQ4m3L._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/712e7HQ4m3L._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0F389CJRD",
+              "evidenceSnapshotId": "evidence-0d7f28a3f20f84eb220c2993",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-a64ce38e4e0fde51ea18",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0FRF56CM2",
+            "variantGroupKey": "amazon:US:B0FRF56CM2",
+            "appearanceKeys": [
+              "canary-p1-17"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-17",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-9284670f73db56a2a4a5a9d4",
+              "productKey": "amazon:US:B0FRF56CM2",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0FRF56CM2",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "03637f8e686c38d28a2aac2b2e81b038bdcc9b06ae560efd38cb1dd18ba4143e",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0FRF56CM2",
+                "variantGroupKey": "amazon:US:B0FRF56CM2",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0FRF56CM2",
+                "sourceUrl": "https://www.amazon.com/dp/B0FRF56CM2",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "03637f8e686c38d28a2aac2b2e81b038bdcc9b06ae560efd38cb1dd18ba4143e",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Hanging Closet Organizer 4 Shelf Collapsible Bedroom Closet Organizers and Storage Hanging with Mesh Pockets for Clothes, Fabric Hanging Storage Bins for Wardrobe Closet Organization and Storage, Grey",
+                  "normalizedValue": "Hanging Closet Organizer 4 Shelf Collapsible Bedroom Closet Organizers and Storage Hanging with Mesh Pockets for Clothes, Fabric Hanging Storage Bins for Wardrobe Closet Organization and Storage, Grey",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 21.99,
+                  "normalizedValue": 21.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.8,
+                  "normalizedValue": 4.8,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 161,
+                  "normalizedValue": 161,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71iDPQ8uvSL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71iDPQ8uvSL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0FRF56CM2",
+              "evidenceSnapshotId": "evidence-9284670f73db56a2a4a5a9d4",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-81d50ff4391590f91196",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0FWBX39KX",
+            "variantGroupKey": "amazon:US:B0FWBX39KX",
+            "appearanceKeys": [
+              "canary-p1-19"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-19",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-350d081171f6bbc2c72f6283",
+              "productKey": "amazon:US:B0FWBX39KX",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "be9cb398a04afdd3df911e2aa552f14cfb8ce23a299ebd0128377fcba4193061",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0FWBX39KX",
+                "variantGroupKey": "amazon:US:B0FWBX39KX",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0FWBX39KX",
+                "sourceUrl": "https://www.amazon.com/dp/B0FWBX39KX",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "be9cb398a04afdd3df911e2aa552f14cfb8ce23a299ebd0128377fcba4193061",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+                  "normalizedValue": "OLIXIS 9 Drawer Fabric Storage Dresser Chest Organizer Unit, Black | Sturdy and lightweight fabric drawers with easy-pull handles. Space-saving versatile organizer for clothes, bedroom",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 45.88,
+                  "normalizedValue": 45.88,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.2,
+                  "normalizedValue": 4.2,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 1700,
+                  "normalizedValue": 1700,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/8178y9phN7L._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/8178y9phN7L._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0FWBX39KX",
+              "evidenceSnapshotId": "evidence-350d081171f6bbc2c72f6283",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-45f73631a57c2795d653",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0FXXG1LVK",
+            "variantGroupKey": "amazon:US:B0FXXG1LVK",
+            "appearanceKeys": [
+              "canary-p1-15"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-15",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-23bf6d99d2e7e1bd22cfeb30",
+              "productKey": "amazon:US:B0FXXG1LVK",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0FXXG1LVK",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "a0c1bb3873132960ba847937ce2ec6dfd43566dad3923a9ad81977c42012c2e1",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0FXXG1LVK",
+                "variantGroupKey": "amazon:US:B0FXXG1LVK",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0FXXG1LVK",
+                "sourceUrl": "https://www.amazon.com/dp/B0FXXG1LVK",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "a0c1bb3873132960ba847937ce2ec6dfd43566dad3923a9ad81977c42012c2e1",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "YFXCVSL 4 Tier Plastic Storage Bins with Lid 28QT - Stackable Storage Containers with Wheels, Folding Storage Boxes, Collapsible Storage Bins, Closet Organizers and Storage",
+                  "normalizedValue": "YFXCVSL 4 Tier Plastic Storage Bins with Lid 28QT - Stackable Storage Containers with Wheels, Folding Storage Boxes, Collapsible Storage Bins, Closet Organizers and Storage",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 41.51,
+                  "normalizedValue": 41.51,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4.4,
+                  "normalizedValue": 4.4,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 7400,
+                  "normalizedValue": 7400,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71MQgBuEYbL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71MQgBuEYbL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0FXXG1LVK",
+              "evidenceSnapshotId": "evidence-23bf6d99d2e7e1bd22cfeb30",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-73fb6b6432f15cc83c52",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0GZ344C3P",
+            "variantGroupKey": "amazon:US:B0GZ344C3P",
+            "appearanceKeys": [
+              "canary-p1-03"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-03",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-2b3346b91c8fe0140c63c799",
+              "productKey": "amazon:US:B0GZ344C3P",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0GZ344C3P",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "1afa033593c3a4935654e212d39abe220890c88db92744c041c08907379ee9ef",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0GZ344C3P",
+                "variantGroupKey": "amazon:US:B0GZ344C3P",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0GZ344C3P",
+                "sourceUrl": "https://www.amazon.com/dp/B0GZ344C3P",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "1afa033593c3a4935654e212d39abe220890c88db92744c041c08907379ee9ef",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "Hongtamoya Stackable Closet Organizer Shelf,6 Cube Bins Storage Basket for Clothes, Handbags Sweaters Jeans Pants Shirt, Space Saving Closet Organizer for Bedroom Wardobe, Closet System-Grey",
+                  "normalizedValue": "Hongtamoya Stackable Closet Organizer Shelf,6 Cube Bins Storage Basket for Clothes, Handbags Sweaters Jeans Pants Shirt, Space Saving Closet Organizer for Bedroom Wardobe, Closet System-Grey",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 29.99,
+                  "normalizedValue": 29.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 5,
+                  "normalizedValue": 5,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 4,
+                  "normalizedValue": 4,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71r4BU9fNML._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71r4BU9fNML._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0GZ344C3P",
+              "evidenceSnapshotId": "evidence-2b3346b91c8fe0140c63c799",
+              "complete": true,
+              "missingEvidence": [],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          },
+          {
+            "candidateId": "candidate-b1a91e3c81cbe884a4d6",
+            "importBatchId": "batch-239c01df5d9eb963d4ef",
+            "productKey": "amazon:US:B0GZVHB1XW",
+            "variantGroupKey": "amazon:US:B0GZVHB1XW",
+            "appearanceKeys": [
+              "canary-p1-07"
+            ],
+            "appearances": [
+              {
+                "appearanceKey": "canary-p1-07",
+                "sponsored": false
+              }
+            ],
+            "evidenceSnapshot": {
+              "schemaVersion": "evidence-snapshot.v1",
+              "evidenceSnapshotId": "evidence-63aeef7eb4287d855ffabdcd",
+              "productKey": "amazon:US:B0GZVHB1XW",
+              "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+              "marketplace": "amazon.com",
+              "market": "US",
+              "sourceUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+              "capturedAt": "2026-07-14T10:31:54.838Z",
+              "inputHash": "e13972516c3db51509e79d22e1f85de2b498ff12801c7ffc60f43990feb92b93",
+              "freshness": "fresh",
+              "sourceTypes": [
+                "direct_observation"
+              ],
+              "product": {
+                "schemaVersion": "normalized-product.v1",
+                "productKey": "amazon:US:B0GZVHB1XW",
+                "variantGroupKey": "amazon:US:B0GZVHB1XW",
+                "marketplace": "amazon.com",
+                "market": "US",
+                "platformProductId": "B0GZVHB1XW",
+                "sourceUrl": "https://www.amazon.com/dp/B0GZVHB1XW",
+                "capturedAt": "2026-07-14T10:31:54.838Z",
+                "collectionRunId": "run-amazon-live-711cbbfc894b9a38d14081ba",
+                "inputHash": "e13972516c3db51509e79d22e1f85de2b498ff12801c7ffc60f43990feb92b93",
+                "title": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+                  "normalizedValue": "2 Pack Hanging Closet Organizer and Storage, 5 Tier & 3 Tier Metal Wire Closet Shelves with 8 S Hooks, Hanging Storage Shelf for Clothes Shoes Sweaters Handbags Laundry",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "price": {
+                  "sourceType": "direct_observation",
+                  "rawValue": 39.99,
+                  "normalizedValue": 39.99,
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "rating": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_visible"
+                },
+                "reviewCount": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_visible"
+                },
+                "brand": {
+                  "sourceType": "direct_observation",
+                  "rawValue": null,
+                  "normalizedValue": null,
+                  "manualOverride": null,
+                  "missingReason": "not_exposed_on_search_card"
+                },
+                "imageUrl": {
+                  "sourceType": "direct_observation",
+                  "rawValue": "https://m.media-amazon.com/images/I/71nX768yXPL._AC_UL320_.jpg",
+                  "normalizedValue": "https://m.media-amazon.com/images/I/71nX768yXPL._AC_UL320_.jpg",
+                  "manualOverride": null,
+                  "missingReason": null
+                },
+                "observedRiskFlags": [],
+                "status": "normalized",
+                "errorCode": null
+              },
+              "status": "valid",
+              "errorCode": null,
+              "importBatchId": "batch-239c01df5d9eb963d4ef",
+              "sourceState": "active"
+            },
+            "minimumEvidencePack": {
+              "schemaVersion": "minimum-evidence-pack.v1",
+              "productKey": "amazon:US:B0GZVHB1XW",
+              "evidenceSnapshotId": "evidence-63aeef7eb4287d855ffabdcd",
+              "complete": false,
+              "missingEvidence": [
+                "rating",
+                "review_count"
+              ],
+              "importBatchId": "batch-239c01df5d9eb963d4ef"
+            }
+          }
+        ],
+        "importPackageHash": "cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a",
+        "importIdempotencyKey": "import:cfa158f78cbd56c854ca35ae0d6241a2b9456735aaef7f5a21d776d41a1b005a",
+        "status": "preview_ready",
+        "errorCode": null
+      }
+    }
+  },
+  "cleanup": {
+    "pageClosed": true,
+    "browserClosed": true,
+    "forcedTerminationUsed": false,
+    "debugPortReleased": true,
+    "profileRemoved": true,
+    "browserProcessBaselineRestored": true
+  },
+  "sensitiveBrowserDataStored": false,
+  "formalCandidateGenerated": false,
+  "productionDatabaseWritten": false
+}
