@@ -344,7 +344,24 @@ function getApiErrorMessage(value: unknown, fallback: string) {
   return typeof message === "string" && message.trim().length > 0 ? message.trim() : fallback;
 }
 
+export type OpportunitiesSurface = "legacy_default" | "advanced_import";
+
+export function getOpportunitiesSurfaceCopy(surface: OpportunitiesSurface) {
+  return surface === "advanced_import"
+    ? {
+        eyebrow: "高级工具",
+        title: "手工导入外部来源",
+        description: "保留现有 URL、RSS、Sitemap 与历史候选流程；导入不等于完成 Evidence 筛选或进入调查短名单。",
+      } as const
+    : {
+        eyebrow: "机会雷达",
+        title: "候选导入与管理",
+        description: "当前兼容页面；正式市场预筛路由尚未切换。",
+      } as const;
+}
+
 type OpportunitiesFormProps = {
+  surface?: OpportunitiesSurface;
   visualFixture?: OpportunityCandidatePoolItem[];
 };
 
@@ -356,9 +373,13 @@ type OpportunitiesFormContentProps = OpportunitiesFormProps & {
   draftRestored: boolean;
 };
 
-export function OpportunitiesForm({ visualFixture }: OpportunitiesFormProps = {}) {
+export function OpportunitiesForm({
+  surface = "legacy_default",
+  visualFixture,
+}: OpportunitiesFormProps = {}) {
   if (visualFixture) {
     return <OpportunitiesFormContent
+      surface={surface}
       visualFixture={visualFixture}
       accessPassword=""
       isAccessPasswordReady={false}
@@ -367,10 +388,10 @@ export function OpportunitiesForm({ visualFixture }: OpportunitiesFormProps = {}
       draftRestored={true}
     />;
   }
-  return <OpportunitiesFormWithLocalAccess />;
+  return <OpportunitiesFormWithLocalAccess surface={surface} />;
 }
 
-function OpportunitiesFormWithLocalAccess() {
+function OpportunitiesFormWithLocalAccess({ surface }: Pick<OpportunitiesFormProps, "surface">) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
     storageKey: DRAFT_KEY,
@@ -378,6 +399,7 @@ function OpportunitiesFormWithLocalAccess() {
     initialValue: "",
   });
   return <OpportunitiesFormContent
+    surface={surface}
     accessPassword={accessPassword}
     isAccessPasswordReady={isAccessPasswordReady}
     draftVal={draftVal}
@@ -387,6 +409,7 @@ function OpportunitiesFormWithLocalAccess() {
 }
 
 function OpportunitiesFormContent({
+  surface = "legacy_default",
   visualFixture,
   accessPassword,
   isAccessPasswordReady,
@@ -395,6 +418,7 @@ function OpportunitiesFormContent({
   draftRestored,
 }: OpportunitiesFormContentProps) {
   const visualFixtureMode = Boolean(visualFixture);
+  const surfaceCopy = getOpportunitiesSurfaceCopy(surface);
   const [rawText, setRawText] = useState("");
   const [candidates, setCandidates] = useState<CandidateData[]>([]);
   const [poolItems, setPoolItems] = useState<OpportunityCandidatePoolItem[]>(() => visualFixture ? [...visualFixture] : []);
@@ -1080,8 +1104,9 @@ function OpportunitiesFormContent({
                   <Target className="size-5" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达 / 候选品池 · 功能预览</h1>
-                  <p className="muted-text mt-1 text-sm">跨境电商机会来源导入与候选池 — 未解锁时可浏览功能说明和示例</p>
+                  <p className="linear-kicker">{surfaceCopy.eyebrow}</p>
+                  <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">{surfaceCopy.title} · 功能预览</h1>
+                  <p className="muted-text mt-1 text-sm">{surfaceCopy.description}</p>
                 </div>
               </div>
             </header>
@@ -1225,8 +1250,9 @@ function OpportunitiesFormContent({
                   <Target className="size-5" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-semibold tracking-tight text-slate-950">机会雷达</h1>
-                  <p className="muted-text mt-1 text-sm">先看市场信号，再决定是否进入商业深挖。</p>
+                  <p className="linear-kicker">{surfaceCopy.eyebrow}</p>
+                  <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">{surfaceCopy.title}</h1>
+                  <p className="muted-text mt-1 text-sm">{surfaceCopy.description}</p>
                 </div>
               </div>
               {!visualFixtureMode ? <button

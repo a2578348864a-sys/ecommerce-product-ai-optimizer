@@ -1,0 +1,1316 @@
+{
+  "schemaVersion": "investigation-product-family-data.v1",
+  "codeBaseline": {
+    "commit": "21f30cee168bccc8956b55de3f361df08ad5d9c9",
+    "tree": "56cb678c849621f211148b4725e8df19a0d6aa15",
+    "branch": "codex/pipeline-provider-probe-v1"
+  },
+  "parserVersion": "provider-product-title-parser.v2",
+  "familyGrouperVersion": "provider-product-family-grouper.v1",
+  "fixture": {
+    "source": "Provider-Capability-Probe-Real-157b753-06/page-1.json"
+  },
+  "listingCount": 23,
+  "familyCount": 22,
+  "topFamilyCount": 5,
+  "remainingFamilyCount": 17,
+  "topFamilies": [
+    {
+      "familyId": "108ee1b6",
+      "familyStatus": "variant_or_listing_conflict",
+      "familyKeyType": "model_number",
+      "familyRank": 1,
+      "normalizedBrand": "Command",
+      "normalizedModelNumber": "17003-6ES",
+      "representativeStableId": "206212338",
+      "representativeListingRank": 1,
+      "memberCount": 2,
+      "memberStableIds": [
+        "206212338",
+        "340367063"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": "当前公开数据未提供卖家字段，无法确认这些Listing是否来自同一卖家。可能是包装版本、重复Listing或不同销售来源，需要打开原页面确认。",
+      "representativeListing": {
+        "stableId": "206212338",
+        "title": "Command Large Utility Hooks, White, Damage Free Hanging, 6 Hooks and 12 Command Strips",
+        "price": 9.97,
+        "rating": 4.5232,
+        "reviewCount": 1403,
+        "link": "https://apionline.homedepot.com/p/Command-Command-Large-Utility-Hooks-White-Damage-Free-Hanging-6-Hooks-and-12-Command-Strips-17003-6ES/206212338",
+        "packInfo": "6个挂钩+12条胶条",
+        "parsedNameZh": "通用收纳挂钩",
+        "installation": "无痕粘贴式",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/0b7b588c-ee8f-4937-88fc-30866b191ce6/svn/white-command-hooks-17003-6es-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "206212338",
+          "title": "Command Large Utility Hooks, White, Damage Free Hanging, 6 Hooks and 12 Command Strips",
+          "price": 9.97,
+          "rating": 4.5232,
+          "reviewCount": 1403,
+          "link": "https://apionline.homedepot.com/p/Command-Command-Large-Utility-Hooks-White-Damage-Free-Hanging-6-Hooks-and-12-Command-Strips-17003-6ES/206212338",
+          "packInfo": "6个挂钩+12条胶条",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/0b7b588c-ee8f-4937-88fc-30866b191ce6/svn/white-command-hooks-17003-6es-64_65.jpg",
+          "originalRank": 1
+        },
+        {
+          "stableId": "340367063",
+          "title": "Large Utility Hook Value Pack, 6 Hooks, 16 Strips",
+          "price": 9.97,
+          "rating": 4.5465,
+          "reviewCount": 452,
+          "link": "https://apionline.homedepot.com/p/Command-Large-Utility-Hook-Value-Pack-6-Hooks-16-Strips-17003-6ES/340367063",
+          "packInfo": "6个挂钩+16条胶条",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/831156c9-4e3d-4a55-b3b7-e82f2541f096/svn/white-command-hooks-17003-6es-64_65.jpg",
+          "originalRank": 2
+        }
+      ],
+      "variantDifferences": [
+        "340367063: 6个挂钩+16条胶条 (vs 206212338: 6个挂钩+12条胶条)"
+      ],
+      "duplicateSignals": [
+        "同品牌Command",
+        "同型号17003-6ES",
+        "同价格$9.97"
+      ],
+      "factualReasons": [
+        "公开评论证据量(1403条)高于样本中位数(179条)",
+        "标题明确安装方式: 无痕粘贴式"
+      ],
+      "cautionReasons": [
+        "币种为Provider级别推断(USD)，非商品页面字段直接提供",
+        "图片为远程缩略图，非本地保存证据",
+        "仅单关键词、单平台、单页样本",
+        "检测到2条相关Listing，可能是包装版本、重复Listing或不同销售来源"
+      ],
+      "unknowns": [
+        "真实销量",
+        "用户差评内容",
+        "完整商品详情",
+        "竞争商品数量",
+        "供应商信息",
+        "成本、物流与合规",
+        "材质",
+        "尺寸",
+        "承重"
+      ],
+      "decisionReadiness": "visual_review_ready"
+    },
+    {
+      "familyId": "88400b7f",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 2,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "01209",
+      "representativeStableId": "202305424",
+      "representativeListingRank": 3,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305424"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305424",
+        "title": "4 in. Handy Hook Wall Mounted J-Hook with 25 lb. Capacity",
+        "price": 3.98,
+        "rating": 4.7408,
+        "reviewCount": 382,
+        "link": "https://apionline.homedepot.com/p/Everbilt-4-in-Handy-Hook-Wall-Mounted-J-Hook-with-25-lb-Capacity-01209/202305424",
+        "packInfo": "单件",
+        "parsedNameZh": "J型挂钩",
+        "installation": "壁挂式",
+        "materials": [],
+        "capacities": [
+          25
+        ],
+        "dimensions": [
+          "4\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/9d348d92-a52d-4689-b8c1-2d327854e09e/svn/gray-everbilt-garage-storage-hooks-01209-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305424",
+          "title": "4 in. Handy Hook Wall Mounted J-Hook with 25 lb. Capacity",
+          "price": 3.98,
+          "rating": 4.7408,
+          "reviewCount": 382,
+          "link": "https://apionline.homedepot.com/p/Everbilt-4-in-Handy-Hook-Wall-Mounted-J-Hook-with-25-lb-Capacity-01209/202305424",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/9d348d92-a52d-4689-b8c1-2d327854e09e/svn/gray-everbilt-garage-storage-hooks-01209-64_65.jpg",
+          "originalRank": 3
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [
+        "公开评论证据量(382条)高于样本中位数(179条)",
+        "评分(4.7408)高于样本中位数(4.68)",
+        "评论量与评分均有一定证据量"
+      ],
+      "cautionReasons": [
+        "币种为Provider级别推断(USD)，非商品页面字段直接提供",
+        "图片为远程缩略图，非本地保存证据",
+        "仅单关键词、单平台、单页样本",
+        "品牌\"Everbilt\"在样本中占10件，集中度较高"
+      ],
+      "unknowns": [
+        "真实销量",
+        "用户差评内容",
+        "完整商品详情",
+        "竞争商品数量",
+        "供应商信息",
+        "成本、物流与合规",
+        "材质"
+      ],
+      "decisionReadiness": "visual_review_ready"
+    },
+    {
+      "familyId": "43ede4a9",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 3,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "01239",
+      "representativeStableId": "202305566",
+      "representativeListingRank": 4,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305566"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305566",
+        "title": "10 in. Wall Mount Zinc Plated Steel Giant Storage Hanger with 25 lb. Capacity",
+        "price": 6.98,
+        "rating": 4.6316,
+        "reviewCount": 342,
+        "link": "https://apionline.homedepot.com/p/Everbilt-10-in-Wall-Mount-Zinc-Plated-Steel-Giant-Storage-Hanger-with-25-lb-Capacity-01239/202305566",
+        "packInfo": "单件",
+        "parsedNameZh": "收纳挂架",
+        "installation": "壁挂式",
+        "materials": [
+          "镀锌钢制"
+        ],
+        "capacities": [
+          25
+        ],
+        "dimensions": [
+          "10\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/3b1d7743-6261-41c6-9fe5-e51d5b96b1e6/svn/zinc-plated-everbilt-garage-storage-hooks-01239-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305566",
+          "title": "10 in. Wall Mount Zinc Plated Steel Giant Storage Hanger with 25 lb. Capacity",
+          "price": 6.98,
+          "rating": 4.6316,
+          "reviewCount": 342,
+          "link": "https://apionline.homedepot.com/p/Everbilt-10-in-Wall-Mount-Zinc-Plated-Steel-Giant-Storage-Hanger-with-25-lb-Capacity-01239/202305566",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/3b1d7743-6261-41c6-9fe5-e51d5b96b1e6/svn/zinc-plated-everbilt-garage-storage-hooks-01239-64_65.jpg",
+          "originalRank": 4
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [
+        "公开评论证据量(342条)高于样本中位数(179条)",
+        "标题明确安装方式: 壁挂式",
+        "标题明确尺寸信息"
+      ],
+      "cautionReasons": [
+        "币种为Provider级别推断(USD)，非商品页面字段直接提供",
+        "图片为远程缩略图，非本地保存证据",
+        "仅单关键词、单平台、单页样本",
+        "品牌\"Everbilt\"在样本中占10件，集中度较高"
+      ],
+      "unknowns": [
+        "真实销量",
+        "用户差评内容",
+        "完整商品详情",
+        "竞争商品数量",
+        "供应商信息",
+        "成本、物流与合规"
+      ],
+      "decisionReadiness": "visual_review_ready"
+    },
+    {
+      "familyId": "dcc707af",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 4,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "01212",
+      "representativeStableId": "202305418",
+      "representativeListingRank": 5,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305418"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305418",
+        "title": "3-3/4 in. Vinyl Coated Steel Screw-In Plant Hook 30 lbs",
+        "price": 2.48,
+        "rating": 4.7116,
+        "reviewCount": 267,
+        "link": "https://apionline.homedepot.com/p/Everbilt-3-3-4-in-Vinyl-Coated-Steel-Screw-In-Plant-Hook-30-lbs-01212/202305418",
+        "packInfo": "单件",
+        "parsedNameZh": "植物吊挂钩",
+        "installation": "螺旋固定式",
+        "materials": [
+          "包胶钢制"
+        ],
+        "capacities": [
+          30
+        ],
+        "dimensions": [
+          "3-3/4\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/ef6970f1-a33a-4307-878e-829adf2e04f4/svn/gray-everbilt-hooks-01212-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305418",
+          "title": "3-3/4 in. Vinyl Coated Steel Screw-In Plant Hook 30 lbs",
+          "price": 2.48,
+          "rating": 4.7116,
+          "reviewCount": 267,
+          "link": "https://apionline.homedepot.com/p/Everbilt-3-3-4-in-Vinyl-Coated-Steel-Screw-In-Plant-Hook-30-lbs-01212/202305418",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/ef6970f1-a33a-4307-878e-829adf2e04f4/svn/gray-everbilt-hooks-01212-64_65.jpg",
+          "originalRank": 5
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [
+        "公开评论证据量(267条)高于样本中位数(179条)",
+        "评分(4.7116)高于样本中位数(4.68)",
+        "评论量与评分均有一定证据量"
+      ],
+      "cautionReasons": [
+        "币种为Provider级别推断(USD)，非商品页面字段直接提供",
+        "图片为远程缩略图，非本地保存证据",
+        "仅单关键词、单平台、单页样本",
+        "品牌\"Everbilt\"在样本中占10件，集中度较高"
+      ],
+      "unknowns": [
+        "真实销量",
+        "用户差评内容",
+        "完整商品详情",
+        "竞争商品数量",
+        "供应商信息",
+        "成本、物流与合规"
+      ],
+      "decisionReadiness": "visual_review_ready"
+    },
+    {
+      "familyId": "e5abb72c",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 5,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "18046",
+      "representativeStableId": "202305564",
+      "representativeListingRank": 6,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305564"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305564",
+        "title": "Multi-Use Assorted Garage Storage Vinyl Coated Steel Screw-In Hooks Value Pack (10-Pack)",
+        "price": 13.98,
+        "rating": 4.621,
+        "reviewCount": 248,
+        "link": "https://apionline.homedepot.com/p/Everbilt-Multi-Use-Assorted-Garage-Storage-Vinyl-Coated-Steel-Screw-In-Hooks-Value-Pack-10-Pack-18046/202305564",
+        "packInfo": "10件装",
+        "parsedNameZh": "挂钩",
+        "installation": "螺旋固定式",
+        "materials": [
+          "包胶钢制"
+        ],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/75c855a8-8583-4876-be2b-53506bb47175/svn/metallic-everbilt-garage-storage-hooks-18046-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305564",
+          "title": "Multi-Use Assorted Garage Storage Vinyl Coated Steel Screw-In Hooks Value Pack (10-Pack)",
+          "price": 13.98,
+          "rating": 4.621,
+          "reviewCount": 248,
+          "link": "https://apionline.homedepot.com/p/Everbilt-Multi-Use-Assorted-Garage-Storage-Vinyl-Coated-Steel-Screw-In-Hooks-Value-Pack-10-Pack-18046/202305564",
+          "packInfo": "10件装",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/75c855a8-8583-4876-be2b-53506bb47175/svn/metallic-everbilt-garage-storage-hooks-18046-64_65.jpg",
+          "originalRank": 6
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [
+        "公开评论证据量(248条)高于样本中位数(179条)",
+        "标题明确安装方式: 螺旋固定式"
+      ],
+      "cautionReasons": [
+        "币种为Provider级别推断(USD)，非商品页面字段直接提供",
+        "图片为远程缩略图，非本地保存证据",
+        "仅单关键词、单平台、单页样本",
+        "品牌\"Everbilt\"在样本中占10件，集中度较高"
+      ],
+      "unknowns": [
+        "真实销量",
+        "用户差评内容",
+        "完整商品详情",
+        "竞争商品数量",
+        "供应商信息",
+        "成本、物流与合规",
+        "尺寸",
+        "承重"
+      ],
+      "decisionReadiness": "visual_review_ready"
+    }
+  ],
+  "remainingFamilies": [
+    {
+      "familyId": "b7784f01",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 6,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "17957",
+      "representativeStableId": "202249703",
+      "representativeListingRank": 7,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202249703"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202249703",
+        "title": "Steel Assorted Wall Mount Hooks in Black (4-Pack)",
+        "price": 13.98,
+        "rating": 4.6229,
+        "reviewCount": 236,
+        "link": "https://apionline.homedepot.com/p/Everbilt-Steel-Assorted-Wall-Mount-Hooks-in-Black-4-Pack-17957/202249703",
+        "packInfo": "4件装",
+        "parsedNameZh": "挂钩",
+        "installation": "壁挂式",
+        "materials": [
+          "钢制"
+        ],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/a83f0844-4bd9-4892-b9f3-c5d147136250/svn/black-everbilt-garage-storage-hooks-17957-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202249703",
+          "title": "Steel Assorted Wall Mount Hooks in Black (4-Pack)",
+          "price": 13.98,
+          "rating": 4.6229,
+          "reviewCount": 236,
+          "link": "https://apionline.homedepot.com/p/Everbilt-Steel-Assorted-Wall-Mount-Hooks-in-Black-4-Pack-17957/202249703",
+          "packInfo": "4件装",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/a83f0844-4bd9-4892-b9f3-c5d147136250/svn/black-everbilt-garage-storage-hooks-17957-64_65.jpg",
+          "originalRank": 7
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第7名"
+    },
+    {
+      "familyId": "13faa96a",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 7,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "01215",
+      "representativeStableId": "202305569",
+      "representativeListingRank": 8,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305569"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305569",
+        "title": "1/4 in. x 3-1/2 in. Vinyl Coated Steel Screw-In Tool Hook 15 lbs",
+        "price": 2.48,
+        "rating": 4.6367,
+        "reviewCount": 234,
+        "link": "https://apionline.homedepot.com/p/Everbilt-1-4-in-x-3-1-2-in-Vinyl-Coated-Steel-Screw-In-Tool-Hook-15-lbs-01215/202305569",
+        "packInfo": "单件",
+        "parsedNameZh": "工具挂钩",
+        "installation": "螺旋固定式",
+        "materials": [
+          "包胶钢制"
+        ],
+        "capacities": [
+          15
+        ],
+        "dimensions": [
+          "1/4\"",
+          "3-1/2\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/a2fcd2ec-50b2-42c6-b529-dedfe9968dd6/svn/gray-everbilt-garage-storage-hooks-01215-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305569",
+          "title": "1/4 in. x 3-1/2 in. Vinyl Coated Steel Screw-In Tool Hook 15 lbs",
+          "price": 2.48,
+          "rating": 4.6367,
+          "reviewCount": 234,
+          "link": "https://apionline.homedepot.com/p/Everbilt-1-4-in-x-3-1-2-in-Vinyl-Coated-Steel-Screw-In-Tool-Hook-15-lbs-01215/202305569",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/a2fcd2ec-50b2-42c6-b529-dedfe9968dd6/svn/gray-everbilt-garage-storage-hooks-01215-64_65.jpg",
+          "originalRank": 8
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第8名"
+    },
+    {
+      "familyId": "56d460a4",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 8,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "01219",
+      "representativeStableId": "202305568",
+      "representativeListingRank": 9,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305568"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305568",
+        "title": "5/16 in. x 7-3/4 in. Vinyl Coated Steel Screw-In Ladder Hook 20 lbs",
+        "price": 2.48,
+        "rating": 4.6892,
+        "reviewCount": 222,
+        "link": "https://apionline.homedepot.com/p/Everbilt-5-16-in-x-7-3-4-in-Vinyl-Coated-Steel-Screw-In-Ladder-Hook-20-lbs-01219/202305568",
+        "packInfo": "单件",
+        "parsedNameZh": "梯子挂钩",
+        "installation": "螺旋固定式",
+        "materials": [
+          "包胶钢制"
+        ],
+        "capacities": [
+          20
+        ],
+        "dimensions": [
+          "5/16\"",
+          "7-3/4\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/8da77d63-9296-4ec8-b406-3c04b20446a3/svn/gray-everbilt-garage-storage-hooks-01219-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305568",
+          "title": "5/16 in. x 7-3/4 in. Vinyl Coated Steel Screw-In Ladder Hook 20 lbs",
+          "price": 2.48,
+          "rating": 4.6892,
+          "reviewCount": 222,
+          "link": "https://apionline.homedepot.com/p/Everbilt-5-16-in-x-7-3-4-in-Vinyl-Coated-Steel-Screw-In-Ladder-Hook-20-lbs-01219/202305568",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/8da77d63-9296-4ec8-b406-3c04b20446a3/svn/gray-everbilt-garage-storage-hooks-01219-64_65.jpg",
+          "originalRank": 9
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第9名"
+    },
+    {
+      "familyId": "37701bdc",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 9,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "18016",
+      "representativeStableId": "202305412",
+      "representativeListingRank": 10,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305412"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305412",
+        "title": "8-3/4 in Zinc-Plated Steel Wall Mount Utility Brackets (2-Pack) 20lbs",
+        "price": 6.98,
+        "rating": 4.6372,
+        "reviewCount": 215,
+        "link": "https://apionline.homedepot.com/p/Everbilt-8-3-4-in-Zinc-Plated-Steel-Wall-Mount-Utility-Brackets-2-Pack-20lbs-18016/202305412",
+        "packInfo": "2件装",
+        "parsedNameZh": "壁挂支架",
+        "installation": "壁挂式",
+        "materials": [
+          "镀锌钢制"
+        ],
+        "capacities": [
+          20
+        ],
+        "dimensions": [
+          "8-3/4\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/a74c97b8-a61e-402a-9417-dbae9a71a5e6/svn/zinc-everbilt-garage-storage-hooks-18016-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305412",
+          "title": "8-3/4 in Zinc-Plated Steel Wall Mount Utility Brackets (2-Pack) 20lbs",
+          "price": 6.98,
+          "rating": 4.6372,
+          "reviewCount": 215,
+          "link": "https://apionline.homedepot.com/p/Everbilt-8-3-4-in-Zinc-Plated-Steel-Wall-Mount-Utility-Brackets-2-Pack-20lbs-18016/202305412",
+          "packInfo": "2件装",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/a74c97b8-a61e-402a-9417-dbae9a71a5e6/svn/zinc-everbilt-garage-storage-hooks-18016-64_65.jpg",
+          "originalRank": 10
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第10名"
+    },
+    {
+      "familyId": "7093ee01",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 10,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "18076",
+      "representativeStableId": "202305556",
+      "representativeListingRank": 11,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305556"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305556",
+        "title": "16 in. Gray Steel Wall Mounted Household Storage Hanger 25 lbs",
+        "price": 6.98,
+        "rating": 4.6825,
+        "reviewCount": 211,
+        "link": "https://apionline.homedepot.com/p/Everbilt-16-in-Gray-Steel-Wall-Mounted-Household-Storage-Hanger-25-lbs-18076/202305556",
+        "packInfo": "单件",
+        "parsedNameZh": "收纳挂架",
+        "installation": "壁挂式",
+        "materials": [
+          "钢制"
+        ],
+        "capacities": [
+          25
+        ],
+        "dimensions": [
+          "16\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/78c4096c-cb1b-4b23-b086-7a4ab85466f2/svn/metallic-everbilt-hooks-18076-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305556",
+          "title": "16 in. Gray Steel Wall Mounted Household Storage Hanger 25 lbs",
+          "price": 6.98,
+          "rating": 4.6825,
+          "reviewCount": 211,
+          "link": "https://apionline.homedepot.com/p/Everbilt-16-in-Gray-Steel-Wall-Mounted-Household-Storage-Hanger-25-lbs-18076/202305556",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/78c4096c-cb1b-4b23-b086-7a4ab85466f2/svn/metallic-everbilt-hooks-18076-64_65.jpg",
+          "originalRank": 11
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第11名"
+    },
+    {
+      "familyId": "8f9e8b07",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 11,
+      "normalizedBrand": "Husky",
+      "normalizedModelNumber": "813414",
+      "representativeStableId": "320803289",
+      "representativeListingRank": 12,
+      "memberCount": 1,
+      "memberStableIds": [
+        "320803289"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "320803289",
+        "title": "Heavy-Duty Flip Up Tool Holder",
+        "price": 11.98,
+        "rating": 4.7765,
+        "reviewCount": 179,
+        "link": "https://apionline.homedepot.com/p/Husky-Heavy-Duty-Flip-Up-Tool-Holder-813414/320803289",
+        "packInfo": "单件",
+        "parsedNameZh": "翻转式工具架",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/0a03f937-f3a9-4e5a-b253-25131be8683a/svn/black-husky-hooks-813414-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "320803289",
+          "title": "Heavy-Duty Flip Up Tool Holder",
+          "price": 11.98,
+          "rating": 4.7765,
+          "reviewCount": 179,
+          "link": "https://apionline.homedepot.com/p/Husky-Heavy-Duty-Flip-Up-Tool-Holder-813414/320803289",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/0a03f937-f3a9-4e5a-b253-25131be8683a/svn/black-husky-hooks-813414-64_65.jpg",
+          "originalRank": 12
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第12名"
+    },
+    {
+      "familyId": "0ab6d095",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 12,
+      "normalizedBrand": "Husky",
+      "normalizedModelNumber": "816420",
+      "representativeStableId": "318089169",
+      "representativeListingRank": 13,
+      "memberCount": 1,
+      "memberStableIds": [
+        "318089169"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "318089169",
+        "title": "8 in. L Heavy-Duty Black Vinyl-Coated Steel Rafter Hanger Storage Hook 50 lbs.",
+        "price": 4.98,
+        "rating": 4.8266,
+        "reviewCount": 173,
+        "link": "https://apionline.homedepot.com/p/Husky-8-in-L-Heavy-Duty-Black-Vinyl-Coated-Steel-Rafter-Hanger-Storage-Hook-50-lbs-816420/318089169",
+        "packInfo": "单件",
+        "parsedNameZh": "屋顶挂架挂钩",
+        "installation": "未提供",
+        "materials": [
+          "钢制"
+        ],
+        "capacities": [
+          50
+        ],
+        "dimensions": [
+          "8\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/ede7d8b6-e298-4603-87d7-ca332cd7b311/svn/black-husky-garage-storage-hooks-816420-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "318089169",
+          "title": "8 in. L Heavy-Duty Black Vinyl-Coated Steel Rafter Hanger Storage Hook 50 lbs.",
+          "price": 4.98,
+          "rating": 4.8266,
+          "reviewCount": 173,
+          "link": "https://apionline.homedepot.com/p/Husky-8-in-L-Heavy-Duty-Black-Vinyl-Coated-Steel-Rafter-Hanger-Storage-Hook-50-lbs-816420/318089169",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/ede7d8b6-e298-4603-87d7-ca332cd7b311/svn/black-husky-garage-storage-hooks-816420-64_65.jpg",
+          "originalRank": 13
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第13名"
+    },
+    {
+      "familyId": "93e5dd54",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 13,
+      "normalizedBrand": "Husky",
+      "normalizedModelNumber": "816350",
+      "representativeStableId": "318089167",
+      "representativeListingRank": 14,
+      "memberCount": 1,
+      "memberStableIds": [
+        "318089167"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "318089167",
+        "title": "40 lbs. Heavy-Duty Wall-Mounted Black Vinyl-Coated Steel Utility Hook with Mounting Hardware",
+        "price": 11.98,
+        "rating": 4.8092,
+        "reviewCount": 173,
+        "link": "https://apionline.homedepot.com/p/Husky-40-lbs-Heavy-Duty-Wall-Mounted-Black-Vinyl-Coated-Steel-Utility-Hook-with-Mounting-Hardware-816350/318089167",
+        "packInfo": "单件",
+        "parsedNameZh": "通用收纳挂钩",
+        "installation": "未提供",
+        "materials": [
+          "钢制"
+        ],
+        "capacities": [
+          40
+        ],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/aa6707b4-aa8a-453c-8c02-6d4a5b43ede7/svn/black-husky-garage-storage-hooks-816350-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "318089167",
+          "title": "40 lbs. Heavy-Duty Wall-Mounted Black Vinyl-Coated Steel Utility Hook with Mounting Hardware",
+          "price": 11.98,
+          "rating": 4.8092,
+          "reviewCount": 173,
+          "link": "https://apionline.homedepot.com/p/Husky-40-lbs-Heavy-Duty-Wall-Mounted-Black-Vinyl-Coated-Steel-Utility-Hook-with-Mounting-Hardware-816350/318089167",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/aa6707b4-aa8a-453c-8c02-6d4a5b43ede7/svn/black-husky-garage-storage-hooks-816350-64_65.jpg",
+          "originalRank": 14
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第14名"
+    },
+    {
+      "familyId": "18c05204",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 14,
+      "normalizedBrand": "Husky",
+      "normalizedModelNumber": "813424",
+      "representativeStableId": "320803283",
+      "representativeListingRank": 15,
+      "memberCount": 1,
+      "memberStableIds": [
+        "320803283"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "320803283",
+        "title": "Heavy-Duty Hook Rail",
+        "price": 15.98,
+        "rating": 4.7294,
+        "reviewCount": 170,
+        "link": "https://apionline.homedepot.com/p/Husky-Heavy-Duty-Hook-Rail-813424/320803283",
+        "packInfo": "单件",
+        "parsedNameZh": "挂钩轨道",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/c83adc7e-ea16-44ab-bd47-a46e997974ec/svn/black-husky-garage-storage-hooks-813424-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "320803283",
+          "title": "Heavy-Duty Hook Rail",
+          "price": 15.98,
+          "rating": 4.7294,
+          "reviewCount": 170,
+          "link": "https://apionline.homedepot.com/p/Husky-Heavy-Duty-Hook-Rail-813424/320803283",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/c83adc7e-ea16-44ab-bd47-a46e997974ec/svn/black-husky-garage-storage-hooks-813424-64_65.jpg",
+          "originalRank": 15
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第15名"
+    },
+    {
+      "familyId": "29edb546",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 15,
+      "normalizedBrand": "Husky",
+      "normalizedModelNumber": "861655",
+      "representativeStableId": "320803288",
+      "representativeListingRank": 16,
+      "memberCount": 1,
+      "memberStableIds": [
+        "320803288"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "320803288",
+        "title": "Heavy-Duty Padded Arm Hanger",
+        "price": 11.98,
+        "rating": 4.7419,
+        "reviewCount": 155,
+        "link": "https://apionline.homedepot.com/p/Husky-Heavy-Duty-Padded-Arm-Hanger-861655/320803288",
+        "packInfo": "单件",
+        "parsedNameZh": "软垫臂挂架",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/91b99458-7e7d-4dad-aa76-bcb2c40e588d/svn/gray-black-husky-garage-storage-hooks-861655-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "320803288",
+          "title": "Heavy-Duty Padded Arm Hanger",
+          "price": 11.98,
+          "rating": 4.7419,
+          "reviewCount": 155,
+          "link": "https://apionline.homedepot.com/p/Husky-Heavy-Duty-Padded-Arm-Hanger-861655/320803288",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/91b99458-7e7d-4dad-aa76-bcb2c40e588d/svn/gray-black-husky-garage-storage-hooks-861655-64_65.jpg",
+          "originalRank": 16
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第16名"
+    },
+    {
+      "familyId": "3ef6a36d",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 16,
+      "normalizedBrand": "Husky",
+      "normalizedModelNumber": "861665",
+      "representativeStableId": "320803287",
+      "representativeListingRank": 17,
+      "memberCount": 1,
+      "memberStableIds": [
+        "320803287"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "320803287",
+        "title": "Double Arm Super Hook",
+        "price": 13.98,
+        "rating": 4.7778,
+        "reviewCount": 153,
+        "link": "https://apionline.homedepot.com/p/Husky-Double-Arm-Super-Hook-861665/320803287",
+        "packInfo": "单件",
+        "parsedNameZh": "双臂挂钩",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/eba1a0ab-8d4c-4f02-a1b0-aa7fbaf2c81b/svn/gray-black-husky-garage-storage-hooks-861665-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "320803287",
+          "title": "Double Arm Super Hook",
+          "price": 13.98,
+          "rating": 4.7778,
+          "reviewCount": 153,
+          "link": "https://apionline.homedepot.com/p/Husky-Double-Arm-Super-Hook-861665/320803287",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/eba1a0ab-8d4c-4f02-a1b0-aa7fbaf2c81b/svn/gray-black-husky-garage-storage-hooks-861665-64_65.jpg",
+          "originalRank": 17
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第17名"
+    },
+    {
+      "familyId": "02a4a57c",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 17,
+      "normalizedBrand": "Everbilt",
+      "normalizedModelNumber": "01217",
+      "representativeStableId": "202305570",
+      "representativeListingRank": 18,
+      "memberCount": 1,
+      "memberStableIds": [
+        "202305570"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "202305570",
+        "title": "5/16 in. x 7 in. Vinyl Coated Steel Screw-In Utility Hook 20 lbs",
+        "price": 3.48,
+        "rating": 4.7727,
+        "reviewCount": 132,
+        "link": "https://apionline.homedepot.com/p/Everbilt-5-16-in-x-7-in-Vinyl-Coated-Steel-Screw-In-Utility-Hook-20-lbs-01217/202305570",
+        "packInfo": "单件",
+        "parsedNameZh": "通用收纳挂钩",
+        "installation": "螺旋固定式",
+        "materials": [
+          "包胶钢制"
+        ],
+        "capacities": [
+          20
+        ],
+        "dimensions": [
+          "5/16\"",
+          "7\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/37ddc51a-a23b-4955-b6ba-7bf470d89b45/svn/gray-everbilt-garage-storage-hooks-01217-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "202305570",
+          "title": "5/16 in. x 7 in. Vinyl Coated Steel Screw-In Utility Hook 20 lbs",
+          "price": 3.48,
+          "rating": 4.7727,
+          "reviewCount": 132,
+          "link": "https://apionline.homedepot.com/p/Everbilt-5-16-in-x-7-in-Vinyl-Coated-Steel-Screw-In-Utility-Hook-20-lbs-01217/202305570",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/37ddc51a-a23b-4955-b6ba-7bf470d89b45/svn/gray-everbilt-garage-storage-hooks-01217-64_65.jpg",
+          "originalRank": 18
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "同为A级优先，但评论量/评分综合排序位于第18名"
+    },
+    {
+      "familyId": "2cf57fb8",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 18,
+      "normalizedBrand": "Milwaukee",
+      "normalizedModelNumber": "48-22-8330",
+      "representativeStableId": "320026102",
+      "representativeListingRank": 19,
+      "memberCount": 1,
+      "memberStableIds": [
+        "320026102"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "320026102",
+        "title": "PACKOUT Straight Utility Hook",
+        "price": 19.97,
+        "rating": 4.7705,
+        "reviewCount": 61,
+        "link": "https://apionline.homedepot.com/p/Milwaukee-PACKOUT-Straight-Utility-Hook-48-22-8330/320026102",
+        "packInfo": "单件",
+        "parsedNameZh": "通用收纳挂钩",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/d9ffc0d2-af99-4d1b-8370-b897cd78d543/svn/red-milwaukee-garage-storage-hooks-48-22-8330-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "320026102",
+          "title": "PACKOUT Straight Utility Hook",
+          "price": 19.97,
+          "rating": 4.7705,
+          "reviewCount": 61,
+          "link": "https://apionline.homedepot.com/p/Milwaukee-PACKOUT-Straight-Utility-Hook-48-22-8330/320026102",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/d9ffc0d2-af99-4d1b-8370-b897cd78d543/svn/red-milwaukee-garage-storage-hooks-48-22-8330-64_65.jpg",
+          "originalRank": 19
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "优先度B级（评论量≥20或评分≥4.5，但未同时满足A级双条件）"
+    },
+    {
+      "familyId": "3835867a",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 19,
+      "normalizedBrand": "Richelieu Hardware",
+      "normalizedModelNumber": "RH3503301195",
+      "representativeStableId": "301411971",
+      "representativeListingRank": 20,
+      "memberCount": 1,
+      "memberStableIds": [
+        "301411971"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "301411971",
+        "title": "2-15/16 in. (76 mm) Brushed Nickel Utility Wall Mount Hook",
+        "price": 6.11,
+        "rating": 4.5758,
+        "reviewCount": 33,
+        "link": "https://apionline.homedepot.com/p/Richelieu-Hardware-2-15-16-in-76-mm-Brushed-Nickel-Utility-Wall-Mount-Hook-RH3503301195/301411971",
+        "packInfo": "单件",
+        "parsedNameZh": "挂钩",
+        "installation": "壁挂式",
+        "materials": [
+          "拉丝镍"
+        ],
+        "capacities": [],
+        "dimensions": [
+          "2-15/16\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/f8b82619-271a-467d-8aa1-f35308b0aa27/svn/brushed-nickel-richelieu-hardware-hooks-rh3503301195-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "301411971",
+          "title": "2-15/16 in. (76 mm) Brushed Nickel Utility Wall Mount Hook",
+          "price": 6.11,
+          "rating": 4.5758,
+          "reviewCount": 33,
+          "link": "https://apionline.homedepot.com/p/Richelieu-Hardware-2-15-16-in-76-mm-Brushed-Nickel-Utility-Wall-Mount-Hook-RH3503301195/301411971",
+          "packInfo": "单件",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/f8b82619-271a-467d-8aa1-f35308b0aa27/svn/brushed-nickel-richelieu-hardware-hooks-rh3503301195-64_65.jpg",
+          "originalRank": 20
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "优先度B级（评论量≥20或评分≥4.5，但未同时满足A级双条件）"
+    },
+    {
+      "familyId": "51cf0df7",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 20,
+      "normalizedBrand": "Hardware Essentials",
+      "normalizedModelNumber": "852163",
+      "representativeStableId": "203810300",
+      "representativeListingRank": 21,
+      "memberCount": 1,
+      "memberStableIds": [
+        "203810300"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "203810300",
+        "title": "9 in. x 10.5 in. Zinc-Plated Storage Hook (2-Pack)",
+        "price": 7.49,
+        "rating": 4.3333,
+        "reviewCount": 27,
+        "link": "https://apionline.homedepot.com/p/Hardware-Essentials-9-in-x-10-5-in-Zinc-Plated-Storage-Hook-2-Pack-852163/203810300",
+        "packInfo": "2件装",
+        "parsedNameZh": "挂钩",
+        "installation": "未提供",
+        "materials": [
+          "镀锌钢制"
+        ],
+        "capacities": [],
+        "dimensions": [
+          "9\"",
+          "10.5\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/d7c4e73c-93d6-48a1-9659-5d36a3a3eb98/svn/zinc-hardware-essentials-garage-storage-hooks-852163-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "203810300",
+          "title": "9 in. x 10.5 in. Zinc-Plated Storage Hook (2-Pack)",
+          "price": 7.49,
+          "rating": 4.3333,
+          "reviewCount": 27,
+          "link": "https://apionline.homedepot.com/p/Hardware-Essentials-9-in-x-10-5-in-Zinc-Plated-Storage-Hook-2-Pack-852163/203810300",
+          "packInfo": "2件装",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/d7c4e73c-93d6-48a1-9659-5d36a3a3eb98/svn/zinc-hardware-essentials-garage-storage-hooks-852163-64_65.jpg",
+          "originalRank": 21
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "优先度B级（评论量≥20或评分≥4.5，但未同时满足A级双条件）"
+    },
+    {
+      "familyId": "5bdc3156",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 21,
+      "normalizedBrand": "M-D Building Products",
+      "normalizedModelNumber": "15005",
+      "representativeStableId": "329497305",
+      "representativeListingRank": 22,
+      "memberCount": 1,
+      "memberStableIds": [
+        "329497305"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "329497305",
+        "title": "(2-Pack) Superhooks 1.81  in. White 22 lb. Load Capacity Utility Hook with Multiple Fasteners",
+        "price": 3.98,
+        "rating": 4,
+        "reviewCount": 2,
+        "link": "https://apionline.homedepot.com/p/M-D-Building-Products-2-Pack-Superhooks-1-81-in-White-22-lb-Load-Capacity-Utility-Hook-with-Multiple-Fasteners-15005/329497305",
+        "packInfo": "2件装",
+        "parsedNameZh": "通用收纳挂钩",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [
+          22
+        ],
+        "dimensions": [
+          "1.81\""
+        ],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/6aa55155-23a6-44f2-8a4e-5f90b66c0042/svn/white-m-d-building-products-hooks-15005-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "329497305",
+          "title": "(2-Pack) Superhooks 1.81  in. White 22 lb. Load Capacity Utility Hook with Multiple Fasteners",
+          "price": 3.98,
+          "rating": 4,
+          "reviewCount": 2,
+          "link": "https://apionline.homedepot.com/p/M-D-Building-Products-2-Pack-Superhooks-1-81-in-White-22-lb-Load-Capacity-Utility-Hook-with-Multiple-Fasteners-15005/329497305",
+          "packInfo": "2件装",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/6aa55155-23a6-44f2-8a4e-5f90b66c0042/svn/white-m-d-building-products-hooks-15005-64_65.jpg",
+          "originalRank": 22
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "优先度C级（评论量<20且评分<4.5）"
+    },
+    {
+      "familyId": "76487724",
+      "familyStatus": "singleton",
+      "familyKeyType": "model_number",
+      "familyRank": 22,
+      "normalizedBrand": "AllSpace",
+      "normalizedModelNumber": "450036-12",
+      "representativeStableId": "206182812",
+      "representativeListingRank": 23,
+      "memberCount": 1,
+      "memberStableIds": [
+        "206182812"
+      ],
+      "sellerEvidenceStatus": "not_observed",
+      "sellerWarning": null,
+      "representativeListing": {
+        "stableId": "206182812",
+        "title": "Utility Basic Hook (3-Piece)",
+        "price": 1.45,
+        "rating": 1,
+        "reviewCount": 1,
+        "link": "https://apionline.homedepot.com/p/AllSpace-Utility-Basic-Hook-3-Piece-450036-12/206182812",
+        "packInfo": "3件装",
+        "parsedNameZh": "基础挂钩",
+        "installation": "未提供",
+        "materials": [],
+        "capacities": [],
+        "dimensions": [],
+        "thumbnailUrl": "https://images.thdstatic.com/productImages/9fef8b93-07c8-49fa-bf11-0df4d2b77438/svn/grey-allspace-garage-storage-hooks-450036-12-64_65.jpg"
+      },
+      "memberListings": [
+        {
+          "stableId": "206182812",
+          "title": "Utility Basic Hook (3-Piece)",
+          "price": 1.45,
+          "rating": 1,
+          "reviewCount": 1,
+          "link": "https://apionline.homedepot.com/p/AllSpace-Utility-Basic-Hook-3-Piece-450036-12/206182812",
+          "packInfo": "3件装",
+          "thumbnailUrl": "https://images.thdstatic.com/productImages/9fef8b93-07c8-49fa-bf11-0df4d2b77438/svn/grey-allspace-garage-storage-hooks-450036-12-64_65.jpg",
+          "originalRank": 23
+        }
+      ],
+      "variantDifferences": [],
+      "duplicateSignals": [],
+      "factualReasons": [],
+      "cautionReasons": [],
+      "unknowns": [],
+      "decisionReadiness": "visual_review_ready",
+      "notTopFamilyReason": "优先度C级（评论量<20且评分<4.5）"
+    }
+  ]
+}

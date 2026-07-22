@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "family-top5-human-review.v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "reviewedAt",
+    "reviewedFamilies",
+    "selectedFamilyIds",
+    "selectedFamilies",
+    "reviewerConfirmation",
+    "sourceArtifactBinding"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "family-top5-human-review.v1" },
+    "reviewedAt": { "type": "string", "format": "date-time" },
+    "reviewedFamilies": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/reviewedFamily" }
+    },
+    "selectedFamilyIds": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/familyId" }
+    },
+    "selectedFamilies": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/selectedFamily" }
+    },
+    "reviewerConfirmation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confirmedByHuman", "statement"],
+      "properties": {
+        "confirmedByHuman": { "const": true },
+        "statement": { "const": "人工已逐项复核上述 5 个商品家族" }
+      }
+    },
+    "sourceArtifactBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceArtifactId",
+        "probeInputHash",
+        "probeRunBindingHash",
+        "providerAwareV2InputHash",
+        "providerAwareV2ContentHash",
+        "familyDataSha256",
+        "familyManifestSha256",
+        "appManifestSha256",
+        "provenanceSha256"
+      ],
+      "properties": {
+        "sourceArtifactId": { "type": "string" },
+        "probeInputHash": { "$ref": "#/$defs/sha256" },
+        "probeRunBindingHash": { "$ref": "#/$defs/sha256" },
+        "providerAwareV2InputHash": { "$ref": "#/$defs/sha256" },
+        "providerAwareV2ContentHash": { "$ref": "#/$defs/sha256" },
+        "familyDataSha256": { "$ref": "#/$defs/sha256" },
+        "familyManifestSha256": { "$ref": "#/$defs/sha256" },
+        "appManifestSha256": { "$ref": "#/$defs/sha256" },
+        "provenanceSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "familyId": {
+      "type": "string",
+      "enum": ["108ee1b6", "88400b7f", "43ede4a9", "dcc707af", "e5abb72c"]
+    },
+    "reviewedFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "representativeStableId", "memberStableIds", "decision", "notes"],
+      "properties": {
+        "familyId": { "$ref": "#/$defs/familyId" },
+        "representativeStableId": { "type": "string", "pattern": "^[0-9]{9}$" },
+        "memberStableIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[0-9]{9}$" } },
+        "decision": { "enum": ["continue_research", "watch", "reject"] },
+        "notes": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "selectedFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["familyId", "representativeStableId", "memberStableIds"],
+      "properties": {
+        "familyId": { "$ref": "#/$defs/familyId" },
+        "representativeStableId": { "type": "string", "pattern": "^[0-9]{9}$" },
+        "memberStableIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "pattern": "^[0-9]{9}$" } }
+      }
+    }
+  }
+}

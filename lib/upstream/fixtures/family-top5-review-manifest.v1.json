@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "family-top5-review-manifest.v2",
+  "provenanceSchemaVersion": "family-top5-provenance.v1",
+  "sourceArtifactId": "2026-07-21-Provider-Aware-Family-Top5-Review-07",
+  "codeBaseline": {
+    "commit": "21f30cee168bccc8956b55de3f361df08ad5d9c9",
+    "tree": "56cb678c849621f211148b4725e8df19a0d6aa15",
+    "branch": "codex/pipeline-provider-probe-v1"
+  },
+  "artifacts": [
+    {
+      "path": "family-top5-review.v1.json",
+      "sidecarPath": "family-top5-review.v1.json.sha256",
+      "bytes": 51024,
+      "sha256": "8c8f27543c98084e54dc560ba38c1d4ca02b9fcb231e315c1f055b6fe3037d6e"
+    },
+    {
+      "path": "family-top5-provenance.v1.json",
+      "sidecarPath": "family-top5-provenance.v1.json.sha256",
+      "bytes": 2252,
+      "sha256": "fd1584fb2e6c74bcabad8a6b283e6dda26889a12613f3194685d0b330c0e9e7f"
+    },
+    {
+      "path": "family-top5-human-review-schema.v1.json",
+      "sidecarPath": "family-top5-human-review-schema.v1.json.sha256",
+      "bytes": 3548,
+      "sha256": "9df699597c9f0dd16093c547a554a21dace2227664869b80a82dc44e6256d91b"
+    }
+  ]
+}
