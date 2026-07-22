@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Production baseline Commit：`2d4562aea234543ef3862b0d10a07e0ac40039b0`（短哈希 `2d4562a`）
-> Production baseline Tree：`f1b4d9bebc51ddca01bd70ab615e02fe90833aa0`
+> Source baseline Commit：`e536c8bf9771af1b7d615511fdda8449034d3867`（短哈希 `e536c8b`）
+> Source baseline Tree：`a6d8eaf991b6c733bbb862996fe0cf7d4c11b693`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/retire-unreachable-code` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-governance-night` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 退役候选边界：本页统计已纳入删除 Commit `a22548930748649fa44458c82d0daacfee75f885` 与 `be07046920a09308410fb590be3170ceba0b205f`；合入 main 前不改变生产部署状态。
+> 候选边界：本页统计纳入治理候选新增的 `lib/opportunityCandidateActions.ts`；合入 main 前该文件仍是 `IN-FLIGHT / NOT_PRODUCTION`，也不改变生产部署状态。
 
 ## 1. 分类定义
 
@@ -28,10 +28,10 @@
 |目录|PRODUCTION|COMPATIBILITY|EXPERIMENTAL|ARCHIVED|UNKNOWN|合计|
 |-|-:|-:|-:|-:|-:|-:|
 |`components/`|26|12|3|0|0|41|
-|`lib/`|82|2|1|0|2|87|
+|`lib/`|83|2|1|0|2|88|
 |`hooks/`|2|0|0|0|1|3|
 |`scripts/`|2|0|1|0|2|5|
-|总计|112|14|5|0|5|136|
+|总计|113|14|5|0|5|137|
 
 ## 3. components/
 
@@ -65,9 +65,10 @@
 
 ## 4. lib/
 
-`PRODUCTION` 共 82 个非测试代码文件，包括：
+治理候选合入后，`PRODUCTION` 共 83 个非测试代码文件，包括：
 
 - Candidate、Evidence、source proof、quality、R2.2 与 Task 领域模块；
+- `lib/opportunityCandidateActions.ts`，提供 Candidate 删除 presentation 的纯 module interface；
 - `lib/server/` 中认证、Owner/Visitor 分流、Candidate、workflow proof、Listing、图片与 AI gate；
 - `lib/workflows/productAnalysis.ts`；
 - `lib/upstream/family-top5-adapter.ts` 和 `family-top5-types.ts`，因为 `/opportunities/import` 是高级隐藏生产入口；
@@ -105,7 +106,7 @@
 
 ## 7. Artifact 文件
 
-`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 136 个运行时代码统计：
+`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 137 个运行时代码统计：
 
 - Manifest + Manifest Sidecar；
 - Family 数据 + Sidecar；
@@ -128,12 +129,12 @@ IN-FLIGHT / LOCAL / NOT_PRODUCTION
 
 ## 9. 测试体系
 
-Production baseline 有 124 个 `*.test.ts`，没有 `*.test.tsx`：
+治理候选有 125 个 `*.test.ts`，没有 `*.test.tsx`：
 
 |根目录|数量|
 |-|-:|
 |`app/`|34|
-|`components/`|8|
+|`components/`|9|
 |`hooks/`|1|
 |`lib/`|80|
 |`scripts/`|1|
