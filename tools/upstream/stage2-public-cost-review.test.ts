@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import {
   validateStage2PublicCostReviewRequest,
 } from "./stage2-public-cost-review";
 
-const ROOT = resolve(process.cwd(), "../06_测试与验证");
+const ROOT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证");
 const read = (relative: string) => JSON.parse(readFileSync(resolve(ROOT, relative), "utf8"));
 function source() {
   const runRoot = "2026-07-15-Phase-Stage2-Public-Cost-Research-Run-01";

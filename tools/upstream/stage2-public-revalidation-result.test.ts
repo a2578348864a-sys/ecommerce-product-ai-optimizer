@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,7 +8,7 @@ import type { buildStage2PublicRunEvidence } from "./stage2-public-evidence-coll
 import type { Stage2PublicRevalidationBrief } from "./stage2-public-revalidation-brief";
 import { buildStage2PublicRevalidationResult } from "./stage2-public-revalidation-result";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const BRIEF_ROOT = resolve(PROJECT_ROOT,
   "06_测试与验证/2026-07-15-Phase-Stage2-Public-Evidence-01/revalidation-authorization");
 const RUN_ROOT = resolve(PROJECT_ROOT, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Revalidation-01");

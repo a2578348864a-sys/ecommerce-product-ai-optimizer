@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,7 +8,7 @@ import {
   type Stage2PublicCostApplicationInput,
 } from "./stage2-public-cost-application";
 
-const PROJECT_ROOT = resolve(process.cwd(), "..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const read = <T>(relative: string) => JSON.parse(readFileSync(resolve(PROJECT_ROOT, relative), "utf8")) as T;
 
 function fixture(): Stage2PublicCostApplicationInput {

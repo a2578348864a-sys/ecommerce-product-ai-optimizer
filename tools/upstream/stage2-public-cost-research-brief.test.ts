@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import {
   validateStage2PublicCostResearchBrief,
 } from "./stage2-public-cost-research-brief";
 
-const PROJECT = resolve(process.cwd(), "..");
+const PROJECT = TEST_PROJECT_MATERIALS_ROOT;
 const INVENTORY_FILE = resolve(
   PROJECT,
   "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/05-Stage2证据缺口清单/stage2-evidence-gap-inventory.v1.json",

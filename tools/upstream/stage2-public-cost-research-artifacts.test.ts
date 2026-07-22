@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stableHash } from "../../lib/upstream/pipeline";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import {
   buildStage2PublicCostDerivationPreview,
   validateStage2PublicCostEvidence,
@@ -12,9 +13,8 @@ import {
   type Stage2PublicCostResearchBrief,
 } from "./stage2-public-cost-research-brief";
 
-const ROOT = resolve(
-  process.cwd(),
-  "../06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Brief-01",
+const ROOT = projectMaterialPath(
+  "06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Brief-01",
 );
 
 function readJson<T>(name: string): T {

@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,7 @@ import {
 } from "./stage2-public-cost-research-authorization";
 import type { Stage2PublicCostResearchBrief } from "./stage2-public-cost-research-brief";
 
-const PROJECT = resolve(process.cwd(), "..");
+const PROJECT = TEST_PROJECT_MATERIALS_ROOT;
 const BRIEF_FILE = resolve(PROJECT, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Brief-01/stage2-public-cost-research-brief.v1.json");
 const ROOT = resolve(PROJECT, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Authorization-01");
 

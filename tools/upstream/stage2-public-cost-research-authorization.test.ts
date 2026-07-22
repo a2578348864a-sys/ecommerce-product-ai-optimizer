@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { projectMaterialPath } from "../../tests/helpers/project-materials";
 import {
   STAGE2_PUBLIC_COST_AUTHORIZATION_TEXT,
   buildStage2PublicCostResearchAuthorizationGrant,
@@ -12,9 +13,8 @@ import {
 } from "./stage2-public-cost-research-authorization";
 import type { Stage2PublicCostResearchBrief } from "./stage2-public-cost-research-brief";
 
-const BRIEF_FILE = resolve(
-  process.cwd(),
-  "../06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Brief-01/stage2-public-cost-research-brief.v1.json",
+const BRIEF_FILE = projectMaterialPath(
+  "06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Brief-01/stage2-public-cost-research-brief.v1.json",
 );
 
 function readBrief() {

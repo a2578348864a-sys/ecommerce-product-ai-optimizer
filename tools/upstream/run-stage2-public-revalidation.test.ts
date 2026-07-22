@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,8 +8,7 @@ import {
   validateStage2PublicRevalidationAuthorization,
 } from "./run-stage2-public-revalidation";
 
-const BRIEF_FILE = resolve(import.meta.dirname,
-  "../../../06_测试与验证/2026-07-15-Phase-Stage2-Public-Evidence-01/revalidation-authorization/stage2-public-revalidation-brief.v1.json");
+const BRIEF_FILE = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Evidence-01/revalidation-authorization/stage2-public-revalidation-brief.v1.json");
 
 function brief(): Stage2PublicRevalidationBrief {
   return JSON.parse(readFileSync(BRIEF_FILE, "utf8")) as Stage2PublicRevalidationBrief;

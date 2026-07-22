@@ -1,9 +1,10 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildStage2PublicCostResearchRun } from "./stage2-public-cost-research-run";
 
-const ROOT = resolve(process.cwd(), "..");
+const ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const read = <T>(path: string) => JSON.parse(readFileSync(resolve(ROOT, path), "utf8")) as T;
 
 function fixture() {

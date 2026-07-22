@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateStage2PublicCostApplication } from "./generate-stage2-public-cost-application";
 
-const PROJECT = resolve(process.cwd(), "..");
+const PROJECT = TEST_PROJECT_MATERIALS_ROOT;
 
 function input(outputDirectory: string) {
   const research = join(PROJECT, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Cost-Research-Run-01");

@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateStage2PublicRevalidationMaterials } from "./generate-stage2-public-revalidation-brief";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const ORIGINAL = resolve(PROJECT_ROOT,
   "06_测试与验证/2026-07-14-Phase-Stage1-Solo-Validation-01/08-Stage2-high-01取证授权材料/stage2-evidence-collection-brief.v1.json");
 const RUN_ROOT = resolve(PROJECT_ROOT, "06_测试与验证/2026-07-15-Phase-Stage2-Public-Evidence-01");

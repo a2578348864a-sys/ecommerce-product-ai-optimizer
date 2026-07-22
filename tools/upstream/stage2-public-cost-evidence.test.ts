@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -13,7 +14,7 @@ import {
   type Stage2PublicCostEvidence,
 } from "./stage2-public-cost-evidence";
 
-const PROJECT = resolve(process.cwd(), "..");
+const PROJECT = TEST_PROJECT_MATERIALS_ROOT;
 
 function readJson<T>(relativePath: string): T {
   return JSON.parse(readFileSync(resolve(PROJECT, relativePath), "utf8")) as T;
