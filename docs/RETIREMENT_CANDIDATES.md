@@ -17,7 +17,7 @@
 |`components/CopyButton.tsx`|1|唯一调用者是不可达 `WorkflowClient`|单独删除会破坏旧客户端编译|只能与旧客户端成组评估|
 |`components/ResultSection.tsx`|0|生产 import 图不可达|没有正式退役说明，可能有动态/在途消费者|`UNKNOWN`，低优先级调查|
 |`components/WorkspacePlaceholderPage.tsx`|0|生产 import 图不可达|名称通用，可能是预留组件|`UNKNOWN`，先查 Git 历史|
-|`lib/tasks/filterTaskRecords.ts`|0|生产 import 图不可达|可能是仓外辅助或未接功能|`UNKNOWN`，先查消费者|
+|`lib/tasks/filterTaskRecords.ts`|0|无生产运行时调用，但 `lib/tasks/filterTaskRecords.test.ts` 存在直接测试引用|删除实现会破坏现有测试；必须同步审查测试目的，不能直接删除实现后再删除测试制造通过|`UNKNOWN` 退役候选；先查消费者与测试目的，不能直接删除|
 |`hooks/useLocalStorage.ts`|0|生产 import 图不可达|可能由未来页面或动态入口使用|`UNKNOWN`，先查消费者|
 
 ## 2. Route/API 调查候选
@@ -45,7 +45,7 @@
 
 |对象|移除原因|
 |-|-|
-|`/opportunities/import`、`FamilyTop5Review`、Family adapter/fixtures|production main 中存在有效高级隐藏入口和完整 Artifact 校验闭包。|
+|`/opportunities/import`、`FamilyTop5Review`、Family adapter/fixtures|production main 中存在可直接访问的 `ADVANCED_HIDDEN` 页面和完整 Artifact 校验闭包；生产代码未发现站内导航入口，但真实直接 URL 访问量未知，在取得访问日志前不得判断无人使用或直接退役。|
 |`scripts/real-ai-listing-smoke.ts`|由 `vitest.real-ai-smoke.config.ts` 明确引用，是受控独立 smoke，不是零引用文件。|
 |`radarCrawler.ts`、`radarNormalize.ts`、`radarScore.ts`|正式 opportunities/source-import 链仍直接复用。|
 |`ViralAnalysisRecord` Prisma 模型|当前通用 Task 存储仍使用；改名/删除涉及 schema 与数据迁移。|

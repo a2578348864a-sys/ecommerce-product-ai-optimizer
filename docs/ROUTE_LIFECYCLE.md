@@ -29,7 +29,7 @@
 |`/agent/run`|`PRODUCTION`|`PRIMARY`|主导航入口；支持 Candidate 与 manual 输入。|
 |`/tasks`|`PRODUCTION`|`PRIMARY`|主导航入口；Task 列表与推进。|
 |`/tasks/[id]`|`PRODUCTION`|`PRIMARY`|Task 详情、生命周期与后续资产。|
-|`/opportunities/import`|`PRODUCTION`|`ADVANCED_HIDDEN`|生产可构建、非 redirect、非 development-only；静态站内 href 为 0。|
+|`/opportunities/import`|`PRODUCTION`|`ADVANCED_HIDDEN`|生产可直接访问、非 redirect、非 development-only；静态站内 href 为 0，真实直接 URL 访问量未知。|
 |`/workflow`|`COMPATIBILITY`|旧入口|保留已知 query 并 `redirect()` 到 `/agent/run`；不渲染旧客户端。|
 |`/materials`|`COMPATIBILITY`|旧多页工具|仍渲染旧素材表单，不在主导航。|
 |`/products/new`|`COMPATIBILITY`|旧产品页|仍可直接访问并链接 `/workflow`。|
@@ -126,7 +126,7 @@ API 统计：
 |AI diagnostics 两个 API|production 返回 404|Route 和 `isAiDiagnosticsAllowed()` 条件。|
 |Radar 四个 API|production 返回 404|每个 Route 的 `NODE_ENV` 条件。|
 |`/opportunities` visual fixture|只在 development + 专用开关下启用|生产页面仍为正常 `OpportunitiesForm`。|
-|`/opportunities/import`|无 development 条件、无 redirect|`PRODUCTION / ADVANCED_HIDDEN`。|
+|`/opportunities/import`|无 development 条件、无 redirect，可通过直接 URL 访问；静态站内导航入口为 0|`PRODUCTION / ADVANCED_HIDDEN`；真实直接 URL 访问量为 `UNKNOWN`，无访问日志时不得判断无人使用或直接退役。|
 
 ## 本地在途边界
 

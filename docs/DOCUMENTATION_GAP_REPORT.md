@@ -16,7 +16,7 @@
 |把主链画成强制的首页 → opportunities → Candidate → Agent → Task|首页直接链接 opportunities、agent/run、tasks；Agent 还支持 manual 输入|改为多入口拓扑，并分别记录 Candidate 路径和 manual 路径。|
 |暗示 `/opportunities` 分析后总会得到服务端 Candidate|分析结果先进入本地池；只有认证、Candidate API 可用且保存成功后才成为权威 Candidate|增加 local draft、server save、import-local 和 Agent 阻断条件。|
 |首页读取 Candidate API|`HomeDashboardClient` 的静态 fetch 只有 `/api/tasks`|删除首页 Candidate API 表述。|
-|把 `/opportunities/import` 分类为 EXPERIMENTAL|Route 位于 main、无 development gate、无 redirect；但站内 href 为 0|改为 `PRODUCTION / ADVANCED_HIDDEN`。|
+|把 `/opportunities/import` 分类为 EXPERIMENTAL|Route 位于 main、无 development gate、无 redirect，可通过直接 URL 访问；站内 href 为 0，真实直接 URL 访问量未知|改为 `PRODUCTION / ADVANCED_HIDDEN`；无访问日志时不得判断无人使用或直接退役。|
 |把 `/api/opportunities/crawl` 分类为 COMPATIBILITY|生产代码没有静态调用者，也没有 redirect/alias 证明兼容职责|改为 `UNKNOWN`。|
 |部署配置写作根 `ecosystem.config.cjs`|真实 tracked 路径是 `deploy/ecosystem.config.cjs`；仓库根不存在该文件|统一修正路径。|
 |把真实 AI smoke 当作零引用退役候选|`vitest.real-ai-smoke.config.ts` 明确引用该脚本|从退役候选移除，分类为受控 `EXPERIMENTAL` 验证工具。|

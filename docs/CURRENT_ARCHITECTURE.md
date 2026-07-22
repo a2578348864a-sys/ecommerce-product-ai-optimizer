@@ -105,12 +105,12 @@ Candidate 路径：
 
 - 存在于 production main，未被 development 条件包围，也不是 redirect；
 - 页面元数据和 surface 都明确为“高级手工导入”；
-- 生产源码中没有任何静态 href 指向它；只能通过直接 URL 或仓外入口访问；
+- 生产源码中没有任何静态 href 指向它，但页面可通过直接 URL 访问；是否存在仓外入口、真实直接 URL 访问量均未知；
 - readiness 为 `ready` 时展示 `FamilyTop5Review`，并继续展示高级导入表单；
 - Artifact 缺失或校验失败时显示警告，仍保留手工导入表单；
 - 确认来源导入时仍必须连接服务端 Candidate API，不能直接把只读 Family 数据变成 Task。
 
-结论：它是 `PRODUCTION / ADVANCED_HIDDEN`，不是主导航入口、不是兼容 redirect，也没有代码证据表明它是 development-only。
+结论：它是生产可直接访问的 `PRODUCTION / ADVANCED_HIDDEN` 页面，不是主导航入口、不是兼容 redirect，也没有代码证据表明它是 development-only。真实直接 URL 访问量为 `UNKNOWN`；在取得访问日志前，不得据此判断无人使用或直接退役。
 
 ### 3.4 `/workflow`
 
@@ -181,7 +181,7 @@ Prisma schema 的三个模型是 `ListingCopyHistory`、`ViralAnalysisRecord`、
 |层|生产 main 事实|
 |-|-|
 |Web|Next.js `^15.1.0`、React `^19.0.0`、App Router、TypeScript strict|
-|样式|`app/globals.css`、组件 class 与局部样式；无 Tailwind 依赖|
+|样式|Tailwind CSS `^3.4.17`；存在 `tailwind.config.ts`，`postcss.config.js` 启用 Tailwind 插件，`app/globals.css` 包含 `@tailwind` 指令；同时使用全局 CSS、组件 class 与局部样式|
 |状态|React state/effect、专用 hooks、session/localStorage；无第三方全局状态库|
 |测试|Vitest `^4.1.9`，Node environment；默认只包含 `**/*.test.ts`|
 |真实 AI smoke|由 `vitest.real-ai-smoke.config.ts` 单独指向 `scripts/real-ai-listing-smoke.ts`；不属于默认 `npm test`|
