@@ -11,6 +11,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
+import { getCandidateDeletePresentation } from "@/lib/opportunityCandidateActions";
 import {
   buildCandidateTaskLinkMap,
   resolveCandidateTaskLinks,
@@ -178,39 +179,6 @@ function sourceQueueMessage(reason: SignedSourceQueuePolicyReason): string {
   if (reason === "not_product_candidate") return "仅作为方向线索展示，不能保存为 Candidate";
   if (reason === "unsupported_algorithm") return "规则版本不受支持，请重新抓取";
   return "规则建议暂不推进，不能保存为 Candidate";
-}
-
-export function getCandidateDeletePresentation(input: {
-  isOfficialReadonly: boolean;
-  isLocalDraft: boolean;
-  hasLinkedTask: boolean;
-}) {
-  if (input.isLocalDraft) {
-    return {
-      canDelete: true,
-      label: "删除候选",
-      title: "从当前浏览器候选池删除。",
-    };
-  }
-  if (input.hasLinkedTask) {
-    return {
-      canDelete: false,
-      label: "已转任务，候选来源证据需保留",
-      title: "已转任务的候选承载来源证据，不能硬删除。",
-    };
-  }
-  if (input.isOfficialReadonly) {
-    return {
-      canDelete: false,
-      label: "正式候选不可删除",
-      title: "访客体验模式下不能删除正式候选数据。",
-    };
-  }
-  return {
-    canDelete: true,
-    label: "删除候选",
-    title: "删除候选。",
-  };
 }
 
 type SourceImportResponse = {

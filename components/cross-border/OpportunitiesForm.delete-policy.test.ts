@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getCandidateDeletePresentation } from "@/components/cross-border/OpportunitiesForm";
+import { getCandidateDeletePresentation } from "@/lib/opportunityCandidateActions";
 
 const opportunitiesSource = readFileSync(
   resolve(process.cwd(), "components/cross-border/OpportunitiesForm.tsx"),
