@@ -1,9 +1,10 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stableHash } from "../../lib/upstream/pipeline";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const OUTPUT = resolve(PROJECT_ROOT,
   "06_测试与验证/2026-07-15-Phase-Stage2-Alternative-Source-Capability-Probe-02");
 const read = (name: string): Record<string, unknown> =>

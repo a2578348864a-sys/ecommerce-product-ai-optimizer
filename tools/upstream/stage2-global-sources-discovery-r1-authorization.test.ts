@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,7 +12,7 @@ import {
   validateStage2GlobalSourcesDiscoveryAuthorizationRequest,
 } from "./stage2-global-sources-discovery-r1-authorization";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const readJson = (path: string): Record<string, unknown> =>
   JSON.parse(readFileSync(resolve(PROJECT_ROOT, path), "utf8")) as Record<string, unknown>;
 

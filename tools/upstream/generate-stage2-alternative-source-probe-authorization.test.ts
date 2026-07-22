@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateStage2AlternativeSourceProbeAuthorizationMaterials } from "./generate-stage2-alternative-source-probe-authorization";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const roots: string[] = [];
 
 afterEach(() => {

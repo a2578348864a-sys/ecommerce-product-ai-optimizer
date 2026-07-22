@@ -1,9 +1,10 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { stableHash } from "../../lib/upstream/pipeline";
 
-const OUTPUT = resolve(import.meta.dirname, "../../../06_测试与验证/2026-07-15-Phase-Stage2-Alternative-Source-Capability-Probe-01");
+const OUTPUT = resolve(TEST_PROJECT_MATERIALS_ROOT, "06_测试与验证/2026-07-15-Phase-Stage2-Alternative-Source-Capability-Probe-01");
 const readJson = (name: string) => JSON.parse(readFileSync(resolve(OUTPUT, name), "utf8")) as Record<string, unknown>;
 
 describe("saved Stage 2 alternative source capability probe evidence", () => {

@@ -1,3 +1,7 @@
+import {
+  repositoryPath,
+  TEST_PROJECT_MATERIALS_ROOT,
+} from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,7 +16,7 @@ import {
   type GlobalSourcesDiscoveryDomSignals,
 } from "./stage2-global-sources-discovery-r1";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const readJson = <T>(path: string): T => JSON.parse(readFileSync(resolve(PROJECT_ROOT, path), "utf8")) as T;
 
 const selectionFile = "06_测试与验证/2026-07-15-Phase-Stage2-Global-Sources-Discovery-C1A-01/stage2-alternative-source-selection.v1.json";
@@ -97,9 +101,10 @@ describe("Global Sources C1A-R1 successor brief", () => {
 });
 
 describe("Global Sources C1A-R1 page classification", () => {
-  const fixture = readJson<Fixture>(
-    "电商工具/tools/upstream/fixtures/stage2-global-sources-discovery-r1.v1.json",
-  );
+  const fixture = JSON.parse(readFileSync(
+    repositoryPath("tools/upstream/fixtures/stage2-global-sources-discovery-r1.v1.json"),
+    "utf8",
+  )) as Fixture;
 
   for (const scenario of fixture.scenarios) {
     it(`classifies ${scenario.scenarioId} through the real classifier`, () => {

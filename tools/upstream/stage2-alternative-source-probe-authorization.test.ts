@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,7 +11,7 @@ import {
   validateStage2AlternativeSourceProbeAuthorizationRequest,
 } from "./stage2-alternative-source-probe-authorization";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const brief = JSON.parse(readFileSync(resolve(PROJECT_ROOT,
   "06_测试与验证/2026-07-15-Phase-Stage2-Alternative-Source-Brief-02-Authoritative/stage2-alternative-source-brief.v1.json"),
 "utf8")) as Stage2AlternativeSourceBrief;

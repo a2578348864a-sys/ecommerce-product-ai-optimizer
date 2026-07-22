@@ -1,10 +1,11 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateStage2GlobalSourcesDiscoveryMaterials } from "./generate-stage2-global-sources-discovery";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const roots: string[] = [];
 const file = (path: string): string => resolve(PROJECT_ROOT, path);
 

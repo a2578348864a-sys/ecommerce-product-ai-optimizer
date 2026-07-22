@@ -1,3 +1,4 @@
+import { TEST_PROJECT_MATERIALS_ROOT } from "../../tests/helpers/project-materials";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { stableHash } from "../../lib/upstream/pipeline";
 import { generateStage2AlternativeSourceUnknownPageDiagnosticOfflineEvidence } from "./generate-stage2-alternative-source-unknown-page-diagnostic-offline";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "../../..");
+const PROJECT_ROOT = TEST_PROJECT_MATERIALS_ROOT;
 const BRIEF_FILE = resolve(PROJECT_ROOT,
   "06_测试与验证/2026-07-15-Phase-Stage2-Alternative-Source-Brief-02-Authoritative/stage2-alternative-source-brief.v1.json");
 const FIXTURE_FILE = resolve(import.meta.dirname,
