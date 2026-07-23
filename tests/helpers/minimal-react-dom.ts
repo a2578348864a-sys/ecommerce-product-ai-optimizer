@@ -227,6 +227,19 @@ export class TestElement extends TestNode {
     this.currentChecked = Boolean(value);
   }
 
+  get options(): TestElement[] {
+    if (this.localName !== "select") return [];
+    const options: TestElement[] = [];
+    const visit = (node: TestNode) => {
+      for (const child of node.childNodes) {
+        if (child instanceof TestElement && child.localName === "option") options.push(child);
+        visit(child);
+      }
+    };
+    visit(this);
+    return options;
+  }
+
   setAttribute(name: string, value: string): void {
     const normalized = name.toLowerCase();
     this.attributes.set(normalized, String(value));
@@ -265,7 +278,17 @@ export class TestElement extends TestNode {
       const descriptor = Object.getOwnPropertyDescriptor(TestElement.prototype, "checked");
       descriptor?.set?.call(this, !this.checked);
     }
-    this.dispatchEvent(new TestEvent("click"));
+    const event = new TestEvent("click");
+    this.dispatchEvent(event);
+    if (
+      !event.defaultPrevented
+      && this.localName === "summary"
+      && this.parentNode instanceof TestElement
+      && this.parentNode.localName === "details"
+    ) {
+      if (this.parentNode.hasAttribute("open")) this.parentNode.removeAttribute("open");
+      else this.parentNode.setAttribute("open", "");
+    }
   }
 
   focus(): void {
@@ -353,6 +376,7 @@ export class TestStorage implements Storage {
 export interface TestDom {
   document: TestDocument;
   localStorage: TestStorage;
+  sessionStorage: TestStorage;
   restore(): void;
 }
 
@@ -360,11 +384,13 @@ export function installTestDom(): TestDom {
   const previous = new Map<string, PropertyDescriptor | undefined>();
   const document = new TestDocument();
   const localStorage = new TestStorage();
+  const sessionStorage = new TestStorage();
   const globals: Record<string, unknown> = {
     window: globalThis,
     self: globalThis,
     document,
     localStorage,
+    sessionStorage,
     Node: TestNode,
     Element: TestElement,
     HTMLElement: TestElement,
@@ -391,6 +417,7 @@ export function installTestDom(): TestDom {
   return {
     document,
     localStorage,
+    sessionStorage,
     restore() {
       for (const [name, descriptor] of previous) {
         if (descriptor) Object.defineProperty(globalThis, name, descriptor);
