@@ -54,7 +54,7 @@
 
 候选把 `poolItems` 的六字段计数从父组件内联实现移到现有 Candidate pool 领域模块的纯 selector `buildCandidatePoolCounts`。输入为只读 `OpportunityCandidatePoolItem[]`，输出为 `all`、`pending`、`worth_analyzing`、`analyzed`、`paused`、`rejected`；父组件保留原 `useMemo`、`[poolItems]` 依赖和全部消费者。
 
-提取后候选容器为 2,159 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、5 个间接 sessionStorage 活动 key均未变化。已转换 Task 的 `analyzed` Candidate 仍只进入 `all`；绕过正常化的未知状态仍只进入 `all`，经服务端或 Storage 正常化入口的未知状态仍回落到 `pending`。Phase 2B 未执行。
+提取后候选容器为 2,159 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、5 个间接 sessionStorage 活动 key 均未变化。已转换 Task 的 `analyzed` Candidate 仍只进入 `all`；绕过正常化的未知状态仍只进入 `all`。服务端未知状态固定回落到 `pending`；Storage 未知状态回落到既有 score/risk 默认状态，可能为 `pending`、`worth_analyzing` 或 `paused`。Phase 2B 未执行。
 
 ## 2. 真实调用方与 interface
 

@@ -92,7 +92,7 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 |-|-|-|-|
 |只读 `OpportunityCandidatePoolItem[]`|`all` 与五个合法状态计数|无网络、Storage、权限、时间或写入|`analyzed` 排除已有 `convertedTaskId`；直接未知状态只进入 `all`|
 
-提取后候选容器为 2,159 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和5个间接 sessionStorage 活动 key均未变化。提取前后使用同一 UI 计数测试，纯函数另由表驱动测试覆盖空、合法状态、混合、重复、已转 Task、未知状态、正常化、顺序和输入不变性。Phase 2B 未执行。
+提取后候选容器为 2,159 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。提取前后使用同一 UI 计数测试，纯函数另由表驱动测试覆盖空、合法状态、混合、重复、已转 Task、未知状态、正常化、顺序和输入不变性。Phase 2B 未执行。
 
 ## 3. seam 清单
 

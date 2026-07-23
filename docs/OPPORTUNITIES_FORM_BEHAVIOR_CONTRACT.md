@@ -12,6 +12,10 @@
 - **ROUTE**：通过 Route 测试验证请求、权限和写入 adapter；
 - **STATIC**：只证明当前 import/结构，不冒充用户行为；
 - **UNKNOWN**：当前环境未自动证明。
+- **SSR_RENDERED**：本轮 `RENDERED` 的测试名称标签；
+- **MOUNTED_BEHAVIOR**：本轮 `MOUNTED` 的测试名称标签；
+- **PURE_CONTRACT**：本轮 `DOMAIN` 纯函数合同的测试名称标签；
+- **STRUCTURAL**：本轮 `STATIC` 的结构证据标签。
 
 ## 2. surface 合同
 
