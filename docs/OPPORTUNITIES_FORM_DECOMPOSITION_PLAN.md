@@ -1,6 +1,6 @@
 # OpportunitiesForm 分阶段拆分方案
 
-> Source baseline：`origin/main` commit `fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`，tree `ec40e9756a2f62301b0c452fff888e2634850d3f`
+> Source baseline：`origin/main` commit `a91c409c4181ebb5b293f24c913b2697af0ca253`，tree `6ca285d1d5ed962a217401766f8cd83b539a849f`
 >
 > 制定日期：2026-07-23。本文只定义 module/interface/seam/adapter，不授权当前任务继续拆分主逻辑。
 
@@ -114,15 +114,27 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 
 生产容器为 2,150 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态纯函数表驱动测试、default/advanced 的 SSR 与 mounted 测试保护完整 class、标签组合和列表/详情一致性；结构哨兵确认两个消费者都使用共享函数且旧映射已移除。
 
-### Phase 2D：来源 warning 展示模型（候选，待独立复核与 mainline 验证）
+### Phase 2D：来源 warning 展示模型（PRODUCTION）
 
-本次只把来源 warning 唯一消费者中的 reason、URL 和消息清理组合提取为 `buildSourceWarningDisplayModel`。`sourceImportWarnings` state、preview response、清除路径、错误处理、条件和 DOM 均继续由 `OpportunitiesForm` 拥有。
+Phase 2D 只把来源 warning 唯一消费者中的 reason、URL 和消息清理组合提取为 `buildSourceWarningDisplayModel`。`sourceImportWarnings` state、preview response、清除路径、错误处理、条件和 DOM 均继续由 `OpportunitiesForm` 拥有。
 
 |输入|输出|副作用|语义边界|
 |-|-|-|-|
 |一个 warning 字符串|只读 `reasonKey`、`reasonLabel`、`sourceUrl`、`messageText`|无 React、网络、Storage、权限、时间或写入|保留 reason 后缀、开头 HTTP URL、消息清理和 fallback；页面仍不渲染 warning 链接|
 
-候选容器为 2,146 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。纯函数表驱动覆盖空白、reason、URL 位置、未知值、特殊字符、确定性和旧组合逐字段等价；两个 surface 的 mounted 测试与锁定 SSR 测试保护现有文案、class、顺序、无链接及零新增 I/O。
+生产容器为 2,146 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。纯函数表驱动覆盖空白、reason、URL 位置、未知值、特殊字符、确定性和旧组合逐字段等价；两个 surface 的 mounted 测试与锁定 SSR 测试保护现有文案、class、顺序、无链接及零新增 I/O。
+
+### Phase 3A：来源 preview request adapter（候选）
+
+本次只把 `handleSourceImport` 内联的请求组装、单次 fetch、content-type 检查和 JSON 解析提取为 `requestSourceImportPreview`。父组件继续拥有 callback、全部 state、loading/error/warning/summary/selection 更新顺序、UI 文案、confirm 和 Candidate refresh。
+
+|输入|输出|副作用|语义边界|
+|-|-|-|-|
+|trim 后的 source URL、当前 access password、只读 access headers|保留 HTTP status 的 `json`、`non_json` 或 `invalid_json` 结果|一次 source-import fetch；无 Storage、Candidate/Task 写入或 React state|保留 endpoint、method、headers、无显式 credentials、body、错误分支和异常 throw；不新增 stale-response 保护|
+
+候选容器为 2,134 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref不变。9 个业务 fetch 变为父组件8个加 adapter1个；2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。confirm callback 与 production main 逐字一致。
+
+Phase 3A-0 的26项挂载 Characterization Test 证明当前竞态语义：同一事件周期可发出两个 preview，任一请求结束都会清 loading，较旧响应可覆盖较新结果，卸载不会 abort。Phase 3A 不修复这些已知风险；Phase 3B 尚未实施。
 
 ## 3. seam 清单
 
@@ -137,13 +149,13 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 |7|Candidate pool counts（Phase 2A PRODUCTION）|只读 Candidate pool → 六字段计数|容器 memo|无|未知状态/converted Task 语义漂移|
 |8|Candidate pool visible items（Phase 2B PRODUCTION）|只读 pool + filter + sort → 有序只读数组|容器 memo|无|过滤顺序/tie-breaker/缺失值语义漂移|
 |9|Candidate status tone（Phase 2C PRODUCTION）|展示状态 → 完整色调 class|纯 module|无|class/顺序/消费者漂移|
-|10|Source warning display（Phase 2D 候选，待 mainline 验证）|warning 字符串 → reason/URL/消息模型|纯 module|无|fallback/清理/无链接行为漂移|
+|10|Source warning display（Phase 2D PRODUCTION）|warning 字符串 → reason/URL/消息模型|纯 module|无|fallback/清理/无链接行为漂移|
 |11|Decision badges|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
 |12|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
 |13|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
 |14|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
 |15|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
-|16|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
+|16|Source preview request adapter（Phase 3A 候选）|source URL + access 参数 → preview result|父组件 command|单次 HTTP fetch|headers/body/error/stale response|
 
 ## 4. 候选 interface
 
@@ -201,13 +213,13 @@ type CandidateHydrationResult = {
 
 ### Phase 2：派生 View Model
 
-把散落的 presentation 条件集中为纯 module。Phase 2A 至 2C 已生产，Phase 2D 候选只组合来源 warning 的 reason、URL 和消息展示语义。四个函数均由 table-driven tests 固定既有语义。剩余候选开始涉及复杂权限、Candidate authority、callback、API、Storage 或多状态组合；Phase 2D 合入并通过 mainline 验证后关闭本阶段，不为减少行数继续提取低收益模型。
+把散落的 presentation 条件集中为纯 module。Phase 2A 至 2D 已生产，四个函数均由 table-driven tests 固定既有语义。剩余候选开始涉及复杂权限、Candidate authority、callback、API、Storage 或多状态组合；本阶段已关闭，不为减少行数继续提取低收益模型。
 
-`phase2_pure_derivation_closed=pending_mainline_verification`
+`phase2_pure_derivation_closed=true`
 
 ### Phase 3：来源导入视图
 
-先 view 后 controller。禁止同时改签名、crawler、API 或选择规则。
+先保护 command 行为，再逐 endpoint 建立窄 adapter。Phase 3A 候选只处理 preview 请求与解析；state、confirm、stale-response、签名、crawler、API 和选择规则均未移动。Phase 3B 未实施。
 
 ### Phase 4：Candidate 列表与详情
 

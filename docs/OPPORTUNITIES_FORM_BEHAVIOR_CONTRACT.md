@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`，tree `ec40e9756a2f62301b0c452fff888e2634850d3f`
+> Source baseline：`origin/main` commit `a91c409c4181ebb5b293f24c913b2697af0ca253`，tree `6ca285d1d5ed962a217401766f8cd83b539a849f`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -90,6 +90,14 @@
 - 消息清理只移除末尾 reason tag 及其相邻空白，不额外 trim 或改写正文；空、空白、中文和特殊字符保持既有结果；**PURE_CONTRACT**
 - default 与 `advanced_import` 保持同一顺序、class 与 fallback；锁定 surface 不显示 warning；目标交互只有既有 source-import POST，且不新增 Storage 写入；**SSR_RENDERED + MOUNTED_BEHAVIOR**
 
+来源 preview command 合同（Phase 3A 候选）：
+
+- 空 URL 在公开按钮路径被本地 disabled 阻断，不发请求、不启动 loading，也不显示 callback 内部的空值错误；**MOUNTED_BEHAVIOR**
+- 非空输入 trim 后只发送一次 `POST /api/opportunities/source-import`；保留 `Content-Type`、access headers、无显式 credentials、`{ input, accessPassword }` body；单次 preview 不调用 confirm、Candidate 或 Task endpoint；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
+- JSON 成功、空结果、warning、业务错误、401/403/429/5xx、非 JSON、不可解析 JSON、网络异常和 AbortError 均保持 main 的现有分支与文案；warning 顺序不变；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
+- `requestSourceImportPreview` 只负责请求组装、单次 fetch 和 response 解析；React state、loading/error/warning、confirm、Candidate refresh、Storage 与权限仍由父组件拥有；**PURE_CONTRACT + STRUCTURAL**
+- 当前没有 AbortController、request generation 或 stale-response 保护。同一事件周期可发出两个请求；任一请求结束都会清 loading，较旧响应可覆盖较新结果，卸载不会 abort 请求。以上是需要冻结的现状风险，不是正确性保证；**MOUNTED_BEHAVIOR**
+
 ## 7. Storage 合同
 
 - 输入草稿 key 与 10 分钟 TTL 不变；
@@ -144,6 +152,8 @@
 |Candidate 状态色调与列表/详情一致性|`components/cross-border/OpportunitiesForm.status-tones.test.ts`|
 |来源 warning 组合渲染与无链接合同|`components/cross-border/OpportunitiesForm.source-warnings.test.ts`|
 |来源 warning 纯模型、reason/URL/消息合同|`lib/client/sourceImportLabels.test.ts`|
+|来源 preview 请求、错误、loading、重叠响应与卸载合同|`components/cross-border/OpportunitiesForm.source-preview-command.test.ts`|
+|来源 preview adapter 请求与解析合同|`lib/client/sourceImportPreview.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
 |local→server→Agent→Task authority 链|同上|
@@ -158,7 +168,7 @@
 
 - 除来源 disclosure 外的 DOM 输入、confirm、portal 与 keyboard；
 - Strict Mode Effect 时序；
-- analyze/preview/confirm/PATCH/DELETE 的重叠响应；
+- analyze/confirm/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 重叠响应已完成 Characterization，但没有 stale-response 保护；
 - 真实 Owner/Visitor 服务端集成；
 - `/opportunities/import` 实际访问量。
 

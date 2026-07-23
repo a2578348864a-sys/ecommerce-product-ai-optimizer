@@ -1,10 +1,10 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`，tree `ec40e9756a2f62301b0c452fff888e2634850d3f`
+> Source baseline：`origin/main` commit `a91c409c4181ebb5b293f24c913b2697af0ca253`，tree `6ca285d1d5ed962a217401766f8cd83b539a849f`
 >
 > 审计日期：2026-07-23
 >
-> 事实边界：生产事实只来自上述 main。本文另设候选小节描述 Phase 2D，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
+> 事实边界：生产事实只来自上述 main。本文另设候选小节描述 Phase 3A，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
 >
 > 复核要求：`origin/main` 变化后重新计算全部数量、引用和数据流。Source baseline 不等于生产服务器当前运行版本。
 
@@ -14,7 +14,7 @@
 
 |指标|数量|说明|
 |-|-:|-|
-|物理行数|2,150|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 至 2C 已合入|
+|物理行数|2,146|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 至 2D 已合入|
 |`useState`|29|无 `useReducer`|
 |`useEffect`|5|恢复、Candidate hydration、持久化、Task link、portal 定位|
 |`useCallback`|11|请求编排、导出、状态、删除和来源导入|
@@ -26,7 +26,7 @@
 
 生产文件同时承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。它是一个浅接口但过宽实现职责的容器，而不是单纯表单。
 
-生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则、`buildCandidatePoolCounts`、`buildVisibleCandidatePoolItems`，以及 `OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance`、`OpportunitiesSourceAvailability`、`OpportunitiesCandidatePoolEmptyState` 五个展示叶子。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
+生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则、`buildCandidatePoolCounts`、`buildVisibleCandidatePoolItems`、`getCandidateStatusToneClass`、`buildSourceWarningDisplayModel`，以及 `OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance`、`OpportunitiesSourceAvailability`、`OpportunitiesCandidatePoolEmptyState` 五个展示叶子。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
 
 ### Phase 1A（PRODUCTION）
 
@@ -70,11 +70,19 @@
 
 生产容器为 2,150 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态表驱动纯函数测试、两 surface SSR 和真实挂载测试共同保护完整 class、标签组合及列表/详情一致性。
 
-### Phase 2D 来源 warning 展示模型（候选）
+### Phase 2D 来源 warning 展示模型（PRODUCTION）
 
-候选把 `sourceImportWarnings` 唯一渲染消费者中的 reason、URL 与消息清理组合提取为 `lib/client/sourceImportLabels.ts` 的 `buildSourceWarningDisplayModel`。输入是一个 warning 字符串；输出为只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。`reasonKey` 与 `sourceUrl` 属于共享模型的纯函数合同，但当前唯一生产消费者只读取 `reasonLabel` 与 `messageText`，当前 UI 不消费这两个字段，也不渲染 URL 链接。函数复用既有 `extractFailureReason` 与 `getFailureReasonLabel`，无 React、网络、Storage、权限、时间、环境变量或写入。
+生产实现把 `sourceImportWarnings` 唯一渲染消费者中的 reason、URL 与消息清理组合提取为 `lib/client/sourceImportLabels.ts` 的 `buildSourceWarningDisplayModel`。输入是一个 warning 字符串；输出为只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。`reasonKey` 与 `sourceUrl` 属于共享模型的纯函数合同，但当前唯一生产消费者只读取 `reasonLabel` 与 `messageText`，当前 UI 不消费这两个字段，也不渲染 URL 链接。函数复用既有 `extractFailureReason` 与 `getFailureReasonLabel`，无 React、网络、Storage、权限、时间、环境变量或写入。
 
-URL 仍只按 warning 开头的 `http/https` 加分隔冒号识别；当前页面仍不渲染 warning 链接。无 reason 时继续显示原 warning；字面量 `[unknown]` 继续走原文 fallback；其他未登记 reason 继续显示既有“未知原因”标签。候选容器为 2,146 行，29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。warning 产生、清除、错误处理和 response 写入路径未改变。
+URL 仍只按 warning 开头的 `http/https` 加分隔冒号识别；当前页面仍不渲染 warning 链接。无 reason 时继续显示原 warning；字面量 `[unknown]` 继续走原文 fallback；其他未登记 reason 继续显示既有“未知原因”标签。生产容器为 2,146 行，29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。warning 产生、清除、错误处理和 response 写入路径未改变。
+
+### Phase 3A 来源 preview request adapter（候选）
+
+候选把 `handleSourceImport` 内联的请求组装、单次 fetch、content-type 检查和 JSON 解析移到 `lib/client/sourceImportPreview.ts` 的 `requestSourceImportPreview`。adapter 输入为 trim 后的 source URL、当前 access password 和父组件构建的只读 access headers；输出保留 HTTP status，并明确区分 `json`、`non_json` 与 `invalid_json`。网络异常和 AbortError 继续原样抛回父组件。
+
+父组件仍拥有 callback、29 个 state、loading/error/warning/summary/selection 更新顺序、全部文案、confirm 和 Candidate refresh。confirm callback 源码段与 main 逐字一致；preview setter 调用序列与 main 一致。候选容器为 2,134 行；state 29、Effect 5、callback 11、memo 6、ref 2 不变。9 个业务 fetch 变为父组件8个加 adapter1个，endpoint 总数不变；Storage 数据域和5个间接 sessionStorage 活动 key不变。
+
+Characterization Test 证明当前无 AbortController、request generation 或 stale-response 保护：同一事件周期能发出两个 preview，请求任一结束都会清 loading，较旧响应可覆盖较新结果，卸载不会中止在途请求。Phase 3A 只冻结这些现有语义，不修复竞态。
 
 ## 2. 真实调用方与 interface
 
@@ -160,7 +168,7 @@ type OpportunitiesFormProps = {
 |`POST /api/opportunity-candidates`|分析后保存|Owner Prisma 或 Visitor Sandbox|失败保留本地分析结果并显示 notice|
 |`PATCH /api/opportunity-candidates/[id]`|状态修改|是|optimistic update；失败回滚 previous status|
 |`DELETE /api/opportunity-candidates/[id]`|确认删除|是|服务端保护已关联 Task；本地草稿只删浏览器|
-|`POST /api/opportunities/source-import`|来源 preview|不写 Candidate|生成签名来源预览；签名不可用 fail-closed|
+|`POST /api/opportunities/source-import`|来源 preview；Phase 3A 候选由 client adapter 发出|不写 Candidate|生成签名来源预览；签名不可用 fail-closed；现有 stale-response 语义不变|
 |`POST /api/opportunity-candidates`|确认签名预览|是|重新检查 canSave；成功后 refresh|
 |`POST /api/opportunity-candidates/import-local`|显式升级草稿|是|强制 legacy_unverified；Owner/Visitor 分流|
 
@@ -213,4 +221,4 @@ flowchart TD
 
 ## 9. 审计结论
 
-Phase 1 已正式收口。Phase 2A 至 2C 已分别集中 Candidate pool 计数、过滤排序和状态色调；Phase 2D 候选只集中来源 warning 的纯展示组合。父组件剩余高影响候选开始涉及多状态、callback、API、Storage、权限或 Candidate authority，不应为了减少行数继续低收益提取。Phase 3 尚未执行，本轮不授权迁移 state、Effect、API、Storage 或权限逻辑。
+Phase 1 和 Phase 2 已正式收口。Phase 3A 候选只提取来源 preview 的 request adapter；父组件继续拥有 state、loading/error/warning、confirm、Storage、权限和 Candidate authority。本轮没有实施 stale-response 保护，也没有开始 Phase 3B。

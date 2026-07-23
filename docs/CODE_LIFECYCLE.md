@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Source baseline Commit：`fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`（短哈希 `fc53fbf`）
-> Source baseline Tree：`ec40e9756a2f62301b0c452fff888e2634850d3f`
+> Source baseline Commit：`a91c409c4181ebb5b293f24c913b2697af0ca253`（短哈希 `a91c409`）
+> Source baseline Tree：`6ca285d1d5ed962a217401766f8cd83b539a849f`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase2d-source-warning` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase3a-preview-command` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：Phase 1A 至 1E、Phase 2A 至 2C 均已在 production main。Phase 2D 在本候选提交中仍待独立复核与 mainline 验证，只把来源 warning 展示组合移到既有 `lib/client/sourceImportLabels.ts`，不新增运行时代码文件，因此下表142个文件及分类不变；本文不预言 Push 或合入结果，本轮未部署，后续合入仍不等于生产部署。
+> 候选边界：Phase 1A 至 1E、Phase 2A 至 2D 均已在 production main。Phase 3A 候选新增一个来源 preview client adapter，因此下表相对 main 的运行时代码从142个增至143个；本文不预言 Push 或合入结果，本轮未部署，后续合入仍不等于生产部署。
 
 ## 1. 分类定义
 
@@ -28,10 +28,10 @@
 |目录|PRODUCTION|COMPATIBILITY|EXPERIMENTAL|ARCHIVED|UNKNOWN|合计|
 |-|-:|-:|-:|-:|-:|-:|
 |`components/`|31|12|3|0|0|46|
-|`lib/`|83|2|1|0|2|88|
+|`lib/`|84|2|1|0|2|89|
 |`hooks/`|2|0|0|0|1|3|
 |`scripts/`|2|0|1|0|2|5|
-|总计|118|14|5|0|5|142|
+|总计|119|14|5|0|5|143|
 
 ## 3. components/
 
@@ -65,11 +65,12 @@
 
 ## 4. lib/
 
-Production main 中，`PRODUCTION` 共 83 个非测试代码文件，包括：
+Phase 3A 候选中，`PRODUCTION` 共 84 个非测试代码文件，包括：
 
 - Candidate、Evidence、source proof、quality、R2.2 与 Task 领域模块；
 - `lib/opportunityCandidatePool.ts`；Phase 2A 计数 selector、Phase 2B 过滤排序 selector 和 Phase 2C 状态色调 View Model 已在生产；
-- `lib/client/sourceImportLabels.ts`；Phase 2D 候选来源 warning 展示模型位于该既有生产模块，不改变文件生命周期数量；
+- `lib/client/sourceImportLabels.ts`；Phase 2D 来源 warning 展示模型已在 production main；
+- `lib/client/sourceImportPreview.ts`；Phase 3A 候选仅封装来源 preview 请求组装、fetch 和 response 解析，不拥有 React state、confirm、Candidate 写入、Storage、权限或 stale-response 保护；
 - `lib/opportunityCandidateActions.ts`，提供 Candidate 删除 presentation 的纯 module interface；
 - `lib/server/` 中认证、Owner/Visitor 分流、Candidate、workflow proof、Listing、图片与 AI gate；
 - `lib/workflows/productAnalysis.ts`；
@@ -108,7 +109,7 @@ Production main 中，`PRODUCTION` 共 83 个非测试代码文件，包括：
 
 ## 7. Artifact 文件
 
-`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 142 个运行时代码统计：
+`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 143 个运行时代码统计：
 
 - Manifest + Manifest Sidecar；
 - Family 数据 + Sidecar；
@@ -131,14 +132,14 @@ IN-FLIGHT / LOCAL / NOT_PRODUCTION
 
 ## 9. 测试体系
 
-Phase 2D 治理候选有 131 个 `*.test.ts`，没有 `*.test.tsx`：
+Phase 3A 候选有 133 个 `*.test.ts`，没有 `*.test.tsx`：
 
 |根目录|数量|
 |-|-:|
 |`app/`|34|
-|`components/`|15|
+|`components/`|16|
 |`hooks/`|1|
-|`lib/`|80|
+|`lib/`|81|
 |`scripts/`|1|
 
 默认 `vitest.config.ts` 使用 Node environment，只包含 `**/*.test.ts`。`tests/helpers/` 有两个辅助模块，不是独立测试入口。真实 AI smoke 由单独配置引用，不能用默认测试通过代替真实调用证明。
