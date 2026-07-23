@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `91fde2d321c69efc477e1291a4b79139b0ab3790`，tree `f78e7cfa264bd6bf951f5412530952223cd61b3b`
+> Source baseline：`origin/main` commit `835085bb0a464be41af4e40cc5672fbd666bdb0d`，tree `d57110cc0612d1992679c79d07819fa44bdbe8dc`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；治理候选、其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 1B 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -35,7 +35,8 @@ flowchart TD
 |草稿 adapter|`useLocalDraft`|10 分钟输入恢复|
 |Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility|
 |Action domain|`opportunityCandidateActions`|Candidate 删除 presentation 纯规则；PRODUCTION|
-|展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案，合入 main 后为 PRODUCTION / ACTIVE|
+|展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案；PRODUCTION / ACTIVE|
+|展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 候选的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`，合入 main 后为 PRODUCTION / ACTIVE|
 |Evidence/R2.2|candidate evidence、quality、decision desk modules|来源、风险和市场门禁展示|
 |Task domain|`candidateTaskLinks`|Snapshot 与 canonical Task 关联|
 |Agent adapter|`candidateAgentRunLink`|构建受限 `/agent/run` handoff URL|
@@ -47,6 +48,13 @@ flowchart TD
 - `OpportunitiesLockedPreview` 只把既有未解锁 JSX 渲染为相同 DOM；输入为 `eyebrow`、`lockedTitle`、`lockedDescription` 三个只读字段。
 - 新叶子没有 callback、Hook、网络、Storage、权限或数据库访问，也不接收 Candidate、Task 或 Evidence 权威对象。
 - 默认与 `advanced_import` 的锁定文案、静态示例、安全说明及 fixture 隐藏状态由公开 interface SSR 测试保护。
+
+### Phase 1B 展示所有权
+
+- `OpportunitiesForm` 继续从 `poolItems` 构建并 memoize `decisionDeskSummary`；Candidate 状态解释仍由 `buildDecisionDeskSummary` 拥有。
+- `OpportunitiesDecisionSummary` 只按原顺序渲染“全部候选、待查看、待分析、分析中、已转任务”五个数值。
+- interface 只有一个只读 `summary` prop；无 callback、Hook、网络、Storage、权限或数据库访问。
+- default 与 `advanced_import` 的已解锁 fixture、空 fixture 以及锁定态由同一公开 interface SSR 测试保护。
 
 ## 4. 数据流
 

@@ -1,6 +1,6 @@
 # OpportunitiesForm 分阶段拆分方案
 
-> Source baseline：`origin/main` commit `91fde2d321c69efc477e1291a4b79139b0ab3790`，tree `f78e7cfa264bd6bf951f5412530952223cd61b3b`
+> Source baseline：`origin/main` commit `835085bb0a464be41af4e40cc5672fbd666bdb0d`，tree `d57110cc0612d1992679c79d07819fa44bdbe8dc`
 >
 > 制定日期：2026-07-23。本文只定义 module/interface/seam/adapter，不授权当前任务继续拆分主逻辑。
 
@@ -34,18 +34,31 @@
 
 Phase 1A 不代表整个 Phase 1 完成；后续叶子必须单独立项。29 个 state、5 个 effect、9 个 fetch、2 个直接 localStorage 数据域、公开 props、API 和权限数据流均未变化。
 
+### Phase 1B：候选品池决策摘要（已完成）
+
+本次只提取 `OpportunitiesDecisionSummary`。容器保留 `buildDecisionDeskSummary(poolItems)`、memo 与全部 Candidate 状态解释；新叶子只接收一个只读 summary 并返回原五项摘要 JSX。
+
+|候选|原范围|输入/输出|副作用|决定|
+|-|-:|-|-|-|
+|候选品池五项决策摘要|约 14 行|只读 `DecisionDeskSummary` → JSX|无 Hook、callback、I/O 或 authority 数据|选择；公开 fixture 可在提取前后复用同一 SSR 测试|
+|来源可用性说明|约 24 行|来源等级常量 → JSX|无 React Hook 或 I/O|拒绝；只在 intake 展开态出现，现有公开 SSR interface 无法建立提取前行为基线|
+|结果分数说明与免责声明|约 23 行|静态文案 → JSX|无 Hook、callback 或 I/O|拒绝；只在分析结果态出现，安全 fixture 不提供该状态|
+
+提取后容器为 2,198 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、公开 props、DOM 顺序、API 和权限数据流均未变化。Phase 1B 不代表整个 Phase 1 完成。
+
 ## 3. seam 清单
 
 |推荐顺序|建议 module|输入/输出|state owner|副作用/依赖|风险|
 |-:|-|-|-|-|-|
 |1|Locked preview（Phase 1A 已完成）|只读 locked surface copy → JSX|容器|无|copy/DOM|
 |2|Surface header|surface presentation model → JSX|容器|无|copy/ARIA|
-|3|Decision badges/summary|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
-|4|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
-|5|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
-|6|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
-|7|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
-|8|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
+|3|Decision summary（Phase 1B 已完成）|只读 `DecisionDeskSummary` → JSX|容器|无|计数标签/顺序漂移|
+|4|Decision badges|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
+|5|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
+|6|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
+|7|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
+|8|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
+|9|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
 
 ## 4. 候选 interface
 
@@ -97,7 +110,7 @@ type CandidateHydrationResult = {
 
 ### Phase 1：纯展示叶子
 
-一次提取一个区域，不移动 state/effect/fetch。Phase 1A 只完成未解锁展示叶子；Phase 1 整体仍未完成。失败直接 revert 单 Commit。
+一次提取一个区域，不移动 state/effect/fetch。Phase 1A 完成未解锁展示叶子，Phase 1B 完成候选品池五项决策摘要；Phase 1 整体仍未完成。失败直接 revert 单 Commit。
 
 ### Phase 2：派生 View Model
 
