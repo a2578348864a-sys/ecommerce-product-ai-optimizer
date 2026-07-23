@@ -41,6 +41,23 @@ function marketShortlisted(candidateId: string): R22MarketDecisionSnapshot {
   };
 }
 
+function expectDecisionSummary(
+  markup: string,
+  expected: {
+    readonly all: number;
+    readonly pending: number;
+    readonly worthAnalyzing: number;
+    readonly analyzing: number;
+    readonly converted: number;
+  },
+) {
+  expect(markup).toMatch(new RegExp(`全部候选</p><p[^>]*>${expected.all}</p>`));
+  expect(markup).toMatch(new RegExp(`待查看</p><p[^>]*>${expected.pending}</p>`));
+  expect(markup).toMatch(new RegExp(`待分析</p><p[^>]*>${expected.worthAnalyzing}</p>`));
+  expect(markup).toMatch(new RegExp(`分析中</p><p[^>]*>${expected.analyzing}</p>`));
+  expect(markup).toMatch(new RegExp(`已转任务</p><p[^>]*>${expected.converted}</p>`));
+}
+
 describe("OpportunitiesForm public behavior", () => {
   it("keeps the default and advanced surfaces distinct through the public interface", () => {
     const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, { visualFixture: [] }));
@@ -95,6 +112,38 @@ describe("OpportunitiesForm public behavior", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  it("renders the same candidate decision summary on both unlocked surfaces and hides it while locked", () => {
+    const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      visualFixture: OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE,
+    }));
+    const advancedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      surface: "advanced_import",
+      visualFixture: OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE,
+    }));
+    const emptyMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      visualFixture: [],
+    }));
+    const lockedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent));
+    const populatedSummary = {
+      all: 7,
+      pending: 4,
+      worthAnalyzing: 1,
+      analyzing: 0,
+      converted: 1,
+    };
+
+    expectDecisionSummary(defaultMarkup, populatedSummary);
+    expectDecisionSummary(advancedMarkup, populatedSummary);
+    expectDecisionSummary(emptyMarkup, {
+      all: 0,
+      pending: 0,
+      worthAnalyzing: 0,
+      analyzing: 0,
+      converted: 0,
+    });
+    expect(lockedMarkup).not.toContain("全部候选");
   });
 });
 
