@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `59147e90893949752d1c342d6025a5fc350706c6`，tree `da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
+> Source baseline：`origin/main` commit `9f185eb1afea57003f7498cb296bb678bb112dc0`，tree `677dbee31e1ea16d5003b1385c3f423bc208d69e`
 >
-> 审计日期：2026-07-24。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 3C 测试/文档候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-24。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 3D 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -126,15 +126,23 @@ flowchart TD
 - generation 不进入 `sourceImportPreview` adapter，不属于 API、权限、Storage、Candidate authority 或 confirm command；adapter 合同及父组件 callback 依赖保持不变。
 - 当前仍无 preview AbortController；卸载不会中止请求。公开 UI 在 loading 时仍禁用输入和按钮，不同 URL 的第二次用户操作不会发出。
 
-### Phase 3C Confirm Characterization（测试/文档候选）
+### Phase 3C Confirm Characterization（PRODUCTION）
 
-- Confirm 仍由 `OpportunitiesForm` 的 `handleConfirmImport` 拥有；Phase 3C 不修改该 callback、`sourceConfirming`、Candidate POST、refresh、权限、Storage 或任何生产文件。
+- Confirm 仍由 `OpportunitiesForm` 的 `handleConfirmImport` 拥有；Phase 3C 已进入上述 main，且没有修改该 callback、`sourceConfirming`、Candidate POST、refresh、权限、Storage 或任何生产文件。
 - 公开触发链为：已解锁 surface → 来源 preview → `canSave` 选择 → `POST /api/opportunity-candidates` → `GET /api/opportunity-candidates?limit=100` refresh。Preview 与 Confirm 是两个 endpoint、两个 loading state 和两个独立 command；Preview generation 不参与 Confirm。
 - Confirm 请求没有显式 `credentials`；headers 为 `Content-Type` 加现有 access headers，body 为 `{ items }`，每项由现有 source save input 构造。Owner 与 Visitor 的客户端请求形状相同，只由虚假 access token 占位值区分；本轮不把客户端测试写成服务端权限或数据库事务证明。
 - 成功响应只读取 `ok`、`created` 和 `unchanged`；缺失计数当前按 `0` 处理。成功后 refresh 成功则显示计数结果；refresh 失败仍显示“已导入服务端”事实并保留 preview、summary、selection 和 warning。
-- 常规 saving 状态进入 DOM 后按钮 disabled，后续点击不再发请求；同一事件周期内两个公开 DOM click 在挂载测试中可发出两个 Candidate POST。任一请求完成都会关闭共享 saving，旧 refresh 结果也可覆盖较新提示；Confirm 没有 generation、requestId、single-flight 或 AbortController。
+- 常规 saving 状态进入 DOM 后按钮 disabled，后续点击不再发请求；Phase 3C 挂载测试证明同一事件周期内两个公开 DOM click 可发出两个 Candidate POST。任一请求完成都会关闭共享 saving，旧 refresh 结果也可覆盖较新提示；生产 main 的 Confirm 没有 generation、requestId、single-flight 或 AbortController。
 - 组件卸载不会中止在途 Confirm；写入成功后仍会启动 refresh。服务端测试已证明相同 Evidence 的顺序重复保存对 Owner 与 Visitor 都返回 `unchanged`；真正并发双 POST 的原子幂等性仍为 `UNKNOWN`，因为当前没有并发服务测试或 Candidate 身份/Evidence 唯一约束。Phase 3C 不以客户端 fixture 推断数据库结果。
 - 46 项测试按 `REQUEST_CONTRACT`、`MOUNTED_BEHAVIOR`、`TIMING_BEHAVIOR` 和 `AUTHORIZATION_BEHAVIOR` 分类；所有 fetch 均由 fail-closed 内存拦截器接管，未注册请求立即失败。
+
+### Phase 3D Confirm Single-Flight（当前候选）
+
+- 父组件新增唯一的 `sourceConfirmInFlightRef`；它在现有同步输入、权限、连接、selection、`canSave` 校验和 payload 构建完成后、首个异步边界与 Candidate POST 之前同步取得。
+- ref 已为 `true` 的重复调用直接返回，不改变 saving、error、warning、preview、summary、selection 或 Candidate pool，也不发送 Candidate POST 或 refresh。`sourceConfirming` state 继续只负责 UI loading/disabled。
+- ref 覆盖 Candidate POST、响应解析和紧随其后的 Candidate pool refresh，并由现有 `finally` 在成功、所有既有 POST 错误和 refresh 失败后释放；顺序第二次合法 Confirm 可再次发送 POST。
+- endpoint、headers、无显式 credentials、body、Owner/Visitor 客户端合同、POST→refresh 顺序、Preview generation、Storage 与权限均不变。state仍为29，Effect 5、memo 6、callback 11、业务 fetch 9不变，ref由3增至4。
+- 该保护只作用于单个组件实例。多标签页、多浏览器、网络重试、服务端真正并发原子幂等和 Candidate 唯一约束仍为 `UNKNOWN`；候选尚未进入 main、尚未部署，Phase 3E 未实施。
 
 ## 4. 数据流
 
@@ -207,8 +215,8 @@ local_draft
 
 ## 8. 风险
 
-- 29 个 state 仍集中在单一容器；9 个业务 fetch 中，来源 preview 的一个 fetch 位于 Phase 3A production adapter，其余8个仍在容器；Phase 3B production 把 ref 从2个增至3个；
-- 非 Effect command 没有统一 request generation；Preview 已有独立 generation，Confirm 仍没有；
+- 29 个 state 仍集中在单一容器；9 个业务 fetch 中，来源 preview 的一个 fetch 位于 Phase 3A production adapter，其余8个仍在容器；Phase 3B production 把 ref 从2个增至3个，Phase 3D 当前候选再增加一个 Confirm single-flight ref；
+- 非 Effect command 没有统一 request generation；Preview 已有独立 generation，Confirm 候选只有单实例 single-flight，没有 generation、requestId 或 AbortController；
 - 当前 mounted Node 测试覆盖来源 disclosure 和 Candidate pool 三态切换，仍不能替代 portal 或 Strict Mode 时序证据；
 - access、authority、网络降级和 UI feedback 通过多个 state 隐式组合；
-- Confirm 的常规 disabled 能阻止 saving 已渲染后的点击，但不能证明同一事件周期 single-flight；顺序重复保存的 `unchanged` 合同已知，真正并发双 POST 的原子幂等性未知。
+- Phase 3C 证明常规 disabled 不能覆盖同一事件周期窗口；Phase 3D 当前候选关闭单个组件实例的该窗口。顺序重复保存的 `unchanged` 合同已知，真正并发双 POST 的原子幂等性仍未知。

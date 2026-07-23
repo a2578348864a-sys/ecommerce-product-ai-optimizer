@@ -1,10 +1,10 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `59147e90893949752d1c342d6025a5fc350706c6`，tree `da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
+> Source baseline：`origin/main` commit `9f185eb1afea57003f7498cb296bb678bb112dc0`，tree `677dbee31e1ea16d5003b1385c3f423bc208d69e`
 >
 > 审计日期：2026-07-24
 >
-> 事实边界：生产事实只来自上述 main。本文另设候选小节描述仅测试/文档的 Phase 3C，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
+> 事实边界：生产事实只来自上述 main。本文另设候选小节描述 Phase 3D，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
 >
 > 复核要求：`origin/main` 变化后重新计算全部数量、引用和数据流。Source baseline 不等于生产服务器当前运行版本。
 
@@ -90,9 +90,9 @@ Phase 3A Characterization Test 冻结了当时无 preview generation 或 stale-r
 
 生产容器为 2,143 行；state 29、Effect 5、callback 11、memo 6、ref 由 2 增至 3。业务 fetch 仍为父组件8个加 adapter1个，2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。组件合同测试为56项，其中新增12项覆盖较旧 success/failure、较新 success/failure、stale finally、同 URL 重复、非 JSON 与空结果/warning 分支；既有44项测试未删除。
 
-### Phase 3C Confirm Characterization（测试/文档候选）
+### Phase 3C Confirm Characterization（PRODUCTION）
 
-本候选只新增46项挂载测试并更新治理文档，`OpportunitiesForm.tsx` 与全部运行时代码相对 main Diff 为0。测试通过公开按钮、虚假 Owner/Visitor access、fail-closed 内存 fetch 和 deferred Promise观察当前 Confirm，不调用真实 Route、数据库、Provider或AI。
+Phase 3C 已进入上述生产 main；它只新增46项挂载测试并更新治理文档，`OpportunitiesForm.tsx` 与全部运行时代码相对 Phase 3B Diff 为0。测试通过公开按钮、虚假 Owner/Visitor access、fail-closed 内存 fetch 和 deferred Promise观察当前 Confirm，不调用真实 Route、数据库、Provider或AI。
 
 当前 Confirm 调用链为：
 
@@ -107,8 +107,16 @@ preview Candidate + summary
 - Confirm 使用 `sourceImportCandidates`、`sourceImportChecked`、`accessPassword`、`hasAccess`、`serverAvailable`、`sourceConfirming` 和 `refreshServerPool`；不读取 Preview generation。
 - 正常单次交互发出1个 Candidate POST；成功后发出1个 refresh GET。成功只读取 `ok`、`created`、`unchanged`，refresh失败显示“已导入服务端”事实并保留 preview。
 - Owner与Visitor客户端请求形状相同：`Content-Type`加现有access headers，无显式credentials，body为`{ items }`；真实服务端权限和数据库事务不由组件测试证明。
-- saving进入DOM后按钮disabled；同一事件周期内连续两个公开DOM click可发出2个Candidate POST。任一finally会关闭共享saving，旧refresh可覆盖较新提示；卸载不abort，写入成功后仍会refresh。
-- 服务端测试已证明相同 Evidence 的顺序重复保存：Owner 返回 `unchanged` 且不 create/update，Visitor 返回 `unchanged` 且不重写 Sandbox 文件。真正并发的两个 POST 是否具备原子幂等性仍为 `UNKNOWN`：当前没有并发服务测试，Prisma Candidate 模型也没有身份或 Evidence 唯一约束。Phase 3C 只记录客户端重复权威 POST 风险，不宣称数据库已产生重复 Candidate，也不修复。
+- saving进入DOM后按钮disabled；Phase 3C 证明同一事件周期内连续两个公开DOM click可发出2个Candidate POST。任一finally会关闭共享saving，旧refresh可覆盖较新提示；卸载不abort，写入成功后仍会refresh。
+- 服务端测试已证明相同 Evidence 的顺序重复保存：Owner 返回 `unchanged` 且不 create/update，Visitor 返回 `unchanged` 且不重写 Sandbox 文件。真正并发的两个 POST 是否具备原子幂等性仍为 `UNKNOWN`：当前没有并发服务测试，Prisma Candidate 模型也没有身份或 Evidence 唯一约束。Phase 3C 只记录客户端重复权威 POST 风险，不宣称数据库已产生重复 Candidate。
+
+### Phase 3D Confirm Single-Flight（当前候选）
+
+本候选是有意行为修复，不是等价重构。`handleConfirmImport` 在全部现有同步输入、权限、连接、selection 与 `canSave` 校验及 payload 构建通过后、首个异步边界和 Candidate POST 之前，同步取得容器实例私有的 `sourceConfirmInFlightRef`。ref 已为 `true` 时直接返回，不发送请求，也不改变 saving、error、warning、preview、summary、selection 或 Candidate pool。
+
+该 ref 覆盖 Candidate POST、响应处理及紧随其后的 Candidate pool refresh，并在现有 `finally` 中对成功、HTTP/业务/非 JSON/网络/AbortError 以及 refresh 失败全部释放。`sourceConfirming` 仍只负责 UI loading/disabled；请求 endpoint、headers、无显式 credentials、body、Owner/Visitor 客户端合同和 POST→refresh 顺序不变。生产容器候选为2,145行；state 29、Effect 5、callback 11、memo 6、业务 fetch 9、Storage 数据域与5个间接 sessionStorage活动 key不变，ref由3增至4。
+
+46项 Confirm 挂载测试继续使用公开 DOM 与 fail-closed 内存 fetch；其中 `TIMING_BEHAVIOR` 证明旧 main 的同周期双 click 实际发出2个POST，而候选只发出1个。测试也覆盖 POST pending、refresh pending、全部既有错误路径释放、顺序再次 Confirm，以及虚假 Owner/Visitor 请求合同。该客户端 single-flight 仅保护单个组件实例；多标签页、多浏览器、网络重试和服务端真正并发原子幂等性仍为 `UNKNOWN`。候选尚未进入 main、尚未部署，Phase 3E 未实施。
 
 ## 2. 真实调用方与 interface
 
@@ -198,7 +206,7 @@ type OpportunitiesFormProps = {
 |`POST /api/opportunity-candidates`|确认签名预览|是|重新检查 canSave；成功后 refresh|
 |`POST /api/opportunity-candidates/import-local`|显式升级草稿|是|强制 legacy_unverified；Owner/Visitor 分流|
 
-组件没有统一 request id。Phase 3B 只为 preview 增加 generation 写入门禁；分析、confirm、PATCH 和 DELETE 仍主要依赖 disabled/loading 状态减少重复触发。Phase 3C 证明 Confirm 在同一事件周期仍可双 POST，且没有 stale-response 保护。
+组件没有统一 request id。Phase 3B 只为 preview 增加 generation 写入门禁；分析、PATCH 和 DELETE 仍主要依赖 disabled/loading 状态减少重复触发。Phase 3C 证明 Confirm 在同一事件周期可双 POST；Phase 3D 当前候选以单实例同步 ref 关闭该窗口，但不增加 stale-response、请求取消或服务端幂等保护。
 
 ## 6. Storage 与 URL
 
@@ -247,4 +255,4 @@ flowchart TD
 
 ## 9. 审计结论
 
-Phase 1 和 Phase 2 已正式收口，Phase 3A request adapter 与 Phase 3B preview generation 已进入 production main。Phase 3C 候选只建立 Confirm 的请求、权限 UI、refresh、错误和重复提交 Characterization；父组件继续拥有全部生产实现。本轮没有修复 Confirm 重复提交、请求取消、stale response 或卸载行为。
+Phase 1 和 Phase 2 已正式收口，Phase 3A request adapter、Phase 3B preview generation 与 Phase 3C Confirm Characterization 已进入 production main。Phase 3D 当前候选只为父组件增加一个同步 single-flight ref，关闭同一组件实例内的 Confirm 双 POST 窗口；请求取消、stale response、卸载、多标签页及服务端并发幂等仍未解决。

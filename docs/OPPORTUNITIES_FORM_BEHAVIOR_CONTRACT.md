@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `59147e90893949752d1c342d6025a5fc350706c6`，tree `da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
+> Source baseline：`origin/main` commit `9f185eb1afea57003f7498cb296bb678bb112dc0`，tree `677dbee31e1ea16d5003b1385c3f423bc208d69e`
 >
 > 审计日期：2026-07-24。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -103,7 +103,7 @@ Phase 3C 挂载测试已证明同一事件周期内两个公开 DOM click 可以
 - 只有通过输入校验并实际启动的 preview 才递增 generation；success、catch 和 finally 仅允许最新 generation 提交 preview、warning、error 或 loading。较旧 success/failure 不可覆盖最新结果，较旧 finally 不可提前结束最新 loading；同一 URL 重复请求也按启动顺序判定。**TIMING_BEHAVIOR**
 - 当前没有 preview AbortController，卸载仍不会 abort 在途请求。loading 状态下的公开 UI 禁止不同 URL 或无效输入的第二次用户请求，因此测试明确证明“未发出”，不把它写成跨输入并发或卸载保护。**MOUNTED_BEHAVIOR + STRUCTURAL**
 
-来源 Confirm command 合同（Phase 3C Characterization 候选；生产实现不变）：
+来源 Confirm command 合同（Phase 3C Characterization 已进入 PRODUCTION；生产实现未由 Phase 3C 修改）：
 
 - Confirm 只在已解锁且 preview 同时有 Candidate 与 summary 时出现。无 preview、summary 缺失、无 selection、服务端 Candidate 池不可用、锁定 surface 或所选项 `canSave=false` 时，公开 UI 不发送 Candidate POST；`watch` 候选可由用户显式勾选后提交。空 `sourceUrl` 当前仍可提交，并序列化为 `link:null`，本轮只冻结该宽松输入，不收紧校验。**MOUNTED_BEHAVIOR + AUTHORIZATION_BEHAVIOR + REQUEST_CONTRACT**
 - Owner/default 与 Visitor/advanced_import 都通过同一个 `POST /api/opportunity-candidates` command。客户端请求使用 `Content-Type: application/json` 与现有 `x-access-token`、`x-access-password` headers，无显式 `credentials`；body 为 `{ items }`，包含既有 name/rawInput/link/score/source/keyword/risk/summary/Evidence/Rule Assessment/Source Proof 字段。两种身份的客户端字段结构相同；测试只使用虚假占位，不证明真实服务端权限。**REQUEST_CONTRACT + AUTHORIZATION_BEHAVIOR**
@@ -115,7 +115,16 @@ Phase 3C 挂载测试已证明同一事件周期内两个公开 DOM click 可以
 - Confirm 没有 generation、requestId、single-flight、幂等 key 或 AbortController；组件卸载不会 abort，写入成功后仍可继续发起 refresh。服务端测试已证明相同 Evidence 的顺序重复保存对 Owner 与 Visitor 都返回 `unchanged`；真正并发双 POST 的原子幂等性仍为 `UNKNOWN`，因为当前没有并发服务测试或 Candidate 身份/Evidence 唯一约束。客户端两次 POST 不能直接证明数据库产生重复 Candidate。**TIMING_BEHAVIOR + STRUCTURAL**
 - 所有 Phase 3C 请求由 fail-closed 内存 fetch 拦截器接管；未注册请求立即失败。测试不调用 Route、Prisma、Sandbox、Provider、真实 AI 或真实数据库。**REQUEST_CONTRACT**
 
-`phase3c_confirm_contract_sufficient=true`：上述证据已明确客户端触发、请求、成功、refresh、错误、saving、重复提交、卸载、权限场景和 UNKNOWN 边界；该值只表示 Characterization 充分，不表示 P1 风险已修复或真正并发双 POST 的原子幂等性已证明。
+`phase3c_confirm_contract_sufficient=true`：上述证据已明确客户端触发、请求、成功、refresh、错误、saving、重复提交、卸载、权限场景和 UNKNOWN 边界；该值只表示 Characterization 充分，不表示真正并发双 POST 的原子幂等性已证明。
+
+来源 Confirm single-flight 合同（Phase 3D 当前候选；有意行为修复）：
+
+- 现有同步输入、权限、连接、preview/summary/selection 与 `canSave` 校验和 payload 构建全部通过后，`sourceConfirmInFlightRef` 在首个异步边界与 Candidate POST 之前同步取得。无效调用不取得或遗留锁。**STRUCTURAL + MOUNTED_BEHAVIOR**
+- ref 已为 `true` 时立即返回；被阻止调用不发送 POST/refresh，不调用 `setSourceConfirming`，不清除或改写 error、warning、preview、summary、selection 和 Candidate pool。**TIMING_BEHAVIOR + MOUNTED_BEHAVIOR**
+- ref 覆盖 Candidate POST、响应处理和紧随其后的 Candidate pool refresh；现有 `finally` 对成功、HTTP/业务/非 JSON/网络/AbortError 和 refresh 失败全部释放，顺序第二次合法 Confirm 可再次 POST。**TIMING_BEHAVIOR + REQUEST_CONTRACT**
+- Owner/default 与 Visitor/advanced_import 的 endpoint、headers、无显式 credentials、`{ items }` body 和 refresh 合同保持不变；双触发在每个 surface 均只产生一个 Candidate POST。**AUTHORIZATION_BEHAVIOR + REQUEST_CONTRACT**
+- `sourceConfirming` state 仍负责 UI loading/disabled；没有新增 generation、requestId、AbortController、Effect、幂等 key 或服务端约束。该 ref 只保护单个组件实例，不覆盖多标签页、多浏览器、网络重试或服务端并发。**STRUCTURAL**
+- 46项挂载测试继续由 fail-closed 内存 fetch 接管；Phase 3C 红灯证据中旧 main 实际2个POST、Phase 3D候选实际1个POST。候选尚未进入 main、尚未部署，服务端真正并发原子幂等仍为 `UNKNOWN`。**TIMING_BEHAVIOR + REQUEST_CONTRACT**
 
 ## 7. Storage 合同
 
@@ -186,10 +195,10 @@ Phase 3C 挂载测试已证明同一事件周期内两个公开 DOM click 可以
 
 ## 10. 未自动化风险
 
-- 除来源 disclosure 和 Phase 3C Confirm 挂载交互外的 DOM 输入、portal 与 keyboard；
+- 除来源 disclosure 和 Phase 3C/3D Confirm 挂载交互外的 DOM 输入、portal 与 keyboard；
 - Strict Mode Effect 时序；
 - analyze/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 已有 latest-started generation 写入保护，但没有 abort 或卸载失效保护；
-- Confirm 的同一事件周期双提交、共享 saving 提前关闭、旧 refresh 覆盖和卸载后继续 refresh 已由挂载测试证明；相同 Evidence 的顺序重复保存已由 Owner/Visitor 服务测试证明返回 `unchanged`，真实浏览器人类双击可达性及真正并发双 POST 的原子幂等性仍为 UNKNOWN；
+- Phase 3C 已证明旧 main 的同一事件周期双提交、共享 saving 提前关闭、旧 refresh 覆盖和卸载后继续 refresh；Phase 3D 当前候选只关闭单组件实例的双提交窗口，不改变卸载行为。相同 Evidence 的顺序重复保存已由 Owner/Visitor 服务测试证明返回 `unchanged`，真正并发双 POST 的原子幂等性仍为 UNKNOWN；
 - 真实 Owner/Visitor 服务端集成；
 - `/opportunities/import` 实际访问量。
 
