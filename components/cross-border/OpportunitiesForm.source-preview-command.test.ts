@@ -229,6 +229,27 @@ describe("OpportunitiesForm source preview command", () => {
     await flushAsyncWork();
   }
 
+  async function startTwoSameTurnPreviews(
+    fetchMock: ReturnType<typeof vi.fn>,
+  ) {
+    const older = deferred<Response>();
+    const newer = deferred<Response>();
+    fetchMock
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    await enterSourceUrl();
+    const button = previewButton();
+    await act(async () => {
+      button.click();
+      button.click();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    return { older, newer };
+  }
+
   it.each(["legacy_default", "advanced_import"] as const)(
     "[MOUNTED_BEHAVIOR] keeps empty source input locally blocked on %s",
     async (surface) => {
@@ -518,7 +539,185 @@ describe("OpportunitiesForm source preview command", () => {
     },
   );
 
-  it("[MOUNTED_BEHAVIOR] allows two same-turn previews and clears loading when either settles", async () => {
+  it("[TIMING_BEHAVIOR] ignores request A success while request B is pending", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    older.resolve(jsonResponse(previewSuccess([candidate("Request A Result")])));
+    await flushAsyncWork();
+
+    expect(container.textContent).not.toContain("Request A Result");
+    expect(container.textContent).toContain("抓取中");
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Request B Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Request B Result");
+    expect(container.textContent).not.toContain("抓取中");
+  });
+
+  it("[TIMING_BEHAVIOR] ignores request A failure while request B is pending", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    older.reject(new Error("Request A failed."));
+    await flushAsyncWork();
+
+    expect(container.textContent).not.toContain("Request A failed.");
+    expect(container.textContent).toContain("抓取中");
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Request B Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Request B Result");
+    expect(container.textContent).not.toContain("抓取中");
+  });
+
+  it("[TIMING_BEHAVIOR] keeps request B success when request A later succeeds", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Request B Result")])));
+    await flushAsyncWork();
+    older.resolve(jsonResponse(previewSuccess([candidate("Request A Result")])));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Request B Result");
+    expect(container.textContent).not.toContain("Request A Result");
+  });
+
+  it("[TIMING_BEHAVIOR] keeps request B success when request A later fails", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Request B Result")])));
+    await flushAsyncWork();
+    older.reject(new Error("Request A failed."));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Request B Result");
+    expect(container.textContent).not.toContain("Request A failed.");
+  });
+
+  it("[TIMING_BEHAVIOR] keeps request B failure when request A later succeeds", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    newer.reject(new Error("Request B failed."));
+    await flushAsyncWork();
+    older.resolve(jsonResponse(previewSuccess([candidate("Request A Result")])));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Request B failed.");
+    expect(container.textContent).not.toContain("Request A Result");
+  });
+
+  it("[TIMING_BEHAVIOR] keeps only request B failure when request A later fails", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    newer.reject(new Error("Request B failed."));
+    await flushAsyncWork();
+    older.reject(new Error("Request A failed."));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Request B failed.");
+    expect(container.textContent).not.toContain("Request A failed.");
+  });
+
+  it("[TIMING_BEHAVIOR] stale finally does not close request B loading", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    older.resolve(jsonResponse(previewSuccess([candidate("Stale Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("抓取中");
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Latest Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).not.toContain("抓取中");
+  });
+
+  it("[TIMING_BEHAVIOR] request A success then request B failure leaves only B error", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    older.resolve(jsonResponse(previewSuccess(
+      [candidate("Request A Result")],
+      ["request A warning"],
+    )));
+    await flushAsyncWork();
+    newer.reject(new Error("Request B failed."));
+    await flushAsyncWork();
+
+    expect(container.textContent).not.toContain("Request A Result");
+    expect(container.textContent).not.toContain("request A warning");
+    expect(container.textContent).toContain("Request B failed.");
+  });
+
+  it("[TIMING_BEHAVIOR] request A failure then request B success leaves only B result", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+
+    older.reject(new Error("Request A failed."));
+    await flushAsyncWork();
+    newer.resolve(jsonResponse(previewSuccess([candidate("Request B Result")])));
+    await flushAsyncWork();
+
+    expect(container.textContent).not.toContain("Request A failed.");
+    expect(container.textContent).toContain("Request B Result");
+  });
+
+  it("[TIMING_BEHAVIOR] repeated same URL previews use start order rather than input identity", async () => {
+    const monitors = await mountUnlocked();
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
+    const inputs = monitors.fetchMock.mock.calls.map((call) => JSON.parse(
+      String((call[1] as RequestInit).body),
+    ).input);
+    expect(inputs).toEqual([SOURCE_URL, SOURCE_URL]);
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Latest Same URL")])));
+    await flushAsyncWork();
+    older.resolve(jsonResponse(previewSuccess([candidate("Stale Same URL")])));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Latest Same URL");
+    expect(container.textContent).not.toContain("Stale Same URL");
+  });
+
+  it("[MOUNTED_BEHAVIOR] a different URL user action remains blocked while preview is loading", async () => {
+    const monitors = await mountUnlocked();
+    const pending = deferred<Response>();
+    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+
+    await enterSourceUrl("https://example.com/request-a.xml");
+    await act(async () => previewButton().click());
+    await flushAsyncWork();
+    expect(container.textContent).toContain("抓取中");
+    previewButton("抓取中…").click();
+
+    expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
+    pending.resolve(jsonResponse(previewSuccess([candidate("Request A Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Request A Result");
+  });
+
+  it("[MOUNTED_BEHAVIOR] an invalid second user action cannot supersede an in-flight request", async () => {
+    const monitors = await mountUnlocked();
+    const pending = deferred<Response>();
+    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+
+    await enterSourceUrl();
+    await act(async () => previewButton().click());
+    await flushAsyncWork();
+    expect(container.textContent).toContain("抓取中");
+    previewButton("抓取中…").click();
+
+    expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
+    pending.resolve(jsonResponse(previewSuccess([candidate("Only Started Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Only Started Result");
+  });
+
+  it("[MOUNTED_BEHAVIOR] allows two same-turn previews and lets only the newer request settle loading", async () => {
     const monitors = await mountUnlocked();
     const first = deferred<Response>();
     const second = deferred<Response>();
@@ -540,16 +739,17 @@ describe("OpportunitiesForm source preview command", () => {
     first.resolve(jsonResponse(previewSuccess([candidate("First Result")])));
     await flushAsyncWork();
 
-    expect(container.textContent).toContain("First Result");
-    expect(container.textContent).not.toContain("抓取中");
+    expect(container.textContent).not.toContain("First Result");
+    expect(container.textContent).toContain("抓取中");
 
     second.resolve(jsonResponse(previewSuccess([candidate("Second Result")])));
     await flushAsyncWork();
     expect(container.textContent).toContain("Second Result");
     expect(container.textContent).not.toContain("First Result");
+    expect(container.textContent).not.toContain("抓取中");
   });
 
-  it("[MOUNTED_BEHAVIOR] lets an older response overwrite a newer error without clearing that error", async () => {
+  it("[MOUNTED_BEHAVIOR] ignores an older response after a newer error", async () => {
     const monitors = await mountUnlocked();
     const older = deferred<Response>();
     const newer = deferred<Response>();
@@ -578,12 +778,12 @@ describe("OpportunitiesForm source preview command", () => {
     )));
     await flushAsyncWork();
 
-    expect(container.textContent).toContain("Older Result");
-    expect(container.textContent).toContain("请求超时");
+    expect(container.textContent).not.toContain("Older Result");
+    expect(container.textContent).not.toContain("请求超时");
     expect(container.textContent).toContain("Newer request failed.");
   });
 
-  it("[TIMING_BEHAVIOR] lets an older same-URL response overwrite a newer success", async () => {
+  it("[TIMING_BEHAVIOR] prevents an older same-URL response from overwriting a newer success", async () => {
     const monitors = await mountUnlocked();
     const older = deferred<Response>();
     const newer = deferred<Response>();
@@ -607,11 +807,11 @@ describe("OpportunitiesForm source preview command", () => {
 
     older.resolve(jsonResponse(previewSuccess([candidate("Older Result")])));
     await flushAsyncWork();
-    expect(container.textContent).toContain("Older Result");
-    expect(container.textContent).not.toContain("Newer Result");
+    expect(container.textContent).not.toContain("Older Result");
+    expect(container.textContent).toContain("Newer Result");
   });
 
-  it("[TIMING_BEHAVIOR] keeps request A success visible when request B later fails", async () => {
+  it("[TIMING_BEHAVIOR] ignores request A success when request B later fails", async () => {
     const monitors = await mountUnlocked();
     const requestA = deferred<Response>();
     const requestB = deferred<Response>();
@@ -645,9 +845,9 @@ describe("OpportunitiesForm source preview command", () => {
     )));
     await flushAsyncWork();
 
-    expect(container.textContent).toContain("Request A Result");
-    expect(container.textContent).toContain("request A warning");
-    expect(container.textContent).not.toContain("抓取中");
+    expect(container.textContent).not.toContain("Request A Result");
+    expect(container.textContent).not.toContain("request A warning");
+    expect(container.textContent).toContain("抓取中");
     expect(container.textContent).not.toContain("Request B failed.");
 
     requestB.resolve(jsonResponse({
@@ -656,8 +856,8 @@ describe("OpportunitiesForm source preview command", () => {
     }, 500));
     await flushAsyncWork();
 
-    expect(container.textContent).toContain("Request A Result");
-    expect(container.textContent).toContain("request A warning");
+    expect(container.textContent).not.toContain("Request A Result");
+    expect(container.textContent).not.toContain("request A warning");
     expect(container.textContent).toContain("Request B failed.");
     expect(container.textContent).not.toContain("抓取中");
     expect(monitors.fetchMock.mock.calls.filter(
@@ -667,7 +867,7 @@ describe("OpportunitiesForm source preview command", () => {
     expect(monitors.sessionStorageWrite).not.toHaveBeenCalled();
   });
 
-  it("[TIMING_BEHAVIOR] keeps a newer success while an older same-URL request later adds an error", async () => {
+  it("[TIMING_BEHAVIOR] keeps a newer success and ignores an older same-URL error", async () => {
     const monitors = await mountUnlocked();
     const older = deferred<Response>();
     const newer = deferred<Response>();
@@ -694,7 +894,7 @@ describe("OpportunitiesForm source preview command", () => {
     await flushAsyncWork();
 
     expect(container.textContent).toContain("Newer Success");
-    expect(container.textContent).toContain("Older request failed.");
+    expect(container.textContent).not.toContain("Older request failed.");
   });
 
   it("[TIMING_BEHAVIOR] blocks a different-URL user request while the first preview is loading", async () => {

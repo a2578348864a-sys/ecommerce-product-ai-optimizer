@@ -404,6 +404,7 @@ function OpportunitiesFormContent({
   const [sourceImportSummary, setSourceImportSummary] = useState<{ totalUrls: number; okUrls: number; failedUrls: number; totalCandidates: number } | null>(null);
   const [sourceConfirming, setSourceConfirming] = useState(false);
   const [sourceConfirmResult, setSourceConfirmResult] = useState("");
+  const sourcePreviewGenerationRef = useRef(0);
   const sourceReviewSelectionKeys = useMemo(() => sourceImportCandidates.flatMap((candidate, index) => (
     getSignedSourceQueuePolicy(candidate.ruleAssessment).defaultSelected ? [String(index)] : []
   )), [sourceImportCandidates]);
@@ -862,6 +863,8 @@ function OpportunitiesFormContent({
       return;
     }
 
+    const generation = ++sourcePreviewGenerationRef.current;
+
     // Show loading state immediately, before any async work
     setSourceImporting(true);
 
@@ -871,6 +874,8 @@ function OpportunitiesFormContent({
         accessPassword,
         accessHeaders: buildAccessHeaders(),
       });
+
+      if (generation !== sourcePreviewGenerationRef.current) return;
 
       // Handle non-JSON responses (e.g. HTML error pages from reverse proxy)
       if (preview.kind === "non_json") {
@@ -924,6 +929,8 @@ function OpportunitiesFormContent({
       setSourceImportSummary(json.summary);
       if (json.warnings?.length) setSourceImportWarnings(json.warnings);
     } catch (e) {
+      if (generation !== sourcePreviewGenerationRef.current) return;
+
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
         setSourceImportError("网络连接失败，请检查网络后重试。");
@@ -931,7 +938,9 @@ function OpportunitiesFormContent({
         setSourceImportError(msg || "来源抓取失败，请换 RSS / Sitemap / 公开文章页链接后重试。");
       }
     } finally {
-      setSourceImporting(false);
+      if (generation === sourcePreviewGenerationRef.current) {
+        setSourceImporting(false);
+      }
     }
   }, [sourceImportUrls, accessPassword]);
 
