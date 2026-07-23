@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
+> Source baseline：`origin/main` commit `fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`，tree `ec40e9756a2f62301b0c452fff888e2634850d3f`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -79,6 +79,15 @@
 - 初始收起，点击 `<summary>` 展开，再次点击收起；展开状态由浏览器原生 disclosure 拥有；**MOUNTED**
 - intake 展开及 disclosure 切换不新增业务 fetch、localStorage 或 sessionStorage 写入；**MOUNTED**
 
+来源 warning 展示合同：
+
+- warning 输入来自 `sourceImportWarnings: string[]`；source-import response 只有在 `warnings.length > 0` 时写入，新的 preview 和“清除结果”继续清空它；**STRUCTURAL**
+- failure reason 只识别 warning 末尾的 `[a-z_]+`；已登记 reason 显示既有标题、说明、建议和移除 reason 后的消息；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
+- 无 reason 时继续原样显示 warning；字面量 `[unknown]` 继续显示原文，其他未登记 reason 继续显示既有“未知原因”富文本标签；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
+- URL 只识别 warning 开头的 `http/https` 加分隔冒号；中间、末尾、非 HTTP URL 不识别。当前 warning 区不渲染链接，Phase 2D 不新增链接或安全属性；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
+- 消息清理只移除末尾 reason tag 及其相邻空白，不额外 trim 或改写正文；空、空白、中文和特殊字符保持既有结果；**PURE_CONTRACT**
+- default 与 `advanced_import` 保持同一顺序、class 与 fallback；锁定 surface 不显示 warning；目标交互只有既有 source-import POST，且不新增 Storage 写入；**SSR_RENDERED + MOUNTED_BEHAVIOR**
+
 ## 7. Storage 合同
 
 - 输入草稿 key 与 10 分钟 TTL 不变；
@@ -131,6 +140,8 @@
 |Candidate pool UI 计数|`components/cross-border/OpportunitiesForm.pool-counts.test.ts`|
 |Candidate pool UI 过滤与排序|`components/cross-border/OpportunitiesForm.visible-items.test.ts`|
 |Candidate 状态色调与列表/详情一致性|`components/cross-border/OpportunitiesForm.status-tones.test.ts`|
+|来源 warning 组合渲染与无链接合同|`components/cross-border/OpportunitiesForm.source-warnings.test.ts`|
+|来源 warning 纯模型、reason/URL/消息合同|`lib/client/sourceImportLabels.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
 |local→server→Agent→Task authority 链|同上|

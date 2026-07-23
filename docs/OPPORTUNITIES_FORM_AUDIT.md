@@ -1,10 +1,10 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
+> Source baseline：`origin/main` commit `fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`，tree `ec40e9756a2f62301b0c452fff888e2634850d3f`
 >
 > 审计日期：2026-07-23
 >
-> 事实边界：生产事实只来自上述 main。本文另设 `IN-FLIGHT` 小节描述 Phase 2C 治理候选，不把它写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
+> 事实边界：生产事实只来自上述 main。本文另设候选小节描述 Phase 2D，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
 >
 > 复核要求：`origin/main` 变化后重新计算全部数量、引用和数据流。Source baseline 不等于生产服务器当前运行版本。
 
@@ -14,7 +14,7 @@
 
 |指标|数量|说明|
 |-|-:|-|
-|物理行数|2,158|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 和 Phase 2B 已合入|
+|物理行数|2,150|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 至 2C 已合入|
 |`useState`|29|无 `useReducer`|
 |`useEffect`|5|恢复、Candidate hydration、持久化、Task link、portal 定位|
 |`useCallback`|11|请求编排、导出、状态、删除和来源导入|
@@ -62,13 +62,19 @@
 
 生产容器为 2,158 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。selector 当前实现仍先 filter 后 sort；该内部执行顺序由 source diff 的 STRUCTURAL 证据确认，最终输出测试不能唯一证明等价实现的内部顺序。`updated` 依次按 `updatedAt` 降序、`score` 降序、中文名称升序比较，`score` 依次按 `score` 降序、`updatedAt` 降序、中文名称升序比较。完全相等时保留当前 JavaScript 稳定排序的输入顺序。`undefined` 或 `NaN` 使减法 comparator 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为可比较极值参与排序，两个相同 Infinity 相减产生 `NaN` 时才进入下一字段。直接未知状态只在 `all` 中出现，已有 `convertedTaskId` 的 `analyzed` Candidate 不进入 `analyzed` filter。
 
-### Phase 2C 状态色调 View Model（IN-FLIGHT）
+### Phase 2C 状态色调 View Model（PRODUCTION）
 
 候选把父组件本地 `candidateStatusClass` 原样迁移为 Candidate pool 领域 module 的 `getCandidateStatusToneClass`。输入只允许 `CandidateQueueState`，输出是完整且顺序固定的 Tailwind 色调字符串；函数不读取 Candidate、标签、下一步文案、surface、权限、Storage、时间或网络。
 
 五状态合同为：`pending_review → slate`、`pending_analysis → emerald`、`analyzing → indigo`、`converted → teal`、`rejected → rose`。运行时未知值继续落入原末尾分支并返回 slate，不新增或改善 fallback。列表与详情两个消费者继续保留各自外围 class，只把色调调用改为共享函数。
 
-候选容器为 2,150 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态表驱动纯函数测试、两 surface SSR 和真实挂载测试共同保护完整 class、标签组合及列表/详情一致性；Phase 2D 未执行。
+生产容器为 2,150 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态表驱动纯函数测试、两 surface SSR 和真实挂载测试共同保护完整 class、标签组合及列表/详情一致性。
+
+### Phase 2D 来源 warning 展示模型（候选）
+
+候选把 `sourceImportWarnings` 唯一渲染消费者中的 reason、URL 与消息清理组合提取为 `lib/client/sourceImportLabels.ts` 的 `buildSourceWarningDisplayModel`。输入是一个 warning 字符串；输出为只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。函数复用既有 `extractFailureReason` 与 `getFailureReasonLabel`，无 React、网络、Storage、权限、时间、环境变量或写入。
+
+URL 仍只按 warning 开头的 `http/https` 加分隔冒号识别；当前页面仍不渲染 warning 链接。无 reason 时继续显示原 warning；字面量 `[unknown]` 继续走原文 fallback；其他未登记 reason 继续显示既有“未知原因”标签。候选容器为 2,146 行，29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。warning 产生、清除、错误处理和 response 写入路径未改变。
 
 ## 2. 真实调用方与 interface
 
@@ -207,4 +213,4 @@ flowchart TD
 
 ## 9. 审计结论
 
-Phase 1 已正式收口，五个高确定性纯展示叶子覆盖未解锁预览、决策摘要、主链路引导、来源说明和 Candidate pool 空状态。Phase 2A 与 Phase 2B 已分别把 Candidate pool 计数和过滤排序迁移到纯 selector。Phase 2C 候选只集中五状态色调映射；memo、状态所有权、标签与下一步文案仍在父组件或既有 presentation 函数中。这不授权后续迁移 state、Effect、API、Storage 或权限逻辑，Phase 2D 尚未执行。
+Phase 1 已正式收口。Phase 2A 至 2C 已分别集中 Candidate pool 计数、过滤排序和状态色调；Phase 2D 候选只集中来源 warning 的纯展示组合。父组件剩余高影响候选开始涉及多状态、callback、API、Storage、权限或 Candidate authority，不应为了减少行数继续低收益提取。Phase 3 尚未执行，本轮不授权迁移 state、Effect、API、Storage 或权限逻辑。

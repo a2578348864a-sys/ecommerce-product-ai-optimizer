@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Source baseline Commit：`cfdbc19a9383a55a624ca117deb8355e7cc8347d`（短哈希 `cfdbc19`）
-> Source baseline Tree：`ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
+> Source baseline Commit：`fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`（短哈希 `fc53fbf`）
+> Source baseline Tree：`ec40e9756a2f62301b0c452fff888e2634850d3f`
 > 审计日期：2026-07-23
 > 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase2c-status-tone` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：Phase 1A 至 1E、Phase 2A 计数 selector 和 Phase 2B 过滤排序 selector 均已在 production main。Phase 2C 候选只把状态色调纯 View Model 移到既有 `lib/opportunityCandidatePool.ts`，不新增运行时代码文件，因此下表142个文件及分类不变；合入不等于生产部署。
+> 候选边界：Phase 1A 至 1E、Phase 2A 至 2C 均已在 production main。Phase 2D 候选只把来源 warning 展示组合移到既有 `lib/client/sourceImportLabels.ts`，不新增运行时代码文件，因此下表142个文件及分类不变；合入不等于生产部署。
 
 ## 1. 分类定义
 
@@ -68,7 +68,8 @@
 Production main 中，`PRODUCTION` 共 83 个非测试代码文件，包括：
 
 - Candidate、Evidence、source proof、quality、R2.2 与 Task 领域模块；
-- `lib/opportunityCandidatePool.ts`；Phase 2A 计数 selector 与 Phase 2B 过滤排序 selector 已在生产，Phase 2C 候选状态色调 View Model 也位于该既有生产模块，不改变文件生命周期数量；
+- `lib/opportunityCandidatePool.ts`；Phase 2A 计数 selector、Phase 2B 过滤排序 selector 和 Phase 2C 状态色调 View Model 已在生产；
+- `lib/client/sourceImportLabels.ts`；Phase 2D 候选来源 warning 展示模型位于该既有生产模块，不改变文件生命周期数量；
 - `lib/opportunityCandidateActions.ts`，提供 Candidate 删除 presentation 的纯 module interface；
 - `lib/server/` 中认证、Owner/Visitor 分流、Candidate、workflow proof、Listing、图片与 AI gate；
 - `lib/workflows/productAnalysis.ts`；
@@ -130,12 +131,12 @@ IN-FLIGHT / LOCAL / NOT_PRODUCTION
 
 ## 9. 测试体系
 
-Phase 2C 治理候选有 130 个 `*.test.ts`，没有 `*.test.tsx`：
+Phase 2D 治理候选有 131 个 `*.test.ts`，没有 `*.test.tsx`：
 
 |根目录|数量|
 |-|-:|
 |`app/`|34|
-|`components/`|14|
+|`components/`|15|
 |`hooks/`|1|
 |`lib/`|80|
 |`scripts/`|1|

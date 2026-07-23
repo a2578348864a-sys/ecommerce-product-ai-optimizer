@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
+> Source baseline：`origin/main` commit `fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`，tree `ec40e9756a2f62301b0c452fff888e2634850d3f`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 2C 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 2D 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -33,7 +33,7 @@ flowchart TD
 |-|-|-|
 |访问 adapter|`useAccessPassword`、`buildAccessHeaders`、`getAccessMode`|session access，不把前端隐藏当权限|
 |草稿 adapter|`useLocalDraft`|10 分钟输入恢复|
-|Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility；Phase 2A 计数与 Phase 2B 过滤排序 selector 已生产；Phase 2C 候选状态色调 View Model|
+|Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility；Phase 2A 计数、Phase 2B 过滤排序和 Phase 2C 状态色调 View Model 已生产|
 |Action domain|`opportunityCandidateActions`|Candidate 删除 presentation 纯规则；PRODUCTION|
 |展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案；PRODUCTION / ACTIVE|
 |展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`；PRODUCTION / ACTIVE|
@@ -43,7 +43,7 @@ flowchart TD
 |Evidence/R2.2|candidate evidence、quality、decision desk modules|来源、风险和市场门禁展示|
 |Task domain|`candidateTaskLinks`|Snapshot 与 canonical Task 关联|
 |Agent adapter|`candidateAgentRunLink`|构建受限 `/agent/run` handoff URL|
-|Source adapter|`sourceImportCandidateSave`、rule policy|只保存完整签名来源输入|
+|Source adapter|`sourceImportCandidateSave`、`sourceImportLabels`、rule policy|只保存完整签名来源输入；Phase 2D 候选组合 warning 展示模型|
 
 ### Phase 1A 展示所有权
 
@@ -95,12 +95,20 @@ flowchart TD
 - `updated` 顺序为更新时间、分数、中文名称；`score` 顺序为分数、更新时间、中文名称；完全相等时沿用稳定排序输入顺序。`undefined` 或 `NaN` 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为极值，只有相同 Infinity 相减产生 `NaN` 时才进入下一字段。
 - selector 不读取 surface、权限、Storage、时间或网络，不修改输入数组或 Candidate 对象。
 
-### Phase 2C Candidate 状态色调所有权（IN-FLIGHT）
+### Phase 2C Candidate 状态色调所有权（PRODUCTION）
 
 - `getCandidateQueuePresentation` 继续拥有 Candidate status、Task relation 到五种展示状态、标签和下一步文案的解释；Phase 2C 不修改该合同。
 - `getCandidateStatusToneClass` 只把 `CandidateQueueState` 映射为完整 Tailwind 色调字符串：`pending_review` slate、`pending_analysis` emerald、`analyzing` indigo、`converted` teal、`rejected` rose；运行时未知值保持原 slate 分支。
 - 列表与详情继续分别拥有外围尺寸、字重和 DOM，只共享色调函数；两个消费者都不把 Candidate 对象传入 View Model。
-- 函数无 React、网络、Storage、权限、时间、环境变量或数据库依赖，不读取标签或下一步文案；Phase 2D 未执行。
+- 函数无 React、网络、Storage、权限、时间、环境变量或数据库依赖，不读取标签或下一步文案。
+
+### Phase 2D 来源 warning 展示所有权（候选）
+
+- `OpportunitiesForm` 继续拥有 `sourceImportWarnings` state、source-import command、response 写入、清除、错误处理、surface 与锁定条件。
+- `buildSourceWarningDisplayModel` 只读取一个 warning 字符串，复用既有 reason helper，返回只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。
+- URL 仅按 warning 开头的 `http/https` 加分隔冒号识别；`sourceUrl` 仍不渲染成链接。reason 缺失、字面量 `[unknown]` 与未登记 reason 的既有 fallback 分支保持不变。
+- 唯一生产消费者仍是来源 warning 列表映射；DOM、class、文案、顺序和 warning 原文 fallback 均由父组件拥有。
+- 模型无 React、网络、Storage、权限、时间、环境变量、Candidate authority 或写入；Phase 3 尚未执行。
 
 ## 4. 数据流
 
