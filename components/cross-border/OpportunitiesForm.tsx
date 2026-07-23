@@ -66,7 +66,7 @@ import {
   FileText,
   Plus,
 } from "lucide-react";
-import { getCandidateTypeLabel, getCandidateTypeBadgeClass, getFailureReasonLabel, extractFailureReason, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
+import { getCandidateTypeLabel, getCandidateTypeBadgeClass, buildSourceWarningDisplayModel, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
 import { getAccessMode } from "@/lib/client/accessToken";
 import { normalizeCandidateEvidence, getRiskFlagLabel, sanitizeUrlForDisplay, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
@@ -1278,12 +1278,8 @@ function OpportunitiesFormContent({
           {sourceImportWarnings.length > 0 && (
             <div className="mt-4 space-y-2">
               {sourceImportWarnings.map((w, i) => {
-                const reasonKey = extractFailureReason(w);
-                const reasonLabel = reasonKey ? getFailureReasonLabel(reasonKey) : null;
-                // Extract the URL portion from warning (format: "URL: message [reason]")
-                const urlMatch = w.match(/^(https?:\/\/[^\s]+):/);
-                const sourceUrl = urlMatch ? urlMatch[1] : "";
-                const messageText = w.replace(/\s*\[[a-z_]+\]\s*$/, "");
+                const warningDisplay = buildSourceWarningDisplayModel(w);
+                const { reasonLabel, messageText } = warningDisplay;
                 return (
                   <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">
                     {reasonLabel && reasonLabel.reason !== "unknown" ? (

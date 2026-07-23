@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import type { ComponentType } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OpportunitiesForm } from "@/components/cross-border/OpportunitiesForm";
@@ -184,5 +185,17 @@ describe("OpportunitiesForm source warning presentation", () => {
       expect(markup).not.toContain(WARNING_CARD_CLASS);
       expect(markup).not.toContain("请求超时");
     }
+  });
+
+  it("[STRUCTURAL] routes the sole warning consumer through the shared display model", () => {
+    const source = readFileSync(
+      new URL("./OpportunitiesForm.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source.match(/buildSourceWarningDisplayModel\(/g)).toHaveLength(1);
+    expect(source).not.toContain("const reasonKey = extractFailureReason(w)");
+    expect(source).not.toContain("const urlMatch = w.match(");
+    expect(source).not.toContain("const messageText = w.replace(");
   });
 });

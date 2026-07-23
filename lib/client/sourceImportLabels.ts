@@ -197,6 +197,30 @@ export function extractFailureReason(warning: string): string | null {
   return match ? match[1] : null;
 }
 
+export type SourceWarningDisplayModel = Readonly<{
+  reasonKey: string | null;
+  reasonLabel: FailureReasonLabel | null;
+  sourceUrl: string;
+  messageText: string;
+}>;
+
+export function buildSourceWarningDisplayModel(
+  warning: string,
+): SourceWarningDisplayModel {
+  const reasonKey = extractFailureReason(warning);
+  const reasonLabel = reasonKey ? getFailureReasonLabel(reasonKey) : null;
+  const urlMatch = warning.match(/^(https?:\/\/[^\s]+):/);
+  const sourceUrl = urlMatch ? urlMatch[1] : "";
+  const messageText = warning.replace(/\s*\[[a-z_]+\]\s*$/, "");
+
+  return {
+    reasonKey,
+    reasonLabel,
+    sourceUrl,
+    messageText,
+  };
+}
+
 // ── Source Tiers ──
 
 export interface SourceTier {

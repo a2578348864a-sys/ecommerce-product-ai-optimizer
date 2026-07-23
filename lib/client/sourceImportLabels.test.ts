@@ -8,6 +8,7 @@ import {
   getCandidateTypeBadgeClass,
   getFailureReasonLabel,
   extractFailureReason,
+  buildSourceWarningDisplayModel,
   SOURCE_IMPORT_TIERS,
   SOURCE_IMPORT_HINT,
 } from "./sourceImportLabels";
@@ -155,6 +156,172 @@ describe("extractFailureReason", () => {
   });
   it("handles empty string", () => {
     expect(extractFailureReason("")).toBeNull();
+  });
+});
+
+describe("buildSourceWarningDisplayModel", () => {
+  const cases = [
+    {
+      name: "empty warning",
+      warning: "",
+      reasonKey: null,
+      reasonLabelReason: null,
+      sourceUrl: "",
+      messageText: "",
+    },
+    {
+      name: "whitespace-only warning",
+      warning: "   ",
+      reasonKey: null,
+      reasonLabelReason: null,
+      sourceUrl: "",
+      messageText: "   ",
+    },
+    {
+      name: "plain text",
+      warning: "plain warning",
+      reasonKey: null,
+      reasonLabelReason: null,
+      sourceUrl: "",
+      messageText: "plain warning",
+    },
+    {
+      name: "known reason without URL",
+      warning: "request timed out [timeout]",
+      reasonKey: "timeout",
+      reasonLabelReason: "timeout",
+      sourceUrl: "",
+      messageText: "request timed out",
+    },
+    {
+      name: "URL, message, and known reason",
+      warning: "https://example.com/feed: request timed out [timeout]",
+      reasonKey: "timeout",
+      reasonLabelReason: "timeout",
+      sourceUrl: "https://example.com/feed",
+      messageText: "https://example.com/feed: request timed out",
+    },
+    {
+      name: "URL with a port",
+      warning: "https://example.com:8080/feed: request failed [fetch_failed]",
+      reasonKey: "fetch_failed",
+      reasonLabelReason: "fetch_failed",
+      sourceUrl: "https://example.com:8080/feed",
+      messageText: "https://example.com:8080/feed: request failed",
+    },
+    {
+      name: "URL in the middle remains unparsed",
+      warning: "prefix https://example.com/feed: request timed out [timeout]",
+      reasonKey: "timeout",
+      reasonLabelReason: "timeout",
+      sourceUrl: "",
+      messageText: "prefix https://example.com/feed: request timed out",
+    },
+    {
+      name: "URL at the end remains unparsed",
+      warning: "request timed out: https://example.com/feed [timeout]",
+      reasonKey: "timeout",
+      reasonLabelReason: "timeout",
+      sourceUrl: "",
+      messageText: "request timed out: https://example.com/feed",
+    },
+    {
+      name: "extra whitespace around the reason suffix is removed",
+      warning: "request timed out   [timeout]   ",
+      reasonKey: "timeout",
+      reasonLabelReason: "timeout",
+      sourceUrl: "",
+      messageText: "request timed out",
+    },
+    {
+      name: "unregistered reason preserves the raw reason in the fallback label",
+      warning: "unexpected response [nonexistent_reason]",
+      reasonKey: "nonexistent_reason",
+      reasonLabelReason: "nonexistent_reason",
+      sourceUrl: "",
+      messageText: "unexpected response",
+    },
+    {
+      name: "literal unknown reason uses the existing unknown fallback",
+      warning: "unexpected response [unknown]",
+      reasonKey: "unknown",
+      reasonLabelReason: "unknown",
+      sourceUrl: "",
+      messageText: "unexpected response",
+    },
+    {
+      name: "unsupported URL text remains plain",
+      warning: "ftp://example.com/feed: request failed [fetch_failed]",
+      reasonKey: "fetch_failed",
+      reasonLabelReason: "fetch_failed",
+      sourceUrl: "",
+      messageText: "ftp://example.com/feed: request failed",
+    },
+    {
+      name: "Chinese and special characters are preserved",
+      warning: "来源异常：中文 !@#$%^&*() [http_error]",
+      reasonKey: "http_error",
+      reasonLabelReason: "http_error",
+      sourceUrl: "",
+      messageText: "来源异常：中文 !@#$%^&*()",
+    },
+  ] as const;
+
+  it.each(cases)("[PURE_CONTRACT] preserves $name", ({
+    warning,
+    reasonKey,
+    reasonLabelReason,
+    sourceUrl,
+    messageText,
+  }) => {
+    const original = warning;
+    const result = buildSourceWarningDisplayModel(warning);
+
+    expect(result).toEqual({
+      reasonKey,
+      reasonLabel: reasonKey ? expect.objectContaining({ reason: reasonLabelReason }) : null,
+      sourceUrl,
+      messageText,
+    });
+    expect(warning).toBe(original);
+    expect(Object.values(result)).not.toContain(undefined);
+    expect(buildSourceWarningDisplayModel(warning)).toEqual(result);
+  });
+
+  it("[PURE_CONTRACT] preserves the exact current known and fallback labels", () => {
+    const known = buildSourceWarningDisplayModel("request timed out [timeout]");
+    const fallback = buildSourceWarningDisplayModel("unexpected [nonexistent_reason]");
+
+    expect(known.reasonLabel).toEqual(getFailureReasonLabel("timeout"));
+    expect(fallback.reasonLabel).toEqual(getFailureReasonLabel("nonexistent_reason"));
+    expect(fallback.reasonLabel?.reason).toBe("nonexistent_reason");
+  });
+
+  it("[PURE_CONTRACT] matches the former inline composition field by field", () => {
+    const warnings = [
+      "",
+      "plain warning",
+      "https://example.com/feed: request timed out [timeout]",
+      "prefix https://example.com/feed: request timed out [timeout]",
+      "unexpected [nonexistent_reason]",
+      "literal fallback [unknown]",
+      "中文与特殊字符 !@#$%^&*() [http_error]",
+    ];
+
+    for (const warning of warnings) {
+      const reasonKey = extractFailureReason(warning);
+      const reasonLabel = reasonKey ? getFailureReasonLabel(reasonKey) : null;
+      const urlMatch = warning.match(/^(https?:\/\/[^\s]+):/);
+      const sourceUrl = urlMatch ? urlMatch[1] : "";
+      const messageText = warning.replace(/\s*\[[a-z_]+\]\s*$/, "");
+
+      expect(buildSourceWarningDisplayModel(warning)).toEqual({
+        reasonKey,
+        reasonLabel,
+        sourceUrl,
+        messageText,
+      });
+    }
   });
 });
 
