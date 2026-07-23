@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `00e937d7bbc1bb44a9abe5846a85b3d44a988f97`，tree `f17ee10bbf5448edaa890eff219e6ce8f887f3c6`
+> Source baseline：`origin/main` commit `08c37d1c5e68cc9a68a99a8670e4ddf94d5f6088`，tree `616d949e578087f2e435a6df0bd342244a1e90c4`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -95,14 +95,24 @@
 
 ## 9. 自动化矩阵
 
+### Candidate pool 计数合同
+
+- 输出字段固定为 `all`、`pending`、`worth_analyzing`、`analyzed`、`paused`、`rejected`；**PURE_CONTRACT + SSR_RENDERED**
+- `all` 按数组元素总数计数，重复元素逐项计入；各合法状态进入对应桶；**PURE_CONTRACT**
+- `analyzed` 排除已有 `convertedTaskId` 的 Candidate，但该 Candidate 仍进入 `all`；**PURE_CONTRACT + SSR_RENDERED**
+- 绕过正常化的未知状态只进入 `all`；经服务端正常化的未知状态回落到 `pending`；**PURE_CONTRACT**
+- 计数与顺序、surface 无关，不修改输入数组或 Candidate 对象；**PURE_CONTRACT + SSR_RENDERED**
+- 原 `useMemo`、`[poolItems]` 依赖、筛选消费者和 Candidate authority 仍由父组件拥有；**STRUCTURAL**
+
 |保护面|测试|
 |-|-|
 |公开 surface、fixture|`components/cross-border/OpportunitiesForm.behavior.test.ts`|
+|Candidate pool UI 计数|`components/cross-border/OpportunitiesForm.pool-counts.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
 |local→server→Agent→Task authority 链|同上|
 |删除 presentation|`components/cross-border/OpportunitiesForm.delete-policy.test.ts`|
-|Candidate pool、Storage、R2.2|`lib/opportunityCandidatePool.test.ts`|
+|Candidate pool selector、Storage、R2.2|`lib/opportunityCandidatePool.test.ts`|
 |Agent href|`lib/candidateAgentRunLink.test.ts`|
 |Task relation|`lib/candidateTaskLinks.test.ts`|
 |Owner/Visitor import-local|`app/api/opportunity-candidates/import-local/route.test.ts`|
