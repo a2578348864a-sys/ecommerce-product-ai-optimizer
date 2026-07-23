@@ -25,15 +25,14 @@ import {
 import {
   buildCandidatePoolCounts,
   buildCandidateStatusUpdatePayload,
+  buildVisibleCandidatePoolItems,
   canCandidateEnterAgent,
-  filterCandidatePool,
   getCandidateQueuePresentation,
   getCandidateSourceIntegrityPresentation,
   mergeCandidatesIntoPool,
   mergeServerCandidatesWithLocalDrafts,
   readCandidatePool,
   serverCandidateToPoolItem,
-  sortCandidatePool,
   updateCandidateStatus,
   writeCandidatePool,
   type CandidatePoolFilter,
@@ -774,7 +773,7 @@ function OpportunitiesFormContent({
   const hasResults = candidates.length > 0;
   const isSingle = candidates.length === 1;
   const visiblePoolItems = useMemo(() => {
-    return sortCandidatePool(filterCandidatePool(poolItems, poolFilter), poolSort);
+    return buildVisibleCandidatePoolItems(poolItems, poolFilter, poolSort) as OpportunityCandidatePoolItem[];
   }, [poolItems, poolFilter, poolSort]);
   const candidatePoolDisplayState: CandidatePoolDisplayState = poolItems.length === 0
     ? "pool_empty"

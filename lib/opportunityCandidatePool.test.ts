@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   OPPORTUNITY_CANDIDATE_POOL_STORAGE_KEY,
   buildCandidatePoolCounts,
+  buildVisibleCandidatePoolItems,
   canCandidateEnterAgent,
   buildCandidateStatusUpdatePayload,
   filterCandidatePool,
@@ -208,6 +209,160 @@ describe("opportunity candidate pool", () => {
       for (const candidates of samples) {
         expect(buildCandidatePoolCounts(candidates)).toEqual(inlineCounts(candidates));
       }
+    });
+  });
+
+  describe("buildVisibleCandidatePoolItems", () => {
+    const pool = [
+      item("pending-b", 70, 1_000, "pending"),
+      item("worth-high", 95, 500, "worth_analyzing"),
+      { ...item("converted", 85, 800, "analyzed"), convertedTaskId: "task-001" },
+      item("pending-a", 70, 1_000, "pending"),
+      item("analyzed", 90, 900, "analyzed"),
+      item("paused", 80, 1_100, "paused"),
+      item("rejected", 60, 1_200, "rejected"),
+      {
+        ...item("unknown", 100, 1_300),
+        candidateStatus: "unknown_status" as CandidateStatus,
+      },
+      item("worth-low", 50, 1_400, "worth_analyzing"),
+    ];
+
+    const names = (candidates: readonly OpportunityCandidatePoolItem[]) => (
+      candidates.map((candidate) => candidate.name)
+    );
+
+    it.each([
+      ["all", ["worth-low", "unknown", "rejected", "paused", "pending-a", "pending-b", "analyzed", "converted", "worth-high"]],
+      ["pending", ["pending-a", "pending-b"]],
+      ["worth_analyzing", ["worth-low", "worth-high"]],
+      ["analyzed", ["analyzed"]],
+      ["paused", ["paused"]],
+      ["rejected", ["rejected"]],
+    ] as const)("filters %s before applying the updated sort", (filter, expected) => {
+      expect(names(buildVisibleCandidatePoolItems(pool, filter, "updated"))).toEqual(expected);
+    });
+
+    it.each([
+      ["updated", ["worth-low", "unknown", "rejected", "paused", "pending-a", "pending-b", "analyzed", "converted", "worth-high"]],
+      ["score", ["unknown", "worth-high", "analyzed", "converted", "paused", "pending-a", "pending-b", "rejected", "worth-low"]],
+    ] as const)("preserves the %s sort direction and tie-breakers", (sort, expected) => {
+      expect(names(buildVisibleCandidatePoolItems(pool, "all", sort))).toEqual(expected);
+    });
+
+    it.each([
+      ["worth_analyzing", "updated", ["worth-low", "worth-high"]],
+      ["worth_analyzing", "score", ["worth-high", "worth-low"]],
+      ["pending", "updated", ["pending-a", "pending-b"]],
+      ["pending", "score", ["pending-a", "pending-b"]],
+      ["analyzed", "score", ["analyzed"]],
+    ] as const)("preserves the %s + %s combination", (filter, sort, expected) => {
+      expect(names(buildVisibleCandidatePoolItems(pool, filter, sort))).toEqual(expected);
+    });
+
+    it("keeps direct unknown and converted Candidate behavior unchanged", () => {
+      expect(names(buildVisibleCandidatePoolItems(pool, "all", "score"))).toContain("unknown");
+      expect(names(buildVisibleCandidatePoolItems(pool, "all", "score"))).toContain("converted");
+
+      for (const filter of ["pending", "worth_analyzing", "analyzed", "paused", "rejected"] as const) {
+        const filtered = names(buildVisibleCandidatePoolItems(pool, filter, "updated"));
+        expect(filtered).not.toContain("unknown");
+        expect(filtered).not.toContain("converted");
+      }
+    });
+
+    it("preserves current missing and non-finite sort-field fallbacks", () => {
+      const missingUpdated = {
+        ...item("missing-updated", 70, 0),
+        updatedAt: undefined as unknown as number,
+      };
+      const validUpdated = item("valid-updated", 60, 100);
+      const invalidUpdated = {
+        ...item("invalid-updated", 80, 0),
+        updatedAt: Number.NaN,
+      };
+      const missingScore = {
+        ...item("missing-score", 0, 200),
+        score: undefined as unknown as number,
+      };
+      const validScore = item("valid-score", 50, 100);
+      const invalidScore = {
+        ...item("invalid-score", 0, 300),
+        score: Number.NaN,
+      };
+
+      expect(names(buildVisibleCandidatePoolItems(
+        [validUpdated, missingUpdated, invalidUpdated],
+        "all",
+        "updated",
+      ))).toEqual(["invalid-updated", "missing-updated", "valid-updated"]);
+      expect(names(buildVisibleCandidatePoolItems(
+        [validScore, missingScore, invalidScore],
+        "all",
+        "score",
+      ))).toEqual(["invalid-score", "missing-score", "valid-score"]);
+    });
+
+    it("preserves stable input order after every explicit tie-breaker is equal", () => {
+      const first = item("same", 70, 1_000);
+      const second = { ...item("same", 70, 1_000), id: "second-same" };
+      const third = { ...item("same", 70, 1_000), id: "third-same" };
+      const tied = [second, first, third];
+
+      expect(buildVisibleCandidatePoolItems(tied, "all", "updated")).toEqual(tied);
+      expect(buildVisibleCandidatePoolItems(tied, "all", "score")).toEqual(tied);
+      expect(buildVisibleCandidatePoolItems([...tied].reverse(), "all", "score"))
+        .toEqual([...tied].reverse());
+    });
+
+    it("accepts frozen readonly input without changing the array or Candidate objects", () => {
+      const first = Object.freeze(item("first", 60, 1_000, "pending"));
+      const second = Object.freeze(item("second", 80, 900, "worth_analyzing"));
+      const candidates: readonly OpportunityCandidatePoolItem[] = Object.freeze([first, second]);
+      const before = JSON.stringify(candidates);
+
+      const result = buildVisibleCandidatePoolItems(candidates, "all", "score");
+
+      expect(names(result)).toEqual(["second", "first"]);
+      expect(result).not.toBe(candidates);
+      expect(result[0]).toBe(second);
+      expect(result[1]).toBe(first);
+      expect(JSON.stringify(candidates)).toBe(before);
+      expect(buildVisibleCandidatePoolItems(candidates, "all", "score")).toEqual(result);
+    });
+
+    it("matches the former inline filter-then-sort algorithm item by item", () => {
+      const formerInline = (
+        candidates: readonly OpportunityCandidatePoolItem[],
+        filter: Parameters<typeof filterCandidatePool>[1],
+        sort: Parameters<typeof sortCandidatePool>[1],
+      ) => sortCandidatePool(filterCandidatePool([...candidates], filter), sort);
+
+      for (const filter of ["all", "pending", "worth_analyzing", "analyzed", "paused", "rejected"] as const) {
+        for (const sort of ["updated", "score"] as const) {
+          const before = formerInline(pool, filter, sort);
+          const after = buildVisibleCandidatePoolItems(pool, filter, sort);
+
+          expect(after).toEqual(before);
+          expect(after.map((candidate) => candidate.id)).toEqual(before.map((candidate) => candidate.id));
+        }
+      }
+    });
+
+    it("does not change pool counts when a visible subset is selected", () => {
+      const countsBefore = buildCandidatePoolCounts(pool);
+      const visible = buildVisibleCandidatePoolItems(pool, "worth_analyzing", "score");
+
+      expect(names(visible)).toEqual(["worth-high", "worth-low"]);
+      expect(buildCandidatePoolCounts(pool)).toEqual(countsBefore);
+      expect(countsBefore).toEqual({
+        all: 9,
+        pending: 2,
+        worth_analyzing: 2,
+        analyzed: 1,
+        paused: 1,
+        rejected: 1,
+      });
     });
   });
 

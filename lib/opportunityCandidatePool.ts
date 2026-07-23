@@ -483,6 +483,14 @@ export function filterCandidatePool(items: OpportunityCandidatePoolItem[], filte
   return items.filter((item) => item.candidateStatus === filter);
 }
 
+export function buildVisibleCandidatePoolItems(
+  candidates: readonly OpportunityCandidatePoolItem[],
+  filter: CandidatePoolFilter,
+  sort: CandidatePoolSort,
+): readonly OpportunityCandidatePoolItem[] {
+  return sortCandidatePool(filterCandidatePool([...candidates], filter), sort);
+}
+
 export function buildCandidatePoolCounts(
   candidates: readonly OpportunityCandidatePoolItem[],
 ): CandidatePoolCounts {
