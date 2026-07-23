@@ -1,6 +1,7 @@
 import { act, createElement } from "react";
 import type { ComponentType } from "react";
 import type { Root } from "react-dom/client";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OpportunitiesForm } from "@/components/cross-border/OpportunitiesForm";
@@ -457,5 +458,24 @@ describe("OpportunitiesForm source preview command", () => {
 
     expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
     expect(container.textContent).toBe("");
+  });
+
+  it("[STRUCTURAL] routes only preview request and parsing through the client adapter", () => {
+    const formSource = readFileSync(
+      new URL("./OpportunitiesForm.tsx", import.meta.url),
+      "utf8",
+    );
+    const adapterSource = readFileSync(
+      new URL("../../lib/client/sourceImportPreview.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(formSource.match(/requestSourceImportPreview\(/g)).toHaveLength(1);
+    expect(formSource).not.toContain('fetch("/api/opportunities/source-import"');
+    expect(formSource).toContain("}, [sourceImportUrls, accessPassword]);");
+    expect(adapterSource.match(/fetch\("\/api\/opportunities\/source-import"/g)).toHaveLength(1);
+    expect(adapterSource).not.toContain("/api/opportunity-candidates");
+    expect(adapterSource).not.toContain("/api/tasks");
+    expect(adapterSource).not.toMatch(/localStorage|sessionStorage|useState|useEffect|useCallback/);
   });
 });

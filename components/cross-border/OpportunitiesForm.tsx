@@ -69,13 +69,16 @@ import {
 import { getCandidateTypeLabel, getCandidateTypeBadgeClass, buildSourceWarningDisplayModel, SOURCE_IMPORT_HINT } from "@/lib/client/sourceImportLabels";
 import { evaluateCandidateQuality, getCandidateQualityDisplay, QUALITY_TIER_LABELS, QUALITY_TIER_TONES, PAGE_TYPE_LABELS, type CandidateQualityLevel, type CandidateQualityTier } from "@/lib/candidateQuality";
 import { getAccessMode } from "@/lib/client/accessToken";
-import { normalizeCandidateEvidence, getRiskFlagLabel, sanitizeUrlForDisplay, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { normalizeCandidateEvidence, getRiskFlagLabel, sanitizeUrlForDisplay } from "@/lib/candidateEvidence";
 import { CandidateEvidenceReviewPanel } from "@/components/cross-border/CandidateEvidenceReviewPanel";
 import {
   buildSourceImportCandidateSaveInput,
   sourceImportSaveSuccessMessage,
-  type SourceImportCandidateSaveData,
 } from "@/lib/client/sourceImportCandidateSave";
+import {
+  requestSourceImportPreview,
+  type SourceImportCandidateData,
+} from "@/lib/client/sourceImportPreview";
 import {
   getSignedSourceQueuePolicy,
   type SignedSourceQueuePolicyReason,
@@ -168,11 +171,6 @@ const RISK_BADGE: Record<string, string> = {
   red: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
-type SourceImportCandidateData = SourceImportCandidateSaveData & {
-  /** Phase 4-D.8: candidate quality classification */
-  evidenceSnapshot?: CandidateEvidenceSnapshot;
-};
-
 function sourceQueueMessage(reason: SignedSourceQueuePolicyReason): string {
   if (reason === "ready_for_review") return "可进入人工复核，已纳入批量选择";
   if (reason === "manual_watch") return "证据或规则分有限，仅允许逐条人工选择";
@@ -180,13 +178,6 @@ function sourceQueueMessage(reason: SignedSourceQueuePolicyReason): string {
   if (reason === "unsupported_algorithm") return "规则版本不受支持，请重新抓取";
   return "规则建议暂不推进，不能保存为 Candidate";
 }
-
-type SourceImportResponse = {
-  ok: true;
-  candidates: SourceImportCandidateData[];
-  summary: { totalUrls: number; okUrls: number; failedUrls: number; totalCandidates: number };
-  warnings: string[];
-} | { ok: false; error: { code: string; message: string } };
 
 const DRAFT_KEY = "qx:opportunities-draft:v1";
 
@@ -875,31 +866,28 @@ function OpportunitiesFormContent({
     setSourceImporting(true);
 
     try {
-      const res = await fetch("/api/opportunities/source-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({ input: urls, accessPassword }),
+      const preview = await requestSourceImportPreview({
+        input: urls,
+        accessPassword,
+        accessHeaders: buildAccessHeaders(),
       });
 
       // Handle non-JSON responses (e.g. HTML error pages from reverse proxy)
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("application/json")) {
-        if (res.status === 401 || res.status === 403) {
+      if (preview.kind === "non_json") {
+        if (preview.status === 401 || preview.status === 403) {
           setSourceImportError("访问已失效，请重新输入访问密码。");
         } else {
-          setSourceImportError(`服务返回异常（${res.status}），请稍后重试。`);
+          setSourceImportError(`服务返回异常（${preview.status}），请稍后重试。`);
         }
         return;
       }
 
-      let json: SourceImportResponse;
-      try {
-        json = await res.json() as SourceImportResponse;
-      } catch {
+      if (preview.kind === "invalid_json") {
         setSourceImportError("服务返回了不可识别的数据，请稍后重试。");
         return;
       }
 
+      const json = preview.payload;
       if (!json.ok) {
         const code = json.error?.code;
         const msg = json.error?.message || "来源导入失败。";
@@ -909,7 +897,7 @@ function OpportunitiesFormContent({
           setSourceImportError(msg);
         } else if (code === "invalid_access" || code === "unauthorized") {
           setSourceImportError("访问已失效，请重新输入访问密码。");
-        } else if (res.status === 401 || res.status === 403) {
+        } else if (preview.status === 401 || preview.status === 403) {
           setSourceImportError("访问已失效，请重新输入访问密码。");
         } else if (code === "too_many_urls") {
           setSourceImportError(msg);
