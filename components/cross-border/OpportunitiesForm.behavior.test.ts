@@ -58,6 +58,21 @@ function expectDecisionSummary(
   expect(markup).toMatch(new RegExp(`已转任务</p><p[^>]*>${expected.converted}</p>`));
 }
 
+function expectFlowGuidance(markup: string) {
+  const flowTitle = "📍 主路径：机会雷达 → Agent 主链路 → 人工复核 → 任务中心";
+  const titleIndex = markup.indexOf(flowTitle);
+  const guidanceMarkup = markup.slice(titleIndex);
+  const agentLinkIndex = guidanceMarkup.indexOf('href="/agent/run"');
+  const taskLinkIndex = guidanceMarkup.indexOf('href="/tasks"');
+
+  expect(titleIndex).toBeGreaterThanOrEqual(0);
+  expect(agentLinkIndex).toBeGreaterThanOrEqual(0);
+  expect(taskLinkIndex).toBeGreaterThan(agentLinkIndex);
+  expect(markup).toContain("本页用于发现候选商品并标记状态。筛选出感兴趣的商品后，去");
+  expect(markup).toContain("做 8 步深度分析，保存后进入");
+  expect(markup).toContain("跟进。");
+}
+
 describe("OpportunitiesForm public behavior", () => {
   it("keeps the default and advanced surfaces distinct through the public interface", () => {
     const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, { visualFixture: [] }));
@@ -144,6 +159,25 @@ describe("OpportunitiesForm public behavior", () => {
       converted: 0,
     });
     expect(lockedMarkup).not.toContain("全部候选");
+  });
+
+  it("renders the same flow guidance on both unlocked surfaces and hides it while locked", () => {
+    const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      visualFixture: [],
+    }));
+    const advancedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      surface: "advanced_import",
+      visualFixture: [],
+    }));
+    const lockedDefaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent));
+    const lockedAdvancedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      surface: "advanced_import",
+    }));
+
+    expectFlowGuidance(defaultMarkup);
+    expectFlowGuidance(advancedMarkup);
+    expect(lockedDefaultMarkup).not.toContain("📍 主路径：");
+    expect(lockedAdvancedMarkup).not.toContain("📍 主路径：");
   });
 });
 
