@@ -10,6 +10,7 @@ import { useLocalDraft } from "@/hooks/useLocalDraft";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
+import { OpportunitiesDecisionSummary } from "@/components/cross-border/OpportunitiesDecisionSummary";
 import { OpportunitiesLockedPreview } from "@/components/cross-border/OpportunitiesLockedPreview";
 import { buildCandidateAgentRunHref } from "@/lib/candidateAgentRunLink";
 import { getCandidateDeletePresentation } from "@/lib/opportunityCandidateActions";
@@ -1567,20 +1568,7 @@ function OpportunitiesFormContent({
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70 sm:grid-cols-5">
-            {[
-              { label: "全部候选", value: decisionDeskSummary.all },
-              { label: "待查看", value: decisionDeskSummary.pending },
-              { label: "待分析", value: decisionDeskSummary.worthAnalyzing },
-              { label: "分析中", value: decisionDeskSummary.analyzing },
-              { label: "已转任务", value: decisionDeskSummary.converted },
-            ].map((item) => (
-              <div key={item.label} className="border-b border-r border-slate-200 px-4 py-3 last:border-r-0 sm:border-b-0">
-                <p className="text-[11px] font-semibold text-slate-500">{item.label}</p>
-                <p className="mt-1 text-xl font-semibold tracking-tight text-slate-950">{item.value}</p>
-              </div>
-            ))}
-          </div>
+          <OpportunitiesDecisionSummary summary={decisionDeskSummary} />
 
           <div className="mt-4 flex flex-wrap gap-2">
             {candidateFilterOptions.map((option) => {
