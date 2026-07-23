@@ -683,38 +683,33 @@ describe("OpportunitiesForm source preview command", () => {
     expect(container.textContent).not.toContain("Stale Same URL");
   });
 
-  it("[MOUNTED_BEHAVIOR] a different URL user action remains blocked while preview is loading", async () => {
+  it("[TIMING_BEHAVIOR] ignores a stale non-JSON response while the latest request is pending", async () => {
     const monitors = await mountUnlocked();
-    const pending = deferred<Response>();
-    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
 
-    await enterSourceUrl("https://example.com/request-a.xml");
-    await act(async () => previewButton().click());
+    older.resolve(nonJsonResponse(502));
     await flushAsyncWork();
     expect(container.textContent).toContain("抓取中");
-    previewButton("抓取中…").click();
+    expect(container.textContent).not.toContain("服务返回异常");
 
-    expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
-    pending.resolve(jsonResponse(previewSuccess([candidate("Request A Result")])));
+    newer.resolve(jsonResponse(previewSuccess([candidate("Latest Result")])));
     await flushAsyncWork();
-    expect(container.textContent).toContain("Request A Result");
+    expect(container.textContent).toContain("Latest Result");
   });
 
-  it("[MOUNTED_BEHAVIOR] an invalid second user action cannot supersede an in-flight request", async () => {
+  it("[TIMING_BEHAVIOR] ignores a stale empty result and warning while the latest request is pending", async () => {
     const monitors = await mountUnlocked();
-    const pending = deferred<Response>();
-    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+    const { older, newer } = await startTwoSameTurnPreviews(monitors.fetchMock);
 
-    await enterSourceUrl();
-    await act(async () => previewButton().click());
+    older.resolve(jsonResponse(previewSuccess([], ["stale warning"])));
     await flushAsyncWork();
     expect(container.textContent).toContain("抓取中");
-    previewButton("抓取中…").click();
+    expect(container.textContent).not.toContain("stale warning");
+    expect(container.textContent).not.toContain("未提取到候选品");
 
-    expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
-    pending.resolve(jsonResponse(previewSuccess([candidate("Only Started Result")])));
+    newer.resolve(jsonResponse(previewSuccess([candidate("Latest Result")])));
     await flushAsyncWork();
-    expect(container.textContent).toContain("Only Started Result");
+    expect(container.textContent).toContain("Latest Result");
   });
 
   it("[MOUNTED_BEHAVIOR] allows two same-turn previews and lets only the newer request settle loading", async () => {

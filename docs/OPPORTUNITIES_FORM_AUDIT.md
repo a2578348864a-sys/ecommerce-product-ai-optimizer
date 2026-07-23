@@ -88,7 +88,7 @@ Phase 3A Characterization Test 冻结了当时无 preview generation 或 stale-r
 
 候选只在 `handleSourceImport` 增加一个单调递增的 `sourcePreviewGenerationRef`。每个通过输入校验并实际启动的 preview 获得 generation；success、catch 和 finally 只有在 generation 仍为最新时才能提交 preview、warning、error 或 loading。较旧请求继续完成网络过程，但不能再写可见状态；没有新增 AbortController，也没有改变 adapter、endpoint、payload、headers、confirm、Candidate refresh、Storage 或权限。
 
-候选容器为 2,143 行；state 29、Effect 5、callback 11、memo 6、ref 由 2 增至 3。业务 fetch 仍为父组件8个加 adapter1个，2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。组件合同测试为56项，其中新增12项覆盖较旧 success/failure、较新 success/failure、stale finally、同 URL 重复与公开 UI loading 阻断；既有44项测试未删除。
+候选容器为 2,143 行；state 29、Effect 5、callback 11、memo 6、ref 由 2 增至 3。业务 fetch 仍为父组件8个加 adapter1个，2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。组件合同测试为56项，其中新增12项覆盖较旧 success/failure、较新 success/failure、stale finally、同 URL 重复、非 JSON 与空结果/warning 分支；既有44项测试未删除。
 
 ## 2. 真实调用方与 interface
 
