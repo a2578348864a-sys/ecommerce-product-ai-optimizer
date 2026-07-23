@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   OPPORTUNITY_CANDIDATE_POOL_STORAGE_KEY,
+  buildCandidatePoolCounts,
   canCandidateEnterAgent,
   buildCandidateStatusUpdatePayload,
   filterCandidatePool,
@@ -20,6 +21,7 @@ import {
   sortCandidatePool,
   updateCandidateStatus,
   writeCandidatePool,
+  type CandidateStatus,
   type OpportunityCandidatePoolItem,
 } from "@/lib/opportunityCandidatePool";
 import type { R22MarketDecisionSnapshot } from "@/lib/r22DecisionModel";
@@ -60,6 +62,155 @@ function item(name: string, score: number, updatedAt: number, candidateStatus: O
 }
 
 describe("opportunity candidate pool", () => {
+  describe("buildCandidatePoolCounts", () => {
+    const emptyCounts = {
+      all: 0,
+      pending: 0,
+      worth_analyzing: 0,
+      analyzed: 0,
+      paused: 0,
+      rejected: 0,
+    };
+
+    it.each([
+      ["empty", [], emptyCounts],
+      ["pending", [item("pending", 60, 1000, "pending")], { ...emptyCounts, all: 1, pending: 1 }],
+      ["worth_analyzing", [item("worth", 80, 1000, "worth_analyzing")], { ...emptyCounts, all: 1, worth_analyzing: 1 }],
+      ["analyzed", [item("analyzed", 80, 1000, "analyzed")], { ...emptyCounts, all: 1, analyzed: 1 }],
+      ["paused", [item("paused", 60, 1000, "paused")], { ...emptyCounts, all: 1, paused: 1 }],
+      ["rejected", [item("rejected", 40, 1000, "rejected")], { ...emptyCounts, all: 1, rejected: 1 }],
+    ] as const)("counts the %s contract exactly", (_name, candidates, expected) => {
+      expect(buildCandidatePoolCounts(candidates)).toEqual(expected);
+    });
+
+    it("counts mixed and duplicate statuses by array element", () => {
+      const candidates = [
+        item("pending-1", 60, 1000, "pending"),
+        item("pending-2", 61, 1001, "pending"),
+        item("worth", 80, 1002, "worth_analyzing"),
+        item("analyzed", 80, 1003, "analyzed"),
+        item("paused", 60, 1004, "paused"),
+        item("rejected", 40, 1005, "rejected"),
+      ];
+
+      expect(buildCandidatePoolCounts(candidates)).toEqual({
+        all: 6,
+        pending: 2,
+        worth_analyzing: 1,
+        analyzed: 1,
+        paused: 1,
+        rejected: 1,
+      });
+    });
+
+    it("keeps converted analyzed Candidates in all but out of analyzed", () => {
+      const analyzing = item("analyzing", 80, 1000, "analyzed");
+      const converted = {
+        ...item("converted", 80, 1001, "analyzed"),
+        convertedTaskId: "task-001",
+      };
+
+      expect(buildCandidatePoolCounts([analyzing, converted])).toEqual({
+        ...emptyCounts,
+        all: 2,
+        analyzed: 1,
+      });
+    });
+
+    it("preserves direct unknown and normalized unknown status behavior", () => {
+      const directUnknown = {
+        ...item("unknown", 60, 1000),
+        candidateStatus: "unknown_status" as CandidateStatus,
+      };
+      const normalizedUnknown = serverCandidateToPoolItem({
+        id: "candidate-unknown",
+        name: "normalized unknown",
+        status: "unknown_status",
+      });
+
+      expect(buildCandidatePoolCounts([directUnknown])).toEqual({
+        ...emptyCounts,
+        all: 1,
+      });
+      expect(normalizedUnknown.candidateStatus).toBe("pending");
+      expect(buildCandidatePoolCounts([normalizedUnknown])).toEqual({
+        ...emptyCounts,
+        all: 1,
+        pending: 1,
+      });
+    });
+
+    it("is order-independent and deterministic with complete output fields", () => {
+      const candidates = [
+        item("pending", 60, 1000, "pending"),
+        item("worth", 80, 1001, "worth_analyzing"),
+        item("rejected", 40, 1002, "rejected"),
+      ];
+      const first = buildCandidatePoolCounts(candidates);
+      const second = buildCandidatePoolCounts([...candidates].reverse());
+
+      expect(first).toEqual(second);
+      expect(buildCandidatePoolCounts(candidates)).toEqual(first);
+      expect(Object.keys(first).sort()).toEqual([
+        "all",
+        "analyzed",
+        "paused",
+        "pending",
+        "rejected",
+        "worth_analyzing",
+      ]);
+    });
+
+    it("accepts frozen readonly input without changing the array or Candidate objects", () => {
+      const first = Object.freeze(item("pending", 60, 1000, "pending"));
+      const second = Object.freeze(item("analyzed", 80, 1001, "analyzed"));
+      const candidates: readonly OpportunityCandidatePoolItem[] = Object.freeze([first, second]);
+      const before = JSON.stringify(candidates);
+
+      expect(buildCandidatePoolCounts(candidates)).toEqual({
+        ...emptyCounts,
+        all: 2,
+        pending: 1,
+        analyzed: 1,
+      });
+      expect(JSON.stringify(candidates)).toBe(before);
+      expect(candidates[0]).toBe(first);
+      expect(candidates[1]).toBe(second);
+    });
+
+    it("matches the former inline filter-based calculation across representative samples", () => {
+      const inlineCounts = (candidates: OpportunityCandidatePoolItem[]) => ({
+        all: candidates.length,
+        pending: filterCandidatePool(candidates, "pending").length,
+        worth_analyzing: filterCandidatePool(candidates, "worth_analyzing").length,
+        analyzed: filterCandidatePool(candidates, "analyzed").length,
+        paused: filterCandidatePool(candidates, "paused").length,
+        rejected: filterCandidatePool(candidates, "rejected").length,
+      });
+      const directUnknown = {
+        ...item("unknown", 60, 1000),
+        candidateStatus: "unknown_status" as CandidateStatus,
+      };
+      const samples = [
+        [],
+        [item("pending", 60, 1000, "pending")],
+        [
+          item("pending", 60, 1000, "pending"),
+          item("worth", 80, 1001, "worth_analyzing"),
+          item("analyzed", 80, 1002, "analyzed"),
+          { ...item("converted", 80, 1003, "analyzed"), convertedTaskId: "task-001" },
+          item("paused", 60, 1004, "paused"),
+          item("rejected", 40, 1005, "rejected"),
+          directUnknown,
+        ],
+      ];
+
+      for (const candidates of samples) {
+        expect(buildCandidatePoolCounts(candidates)).toEqual(inlineCounts(candidates));
+      }
+    });
+  });
+
   it("assigns default status from score and risk", () => {
     expect(getDefaultCandidateStatus({ score: 86, riskLevel: "green" })).toBe("worth_analyzing");
     expect(getDefaultCandidateStatus({ score: 86, riskLevel: "red" })).toBe("paused");

@@ -24,6 +24,14 @@ export type CandidatePoolFilter = "all" | CandidateStatus;
 export type CandidatePoolSort = "score" | "updated";
 export type CandidateIdentitySource = "server" | "local_draft";
 export type CandidateQueueState = "pending_review" | "pending_analysis" | "analyzing" | "converted" | "rejected";
+export type CandidatePoolCounts = Readonly<{
+  all: number;
+  pending: number;
+  worth_analyzing: number;
+  analyzed: number;
+  paused: number;
+  rejected: number;
+}>;
 
 export type CandidateQueuePresentation = {
   state: CandidateQueueState;
@@ -473,6 +481,32 @@ export function filterCandidatePool(items: OpportunityCandidatePoolItem[], filte
     return items.filter((item) => item.candidateStatus === "analyzed" && !item.convertedTaskId);
   }
   return items.filter((item) => item.candidateStatus === filter);
+}
+
+export function buildCandidatePoolCounts(
+  candidates: readonly OpportunityCandidatePoolItem[],
+): CandidatePoolCounts {
+  const counts = {
+    all: candidates.length,
+    pending: 0,
+    worth_analyzing: 0,
+    analyzed: 0,
+    paused: 0,
+    rejected: 0,
+  };
+
+  for (const candidate of candidates) {
+    if (candidate.candidateStatus === "analyzed") {
+      if (!candidate.convertedTaskId) counts.analyzed += 1;
+      continue;
+    }
+    if (candidate.candidateStatus === "pending") counts.pending += 1;
+    if (candidate.candidateStatus === "worth_analyzing") counts.worth_analyzing += 1;
+    if (candidate.candidateStatus === "paused") counts.paused += 1;
+    if (candidate.candidateStatus === "rejected") counts.rejected += 1;
+  }
+
+  return counts;
 }
 
 export function sortCandidatePool(items: OpportunityCandidatePoolItem[], sort: CandidatePoolSort) {

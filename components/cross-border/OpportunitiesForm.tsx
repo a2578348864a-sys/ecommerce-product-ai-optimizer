@@ -23,6 +23,7 @@ import {
   type LinkedTaskInfo,
 } from "@/lib/candidateTaskLinks";
 import {
+  buildCandidatePoolCounts,
   buildCandidateStatusUpdatePayload,
   canCandidateEnterAgent,
   filterCandidatePool,
@@ -778,16 +779,7 @@ function OpportunitiesFormContent({
   const candidatePoolDisplayState: CandidatePoolDisplayState = poolItems.length === 0
     ? "pool_empty"
     : visiblePoolItems.length === 0 ? "filter_empty" : "has_results";
-  const poolCounts = useMemo(() => {
-    return {
-      all: poolItems.length,
-      pending: filterCandidatePool(poolItems, "pending").length,
-      worth_analyzing: filterCandidatePool(poolItems, "worth_analyzing").length,
-      analyzed: filterCandidatePool(poolItems, "analyzed").length,
-      paused: filterCandidatePool(poolItems, "paused").length,
-      rejected: filterCandidatePool(poolItems, "rejected").length,
-    };
-  }, [poolItems]);
+  const poolCounts = useMemo(() => buildCandidatePoolCounts(poolItems), [poolItems]);
   const decisionDeskSummary = useMemo(
     () => buildDecisionDeskSummary(poolItems),
     [poolItems],
