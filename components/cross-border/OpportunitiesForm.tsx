@@ -28,6 +28,7 @@ import {
   buildVisibleCandidatePoolItems,
   canCandidateEnterAgent,
   getCandidateQueuePresentation,
+  getCandidateStatusToneClass,
   getCandidateSourceIntegrityPresentation,
   mergeCandidatesIntoPool,
   mergeServerCandidatesWithLocalDrafts,
@@ -37,7 +38,6 @@ import {
   writeCandidatePool,
   type CandidatePoolFilter,
   type CandidatePoolSort,
-  type CandidateQueueState,
   type CandidateStatus,
   type OpportunityCandidateInput,
   type OpportunityCandidatePoolItem,
@@ -287,14 +287,6 @@ function candidateToPoolInput(candidate: CandidateData): OpportunityCandidateInp
       riskHint: candidate.risk?.summary,
     }),
   };
-}
-
-function candidateStatusClass(status: CandidateQueueState) {
-  if (status === "pending_analysis") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "analyzing") return "border-indigo-200 bg-indigo-50 text-indigo-700";
-  if (status === "converted") return "border-teal-200 bg-teal-50 text-teal-700";
-  if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
-  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 function decisionDeskToneClass(tone: "positive" | "warning" | "danger" | "neutral") {
@@ -1612,7 +1604,7 @@ function OpportunitiesFormContent({
                       </span>
                       <span className="flex items-center gap-2 md:block">
                         <span className="w-16 text-[10px] font-semibold text-slate-400 md:hidden">处理状态</span>
-                        <span className={"inline-flex w-fit rounded-full border px-2 py-1 text-[11px] font-semibold " + candidateStatusClass(queuePresentation.state)}>
+                        <span className={"inline-flex w-fit rounded-full border px-2 py-1 text-[11px] font-semibold " + getCandidateStatusToneClass(queuePresentation.state)}>
                           {queuePresentation.label}
                         </span>
                       </span>
@@ -1684,7 +1676,7 @@ function OpportunitiesFormContent({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="break-words text-base font-semibold text-slate-950">{item.name}</h3>
-                        <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + candidateStatusClass(queuePresentation.state)}>
+                        <span className={"rounded-full border px-2.5 py-1 text-xs font-bold " + getCandidateStatusToneClass(queuePresentation.state)}>
                           处理：{queuePresentation.label}
                         </span>
                         {/* Demo-Sandbox.1-C-UI-Fix: source labels */}

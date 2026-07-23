@@ -185,6 +185,14 @@ export function getCandidateQueuePresentation(
   return { state: "pending_review", label: "待查看", nextAction: "选择为待分析" };
 }
 
+export function getCandidateStatusToneClass(status: CandidateQueueState) {
+  if (status === "pending_analysis") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "analyzing") return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (status === "converted") return "border-teal-200 bg-teal-50 text-teal-700";
+  if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
 export function canCandidateEnterAgent(
   candidate: Pick<OpportunityCandidatePoolItem, "id" | "identitySource" | "candidateStatus" | "r22MarketDecisionSnapshot">,
   serverAvailable: boolean | null,

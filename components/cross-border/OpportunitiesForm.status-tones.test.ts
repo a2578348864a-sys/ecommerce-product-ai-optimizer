@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import type { ComponentType } from "react";
 import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OpportunitiesForm } from "@/components/cross-border/OpportunitiesForm";
@@ -185,4 +186,15 @@ describe("OpportunitiesForm Candidate status tone consistency", () => {
       expect(sessionStorageWrite).not.toHaveBeenCalled();
     },
   );
+
+  it("[STRUCTURAL] routes exactly the list and detail consumers through the shared tone function", () => {
+    const source = readFileSync(
+      new URL("./OpportunitiesForm.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source.match(/getCandidateStatusToneClass\(/g)).toHaveLength(2);
+    expect(source).not.toContain("function candidateStatusClass");
+    expect(source).not.toMatch(/\bcandidateStatusClass\(/);
+  });
 });

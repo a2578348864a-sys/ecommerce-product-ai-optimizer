@@ -8,6 +8,7 @@ import {
   filterCandidatePool,
   getDefaultCandidateStatus,
   getCandidateQueuePresentation,
+  getCandidateStatusToneClass,
   getCandidateSourceIntegrityPresentation,
   isAuthoritativeCandidateId,
   isLocalDraftCandidateId,
@@ -23,6 +24,7 @@ import {
   updateCandidateStatus,
   writeCandidatePool,
   type CandidateStatus,
+  type CandidateQueueState,
   type OpportunityCandidatePoolItem,
 } from "@/lib/opportunityCandidatePool";
 import type { R22MarketDecisionSnapshot } from "@/lib/r22DecisionModel";
@@ -554,6 +556,35 @@ describe("opportunity candidate pool", () => {
     expect(getCandidateQueuePresentation("analyzed")).toMatchObject({ state: "analyzing", label: "分析中", nextAction: "继续分析" });
     expect(getCandidateQueuePresentation("rejected")).toMatchObject({ state: "rejected", label: "已放弃", nextAction: "恢复为待查看" });
     expect(getCandidateQueuePresentation("analyzed", true)).toMatchObject({ state: "converted", label: "已转任务", nextAction: "查看关联任务" });
+  });
+
+  it("[PURE_CONTRACT] preserves every Candidate queue status tone and the runtime fallback", () => {
+    const cases = [
+      ["pending_review", "border-slate-200", "bg-slate-50", "text-slate-700"],
+      ["pending_analysis", "border-emerald-200", "bg-emerald-50", "text-emerald-700"],
+      ["analyzing", "border-indigo-200", "bg-indigo-50", "text-indigo-700"],
+      ["converted", "border-teal-200", "bg-teal-50", "text-teal-700"],
+      ["rejected", "border-rose-200", "bg-rose-50", "text-rose-700"],
+    ] as const satisfies readonly (
+      readonly [CandidateQueueState, string, string, string]
+    )[];
+
+    const tones = cases.map(([status, border, background, text]) => {
+      const expected = `${border} ${background} ${text}`;
+      const first = getCandidateStatusToneClass(status);
+      const second = getCandidateStatusToneClass(status);
+
+      expect(first).toBe(expected);
+      expect(first.split(" ")).toEqual([border, background, text]);
+      expect(second).toBe(first);
+      expect(first).not.toContain("undefined");
+      return first;
+    });
+
+    expect(new Set(tones).size).toBe(cases.length);
+    expect(getCandidateStatusToneClass).toHaveLength(1);
+    expect(getCandidateStatusToneClass("future_queue_state" as CandidateQueueState))
+      .toBe("border-slate-200 bg-slate-50 text-slate-700");
   });
 
   it("allows only ready authoritative Owner or Visitor Candidates without linked Tasks", () => {
