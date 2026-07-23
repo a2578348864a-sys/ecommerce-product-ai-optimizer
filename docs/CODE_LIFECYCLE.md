@@ -3,10 +3,10 @@
 > Source baseline Commit：`fc53fbf944a9d0ffc29f9a4577b5fc0e385f9570`（短哈希 `fc53fbf`）
 > Source baseline Tree：`ec40e9756a2f62301b0c452fff888e2634850d3f`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase2c-status-tone` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase2d-source-warning` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：Phase 1A 至 1E、Phase 2A 至 2C 均已在 production main。Phase 2D 候选只把来源 warning 展示组合移到既有 `lib/client/sourceImportLabels.ts`，不新增运行时代码文件，因此下表142个文件及分类不变；合入不等于生产部署。
+> 候选边界：Phase 1A 至 1E、Phase 2A 至 2C 均已在 production main。Phase 2D 在本候选提交中仍待独立复核与 mainline 验证，只把来源 warning 展示组合移到既有 `lib/client/sourceImportLabels.ts`，不新增运行时代码文件，因此下表142个文件及分类不变；本文不预言 Push 或合入结果，本轮未部署，后续合入仍不等于生产部署。
 
 ## 1. 分类定义
 

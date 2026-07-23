@@ -114,7 +114,7 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 
 生产容器为 2,150 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态纯函数表驱动测试、default/advanced 的 SSR 与 mounted 测试保护完整 class、标签组合和列表/详情一致性；结构哨兵确认两个消费者都使用共享函数且旧映射已移除。
 
-### Phase 2D：来源 warning 展示模型（候选已完成）
+### Phase 2D：来源 warning 展示模型（候选，待独立复核与 mainline 验证）
 
 本次只把来源 warning 唯一消费者中的 reason、URL 和消息清理组合提取为 `buildSourceWarningDisplayModel`。`sourceImportWarnings` state、preview response、清除路径、错误处理、条件和 DOM 均继续由 `OpportunitiesForm` 拥有。
 
@@ -137,7 +137,7 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 |7|Candidate pool counts（Phase 2A PRODUCTION）|只读 Candidate pool → 六字段计数|容器 memo|无|未知状态/converted Task 语义漂移|
 |8|Candidate pool visible items（Phase 2B PRODUCTION）|只读 pool + filter + sort → 有序只读数组|容器 memo|无|过滤顺序/tie-breaker/缺失值语义漂移|
 |9|Candidate status tone（Phase 2C PRODUCTION）|展示状态 → 完整色调 class|纯 module|无|class/顺序/消费者漂移|
-|10|Source warning display（Phase 2D 候选已完成）|warning 字符串 → reason/URL/消息模型|纯 module|无|fallback/清理/无链接行为漂移|
+|10|Source warning display（Phase 2D 候选，待 mainline 验证）|warning 字符串 → reason/URL/消息模型|纯 module|无|fallback/清理/无链接行为漂移|
 |11|Decision badges|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
 |12|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
 |13|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
@@ -203,7 +203,7 @@ type CandidateHydrationResult = {
 
 把散落的 presentation 条件集中为纯 module。Phase 2A 至 2C 已生产，Phase 2D 候选只组合来源 warning 的 reason、URL 和消息展示语义。四个函数均由 table-driven tests 固定既有语义。剩余候选开始涉及复杂权限、Candidate authority、callback、API、Storage 或多状态组合；Phase 2D 合入并通过 mainline 验证后关闭本阶段，不为减少行数继续提取低收益模型。
 
-`phase2_pure_derivation_closed=true`
+`phase2_pure_derivation_closed=pending_mainline_verification`
 
 ### Phase 3：来源导入视图
 

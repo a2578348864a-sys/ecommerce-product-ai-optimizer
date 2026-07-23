@@ -64,7 +64,7 @@
 
 ### Phase 2C 状态色调 View Model（PRODUCTION）
 
-候选把父组件本地 `candidateStatusClass` 原样迁移为 Candidate pool 领域 module 的 `getCandidateStatusToneClass`。输入只允许 `CandidateQueueState`，输出是完整且顺序固定的 Tailwind 色调字符串；函数不读取 Candidate、标签、下一步文案、surface、权限、Storage、时间或网络。
+生产实现已把父组件本地 `candidateStatusClass` 原样迁移为 Candidate pool 领域 module 的 `getCandidateStatusToneClass`。输入只允许 `CandidateQueueState`，输出是完整且顺序固定的 Tailwind 色调字符串；函数不读取 Candidate、标签、下一步文案、surface、权限、Storage、时间或网络。
 
 五状态合同为：`pending_review → slate`、`pending_analysis → emerald`、`analyzing → indigo`、`converted → teal`、`rejected → rose`。运行时未知值继续落入原末尾分支并返回 slate，不新增或改善 fallback。列表与详情两个消费者继续保留各自外围 class，只把色调调用改为共享函数。
 
@@ -72,7 +72,7 @@
 
 ### Phase 2D 来源 warning 展示模型（候选）
 
-候选把 `sourceImportWarnings` 唯一渲染消费者中的 reason、URL 与消息清理组合提取为 `lib/client/sourceImportLabels.ts` 的 `buildSourceWarningDisplayModel`。输入是一个 warning 字符串；输出为只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。函数复用既有 `extractFailureReason` 与 `getFailureReasonLabel`，无 React、网络、Storage、权限、时间、环境变量或写入。
+候选把 `sourceImportWarnings` 唯一渲染消费者中的 reason、URL 与消息清理组合提取为 `lib/client/sourceImportLabels.ts` 的 `buildSourceWarningDisplayModel`。输入是一个 warning 字符串；输出为只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。`reasonKey` 与 `sourceUrl` 属于共享模型的纯函数合同，但当前唯一生产消费者只读取 `reasonLabel` 与 `messageText`，当前 UI 不消费这两个字段，也不渲染 URL 链接。函数复用既有 `extractFailureReason` 与 `getFailureReasonLabel`，无 React、网络、Storage、权限、时间、环境变量或写入。
 
 URL 仍只按 warning 开头的 `http/https` 加分隔冒号识别；当前页面仍不渲染 warning 链接。无 reason 时继续显示原 warning；字面量 `[unknown]` 继续走原文 fallback；其他未登记 reason 继续显示既有“未知原因”标签。候选容器为 2,146 行，29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。warning 产生、清除、错误处理和 response 写入路径未改变。
 

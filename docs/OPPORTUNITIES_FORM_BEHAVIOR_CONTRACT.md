@@ -84,7 +84,9 @@
 - warning 输入来自 `sourceImportWarnings: string[]`；source-import response 只有在 `warnings.length > 0` 时写入，新的 preview 和“清除结果”继续清空它；**STRUCTURAL**
 - failure reason 只识别 warning 末尾的 `[a-z_]+`；已登记 reason 显示既有标题、说明、建议和移除 reason 后的消息；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
 - 无 reason 时继续原样显示 warning；字面量 `[unknown]` 继续显示原文，其他未登记 reason 继续显示既有“未知原因”富文本标签；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
-- URL 只识别 warning 开头的 `http/https` 加分隔冒号；中间、末尾、非 HTTP URL 不识别。当前 warning 区不渲染链接，Phase 2D 不新增链接或安全属性；**PURE_CONTRACT + MOUNTED_BEHAVIOR**
+- URL 只识别 warning 开头的 `http/https` 加分隔冒号；中间、末尾、非 HTTP URL 不识别。`sourceUrl`、移除 URL 后的 `messageText` 以及 reason/URL/message 组合派生只由纯函数测试证明；**PURE_CONTRACT**
+- `reasonKey` 与 `sourceUrl` 属于共享展示模型的当前合同并由纯函数测试覆盖，但唯一生产消费者只读取 `reasonLabel` 与 `messageText`；当前消费者没有读取或渲染 `reasonKey`/`sourceUrl`，也没有链接分支；**STRUCTURAL**
+- 当前 warning 区不渲染链接；无 URL 时不出现虚假链接，default 与 `advanced_import` 的标签、消息、顺序和 class 保持一致。页面渲染证据不用于证明 URL 在原字符串中的位置解析；**SSR_RENDERED + MOUNTED_BEHAVIOR**
 - 消息清理只移除末尾 reason tag 及其相邻空白，不额外 trim 或改写正文；空、空白、中文和特殊字符保持既有结果；**PURE_CONTRACT**
 - default 与 `advanced_import` 保持同一顺序、class 与 fallback；锁定 surface 不显示 warning；目标交互只有既有 source-import POST，且不新增 Storage 写入；**SSR_RENDERED + MOUNTED_BEHAVIOR**
 

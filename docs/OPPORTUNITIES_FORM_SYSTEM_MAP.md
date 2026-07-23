@@ -105,7 +105,7 @@ flowchart TD
 ### Phase 2D 来源 warning 展示所有权（候选）
 
 - `OpportunitiesForm` 继续拥有 `sourceImportWarnings` state、source-import command、response 写入、清除、错误处理、surface 与锁定条件。
-- `buildSourceWarningDisplayModel` 只读取一个 warning 字符串，复用既有 reason helper，返回只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。
+- `buildSourceWarningDisplayModel` 只读取一个 warning 字符串，复用既有 reason helper，返回只读 `reasonKey`、`reasonLabel`、`sourceUrl` 和 `messageText`。`reasonKey` 与 `sourceUrl` 属于纯函数合同；当前唯一生产消费者只读取 `reasonLabel` 与 `messageText`，不把前两个字段写成用户可见能力。
 - URL 仅按 warning 开头的 `http/https` 加分隔冒号识别；`sourceUrl` 仍不渲染成链接。reason 缺失、字面量 `[unknown]` 与未登记 reason 的既有 fallback 分支保持不变。
 - 唯一生产消费者仍是来源 warning 列表映射；DOM、class、文案、顺序和 warning 原文 fallback 均由父组件拥有。
 - 模型无 React、网络、Storage、权限、时间、环境变量、Candidate authority 或写入；Phase 3 尚未执行。
