@@ -139,7 +139,7 @@ flowchart TD
 ### Phase 3D Confirm Single-Flight（当前候选）
 
 - 父组件新增唯一的 `sourceConfirmInFlightRef`；它在现有同步输入、权限、连接、selection、`canSave` 校验和 payload 构建完成后、首个异步边界与 Candidate POST 之前同步取得。
-- ref 已为 `true` 的重复调用直接返回，不改变 saving、error、warning、preview、summary、selection 或 Candidate pool，也不发送 Candidate POST 或 refresh。`sourceConfirming` state 继续只负责 UI loading/disabled。
+- ref 已为 `true` 的重复调用直接返回，不改变 saving、error、warning、preview、summary、selection 或 Candidate pool，也不发送 Candidate POST 或 refresh。`sourceConfirming` state 继续负责 UI loading/disabled 和既有的渲染后重复触发门禁；同步 ref 关闭 state 重渲染前窗口。
 - ref 覆盖 Candidate POST、响应解析和紧随其后的 Candidate pool refresh，并由现有 `finally` 在成功、所有既有 POST 错误和 refresh 失败后释放；顺序第二次合法 Confirm 可再次发送 POST。
 - endpoint、headers、无显式 credentials、body、Owner/Visitor 客户端合同、POST→refresh 顺序、Preview generation、Storage 与权限均不变。state仍为29，Effect 5、memo 6、callback 11、业务 fetch 9不变，ref由3增至4。
 - 该保护只作用于单个组件实例。多标签页、多浏览器、网络重试、服务端真正并发原子幂等和 Candidate 唯一约束仍为 `UNKNOWN`；候选尚未进入 main、尚未部署，Phase 3E 未实施。

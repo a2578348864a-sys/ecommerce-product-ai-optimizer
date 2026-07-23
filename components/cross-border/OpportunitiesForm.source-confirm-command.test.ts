@@ -1,6 +1,7 @@
 import { act, createElement } from "react";
 import type { ComponentType } from "react";
 import type { Root } from "react-dom/client";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OpportunitiesForm } from "@/components/cross-border/OpportunitiesForm";
@@ -413,6 +414,41 @@ describe("OpportunitiesForm source confirm command", () => {
     };
   }
 
+  it("[STRUCTURAL] holds the Confirm ref through Candidate refresh and releases it in finally", () => {
+    const source = readFileSync(new URL("./OpportunitiesForm.tsx", import.meta.url), "utf8");
+    const confirmSource = source.slice(source.indexOf("const handleConfirmImport = useCallback"));
+    const accessGuard = confirmSource.indexOf("if (!hasAccess || serverAvailable !== true)");
+    const payload = confirmSource.indexOf("const inputs = selected.map");
+    const inFlightGuard = confirmSource.indexOf("if (sourceConfirmInFlightRef.current) return;");
+    const acquire = confirmSource.indexOf("sourceConfirmInFlightRef.current = true;");
+    const savingState = confirmSource.indexOf("setSourceConfirming(true);");
+    const candidatePost = confirmSource.indexOf('fetch("/api/opportunity-candidates"');
+    const refresh = confirmSource.indexOf("await refreshServerPool();");
+    const release = confirmSource.indexOf("sourceConfirmInFlightRef.current = false;");
+
+    expect([
+      accessGuard,
+      payload,
+      inFlightGuard,
+      acquire,
+      savingState,
+      candidatePost,
+      refresh,
+      release,
+    ]).toEqual([...[
+      accessGuard,
+      payload,
+      inFlightGuard,
+      acquire,
+      savingState,
+      candidatePost,
+      refresh,
+      release,
+    ]].sort((a, b) => a - b));
+    expect(accessGuard).toBeGreaterThanOrEqual(0);
+    expect(release).toBeGreaterThan(refresh);
+  });
+
   async function startTwoSameTurnConfirms() {
     const first = deferred<Response>();
     const second = deferred<Response>();
@@ -583,6 +619,17 @@ describe("OpportunitiesForm source confirm command", () => {
     expect(checkbox.hasAttribute("disabled")).toBe(true);
     await act(async () => clickAsBrowser(confirmButton(0)));
     expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(0);
+
+    await preparePreview();
+    harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+      ok: false,
+      error: { message: "valid after non-saveable preview" },
+    }, 409));
+    await act(async () => confirmButton().click());
+    await flushAsyncWork();
+
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
+    expect(container.textContent).toContain("valid after non-saveable preview");
     expectNoUnrelatedWrites();
   });
 
@@ -620,6 +667,17 @@ describe("OpportunitiesForm source confirm command", () => {
 
     expect(container.textContent).not.toContain("确认导入候选池");
     expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(0);
+
+    await preparePreview();
+    harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+      ok: false,
+      error: { message: "valid after missing summary" },
+    }, 409));
+    await act(async () => confirmButton().click());
+    await flushAsyncWork();
+
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
+    expect(container.textContent).toContain("valid after missing summary");
     expectNoUnrelatedWrites();
   });
 
@@ -951,25 +1009,24 @@ describe("OpportunitiesForm source confirm command", () => {
     },
   );
 
-  it("[TIMING_BEHAVIOR] blocks another Confirm while the first write is waiting for refresh", async () => {
+  it("[MOUNTED_BEHAVIOR] keeps Confirm disabled while the first write is waiting for refresh", async () => {
     await mountUnlocked();
     await preparePreview();
-    const pending = await startTwoSameTurnConfirms();
     const firstRefresh = deferred<Response>();
+    harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+      ok: true,
+      created: 1,
+      unchanged: 0,
+    }));
     harness.plan("GET", "/api/opportunity-candidates?limit=100", firstRefresh.promise);
 
-    pending.first.resolve(jsonResponse({ ok: true, created: 1, unchanged: 0 }));
+    await act(async () => confirmButton().click());
     await flushAsyncWork();
     expect(harness.requestsFor("GET", "/api/opportunity-candidates?limit=100")).toHaveLength(2);
     expect(container.textContent).not.toContain("已导入候选池：新增 1 个");
-
-    pending.second.resolve(jsonResponse({
-      ok: false,
-      error: { message: "blocked failed while first refreshes" },
-    }, 409));
-    await flushAsyncWork();
-    expect(findByText(container, "button", "导入中…").hasAttribute("disabled")).toBe(true);
-    expect(container.textContent).not.toContain("blocked failed while first refreshes");
+    const savingButton = findByText(container, "button", "导入中…");
+    expect(savingButton.hasAttribute("disabled")).toBe(true);
+    await act(async () => clickAsBrowser(savingButton));
     expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
 
     firstRefresh.resolve(jsonResponse({

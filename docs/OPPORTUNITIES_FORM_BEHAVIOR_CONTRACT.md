@@ -119,12 +119,12 @@ Phase 3C 挂载测试已证明同一事件周期内两个公开 DOM click 可以
 
 来源 Confirm single-flight 合同（Phase 3D 当前候选；有意行为修复）：
 
-- 现有同步输入、权限、连接、preview/summary/selection 与 `canSave` 校验和 payload 构建全部通过后，`sourceConfirmInFlightRef` 在首个异步边界与 Candidate POST 之前同步取得。无效调用不取得或遗留锁。**STRUCTURAL + MOUNTED_BEHAVIOR**
+- 现有同步输入、权限、连接、preview/summary/selection 与 `canSave` 校验和 payload 构建全部通过后，`sourceConfirmInFlightRef` 在首个异步边界与 Candidate POST 之前同步取得。无 preview、selection、`canSave` 或 summary 的可恢复场景由同实例后续合法 POST 证明不遗留锁；锁定 surface 不渲染 Confirm，服务端池不可用时按钮 disabled，这两项的前置关系仅由源码控制流证明。**STRUCTURAL + MOUNTED_BEHAVIOR**
 - ref 已为 `true` 时立即返回；被阻止调用不发送 POST/refresh，不调用 `setSourceConfirming`，不清除或改写 error、warning、preview、summary、selection 和 Candidate pool。**TIMING_BEHAVIOR + MOUNTED_BEHAVIOR**
-- ref 覆盖 Candidate POST、响应处理和紧随其后的 Candidate pool refresh；现有 `finally` 对成功、HTTP/业务/非 JSON/网络/AbortError 和 refresh 失败全部释放，顺序第二次合法 Confirm 可再次 POST。**TIMING_BEHAVIOR + REQUEST_CONTRACT**
+- ref 覆盖 Candidate POST、响应处理和紧随其后的 Candidate pool refresh；`STRUCTURAL` 哨兵证明 release 位于 `await refreshServerPool()` 之后。首个 POST 已进入 pending refresh 后，当前公开 DOM 按钮由既有 `sourceConfirming` state 禁用，真实点击不产生新增 POST；该 mounted 证据只证明渲染后 guard，不冒充 ref 持有证明。现有 `finally` 对成功、HTTP/业务/非 JSON/网络/AbortError 和 refresh 失败全部释放，顺序第二次合法 Confirm 可再次 POST。**STRUCTURAL + MOUNTED_BEHAVIOR + REQUEST_CONTRACT**
 - Owner/default 与 Visitor/advanced_import 的 endpoint、headers、无显式 credentials、`{ items }` body 和 refresh 合同保持不变；双触发在每个 surface 均只产生一个 Candidate POST。**AUTHORIZATION_BEHAVIOR + REQUEST_CONTRACT**
-- `sourceConfirming` state 仍负责 UI loading/disabled；没有新增 generation、requestId、AbortController、Effect、幂等 key 或服务端约束。该 ref 只保护单个组件实例，不覆盖多标签页、多浏览器、网络重试或服务端并发。**STRUCTURAL**
-- 46项挂载测试继续由 fail-closed 内存 fetch 接管；Phase 3C 红灯证据中旧 main 实际2个POST、Phase 3D候选实际1个POST。候选尚未进入 main、尚未部署，服务端真正并发原子幂等仍为 `UNKNOWN`。**TIMING_BEHAVIOR + REQUEST_CONTRACT**
+- `sourceConfirming` state 仍负责 UI loading/disabled 和既有的渲染后重复触发门禁；同步 ref 专门关闭 state 重渲染前窗口。没有新增 generation、requestId、AbortController、Effect、幂等 key 或服务端约束。该 ref 只保护单个组件实例，不覆盖多标签页、多浏览器、网络重试或服务端并发。**STRUCTURAL**
+- Phase 3D 套件包含46项 fail-closed 挂载测试和1项 `STRUCTURAL` 顺序哨兵；Phase 3C 红灯证据中旧 main 实际2个POST、Phase 3D候选实际1个POST。候选尚未进入 main、尚未部署，服务端真正并发原子幂等仍为 `UNKNOWN`。**TIMING_BEHAVIOR + REQUEST_CONTRACT + STRUCTURAL**
 
 ## 7. Storage 合同
 

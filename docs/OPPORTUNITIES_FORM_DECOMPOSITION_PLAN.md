@@ -158,7 +158,7 @@ Phase 3C 已进入上述 production main；它只新增 `OpportunitiesForm.sourc
 
 Phase 3D 是有意行为修复，只在父组件增加一个 `sourceConfirmInFlightRef`。现有同步输入、权限、连接、selection、`canSave` 校验和 payload 构建通过后，ref 在首个异步边界与 Candidate POST 前同步取得；重复触发直接返回且不改变任何页面状态。ref 覆盖 POST、响应处理与后续 refresh，并在现有 `finally` 中对所有成功、失败和 refresh 失败路径释放。
 
-生产容器候选为2,145行；state 29、Effect 5、callback 11、memo 6、业务 fetch 9、Storage 数据域和5个间接 sessionStorage活动 key不变，ref从3增至4。46项挂载测试保留Phase 3C请求/权限/错误/卸载证据，并将同周期双POST矩阵转为single-flight合同：POST pending与refresh pending只允许一个POST，所有既有错误路径均释放，顺序第二次Confirm可执行。endpoint、headers、body、无显式credentials、Owner/Visitor、Preview和Candidate refresh语义均不变。
+生产容器候选为2,145行；state 29、Effect 5、callback 11、memo 6、业务 fetch 9、Storage 数据域和5个间接 sessionStorage活动 key不变，ref从3增至4。Phase 3D 套件为47项：46项挂载测试保留Phase 3C请求/权限/错误/卸载证据，并将同周期双POST矩阵转为single-flight合同；新增1项STRUCTURAL哨兵证明ref release位于refresh之后。POST pending只允许一个POST；pending refresh期间公开DOM由既有state guard禁用且不产生新增POST；所有既有错误路径均释放；可恢复的preview/selection/`canSave`/summary门禁和顺序第二次Confirm可执行。锁定surface与服务端池不可用只声明公开UI阻断和ref前置的STRUCTURAL证据。`sourceConfirming`继续承担UI和既有渲染后guard，ref只关闭重渲染前窗口。endpoint、headers、body、无显式credentials、Owner/Visitor、Preview和Candidate refresh语义均不变。
 
 该候选只保护单个组件实例；多标签页、多浏览器、网络重试及服务端并发原子幂等仍为 `UNKNOWN`。候选尚未进入 main、尚未部署；Phase 3E 未实施。
 

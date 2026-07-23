@@ -114,9 +114,9 @@ preview Candidate + summary
 
 本候选是有意行为修复，不是等价重构。`handleConfirmImport` 在全部现有同步输入、权限、连接、selection 与 `canSave` 校验及 payload 构建通过后、首个异步边界和 Candidate POST 之前，同步取得容器实例私有的 `sourceConfirmInFlightRef`。ref 已为 `true` 时直接返回，不发送请求，也不改变 saving、error、warning、preview、summary、selection 或 Candidate pool。
 
-该 ref 覆盖 Candidate POST、响应处理及紧随其后的 Candidate pool refresh，并在现有 `finally` 中对成功、HTTP/业务/非 JSON/网络/AbortError 以及 refresh 失败全部释放。`sourceConfirming` 仍只负责 UI loading/disabled；请求 endpoint、headers、无显式 credentials、body、Owner/Visitor 客户端合同和 POST→refresh 顺序不变。生产容器候选为2,145行；state 29、Effect 5、callback 11、memo 6、业务 fetch 9、Storage 数据域与5个间接 sessionStorage活动 key不变，ref由3增至4。
+该 ref 覆盖 Candidate POST、响应处理及紧随其后的 Candidate pool refresh，并在现有 `finally` 中对成功、HTTP/业务/非 JSON/网络/AbortError 以及 refresh 失败全部释放。`sourceConfirming` 继续负责 UI loading/disabled 和既有的渲染后重复触发门禁；同步 ref 专门关闭 state 重渲染前的窗口。请求 endpoint、headers、无显式 credentials、body、Owner/Visitor 客户端合同和 POST→refresh 顺序不变。生产容器候选为2,145行；state 29、Effect 5、callback 11、memo 6、业务 fetch 9、Storage 数据域与5个间接 sessionStorage活动 key不变，ref由3增至4。
 
-46项 Confirm 挂载测试继续使用公开 DOM 与 fail-closed 内存 fetch；其中 `TIMING_BEHAVIOR` 证明旧 main 的同周期双 click 实际发出2个POST，而候选只发出1个。测试也覆盖 POST pending、refresh pending、全部既有错误路径释放、顺序再次 Confirm，以及虚假 Owner/Visitor 请求合同。该客户端 single-flight 仅保护单个组件实例；多标签页、多浏览器、网络重试和服务端真正并发原子幂等性仍为 `UNKNOWN`。候选尚未进入 main、尚未部署，Phase 3E 未实施。
+Phase 3D 测试套件为47项：既有46项 Confirm 挂载测试继续使用公开 DOM 与 fail-closed 内存 fetch，新增1项 `STRUCTURAL` 哨兵。`TIMING_BEHAVIOR` 证明旧 main 的同周期双 click 实际发出2个POST，而候选只发出1个；`MOUNTED_BEHAVIOR` 在首个 POST 已进入 pending refresh 后真实点击 disabled 按钮并证明没有新增 POST；`STRUCTURAL` 哨兵独立证明 ref 的释放位于 `await refreshServerPool()` 之后，不把 disabled 行为冒充 ref 持有证据。测试也覆盖 POST pending、全部既有错误路径释放、顺序再次 Confirm、可恢复的无 preview/selection/`canSave`/summary 门禁，以及虚假 Owner/Visitor 请求合同。锁定 surface 不渲染 Confirm；服务端池不可用时按钮 disabled，二者的 ref 前置关系为 `STRUCTURAL` 证据，不冒充同实例恢复行为。该客户端 single-flight 仅保护单个组件实例；多标签页、多浏览器、网络重试和服务端真正并发原子幂等性仍为 `UNKNOWN`。候选尚未进入 main、尚未部署，Phase 3E 未实施。
 
 ## 2. 真实调用方与 interface
 
