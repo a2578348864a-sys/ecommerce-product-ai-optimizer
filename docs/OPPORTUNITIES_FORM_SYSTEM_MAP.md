@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `835085bb0a464be41af4e40cc5672fbd666bdb0d`，tree `d57110cc0612d1992679c79d07819fa44bdbe8dc`
+> Source baseline：`origin/main` commit `a8061a5f5f2fdfdce24a041cc6879802b9980e24`，tree `b6d8d19671f9e6a2ba4a06455810920fe6a46847`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 1B 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 1C 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -36,7 +36,8 @@ flowchart TD
 |Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility|
 |Action domain|`opportunityCandidateActions`|Candidate 删除 presentation 纯规则；PRODUCTION|
 |展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案；PRODUCTION / ACTIVE|
-|展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 候选的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`，合入 main 后为 PRODUCTION / ACTIVE|
+|展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`；PRODUCTION / ACTIVE|
+|展示叶子|`OpportunitiesFlowGuidance`|Phase 1C 候选的主链路引导；无 props，保留原静态文案与 `/agent/run`、`/tasks` 链接，合入 main 后为 PRODUCTION / ACTIVE|
 |Evidence/R2.2|candidate evidence、quality、decision desk modules|来源、风险和市场门禁展示|
 |Task domain|`candidateTaskLinks`|Snapshot 与 canonical Task 关联|
 |Agent adapter|`candidateAgentRunLink`|构建受限 `/agent/run` handoff URL|
@@ -55,6 +56,13 @@ flowchart TD
 - `OpportunitiesDecisionSummary` 只按原顺序渲染“全部候选、待查看、待分析、分析中、已转任务”五个数值。
 - interface 只有一个只读 `summary` prop；无 callback、Hook、网络、Storage、权限或数据库访问。
 - default 与 `advanced_import` 的已解锁 fixture、空 fixture 以及锁定态由同一公开 interface SSR 测试保护。
+
+### Phase 1C 展示所有权
+
+- `OpportunitiesForm` 继续拥有 `!unlocked` 条件、surface 选择、页头、连接状态以及全部 state、Effect、请求、Storage 和权限接入。
+- `OpportunitiesFlowGuidance` 无 props，只返回原主链路说明以及原 `/agent/run`、`/tasks` 声明式链接。
+- 新叶子没有 callback、Hook、网络、Storage、权限、数据库或 Candidate/Task 权威对象访问。
+- default 与 `advanced_import` 的已解锁态及两个 surface 的锁定态由同一公开 interface SSR 测试保护；锁定态不渲染该引导。
 
 ## 4. 数据流
 
