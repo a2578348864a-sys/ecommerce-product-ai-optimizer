@@ -110,10 +110,11 @@
 
 ### Candidate pool 过滤排序合同
 
-- 默认 `poolFilter` 为 `all`，默认 `poolSort` 为 `updated`；所有组合始终先过滤再排序；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- 默认 `poolFilter` 为 `all`，默认 `poolSort` 为 `updated`；UI 与纯函数测试保护每个 filter/sort 组合的最终可见输出；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- selector 当前实现先过滤再排序；该内部执行顺序由 source diff 确认，输出等价的未来实现未必能由行为测试区分；**STRUCTURAL**
 - `all` 保留直接未知状态和已转 Task Candidate；五个合法状态只保留精确命中，`analyzed` 额外排除已有 `convertedTaskId` 的 Candidate；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
 - `updated` 按 `updatedAt` 降序、`score` 降序、中文名称升序；`score` 按 `score` 降序、`updatedAt` 降序、中文名称升序；全部比较键相等时保持输入顺序；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
-- 缺失或非有限数值保持原 comparator 的 `||` fallback 行为，不在 Phase 2B 修复或正常化；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- `undefined` 或 `NaN` 使当前减法 comparator 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为可比较极值，只有相同 Infinity 相减产生 `NaN` 时才进入下一字段。Phase 2B 只冻结、不修复或正常化这些语义；**PURE_CONTRACT**
 - selector 接收只读数组并返回新的有序数组，不修改输入数组或 Candidate 对象；不读取 surface、权限、Storage、时间或网络；**PURE_CONTRACT**
 - 原 `visiblePoolItems` memo、`[poolItems, poolFilter, poolSort]` 依赖、列表/选择/空状态消费者和 Candidate authority 仍由父组件拥有；**STRUCTURAL**
 

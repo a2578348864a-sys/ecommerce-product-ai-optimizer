@@ -60,7 +60,7 @@
 
 候选把父组件 `visiblePoolItems` memo 内的 `filterCandidatePool` 后接 `sortCandidatePool` 组合提取为同一 Candidate pool 领域 module 的 `buildVisibleCandidatePoolItems`。interface 只接收只读 Candidate 数组、现有 `poolFilter` 和现有 `poolSort`，返回有序只读 Candidate 数组。父组件保留原 memo 位置、`[poolItems, poolFilter, poolSort]` 依赖和全部消费者。
 
-候选容器为 2,158 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。selector 仍先 filter 后 sort；`updated` 依次按 `updatedAt` 降序、`score` 降序、中文名称升序比较，`score` 依次按 `score` 降序、`updatedAt` 降序、中文名称升序比较。完全相等时保留当前 JavaScript 稳定排序的输入顺序；缺失或非有限数值沿用原 `||` comparator 的下一字段 fallback。直接未知状态只在 `all` 中出现，已有 `convertedTaskId` 的 `analyzed` Candidate 不进入 `analyzed` filter。Phase 2C 未执行。
+候选容器为 2,158 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。selector 当前实现仍先 filter 后 sort；该内部执行顺序由 source diff 的 STRUCTURAL 证据确认，最终输出测试不能唯一证明等价实现的内部顺序。`updated` 依次按 `updatedAt` 降序、`score` 降序、中文名称升序比较，`score` 依次按 `score` 降序、`updatedAt` 降序、中文名称升序比较。完全相等时保留当前 JavaScript 稳定排序的输入顺序。`undefined` 或 `NaN` 使减法 comparator 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为可比较极值参与排序，两个相同 Infinity 相减产生 `NaN` 时才进入下一字段。直接未知状态只在 `all` 中出现，已有 `convertedTaskId` 的 `analyzed` Candidate 不进入 `analyzed` filter。Phase 2C 未执行。
 
 ## 2. 真实调用方与 interface
 

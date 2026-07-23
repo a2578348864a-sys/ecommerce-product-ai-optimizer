@@ -96,13 +96,13 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 
 ### Phase 2B：Candidate pool 过滤排序 selector（候选已完成）
 
-本次只把父组件 `visiblePoolItems` memo 内的既有 filter 后 sort 组合提取为 `buildVisibleCandidatePoolItems`。`poolItems`、`poolFilter`、`poolSort`、原 memo 位置、`[poolItems, poolFilter, poolSort]` 依赖和全部消费者仍由 `OpportunitiesForm` 拥有。
+本次只把父组件 `visiblePoolItems` memo 内的既有 filter 后 sort 组合提取为 `buildVisibleCandidatePoolItems`。该内部执行顺序由 STRUCTURAL 证据确认；UI 与纯函数输出测试保护最终合同，但不能唯一证明等价实现的内部顺序。`poolItems`、`poolFilter`、`poolSort`、原 memo 位置、`[poolItems, poolFilter, poolSort]` 依赖和全部消费者仍由 `OpportunitiesForm` 拥有。
 
 |输入|输出|副作用|语义边界|
 |-|-|-|-|
-|只读 Candidate pool、现有 filter、现有 sort|新的有序只读 Candidate 数组|无网络、Storage、权限、时间或写入|直接未知状态只在 `all`；`analyzed` 排除已转 Task；保留原 tie-breaker、稳定排序和缺失值 fallback|
+|只读 Candidate pool、现有 filter、现有 sort|新的有序只读 Candidate 数组|无网络、Storage、权限、时间或写入|直接未知状态只在 `all`；`analyzed` 排除已转 Task；保留原 tie-breaker、稳定排序、`undefined`/`NaN` fallback 与 Infinity 极值语义|
 
-候选容器为 2,158 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。提取前后复用同一 mounted UI 行为测试；纯函数表驱动覆盖全部 filter/sort、组合、未知状态、converted Task、并列键、缺失/非有限值、冻结输入、确定性以及与原 inline 输出逐项对照。Phase 2C 未执行。
+候选容器为 2,158 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。提取前后复用同一 mounted UI 行为测试；纯函数表驱动覆盖全部 filter/sort、组合、未知状态、converted Task、并列键、`undefined`、`NaN`、正负 Infinity、冻结输入、确定性以及与原 inline 输出逐项对照。Phase 2C 未执行。
 
 ## 3. seam 清单
 

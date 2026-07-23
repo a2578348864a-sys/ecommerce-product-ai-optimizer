@@ -90,9 +90,9 @@ flowchart TD
 ### Phase 2B 可见 Candidate selector 所有权（IN-FLIGHT）
 
 - `OpportunitiesForm` 继续拥有 `poolItems`、`poolFilter`、`poolSort`、现有 `visiblePoolItems` memo、三项依赖和全部列表/选择/空状态消费者。
-- `buildVisibleCandidatePoolItems` 只执行原 filter 后 sort 组合；interface 为只读 Candidate 数组、现有 filter、现有 sort 到有序只读 Candidate 数组。
+- `buildVisibleCandidatePoolItems` 当前实现执行原 filter 后 sort 组合；该内部顺序由 STRUCTURAL 证据确认，行为输出测试只证明最终过滤排序合同，不能唯一证明等价实现的内部顺序。interface 为只读 Candidate 数组、现有 filter、现有 sort 到有序只读 Candidate 数组。
 - `all` 不过滤；五个合法状态按既有状态命中，`analyzed` 继续排除已有 `convertedTaskId` 的 Candidate；直接未知状态只在 `all` 中保留。
-- `updated` 顺序为更新时间、分数、中文名称；`score` 顺序为分数、更新时间、中文名称；完全相等时沿用稳定排序输入顺序，缺失或非有限数值继续由原 comparator 的下一字段决定。
+- `updated` 顺序为更新时间、分数、中文名称；`score` 顺序为分数、更新时间、中文名称；完全相等时沿用稳定排序输入顺序。`undefined` 或 `NaN` 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为极值，只有相同 Infinity 相减产生 `NaN` 时才进入下一字段。
 - selector 不读取 surface、权限、Storage、时间或网络，不修改输入数组或 Candidate 对象；Phase 2C 未执行。
 
 ## 4. 数据流

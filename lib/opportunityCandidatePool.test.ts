@@ -231,6 +231,20 @@ describe("opportunity candidate pool", () => {
     const names = (candidates: readonly OpportunityCandidatePoolItem[]) => (
       candidates.map((candidate) => candidate.name)
     );
+    const ids = (candidates: readonly OpportunityCandidatePoolItem[]) => (
+      candidates.map((candidate) => candidate.id)
+    );
+    const edgeItem = (
+      id: string,
+      name: string,
+      score: number,
+      updatedAt: number,
+    ): OpportunityCandidatePoolItem => ({
+      ...item(name, 0, 0),
+      id,
+      score,
+      updatedAt,
+    });
 
     it.each([
       ["all", ["worth-low", "unknown", "rejected", "paused", "pending-a", "pending-b", "analyzed", "converted", "worth-high"]],
@@ -271,36 +285,103 @@ describe("opportunity candidate pool", () => {
       }
     });
 
-    it("preserves current missing and non-finite sort-field fallbacks", () => {
-      const missingUpdated = {
-        ...item("missing-updated", 70, 0),
-        updatedAt: undefined as unknown as number,
-      };
-      const validUpdated = item("valid-updated", 60, 100);
-      const invalidUpdated = {
-        ...item("invalid-updated", 80, 0),
-        updatedAt: Number.NaN,
-      };
-      const missingScore = {
-        ...item("missing-score", 0, 200),
-        score: undefined as unknown as number,
-      };
-      const validScore = item("valid-score", 50, 100);
-      const invalidScore = {
-        ...item("invalid-score", 0, 300),
-        score: Number.NaN,
-      };
+    it.each([
+      {
+        name: "updated ranks positive and negative Infinity as extremes before score",
+        sort: "updated",
+        candidates: [
+          edgeItem("updated-finite", "Updated finite", 1_000, 100),
+          edgeItem("updated-negative-infinity", "Updated negative infinity", 2_000, Number.NEGATIVE_INFINITY),
+          edgeItem("updated-positive-infinity", "Updated positive infinity", -100, Number.POSITIVE_INFINITY),
+        ],
+        expectedIds: ["updated-positive-infinity", "updated-finite", "updated-negative-infinity"],
+      },
+      {
+        name: "updated falls back from undefined and NaN to score",
+        sort: "updated",
+        candidates: [
+          edgeItem("updated-finite", "Updated finite", 60, 100),
+          {
+            ...edgeItem("updated-undefined", "Updated undefined", 70, 0),
+            updatedAt: undefined as unknown as number,
+          },
+          {
+            ...edgeItem("updated-nan", "Updated NaN", 80, 0),
+            updatedAt: Number.NaN,
+          },
+        ],
+        expectedIds: ["updated-nan", "updated-undefined", "updated-finite"],
+      },
+      {
+        name: "updated falls back from equal positive Infinity to score and name",
+        sort: "updated",
+        candidates: [
+          edgeItem("updated-infinity-high-b", "Edge B", 20, Number.POSITIVE_INFINITY),
+          edgeItem("updated-infinity-low", "Edge Low", 10, Number.POSITIVE_INFINITY),
+          edgeItem("updated-infinity-high-a", "Edge A", 20, Number.POSITIVE_INFINITY),
+        ],
+        expectedIds: ["updated-infinity-high-a", "updated-infinity-high-b", "updated-infinity-low"],
+      },
+      {
+        name: "score ranks positive and negative Infinity as extremes before updatedAt",
+        sort: "score",
+        candidates: [
+          edgeItem("score-finite", "Score finite", 100, 1_000),
+          edgeItem("score-negative-infinity", "Score negative infinity", Number.NEGATIVE_INFINITY, 2_000),
+          edgeItem("score-positive-infinity", "Score positive infinity", Number.POSITIVE_INFINITY, -100),
+        ],
+        expectedIds: ["score-positive-infinity", "score-finite", "score-negative-infinity"],
+      },
+      {
+        name: "score falls back from undefined and NaN to updatedAt",
+        sort: "score",
+        candidates: [
+          edgeItem("score-finite", "Score finite", 50, 100),
+          {
+            ...edgeItem("score-undefined", "Score undefined", 0, 200),
+            score: undefined as unknown as number,
+          },
+          {
+            ...edgeItem("score-nan", "Score NaN", 0, 300),
+            score: Number.NaN,
+          },
+        ],
+        expectedIds: ["score-nan", "score-undefined", "score-finite"],
+      },
+      {
+        name: "score falls back from equal negative Infinity to updatedAt and name",
+        sort: "score",
+        candidates: [
+          edgeItem("score-infinity-recent-b", "Edge B", Number.NEGATIVE_INFINITY, 20),
+          edgeItem("score-infinity-old", "Edge Old", Number.NEGATIVE_INFINITY, 10),
+          edgeItem("score-infinity-recent-a", "Edge A", Number.NEGATIVE_INFINITY, 20),
+        ],
+        expectedIds: ["score-infinity-recent-a", "score-infinity-recent-b", "score-infinity-old"],
+      },
+      {
+        name: "score preserves stable input order when every key is negative Infinity or equal",
+        sort: "score",
+        candidates: [
+          edgeItem("stable-second", "Stable", Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY),
+          edgeItem("stable-first", "Stable", Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY),
+        ],
+        expectedIds: ["stable-second", "stable-first"],
+      },
+    ] as const)("$name", ({ sort, candidates, expectedIds }) => {
+      const snapshots = candidates.map((candidate) => ({ ...candidate }));
+      const frozenCandidates = candidates.map((candidate) => Object.freeze(candidate));
+      const frozenInput: readonly OpportunityCandidatePoolItem[] = Object.freeze(frozenCandidates);
+      const inputIds = ids(frozenInput);
 
-      expect(names(buildVisibleCandidatePoolItems(
-        [validUpdated, missingUpdated, invalidUpdated],
-        "all",
-        "updated",
-      ))).toEqual(["invalid-updated", "missing-updated", "valid-updated"]);
-      expect(names(buildVisibleCandidatePoolItems(
-        [validScore, missingScore, invalidScore],
-        "all",
-        "score",
-      ))).toEqual(["invalid-score", "missing-score", "valid-score"]);
+      const result = buildVisibleCandidatePoolItems(frozenInput, "all", sort);
+
+      expect(ids(result)).toEqual(expectedIds);
+      expect(ids(frozenInput)).toEqual(inputIds);
+      expect(result).not.toBe(frozenInput);
+      expect(result.every((candidate) => frozenInput.includes(candidate))).toBe(true);
+      for (const [index, candidate] of frozenInput.entries()) {
+        expect(candidate).toEqual(snapshots[index]);
+      }
     });
 
     it("preserves stable input order after every explicit tie-breaker is equal", () => {
