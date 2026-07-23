@@ -11,6 +11,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
 import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { OpportunitiesDecisionSummary } from "@/components/cross-border/OpportunitiesDecisionSummary";
+import { OpportunitiesCandidatePoolEmptyState, type CandidatePoolDisplayState } from "@/components/cross-border/OpportunitiesCandidatePoolEmptyState";
 import { OpportunitiesFlowGuidance } from "@/components/cross-border/OpportunitiesFlowGuidance";
 import { OpportunitiesLockedPreview } from "@/components/cross-border/OpportunitiesLockedPreview";
 import { OpportunitiesSourceAvailability } from "@/components/cross-border/OpportunitiesSourceAvailability";
@@ -774,6 +775,9 @@ function OpportunitiesFormContent({
   const visiblePoolItems = useMemo(() => {
     return sortCandidatePool(filterCandidatePool(poolItems, poolFilter), poolSort);
   }, [poolItems, poolFilter, poolSort]);
+  const candidatePoolDisplayState: CandidatePoolDisplayState = poolItems.length === 0
+    ? "pool_empty"
+    : visiblePoolItems.length === 0 ? "filter_empty" : "has_results";
   const poolCounts = useMemo(() => {
     return {
       all: poolItems.length,
@@ -1561,14 +1565,8 @@ function OpportunitiesFormContent({
             })}
           </div>
 
-          {poolItems.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm text-slate-500">
-              还没有候选品。先在上方输入候选商品并手动分析，结果会自动进入候选品池。
-            </div>
-          ) : visiblePoolItems.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm text-slate-500">
-              当前筛选下没有候选品。
-            </div>
+          {candidatePoolDisplayState !== "has_results" ? (
+            <OpportunitiesCandidatePoolEmptyState state={candidatePoolDisplayState} />
           ) : (
             <div
               className="opportunity-decision-grid mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white"
