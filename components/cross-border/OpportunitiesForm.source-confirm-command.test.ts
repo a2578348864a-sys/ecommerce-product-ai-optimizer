@@ -426,7 +426,7 @@ describe("OpportunitiesForm source confirm command", () => {
       await Promise.resolve();
     });
 
-    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(2);
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
     return { first, second };
   }
 
@@ -448,7 +448,12 @@ describe("OpportunitiesForm source confirm command", () => {
         items: [serverCandidate(`candidate-${mode}-001`)],
       }));
 
-      await act(async () => confirmButton().click());
+      const button = confirmButton();
+      await act(async () => {
+        button.click();
+        button.click();
+        await Promise.resolve();
+      });
       await flushAsyncWork();
 
       const confirmRequests = harness.requestsFor("POST", "/api/opportunity-candidates");
@@ -506,6 +511,17 @@ describe("OpportunitiesForm source confirm command", () => {
 
     expect(container.textContent).not.toContain("确认导入候选池");
     expect(harness.requestsFor("POST")).toHaveLength(0);
+
+    await preparePreview();
+    harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+      ok: false,
+      error: { message: "valid after missing preview" },
+    }, 409));
+    await act(async () => confirmButton().click());
+    await flushAsyncWork();
+
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
+    expect(container.textContent).toContain("valid after missing preview");
     expectNoUnrelatedWrites();
   });
 
@@ -538,7 +554,14 @@ describe("OpportunitiesForm source confirm command", () => {
     expect(checkbox.hasAttribute("disabled")).toBe(false);
     await act(async () => checkbox.click());
     expect(confirmButton().hasAttribute("disabled")).toBe(false);
-    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(0);
+    harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+      ok: false,
+      error: { message: "valid after selection" },
+    }, 409));
+    await act(async () => confirmButton().click());
+    await flushAsyncWork();
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
+    expect(container.textContent).toContain("valid after selection");
     expectNoUnrelatedWrites();
   });
 
@@ -690,6 +713,16 @@ describe("OpportunitiesForm source confirm command", () => {
       expectPreviewStateRetained();
       expect(confirmButton().hasAttribute("disabled")).toBe(false);
       expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
+
+      harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+        ok: false,
+        error: { message: "retry after refresh failure" },
+      }, 409));
+      await act(async () => confirmButton().click());
+      await flushAsyncWork();
+
+      expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(2);
+      expect(container.textContent).toContain("retry after refresh failure");
       expectNoUnrelatedWrites();
     },
   );
@@ -757,13 +790,23 @@ describe("OpportunitiesForm source confirm command", () => {
       expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
       expect(harness.requestsFor("GET", "/api/opportunity-candidates?limit=100")).toHaveLength(1);
       expect(localStorageWrite).not.toHaveBeenCalled();
+
+      harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
+        ok: false,
+        error: { message: "retry after confirm failure" },
+      }, 409));
+      await act(async () => confirmButton().click());
+      await flushAsyncWork();
+
+      expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(2);
+      expect(container.textContent).toContain("retry after confirm failure");
       expectNoUnrelatedWrites();
     },
   );
 
-  it("[TIMING_BEHAVIOR] records whether two same-turn public button clicks can emit two Candidate writes", async () => {
+  it("[TIMING_BEHAVIOR] allows only one Candidate write for two same-turn public button clicks", async () => {
     await mountUnlocked();
-    await preparePreview();
+    await preparePreview([previewCandidate()], ["phase3d retained warning"]);
     const first = deferred<Response>();
     const second = deferred<Response>();
     harness.plan("POST", "/api/opportunity-candidates", first.promise);
@@ -776,12 +819,20 @@ describe("OpportunitiesForm source confirm command", () => {
       await Promise.resolve();
     });
 
-    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(2);
-
+    const candidatePostCount = harness.requestsFor("POST", "/api/opportunity-candidates").length;
+    expect(container.textContent).toContain("phase3d retained warning");
+    expect(container.textContent).toContain("Widget Stand");
+    expect(container.textContent).toContain("已提取 1 个候选品");
+    expect(findAll(
+      container,
+      (element) => element.localName === "input" && element.type === "checkbox",
+    )[0]?.checked).toBe(true);
+    expect(localStorageWrite).not.toHaveBeenCalled();
     first.resolve(jsonResponse({ ok: false, error: { message: "first failed" } }, 409));
     second.resolve(jsonResponse({ ok: false, error: { message: "second failed" } }, 409));
     await flushAsyncWork();
-    expect(container.textContent).toContain("second failed");
+    expect(candidatePostCount).toBe(1);
+    expect(container.textContent).toContain("first failed");
     expectNoUnrelatedWrites();
   });
 
@@ -808,17 +859,23 @@ describe("OpportunitiesForm source confirm command", () => {
     expectNoUnrelatedWrites();
   });
 
-  it("[TIMING_BEHAVIOR] allows a new Confirm after the previous interaction fully settles", async () => {
+  it("[TIMING_BEHAVIOR] releases single-flight after a successful write and refresh", async () => {
     await mountUnlocked();
     await preparePreview();
     harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
-      ok: false,
-      error: { message: "first controlled failure" },
-    }, 409));
+      ok: true,
+      created: 1,
+      unchanged: 0,
+    }));
+    harness.plan("GET", "/api/opportunity-candidates?limit=100", jsonResponse({
+      ok: true,
+      items: [serverCandidate("candidate-first-success")],
+    }));
 
     await act(async () => confirmButton().click());
     await flushAsyncWork();
     expect(confirmButton().hasAttribute("disabled")).toBe(false);
+    expect(container.textContent).toContain("已导入候选池：新增 1 个");
 
     harness.plan("POST", "/api/opportunity-candidates", jsonResponse({
       ok: false,
@@ -832,39 +889,38 @@ describe("OpportunitiesForm source confirm command", () => {
     expectNoUnrelatedWrites();
   });
 
-  const sameTurnRaceCases = [
-    { first: "success", second: "success", order: ["first", "second"] },
-    { first: "success", second: "success", order: ["second", "first"] },
-    { first: "success", second: "failure", order: ["first", "second"] },
-    { first: "success", second: "failure", order: ["second", "first"] },
-    { first: "failure", second: "success", order: ["first", "second"] },
-    { first: "failure", second: "success", order: ["second", "first"] },
-    { first: "failure", second: "failure", order: ["first", "second"] },
-    { first: "failure", second: "failure", order: ["second", "first"] },
+  const sameTurnSingleFlightCases = [
+    { first: "success", blocked: "success", order: ["first", "blocked"] },
+    { first: "success", blocked: "success", order: ["blocked", "first"] },
+    { first: "success", blocked: "failure", order: ["first", "blocked"] },
+    { first: "success", blocked: "failure", order: ["blocked", "first"] },
+    { first: "failure", blocked: "success", order: ["first", "blocked"] },
+    { first: "failure", blocked: "success", order: ["blocked", "first"] },
+    { first: "failure", blocked: "failure", order: ["first", "blocked"] },
+    { first: "failure", blocked: "failure", order: ["blocked", "first"] },
   ] as const;
 
-  it.each(sameTurnRaceCases)(
-    "[TIMING_BEHAVIOR] freezes same-turn A=$first B=$second with $order completion",
-    async ({ first: firstOutcome, second: secondOutcome, order }) => {
+  it.each(sameTurnSingleFlightCases)(
+    "[TIMING_BEHAVIOR] keeps same-turn first=$first authoritative and blocked=$blocked inert with $order resolution",
+    async ({ first: firstOutcome, blocked: blockedOutcome, order }) => {
       await mountUnlocked();
       await preparePreview();
       const pending = await startTwoSameTurnConfirms();
-      const outcomes = {
-        first: firstOutcome,
-        second: secondOutcome,
-      } as const;
+      if (firstOutcome === "success") {
+        harness.plan("GET", "/api/opportunity-candidates?limit=100", jsonResponse({
+          ok: true,
+          items: [serverCandidate("candidate-first-race")],
+        }));
+      }
+      const outcomes = { first: firstOutcome, blocked: blockedOutcome } as const;
       const controls = {
         first: pending.first,
-        second: pending.second,
+        blocked: pending.second,
       };
 
       for (const key of order) {
         const outcome = outcomes[key];
         if (outcome === "success") {
-          harness.plan("GET", "/api/opportunity-candidates?limit=100", jsonResponse({
-            ok: true,
-            items: [serverCandidate(`candidate-${key}-race`)],
-          }));
           controls[key].resolve(jsonResponse({
             ok: true,
             created: 1,
@@ -877,27 +933,25 @@ describe("OpportunitiesForm source confirm command", () => {
           }, 409));
         }
         await flushAsyncWork();
-
-        if (key === order[0]) {
-          expect(confirmButton().hasAttribute("disabled")).toBe(false);
-        }
       }
 
-      const last = order[1];
-      if (outcomes[last] === "success") {
+      if (firstOutcome === "success") {
         expect(container.textContent).toContain("已导入候选池：新增 1 个");
       } else {
-        expect(container.textContent).toContain(`${last} race failure`);
+        expect(container.textContent).toContain("first race failure");
       }
-      expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(2);
+      expect(container.textContent).not.toContain("blocked race failure");
+      expect(confirmButton().hasAttribute("disabled")).toBe(false);
+      expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
       expect(harness.requestsFor("GET", "/api/opportunity-candidates?limit=100")).toHaveLength(
-        1 + Number(firstOutcome === "success") + Number(secondOutcome === "success"),
+        1 + Number(firstOutcome === "success"),
       );
+      expect(harness.pendingPlans()).toContain("POST:/api/opportunity-candidates");
       expectNoUnrelatedWrites();
     },
   );
 
-  it("[TIMING_BEHAVIOR] keeps B pending while A has written and is waiting for refresh", async () => {
+  it("[TIMING_BEHAVIOR] blocks another Confirm while the first write is waiting for refresh", async () => {
     await mountUnlocked();
     await preparePreview();
     const pending = await startTwoSameTurnConfirms();
@@ -911,11 +965,12 @@ describe("OpportunitiesForm source confirm command", () => {
 
     pending.second.resolve(jsonResponse({
       ok: false,
-      error: { message: "second failed while first refreshes" },
+      error: { message: "blocked failed while first refreshes" },
     }, 409));
     await flushAsyncWork();
-    expect(confirmButton().hasAttribute("disabled")).toBe(false);
-    expect(container.textContent).toContain("second failed while first refreshes");
+    expect(findByText(container, "button", "导入中…").hasAttribute("disabled")).toBe(true);
+    expect(container.textContent).not.toContain("blocked failed while first refreshes");
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
 
     firstRefresh.resolve(jsonResponse({
       ok: true,
@@ -923,37 +978,29 @@ describe("OpportunitiesForm source confirm command", () => {
     }));
     await flushAsyncWork();
     expect(container.textContent).toContain("已导入候选池：新增 1 个");
-    expect(container.textContent).toContain("second failed while first refreshes");
+    expect(confirmButton().hasAttribute("disabled")).toBe(false);
     expectNoUnrelatedWrites();
   });
 
-  it("[TIMING_BEHAVIOR] records an older failed refresh overwriting the newer success message", async () => {
+  it("[TIMING_BEHAVIOR] prevents a blocked duplicate from starting a competing refresh", async () => {
     await mountUnlocked();
     await preparePreview();
     const pending = await startTwoSameTurnConfirms();
     const firstRefresh = deferred<Response>();
-    const secondRefresh = deferred<Response>();
     harness.plan("GET", "/api/opportunity-candidates?limit=100", firstRefresh.promise);
-    harness.plan("GET", "/api/opportunity-candidates?limit=100", secondRefresh.promise);
 
     pending.first.resolve(jsonResponse({ ok: true, created: 1, unchanged: 0 }));
     await flushAsyncWork();
     pending.second.resolve(jsonResponse({ ok: true, created: 1, unchanged: 0 }));
     await flushAsyncWork();
 
-    secondRefresh.resolve(jsonResponse({
-      ok: true,
-      items: [serverCandidate("candidate-second-refresh")],
-    }));
-    await flushAsyncWork();
-    expect(container.textContent).toContain("已导入候选池：新增 1 个");
-
     firstRefresh.reject(new Error("first refresh failed"));
     await flushAsyncWork();
     expect(container.textContent).toContain(
       "已导入服务端，但刷新候选池失败，请手动刷新页面查看。",
     );
-    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(2);
+    expect(harness.requestsFor("POST", "/api/opportunity-candidates")).toHaveLength(1);
+    expect(harness.requestsFor("GET", "/api/opportunity-candidates?limit=100")).toHaveLength(2);
     expectNoUnrelatedWrites();
   });
 

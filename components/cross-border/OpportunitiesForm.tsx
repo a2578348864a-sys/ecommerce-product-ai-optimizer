@@ -405,6 +405,7 @@ function OpportunitiesFormContent({
   const [sourceConfirming, setSourceConfirming] = useState(false);
   const [sourceConfirmResult, setSourceConfirmResult] = useState("");
   const sourcePreviewGenerationRef = useRef(0);
+  const sourceConfirmInFlightRef = useRef(false);
   const sourceReviewSelectionKeys = useMemo(() => sourceImportCandidates.flatMap((candidate, index) => (
     getSignedSourceQueuePolicy(candidate.ruleAssessment).defaultSelected ? [String(index)] : []
   )), [sourceImportCandidates]);
@@ -978,20 +979,20 @@ function OpportunitiesFormContent({
       return;
     }
 
-    setSourceConfirming(true);
-    setSourceConfirmResult("");
-    setSourceImportError("");
-
     const selected = sourceImportCandidates.filter((_, i) => sourceImportChecked.has(String(i)));
     if (selected.length !== sourceImportChecked.size
       || selected.some((candidate) => !getSignedSourceQueuePolicy(candidate.ruleAssessment).canSave)) {
       setSourceImportError("所选结果包含不能保存的来源线索，请重新选择。");
-      setSourceConfirming(false);
       return;
     }
     const inputs = selected.map((candidate) => buildSourceImportCandidateSaveInput(candidate));
+    if (sourceConfirmInFlightRef.current) return;
+    sourceConfirmInFlightRef.current = true;
 
     try {
+      setSourceConfirming(true);
+      setSourceConfirmResult("");
+      setSourceImportError("");
       const res = await fetch("/api/opportunity-candidates", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
@@ -1014,6 +1015,7 @@ function OpportunitiesFormContent({
     } catch (e) {
       setSourceImportError(e instanceof Error ? e.message : "导入失败。");
     } finally {
+      sourceConfirmInFlightRef.current = false;
       setSourceConfirming(false);
     }
   }, [sourceImportCandidates, sourceImportChecked, accessPassword, hasAccess, serverAvailable, sourceConfirming, refreshServerPool]);
