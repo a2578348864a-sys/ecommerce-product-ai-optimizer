@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `a91c409c4181ebb5b293f24c913b2697af0ca253`，tree `6ca285d1d5ed962a217401766f8cd83b539a849f`
+> Source baseline：`origin/main` commit `d611a29315db110b8d0378bfb9f5e8769a14217d`，tree `8443b4779316e2b12b93513dc3bcd0efcac600ed`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -92,14 +92,15 @@
 - 消息清理只移除末尾 reason tag 及其相邻空白，不额外 trim 或改写正文；空、空白、中文和特殊字符保持既有结果；**PURE_CONTRACT**
 - default 与 `advanced_import` 保持同一顺序、class 与 fallback；锁定 surface 不显示 warning；目标交互只有既有 source-import POST，且不新增 Storage 写入；**SSR_RENDERED + MOUNTED_BEHAVIOR**
 
-来源 preview command 合同（Phase 3A 候选）：
+来源 preview command 合同（Phase 3A PRODUCTION；Phase 3B 候选）：
 
 - 空 URL和纯空白在公开按钮路径被本地 disabled 阻断，不发请求、不启动 loading，也不显示 callback 内部的空值错误；非 URL 与特殊 URL 不增加客户端校验，trim 后按原文发送；锁定 surface 不渲染 preview command；**MOUNTED_BEHAVIOR + REQUEST_CONTRACT**
 - 非空输入 trim 后只发送一次 `POST /api/opportunities/source-import`；保留 `Content-Type`、access headers、无显式 credentials、`{ input, accessPassword }` body；单次 preview 不调用 confirm、Candidate 或 Task endpoint；**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
 - JSON 成功、空结果、warning、业务错误、200/204/401/403/404/429/500/502 非 JSON、不可解析 JSON、网络异常和 AbortError 均保持 main 的现有分支与文案；warning 顺序和重复项不变；**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
 - 新请求开始时旧 error、warning 和 preview 的可见内容被清除；行为测试没有证明 summary、selection 或全部 setter 的逐调用顺序，后者仅可从当前源码结构确认；**TIMING_BEHAVIOR + STRUCTURAL**
 - `requestSourceImportPreview` 只负责请求组装、单次 fetch 和 response 解析；React state、loading/error/warning、confirm、Candidate refresh、Storage 与权限仍由父组件拥有；**REQUEST_CONTRACT + STRUCTURAL**
-- 当前没有 AbortController、request generation 或 stale-response 保护。同一事件周期可对同一 URL 发出两个请求；任一请求结束都会清 loading，较旧请求后返回时可覆盖较新结果或追加错误。A先成功、B后失败时，A的preview与warning保留，B的error随后同时显示。卸载不会 abort；loading 状态下的公开 UI 禁止不同 URL 的第二次用户请求，因此测试明确证明“未发出”，不把它写成已解决的竞态保护。以上是需要冻结的现状风险，不是正确性保证；**TIMING_BEHAVIOR + MOUNTED_BEHAVIOR**
+- 只有通过输入校验并实际启动的 preview 才递增 generation；success、catch 和 finally 仅允许最新 generation 提交 preview、warning、error 或 loading。较旧 success/failure 不可覆盖最新结果，较旧 finally 不可提前结束最新 loading；同一 URL 重复请求也按启动顺序判定。**TIMING_BEHAVIOR**
+- 当前没有 preview AbortController，卸载仍不会 abort 在途请求。loading 状态下的公开 UI 禁止不同 URL 或无效输入的第二次用户请求，因此测试明确证明“未发出”，不把它写成跨输入并发或卸载保护。**MOUNTED_BEHAVIOR + STRUCTURAL**
 
 ## 7. Storage 合同
 
@@ -171,7 +172,7 @@
 
 - 除来源 disclosure 外的 DOM 输入、confirm、portal 与 keyboard；
 - Strict Mode Effect 时序；
-- analyze/confirm/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 重叠响应已完成 Characterization，但没有 stale-response 保护；
+- analyze/confirm/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 已有 latest-started generation 写入保护，但没有 abort 或卸载失效保护；
 - 真实 Owner/Visitor 服务端集成；
 - `/opportunities/import` 实际访问量。
 

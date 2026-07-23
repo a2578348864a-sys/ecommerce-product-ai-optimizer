@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `a91c409c4181ebb5b293f24c913b2697af0ca253`，tree `6ca285d1d5ed962a217401766f8cd83b539a849f`
+> Source baseline：`origin/main` commit `d611a29315db110b8d0378bfb9f5e8769a14217d`，tree `8443b4779316e2b12b93513dc3bcd0efcac600ed`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 3A 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 3B 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -44,7 +44,7 @@ flowchart TD
 |Task domain|`candidateTaskLinks`|Snapshot 与 canonical Task 关联|
 |Agent adapter|`candidateAgentRunLink`|构建受限 `/agent/run` handoff URL|
 |Source adapter|`sourceImportCandidateSave`、`sourceImportLabels`、rule policy|只保存完整签名来源输入；Phase 2D 来源 warning 展示模型已生产|
-|Preview client adapter|`sourceImportPreview`|Phase 3A 候选只组装并执行来源 preview 请求、解析 response；不拥有 React state、confirm、Candidate 写入、Storage、权限或竞态保护|
+|Preview client adapter|`sourceImportPreview`|Phase 3A PRODUCTION；只组装并执行来源 preview 请求、解析 response；不拥有 React state、confirm、Candidate 写入、Storage、权限或竞态保护|
 
 ### Phase 1A 展示所有权
 
@@ -111,13 +111,20 @@ flowchart TD
 - 唯一生产消费者仍是来源 warning 列表映射；DOM、class、文案、顺序和 warning 原文 fallback 均由父组件拥有。
 - 模型无 React、网络、Storage、权限、时间、环境变量、Candidate authority 或写入；Phase 2 已正式收口。
 
-### Phase 3A 来源 preview request adapter 所有权（候选）
+### Phase 3A 来源 preview request adapter 所有权（PRODUCTION）
 
 - `OpportunitiesForm` 继续拥有 `handleSourceImport` callback、29 个 state、loading/error/warning/summary/selection、全部 UI 文案、confirm command 和 Candidate refresh；行为测试不声称证明 summary、selection 或全部 setter 的逐调用顺序。
 - `requestSourceImportPreview` 只接收 trim 后的 URL 输入、当前 access password 和父组件构建的只读 access headers；输出是保留 HTTP status 的 `json`、`non_json` 或 `invalid_json` 结果。
 - adapter 精确保留 `POST /api/opportunities/source-import`、`Content-Type`、access headers、无显式 credentials、`{ input, accessPassword }` body 和网络异常原样抛出语义。
 - preview 仍不写 Candidate 或 Task；confirm 仍是独立 `POST /api/opportunity-candidates` 路径，原 callback 段落未修改。
-- 当前 preview 没有 AbortController、request generation 或 stale-response 保护。同一事件周期可对同一 URL 发出两个请求；任一请求结束都会清 loading。A先成功、B后失败时，A的preview与warning保留，B的error随后同时显示；较旧请求仍可在较新请求之后写 state。公开 UI 在 loading 时禁用输入和按钮，因而不同 URL 的第二次用户请求不会发出；这不构成通用 stale-response 保护。Phase 3A 只冻结该风险，不修复。
+- Phase 3A 基线没有 preview generation 或 stale-response 保护；它只冻结该风险，不修复。
+
+### Phase 3B Preview generation 所有权（候选）
+
+- `OpportunitiesForm` 新增一个容器私有、单调递增的 `sourcePreviewGenerationRef`；只有通过输入校验并实际启动的 preview 获得 generation。
+- success、catch 和 finally 在写 preview、warning、error 或 loading 前核对 generation；较旧请求继续完成网络过程，但不能提交可见状态。
+- generation 不进入 `sourceImportPreview` adapter，不属于 API、权限、Storage、Candidate authority 或 confirm command；adapter 合同及父组件 callback 依赖保持不变。
+- 当前仍无 preview AbortController；卸载不会中止请求。公开 UI 在 loading 时仍禁用输入和按钮，不同 URL 的第二次用户操作不会发出。
 
 ## 4. 数据流
 
@@ -190,7 +197,7 @@ local_draft
 
 ## 8. 风险
 
-- 29 个 state 仍集中在单一容器；9 个业务 fetch 中，来源 preview 的一个 fetch 位于 Phase 3A 候选 adapter，其余8个仍在容器；
+- 29 个 state 仍集中在单一容器；9 个业务 fetch 中，来源 preview 的一个 fetch 位于 Phase 3A production adapter，其余8个仍在容器；Phase 3B 候选只把 ref 从2个增至3个；
 - 非 Effect command 没有统一 request generation；
 - 当前 mounted Node 测试覆盖来源 disclosure 和 Candidate pool 三态切换，仍不能替代 portal 或 Strict Mode 时序证据；
 - access、authority、网络降级和 UI feedback 通过多个 state 隐式组合。
