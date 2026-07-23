@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Source baseline Commit：`993f41a5db0ba2e3d4aa13481886fe63134cf477`（短哈希 `993f41a`）
-> Source baseline Tree：`58e0942f68d15b84a2cfde74fe51958e92f753f4`
+> Source baseline Commit：`00e937d7bbc1bb44a9abe5846a85b3d44a988f97`（短哈希 `00e937d`）
+> Source baseline Tree：`f17ee10bbf5448edaa890eff219e6ce8f887f3c6`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase1d-source-availability` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase1e-empty-state` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：Phase 1A、1B、1C 的三个展示叶子已在 production main；本页统计另纳入 Phase 1D 候选新增的 `components/cross-border/OpportunitiesSourceAvailability.tsx`。该文件合入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`，合入后为 `PRODUCTION / ACTIVE`，且不改变生产部署状态。
+> 候选边界：Phase 1A 至 1D 的四个展示叶子已在 production main；本页统计另纳入 Phase 1E 候选新增的 `components/cross-border/OpportunitiesCandidatePoolEmptyState.tsx`。该文件合入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`，合入后为 `PRODUCTION / ACTIVE`，且不改变生产部署状态。
 
 ## 1. 分类定义
 
@@ -27,15 +27,15 @@
 
 |目录|PRODUCTION|COMPATIBILITY|EXPERIMENTAL|ARCHIVED|UNKNOWN|合计|
 |-|-:|-:|-:|-:|-:|-:|
-|`components/`|30|12|3|0|0|45|
+|`components/`|31|12|3|0|0|46|
 |`lib/`|83|2|1|0|2|88|
 |`hooks/`|2|0|0|0|1|3|
 |`scripts/`|2|0|1|0|2|5|
-|总计|117|14|5|0|5|141|
+|总计|118|14|5|0|5|142|
 
 ## 3. components/
 
-`PRODUCTION` 是 45 个非测试文件中除下列非生产项外的 30 个文件。核心包括 `AgentRunClient`、`OpportunitiesForm`、`OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance`、`OpportunitiesSourceAvailability`、`FamilyTop5Review`、`HomeDashboardClient`、`TaskRecordsList`、`TaskRecordDetail`、导航、登录与决策/Listing/图片卡片。`components/cross-border/OpportunitiesSourceAvailability.tsx` 合入 main 后为 `PRODUCTION / ACTIVE`；它由 `OpportunitiesForm` 的两个生产 surface 在 intake 展开态直接引用。
+`PRODUCTION` 是 46 个非测试文件中除下列非生产项外的 31 个文件。核心包括 `AgentRunClient`、`OpportunitiesForm`、`OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance`、`OpportunitiesSourceAvailability`、`OpportunitiesCandidatePoolEmptyState`、`FamilyTop5Review`、`HomeDashboardClient`、`TaskRecordsList`、`TaskRecordDetail`、导航、登录与决策/Listing/图片卡片。`components/cross-border/OpportunitiesCandidatePoolEmptyState.tsx` 合入 main 后为 `PRODUCTION / ACTIVE`；它由 `OpportunitiesForm` 的两个生产 surface 在 Candidate pool 空态直接引用。
 
 ### COMPATIBILITY（12）
 
@@ -106,7 +106,7 @@
 
 ## 7. Artifact 文件
 
-`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 141 个运行时代码统计：
+`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 142 个运行时代码统计：
 
 - Manifest + Manifest Sidecar；
 - Family 数据 + Sidecar；
@@ -129,12 +129,12 @@ IN-FLIGHT / LOCAL / NOT_PRODUCTION
 
 ## 9. 测试体系
 
-治理候选有 126 个 `*.test.ts`，没有 `*.test.tsx`：
+治理候选有 127 个 `*.test.ts`，没有 `*.test.tsx`：
 
 |根目录|数量|
 |-|-:|
 |`app/`|34|
-|`components/`|10|
+|`components/`|11|
 |`hooks/`|1|
 |`lib/`|80|
 |`scripts/`|1|

@@ -68,7 +68,7 @@ describe("OpportunitiesForm candidate pool empty-state behavior", () => {
   it.each([
     ["legacy_default", ["机会雷达"]],
     ["advanced_import", ["高级工具", "手工导入外部来源"]],
-  ] as const)("[MOUNTED] renders the pool-empty state on %s without I/O", async (surface, titleParts) => {
+  ] as const)("[MOUNTED_BEHAVIOR] renders the pool-empty state on %s without I/O", async (surface, titleParts) => {
     const monitors = await mountFixture(surface, []);
 
     for (const titlePart of titleParts) expect(container.textContent).toContain(titlePart);
@@ -83,7 +83,7 @@ describe("OpportunitiesForm candidate pool empty-state behavior", () => {
   it.each([
     "legacy_default",
     "advanced_import",
-  ] as const)("[MOUNTED] preserves populated, filter-empty, and restored list order on %s", async (surface) => {
+  ] as const)("[MOUNTED_BEHAVIOR] preserves populated, filter-empty, and restored list order on %s", async (surface) => {
     const monitors = await mountFixture(surface);
     const expectedIds = [
       "decision-row-fixture-shortlisted",
@@ -113,7 +113,7 @@ describe("OpportunitiesForm candidate pool empty-state behavior", () => {
     expect(monitors.sessionStorageWrite).not.toHaveBeenCalled();
   });
 
-  it("[RENDERED] keeps every candidate-pool state absent while the public surface is locked", () => {
+  it("[SSR_RENDERED] keeps every candidate-pool state absent while the public surface is locked", () => {
     const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent));
     const advancedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
       surface: "advanced_import",

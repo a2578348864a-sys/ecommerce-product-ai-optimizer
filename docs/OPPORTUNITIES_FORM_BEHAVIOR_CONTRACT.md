@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `993f41a5db0ba2e3d4aa13481886fe63134cf477`，tree `58e0942f68d15b84a2cfde74fe51958e92f753f4`
+> Source baseline：`origin/main` commit `00e937d7bbc1bb44a9abe5846a85b3d44a988f97`，tree `f17ee10bbf5448edaa890eff219e6ce8f887f3c6`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -84,12 +84,22 @@
 - fixture 不读写 Storage；
 - access secret 继续由 session adapter 管理，不作为叶子 UI props 扩散。
 
-## 8. 自动化矩阵
+## 8. Candidate pool 空状态合同
+
+- `poolItems.length === 0` 优先显示池为空文案；**MOUNTED_BEHAVIOR**
+- pool 非空但 `visiblePoolItems.length === 0` 时显示筛选为空文案；**MOUNTED_BEHAVIOR**
+- 恢复“全部”后按既有顺序重新显示全部 Candidate，两个空状态均消失；**MOUNTED_BEHAVIOR**
+- default 与 `advanced_import` 使用相同三态优先级；锁定 surface 不渲染 Candidate pool；**MOUNTED_BEHAVIOR + SSR_RENDERED**
+- 两类空状态的 class、文案、条件优先级和正常列表留在父组件的事实由 source diff 与规范化合同哈希保护；**STRUCTURAL**
+- 叶子不接收 Candidate 数组、权限对象或 callback；筛选与 Candidate authority 仍由父组件拥有。
+
+## 9. 自动化矩阵
 
 |保护面|测试|
 |-|-|
 |公开 surface、fixture|`components/cross-border/OpportunitiesForm.behavior.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
+|Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
 |local→server→Agent→Task authority 链|同上|
 |删除 presentation|`components/cross-border/OpportunitiesForm.delete-policy.test.ts`|
 |Candidate pool、Storage、R2.2|`lib/opportunityCandidatePool.test.ts`|
@@ -98,7 +108,7 @@
 |Owner/Visitor import-local|`app/api/opportunity-candidates/import-local/route.test.ts`|
 |signed source fail-closed|`app/api/opportunities/source-import/route.test.ts`|
 
-## 9. 未自动化风险
+## 10. 未自动化风险
 
 - 除来源 disclosure 外的 DOM 输入、confirm、portal 与 keyboard；
 - Strict Mode Effect 时序；
@@ -108,6 +118,6 @@
 
 这些项目进入 `OPPORTUNITIES_FORM_DEFERRED.md`，不能用字符串扫描替代行为证据。
 
-## 10. 后续变更门禁
+## 11. 后续变更门禁
 
 任何 Phase 必须保持 props、路由、payload、Storage key、authority、错误合同和 Candidate→Task 原子边界。测试失败不得通过删测试、放宽断言、改 Fixture 或绕过 Guard 制造通过。
