@@ -108,7 +108,7 @@ preview Candidate + summary
 - 正常单次交互发出1个 Candidate POST；成功后发出1个 refresh GET。成功只读取 `ok`、`created`、`unchanged`，refresh失败显示“已导入服务端”事实并保留 preview。
 - Owner与Visitor客户端请求形状相同：`Content-Type`加现有access headers，无显式credentials，body为`{ items }`；真实服务端权限和数据库事务不由组件测试证明。
 - saving进入DOM后按钮disabled；同一事件周期内连续两个公开DOM click可发出2个Candidate POST。任一finally会关闭共享saving，旧refresh可覆盖较新提示；卸载不abort，写入成功后仍会refresh。
-- 服务端按source proof是否幂等为`UNKNOWN`。Phase 3C只记录重复权威POST风险，不宣称数据库已产生重复Candidate，也不修复。
+- 服务端测试已证明相同 Evidence 的顺序重复保存：Owner 返回 `unchanged` 且不 create/update，Visitor 返回 `unchanged` 且不重写 Sandbox 文件。真正并发的两个 POST 是否具备原子幂等性仍为 `UNKNOWN`：当前没有并发服务测试，Prisma Candidate 模型也没有身份或 Evidence 唯一约束。Phase 3C 只记录客户端重复权威 POST 风险，不宣称数据库已产生重复 Candidate，也不修复。
 
 ## 2. 真实调用方与 interface
 

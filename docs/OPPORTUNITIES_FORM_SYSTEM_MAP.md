@@ -133,7 +133,7 @@ flowchart TD
 - Confirm 请求没有显式 `credentials`；headers 为 `Content-Type` 加现有 access headers，body 为 `{ items }`，每项由现有 source save input 构造。Owner 与 Visitor 的客户端请求形状相同，只由虚假 access token 占位值区分；本轮不把客户端测试写成服务端权限或数据库事务证明。
 - 成功响应只读取 `ok`、`created` 和 `unchanged`；缺失计数当前按 `0` 处理。成功后 refresh 成功则显示计数结果；refresh 失败仍显示“已导入服务端”事实并保留 preview、summary、selection 和 warning。
 - 常规 saving 状态进入 DOM 后按钮 disabled，后续点击不再发请求；同一事件周期内两个公开 DOM click 在挂载测试中可发出两个 Candidate POST。任一请求完成都会关闭共享 saving，旧 refresh 结果也可覆盖较新提示；Confirm 没有 generation、requestId、single-flight 或 AbortController。
-- 组件卸载不会中止在途 Confirm；写入成功后仍会启动 refresh。服务端是否按 source proof 幂等属于 `UNKNOWN`，Phase 3C 不以客户端 fixture 推断数据库结果。
+- 组件卸载不会中止在途 Confirm；写入成功后仍会启动 refresh。服务端测试已证明相同 Evidence 的顺序重复保存对 Owner 与 Visitor 都返回 `unchanged`；真正并发双 POST 的原子幂等性仍为 `UNKNOWN`，因为当前没有并发服务测试或 Candidate 身份/Evidence 唯一约束。Phase 3C 不以客户端 fixture 推断数据库结果。
 - 46 项测试按 `REQUEST_CONTRACT`、`MOUNTED_BEHAVIOR`、`TIMING_BEHAVIOR` 和 `AUTHORIZATION_BEHAVIOR` 分类；所有 fetch 均由 fail-closed 内存拦截器接管，未注册请求立即失败。
 
 ## 4. 数据流
@@ -211,4 +211,4 @@ local_draft
 - 非 Effect command 没有统一 request generation；Preview 已有独立 generation，Confirm 仍没有；
 - 当前 mounted Node 测试覆盖来源 disclosure 和 Candidate pool 三态切换，仍不能替代 portal 或 Strict Mode 时序证据；
 - access、authority、网络降级和 UI feedback 通过多个 state 隐式组合；
-- Confirm 的常规 disabled 能阻止 saving 已渲染后的点击，但不能证明同一事件周期 single-flight；服务端幂等性未知。
+- Confirm 的常规 disabled 能阻止 saving 已渲染后的点击，但不能证明同一事件周期 single-flight；顺序重复保存的 `unchanged` 合同已知，真正并发双 POST 的原子幂等性未知。

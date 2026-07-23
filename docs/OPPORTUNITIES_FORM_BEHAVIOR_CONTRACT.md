@@ -62,7 +62,7 @@
 |状态 PATCH 失败|回滚 previous status|
 |已关联 Task 删除|UI presentation 和服务端同时保护|
 
-真实点击与重叠请求仍为 UNKNOWN；后续不能把 disabled 状态误写成完整竞态保证。
+Phase 3C 挂载测试已证明同一事件周期内两个公开 DOM click 可以形成重叠 Confirm 请求；真实浏览器中的人类双击可达性，以及 analyze/PATCH/DELETE 的重叠请求仍为 UNKNOWN。后续不能把 disabled 状态误写成完整竞态保证。
 
 ## 6. 来源导入合同
 
@@ -112,10 +112,10 @@
 - refresh 成功时更新 Candidate pool 并保留 preview、summary、selection 和 warning。refresh 返回空池仍显示写入成功；refresh 的 HTTP、网络或非 JSON 失败均显示“已导入服务端，但刷新候选池失败”，不会把已写入事实伪装成 Confirm 失败，也不会自动发第二次 Confirm。**MOUNTED_BEHAVIOR**
 - Confirm 的 200业务错误、空 payload、非 JSON、204、400/401/403/404/409/422/429/500/502、网络拒绝、普通 Error 与 AbortError 都保留 preview、summary、selection 和 warning，关闭 saving，不 refresh；HTTP 专用文案只来自响应中的既有 message，否则使用统一 fallback。**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
 - saving 已提交到 DOM 后，按钮 disabled 会阻止下一次公开点击；请求结算后可再次提交。受控同一事件周期内连续两个公开 DOM click 当前可以发出两个 Candidate POST，且任一请求的 finally 都会关闭共享 saving。成功/失败及 refresh 的返回顺序可以让较旧结果覆盖较新提示。**TIMING_BEHAVIOR**
-- Confirm 没有 generation、requestId、single-flight、幂等 key 或 AbortController；组件卸载不会 abort，写入成功后仍可继续发起 refresh。服务端是否把相同 source proof 视为幂等属于 `UNKNOWN`，客户端两次 POST 不能直接证明数据库产生重复 Candidate。**TIMING_BEHAVIOR + STRUCTURAL**
+- Confirm 没有 generation、requestId、single-flight、幂等 key 或 AbortController；组件卸载不会 abort，写入成功后仍可继续发起 refresh。服务端测试已证明相同 Evidence 的顺序重复保存对 Owner 与 Visitor 都返回 `unchanged`；真正并发双 POST 的原子幂等性仍为 `UNKNOWN`，因为当前没有并发服务测试或 Candidate 身份/Evidence 唯一约束。客户端两次 POST 不能直接证明数据库产生重复 Candidate。**TIMING_BEHAVIOR + STRUCTURAL**
 - 所有 Phase 3C 请求由 fail-closed 内存 fetch 拦截器接管；未注册请求立即失败。测试不调用 Route、Prisma、Sandbox、Provider、真实 AI 或真实数据库。**REQUEST_CONTRACT**
 
-`phase3c_confirm_contract_sufficient=true`：上述证据已明确客户端触发、请求、成功、refresh、错误、saving、重复提交、卸载、权限场景和 UNKNOWN 边界；该值只表示 Characterization 充分，不表示 P1 风险已修复或服务端幂等已证明。
+`phase3c_confirm_contract_sufficient=true`：上述证据已明确客户端触发、请求、成功、refresh、错误、saving、重复提交、卸载、权限场景和 UNKNOWN 边界；该值只表示 Characterization 充分，不表示 P1 风险已修复或真正并发双 POST 的原子幂等性已证明。
 
 ## 7. Storage 合同
 
@@ -186,10 +186,10 @@
 
 ## 10. 未自动化风险
 
-- 除来源 disclosure 外的 DOM 输入、confirm、portal 与 keyboard；
+- 除来源 disclosure 和 Phase 3C Confirm 挂载交互外的 DOM 输入、portal 与 keyboard；
 - Strict Mode Effect 时序；
 - analyze/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 已有 latest-started generation 写入保护，但没有 abort 或卸载失效保护；
-- Confirm 的同一事件周期双提交、共享 saving 提前关闭、旧 refresh 覆盖和卸载后继续 refresh 已由挂载测试证明；真实浏览器人类双击可达性及服务端幂等性仍为 UNKNOWN；
+- Confirm 的同一事件周期双提交、共享 saving 提前关闭、旧 refresh 覆盖和卸载后继续 refresh 已由挂载测试证明；相同 Evidence 的顺序重复保存已由 Owner/Visitor 服务测试证明返回 `unchanged`，真实浏览器人类双击可达性及真正并发双 POST 的原子幂等性仍为 UNKNOWN；
 - 真实 Owner/Visitor 服务端集成；
 - `/opportunities/import` 实际访问量。
 
