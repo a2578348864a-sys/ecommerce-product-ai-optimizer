@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `bb1f9b53c5a5954408cfa9cafeec47807147d1ee`，tree `980572fee37b9563218a644d3eeb6695eda5b553`
+> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 2B 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 2C 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -33,7 +33,7 @@ flowchart TD
 |-|-|-|
 |访问 adapter|`useAccessPassword`、`buildAccessHeaders`、`getAccessMode`|session access，不把前端隐藏当权限|
 |草稿 adapter|`useLocalDraft`|10 分钟输入恢复|
-|Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility；Phase 2A 生产计数 selector；Phase 2B 候选过滤排序 selector|
+|Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility；Phase 2A 计数与 Phase 2B 过滤排序 selector 已生产；Phase 2C 候选状态色调 View Model|
 |Action domain|`opportunityCandidateActions`|Candidate 删除 presentation 纯规则；PRODUCTION|
 |展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案；PRODUCTION / ACTIVE|
 |展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`；PRODUCTION / ACTIVE|
@@ -87,13 +87,20 @@ flowchart TD
 - `all` 按数组元素计数；已转换 Task 的 `analyzed` Candidate 不进入 `analyzed`；绕过正常化的未知状态不进入合法状态桶。
 - Phase 2A 不移动 state、Effect、callback、API 或 authority 条件。
 
-### Phase 2B 可见 Candidate selector 所有权（IN-FLIGHT）
+### Phase 2B 可见 Candidate selector 所有权（PRODUCTION）
 
 - `OpportunitiesForm` 继续拥有 `poolItems`、`poolFilter`、`poolSort`、现有 `visiblePoolItems` memo、三项依赖和全部列表/选择/空状态消费者。
 - `buildVisibleCandidatePoolItems` 当前实现执行原 filter 后 sort 组合；该内部顺序由 STRUCTURAL 证据确认，行为输出测试只证明最终过滤排序合同，不能唯一证明等价实现的内部顺序。interface 为只读 Candidate 数组、现有 filter、现有 sort 到有序只读 Candidate 数组。
 - `all` 不过滤；五个合法状态按既有状态命中，`analyzed` 继续排除已有 `convertedTaskId` 的 Candidate；直接未知状态只在 `all` 中保留。
 - `updated` 顺序为更新时间、分数、中文名称；`score` 顺序为分数、更新时间、中文名称；完全相等时沿用稳定排序输入顺序。`undefined` 或 `NaN` 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为极值，只有相同 Infinity 相减产生 `NaN` 时才进入下一字段。
-- selector 不读取 surface、权限、Storage、时间或网络，不修改输入数组或 Candidate 对象；Phase 2C 未执行。
+- selector 不读取 surface、权限、Storage、时间或网络，不修改输入数组或 Candidate 对象。
+
+### Phase 2C Candidate 状态色调所有权（IN-FLIGHT）
+
+- `getCandidateQueuePresentation` 继续拥有 Candidate status、Task relation 到五种展示状态、标签和下一步文案的解释；Phase 2C 不修改该合同。
+- `getCandidateStatusToneClass` 只把 `CandidateQueueState` 映射为完整 Tailwind 色调字符串：`pending_review` slate、`pending_analysis` emerald、`analyzing` indigo、`converted` teal、`rejected` rose；运行时未知值保持原 slate 分支。
+- 列表与详情继续分别拥有外围尺寸、字重和 DOM，只共享色调函数；两个消费者都不把 Candidate 对象传入 View Model。
+- 函数无 React、网络、Storage、权限、时间、环境变量或数据库依赖，不读取标签或下一步文案；Phase 2D 未执行。
 
 ## 4. 数据流
 

@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `bb1f9b53c5a5954408cfa9cafeec47807147d1ee`，tree `980572fee37b9563218a644d3eeb6695eda5b553`
+> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -118,11 +118,19 @@
 - selector 接收只读数组并返回新的有序数组，不修改输入数组或 Candidate 对象；不读取 surface、权限、Storage、时间或网络；**PURE_CONTRACT**
 - 原 `visiblePoolItems` memo、`[poolItems, poolFilter, poolSort]` 依赖、列表/选择/空状态消费者和 Candidate authority 仍由父组件拥有；**STRUCTURAL**
 
+### Candidate 状态色调合同
+
+- 输入是 `CandidateQueueState`，不是持久化 Candidate status：`pending_review` 使用 `border-slate-200 bg-slate-50 text-slate-700`，`pending_analysis` 使用 `border-emerald-200 bg-emerald-50 text-emerald-700`，`analyzing` 使用 `border-indigo-200 bg-indigo-50 text-indigo-700`，`converted` 使用 `border-teal-200 bg-teal-50 text-teal-700`，`rejected` 使用 `border-rose-200 bg-rose-50 text-rose-700`；**PURE_CONTRACT**
+- 运行时未知值保持原末尾分支的 slate 色调；函数确定、无副作用，不读取 Candidate、surface、权限、Storage、时间或网络；**PURE_CONTRACT**
+- default 与 `advanced_import` 的列表和详情对同一状态使用相同色调；列表/详情各自的外围 class、标签和 DOM 不变；**SSR_RENDERED + MOUNTED_BEHAVIOR**
+- 共享函数只有列表与详情两个生产消费者，原本地映射不存在；这项调用关系由源码结构哨兵证明，不冒充渲染行为；**STRUCTURAL**
+
 |保护面|测试|
 |-|-|
 |公开 surface、fixture|`components/cross-border/OpportunitiesForm.behavior.test.ts`|
 |Candidate pool UI 计数|`components/cross-border/OpportunitiesForm.pool-counts.test.ts`|
 |Candidate pool UI 过滤与排序|`components/cross-border/OpportunitiesForm.visible-items.test.ts`|
+|Candidate 状态色调与列表/详情一致性|`components/cross-border/OpportunitiesForm.status-tones.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
 |local→server→Agent→Task authority 链|同上|

@@ -1,6 +1,6 @@
 # OpportunitiesForm 分阶段拆分方案
 
-> Source baseline：`origin/main` commit `bb1f9b53c5a5954408cfa9cafeec47807147d1ee`，tree `980572fee37b9563218a644d3eeb6695eda5b553`
+> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
 >
 > 制定日期：2026-07-23。本文只定义 module/interface/seam/adapter，不授权当前任务继续拆分主逻辑。
 
@@ -94,7 +94,7 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 
 提取后生产容器为 2,159 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。提取前后使用同一 UI 计数测试，纯函数另由表驱动测试覆盖空、合法状态、混合、重复、已转 Task、未知状态、正常化、顺序和输入不变性。
 
-### Phase 2B：Candidate pool 过滤排序 selector（候选已完成）
+### Phase 2B：Candidate pool 过滤排序 selector（PRODUCTION）
 
 本次只把父组件 `visiblePoolItems` memo 内的既有 filter 后 sort 组合提取为 `buildVisibleCandidatePoolItems`。该内部执行顺序由 STRUCTURAL 证据确认；UI 与纯函数输出测试保护最终合同，但不能唯一证明等价实现的内部顺序。`poolItems`、`poolFilter`、`poolSort`、原 memo 位置、`[poolItems, poolFilter, poolSort]` 依赖和全部消费者仍由 `OpportunitiesForm` 拥有。
 
@@ -102,7 +102,17 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 |-|-|-|-|
 |只读 Candidate pool、现有 filter、现有 sort|新的有序只读 Candidate 数组|无网络、Storage、权限、时间或写入|直接未知状态只在 `all`；`analyzed` 排除已转 Task；保留原 tie-breaker、稳定排序、`undefined`/`NaN` fallback 与 Infinity 极值语义|
 
-候选容器为 2,158 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。提取前后复用同一 mounted UI 行为测试；纯函数表驱动覆盖全部 filter/sort、组合、未知状态、converted Task、并列键、`undefined`、`NaN`、正负 Infinity、冻结输入、确定性以及与原 inline 输出逐项对照。Phase 2C 未执行。
+生产容器为 2,158 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。提取前后复用同一 mounted UI 行为测试；纯函数表驱动覆盖全部 filter/sort、组合、未知状态、converted Task、并列键、`undefined`、`NaN`、正负 Infinity、冻结输入、确定性以及与原 inline 输出逐项对照。
+
+### Phase 2C：Candidate 状态色调 View Model（候选已完成）
+
+本次只把父组件本地 `candidateStatusClass` 原样迁移为 `lib/opportunityCandidatePool.ts` 的 `getCandidateStatusToneClass`。`getCandidateQueuePresentation` 继续拥有持久化状态和 Task relation 到展示状态、标签、下一步文案的解释；列表与详情继续拥有各自 DOM 和外围 class。
+
+|输入|输出|副作用|语义边界|
+|-|-|-|-|
+|一个 `CandidateQueueState`|完整且顺序固定的 Tailwind 色调 class 字符串|无 React、网络、Storage、权限、时间、Candidate 读取或写入|五个合法展示状态各自保持原色调；运行时未知值保持原 slate 分支|
+
+候选容器为 2,150 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态纯函数表驱动测试、default/advanced 的 SSR 与 mounted 测试保护完整 class、标签组合和列表/详情一致性；结构哨兵确认两个消费者都使用共享函数且旧映射已移除。Phase 2D 未执行。
 
 ## 3. seam 清单
 
@@ -115,13 +125,14 @@ Phase 1 的高确定性低副作用展示叶子已经正式收口：剩余候选
 |5|Source availability（Phase 1D 已完成）|无 props → 来源等级 JSX|浏览器原生 disclosure|无|顺序/文案/折叠状态漂移|
 |6|Candidate pool empty state（Phase 1E 已完成）|只读三态中的空态 → JSX|容器|无|条件优先级/文案漂移|
 |7|Candidate pool counts（Phase 2A PRODUCTION）|只读 Candidate pool → 六字段计数|容器 memo|无|未知状态/converted Task 语义漂移|
-|8|Candidate pool visible items（Phase 2B 候选已完成）|只读 pool + filter + sort → 有序只读数组|容器 memo|无|过滤顺序/tie-breaker/缺失值语义漂移|
-|9|Decision badges|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
-|10|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
-|11|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
-|12|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
-|13|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
-|14|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
+|8|Candidate pool visible items（Phase 2B PRODUCTION）|只读 pool + filter + sort → 有序只读数组|容器 memo|无|过滤顺序/tie-breaker/缺失值语义漂移|
+|9|Candidate status tone（Phase 2C 候选已完成）|展示状态 → 完整色调 class|纯 module|无|class/顺序/消费者漂移|
+|10|Decision badges|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
+|11|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
+|12|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
+|13|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
+|14|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
+|15|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
 
 ## 4. 候选 interface
 
@@ -179,7 +190,7 @@ type CandidateHydrationResult = {
 
 ### Phase 2：派生 View Model
 
-把散落的 presentation 条件集中为纯 module。Phase 2A 已提取 Candidate pool 派生计数；Phase 2B 候选只提取现有 Candidate pool 过滤排序组合。两者都由 table-driven tests 固定现有语义；Phase 2C 未执行。后续涉及 authority 的模型仍必须先覆盖完整矩阵。
+把散落的 presentation 条件集中为纯 module。Phase 2A 已提取 Candidate pool 派生计数，Phase 2B 已提取现有过滤排序组合；Phase 2C 候选只迁移状态色调映射。三者均由 table-driven tests 固定现有语义；Phase 2D 未执行。后续涉及 authority 的模型仍必须先覆盖完整矩阵。
 
 ### Phase 3：来源导入视图
 

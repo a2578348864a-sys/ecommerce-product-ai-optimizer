@@ -1,10 +1,10 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `bb1f9b53c5a5954408cfa9cafeec47807147d1ee`，tree `980572fee37b9563218a644d3eeb6695eda5b553`
+> Source baseline：`origin/main` commit `cfdbc19a9383a55a624ca117deb8355e7cc8347d`，tree `ce3d409e5c864a08bb2a4d9d19d3a1e9df33d3c5`
 >
 > 审计日期：2026-07-23
 >
-> 事实边界：生产事实只来自上述 main。本文另设 `IN-FLIGHT` 小节描述 Phase 2B 治理候选，不把它写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
+> 事实边界：生产事实只来自上述 main。本文另设 `IN-FLIGHT` 小节描述 Phase 2C 治理候选，不把它写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
 >
 > 复核要求：`origin/main` 变化后重新计算全部数量、引用和数据流。Source baseline 不等于生产服务器当前运行版本。
 
@@ -14,7 +14,7 @@
 
 |指标|数量|说明|
 |-|-:|-|
-|物理行数|2,159|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E 和 Phase 2A 已合入|
+|物理行数|2,158|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 和 Phase 2B 已合入|
 |`useState`|29|无 `useReducer`|
 |`useEffect`|5|恢复、Candidate hydration、持久化、Task link、portal 定位|
 |`useCallback`|11|请求编排、导出、状态、删除和来源导入|
@@ -26,7 +26,7 @@
 
 生产文件同时承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。它是一个浅接口但过宽实现职责的容器，而不是单纯表单。
 
-生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则，以及 `OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance`、`OpportunitiesSourceAvailability`、`OpportunitiesCandidatePoolEmptyState` 五个展示叶子。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
+生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则、`buildCandidatePoolCounts`、`buildVisibleCandidatePoolItems`，以及 `OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance`、`OpportunitiesSourceAvailability`、`OpportunitiesCandidatePoolEmptyState` 五个展示叶子。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
 
 ### Phase 1A（PRODUCTION）
 
@@ -56,11 +56,19 @@
 
 提取后生产容器为 2,159 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、5 个间接 sessionStorage 活动 key 均未变化。已转换 Task 的 `analyzed` Candidate 仍只进入 `all`；绕过正常化的未知状态仍只进入 `all`。服务端未知状态固定回落到 `pending`；Storage 未知状态回落到既有 score/risk 默认状态，可能为 `pending`、`worth_analyzing` 或 `paused`。
 
-### Phase 2B 治理候选（IN-FLIGHT）
+### Phase 2B（PRODUCTION）
 
-候选把父组件 `visiblePoolItems` memo 内的 `filterCandidatePool` 后接 `sortCandidatePool` 组合提取为同一 Candidate pool 领域 module 的 `buildVisibleCandidatePoolItems`。interface 只接收只读 Candidate 数组、现有 `poolFilter` 和现有 `poolSort`，返回有序只读 Candidate 数组。父组件保留原 memo 位置、`[poolItems, poolFilter, poolSort]` 依赖和全部消费者。
+父组件 `visiblePoolItems` memo 内的 `filterCandidatePool` 后接 `sortCandidatePool` 组合已提取为同一 Candidate pool 领域 module 的 `buildVisibleCandidatePoolItems`。interface 只接收只读 Candidate 数组、现有 `poolFilter` 和现有 `poolSort`，返回有序只读 Candidate 数组。父组件保留原 memo 位置、`[poolItems, poolFilter, poolSort]` 依赖和全部消费者。
 
-候选容器为 2,158 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。selector 当前实现仍先 filter 后 sort；该内部执行顺序由 source diff 的 STRUCTURAL 证据确认，最终输出测试不能唯一证明等价实现的内部顺序。`updated` 依次按 `updatedAt` 降序、`score` 降序、中文名称升序比较，`score` 依次按 `score` 降序、`updatedAt` 降序、中文名称升序比较。完全相等时保留当前 JavaScript 稳定排序的输入顺序。`undefined` 或 `NaN` 使减法 comparator 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为可比较极值参与排序，两个相同 Infinity 相减产生 `NaN` 时才进入下一字段。直接未知状态只在 `all` 中出现，已有 `convertedTaskId` 的 `analyzed` Candidate 不进入 `analyzed` filter。Phase 2C 未执行。
+生产容器为 2,158 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。selector 当前实现仍先 filter 后 sort；该内部执行顺序由 source diff 的 STRUCTURAL 证据确认，最终输出测试不能唯一证明等价实现的内部顺序。`updated` 依次按 `updatedAt` 降序、`score` 降序、中文名称升序比较，`score` 依次按 `score` 降序、`updatedAt` 降序、中文名称升序比较。完全相等时保留当前 JavaScript 稳定排序的输入顺序。`undefined` 或 `NaN` 使减法 comparator 进入下一字段；`+Infinity/-Infinity` 与有限值比较时作为可比较极值参与排序，两个相同 Infinity 相减产生 `NaN` 时才进入下一字段。直接未知状态只在 `all` 中出现，已有 `convertedTaskId` 的 `analyzed` Candidate 不进入 `analyzed` filter。
+
+### Phase 2C 状态色调 View Model（IN-FLIGHT）
+
+候选把父组件本地 `candidateStatusClass` 原样迁移为 Candidate pool 领域 module 的 `getCandidateStatusToneClass`。输入只允许 `CandidateQueueState`，输出是完整且顺序固定的 Tailwind 色调字符串；函数不读取 Candidate、标签、下一步文案、surface、权限、Storage、时间或网络。
+
+五状态合同为：`pending_review → slate`、`pending_analysis → emerald`、`analyzing → indigo`、`converted → teal`、`rejected → rose`。运行时未知值继续落入原末尾分支并返回 slate，不新增或改善 fallback。列表与详情两个消费者继续保留各自外围 class，只把色调调用改为共享函数。
+
+候选容器为 2,150 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域和 5 个间接 sessionStorage 活动 key 均未变化。五状态表驱动纯函数测试、两 surface SSR 和真实挂载测试共同保护完整 class、标签组合及列表/详情一致性；Phase 2D 未执行。
 
 ## 2. 真实调用方与 interface
 
@@ -199,4 +207,4 @@ flowchart TD
 
 ## 9. 审计结论
 
-Phase 1 已正式收口，五个高确定性纯展示叶子覆盖未解锁预览、决策摘要、主链路引导、来源说明和 Candidate pool 空状态。Phase 2A 已把 Candidate pool 计数迁移到纯 selector。Phase 2B 候选只集中现有过滤排序组合；两个 memo 与状态所有权仍在父组件。这不授权后续迁移 state、Effect、API、Storage 或权限逻辑，Phase 2C 尚未执行。
+Phase 1 已正式收口，五个高确定性纯展示叶子覆盖未解锁预览、决策摘要、主链路引导、来源说明和 Candidate pool 空状态。Phase 2A 与 Phase 2B 已分别把 Candidate pool 计数和过滤排序迁移到纯 selector。Phase 2C 候选只集中五状态色调映射；memo、状态所有权、标签与下一步文案仍在父组件或既有 presentation 函数中。这不授权后续迁移 state、Effect、API、Storage 或权限逻辑，Phase 2D 尚未执行。
