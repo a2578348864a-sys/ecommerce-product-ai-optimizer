@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `08c37d1c5e68cc9a68a99a8670e4ddf94d5f6088`，tree `616d949e578087f2e435a6df0bd342244a1e90c4`
+> Source baseline：`origin/main` commit `bb1f9b53c5a5954408cfa9cafeec47807147d1ee`，tree `980572fee37b9563218a644d3eeb6695eda5b553`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 2A 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 2B 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -33,7 +33,7 @@ flowchart TD
 |-|-|-|
 |访问 adapter|`useAccessPassword`、`buildAccessHeaders`、`getAccessMode`|session access，不把前端隐藏当权限|
 |草稿 adapter|`useLocalDraft`|10 分钟输入恢复|
-|Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility；Phase 2A 候选新增只读 pool count selector|
+|Candidate domain|`opportunityCandidatePool`|normalize、merge、Storage、status、Agent eligibility；Phase 2A 生产计数 selector；Phase 2B 候选过滤排序 selector|
 |Action domain|`opportunityCandidateActions`|Candidate 删除 presentation 纯规则；PRODUCTION|
 |展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案；PRODUCTION / ACTIVE|
 |展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`；PRODUCTION / ACTIVE|
@@ -80,12 +80,20 @@ flowchart TD
 - 新叶子没有 Hook、网络、Storage、权限、数据库或 Candidate/Task 写入；两类空状态的原 class 与文案保持不变。
 - default 与 `advanced_import` 的真实挂载测试覆盖空池、筛选为空、恢复全部及正常列表顺序；锁定态由公开 interface SSR 测试保护。
 
-### Phase 2A 派生计数所有权
+### Phase 2A 派生计数所有权（PRODUCTION）
 
 - `OpportunitiesForm` 继续拥有 `poolItems`、现有 `useMemo`、`[poolItems]` 依赖、筛选控件和计数消费者。
 - `buildCandidatePoolCounts` 只读取 Candidate 状态与 `convertedTaskId`，返回六个只读计数字段；不读取 surface、权限、Storage、时间或网络。
 - `all` 按数组元素计数；已转换 Task 的 `analyzed` Candidate 不进入 `analyzed`；绕过正常化的未知状态不进入合法状态桶。
-- Phase 2A 不移动 state、Effect、callback、API 或 authority 条件；Phase 2B 未执行。
+- Phase 2A 不移动 state、Effect、callback、API 或 authority 条件。
+
+### Phase 2B 可见 Candidate selector 所有权（IN-FLIGHT）
+
+- `OpportunitiesForm` 继续拥有 `poolItems`、`poolFilter`、`poolSort`、现有 `visiblePoolItems` memo、三项依赖和全部列表/选择/空状态消费者。
+- `buildVisibleCandidatePoolItems` 只执行原 filter 后 sort 组合；interface 为只读 Candidate 数组、现有 filter、现有 sort 到有序只读 Candidate 数组。
+- `all` 不过滤；五个合法状态按既有状态命中，`analyzed` 继续排除已有 `convertedTaskId` 的 Candidate；直接未知状态只在 `all` 中保留。
+- `updated` 顺序为更新时间、分数、中文名称；`score` 顺序为分数、更新时间、中文名称；完全相等时沿用稳定排序输入顺序，缺失或非有限数值继续由原 comparator 的下一字段决定。
+- selector 不读取 surface、权限、Storage、时间或网络，不修改输入数组或 Candidate 对象；Phase 2C 未执行。
 
 ## 4. 数据流
 

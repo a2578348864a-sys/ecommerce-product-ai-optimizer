@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Source baseline Commit：`08c37d1c5e68cc9a68a99a8670e4ddf94d5f6088`（短哈希 `08c37d1`）
-> Source baseline Tree：`616d949e578087f2e435a6df0bd342244a1e90c4`
+> Source baseline Commit：`bb1f9b53c5a5954408cfa9cafeec47807147d1ee`（短哈希 `bb1f9b5`）
+> Source baseline Tree：`980572fee37b9563218a644d3eeb6695eda5b553`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase2a-pool-counts` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase2b-visible-items` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：Phase 1A 至 1E 的五个展示叶子均已在 production main。Phase 2A 候选只在既有 `lib/opportunityCandidatePool.ts` 内新增纯 selector，不新增运行时代码文件，因此下表142个文件及分类不变；合入不等于生产部署。
+> 候选边界：Phase 1A 至 1E 的五个展示叶子和 Phase 2A 计数 selector 均已在 production main。Phase 2B 候选只在既有 `lib/opportunityCandidatePool.ts` 内新增过滤排序 selector，不新增运行时代码文件，因此下表142个文件及分类不变；合入不等于生产部署。
 
 ## 1. 分类定义
 
@@ -68,7 +68,7 @@
 Production main 中，`PRODUCTION` 共 83 个非测试代码文件，包括：
 
 - Candidate、Evidence、source proof、quality、R2.2 与 Task 领域模块；
-- `lib/opportunityCandidatePool.ts`；Phase 2A 候选在该既有生产模块内增加只读 Candidate pool 计数 selector，不改变文件生命周期数量；
+- `lib/opportunityCandidatePool.ts`；Phase 2A 生产计数 selector 与 Phase 2B 候选过滤排序 selector 均位于该既有生产模块，不改变文件生命周期数量；
 - `lib/opportunityCandidateActions.ts`，提供 Candidate 删除 presentation 的纯 module interface；
 - `lib/server/` 中认证、Owner/Visitor 分流、Candidate、workflow proof、Listing、图片与 AI gate；
 - `lib/workflows/productAnalysis.ts`；
@@ -130,12 +130,12 @@ IN-FLIGHT / LOCAL / NOT_PRODUCTION
 
 ## 9. 测试体系
 
-治理候选有 127 个 `*.test.ts`，没有 `*.test.tsx`：
+治理候选有 129 个 `*.test.ts`，没有 `*.test.tsx`：
 
 |根目录|数量|
 |-|-:|
 |`app/`|34|
-|`components/`|11|
+|`components/`|13|
 |`hooks/`|1|
 |`lib/`|80|
 |`scripts/`|1|

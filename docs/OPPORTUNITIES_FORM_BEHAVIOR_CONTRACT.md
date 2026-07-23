@@ -1,6 +1,6 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `08c37d1c5e68cc9a68a99a8670e4ddf94d5f6088`，tree `616d949e578087f2e435a6df0bd342244a1e90c4`
+> Source baseline：`origin/main` commit `bb1f9b53c5a5954408cfa9cafeec47807147d1ee`，tree `980572fee37b9563218a644d3eeb6695eda5b553`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
@@ -108,10 +108,20 @@
 - 计数与顺序、surface 无关，不修改输入数组或 Candidate 对象；**PURE_CONTRACT + SSR_RENDERED**
 - 原 `useMemo`、`[poolItems]` 依赖、筛选消费者和 Candidate authority 仍由父组件拥有；**STRUCTURAL**
 
+### Candidate pool 过滤排序合同
+
+- 默认 `poolFilter` 为 `all`，默认 `poolSort` 为 `updated`；所有组合始终先过滤再排序；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- `all` 保留直接未知状态和已转 Task Candidate；五个合法状态只保留精确命中，`analyzed` 额外排除已有 `convertedTaskId` 的 Candidate；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- `updated` 按 `updatedAt` 降序、`score` 降序、中文名称升序；`score` 按 `score` 降序、`updatedAt` 降序、中文名称升序；全部比较键相等时保持输入顺序；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- 缺失或非有限数值保持原 comparator 的 `||` fallback 行为，不在 Phase 2B 修复或正常化；**MOUNTED_BEHAVIOR + PURE_CONTRACT**
+- selector 接收只读数组并返回新的有序数组，不修改输入数组或 Candidate 对象；不读取 surface、权限、Storage、时间或网络；**PURE_CONTRACT**
+- 原 `visiblePoolItems` memo、`[poolItems, poolFilter, poolSort]` 依赖、列表/选择/空状态消费者和 Candidate authority 仍由父组件拥有；**STRUCTURAL**
+
 |保护面|测试|
 |-|-|
 |公开 surface、fixture|`components/cross-border/OpportunitiesForm.behavior.test.ts`|
 |Candidate pool UI 计数|`components/cross-border/OpportunitiesForm.pool-counts.test.ts`|
+|Candidate pool UI 过滤与排序|`components/cross-border/OpportunitiesForm.visible-items.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
 |local→server→Agent→Task authority 链|同上|
