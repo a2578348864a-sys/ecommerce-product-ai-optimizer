@@ -55,6 +55,27 @@ describe("OpportunitiesForm public behavior", () => {
     expect(advancedMarkup).toContain("手工导入外部来源");
   });
 
+  it("renders the locked opportunity preview with surface-specific copy and static safety guidance", () => {
+    const defaultMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent));
+    const advancedMarkup = renderToStaticMarkup(createElement(OpportunitiesFormComponent, {
+      surface: "advanced_import",
+    }));
+
+    expect(defaultMarkup).toContain("机会雷达 / 候选品池 · 功能预览");
+    expect(defaultMarkup).not.toContain("高级工具");
+    expect(advancedMarkup).toContain("高级工具");
+    expect(advancedMarkup).toContain("手工导入外部来源 · 功能预览");
+
+    for (const markup of [defaultMarkup, advancedMarkup]) {
+      expect(markup).toContain("示例候选品（仅供参考，非真实数据）");
+      expect(markup).toContain("桌面手机支架");
+      expect(markup).toContain("宠物慢食碗");
+      expect(markup).toContain("硅胶折叠水杯");
+      expect(markup).toContain("数据安全说明");
+      expect(markup).toContain("返回首页解锁");
+    }
+  });
+
   it("renders the isolated fixture without render-phase network or intake behavior", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
@@ -69,6 +90,7 @@ describe("OpportunitiesForm public behavior", () => {
         OPPORTUNITY_DECISION_DESK_VISUAL_FIXTURE.length,
       );
       expect(markup).not.toContain('data-testid="candidate-intake-toggle"');
+      expect(markup).not.toContain("示例候选品（仅供参考，非真实数据）");
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
