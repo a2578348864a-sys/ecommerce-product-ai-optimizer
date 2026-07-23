@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Source baseline Commit：`e536c8bf9771af1b7d615511fdda8449034d3867`（短哈希 `e536c8b`）
-> Source baseline Tree：`a6d8eaf991b6c733bbb862996fe0cf7d4c11b693`
+> Source baseline Commit：`91fde2d321c69efc477e1291a4b79139b0ab3790`（短哈希 `91fde2d`）
+> Source baseline Tree：`f78e7cfa264bd6bf951f5412530952223cd61b3b`
 > 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-governance-night` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase1-leaf` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：本页统计纳入治理候选新增的 `lib/opportunityCandidateActions.ts`；合入 main 前该文件仍是 `IN-FLIGHT / NOT_PRODUCTION`，也不改变生产部署状态。
+> 候选边界：`lib/opportunityCandidateActions.ts` 已在 production main；本页统计另纳入 Phase 1A 候选新增的 `components/cross-border/OpportunitiesLockedPreview.tsx`。该文件合入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`，不改变生产部署状态。
 
 ## 1. 分类定义
 
@@ -27,15 +27,15 @@
 
 |目录|PRODUCTION|COMPATIBILITY|EXPERIMENTAL|ARCHIVED|UNKNOWN|合计|
 |-|-:|-:|-:|-:|-:|-:|
-|`components/`|26|12|3|0|0|41|
+|`components/`|27|12|3|0|0|42|
 |`lib/`|83|2|1|0|2|88|
 |`hooks/`|2|0|0|0|1|3|
 |`scripts/`|2|0|1|0|2|5|
-|总计|113|14|5|0|5|137|
+|总计|114|14|5|0|5|138|
 
 ## 3. components/
 
-`PRODUCTION` 是 41 个非测试文件中除下列非生产项外的 26 个文件。核心包括 `AgentRunClient`、`OpportunitiesForm`、`FamilyTop5Review`、`HomeDashboardClient`、`TaskRecordsList`、`TaskRecordDetail`、导航、登录与决策/Listing/图片卡片。
+`PRODUCTION` 是 42 个非测试文件中除下列非生产项外的 27 个文件。核心包括 `AgentRunClient`、`OpportunitiesForm`、`OpportunitiesLockedPreview`、`FamilyTop5Review`、`HomeDashboardClient`、`TaskRecordsList`、`TaskRecordDetail`、导航、登录与决策/Listing/图片卡片。`components/cross-border/OpportunitiesLockedPreview.tsx` 合入 main 后为 `PRODUCTION / ACTIVE`；它由 `OpportunitiesForm` 的生产未解锁分支直接引用。
 
 ### COMPATIBILITY（12）
 
@@ -106,7 +106,7 @@
 
 ## 7. Artifact 文件
 
-`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 137 个运行时代码统计：
+`lib/upstream/fixtures/` 的 8 个 JSON/Sidecar 文件属于 `PRODUCTION / PROTECTED_ARTIFACT`，不计入当前 138 个运行时代码统计：
 
 - Manifest + Manifest Sidecar；
 - Family 数据 + Sidecar；

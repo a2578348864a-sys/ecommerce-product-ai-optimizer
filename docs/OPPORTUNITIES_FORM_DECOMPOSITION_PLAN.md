@@ -1,6 +1,6 @@
 # OpportunitiesForm 分阶段拆分方案
 
-> Source baseline：`origin/main` commit `e536c8bf9771af1b7d615511fdda8449034d3867`，tree `a6d8eaf991b6c733bbb862996fe0cf7d4c11b693`
+> Source baseline：`origin/main` commit `91fde2d321c69efc477e1291a4b79139b0ab3790`，tree `f78e7cfa264bd6bf951f5412530952223cd61b3b`
 >
 > 制定日期：2026-07-23。本文只定义 module/interface/seam/adapter，不授权当前任务继续拆分主逻辑。
 
@@ -20,19 +20,32 @@
 - SourceProof fail-closed 测试隔离；
 - 一个纯删除 presentation seam。
 
-29 个 state、5 个 effect、9 个 fetch 和页面层级均未调整。
+29 个 state、5 个 effect、9 个 fetch 和渲染 DOM 层级均未调整。
+
+### Phase 1A：未解锁展示叶子（已完成）
+
+本次只提取 `OpportunitiesLockedPreview`，容器保留 `!unlocked` 条件与 surface 文案派生。原容器区域约 144 行；新叶子 171 行，只接收只读文案并返回既有 JSX。
+
+|候选|原范围|输入/输出|副作用|决定|
+|-|-:|-|-|-|
+|未解锁功能预览|约 144 行|只读 surface 文案 → JSX|无 Hook、callback、I/O 或 authority 数据|选择；interface 最小且同一 SSR 测试可在提取前后复用|
+|解锁后 header/连接提示|约 72 行|surface、fixture、连接状态、toggle → JSX|透传添加区 callback；含降级状态条件|拒绝；行为与权限降级展示面更大|
+|结果摘要/header|约 57 行|Candidate 派生摘要、复制/导出 callback → JSX|含多个领域派生值与命令|拒绝；领域标签和 callback 漂移风险更高|
+
+Phase 1A 不代表整个 Phase 1 完成；后续叶子必须单独立项。29 个 state、5 个 effect、9 个 fetch、2 个直接 localStorage 数据域、公开 props、API 和权限数据流均未变化。
 
 ## 3. seam 清单
 
 |推荐顺序|建议 module|输入/输出|state owner|副作用/依赖|风险|
 |-:|-|-|-|-|-|
-|1|Surface header|surface presentation model → JSX|容器|无|copy/ARIA|
-|2|Decision badges/summary|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
-|3|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
-|4|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
-|5|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
-|6|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
-|7|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
+|1|Locked preview（Phase 1A 已完成）|只读 locked surface copy → JSX|容器|无|copy/DOM|
+|2|Surface header|surface presentation model → JSX|容器|无|copy/ARIA|
+|3|Decision badges/summary|Candidate presentation → JSX|容器|无|Evidence/R2.2 标签漂移|
+|4|Decision View Model|pool + Task links + mode → rows|纯 module|无|authority 条件遗漏|
+|5|Source import view|view model + commands → JSX|容器|无直接 fetch|preview/confirm 混淆|
+|6|Candidate list/detail|rows + selection + commands → JSX|容器|portal 另行处理|DOM/菜单行为|
+|7|Storage recovery module|cache adapter → hydration result|专用 Hook/module|localStorage|覆盖顺序/Strict Mode|
+|8|Request module|commands → result/error|专用 module|HTTP adapter|headers/abort/stale response|
 
 ## 4. 候选 interface
 
@@ -80,11 +93,11 @@ type CandidateHydrationResult = {
 
 ### Phase 0：行为基线
 
-进入条件：最新 main、clean worktree。退出门禁：行为合同、完整验证和独立复核。当前治理候选完成准备，尚未进入 main。
+进入条件：最新 main、clean worktree。退出门禁：行为合同、完整验证和独立复核。Phase 0 准备已进入 main。
 
 ### Phase 1：纯展示叶子
 
-一次提取一个区域，不移动 state/effect/fetch。收益是降低 JSX 认知负担。失败直接 revert 单 Commit。
+一次提取一个区域，不移动 state/effect/fetch。Phase 1A 只完成未解锁展示叶子；Phase 1 整体仍未完成。失败直接 revert 单 Commit。
 
 ### Phase 2：派生 View Model
 

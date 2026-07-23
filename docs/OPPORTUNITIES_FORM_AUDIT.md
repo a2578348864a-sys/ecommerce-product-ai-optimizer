@@ -1,6 +1,6 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `e536c8bf9771af1b7d615511fdda8449034d3867`，tree `a6d8eaf991b6c733bbb862996fe0cf7d4c11b693`
+> Source baseline：`origin/main` commit `91fde2d321c69efc477e1291a4b79139b0ab3790`，tree `f78e7cfa264bd6bf951f5412530952223cd61b3b`
 >
 > 审计日期：2026-07-23
 >
@@ -14,7 +14,7 @@
 
 |指标|数量|说明|
 |-|-:|-|
-|物理行数|2,388|`components/cross-border/OpportunitiesForm.tsx`|
+|物理行数|2,356|`components/cross-border/OpportunitiesForm.tsx`|
 |`useState`|29|无 `useReducer`|
 |`useEffect`|5|恢复、Candidate hydration、持久化、Task link、portal 定位|
 |`useCallback`|11|请求编排、导出、状态、删除和来源导入|
@@ -26,9 +26,11 @@
 
 生产文件同时承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。它是一个浅接口但过宽实现职责的容器，而不是单纯表单。
 
-### 当前治理候选（IN-FLIGHT）
+生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
 
-候选分支仅把纯函数 `getCandidateDeletePresentation` 移到 `lib/opportunityCandidateActions.ts`，容器变为 2,356 行。29 个 state、5 个 effect、11 个 callback、6 个 memo、9 个 fetch、props、JSX 层级和数据流均未变化。此变化在进入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`。
+### Phase 1A 治理候选（IN-FLIGHT）
+
+候选分支只把未解锁功能预览 JSX 移到 171 行的 `OpportunitiesLockedPreview.tsx`，容器变为 2,210 行。`!unlocked` 条件、surface 文案派生、29 个 state、5 个 effect、11 个 callback、6 个 memo、9 个 fetch、2 个直接 localStorage 数据域、公开 props、渲染 DOM 与数据流均未变化。新叶子合入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`。
 
 ## 2. 真实调用方与 interface
 
