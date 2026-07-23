@@ -1,10 +1,10 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `d611a29315db110b8d0378bfb9f5e8769a14217d`，tree `8443b4779316e2b12b93513dc3bcd0efcac600ed`
+> Source baseline：`origin/main` commit `59147e90893949752d1c342d6025a5fc350706c6`，tree `da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
 >
-> 审计日期：2026-07-23
+> 审计日期：2026-07-24
 >
-> 事实边界：生产事实只来自上述 main。本文另设候选小节描述 Phase 3B，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
+> 事实边界：生产事实只来自上述 main。本文另设候选小节描述仅测试/文档的 Phase 3C，不把候选写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
 >
 > 复核要求：`origin/main` 变化后重新计算全部数量、引用和数据流。Source baseline 不等于生产服务器当前运行版本。
 
@@ -14,12 +14,12 @@
 
 |指标|数量|说明|
 |-|-:|-|
-|物理行数|2,134|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 至 2D、Phase 3A 已合入|
+|物理行数|2,143|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A 至 1E、Phase 2A 至 2D、Phase 3A 和 Phase 3B 已合入|
 |`useState`|29|无 `useReducer`|
 |`useEffect`|5|恢复、Candidate hydration、持久化、Task link、portal 定位|
 |`useCallback`|11|请求编排、导出、状态、删除和来源导入|
 |`useMemo`|6|默认选择、本地草稿数、筛选、统计、决策摘要、当前选中项|
-|`useRef`|2|textarea 和单次草稿恢复标记|
+|`useRef`|3|textarea、单次草稿恢复标记和 Preview generation|
 |业务 `fetch`|9|父组件 8 个，Phase 3A preview adapter 1 个；endpoint 总数不变|
 |直接 localStorage 数据域|2|输入草稿、Candidate 浏览器池|
 |间接 sessionStorage 活动 key|5|密码/到期、token、mode、Visitor access，由 access adapter 管理|
@@ -84,11 +84,31 @@ Phase 3A 已把 `handleSourceImport` 内联的请求组装、单次 fetch、cont
 
 Phase 3A Characterization Test 冻结了当时无 preview generation 或 stale-response 保护的风险，并确认卸载不会中止在途请求。公开 UI 在 loading 时禁用输入和按钮，因此不同 URL 的第二次用户操作当前不会发出请求；这仍不等于 abort 或卸载保护。
 
-### Phase 3B Preview 最新请求获胜保护（候选）
+### Phase 3B Preview 最新请求获胜保护（PRODUCTION）
 
-候选只在 `handleSourceImport` 增加一个单调递增的 `sourcePreviewGenerationRef`。每个通过输入校验并实际启动的 preview 获得 generation；success、catch 和 finally 只有在 generation 仍为最新时才能提交 preview、warning、error 或 loading。较旧请求继续完成网络过程，但不能再写可见状态；没有新增 AbortController，也没有改变 adapter、endpoint、payload、headers、confirm、Candidate refresh、Storage 或权限。
+生产实现只在 `handleSourceImport` 增加一个单调递增的 `sourcePreviewGenerationRef`。每个通过输入校验并实际启动的 preview 获得 generation；success、catch 和 finally 只有在 generation 仍为最新时才能提交 preview、warning、error 或 loading。较旧请求继续完成网络过程，但不能再写可见状态；没有新增 AbortController，也没有改变 adapter、endpoint、payload、headers、confirm、Candidate refresh、Storage 或权限。
 
-候选容器为 2,143 行；state 29、Effect 5、callback 11、memo 6、ref 由 2 增至 3。业务 fetch 仍为父组件8个加 adapter1个，2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。组件合同测试为56项，其中新增12项覆盖较旧 success/failure、较新 success/failure、stale finally、同 URL 重复、非 JSON 与空结果/warning 分支；既有44项测试未删除。
+生产容器为 2,143 行；state 29、Effect 5、callback 11、memo 6、ref 由 2 增至 3。业务 fetch 仍为父组件8个加 adapter1个，2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。组件合同测试为56项，其中新增12项覆盖较旧 success/failure、较新 success/failure、stale finally、同 URL 重复、非 JSON 与空结果/warning 分支；既有44项测试未删除。
+
+### Phase 3C Confirm Characterization（测试/文档候选）
+
+本候选只新增46项挂载测试并更新治理文档，`OpportunitiesForm.tsx` 与全部运行时代码相对 main Diff 为0。测试通过公开按钮、虚假 Owner/Visitor access、fail-closed 内存 fetch 和 deferred Promise观察当前 Confirm，不调用真实 Route、数据库、Provider或AI。
+
+当前 Confirm 调用链为：
+
+```text
+preview Candidate + summary
+→ selection 与 canSave 门禁
+→ POST /api/opportunity-candidates
+→ GET /api/opportunity-candidates?limit=100
+→ refresh Candidate pool 与既有浏览器缓存
+```
+
+- Confirm 使用 `sourceImportCandidates`、`sourceImportChecked`、`accessPassword`、`hasAccess`、`serverAvailable`、`sourceConfirming` 和 `refreshServerPool`；不读取 Preview generation。
+- 正常单次交互发出1个 Candidate POST；成功后发出1个 refresh GET。成功只读取 `ok`、`created`、`unchanged`，refresh失败显示“已导入服务端”事实并保留 preview。
+- Owner与Visitor客户端请求形状相同：`Content-Type`加现有access headers，无显式credentials，body为`{ items }`；真实服务端权限和数据库事务不由组件测试证明。
+- saving进入DOM后按钮disabled；同一事件周期内连续两个公开DOM click可发出2个Candidate POST。任一finally会关闭共享saving，旧refresh可覆盖较新提示；卸载不abort，写入成功后仍会refresh。
+- 服务端按source proof是否幂等为`UNKNOWN`。Phase 3C只记录重复权威POST风险，不宣称数据库已产生重复Candidate，也不修复。
 
 ## 2. 真实调用方与 interface
 
@@ -174,11 +194,11 @@ type OpportunitiesFormProps = {
 |`POST /api/opportunity-candidates`|分析后保存|Owner Prisma 或 Visitor Sandbox|失败保留本地分析结果并显示 notice|
 |`PATCH /api/opportunity-candidates/[id]`|状态修改|是|optimistic update；失败回滚 previous status|
 |`DELETE /api/opportunity-candidates/[id]`|确认删除|是|服务端保护已关联 Task；本地草稿只删浏览器|
-|`POST /api/opportunities/source-import`|来源 preview；Phase 3A PRODUCTION client adapter 发出|不写 Candidate|签名不可用 fail-closed；Phase 3B 候选只允许最新启动请求提交可见状态|
+|`POST /api/opportunities/source-import`|来源 preview；Phase 3A PRODUCTION client adapter 发出|不写 Candidate|签名不可用 fail-closed；Phase 3B PRODUCTION 只允许最新启动请求提交可见状态|
 |`POST /api/opportunity-candidates`|确认签名预览|是|重新检查 canSave；成功后 refresh|
 |`POST /api/opportunity-candidates/import-local`|显式升级草稿|是|强制 legacy_unverified；Owner/Visitor 分流|
 
-组件没有统一 request id。Phase 3B 候选只为 preview 增加 generation 写入门禁；分析、confirm、PATCH 和 DELETE 仍主要依赖 disabled/loading 状态减少重复触发，因此组件整体仍没有已证明的 stale-response 完整保护。
+组件没有统一 request id。Phase 3B 只为 preview 增加 generation 写入门禁；分析、confirm、PATCH 和 DELETE 仍主要依赖 disabled/loading 状态减少重复触发。Phase 3C 证明 Confirm 在同一事件周期仍可双 POST，且没有 stale-response 保护。
 
 ## 6. Storage 与 URL
 
@@ -227,4 +247,4 @@ flowchart TD
 
 ## 9. 审计结论
 
-Phase 1 和 Phase 2 已正式收口，Phase 3A request adapter 已进入 production main。Phase 3B 候选只增加 preview generation 门禁；父组件继续拥有 state、loading/error/warning、confirm、Storage、权限和 Candidate authority。本轮没有实现请求取消或卸载失效保护。
+Phase 1 和 Phase 2 已正式收口，Phase 3A request adapter 与 Phase 3B preview generation 已进入 production main。Phase 3C 候选只建立 Confirm 的请求、权限 UI、refresh、错误和重复提交 Characterization；父组件继续拥有全部生产实现。本轮没有修复 Confirm 重复提交、请求取消、stale response 或卸载行为。

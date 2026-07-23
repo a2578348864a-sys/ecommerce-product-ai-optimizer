@@ -1,8 +1,8 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `d611a29315db110b8d0378bfb9f5e8769a14217d`，tree `8443b4779316e2b12b93513dc3bcd0efcac600ed`
+> Source baseline：`origin/main` commit `59147e90893949752d1c342d6025a5fc350706c6`，tree `da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
 >
-> 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
+> 审计日期：2026-07-24。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
 ## 1. 证据等级
 
@@ -17,6 +17,7 @@
 - **PURE_CONTRACT**：本轮 `DOMAIN` 纯函数合同的测试名称标签；
 - **REQUEST_CONTRACT**：可控 fetch stub 下的 endpoint、method、headers、body、response 与异常边界证据；
 - **TIMING_BEHAVIOR**：可控 deferred Promise 下的挂载状态与响应顺序证据；
+- **AUTHORIZATION_BEHAVIOR**：虚假 Owner/Visitor 身份下通过公开组件交互观察到的客户端门禁与请求行为；不证明服务端授权或数据库隔离；
 - **STRUCTURAL**：本轮 `STATIC` 的结构证据标签。
 
 ## 2. surface 合同
@@ -92,7 +93,7 @@
 - 消息清理只移除末尾 reason tag 及其相邻空白，不额外 trim 或改写正文；空、空白、中文和特殊字符保持既有结果；**PURE_CONTRACT**
 - default 与 `advanced_import` 保持同一顺序、class 与 fallback；锁定 surface 不显示 warning；目标交互只有既有 source-import POST，且不新增 Storage 写入；**SSR_RENDERED + MOUNTED_BEHAVIOR**
 
-来源 preview command 合同（Phase 3A PRODUCTION；Phase 3B 候选）：
+来源 preview command 合同（Phase 3A 与 Phase 3B PRODUCTION）：
 
 - 空 URL和纯空白在公开按钮路径被本地 disabled 阻断，不发请求、不启动 loading，也不显示 callback 内部的空值错误；非 URL 与特殊 URL 不增加客户端校验，trim 后按原文发送；锁定 surface 不渲染 preview command；**MOUNTED_BEHAVIOR + REQUEST_CONTRACT**
 - 非空输入 trim 后只发送一次 `POST /api/opportunities/source-import`；保留 `Content-Type`、access headers、无显式 credentials、`{ input, accessPassword }` body；单次 preview 不调用 confirm、Candidate 或 Task endpoint；**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
@@ -101,6 +102,20 @@
 - `requestSourceImportPreview` 只负责请求组装、单次 fetch 和 response 解析；React state、loading/error/warning、confirm、Candidate refresh、Storage 与权限仍由父组件拥有；**REQUEST_CONTRACT + STRUCTURAL**
 - 只有通过输入校验并实际启动的 preview 才递增 generation；success、catch 和 finally 仅允许最新 generation 提交 preview、warning、error 或 loading。较旧 success/failure 不可覆盖最新结果，较旧 finally 不可提前结束最新 loading；同一 URL 重复请求也按启动顺序判定。**TIMING_BEHAVIOR**
 - 当前没有 preview AbortController，卸载仍不会 abort 在途请求。loading 状态下的公开 UI 禁止不同 URL 或无效输入的第二次用户请求，因此测试明确证明“未发出”，不把它写成跨输入并发或卸载保护。**MOUNTED_BEHAVIOR + STRUCTURAL**
+
+来源 Confirm command 合同（Phase 3C Characterization 候选；生产实现不变）：
+
+- Confirm 只在已解锁且 preview 同时有 Candidate 与 summary 时出现。无 preview、summary 缺失、无 selection、服务端 Candidate 池不可用、锁定 surface 或所选项 `canSave=false` 时，公开 UI 不发送 Candidate POST；`watch` 候选可由用户显式勾选后提交。空 `sourceUrl` 当前仍可提交，并序列化为 `link:null`，本轮只冻结该宽松输入，不收紧校验。**MOUNTED_BEHAVIOR + AUTHORIZATION_BEHAVIOR + REQUEST_CONTRACT**
+- Owner/default 与 Visitor/advanced_import 都通过同一个 `POST /api/opportunity-candidates` command。客户端请求使用 `Content-Type: application/json` 与现有 `x-access-token`、`x-access-password` headers，无显式 `credentials`；body 为 `{ items }`，包含既有 name/rawInput/link/score/source/keyword/risk/summary/Evidence/Rule Assessment/Source Proof 字段。两种身份的客户端字段结构相同；测试只使用虚假占位，不证明真实服务端权限。**REQUEST_CONTRACT + AUTHORIZATION_BEHAVIOR**
+- 单次正常交互发送一个 Candidate POST，成功后发送一次 Candidate pool GET refresh；不发送 Preview POST、Task 写入、PATCH、DELETE 或 import-local。refresh 会沿用既有 Candidate pool localStorage 同步，不新增 Storage 数据域。**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
+- 成功响应只要求 `ok:true`；`created`、`unchanged` 缺失时当前转换为 `0`，Candidate ID、data、warning 等未被 callback 读取。`created=0, unchanged>0` 显示“来源一致，无需重复导入”，其余显示新增/已存在计数。**MOUNTED_BEHAVIOR**
+- refresh 成功时更新 Candidate pool 并保留 preview、summary、selection 和 warning。refresh 返回空池仍显示写入成功；refresh 的 HTTP、网络或非 JSON 失败均显示“已导入服务端，但刷新候选池失败”，不会把已写入事实伪装成 Confirm 失败，也不会自动发第二次 Confirm。**MOUNTED_BEHAVIOR**
+- Confirm 的 200业务错误、空 payload、非 JSON、204、400/401/403/404/409/422/429/500/502、网络拒绝、普通 Error 与 AbortError 都保留 preview、summary、selection 和 warning，关闭 saving，不 refresh；HTTP 专用文案只来自响应中的既有 message，否则使用统一 fallback。**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
+- saving 已提交到 DOM 后，按钮 disabled 会阻止下一次公开点击；请求结算后可再次提交。受控同一事件周期内连续两个公开 DOM click 当前可以发出两个 Candidate POST，且任一请求的 finally 都会关闭共享 saving。成功/失败及 refresh 的返回顺序可以让较旧结果覆盖较新提示。**TIMING_BEHAVIOR**
+- Confirm 没有 generation、requestId、single-flight、幂等 key 或 AbortController；组件卸载不会 abort，写入成功后仍可继续发起 refresh。服务端是否把相同 source proof 视为幂等属于 `UNKNOWN`，客户端两次 POST 不能直接证明数据库产生重复 Candidate。**TIMING_BEHAVIOR + STRUCTURAL**
+- 所有 Phase 3C 请求由 fail-closed 内存 fetch 拦截器接管；未注册请求立即失败。测试不调用 Route、Prisma、Sandbox、Provider、真实 AI 或真实数据库。**REQUEST_CONTRACT**
+
+`phase3c_confirm_contract_sufficient=true`：上述证据已明确客户端触发、请求、成功、refresh、错误、saving、重复提交、卸载、权限场景和 UNKNOWN 边界；该值只表示 Characterization 充分，不表示 P1 风险已修复或服务端幂等已证明。
 
 ## 7. Storage 合同
 
@@ -157,6 +172,7 @@
 |来源 warning 组合渲染与无链接合同|`components/cross-border/OpportunitiesForm.source-warnings.test.ts`|
 |来源 warning 纯模型、reason/URL/消息合同|`lib/client/sourceImportLabels.test.ts`|
 |来源 preview 请求、错误、loading、重叠响应与卸载合同|`components/cross-border/OpportunitiesForm.source-preview-command.test.ts`|
+|来源 Confirm 请求、权限 UI、refresh、错误、重复提交与卸载合同|`components/cross-border/OpportunitiesForm.source-confirm-command.test.ts`|
 |来源 preview adapter 请求与解析合同|`lib/client/sourceImportPreview.test.ts`|
 |来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |Candidate pool 空池、筛选为空、恢复列表|`components/cross-border/OpportunitiesForm.candidate-pool-empty-state.test.ts`|
@@ -172,7 +188,8 @@
 
 - 除来源 disclosure 外的 DOM 输入、confirm、portal 与 keyboard；
 - Strict Mode Effect 时序；
-- analyze/confirm/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 已有 latest-started generation 写入保护，但没有 abort 或卸载失效保护；
+- analyze/PATCH/DELETE 的重叠响应仍为 UNKNOWN；preview 已有 latest-started generation 写入保护，但没有 abort 或卸载失效保护；
+- Confirm 的同一事件周期双提交、共享 saving 提前关闭、旧 refresh 覆盖和卸载后继续 refresh 已由挂载测试证明；真实浏览器人类双击可达性及服务端幂等性仍为 UNKNOWN；
 - 真实 Owner/Visitor 服务端集成；
 - `/opportunities/import` 实际访问量。
 

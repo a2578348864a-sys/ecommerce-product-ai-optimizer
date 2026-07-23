@@ -1,12 +1,12 @@
 # 生产代码生命周期
 
-> Source baseline Commit：`d611a29315db110b8d0378bfb9f5e8769a14217d`（短哈希 `d611a29`）
-> Source baseline Tree：`8443b4779316e2b12b93513dc3bcd0efcac600ed`
-> 审计日期：2026-07-23
-> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase3b-preview-latest-wins` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
+> Source baseline Commit：`59147e90893949752d1c342d6025a5fc350706c6`（短哈希 `59147e9`）
+> Source baseline Tree：`da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
+> 审计日期：2026-07-24
+> 事实来源：已 fetch 的 `origin/main`，以及基于该基线创建的 `codex/opportunities-form-phase3c-confirm-characterization` 候选分支；以 tracked 文件、静态 import 图、Route 生命周期和 package/test 配置为依据。
 > 排除范围：其他分支的 dirty、未跟踪文件和 Provider 工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`，不计入生产代码统计。
 > 复核要求：生产 Commit 或 Tree 变化后，文件清单、import 图和统计必须全部重算。
-> 候选边界：Phase 1A 至 1E、Phase 2A 至 2D、Phase 3A 均已在 production main。Phase 3B 候选只修改既有容器和测试/文档，不新增运行时代码文件；下表仍为143个。本文不预言 Push 或合入结果，本轮未部署，后续合入仍不等于生产部署。
+> 候选边界：Phase 1A 至 1E、Phase 2A 至 2D、Phase 3A 和 Phase 3B 均已在 production main。Phase 3C 候选只新增测试并更新文档，不修改或新增运行时代码文件；下表仍为143个。本文不预言 Push 或合入结果，本轮未部署，后续合入仍不等于生产部署。
 
 ## 1. 分类定义
 
@@ -65,7 +65,7 @@
 
 ## 4. lib/
 
-Phase 3B 候选中，`PRODUCTION` 共 84 个非测试代码文件，包括：
+Phase 3C 候选中，`PRODUCTION` 共 84 个非测试代码文件，包括：
 
 - Candidate、Evidence、source proof、quality、R2.2 与 Task 领域模块；
 - `lib/opportunityCandidatePool.ts`；Phase 2A 计数 selector、Phase 2B 过滤排序 selector 和 Phase 2C 状态色调 View Model 已在生产；
@@ -132,17 +132,19 @@ IN-FLIGHT / LOCAL / NOT_PRODUCTION
 
 ## 9. 测试体系
 
-Phase 3B 候选有 133 个 `*.test.ts`，没有 `*.test.tsx`：
+Phase 3C 候选有 134 个 `*.test.ts`，没有 `*.test.tsx`：
 
 |根目录|数量|
 |-|-:|
 |`app/`|34|
-|`components/`|16|
+|`components/`|17|
 |`hooks/`|1|
 |`lib/`|81|
 |`scripts/`|1|
 
 默认 `vitest.config.ts` 使用 Node environment，只包含 `**/*.test.ts`。`tests/helpers/` 有两个辅助模块，不是独立测试入口。真实 AI smoke 由单独配置引用，不能用默认测试通过代替真实调用证明。
+
+新增的 `components/cross-border/OpportunitiesForm.source-confirm-command.test.ts` 属 Testing。它只使用虚假访问占位、内存 fetch fixture 与 deferred Promise，冻结 Confirm 的请求、权限 UI、Candidate POST、refresh、错误和重复提交行为；不调用真实 Route、数据库、Provider 或 AI，也不改变上述运行时代码统计。
 
 ## 10. 部署配置
 

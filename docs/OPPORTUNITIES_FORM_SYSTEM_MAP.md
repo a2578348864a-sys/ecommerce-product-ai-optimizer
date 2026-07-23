@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `d611a29315db110b8d0378bfb9f5e8769a14217d`，tree `8443b4779316e2b12b93513dc3bcd0efcac600ed`
+> Source baseline：`origin/main` commit `59147e90893949752d1c342d6025a5fc350706c6`，tree `da1449ac1a12802e7c37add0f61a709f7dc2f9f6`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 3B 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-24。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 3C 测试/文档候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -119,12 +119,22 @@ flowchart TD
 - preview 仍不写 Candidate 或 Task；confirm 仍是独立 `POST /api/opportunity-candidates` 路径，原 callback 段落未修改。
 - Phase 3A 基线没有 preview generation 或 stale-response 保护；它只冻结该风险，不修复。
 
-### Phase 3B Preview generation 所有权（候选）
+### Phase 3B Preview generation 所有权（PRODUCTION）
 
 - `OpportunitiesForm` 新增一个容器私有、单调递增的 `sourcePreviewGenerationRef`；只有通过输入校验并实际启动的 preview 获得 generation。
 - success、catch 和 finally 在写 preview、warning、error 或 loading 前核对 generation；较旧请求继续完成网络过程，但不能提交可见状态。
 - generation 不进入 `sourceImportPreview` adapter，不属于 API、权限、Storage、Candidate authority 或 confirm command；adapter 合同及父组件 callback 依赖保持不变。
 - 当前仍无 preview AbortController；卸载不会中止请求。公开 UI 在 loading 时仍禁用输入和按钮，不同 URL 的第二次用户操作不会发出。
+
+### Phase 3C Confirm Characterization（测试/文档候选）
+
+- Confirm 仍由 `OpportunitiesForm` 的 `handleConfirmImport` 拥有；Phase 3C 不修改该 callback、`sourceConfirming`、Candidate POST、refresh、权限、Storage 或任何生产文件。
+- 公开触发链为：已解锁 surface → 来源 preview → `canSave` 选择 → `POST /api/opportunity-candidates` → `GET /api/opportunity-candidates?limit=100` refresh。Preview 与 Confirm 是两个 endpoint、两个 loading state 和两个独立 command；Preview generation 不参与 Confirm。
+- Confirm 请求没有显式 `credentials`；headers 为 `Content-Type` 加现有 access headers，body 为 `{ items }`，每项由现有 source save input 构造。Owner 与 Visitor 的客户端请求形状相同，只由虚假 access token 占位值区分；本轮不把客户端测试写成服务端权限或数据库事务证明。
+- 成功响应只读取 `ok`、`created` 和 `unchanged`；缺失计数当前按 `0` 处理。成功后 refresh 成功则显示计数结果；refresh 失败仍显示“已导入服务端”事实并保留 preview、summary、selection 和 warning。
+- 常规 saving 状态进入 DOM 后按钮 disabled，后续点击不再发请求；同一事件周期内两个公开 DOM click 在挂载测试中可发出两个 Candidate POST。任一请求完成都会关闭共享 saving，旧 refresh 结果也可覆盖较新提示；Confirm 没有 generation、requestId、single-flight 或 AbortController。
+- 组件卸载不会中止在途 Confirm；写入成功后仍会启动 refresh。服务端是否按 source proof 幂等属于 `UNKNOWN`，Phase 3C 不以客户端 fixture 推断数据库结果。
+- 46 项测试按 `REQUEST_CONTRACT`、`MOUNTED_BEHAVIOR`、`TIMING_BEHAVIOR` 和 `AUTHORIZATION_BEHAVIOR` 分类；所有 fetch 均由 fail-closed 内存拦截器接管，未注册请求立即失败。
 
 ## 4. 数据流
 
@@ -197,7 +207,8 @@ local_draft
 
 ## 8. 风险
 
-- 29 个 state 仍集中在单一容器；9 个业务 fetch 中，来源 preview 的一个 fetch 位于 Phase 3A production adapter，其余8个仍在容器；Phase 3B 候选只把 ref 从2个增至3个；
-- 非 Effect command 没有统一 request generation；
+- 29 个 state 仍集中在单一容器；9 个业务 fetch 中，来源 preview 的一个 fetch 位于 Phase 3A production adapter，其余8个仍在容器；Phase 3B production 把 ref 从2个增至3个；
+- 非 Effect command 没有统一 request generation；Preview 已有独立 generation，Confirm 仍没有；
 - 当前 mounted Node 测试覆盖来源 disclosure 和 Candidate pool 三态切换，仍不能替代 portal 或 Strict Mode 时序证据；
-- access、authority、网络降级和 UI feedback 通过多个 state 隐式组合。
+- access、authority、网络降级和 UI feedback 通过多个 state 隐式组合；
+- Confirm 的常规 disabled 能阻止 saving 已渲染后的点击，但不能证明同一事件周期 single-flight；服务端幂等性未知。
