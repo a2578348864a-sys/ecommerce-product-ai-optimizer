@@ -1,8 +1,8 @@
 # OpportunitiesForm 系统地图
 
-> Source baseline：`origin/main` commit `a8061a5f5f2fdfdce24a041cc6879802b9980e24`，tree `b6d8d19671f9e6a2ba4a06455810920fe6a46847`
+> Source baseline：`origin/main` commit `993f41a5db0ba2e3d4aa13481886fe63134cf477`，tree `58e0942f68d15b84a2cfde74fe51958e92f753f4`
 >
-> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 1C 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
+> 审计日期：2026-07-23。生产事实仅来自上述 main；本文另行标记基于该基线形成的 Phase 1D 候选，其他 dirty 工作树和 Provider 本地工具均为 `IN-FLIGHT / LOCAL / NOT_PRODUCTION`。main 变化后必须重算。
 
 ## 1. 定位
 
@@ -37,7 +37,8 @@ flowchart TD
 |Action domain|`opportunityCandidateActions`|Candidate 删除 presentation 纯规则；PRODUCTION|
 |展示叶子|`OpportunitiesLockedPreview`|Phase 1A 的未解锁纯展示叶子；只接收只读 surface 文案；PRODUCTION / ACTIVE|
 |展示叶子|`OpportunitiesDecisionSummary`|Phase 1B 的五项 Candidate 摘要；只接收只读 `DecisionDeskSummary`；PRODUCTION / ACTIVE|
-|展示叶子|`OpportunitiesFlowGuidance`|Phase 1C 候选的主链路引导；无 props，保留原静态文案与 `/agent/run`、`/tasks` 链接，合入 main 后为 PRODUCTION / ACTIVE|
+|展示叶子|`OpportunitiesFlowGuidance`|Phase 1C 的主链路引导；无 props，保留原静态文案与 `/agent/run`、`/tasks` 链接；PRODUCTION / ACTIVE|
+|展示叶子|`OpportunitiesSourceAvailability`|Phase 1D 候选的来源等级说明；无 props，保留原四级顺序、文案和浏览器原生 disclosure；合入 main 后为 PRODUCTION / ACTIVE|
 |Evidence/R2.2|candidate evidence、quality、decision desk modules|来源、风险和市场门禁展示|
 |Task domain|`candidateTaskLinks`|Snapshot 与 canonical Task 关联|
 |Agent adapter|`candidateAgentRunLink`|构建受限 `/agent/run` handoff URL|
@@ -63,6 +64,13 @@ flowchart TD
 - `OpportunitiesFlowGuidance` 无 props，只返回原主链路说明以及原 `/agent/run`、`/tasks` 声明式链接。
 - 新叶子没有 callback、Hook、网络、Storage、权限、数据库或 Candidate/Task 权威对象访问。
 - default 与 `advanced_import` 的已解锁态及两个 surface 的锁定态由同一公开 interface SSR 测试保护；锁定态不渲染该引导。
+
+### Phase 1D 展示所有权
+
+- `OpportunitiesForm` 继续拥有 `showCandidateIntake` 条件、来源输入、preview/confirm command 以及全部 state、Effect、请求、Storage 和权限接入。
+- `OpportunitiesSourceAvailability` 无 props，只按原顺序渲染 `SOURCE_IMPORT_TIERS` 的四级说明；展开状态仍由浏览器原生 `<details>/<summary>` 拥有。
+- 新叶子没有 callback、Hook、网络、Storage、权限、数据库或 Candidate/Task 权威对象访问。
+- 默认与 `advanced_import` 的已解锁挂载测试保护初始收起、展开、再次收起、四级顺序及目标交互零新增网络/Storage 写入；锁定 surface 的 SSR 测试保护该说明不出现。
 
 ## 4. 数据流
 
@@ -137,5 +145,5 @@ local_draft
 
 - 29 个 state 和 9 个 fetch 仍集中在单一容器；
 - 非 Effect command 没有统一 request generation；
-- Node 测试不能证明 portal、真实 DOM 或 Strict Mode 时序；
+- 当前 mounted Node 测试只覆盖来源说明的 disclosure 交互，不能替代 portal、完整浏览器或 Strict Mode 时序证据；
 - access、authority、网络降级和 UI feedback 通过多个 state 隐式组合。

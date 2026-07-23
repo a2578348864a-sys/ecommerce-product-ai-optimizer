@@ -1,10 +1,10 @@
 # OpportunitiesForm 深度架构审计
 
-> Source baseline：`origin/main` commit `a8061a5f5f2fdfdce24a041cc6879802b9980e24`，tree `b6d8d19671f9e6a2ba4a06455810920fe6a46847`
+> Source baseline：`origin/main` commit `993f41a5db0ba2e3d4aa13481886fe63134cf477`，tree `58e0942f68d15b84a2cfde74fe51958e92f753f4`
 >
 > 审计日期：2026-07-23
 >
-> 事实边界：生产事实只来自上述 main。本文另设 `IN-FLIGHT` 小节描述 Phase 1C 治理候选，不把它写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
+> 事实边界：生产事实只来自上述 main。本文另设 `IN-FLIGHT` 小节描述 Phase 1D 治理候选，不把它写成已发布能力。其他工作树的 dirty、未跟踪 Provider 工具、生产数据库和运行时环境均未纳入。
 >
 > 复核要求：`origin/main` 变化后重新计算全部数量、引用和数据流。Source baseline 不等于生产服务器当前运行版本。
 
@@ -14,7 +14,7 @@
 
 |指标|数量|说明|
 |-|-:|-|
-|物理行数|2,198|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A、1B 已合入|
+|物理行数|2,190|`components/cross-border/OpportunitiesForm.tsx`；Phase 1A、1B、1C 已合入|
 |`useState`|29|无 `useReducer`|
 |`useEffect`|5|恢复、Candidate hydration、持久化、Task link、portal 定位|
 |`useCallback`|11|请求编排、导出、状态、删除和来源导入|
@@ -26,7 +26,7 @@
 
 生产文件同时承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。它是一个浅接口但过宽实现职责的容器，而不是单纯表单。
 
-生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则，以及 `OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary` 两个展示叶子。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
+生产 main 已包含 `lib/opportunityCandidateActions.ts` 的删除 presentation 纯规则，以及 `OpportunitiesLockedPreview`、`OpportunitiesDecisionSummary`、`OpportunitiesFlowGuidance` 三个展示叶子。生产容器仍承担公开 surface、访问态接入、手工分析、来源预览、Candidate 保存与更新、Task 关联、Agent 交接、localStorage 恢复、portal 菜单和大部分页面 JSX。
 
 ### Phase 1A（PRODUCTION）
 
@@ -36,9 +36,13 @@
 
 候选品池五项决策摘要 JSX 已移到 26 行的 `OpportunitiesDecisionSummary.tsx`，生产容器为 2,198 行。`buildDecisionDeskSummary(poolItems)`、memo、29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、公开 props、条件顺序、DOM 与数据流均未变化。
 
-### Phase 1C 治理候选（IN-FLIGHT）
+### Phase 1C（PRODUCTION）
 
-候选分支只把主链路引导 JSX 移到 16 行的 `OpportunitiesFlowGuidance.tsx`，容器变为 2,190 行。新叶子无 props，保留原文案和 `/agent/run`、`/tasks` href；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、公开 props、条件顺序、DOM 与数据流均未变化。新叶子合入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`，合入后为 `PRODUCTION / ACTIVE`。
+主链路引导 JSX 已移到 16 行的 `OpportunitiesFlowGuidance.tsx`，生产容器为 2,190 行。新叶子无 props，保留原文案和 `/agent/run`、`/tasks` href；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、公开 props、条件顺序、DOM 与数据流均未变化。
+
+### Phase 1D 治理候选（IN-FLIGHT）
+
+候选分支只把来源可用性说明 JSX 移到 29 行的 `OpportunitiesSourceAvailability.tsx`，容器变为 2,169 行。新叶子无 props、callback 或 Hook；浏览器原生 `<details>/<summary>` 仍拥有展开状态，四级来源顺序、文本、class 和 key 保持不变。规范化 JSX SHA-256 前后均为 `4b064e0dda4b86415ab577020aee94acc20c7e3cd05a40263533137929f7de14`。29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref、9 个 fetch、2 个直接 localStorage 数据域、公开 props、API、Storage、权限和数据权威性均未变化。新叶子合入 main 前仍是 `IN-FLIGHT / NOT_PRODUCTION`，合入后为 `PRODUCTION / ACTIVE`。
 
 ## 2. 真实调用方与 interface
 

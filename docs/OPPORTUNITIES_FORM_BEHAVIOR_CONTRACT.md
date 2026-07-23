@@ -1,12 +1,13 @@
 # OpportunitiesForm 行为保护合同
 
-> Source baseline：`origin/main` commit `e536c8bf9771af1b7d615511fdda8449034d3867`，tree `a6d8eaf991b6c733bbb862996fe0cf7d4c11b693`
+> Source baseline：`origin/main` commit `993f41a5db0ba2e3d4aa13481886fe63134cf477`，tree `58e0942f68d15b84a2cfde74fe51958e92f753f4`
 >
 > 审计日期：2026-07-23。本文记录后续结构调整不得无意改变的现有行为，不是新功能授权。
 
 ## 1. 证据等级
 
 - **RENDERED**：通过公开 component interface 做 React SSR 断言；
+- **MOUNTED**：通过公开 component interface 挂载并触发用户可观察交互；
 - **DOMAIN**：通过生产纯 module interface 验证可观察结果；
 - **ROUTE**：通过 Route 测试验证请求、权限和写入 adapter；
 - **STATIC**：只证明当前 import/结构，不冒充用户行为；
@@ -67,6 +68,13 @@
 
 治理候选补充了 `PROOF_SIGNING_SECRET` 的测试隔离，避免本机配置让 fail-closed 用例产生假失败。
 
+来源可用性说明的展示合同：
+
+- 只在已解锁且 intake 展开时出现，锁定 surface 不出现；**RENDERED + MOUNTED**
+- default 与 `advanced_import` 使用相同四级顺序、文案和标识；**MOUNTED**
+- 初始收起，点击 `<summary>` 展开，再次点击收起；展开状态由浏览器原生 disclosure 拥有；**MOUNTED**
+- intake 展开及 disclosure 切换不新增业务 fetch、localStorage 或 sessionStorage 写入；**MOUNTED**
+
 ## 7. Storage 合同
 
 - 输入草稿 key 与 10 分钟 TTL 不变；
@@ -81,6 +89,7 @@
 |保护面|测试|
 |-|-|
 |公开 surface、fixture|`components/cross-border/OpportunitiesForm.behavior.test.ts`|
+|来源可用性 disclosure|`components/cross-border/OpportunitiesForm.source-availability.test.ts`|
 |local→server→Agent→Task authority 链|同上|
 |删除 presentation|`components/cross-border/OpportunitiesForm.delete-policy.test.ts`|
 |Candidate pool、Storage、R2.2|`lib/opportunityCandidatePool.test.ts`|
@@ -91,7 +100,7 @@
 
 ## 9. 未自动化风险
 
-- DOM 输入、click、confirm、portal 与 keyboard；
+- 除来源 disclosure 外的 DOM 输入、confirm、portal 与 keyboard；
 - Strict Mode Effect 时序；
 - analyze/preview/confirm/PATCH/DELETE 的重叠响应；
 - 真实 Owner/Visitor 服务端集成；
