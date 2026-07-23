@@ -97,9 +97,9 @@
 - 空 URL和纯空白在公开按钮路径被本地 disabled 阻断，不发请求、不启动 loading，也不显示 callback 内部的空值错误；非 URL 与特殊 URL 不增加客户端校验，trim 后按原文发送；锁定 surface 不渲染 preview command；**MOUNTED_BEHAVIOR + REQUEST_CONTRACT**
 - 非空输入 trim 后只发送一次 `POST /api/opportunities/source-import`；保留 `Content-Type`、access headers、无显式 credentials、`{ input, accessPassword }` body；单次 preview 不调用 confirm、Candidate 或 Task endpoint；**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
 - JSON 成功、空结果、warning、业务错误、200/204/401/403/404/429/500/502 非 JSON、不可解析 JSON、网络异常和 AbortError 均保持 main 的现有分支与文案；warning 顺序和重复项不变；**REQUEST_CONTRACT + MOUNTED_BEHAVIOR**
-- 新请求开始时旧 error、warning、preview、summary 和 selection 仍按原顺序清除；失败响应不主动清除已由另一在途请求写入的 preview；**TIMING_BEHAVIOR**
+- 新请求开始时旧 error、warning 和 preview 的可见内容被清除；行为测试没有证明 summary、selection 或全部 setter 的逐调用顺序，后者仅可从当前源码结构确认；**TIMING_BEHAVIOR + STRUCTURAL**
 - `requestSourceImportPreview` 只负责请求组装、单次 fetch 和 response 解析；React state、loading/error/warning、confirm、Candidate refresh、Storage 与权限仍由父组件拥有；**REQUEST_CONTRACT + STRUCTURAL**
-- 当前没有 AbortController、request generation 或 stale-response 保护。同一事件周期可对同一 URL 发出两个请求；任一请求结束都会清 loading，较旧请求后返回时可覆盖较新结果或追加错误，卸载不会 abort。loading 状态下的公开 UI 禁止不同 URL 的第二次用户请求，因此测试明确证明“未发出”，不把它写成已解决的竞态保护。以上是需要冻结的现状风险，不是正确性保证；**TIMING_BEHAVIOR + MOUNTED_BEHAVIOR**
+- 当前没有 AbortController、request generation 或 stale-response 保护。同一事件周期可对同一 URL 发出两个请求；任一请求结束都会清 loading，较旧请求后返回时可覆盖较新结果或追加错误。A先成功、B后失败时，A的preview与warning保留，B的error随后同时显示。卸载不会 abort；loading 状态下的公开 UI 禁止不同 URL 的第二次用户请求，因此测试明确证明“未发出”，不把它写成已解决的竞态保护。以上是需要冻结的现状风险，不是正确性保证；**TIMING_BEHAVIOR + MOUNTED_BEHAVIOR**
 
 ## 7. Storage 合同
 

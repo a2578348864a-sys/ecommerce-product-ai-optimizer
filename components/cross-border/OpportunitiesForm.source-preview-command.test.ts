@@ -611,6 +611,62 @@ describe("OpportunitiesForm source preview command", () => {
     expect(container.textContent).not.toContain("Newer Result");
   });
 
+  it("[TIMING_BEHAVIOR] keeps request A success visible when request B later fails", async () => {
+    const monitors = await mountUnlocked();
+    const requestA = deferred<Response>();
+    const requestB = deferred<Response>();
+    monitors.fetchMock
+      .mockImplementationOnce(() => requestA.promise)
+      .mockImplementationOnce(() => requestB.promise);
+
+    const requestAInput = SOURCE_URL;
+    const requestBInput = SOURCE_URL;
+    await enterSourceUrl(requestAInput);
+    const button = previewButton();
+    await act(async () => {
+      button.click();
+      button.click();
+      await Promise.resolve();
+    });
+
+    expect(monitors.fetchMock).toHaveBeenCalledTimes(2);
+    expect(monitors.fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/opportunities/source-import",
+      "/api/opportunities/source-import",
+    ]);
+    expect(monitors.fetchMock.mock.calls.map((call) => JSON.parse(
+      String((call[1] as RequestInit).body),
+    ).input)).toEqual([requestAInput, requestBInput]);
+    expect(container.textContent).toContain("抓取中");
+
+    requestA.resolve(jsonResponse(previewSuccess(
+      [candidate("Request A Result")],
+      ["request A warning"],
+    )));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Request A Result");
+    expect(container.textContent).toContain("request A warning");
+    expect(container.textContent).not.toContain("抓取中");
+    expect(container.textContent).not.toContain("Request B failed.");
+
+    requestB.resolve(jsonResponse({
+      ok: false,
+      error: { code: "upstream_failed", message: "Request B failed." },
+    }, 500));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Request A Result");
+    expect(container.textContent).toContain("request A warning");
+    expect(container.textContent).toContain("Request B failed.");
+    expect(container.textContent).not.toContain("抓取中");
+    expect(monitors.fetchMock.mock.calls.filter(
+      ([url]) => url === "/api/opportunity-candidates" || String(url).startsWith("/api/tasks"),
+    )).toHaveLength(0);
+    expect(monitors.localStorageWrite).not.toHaveBeenCalled();
+    expect(monitors.sessionStorageWrite).not.toHaveBeenCalled();
+  });
+
   it("[TIMING_BEHAVIOR] keeps a newer success while an older same-URL request later adds an error", async () => {
     const monitors = await mountUnlocked();
     const older = deferred<Response>();
