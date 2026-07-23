@@ -40,4 +40,3 @@
 - 用户是否依赖 Candidate portal 菜单的特定 viewport 行为。
 
 无日志或负责人证据前，不能把 UNKNOWN 写成无人使用、可删除或已验证。
-

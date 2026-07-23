@@ -168,4 +168,3 @@ flowchart TD
 ## 9. 审计结论
 
 最安全的未来 seam 顺序是：纯展示叶子 → 派生 View Model → 来源导入视图 → Candidate 列表/详情视图 → Storage 恢复 module → 请求 module。当前不应先改 state 结构、引入全局状态库或一次性把 29 个 state 搬进大 Hook。
-

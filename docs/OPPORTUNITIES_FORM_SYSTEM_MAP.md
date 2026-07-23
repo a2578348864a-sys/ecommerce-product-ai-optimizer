@@ -115,4 +115,3 @@ local_draft
 - 非 Effect command 没有统一 request generation；
 - Node 测试不能证明 portal、真实 DOM 或 Strict Mode 时序；
 - access、authority、网络降级和 UI feedback 通过多个 state 隐式组合。
-

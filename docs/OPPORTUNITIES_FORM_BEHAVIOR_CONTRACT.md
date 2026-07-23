@@ -102,4 +102,3 @@
 ## 10. 后续变更门禁
 
 任何 Phase 必须保持 props、路由、payload、Storage key、authority、错误合同和 Candidate→Task 原子边界。测试失败不得通过删测试、放宽断言、改 Fixture 或绕过 Guard 制造通过。
-

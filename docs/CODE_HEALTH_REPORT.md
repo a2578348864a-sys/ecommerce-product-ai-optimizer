@@ -86,4 +86,3 @@ lib/listingClaimFilter.ts
 - P1：0
 - P2：巨型容器、Profit Snapshot 潜在重复、type-level cycle、两个 UNKNOWN/RETAIN 零生产引用文件
 - P3：历史 Phase 注释较多、部分同名类型增加检索成本
-

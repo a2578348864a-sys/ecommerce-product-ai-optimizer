@@ -120,4 +120,3 @@ type CandidateHydrationResult = {
 - 每次 1–3 个紧密文件，可独立 revert。
 
 详细交付顺序和回滚矩阵见 `NEXT_REFACTOR_ROADMAP.md`。
-
