@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 describe("source-import preview request adapter", () => {
-  it("[PURE_CONTRACT] assembles the current endpoint, method, headers, credentials, and body exactly", async () => {
+  it("[REQUEST_CONTRACT] assembles the current endpoint, method, headers, credentials, and body exactly", async () => {
     const payload = {
       ok: true,
       candidates: [],
@@ -83,7 +83,7 @@ describe("source-import preview request adapter", () => {
     expect(input.accessHeaders).toEqual(ACCESS_HEADERS);
   });
 
-  it("[PURE_CONTRACT] preserves candidate payloads and warning order without normalization", async () => {
+  it("[REQUEST_CONTRACT] preserves candidate payloads and warning order without normalization", async () => {
     const warnings = [
       "https://example.com/a: timeout [timeout]",
       "第二条 warning",
@@ -114,7 +114,7 @@ describe("source-import preview request adapter", () => {
     [429, "too_many_urls"],
     [500, "upstream_failed"],
   ] as const)(
-    "[PURE_CONTRACT] preserves JSON error payload and HTTP status %i",
+    "[REQUEST_CONTRACT] preserves JSON error payload and HTTP status %i",
     async (status, code) => {
       const payload = {
         ok: false,
@@ -133,7 +133,7 @@ describe("source-import preview request adapter", () => {
   );
 
   it.each([401, 403, 429, 500] as const)(
-    "[PURE_CONTRACT] returns the current non-JSON discriminator for HTTP %i without parsing",
+    "[REQUEST_CONTRACT] returns the current non-JSON discriminator for HTTP %i without parsing",
     async (status) => {
       const fetchMock = vi.fn().mockResolvedValue(response(
         "<html>proxy error</html>",
@@ -149,7 +149,7 @@ describe("source-import preview request adapter", () => {
     },
   );
 
-  it("[PURE_CONTRACT] returns the current invalid-JSON discriminator", async () => {
+  it("[REQUEST_CONTRACT] returns the current invalid-JSON discriminator", async () => {
     const fetchMock = vi.fn().mockResolvedValue(response(
       null,
       { jsonError: new SyntaxError("Unexpected token <") },
@@ -166,7 +166,7 @@ describe("source-import preview request adapter", () => {
   it.each([
     new Error("Failed to fetch"),
     Object.assign(new Error("This operation was aborted"), { name: "AbortError" }),
-  ])("[PURE_CONTRACT] preserves rejected fetch errors without remapping", async (error) => {
+  ])("[REQUEST_CONTRACT] preserves rejected fetch errors without remapping", async (error) => {
     const fetchMock = vi.fn().mockRejectedValue(error);
     vi.stubGlobal("fetch", fetchMock);
 
@@ -174,7 +174,7 @@ describe("source-import preview request adapter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("[PURE_CONTRACT] assembles consecutive requests deterministically and performs no Storage write", async () => {
+  it("[REQUEST_CONTRACT] assembles consecutive requests deterministically and performs no Storage write", async () => {
     const payload = {
       ok: true,
       candidates: [],

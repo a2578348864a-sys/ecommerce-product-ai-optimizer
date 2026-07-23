@@ -134,7 +134,7 @@ Phase 2D 只把来源 warning 唯一消费者中的 reason、URL 和消息清理
 
 候选容器为 2,134 行；29 个 state、5 个 effect、11 个 callback、6 个 memo、2 个 ref不变。9 个业务 fetch 变为父组件8个加 adapter1个；2 个直接 localStorage 数据域和5个间接 sessionStorage活动 key不变。confirm callback 与 production main 逐字一致。
 
-Phase 3A-0 的26项挂载 Characterization Test 证明当前竞态语义：同一事件周期可发出两个 preview，任一请求结束都会清 loading，较旧响应可覆盖较新结果，卸载不会 abort。Phase 3A 不修复这些已知风险；Phase 3B 尚未实施。
+Phase 3A-0 的43项挂载 Characterization Test 覆盖空白、非 URL、特殊 URL、锁定态、HTTP/解析/异常矩阵、消息清理及受控重叠响应。测试证明：同一事件周期可对同一 URL 发出两个 preview，任一请求结束都会清 loading，较旧请求后返回时可覆盖较新结果或追加错误，卸载不会 abort；公开 UI 在 loading 时会阻止不同 URL 的第二次用户请求。Phase 3A 不修复这些已知风险；Phase 3B 尚未实施。
 
 ## 3. seam 清单
 

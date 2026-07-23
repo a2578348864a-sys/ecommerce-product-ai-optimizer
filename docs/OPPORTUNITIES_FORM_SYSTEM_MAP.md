@@ -117,7 +117,7 @@ flowchart TD
 - `requestSourceImportPreview` 只接收 trim 后的 URL 输入、当前 access password 和父组件构建的只读 access headers；输出是保留 HTTP status 的 `json`、`non_json` 或 `invalid_json` 结果。
 - adapter 精确保留 `POST /api/opportunities/source-import`、`Content-Type`、access headers、无显式 credentials、`{ input, accessPassword }` body 和网络异常原样抛出语义。
 - preview 仍不写 Candidate 或 Task；confirm 仍是独立 `POST /api/opportunity-candidates` 路径，原 callback 段落未修改。
-- 当前 preview 没有 AbortController、request generation 或 stale-response 保护。同一事件周期可发出两个请求；任一请求结束都会清 loading，较旧响应可在较新响应之后写 state。Phase 3A 只冻结该风险，不修复。
+- 当前 preview 没有 AbortController、request generation 或 stale-response 保护。同一事件周期可对同一 URL 发出两个请求；任一请求结束都会清 loading，较旧请求可在较新请求之后写 state。公开 UI 在 loading 时禁用输入和按钮，因而不同 URL 的第二次用户请求不会发出；这不构成通用 stale-response 保护。Phase 3A 只冻结该风险，不修复。
 
 ## 4. 数据流
 

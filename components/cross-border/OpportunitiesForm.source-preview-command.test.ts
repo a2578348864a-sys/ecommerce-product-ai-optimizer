@@ -246,7 +246,78 @@ describe("OpportunitiesForm source preview command", () => {
   );
 
   it.each(["legacy_default", "advanced_import"] as const)(
-    "[MOUNTED_BEHAVIOR] preserves the preview request and success contract on %s",
+    "[MOUNTED_BEHAVIOR] keeps whitespace-only source input locally blocked on %s",
+    async (surface) => {
+      const monitors = await mountUnlocked(surface);
+
+      await enterSourceUrl(" \n\t ");
+      await act(async () => previewButton().click());
+
+      expect(monitors.fetchMock).not.toHaveBeenCalled();
+      expect(container.textContent).not.toContain("抓取中");
+      expect(container.textContent).not.toContain("请输入至少 1 个公开 URL。");
+      expect(monitors.localStorageWrite).not.toHaveBeenCalled();
+      expect(monitors.sessionStorageWrite).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["non-URL text", "not-a-url"],
+    [
+      "special URL input",
+      "https://例子.测试/路径?q=空 格#片段\nhttps://example.com/feed.xml?tag=a%2Fb",
+    ],
+  ] as const)(
+    "[REQUEST_CONTRACT][MOUNTED_BEHAVIOR] preserves %s without adding client URL validation",
+    async (_label, value) => {
+      const monitors = await mountUnlocked();
+      await submitPreview(
+        monitors.fetchMock,
+        jsonResponse(previewSuccess([])),
+        value,
+      );
+
+      expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
+      const requestBody = JSON.parse(
+        String((monitors.fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+      ) as { input: string; accessPassword: string };
+      expect(requestBody).toEqual({
+        input: value.trim(),
+        accessPassword: SYNTHETIC_ACCESS,
+      });
+    },
+  );
+
+  it.each(["legacy_default", "advanced_import"] as const)(
+    "[MOUNTED_BEHAVIOR] keeps the source preview command absent while %s is locked",
+    async (surface) => {
+      dom.sessionStorage.clear();
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const client = await import("react-dom/client");
+      root = client.createRoot(container as unknown as Element);
+
+      await act(async () => {
+        root?.render(createElement(OpportunitiesFormComponent, { surface }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      await flushAsyncWork();
+
+      expect(container.textContent).not.toContain("抓取公开来源");
+      expect(findAll(
+        container,
+        (element) => element.localName === "textarea"
+          && element.getAttribute("placeholder")?.startsWith(SOURCE_INPUT_PLACEHOLDER_PREFIX) === true,
+      )).toHaveLength(0);
+      expect(fetchMock.mock.calls.filter(
+        ([url]) => url === "/api/opportunities/source-import",
+      )).toHaveLength(0);
+    },
+  );
+
+  it.each(["legacy_default", "advanced_import"] as const)(
+    "[REQUEST_CONTRACT][MOUNTED_BEHAVIOR] preserves the preview request and success contract on %s",
     async (surface) => {
       const monitors = await mountUnlocked(surface);
       await submitPreview(
@@ -324,10 +395,14 @@ describe("OpportunitiesForm source preview command", () => {
   );
 
   it.each([
+    [200, "服务返回异常（200），请稍后重试。"],
+    [204, "服务返回异常（204），请稍后重试。"],
     [401, "访问已失效，请重新输入访问密码。"],
     [403, "访问已失效，请重新输入访问密码。"],
+    [404, "服务返回异常（404），请稍后重试。"],
     [429, "服务返回异常（429），请稍后重试。"],
     [500, "服务返回异常（500），请稍后重试。"],
+    [502, "服务返回异常（502），请稍后重试。"],
   ] as const)(
     "[MOUNTED_BEHAVIOR] preserves non-JSON HTTP %i handling",
     async (status, expectedMessage) => {
@@ -338,6 +413,73 @@ describe("OpportunitiesForm source preview command", () => {
       expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("[MOUNTED_BEHAVIOR] preserves warning order and duplicate warnings", async () => {
+    const monitors = await mountUnlocked();
+    const firstWarning = "first warning";
+    const secondWarning = "second warning";
+    await submitPreview(
+      monitors.fetchMock,
+      jsonResponse(previewSuccess(
+        [candidate("Warnings Candidate")],
+        [firstWarning, firstWarning, secondWarning],
+      )),
+    );
+
+    const text = container.textContent;
+    expect(text.match(new RegExp(firstWarning, "g"))).toHaveLength(2);
+    expect(text.indexOf(firstWarning)).toBeLessThan(text.indexOf(secondWarning));
+  });
+
+  it("[TIMING_BEHAVIOR] clears an old warning and preview result when a new request starts", async () => {
+    const monitors = await mountUnlocked();
+    await submitPreview(
+      monitors.fetchMock,
+      jsonResponse(previewSuccess(
+        [candidate("Old Candidate")],
+        ["https://example.com/old: timeout [timeout]"],
+      )),
+    );
+    expect(container.textContent).toContain("Old Candidate");
+    expect(container.textContent).toContain("请求超时");
+
+    const pending = deferred<Response>();
+    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+    await enterSourceUrl("https://example.com/new.xml");
+    await act(async () => previewButton().click());
+
+    expect(container.textContent).toContain("抓取中");
+    expect(container.textContent).not.toContain("Old Candidate");
+    expect(container.textContent).not.toContain("请求超时");
+
+    pending.resolve(jsonResponse(previewSuccess([candidate("New Candidate")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("New Candidate");
+  });
+
+  it("[TIMING_BEHAVIOR] clears an old error when a new request starts", async () => {
+    const monitors = await mountUnlocked();
+    await submitPreview(
+      monitors.fetchMock,
+      jsonResponse({
+        ok: false,
+        error: { code: "upstream_failed", message: "Old request failed." },
+      }, 500),
+    );
+    expect(container.textContent).toContain("Old request failed.");
+
+    const pending = deferred<Response>();
+    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+    await enterSourceUrl("https://example.com/retry.xml");
+    await act(async () => previewButton().click());
+
+    expect(container.textContent).toContain("抓取中");
+    expect(container.textContent).not.toContain("Old request failed.");
+
+    pending.resolve(jsonResponse(previewSuccess([candidate("Retry Candidate")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Retry Candidate");
+  });
 
   it("[MOUNTED_BEHAVIOR] preserves invalid JSON handling", async () => {
     const monitors = await mountUnlocked();
@@ -439,6 +581,84 @@ describe("OpportunitiesForm source preview command", () => {
     expect(container.textContent).toContain("Older Result");
     expect(container.textContent).toContain("请求超时");
     expect(container.textContent).toContain("Newer request failed.");
+  });
+
+  it("[TIMING_BEHAVIOR] lets an older same-URL response overwrite a newer success", async () => {
+    const monitors = await mountUnlocked();
+    const older = deferred<Response>();
+    const newer = deferred<Response>();
+    monitors.fetchMock
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    await enterSourceUrl();
+    const button = previewButton();
+    await act(async () => {
+      button.click();
+      button.click();
+      await Promise.resolve();
+    });
+
+    expect(monitors.fetchMock).toHaveBeenCalledTimes(2);
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Newer Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Newer Result");
+
+    older.resolve(jsonResponse(previewSuccess([candidate("Older Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Older Result");
+    expect(container.textContent).not.toContain("Newer Result");
+  });
+
+  it("[TIMING_BEHAVIOR] keeps a newer success while an older same-URL request later adds an error", async () => {
+    const monitors = await mountUnlocked();
+    const older = deferred<Response>();
+    const newer = deferred<Response>();
+    monitors.fetchMock
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    await enterSourceUrl();
+    const button = previewButton();
+    await act(async () => {
+      button.click();
+      button.click();
+      await Promise.resolve();
+    });
+
+    newer.resolve(jsonResponse(previewSuccess([candidate("Newer Success")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Newer Success");
+
+    older.resolve(jsonResponse({
+      ok: false,
+      error: { code: "upstream_failed", message: "Older request failed." },
+    }, 500));
+    await flushAsyncWork();
+
+    expect(container.textContent).toContain("Newer Success");
+    expect(container.textContent).toContain("Older request failed.");
+  });
+
+  it("[TIMING_BEHAVIOR] blocks a different-URL user request while the first preview is loading", async () => {
+    const monitors = await mountUnlocked();
+    const pending = deferred<Response>();
+    monitors.fetchMock.mockImplementationOnce(() => pending.promise);
+
+    await enterSourceUrl("https://example.com/older.xml");
+    await act(async () => previewButton().click());
+    await enterSourceUrl("https://example.com/newer.xml");
+    await act(async () => previewButton("抓取中…").click());
+
+    expect(monitors.fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(
+      String((monitors.fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ).input).toBe("https://example.com/older.xml");
+
+    pending.resolve(jsonResponse(previewSuccess([candidate("Only Result")])));
+    await flushAsyncWork();
+    expect(container.textContent).toContain("Only Result");
   });
 
   it("[MOUNTED_BEHAVIOR] does not abort an in-flight preview when the component unmounts", async () => {
