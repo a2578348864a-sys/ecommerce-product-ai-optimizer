@@ -9,9 +9,9 @@ import {
   type DemoAiQuotaReservation,
 } from "@/lib/server/demoGuard";
 import {
-  getAuthoritativeCandidate,
   type AuthoritativeCandidate,
 } from "@/lib/server/candidateAuthority";
+import { createScopedOpportunityStore } from "@/lib/server/opportunityStore";
 import {
   buildCandidateAnalysisContext,
   createCandidateAnalysisBindingHash,
@@ -228,7 +228,9 @@ export async function POST(request: NextRequest) {
   let candidateForAnalysis: AuthoritativeCandidate | null = null;
   let r22MarketDecision: R22MarketDecisionSnapshot | null = null;
   if (candidateId) {
-    const candidate = await getAuthoritativeCandidate(accessCtx, candidateId);
+    const candidate = await createScopedOpportunityStore(accessCtx)
+      .candidates
+      .getAuthoritative(candidateId);
     if (!candidate) {
       return NextResponse.json(
         { ok: false, error: { code: "candidate_not_found", message: "候选商品不存在或不属于当前访问主体。" } },

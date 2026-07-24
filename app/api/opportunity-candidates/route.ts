@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
-  listSandboxCandidates,
   saveLegacySandboxCandidates,
   saveSignedSandboxCandidates,
   sandboxCandidateToListItem,
 } from "@/lib/server/demoSandbox";
 import {
-  isValidCandidateStatus,
-  listCandidates,
   saveLegacyCandidates,
   saveSignedCandidates,
 } from "@/lib/server/opportunityCandidateService";
@@ -19,6 +16,7 @@ import {
   type CandidateSourceSaveErrorCode,
 } from "@/lib/server/candidateSourceSave";
 import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceReview";
+import { createScopedOpportunityStore } from "@/lib/server/opportunityStore";
 
 export const runtime = "nodejs";
 
@@ -86,29 +84,8 @@ export async function GET(request: NextRequest) {
   const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
 
   try {
-    if (ctx.mode === "demo") {
-      const normalizedQuery = q?.toLowerCase();
-      const normalizedLimit = Math.min(Math.max(1, limit), 100);
-      const normalizedOffset = Math.max(0, offset);
-      const sandboxItems = listSandboxCandidates(ctx.demoAccessId)
-        .filter((candidate) => !isValidCandidateStatus(status) || candidate.status === status)
-        .filter((candidate) => !normalizedQuery || candidate.name.toLowerCase().includes(normalizedQuery))
-        .sort((a, b) => sort === "score" ? b.score - a.score : 0);
-      const pagedItems = sandboxItems
-        .slice(normalizedOffset, normalizedOffset + normalizedLimit)
-        .map((candidate) => toPublicOpportunityCandidate(sandboxCandidateToListItem(candidate)));
-      const nextOffset = normalizedOffset + pagedItems.length;
-
-      return json({
-        ok: true,
-        items: pagedItems,
-        total: sandboxItems.length,
-        hasMore: nextOffset < sandboxItems.length,
-        nextOffset: nextOffset < sandboxItems.length ? nextOffset : null,
-      });
-    }
-
-    const result = await listCandidates({ status, q, sort, limit, offset });
+    const store = createScopedOpportunityStore(ctx);
+    const result = await store.candidates.list({ status, q, sort, limit, offset });
     return json({
       ok: true,
       items: result.items.map(toPublicOpportunityCandidate),
