@@ -87,11 +87,10 @@ describe("PATCH Candidate source integrity protocol", () => {
     expect(mocks.updateCandidate).not.toHaveBeenCalled();
   });
 
-  it("passes strict Owner acknowledgement and original requested fields to the Service", async () => {
+  it("passes strict Owner acknowledgement and status to the Service (A2-2B: name no longer passed)", async () => {
     const response = await callPatch("candidate-owner", {
       status: "worth_analyzing",
       sourceReviewAcknowledged: true,
-      name: "ignored-but-protected",
     });
 
     expect(response.status).toBe(200);
@@ -107,7 +106,7 @@ describe("PATCH Candidate source integrity protocol", () => {
       { status: "worth_analyzing" },
       expect.objectContaining({
         sourceReviewAcknowledged: true,
-        requestedFields: expect.arrayContaining(["status", "sourceReviewAcknowledged", "name"]),
+        requestedFields: expect.arrayContaining(["status", "sourceReviewAcknowledged"]),
       }),
     );
   });

@@ -18,6 +18,7 @@ import {
   type CandidateUpdate,
 } from "@/lib/server/opportunityCandidateService";
 import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceReview";
+import { parseCandidatePatchCommand } from "@/lib/server/candidatePatchCommand";
 
 export const runtime = "nodejs";
 
@@ -96,25 +97,41 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return json({ ok: false, error: { code: "invalid_json", message: "请求体不是合法 JSON。" } }, 400);
   }
 
+  // A2-2B: unified PATCH command parser
   if (!isRecord(body)) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
+
+  const parsed = parseCandidatePatchCommand(body as Record<string, unknown>);
+  if (!parsed.ok) {
+    if (parsed.code === "candidate_task_link_locked") {
+      return json({ ok: false, error: { code: parsed.code, message: parsed.message } }, 409);
+    }
+    return json({ ok: false, error: { code: parsed.code, message: parsed.message } }, parsed.status);
+  }
+  const command = parsed.command;
 
   // Demo-Sandbox.1-C: allow sandbox candidate PATCH for demo
   if (isSandboxCandidateId(id)) {
     const auth = requireAuthenticated(request, body);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     if (auth.context.mode === "demo") {
-      const taskLinkResponse = candidateTaskLinkLockedResponse(body);
-      if (taskLinkResponse) return taskLinkResponse;
+      // A2-2B-R1: source fields — check candidate type before service call
+      const hasSourceField = Object.keys(body).some((k) => k === "sourceMetaJson" || k === "analysisJson");
+      if (hasSourceField) {
+        const existing = getSandboxCandidate(auth.context.demoAccessId, id);
+        if (!existing) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
+        const meta = JSON.parse(existing.sourceMetaJson || "{}");
+        if (meta.integrity !== "signed_source_v2") {
+          return json({ ok: false, error: { code: "candidate_field_not_editable", message: "Candidate 字段不可编辑。" } }, 400);
+        }
+        // signed → let updateSandboxCandidate throw 409 via assertCandidateSourceUpdateAllowed
+      }
       const update: Record<string, unknown> = {};
-      if (typeof body.status === "string" && isValidCandidateStatus(body.status)) update.status = body.status;
-      if (typeof body.score === "number") update.score = body.score;
-      if (typeof body.name === "string") update.name = body.name;
-      if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
+      if (command.status) update.status = command.status;
       try {
         const updated = updateSandboxCandidate(auth.context.demoAccessId, id, update, {
-          sourceReviewAcknowledged: body.sourceReviewAcknowledged === true ? true : undefined,
+          sourceReviewAcknowledged: command.sourceReviewAcknowledged,
           requestedFields: Object.keys(body),
         });
         if (!updated) return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
@@ -134,25 +151,24 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const auth = requireOwnerOnly(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
 
-  const taskLinkResponse = candidateTaskLinkLockedResponse(body);
-  if (taskLinkResponse) return taskLinkResponse;
-
-  const update: CandidateUpdate = {};
-
-  if (body.status !== undefined) {
-    if (!isValidCandidateStatus(body.status)) {
-      return json({ ok: false, error: { code: "invalid_payload", message: "状态值不合法。" } }, 400);
+  // A2-2B-R1: source fields — check candidate type before service call
+  const hasSourceField = Object.keys(body).some((k) => k === "sourceMetaJson" || k === "analysisJson");
+  if (hasSourceField) {
+    // Quick integrity check: signed → let updateCandidate throw 409
+    const existing = await updateCandidate(id, {}, { requestedFields: [] });
+    if (!existing) return json({ ok: false, error: { code: "not_found", message: "候选品不存在。" } }, 404);
+    const meta = JSON.parse(existing.sourceMetaJson || "{}");
+    if (meta.integrity !== "signed_source_v2") {
+      return json({ ok: false, error: { code: "candidate_field_not_editable", message: "Candidate 字段不可编辑。" } }, 400);
     }
-    update.status = body.status;
   }
 
-  if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
-  if (typeof body.score === "number") update.score = body.score;
-  if (typeof body.keyword === "string") update.keyword = body.keyword;
+  const update: CandidateUpdate = {};
+  if (command.status) update.status = command.status;
 
   try {
     const candidate = await updateCandidate(id, update, {
-      sourceReviewAcknowledged: body.sourceReviewAcknowledged === true ? true : undefined,
+      sourceReviewAcknowledged: command.sourceReviewAcknowledged,
       requestedFields: Object.keys(body),
     });
     if (!candidate) {
