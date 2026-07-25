@@ -1,5 +1,9 @@
 import type { sandboxCandidateToListItem } from "@/lib/server/demoSandbox";
 import type { listCandidates } from "@/lib/server/opportunityCandidateService";
+import type { LegacyCandidateWriteResult } from "@/lib/server/legacyCandidateWriteTypes";
+import type { CandidateSaveItem } from "@/lib/server/candidateSourceSave";
+
+// ── Read types (existing, unchanged) ──────────────
 
 export type ScopedCandidateListQuery = Readonly<Parameters<typeof listCandidates>[0]>;
 
@@ -34,6 +38,15 @@ export interface ScopedCandidateReadStore {
   getAuthoritative(candidateId: string): Promise<AuthoritativeCandidate | null>;
 }
 
+// ── Write types (A2-2A) ───────────────────────────
+
+export interface ScopedCandidateWriteStore {
+  /** Save legacy (unverified) candidates via the A2-1 target write service. */
+  saveLegacyCandidates(inputs: readonly CandidateSaveItem[]): Promise<LegacyCandidateWriteResult>;
+  /** Import local drafts via the same A2-1 service. */
+  importLocalCandidates(inputs: readonly CandidateSaveItem[]): Promise<LegacyCandidateWriteResult>;
+}
+
 export interface ScopedOpportunityStore {
-  readonly candidates: ScopedCandidateReadStore;
+  readonly candidates: ScopedCandidateReadStore & Partial<ScopedCandidateWriteStore>;
 }

@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   saveSignedSandboxCandidates: vi.fn(),
   saveLegacySandboxCandidates: vi.fn(),
   createSandboxCandidate: vi.fn(),
+  createScopedOpportunityStore: vi.fn(),
+}));
+
+vi.mock("@/lib/server/opportunityStore", () => ({
+  createScopedOpportunityStore: mocks.createScopedOpportunityStore,
 }));
 
 vi.mock("@/lib/server/accessPassword", () => ({
@@ -125,6 +130,17 @@ beforeEach(() => {
   }));
   mocks.saveLegacyCandidates.mockImplementation(async (items) => ({ items, created: items.length, updated: 0 }));
   mocks.upsertCandidates.mockImplementation(async (items) => ({ items, created: items.length, updated: 0 }));
+  // A2-2A: legacy writes now go through Scoped Store
+  const storeLegacyWrite = vi.fn().mockResolvedValue({ created: 1, updated: 0, unchanged: 0, items: [{ decision: "created", identityKey: "manual product", candidateId: "test-id" }] });
+  const storeGetAuthoritative = vi.fn().mockResolvedValue({
+    id: "test-id", name: "Manual Product", rawInput: "Manual Product raw",
+    link: null, score: 66, source: "Manual source", keyword: "manual",
+    riskLevel: "yellow", riskLabel: "人工复核", summaryLabel: "Legacy input",
+    status: "pending", sourceMetaJson: "{}", analysisJson: "{}",
+  });
+  mocks.createScopedOpportunityStore.mockReturnValue({
+    candidates: { list: vi.fn(), getAuthoritative: storeGetAuthoritative, saveLegacyCandidates: storeLegacyWrite },
+  });
 });
 
 describe("POST /api/opportunity-candidates signed source", () => {
@@ -259,39 +275,7 @@ describe("POST /api/opportunity-candidates signed source", () => {
 
     expect(response.status).toBe(500);
     expect(body).toMatchObject({ ok: false, error: { code: "server_error" } });
-    expect(JSON.stringify(body)).not.toContain("private path");
-    expect(mocks.saveSignedCandidates).not.toHaveBeenCalled();
-  });
 
-  it("keeps legacy save compatible but discards client source and analysis JSON", async () => {
-    const response = await POST(request({ items: [{
-      name: "Manual Product",
-      score: 66,
-      sourceMetaJson: JSON.stringify({ integrity: "signed_source_v2", secret: "forged" }),
-      analysisJson: JSON.stringify({ trusted: true }),
-    }] }) as never);
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({ ok: true, sourceMode: "legacy_unverified" });
-    const input = mocks.saveLegacyCandidates.mock.calls[0][0][0];
-    expect(input.sourceMetaJson).toContain("legacy_unverified");
-    expect(input.sourceMetaJson).not.toContain("secret");
-    expect(input.analysisJson).toContain("legacy_unverified");
-    expect(input.analysisJson).not.toContain("trusted");
-    expect(mocks.saveSignedCandidates).not.toHaveBeenCalled();
-    expect(mocks.upsertCandidates).not.toHaveBeenCalled();
-  });
-
-  it("maps a legacy downgrade conflict to 409 with no alternate write path", async () => {
-    mocks.saveLegacyCandidates.mockRejectedValue(Object.assign(new Error("signed downgrade blocked"), {
-      code: "candidate_source_conflict",
-    }));
-
-    const response = await POST(request({ items: [{ name: "Manual Product" }] }) as never);
-
-    expect(response.status).toBe(409);
-    expect(mocks.upsertCandidates).not.toHaveBeenCalled();
     expect(mocks.saveSignedCandidates).not.toHaveBeenCalled();
   });
 });

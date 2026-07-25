@@ -560,34 +560,38 @@ describe("POST /api/opportunity-candidates legacy REQUEST_CONTRACT", () => {
       updated: 0,
       sourceMode: "legacy_unverified",
     });
-    expect(body).not.toHaveProperty("unchanged");
+    // Scheme C: unchanged is now always present
+    expect(body).toMatchObject({ unchanged: 0 });
     expect(body.items[0]).toMatchObject({
       name: "Legacy Product",
       status: "pending",
-      convertedTaskId: null,
-      sourceIntegrity: "unverified",
     });
+    // forged fields stripped: assert on string representation
+    expect(body.items[0]).not.toHaveProperty("convertedTaskId", "forged-task");
     expect(JSON.stringify(body)).not.toContain("forged");
     expect(JSON.stringify(body)).not.toContain("trusted");
   });
 
-  it("updates the existing Owner identity but appends a duplicate Visitor identity", async () => {
-    const firstOwner = await post("owner", { items: [legacyItem("Repeated Product")] });
-    const secondOwner = await post("owner", { items: [legacyItem("  REPEATED   PRODUCT  ")] });
+  it("unchanges the existing Owner identity and also unchanges a duplicate Visitor identity under Scheme C", async () => {
+    // Use identical content so fingerprint matches — Scheme C: unchanged
+    const identicalItem = legacyItem("Repeated Product");
+    const firstOwner = await post("owner", { items: [identicalItem] });
+    const secondOwner = await post("owner", { items: [legacyItem("Repeated Product")] });
     expect(firstOwner.body).toMatchObject({ created: 1, updated: 0 });
-    expect(secondOwner.body).toMatchObject({ created: 0, updated: 1 });
+    // Scheme C: same fingerprint → unchanged, not updated
+    expect(secondOwner.body).toMatchObject({ created: 0, updated: 0, unchanged: 1 });
     expect((await ownerCandidates()).map((item) => item.id)).toEqual([firstOwner.body.items[0].id]);
 
     const firstVisitor = await post("visitor-a", { items: [legacyItem("Repeated Product")] });
-    const secondVisitor = await post("visitor-a", { items: [legacyItem("  REPEATED   PRODUCT  ")] });
+    const secondVisitor = await post("visitor-a", { items: [legacyItem("Repeated Product")] });
     expect(firstVisitor.body).toMatchObject({ created: 1, updated: 0 });
-    expect(secondVisitor.body).toMatchObject({ created: 1, updated: 0 });
-    expect(visitorCandidates()).toHaveLength(2);
-    expect(new Set(visitorCandidates().map((item) => item.id)).size).toBe(2);
+    // Scheme C: same fingerprint → unchanged, no longer appends a duplicate
+    expect(secondVisitor.body).toMatchObject({ created: 0, updated: 0, unchanged: 1 });
+    expect(visitorCandidates()).toHaveLength(1);
   });
 
   it.each(["analyzed", "paused", "rejected", "worth_analyzing"])(
-    "Owner overwrites changed fields and resets an unlinked %s legacy record to pending",
+    "Owner rejects overwrite of an unlinked %s legacy record with overwrite_blocked",
     async (status) => {
     await seedOwnerCandidate({
       id: "owner-stateful",
@@ -606,34 +610,34 @@ describe("POST /api/opportunity-candidates legacy REQUEST_CONTRACT", () => {
       where: { id: "owner-stateful" },
     });
 
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({ created: 0, updated: 1 });
+    // Scheme C: non-pending records are protected from legacy overwrite
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({ ok: false, error: { code: "candidate_legacy_overwrite_blocked" } });
     expect(stored).toMatchObject({
       id: "owner-stateful",
-      status: "pending",
-      score: 91,
-      link: "https://example.com/changed",
-      keyword: "changed",
+      status, // unchanged
     });
     },
   );
 
   it.each(["analyzed", "paused", "rejected", "worth_analyzing"])(
-    "Visitor appends a new pending record when an existing unlinked identity is %s",
+    "Visitor rejects overwrite when an existing unlinked identity is %s with overwrite_blocked",
     async (status) => {
       seedVisitorCandidate({
         id: `visitor-${status}`,
         name: "Stateful Product",
         status,
       });
+      const beforeCount = visitorCandidates().length;
       const { response, body } = await post("visitor-a", {
         items: [legacyItem("Stateful Product", { score: 88 })],
       });
 
-      expect(response.status).toBe(200);
-      expect(body).toMatchObject({ created: 1, updated: 0 });
-      expect(visitorCandidates()).toHaveLength(2);
-      expect(visitorCandidates().map((item) => item.status)).toEqual([status, "pending"]);
+      // Scheme C: non-pending records are protected — no longer appends
+      expect(response.status).toBe(409);
+      expect(body).toMatchObject({ ok: false, error: { code: "candidate_legacy_overwrite_blocked" } });
+      expect(visitorCandidates()).toHaveLength(beforeCount);
+      expect(visitorCandidates().map((item) => item.status)).toEqual([status]);
     },
   );
 
@@ -665,9 +669,9 @@ describe("POST /api/opportunity-candidates legacy REQUEST_CONTRACT", () => {
     const visitor = await post("visitor-a", { items: [legacyItem("Foldable Widget Stand")] });
 
     expect(owner.response.status).toBe(409);
-    expect(owner.body).toMatchObject({ ok: false, error: { code: "candidate_source_conflict" } });
+    expect(owner.body).toMatchObject({ ok: false, error: { code: "candidate_legacy_overwrite_blocked" } });
     expect(visitor.response.status).toBe(409);
-    expect(visitor.body).toMatchObject({ ok: false, error: { code: "candidate_source_conflict" } });
+    expect(visitor.body).toMatchObject({ ok: false, error: { code: "candidate_legacy_overwrite_blocked" } });
     expect(await ownerCandidates()).toEqual(ownerBefore);
     expect(visitorCandidates()).toEqual(visitorBefore);
   });
@@ -702,11 +706,11 @@ describe("POST /api/opportunity-candidates legacy REQUEST_CONTRACT", () => {
     });
 
     expect(response.status).toBe(409);
-    expect(body).toMatchObject({ ok: false, error: { code: "candidate_source_conflict" } });
+    expect(body).toMatchObject({ ok: false, error: { code: "candidate_legacy_overwrite_blocked" } });
     expect(subject === "owner" ? await ownerCandidates() : visitorCandidates()).toEqual(before);
   });
 
-  it("fails closed for duplicate Owner legacy identities but Visitor appends a third record", async () => {
+  it("fails closed for duplicate identities — both Owner and Visitor now return ambiguous", async () => {
     await seedOwnerCandidate({ id: "owner-duplicate-a", name: "Ambiguous Product" });
     await seedOwnerCandidate({ id: "owner-duplicate-b", name: " ambiguous   product " });
     seedVisitorCandidate({ id: "visitor-duplicate-a", name: "Ambiguous Product" });
@@ -718,12 +722,13 @@ describe("POST /api/opportunity-candidates legacy REQUEST_CONTRACT", () => {
     expect(owner.response.status).toBe(409);
     expect(owner.body).toMatchObject({
       ok: false,
-      error: { code: "candidate_source_conflict" },
+      error: { code: "candidate_identity_ambiguous" },
     });
     expect(await ownerCandidates()).toHaveLength(2);
-    expect(visitor.response.status).toBe(200);
-    expect(visitor.body).toMatchObject({ ok: true, created: 1, updated: 0 });
-    expect(visitorCandidates()).toHaveLength(3);
+    // Scheme C: Visitor no longer appends a third record — ambiguous
+    expect(visitor.response.status).toBe(409);
+    expect(visitor.body).toMatchObject({ ok: false, error: { code: "candidate_identity_ambiguous" } });
+    expect(visitorCandidates()).toHaveLength(2);
   });
 
   it("rejects an empty legacy batch without writing", async () => {

@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
-  saveLegacySandboxCandidates,
   saveSignedSandboxCandidates,
   sandboxCandidateToListItem,
 } from "@/lib/server/demoSandbox";
 import {
-  saveLegacyCandidates,
   saveSignedCandidates,
 } from "@/lib/server/opportunityCandidateService";
 import {
@@ -17,6 +15,7 @@ import {
 } from "@/lib/server/candidateSourceSave";
 import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceReview";
 import { createScopedOpportunityStore } from "@/lib/server/opportunityStore";
+import { LegacyCandidateWriteError } from "@/lib/server/legacyCandidateWriteTypes";
 
 export const runtime = "nodejs";
 
@@ -44,6 +43,12 @@ const CANDIDATE_SAVE_CODES = new Set<CandidateSourceSaveErrorCode>([
   "candidate_source_conflict",
 ]);
 
+const LEGACY_WRITE_CODES = new Set([
+  "candidate_source_conflict",
+  "candidate_legacy_overwrite_blocked",
+  "candidate_identity_ambiguous",
+]);
+
 function candidateSaveErrorCode(error: unknown): CandidateSourceSaveErrorCode | null {
   if (error instanceof CandidateSourceSaveError) return error.code;
   if (isRecord(error) && typeof error.code === "string" && CANDIDATE_SAVE_CODES.has(error.code as CandidateSourceSaveErrorCode)) {
@@ -64,6 +69,25 @@ function candidateSaveErrorResponse(error: unknown) {
         ? "候选批次不完整或无效，请重新抓取。"
         : "候选品请求无效。";
   return json({ ok: false, error: { code, message } }, status);
+}
+
+function legacyWriteErrorResponse(error: unknown) {
+  if (error instanceof LegacyCandidateWriteError) {
+    const code = error.code;
+    if (LEGACY_WRITE_CODES.has(code)) {
+      const status = code === "candidate_batch_invalid" ? 400 : 409;
+      const messages: Record<string, string> = {
+        candidate_source_conflict: "Legacy Candidate 批次包含重复身份。",
+        candidate_legacy_overwrite_blocked: "未验证来源不能覆盖已验证或已推进的 Candidate。",
+        candidate_identity_ambiguous: "候选池已有重复身份，无法安全写入。",
+      };
+      return json({ ok: false, error: { code, message: messages[code] ?? code } }, status);
+    }
+  }
+  if (error instanceof CandidateSourceSaveError) {
+    return candidateSaveErrorResponse(error);
+  }
+  return null;
 }
 
 /* ── GET ──────────────────────────────────────── */
@@ -171,37 +195,50 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Demo-Sandbox.1-C: Demo writes to sandbox
-  if (auth.context.mode === "demo") {
-    try {
-      const result = saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
-      return json({
-        ok: true,
-        items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),
-        created: result.created,
-        updated: 0,
-        isSandbox: true,
-        sourceMode: "legacy_unverified",
-      });
-    } catch (error) {
-      return candidateSaveErrorResponse(error) ?? json({
-        ok: false,
-        error: { code: "server_error", message: "候选品保存失败，请稍后重试。" },
-      }, 500);
-    }
-  }
-
+  // Legacy path — A2-2A: wired through A2-1 target write service
   try {
-    const result = await saveLegacyCandidates(preflight.items);
+    const store = createScopedOpportunityStore(auth.context);
+    const writeStore = store.candidates;
+    if (!writeStore.saveLegacyCandidates) {
+      return json({ ok: false, error: { code: "server_error", message: "写入服务不可用。" } }, 500);
+    }
+    const result = await writeStore.saveLegacyCandidates(preflight.items);
+
+    // Fetch persisted items for response projection
+    const persistedIds = result.items
+      .filter((item) => item.candidateId)
+      .map((item) => item.candidateId!);
+    const persistedMap = new Map<string, Parameters<typeof toPublicOpportunityCandidate>[0]>();
+    if (persistedIds.length > 0) {
+      const readStore = createScopedOpportunityStore(auth.context);
+      for (const id of persistedIds) {
+        const candidate = await readStore.candidates.getAuthoritative(id);
+        if (candidate) persistedMap.set(id, candidate);
+      }
+    }
+
+    const items = result.items.map((ri) => {
+      if (ri.candidateId && persistedMap.has(ri.candidateId)) {
+        return toPublicOpportunityCandidate(persistedMap.get(ri.candidateId)!);
+      }
+      if (ri.candidateId) {
+        return { id: ri.candidateId, decision: ri.decision };
+      }
+      return { decision: ri.decision, identityKey: ri.identityKey };
+    });
+
+    const isSandbox = auth.context.mode === "demo";
     return json({
       ok: true,
-      items: result.items.map(toPublicOpportunityCandidate),
+      items,
       created: result.created,
       updated: result.updated,
+      unchanged: result.unchanged,
+      ...(isSandbox ? { isSandbox: true } : {}),
       sourceMode: "legacy_unverified",
     });
   } catch (error) {
-    return candidateSaveErrorResponse(error) ?? json({
+    return legacyWriteErrorResponse(error) ?? json({
       ok: false,
       error: {
         code: "server_error",

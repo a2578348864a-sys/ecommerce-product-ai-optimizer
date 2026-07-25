@@ -326,17 +326,18 @@ describe("POST /api/opportunity-candidates/import-local REQUEST_CONTRACT", () =>
     });
   });
 
-  it("maps an existing Visitor legacy identity to another created row and imported=1", async () => {
+  it("maps an existing Visitor legacy identity to skipped=1 under Scheme C", async () => {
     expect((await post("visitor-a", [localDraft("Existing Local")])).response.status).toBe(200);
 
     const { response, body } = await post("visitor-a", [
       localDraft("Existing Local", { score: 93 }),
     ]);
 
+    // Scheme C: different fingerprint → updated (imported=1), not appended
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ ok: true, imported: 1, skipped: 0 });
-    expect(visitorCandidates()).toHaveLength(2);
-    expect(visitorCandidates().map((item) => item.score)).toEqual([77, 93]);
+    expect(visitorCandidates()).toHaveLength(1);
+    expect(visitorCandidates().map((item) => item.score)).toEqual([93]);
   });
 
   it.each([
@@ -362,7 +363,7 @@ describe("POST /api/opportunity-candidates/import-local REQUEST_CONTRACT", () =>
     expect(response.status).toBe(409);
     expect(body).toMatchObject({
       ok: false,
-      error: { code: "candidate_source_conflict" },
+      error: { code: "candidate_legacy_overwrite_blocked" },
     });
     expect(subject === "owner" ? await ownerCandidates() : visitorCandidates()).toEqual(before);
   });

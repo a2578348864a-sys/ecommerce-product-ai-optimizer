@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
-import { saveLegacySandboxCandidates } from "@/lib/server/demoSandbox";
-import { saveLegacyCandidates } from "@/lib/server/opportunityCandidateService";
 import {
   CandidateSourceSaveError,
   preflightCandidateSaveBatch,
   type CandidateSourceSaveErrorCode,
 } from "@/lib/server/candidateSourceSave";
+import { createScopedOpportunityStore } from "@/lib/server/opportunityStore";
+import { LegacyCandidateWriteError } from "@/lib/server/legacyCandidateWriteTypes";
 
 export const runtime = "nodejs";
 
@@ -49,6 +49,22 @@ function candidateSaveErrorCode(error: unknown): CandidateSourceSaveErrorCode | 
     : null;
 }
 
+function legacyWriteErrorResponse(error: unknown) {
+  if (error instanceof LegacyCandidateWriteError) {
+    const code = error.code;
+    const map = new Set(["candidate_source_conflict", "candidate_legacy_overwrite_blocked", "candidate_identity_ambiguous"]);
+    if (map.has(code)) {
+      return json({ ok: false, error: { code, message: code } }, 409);
+    }
+    return json({ ok: false, error: { code, message: code } }, 400);
+  }
+  if (error instanceof CandidateSourceSaveError) {
+    const c = candidateSaveErrorCode(error);
+    if (c) return json({ ok: false, error: { code: c, message: c } }, c === "invalid_payload" ? 400 : 409);
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {
@@ -81,28 +97,26 @@ export async function POST(request: NextRequest) {
       return json({ ok: false, error: { code: "invalid_payload", message: "本地草稿只能按未验证来源导入。" } }, 400);
     }
 
-    if (auth.context.mode === "demo") {
-      const result = saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
-      return json({
-        ok: true,
-        imported: result.created,
-        skipped: 0,
-        isSandbox: true,
-        sourceMode: "demo_sandbox",
-      });
+    const store = createScopedOpportunityStore(auth.context);
+    const writeStore = store.candidates;
+    if (!writeStore.importLocalCandidates) {
+      return json({ ok: false, error: { code: "server_error", message: "导入服务不可用。" } }, 500);
     }
+    const result = await writeStore.importLocalCandidates(preflight.items);
 
-    const result = await saveLegacyCandidates(preflight.items);
-    return json({ ok: true, imported: result.created + result.updated, skipped: 0 });
+    const imported = result.created + result.updated;
+    const skipped = result.unchanged;
+    const isSandbox = auth.context.mode === "demo";
+
+    return json({
+      ok: true,
+      imported,
+      skipped,
+      ...(isSandbox ? { isSandbox: true, sourceMode: "demo_sandbox" } : {}),
+    });
   } catch (error) {
-    const code = candidateSaveErrorCode(error);
-    if (code) {
-      const status = code === "candidate_source_conflict" ? 409 : 400;
-      const message = code === "candidate_source_conflict"
-        ? "候选品与已有已验证来源冲突，请检查候选池后重试。"
-        : "本地候选批次无效，请检查后重试。";
-      return json({ ok: false, error: { code, message } }, status);
-    }
+    const legacyErr = legacyWriteErrorResponse(error);
+    if (legacyErr) return legacyErr;
     return json({
       ok: false,
       error: {

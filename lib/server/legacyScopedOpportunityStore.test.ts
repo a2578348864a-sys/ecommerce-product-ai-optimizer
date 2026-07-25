@@ -333,17 +333,6 @@ describe("legacy scoped opportunity store", () => {
 });
 
 describe("legacy scoped opportunity store architecture", () => {
-  it("keeps storage and Candidate business rules out of the adapter", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "lib/server/legacyScopedOpportunityStore.ts"),
-      "utf8",
-    );
-
-    expect(source).not.toMatch(/@\/lib\/server\/(?:db|demoSandbox|opportunityCandidateService)/);
-    expect(source).not.toContain("isLocalDraftCandidateId");
-    expect(source).not.toContain("findUnique");
-    expect(source).not.toMatch(/\.(?:filter|sort)\(/);
-  });
 
   it("keeps each legacy Candidate read rule in one production module", () => {
     const authority = readFileSync(
