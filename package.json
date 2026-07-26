@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "sellersprite:preview": "tsx tools/upstream/sellersprite-preview.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
@@ -48,6 +49,7 @@
     "postcss": "^8.4.49",
     "prisma": "5.22.0",
     "tailwindcss": "^3.4.17",
+    "tsx": "4.23.1",
     "typescript": "^5.7.2",
     "vitest": "^4.1.9"
   },
