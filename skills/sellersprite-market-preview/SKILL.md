@@ -1,6 +1,6 @@
 ---
 name: sellersprite-market-preview
-description: Analyze an official SellerSprite US XLSX export as a local, non-authoritative market prescreen. Use when the user asks to analyze a SellerSprite export, generate a SellerSprite market report, review price, estimated sales, ratings, reviews, or concentration for a keyword, or prepare an opportunity-radar input report. Collect the keyword, category, and USD price band, then invoke the project's existing local CLI. Do not use for other spreadsheets, SellerSprite online services, browser automation, production Candidate writes, formal Stage 1 promotion, supply-chain, profit, logistics, compliance, or Amazon order analysis.
+description: Analyze an official SellerSprite US Search Results or Category Current XLSX export as a local, non-authoritative market prescreen. Use when the user asks to analyze a SellerSprite export, generate a SellerSprite market report, review price, estimated sales, ratings, reviews, category BSR, or concentration for a keyword or current category, or prepare an opportunity-radar input report. Confirm the report type, collect its applicable inputs and USD price band, then invoke the project's existing local CLI. Do not use for other spreadsheets, SellerSprite online services, browser automation, production Candidate writes, formal Stage 1 promotion, supply-chain, profit, logistics, compliance, or Amazon order analysis.
 ---
 
 # SellerSprite 市场预筛
@@ -9,11 +9,19 @@ description: Analyze an official SellerSprite US XLSX export as a local, non-aut
 
 ## 必填参数硬门禁
 
-`input`、`query`、`category`、`priceMin`、`priceMax` 任一缺失时，不运行任何命令。
+先确认 `reportType`：
 
-- 多项缺失时，只回复：“请提供 SellerSprite XLSX 文件、分析关键词、类目和目标美元价格范围。”
+- `search-results`：关键词搜索报表。
+- `category-current`：类目当前商品报表。
+
+`reportType`、`input`、`category`、`priceMin`、`priceMax` 任一缺失时，不运行任何命令。`query` 仅在 `search-results` 时必填。
+
+- 尚未确认类型时，先只询问：“这是关键词搜索报表，还是类目当前商品报表？”
+- Search 多项缺失时，只回复：“请提供 SellerSprite XLSX 文件、分析关键词、类目和目标美元价格范围。”
+- Category Current 多项缺失时，只回复：“请提供 SellerSprite XLSX 文件、类目和目标美元价格范围。”
 - 仅缺一项时，只询问该项。
 - `category` 始终必填；禁止回复“类目可不填”。
+- Category Current 不询问、不补造也不接受虚假 `query`。
 - 不要询问由 CLI 冻结的内部信号、评分或权重。
 
 ## 收集输入
@@ -21,7 +29,8 @@ description: Analyze an official SellerSprite US XLSX export as a local, non-aut
 取得以下参数后再执行：
 
 - `input`：用户明确提供或选择的 SellerSprite 官方 US XLSX 普通文件。
-- `query`：trim 后非空的分析关键词。
+- `reportType`：用户明确确认的 `search-results` 或 `category-current`。
+- `query`：仅 Search 使用，trim 后非空。
 - `category`：trim 后非空的用户定义类目或产品方向。
 - `priceMin`：有限、非负的 USD 最低价。
 - `priceMax`：有限、非负的 USD 最高价，且 `priceMin <= priceMax`。
@@ -51,10 +60,16 @@ description: Analyze an official SellerSprite US XLSX export as a local, non-aut
 
 使用子进程参数数组传值；不要用 `eval`，不要拼接未经引用的 Shell 字符串，不要允许用户值变成额外参数或命令。
 
-调用既有命令：
+Search 调用：
 
 ```text
-npm run sellersprite:preview -- --input INPUT --query QUERY --category CATEGORY --price-min PRICE_MIN --price-max PRICE_MAX --format both
+npm run sellersprite:preview -- --report-type search-results --input INPUT --query QUERY --category CATEGORY --price-min PRICE_MIN --price-max PRICE_MAX --format both
+```
+
+Category Current 调用：
+
+```text
+npm run sellersprite:preview -- --report-type category-current --input INPUT --category CATEGORY --price-min PRICE_MIN --price-max PRICE_MAX --format both
 ```
 
 用户指定 `outputDir` 时追加：
@@ -72,7 +87,7 @@ npm run sellersprite:preview -- --input INPUT --query QUERY --category CATEGORY 
 - `0`：帮助或报告成功。
 - `2`：参数缺失或非法。指出需修正的参数，不重复执行。
 - `3`：输入不存在、不是普通文件或不可读。只显示文件名或必要的简化路径。
-- `4`：XLSX 不安全、格式或工作簿结构不支持，或没有可用商品。不要自行解析或绕过门禁。
+- `4`：XLSX 不安全、报表类型不匹配、格式或工作簿结构不支持，或没有可用商品。不要自动切换类型、自行解析或绕过门禁。
 - `5`：Selection Brief 创建、验证或 Hash 失败。请用户检查关键词、类目和价格范围。
 - `6`：输出目录非法、同名文件已存在或写入失败。不要覆盖文件，请用户选择新的空目录。
 - `7`：未预期内部错误。只保留错误码和必要摘要，不输出敏感堆栈或环境内容。
@@ -89,6 +104,7 @@ npm run sellersprite:preview -- --input INPUT --query QUERY --category CATEGORY 
 在摘要前确认：
 
 - Manifest 中的 JSON、Markdown 文件名符合合同，并与实际文件一致。
+- Manifest 与 JSON 的 `reportType` 等于用户明确选择的类型。
 - Manifest 声明 `authoritative=false`、`promotionEligible=false`、`manifestRegistered=false`、`productionEffect=false`、`productionDatabaseWritten=false`。
 - JSON 声明 `currentStage1Invoked=false`，且以上安全标志仍为 false。
 - Manifest 中的 JSON 和 Markdown SHA-256 与实际文件一致。
@@ -108,13 +124,15 @@ npm run sellersprite:preview -- --input INPUT --query QUERY --category CATEGORY 
 ### 数据概况
 
 - 原始行、接受行、隔离行。
-- Appearance、Product、Family 数量。
+- Search 输出 Appearance、Product、Family 数量。
+- Category Current 输出 Category Current 记录、Product、Family 数量。
 
 ### 主要市场信号
 
 - product-weighted 的价格、估算月销量、估算月销售额、评分和评论数中位数。
 - 品牌集中度与卖家集中度状态。
-- 不要把 appearance-weighted 与 product-weighted 统计混用。
+- Search 不要把 appearance-weighted 与 product-weighted 统计混用。
+- Category Current 展示大类 BSR 与小类 BSR；不得输出搜索位置、广告位或自然位结论。
 
 ### 筛选结果
 

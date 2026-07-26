@@ -33,21 +33,29 @@ import {
   type SellerSpritePrecheckResult,
 } from "../../../lib/upstream/sellersprite/precheck";
 import type {
+  SellerSpriteCategoryCurrentRecord,
   SellerSpriteFamilyObservation,
   SellerSpriteProductObservation,
   SellerSpriteSearchAppearance,
+  SellerSpriteSourceOccurrence,
 } from "../../../lib/upstream/sellersprite/projections";
+import type { SellerSpriteReportType } from "../../../lib/upstream/sellersprite/reportType";
 import { createSellerSpriteShadowSelectionBrief } from "../../../lib/upstream/sellersprite/shadowBrief";
 import { renderSellerSpritePreviewMarkdown } from "./render-markdown";
 
 export const SELLERSPRITE_PREVIEW_HELP = `SellerSprite 本地市场预览
 
 用法：
-  npm run sellersprite:preview -- --input <file.xlsx> --query <关键词> --category <类目> --price-min <数字> --price-max <数字> [--output-dir <目录>] [--format json|markdown|both]
+  Search:
+  npm run sellersprite:preview -- --report-type search-results --input <file.xlsx> --query <关键词> --category <类目> --price-min <数字> --price-max <数字> [--output-dir <目录>] [--format json|markdown|both]
+
+  Category Current:
+  npm run sellersprite:preview -- --report-type category-current --input <file.xlsx> --category <类目> --price-min <数字> --price-max <数字> [--output-dir <目录>] [--format json|markdown|both]
 
 参数：
+  --report-type search-results 或 category-current；必填，不自动猜测
   --input       SellerSprite 官方 XLSX 本地文件
-  --query       查询关键词
+  --query       Search 必填；Category Current 禁止提供
   --category    当前筛选类目
   --price-min   目标最低价格
   --price-max   目标最高价格
@@ -86,8 +94,9 @@ export type SellerSpritePreviewParsedArgs =
   | { kind: "help" }
   | {
     kind: "run";
+    reportType?: SellerSpriteReportType;
     input: string;
-    query: string;
+    query: string | null;
     category: string;
     priceMin: number;
     priceMax: number;
@@ -112,7 +121,9 @@ export interface SellerSpriteLocalPreviewProduct extends SellerSpriteProductObse
 }
 
 export interface SellerSpriteLocalPreviewReport {
-  schemaVersion: "sellersprite-local-preview-report.v1";
+  schemaVersion: "sellersprite-local-preview-report.v2";
+  reportType: SellerSpriteReportType;
+  reportHash: string;
   reportStatus: "complete" | "partial";
   generatedAt: string;
   inputFileName: string;
@@ -123,7 +134,7 @@ export interface SellerSpriteLocalPreviewReport {
   marketplace: "amazon.com";
   market: "US";
   currency: "USD";
-  query: string;
+  query: string | null;
   category: string;
   priceMin: number;
   priceMax: number;
@@ -144,12 +155,17 @@ export interface SellerSpriteLocalPreviewReport {
     rejectedRows: number;
     errorCounts: Readonly<Record<string, number>>;
   };
+  occurrenceSummary: {
+    occurrenceCount: number;
+    occurrenceLabel: "Search appearances" | "Category Current records";
+  };
   appearanceSummary: {
     appearanceCount: number;
     sponsoredPlacementCount: number;
     organicPlacementCount: number;
     unknownPlacementCount: number;
-  };
+  } | null;
+  placementSummary: SellerSpriteMarketSnapshot["placementSummary"];
   productSummary: {
     productCount: number;
     uniqueAsinCount: number;
@@ -159,15 +175,19 @@ export interface SellerSpriteLocalPreviewReport {
     familyCount: number;
     uniqueParentAsinCount: number;
   };
-  appearanceWeightedStatistics: SellerSpriteMarketNumericSummaries;
+  appearanceWeightedStatistics: SellerSpriteMarketNumericSummaries | null;
+  occurrenceWeightedStatistics: SellerSpriteMarketNumericSummaries;
   productWeightedStatistics: SellerSpriteMarketNumericSummaries;
+  categoryBsrSummary: SellerSpriteMarketSnapshot["categoryBsrSummary"];
   brandConcentrationSummary: SellerSpriteMarketSnapshot["brandConcentrationSummary"];
   sellerConcentrationSummary: SellerSpriteMarketSnapshot["sellerConcentrationSummary"];
   missingSignals: ReadonlyArray<string>;
   conflictingSignals: ReadonlyArray<string>;
   warnings: ReadonlyArray<string>;
   rejectedRowSummary: Readonly<Record<string, number>>;
+  occurrences: ReadonlyArray<SellerSpriteSourceOccurrence>;
   appearances: ReadonlyArray<SellerSpriteSearchAppearance>;
+  categoryRecords: ReadonlyArray<SellerSpriteCategoryCurrentRecord>;
   products: ReadonlyArray<SellerSpriteLocalPreviewProduct>;
   families: ReadonlyArray<SellerSpriteFamilyObservation>;
   currentStage1Invoked: false;
@@ -181,7 +201,9 @@ export interface SellerSpriteLocalPreviewReport {
 }
 
 export interface SellerSpriteLocalPreviewManifest {
-  schemaVersion: "sellersprite-local-preview-manifest.v1";
+  schemaVersion: "sellersprite-local-preview-manifest.v2";
+  reportType: SellerSpriteReportType;
+  reportHash: string;
   generatedAt: string;
   sourceFileSha256: string;
   sourceBoundSnapshotHash: string;
@@ -232,6 +254,7 @@ export function parseSellerSpritePreviewArgs(
 ): SellerSpritePreviewParsedArgs {
   if (values.length === 1 && values[0] === "--help") return { kind: "help" };
   const allowed = new Set([
+    "--report-type",
     "--input",
     "--query",
     "--category",
@@ -256,10 +279,23 @@ export function parseSellerSpritePreviewArgs(
     parsed.set(key, value);
   }
 
+  const reportTypeRaw = parsed.get("--report-type")?.trim();
+  if (!reportTypeRaw) argumentError("report_type_required");
+  const reportType = reportTypeRaw === "search-results"
+    ? "search_results"
+    : reportTypeRaw === "category-current"
+      ? "category_current"
+      : null;
+  if (reportType === null) argumentError("unsupported_report_type");
   const input = parsed.get("--input")?.trim();
   if (!input) argumentError("input_required");
-  const query = parsed.get("--query")?.trim();
-  if (!query) argumentError("query_required");
+  const queryWasProvided = parsed.has("--query");
+  const queryValue = parsed.get("--query")?.trim();
+  if (reportType === "search_results" && !queryValue) argumentError("query_required");
+  if (reportType === "category_current" && queryWasProvided) {
+    argumentError("query_not_applicable");
+  }
+  const query = reportType === "search_results" ? queryValue! : null;
   const category = parsed.get("--category")?.trim();
   if (!category) argumentError("category_required");
 
@@ -285,6 +321,7 @@ export function parseSellerSpritePreviewArgs(
   }
   return {
     kind: "run",
+    reportType,
     input,
     query,
     category,
@@ -438,7 +475,9 @@ function buildReport(
     (product) => product.conflictingProviderMetrics,
   ))].sort();
   return {
-    schemaVersion: "sellersprite-local-preview-report.v1",
+    schemaVersion: "sellersprite-local-preview-report.v2",
+    reportType: snapshot.reportType,
+    reportHash: shadow.reportHash,
     reportStatus: snapshot.rejectedRows > 0 ? "partial" : "complete",
     generatedAt,
     inputFileName,
@@ -470,12 +509,19 @@ function buildReport(
       rejectedRows: snapshot.rejectedRows,
       errorCounts: countErrors(precheck.errors, "error"),
     },
-    appearanceSummary: {
-      appearanceCount: snapshot.appearances.length,
-      sponsoredPlacementCount: snapshot.sponsoredPlacementCount,
-      organicPlacementCount: snapshot.organicPlacementCount,
-      unknownPlacementCount: snapshot.unknownPlacementCount,
+    occurrenceSummary: {
+      occurrenceCount: snapshot.occurrences.length,
+      occurrenceLabel: snapshot.reportType === "search_results"
+        ? "Search appearances"
+        : "Category Current records",
     },
+    appearanceSummary: snapshot.reportType === "search_results" ? {
+      appearanceCount: snapshot.appearances.length,
+      sponsoredPlacementCount: snapshot.sponsoredPlacementCount ?? 0,
+      organicPlacementCount: snapshot.organicPlacementCount ?? 0,
+      unknownPlacementCount: snapshot.unknownPlacementCount ?? 0,
+    } : null,
+    placementSummary: snapshot.placementSummary,
     productSummary: {
       productCount: snapshot.products.length,
       uniqueAsinCount: snapshot.uniqueAsinCount,
@@ -486,7 +532,9 @@ function buildReport(
       uniqueParentAsinCount: snapshot.uniqueParentAsinCount,
     },
     appearanceWeightedStatistics: snapshot.appearanceWeightedSummary,
+    occurrenceWeightedStatistics: snapshot.occurrenceWeightedSummary,
     productWeightedStatistics: snapshot.productWeightedSummary,
+    categoryBsrSummary: snapshot.categoryBsrSummary,
     brandConcentrationSummary: snapshot.brandConcentrationSummary,
     sellerConcentrationSummary: snapshot.sellerConcentrationSummary,
     missingSignals: snapshot.missingSignals,
@@ -500,7 +548,9 @@ function buildReport(
         record.errorCodes.map((code) => ({ code, severity: "error" as const }))
       ))),
     )),
+    occurrences: snapshot.occurrences,
     appearances: snapshot.appearances,
+    categoryRecords: snapshot.categoryRecords,
     products,
     families: snapshot.families,
     currentStage1Invoked: false,
@@ -571,6 +621,7 @@ export function runSellerSpritePreview(
   args: Extract<SellerSpritePreviewParsedArgs, { kind: "run" }>,
   options: SellerSpritePreviewRunOptions = {},
 ): SellerSpritePreviewRunResult {
+  const expectedReportType = args.reportType ?? "search_results";
   const generatedAt = (options.now ?? (() => new Date().toISOString()))();
   const repositoryRoot = resolve(options.repositoryRoot ?? process.cwd());
   const inputPath = validateInputPath(args.input);
@@ -586,7 +637,16 @@ export function runSellerSpritePreview(
   } catch {
     previewError("input_file_unavailable", SELLERSPRITE_PREVIEW_EXIT_CODES.invalidInput);
   }
-  const precheck = precheckSellerSpriteXlsx(input, { capturedAt: generatedAt });
+  const precheck = precheckSellerSpriteXlsx(input, {
+    capturedAt: generatedAt,
+    expectedReportType,
+  });
+  if (precheck.errors.some((error) => error.code === "report_type_mismatch")) {
+    previewError("report_type_mismatch", SELLERSPRITE_PREVIEW_EXIT_CODES.invalidWorkbook);
+  }
+  if (precheck.errors.some((error) => error.code === "unsupported_report_type")) {
+    previewError("unsupported_report_type", SELLERSPRITE_PREVIEW_EXIT_CODES.invalidWorkbook);
+  }
   const structuralFailure = precheck.sheetName === null
     || precheck.errors.some((error) => (
       error.severity === "error" && error.rowNumber === undefined
@@ -597,11 +657,10 @@ export function runSellerSpritePreview(
   const snapshot = buildSellerSpriteMarketSnapshot(precheck);
   let brief;
   try {
-    brief = (options.createBrief ?? createSellerSpriteShadowSelectionBrief)({
+    const briefCommon = {
       marketplace: "amazon.com",
       market: "US",
       currency: "USD",
-      query: args.query,
       category: args.category,
       priceMin: args.priceMin,
       priceMax: args.priceMax,
@@ -609,7 +668,18 @@ export function runSellerSpritePreview(
       optionalSignals: ["estimatedMonthlySales", "estimatedMonthlyRevenue"],
       createdAt: generatedAt,
       briefSource: "local_cli_explicit_input",
-    });
+    };
+    brief = expectedReportType === "search_results"
+      ? (options.createBrief ?? createSellerSpriteShadowSelectionBrief)({
+          ...briefCommon,
+          reportType: expectedReportType,
+          query: args.query ?? "",
+        })
+      : (options.createBrief ?? createSellerSpriteShadowSelectionBrief)({
+          ...briefCommon,
+          reportType: expectedReportType,
+          query: null,
+        });
   } catch {
     previewError("selection_brief_invalid", SELLERSPRITE_PREVIEW_EXIT_CODES.invalidBrief);
   }
@@ -618,7 +688,9 @@ export function runSellerSpritePreview(
   const jsonContent = `${JSON.stringify(report, null, 2)}\n`;
   const markdownContent = renderSellerSpritePreviewMarkdown(report);
   const manifest: SellerSpriteLocalPreviewManifest = {
-    schemaVersion: "sellersprite-local-preview-manifest.v1",
+    schemaVersion: "sellersprite-local-preview-manifest.v2",
+    reportType: report.reportType,
+    reportHash: report.reportHash,
     generatedAt,
     sourceFileSha256: report.sourceFileSha256,
     sourceBoundSnapshotHash: report.sourceBoundSnapshotHash,

@@ -20,10 +20,16 @@ import {
   type SellerSpriteFamilyObservation,
   type SellerSpriteProductMetricField,
   type SellerSpriteProductObservation,
+  type SellerSpriteCategoryCurrentRecord,
   type SellerSpriteSearchAppearance,
+  type SellerSpriteSourceOccurrence,
 } from "./projections";
+import type {
+  SellerSpriteReportType,
+  SellerSpriteReportTypeDetectionEvidence,
+} from "./reportType";
 
-const SCHEMA_VERSION = "sellersprite-market-snapshot.v2" as const;
+const SCHEMA_VERSION = "sellersprite-market-snapshot.v3" as const;
 
 export interface SellerSpriteNumericSummary {
   validCount: number;
@@ -45,6 +51,8 @@ export interface SellerSpriteMarketNumericSummaries {
 export interface SellerSpriteFieldCoverage {
   validCount: number;
   missingCount: number;
+  invalidCount: number;
+  notApplicableCount: number;
 }
 
 export interface SellerSpriteMetricNatureCoverage {
@@ -80,6 +88,8 @@ export interface SellerSpriteMarketSnapshot {
   normalizedBusinessHash: string;
   source: "SellerSprite";
   sourceType: "provider_metric";
+  reportType: SellerSpriteReportType;
+  reportTypeDetectionEvidence: SellerSpriteReportTypeDetectionEvidence;
   marketplace: "amazon.com";
   market: "US";
   sheetName: string;
@@ -96,15 +106,30 @@ export interface SellerSpriteMarketSnapshot {
   uniqueAsinCount: number;
   duplicateAsinCount: number;
   uniqueParentAsinCount: number;
-  sponsoredPlacementCount: number;
-  organicPlacementCount: number;
-  unknownPlacementCount: number;
-  appearanceWeightedSummary: SellerSpriteMarketNumericSummaries;
+  sponsoredPlacementCount: number | null;
+  organicPlacementCount: number | null;
+  unknownPlacementCount: number | null;
+  placementSummary:
+    | {
+      status: "available";
+      sponsored: number;
+      organic: number;
+      unknown: number;
+    }
+    | { status: "not_applicable" };
+  appearanceWeightedSummary: SellerSpriteMarketNumericSummaries | null;
+  occurrenceWeightedSummary: SellerSpriteMarketNumericSummaries;
   productWeightedSummary: SellerSpriteMarketNumericSummaries;
+  categoryBsrSummary: {
+    rootCategoryBsr: SellerSpriteNumericSummary;
+    subCategoryBsr: SellerSpriteNumericSummary;
+  };
   brandConcentrationSummary: SellerSpriteConcentrationSummary;
   sellerConcentrationSummary: SellerSpriteConcentrationSummary;
   missingSignals: ReadonlyArray<string>;
+  occurrences: ReadonlyArray<SellerSpriteSourceOccurrence>;
   appearances: ReadonlyArray<SellerSpriteSearchAppearance>;
+  categoryRecords: ReadonlyArray<SellerSpriteCategoryCurrentRecord>;
   products: ReadonlyArray<SellerSpriteProductObservation>;
   families: ReadonlyArray<SellerSpriteFamilyObservation>;
   records: ReadonlyArray<SellerSpriteSnapshotRecord>;
@@ -185,6 +210,7 @@ function canonicalField(value: SellerSpriteFieldValue): unknown {
     source: value.source,
     sourceType: value.sourceType,
     metricNature: value.metricNature,
+    applicability: value.applicability,
   };
 }
 
@@ -193,11 +219,13 @@ function buildRowIdentity(
   sheetName: string,
   rowNumber: number,
   record: SellerSpriteRecord | undefined,
+  reportType: SellerSpriteReportType,
 ): string {
   const placement = record?.searchRank.normalized ?? null;
   return sellerSpriteStableHash({
     sourceFileSha256,
     sheetName,
+    reportType,
     rowNumber,
     asin: record?.asin.normalized ?? null,
     placementType: placement?.placementType ?? null,
@@ -206,12 +234,12 @@ function buildRowIdentity(
   });
 }
 
-function appearanceSummaries(
-  appearances: ReadonlyArray<SellerSpriteSearchAppearance>,
+function occurrenceSummaries(
+  occurrences: ReadonlyArray<SellerSpriteSourceOccurrence>,
 ): SellerSpriteMarketNumericSummaries {
   const numericValues = (field: SellerSpriteFieldKey): Array<number | null> => (
-    appearances.map((appearance) => {
-      const value = appearance.providerEvidence.find((item) => item.fieldName === field)?.normalized;
+    occurrences.map((occurrence) => {
+      const value = occurrence.providerEvidence.find((item) => item.fieldName === field)?.normalized;
       return typeof value === "number" ? value : null;
     })
   );
@@ -228,7 +256,13 @@ function productSummary(
   products: ReadonlyArray<SellerSpriteProductObservation>,
   field: Extract<
   SellerSpriteProductMetricField,
-  "price" | "estimatedMonthlySales" | "estimatedMonthlyRevenue" | "rating" | "reviews"
+  | "price"
+  | "estimatedMonthlySales"
+  | "estimatedMonthlyRevenue"
+  | "rating"
+  | "reviews"
+  | "rootCategoryBsr"
+  | "subCategoryBsr"
   >,
 ): SellerSpriteNumericSummary {
   const resolved = products.map((product) => product.providerMetrics[field]);
@@ -258,6 +292,26 @@ function productSummaries(
   };
 }
 
+function categoryBsrProductSummary(
+  products: ReadonlyArray<SellerSpriteProductObservation>,
+  field: "rootCategoryBsr" | "subCategoryBsr",
+): SellerSpriteNumericSummary {
+  const metrics = products.map((product) => product.providerMetrics[field]);
+  const values = metrics.flatMap((metric): number[] => {
+    if (metric.status !== "resolved") return [];
+    if (typeof metric.normalized === "number") return [metric.normalized];
+    if (Array.isArray(metric.normalized)) return [...metric.normalized];
+    return [];
+  });
+  const conflictCount = metrics.filter((metric) => metric.status === "conflict").length;
+  const missingCount = metrics.filter((metric) => metric.status === "missing").length;
+  const summary = numericSummary(values, conflictCount);
+  return {
+    ...summary,
+    missingCount,
+  };
+}
+
 function normalizedAggregate(evidence: SellerSpriteAggregateEvidence): unknown {
   return {
     status: evidence.status,
@@ -272,28 +326,34 @@ function normalizedAggregate(evidence: SellerSpriteAggregateEvidence): unknown {
 }
 
 function normalizedBusinessPayload(
-  appearances: ReadonlyArray<SellerSpriteSearchAppearance>,
+  occurrences: ReadonlyArray<SellerSpriteSourceOccurrence>,
   products: ReadonlyArray<SellerSpriteProductObservation>,
   precheck: SellerSpritePrecheckResult,
 ): unknown {
-  const normalizedAppearances = appearances
-    .map((appearance) => ({
-      asin: appearance.asin,
-      parentAsin: appearance.parentAsin,
-      placementType: appearance.placementType,
-      page: appearance.page,
-      position: appearance.position,
-      fields: appearance.providerEvidence
+  const normalizedOccurrences = occurrences
+    .map((occurrence) => ({
+      occurrenceType: occurrence.occurrenceType,
+      asin: occurrence.asin,
+      parentAsin: occurrence.parentAsin,
+      ...(occurrence.occurrenceType === "search_appearance" ? {
+        placementType: occurrence.placementType,
+        page: occurrence.page,
+        position: occurrence.position,
+      } : {
+        ordinalRaw: occurrence.ordinalRaw,
+      }),
+      fields: occurrence.providerEvidence
         .map((evidence) => ({
           fieldName: evidence.fieldName,
           metricNature: evidence.metricNature,
+          applicability: evidence.applicability,
           usagePolicy: evidence.usagePolicy,
           normalized: evidence.normalized,
           unit: evidence.unit,
-          status: evidence.normalized === null ? "missing" : "resolved",
+          status: evidence.applicability,
         }))
         .sort(sellerSpriteCanonicalCompare),
-      warnings: appearance.warnings.filter((warning) => warning !== "duplicate_asin").sort(),
+      warnings: occurrence.warnings.filter((warning) => warning !== "duplicate_asin").sort(),
     }))
     .sort(sellerSpriteCanonicalCompare);
   const normalizedProducts = products
@@ -320,9 +380,11 @@ function normalizedBusinessPayload(
     .sort(sellerSpriteCanonicalCompare);
   return {
     schemaVersion: SCHEMA_VERSION,
+    reportType: precheck.reportType,
+    reportTypeDetectionEvidence: precheck.reportTypeDetectionEvidence,
     marketplace: "amazon.com",
     market: "US",
-    appearances: normalizedAppearances,
+    occurrences: normalizedOccurrences,
     products: normalizedProducts,
     aggregateEvidence: {
       brands: normalizedAggregate(precheck.auxiliaryEvidence.brands),
@@ -335,8 +397,10 @@ export function buildSellerSpriteMarketSnapshot(
   precheck: SellerSpritePrecheckResult,
 ): SellerSpriteMarketSnapshot {
   if (
-    precheck.schemaVersion !== "sellersprite-xlsx-precheck.v1"
+    precheck.schemaVersion !== "sellersprite-xlsx-precheck.v2"
     || precheck.sheetName === null
+    || precheck.reportType === "unknown"
+    || !precheck.reportTypeMatched
     || precheck.errors.some((error) => error.severity === "error" && error.rowNumber === undefined)
   ) {
     throw new Error("SELLERSPRITE_PRECHECK_NOT_SUCCESSFUL");
@@ -349,6 +413,7 @@ export function buildSellerSpriteMarketSnapshot(
       precheck.sheetName!,
       record.rowNumber,
       record,
+      precheck.reportType as SellerSpriteReportType,
     ),
   }));
   const rejectedRecords: SellerSpriteSnapshotRejectedRecord[] = precheck.rejectedRecords.map(
@@ -359,6 +424,7 @@ export function buildSellerSpriteMarketSnapshot(
         precheck.sheetName!,
         record.rowNumber,
         record.normalizedRecord,
+        precheck.reportType as SellerSpriteReportType,
       ),
     }),
   );
@@ -370,9 +436,14 @@ export function buildSellerSpriteMarketSnapshot(
         .map((record) => record.normalizedRecord)
         .filter((record): record is SellerSpriteRecord => record !== undefined),
     ];
-    const validCount = allRecords
-      .filter((record) => supportedField(record, field).normalized !== null).length;
-    return [field, { validCount, missingCount: allRecords.length - validCount }];
+    const values = allRecords.map((record) => supportedField(record, field));
+    const validCount = values.filter((value) => value.applicability === "available").length;
+    const missingCount = values.filter((value) => value.applicability === "missing").length;
+    const invalidCount = values.filter((value) => value.applicability === "invalid").length;
+    const notApplicableCount = values.filter(
+      (value) => value.applicability === "not_applicable",
+    ).length;
+    return [field, { validCount, missingCount, invalidCount, notApplicableCount }];
   })) as Record<SellerSpriteFieldKey, SellerSpriteFieldCoverage>;
   const metricNatureCoverage: Record<SellerSpriteMetricNature, SellerSpriteMetricNatureCoverage> = {
     snapshot: { fieldValueCount: 0, validCount: 0, missingCount: 0 },
@@ -426,14 +497,15 @@ export function buildSellerSpriteMarketSnapshot(
 
   const projections = buildSellerSpriteOfflineProjections(
     precheck.sourceFileHash,
+    precheck.reportType as SellerSpriteReportType,
     projectionRows,
   );
   const warningCounts: Record<string, number> = {};
   for (const warning of precheck.errors.filter((error) => error.severity === "warning")) {
     warningCounts[warning.code] = (warningCounts[warning.code] ?? 0) + 1;
   }
-  const asins = projections.appearances
-    .map((appearance) => appearance.asin)
+  const asins = projections.occurrences
+    .map((occurrence) => occurrence.asin)
     .filter((value): value is string => value !== null);
   const uniqueAsinCount = new Set(asins).size;
   const missingSignals = [
@@ -444,9 +516,11 @@ export function buildSellerSpriteMarketSnapshot(
       ? []
       : ["sellers_aggregate_sheet"]),
     ...SELLERSPRITE_FIELD_KEYS
+      .filter((field) => !(precheck.reportType === "category_current" && field === "searchRank"))
       .filter((field) => fieldCoverage[field].validCount === 0)
       .map((field) => `product_field:${field}`),
     ...SELLERSPRITE_FIELD_KEYS
+      .filter((field) => !(precheck.reportType === "category_current" && field === "searchRank"))
       .filter((field) => (
         fieldCoverage[field].validCount > 0 && fieldCoverage[field].missingCount > 0
       ))
@@ -456,6 +530,10 @@ export function buildSellerSpriteMarketSnapshot(
   const sellerConcentrationSummary = concentrationSummary(precheck.auxiliaryEvidence.sellers);
   const sourceBoundSnapshotHash = sellerSpriteStableHash({
     schemaVersion: SCHEMA_VERSION,
+    reportType: precheck.reportType,
+    reportTypeDetectionEvidence: precheck.reportTypeDetectionEvidence,
+    expectedReportType: precheck.expectedReportType,
+    reportTypeMatched: precheck.reportTypeMatched,
     sourceFileSha256: precheck.sourceFileHash,
     sheetName: precheck.sheetName,
     acceptedRows: precheck.acceptedRows,
@@ -510,7 +588,7 @@ export function buildSellerSpriteMarketSnapshot(
   });
   const normalizedBusinessHash = sellerSpriteStableHash(
     normalizedBusinessPayload(
-      projections.appearances,
+      projections.occurrences,
       projections.products,
       precheck,
     ),
@@ -523,6 +601,8 @@ export function buildSellerSpriteMarketSnapshot(
     normalizedBusinessHash,
     source: "SellerSprite",
     sourceType: "provider_metric",
+    reportType: precheck.reportType as SellerSpriteReportType,
+    reportTypeDetectionEvidence: precheck.reportTypeDetectionEvidence,
     marketplace: "amazon.com",
     market: "US",
     sheetName: precheck.sheetName,
@@ -538,21 +618,53 @@ export function buildSellerSpriteMarketSnapshot(
     metricNatureCoverage,
     uniqueAsinCount,
     duplicateAsinCount: asins.length - uniqueAsinCount,
-    uniqueParentAsinCount: new Set(projections.appearances
-      .map((appearance) => appearance.parentAsin)
+    uniqueParentAsinCount: new Set(projections.occurrences
+      .map((occurrence) => occurrence.parentAsin)
       .filter((value): value is string => value !== null)).size,
-    sponsoredPlacementCount: projections.appearances
-      .filter((appearance) => appearance.placementType === "sponsored").length,
-    organicPlacementCount: projections.appearances
-      .filter((appearance) => appearance.placementType === "organic").length,
-    unknownPlacementCount: projections.appearances
-      .filter((appearance) => appearance.placementType === "unknown").length,
-    appearanceWeightedSummary: appearanceSummaries(projections.appearances),
+    sponsoredPlacementCount: precheck.reportType === "search_results"
+      ? projections.appearances.filter(
+        (appearance) => appearance.placementType === "sponsored",
+      ).length
+      : null,
+    organicPlacementCount: precheck.reportType === "search_results"
+      ? projections.appearances.filter(
+        (appearance) => appearance.placementType === "organic",
+      ).length
+      : null,
+    unknownPlacementCount: precheck.reportType === "search_results"
+      ? projections.appearances.filter(
+        (appearance) => appearance.placementType === "unknown",
+      ).length
+      : null,
+    placementSummary: precheck.reportType === "search_results" ? {
+      status: "available",
+      sponsored: projections.appearances.filter(
+        (appearance) => appearance.placementType === "sponsored",
+      ).length,
+      organic: projections.appearances.filter(
+        (appearance) => appearance.placementType === "organic",
+      ).length,
+      unknown: projections.appearances.filter(
+        (appearance) => appearance.placementType === "unknown",
+      ).length,
+    } : {
+      status: "not_applicable",
+    },
+    appearanceWeightedSummary: precheck.reportType === "search_results"
+      ? occurrenceSummaries(projections.appearances)
+      : null,
+    occurrenceWeightedSummary: occurrenceSummaries(projections.occurrences),
     productWeightedSummary: productSummaries(projections.products),
+    categoryBsrSummary: {
+      rootCategoryBsr: categoryBsrProductSummary(projections.products, "rootCategoryBsr"),
+      subCategoryBsr: categoryBsrProductSummary(projections.products, "subCategoryBsr"),
+    },
     brandConcentrationSummary,
     sellerConcentrationSummary,
     missingSignals,
+    occurrences: projections.occurrences,
     appearances: projections.appearances,
+    categoryRecords: projections.categoryRecords,
     products: projections.products,
     families: projections.families,
     records,

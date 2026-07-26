@@ -250,7 +250,7 @@ describe("SellerSprite XLSX offline precheck", () => {
 
     expect(SELLERSPRITE_SEARCH_EXPORT_SOURCE_HASH).toMatch(/^[a-f0-9]{64}$/);
     expect(result).toMatchObject({
-      schemaVersion: "sellersprite-xlsx-precheck.v1",
+      schemaVersion: "sellersprite-xlsx-precheck.v2",
       sourceFileHash: createHash("sha256").update(input).digest("hex"),
       source: "SellerSprite",
       sourceType: "provider_metric",
@@ -453,7 +453,7 @@ describe("SellerSprite XLSX offline precheck", () => {
   });
 
   it("prefers a sheet with all required fields over one with more optional aliases", () => {
-    const requiredHeaders = ["ASIN", "商品标题", "商品详情页链接"];
+    const requiredHeaders = ["ASIN", "商品标题", "商品详情页链接", "搜索排名"];
     const misleadingHeaders = SELLERSPRITE_SEARCH_EXPORT_HEADERS.filter(
       (header) => header !== "商品详情页链接",
     );
@@ -476,7 +476,7 @@ describe("SellerSprite XLSX offline precheck", () => {
   });
 
   it("prefers an unambiguous required-field sheet over a wider ambiguous sheet", () => {
-    const requiredHeaders = ["ASIN", "商品标题", "商品详情页链接"];
+    const requiredHeaders = ["ASIN", "商品标题", "商品详情页链接", "搜索排名"];
     const ambiguousHeaders = [...SELLERSPRITE_SEARCH_EXPORT_HEADERS, "Product URL"];
     const result = precheckSellerSpriteXlsx(
       createWorkbook(requiredHeaders, SELLERSPRITE_SANITIZED_ROWS, "US", [], {
@@ -895,6 +895,7 @@ describe("SellerSprite USD currency contract", () => {
     "Reviews",
     "Estimated Monthly Sales",
     "Estimated Monthly Revenue",
+    "Search Rank",
   ];
   const row = {
     ASIN: "B0CUR00001",
@@ -905,6 +906,7 @@ describe("SellerSprite USD currency contract", () => {
     Reviews: "100",
     "Estimated Monthly Sales": "200",
     "Estimated Monthly Revenue": "4998",
+    "Search Rank": "自然位：第1页第1位",
   };
 
   it.each([
@@ -1043,7 +1045,7 @@ describe("SellerSprite market snapshot and Stage 1 shadow compatibility", () => 
     });
 
     expect(firstSnapshot).toMatchObject({
-      schemaVersion: "sellersprite-market-snapshot.v2",
+      schemaVersion: "sellersprite-market-snapshot.v3",
       sourceFileSha256: createHash("sha256").update(workbook).digest("hex"),
       source: "SellerSprite",
       marketplace: "amazon.com",
@@ -1060,7 +1062,7 @@ describe("SellerSprite market snapshot and Stage 1 shadow compatibility", () => 
     });
     expect(firstSnapshot.records.map((record) => record.rowIdentity)).toHaveLength(2);
     expect(new Set(firstSnapshot.records.map((record) => record.rowIdentity)).size).toBe(2);
-    expect(firstSnapshot.appearanceWeightedSummary.estimatedMonthlySales).toMatchObject({
+    expect(firstSnapshot.appearanceWeightedSummary!.estimatedMonthlySales).toMatchObject({
       validCount: 2,
       missingCount: 0,
       minimum: 1250,
@@ -1249,7 +1251,7 @@ describe("SellerSprite Offline Contract R2 dual hashes and projections", () => {
     ));
 
     expect(snapshot).toMatchObject({
-      schemaVersion: "sellersprite-market-snapshot.v2",
+      schemaVersion: "sellersprite-market-snapshot.v3",
       sourceBoundSnapshotHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       normalizedBusinessHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
@@ -1356,7 +1358,7 @@ describe("SellerSprite Offline Contract R2 dual hashes and projections", () => {
 
     expect(snapshot.appearances).toHaveLength(2);
     expect(new Set(snapshot.appearances.map((item) => item.appearanceIdentity)).size).toBe(2);
-    expect(snapshot.appearances.every((item) => item.schemaVersion === "sellersprite-search-appearance.v1")).toBe(true);
+    expect(snapshot.appearances.every((item) => item.schemaVersion === "sellersprite-search-appearance.v2")).toBe(true);
     expect(snapshot.products[0]).toMatchObject({
       sponsoredAppearanceCount: 1,
       organicAppearanceCount: 0,
@@ -1460,7 +1462,7 @@ describe("SellerSprite Offline Contract R2 dual hashes and projections", () => {
       { capturedAt: CAPTURED_AT },
     ));
 
-    expect(snapshot.appearanceWeightedSummary.estimatedMonthlySales.median).toBe(100);
+    expect(snapshot.appearanceWeightedSummary!.estimatedMonthlySales.median).toBe(100);
     expect(snapshot.productWeightedSummary.estimatedMonthlySales.median).toBe(550);
   });
 
@@ -1475,7 +1477,7 @@ describe("SellerSprite Offline Contract R2 dual hashes and projections", () => {
     ));
 
     expect(snapshot.families).toContainEqual(expect.objectContaining({
-      schemaVersion: "sellersprite-family-observation.v1",
+      schemaVersion: "sellersprite-family-observation.v2",
       familyIdentity: expect.stringMatching(/^sellersprite-family-[a-f0-9]{24}$/),
       parentAsin: "B0SAN00001",
       childAsins: ["B0SAN00002"],
@@ -1592,7 +1594,7 @@ describe("SellerSprite Offline Contract R2 dual hashes and projections", () => {
       { capturedAt: CAPTURED_AT },
     ));
 
-    expect(snapshot.appearanceWeightedSummary.price).toMatchObject({
+    expect(snapshot.appearanceWeightedSummary!.price).toMatchObject({
       validCount: 2,
       missingCount: 0,
       conflictCount: 0,
@@ -1724,7 +1726,7 @@ describe("SellerSprite Offline Contract R2 Brief-bound safe shadow report", () =
       market: "US",
       currency: "USD",
       query: "storage boxes",
-      category: null,
+      category: "Home & Kitchen",
       priceMin: 20,
       priceMax: 100,
       requiredSignals,
@@ -1808,7 +1810,7 @@ describe("SellerSprite Offline Contract R2 Brief-bound safe shadow report", () =
     const report = buildSellerSpriteBriefBoundShadowReport(snapshot, validBrief());
 
     expect(report).toMatchObject({
-      schemaVersion: "sellersprite-brief-bound-shadow-report.v1",
+      schemaVersion: "sellersprite-brief-bound-shadow-report.v2",
       authoritative: false,
       promotionAllowed: false,
       promotionEligible: false,
@@ -1843,7 +1845,7 @@ describe("SellerSprite Offline Contract R2 Brief-bound safe shadow report", () =
         unknownCount: 0,
       },
       providerEvidenceSummary: {
-        evidenceCount: 14,
+        evidenceCount: 18,
         sourceTypes: ["provider_metric"],
       },
       missingSignals: expect.any(Array),

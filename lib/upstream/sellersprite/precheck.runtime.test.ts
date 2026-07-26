@@ -13,6 +13,7 @@ describe("SellerSprite XLSX local sample", () => {
   runtimeIt("prechecks an explicitly supplied official export without production effects", () => {
     const result = precheckSellerSpriteXlsx(readFileSync(samplePath!), {
       capturedAt: "2026-07-26T13:45:11.000Z",
+      expectedReportType: "search_results",
     });
 
     expect(result.sheetName).toBe("US");
@@ -43,7 +44,8 @@ describe("SellerSprite XLSX local sample", () => {
 
     const snapshot = buildSellerSpriteMarketSnapshot(result);
     expect(snapshot).toMatchObject({
-      schemaVersion: "sellersprite-market-snapshot.v2",
+      schemaVersion: "sellersprite-market-snapshot.v3",
+      reportType: "search_results",
       sourceFileSha256: SELLERSPRITE_SEARCH_EXPORT_SOURCE_HASH,
       totalRows: 10,
       acceptedRows: 10,
@@ -72,6 +74,7 @@ describe("SellerSprite XLSX local sample", () => {
       marketplace: "amazon.com",
       market: "US",
       currency: "USD",
+      reportType: "search_results",
       query: "收纳盒",
       category: "Home & Kitchen",
       priceMin: 5,
@@ -147,4 +150,96 @@ describe("SellerSprite XLSX local sample", () => {
     expect(result.productionEffect).toBe(false);
     expect(result.productionDatabaseWritten).toBe(false);
   });
+});
+
+const categorySamples = [
+  {
+    name: "Sports",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_SPORTS_PATH,
+    sha256: "41ced066135a5734251d493429effc8d6417db34d8fabdd7252abdde0f640582",
+    familyCount: 8,
+  },
+  {
+    name: "Office",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_OFFICE_PATH,
+    sha256: "5069fcaa967ee945995d2ff84bd05667a8a32ea909f064c175f469101dd84247",
+    familyCount: 7,
+  },
+  {
+    name: "Auto",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_AUTO_PATH,
+    sha256: "8cf6007874c1eb778f8ef389c556e1b93c43e2fe0d78ab530650596856ccf742",
+    familyCount: 9,
+  },
+] as const;
+
+describe("SellerSprite Category Current official samples", () => {
+  for (const sample of categorySamples) {
+    const categoryIt = sample.path ? it : it.skip;
+    categoryIt(`${sample.name} stays Category Current and non-authoritative`, () => {
+      const result = precheckSellerSpriteXlsx(readFileSync(sample.path!), {
+        capturedAt: "2026-07-27T02:00:00.000Z",
+        expectedReportType: "category_current",
+      });
+      expect(result).toMatchObject({
+        schemaVersion: "sellersprite-xlsx-precheck.v2",
+        sourceFileHash: sample.sha256,
+        reportType: "category_current",
+        reportTypeMatched: true,
+        sheetName: "US",
+        headerColumnCount: 72,
+        totalRows: 10,
+        acceptedRows: 10,
+        rejectedRows: 0,
+      });
+      expect(result.records.every((record) => (
+        record.searchRank.applicability === "not_applicable"
+        && record.searchRank.normalized === null
+      ))).toBe(true);
+
+      const snapshot = buildSellerSpriteMarketSnapshot(result);
+      expect(snapshot).toMatchObject({
+        schemaVersion: "sellersprite-market-snapshot.v3",
+        reportType: "category_current",
+        uniqueAsinCount: 10,
+        placementSummary: { status: "not_applicable" },
+        sponsoredPlacementCount: null,
+        organicPlacementCount: null,
+        unknownPlacementCount: null,
+        productionEffect: false,
+        productionDatabaseWritten: false,
+      });
+      expect(snapshot.occurrences).toHaveLength(10);
+      expect(snapshot.appearances).toEqual([]);
+      expect(snapshot.products).toHaveLength(10);
+      expect(snapshot.families).toHaveLength(sample.familyCount);
+      expect(snapshot.missingSignals).not.toContain("product_field:searchRank");
+      expect(snapshot.missingSignals).not.toContain("product_field_partial:searchRank");
+
+      const brief = createSellerSpriteShadowSelectionBrief({
+        marketplace: "amazon.com",
+        market: "US",
+        currency: "USD",
+        reportType: "category_current",
+        query: null,
+        category: `${sample.name} Category`,
+        priceMin: 20,
+        priceMax: 100,
+        requiredSignals: ["price", "rating", "reviews"],
+        optionalSignals: ["estimatedMonthlySales", "estimatedMonthlyRevenue"],
+        createdAt: "2026-07-27T02:00:00.000Z",
+        briefSource: "runtime_test_explicit_input",
+      });
+      const shadow = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
+      expect(shadow.reportType).toBe("category_current");
+      expect(shadow.query).toBeNull();
+      expect(shadow.currentStage1Invoked).toBe(false);
+      expect(shadow.authoritative).toBe(false);
+      expect(shadow.promotionAllowed).toBe(false);
+      expect(shadow.manifestRegistered).toBe(false);
+      expect(shadow.productionEffect).toBe(false);
+      expect(shadow.productionDatabaseWritten).toBe(false);
+      expect(shadow.products.every((product) => product.promotionEligible === false)).toBe(true);
+    });
+  }
 });

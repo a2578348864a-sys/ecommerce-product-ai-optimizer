@@ -13,11 +13,21 @@ export const SELLERSPRITE_FIELD_KEYS = [
   "estimatedMonthlyRevenue",
   "seller",
   "variationCount",
+  "rootCategory",
+  "rootCategoryBsr",
+  "subCategory",
+  "subCategoryBsr",
 ] as const;
 
 export type SellerSpriteFieldKey = (typeof SELLERSPRITE_FIELD_KEYS)[number];
 
 export type SellerSpriteMetricNature = "snapshot" | "estimate" | "derived" | "unknown";
+export type SellerSpriteFieldApplicability =
+  | "available"
+  | "missing"
+  | "not_applicable"
+  | "invalid"
+  | "conflicting";
 
 const FIELD_METRIC_NATURE: Readonly<Record<SellerSpriteFieldKey, SellerSpriteMetricNature>> = {
   asin: "unknown",
@@ -34,6 +44,10 @@ const FIELD_METRIC_NATURE: Readonly<Record<SellerSpriteFieldKey, SellerSpriteMet
   estimatedMonthlyRevenue: "estimate",
   seller: "unknown",
   variationCount: "snapshot",
+  rootCategory: "unknown",
+  rootCategoryBsr: "snapshot",
+  subCategory: "unknown",
+  subCategoryBsr: "snapshot",
 };
 
 export function sellerSpriteMetricNatureForField(
@@ -63,12 +77,23 @@ const FIELD_ALIASES: Readonly<Record<SellerSpriteFieldKey, readonly string[]>> =
   estimatedMonthlyRevenue: ["Estimated Monthly Revenue", "Monthly Revenue", "月销售额", "月销售额($)"],
   seller: ["Seller", "Buy Box Seller", "Buybox Seller", "Buybox卖家"],
   variationCount: ["Variation Count", "Variations", "变体数"],
+  rootCategory: ["Root Category", "大类目"],
+  rootCategoryBsr: ["Root Category BSR", "大类BSR"],
+  subCategory: ["Subcategory", "Sub Category", "小类目"],
+  subCategoryBsr: ["Subcategory BSR", "Sub Category BSR", "小类BSR"],
 };
 
 const INTEGER_FIELDS = new Set<SellerSpriteFieldKey>([
   "reviews",
   "estimatedMonthlySales",
   "variationCount",
+  "rootCategoryBsr",
+  "subCategoryBsr",
+]);
+
+const POSITIVE_INTEGER_FIELDS = new Set<SellerSpriteFieldKey>([
+  "rootCategoryBsr",
+  "subCategoryBsr",
 ]);
 
 const NUMBER_FIELDS = new Set<SellerSpriteFieldKey>([
@@ -203,7 +228,13 @@ export interface SellerSpriteSearchRank {
   position: number;
 }
 
-export type SellerSpriteNormalizedValue = string | number | SellerSpriteSearchRank | null;
+export type SellerSpriteBsrNormalizedValue = number | ReadonlyArray<number> | null;
+export type SellerSpriteNormalizedValue =
+  | string
+  | number
+  | ReadonlyArray<number>
+  | SellerSpriteSearchRank
+  | null;
 
 export interface SellerSpriteNormalizationResult {
   normalized: SellerSpriteNormalizedValue;
@@ -241,7 +272,12 @@ function normalizeNumber(field: SellerSpriteFieldKey, raw: string | null): Selle
     return { normalized: null, errorCode: "invalid_number_format" };
   }
   const value = Number(stripped);
-  if (!Number.isFinite(value) || value < 0 || (INTEGER_FIELDS.has(field) && !Number.isSafeInteger(value))) {
+  if (
+    !Number.isFinite(value)
+    || value < 0
+    || (INTEGER_FIELDS.has(field) && !Number.isSafeInteger(value))
+    || (POSITIVE_INTEGER_FIELDS.has(field) && value < 1)
+  ) {
     return { normalized: null, errorCode: "invalid_number_format" };
   }
   if (field === "rating" && value > 5) {
@@ -271,6 +307,21 @@ export function normalizeSellerSpriteField(
         position,
       },
     };
+  }
+  if (field === "rootCategoryBsr" || field === "subCategoryBsr") {
+    const text = normalizeNullableText(raw);
+    if (text === null) return { normalized: null };
+    const parts = text.split(/\r?\n/u).map((part) => part.trim()).filter(Boolean);
+    if (parts.length <= 1) return normalizeNumber(field, text);
+    const normalizedParts: number[] = [];
+    for (const part of parts) {
+      const normalized = normalizeNumber(field, part);
+      if (normalized.errorCode || typeof normalized.normalized !== "number") {
+        return normalized;
+      }
+      normalizedParts.push(normalized.normalized);
+    }
+    return { normalized: normalizedParts };
   }
   if (NUMBER_FIELDS.has(field)) return normalizeNumber(field, raw);
   const normalized = normalizeNullableText(raw);

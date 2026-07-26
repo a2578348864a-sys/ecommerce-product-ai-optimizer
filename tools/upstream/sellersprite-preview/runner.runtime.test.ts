@@ -11,6 +11,7 @@ describeOfficialSample("SellerSprite local preview official sample runtime", () 
   it("creates a non-authoritative report without persisting the source path", () => {
     const result = runSellerSpritePreview({
       kind: "run",
+      reportType: "search_results",
       input: officialSamplePath!,
       query: "runtime validation query",
       category: "Storage & Organization",
@@ -85,4 +86,86 @@ describeOfficialSample("SellerSprite local preview official sample runtime", () 
       rmSync(result.outputDirectory, { recursive: true, force: true });
     }
   });
+});
+
+const categorySamples = [
+  {
+    name: "Sports",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_SPORTS_PATH,
+    sha256: "41ced066135a5734251d493429effc8d6417db34d8fabdd7252abdde0f640582",
+    familyCount: 8,
+  },
+  {
+    name: "Office",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_OFFICE_PATH,
+    sha256: "5069fcaa967ee945995d2ff84bd05667a8a32ea909f064c175f469101dd84247",
+    familyCount: 7,
+  },
+  {
+    name: "Auto",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_AUTO_PATH,
+    sha256: "8cf6007874c1eb778f8ef389c556e1b93c43e2fe0d78ab530650596856ccf742",
+    familyCount: 9,
+  },
+] as const;
+
+describe("SellerSprite Category Current CLI official samples", () => {
+  for (const sample of categorySamples) {
+    const categoryIt = sample.path ? it : it.skip;
+    categoryIt(`${sample.name} produces Category Current JSON and Markdown`, () => {
+      const result = runSellerSpritePreview({
+        kind: "run",
+        reportType: "category_current",
+        input: sample.path!,
+        query: null,
+        category: `${sample.name} Category`,
+        priceMin: 20,
+        priceMax: 100,
+        outputDir: null,
+        format: "both",
+      }, {
+        now: () => "2026-07-27T02:00:00.000Z",
+      });
+      try {
+        expect(result.report).toMatchObject({
+          reportType: "category_current",
+          sourceFileSha256: sample.sha256,
+          query: null,
+          precheckSummary: {
+            headerColumnCount: 72,
+            totalRows: 10,
+            acceptedRows: 10,
+            rejectedRows: 0,
+          },
+          occurrenceSummary: {
+            occurrenceCount: 10,
+            occurrenceLabel: "Category Current records",
+          },
+          appearanceSummary: null,
+          placementSummary: { status: "not_applicable" },
+          productSummary: { productCount: 10, uniqueAsinCount: 10 },
+          familySummary: { familyCount: sample.familyCount },
+          currentStage1Invoked: false,
+          promotionEligible: false,
+          productionEffect: false,
+          productionDatabaseWritten: false,
+        });
+        const markdown = readFileSync(
+          join(result.outputDirectory, "sellersprite-preview.md"),
+          "utf8",
+        );
+        expect(markdown).toContain("类目当前商品");
+        expect(markdown).toContain("Category Current 记录");
+        expect(markdown).toContain("大类 BSR");
+        expect(markdown).toContain("小类 BSR");
+        expect(markdown).not.toContain("查询关键词");
+        expect(markdown).not.toContain("广告位数量");
+        expect(markdown).not.toContain("自然位数量");
+        expect(markdown).not.toContain("最佳广告位置");
+        expect(markdown).not.toContain("最佳自然位置");
+      } finally {
+        rmSync(result.outputDirectory, { recursive: true, force: true });
+      }
+    });
+  }
 });

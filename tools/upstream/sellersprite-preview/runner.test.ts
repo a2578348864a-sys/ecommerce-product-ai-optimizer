@@ -29,6 +29,7 @@ import { createSellerSpritePreviewTestWorkbook } from "./test-fixtures";
 function runArgs(input: string, outputDir: string | null) {
   return {
     kind: "run" as const,
+    reportType: "search_results" as const,
     input,
     query: "storage boxes",
     category: "Storage & Organization",
@@ -62,6 +63,7 @@ describe("SellerSprite local preview CLI", () => {
 
   it("parses the explicit US/USD preview arguments without guessing values", () => {
     expect(parseSellerSpritePreviewArgs([
+      "--report-type", "search-results",
       "--input", "sample.xlsx",
       "--query", "  storage boxes ",
       "--category", " Storage & Organization ",
@@ -70,6 +72,7 @@ describe("SellerSprite local preview CLI", () => {
       "--output-dir", "reports",
     ])).toEqual({
       kind: "run",
+      reportType: "search_results",
       input: "sample.xlsx",
       query: "storage boxes",
       category: "Storage & Organization",
@@ -157,7 +160,7 @@ describe("SellerSprite local preview CLI", () => {
     ], "unsupported_argument"],
   ] as const)("rejects invalid argument contract %#", (values, code) => {
     try {
-      parseSellerSpritePreviewArgs(values);
+      parseSellerSpritePreviewArgs(["--report-type", "search-results", ...values]);
       throw new Error("expected parser to fail");
     } catch (error) {
       expect(error).toBeInstanceOf(SellerSpritePreviewError);
@@ -218,7 +221,7 @@ describe("SellerSprite local preview CLI", () => {
       };
 
       expect(report).toMatchObject({
-        schemaVersion: "sellersprite-local-preview-report.v1",
+        schemaVersion: "sellersprite-local-preview-report.v2",
         sourceType: "provider_metric",
         precheckSummary: {
           headerColumnCount: 73,
@@ -244,10 +247,10 @@ describe("SellerSprite local preview CLI", () => {
       expect(jsonText).not.toMatch(
         /"(?:advance|watch|reject|promoted|promotionDecision|shadowDistribution)"/u,
       );
-      expect(markdown).toContain("# SellerSprite 市场预筛报告");
+      expect(markdown).toContain("# SellerSprite 关键词搜索市场预筛报告");
       expect(markdown).toContain("## 当前不能判断的内容");
       expect(manifest).toMatchObject({
-        schemaVersion: "sellersprite-local-preview-manifest.v1",
+        schemaVersion: "sellersprite-local-preview-manifest.v2",
         jsonFileName: "sellersprite-preview.json",
         jsonFileSha256: createHash("sha256").update(jsonText).digest("hex"),
         markdownFileName: "sellersprite-preview.md",
@@ -379,7 +382,7 @@ describe("SellerSprite local preview CLI", () => {
       }));
       expectPreviewError(
         () => runSellerSpritePreview(runArgs(structural, structuralOutput), { repositoryRoot }),
-        "xlsx_precheck_failed",
+        "unsupported_report_type",
         4,
       );
       expect(existsSync(structuralOutput)).toBe(false);
@@ -526,6 +529,7 @@ describe("SellerSprite local preview CLI", () => {
       expect(runSellerSpritePreviewCli([], io))
         .toBe(SELLERSPRITE_PREVIEW_EXIT_CODES.invalidArguments);
       expect(runSellerSpritePreviewCli([
+        "--report-type", "search-results",
         "--input", missingPath,
         "--query", "boxes",
         "--category", "Storage",
@@ -536,6 +540,7 @@ describe("SellerSprite local preview CLI", () => {
       const invalidWorkbook = join(root, "invalid.xlsx");
       writeFileSync(invalidWorkbook, "not an OOXML workbook");
       expect(runSellerSpritePreviewCli([
+        "--report-type", "search-results",
         "--input", invalidWorkbook,
         "--query", "boxes",
         "--category", "Storage",
@@ -546,6 +551,7 @@ describe("SellerSprite local preview CLI", () => {
       const validWorkbook = join(root, "valid.xlsx");
       writeFileSync(validWorkbook, createSellerSpritePreviewTestWorkbook());
       const validValues = [
+        "--report-type", "search-results",
         "--input", validWorkbook,
         "--query", "boxes",
         "--category", "Storage",

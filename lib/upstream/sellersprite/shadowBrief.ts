@@ -1,12 +1,12 @@
 import { sellerSpriteStableHash } from "./canonical";
+import type { SellerSpriteReportType } from "./reportType";
 
-const SCHEMA_VERSION = "sellersprite-shadow-selection-brief.v1" as const;
+const SCHEMA_VERSION = "sellersprite-shadow-selection-brief.v2" as const;
 
-export interface SellerSpriteShadowSelectionBriefInput {
+interface SellerSpriteShadowSelectionBriefInputCommon {
   marketplace: string;
   market: string;
   currency: string;
-  query: string;
   category: string | null;
   priceMin: number;
   priceMax: number;
@@ -16,14 +16,23 @@ export interface SellerSpriteShadowSelectionBriefInput {
   briefSource: string;
 }
 
-export interface SellerSpriteShadowSelectionBrief {
+export type SellerSpriteShadowSelectionBriefInput =
+  | (SellerSpriteShadowSelectionBriefInputCommon & {
+    reportType?: "search_results";
+    query: string;
+  })
+  | (SellerSpriteShadowSelectionBriefInputCommon & {
+    reportType: "category_current";
+    query?: string | null;
+  });
+
+interface SellerSpriteShadowSelectionBriefCommon {
   schemaVersion: typeof SCHEMA_VERSION;
   briefHash: string;
   marketplace: "amazon.com";
   market: "US";
   currency: "USD";
-  query: string;
-  category: string | null;
+  category: string;
   priceMin: number;
   priceMax: number;
   requiredSignals: ReadonlyArray<string>;
@@ -31,6 +40,16 @@ export interface SellerSpriteShadowSelectionBrief {
   createdAt: string;
   briefSource: string;
 }
+
+export type SellerSpriteShadowSelectionBrief =
+  | (SellerSpriteShadowSelectionBriefCommon & {
+    reportType: "search_results";
+    query: string;
+  })
+  | (SellerSpriteShadowSelectionBriefCommon & {
+    reportType: "category_current";
+    query: null;
+  });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,6 +77,11 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
   if (!isRecord(input) || input.schemaVersion !== SCHEMA_VERSION) {
     throw new Error("SELLERSPRITE_SHADOW_BRIEF_VERSION_INVALID");
   }
+  const reportTypeValue = input.reportType;
+  if (reportTypeValue !== "search_results" && reportTypeValue !== "category_current") {
+    throw new Error("SELLERSPRITE_BRIEF_REPORT_TYPE_INVALID");
+  }
+  const reportType: SellerSpriteReportType = reportTypeValue;
   const marketplace = input.marketplace;
   const market = input.market;
   const currency = input.currency;
@@ -65,8 +89,6 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
   const categoryValue = input.category;
   const priceMin = input.priceMin;
   const priceMax = input.priceMax;
-  const requiredSignalsValue = input.requiredSignals;
-  const optionalSignalsValue = input.optionalSignals;
   const createdAt = input.createdAt;
   const briefSourceValue = input.briefSource;
   const suppliedBriefHash = input.briefHash;
@@ -77,11 +99,19 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
   if (currency !== "USD") {
     throw new Error("SELLERSPRITE_BRIEF_CURRENCY_INVALID");
   }
-  if (typeof queryValue !== "string" || queryValue.trim() === "") {
-    throw new Error("SELLERSPRITE_BRIEF_QUERY_REQUIRED");
+  let query: string | null;
+  if (reportType === "search_results") {
+    if (typeof queryValue !== "string" || queryValue.trim() === "") {
+      throw new Error("SELLERSPRITE_BRIEF_QUERY_REQUIRED");
+    }
+    query = queryValue.trim();
+  } else {
+    if (queryValue !== undefined && queryValue !== null) {
+      throw new Error("SELLERSPRITE_BRIEF_QUERY_NOT_APPLICABLE");
+    }
+    query = null;
   }
-  if (!Object.prototype.hasOwnProperty.call(input, "category")
-    || (categoryValue !== null && typeof categoryValue !== "string")) {
+  if (typeof categoryValue !== "string" || categoryValue.trim() === "") {
     throw new Error("SELLERSPRITE_BRIEF_CATEGORY_INVALID");
   }
   if (
@@ -96,11 +126,11 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
     throw new Error("SELLERSPRITE_BRIEF_PRICE_RANGE_INVALID");
   }
   const requiredSignals = normalizedSignals(
-    requiredSignalsValue,
+    input.requiredSignals,
     "SELLERSPRITE_BRIEF_REQUIRED_SIGNALS_INVALID",
   );
   const optionalSignals = normalizedSignals(
-    optionalSignalsValue,
+    input.optionalSignals,
     "SELLERSPRITE_BRIEF_OPTIONAL_SIGNALS_INVALID",
   ).filter((signal) => !requiredSignals.includes(signal));
   if (!validIsoInstant(createdAt)) {
@@ -112,11 +142,12 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
 
   const hashPayload = {
     schemaVersion: SCHEMA_VERSION,
+    reportType,
     marketplace: "amazon.com" as const,
     market: "US" as const,
     currency: "USD" as const,
-    query: queryValue.trim(),
-    category: categoryValue?.trim() || null,
+    query,
+    category: categoryValue.trim(),
     priceMin,
     priceMax,
     requiredSignals,
@@ -131,7 +162,7 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
     ...hashPayload,
     briefHash,
     createdAt,
-  };
+  } as SellerSpriteShadowSelectionBrief;
 }
 
 export function createSellerSpriteShadowSelectionBrief(
@@ -139,6 +170,7 @@ export function createSellerSpriteShadowSelectionBrief(
 ): SellerSpriteShadowSelectionBrief {
   return normalizeAndValidateSellerSpriteShadowBrief({
     ...input,
+    reportType: input.reportType ?? "search_results",
     schemaVersion: SCHEMA_VERSION,
   });
 }

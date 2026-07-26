@@ -7,10 +7,18 @@ import {
   sellerSpriteMetricNatureForField,
   sellerSpriteMetricNatureForRawHeader,
   type SellerSpriteFieldKey,
+  type SellerSpriteFieldApplicability,
   type SellerSpriteMetricNature,
   type SellerSpriteNormalizedValue,
+  type SellerSpriteBsrNormalizedValue,
   type SellerSpriteSearchRank,
 } from "./fields";
+import {
+  detectSellerSpriteReportType,
+  type SellerSpriteDetectedReportType,
+  type SellerSpriteReportType,
+  type SellerSpriteReportTypeDetectionEvidence,
+} from "./reportType";
 import {
   parseXlsxWorkbook,
   SellerSpriteXlsxError,
@@ -20,7 +28,7 @@ import {
 
 const SOURCE = "SellerSprite" as const;
 const SOURCE_TYPE = "provider_metric" as const;
-const SCHEMA_VERSION = "sellersprite-xlsx-precheck.v1" as const;
+const SCHEMA_VERSION = "sellersprite-xlsx-precheck.v2" as const;
 const HEADER_SCAN_LIMIT = 20;
 
 export interface SellerSpriteFieldValue<T extends SellerSpriteNormalizedValue = SellerSpriteNormalizedValue> {
@@ -34,6 +42,7 @@ export interface SellerSpriteFieldValue<T extends SellerSpriteNormalizedValue = 
   exportedAt: null;
   providerUpdatedAt: null;
   metricNature: SellerSpriteMetricNature;
+  applicability: SellerSpriteFieldApplicability;
 }
 
 export interface SellerSpriteRecord {
@@ -52,6 +61,10 @@ export interface SellerSpriteRecord {
   estimatedMonthlyRevenue: SellerSpriteFieldValue<number | null>;
   seller: SellerSpriteFieldValue<string | null>;
   variationCount: SellerSpriteFieldValue<number | null>;
+  rootCategory: SellerSpriteFieldValue<string | null>;
+  rootCategoryBsr: SellerSpriteFieldValue<SellerSpriteBsrNormalizedValue>;
+  subCategory: SellerSpriteFieldValue<string | null>;
+  subCategoryBsr: SellerSpriteFieldValue<SellerSpriteBsrNormalizedValue>;
   extraRaw: Readonly<Record<string, string | null>>;
   extraRawMetricNature: Readonly<Record<string, SellerSpriteMetricNature>>;
 }
@@ -111,6 +124,10 @@ export interface SellerSpritePrecheckResult {
   exportedAt: null;
   providerUpdatedAt: null;
   capturedAtSemantics: "caller_supplied_ingestion_context";
+  reportType: SellerSpriteDetectedReportType;
+  reportTypeDetectionEvidence: SellerSpriteReportTypeDetectionEvidence;
+  expectedReportType: SellerSpriteReportType | null;
+  reportTypeMatched: boolean;
   sheetName: string | null;
   headerColumnCount: number;
   totalRows: number;
@@ -127,6 +144,7 @@ export interface SellerSpritePrecheckResult {
 
 export interface SellerSpritePrecheckOptions {
   capturedAt: string;
+  expectedReportType?: SellerSpriteReportType;
 }
 
 interface HeaderCandidate {
@@ -135,7 +153,10 @@ interface HeaderCandidate {
   mapping: ReturnType<typeof mapSellerSpriteHeaders>;
 }
 
-function emptyResult(sourceFileHash: string): SellerSpritePrecheckResult {
+function emptyResult(
+  sourceFileHash: string,
+  expectedReportType: SellerSpriteReportType | null,
+): SellerSpritePrecheckResult {
   const ingestedAt = new Date().toISOString();
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -146,6 +167,16 @@ function emptyResult(sourceFileHash: string): SellerSpritePrecheckResult {
     exportedAt: null,
     providerUpdatedAt: null,
     capturedAtSemantics: "caller_supplied_ingestion_context",
+    reportType: "unknown",
+    reportTypeDetectionEvidence: {
+      hasSearchRankColumn: false,
+      hasRootCategoryColumn: false,
+      hasRootCategoryBsrColumn: false,
+      hasSubCategoryColumn: false,
+      hasSubCategoryBsrColumn: false,
+    },
+    expectedReportType,
+    reportTypeMatched: false,
     sheetName: null,
     headerColumnCount: 0,
     totalRows: 0,
@@ -247,6 +278,7 @@ function fieldValue(
   capturedAt: string,
   ingestedAt: string,
   metricNature: SellerSpriteMetricNature,
+  applicability: SellerSpriteFieldApplicability = normalized === null ? "missing" : "available",
 ): SellerSpriteFieldValue {
   return {
     raw,
@@ -259,6 +291,7 @@ function fieldValue(
     exportedAt: null,
     providerUpdatedAt: null,
     metricNature,
+    applicability,
   };
 }
 
@@ -268,6 +301,12 @@ function asStringField(value: SellerSpriteFieldValue): SellerSpriteFieldValue<st
 
 function asNumberField(value: SellerSpriteFieldValue): SellerSpriteFieldValue<number | null> {
   return value as SellerSpriteFieldValue<number | null>;
+}
+
+function asBsrField(
+  value: SellerSpriteFieldValue,
+): SellerSpriteFieldValue<SellerSpriteBsrNormalizedValue> {
+  return value as SellerSpriteFieldValue<SellerSpriteBsrNormalizedValue>;
 }
 
 function asSearchRankField(
@@ -282,6 +321,7 @@ function createRecord(
   fieldIndexes: Partial<Record<SellerSpriteFieldKey, number>>,
   capturedAt: string,
   ingestedAt: string,
+  reportType: SellerSpriteReportType,
   errors: SellerSpritePrecheckError[],
 ): SellerSpriteRecord {
   const fields: Partial<Record<SellerSpriteFieldKey, SellerSpriteFieldValue>> = {};
@@ -291,14 +331,24 @@ function createRecord(
     if (index !== undefined) mappedIndexes.add(index);
     const raw = index === undefined ? null : row.values[index] ?? null;
     const normalized = normalizeSellerSpriteField(field, raw);
+    const applicability: SellerSpriteFieldApplicability = (
+      reportType === "category_current" && field === "searchRank"
+        ? "not_applicable"
+        : normalized.errorCode
+          ? "invalid"
+          : normalized.normalized === null
+            ? "missing"
+            : "available"
+    );
     fields[field] = fieldValue(
       raw,
-      normalized.normalized,
+      applicability === "not_applicable" ? null : normalized.normalized,
       capturedAt,
       ingestedAt,
       sellerSpriteMetricNatureForField(field),
+      applicability,
     );
-    if (normalized.errorCode) {
+    if (normalized.errorCode && applicability !== "not_applicable") {
       errors.push({
         code: normalized.errorCode,
         message: `Row ${row.rowNumber} has an invalid ${field} value`,
@@ -366,6 +416,10 @@ function createRecord(
     estimatedMonthlyRevenue: asNumberField(fields.estimatedMonthlyRevenue!),
     seller: asStringField(fields.seller!),
     variationCount: asNumberField(fields.variationCount!),
+    rootCategory: asStringField(fields.rootCategory!),
+    rootCategoryBsr: asBsrField(fields.rootCategoryBsr!),
+    subCategory: asStringField(fields.subCategory!),
+    subCategoryBsr: asBsrField(fields.subCategoryBsr!),
     extraRaw,
     extraRawMetricNature,
   };
@@ -517,7 +571,7 @@ export function precheckSellerSpriteXlsx(
   options: SellerSpritePrecheckOptions,
 ): SellerSpritePrecheckResult {
   const sourceFileHash = createHash("sha256").update(input).digest("hex");
-  const result = emptyResult(sourceFileHash);
+  const result = emptyResult(sourceFileHash, options.expectedReportType ?? null);
   const capturedAtMs = Date.parse(options.capturedAt);
   if (
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(options.capturedAt)
@@ -559,6 +613,13 @@ export function precheckSellerSpriteXlsx(
   result.headerColumnCount = candidate.header.values.length;
   result.totalRows = dataRows.length;
   result.fieldMapping = candidate.mapping.fieldMapping;
+  const detection = detectSellerSpriteReportType(candidate.header.values);
+  result.reportType = detection.reportType;
+  result.reportTypeDetectionEvidence = detection.evidence;
+  result.expectedReportType = options.expectedReportType
+    ?? (detection.reportType === "unknown" ? null : detection.reportType);
+  result.reportTypeMatched = detection.reportType !== "unknown"
+    && result.expectedReportType === detection.reportType;
   result.auxiliaryEvidence = {
     brands: parseAggregateEvidence(
       workbook.sheets,
@@ -584,6 +645,20 @@ export function precheckSellerSpriteXlsx(
     .filter(([, count]) => count > 1)
     .map(([header]) => header);
   const structuralErrors: SellerSpritePrecheckError[] = [
+    ...(detection.reportType === "unknown" ? [{
+      code: "unsupported_report_type",
+      message: "SellerSprite report type is not supported by the offline precheck",
+      severity: "error" as const,
+    }] : []),
+    ...(detection.reportType !== "unknown"
+      && options.expectedReportType !== undefined
+      && options.expectedReportType !== detection.reportType
+      ? [{
+          code: "report_type_mismatch",
+          message: `Expected ${options.expectedReportType} but detected ${detection.reportType}`,
+          severity: "error" as const,
+        }]
+      : []),
     ...candidate.mapping.ambiguousFields.map((field) => ({
       code: "ambiguous_column",
       message: `Multiple columns map to ${field}`,
@@ -630,6 +705,7 @@ export function precheckSellerSpriteXlsx(
       candidate.mapping.fieldIndexes,
       options.capturedAt,
       result.ingestedAt,
+      detection.reportType as SellerSpriteReportType,
       rowErrors,
     );
     const asin = record.asin.normalized;

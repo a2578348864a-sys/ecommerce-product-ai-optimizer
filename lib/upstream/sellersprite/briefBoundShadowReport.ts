@@ -9,7 +9,7 @@ import {
   type SellerSpriteShadowSelectionBrief,
 } from "./shadowBrief";
 
-const SCHEMA_VERSION = "sellersprite-brief-bound-shadow-report.v1" as const;
+const SCHEMA_VERSION = "sellersprite-brief-bound-shadow-report.v2" as const;
 
 export type SellerSpriteProvisionalDisposition =
   | "provisional_score_only"
@@ -26,15 +26,22 @@ export interface SellerSpriteProvisionalScoreSource {
   normalizedValue: number | null | ReadonlyArray<"sponsored" | "organic" | "unknown">;
   provisionalPoints: number | null;
   appearanceIdentities: ReadonlyArray<string>;
+  occurrenceIdentities: ReadonlyArray<string>;
 }
 
 export interface SellerSpriteBriefBoundShadowProduct {
+  reportType: SellerSpriteMarketSnapshot["reportType"];
   asin: string;
   parentAsin: string | null;
+  occurrenceIdentities: ReadonlyArray<string>;
   appearanceIdentities: ReadonlyArray<string>;
-  appearanceSummary: SellerSpriteProductObservation["placementSummary"] & {
-    appearanceCount: number;
+  occurrenceSummary: {
+    occurrenceCount: number;
   };
+  appearanceSummary: (SellerSpriteProductObservation["placementSummary"] & {
+    appearanceCount: number;
+  }) | null;
+  categoryEvidenceSummary: SellerSpriteProductObservation["categoryEvidenceSummary"];
   providerEvidenceSummary: {
     evidenceCount: number;
     sourceTypes: readonly ["provider_metric"];
@@ -75,12 +82,16 @@ export interface SellerSpriteBriefBoundShadowReport {
   normalizedBusinessHash: string;
   briefHash: string;
   brief: SellerSpriteShadowSelectionBrief;
+  reportType: SellerSpriteMarketSnapshot["reportType"];
   marketplace: "amazon.com";
-  query: string;
-  appearanceCount: number;
+  query: string | null;
+  occurrenceCount: number;
+  appearanceCount: number | null;
   productCount: number;
   familyCount: number;
   fieldCoverage: SellerSpriteMarketSnapshot["fieldCoverage"];
+  placementSummary: SellerSpriteMarketSnapshot["placementSummary"];
+  categoryBsrSummary: SellerSpriteMarketSnapshot["categoryBsrSummary"];
   conflictCounts: Readonly<Record<string, number>>;
   missingSignals: ReadonlyArray<string>;
   source: "SellerSprite";
@@ -123,6 +134,7 @@ function numericMetric(
 
 function signalMissing(product: SellerSpriteProductObservation, signal: string): boolean {
   if (signal === "searchRank" || signal === "placement") {
+    if (product.reportType === "category_current") return false;
     return product.appearances.every((appearance) => appearance.placementType === "unknown");
   }
   if (signal === "hardGateEvidence") return true;
@@ -136,7 +148,10 @@ function scoreSources(
   product: SellerSpriteProductObservation,
   brief: SellerSpriteShadowSelectionBrief,
 ): SellerSpriteProvisionalScoreSource[] {
-  const identities = product.appearances
+  const occurrenceIdentities = product.occurrences
+    .map((occurrence) => occurrence.occurrenceIdentity)
+    .sort();
+  const appearanceIdentities = product.appearances
     .map((appearance) => appearance.appearanceIdentity)
     .sort();
   const price = numericMetric(product, "price");
@@ -156,7 +171,8 @@ function scoreSources(
         : price >= brief.priceMin && price <= brief.priceMax
           ? 25
           : 0,
-      appearanceIdentities: identities,
+      appearanceIdentities,
+      occurrenceIdentities,
     },
     {
       component: "ratingSignal",
@@ -166,7 +182,8 @@ function scoreSources(
       usagePolicy: "screening_signal_only",
       normalizedValue: rating,
       provisionalPoints: rating === null ? null : rating >= 4.5 ? 25 : rating >= 4 ? 18 : 8,
-      appearanceIdentities: identities,
+      appearanceIdentities,
+      occurrenceIdentities,
     },
     {
       component: "reviewSignal",
@@ -176,9 +193,10 @@ function scoreSources(
       usagePolicy: "screening_signal_only",
       normalizedValue: reviews,
       provisionalPoints: reviews === null ? null : reviews >= 500 ? 25 : reviews >= 100 ? 18 : 10,
-      appearanceIdentities: identities,
+      appearanceIdentities,
+      occurrenceIdentities,
     },
-    {
+    ...(product.reportType === "search_results" ? [{
       component: "placementDiversity",
       fieldName: "searchRank",
       source: "SellerSprite",
@@ -190,8 +208,9 @@ function scoreSources(
         : placements.includes("sponsored")
           ? 10
           : null,
-      appearanceIdentities: identities,
-    },
+      appearanceIdentities,
+      occurrenceIdentities,
+    } as SellerSpriteProvisionalScoreSource] : []),
   ];
 }
 
@@ -224,7 +243,7 @@ function buildProduct(
       : price >= brief.priceMin && price <= brief.priceMax
         ? "within" as const
         : "outside" as const;
-  const evidence = product.appearances.flatMap((appearance) => appearance.providerEvidence);
+  const evidence = product.occurrences.flatMap((occurrence) => occurrence.providerEvidence);
   const metricNatureCounts: Record<string, number> = {};
   const usagePolicyCounts: Record<string, number> = {};
   for (const item of evidence) {
@@ -234,7 +253,8 @@ function buildProduct(
   const missingSignals = [...new Set([
     ...product.missingProviderMetrics,
     ...missingRequiredSignals,
-    ...(product.appearances.every((appearance) => appearance.placementType === "unknown")
+    ...(product.reportType === "search_results"
+      && product.appearances.every((appearance) => appearance.placementType === "unknown")
       ? ["searchRank"]
       : []),
   ])].sort();
@@ -250,15 +270,23 @@ function buildProduct(
     ...(!scoreInputsComplete ? ["provisional_score_input_missing"] : []),
   ].sort();
   return {
+    reportType: product.reportType,
     asin: product.asin,
     parentAsin: product.parentAsin,
+    occurrenceIdentities: product.occurrences
+      .map((occurrence) => occurrence.occurrenceIdentity)
+      .sort(),
     appearanceIdentities: product.appearances
       .map((appearance) => appearance.appearanceIdentity)
       .sort(),
-    appearanceSummary: {
+    occurrenceSummary: {
+      occurrenceCount: product.occurrences.length,
+    },
+    appearanceSummary: product.reportType === "search_results" ? {
       appearanceCount: product.appearances.length,
       ...product.placementSummary,
-    },
+    } : null,
+    categoryEvidenceSummary: product.categoryEvidenceSummary,
     providerEvidenceSummary: {
       evidenceCount: evidence.length,
       sourceTypes: ["provider_metric"],
@@ -300,13 +328,14 @@ export function buildSellerSpriteBriefBoundShadowReport(
   snapshot: SellerSpriteMarketSnapshot,
   brief: SellerSpriteShadowSelectionBrief,
 ): SellerSpriteBriefBoundShadowReport {
-  if (snapshot.schemaVersion !== "sellersprite-market-snapshot.v2") {
+  if (snapshot.schemaVersion !== "sellersprite-market-snapshot.v3") {
     throw new Error("SELLERSPRITE_MARKET_SNAPSHOT_VERSION_INVALID");
   }
   const normalizedBrief = normalizeAndValidateSellerSpriteShadowBrief(brief);
   if (
     snapshot.marketplace !== normalizedBrief.marketplace
     || snapshot.market !== normalizedBrief.market
+    || snapshot.reportType !== normalizedBrief.reportType
   ) {
     throw new Error("SELLERSPRITE_SHADOW_BRIEF_MARKET_MISMATCH");
   }
@@ -328,6 +357,7 @@ export function buildSellerSpriteBriefBoundShadowReport(
   }
   const reportHash = sellerSpriteStableHash({
     schemaVersion: SCHEMA_VERSION,
+    reportType: snapshot.reportType,
     normalizedBusinessHash: snapshot.normalizedBusinessHash,
     briefHash: normalizedBrief.briefHash,
     products: products.map((product) => ({
@@ -347,12 +377,18 @@ export function buildSellerSpriteBriefBoundShadowReport(
     normalizedBusinessHash: snapshot.normalizedBusinessHash,
     briefHash: normalizedBrief.briefHash,
     brief: normalizedBrief,
+    reportType: snapshot.reportType,
     marketplace: "amazon.com",
     query: normalizedBrief.query,
-    appearanceCount: snapshot.appearances.length,
+    occurrenceCount: snapshot.occurrences.length,
+    appearanceCount: snapshot.reportType === "search_results"
+      ? snapshot.appearances.length
+      : null,
     productCount: snapshot.products.length,
     familyCount: snapshot.families.length,
     fieldCoverage: snapshot.fieldCoverage,
+    placementSummary: snapshot.placementSummary,
+    categoryBsrSummary: snapshot.categoryBsrSummary,
     conflictCounts,
     missingSignals: snapshot.missingSignals,
     source: "SellerSprite",
