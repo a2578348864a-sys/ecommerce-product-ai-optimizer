@@ -34,6 +34,7 @@ runtimeDescribe("SellerSprite opportunity preview official sample", () => {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }),
     );
+    form.append("reportType", "search_results");
     form.append("query", "storage box");
     form.append("category", "Home & Kitchen");
     form.append("priceMin", "20");
@@ -119,4 +120,88 @@ runtimeDescribe("SellerSprite opportunity preview official sample", () => {
     expect(payload.data.products.every((product) => product.promotionEligible === false)).toBe(true);
     expect(JSON.stringify(payload)).not.toContain(officialSamplePath!);
   });
+});
+
+const categorySamples = [
+  {
+    name: "Sports",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_SPORTS_PATH,
+    sha256: "41ced066135a5734251d493429effc8d6417db34d8fabdd7252abdde0f640582",
+    familyCount: 8,
+  },
+  {
+    name: "Office",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_OFFICE_PATH,
+    sha256: "5069fcaa967ee945995d2ff84bd05667a8a32ea909f064c175f469101dd84247",
+    familyCount: 7,
+  },
+  {
+    name: "Auto",
+    path: process.env.SELLERSPRITE_XLSX_CATEGORY_AUTO_PATH,
+    sha256: "8cf6007874c1eb778f8ef389c556e1b93c43e2fe0d78ab530650596856ccf742",
+    familyCount: 9,
+  },
+] as const;
+
+describe("SellerSprite Category Current route official samples", () => {
+  for (const sample of categorySamples) {
+    const categoryIt = sample.path ? it : it.skip;
+    categoryIt(`${sample.name} returns a Category Current ViewModel`, async () => {
+      const bytes = readFileSync(sample.path!);
+      const form = new FormData();
+      form.append(
+        "file",
+        new File([asArrayBuffer(bytes)], basename(sample.path!), {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      );
+      form.append("reportType", "category_current");
+      form.append("category", `${sample.name} Category`);
+      form.append("priceMin", "20");
+      form.append("priceMax", "100");
+      const response = await POST(new NextRequest(
+        "http://localhost:3407/api/opportunities/sellersprite-preview",
+        {
+          method: "POST",
+          headers: { origin: "http://localhost:3407" },
+          body: form,
+        },
+      ));
+      const payload = await response.json() as {
+        ok: boolean;
+        data: Record<string, unknown> & {
+          products: Array<{ promotionEligible: boolean }>;
+        };
+      };
+      expect(response.status).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.data).toMatchObject({
+        reportType: "category_current",
+        sourceFileSha256: sample.sha256,
+        headerColumnCount: 72,
+        totalRows: 10,
+        acceptedRows: 10,
+        rejectedRows: 0,
+        query: null,
+        occurrenceCount: 10,
+        appearanceCount: null,
+        productCount: 10,
+        familyCount: sample.familyCount,
+        uniqueAsinCount: 10,
+        placementSummary: { status: "not_applicable" },
+        sponsoredAppearanceCount: null,
+        organicAppearanceCount: null,
+        unknownAppearanceCount: null,
+        authoritative: false,
+        promotionAllowed: false,
+        currentStage1Invoked: false,
+        productionEffect: false,
+        productionDatabaseWritten: false,
+        manifestRegistered: false,
+      });
+      expect(payload.data.products.every((product) => product.promotionEligible === false))
+        .toBe(true);
+      expect(JSON.stringify(payload)).not.toContain(sample.path!);
+    });
+  }
 });

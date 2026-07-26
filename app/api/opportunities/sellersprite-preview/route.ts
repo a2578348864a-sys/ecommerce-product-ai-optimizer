@@ -10,6 +10,7 @@ import { buildSellerSpriteBriefBoundShadowReport } from "@/lib/upstream/sellersp
 import { buildSellerSpriteMarketSnapshot } from "@/lib/upstream/sellersprite/marketSnapshot";
 import { precheckSellerSpriteXlsx } from "@/lib/upstream/sellersprite/precheck";
 import { createSellerSpriteShadowSelectionBrief } from "@/lib/upstream/sellersprite/shadowBrief";
+import type { SellerSpriteReportType } from "@/lib/upstream/sellersprite/reportType";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,10 @@ type PreviewErrorCode =
   | "missing_file"
   | "unsupported_file_extension"
   | "file_too_large"
+  | "report_type_required"
+  | "unsupported_report_type"
+  | "report_type_mismatch"
+  | "query_not_applicable"
   | "unsafe_xlsx"
   | "unsupported_sheet"
   | "invalid_workbook"
@@ -35,6 +40,10 @@ const ERROR_MESSAGES: Record<PreviewErrorCode, string> = {
   missing_file: "请选择一个 SellerSprite XLSX 文件。",
   unsupported_file_extension: "仅支持单个 .xlsx 文件。",
   file_too_large: "文件超过 10 MiB 限制。",
+  report_type_required: "请选择 SellerSprite 报表类型。",
+  unsupported_report_type: "该 SellerSprite 报表类型暂不受支持。",
+  report_type_mismatch: "所选报表类型与文件结构不一致，请确认文件来源。",
+  query_not_applicable: "类目当前商品报表不需要查询词，请移除后重试。",
   unsafe_xlsx: "XLSX 文件未通过安全检查。",
   unsupported_sheet: "未找到受支持的 SellerSprite US 商品工作表。",
   invalid_workbook: "XLSX 工作簿结构或字段不符合预检合同。",
@@ -151,6 +160,12 @@ function workbookError(precheck: ReturnType<typeof precheckSellerSpriteXlsx>) {
   if (fatalErrors.some((error) => error.code === "unsupported_sheet")) {
     return errorResponse("unsupported_sheet", 422);
   }
+  if (fatalErrors.some((error) => error.code === "report_type_mismatch")) {
+    return errorResponse("report_type_mismatch", 422);
+  }
+  if (fatalErrors.some((error) => error.code === "unsupported_report_type")) {
+    return errorResponse("unsupported_report_type", 422);
+  }
   if (
     fatalErrors.some((error) => (
       error.code === "invalid_xlsx"
@@ -221,14 +236,27 @@ export async function POST(request: NextRequest) {
     return errorResponse("file_too_large", 413);
   }
 
-  const query = singleTextField(formData, "query");
+  const reportTypeValue = singleTextField(formData, "reportType");
+  if (reportTypeValue === null || reportTypeValue === "") {
+    return errorResponse("report_type_required", 400);
+  }
+  if (reportTypeValue !== "search_results" && reportTypeValue !== "category_current") {
+    return errorResponse("unsupported_report_type", 400);
+  }
+  const reportType: SellerSpriteReportType = reportTypeValue;
+  const queryEntries = formData.getAll("query");
+  if (reportType === "category_current" && queryEntries.length > 0) {
+    return errorResponse("query_not_applicable", 400);
+  }
+  const query = reportType === "search_results"
+    ? singleTextField(formData, "query")
+    : null;
   const category = singleTextField(formData, "category");
   const priceMin = parseUsdValue(singleTextField(formData, "priceMin"));
   const priceMax = parseUsdValue(singleTextField(formData, "priceMax"));
   if (
-    query === null
-    || query === ""
-    || query.length > 200
+    (reportType === "search_results"
+      && (query === null || query === "" || query.length > 200))
     || category === null
     || category === ""
     || category.length > 200
@@ -249,25 +277,40 @@ export async function POST(request: NextRequest) {
 
   const now = new Date().toISOString();
   try {
-    const precheck = precheckSellerSpriteXlsx(bytes, { capturedAt: now });
+    const precheck = precheckSellerSpriteXlsx(bytes, {
+      capturedAt: now,
+      expectedReportType: reportType,
+    });
     const fatalWorkbookError = workbookError(precheck);
     if (fatalWorkbookError) return fatalWorkbookError;
     if (precheck.acceptedRows === 0) return errorResponse("no_accepted_rows", 422);
 
     const snapshot = buildSellerSpriteMarketSnapshot(precheck);
-    const brief = createSellerSpriteShadowSelectionBrief({
+    const briefCommon = {
       marketplace: "amazon.com",
       market: "US",
       currency: "USD",
-      query,
       category,
       priceMin,
       priceMax,
-      requiredSignals: ["price", "rating", "reviews", "searchRank"],
+      requiredSignals: reportType === "search_results"
+        ? ["price", "rating", "reviews", "searchRank"]
+        : ["price", "rating", "reviews"],
       optionalSignals: ["estimatedMonthlySales", "estimatedMonthlyRevenue", "variationCount"],
       createdAt: now,
       briefSource: "sellersprite-opportunity-preview-ui",
-    });
+    };
+    const brief = reportType === "search_results"
+      ? createSellerSpriteShadowSelectionBrief({
+          ...briefCommon,
+          reportType,
+          query: query!,
+        })
+      : createSellerSpriteShadowSelectionBrief({
+          ...briefCommon,
+          reportType,
+          query: null,
+        });
     const report = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
     const viewModel = buildSellerSpriteOpportunityPreviewViewModel({
       requestId: randomUUID(),

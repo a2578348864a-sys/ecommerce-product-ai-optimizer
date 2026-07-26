@@ -7,6 +7,10 @@ import { buildSellerSpriteMarketSnapshot } from "@/lib/upstream/sellersprite/mar
 import { precheckSellerSpriteXlsx } from "@/lib/upstream/sellersprite/precheck";
 import { createSellerSpriteShadowSelectionBrief } from "@/lib/upstream/sellersprite/shadowBrief";
 import { createSellerSpritePreviewTestWorkbook } from "@/tools/upstream/sellersprite-preview/test-fixtures";
+import {
+  SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+  SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+} from "@/lib/upstream/sellersprite/fixtures/category-current.sanitized.v1";
 
 vi.mock("@/components/WorkspaceSidebar", () => ({
   WorkspaceSidebar: () => createElement("aside", { "data-testid": "sidebar" }),
@@ -26,17 +30,22 @@ function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-function viewModel() {
+function viewModel(reportType: "search_results" | "category_current" = "search_results") {
   const capturedAt = "2026-07-27T02:00:00.000Z";
-  const precheck = precheckSellerSpriteXlsx(createSellerSpritePreviewTestWorkbook(), {
+  const precheck = precheckSellerSpriteXlsx(createSellerSpritePreviewTestWorkbook(
+    reportType === "category_current" ? {
+      headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+      rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+    } : {},
+  ), {
     capturedAt,
+    expectedReportType: reportType,
   });
   const snapshot = buildSellerSpriteMarketSnapshot(precheck);
-  const brief = createSellerSpriteShadowSelectionBrief({
+  const briefCommon = {
     marketplace: "amazon.com",
     market: "US",
     currency: "USD",
-    query: "storage box",
     category: "Home & Kitchen",
     priceMin: 10,
     priceMax: 100,
@@ -44,7 +53,18 @@ function viewModel() {
     optionalSignals: ["estimatedMonthlySales"],
     createdAt: capturedAt,
     briefSource: "component-test",
-  });
+  };
+  const brief = reportType === "search_results"
+    ? createSellerSpriteShadowSelectionBrief({
+        ...briefCommon,
+        reportType,
+        query: "storage box",
+      })
+    : createSellerSpriteShadowSelectionBrief({
+        ...briefCommon,
+        reportType,
+        query: null,
+      });
   const report = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
   return buildSellerSpriteOpportunityPreviewViewModel({
     requestId: "12345678-0000-0000-0000-000000000000",
@@ -61,6 +81,7 @@ describe("SellerSprite opportunity preview client validation", () => {
   ], "sample.xlsx");
   const valid = {
     file: validFile,
+    reportType: "search_results" as const,
     query: "storage box",
     category: "Home & Kitchen",
     priceMin: "10",
@@ -69,6 +90,21 @@ describe("SellerSprite opportunity preview client validation", () => {
 
   it("accepts a valid single XLSX Selection Brief", () => {
     expect(validateSellerSpritePreviewForm(valid)).toEqual({ ok: true, message: null });
+  });
+
+  it("accepts Category Current without query and rejects a supplied query", () => {
+    expect(validateSellerSpritePreviewForm({
+      ...valid,
+      reportType: "category_current",
+      query: "",
+    })).toEqual({ ok: true, message: null });
+    const rejected = validateSellerSpritePreviewForm({
+      ...valid,
+      reportType: "category_current",
+      query: "not applicable",
+    });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.message).toContain("不需要查询词");
   });
 
   it.each([
@@ -106,6 +142,20 @@ describe("SellerSprite opportunity preview presentation", () => {
     expect(html).toContain("B0SAN00002");
     expect(html).not.toContain("provisionalNumericScore");
     expect(html).not.toContain("extraRaw");
+  });
+
+  it("renders Category Current records and BSR without Search placement language", () => {
+    const html = renderToStaticMarkup(createElement(SellerSpritePreviewResults, {
+      data: viewModel("category_current"),
+    }));
+    expect(html).toContain("类目当前商品");
+    expect(html).toContain("Category Current 记录");
+    expect(html).toContain("大类 BSR");
+    expect(html).toContain("小类 BSR");
+    expect(html).not.toContain("搜索外观");
+    expect(html).not.toContain("广告位");
+    expect(html).not.toContain("自然位");
+    expect(html).not.toContain("最佳位置");
   });
 
   it("filters price bands and signal states without mutating the source products", () => {

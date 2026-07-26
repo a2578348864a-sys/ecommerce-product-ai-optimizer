@@ -33,6 +33,7 @@ type ProductSort = "asin" | "price" | "sales" | "reviews";
 
 interface PreviewFormValues {
   file: File | null;
+  reportType: "" | "search_results" | "category_current";
   query: string;
   category: string;
   priceMin: string;
@@ -51,6 +52,10 @@ const ERROR_COPY: Record<string, string> = {
   missing_file: "请选择一个 SellerSprite 官方 .xlsx 文件。",
   unsupported_file_extension: "仅支持单个 .xlsx 文件，不能上传目录或其他格式。",
   file_too_large: "文件超过 10 MiB，请换用更小的 SellerSprite 官方导出文件。",
+  report_type_required: "请选择关键词搜索报表或类目当前商品报表。",
+  unsupported_report_type: "当前不支持所选 SellerSprite 报表类型。",
+  report_type_mismatch: "所选报表类型与文件结构不一致，请确认文件来源。",
+  query_not_applicable: "类目当前商品报表不需要查询词。",
   unsafe_xlsx: "文件未通过 XLSX 安全门禁，未继续解析。",
   unsupported_sheet: "没有识别到受支持的 SellerSprite US 商品工作表。",
   invalid_workbook: "工作簿结构或字段不符合当前离线预检合同。",
@@ -74,7 +79,13 @@ export function validateSellerSpritePreviewForm(
   if (values.file.size > 10 * 1024 * 1024) {
     return { ok: false, message: ERROR_COPY.file_too_large };
   }
-  if (!values.query.trim()) return { ok: false, message: "请输入市场查询词。" };
+  if (!values.reportType) return { ok: false, message: ERROR_COPY.report_type_required };
+  if (values.reportType === "search_results" && !values.query.trim()) {
+    return { ok: false, message: "请输入市场查询词。" };
+  }
+  if (values.reportType === "category_current" && values.query.trim()) {
+    return { ok: false, message: "类目当前商品报表不需要查询词。" };
+  }
   if (!values.category.trim()) return { ok: false, message: "请输入商品类目。" };
   const numberPattern = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
   if (!numberPattern.test(values.priceMin.trim()) || !numberPattern.test(values.priceMax.trim())) {
@@ -127,6 +138,12 @@ export function filterAndSortSellerSpritePreviewProducts(
 
 function formatNumber(value: number | null): string {
   return value === null ? "缺失" : new Intl.NumberFormat("zh-CN").format(value);
+}
+
+function formatBsr(value: number | ReadonlyArray<number> | null): string {
+  if (value === null) return "缺失";
+  if (Array.isArray(value)) return value.map((item) => formatNumber(item)).join(" / ");
+  return formatNumber(value as number);
 }
 
 function formatUsd(value: number | null): string {
@@ -342,39 +359,57 @@ export function SellerSpritePreviewResults({
           <div className="linear-icon size-9 rounded-xl"><BarChart3 className="size-4" /></div>
           <div>
             <p className="eyebrow">市场图景</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">商品级口径优先</h2>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">
+              {data.reportType === "search_results"
+                ? "商品级口径优先"
+                : "类目当前商品 · 商品级口径优先"}
+            </h2>
           </div>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="搜索外观" value={data.appearanceCount} />
+          <SummaryCard
+            label={data.reportType === "search_results" ? "Search Appearance" : "Category Current 记录"}
+            value={data.occurrenceCount}
+          />
           <SummaryCard label="唯一商品" value={data.productCount} note={`唯一 ASIN ${data.uniqueAsinCount}`} />
           <SummaryCard label="父子家族" value={data.familyCount} />
           <SummaryCard
-            label="重复出现商品组"
-            value={data.duplicateAppearanceGroupCount}
-            note="保留广告位与自然位，不合并指标"
+            label="重复记录商品组"
+            value={data.duplicateOccurrenceGroupCount}
+            note={data.reportType === "search_results"
+              ? "保留各次搜索出现，不合并指标"
+              : "保留各条 Category Current 记录，不合并指标"}
           />
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <SummaryCard label="广告位" value={data.sponsoredAppearanceCount} />
-          <SummaryCard label="自然位" value={data.organicAppearanceCount} />
-          <SummaryCard label="未知位置" value={data.unknownAppearanceCount} />
-        </div>
+        {data.reportType === "search_results" ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <SummaryCard label="广告位" value={data.sponsoredAppearanceCount ?? 0} />
+            <SummaryCard label="自然位" value={data.organicAppearanceCount ?? 0} />
+            <SummaryCard label="未知位置" value={data.unknownAppearanceCount ?? 0} />
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <NumericSummaryCard label="大类 BSR" summary={data.categoryBsrSummary.rootCategoryBsr} />
+            <NumericSummaryCard label="小类 BSR" summary={data.categoryBsrSummary.subCategoryBsr} />
+          </div>
+        )}
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <NumericSummaryCard label="商品价格（USD）" summary={data.productWeightedStatistics.price} currency />
           <NumericSummaryCard label="预估月销量" summary={data.productWeightedStatistics.estimatedMonthlySales} />
           <NumericSummaryCard label="评分" summary={data.productWeightedStatistics.rating} />
           <NumericSummaryCard label="评论数" summary={data.productWeightedStatistics.reviews} />
         </div>
-        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
-            查看外观级统计（同一 ASIN 可重复出现）
-          </summary>
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <NumericSummaryCard label="外观价格（USD）" summary={data.appearanceWeightedStatistics.price} currency />
-            <NumericSummaryCard label="外观预估月销量" summary={data.appearanceWeightedStatistics.estimatedMonthlySales} />
-          </div>
-        </details>
+        {data.reportType === "search_results" && data.appearanceWeightedStatistics ? (
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+              查看 Appearance 级统计（同一 ASIN 可重复出现）
+            </summary>
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <NumericSummaryCard label="Appearance 价格（USD）" summary={data.appearanceWeightedStatistics.price} currency />
+              <NumericSummaryCard label="Appearance 预估月销量" summary={data.appearanceWeightedStatistics.estimatedMonthlySales} />
+            </div>
+          </details>
+        ) : null}
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">
@@ -448,8 +483,17 @@ export function SellerSpritePreviewResults({
                 <th className="px-3 py-3">价格 / 价格带</th>
                 <th className="px-3 py-3">预估月销量</th>
                 <th className="px-3 py-3">评分 / 评论</th>
-                <th className="px-3 py-3">搜索外观</th>
-                <th className="px-3 py-3">最佳位置</th>
+                {data.reportType === "search_results" ? (
+                  <>
+                    <th className="px-3 py-3">Search Appearance</th>
+                    <th className="px-3 py-3">最佳搜索位置</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-3 py-3">大类目 / BSR</th>
+                    <th className="px-3 py-3">小类目 / BSR</th>
+                  </>
+                )}
                 <th className="px-3 py-3">信号状态</th>
                 <th className="px-3 py-3">非权威处置</th>
               </tr>
@@ -476,14 +520,29 @@ export function SellerSpritePreviewResults({
                   <td className="px-3 py-3 text-slate-700">
                     {formatNumber(product.rating)} / {formatNumber(product.reviews)}
                   </td>
-                  <td className="px-3 py-3 text-xs leading-5 text-slate-600">
-                    共 {product.appearanceCount}<br />
-                    广告 {product.sponsoredAppearanceCount} · 自然 {product.organicAppearanceCount}
-                  </td>
-                  <td className="px-3 py-3 text-xs leading-5 text-slate-600">
-                    广告 {product.bestSponsoredPage ?? "—"} / {product.bestSponsoredPosition ?? "—"}<br />
-                    自然 {product.bestOrganicPage ?? "—"} / {product.bestOrganicPosition ?? "—"}
-                  </td>
+                  {data.reportType === "search_results" ? (
+                    <>
+                      <td className="px-3 py-3 text-xs leading-5 text-slate-600">
+                        共 {product.appearanceCount}<br />
+                        广告 {product.sponsoredAppearanceCount} · 自然 {product.organicAppearanceCount}
+                      </td>
+                      <td className="px-3 py-3 text-xs leading-5 text-slate-600">
+                        广告 {product.bestSponsoredPage ?? "—"} / {product.bestSponsoredPosition ?? "—"}<br />
+                        自然 {product.bestOrganicPage ?? "—"} / {product.bestOrganicPosition ?? "—"}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-3 text-xs leading-5 text-slate-600">
+                        {product.rootCategory ?? "缺失"}<br />
+                        BSR {formatBsr(product.rootCategoryBsr)}
+                      </td>
+                      <td className="px-3 py-3 text-xs leading-5 text-slate-600">
+                        {product.subCategory ?? "缺失"}<br />
+                        BSR {formatBsr(product.subCategoryBsr)}
+                      </td>
+                    </>
+                  )}
                   <td className="px-3 py-3 text-xs leading-5">
                     <p className={product.conflictingSignals.length ? "text-amber-700" : "text-slate-500"}>
                       冲突 {product.conflictingSignals.length}
@@ -527,6 +586,7 @@ function PreviewForm({
   onReset: () => void;
   fileRef: React.RefObject<HTMLInputElement | null>;
 }) {
+  const [reportType, setReportType] = useState<"" | "search_results" | "category_current">("");
   return (
     <section className="surface-card-strong p-5">
       <div className="flex items-center gap-3">
@@ -537,6 +597,22 @@ function PreviewForm({
         </div>
       </div>
       <form className="mt-5 grid gap-4" onSubmit={onSubmit}>
+        <label className="text-sm font-semibold text-slate-700">
+          报表类型
+          <select
+            name="reportType"
+            aria-label="报表类型"
+            value={reportType}
+            onChange={(event) => setReportType(
+              event.target.value as "" | "search_results" | "category_current",
+            )}
+            className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+          >
+            <option value="">请选择报表类型</option>
+            <option value="search_results">关键词搜索报表</option>
+            <option value="category_current">类目当前商品报表</option>
+          </select>
+        </label>
         <label className="rounded-2xl border border-dashed border-teal-300 bg-teal-50/50 p-4">
           <span className="flex items-center gap-2 text-sm font-semibold text-teal-800">
             <Upload className="size-4" />
@@ -554,15 +630,17 @@ function PreviewForm({
           </span>
         </label>
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm font-semibold text-slate-700">
-            市场查询词
-            <input
-              name="query"
-              placeholder="例如：收纳盒"
-              maxLength={200}
-              className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-            />
-          </label>
+          {reportType === "search_results" ? (
+            <label className="text-sm font-semibold text-slate-700">
+              市场查询词
+              <input
+                name="query"
+                placeholder="例如：收纳盒"
+                maxLength={200}
+                className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+              />
+            </label>
+          ) : null}
           <label className="text-sm font-semibold text-slate-700">
             商品类目
             <input
@@ -604,7 +682,10 @@ function PreviewForm({
             <button
               type="reset"
               disabled={submitting}
-              onClick={onReset}
+              onClick={() => {
+                setReportType("");
+                onReset();
+              }}
               className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold"
             >
               清空
@@ -667,6 +748,7 @@ export function SellerSpriteOpportunityPreview() {
     const fileValue = form.get("file");
     const values: PreviewFormValues = {
       file: fileValue instanceof File ? fileValue : null,
+      reportType: String(form.get("reportType") ?? "") as PreviewFormValues["reportType"],
       query: String(form.get("query") ?? ""),
       category: String(form.get("category") ?? ""),
       priceMin: String(form.get("priceMin") ?? ""),

@@ -4,6 +4,10 @@ import {
   SELLERSPRITE_SANITIZED_ROWS,
   SELLERSPRITE_SEARCH_EXPORT_HEADERS,
 } from "@/lib/upstream/sellersprite/fixtures/search-export.sanitized.v1";
+import {
+  SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+  SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+} from "@/lib/upstream/sellersprite/fixtures/category-current.sanitized.v1";
 import { createSellerSpritePreviewTestWorkbook } from "@/tools/upstream/sellersprite-preview/test-fixtures";
 
 const { ownerGuardMock } = vi.hoisted(() => ({
@@ -39,6 +43,7 @@ type FormOptions = {
   fetchSite?: string;
   host?: string;
   contentLength?: number;
+  reportType?: string | null;
 };
 
 function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -58,6 +63,9 @@ function requestWithForm(options: FormOptions = {}): NextRequest {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }),
     );
+  }
+  if (options.reportType !== null) {
+    form.append("reportType", options.reportType ?? "search_results");
   }
   if (options.query !== null) form.append("query", options.query ?? "storage box");
   if (options.category !== null) form.append("category", options.category ?? "Home & Kitchen");
@@ -191,6 +199,38 @@ describe("SellerSprite preview access and request gates", () => {
 });
 
 describe("SellerSprite preview upload and brief validation", () => {
+  it("requires a supported explicit reportType and rejects Category query input", async () => {
+    const missing = await POST(requestWithForm({ reportType: null }));
+    expect(missing.status).toBe(400);
+    expect((await json(missing)).error?.code).toBe("report_type_required");
+
+    const unsupported = await POST(requestWithForm({ reportType: "future_report" }));
+    expect(unsupported.status).toBe(400);
+    expect((await json(unsupported)).error?.code).toBe("unsupported_report_type");
+
+    const queryNotApplicable = await POST(requestWithForm({
+      reportType: "category_current",
+      query: "must not be accepted",
+      bytes: createSellerSpritePreviewTestWorkbook({
+        headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+        rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+      }),
+    }));
+    expect(queryNotApplicable.status).toBe(400);
+    expect((await json(queryNotApplicable)).error?.code).toBe("query_not_applicable");
+  });
+
+  it("fails closed when selected and detected report types differ", async () => {
+    const response = await POST(requestWithForm({
+      reportType: "category_current",
+      query: null,
+    }));
+    expect(response.status).toBe(422);
+    expect((await json(response)).error).toMatchObject({
+      code: "report_type_mismatch",
+      message: "所选报表类型与文件结构不一致，请确认文件来源。",
+    });
+  });
   it("rejects missing and multiple files", async () => {
     const missing = await POST(requestWithForm({ fileCount: 0 }));
     expect(missing.status).toBe(400);
@@ -278,7 +318,7 @@ describe("SellerSprite preview upload and brief validation", () => {
       }),
     }));
     expect(structural.status).toBe(422);
-    expect((await json(structural)).error?.code).toBe("invalid_workbook");
+    expect((await json(structural)).error?.code).toBe("unsupported_report_type");
   });
 
   it("rejects a workbook with zero accepted rows", async () => {
@@ -292,6 +332,34 @@ describe("SellerSprite preview upload and brief validation", () => {
 });
 
 describe("SellerSprite preview allowlisted response", () => {
+  it("returns a Category Current ViewModel without Search placement fields", async () => {
+    const response = await POST(requestWithForm({
+      reportType: "category_current",
+      query: null,
+      bytes: createSellerSpritePreviewTestWorkbook({
+        headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+        rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+      }),
+    }));
+    expect(response.status).toBe(200);
+    const payload = await json(response);
+    expect(payload.data).toMatchObject({
+      schemaVersion: "sellersprite-opportunity-preview.v2",
+      reportType: "category_current",
+      query: null,
+      occurrenceCount: 2,
+      appearanceCount: null,
+      duplicateAppearanceGroupCount: null,
+      placementSummary: { status: "not_applicable" },
+      productCount: 2,
+      familyCount: 1,
+      categoryBsrSummary: {
+        rootCategoryBsr: { validCount: 2 },
+        subCategoryBsr: { validCount: 2 },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("extraRaw");
+  });
   it("returns a complete non-authoritative ViewModel without raw workbook data", async () => {
     const response = await POST(requestWithForm());
     expect(response.status).toBe(200);
@@ -299,7 +367,7 @@ describe("SellerSprite preview allowlisted response", () => {
     expect(payload).toMatchObject({
       ok: true,
       data: {
-        schemaVersion: "sellersprite-opportunity-preview.v1",
+        schemaVersion: "sellersprite-opportunity-preview.v2",
         reportStatus: "complete",
         sourceFileName: "sample-1.xlsx",
         source: "SellerSprite",
