@@ -29,6 +29,10 @@ import {
   type SellerSpriteMarketSnapshot,
 } from "../../../lib/upstream/sellersprite/marketSnapshot";
 import {
+  rankSellerSpriteMarketSignals,
+  type SellerSpriteMarketSignalRankingReport,
+} from "../../../lib/upstream/sellersprite/marketSignalRanking";
+import {
   precheckSellerSpriteXlsx,
   type SellerSpritePrecheckResult,
 } from "../../../lib/upstream/sellersprite/precheck";
@@ -41,6 +45,11 @@ import type {
 } from "../../../lib/upstream/sellersprite/projections";
 import type { SellerSpriteReportType } from "../../../lib/upstream/sellersprite/reportType";
 import { createSellerSpriteShadowSelectionBrief } from "../../../lib/upstream/sellersprite/shadowBrief";
+import {
+  buildSellerSpriteLocalPreviewRanking,
+  SellerSpriteRankingIntegrityError,
+  type SellerSpriteLocalPreviewRanking,
+} from "./ranking-report";
 import { renderSellerSpritePreviewMarkdown } from "./render-markdown";
 
 export const SELLERSPRITE_PREVIEW_HELP = `SellerSprite 本地市场预览
@@ -65,7 +74,7 @@ export const SELLERSPRITE_PREVIEW_HELP = `SellerSprite 本地市场预览
 
 当前仅支持 amazon.com / US / USD。
 输出 sellersprite-preview.json、sellersprite-preview.md 和本地完整性 Manifest。
-数据仅用于非权威市场预筛，不连接数据库或生产系统，不代表 Amazon 真实订单。
+数据仅用于非权威市场预筛，不连接数据库或生产系统，不包含亚马逊后台订单数据。
 `;
 
 export const SELLERSPRITE_PREVIEW_EXIT_CODES = {
@@ -121,7 +130,7 @@ export interface SellerSpriteLocalPreviewProduct extends SellerSpriteProductObse
 }
 
 export interface SellerSpriteLocalPreviewReport {
-  schemaVersion: "sellersprite-local-preview-report.v2";
+  schemaVersion: "sellersprite-local-preview-report.v3";
   reportType: SellerSpriteReportType;
   reportHash: string;
   reportStatus: "complete" | "partial";
@@ -190,6 +199,7 @@ export interface SellerSpriteLocalPreviewReport {
   categoryRecords: ReadonlyArray<SellerSpriteCategoryCurrentRecord>;
   products: ReadonlyArray<SellerSpriteLocalPreviewProduct>;
   families: ReadonlyArray<SellerSpriteFamilyObservation>;
+  ranking: SellerSpriteLocalPreviewRanking;
   currentStage1Invoked: false;
   authoritative: false;
   hardGateEvidenceStatus: "unknown";
@@ -201,7 +211,11 @@ export interface SellerSpriteLocalPreviewReport {
 }
 
 export interface SellerSpriteLocalPreviewManifest {
-  schemaVersion: "sellersprite-local-preview-manifest.v2";
+  schemaVersion: "sellersprite-local-preview-manifest.v3";
+  reportSchemaVersion: "sellersprite-local-preview-report.v3";
+  rankingSchemaVersion: "sellersprite-market-signal-ranking.v2";
+  modelVersion: SellerSpriteLocalPreviewRanking["modelVersion"];
+  rankingHash: string;
   reportType: SellerSpriteReportType;
   reportHash: string;
   generatedAt: string;
@@ -228,6 +242,7 @@ export interface SellerSpritePreviewRunOptions {
   createBrief?: (
     input: Parameters<typeof createSellerSpriteShadowSelectionBrief>[0],
   ) => ReturnType<typeof createSellerSpriteShadowSelectionBrief>;
+  rankSignals?: typeof rankSellerSpriteMarketSignals;
 }
 
 export interface SellerSpritePreviewRunResult {
@@ -457,6 +472,7 @@ function buildReport(
   precheck: SellerSpritePrecheckResult,
   snapshot: SellerSpriteMarketSnapshot,
   shadow: ReturnType<typeof buildSellerSpriteBriefBoundShadowReport>,
+  ranking: SellerSpriteLocalPreviewRanking,
 ): SellerSpriteLocalPreviewReport {
   const shadowProducts = new Map(shadow.products.map((product) => [product.asin, product]));
   const products = snapshot.products.map((product): SellerSpriteLocalPreviewProduct => {
@@ -475,7 +491,7 @@ function buildReport(
     (product) => product.conflictingProviderMetrics,
   ))].sort();
   return {
-    schemaVersion: "sellersprite-local-preview-report.v2",
+    schemaVersion: "sellersprite-local-preview-report.v3",
     reportType: snapshot.reportType,
     reportHash: shadow.reportHash,
     reportStatus: snapshot.rejectedRows > 0 ? "partial" : "complete",
@@ -553,6 +569,7 @@ function buildReport(
     categoryRecords: snapshot.categoryRecords,
     products,
     families: snapshot.families,
+    ranking,
     currentStage1Invoked: false,
     authoritative: false,
     hardGateEvidenceStatus: "unknown",
@@ -684,11 +701,40 @@ export function runSellerSpritePreview(
     previewError("selection_brief_invalid", SELLERSPRITE_PREVIEW_EXIT_CODES.invalidBrief);
   }
   const shadow = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
-  const report = buildReport(basename(inputPath), generatedAt, precheck, snapshot, shadow);
+  let rawRanking: SellerSpriteMarketSignalRankingReport;
+  try {
+    rawRanking = (options.rankSignals ?? rankSellerSpriteMarketSignals)({
+      snapshot,
+      brief,
+    });
+  } catch {
+    previewError("ranking_integrity_failed", SELLERSPRITE_PREVIEW_EXIT_CODES.internalError);
+  }
+  let ranking: SellerSpriteLocalPreviewRanking;
+  try {
+    ranking = buildSellerSpriteLocalPreviewRanking(rawRanking, snapshot, brief);
+  } catch (error) {
+    if (error instanceof SellerSpriteRankingIntegrityError) {
+      previewError("ranking_integrity_failed", SELLERSPRITE_PREVIEW_EXIT_CODES.internalError);
+    }
+    throw error;
+  }
+  const report = buildReport(
+    basename(inputPath),
+    generatedAt,
+    precheck,
+    snapshot,
+    shadow,
+    ranking,
+  );
   const jsonContent = `${JSON.stringify(report, null, 2)}\n`;
   const markdownContent = renderSellerSpritePreviewMarkdown(report);
   const manifest: SellerSpriteLocalPreviewManifest = {
-    schemaVersion: "sellersprite-local-preview-manifest.v2",
+    schemaVersion: "sellersprite-local-preview-manifest.v3",
+    reportSchemaVersion: report.schemaVersion,
+    rankingSchemaVersion: report.ranking.schemaVersion,
+    modelVersion: report.ranking.modelVersion,
+    rankingHash: report.ranking.rankingHash,
     reportType: report.reportType,
     reportHash: report.reportHash,
     generatedAt,

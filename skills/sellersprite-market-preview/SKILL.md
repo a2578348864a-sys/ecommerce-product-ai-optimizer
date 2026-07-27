@@ -99,7 +99,7 @@ npm run sellersprite:preview -- --report-type category-current --input INPUT --c
 - `sellersprite-preview-manifest.json`
 - `sellersprite-preview.md`
 
-需要生成结构化摘要时，再按需读取 `sellersprite-preview.json` 的相关字段；不要把完整 JSON 全部放入上下文或回复。
+CLI 成功后，先读取并校验 `sellersprite-preview-manifest.json`，再优先读取面向用户的 `sellersprite-preview.md`。需要生成结构化摘要时，才按需读取 `sellersprite-preview.json` 的 Ranking 字段；不要把完整 JSON 全部放入上下文或回复。
 
 在摘要前确认：
 
@@ -108,6 +108,7 @@ npm run sellersprite:preview -- --report-type category-current --input INPUT --c
 - Manifest 声明 `authoritative=false`、`promotionEligible=false`、`manifestRegistered=false`、`productionEffect=false`、`productionDatabaseWritten=false`。
 - JSON 声明 `currentStage1Invoked=false`，且以上安全标志仍为 false。
 - Manifest 中的 JSON 和 Markdown SHA-256 与实际文件一致。
+- Manifest 中的 `rankingSchemaVersion`、`modelVersion`、`rankingHash` 与 JSON Ranking 一致。
 - `acceptedRows > 0`。
 
 任一检查不符时停止摘要，报告 `report_contract_mismatch`；不要把结果呈现为成功预筛。
@@ -134,16 +135,19 @@ npm run sellersprite:preview -- --report-type category-current --input INPUT --c
 - Search 不要把 appearance-weighted 与 product-weighted 统计混用。
 - Category Current 展示大类 BSR 与小类 BSR；不得输出搜索位置、广告位或自然位结论。
 
-### 筛选结果
+### 市场信号排序
 
-- Brief 价格带内商品数量。
-- 缺失信号和冲突信号数量。
-- `provisionalDisposition` 分布。
-- 不要把 provisional 状态改写为正式晋级结论。
+- 市场信号 Top3、各商品的市场信号分、证据覆盖度和研究优先级。
+- 每个 Top 商品的主要正向理由和主要反向信号。
+- 未排名数量和原因，包括缺失或冲突证据。
+- 家族研究分组数量；说明同一明确 Parent ASIN 默认只保留一个研究代表，其他子体没有被删除。
+- 不得基于 `conditionalSignalScore` 重新排序；它只对应“已知证据条件分（不用于排名）”。
+- 不得复制或重算 Ranking 公式；仅使用 CLI 报告的冻结顺序与中文标签。
+- 不要把内部 snake_case 状态码直接回复给用户。
 
 ### 限制
 
-- 月销量和销售额属于 SellerSprite 第三方估算，不代表 Amazon 后台真实订单。
+- 月销量和销售额属于 SellerSprite 第三方估算，不代表亚马逊后台订单或实际店铺成交记录。
 - 未覆盖合规、侵权、危险品、供应链、采购成本、物流、广告真实转化和真实利润。
 - 所有商品 `promotionEligible=false`，需要人工复核。
 

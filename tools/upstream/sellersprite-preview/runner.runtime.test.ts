@@ -47,6 +47,13 @@ describeOfficialSample("SellerSprite local preview official sample runtime", () 
           uniqueAsinCount: 9,
           duplicateAsinCount: 1,
         },
+        ranking: {
+          schemaVersion: "sellersprite-market-signal-ranking.v2",
+          modelVersion: "sellersprite-market-signal-ranking.search.v2",
+          productCount: 9,
+          rankableProductCount: 8,
+          unrankedProductCount: 1,
+        },
         currentStage1Invoked: false,
         authoritative: false,
         hardGateEvaluable: false,
@@ -67,6 +74,14 @@ describeOfficialSample("SellerSprite local preview official sample runtime", () 
         .toHaveLength(1);
       expect(result.report.products.every((product) => product.promotionEligible === false))
         .toBe(true);
+      expect(result.report.ranking.diagnostics.marketSignalTop3).toEqual([
+        "B08HR4K9Y5",
+        "B09ZV2TX28",
+        "B082PJN8BD",
+      ]);
+      expect(result.report.ranking.products.every(
+        (product) => product.promotionEligible === false,
+      )).toBe(true);
       expect(result.writtenFiles).toEqual([
         "sellersprite-preview.json",
         "sellersprite-preview.md",
@@ -82,6 +97,17 @@ describeOfficialSample("SellerSprite local preview official sample runtime", () 
       );
       expect(reportJson).not.toContain(officialSamplePath!);
       expect(markdown).not.toContain(officialSamplePath!);
+      expect(markdown).toContain("市场信号 Top3");
+      expect(markdown).toContain("暂不排名商品");
+      expect(markdown).not.toMatch(
+        /provisionalDisposition|product_field_partial|sufficient_for_comparison|limited_evidence|insufficient_evidence|priority_[123]|unranked_insufficient_evidence/u,
+      );
+      expect(result.manifest.jsonFileSha256).toBe(
+        createHash("sha256").update(reportJson).digest("hex"),
+      );
+      expect(result.manifest.markdownFileSha256).toBe(
+        createHash("sha256").update(markdown).digest("hex"),
+      );
     } finally {
       rmSync(result.outputDirectory, { recursive: true, force: true });
     }
@@ -94,18 +120,21 @@ const categorySamples = [
     path: process.env.SELLERSPRITE_XLSX_CATEGORY_SPORTS_PATH,
     sha256: "41ced066135a5734251d493429effc8d6417db34d8fabdd7252abdde0f640582",
     familyCount: 8,
+    top3: ["B0GSH7JDR8", "B0G3Y89LW9", "B0GXHR4CR9"],
   },
   {
     name: "Office",
     path: process.env.SELLERSPRITE_XLSX_CATEGORY_OFFICE_PATH,
     sha256: "5069fcaa967ee945995d2ff84bd05667a8a32ea909f064c175f469101dd84247",
     familyCount: 7,
+    top3: ["B0GVZ3CWK1", "B0G8SFR7DH", "B0GLD9K9LF"],
   },
   {
     name: "Auto",
     path: process.env.SELLERSPRITE_XLSX_CATEGORY_AUTO_PATH,
     sha256: "8cf6007874c1eb778f8ef389c556e1b93c43e2fe0d78ab530650596856ccf742",
     familyCount: 9,
+    top3: ["B0GHY6D5B2", "B0GXJM1Q2K", "B0H7W11LTY"],
   },
 ] as const;
 
@@ -145,6 +174,13 @@ describe("SellerSprite Category Current CLI official samples", () => {
           placementSummary: { status: "not_applicable" },
           productSummary: { productCount: 10, uniqueAsinCount: 10 },
           familySummary: { familyCount: sample.familyCount },
+          ranking: {
+            schemaVersion: "sellersprite-market-signal-ranking.v2",
+            modelVersion: "sellersprite-market-signal-ranking.category.v2",
+            productCount: 10,
+            rankableProductCount: 10,
+            unrankedProductCount: 0,
+          },
           currentStage1Invoked: false,
           promotionEligible: false,
           productionEffect: false,
@@ -158,6 +194,17 @@ describe("SellerSprite Category Current CLI official samples", () => {
         expect(markdown).toContain("Category Current 记录");
         expect(markdown).toContain("大类 BSR");
         expect(markdown).toContain("小类 BSR");
+        expect(markdown).toContain("搜索位置：不适用");
+        expect(markdown).toContain("BSR 是类目排名信号，不代表平台后台订单数据");
+        expect(result.report.ranking.diagnostics.marketSignalTop3).toEqual(sample.top3);
+        expect(result.report.ranking.products.every(
+          (product) => product.promotionEligible === false,
+        )).toBe(true);
+        expect(result.report.ranking.products.every(
+          (product) => product.evidenceCoverage === 1
+            && product.conditionalSignalScore === product.signalScore,
+        )).toBe(true);
+        expect(result.manifest.rankingHash).toBe(result.report.ranking.rankingHash);
         expect(markdown).not.toContain("查询关键词");
         expect(markdown).not.toContain("广告位数量");
         expect(markdown).not.toContain("自然位数量");

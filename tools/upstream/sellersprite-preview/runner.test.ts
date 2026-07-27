@@ -221,7 +221,7 @@ describe("SellerSprite local preview CLI", () => {
       };
 
       expect(report).toMatchObject({
-        schemaVersion: "sellersprite-local-preview-report.v2",
+        schemaVersion: "sellersprite-local-preview-report.v3",
         sourceType: "provider_metric",
         precheckSummary: {
           headerColumnCount: 73,
@@ -250,7 +250,7 @@ describe("SellerSprite local preview CLI", () => {
       expect(markdown).toContain("# SellerSprite 关键词搜索市场预筛报告");
       expect(markdown).toContain("## 当前不能判断的内容");
       expect(manifest).toMatchObject({
-        schemaVersion: "sellersprite-local-preview-manifest.v2",
+        schemaVersion: "sellersprite-local-preview-manifest.v3",
         jsonFileName: "sellersprite-preview.json",
         jsonFileSha256: createHash("sha256").update(jsonText).digest("hex"),
         markdownFileName: "sellersprite-preview.md",

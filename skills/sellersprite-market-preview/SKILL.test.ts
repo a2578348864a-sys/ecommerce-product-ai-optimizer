@@ -21,6 +21,22 @@ describe("SellerSprite market preview authoritative Skill", () => {
     expect(skill).not.toContain("parseInt(");
     expect(skill).not.toContain("createHash(");
     expect(skill).toContain("调用正式 Stage 1、自动晋级商品或改变评分规则");
-    expect(skill).toContain("不代表 Amazon 后台真实订单");
+    expect(skill).toContain("不代表亚马逊后台订单或实际店铺成交记录");
+    expect(skill).not.toContain(["Amazon", "真实订单"].join(" "));
+  });
+
+  it("summarizes Ranking v2 in Chinese without re-sorting by the conditional score", () => {
+    expect(skill).toContain("市场信号 Top3");
+    expect(skill).toContain("市场信号分");
+    expect(skill).toContain("证据覆盖度");
+    expect(skill).toContain("研究优先级");
+    expect(skill).toContain("正向理由");
+    expect(skill).toContain("主要反向信号");
+    expect(skill).toContain("未排名数量和原因");
+    expect(skill).toContain("家族研究分组数量");
+    expect(skill).toContain("不得基于 `conditionalSignalScore` 重新排序");
+    expect(skill).not.toContain("`provisionalDisposition` 分布");
+    expect(skill).not.toContain("SELLERSPRITE_SEARCH_MARKET_SIGNAL_WEIGHTS");
+    expect(skill).not.toContain("SELLERSPRITE_CATEGORY_MARKET_SIGNAL_WEIGHTS");
   });
 });

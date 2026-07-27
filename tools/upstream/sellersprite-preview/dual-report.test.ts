@@ -88,7 +88,7 @@ describe("SellerSprite local preview dual report CLI", () => {
       const markdown = readFileSync(join(output, "sellersprite-preview.md"), "utf8");
 
       expect(result.report).toMatchObject({
-        schemaVersion: "sellersprite-local-preview-report.v2",
+        schemaVersion: "sellersprite-local-preview-report.v3",
         reportType: "category_current",
         query: null,
         occurrenceSummary: {
@@ -98,19 +98,43 @@ describe("SellerSprite local preview dual report CLI", () => {
         placementSummary: { status: "not_applicable" },
       });
       expect(result.manifest).toMatchObject({
-        schemaVersion: "sellersprite-local-preview-manifest.v2",
+        schemaVersion: "sellersprite-local-preview-manifest.v3",
         reportType: "category_current",
       });
+      expect(result.report.ranking).toMatchObject({
+        schemaVersion: "sellersprite-market-signal-ranking.v2",
+        modelVersion: "sellersprite-market-signal-ranking.category.v2",
+        reportType: "category_current",
+      });
+      expect(result.report.ranking.products.flatMap((product) => product.components))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            component: "categoryBsrSignal",
+            label: "Category BSR",
+          }),
+        ]));
+      expect(result.report.ranking.products.flatMap((product) => product.components))
+        .not.toEqual(expect.arrayContaining([
+          expect.objectContaining({ component: "organicVisibility" }),
+          expect.objectContaining({ component: "placementCoverage" }),
+          expect.objectContaining({ component: "sponsoredExposure" }),
+        ]));
       expect(markdown).toContain("类目当前商品");
       expect(markdown).toContain("Category Current 记录");
       expect(markdown).toContain("大类 BSR");
       expect(markdown).toContain("小类 BSR");
+      expect(markdown).toContain("搜索位置：不适用");
+      expect(markdown).toContain("BSR 是类目排名信号，不代表平台后台订单数据");
+      expect(markdown).toContain("Category BSR");
       expect(markdown).not.toContain("查询关键词");
       expect(markdown).not.toContain("搜索外观");
       expect(markdown).not.toContain("广告位数量");
       expect(markdown).not.toContain("自然位数量");
       expect(markdown).not.toContain("最佳广告位置");
       expect(markdown).not.toContain("最佳自然位置");
+      expect(markdown).not.toContain("自然位可见性");
+      expect(markdown).not.toContain("广告曝光");
+      expect(markdown).not.toContain("搜索位置覆盖");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
