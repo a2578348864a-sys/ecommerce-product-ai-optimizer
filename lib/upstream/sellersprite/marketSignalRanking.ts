@@ -5,6 +5,7 @@ import {
 import type { SellerSpriteMarketSnapshot } from "./marketSnapshot";
 import type {
   SellerSpriteProductObservation,
+  SellerSpriteProductMetricField,
   SellerSpriteResolvedProviderMetric,
 } from "./projections";
 import {
@@ -12,17 +13,19 @@ import {
   type SellerSpriteShadowSelectionBrief,
 } from "./shadowBrief";
 
-const SCHEMA_VERSION = "sellersprite-market-signal-ranking.v1" as const;
-const SEARCH_MODEL_VERSION = "sellersprite-market-signal-ranking.search.v1" as const;
-const CATEGORY_MODEL_VERSION = "sellersprite-market-signal-ranking.category.v1" as const;
-const NORMALIZATION_VERSION = "sellersprite-market-signal-normalization.v1" as const;
+const SCHEMA_VERSION = "sellersprite-market-signal-ranking.v2" as const;
+const SEARCH_MODEL_VERSION = "sellersprite-market-signal-ranking.search.v2" as const;
+const CATEGORY_MODEL_VERSION = "sellersprite-market-signal-ranking.category.v2" as const;
+const NORMALIZATION_VERSION = "sellersprite-market-signal-normalization.v2" as const;
+const COVERAGE_FORMULA_VERSION = "sellersprite-market-signal-coverage.v2" as const;
 const NORMALIZATION_POLICY = {
   version: NORMALIZATION_VERSION,
   percentile: "full_precision_midrank",
   singletonPercentile: 0.5,
   sampleShrinkage: "0.5+min(1,(n-1)/4)*(p-0.5)",
   missingAndConflictingValues: "excluded",
-  scoreNormalization: "available_weight_only",
+  conditionalScoreNormalization: "available_weight_only",
+  comparisonScoreNormalization: "fixed_total_weight_100",
   tiePolicy: "competition_rank",
 } as const;
 
@@ -77,8 +80,12 @@ interface SellerSpriteMarketSignalRankedProductCommon {
   order: number;
   scoreRank: number | null;
   scoreTie: boolean;
+  availableWeight: number;
+  earnedWeightedPoints: number;
+  conditionalSignalScore: number | null;
   signalScore: number | null;
   evidenceCoverage: number;
+  coveragePenalty: number | null;
   evidenceStatus: SellerSpriteRankingEvidenceStatus;
   researchPriority: SellerSpriteResearchPriority;
   componentEvidence: ReadonlyArray<SellerSpriteMarketSignalComponentEvidence>;
@@ -152,6 +159,7 @@ interface SellerSpriteMarketSignalRankingReportCommon {
   schemaVersion: typeof SCHEMA_VERSION;
   normalizationVersion: typeof NORMALIZATION_VERSION;
   normalizationPolicy: typeof NORMALIZATION_POLICY;
+  coverageFormulaVersion: typeof COVERAGE_FORMULA_VERSION;
   sourceFileSha256: string;
   sourceBoundSnapshotHash: string;
   normalizedBusinessHash: string;
@@ -199,10 +207,14 @@ interface WorkingProduct {
   conflictingSignals: string[];
   positiveReasons: string[];
   counterSignals: string[];
+  availableWeight: number;
+  earnedWeightedPoints: number;
+  conditionalScore: number | null;
   coverage: number;
+  coveragePenalty: number | null;
   status: SellerSpriteRankingEvidenceStatus;
   score: number | null;
-  coreConflict: boolean;
+  scoringConflict: boolean;
   sales: number | null;
 }
 
@@ -438,34 +450,77 @@ function commonComponents(
 function evidenceStatus(
   coverage: number,
   coreConditionsMet: boolean,
+  scoringConflict: boolean,
 ): SellerSpriteRankingEvidenceStatus {
   if (coverage < 0.5) return "insufficient_evidence";
-  return coverage >= 0.75 && coreConditionsMet
+  return coverage >= 0.75 && coreConditionsMet && !scoringConflict
     ? "sufficient_for_comparison"
     : "limited_evidence";
 }
 
+function scoringConflictFields(
+  product: SellerSpriteProductObservation,
+  components: ReadonlyArray<SellerSpriteMarketSignalComponentEvidence>,
+): SellerSpriteProductMetricField[] {
+  const fields = components.flatMap((item) => item.evidenceFields);
+  return [...new Set(fields.flatMap((field) => {
+    if (!Object.prototype.hasOwnProperty.call(product.providerMetrics, field)) return [];
+    const metricField = field as SellerSpriteProductMetricField;
+    return product.providerMetrics[metricField].status === "conflict" ? [metricField] : [];
+  }))].sort(sellerSpriteDeterministicStringCompare);
+}
+
 function finalizeWorkingProduct(
-  working: Omit<WorkingProduct, "coverage" | "status" | "score">,
+  working: Omit<
+    WorkingProduct,
+    | "availableWeight"
+    | "earnedWeightedPoints"
+    | "conditionalScore"
+    | "coverage"
+    | "coveragePenalty"
+    | "status"
+    | "score"
+    | "scoringConflict"
+  >,
   coreConditionsMet: boolean,
 ): WorkingProduct {
   const availableWeight = working.components.reduce(
     (sum, item) => sum + (item.available ? item.weight : 0),
     0,
   );
-  const weightedPoints = working.components.reduce(
+  const rawEarnedWeightedPoints = working.components.reduce(
     (sum, item) => sum + (item.weightedPoints ?? 0),
     0,
   );
+  // Preserve the v1 Coverage=1 floating representation while keeping a fixed 100-point basis.
+  const earnedWeightedPoints = rawEarnedWeightedPoints / 100 * 100;
   const coverage = availableWeight / 100;
-  const status = evidenceStatus(coverage, coreConditionsMet);
+  const scoringConflicts = scoringConflictFields(working.product, working.components);
+  const scoringConflict = scoringConflicts.length > 0;
+  const status = evidenceStatus(coverage, coreConditionsMet, scoringConflict);
+  const conditionalScore = availableWeight < 50
+    ? null
+    : availableWeight === 100
+      ? earnedWeightedPoints
+      : earnedWeightedPoints / availableWeight * 100;
   return {
     ...working,
+    conflictingSignals: [...new Set([
+      ...working.conflictingSignals,
+      ...scoringConflicts,
+    ])].sort(sellerSpriteDeterministicStringCompare),
+    availableWeight,
+    earnedWeightedPoints,
+    conditionalScore,
     coverage,
+    coveragePenalty: conditionalScore === null
+      ? null
+      : availableWeight === 100
+        ? 0
+        : conditionalScore - earnedWeightedPoints,
     status,
-    score: status === "sufficient_for_comparison" && availableWeight >= 50
-      ? weightedPoints / availableWeight * 100
-      : null,
+    score: status === "sufficient_for_comparison" ? earnedWeightedPoints : null,
+    scoringConflict,
   };
 }
 
@@ -615,7 +670,6 @@ function buildSearchWorkingProducts(
         .sort(sellerSpriteDeterministicStringCompare),
       positiveReasons: [...new Set(positiveReasons)].sort(sellerSpriteDeterministicStringCompare),
       counterSignals: [...new Set(counterSignals)].sort(sellerSpriteDeterministicStringCompare),
-      coreConflict,
       sales: sales.value,
     }, coreConditionsMet);
   });
@@ -738,7 +792,6 @@ function buildCategoryWorkingProducts(
         .sort(sellerSpriteDeterministicStringCompare),
       positiveReasons: [...new Set(positiveReasons)].sort(sellerSpriteDeterministicStringCompare),
       counterSignals: [...new Set(counterSignals)].sort(sellerSpriteDeterministicStringCompare),
-      coreConflict,
       sales: sales.value,
     }, coreConditionsMet);
   });
@@ -783,8 +836,12 @@ function buildRankedProducts(
       order: index + 1,
       scoreRank,
       scoreTie,
+      availableWeight: working.availableWeight,
+      earnedWeightedPoints: working.earnedWeightedPoints,
+      conditionalSignalScore: working.conditionalScore,
       signalScore: working.score,
       evidenceCoverage: working.coverage,
+      coveragePenalty: working.coveragePenalty,
       evidenceStatus: working.status,
       researchPriority: priorityForRank(scoreRank),
       componentEvidence: working.components,
@@ -822,21 +879,21 @@ function buildRankedProducts(
 function representativeCompare(
   left: SellerSpriteMarketSignalRankedProduct,
   right: SellerSpriteMarketSignalRankedProduct,
-  coreConflictByAsin: ReadonlyMap<string, boolean>,
+  scoringConflictByAsin: ReadonlyMap<string, boolean>,
 ): number {
   const leftRankable = left.evidenceStatus === "sufficient_for_comparison";
   const rightRankable = right.evidenceStatus === "sufficient_for_comparison";
   if (leftRankable !== rightRankable) return leftRankable ? -1 : 1;
-  const leftCoreConflict = coreConflictByAsin.get(left.asin) ?? false;
-  const rightCoreConflict = coreConflictByAsin.get(right.asin) ?? false;
-  if (leftCoreConflict !== rightCoreConflict) return leftCoreConflict ? 1 : -1;
-  if (left.evidenceCoverage !== right.evidenceCoverage) {
-    return right.evidenceCoverage - left.evidenceCoverage;
-  }
+  const leftScoringConflict = scoringConflictByAsin.get(left.asin) ?? false;
+  const rightScoringConflict = scoringConflictByAsin.get(right.asin) ?? false;
+  if (leftScoringConflict !== rightScoringConflict) return leftScoringConflict ? 1 : -1;
   if (left.signalScore !== right.signalScore) {
     if (left.signalScore === null) return 1;
     if (right.signalScore === null) return -1;
     return right.signalScore - left.signalScore;
+  }
+  if (left.evidenceCoverage !== right.evidenceCoverage) {
+    return right.evidenceCoverage - left.evidenceCoverage;
   }
   return sellerSpriteDeterministicStringCompare(left.asin, right.asin);
 }
@@ -845,8 +902,8 @@ function buildFamilyResearchList(
   products: SellerSpriteMarketSignalRankedProduct[],
   workingProducts: ReadonlyArray<WorkingProduct>,
 ): SellerSpriteFamilyResearchItem[] {
-  const coreConflictByAsin = new Map(
-    workingProducts.map((working) => [working.product.asin, working.coreConflict]),
+  const scoringConflictByAsin = new Map(
+    workingProducts.map((working) => [working.product.asin, working.scoringConflict]),
   );
   const families = new Map<string, SellerSpriteMarketSignalRankedProduct[]>();
   for (const product of products) {
@@ -857,7 +914,7 @@ function buildFamilyResearchList(
   const result = [...families.entries()]
     .map(([familyIdentity, members]) => {
       const orderedMembers = [...members].sort((left, right) => (
-        representativeCompare(left, right, coreConflictByAsin)
+        representativeCompare(left, right, scoringConflictByAsin)
       ));
       const representative = orderedMembers[0];
       representative.familyRepresentative = true;
@@ -877,7 +934,7 @@ function buildFamilyResearchList(
           (member) => member.evidenceStatus === "sufficient_for_comparison",
         ).length,
         representativeReason: representative.evidenceStatus === "sufficient_for_comparison"
-          ? "highest_rankable_evidence_then_score"
+          ? "highest_rankable_signal_score_then_coverage"
           : "best_available_non_authoritative_evidence",
         familyWarnings,
       };
@@ -985,6 +1042,7 @@ function rankingBusinessPayload(
     modelVersion: report.modelVersion,
     normalizationVersion: report.normalizationVersion,
     normalizationPolicy: report.normalizationPolicy,
+    coverageFormulaVersion: report.coverageFormulaVersion,
     reportType: report.reportType,
     normalizedBusinessHash: report.normalizedBusinessHash,
     briefHash: report.briefHash,
@@ -995,8 +1053,12 @@ function rankingBusinessPayload(
       order: product.order,
       scoreRank: product.scoreRank,
       scoreTie: product.scoreTie,
+      availableWeight: product.availableWeight,
+      earnedWeightedPoints: product.earnedWeightedPoints,
+      conditionalSignalScore: product.conditionalSignalScore,
       signalScore: product.signalScore,
       evidenceCoverage: product.evidenceCoverage,
+      coveragePenalty: product.coveragePenalty,
       evidenceStatus: product.evidenceStatus,
       researchPriority: product.researchPriority,
       componentEvidence: product.componentEvidence.map((item) => ({
@@ -1051,6 +1113,7 @@ export function rankSellerSpriteMarketSignals(input: {
     schemaVersion: SCHEMA_VERSION,
     normalizationVersion: NORMALIZATION_VERSION,
     normalizationPolicy: NORMALIZATION_POLICY,
+    coverageFormulaVersion: COVERAGE_FORMULA_VERSION,
     sourceFileSha256: input.snapshot.sourceFileSha256,
     sourceBoundSnapshotHash: input.snapshot.sourceBoundSnapshotHash,
     normalizedBusinessHash: input.snapshot.normalizedBusinessHash,

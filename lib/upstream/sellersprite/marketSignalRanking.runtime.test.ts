@@ -17,6 +17,13 @@ const samples = [
     query: "收纳盒",
     productCount: 9,
     rankableProductCount: 8,
+    modelVersion: "sellersprite-market-signal-ranking.search.v2",
+    v1RankingHash: "226254bfeb0f9611d10d9fd7c17e5662f7aa7131ddc7d360cd6d6d77237ecaaf",
+    top3: [
+      { asin: "B08HR4K9Y5", score: 59.32782738095238 },
+      { asin: "B09ZV2TX28", score: 57.64843750000001 },
+      { asin: "B082PJN8BD", score: 51.27752976190476 },
+    ],
   },
   {
     name: "Sports",
@@ -27,6 +34,13 @@ const samples = [
     query: null,
     productCount: 10,
     rankableProductCount: 10,
+    modelVersion: "sellersprite-market-signal-ranking.category.v2",
+    v1RankingHash: "b97e79e25f7004a3e5131f8e24c2e98d176d29962a1e6da340974feb0a8e4883",
+    top3: [
+      { asin: "B0GSH7JDR8", score: 89.31111111111112 },
+      { asin: "B0G3Y89LW9", score: 82.88888888888889 },
+      { asin: "B0GXHR4CR9", score: 79.11111111111111 },
+    ],
   },
   {
     name: "Office",
@@ -37,6 +51,13 @@ const samples = [
     query: null,
     productCount: 10,
     rankableProductCount: 10,
+    modelVersion: "sellersprite-market-signal-ranking.category.v2",
+    v1RankingHash: "c87070d62eb3ad2fa5852f5a6dc1ffa048e5650e63aac68d3e2b5e32e81768bc",
+    top3: [
+      { asin: "B0GVZ3CWK1", score: 87.6 },
+      { asin: "B0G8SFR7DH", score: 85.45555555555556 },
+      { asin: "B0GLD9K9LF", score: 61.44444444444444 },
+    ],
   },
   {
     name: "Auto",
@@ -47,6 +68,13 @@ const samples = [
     query: null,
     productCount: 10,
     rankableProductCount: 10,
+    modelVersion: "sellersprite-market-signal-ranking.category.v2",
+    v1RankingHash: "90f9d24f06811fca779be0948f0cd720aa8bcd6338f8ff7e8eb61b70805d4b2a",
+    top3: [
+      { asin: "B0GHY6D5B2", score: 86.5 },
+      { asin: "B0GXJM1Q2K", score: 85.13333333333333 },
+      { asin: "B0H7W11LTY", score: 70.42222222222222 },
+    ],
   },
 ] as const;
 
@@ -87,7 +115,9 @@ describe("SellerSprite market signal ranking official samples", () => {
 
       expect(snapshot.sourceFileSha256).toBe(sample.sha256);
       expect(first).toMatchObject({
-        schemaVersion: "sellersprite-market-signal-ranking.v1",
+        schemaVersion: "sellersprite-market-signal-ranking.v2",
+        modelVersion: sample.modelVersion,
+        coverageFormulaVersion: "sellersprite-market-signal-coverage.v2",
         reportType: sample.reportType,
         sourceFileSha256: sample.sha256,
         productCount: sample.productCount,
@@ -101,7 +131,31 @@ describe("SellerSprite market signal ranking official samples", () => {
         productionDatabaseWritten: false,
       });
       expect(first.rankingHash).toBe(second.rankingHash);
+      expect(first.rankingHash).not.toBe(sample.v1RankingHash);
       expect(first.products.every((product) => product.promotionEligible === false)).toBe(true);
+      const rankableProducts = first.products.filter((product) => product.scoreRank !== null);
+      expect(rankableProducts).toHaveLength(sample.rankableProductCount);
+      expect(rankableProducts.every((product) => (
+        product.availableWeight === 100
+        && product.evidenceCoverage === 1
+        && product.conditionalSignalScore === product.earnedWeightedPoints
+        && product.signalScore === product.earnedWeightedPoints
+        && product.coveragePenalty === 0
+      ))).toBe(true);
+      for (const product of rankableProducts) {
+        const frozenV1SignalScore = product.componentEvidence.reduce(
+          (sum, component) => sum + (component.weightedPoints ?? 0),
+          0,
+        ) / product.availableWeight * 100;
+        expect(product.signalScore).toBe(frozenV1SignalScore);
+      }
+      expect(rankableProducts.slice(0, 3).map((product) => ({
+        asin: product.asin,
+        score: product.signalScore,
+      }))).toEqual(sample.top3);
+      if (sample.reportType === "search_results") {
+        expect(first.unrankedProductCount).toBe(1);
+      }
       if (sample.reportType === "search_results") {
         expect(first.products.every((product) => (
           "organicVisibility" in product.componentScores

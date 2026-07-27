@@ -191,8 +191,9 @@ describe("SellerSprite offline market signal ranking", () => {
     });
 
     expect(search).toMatchObject({
-      schemaVersion: "sellersprite-market-signal-ranking.v1",
-      modelVersion: "sellersprite-market-signal-ranking.search.v1",
+      schemaVersion: "sellersprite-market-signal-ranking.v2",
+      modelVersion: "sellersprite-market-signal-ranking.search.v2",
+      coverageFormulaVersion: "sellersprite-market-signal-coverage.v2",
       reportType: "search_results",
       weights: {
         priceFit: 15,
@@ -205,8 +206,9 @@ describe("SellerSprite offline market signal ranking", () => {
       },
     });
     expect(category).toMatchObject({
-      schemaVersion: "sellersprite-market-signal-ranking.v1",
-      modelVersion: "sellersprite-market-signal-ranking.category.v1",
+      schemaVersion: "sellersprite-market-signal-ranking.v2",
+      modelVersion: "sellersprite-market-signal-ranking.category.v2",
+      coverageFormulaVersion: "sellersprite-market-signal-coverage.v2",
       reportType: "category_current",
       weights: {
         priceFit: 20,
@@ -270,11 +272,12 @@ describe("SellerSprite offline market signal ranking", () => {
     );
     expect(result.familyResearchListCount).toBe(result.familyResearchList.length);
     expect(result.normalizationPolicy).toMatchObject({
-      version: "sellersprite-market-signal-normalization.v1",
+      version: "sellersprite-market-signal-normalization.v2",
       percentile: "full_precision_midrank",
       singletonPercentile: 0.5,
       missingAndConflictingValues: "excluded",
-      scoreNormalization: "available_weight_only",
+      conditionalScoreNormalization: "available_weight_only",
+      comparisonScoreNormalization: "fixed_total_weight_100",
       tiePolicy: "competition_rank",
     });
     expect(result.rankingHash).toMatch(/^[a-f0-9]{64}$/u);
@@ -284,13 +287,19 @@ describe("SellerSprite offline market signal ranking", () => {
     const snapshot = buildSyntheticSnapshot("category_current", [
       syntheticRow(1, { price: "20" }),
       syntheticRow(2, { price: "100" }),
+      syntheticRow(3, { price: "100.01" }),
     ]);
     const result = rankSellerSpriteMarketSignals({
       snapshot,
       brief: buildBrief("category_current"),
     });
 
-    expect(result.products.map((product) => product.componentScores.priceFit)).toEqual([1, 1]);
+    expect(result.products.find((product) => product.asin === "B0TST00001")
+      ?.componentScores.priceFit).toBe(1);
+    expect(result.products.find((product) => product.asin === "B0TST00002")
+      ?.componentScores.priceFit).toBe(1);
+    expect(result.products.find((product) => product.asin === "B0TST00003")
+      ?.componentScores.priceFit).toBe(0);
   });
 
   it("removes missing price from coverage instead of treating it as zero", () => {
@@ -619,22 +628,220 @@ describe("SellerSprite offline market signal ranking", () => {
     expect(first.rankingHash).not.toBe(second.rankingHash);
   });
 
-  it("renormalizes scores over available weight", () => {
+  it("uses fixed-total comparison points without rewarding missing evidence", () => {
     const result = rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1, {
+          rating: "",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+        syntheticRow(2, {
+          rating: "1",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+      ]),
+      brief: buildBrief("category_current"),
+    });
+    const missing = result.products.find((item) => item.asin === "B0TST00001")!;
+    const complete = result.products.find((item) => item.asin === "B0TST00002")!;
+
+    expect(missing).toMatchObject({
+      availableWeight: 80,
+      earnedWeightedPoints: 50,
+      conditionalSignalScore: 62.5,
+      evidenceCoverage: 0.8,
+      signalScore: 50,
+      coveragePenalty: 12.5,
+      evidenceStatus: "sufficient_for_comparison",
+      scoreRank: 1,
+      scoreTie: true,
+    });
+    expect(complete).toMatchObject({
+      availableWeight: 100,
+      earnedWeightedPoints: 50,
+      conditionalSignalScore: 50,
+      evidenceCoverage: 1,
+      signalScore: 50,
+      coveragePenalty: 0,
+      evidenceStatus: "sufficient_for_comparison",
+      scoreRank: 1,
+      scoreTie: true,
+    });
+    expect(result.products.map((product) => product.asin)).toEqual([
+      complete.asin,
+      missing.asin,
+    ]);
+    expect(missing.signalScore).toBe(
+      missing.conditionalSignalScore! * missing.evidenceCoverage,
+    );
+  });
+
+  it("keeps comparison points monotonic when missing evidence becomes zero or positive", () => {
+    const makeResult = (rating: string) => rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1, {
+          rating,
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+        syntheticRow(2, {
+          rating: "1",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+      ]),
+      brief: buildBrief("category_current"),
+    }).products.find((product) => product.asin === "B0TST00001")!;
+    const missing = makeResult("");
+    const zero = makeResult("1");
+    const positive = makeResult("5");
+
+    expect(missing.signalScore).toBe(50);
+    expect(zero.signalScore).toBe(50);
+    expect(zero.evidenceCoverage).toBeGreaterThan(missing.evidenceCoverage);
+    expect(positive.signalScore).toBeGreaterThan(zero.signalScore!);
+  });
+
+  it("keeps conditional scores diagnostic-only for limited and insufficient evidence", () => {
+    const limited = rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1, { rating: "", reviews: "" }),
+        syntheticRow(2),
+      ]),
+      brief: buildBrief("category_current"),
+    }).products.find((product) => product.asin === "B0TST00001")!;
+    const insufficient = rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1, { rating: "", reviews: "", sales: "" }),
+        syntheticRow(2),
+      ]),
+      brief: buildBrief("category_current"),
+    }).products.find((product) => product.asin === "B0TST00001")!;
+    const coreMissing = rankSellerSpriteMarketSignals({
       snapshot: buildSyntheticSnapshot("search_results", [
-        syntheticRow(1, { price: "" }),
+        syntheticRow(1, { sales: "" }),
         syntheticRow(2),
       ]),
       brief: buildBrief("search_results"),
+    }).products.find((product) => product.asin === "B0TST00001")!;
+
+    expect(limited).toMatchObject({
+      availableWeight: 60,
+      evidenceCoverage: 0.6,
+      evidenceStatus: "limited_evidence",
+      signalScore: null,
+      scoreRank: null,
+      conditionalSignalScore: expect.any(Number),
     });
-    const product = result.products.find((item) => item.asin === "B0TST00001")!;
-    const weightedPoints = product.componentEvidence.reduce(
-      (sum, item) => sum + (item.weightedPoints ?? 0),
-      0,
+    expect(insufficient).toMatchObject({
+      availableWeight: 40,
+      evidenceCoverage: 0.4,
+      evidenceStatus: "insufficient_evidence",
+      signalScore: null,
+      scoreRank: null,
+      conditionalSignalScore: null,
+      coveragePenalty: null,
+    });
+    expect(coreMissing).toMatchObject({
+      availableWeight: 60,
+      evidenceCoverage: 0.6,
+      evidenceStatus: "limited_evidence",
+      signalScore: null,
+      scoreRank: null,
+    });
+    expect(coreMissing.earnedWeightedPoints).toBeLessThanOrEqual(coreMissing.availableWeight);
+    expect(coreMissing.conditionalSignalScore).toBeLessThanOrEqual(100);
+  });
+
+  it("unranks any product with a conflict in a scoring source field", () => {
+    const asin = "B0TST00001";
+    const result = rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1, {
+          asin,
+          rating: "4",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+        syntheticRow(1, {
+          asin,
+          rating: "5",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+        syntheticRow(2, {
+          rating: "1",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+      ]),
+      brief: buildBrief("category_current"),
+    });
+    const conflict = result.products.find((product) => product.asin === asin)!;
+
+    expect(conflict).toMatchObject({
+      availableWeight: 80,
+      evidenceCoverage: 0.8,
+      evidenceStatus: "limited_evidence",
+      signalScore: null,
+      scoreRank: null,
+      researchPriority: "unranked_insufficient_evidence",
+      conditionalSignalScore: 62.5,
+    });
+    expect(conflict.conflictingSignals).toContain("rating");
+    expect(result.familyResearchList.find(
+      (family) => family.familyIdentity === asin,
+    )?.rankableMemberCount).toBe(0);
+  });
+
+  it("chooses family representatives by comparison points before coverage", () => {
+    const parentAsin = "B0PAR00001";
+    const result = rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1, {
+          parentAsin,
+          rating: "",
+          sales: "200",
+          reviews: "100",
+          rootCategoryBsr: "100",
+          subCategoryBsr: "100",
+        }),
+        syntheticRow(2, {
+          parentAsin,
+          rating: "1",
+          sales: "100",
+          reviews: "100",
+          rootCategoryBsr: "200",
+          subCategoryBsr: "100",
+        }),
+      ]),
+      brief: buildBrief("category_current"),
+    });
+    const lessComplete = result.products.find((product) => product.asin === "B0TST00001")!;
+    const complete = result.products.find((product) => product.asin === "B0TST00002")!;
+    const family = result.familyResearchList.find(
+      (item) => item.familyIdentity === parentAsin,
     );
 
-    expect(product.evidenceCoverage).toBe(0.85);
-    expect(product.signalScore).toBe(weightedPoints / 85 * 100);
+    expect(lessComplete.signalScore).toBeGreaterThan(complete.signalScore!);
+    expect(lessComplete.evidenceCoverage).toBeLessThan(complete.evidenceCoverage);
+    expect(family?.representativeAsin).toBe(lessComplete.asin);
   });
 
   it("uses explicit Parent ASIN only and keeps one representative per family", () => {
@@ -729,6 +936,51 @@ describe("SellerSprite offline market signal ranking", () => {
     expect(differentTimes.rankingHash).toBe(base.rankingHash);
     expect(differentBrief.rankingHash).not.toBe(base.rankingHash);
     expect(differentBusiness.rankingHash).not.toBe(base.rankingHash);
+  });
+
+  it("keeps coverage arithmetic finite, monotonic, and free of negative zero", () => {
+    const result = rankSellerSpriteMarketSignals({
+      snapshot: buildSyntheticSnapshot("category_current", [
+        syntheticRow(1),
+        syntheticRow(2, { price: "", rating: "" }),
+        syntheticRow(3, { rating: "", reviews: "" }),
+        syntheticRow(4, { rating: "", reviews: "", sales: "" }),
+      ]),
+      brief: buildBrief("category_current"),
+    });
+    const numbers: number[] = [];
+    const collectNumbers = (value: unknown): void => {
+      if (typeof value === "number") {
+        numbers.push(value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach(collectNumbers);
+        return;
+      }
+      if (value !== null && typeof value === "object") {
+        Object.values(value).forEach(collectNumbers);
+      }
+    };
+    collectNumbers(result);
+
+    expect(numbers.length).toBeGreaterThan(0);
+    for (const value of numbers) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(Object.is(value, -0)).toBe(false);
+    }
+    for (const product of result.products) {
+      expect(product.earnedWeightedPoints).toBeLessThanOrEqual(product.availableWeight);
+      if (product.conditionalSignalScore !== null) {
+        expect(product.earnedWeightedPoints).toBeCloseTo(
+          product.conditionalSignalScore * product.evidenceCoverage,
+          12,
+        );
+      }
+      if (product.signalScore !== null) {
+        expect(product.signalScore).toBe(product.earnedWeightedPoints);
+      }
+    }
   });
 
   it("emits deterministic dominance and sales-only diagnostics without decision vocabulary", () => {
