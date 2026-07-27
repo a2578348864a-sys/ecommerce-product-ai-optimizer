@@ -8,6 +8,7 @@ import {
   SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
   SELLERSPRITE_CATEGORY_CURRENT_ROWS,
 } from "@/lib/upstream/sellersprite/fixtures/category-current.sanitized.v1";
+import * as rankingModule from "@/lib/upstream/sellersprite/marketSignalRanking";
 import { createSellerSpritePreviewTestWorkbook } from "@/tools/upstream/sellersprite-preview/test-fixtures";
 
 const { ownerGuardMock } = vi.hoisted(() => ({
@@ -44,6 +45,7 @@ type FormOptions = {
   host?: string;
   contentLength?: number;
   reportType?: string | null;
+  clientComputedFields?: Readonly<Record<string, string>>;
 };
 
 function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -71,6 +73,9 @@ function requestWithForm(options: FormOptions = {}): NextRequest {
   if (options.category !== null) form.append("category", options.category ?? "Home & Kitchen");
   if (options.priceMin !== null) form.append("priceMin", options.priceMin ?? "10");
   if (options.priceMax !== null) form.append("priceMax", options.priceMax ?? "100");
+  for (const [field, value] of Object.entries(options.clientComputedFields ?? {})) {
+    form.append(field, value);
+  }
   const headers = new Headers();
   if (options.origin !== null) headers.set("origin", options.origin ?? ORIGIN);
   if (options.referer !== undefined) headers.set("referer", options.referer);
@@ -199,6 +204,20 @@ describe("SellerSprite preview access and request gates", () => {
 });
 
 describe("SellerSprite preview upload and brief validation", () => {
+  it.each([
+    "rankingHash",
+    "snapshot",
+    "signalScore",
+  ])("rejects client-computed ranking input: %s", async (field) => {
+    const response = await POST(requestWithForm({
+      clientComputedFields: { [field]: "client-controlled" },
+    }));
+    expect(response.status).toBe(400);
+    expect((await json(response)).error).toMatchObject({
+      code: "client_computed_ranking_not_allowed",
+    });
+  });
+
   it("requires a supported explicit reportType and rejects Category query input", async () => {
     const missing = await POST(requestWithForm({ reportType: null }));
     expect(missing.status).toBe(400);
@@ -332,6 +351,25 @@ describe("SellerSprite preview upload and brief validation", () => {
 });
 
 describe("SellerSprite preview allowlisted response", () => {
+  it("fails closed without leaking internals when server-built ranking integrity fails", async () => {
+    const originalRank = rankingModule.rankSellerSpriteMarketSignals;
+    const rankSpy = vi.spyOn(rankingModule, "rankSellerSpriteMarketSignals")
+      .mockImplementation((input) => ({
+        ...originalRank(input),
+        normalizedBusinessHash: "0".repeat(64),
+      }));
+    const response = await POST(requestWithForm());
+    rankSpy.mockRestore();
+    expect(response.status).toBe(500);
+    const payload = await json(response);
+    expect(payload.error).toMatchObject({
+      code: "ranking_integrity_failed",
+      message: "市场排序结果未通过服务端完整性检查。",
+    });
+    expect(JSON.stringify(payload)).not.toContain("SELLERSPRITE_");
+    expect(JSON.stringify(payload)).not.toContain("normalizedBusinessHash");
+  });
+
   it("returns a Category Current ViewModel without Search placement fields", async () => {
     const response = await POST(requestWithForm({
       reportType: "category_current",
@@ -357,8 +395,18 @@ describe("SellerSprite preview allowlisted response", () => {
         rootCategoryBsr: { validCount: 2 },
         subCategoryBsr: { validCount: 2 },
       },
+      ranking: {
+        schemaVersion: "sellersprite-market-signal-ranking.v2",
+        modelVersion: "sellersprite-market-signal-ranking.category.v2",
+        reportType: "category_current",
+        searchPlacementStatus: "not_applicable",
+      },
     });
-    expect(JSON.stringify(payload)).not.toContain("extraRaw");
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain("extraRaw");
+    expect(serialized).not.toContain("organicVisibility");
+    expect(serialized).not.toContain("sponsoredExposure");
+    expect(serialized).not.toContain("placementCoverage");
   });
   it("returns a complete non-authoritative ViewModel without raw workbook data", async () => {
     const response = await POST(requestWithForm());
@@ -388,6 +436,21 @@ describe("SellerSprite preview allowlisted response", () => {
         appearanceCount: 2,
         productCount: 2,
         familyCount: 1,
+        ranking: {
+          schemaVersion: "sellersprite-market-signal-ranking.v2",
+          modelVersion: "sellersprite-market-signal-ranking.search.v2",
+          reportType: "search_results",
+          productCount: 2,
+          safety: {
+            authoritative: false,
+            currentStage1Invoked: false,
+            hardGateEvaluable: false,
+            promotionEligible: false,
+            manifestRegistered: false,
+            productionEffect: false,
+            productionDatabaseWritten: false,
+          },
+        },
       },
     });
     const serialized = JSON.stringify(payload);

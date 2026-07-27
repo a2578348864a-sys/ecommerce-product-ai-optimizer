@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { buildSellerSpriteOpportunityPreviewViewModel } from "@/lib/sellerSpriteOpportunityPreview";
 import { buildSellerSpriteBriefBoundShadowReport } from "@/lib/upstream/sellersprite/briefBoundShadowReport";
 import { buildSellerSpriteMarketSnapshot } from "@/lib/upstream/sellersprite/marketSnapshot";
+import { rankSellerSpriteMarketSignals } from "@/lib/upstream/sellersprite/marketSignalRanking";
 import { precheckSellerSpriteXlsx } from "@/lib/upstream/sellersprite/precheck";
 import { createSellerSpriteShadowSelectionBrief } from "@/lib/upstream/sellersprite/shadowBrief";
 import { createSellerSpritePreviewTestWorkbook } from "@/tools/upstream/sellersprite-preview/test-fixtures";
@@ -66,12 +67,15 @@ function viewModel(reportType: "search_results" | "category_current" = "search_r
         query: null,
       });
   const report = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
+  const ranking = rankSellerSpriteMarketSignals({ snapshot, brief });
   return buildSellerSpriteOpportunityPreviewViewModel({
     requestId: "12345678-0000-0000-0000-000000000000",
     sourceFileName: "sample.xlsx",
     headerColumnCount: precheck.headerColumnCount,
     snapshot,
+    brief,
     report,
+    ranking,
   });
 }
 
@@ -138,6 +142,14 @@ describe("SellerSprite opportunity preview presentation", () => {
     expect(html).toContain("不可晋级");
     expect(html).toContain("商品级口径优先");
     expect(html).toContain("商品级预览");
+    expect(html).toContain("市场信号排序（非正式）");
+    expect(html).toContain("本排序仅用于决定先研究哪个商品，不是正式选品、采购或上架结论。");
+    expect(html).toContain("市场信号分");
+    expect(html).toContain("证据覆盖度");
+    expect(html).toContain("已知证据条件分（不用于排名）");
+    expect(html).toContain("模型诊断");
+    expect(html).toContain("家族研究列表");
+    expect(html).toContain("广告位不是自然需求");
     expect(html).toContain("B0SAN00001");
     expect(html).toContain("B0SAN00002");
     expect(html).not.toContain("provisionalNumericScore");
@@ -152,10 +164,26 @@ describe("SellerSprite opportunity preview presentation", () => {
     expect(html).toContain("Category Current 记录");
     expect(html).toContain("大类 BSR");
     expect(html).toContain("小类 BSR");
+    expect(html).toContain("搜索位置：不适用");
+    expect(html).toContain("BSR 是类目排名信号，不代表 Amazon 后台订单");
+    expect(html).toContain("Category BSR");
     expect(html).not.toContain("搜索外观");
-    expect(html).not.toContain("广告位");
-    expect(html).not.toContain("自然位");
+    expect(html).not.toContain("广告曝光位置");
+    expect(html).not.toContain("自然位可见性");
     expect(html).not.toContain("最佳位置");
+  });
+
+  it("separates comparable and unranked products without formal decision language", () => {
+    const html = renderToStaticMarkup(createElement(SellerSpritePreviewResults, {
+      data: viewModel(),
+    }));
+    expect(html).toContain("可比较商品");
+    expect(html).toContain("证据不足或冲突商品");
+    expect(html).toContain("暂不排名：证据不足");
+    expect(html).not.toContain("保存结果");
+    expect(html).not.toContain("正式晋级");
+    expect(html).not.toContain("推荐采购");
+    expect(html).not.toContain("推荐上架");
   });
 
   it("filters price bands and signal states without mutating the source products", () => {

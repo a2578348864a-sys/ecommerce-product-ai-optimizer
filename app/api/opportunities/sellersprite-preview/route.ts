@@ -7,6 +7,7 @@ import {
   SELLERSPRITE_PREVIEW_MAX_REQUEST_BYTES,
 } from "@/lib/sellerSpriteOpportunityPreview";
 import { buildSellerSpriteBriefBoundShadowReport } from "@/lib/upstream/sellersprite/briefBoundShadowReport";
+import { rankSellerSpriteMarketSignals } from "@/lib/upstream/sellersprite/marketSignalRanking";
 import { buildSellerSpriteMarketSnapshot } from "@/lib/upstream/sellersprite/marketSnapshot";
 import { precheckSellerSpriteXlsx } from "@/lib/upstream/sellersprite/precheck";
 import { createSellerSpriteShadowSelectionBrief } from "@/lib/upstream/sellersprite/shadowBrief";
@@ -26,11 +27,13 @@ type PreviewErrorCode =
   | "unsupported_report_type"
   | "report_type_mismatch"
   | "query_not_applicable"
+  | "client_computed_ranking_not_allowed"
   | "unsafe_xlsx"
   | "unsupported_sheet"
   | "invalid_workbook"
   | "brief_validation_failed"
   | "no_accepted_rows"
+  | "ranking_integrity_failed"
   | "internal_error";
 
 const ERROR_MESSAGES: Record<PreviewErrorCode, string> = {
@@ -44,13 +47,27 @@ const ERROR_MESSAGES: Record<PreviewErrorCode, string> = {
   unsupported_report_type: "该 SellerSprite 报表类型暂不受支持。",
   report_type_mismatch: "所选报表类型与文件结构不一致，请确认文件来源。",
   query_not_applicable: "类目当前商品报表不需要查询词，请移除后重试。",
+  client_computed_ranking_not_allowed: "不得提交客户端计算的市场排序字段。",
   unsafe_xlsx: "XLSX 文件未通过安全检查。",
   unsupported_sheet: "未找到受支持的 SellerSprite US 商品工作表。",
   invalid_workbook: "XLSX 工作簿结构或字段不符合预检合同。",
   brief_validation_failed: "市场、查询、类目或 USD 价格范围无效。",
   no_accepted_rows: "工作簿没有可用于预览的有效商品行。",
+  ranking_integrity_failed: "市场排序结果未通过服务端完整性检查。",
   internal_error: "生成本地预览时发生内部错误。",
 };
+
+const CLIENT_COMPUTED_RANKING_FIELDS = [
+  "snapshot",
+  "ranking",
+  "rankingHash",
+  "normalizedBusinessHash",
+  "sourceBoundSnapshotHash",
+  "briefHash",
+  "signalScore",
+  "products",
+  "componentScores",
+] as const;
 
 function errorResponse(code: PreviewErrorCode, status: number) {
   return NextResponse.json(
@@ -218,6 +235,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return errorResponse("missing_file", 400);
   }
+  if (CLIENT_COMPUTED_RANKING_FIELDS.some((field) => formData.has(field))) {
+    return errorResponse("client_computed_ranking_not_allowed", 400);
+  }
 
   const fileEntries = [...formData.entries()].filter(([, value]) => value instanceof File);
   const selectedFiles = formData.getAll("file").filter((value) => value instanceof File);
@@ -312,17 +332,26 @@ export async function POST(request: NextRequest) {
           query: null,
         });
     const report = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
+    const ranking = rankSellerSpriteMarketSignals({ snapshot, brief });
     const viewModel = buildSellerSpriteOpportunityPreviewViewModel({
       requestId: randomUUID(),
       sourceFileName,
       headerColumnCount: precheck.headerColumnCount,
       snapshot,
+      brief,
       report,
+      ranking,
     });
     return NextResponse.json({ ok: true, data: viewModel });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("SELLERSPRITE_BRIEF_")) {
       return errorResponse("brief_validation_failed", 400);
+    }
+    if (
+      error instanceof Error
+      && error.message === "SELLERSPRITE_RANKING_INTEGRITY_FAILED"
+    ) {
+      return errorResponse("ranking_integrity_failed", 500);
     }
     return errorResponse("internal_error", 500);
   }

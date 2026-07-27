@@ -24,12 +24,23 @@ import { buildAccessHeaders } from "@/lib/client/accessToken";
 import type {
   SellerSpriteOpportunityPreviewViewModel,
   SellerSpritePreviewProduct,
+  SellerSpritePreviewRankingProduct,
 } from "@/lib/sellerSpriteOpportunityPreview";
 
 type AccessState = "checking" | "authorized" | "denied";
 type PriceBandFilter = "all" | SellerSpritePreviewProduct["priceBandStatus"];
 type SignalFilter = "all" | "missing" | "conflict" | "complete";
 type ProductSort = "asin" | "price" | "sales" | "reviews";
+type RankingView = "products" | "families";
+type RankingPriorityFilter =
+  | "all"
+  | SellerSpritePreviewRankingProduct["researchPriority"];
+type RankingEvidenceFilter =
+  | "all"
+  | SellerSpritePreviewRankingProduct["evidenceStatus"];
+type RankingConflictFilter = "all" | "with_conflict" | "without_conflict";
+type RankingRepresentativeFilter = "all" | "representative" | "member";
+type RankingSort = "signalScore" | "evidenceCoverage" | "price" | "sales" | "reviews";
 
 interface PreviewFormValues {
   file: File | null;
@@ -56,11 +67,13 @@ const ERROR_COPY: Record<string, string> = {
   unsupported_report_type: "当前不支持所选 SellerSprite 报表类型。",
   report_type_mismatch: "所选报表类型与文件结构不一致，请确认文件来源。",
   query_not_applicable: "类目当前商品报表不需要查询词。",
+  client_computed_ranking_not_allowed: "预览请求包含不允许的客户端排序字段，请刷新页面后重试。",
   unsafe_xlsx: "文件未通过 XLSX 安全门禁，未继续解析。",
   unsupported_sheet: "没有识别到受支持的 SellerSprite US 商品工作表。",
   invalid_workbook: "工作簿结构或字段不符合当前离线预检合同。",
   brief_validation_failed: "请检查查询词、类目与 USD 价格范围。",
   no_accepted_rows: "文件中没有可用于预览的有效商品行。",
+  ranking_integrity_failed: "市场排序未通过服务端完整性检查，本次没有返回部分结果。",
   internal_error: "本地预览生成失败，请核对文件后重试。",
 };
 
@@ -306,6 +319,530 @@ function ConcentrationCard({
   );
 }
 
+function formatScore(value: number | null): string {
+  return value === null ? "—" : value.toFixed(2);
+}
+
+function formatCoverage(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function researchPriorityLabel(
+  value: SellerSpritePreviewRankingProduct["researchPriority"],
+): string {
+  return {
+    priority_1: "优先研究组 1",
+    priority_2: "优先研究组 2",
+    priority_3: "优先研究组 3",
+    unranked_insufficient_evidence: "暂不排名：证据不足",
+  }[value];
+}
+
+function evidenceStatusLabel(
+  value: SellerSpritePreviewRankingProduct["evidenceStatus"],
+): string {
+  return {
+    sufficient_for_comparison: "证据可比较",
+    limited_evidence: "证据有限",
+    insufficient_evidence: "证据不足",
+  }[value];
+}
+
+const RANKING_REASON_LABELS: Readonly<Record<string, string>> = {
+  best_available_non_authoritative_evidence: "当前非权威证据中最适合作为该研究分组代表",
+  estimated_monthly_sales_at_or_above_report_midpoint: "估算月销量不低于本报表中位水平",
+  estimated_monthly_sales_below_report_midpoint: "估算月销量低于本报表中位水平",
+  multiple_variations_context_only_no_score: "变体较多，仅作上下文，不参与计分",
+  organic_and_sponsored_coverage: "同时具备自然位与广告位记录",
+  organic_visibility_observed: "观察到有效自然搜索位置",
+  organic_visibility_zero_with_sponsored_evidence: "只有广告位，自然位信号为 0",
+  placement_coverage_limited: "搜索位置覆盖有限",
+  price_outside_brief_range: "价格在 Brief 目标区间外",
+  price_within_brief_range: "价格在 Brief 目标区间内",
+  rating_quality_limited: "评分质量支持有限",
+  rating_quality_supported: "评分质量有评论量支持",
+  root_category_bsr_comparable: "大类 BSR 可比较",
+  sales_review_efficiency_at_or_above_neutral: "估算销量—评论相对效率不低于中性水平",
+  sales_review_efficiency_below_neutral: "估算销量—评论相对效率低于中性水平",
+  sponsored_only_visibility: "仅观察到广告曝光位置",
+  subcategory_bsr_comparable_within_exact_group: "同一小类内的小类 BSR 可比较",
+  subcategory_bsr_not_comparable: "小类 BSR 证据不足，未跨小类比较",
+};
+
+function rankingReasonLabel(reason: string): string {
+  return RANKING_REASON_LABELS[reason] ?? reason.replaceAll("_", " · ");
+}
+
+function RankingProductDetails({
+  product,
+}: {
+  product: SellerSpritePreviewRankingProduct;
+}) {
+  return (
+    <details className="min-w-[250px] rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+      <summary className="cursor-pointer text-xs font-semibold text-teal-700">展开详情</summary>
+      <div className="mt-3 space-y-3 text-xs leading-5 text-slate-600">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <p>
+            <span className="block text-slate-400">已知证据条件分（不用于排名）</span>
+            <strong className="text-slate-700">{formatScore(product.conditionalSignalScore)}</strong>
+          </p>
+          <p>
+            <span className="block text-slate-400">证据不完整差额</span>
+            <strong className="text-slate-700">{formatScore(product.coveragePenalty)}</strong>
+          </p>
+          <p>
+            <span className="block text-slate-400">可用权重 / 已得加权分</span>
+            <strong className="text-slate-700">
+              {product.availableWeight} / {formatScore(product.earnedWeightedPoints)}
+            </strong>
+          </p>
+        </div>
+        <p className="rounded-lg bg-white px-2.5 py-2 text-slate-500">
+          证据不完整差额是条件分与固定分母市场信号分之间的差值，仅用于解释证据完整度。
+        </p>
+        {product.dominanceWarning ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 font-medium text-amber-800">
+            该商品分数可能由单一组件主导，请展开查看。
+          </p>
+        ) : null}
+        <div>
+          <p className="font-semibold text-slate-700">组件分解</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {product.componentScores.map((component) => (
+              <div key={component.component} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-semibold text-slate-700">{component.label}</span>
+                  <span className="font-mono text-slate-500">
+                    {component.available ? formatScore(component.weightedPoints) : "不可用"}
+                    {" / "}
+                    {component.weight}
+                  </span>
+                </div>
+                <p className="mt-1 text-slate-500">{component.explanation}</p>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  {component.metricNature === "estimate"
+                    ? "第三方估算"
+                    : component.metricNature === "derived"
+                      ? "派生信号"
+                      : "时点快照"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div>
+            <p className="font-semibold text-emerald-700">正向理由</p>
+            <p>
+              {product.positiveReasons.length
+                ? product.positiveReasons.map(rankingReasonLabel).join("；")
+                : "暂无明确正向理由"}
+            </p>
+          </div>
+          <div>
+            <p className="font-semibold text-amber-700">主要反例</p>
+            <p>
+              {product.counterSignals.length
+                ? product.counterSignals.map(rankingReasonLabel).join("；")
+                : "暂无已计算反例"}
+            </p>
+          </div>
+        </div>
+        {product.missingSignals.length || product.conflictingSignals.length ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800">
+            <p>缺失信号：{product.missingSignals.join("、") || "无"}</p>
+            <p>冲突信号：{product.conflictingSignals.join("、") || "无"}</p>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+function RankingProductTable({
+  products,
+  sourceByAsin,
+  rankable,
+}: {
+  products: ReadonlyArray<SellerSpritePreviewRankingProduct>;
+  sourceByAsin: ReadonlyMap<string, SellerSpritePreviewProduct>;
+  rankable: boolean;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <table className="min-w-[1040px] w-full border-collapse text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
+          <tr>
+            <th className="px-3 py-3">{rankable ? "名次" : "状态"}</th>
+            <th className="px-3 py-3">商品</th>
+            <th className="px-3 py-3">市场信号分</th>
+            <th className="px-3 py-3">证据覆盖度</th>
+            <th className="px-3 py-3">研究优先级</th>
+            <th className="px-3 py-3">研究说明</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {products.map((product) => {
+            const source = sourceByAsin.get(product.asin);
+            return (
+              <tr key={product.asin} className="align-top">
+                <td className="px-3 py-3">
+                  {rankable ? (
+                    <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-teal-50 px-2 py-1 font-semibold text-teal-800">
+                      {product.scoreRank}
+                      {product.scoreTie ? "=" : ""}
+                    </span>
+                  ) : (
+                    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
+                      未排名
+                    </span>
+                  )}
+                </td>
+                <td className="max-w-[260px] px-3 py-3">
+                  <p className="font-mono text-xs font-semibold text-teal-700">{product.asin}</p>
+                  <p className="mt-1 line-clamp-2 font-medium text-slate-800">
+                    {product.title ?? "标题缺失"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {product.brand ?? "品牌缺失"} · {formatUsd(source?.price ?? null)}
+                  </p>
+                  {product.familyRepresentative ? (
+                    <span className="mt-2 inline-flex rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] text-teal-700">
+                      家族代表
+                    </span>
+                  ) : null}
+                </td>
+                <td className="px-3 py-3">
+                  <p className="text-xl font-semibold tracking-tight text-slate-950">
+                    {rankable ? formatScore(product.signalScore) : "—"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">固定 100 分母</p>
+                </td>
+                <td className="px-3 py-3">
+                  <p className="font-semibold text-slate-800">{formatCoverage(product.evidenceCoverage)}</p>
+                  <p className="mt-1 max-w-[170px] text-[11px] leading-4 text-slate-400">
+                    表示本模型预期信号中实际可计算的比例。
+                  </p>
+                </td>
+                <td className="px-3 py-3">
+                  <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${
+                    rankable
+                      ? "border-teal-200 bg-teal-50 text-teal-800"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                  }`}>
+                    {researchPriorityLabel(product.researchPriority)}
+                  </span>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {evidenceStatusLabel(product.evidenceStatus)}
+                  </p>
+                </td>
+                <td className="px-3 py-3"><RankingProductDetails product={product} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {products.length === 0 ? (
+        <div className="bg-white px-4 py-8 text-center text-sm text-slate-500">
+          当前筛选条件下暂无商品。
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SellerSpriteRankingPreview({
+  data,
+}: {
+  data: SellerSpriteOpportunityPreviewViewModel;
+}) {
+  const [view, setView] = useState<RankingView>("products");
+  const [priority, setPriority] = useState<RankingPriorityFilter>("all");
+  const [evidence, setEvidence] = useState<RankingEvidenceFilter>("all");
+  const [conflict, setConflict] = useState<RankingConflictFilter>("all");
+  const [representative, setRepresentative] = useState<RankingRepresentativeFilter>("all");
+  const [rankingSort, setRankingSort] = useState<RankingSort>("signalScore");
+  const sourceByAsin = useMemo(
+    () => new Map(data.products.map((product) => [product.asin, product])),
+    [data.products],
+  );
+  const visibleRankingProducts = useMemo(() => {
+    const products = data.ranking.products.filter((product) => (
+      (priority === "all" || product.researchPriority === priority)
+      && (evidence === "all" || product.evidenceStatus === evidence)
+      && (
+        conflict === "all"
+        || (conflict === "with_conflict" && product.conflictingSignals.length > 0)
+        || (conflict === "without_conflict" && product.conflictingSignals.length === 0)
+      )
+      && (
+        representative === "all"
+        || (representative === "representative" && product.familyRepresentative)
+        || (representative === "member" && !product.familyRepresentative)
+      )
+    ));
+    return [...products].sort((left, right) => {
+      const leftSource = sourceByAsin.get(left.asin);
+      const rightSource = sourceByAsin.get(right.asin);
+      const leftValue = rankingSort === "signalScore"
+        ? left.signalScore
+        : rankingSort === "evidenceCoverage"
+          ? left.evidenceCoverage
+          : rankingSort === "price"
+            ? leftSource?.price ?? null
+            : rankingSort === "sales"
+              ? leftSource?.estimatedMonthlySales ?? null
+              : leftSource?.reviews ?? null;
+      const rightValue = rankingSort === "signalScore"
+        ? right.signalScore
+        : rankingSort === "evidenceCoverage"
+          ? right.evidenceCoverage
+          : rankingSort === "price"
+            ? rightSource?.price ?? null
+            : rankingSort === "sales"
+              ? rightSource?.estimatedMonthlySales ?? null
+              : rightSource?.reviews ?? null;
+      if (leftValue === null && rightValue === null) return left.asin.localeCompare(right.asin);
+      if (leftValue === null) return 1;
+      if (rightValue === null) return -1;
+      return rightValue - leftValue || left.asin.localeCompare(right.asin);
+    });
+  }, [
+    conflict,
+    data.ranking.products,
+    evidence,
+    priority,
+    rankingSort,
+    representative,
+    sourceByAsin,
+  ]);
+  const comparableProducts = visibleRankingProducts.filter(
+    (product) => product.evidenceStatus === "sufficient_for_comparison",
+  );
+  const unrankedProducts = visibleRankingProducts.filter(
+    (product) => product.evidenceStatus !== "sufficient_for_comparison",
+  );
+
+  return (
+    <section className="surface-card-strong overflow-hidden">
+      <div className="border-b border-slate-200 bg-gradient-to-br from-teal-50 via-white to-emerald-50 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <p className="eyebrow">只读研究优先级</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+              市场信号排序（非正式）
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              本排序仅用于决定先研究哪个商品，不是正式选品、采购或上架结论。
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 text-center sm:grid-cols-3">
+            <SummaryCard label="可比较" value={data.ranking.rankableProductCount} />
+            <SummaryCard label="未排名" value={data.ranking.unrankedProductCount} />
+            <SummaryCard
+              label="研究分组数量"
+              value={data.ranking.familyResearchListCount}
+              note="不同于显式父子家族数量"
+            />
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 text-xs leading-5 md:grid-cols-2">
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+            价格适配采用区间内/区间外二元规则。即使只超过边界 0.01 美元，也会失去该项分数，请结合原始价格人工判断。
+          </p>
+          {data.reportType === "search_results" ? (
+            <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800">
+              广告位不是自然需求；只有广告位时自然位得分为 0，但不是缺失；销量是 SellerSprite 第三方估算。
+            </p>
+          ) : (
+            <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800">
+              搜索位置：不适用。BSR 是类目排名信号，不代表 Amazon 后台订单。
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={() => setView("products")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                view === "products" ? "bg-white text-teal-800 shadow-sm" : "text-slate-500"
+              }`}
+            >
+              产品榜
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("families")}
+              className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                view === "families" ? "bg-white text-teal-800 shadow-sm" : "text-slate-500"
+              }`}
+            >
+              家族研究列表
+            </button>
+          </div>
+          <span className="status-badge px-3 py-1.5 text-xs">
+            {data.ranking.modelVersion}
+          </span>
+        </div>
+
+        {view === "products" ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <label className="text-xs font-semibold text-slate-500">
+                研究优先级
+                <select
+                  aria-label="研究优先级筛选"
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value as RankingPriorityFilter)}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="all">全部</option>
+                  <option value="priority_1">优先研究组 1</option>
+                  <option value="priority_2">优先研究组 2</option>
+                  <option value="priority_3">优先研究组 3</option>
+                  <option value="unranked_insufficient_evidence">暂不排名：证据不足</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">
+                证据状态
+                <select
+                  aria-label="证据状态筛选"
+                  value={evidence}
+                  onChange={(event) => setEvidence(event.target.value as RankingEvidenceFilter)}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="all">全部</option>
+                  <option value="sufficient_for_comparison">证据可比较</option>
+                  <option value="limited_evidence">证据有限</option>
+                  <option value="insufficient_evidence">证据不足</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">
+                冲突
+                <select
+                  aria-label="冲突筛选"
+                  value={conflict}
+                  onChange={(event) => setConflict(event.target.value as RankingConflictFilter)}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="all">全部</option>
+                  <option value="with_conflict">存在冲突</option>
+                  <option value="without_conflict">无冲突</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">
+                家族角色
+                <select
+                  aria-label="家族角色筛选"
+                  value={representative}
+                  onChange={(event) => setRepresentative(
+                    event.target.value as RankingRepresentativeFilter,
+                  )}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="all">全部</option>
+                  <option value="representative">家族代表</option>
+                  <option value="member">其他成员</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-500">
+                展示排序
+                <select
+                  aria-label="市场信号商品排序"
+                  value={rankingSort}
+                  onChange={(event) => setRankingSort(event.target.value as RankingSort)}
+                  className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                >
+                  <option value="signalScore">市场信号分</option>
+                  <option value="evidenceCoverage">证据覆盖度</option>
+                  <option value="price">原始价格</option>
+                  <option value="sales">估算月销量</option>
+                  <option value="reviews">评论数</option>
+                </select>
+              </label>
+            </div>
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h3 className="font-semibold text-slate-900">可比较商品</h3>
+                <span className="text-xs text-slate-400">{comparableProducts.length} 个</span>
+              </div>
+              <RankingProductTable
+                products={comparableProducts}
+                sourceByAsin={sourceByAsin}
+                rankable
+              />
+            </div>
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h3 className="font-semibold text-slate-900">证据不足或冲突商品</h3>
+                <span className="text-xs text-slate-400">{unrankedProducts.length} 个</span>
+              </div>
+              <RankingProductTable
+                products={unrankedProducts}
+                sourceByAsin={sourceByAsin}
+                rankable={false}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="mt-5 space-y-3">
+            <p className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm leading-6 text-teal-800">
+              每个明确 Parent ASIN 默认只保留一个代表商品；无 Parent ASIN 的商品作为独立研究项；
+              其他子体仍完整保留，不相加父子体销量。
+            </p>
+            {data.ranking.familyResearchList.map((family) => (
+              <details key={family.familyIdentity} className="rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer">
+                  <span className="font-mono text-xs font-semibold text-teal-700">
+                    {family.familyIdentity}
+                  </span>
+                  <span className="ml-3 text-sm font-semibold text-slate-800">
+                    代表 {family.representativeAsin}
+                  </span>
+                  <span className="ml-3 text-xs text-slate-400">
+                    {family.members.length} 个成员 · {family.rankableMemberCount} 个可比较
+                  </span>
+                </summary>
+                <div className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+                  <p>代表原因：{family.representativeReason}</p>
+                  <p>成员：{family.members.join("、")}</p>
+                  <p>分组警告：{family.familyWarnings.join("、") || "无"}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+
+        <details className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">模型诊断</summary>
+          <div className="mt-4 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
+            <p>模型版本：{data.ranking.modelVersion}</p>
+            <p>Ranking Hash：{data.ranking.rankingHash.slice(0, 12)}…</p>
+            <p>销量 Top 3：{data.ranking.diagnostics.salesOnlyTop3.join("、") || "无"}</p>
+            <p>市场信号 Top 3：{data.ranking.diagnostics.marketSignalTop3.join("、") || "无"}</p>
+            <p>Top 3 与销量榜重合：{data.ranking.diagnostics.top3SalesOverlap}</p>
+            <p>单组件主导警告：{data.ranking.diagnostics.dominanceWarningCount}</p>
+            <p className="md:col-span-2">
+              主导组件分布：
+              {Object.entries(data.ranking.diagnostics.dominantComponentDistribution)
+                .map(([component, count]) => `${component} ${count}`)
+                .join("、") || "无"}
+            </p>
+            <p className="md:col-span-2 rounded-xl bg-white px-3 py-2 text-xs leading-5 text-slate-500">
+              这些指标用于检查模型是否过度依赖某一个信号；不是预测准确率，也不是盈利概率。
+            </p>
+          </div>
+        </details>
+      </div>
+    </section>
+  );
+}
+
 export function SellerSpritePreviewResults({
   data,
 }: {
@@ -416,6 +953,8 @@ export function SellerSpritePreviewResults({
         <ConcentrationCard title="品牌集中度" data={data.brandConcentration} />
         <ConcentrationCard title="卖家集中度" data={data.sellerConcentration} />
       </section>
+
+      <SellerSpriteRankingPreview data={data} />
 
       <section className="surface-card-strong p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">

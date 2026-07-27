@@ -81,6 +81,31 @@ runtimeDescribe("SellerSprite opportunity preview official sample", () => {
           appearanceCount: number;
           promotionEligible: boolean;
         }>;
+        ranking: {
+          schemaVersion: string;
+          modelVersion: string;
+          reportType: string;
+          rankableProductCount: number;
+          products: Array<{
+            asin: string;
+            scoreRank: number | null;
+            signalScore: number | null;
+            conditionalSignalScore: number | null;
+            evidenceCoverage: number;
+            evidenceStatus: string;
+            researchPriority: string;
+            promotionEligible: boolean;
+            componentScores: Array<{ component: string }>;
+          }>;
+          safety: {
+            authoritative: boolean;
+            currentStage1Invoked: boolean;
+            promotionEligible: boolean;
+            manifestRegistered: boolean;
+            productionEffect: boolean;
+            productionDatabaseWritten: boolean;
+          };
+        };
       };
     };
 
@@ -109,6 +134,12 @@ runtimeDescribe("SellerSprite opportunity preview official sample", () => {
       productionEffect: false,
       productionDatabaseWritten: false,
       manifestRegistered: false,
+      ranking: {
+        schemaVersion: "sellersprite-market-signal-ranking.v2",
+        modelVersion: "sellersprite-market-signal-ranking.search.v2",
+        reportType: "search_results",
+        rankableProductCount: 8,
+      },
     });
     expect(payload.data.sourceFileSha256).toBe(
       createHash("sha256").update(bytes).digest("hex"),
@@ -118,6 +149,39 @@ runtimeDescribe("SellerSprite opportunity preview official sample", () => {
     expect(payload.data.products.find((product) => product.asin === "B082PJPQ1Y"))
       .toMatchObject({ appearanceCount: 2, promotionEligible: false });
     expect(payload.data.products.every((product) => product.promotionEligible === false)).toBe(true);
+    expect(payload.data.ranking.products
+      .filter((product) => product.scoreRank !== null)
+      .slice(0, 3)
+      .map((product) => product.asin)).toEqual([
+        "B08HR4K9Y5",
+        "B09ZV2TX28",
+        "B082PJN8BD",
+      ]);
+    expect(payload.data.ranking.products
+      .filter((product) => product.scoreRank !== null)
+      .every((product) => (
+        product.evidenceCoverage === 1
+        && product.conditionalSignalScore === product.signalScore
+        && product.promotionEligible === false
+      ))).toBe(true);
+    expect(payload.data.ranking.products
+      .filter((product) => product.scoreRank === null)).toEqual([
+        expect.objectContaining({
+          signalScore: null,
+          evidenceStatus: "limited_evidence",
+          researchPriority: "unranked_insufficient_evidence",
+          promotionEligible: false,
+        }),
+      ]);
+    expect(payload.data.ranking.safety).toEqual({
+      authoritative: false,
+      currentStage1Invoked: false,
+      hardGateEvaluable: false,
+      promotionEligible: false,
+      manifestRegistered: false,
+      productionEffect: false,
+      productionDatabaseWritten: false,
+    });
     expect(JSON.stringify(payload)).not.toContain(officialSamplePath!);
   });
 });
@@ -128,18 +192,21 @@ const categorySamples = [
     path: process.env.SELLERSPRITE_XLSX_CATEGORY_SPORTS_PATH,
     sha256: "41ced066135a5734251d493429effc8d6417db34d8fabdd7252abdde0f640582",
     familyCount: 8,
+    top3: ["B0GSH7JDR8", "B0G3Y89LW9", "B0GXHR4CR9"],
   },
   {
     name: "Office",
     path: process.env.SELLERSPRITE_XLSX_CATEGORY_OFFICE_PATH,
     sha256: "5069fcaa967ee945995d2ff84bd05667a8a32ea909f064c175f469101dd84247",
     familyCount: 7,
+    top3: ["B0GVZ3CWK1", "B0G8SFR7DH", "B0GLD9K9LF"],
   },
   {
     name: "Auto",
     path: process.env.SELLERSPRITE_XLSX_CATEGORY_AUTO_PATH,
     sha256: "8cf6007874c1eb778f8ef389c556e1b93c43e2fe0d78ab530650596856ccf742",
     familyCount: 9,
+    top3: ["B0GHY6D5B2", "B0GXJM1Q2K", "B0H7W11LTY"],
   },
 ] as const;
 
@@ -171,6 +238,21 @@ describe("SellerSprite Category Current route official samples", () => {
         ok: boolean;
         data: Record<string, unknown> & {
           products: Array<{ promotionEligible: boolean }>;
+          ranking: {
+            modelVersion: string;
+            reportType: string;
+            rankableProductCount: number;
+            searchPlacementStatus: string;
+            products: Array<{
+              asin: string;
+              scoreRank: number | null;
+              signalScore: number | null;
+              conditionalSignalScore: number | null;
+              evidenceCoverage: number;
+              promotionEligible: boolean;
+              componentScores: Array<{ component: string }>;
+            }>;
+          };
         };
       };
       expect(response.status).toBe(200);
@@ -198,10 +280,37 @@ describe("SellerSprite Category Current route official samples", () => {
         productionEffect: false,
         productionDatabaseWritten: false,
         manifestRegistered: false,
+        ranking: {
+          modelVersion: "sellersprite-market-signal-ranking.category.v2",
+          reportType: "category_current",
+          rankableProductCount: 10,
+          searchPlacementStatus: "not_applicable",
+        },
       });
       expect(payload.data.products.every((product) => product.promotionEligible === false))
         .toBe(true);
-      expect(JSON.stringify(payload)).not.toContain(sample.path!);
+      expect(payload.data.ranking.products
+        .filter((product) => product.scoreRank !== null)
+        .slice(0, 3)
+        .map((product) => product.asin)).toEqual(sample.top3);
+      expect(payload.data.ranking.products.every((product) => (
+        product.evidenceCoverage === 1
+        && product.conditionalSignalScore === product.signalScore
+        && product.promotionEligible === false
+        && product.componentScores.some((component) => component.component === "categoryBsrSignal")
+        && product.componentScores.every((component) => (
+          component.component !== "organicVisibility"
+          && component.component !== "sponsoredExposure"
+          && component.component !== "placementCoverage"
+        ))
+      ))).toBe(true);
+      const serialized = JSON.stringify(payload);
+      expect(serialized).not.toContain(sample.path!);
+      expect(payload.data.ranking.products.every((product) => (
+        !("advance" in product)
+        && !("watch" in product)
+        && !("reject" in product)
+      ))).toBe(true);
     });
   }
 });
