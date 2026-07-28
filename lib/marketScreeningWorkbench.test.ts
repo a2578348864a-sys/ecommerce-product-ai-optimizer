@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   loadMarketScreeningBatch,
@@ -10,8 +9,11 @@ import {
   buildMarketScreeningWorkbenchRenderModel,
   buildMarketScreeningWorkbenchView,
 } from "@/lib/marketScreeningWorkbench";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 
-const projectMaterialsRoot = resolve(process.cwd(), "..");
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const projectMaterialsRoot = materialsRoot.projectMaterialsRoot;
 
 function readyFixture() {
   const result = loadMarketScreeningBatch({ environment: "development", projectMaterialsRoot });

@@ -194,7 +194,7 @@ describe("HomeDashboardClient navigation", () => {
     expect(workflowStepsSection?.[0]).toMatch(/商品研究/);
     expect(workflowStepsSection?.[0]).toMatch(/Listing 准备/);
     expect(workflowStepsSection?.[0]).toMatch(/图片创作/);
-    expect(workflowStepsSection?.[0]).toMatch(/人工决定/);
+    expect(workflowStepsSection?.[0]).toMatch(/人工确认/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/agent\/run"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/listing-studio"/);
@@ -241,7 +241,7 @@ describe("AgentRunClient main flow links", () => {
     expect(agentRunSource).toMatch(/商品理解/);
     expect(agentRunSource).toMatch(/市场研究/);
     expect(agentRunSource).toMatch(/创作准备/);
-    expect(agentRunSource).toMatch(/高级技术详情/);
+    expect(agentRunSource).toMatch(/内部分析记录/);
     expect(agentRunSource).toMatch(/agent-run-technical-details/);
     expect(agentRunSource).toMatch(/TIMELINE_STEPS\.map/);
     expect(agentRunSource).toMatch(/saveAgentRunCache/);
@@ -336,10 +336,11 @@ describe("screening preview is internal-only", () => {
     expect(agentRunSource).not.toMatch(/screening-preview/);
   });
 
-  it("is visibly internal and calls the loader with an explicit environment and root", () => {
+  it("is visibly internal and resolves a validated project materials root", () => {
     expect(previewSource).toMatch(/内部诊断 · 非正式导航/);
     expect(previewSource).toMatch(/environment:\s*"development"/);
-    expect(previewSource).toMatch(/projectMaterialsRoot:\s*resolve\(process\.cwd\(\),\s*"\.\."\)/);
+    expect(previewSource).toMatch(/resolveProjectMaterialsRoot/);
+    expect(previewSource).toMatch(/materialsRoot\.status === "ready"/);
   });
 });
 

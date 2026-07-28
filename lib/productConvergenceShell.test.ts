@@ -51,7 +51,7 @@ describe("Product Architecture Convergence shell", () => {
     );
   });
 
-  it("shows five real workflow entrances from discovery to human decision", () => {
+  it("shows five real workflow entrances from discovery to human confirmation", () => {
     const journey = arrayBlock(homeSource, "workflowSteps");
 
     expect(labeledRoutes(journey)).toEqual([
@@ -59,7 +59,7 @@ describe("Product Architecture Convergence shell", () => {
       { label: "商品研究", href: "/agent/run" },
       { label: "Listing 准备", href: "/listing-studio" },
       { label: "图片创作", href: "/image-studio" },
-      { label: "人工决定", href: "/tasks" },
+      { label: "人工确认", href: "/tasks" },
     ]);
 
     for (const cta of [
@@ -77,7 +77,7 @@ describe("Product Architecture Convergence shell", () => {
 
   it("keeps decisions human-led and avoids unsupported product promises", () => {
     expect(homeSource).toContain("人工确认");
-    expect(homeSource).toContain("人工决定");
+    expect(homeSource).toContain("人工确认是否继续");
 
     for (const forbidden of ["自动选品", "自动赚钱", "爆款预测"]) {
       expect(sidebarSource).not.toContain(forbidden);

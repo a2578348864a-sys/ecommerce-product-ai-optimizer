@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { resolve } from "node:path";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { MarketScreeningWorkbench } from "@/components/cross-border/MarketScreeningWorkbench";
 import { loadMarketScreeningBatch } from "@/lib/marketScreeningBatchLoader";
 import { getActiveProductionMarketScreeningRegistration } from "@/lib/marketScreeningProductionRegistry";
 import { buildMarketScreeningWorkbenchRenderModel } from "@/lib/marketScreeningWorkbench";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +16,21 @@ export const metadata: Metadata = {
 
 export default function OpportunitiesPage() {
   const productionRegistration = getActiveProductionMarketScreeningRegistration() ?? undefined;
+  const materialsRoot = resolveProjectMaterialsRoot();
   const loaderOptions = {
     environment: "production",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot: materialsRoot.status === "ready"
+      ? materialsRoot.projectMaterialsRoot
+      : null,
     productionRegistration,
   } as const;
   const batch = loadMarketScreeningBatch(loaderOptions);
-  const preview = batch.status === "ready" ? loadStage15ScreeningPreview(loaderOptions) : null;
+  const preview = materialsRoot.status === "ready" && batch.status === "ready"
+    ? loadStage15ScreeningPreview({
+        ...loaderOptions,
+        projectMaterialsRoot: materialsRoot.projectMaterialsRoot,
+      })
+    : null;
   const model = buildMarketScreeningWorkbenchRenderModel(
     batch,
     preview?.status === "ready" ? preview.preview : undefined,

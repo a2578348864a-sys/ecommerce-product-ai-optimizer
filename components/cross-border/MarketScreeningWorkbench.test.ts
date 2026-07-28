@@ -1,15 +1,15 @@
 import { createElement } from "react";
-import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { MarketScreeningWorkbench } from "@/components/cross-border/MarketScreeningWorkbench";
 import { loadMarketScreeningBatch, type MarketScreeningBatchLoadResult } from "@/lib/marketScreeningBatchLoader";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 import { buildMarketScreeningWorkbenchRenderModel } from "@/lib/marketScreeningWorkbench";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 
-const projectMaterialsRoot = process.env.PROJECT_MATERIALS_ROOT
-  ? resolve(process.env.PROJECT_MATERIALS_ROOT)
-  : resolve(process.cwd(), "..");
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const projectMaterialsRoot = materialsRoot.projectMaterialsRoot;
 
 function readyFixture() {
   const result = loadMarketScreeningBatch({ environment: "development", projectMaterialsRoot });
@@ -147,5 +147,23 @@ describe("MarketScreeningWorkbench", () => {
     expect(html).toContain("artifact_identity_conflict");
     expect(html).not.toContain("Selection Brief");
     expect(html).not.toContain("data-testid=\"market-screening-item\"");
+  });
+
+  it("shows a deterministic materials-unavailable error instead of an empty state", () => {
+    const { result } = readyFixture();
+    const unavailable: MarketScreeningBatchLoadResult = {
+      status: "blocked",
+      errorCode: "project_materials_root_unavailable",
+      batchReadiness: {
+        ...result.batch.batchReadiness,
+        status: "blocked",
+        reasonCodes: ["manifest_invalid"],
+      },
+    };
+
+    const html = render(unavailable);
+    expect(html).toContain("材料不可用");
+    expect(html).toContain("当前运行环境没有可验证的项目材料来源");
+    expect(html).not.toContain("暂无候选商品");
   });
 });

@@ -357,13 +357,18 @@ export function MarketScreeningWorkbench({ model }: { model: MarketScreeningWork
           </details>
         </div>
       );
-    case "blocked":
+    case "blocked": {
+      const materialsUnavailable = model.errorCode === "project_materials_root_unavailable";
       return (
         <section className="mx-auto max-w-3xl rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
           <p className="eyebrow text-rose-700">发现商品</p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-950">商品候选暂时不可用</h1>
+          <h1 className="mt-2 text-2xl font-bold text-slate-950">
+            {materialsUnavailable ? "材料不可用" : "商品候选暂时不可用"}
+          </h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            当前数据没有通过完整性检查，因此不会展示可能误导你的候选商品。
+            {materialsUnavailable
+              ? "当前运行环境没有可验证的项目材料来源，因此不会展示或伪造候选商品。"
+              : "当前数据没有通过完整性检查，因此不会展示可能误导你的候选商品。"}
           </p>
           <details className="mt-4 rounded-xl border border-rose-100 bg-rose-50/60 p-3">
             <summary className="cursor-pointer text-sm font-semibold text-rose-700">高级证据详情</summary>
@@ -372,6 +377,7 @@ export function MarketScreeningWorkbench({ model }: { model: MarketScreeningWork
           </details>
         </section>
       );
+    }
     default:
       return assertNever(model);
   }

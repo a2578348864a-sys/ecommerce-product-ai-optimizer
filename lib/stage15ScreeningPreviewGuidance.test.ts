@@ -1,13 +1,17 @@
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 import { buildStage15NoviceGuidance } from "@/lib/stage15ScreeningPreviewGuidance";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 import type { Stage15ScreeningPreviewItem } from "@/lib/stage15ScreeningPreview";
 
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const projectMaterialsRoot = materialsRoot.projectMaterialsRoot;
+
 function realItems() {
   const result = loadStage15ScreeningPreview({
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot,
   });
   if (result.status !== "ready") throw new Error(result.errorCode);
   return result.preview.items;

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { resolve } from "node:path";
 import { notFound } from "next/navigation";
 import { MarketScreeningWorkbench } from "@/components/cross-border/MarketScreeningWorkbench";
 import { loadMarketScreeningBatch } from "@/lib/marketScreeningBatchLoader";
 import { buildMarketScreeningWorkbenchRenderModel } from "@/lib/marketScreeningWorkbench";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 import { isStage15ScreeningPreviewAvailable } from "@/lib/stage15ScreeningPreviewAvailability";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 
@@ -17,12 +17,20 @@ export const metadata: Metadata = {
 export default function ScreeningPreviewPage() {
   if (!isStage15ScreeningPreviewAvailable(process.env.NODE_ENV)) notFound();
 
+  const materialsRoot = resolveProjectMaterialsRoot();
   const loaderOptions = {
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot: materialsRoot.status === "ready"
+      ? materialsRoot.projectMaterialsRoot
+      : null,
   } as const;
   const batch = loadMarketScreeningBatch(loaderOptions);
-  const preview = batch.status === "ready" ? loadStage15ScreeningPreview(loaderOptions) : null;
+  const preview = materialsRoot.status === "ready" && batch.status === "ready"
+    ? loadStage15ScreeningPreview({
+        ...loaderOptions,
+        projectMaterialsRoot: materialsRoot.projectMaterialsRoot,
+      })
+    : null;
   const model = buildMarketScreeningWorkbenchRenderModel(
     batch,
     preview?.status === "ready" ? preview.preview : undefined,

@@ -21,8 +21,11 @@ import {
   loadMarketScreeningBatch,
   mapManifestErrorCode,
 } from "@/lib/marketScreeningBatchLoader";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 
-const sourceRoot = resolve(process.cwd(), "..");
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const sourceRoot = materialsRoot.projectMaterialsRoot;
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

@@ -18,9 +18,12 @@ import {
   type MarketScreeningBatchManifest,
 } from "@/lib/marketScreeningBatchManifest";
 import { loadMarketScreeningBatch } from "@/lib/marketScreeningBatchLoader";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 
-const authoritativeProjectRoot = resolve(process.cwd(), "..");
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const authoritativeProjectRoot = materialsRoot.projectMaterialsRoot;
 const temporaryRoots: string[] = [];
 
 function loadManifest(root = authoritativeProjectRoot): MarketScreeningBatchManifest {

@@ -1,17 +1,21 @@
 import { createElement } from "react";
-import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   filterStage15PreviewItems,
   Stage15ScreeningPreview,
 } from "@/components/cross-border/Stage15ScreeningPreview";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
+
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const projectMaterialsRoot = materialsRoot.projectMaterialsRoot;
 
 function realPreview() {
   const result = loadStage15ScreeningPreview({
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot,
   });
   if (result.status !== "ready") throw new Error(result.errorCode);
   return result.preview;

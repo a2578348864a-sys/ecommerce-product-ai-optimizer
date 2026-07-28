@@ -27,6 +27,7 @@ const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 
 export type MarketScreeningBatchErrorCode =
   | ManifestErrorCode
+  | "project_materials_root_unavailable"
   | "artifact_path_invalid"
   | "artifact_hash_mismatch"
   | "artifact_schema_invalid"
@@ -320,11 +321,23 @@ function crossArtifactConflict(
 
 export function loadMarketScreeningBatch(options: {
   environment: MarketScreeningEnvironment;
-  projectMaterialsRoot: string;
+  projectMaterialsRoot: string | null;
   testManifestPath?: string;
   productionRegistration?: ProductionBatchRegistration;
 }): MarketScreeningBatchLoadResult {
-  const manifestResult = loadMarketScreeningBatchManifest(options);
+  const projectMaterialsRoot = options.projectMaterialsRoot;
+  if (projectMaterialsRoot === null) {
+    return {
+      status: "blocked",
+      batchReadiness: blockedWithoutManifest(),
+      errorCode: "project_materials_root_unavailable",
+    };
+  }
+
+  const manifestResult = loadMarketScreeningBatchManifest({
+    ...options,
+    projectMaterialsRoot,
+  });
   if (manifestResult.status === "unavailable") {
     return {
       status: "blocked",
@@ -335,7 +348,7 @@ export function loadMarketScreeningBatch(options: {
 
   let projectRoot: string;
   try {
-    projectRoot = realpathSync(resolve(options.projectMaterialsRoot));
+    projectRoot = realpathSync(resolve(projectMaterialsRoot));
   } catch {
     return {
       status: "blocked",

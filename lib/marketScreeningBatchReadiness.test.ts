@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { resolve } from "node:path";
 import { loadMarketScreeningBatchManifest } from "@/lib/marketScreeningBatchManifest";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 import {
   determineMarketScreeningBatchReadiness,
   type ArtifactValidationState,
 } from "@/lib/marketScreeningBatchReadiness";
 
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const projectMaterialsRoot = materialsRoot.projectMaterialsRoot;
+
 function realManifest() {
   const result = loadMarketScreeningBatchManifest({
     environment: "development",
-    projectMaterialsRoot: resolve(process.cwd(), ".."),
+    projectMaterialsRoot,
   });
   if (result.status !== "ready") throw new Error(result.errorCode);
   return result.manifest;

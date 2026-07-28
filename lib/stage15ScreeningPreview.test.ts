@@ -7,8 +7,11 @@ import {
   Stage15ScreeningPreviewError,
   type Stage15PreviewImageInput,
 } from "@/lib/stage15ScreeningPreview";
+import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
 
-const projectRoot = resolve(process.cwd(), "..");
+const materialsRoot = resolveProjectMaterialsRoot();
+if (materialsRoot.status !== "ready") throw new Error(materialsRoot.errorCode);
+const projectRoot = materialsRoot.projectMaterialsRoot;
 const screeningDirectory = resolve(
   projectRoot,
   "06_测试与验证",
