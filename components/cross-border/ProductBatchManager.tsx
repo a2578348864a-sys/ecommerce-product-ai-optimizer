@@ -32,6 +32,7 @@ interface ProductBatchManagerViewProps {
   onActivate?: (batchId: string) => void;
   onArchive?: (batchId: string) => void;
   onActivateLegacy?: () => void;
+  onResearchItem?: (productBatchItemId: string) => void;
   onRefresh?: () => void;
 }
 
@@ -74,6 +75,27 @@ function metricValue(
   return "缺失";
 }
 
+function researchBlockedReason(input: {
+  item: ProductBatchItemView;
+  selectedBatch: ProductBatchView;
+  selection: ProductBatchSelectionView | null;
+}): string | null {
+  if (input.selection?.activeProductBatchId !== input.selectedBatch.id) {
+    return "请先把该批次设置为当前批次。";
+  }
+  if (input.selectedBatch.batchStatus !== "ready") {
+    return "只有可使用的批次商品才能进入研究。";
+  }
+  if (input.selectedBatch.dataQualityStatus !== "passed"
+    && input.selectedBatch.dataQualityStatus !== "passed_with_quarantine") {
+    return "批次数据质量尚未通过，不能进入研究。";
+  }
+  if (input.item.promotionEligible !== false) {
+    return "商品来源状态异常，不能进入研究。";
+  }
+  return null;
+}
+
 export function ProductBatchManagerView({
   state,
   accessMode,
@@ -90,6 +112,7 @@ export function ProductBatchManagerView({
   onActivate,
   onArchive,
   onActivateLegacy,
+  onResearchItem,
   onRefresh,
 }: ProductBatchManagerViewProps) {
   if (state === "loading") {
@@ -312,7 +335,13 @@ export function ProductBatchManagerView({
           <p className="eyebrow">批次商品</p>
           <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedBatch.batchName}</h2>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {selectedItems.map((item) => (
+            {selectedItems.map((item) => {
+              const blockedReason = researchBlockedReason({
+                item,
+                selectedBatch,
+                selection,
+              });
+              return (
               <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="flex items-start justify-between gap-2">
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">
@@ -328,11 +357,27 @@ export function ProductBatchManagerView({
                   <p className="rounded-lg bg-slate-50 p-2">评分<br /><b>{metricValue(item, "rating")}</b></p>
                   <p className="rounded-lg bg-slate-50 p-2">评论<br /><b>{metricValue(item, "reviews")}</b></p>
                 </div>
-                <p className="mt-4 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                  商品研究接线将在下一阶段开放
-                </p>
+                <button
+                  type="button"
+                  data-testid={`product-batch-research-${item.id}`}
+                  disabled={busy || Boolean(blockedReason)}
+                  onClick={() => onResearchItem?.(item.id)}
+                  className="linear-button-primary mt-4 h-10 w-full px-4 text-sm font-semibold disabled:opacity-50"
+                >
+                  研究此商品
+                </button>
+                {blockedReason ? (
+                  <p className="mt-2 text-xs font-semibold leading-5 text-amber-700">
+                    {blockedReason}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    只创建或复用 Candidate；不会自动调用 AI，也不会消耗额度。
+                  </p>
+                )}
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : null}
@@ -501,6 +546,27 @@ export function ProductBatchManager() {
     });
   };
 
+  const researchItem = (productBatchItemId: string) => {
+    void runMutation(async () => {
+      const response = await fetch("/api/product-batches/candidates", {
+        method: "POST",
+        headers: {
+          ...buildAccessHeaders(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ productBatchItemId }),
+      });
+      const body = await response.json() as {
+        ok?: boolean;
+        data?: { destinationUrl?: string };
+      };
+      if (!response.ok || !body.data?.destinationUrl) {
+        throw new Error(responseError(body));
+      }
+      window.location.assign(body.data.destinationUrl);
+    });
+  };
+
   return (
     <ProductBatchManagerView
       state={state}
@@ -526,6 +592,7 @@ export function ProductBatchManager() {
       onActivate={(batchId) => void patchBatch(batchId, "activate")}
       onArchive={(batchId) => void patchBatch(batchId, "archive")}
       onActivateLegacy={activateLegacy}
+      onResearchItem={researchItem}
       onRefresh={() => void refresh()}
     />
   );

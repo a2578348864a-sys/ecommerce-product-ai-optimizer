@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 export const PRODUCT_RESEARCH_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 export type ProductResearchImageSnapshot = {
-  version: "market-screening-product-image.v1";
-  source: "stage15_screening_preview_cache";
+  version: "market-screening-product-image.v1" | "product-batch-product-image.v1";
+  source: "stage15_screening_preview_cache" | "sellersprite_product_batch";
   status: "available";
   productKey: string;
   candidateIdentityHash: string;
@@ -132,9 +132,14 @@ export function buildAuthoritativeProductImageSnapshot(input: {
 }
 
 export function parseProductImageSnapshot(value: unknown): ProductResearchImageSnapshot | null {
+  const legacy = isRecord(value)
+    && value.version === "market-screening-product-image.v1"
+    && value.source === "stage15_screening_preview_cache";
+  const productBatch = isRecord(value)
+    && value.version === "product-batch-product-image.v1"
+    && value.source === "sellersprite_product_batch";
   if (!isRecord(value)
-    || value.version !== "market-screening-product-image.v1"
-    || value.source !== "stage15_screening_preview_cache"
+    || (!legacy && !productBatch)
     || value.status !== "available"
     || !validProductKey(value.productKey)
     || !validHash(value.candidateIdentityHash)
@@ -151,8 +156,8 @@ export function parseProductImageSnapshot(value: unknown): ProductResearchImageS
     return null;
   }
   return {
-    version: "market-screening-product-image.v1",
-    source: "stage15_screening_preview_cache",
+    version: value.version as ProductResearchImageSnapshot["version"],
+    source: value.source as ProductResearchImageSnapshot["source"],
     status: "available",
     productKey: value.productKey,
     candidateIdentityHash: value.candidateIdentityHash,
@@ -171,13 +176,44 @@ function parseCandidateImage(sourceMetaJson: string): ProductResearchImageSnapsh
   const identity = isRecord(sourceMeta.marketScreeningIdentity)
     ? sourceMeta.marketScreeningIdentity
     : null;
-  if (!image
-    || !identity
-    || identity.productKey !== image.productKey
-    || identity.identityHash !== image.candidateIdentityHash) {
+  if (image
+    && identity
+    && identity.productKey === image.productKey
+    && identity.identityHash === image.candidateIdentityHash) {
+    return image;
+  }
+  if (sourceMeta.originKind !== "seller_sprite_product_batch"
+    || !validProductKey(sourceMeta.productKey)
+    || !validHash(sourceMeta.itemIdentityHash)
+    || !validIsoTimestamp(sourceMeta.capturedAt)
+    || !isRecord(sourceMeta.imageSnapshot)
+    || sourceMeta.imageSnapshot.status !== "cached"
+    || (sourceMeta.imageSnapshot.mimeType !== "image/jpeg"
+      && sourceMeta.imageSnapshot.mimeType !== "image/png")
+    || !Number.isInteger(sourceMeta.imageSnapshot.sizeBytes)
+    || !validHash(sourceMeta.imageSnapshot.sha256)
+    || typeof sourceMeta.imageSnapshot.base64 !== "string") {
     return null;
   }
-  return image;
+  const dataUrl = `data:${sourceMeta.imageSnapshot.mimeType};base64,${sourceMeta.imageSnapshot.base64}`;
+  const parsedData = parseDataUrl(dataUrl);
+  if (!parsedData
+    || parsedData.bytes.length !== sourceMeta.imageSnapshot.sizeBytes
+    || sha256(parsedData.bytes) !== sourceMeta.imageSnapshot.sha256) {
+    return null;
+  }
+  return parseProductImageSnapshot({
+    version: "product-batch-product-image.v1",
+    source: "sellersprite_product_batch",
+    status: "available",
+    productKey: sourceMeta.productKey,
+    candidateIdentityHash: sourceMeta.itemIdentityHash,
+    mimeType: parsedData.mimeType,
+    bytes: parsedData.bytes.length,
+    contentHash: sourceMeta.imageSnapshot.sha256,
+    dataUrl: parsedData.dataUrl,
+    capturedAt: sourceMeta.capturedAt,
+  });
 }
 
 export function mergeCandidateProductImageSnapshot(

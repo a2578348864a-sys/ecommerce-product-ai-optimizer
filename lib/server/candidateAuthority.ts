@@ -17,6 +17,8 @@ export type AuthoritativeCandidate = {
   status: string;
   sourceMetaJson: string;
   analysisJson: string;
+  convertedTaskId: string | null;
+  originProductBatchItemId: string | null;
 };
 
 export async function getAuthoritativeCandidate(
@@ -43,11 +45,13 @@ export async function getAuthoritativeCandidate(
       status: candidate.status,
       sourceMetaJson: candidate.sourceMetaJson,
       analysisJson: candidate.analysisJson,
+      convertedTaskId: candidate.convertedTaskId ?? null,
+      originProductBatchItemId: candidate.originProductBatchItemId ?? null,
     };
   }
 
   if (isSandboxCandidateId(candidateId)) return null;
-  return prisma.opportunityCandidate.findUnique({
+  const candidate = await prisma.opportunityCandidate.findUnique({
     where: { id: candidateId },
     select: {
       id: true,
@@ -63,6 +67,25 @@ export async function getAuthoritativeCandidate(
       status: true,
       sourceMetaJson: true,
       analysisJson: true,
+      convertedTaskId: true,
     },
   });
+  if (!candidate) return null;
+  let originProductBatchItemId = (
+    candidate as typeof candidate & { originProductBatchItemId?: string | null }
+  ).originProductBatchItemId;
+  if (originProductBatchItemId === undefined
+    && typeof (prisma as unknown as { $queryRaw?: unknown }).$queryRaw === "function") {
+    const rows = await prisma.$queryRaw<Array<{ originProductBatchItemId: string | null }>>`
+      SELECT "originProductBatchItemId"
+      FROM "OpportunityCandidate"
+      WHERE "id" = ${candidateId}
+      LIMIT 1
+    `;
+    originProductBatchItemId = rows[0]?.originProductBatchItemId ?? null;
+  }
+  return {
+    ...candidate,
+    originProductBatchItemId: originProductBatchItemId ?? null,
+  };
 }

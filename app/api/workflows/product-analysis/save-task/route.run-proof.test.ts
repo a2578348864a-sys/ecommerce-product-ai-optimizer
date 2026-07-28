@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   createSandboxTask: vi.fn(),
   createSandboxTaskAndLinkCandidate: vi.fn(),
   getSandboxCandidate: vi.fn(),
+  productBatchGetBatch: vi.fn(),
+  productBatchGetItems: vi.fn(),
   SandboxCandidateTaskLinkError: class SandboxCandidateTaskLinkError extends Error {
     constructor(public readonly code: string, message: string) {
       super(message);
@@ -56,10 +58,18 @@ vi.mock("@/lib/server/db", () => ({
 vi.mock("@/lib/server/demoSandbox", () => ({
   createSandboxTask: mocks.createSandboxTask,
   createSandboxTaskAndLinkCandidate: mocks.createSandboxTaskAndLinkCandidate,
+  createSandboxTaskAndLinkCandidateAtomic: mocks.createSandboxTaskAndLinkCandidate,
   SandboxCandidateTaskLinkError: mocks.SandboxCandidateTaskLinkError,
   sandboxTaskToDetail: vi.fn(),
   isSandboxCandidateId: (candidateId: string) => candidateId.startsWith("sandbox_candidate_"),
   getSandboxCandidate: mocks.getSandboxCandidate,
+}));
+
+vi.mock("@/lib/server/productBatchStoreResolver", () => ({
+  getProductBatchStore: () => ({
+    getBatch: mocks.productBatchGetBatch,
+    getBatchItems: mocks.productBatchGetItems,
+  }),
 }));
 
 import { POST } from "./route";
@@ -219,6 +229,124 @@ function r22Candidate(
   };
 }
 
+function productBatchCandidate(scope: "owner:v1" | "visitor:sandbox" = "owner:v1") {
+  const source = {
+    version: "product-batch-candidate-source.v1",
+    originKind: "seller_sprite_product_batch",
+    productBatchId: "batch-a",
+    productBatchItemId: "item-a",
+    serverIdentityScope: scope,
+    productKey: "amazon:US:B000000001",
+    productName: "Closet organizer",
+    marketplace: "US",
+    asin: "B000000001",
+    parentAsin: null,
+    reportType: "search_results",
+    query: "organizer",
+    category: "Home",
+    manifestHash: "a".repeat(64),
+    snapshotHash: "b".repeat(64),
+    itemIdentityHash: "c".repeat(64),
+    itemHash: "d".repeat(64),
+    evidenceHash: "e".repeat(64),
+    researchPriority: "priority_1",
+    provisionalDisposition: "provisional_score_only",
+    evidenceStatus: "sufficient_for_comparison",
+    promotionEligible: false,
+    sellerSpriteDisclaimerVersion: "v1",
+    imageSnapshot: { status: "not_cached" },
+    productFacts: { productTitle: "Closet organizer", price: 29.99 },
+    capturedAt: "2026-07-28T00:00:00.000Z",
+  } as const;
+  return {
+    id: scope === "owner:v1" ? "candidate-product-batch-a" : "sandbox_candidate_product_batch_a",
+    name: source.productName,
+    rawInput: source.productName,
+    link: null,
+    score: 0,
+    source: "SellerSprite ProductBatch",
+    keyword: "organizer",
+    riskLevel: "unknown",
+    riskLabel: "需人工核验",
+    summaryLabel: "SellerSprite市场研究候选",
+    status: "worth_analyzing",
+    sourceMetaJson: JSON.stringify(source),
+    analysisJson: JSON.stringify({
+      version: "product_batch_research_entry.v1",
+      originKind: "seller_sprite_product_batch",
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      evidenceHash: source.evidenceHash,
+      itemHash: source.itemHash,
+    }),
+    convertedTaskId: null,
+    originProductBatchItemId: source.productBatchItemId,
+    sourceSnapshot: source,
+  };
+}
+
+function productBatchSourceRecords(candidate = productBatchCandidate()) {
+  return {
+    batch: {
+      id: "batch-a",
+      batchName: "Home organizer",
+      marketplace: "US",
+      currency: "USD",
+      reportType: "search_results",
+      query: "organizer",
+      category: "Home",
+      priceMinCents: 1_000,
+      priceMaxCents: 4_000,
+      briefHash: "f".repeat(64),
+      sourceFileName: "input.xlsx",
+      sourceFileSha256: "1".repeat(64),
+      normalizedBusinessHash: "2".repeat(64),
+      snapshotHash: candidate.sourceSnapshot.snapshotHash,
+      manifestHash: candidate.sourceSnapshot.manifestHash,
+      itemCount: 1,
+      acceptedCount: 1,
+      quarantinedCount: 0,
+      dataQualityStatus: "passed",
+      batchStatus: "ready",
+      sellerSpriteDisclaimerVersion: "v1",
+      normalizedSnapshotJson: "{}",
+      manifestJson: "{}",
+      qualitySummaryJson: "{}",
+      errorJson: null,
+      dedupeKey: "3".repeat(64),
+      importedAt: candidate.sourceSnapshot.capturedAt,
+      createdAt: candidate.sourceSnapshot.capturedAt,
+      updatedAt: candidate.sourceSnapshot.capturedAt,
+    },
+    item: {
+      id: "item-a",
+      batchId: "batch-a",
+      productKey: candidate.sourceSnapshot.productKey,
+      ordinal: 0,
+      asin: candidate.sourceSnapshot.asin,
+      parentAsin: null,
+      itemIdentityHash: candidate.sourceSnapshot.itemIdentityHash,
+      itemHash: candidate.sourceSnapshot.itemHash,
+      evidenceHash: candidate.sourceSnapshot.evidenceHash,
+      normalizedProductJson: JSON.stringify({
+        providerMetrics: {
+          productTitle: { status: "resolved", normalized: "Closet organizer" },
+          price: { status: "resolved", normalized: 29.99 },
+        },
+      }),
+      occurrenceProjectionJson: "{}",
+      familyProjectionJson: "{}",
+      rankingJson: "{}",
+      provisionalDisposition: "provisional_score_only",
+      researchPriority: "priority_1",
+      evidenceStatus: "sufficient_for_comparison",
+      promotionEligible: false,
+      imageSnapshotJson: '{"status":"not_cached"}',
+      createdAt: candidate.sourceSnapshot.capturedAt,
+    },
+  };
+}
+
 function createRequest(body: unknown) {
   return {
     method: "POST",
@@ -233,15 +361,23 @@ function signedBody(input: {
   status?: WorkflowRunStatus;
   subject?: string;
   candidateId?: string | null;
-  candidate?: ReturnType<typeof authoritativeCandidate>;
+  candidate?: {
+    id: string;
+    name: string;
+    sourceMetaJson: string;
+    analysisJson: string;
+    [key: string]: unknown;
+  };
   omitR22CommercialValidation?: boolean;
   zeroRequestedSteps?: boolean;
+  productBatchResearchMode?: boolean;
+  attachForbiddenR22?: boolean;
 }) {
   const status = input.status ?? "completed";
   const candidateId = input.candidateId ?? null;
   const candidate = candidateId ? (input.candidate ?? authoritativeCandidate(candidateId)) : null;
   const runInput = {
-    productName: "桌面手机支架",
+    productName: candidate?.name ?? "桌面手机支架",
     source: candidateId ? "opportunity" as const : "manual" as const,
     candidateId,
     ...(candidate ? {
@@ -268,7 +404,16 @@ function signedBody(input: {
       nextSteps: [],
       manualReviewChecklist: [],
     },
-    ...(!input.omitR22CommercialValidation && candidate
+    ...(input.productBatchResearchMode ? {
+      researchMode: "market_research_only" as const,
+      promotionEligible: false as const,
+    } : {}),
+    ...(input.attachForbiddenR22 ? {
+      r22CommercialValidation: { schemaVersion: "r22-commercial-run-v1" },
+    } : {}),
+    ...(!input.productBatchResearchMode
+      && !input.attachForbiddenR22
+      && !input.omitR22CommercialValidation && candidate
       ? (() => {
           const snapshot = parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
           return snapshot && (snapshot.marketDecision === "market_shortlisted" || snapshot.marketDecision === "market_watch")
@@ -343,6 +488,8 @@ beforeEach(() => {
     title: "桌面手机支架 一键分析",
   });
   mocks.candidateFindUnique.mockResolvedValue(authoritativeCandidate());
+  mocks.productBatchGetBatch.mockResolvedValue(null);
+  mocks.productBatchGetItems.mockResolvedValue([]);
 });
 
 describe("save-task runProof trust boundary", () => {
@@ -374,6 +521,82 @@ describe("save-task runProof trust boundary", () => {
       commercialDecision: "not_evaluated",
       profitScenario: null,
     });
+  });
+
+  it("saves a ProductBatch research Task with immutable Candidate and batch bindings", async () => {
+    const candidate = productBatchCandidate();
+    const source = productBatchSourceRecords(candidate);
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+    mocks.productBatchGetBatch.mockResolvedValue(source.batch);
+    mocks.productBatchGetItems.mockResolvedValue([source.item]);
+    mocks.txCandidateFindUnique.mockResolvedValue(candidate);
+    mocks.txTaskCreate.mockResolvedValue({
+      id: "task-product-batch-a",
+      title: "Closet organizer 一键分析",
+    });
+
+    const result = await responseJson(await POST(createRequest(signedBody({
+      candidateId: candidate.id,
+      candidate,
+      productBatchResearchMode: true,
+    })) as never));
+
+    expect(result.status).toBe(200);
+    const taskData = mocks.txTaskCreate.mock.calls[0][0].data;
+    const stored = JSON.parse(taskData.resultJson);
+    expect(stored).toMatchObject({
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      candidateToTask: { candidateId: candidate.id },
+      productBatchBinding: {
+        version: "product-batch-task-binding.v1",
+        candidateId: candidate.id,
+        productBatchId: "batch-a",
+        productBatchItemId: "item-a",
+        manifestHash: "a".repeat(64),
+        snapshotHash: "b".repeat(64),
+        itemIdentityHash: "c".repeat(64),
+        itemHash: "d".repeat(64),
+        evidenceHash: "e".repeat(64),
+        researchMode: "market_research_only",
+        promotionEligible: false,
+        sellerSpriteDisclaimerVersion: "v1",
+        imageSnapshot: { status: "not_cached" },
+      },
+      sourceMeta: {
+        originKind: "seller_sprite_product_batch",
+        productBatchSnapshot: {
+          productBatchId: "batch-a",
+          productBatchItemId: "item-a",
+        },
+      },
+    });
+    expect(mocks.txCandidateUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: candidate.id,
+        convertedTaskId: null,
+      }),
+      data: expect.objectContaining({ convertedTaskId: "task-product-batch-a" }),
+    }));
+  });
+
+  it("rejects a ProductBatch result that attaches a forged R2.2 commercial snapshot", async () => {
+    const candidate = productBatchCandidate();
+    const source = productBatchSourceRecords(candidate);
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+    mocks.productBatchGetBatch.mockResolvedValue(source.batch);
+    mocks.productBatchGetItems.mockResolvedValue([source.item]);
+
+    const result = await responseJson(await POST(createRequest(signedBody({
+      candidateId: candidate.id,
+      candidate,
+      productBatchResearchMode: true,
+      attachForbiddenR22: true,
+    })) as never));
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("candidate_product_batch_research_snapshot_invalid");
+    expect(mocks.ownerTransaction).not.toHaveBeenCalled();
   });
 
   it("rejects an R2.2 save when its signed workflow omits the commercial run snapshot", async () => {

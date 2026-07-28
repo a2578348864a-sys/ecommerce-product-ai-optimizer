@@ -5,6 +5,7 @@ import {
   buildAuthoritativeProductImageSnapshot,
   mergeCandidateProductImageSnapshot,
   parseProductImageSnapshot,
+  readCandidateProductImageSnapshot,
   resolveResearchTaskProductImage,
 } from "@/lib/productResearchImage";
 
@@ -98,6 +99,35 @@ describe("authoritative product research image contract", () => {
     });
     expect(() => mergeCandidateProductImageSnapshot(filled.sourceMetaJson, conflicting))
       .toThrow(ProductResearchImageConflictError);
+  });
+
+  it("reads a hash-verified cached image from a ProductBatch Candidate snapshot", () => {
+    const contentHash = createHash("sha256").update(PNG_BYTES).digest("hex");
+    const image = readCandidateProductImageSnapshot(JSON.stringify({
+      version: "product-batch-candidate-source.v1",
+      originKind: "seller_sprite_product_batch",
+      productKey: PRODUCT_KEY,
+      itemIdentityHash: IDENTITY_HASH,
+      capturedAt: CAPTURED_AT,
+      imageSnapshot: {
+        status: "cached",
+        mimeType: "image/png",
+        sizeBytes: PNG_BYTES.length,
+        sha256: contentHash,
+        base64: PNG_BYTES.toString("base64"),
+      },
+    }));
+
+    expect(image).toMatchObject({
+      version: "product-batch-product-image.v1",
+      source: "sellersprite_product_batch",
+      productKey: PRODUCT_KEY,
+      candidateIdentityHash: IDENTITY_HASH,
+      bytes: PNG_BYTES.length,
+      contentHash,
+    });
+    expect(image?.dataUrl).toBe(PNG_DATA_URL);
+    expect(parseProductImageSnapshot(image)).toEqual(image);
   });
 });
 

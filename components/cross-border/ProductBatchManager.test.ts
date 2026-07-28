@@ -66,21 +66,34 @@ const item: ProductBatchItemView = {
   createdAt: "2026-07-28T00:00:00.000Z",
 };
 
-function render(accessMode: "owner" | "visitor") {
+function render(
+  accessMode: "owner" | "visitor",
+  overrides: {
+    selectedBatch?: ProductBatchView;
+    selection?: {
+      activeProductBatchId: string | null;
+      activeLegacyRegistrationId: string | null;
+      updatedAt: string;
+    };
+    selectedItem?: ProductBatchItemView;
+  } = {},
+) {
+  const selectedBatch = overrides.selectedBatch ?? batch;
   return renderToStaticMarkup(createElement(ProductBatchManagerView, {
     state: "ready",
     accessMode,
     remainingAiCalls: accessMode === "visitor" ? 5 : null,
     batches: [batch],
-    selection: {
+    selection: overrides.selection ?? {
       activeProductBatchId: batch.id,
       activeLegacyRegistrationId: null,
       updatedAt: batch.updatedAt,
     },
     legacyRegistrationId: "production-registration-20260717-01",
-    selectedBatch: batch,
-    selectedItems: [item],
+    selectedBatch,
+    selectedItems: [overrides.selectedItem ?? item],
     busy: false,
+    onResearchItem: () => undefined,
   }));
 }
 
@@ -111,12 +124,37 @@ describe("ProductBatch unified role UI", () => {
     expect(owner).not.toContain("独立访客沙盒");
   });
 
-  it("keeps new ProductBatch items disconnected from Candidate", () => {
+  it("offers the same single primary research action for eligible Owner and Visitor items", () => {
+    const owner = render("owner");
     const html = render("visitor");
     expect(html).toContain("Closet organizer");
-    expect(html).toContain("商品研究接线将在下一阶段开放");
-    expect(html).not.toContain("研究此商品");
+    expect(html).toContain("研究此商品");
+    expect(owner).toContain("研究此商品");
+    expect(html.match(/研究此商品/g)).toHaveLength(1);
     expect(html).not.toContain("/agent/run");
+  });
+
+  it("disables research when the batch is not active, passing, or source-safe", () => {
+    const inactive = render("owner", {
+      selection: {
+        activeProductBatchId: "batch-other",
+        activeLegacyRegistrationId: null,
+        updatedAt: batch.updatedAt,
+      },
+    });
+    const blockedQuality = render("owner", {
+      selectedBatch: { ...batch, dataQualityStatus: "blocked" },
+    });
+    const forgedPromotion = render("owner", {
+      selectedItem: { ...item, promotionEligible: true },
+    });
+
+    expect(inactive).toContain("请先把该批次设置为当前批次");
+    expect(blockedQuality).toContain("批次数据质量尚未通过");
+    expect(forgedPromotion).toContain("商品来源状态异常");
+    expect(inactive).toMatch(/<button[^>]*disabled[^>]*>研究此商品<\/button>/);
+    expect(blockedQuality).toMatch(/<button[^>]*disabled[^>]*>研究此商品<\/button>/);
+    expect(forgedPromotion).toMatch(/<button[^>]*disabled[^>]*>研究此商品<\/button>/);
   });
 
   it("does not expose private batch data in the unauthenticated state", () => {
@@ -130,6 +168,7 @@ describe("ProductBatch unified role UI", () => {
       selectedBatch: null,
       selectedItems: [],
       busy: false,
+      onResearchItem: () => undefined,
     }));
     expect(html).toContain("登录后管理商品批次");
     expect(html).not.toContain("batch-a");

@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   runListingStep: vi.fn(),
   reserveDemoAiCalls: vi.fn(),
   settleDemoAiCalls: vi.fn(),
+  productBatchGetBatch: vi.fn(),
+  productBatchGetItems: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
@@ -45,6 +47,13 @@ vi.mock("@/lib/workflows/productAnalysis", () => ({
   runRiskStep: mocks.runRiskStep,
   runSummaryStep: mocks.runSummaryStep,
   runListingStep: mocks.runListingStep,
+}));
+
+vi.mock("@/lib/server/productBatchStoreResolver", () => ({
+  getProductBatchStore: () => ({
+    getBatch: mocks.productBatchGetBatch,
+    getBatchItems: mocks.productBatchGetItems,
+  }),
 }));
 
 import { POST } from "./route";
@@ -136,6 +145,132 @@ function signedCandidate() {
   };
 }
 
+function productBatchCandidate() {
+  const source = {
+    version: "product-batch-candidate-source.v1",
+    originKind: "seller_sprite_product_batch",
+    productBatchId: "batch-a",
+    productBatchItemId: "item-a",
+    serverIdentityScope: "owner:v1",
+    productKey: "amazon:US:B000000001",
+    productName: "Closet organizer",
+    marketplace: "US",
+    asin: "B000000001",
+    parentAsin: null,
+    reportType: "search_results",
+    query: "organizer",
+    category: "Home",
+    manifestHash: "a".repeat(64),
+    snapshotHash: "b".repeat(64),
+    itemIdentityHash: "c".repeat(64),
+    itemHash: "d".repeat(64),
+    evidenceHash: "e".repeat(64),
+    researchPriority: "priority_1",
+    provisionalDisposition: "provisional_score_only",
+    evidenceStatus: "sufficient_for_comparison",
+    promotionEligible: false,
+    sellerSpriteDisclaimerVersion: "v1",
+    imageSnapshot: { status: "not_cached" },
+    productFacts: {
+      productTitle: "Closet organizer",
+      price: 29.99,
+      rating: 4.5,
+      reviews: 120,
+    },
+    capturedAt: "2026-07-28T00:00:00.000Z",
+  } as const;
+  return {
+    id: "candidate-product-batch-a",
+    name: source.productName,
+    rawInput: source.productName,
+    link: null,
+    score: 0,
+    source: "SellerSprite ProductBatch",
+    keyword: "organizer",
+    riskLevel: "unknown",
+    riskLabel: "需人工核验",
+    summaryLabel: "SellerSprite市场研究候选",
+    status: "worth_analyzing",
+    sourceMetaJson: JSON.stringify(source),
+    analysisJson: JSON.stringify({
+      version: "product_batch_research_entry.v1",
+      originKind: "seller_sprite_product_batch",
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      evidenceHash: source.evidenceHash,
+      itemHash: source.itemHash,
+    }),
+    convertedTaskId: null,
+    originProductBatchItemId: source.productBatchItemId,
+    sourceSnapshot: source,
+  };
+}
+
+function productBatchSourceRecords() {
+  const candidate = productBatchCandidate();
+  return {
+    batch: {
+      id: "batch-a",
+      batchName: "Home organizer",
+      marketplace: "US",
+      currency: "USD",
+      reportType: "search_results",
+      query: "organizer",
+      category: "Home",
+      priceMinCents: 1_000,
+      priceMaxCents: 4_000,
+      briefHash: "f".repeat(64),
+      sourceFileName: "input.xlsx",
+      sourceFileSha256: "1".repeat(64),
+      normalizedBusinessHash: "2".repeat(64),
+      snapshotHash: candidate.sourceSnapshot.snapshotHash,
+      manifestHash: candidate.sourceSnapshot.manifestHash,
+      itemCount: 1,
+      acceptedCount: 1,
+      quarantinedCount: 0,
+      dataQualityStatus: "passed",
+      batchStatus: "ready",
+      sellerSpriteDisclaimerVersion: "v1",
+      normalizedSnapshotJson: "{}",
+      manifestJson: "{}",
+      qualitySummaryJson: "{}",
+      errorJson: null,
+      dedupeKey: "3".repeat(64),
+      importedAt: candidate.sourceSnapshot.capturedAt,
+      createdAt: candidate.sourceSnapshot.capturedAt,
+      updatedAt: candidate.sourceSnapshot.capturedAt,
+    },
+    item: {
+      id: "item-a",
+      batchId: "batch-a",
+      productKey: candidate.sourceSnapshot.productKey,
+      ordinal: 0,
+      asin: candidate.sourceSnapshot.asin,
+      parentAsin: null,
+      itemIdentityHash: candidate.sourceSnapshot.itemIdentityHash,
+      itemHash: candidate.sourceSnapshot.itemHash,
+      evidenceHash: candidate.sourceSnapshot.evidenceHash,
+      normalizedProductJson: JSON.stringify({
+        providerMetrics: {
+          productTitle: { status: "resolved", normalized: "Closet organizer" },
+          price: { status: "resolved", normalized: 29.99 },
+          rating: { status: "resolved", normalized: 4.5 },
+          reviews: { status: "resolved", normalized: 120 },
+        },
+      }),
+      occurrenceProjectionJson: "{}",
+      familyProjectionJson: "{}",
+      rankingJson: "{}",
+      provisionalDisposition: "provisional_score_only",
+      researchPriority: "priority_1",
+      evidenceStatus: "sufficient_for_comparison",
+      promotionEligible: false,
+      imageSnapshotJson: '{"status":"not_cached"}',
+      createdAt: candidate.sourceSnapshot.capturedAt,
+    },
+  };
+}
+
 function successfulStep(data: Record<string, unknown>) {
   return { data, status: "completed", warnings: [], providerCallStarted: false };
 }
@@ -164,6 +299,8 @@ beforeEach(() => {
     sourceMetaJson: "{}",
     analysisJson: "{}",
   });
+  mocks.productBatchGetBatch.mockResolvedValue(null);
+  mocks.productBatchGetItems.mockResolvedValue([]);
   mocks.runSourcingStep.mockResolvedValue(successfulStep({
     feasibility: "medium",
     summary: "待人工复核",
@@ -422,6 +559,57 @@ describe("product-analysis trusted run creation", () => {
       commercialDecision: "not_evaluated",
       profitScenario: null,
     });
+  });
+
+  it("runs ProductBatch Candidate as market_research_only without an R2.2 snapshot", async () => {
+    const candidate = productBatchCandidate();
+    const sourceRecords = productBatchSourceRecords();
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+    mocks.productBatchGetBatch.mockResolvedValue(sourceRecords.batch);
+    mocks.productBatchGetItems.mockResolvedValue([sourceRecords.item]);
+
+    const result = await readJson(await POST(createRequest({
+      productName: "client-forged title",
+      source: "opportunity",
+      candidateId: candidate.id,
+      options: oneAiStepOptions(),
+    }) as never));
+
+    expect(result.status).toBe(200);
+    expect(result.body.productName).toBe("Closet organizer");
+    expect(result.body.researchMode).toBe("market_research_only");
+    expect(result.body.promotionEligible).toBe(false);
+    expect(result.body.r22CommercialValidation).toBeUndefined();
+    expect(result.body.finalReport).toMatchObject({
+      finalVerdict: "仅供市场研究，等待人工核验",
+      beginnerFit: "尚未形成商业判断",
+      canTestSmallBatch: false,
+    });
+    expect(JSON.stringify(result.body.finalReport)).not.toMatch(/适合新手|小单测试|联系.*供应商/);
+    expect(mocks.runSourcingStep.mock.calls[0][1]).toContain("SellerSprite ProductBatch");
+    expect(mocks.runSourcingStep.mock.calls[0][1]).toContain("不得声称已晋级");
+  });
+
+  it("fails closed when current ProductBatch evidence no longer matches Candidate hashes", async () => {
+    const candidate = productBatchCandidate();
+    const sourceRecords = productBatchSourceRecords();
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+    mocks.productBatchGetBatch.mockResolvedValue(sourceRecords.batch);
+    mocks.productBatchGetItems.mockResolvedValue([{
+      ...sourceRecords.item,
+      evidenceHash: "9".repeat(64),
+    }]);
+
+    const result = await readJson(await POST(createRequest({
+      source: "opportunity",
+      candidateId: candidate.id,
+      options: oneAiStepOptions(),
+    }) as never));
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("candidate_product_batch_research_blocked");
+    expect(result.body.error.reasons).toEqual(["product_batch_source_changed"]);
+    expect(mocks.runSourcingStep).not.toHaveBeenCalled();
   });
 
   it("fails closed when analysisJson contains a malformed R2.2 snapshot", async () => {

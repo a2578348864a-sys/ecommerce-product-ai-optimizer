@@ -20,7 +20,6 @@ import {
 import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
 import {
   buildR22PendingCommercialRunSnapshot,
-  evaluateR22StoredCandidateStage2Gate,
   type R22CommercialRunSnapshot,
 } from "@/lib/r22CommercialValidation";
 import {
@@ -35,6 +34,9 @@ import {
   normalizeWorkflowRunInput,
   type WorkflowRunInput,
 } from "@/lib/server/workflowRunProof";
+import {
+  evaluateCandidateResearchEligibility,
+} from "@/lib/server/candidateResearchEligibility";
 import {
   runSourcingStep,
   runRiskStep,
@@ -99,6 +101,8 @@ type WorkflowResult = {
   };
   warnings: string[];
   r22CommercialValidation?: R22CommercialRunSnapshot;
+  researchMode?: "market_research_only";
+  promotionEligible?: false;
 };
 
 /* ── Helpers ───────────────────────────────────── */
@@ -133,6 +137,7 @@ function buildFinalReport(
   sourcing: SourcingStepOutput | null,
   risk: RiskStepOutput | null,
   summary: SummaryStepOutput | null,
+  options: { researchOnly?: boolean } = {},
 ): FinalReport {
   const finalVerdict = summary?.verdict || "可做但需控制成本";
   const riskLevel: "green" | "yellow" | "red" = risk?.overallLevel || "yellow";
@@ -176,6 +181,25 @@ function buildFinalReport(
     "供应商资质、MOQ、样品质量和交期是否已核实",
     "AI 结论仅作辅助参考，不作为最终采购或经营决策依据",
   ];
+
+  if (options.researchOnly) {
+    return {
+      finalVerdict: "仅供市场研究，等待人工核验",
+      riskLevel,
+      beginnerFit: "尚未形成商业判断",
+      canTestSmallBatch: false,
+      mustCheckBeforeListing: [
+        "不得把本次 ProductBatch 研究视为商业晋级、采购或上架依据",
+        ...mustCheckBeforeListing,
+      ],
+      nextSteps: [
+        "核对 SellerSprite 第三方估算口径、缺失字段和冲突信号",
+        "补充公开市场、供应链与合规证据后由人工决定是否继续",
+        "在研究历史中保存本次证据与人工确认记录",
+      ],
+      manualReviewChecklist,
+    };
+  }
 
   return { finalVerdict, riskLevel, beginnerFit, canTestSmallBatch, mustCheckBeforeListing, nextSteps, manualReviewChecklist };
 }
@@ -227,6 +251,7 @@ export async function POST(request: NextRequest) {
   let productName = clientProductName;
   let candidateForAnalysis: AuthoritativeCandidate | null = null;
   let r22MarketDecision: R22MarketDecisionSnapshot | null = null;
+  let productBatchResearchMode = false;
   if (candidateId) {
     const candidate = await getAuthoritativeCandidate(accessCtx, candidateId);
     if (!candidate) {
@@ -249,24 +274,29 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-    const r22Stage2Gate = evaluateR22StoredCandidateStage2Gate({
-      candidateId: candidate.id,
-      analysisJson: candidate.analysisJson,
-    });
-    if (!r22Stage2Gate.allowed) {
+    const researchEligibility = await evaluateCandidateResearchEligibility(accessCtx, candidate);
+    if (!researchEligibility.allowed) {
+      const productBatch = researchEligibility.originKind === "seller_sprite_product_batch";
       return NextResponse.json(
         {
           ok: false,
           error: {
-            code: "candidate_r22_stage2_blocked",
-            message: "该候选未通过 R2.2 市场晋级门禁，不能进入商业深挖。",
-            reasons: r22Stage2Gate.reasons,
+            code: productBatch
+              ? "candidate_product_batch_research_blocked"
+              : "candidate_r22_stage2_blocked",
+            message: productBatch
+              ? "该 ProductBatch Candidate 的来源或状态已变化，不能进入商品研究。"
+              : "该候选未通过 R2.2 市场晋级门禁，不能进入商业深挖。",
+            reasons: researchEligibility.reasons,
           },
         },
         { status: 409 },
       );
     }
-    r22MarketDecision = parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
+    productBatchResearchMode = researchEligibility.originKind === "seller_sprite_product_batch";
+    r22MarketDecision = productBatchResearchMode
+      ? null
+      : parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
     productName = candidate.name.trim().slice(0, MAX_PRODUCT_NAME_LENGTH);
     candidateForAnalysis = candidate;
   }
@@ -471,7 +501,9 @@ export async function POST(request: NextRequest) {
 
   // Step 5: Final Report
   const reportStartedAt = new Date().toISOString();
-  const finalReport = buildFinalReport(sourcingResult, riskResult, summaryResult);
+  const finalReport = buildFinalReport(sourcingResult, riskResult, summaryResult, {
+    researchOnly: productBatchResearchMode,
+  });
   steps.push(stepResult("report", "生成最终报告", "completed", `最终结论：${finalReport.finalVerdict}，风险等级：${finalReport.riskLevel}`, [], reportStartedAt, new Date().toISOString()));
 
   // Overall status
@@ -500,6 +532,10 @@ export async function POST(request: NextRequest) {
     costGuard: { aiStepsRequested, aiStepsCompleted, fallbackSteps },
     warnings,
     ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
+    ...(productBatchResearchMode ? {
+      researchMode: "market_research_only" as const,
+      promotionEligible: false as const,
+    } : {}),
     // Demo-Login.1-E: include latest demo snapshot for Banner update
     ...(demoScreen ? { demoAccess: demoScreen } : {}),
   };

@@ -29,6 +29,9 @@ const fileSystem = vi.hoisted(() => {
     unlinkSync: vi.fn((path: string) => {
       files.delete(String(path));
     }),
+    openSync: vi.fn((path: string) => String(path)),
+    closeSync: vi.fn(),
+    fsyncSync: vi.fn(),
   };
 });
 
@@ -39,6 +42,9 @@ vi.mock("fs", () => ({
   mkdirSync: fileSystem.mkdirSync,
   renameSync: fileSystem.renameSync,
   unlinkSync: fileSystem.unlinkSync,
+  openSync: fileSystem.openSync,
+  closeSync: fileSystem.closeSync,
+  fsyncSync: fileSystem.fsyncSync,
 }));
 
 import {

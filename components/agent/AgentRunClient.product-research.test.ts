@@ -89,4 +89,43 @@ describe("商品研究三阶段主视图", () => {
       listing: "completed",
     });
   });
+
+  it("清楚展示 ProductBatch 的研究来源且不宣称商业晋级", () => {
+    const html = renderToStaticMarkup(
+      createElement(AgentRunClient, {
+        initialProductName: "Closet organizer",
+        initialSourceMeta: {
+          source: "opportunity",
+          opportunityTitle: "Closet organizer",
+          opportunitySource: "SellerSprite ProductBatch",
+          candidateId: "candidate-product-batch-a",
+          originKind: "seller_sprite_product_batch",
+          productBatchId: "batch-a",
+          productBatchItemId: "item-a",
+          marketplace: "US",
+          asin: "B000000001",
+          reportType: "search_results",
+          query: "organizer",
+          category: "Home",
+          researchPriority: "priority_1",
+          evidenceStatus: "sufficient_for_comparison",
+          evidenceHash: "a".repeat(64),
+          sellerSpriteDisclaimerVersion: "sellersprite-v1-frozen.2026-07-27",
+          researchMode: "market_research_only",
+          promotionEligible: false,
+          importedAt: "2026-07-28T00:00:00.000Z",
+        },
+      }),
+    );
+
+    expect(html).toContain("SellerSprite ProductBatch");
+    expect(html).toContain("batch-a");
+    expect(html).toContain("B000000001");
+    expect(html).toContain("organizer");
+    expect(html).toContain("priority_1");
+    expect(html).toContain("sufficient_for_comparison");
+    expect(html).toContain("仅用于市场研究");
+    expect(html).not.toContain("已晋级");
+    expect(html).not.toContain("通过 R2.2");
+  });
 });

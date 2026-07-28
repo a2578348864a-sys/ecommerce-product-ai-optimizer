@@ -26,6 +26,7 @@ type AgentRunSearchParams = {
   analyzedName?: string | string[];
   evidence?: string | string[];
   r22Market?: string | string[];
+  sourceMeta?: string | string[];
 };
 
 function firstParam(value: string | string[] | undefined) {
@@ -38,6 +39,94 @@ function safeDecode(value: string | undefined) {
     return decodeURIComponent(value);
   } catch {
     return value;
+  }
+}
+
+function parseProductBatchSourceMeta(
+  raw: string | undefined,
+  candidateId: string | undefined,
+): AgentRunSourceMeta | null {
+  if (!raw || !candidateId) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const meta = parsed as Record<string, unknown>;
+  const text = (value: unknown, max: number) => (
+    typeof value === "string" && value.trim() && value.length <= max
+      ? value.trim()
+      : null
+  );
+  const productName = text(meta.productName, 240);
+  const productBatchId = text(meta.productBatchId, 128);
+  const productBatchItemId = text(meta.productBatchItemId, 128);
+  const marketplace = text(meta.marketplace, 32);
+  const reportType = meta.reportType === "search_results" || meta.reportType === "category_current"
+    ? meta.reportType
+    : null;
+  const researchPriority = text(meta.researchPriority, 80);
+  const evidenceStatus = text(meta.evidenceStatus, 100);
+  const evidenceHash = text(meta.evidenceHash, 64);
+  const disclaimer = text(meta.sellerSpriteDisclaimerVersion, 128);
+  const capturedAt = text(meta.capturedAt, 40);
+  if (meta.version !== "product-batch-agent-run-source.v1"
+    || meta.originKind !== "seller_sprite_product_batch"
+    || meta.researchMode !== "market_research_only"
+    || meta.promotionEligible !== false
+    || !productName || !productBatchId || !productBatchItemId || !marketplace
+    || !reportType || !researchPriority || !evidenceStatus
+    || !evidenceHash || !/^[a-f0-9]{64}$/.test(evidenceHash)
+    || !disclaimer || !capturedAt || Number.isNaN(Date.parse(capturedAt))) {
+    return null;
+  }
+  const nullableText = (value: unknown, max: number): string | null | undefined => {
+    if (value === null) return null;
+    return text(value, max) ?? undefined;
+  };
+  const asin = nullableText(meta.asin, 32);
+  const query = nullableText(meta.query, 240);
+  const category = nullableText(meta.category, 240);
+  if (asin === undefined || query === undefined || category === undefined) return null;
+  return {
+    source: "opportunity",
+    opportunityTitle: productName,
+    opportunitySource: "SellerSprite ProductBatch",
+    candidateId,
+    sourceTitle: productName,
+    originalName: productName,
+    analyzedName: productName,
+    originKind: "seller_sprite_product_batch",
+    productBatchId,
+    productBatchItemId,
+    marketplace,
+    asin,
+    reportType,
+    query,
+    category,
+    researchPriority,
+    evidenceStatus,
+    evidenceHash,
+    sellerSpriteDisclaimerVersion: disclaimer,
+    researchMode: "market_research_only",
+    promotionEligible: false,
+    importedAt: capturedAt,
+  };
+}
+
+function productNameFromProductBatchMeta(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+    const productName = (parsed as { productName?: unknown }).productName;
+    return typeof productName === "string" && productName.trim()
+      ? productName.trim().slice(0, 240)
+      : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -56,6 +145,10 @@ function sourceMetaFromParams(params: AgentRunSearchParams, productName?: string
   const candidateType = safeDecode(firstParam(params.candidateType));
   const sourceUrl = safeDecode(firstParam(params.sourceUrl));
   const candidateId = safeDecode(firstParam(params.candidateId));
+  const productBatchMeta = parseProductBatchSourceMeta(firstParam(params.sourceMeta), candidateId);
+  if (productBatchMeta && productBatchMeta.opportunityTitle === productName) {
+    return productBatchMeta;
+  }
   const from = safeDecode(firstParam(params.from));
   const entry = safeDecode(firstParam(params.entry));
   const originalName = safeDecode(firstParam(params.originalName));
@@ -97,7 +190,9 @@ export default async function AgentRunPage({
   searchParams: Promise<AgentRunSearchParams>;
 }) {
   const params = await searchParams;
-  const initialProductName = safeDecode(firstParam(params.productName)) || safeDecode(firstParam(params.product));
+  const initialProductName = safeDecode(firstParam(params.productName))
+    || safeDecode(firstParam(params.product))
+    || productNameFromProductBatchMeta(firstParam(params.sourceMeta));
   const initialSourceMeta = sourceMetaFromParams(params, initialProductName);
 
   return (

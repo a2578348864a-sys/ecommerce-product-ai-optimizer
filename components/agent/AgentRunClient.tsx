@@ -114,6 +114,20 @@ export type AgentRunSourceMeta = {
   analyzedName?: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot;
   r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot;
+  originKind?: "legacy_market_screening" | "seller_sprite_product_batch";
+  productBatchId?: string;
+  productBatchItemId?: string;
+  marketplace?: string;
+  asin?: string | null;
+  reportType?: "search_results" | "category_current";
+  query?: string | null;
+  category?: string | null;
+  researchPriority?: string;
+  evidenceStatus?: string;
+  evidenceHash?: string;
+  sellerSpriteDisclaimerVersion?: string;
+  researchMode?: "market_research_only";
+  promotionEligible?: false;
   importedAt: string;
 };
 
@@ -889,11 +903,38 @@ export function AgentRunClient({
             ) : null}
             {sourceMeta ? (
               <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-sm leading-6 text-indigo-800">
-                <p className="font-semibold">已带入发现商品上下文</p>
-                <p className="mt-1">
-                  来自发现商品：{sourceMeta.sourceTitle || sourceMeta.opportunityTitle}
-                  {sourceMeta.candidateId ? ` · 候选 ID：${sourceMeta.candidateId}` : ""}
+                <p className="font-semibold">
+                  {sourceMeta.originKind === "seller_sprite_product_batch"
+                    ? "SellerSprite ProductBatch 研究上下文"
+                    : "已带入发现商品上下文"}
                 </p>
+                {sourceMeta.originKind === "seller_sprite_product_batch" ? (
+                  <>
+                    <p className="mt-1">
+                      批次：{sourceMeta.productBatchId} · 商品：{sourceMeta.asin || sourceMeta.productBatchItemId}
+                      {sourceMeta.candidateId ? ` · Candidate ID：${sourceMeta.candidateId}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      市场：{sourceMeta.marketplace || "未提供"} · 报表：{sourceMeta.reportType || "未提供"}
+                      {sourceMeta.query ? ` · 查询：${sourceMeta.query}` : ""}
+                      {sourceMeta.category ? ` · 类目：${sourceMeta.category}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      研究优先级：{sourceMeta.researchPriority || "未提供"} · 证据状态：{sourceMeta.evidenceStatus || "未提供"}
+                    </p>
+                    <p className="mt-1 text-xs">
+                      SellerSprite 口径：{sourceMeta.sellerSpriteDisclaimerVersion || "未提供"}
+                    </p>
+                    <p className="mt-2 rounded-lg border border-indigo-200 bg-white/70 px-2 py-1.5 text-xs font-semibold">
+                      仅用于市场研究；promotionEligible=false，不代表商业晋级或自动选品结论。
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1">
+                    来自发现商品：{sourceMeta.sourceTitle || sourceMeta.opportunityTitle}
+                    {sourceMeta.candidateId ? ` · 候选 ID：${sourceMeta.candidateId}` : ""}
+                  </p>
+                )}
                 {sourceMeta.originalName || sourceMeta.analyzedName ? (
                   <p className="mt-1 text-xs">
                     原始名称：{sourceMeta.originalName || "未提供"} · 分析名称：{sourceMeta.analyzedName || productName}

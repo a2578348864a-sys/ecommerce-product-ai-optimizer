@@ -8,7 +8,17 @@
  */
 
 import "server-only";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { randomBytes } from "crypto";
 import { resolve } from "path";
 import {
@@ -16,8 +26,9 @@ import {
   getCandidateSourceIntegrity,
 } from "@/lib/candidateSourceIntegrity";
 import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
-import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
-import { evaluateR22StoredCandidateStage2Gate } from "@/lib/r22CommercialValidation";
+import {
+  evaluateStoredCandidateResearchEligibility,
+} from "@/lib/server/candidateResearchEligibility";
 import {
   buildCandidateAnalysisContext,
   createCandidateAnalysisBindingHash,
@@ -28,6 +39,10 @@ import {
   parseStoredCandidateSourceMeta,
   type CandidateSaveItem,
 } from "@/lib/server/candidateSourceSave";
+import {
+  parseProductBatchCandidateAnalysis,
+  parseProductBatchCandidateSource,
+} from "@/lib/server/productBatchCandidateSource";
 
 // ── Types ───────────────────────────────────────
 
@@ -67,6 +82,7 @@ export interface SandboxCandidate {
   analysisJson: string;
   createdAt: string;
   convertedTaskId?: string | null;
+  originProductBatchItemId?: string | null;
   lastActionAt?: string | null;
 }
 
@@ -107,7 +123,8 @@ export type SandboxCandidateTaskLinkErrorCode =
   | "candidate_already_converted"
   | "candidate_changed_since_analysis"
   | "candidate_context_changed_since_analysis"
-  | "candidate_r22_stage2_blocked";
+  | "candidate_r22_stage2_blocked"
+  | "candidate_product_batch_research_blocked";
 
 export type SandboxCandidateDeleteResult = "deleted" | "not_found" | "linked_task";
 
@@ -118,6 +135,18 @@ export class SandboxCandidateTaskLinkError extends Error {
   ) {
     super(message);
     this.name = "SandboxCandidateTaskLinkError";
+  }
+}
+
+export class SandboxProductBatchCandidateError extends Error {
+  constructor(
+    public readonly code:
+      | "product_batch_candidate_input_invalid"
+      | "product_batch_candidate_source_conflict",
+    message: string,
+  ) {
+    super(message);
+    this.name = "SandboxProductBatchCandidateError";
   }
 }
 
@@ -147,6 +176,28 @@ function recoverDemoSandboxBackup(storePath: string): void {
     return;
   }
   if (existsSync(backupPath)) renameSync(backupPath, storePath);
+}
+
+const sandboxSubjectLocks = new Map<string, Promise<void>>();
+
+async function withSandboxSubjectLock<T>(
+  demoAccessId: string,
+  action: () => T | Promise<T>,
+): Promise<T> {
+  const key = `${getStorePath().toLowerCase()}::${demoAccessId}`;
+  const previous = sandboxSubjectLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolveLock) => {
+    release = resolveLock;
+  });
+  sandboxSubjectLocks.set(key, current);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (sandboxSubjectLocks.get(key) === current) sandboxSubjectLocks.delete(key);
+  }
 }
 
 // ── Store I/O ───────────────────────────────────
@@ -191,10 +242,15 @@ export function saveDemoSandboxStore(store: DemoSandboxStore): void {
   ensureDir();
   const storePath = getStorePath();
   const backupPath = `${storePath}.backup`;
-  const tempPath = `${storePath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  const tempPath = `${storePath}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
   recoverDemoSandboxBackup(storePath);
+  let descriptor: number | null = null;
   try {
-    writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf-8");
+    descriptor = openSync(tempPath, "wx", 0o600);
+    writeFileSync(descriptor, `${JSON.stringify(store, null, 2)}\n`, "utf-8");
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = null;
     try {
       renameSync(tempPath, storePath);
     } catch (error) {
@@ -220,6 +276,7 @@ export function saveDemoSandboxStore(store: DemoSandboxStore): void {
       if (originalMoved && existsSync(backupPath)) unlinkSync(backupPath);
     }
   } finally {
+    if (descriptor !== null) closeSync(descriptor);
     if (existsSync(tempPath)) unlinkSync(tempPath);
   }
 }
@@ -278,7 +335,7 @@ export function createSandboxTask(
   return task;
 }
 
-export function createSandboxTaskAndLinkCandidate(
+function createSandboxTaskAndLinkCandidateUnlocked(
   demoAccessId: string,
   candidateId: string,
   input: CreateSandboxTaskInput,
@@ -305,20 +362,18 @@ export function createSandboxTaskAndLinkCandidate(
       "该候选已经转为任务，不能重复创建。",
     );
   }
-  if (!isCandidateReadyForAgent(candidate.status)) {
+  const researchEligibility = evaluateStoredCandidateResearchEligibility(candidate);
+  if (!researchEligibility.allowed) {
+    const productBatch = researchEligibility.originKind === "seller_sprite_product_batch";
     throw new SandboxCandidateTaskLinkError(
-      "candidate_not_ready_for_conversion",
-      "候选状态已变化，当前不能创建任务。",
-    );
-  }
-  const r22Stage2Gate = evaluateR22StoredCandidateStage2Gate({
-    candidateId: candidate.id,
-    analysisJson: candidate.analysisJson,
-  });
-  if (!r22Stage2Gate.allowed) {
-    throw new SandboxCandidateTaskLinkError(
-      "candidate_r22_stage2_blocked",
-      "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
+      productBatch
+        ? "candidate_product_batch_research_blocked"
+        : researchEligibility.reasons.includes("candidate_not_ready")
+          ? "candidate_not_ready_for_conversion"
+          : "candidate_r22_stage2_blocked",
+      productBatch
+        ? "ProductBatch Candidate 来源或状态已变化，当前不能创建研究任务。"
+        : "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
     );
   }
   if (normalizeCandidateIdentity(candidate.name) !== normalizeCandidateIdentity(guard.expectedProductName)) {
@@ -352,6 +407,32 @@ export function createSandboxTaskAndLinkCandidate(
 
   saveDemoSandboxStore(nextStore);
   return task;
+}
+
+export function createSandboxTaskAndLinkCandidate(
+  demoAccessId: string,
+  candidateId: string,
+  input: CreateSandboxTaskInput,
+  guard: {
+    expectedProductName: string;
+    expectedContextHash: string;
+  },
+): SandboxTask {
+  return createSandboxTaskAndLinkCandidateUnlocked(demoAccessId, candidateId, input, guard);
+}
+
+export function createSandboxTaskAndLinkCandidateAtomic(
+  demoAccessId: string,
+  candidateId: string,
+  input: CreateSandboxTaskInput,
+  guard: {
+    expectedProductName: string;
+    expectedContextHash: string;
+  },
+): Promise<SandboxTask> {
+  return withSandboxSubjectLock(demoAccessId, () => (
+    createSandboxTaskAndLinkCandidateUnlocked(demoAccessId, candidateId, input, guard)
+  ));
 }
 
 export function listSandboxTasks(demoAccessId: string): SandboxTask[] {
@@ -493,6 +574,7 @@ export interface CreateSandboxCandidateInput {
   status?: string;
   sourceMetaJson?: string;
   analysisJson?: string;
+  originProductBatchItemId?: string | null;
 }
 
 export interface SandboxCandidatePatch {
@@ -554,12 +636,115 @@ export function createSandboxCandidate(
     analysisJson: input.analysisJson || "{}",
     createdAt: now,
     convertedTaskId: null,
+    originProductBatchItemId: input.originProductBatchItemId ?? null,
     lastActionAt: null,
   };
 
   store.candidates.push(candidate);
   saveDemoSandboxStore(store);
   return candidate;
+}
+
+export interface CreateSandboxProductBatchCandidateInput extends CreateSandboxCandidateInput {
+  name: string;
+  rawInput: string;
+  link: null;
+  score: 0;
+  source: "SellerSprite ProductBatch";
+  riskLevel: "unknown";
+  riskLabel: "需人工核验";
+  summaryLabel: "SellerSprite市场研究候选";
+  status: "worth_analyzing";
+  sourceMetaJson: string;
+  analysisJson: string;
+  originProductBatchItemId: string;
+}
+
+function validateSandboxProductBatchCandidateInput(
+  input: CreateSandboxProductBatchCandidateInput,
+) {
+  const source = parseProductBatchCandidateSource(input.sourceMetaJson);
+  const analysis = parseProductBatchCandidateAnalysis(input.analysisJson);
+  if (!source
+    || !analysis
+    || source.serverIdentityScope !== "visitor:sandbox"
+    || source.productBatchItemId !== input.originProductBatchItemId
+    || source.productName !== input.name
+    || analysis.itemHash !== source.itemHash
+    || analysis.evidenceHash !== source.evidenceHash
+    || input.link !== null
+    || input.score !== 0
+    || input.source !== "SellerSprite ProductBatch"
+    || input.riskLevel !== "unknown"
+    || input.riskLabel !== "需人工核验"
+    || input.summaryLabel !== "SellerSprite市场研究候选"
+    || input.status !== "worth_analyzing") {
+    throw new SandboxProductBatchCandidateError(
+      "product_batch_candidate_input_invalid",
+      "ProductBatch Candidate 输入无效。",
+    );
+  }
+  return { source, analysis };
+}
+
+export async function createOrReuseSandboxProductBatchCandidate(
+  demoAccessId: string,
+  input: CreateSandboxProductBatchCandidateInput,
+): Promise<{ candidate: SandboxCandidate; created: boolean }> {
+  const incoming = validateSandboxProductBatchCandidateInput(input);
+  return withSandboxSubjectLock(demoAccessId, () => {
+    const store = loadDemoSandboxStoreStrict();
+    const matches = store.candidates.filter((candidate) => (
+      candidate.demoAccessId === demoAccessId
+      && candidate.originProductBatchItemId === input.originProductBatchItemId
+    ));
+    if (matches.length > 1) {
+      throw new SandboxProductBatchCandidateError(
+        "product_batch_candidate_source_conflict",
+        "ProductBatch Candidate 关系发生冲突。",
+      );
+    }
+    if (matches.length === 1) {
+      const existing = matches[0];
+      const storedSource = parseProductBatchCandidateSource(existing.sourceMetaJson);
+      const storedAnalysis = parseProductBatchCandidateAnalysis(existing.analysisJson);
+      if (!storedSource
+        || !storedAnalysis
+        || JSON.stringify(storedSource) !== JSON.stringify(incoming.source)
+        || JSON.stringify(storedAnalysis) !== JSON.stringify(incoming.analysis)) {
+        throw new SandboxProductBatchCandidateError(
+          "product_batch_candidate_source_conflict",
+          "ProductBatch Candidate 的不可变来源已发生冲突。",
+        );
+      }
+      return { candidate: structuredClone(existing), created: false };
+    }
+
+    const now = new Date().toISOString();
+    const candidate: SandboxCandidate = {
+      id: generateSandboxCandidateId(),
+      demoAccessId,
+      name: input.name,
+      rawInput: input.rawInput,
+      link: null,
+      score: 0,
+      source: input.source,
+      keyword: input.keyword || "",
+      riskLevel: input.riskLevel,
+      riskLabel: input.riskLabel,
+      summaryLabel: input.summaryLabel,
+      status: input.status,
+      sourceMetaJson: input.sourceMetaJson,
+      analysisJson: input.analysisJson,
+      createdAt: now,
+      convertedTaskId: null,
+      originProductBatchItemId: input.originProductBatchItemId,
+      lastActionAt: null,
+    };
+    store.candidates.push(candidate);
+    saveDemoSandboxStore(store);
+    return { candidate: structuredClone(candidate), created: true };
+  });
 }
 
 export function saveSignedSandboxCandidates(
@@ -822,6 +1007,7 @@ export function sandboxCandidateToListItem(candidate: SandboxCandidate) {
     createdAt: candidate.createdAt,
     updatedAt: candidate.createdAt,
     convertedTaskId: candidate.convertedTaskId ?? null,
+    originProductBatchItemId: candidate.originProductBatchItemId ?? null,
     lastActionAt: candidate.lastActionAt ?? null,
     sourceIntegrity: getCandidateSourceIntegrity(candidate.sourceMetaJson),
     sourceMode: "demo_sandbox" as const,
