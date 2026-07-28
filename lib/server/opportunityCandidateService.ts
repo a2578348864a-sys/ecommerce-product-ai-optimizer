@@ -12,6 +12,7 @@ import {
   type CandidateSaveItem,
 } from "@/lib/server/candidateSourceSave";
 import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
+import { stableHash } from "@/lib/upstream/pipeline";
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -89,6 +90,36 @@ export type CandidateListResult = {
   nextOffset: number | null;
 };
 
+export type MarketScreeningCandidateIdentity = {
+  schemaVersion: "market-screening-candidate-identity.v1";
+  productionRegistrationId: string;
+  batchManifestHash: string;
+  manifestId: string;
+  marketplace: string;
+  productKey: string;
+  asin: string;
+  identityHash: string;
+  evidenceHash: string;
+};
+
+export type MarketScreeningCandidateErrorCode =
+  | "candidate_contract_invalid"
+  | "candidate_identity_conflict"
+  | "candidate_legacy_identity_conflict"
+  | "candidate_evidence_conflict"
+  | "candidate_has_linked_task"
+  | "candidate_not_ready";
+
+export class MarketScreeningCandidateError extends Error {
+  constructor(
+    public readonly code: MarketScreeningCandidateErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "MarketScreeningCandidateError";
+  }
+}
+
 /* ── Helpers ───────────────────────────────────── */
 
 function text(value: unknown, fallback = ""): string {
@@ -107,6 +138,192 @@ function normalizeKey(value: string): string {
 
 function normalizeStatus(value: unknown): CandidateStatus {
   return isValidCandidateStatus(value) ? value : "pending";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sha256(value: unknown): string | null {
+  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
+    ? value
+    : null;
+}
+
+function marketScreeningIdentityCore(input: {
+  productionRegistrationId: string;
+  batchManifestHash: string;
+  manifestId: string;
+  marketplace: string;
+  productKey: string;
+  asin: string;
+}) {
+  return {
+    schemaVersion: "market-screening-candidate-identity.v1" as const,
+    productionRegistrationId: input.productionRegistrationId,
+    batchManifestHash: input.batchManifestHash,
+    manifestId: input.manifestId,
+    marketplace: input.marketplace,
+    productKey: input.productKey,
+    asin: input.asin,
+  };
+}
+
+export function buildMarketScreeningCandidateIdentity(input: {
+  productionRegistrationId: string;
+  batchManifestHash: string;
+  manifestId: string;
+  marketplace: string;
+  productKey: string;
+  asin: string;
+  evidenceHash: string;
+}): MarketScreeningCandidateIdentity {
+  const productionRegistrationId = text(input.productionRegistrationId);
+  const batchManifestHash = sha256(input.batchManifestHash);
+  const manifestId = text(input.manifestId);
+  const marketplace = text(input.marketplace).toUpperCase();
+  const productKey = text(input.productKey);
+  const asin = text(input.asin).toUpperCase();
+  const evidenceHash = sha256(input.evidenceHash);
+  if (!productionRegistrationId
+    || !batchManifestHash
+    || !manifestId
+    || !/^[A-Z]{2,8}$/u.test(marketplace)
+    || !/^[A-Z0-9]{10}$/u.test(asin)
+    || productKey !== `amazon:${marketplace}:${asin}`
+    || !evidenceHash) {
+    throw new MarketScreeningCandidateError(
+      "candidate_contract_invalid",
+      "市场筛选 Candidate 身份合同无效。",
+    );
+  }
+  const core = marketScreeningIdentityCore({
+    productionRegistrationId,
+    batchManifestHash,
+    manifestId,
+    marketplace,
+    productKey,
+    asin,
+  });
+  return {
+    ...core,
+    identityHash: stableHash(core),
+    evidenceHash,
+  };
+}
+
+export function parseMarketScreeningCandidateIdentity(
+  sourceMetaJson: string,
+): MarketScreeningCandidateIdentity | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sourceMetaJson);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.marketScreeningIdentity)) return null;
+  const stored = parsed.marketScreeningIdentity;
+  if (stored.schemaVersion !== "market-screening-candidate-identity.v1") return null;
+  try {
+    const identity = buildMarketScreeningCandidateIdentity({
+      productionRegistrationId: String(stored.productionRegistrationId ?? ""),
+      batchManifestHash: String(stored.batchManifestHash ?? ""),
+      manifestId: String(stored.manifestId ?? ""),
+      marketplace: String(stored.marketplace ?? ""),
+      productKey: String(stored.productKey ?? ""),
+      asin: String(stored.asin ?? ""),
+      evidenceHash: String(stored.evidenceHash ?? ""),
+    });
+    return stored.identityHash === identity.identityHash ? identity : null;
+  } catch {
+    return null;
+  }
+}
+
+function hasRelevantInvalidMarketScreeningIdentity(
+  sourceMetaJson: string,
+  expected: MarketScreeningCandidateIdentity,
+): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sourceMetaJson);
+  } catch {
+    return false;
+  }
+  if (!isRecord(parsed) || !isRecord(parsed.marketScreeningIdentity)) return false;
+  const stored = parsed.marketScreeningIdentity;
+  return stored.identityHash === expected.identityHash
+    || (stored.productionRegistrationId === expected.productionRegistrationId
+      && stored.productKey === expected.productKey);
+}
+
+export function resolveMarketScreeningCandidate<T extends {
+  name: string;
+  sourceMetaJson: string;
+}>(
+  candidates: readonly T[],
+  displayName: string,
+  expected: MarketScreeningCandidateIdentity,
+): { kind: "reuse"; candidate: T } | { kind: "create" } {
+  const validExpected = buildMarketScreeningCandidateIdentity(expected);
+  if (validExpected.identityHash !== expected.identityHash) {
+    throw new MarketScreeningCandidateError(
+      "candidate_contract_invalid",
+      "市场筛选 Candidate 身份 Hash 无效。",
+    );
+  }
+
+  const identityMatches: Array<{
+    candidate: T;
+    identity: MarketScreeningCandidateIdentity;
+  }> = [];
+  let legacyTitleConflict = false;
+  let relevantInvalidIdentityConflict = false;
+  const normalizedTitle = normalizeCandidateIdentity(displayName);
+  for (const candidate of candidates) {
+    const identity = parseMarketScreeningCandidateIdentity(candidate.sourceMetaJson);
+    if (identity?.identityHash === expected.identityHash) {
+      identityMatches.push({ candidate, identity });
+      continue;
+    }
+    if (!identity) {
+      if (hasRelevantInvalidMarketScreeningIdentity(candidate.sourceMetaJson, expected)) {
+        relevantInvalidIdentityConflict = true;
+      } else if (normalizeCandidateIdentity(candidate.name) === normalizedTitle) {
+        legacyTitleConflict = true;
+      }
+    }
+  }
+
+  if (relevantInvalidIdentityConflict) {
+    throw new MarketScreeningCandidateError(
+      "candidate_identity_conflict",
+      "候选池存在损坏的重复市场商品身份。",
+    );
+  }
+  if (identityMatches.length > 1) {
+    throw new MarketScreeningCandidateError(
+      "candidate_identity_conflict",
+      "候选池存在重复市场商品身份。",
+    );
+  }
+  if (identityMatches.length === 1) {
+    const match = identityMatches[0];
+    if (match.identity.evidenceHash !== expected.evidenceHash) {
+      throw new MarketScreeningCandidateError(
+        "candidate_evidence_conflict",
+        "同一市场商品身份的关键证据 Hash 冲突。",
+      );
+    }
+    return { kind: "reuse", candidate: match.candidate };
+  }
+  if (legacyTitleConflict) {
+    throw new MarketScreeningCandidateError(
+      "candidate_legacy_identity_conflict",
+      "同名旧 Candidate 缺少稳定市场商品身份。",
+    );
+  }
+  return { kind: "create" };
 }
 
 function toCandidateItem(record: {
@@ -191,6 +408,96 @@ export async function listCandidates(params: {
     hasMore: nextOffset < total,
     nextOffset: nextOffset < total ? nextOffset : null,
   };
+}
+
+export async function selectMarketScreeningCandidateForResearch(
+  input: CandidateSaveItem,
+  identity: MarketScreeningCandidateIdentity,
+  validateCandidate?: (candidate: CandidateItem) => void,
+): Promise<{ candidate: CandidateItem; created: boolean }> {
+  if (input.status !== "pending" || input.convertedTaskId !== null) {
+    throw new MarketScreeningCandidateError(
+      "candidate_contract_invalid",
+      "市场筛选 Candidate 初始状态无效。",
+    );
+  }
+  const storedIdentity = parseMarketScreeningCandidateIdentity(input.sourceMetaJson);
+  if (!storedIdentity
+    || storedIdentity.identityHash !== identity.identityHash
+    || storedIdentity.evidenceHash !== identity.evidenceHash) {
+    throw new MarketScreeningCandidateError(
+      "candidate_contract_invalid",
+      "市场筛选 Candidate 来源身份未正确绑定。",
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const existingRecords = await tx.opportunityCandidate.findMany();
+    const resolution = resolveMarketScreeningCandidate(existingRecords, input.name, identity);
+    let record: typeof existingRecords[number];
+    let created = false;
+
+    if (resolution.kind === "reuse") {
+      record = resolution.candidate;
+    } else {
+      record = await tx.opportunityCandidate.create({
+        data: {
+          name: input.name,
+          rawInput: input.rawInput,
+          link: input.link,
+          score: clampScore(input.score),
+          source: input.source,
+          keyword: input.keyword,
+          riskLevel: input.riskLevel,
+          riskLabel: input.riskLabel,
+          summaryLabel: input.summaryLabel,
+          status: "pending",
+          sourceMetaJson: input.sourceMetaJson,
+          analysisJson: input.analysisJson,
+          convertedTaskId: null,
+          lastActionAt: new Date(),
+        },
+      });
+      created = true;
+    }
+
+    if (record.convertedTaskId) {
+      throw new MarketScreeningCandidateError(
+        "candidate_has_linked_task",
+        "该 Candidate 已绑定研究任务。",
+      );
+    }
+    if (!isValidCandidateStatus(record.status)
+      || record.status === "paused"
+      || record.status === "rejected") {
+      throw new MarketScreeningCandidateError(
+        "candidate_not_ready",
+        "该 Candidate 当前状态不可研究。",
+      );
+    }
+    validateCandidate?.(toCandidateItem(record));
+    if (record.status === "pending") {
+      assertCandidateSourceUpdateAllowed({
+        sourceMetaJson: record.sourceMetaJson,
+        reviewIntegrity: buildCandidateEvidenceReview(record).integrity,
+        currentStatus: record.status,
+        targetStatus: "worth_analyzing",
+        sourceReviewAcknowledged: true,
+        requestedFields: ["status"],
+      });
+      record = await tx.opportunityCandidate.update({
+        where: { id: record.id },
+        data: { status: "worth_analyzing", lastActionAt: new Date() },
+      });
+    }
+    if (record.status !== "worth_analyzing" && record.status !== "analyzed") {
+      throw new MarketScreeningCandidateError(
+        "candidate_not_ready",
+        "该 Candidate 当前状态不可研究。",
+      );
+    }
+    return { candidate: toCandidateItem(record), created };
+  });
 }
 
 export async function upsertCandidates(inputs: CandidateInput[]): Promise<{

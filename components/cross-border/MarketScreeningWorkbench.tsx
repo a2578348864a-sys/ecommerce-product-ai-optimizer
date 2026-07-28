@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MarketScreeningResearchAction } from "@/components/cross-border/MarketScreeningResearchAction";
 import type {
   EvidenceField,
   MarketScreeningBatchHealthView,
@@ -154,7 +155,7 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <section className="workspace-header order-1" data-region="workbench-status">
         <p className="eyebrow">发现商品</p>
-        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
+        <div className="mt-1">
           <div>
             <h1 className="section-title text-2xl">商品候选池</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
@@ -165,9 +166,6 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
               <p className="mt-2 font-semibold text-amber-700">部分来源失败，结果仅用于受限预筛</p>
             ) : null}
           </div>
-          <Link href="/agent/run" className="linear-button-primary inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-            开始商品研究
-          </Link>
         </div>
       </section>
 
@@ -285,6 +283,10 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
                     <p className="mt-1 text-sm font-bold text-slate-800">{item.reviewCount.value ?? "缺失"}</p>
                   </div>
                 </div>
+                <MarketScreeningResearchAction
+                  productKey={item.productKey}
+                  disabled={item.status === "reject" || item.status === "insufficient"}
+                />
                 <details className="mt-4" data-testid="market-screening-preview">
                   <summary className="linear-button-primary flex h-10 w-full cursor-pointer list-none items-center justify-center px-4 text-sm font-semibold">
                     查看市场预览

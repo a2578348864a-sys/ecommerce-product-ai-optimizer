@@ -17,9 +17,9 @@ describe("发现商品产品层收敛", () => {
     expect(pageSource).not.toMatch(/市场预筛工作台 - 轻选 Agent/);
   });
 
-  it("优先展示候选商品池和开始研究动作", () => {
+  it("优先展示候选商品池和逐商品研究动作", () => {
     expect(workbenchSource).toMatch(/候选商品池/);
-    expect(workbenchSource).toMatch(/开始商品研究/);
+    expect(workbenchSource).toMatch(/MarketScreeningResearchAction/);
     expect(workbenchSource).toMatch(/查看市场预览/);
     expect(workbenchSource).toMatch(/data-testid="market-screening-preview"/);
     expect(workbenchSource).not.toMatch(/href=\{`\/agent\/run\?productName=/);

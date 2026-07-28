@@ -41,7 +41,9 @@ describe("MarketScreeningWorkbench", () => {
       "高级导入 / 历史候选",
     ]) expect(html).toContain(region);
     expect(html).toContain('data-region="advanced-evidence"');
-    expect(html).toContain("开始商品研究");
+    expect((html.match(/研究此商品/gu) ?? [])).toHaveLength(20);
+    expect((html.match(/data-testid="research-market-screening-item"/gu) ?? [])).toHaveLength(20);
+    expect((html.match(/disabled=""/gu) ?? [])).toHaveLength(4);
     expect(html).toContain("这里不是正式选品结论");
     expect(html).toContain("不代表可采购、可上架或一定有利润");
     expect(html).toContain("advance 5");
