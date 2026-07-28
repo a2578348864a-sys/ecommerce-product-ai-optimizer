@@ -71,7 +71,7 @@ describe("Product Architecture Convergence shell", () => {
     ]) {
       expect(journey).toContain(cta);
     }
-    expect(homeSource).toContain("五阶段研究流程");
+    expect(homeSource).toContain("五步完成一次商品研究");
     expect(homeSource).not.toContain("三步主路径");
   });
 

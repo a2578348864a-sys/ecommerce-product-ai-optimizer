@@ -10,7 +10,6 @@ import {
   Image,
   Loader2,
   Lock,
-  Route,
   Search,
   Sparkles,
   Unlock,
@@ -276,6 +275,18 @@ export function HomeDashboardClient() {
     recentSingleRun,
   }), [candidateSummary, taskSummary, recentSingleRun]);
 
+  const workflowStateByHref: Record<(typeof workflowSteps)[number]["href"], string> = {
+    "/opportunities": candidateSummary.total > 0
+      ? `已有 ${formatNumber(candidateSummary.total)} 个候选`
+      : "建议从这里开始",
+    "/agent/run": recentSingleRun ? "已有研究，可继续" : "等待选择商品",
+    "/listing-studio": recentSingleRun ? "可准备文案草稿" : "等待研究结果",
+    "/image-studio": recentSingleRun ? "可准备图片方案" : "等待商品事实",
+    "/tasks": taskSummary?.pendingReview
+      ? `${formatNumber(taskSummary.pendingReview)} 项等待确认`
+      : "由你完成最终确认",
+  };
+
   const isNewUser = candidateSummary.total === 0 && !recentSingleRun && (!taskSummary || taskSummary.total === 0);
 
   return (
@@ -299,6 +310,64 @@ export function HomeDashboardClient() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          <section
+            className="surface-card-strong overflow-hidden p-5 sm:p-6"
+            data-testid="home-workflow"
+            aria-labelledby="home-workflow-title"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="linear-kicker">你的商品研究路线</p>
+                <h2 id="home-workflow-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                  五步完成一次商品研究
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                  从发现商品开始，研究、创作，最后由你决定是否继续。
+                </p>
+              </div>
+              <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+                AI 辅助 · 人工决定
+              </span>
+            </div>
+
+            <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {workflowSteps.map((step, index) => {
+                const Icon = step.icon;
+                const isRecommended = recommendation.href === step.href;
+                return (
+                  <li key={step.href} className="min-w-0">
+                    <Link
+                      href={step.href}
+                      aria-current={isRecommended ? "step" : undefined}
+                      className={`group flex h-full min-h-[222px] flex-col rounded-2xl border p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
+                        isRecommended
+                          ? "border-teal-300 bg-teal-50/80 shadow-sm"
+                          : "border-slate-200 bg-white hover:border-teal-200 hover:bg-teal-50/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="linear-icon size-9 rounded-xl">
+                          <Icon className="size-5" aria-hidden="true" />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-400">{String(index + 1).padStart(2, "0")}</span>
+                      </div>
+                      <h3 className="mt-4 text-base font-semibold text-slate-950">{step.label}</h3>
+                      <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{step.description}</p>
+                      <div className="mt-4 border-t border-slate-100 pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">当前状态</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-700">{workflowStateByHref[step.href]}</p>
+                        <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
+                          下一步入口
+                          <ArrowRight className="size-4 group-hover:translate-x-0.5" aria-hidden="true" />
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
 
           {/* ── Access password entry (only on home page) ── */}
           {!unlocked ? (
@@ -459,38 +528,6 @@ export function HomeDashboardClient() {
               </div>
             </section>
           ) : null}
-
-          <section className="surface-card p-5 sm:p-6">
-            <div className="flex items-center gap-2">
-              <Route className="size-5 text-teal-700" />
-              <h2 className="text-xl font-semibold text-slate-950">五阶段研究流程</h2>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {workflowSteps.map((step, index) => {
-                const Icon = step.icon;
-                return (
-                  <Link
-                    key={step.href}
-                    href={step.href}
-                    className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-teal-200 hover:bg-teal-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="linear-icon size-9 rounded-xl">
-                        <Icon className="size-5" />
-                      </div>
-                      <span className="text-xs font-semibold text-slate-400">{String(index + 1).padStart(2, "0")}</span>
-                    </div>
-                    <h3 className="mt-4 text-base font-semibold text-slate-950">{step.label}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">{step.description}</p>
-                    <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
-                      {step.cta}
-                      <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
 
           <section className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-4 text-sm leading-6 text-slate-500">
             <div className="flex gap-2">

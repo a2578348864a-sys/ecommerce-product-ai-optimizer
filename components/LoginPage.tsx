@@ -3,9 +3,13 @@
 import { useState } from "react";
 import {
   ArrowRight,
+  CheckCircle2,
   Eye,
+  FileText,
+  Image,
   Loader2,
   Lock,
+  Search,
   ShieldCheck,
   Sparkles,
   User,
@@ -21,6 +25,14 @@ type LoginTab = "owner" | "guest";
 
 const OWNER_PLACEHOLDER = "输入 Owner 密码";
 const GUEST_PLACEHOLDER = "输入访客码";
+
+const productJourney = [
+  { number: "01", label: "发现商品", description: "查看候选与市场信号", icon: Search },
+  { number: "02", label: "商品研究", description: "理解商品、市场与风险", icon: Sparkles },
+  { number: "03", label: "Listing 准备", description: "整理可审核的文案草稿", icon: FileText },
+  { number: "04", label: "图片创作", description: "准备可比较的图片方案", icon: Image },
+  { number: "05", label: "人工决定", description: "确认是否继续下一步", icon: CheckCircle2 },
+] as const;
 
 export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
   const [ownerPassword, setOwnerPassword] = useState("");
@@ -48,124 +60,118 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
 
   return (
     <div className="login-page-root">
-      {/* ── Dynamic background layers (unchanged) ── */}
       <div className="login-bg" />
-      <div className="login-orb login-orb-1" />
-      <div className="login-orb login-orb-2" />
-      <div className="login-orb login-orb-3" />
       <div className="login-grid" />
 
-      {/* Floating abstract elements */}
-      <div className="login-floater login-floater-1">
-        <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/70 px-3 py-2 text-xs font-medium text-slate-600 shadow-sm backdrop-blur">
-          <span className="size-1.5 rounded-full bg-emerald-400" />
-          商品分析完成
-        </div>
-      </div>
-      <div className="login-floater login-floater-2">
-        <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/70 px-3 py-2 text-xs font-medium text-slate-600 shadow-sm backdrop-blur">
-          <span className="size-1.5 rounded-full bg-sky-400" />
-          AI 复核通过
-        </div>
-      </div>
-      <div className="login-floater login-floater-3">
-        <div className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/70 px-3 py-2 text-xs font-medium text-slate-600 shadow-sm backdrop-blur">
-          <Sparkles className="size-3 text-teal-500" />
-          Listing 草稿就绪
-        </div>
-      </div>
-
-      {/* Light particles */}
-      <div className="login-particle login-particle-1" />
-      <div className="login-particle login-particle-2" />
-      <div className="login-particle login-particle-3" />
-
-      {/* ── Main content ── */}
-      <div className="login-main z-10 flex w-full max-w-[900px] flex-col items-center gap-6 px-4">
-        {/* Product identity */}
-        <div className="text-center">
-          <div className="login-brand-icon mx-auto mb-3">
-            <Sparkles className="size-8" />
-          </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            轻选 Agent
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-            跨境电商运营 Agent 工作台
-          </p>
-          <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-slate-400 sm:text-sm">
-            从机会发现、商品分析、风险预筛到 Listing 草稿与任务推进，
-            帮助运营把重复判断沉淀为可复用工作流。
-          </p>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-              Alpha
-            </span>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
-              受控自动化
-            </span>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-medium text-slate-500">
-              人工复核
-            </span>
-          </div>
-        </div>
-
-        {/* ── Tab switcher (mobile-first) ── */}
-        <div className="flex w-full max-w-md rounded-xl border border-slate-200 bg-slate-100 p-1 sm:hidden">
-          <button
-            type="button"
-            onClick={() => switchTab("owner")}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-              isOwner
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500"
-            }`}
-          >
-            <User className="mr-1 inline size-3.5" />
-            Owner
-          </button>
-          <button
-            type="button"
-            onClick={() => switchTab("guest")}
-            className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-              !isOwner
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500"
-            }`}
-          >
-            <Eye className="mr-1 inline size-3.5" />
-            访客
-          </button>
-        </div>
-
-        {/* ── Dual cards (desktop: side-by-side, mobile: single active) ── */}
-        <div className="login-cards-grid">
-          {/* Owner card */}
-          <div className={`login-card-dual ${!isOwner ? "hidden sm:flex" : "flex"}`}>
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
-                <User className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-900">Owner 工作台</p>
-                <p className="text-[11px] text-slate-400">完整权限 · 仅本人使用</p>
-              </div>
+      <main className="login-main">
+        <section className="login-product-intro" aria-labelledby="login-title">
+          <div className="flex items-center gap-3">
+            <div className="login-brand-icon">
+              <Sparkles className="size-7" aria-hidden="true" />
             </div>
-            <p className="text-xs leading-5 text-slate-500">
-              用于正式维护候选池、任务记录和 AI 工作流。
-            </p>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">轻选 Agent</p>
+              <p className="mt-1 text-xs text-slate-500">辅助研究 · 人工确认</p>
+            </div>
+          </div>
 
+          <h1
+            id="login-title"
+            aria-label="AI 跨境商品研究助手"
+            className="mt-7 max-w-2xl break-words text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-slate-950 sm:text-5xl"
+          >
+            <span className="block lg:inline">AI 跨境商品</span>{" "}
+            <span className="block lg:inline">研究助手</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
+            <span className="block xl:inline">把分散的选品信息整理成</span>{" "}
+            <span className="block xl:inline">一条清晰的研究流程。</span>{" "}
+            <span className="block xl:inline">AI 帮你理解和创作，</span>{" "}
+            <span className="block xl:inline">商业决定始终由你确认。</span>
+          </p>
+
+          <ol className="login-product-journey" data-testid="login-product-journey" aria-label="商品研究流程">
+            {productJourney.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <li key={step.number} className="login-journey-step">
+                  <div className="login-journey-marker" aria-hidden="true">
+                    <Icon className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-950">
+                      {step.number} {step.label}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{step.description}</p>
+                  </div>
+                  {index < productJourney.length - 1 ? <span className="login-journey-line" aria-hidden="true" /> : null}
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="mt-6 flex items-start gap-2 rounded-2xl border border-teal-100 bg-white/70 p-3 text-xs leading-5 text-slate-600">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" aria-hidden="true" />
+            <p>
+              <span className="block">不会自动采购、上架或投放广告；</span>
+              <span className="block">所有关键动作都需要人工确认。</span>
+            </p>
+          </div>
+        </section>
+
+        <section className="login-access-panel" aria-label="进入方式">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">继续使用</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">选择你的进入方式</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">验证后进入同一条商品研究流程。</p>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" aria-label="身份类型">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isOwner}
+              onClick={() => switchTab("owner")}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                isOwner ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"
+              }`}
+            >
+              <User className="size-4" aria-hidden="true" />
+              Owner
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!isOwner}
+              onClick={() => switchTab("guest")}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                !isOwner ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"
+              }`}
+            >
+              <Eye className="size-4" aria-hidden="true" />
+              访客体验
+            </button>
+          </div>
+
+          {isOwner ? (
             <form onSubmit={handleOwnerSubmit} className="mt-4 flex flex-col gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Owner 使用</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">维护候选商品、研究记录与创作内容。</p>
+              </div>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <label className="sr-only" htmlFor="owner-password">Owner 密码</label>
                 <input
+                  id="owner-password"
+                  name="ownerPassword"
                   type="password"
                   value={ownerPassword}
                   onChange={(e) => setOwnerPassword(e.target.value)}
                   placeholder={OWNER_PLACEHOLDER}
                   disabled={loading}
-                  autoFocus
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-50"
+                  autoComplete="current-password"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-50"
                 />
               </div>
 
@@ -177,42 +183,29 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 {loading ? (
                   <><Loader2 className="size-4 animate-spin" />验证中…</>
                 ) : (
-                  <>进入 Owner 工作台<ArrowRight className="size-4" /></>
+                  <>进入商品研究助手<ArrowRight className="size-4" aria-hidden="true" /></>
                 )}
               </button>
             </form>
-          </div>
-
-          {/* Guest card */}
-          <div className={`login-card-dual ${isOwner ? "hidden sm:flex" : "flex"}`}>
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
-                <Eye className="size-4" />
-              </div>
+          ) : (
+            <form onSubmit={handleGuestSubmit} className="mt-4 flex flex-col gap-3">
               <div>
-                <p className="text-sm font-bold text-slate-900">访客体验</p>
-                <p className="text-[11px] text-slate-400">隔离沙盒体验</p>
+                <p className="text-sm font-semibold text-slate-900">访客体验</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">24 小时隔离沙盒，新增和修改不会进入正式数据。</p>
               </div>
-            </div>
-
-            {/* Guest rules */}
-            <div className="mb-3 space-y-1.5 rounded-lg border border-sky-100 bg-sky-50/60 p-2.5 text-[11px] leading-5 text-sky-800">
-              <p>· 输入访客码即可登录</p>
-              <p>· 首次登录后 <strong>24 小时</strong> 有效</p>
-              <p>· 最多 <strong>5 次</strong> 真实 AI 体验</p>
-              <p>· 可体验完整主流程，新增和修改只保存到演示沙盒</p>
-            </div>
-
-            <form onSubmit={handleGuestSubmit} className="flex flex-col gap-3">
               <div className="relative">
-                <Eye className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Eye className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <label className="sr-only" htmlFor="guest-password">访客码</label>
                 <input
+                  id="guest-password"
+                  name="guestPassword"
                   type="password"
                   value={guestPassword}
                   onChange={(e) => setGuestPassword(e.target.value)}
                   placeholder={GUEST_PLACEHOLDER}
                   disabled={loading}
-                  className="h-11 w-full rounded-xl border border-sky-200 bg-white/80 pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 backdrop-blur transition focus:border-sky-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-100 disabled:opacity-50"
+                  autoComplete="current-password"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-50"
                 />
               </div>
 
@@ -224,32 +217,29 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 {loading ? (
                   <><Loader2 className="size-4 animate-spin" />验证中…</>
                 ) : (
-                  <>进入访客体验<ArrowRight className="size-4" /></>
+                  <>进入访客体验<ArrowRight className="size-4" aria-hidden="true" /></>
                 )}
               </button>
             </form>
-          </div>
-        </div>
+          )}
 
-        {/* Shared error */}
-        {error && (
-          <div className="w-full max-w-md rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm font-medium text-rose-600">
-            {error}
-          </div>
-        )}
+          {error ? (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700" role="alert" aria-live="polite">
+              {error}
+            </div>
+          ) : null}
 
-        {/* Footer */}
-        <div className="flex flex-col items-center gap-1 text-center">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-            <ShieldCheck className="size-3 text-teal-400" />
-            <span>密码仅保存在当前会话 · 关闭网页后需重新输入</span>
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <div className="flex items-start gap-2 text-xs leading-5 text-slate-500">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-500" aria-hidden="true" />
+              <span>密码仅保存在当前会话；关闭网页后需重新输入。</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              当前为 Alpha 阶段，AI 结果仅作辅助判断。
+            </p>
           </div>
-          <p className="text-[10px] text-slate-300">
-            当前为 Alpha 阶段 · AI 结果仅作辅助判断 · 关键商业动作需人工复核
-          </p>
-          <p className="text-[10px] text-slate-300">访客码仅用于临时体验，请勿公开转发。</p>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }

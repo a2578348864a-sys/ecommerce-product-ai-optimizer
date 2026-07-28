@@ -200,7 +200,7 @@ describe("HomeDashboardClient navigation", () => {
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/listing-studio"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/image-studio"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);
-    expect(homeSource).toMatch(/五阶段研究流程/);
+    expect(homeSource).toMatch(/五步完成一次商品研究/);
     expect(homeSource).toMatch(/当前为人工复核版/);
   });
 
@@ -241,7 +241,7 @@ describe("AgentRunClient main flow links", () => {
     expect(agentRunSource).toMatch(/商品理解/);
     expect(agentRunSource).toMatch(/市场研究/);
     expect(agentRunSource).toMatch(/创作准备/);
-    expect(agentRunSource).toMatch(/高级技术信息 \/ 原流程详情/);
+    expect(agentRunSource).toMatch(/高级技术详情/);
     expect(agentRunSource).toMatch(/agent-run-technical-details/);
     expect(agentRunSource).toMatch(/TIMELINE_STEPS\.map/);
     expect(agentRunSource).toMatch(/saveAgentRunCache/);

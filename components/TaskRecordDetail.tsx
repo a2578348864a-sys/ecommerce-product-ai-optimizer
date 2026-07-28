@@ -1212,7 +1212,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
   }
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="商品研究详情" returnUrl={`/tasks/${id}`} />;
+    return <WorkspaceLockedPrompt pageName="商品研究结果" returnUrl={`/tasks/${id}`} />;
   }
 
   return (
@@ -1227,13 +1227,15 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
                   <Link href="/tasks" className="hover:text-teal-600">研究历史</Link>
                   <span>/</span>
-                  <span className="text-slate-600">商品研究详情</span>
+                  <span className="text-slate-600">商品研究结果</span>
                   {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-                  商品研究详情{record ? `：${getTitle(record)}` : ""}
+                  商品研究结果
                 </h1>
-                <p className="mt-1 text-sm text-slate-500">先看研究阶段和真实产物，再核对尚未验证的信息。AI 负责辅助整理，人负责最终决定。</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {record ? `${getTitle(record)} · ` : ""}先看当前阶段、已有产物和下一步，再核对尚未验证的信息。
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
@@ -1322,7 +1324,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     {[
                       ["来源", sourceLabel(record.source)],
                       ["当前阶段", presentation.stage.label],
-                      ["已生成内容", presentation.artifacts.length
+                      ["已有产物", presentation.artifacts.length
                         ? presentation.artifacts.map((artifact) => artifact.label).join("、")
                         : "暂无已保存产物"],
                       ["最后更新", formatDate(record.updatedAt || record.createdAt)],
@@ -1372,7 +1374,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
               {record.type === "workflow" && isRecordValue(record.result) ? (
                 <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
                   <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                    完整分析与原有操作
+                    技术详情：完整分析与原有操作
                     <span className="ml-2 text-xs font-medium text-slate-400">详细模型输出、生命周期操作和创作包，默认折叠</span>
                   </summary>
                   <WorkflowDecisionSummary

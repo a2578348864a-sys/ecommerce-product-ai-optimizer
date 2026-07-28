@@ -768,10 +768,10 @@ export function TaskRecordsList() {
               <div>
                 <p className="text-sm font-bold text-teal-700">已保存的商品研究</p>
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">从哪里继续研究？</h2>
-                <p className="muted-text mt-1 text-sm">优先展示商品、来源、用户阶段、真实产物和下一步；内部执行状态默认收起。</p>
+                <p className="muted-text mt-1 text-sm">优先展示商品、当前阶段、已有产物和下一步；内部执行状态默认收起。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
-                {page ? `${page.total} 条任务` : `${items.length} 条`}
+                {page ? `${page.total} 条研究记录` : `${items.length} 条研究记录`}
               </span>
             </div>
 
@@ -953,7 +953,7 @@ export function TaskRecordsList() {
 
             {loading ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8 text-sm text-teal-800">
-                正在读取本地任务记录…
+                正在读取研究历史…
               </div>
             ) : error ? (
               <div className="mt-6 rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm text-rose-700">
@@ -1017,7 +1017,7 @@ export function TaskRecordsList() {
                       onClick={() => setSelectMode(true)}
                       className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
                     >
-                      选择任务
+                      选择记录
                     </button>
                   ) : (
                     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
@@ -1202,7 +1202,7 @@ export function TaskRecordsList() {
                               href={`/tasks/${item.id}`}
                               className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
                             >
-                              查看研究详情
+                              查看研究结果
                             </Link>
                             {presentationAction ? (
                               <Link

@@ -760,6 +760,37 @@ export function AgentRunClient({
             <WorkspaceMobileNav />
           </header>
 
+          <section
+            className="surface-card-strong overflow-hidden p-4 sm:p-5"
+            data-testid="agent-run-research-flow"
+            aria-labelledby="agent-run-research-flow-title"
+          >
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="linear-kicker">三阶段商品研究</p>
+                <h2 id="agent-run-research-flow-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                  先理解，再研究，最后准备创作
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  页面只展示用户需要推进的三个阶段；系统内部步骤收在高级技术详情中。
+                </p>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
+                {phase === "failed" ? "研究未完成，可重新开始" : needsManualReview ? "等待人工确认" : isRunning ? "研究中" : "从商品理解开始"}
+              </span>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-3">
+              {RESEARCH_STAGES.map((stage, index) => (
+                <ResearchStageCard
+                  key={stage.key}
+                  index={index}
+                  stage={stage}
+                  status={getResearchStageStatus(stage, stepStatuses)}
+                />
+              ))}
+            </div>
+          </section>
+
           <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-700" />
@@ -883,30 +914,6 @@ export function AgentRunClient({
             ) : null}
           </section>
 
-          <section className="surface-card p-4 sm:p-5">
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="linear-kicker">三阶段商品研究</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                  先理解，再研究，最后准备创作
-                </h2>
-              </div>
-              <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
-                {phase === "failed" ? "分析未完成，可重新开始" : needsManualReview ? "等待人工确认" : isRunning ? "运行中" : "未开始"}
-              </span>
-            </div>
-            <div className="grid gap-3 lg:grid-cols-3">
-              {RESEARCH_STAGES.map((stage, index) => (
-                <ResearchStageCard
-                  key={stage.key}
-                  index={index}
-                  stage={stage}
-                  status={getResearchStageStatus(stage, stepStatuses)}
-                />
-              ))}
-            </div>
-          </section>
-
           <details
             data-testid="agent-run-technical-details"
             className="surface-card p-4 sm:p-5"
@@ -914,12 +921,12 @@ export function AgentRunClient({
             <summary className="cursor-pointer list-none select-none">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="linear-kicker">高级技术信息</p>
+                  <p className="linear-kicker">高级信息</p>
                   <h2 className="mt-1 text-base font-semibold text-slate-900">
-                    高级技术信息 / 原流程详情
+                    高级技术详情
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    展开后可查看系统内部 8 步执行状态，不影响上方三阶段研究口径。
+                    展开后可查看原流程详情和系统内部 8 步执行状态，不影响上方三阶段研究口径。
                   </p>
                 </div>
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">

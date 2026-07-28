@@ -28,10 +28,10 @@ export function WorkspaceLockedPrompt({ pageName, returnUrl }: WorkspaceLockedPr
         {/* Message */}
         <div>
           <h1 className="text-xl font-semibold text-slate-800 sm:text-2xl">
-            当前工作台未解锁
+            先解锁商品研究助手
           </h1>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            轻选 Agent — 跨境电商运营工作台，用 AI 辅助找机会、分析产品、沉淀任务和人工复核。
+            轻选 Agent 是 AI 跨境商品研究助手，帮助你发现商品、完成研究和准备创作内容。
           </p>
           <p className="mt-2 text-sm leading-6 text-slate-500">
             {pageName
@@ -54,7 +54,7 @@ export function WorkspaceLockedPrompt({ pageName, returnUrl }: WorkspaceLockedPr
 
         {/* Footer note */}
         <p className="text-xs text-slate-400">
-          轻选 Agent · 受控自动化 · 人工复核版
+          轻选 Agent · 辅助研究 · 人工确认
         </p>
       </div>
     </main>

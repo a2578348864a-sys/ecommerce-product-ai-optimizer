@@ -18,11 +18,11 @@ describe("product research history presentation", () => {
     expect(list).toContain("已生成内容");
     expect(list).toContain('aria-label="商品图片占位"');
     expect(list).toContain("技术状态与证据");
-    expect(detail).toContain("商品研究详情");
+    expect(detail).toContain("商品研究结果");
     expect(detail).toContain("人工核验");
     expect(detail).toContain("技术信息与原始数据");
     expect(listPage).toContain("商品研究历史");
-    expect(detailPage).toContain("商品研究详情");
+    expect(detailPage).toContain("商品研究结果");
   });
 
   it("derives saved artifacts and uses encoded task ids for Studio links", () => {
