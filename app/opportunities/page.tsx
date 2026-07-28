@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { MarketScreeningWorkbench } from "@/components/cross-border/MarketScreeningWorkbench";
+import { ProductBatchManager } from "@/components/cross-border/ProductBatchManager";
 import { loadMarketScreeningBatch } from "@/lib/marketScreeningBatchLoader";
 import { getActiveProductionMarketScreeningRegistration } from "@/lib/marketScreeningProductionRegistry";
 import { buildMarketScreeningWorkbenchRenderModel } from "@/lib/marketScreeningWorkbench";
@@ -42,7 +43,17 @@ export default function OpportunitiesPage() {
         <WorkspaceSidebar />
         <div className="min-w-0">
           <WorkspaceMobileNav />
-          <MarketScreeningWorkbench model={model} />
+          <div className="flex flex-col gap-4">
+            <ProductBatchManager />
+            <details className="surface-card mx-auto w-full max-w-7xl p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                Legacy 冻结候选兼容视图
+              </summary>
+              <div className="mt-4">
+                <MarketScreeningWorkbench model={model} />
+              </div>
+            </details>
+          </div>
         </div>
       </div>
     </main>

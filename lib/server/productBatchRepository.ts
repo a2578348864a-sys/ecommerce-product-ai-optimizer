@@ -84,6 +84,28 @@ interface ProductDiscoverySelectionRow {
   updatedAt: DateValue;
 }
 
+interface ProductBatchItemRow {
+  id: string;
+  batchId: string;
+  ordinal: number | bigint;
+  productKey: string;
+  asin: string | null;
+  parentAsin: string | null;
+  itemIdentityHash: string;
+  itemHash: string;
+  evidenceHash: string;
+  normalizedProductJson: string;
+  occurrenceProjectionJson: string;
+  familyProjectionJson: string;
+  rankingJson: string;
+  provisionalDisposition: string;
+  researchPriority: string;
+  evidenceStatus: string;
+  promotionEligible: boolean | number | bigint;
+  imageSnapshotJson: string;
+  createdAt: DateValue;
+}
+
 export interface ProductBatchRecord {
   id: string;
   ownerSubject: typeof PRODUCT_BATCH_OWNER_SUBJECT;
@@ -136,6 +158,12 @@ export interface ProductBatchItemInput extends ProductBatchItemPersistenceInput 
   parentAsin: string | null;
 }
 
+export interface ProductBatchItemRecord extends ProductBatchItemInput {
+  id: string;
+  batchId: string;
+  createdAt: Date;
+}
+
 export interface MarkBatchBlockedInput {
   errorJson: string;
   qualitySummaryJson: string;
@@ -162,6 +190,16 @@ function asDate(value: DateValue): Date {
     repositoryError("batch_date_value_invalid", "Stored ProductBatch date is invalid.");
   }
   return date;
+}
+
+function asFalse(value: boolean | number | bigint): false {
+  if (value !== false && value !== 0 && value !== BigInt(0)) {
+    repositoryError(
+      "batch_item_promotion_forbidden",
+      "Stored SellerSprite V1 item cannot be promotion eligible.",
+    );
+  }
+  return false;
 }
 
 function asBatchStatus(value: string): BatchStatus {
@@ -225,6 +263,36 @@ function toSelectionRecord(
     activeLegacyRegistrationId: row.activeLegacyRegistrationId,
     updatedAt: asDate(row.updatedAt),
   };
+}
+
+function toItemRecord(row: ProductBatchItemRow): ProductBatchItemRecord {
+  const item = {
+    id: row.id,
+    batchId: row.batchId,
+    ordinal: asNumber(row.ordinal)!,
+    productKey: row.productKey,
+    asin: row.asin,
+    parentAsin: row.parentAsin,
+    itemIdentityHash: row.itemIdentityHash,
+    itemHash: row.itemHash,
+    evidenceHash: row.evidenceHash,
+    normalizedProductJson: row.normalizedProductJson,
+    occurrenceProjectionJson: row.occurrenceProjectionJson,
+    familyProjectionJson: row.familyProjectionJson,
+    rankingJson: row.rankingJson,
+    provisionalDisposition: row.provisionalDisposition,
+    researchPriority: row.researchPriority,
+    evidenceStatus: row.evidenceStatus,
+    promotionEligible: asFalse(row.promotionEligible),
+    imageSnapshotJson: row.imageSnapshotJson,
+    createdAt: asDate(row.createdAt),
+  };
+  try {
+    assertProductBatchItemForPersistence(item);
+  } catch (error) {
+    return translateContractError(error);
+  }
+  return item;
 }
 
 function validateBoundedText(
@@ -418,6 +486,23 @@ export function createProductBatchRepository(client: PrismaClient = prisma) {
     return rows.map(toBatchRecord);
   }
 
+  async function getBatchItemsForOwner(
+    batchId: string,
+  ): Promise<ProductBatchItemRecord[]> {
+    const batch = await getOwnedBatch(database, batchId);
+    if (!batch) return [];
+    const rows = await database.$queryRaw<ProductBatchItemRow[]>(Prisma.sql`
+      SELECT item.*
+      FROM "ProductBatchItem" AS item
+      INNER JOIN "ProductBatch" AS batch
+        ON batch."id" = item."batchId"
+      WHERE item."batchId" = ${batchId}
+        AND batch."ownerSubject" = ${PRODUCT_BATCH_OWNER_SUBJECT}
+      ORDER BY item."ordinal" ASC, item."id" ASC
+    `);
+    return rows.map(toItemRecord);
+  }
+
   async function replaceOrInsertBatchItemsDuringProcessing(
     batchId: string,
     items: readonly ProductBatchItemInput[],
@@ -603,6 +688,35 @@ export function createProductBatchRepository(client: PrismaClient = prisma) {
     });
   }
 
+  async function retryBlockedBatch(
+    batchId: string,
+  ): Promise<ProductBatchRecord> {
+    return database.$transaction(async (transaction) => {
+      const batch = await requireOwnedBatch(transaction, batchId);
+      try {
+        assertBatchStatusTransition(batch.batchStatus, "processing");
+      } catch (error) {
+        return translateContractError(error);
+      }
+      const rows = await transaction.$queryRaw<ProductBatchRow[]>(Prisma.sql`
+        UPDATE "ProductBatch"
+        SET
+          "batchStatus" = 'processing',
+          "dataQualityStatus" = 'pending',
+          "errorJson" = NULL,
+          "updatedAt" = ${new Date()}
+        WHERE "id" = ${batchId}
+          AND "ownerSubject" = ${PRODUCT_BATCH_OWNER_SUBJECT}
+          AND "batchStatus" = 'blocked'
+        RETURNING *
+      `);
+      if (!rows[0]) {
+        repositoryError("batch_state_raced", "ProductBatch state changed during retry.");
+      }
+      return toBatchRecord(rows[0]);
+    });
+  }
+
   async function getActiveSelection(): Promise<ProductDiscoverySelectionRecord | null> {
     const rows = await database.$queryRaw<ProductDiscoverySelectionRow[]>(Prisma.sql`
       SELECT *
@@ -738,8 +852,10 @@ export function createProductBatchRepository(client: PrismaClient = prisma) {
     findBatchByDedupeKey,
     getBatchByIdForOwner,
     listBatchesForOwner,
+    getBatchItemsForOwner,
     markBatchReady,
     markBatchBlocked,
+    retryBlockedBatch,
     archiveBatch,
     replaceOrInsertBatchItemsDuringProcessing,
     getActiveSelection,
@@ -758,10 +874,14 @@ export const getBatchByIdForOwner =
   defaultProductBatchRepository.getBatchByIdForOwner;
 export const listBatchesForOwner =
   defaultProductBatchRepository.listBatchesForOwner;
+export const getBatchItemsForOwner =
+  defaultProductBatchRepository.getBatchItemsForOwner;
 export const markBatchReady =
   defaultProductBatchRepository.markBatchReady;
 export const markBatchBlocked =
   defaultProductBatchRepository.markBatchBlocked;
+export const retryBlockedBatch =
+  defaultProductBatchRepository.retryBlockedBatch;
 export const archiveBatch =
   defaultProductBatchRepository.archiveBatch;
 export const replaceOrInsertBatchItemsDuringProcessing =

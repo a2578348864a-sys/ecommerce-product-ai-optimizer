@@ -1,0 +1,109 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Context = { params: Promise<{ id: string }> };
+
+function errorResponse(status: number, code: string, message: string) {
+  return NextResponse.json({ ok: false, error: { code, message } }, { status });
+}
+
+function validId(id: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(id);
+}
+
+function sameOrigin(request: NextRequest): boolean {
+  const url = new URL(request.url);
+  const host = request.headers.get("host");
+  let expected = url.origin;
+  if (host !== null) {
+    try {
+      expected = new URL(`${url.protocol}//${host}`).origin;
+    } catch {
+      return false;
+    }
+  }
+  const origin = request.headers.get("origin");
+  if (origin !== null) return origin === expected;
+  const referer = request.headers.get("referer");
+  try {
+    return referer !== null && new URL(referer).origin === expected;
+  } catch {
+    return false;
+  }
+}
+
+function storeError(error: unknown) {
+  const code = error instanceof Error && "code" in error
+    ? String((error as { code: unknown }).code)
+    : "product_batch_internal_error";
+  const status = code === "batch_not_found"
+    ? 404
+    : code === "batch_is_active"
+      || code === "batch_status_transition_forbidden"
+      || code === "batch_not_activatable"
+      ? 409
+      : 500;
+  return errorResponse(status, code, "ProductBatch 状态不允许该操作。");
+}
+
+export async function GET(request: NextRequest, context: Context) {
+  const auth = requireAuthenticated(request);
+  if (!auth.ok) return errorResponse(auth.status, auth.code, auth.message);
+  const { id } = await context.params;
+  if (!validId(id)) return errorResponse(404, "batch_not_found", "批次不存在。");
+  try {
+    const store = getProductBatchStore(auth.context);
+    const batch = await store.getBatch(id);
+    if (!batch) return errorResponse(404, "batch_not_found", "批次不存在。");
+    const items = await store.getBatchItems(id);
+    return NextResponse.json({ ok: true, data: { batch, items } });
+  } catch (error) {
+    return storeError(error);
+  }
+}
+
+export async function PATCH(request: NextRequest, context: Context) {
+  const auth = requireAuthenticated(request);
+  if (!auth.ok) return errorResponse(auth.status, auth.code, auth.message);
+  if (!sameOrigin(request)) {
+    return errorResponse(403, "origin_not_allowed", "请求来源不受信任。");
+  }
+  const { id } = await context.params;
+  if (!validId(id)) return errorResponse(404, "batch_not_found", "批次不存在。");
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(400, "invalid_request", "请求内容无效。");
+  }
+  if (
+    typeof body !== "object"
+    || body === null
+    || Array.isArray(body)
+    || Object.keys(body).length !== 1
+    || (
+      (body as { action?: unknown }).action !== "activate"
+      && (body as { action?: unknown }).action !== "archive"
+    )
+  ) {
+    return errorResponse(400, "invalid_action", "批次操作无效。");
+  }
+  try {
+    const store = getProductBatchStore(auth.context);
+    const existing = await store.getBatch(id);
+    if (!existing) return errorResponse(404, "batch_not_found", "批次不存在。");
+    if ((body as { action: string }).action === "activate") {
+      const selection = await store.activateBatch(id);
+      return NextResponse.json({ ok: true, data: { selection } });
+    }
+    const batch = await store.archiveBatch(id);
+    return NextResponse.json({ ok: true, data: { batch } });
+  } catch (error) {
+    return storeError(error);
+  }
+}

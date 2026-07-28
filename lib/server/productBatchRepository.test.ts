@@ -189,6 +189,24 @@ describe("ProductBatch repository state and items", () => {
       .rejects.toBeInstanceOf(ProductBatchRepositoryError);
   });
 
+  it("reads persisted items and retries only a blocked batch", async () => {
+    const created = await repository.createProcessingBatch(createInput());
+    await repository.replaceOrInsertBatchItemsDuringProcessing(created.batch.id, items());
+    expect(await repository.getBatchItemsForOwner(created.batch.id)).toHaveLength(2);
+    const blocked = await repository.markBatchBlocked(created.batch.id, {
+      errorJson: '{"code":"invalid_rows"}',
+      qualitySummaryJson: '{"quarantined":1}',
+    });
+    const retried = await repository.retryBlockedBatch(blocked.id);
+    expect(retried).toMatchObject({
+      batchStatus: "processing",
+      dataQualityStatus: "pending",
+      errorJson: null,
+    });
+    await expect(repository.retryBlockedBatch(retried.id))
+      .rejects.toBeInstanceOf(ProductBatchRepositoryError);
+  });
+
   it("switches active Batch and legacy registration transactionally, then archives ready", async () => {
     const ready = await createReadyBatch();
     const activeBatch = await repository.setActiveBatch(ready.id);
