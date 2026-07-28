@@ -7,7 +7,9 @@ import { loadMarketScreeningBatch, type MarketScreeningBatchLoadResult } from "@
 import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
 import { buildMarketScreeningWorkbenchRenderModel } from "@/lib/marketScreeningWorkbench";
 
-const projectMaterialsRoot = resolve(process.cwd(), "..");
+const projectMaterialsRoot = process.env.PROJECT_MATERIALS_ROOT
+  ? resolve(process.env.PROJECT_MATERIALS_ROOT)
+  : resolve(process.cwd(), "..");
 
 function readyFixture() {
   const result = loadMarketScreeningBatch({ environment: "development", projectMaterialsRoot });
@@ -74,6 +76,29 @@ describe("MarketScreeningWorkbench", () => {
     expect((html.match(/部分来源失败，结果仅用于受限预筛/gu) ?? [])).toHaveLength(2);
   });
 
+  it("renders a neutral empty state only when a ready batch has no candidate items", () => {
+    const { result, preview } = readyFixture();
+    const model = buildMarketScreeningWorkbenchRenderModel(result, preview);
+    if (model.status !== "ready") throw new Error(model.status);
+
+    const html = renderToStaticMarkup(createElement(MarketScreeningWorkbench, {
+      model: {
+        ...model,
+        view: {
+          ...model.view,
+          items: [],
+        },
+      },
+    }));
+
+    expect(html).toContain("暂无候选商品");
+    expect(html).toContain("当前没有可展示的商品候选。");
+    expect(html).toContain("导入市场数据");
+    expect(html).toContain("添加候选商品");
+    expect(html).not.toContain("商品候选暂时不可用");
+    expect(html).not.toContain("当前数据没有通过完整性检查");
+  });
+
   it("renders upstream-only without Stage summaries or product cards", () => {
     const { result } = readyFixture();
     const upstream: MarketScreeningBatchLoadResult = {
@@ -117,6 +142,7 @@ describe("MarketScreeningWorkbench", () => {
     const html = render(blocked);
     expect(html).toContain("商品候选暂时不可用");
     expect(html).toContain("当前数据没有通过完整性检查，因此不会展示可能误导你的候选商品");
+    expect(html).not.toContain("暂无候选商品");
     expect(html).toContain("高级证据详情");
     expect(html).toContain("artifact_identity_conflict");
     expect(html).not.toContain("Selection Brief");

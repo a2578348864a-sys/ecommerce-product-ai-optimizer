@@ -118,6 +118,38 @@ function HealthSummary({ health }: { health: MarketScreeningBatchHealthView }) {
 }
 
 function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView; partial: boolean }) {
+  if (view.items.length === 0) {
+    return (
+      <section
+        className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        data-testid="market-screening-empty"
+      >
+        <p className="eyebrow">发现商品</p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-950">暂无候选商品</h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          当前没有可展示的商品候选。
+        </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <Link
+            href="/opportunities/import"
+            className="linear-button-primary inline-flex h-11 items-center justify-center px-4 text-sm font-semibold"
+          >
+            导入市场数据
+          </Link>
+          <Link
+            href="/opportunities/import"
+            className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold"
+          >
+            添加候选商品
+          </Link>
+        </div>
+        <p className="mt-4 text-xs leading-5 text-slate-400">
+          两个入口都使用现有受控导入页面，不会自动创建或伪造候选数据。
+        </p>
+      </section>
+    );
+  }
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
       <section className="workspace-header order-1" data-region="workbench-status">

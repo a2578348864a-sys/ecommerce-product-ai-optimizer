@@ -31,7 +31,7 @@ const productJourney = [
   { number: "02", label: "商品研究", description: "理解商品、市场与风险", icon: Sparkles },
   { number: "03", label: "Listing 准备", description: "整理可审核的文案草稿", icon: FileText },
   { number: "04", label: "图片创作", description: "准备可比较的图片方案", icon: Image },
-  { number: "05", label: "人工决定", description: "确认是否继续下一步", icon: CheckCircle2 },
+  { number: "05", label: "人工确认", description: "确认是否继续下一步", icon: CheckCircle2 },
 ] as const;
 
 export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {

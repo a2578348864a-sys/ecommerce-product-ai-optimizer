@@ -39,7 +39,9 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).toMatch(
       /<details(?=[^>]*data-testid="agent-run-technical-details")(?![^>]*\bopen(?:=|\s|>))[^>]*>/,
     );
-    expect(clientSource).toContain("高级技术详情");
+    expect(clientSource).toContain("内部分析记录");
+    expect(clientSource).toContain("不代表系统已经完成商业判断");
+    expect(clientSource).toContain("最终需要人工确认");
     expect(clientSource).toContain("TIMELINE_STEPS.map");
 
     expect(clientSource).toMatch(

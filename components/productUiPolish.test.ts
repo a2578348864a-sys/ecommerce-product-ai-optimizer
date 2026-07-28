@@ -22,7 +22,7 @@ describe("Product UI polish v2", () => {
     expect(loginSource).toMatch(/number:\s*"02",\s*label:\s*"商品研究"/);
     expect(loginSource).toMatch(/number:\s*"03",\s*label:\s*"Listing 准备"/);
     expect(loginSource).toMatch(/number:\s*"04",\s*label:\s*"图片创作"/);
-    expect(loginSource).toMatch(/number:\s*"05",\s*label:\s*"人工决定"/);
+    expect(loginSource).toMatch(/number:\s*"05",\s*label:\s*"人工确认"/);
     expect(loginSource).not.toContain("跨境电商运营 Agent 工作台");
     expect(loginSource).not.toContain("商品分析完成");
     expect(loginSource).not.toContain("AI 复核通过");
@@ -40,6 +40,8 @@ describe("Product UI polish v2", () => {
     expect(statisticsIndex).toBeGreaterThan(journeyIndex);
     expect(homeSource).toContain("当前状态");
     expect(homeSource).toContain("下一步入口");
+    expect(homeSource).toMatch(/label:\s*"人工确认"/);
+    expect(homeSource).toContain("AI 辅助 · 人工确认");
   });
 
   it("makes the three-stage research flow the first content section", () => {
@@ -48,7 +50,7 @@ describe("Product UI polish v2", () => {
 
     expect(flowIndex).toBeGreaterThan(-1);
     expect(inputIndex).toBeGreaterThan(flowIndex);
-    expect(agentRunSource).toContain("高级技术详情");
+    expect(agentRunSource).toContain("内部分析记录");
   });
 
   it("keeps history product-facing and titles details as a research result", () => {

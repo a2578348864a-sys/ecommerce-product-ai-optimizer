@@ -225,7 +225,7 @@ const RESEARCH_STAGES: ResearchStage[] = [
   {
     key: "creative",
     title: "创作准备",
-    description: "整理 Listing、关键词和图片需求，等待人工决定。",
+    description: "整理 Listing、关键词和图片需求，等待人工确认。",
     completedContent: "Listing、关键词和图片需求草稿已整理。",
     nextAction: "内容只作为草稿，不会自动保存、发布或上架。",
     actionLabel: "打开 Listing Studio",
@@ -772,7 +772,7 @@ export function AgentRunClient({
                   先理解，再研究，最后准备创作
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  页面只展示用户需要推进的三个阶段；系统内部步骤收在高级技术详情中。
+                  页面只展示用户需要推进的三个阶段；系统内部步骤收在默认折叠的内部分析记录中。
                 </p>
               </div>
               <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
@@ -921,12 +921,13 @@ export function AgentRunClient({
             <summary className="cursor-pointer list-none select-none">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="linear-kicker">高级信息</p>
+                  <p className="linear-kicker">辅助记录</p>
                   <h2 className="mt-1 text-base font-semibold text-slate-900">
-                    高级技术详情
+                    内部分析记录
                   </h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    展开后可查看原流程详情和系统内部 8 步执行状态，不影响上方三阶段研究口径。
+                    展开后可查看系统内部分析步骤和状态。这是辅助研究记录，
+                    不代表系统已经完成商业判断，最终需要人工确认。
                   </p>
                 </div>
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">

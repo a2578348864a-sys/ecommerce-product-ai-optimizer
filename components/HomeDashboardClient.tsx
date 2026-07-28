@@ -124,10 +124,10 @@ const workflowSteps = [
     icon: Image,
   },
   {
-    label: "人工决定",
+    label: "人工确认",
     href: "/tasks",
     cta: "查看研究历史",
-    description: "回看研究和创作结果，由你决定下一步是否继续。",
+    description: "回看研究和创作结果，由你确认下一步是否继续。",
     icon: ClipboardCheck,
   },
 ] as const;
@@ -323,11 +323,11 @@ export function HomeDashboardClient() {
                   五步完成一次商品研究
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  从发现商品开始，研究、创作，最后由你决定是否继续。
+                  从发现商品开始，研究、创作，最后由你人工确认是否继续。
                 </p>
               </div>
               <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
-                AI 辅助 · 人工决定
+                AI 辅助 · 人工确认
               </span>
             </div>
 
