@@ -52,26 +52,104 @@ model ViralAnalysisRecord {
 }
 
 model OpportunityCandidate {
-  id              String    @id @default(cuid())
-  name            String
-  rawInput        String    @default("")
-  link            String?
-  score           Int       @default(0)
-  source          String    @default("机会雷达")
-  keyword         String    @default("")
-  riskLevel       String    @default("")
-  riskLabel       String    @default("")
-  summaryLabel    String    @default("")
-  status          String    @default("pending")
-  sourceMetaJson  String    @default("{}")
-  analysisJson    String    @default("{}")
-  convertedTaskId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  lastActionAt    DateTime?
+  id                       String            @id @default(cuid())
+  name                     String
+  rawInput                 String            @default("")
+  link                     String?
+  score                    Int               @default(0)
+  source                   String            @default("机会雷达")
+  keyword                  String            @default("")
+  riskLevel                String            @default("")
+  riskLabel                String            @default("")
+  summaryLabel             String            @default("")
+  status                   String            @default("pending")
+  sourceMetaJson           String            @default("{}")
+  analysisJson             String            @default("{}")
+  convertedTaskId          String?
+  originProductBatchItemId String?           @unique
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  lastActionAt             DateTime?
+  originProductBatchItem   ProductBatchItem? @relation(fields: [originProductBatchItemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([status, updatedAt])
   @@index([score])
   @@index([createdAt])
   @@index([name])
+}
+
+model ProductBatch {
+  id                            String                      @id @default(cuid())
+  ownerSubject                  String
+  batchName                     String
+  marketplace                   String
+  currency                      String
+  reportType                    String
+  query                         String?
+  category                      String?
+  priceMinCents                 Int?
+  priceMaxCents                 Int?
+  briefHash                     String
+  sourceFileName                String
+  sourceFileSha256              String
+  normalizedBusinessHash        String?
+  snapshotHash                  String?
+  manifestHash                  String?
+  itemCount                     Int?
+  acceptedCount                 Int?
+  quarantinedCount              Int?
+  dataQualityStatus             String                      @default("pending")
+  batchStatus                   String                      @default("processing")
+  sellerSpriteDisclaimerVersion String?
+  normalizedSnapshotJson        String?
+  manifestJson                  String?
+  qualitySummaryJson            String                      @default("{}")
+  errorJson                     String?
+  dedupeKey                     String
+  importedAt                    DateTime?
+  createdAt                     DateTime                    @default(now())
+  updatedAt                     DateTime                    @updatedAt
+  items                         ProductBatchItem[]
+  discoverySelections           ProductDiscoverySelection[]
+
+  @@unique([ownerSubject, dedupeKey])
+  @@index([ownerSubject, batchStatus, importedAt])
+  @@index([ownerSubject, createdAt])
+}
+
+model ProductBatchItem {
+  id                       String                @id @default(cuid())
+  batchId                  String
+  ordinal                  Int
+  productKey               String
+  asin                     String?
+  parentAsin               String?
+  itemIdentityHash         String
+  itemHash                 String
+  evidenceHash             String
+  normalizedProductJson    String
+  occurrenceProjectionJson String
+  familyProjectionJson     String
+  rankingJson              String
+  provisionalDisposition   String
+  researchPriority         String
+  evidenceStatus           String
+  promotionEligible        Boolean               @default(false)
+  imageSnapshotJson        String                @default("{\"status\":\"not_cached\"}")
+  createdAt                DateTime              @default(now())
+  batch                    ProductBatch          @relation(fields: [batchId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  originCandidate          OpportunityCandidate?
+
+  @@unique([batchId, productKey])
+  @@unique([batchId, ordinal])
+  @@unique([batchId, itemIdentityHash])
+  @@index([batchId, evidenceStatus])
+}
+
+model ProductDiscoverySelection {
+  ownerSubject               String        @id
+  activeProductBatchId       String?
+  activeLegacyRegistrationId String?
+  updatedAt                  DateTime      @updatedAt
+  activeProductBatch         ProductBatch? @relation(fields: [activeProductBatchId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
