@@ -55,6 +55,7 @@ import {
   type PipelineStatus,
 } from "@/lib/productPipeline";
 import { deriveDisplayLifecycle, getAvailableTransitions, getLifecycleStatusLabel, getLifecycleStatusDescription, getLifecycleNextAction, transitionLifecycle, type LifecycleStatus, type ProductLifecycle } from "@/lib/workflowLifecycle";
+import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -1112,6 +1113,17 @@ export function TaskRecordDetail({ id }: { id: string }) {
       result: record.result,
     });
   }, [record]);
+  const presentation = useMemo(() => (
+    record
+      ? deriveProductResearchPresentation({
+        id: record.id,
+        title: getTitle(record),
+        type: record.type,
+        decisionStatus: record.decisionStatus,
+        result: record.result,
+      })
+      : null
+  ), [record]);
 
   async function deleteRecord() {
     if (!record || deleting) return;
@@ -1200,7 +1212,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
   }
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="任务详情" returnUrl={`/tasks/${id}`} />;
+    return <WorkspaceLockedPrompt pageName="商品研究详情" returnUrl={`/tasks/${id}`} />;
   }
 
   return (
@@ -1213,22 +1225,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
-                  <Link href="/tasks" className="hover:text-teal-600">任务中心</Link>
+                  <Link href="/tasks" className="hover:text-teal-600">研究历史</Link>
                   <span>/</span>
-                  <span className="text-slate-600">商品推进详情</span>
+                  <span className="text-slate-600">商品研究详情</span>
                   {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-                  商品推进详情{record ? `：${getTitle(record)}` : ""}
+                  商品研究详情{record ? `：${getTitle(record)}` : ""}
                 </h1>
-                <p className="mt-1 text-sm text-slate-500">把 AI 分析结果沉淀为可推进的选品任务。AI 负责生成建议，人负责最终确认。</p>
+                <p className="mt-1 text-sm text-slate-500">先看研究阶段和真实产物，再核对尚未验证的信息。AI 负责辅助整理，人负责最终决定。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/tasks"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  返回任务中心
+                  返回研究历史
                 </Link>
                 {record?.type === "workflow" && isRecordValue(record.result) && (
                   <button
@@ -1246,68 +1258,42 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
           {loading ? (
             <section className="surface-card p-6 text-sm text-teal-800">
-              正在读取任务详情...
+              正在读取任务详情…
             </section>
           ) : error ? (
             <section className="surface-card p-6">
               <p className="text-sm font-bold text-rose-700">{error}</p>
               <Link href="/tasks" className="mt-5 inline-flex text-sm font-bold text-teal-700">
-                返回运营任务中心
+                返回研究历史
               </Link>
             </section>
           ) : record ? (
             <section className="surface-card p-5 sm:p-6">
-              {/* Pipeline status bar */}
-              {(() => {
-                const pipeStatus = derivePipelineStatus({ decisionStatus: record.decisionStatus, level: record.level, result: record.result });
-                const nextAct = deriveNextAction({ decisionStatus: record.decisionStatus, level: record.level, result: record.result });
-                return (
-                  <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="pipeline-summary">
-                    <p className="text-sm font-bold text-teal-700">商品推进摘要</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${PIPELINE_STATUS_TONES[pipeStatus]}`}>
-                        {PIPELINE_STATUS_LABELS[pipeStatus]}
-                      </span>
-                      <span className={`rounded-full border px-3 py-1 text-sm font-bold ${nextAct.priority === "high" ? "border-rose-200 bg-rose-50 text-rose-700" : nextAct.priority === "medium" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-                        下一步：{nextAct.label}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{nextAct.description}</p>
+              {presentation ? (
+                <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-summary">
+                  <p className="text-sm font-bold text-teal-700">当前研究阶段</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-sm font-bold text-teal-700">
+                      {presentation.stage.label}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-600">
+                      下一步：{presentation.actions[0]?.label || "人工查看研究结果"}
+                    </span>
                   </div>
-                );
-              })()}
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    这里只按已保存的真实内容判断进度；内部任务显示 completed，不等于商品研究已经完成。
+                  </p>
+                </div>
+              ) : null}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-teal-700">商品详情</p>
+                  <p className="text-sm font-bold text-teal-700">商品概览</p>
                   <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">
                     {getTitle(record)}
                   </h2>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{record.oneLineSummary}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className={"linear-pill px-3 py-1 text-xs " + getDecisionStatusOption(record.decisionStatus).className}>
-                      {getDecisionStatusOption(record.decisionStatus).shortLabel}
-                    </span>
-                    {(() => {
-                      const risk = formatRiskLevelLabel(record.level);
-                      return (
-                        <span className={`rounded-full border px-3 py-1 text-xs font-bold ${risk.tone}`}>
-                          {risk.label}
-                        </span>
-                      );
-                    })()}
-                    <span className="linear-pill border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
-                      {record.score}/100
-                    </span>
-                    {(() => {
-                      const batchMeta = getBatchMeta(record.result);
-                      if (!batchMeta) return null;
-                      return (
-                        <span className="linear-pill border-indigo-200 bg-indigo-50 px-3 py-1 text-xs text-indigo-700">
-                          清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}
-                        </span>
-                      );
-                    })()}
-                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
+                    {presentation?.researchConclusions[0] || record.oneLineSummary}
+                  </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {showListingPackShortcut ? (
@@ -1318,25 +1304,95 @@ export function TaskRecordDetail({ id }: { id: string }) {
                       {LISTING_PACK_SHORTCUT_LABEL}
                     </Link>
                   ) : null}
+                  {presentation?.actions.map((action) => (
+                    <Link
+                      key={action.href}
+                      href={action.href}
+                      className="linear-button inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
+                    >
+                      {action.label}
+                    </Link>
+                  ))}
                 </div>
               </div>
 
+              {presentation ? (
+                <>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["来源", sourceLabel(record.source)],
+                      ["当前阶段", presentation.stage.label],
+                      ["已生成内容", presentation.artifacts.length
+                        ? presentation.artifacts.map((artifact) => artifact.label).join("、")
+                        : "暂无已保存产物"],
+                      ["最后更新", formatDate(record.updatedAt || record.createdAt)],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-bold text-slate-400">{label}</p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <section className="mt-5 rounded-2xl border border-teal-100 bg-teal-50/50 p-4">
+                    <p className="text-sm font-bold text-teal-800">研究结论</p>
+                    {presentation.researchConclusions.length ? (
+                      <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                        {presentation.researchConclusions.map((conclusion) => (
+                          <li key={conclusion}>- {conclusion}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-slate-600">尚未保存可确认的市场研究结论。</p>
+                    )}
+                  </section>
+
+                  <section className="mt-5">
+                    <div>
+                      <p className="text-sm font-bold text-slate-950">人工核验</p>
+                      <p className="mt-1 text-sm text-slate-500">供货、利润和合规都不会由系统自动判定为真实或通过。</p>
+                    </div>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                      {presentation.manualChecks.map((check) => (
+                        <article key={check.key} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-bold text-slate-900">{check.label}</p>
+                            <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-xs font-semibold text-amber-700">
+                              {check.statusLabel}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-slate-600">{check.message}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              ) : null}
+
               {record.type === "workflow" && isRecordValue(record.result) ? (
-                <WorkflowDecisionSummary
-                  result={record.result}
-                  fallbackTitle={getTitle(record)}
-                  decisionStatus={record.decisionStatus}
-                  updatingDecision={updatingDecision}
-                  decisionMessage={decisionMessage}
-                  taskId={record.id}
-                  onDecisionChange={(nextDecisionStatus) => void updateDecisionStatus(nextDecisionStatus)}
-                  onLifecycleUpdated={() => setRefreshKey((k) => k + 1)}
-                />
+                <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+                  <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                    完整分析与原有操作
+                    <span className="ml-2 text-xs font-medium text-slate-400">详细模型输出、生命周期操作和创作包，默认折叠</span>
+                  </summary>
+                  <WorkflowDecisionSummary
+                    result={record.result}
+                    fallbackTitle={getTitle(record)}
+                    decisionStatus={record.decisionStatus}
+                    updatingDecision={updatingDecision}
+                    decisionMessage={decisionMessage}
+                    taskId={record.id}
+                    onDecisionChange={(nextDecisionStatus) => void updateDecisionStatus(nextDecisionStatus)}
+                    onLifecycleUpdated={() => setRefreshKey((k) => k + 1)}
+                  />
+                </details>
               ) : null}
 
               {record.type !== "workflow" && recordSummary ? (
-                <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
-                  <p className="text-xs font-bold text-teal-700">决策摘要</p>
+                <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+                  <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">历史格式的完整分析</summary>
+                  <section className="mt-3 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+                  <p className="text-xs font-bold text-teal-700">历史决策摘要</p>
                   <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">
                     {recordSummary.productName}
                   </h3>
@@ -1356,12 +1412,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
                       </div>
                     ))}
                   </div>
-                </section>
+                  </section>
+                </details>
               ) : null}
 
               {/* Phase 4-E.2.1-Fix: Task info collapsed */}
               <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">任务信息</summary>
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">技术信息与原始数据</summary>
                 <div className="mt-2 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <div className="surface-card-soft rounded-[22px] p-4">
                   <p className="text-xs font-bold text-slate-400">记录 ID</p>
@@ -1470,10 +1527,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   disabled={deleting}
                   className="inline-flex h-11 items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-5 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {deleting ? "删除中..." : "删除这条记录"}
+                  {deleting ? "删除中…" : "删除这条记录"}
                 </button>
                 <Link href="/tasks" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  返回运营任务中心
+                  返回研究历史
                 </Link>
                 <Link href="/workflow/batch" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   继续批量分析

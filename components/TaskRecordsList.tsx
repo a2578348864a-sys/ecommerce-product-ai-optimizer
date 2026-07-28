@@ -20,7 +20,6 @@ import {
 } from "@/lib/tasks/decisionStatus";
 import {
   buildBatchDeleteConfirmationMessage,
-  buildListingPackBadges,
   buildTaskDeleteConfirmationMessage,
   formatTaskIdSuffix,
   getAiListingPackSnapshot,
@@ -31,14 +30,12 @@ import {
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
 import {
-  derivePipelineStatus,
-  deriveNextAction,
   summarizePipeline,
   PIPELINE_STATUS_LABELS,
-  PIPELINE_STATUS_TONES,
   PIPELINE_BOARD_CARDS,
   type PipelineStatus,
 } from "@/lib/productPipeline";
+import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -57,6 +54,7 @@ const extendedPlatformLabels: Record<string, string> = {
 type TaskCenterItem = {
   id: string;
   createdAt: string;
+  updatedAt?: string;
   decisionStatus: DecisionStatus;
   title: string | null;
   type?: string;
@@ -648,7 +646,7 @@ export function TaskRecordsList() {
   const displayItems = useMemo(() => [...visibleItems].sort((a, b) => {
     const priorityDiff = getPriorityScore(b, highlightedTaskId, hasActiveFilters) - getPriorityScore(a, highlightedTaskId, hasActiveFilters);
     if (priorityDiff !== 0) return priorityDiff;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
   }), [hasActiveFilters, highlightedTaskId, visibleItems]);
   const priorityItem = !loading && !error ? displayItems[0] : null;
   const prioritySummary = priorityItem
@@ -729,7 +727,7 @@ export function TaskRecordsList() {
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="任务中心" returnUrl="/tasks" />;
+    return <WorkspaceLockedPrompt pageName="研究历史" returnUrl="/tasks" />;
   }
 
   return (
@@ -741,18 +739,18 @@ export function TaskRecordsList() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Qingxuan Pipeline</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">任务中心 · 商品推进工作台</h1>
+                <p className="eyebrow">Research History</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">研究历史</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态，不只是 AI 报告仓库。AI 负责生成建议，人负责最终确认。
+                  按商品查看已经完成的研究、创作准备和人工结论。AI 结果用于辅助研究，最终决定始终由你确认。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  机会雷达
+                  发现商品
                 </Link>
                 <Link href="/agent/run" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  Agent 主链路
+                  商品研究
                 </Link>
                 <Link
                   href="/"
@@ -768,19 +766,25 @@ export function TaskRecordsList() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">商品推进看板</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">哪些商品需要你的决策？</h2>
-                <p className="muted-text mt-1 text-sm">待复核、高风险、可推进 — 一眼看清每条任务的当前阶段和下一步动作。</p>
+                <p className="text-sm font-bold text-teal-700">已保存的商品研究</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">从哪里继续研究？</h2>
+                <p className="muted-text mt-1 text-sm">优先展示商品、来源、用户阶段、真实产物和下一步；内部执行状态默认收起。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {page ? `${page.total} 条任务` : `${items.length} 条`}
               </span>
             </div>
 
-            {/* Pipeline board */}
-            <PipelineBoard counts={pipelineCounts} />
+            <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                技术状态与证据
+                <span className="ml-2 text-xs font-medium text-slate-400">内部流水线、风险统计和优先处理建议，默认折叠</span>
+              </summary>
 
-            {priorityItem && prioritySummary && priorityAgentState ? (
+              {/* Pipeline board */}
+              <PipelineBoard counts={pipelineCounts} />
+
+              {priorityItem && prioritySummary && priorityAgentState ? (
               <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
@@ -821,9 +825,9 @@ export function TaskRecordsList() {
                   </div>
                 </div>
               </div>
-            ) : null}
+              ) : null}
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 ["待复核", pipelineCounts.needs_review, "AI 分析已完成，等待人工确认"],
                 ["可推进", pipelineCounts.ready_to_advance + pipelineCounts.ready_for_listing + pipelineCounts.listing_ready, "复核通过，可继续下一步"],
@@ -836,7 +840,8 @@ export function TaskRecordsList() {
                   <p className="mt-1 text-xs leading-5 text-slate-500">{hint}</p>
                 </div>
               ))}
-            </div>
+              </div>
+            </details>
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
@@ -847,18 +852,21 @@ export function TaskRecordsList() {
               <label className="min-w-0">
                 <span className="text-xs font-bold text-slate-500">搜索关键词</span>
                 <input
+                  name="q"
+                  autoComplete="off"
                   value={queryInput}
                   onChange={(event) => setQueryInput(event.target.value)}
-                  placeholder="搜索标题、素材、摘要或结果内容"
-                  className="input-soft mt-2 h-11 w-full px-4 text-sm text-slate-800 outline-none"
+                  placeholder="例如：桌面收纳盒…"
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
                 />
               </label>
               <label>
                 <span className="text-xs font-bold text-slate-500">类型筛选</span>
                 <select
+                  name="type"
                   value={type}
                   onChange={(event) => onTypeChange(event.target.value)}
-                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none"
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
                 >
                   {taskTypes.map((item) => (
                     <option key={item.value} value={item.value}>{item.label}</option>
@@ -868,9 +876,10 @@ export function TaskRecordsList() {
               <label>
                 <span className="text-xs font-bold text-slate-500">人工状态</span>
                 <select
+                  name="decisionStatus"
                   value={decisionStatus}
                   onChange={(event) => onDecisionStatusChange(event.target.value)}
-                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none"
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
                 >
                   {decisionStatusOptions.map((item) => (
                     <option key={item.value || "all"} value={item.value}>{item.label}</option>
@@ -878,11 +887,12 @@ export function TaskRecordsList() {
                 </select>
               </label>
               <label>
-                <span className="text-xs font-bold text-slate-500">Agent 状态</span>
+                <span className="text-xs font-bold text-slate-500">技术状态（高级）</span>
                 <select
+                  name="agentStatus"
                   value={agentStatus}
                   onChange={(event) => onAgentStatusChange(event.target.value as "" | AgentStatusKey)}
-                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none"
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
                 >
                   {agentStatusFilterOptions.map((item) => (
                     <option key={item.value || "all"} value={item.value}>{item.label}</option>
@@ -943,7 +953,7 @@ export function TaskRecordsList() {
 
             {loading ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8 text-sm text-teal-800">
-                正在读取本地任务记录...
+                正在读取本地任务记录…
               </div>
             ) : error ? (
               <div className="mt-6 rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm text-rose-700">
@@ -958,9 +968,9 @@ export function TaskRecordsList() {
               </div>
             ) : isDefaultEmpty ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
-                <p className="text-lg font-semibold text-slate-950">还没有保存的任务记录</p>
+                <p className="text-lg font-semibold text-slate-950">还没有商品研究记录</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  从首页「找机会」发现候选商品，或完成单品分析 / 批量分析后保存结果，这里就会出现运营任务记录，供你复盘和确认下一步动作。
+                  从「发现商品」选择候选，或完成一次商品研究并保存结果后，这里会按商品保留研究阶段、产物和下一步。
                 </p>
                 <Link
                   href="/"
@@ -1063,10 +1073,18 @@ export function TaskRecordsList() {
                     });
                     const batchMeta = summary.batchMeta;
                     const sourceMeta = getTaskSourceMeta(item.result);
-                    const listingPackBadges = buildListingPackBadges(item.result);
                     const batchGroup = batchMeta ? operationStats.batchGroups.get(batchMeta.batchId) : null;
-                    const pipelineStatus = derivePipelineStatus({ decisionStatus: item.decisionStatus, level: item.level, result: item.result });
-                    const nextAction = deriveNextAction({ decisionStatus: item.decisionStatus, level: item.level, result: item.result });
+                    const presentation = deriveProductResearchPresentation({
+                      id: item.id,
+                      title: summary.productName,
+                      type: item.type,
+                      decisionStatus: item.decisionStatus,
+                      result: item.result,
+                    });
+                    const artifactLabel = presentation.artifacts.length
+                      ? presentation.artifacts.map((artifact) => artifact.label).join("、")
+                      : "暂无已保存产物";
+                    const presentationAction = presentation.actions[0];
                     return (
                       <article
                         key={item.id}
@@ -1074,36 +1092,39 @@ export function TaskRecordsList() {
                       >
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-                              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${PIPELINE_STATUS_TONES[pipelineStatus]}`}>
-                                {PIPELINE_STATUS_LABELS[pipelineStatus]}
-                              </span>
-                              {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
-                              {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
-                              <span>{formatDate(item.createdAt)}</span>
-                              <span className="text-slate-400" title={item.id}>ID:{formatTaskIdSuffix(item.id)}</span>
-                            </div>
-                            <h3 className="mt-2 truncate text-lg font-semibold tracking-tight text-slate-950">
-                              {summary.productName}
-                            </h3>
-                            <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-700">
-                              {summary.verdictLabel}
-                            </p>
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${nextAction.priority === "high" ? "border-rose-200 bg-rose-50 text-rose-700" : nextAction.priority === "medium" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-                                下一步：{nextAction.label}
-                              </span>
-                              {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">8 步主链路</span> : null; } catch { return null; } })()}
-                              <span className="text-xs text-slate-400">{formatDate(item.createdAt)}</span>
+                            <div className="flex items-start gap-3">
+                              <div
+                                role="img"
+                                aria-label="商品图片占位"
+                                className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-400"
+                              >
+                                商品图
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+                                  <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                                    {sourceLabel(item.source)}
+                                  </span>
+                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+                                    {presentation.stage.label}
+                                  </span>
+                                  {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
+                                  <span>最后更新 {formatDate(item.updatedAt || item.createdAt)}</span>
+                                </div>
+                                <h3 className="mt-2 truncate text-lg font-semibold tracking-tight text-slate-950">
+                                  {summary.productName}
+                                </h3>
+                                <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-700">
+                                  {presentation.researchConclusions[0] || summary.verdictLabel}
+                                </p>
+                              </div>
                             </div>
                             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                               {[
-                                ["运营阶段", operationSummary.stageLabel],
-                                ["AI 决策", operationSummary.decisionLabel],
-                                ["风险等级", operationSummary.riskLabel],
-                                ["下一步", operationSummary.actionLabel],
-                                ["Listing 准备", operationSummary.listingReadinessLabel],
-                                ["人工复核", operationSummary.stage === "needs_review" || operationSummary.reviewFocus.length > 0 ? "需要关注" : "常规复核"],
+                                ["来源", sourceLabel(item.source)],
+                                ["当前阶段", presentation.stage.label],
+                                ["已生成内容", artifactLabel],
+                                ["最后更新", formatDate(item.updatedAt || item.createdAt)],
                               ].map(([label, value]) => (
                                 <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                                   <p className="text-xs font-bold text-slate-400">{label}</p>
@@ -1111,86 +1132,100 @@ export function TaskRecordsList() {
                                 </div>
                               ))}
                             </div>
-                            <div className="mt-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                              <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                                下一步：{presentationAction?.label || "查看研究详情"}
+                              </span>
+                              <span className="text-xs text-slate-500">所有结论仍需人工确认</span>
+                            </div>
+                            <details className="mt-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
+                              <summary className="cursor-pointer text-xs font-semibold text-slate-500 select-none">
+                                技术状态与证据
+                              </summary>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                {[
+                                  ["内部阶段", operationSummary.stageLabel],
+                                  ["AI 状态", operationSummary.decisionLabel],
+                                  ["风险等级", operationSummary.riskLabel],
+                                  ["内部下一步", operationSummary.actionLabel],
+                                  ["Listing 状态", operationSummary.listingReadinessLabel],
+                                  ["记录 ID", formatTaskIdSuffix(item.id)],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-2">
+                                    <p className="text-[11px] font-bold text-slate-400">{label}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-700">{value}</p>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
                                 {operationSummary.sourceQualityScore !== undefined ? <span>来源质量 {operationSummary.sourceQualityScore}/100</span> : null}
                                 {operationSummary.confidence ? <span>置信度 {operationSummary.confidence}</span> : null}
                                 <span>阻塞项 {operationSummary.blockingIssues.length}</span>
                                 {operationSummary.fallbackUsed ? <span>历史任务 fallback</span> : null}
+                                <span>{getTaskTypeLabel(item)}</span>
+                                <span>{getAgentTypeLabel(item)}</span>
+                                <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
+                                {sourceMeta ? <span>来自候选池</span> : null}
                               </div>
-                              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
-                                {operationSummary.evidenceSummary}
-                              </p>
-                            </div>
-                            {batchMeta && batchGroup ? (
-                              <div className="mt-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-3">
-                                <p className="text-sm font-bold text-indigo-800">批量摘要</p>
-                                <p className="mt-1 text-xs leading-5 text-indigo-700">
-                                  清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal} · 当前已加载 {batchGroup.loaded}/{batchGroup.total} 个 · 可跟进 {batchGroup.followable} 个 · 高风险/谨慎 {batchGroup.cautious} 个
+                              <p className="mt-2 text-xs leading-5 text-slate-600">{operationSummary.evidenceSummary}</p>
+                              {batchMeta && batchGroup ? (
+                                <p className="mt-2 text-xs leading-5 text-indigo-700">
+                                  清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal} · 已加载 {batchGroup.loaded}/{batchGroup.total} · 可跟进 {batchGroup.followable} · 谨慎 {batchGroup.cautious}
                                 </p>
-                              </div>
-                            ) : null}
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                              <span>{getTaskTypeLabel(item)}</span>
-                              <span>{getAgentTypeLabel(item)}</span>
-                              <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
-                              <span>{sourceLabel(item.source)}</span>
-                              {sourceMeta ? <span>来自候选池</span> : null}
-                              {batchMeta ? <span>清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal}</span> : null}
-                            </div>
+                              ) : null}
+                            </details>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-[300px] lg:justify-end">
                             {/* Checkbox in select mode */}
                             {selectMode ? (
                               <input
                                 type="checkbox"
+                                aria-label={`选择 ${summary.productName}`}
                                 checked={selectedIds.has(item.id)}
                                 onChange={() => toggleSelect(item.id)}
                                 className="size-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                               />
                             ) : null}
-                            {/* Key badges: max 4 */}
-                            <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + toneClass(summary.priorityTone)}>
-                              {summary.priorityLabel}
+                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                              {presentation.stage.label}
                             </span>
-                            <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + toneClass(summary.riskTone)}>
-                              {summary.riskLabel}
-                            </span>
-                            <span className={"rounded-full border px-2.5 py-1 text-xs font-semibold " + getDecisionStatusOption(item.decisionStatus).className}>
-                              {getDecisionStatusOption(item.decisionStatus).shortLabel}
-                            </span>
-                            {listingPackBadges.map((badge) => (
+                            {presentation.artifacts.slice(0, 2).map((artifact) => (
                               <span
-                                key={badge}
+                                key={artifact.key}
                                 className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
                               >
-                                {badge}
+                                {artifact.label}
                               </span>
                             ))}
-                            {(() => { try { const r = typeof item.result === "object" && item.result ? (item.result as Record<string,unknown>) : null; const ars = r?.agentRunSnapshot as Record<string,unknown> | undefined; return ars?.source === "agent_run" ? <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">Agent 主链路</span> : null; } catch { return null; } })()}
-                            {sourceMeta ? (
-                              <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
-                                来自候选池
-                              </span>
-                            ) : null}
                             {/* Primary actions */}
                             <Link
                               href={`/tasks/${item.id}`}
                               className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
                             >
-                              查看跟进
+                              查看研究详情
                             </Link>
+                            {presentationAction ? (
+                              <Link
+                                href={presentationAction.href}
+                                className="linear-button inline-flex h-8 items-center px-3 text-xs font-semibold"
+                              >
+                                {presentationAction.label}
+                              </Link>
+                            ) : null}
                             <button
                               type="button"
                               onClick={() => setOpenId(open ? "" : item.id)}
                               className="linear-button inline-flex h-8 items-center px-3 text-xs font-semibold"
                             >
-                              {open ? "收起" : "展开"}
+                              {open ? "收起更多" : "查看更多"}
                             </button>
                             {/* More actions dropdown */}
                             <div className="relative">
                               <button
                                 type="button"
+                                aria-label={`更多操作：${summary.productName}`}
+                                aria-expanded={openMoreId === item.id}
+                                aria-haspopup="menu"
                                 onClick={() => setOpenMoreId(openMoreId === item.id ? null : item.id)}
                                 className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
                               >
@@ -1198,10 +1233,16 @@ export function TaskRecordsList() {
                               </button>
                               {openMoreId === item.id ? (
                                 <>
-                                  <div className="fixed inset-0 z-10" onClick={() => setOpenMoreId(null)} />
-                                  <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                                  <button
+                                    type="button"
+                                    aria-label="关闭更多操作"
+                                    className="fixed inset-0 z-10 cursor-default"
+                                    onClick={() => setOpenMoreId(null)}
+                                  />
+                                  <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
                                     <Link
                                       href="/workflow/batch"
+                                      role="menuitem"
                                       onClick={() => setOpenMoreId(null)}
                                       className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
                                     >
@@ -1210,6 +1251,7 @@ export function TaskRecordsList() {
                                     <div className="mx-2 my-1 border-t border-slate-100" />
                                     <button
                                       type="button"
+                                      role="menuitem"
                                       onClick={() => { void deleteRecord(item); setOpenMoreId(null); }}
                                       disabled={deletingId === item.id}
                                       className="flex w-full items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50"
@@ -1292,7 +1334,7 @@ export function TaskRecordsList() {
                       disabled={loadingMore}
                       className="linear-button inline-flex h-11 items-center justify-center px-6 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {loadingMore ? "加载中..." : "加载更多"}
+                      {loadingMore ? "加载中…" : "加载更多"}
                     </button>
                   </div>
                 ) : null}

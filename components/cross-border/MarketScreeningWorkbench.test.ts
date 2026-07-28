@@ -23,24 +23,29 @@ function render(result: MarketScreeningBatchLoadResult, preview?: ReturnType<typ
 }
 
 describe("MarketScreeningWorkbench", () => {
-  it("renders seven read-only regions, honest evidence, exact partition, and local images", () => {
+  it("renders the candidate pool before collapsed technical evidence with exact partition and local images", () => {
     const { result, preview } = readyFixture();
     const html = render(result, preview);
 
     for (const region of [
-      "工作台状态",
+      "发现商品",
+      "商品候选池",
+      "高级证据详情",
       "Selection Brief",
       "来源健康",
       "Evidence / Quality Gate",
       "Stage 1 初筛",
-      "Stage 1.5 调查短名单",
+      "Stage 1.5 调查分区",
       "高级导入 / 历史候选",
     ]) expect(html).toContain(region);
+    expect(html).toContain('data-region="advanced-evidence"');
+    expect(html).toContain("开始商品研究");
+    expect(html).toContain("这里不是正式选品结论");
+    expect(html).toContain("不代表可采购、可上架或一定有利润");
     expect(html).toContain("advance 5");
     expect(html).toContain("watch 11");
     expect(html).toContain("reject 3");
     expect(html).toContain("insufficient 1");
-    expect(html).toContain("最多 5 个继续调查对象，不是商业候选");
     expect(html).toContain("可选详情证据：已验证");
     expect(html).toContain("data:image/jpeg;base64,");
     expect(html).toContain("图片未缓存");
@@ -89,7 +94,9 @@ describe("MarketScreeningWorkbench", () => {
       },
     };
     const html = render(upstream);
-    expect(html).toContain("上游证据可信，Stage 尚未就绪");
+    expect(html).toContain("候选商品池正在准备");
+    expect(html).toContain("当前证据已读取，但还不能形成可供人工研究的商品列表");
+    expect(html).toContain("高级证据详情");
     expect(html).toContain("Selection Brief");
     expect(html).toContain("来源健康");
     expect(html).not.toContain("Stage 1 初筛");
@@ -108,7 +115,9 @@ describe("MarketScreeningWorkbench", () => {
       },
     };
     const html = render(blocked);
-    expect(html).toContain("批次已阻断");
+    expect(html).toContain("商品候选暂时不可用");
+    expect(html).toContain("当前数据没有通过完整性检查，因此不会展示可能误导你的候选商品");
+    expect(html).toContain("高级证据详情");
     expect(html).toContain("artifact_identity_conflict");
     expect(html).not.toContain("Selection Brief");
     expect(html).not.toContain("data-testid=\"market-screening-item\"");

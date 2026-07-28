@@ -29,25 +29,33 @@ function extractConstBlock(source: string, constName: string): string {
 describe("WorkspaceSidebar navigation", () => {
   const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");
 
-  it("main navigation only exposes market screening and task follow-up", () => {
+  it("exposes the six product-level destinations in the primary navigation", () => {
     const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
     const mainLabels = extractNavLabels(mainNavBlock);
-    expect(mainLabels).toEqual(["市场预筛", "任务中心"]);
+    expect(mainLabels).toEqual([
+      "工作台",
+      "发现商品",
+      "商品研究",
+      "Listing Studio",
+      "Image Studio",
+      "研究历史",
+    ]);
+    expect(mainNavBlock).toMatch(/href:\s*"\/"/);
     expect(mainNavBlock).toMatch(/\/opportunities/);
+    expect(mainNavBlock).toMatch(/\/agent\/run/);
+    expect(mainNavBlock).toMatch(/\/listing-studio/);
+    expect(mainNavBlock).toMatch(/\/image-studio/);
     expect(mainNavBlock).toMatch(/\/tasks/);
-    expect(mainNavBlock).not.toMatch(/\/agent\/run/);
     expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
-    expect(mainNavBlock).not.toMatch(/label:\s*"工作台"/);
   });
 
-  it("marks ad hoc analysis and batch analysis as advanced entries", () => {
+  it("keeps only batch analysis in the advanced section", () => {
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
-    expect(advancedBlock).toMatch(/高级临时分析/);
-    expect(advancedBlock).toMatch(/\/agent\/run/);
     expect(advancedBlock).toMatch(/批量分析（高级 \/ Alpha）/);
     expect(advancedBlock).toMatch(/\/workflow\/batch/);
+    expect(advancedBlock).not.toMatch(/\/agent\/run/);
     expect(sidebarSource).toMatch(/高级 \/ Alpha/);
-    expect(sidebarSource).toMatch(/高级工具不代表已完成市场预筛/);
+    expect(sidebarSource).toMatch(/高级工具仅作补充分析，结果仍需人工确认/);
   });
 
   it("does not show old direction entries in navigation", () => {
@@ -75,12 +83,12 @@ describe("WorkspaceSidebar navigation", () => {
     expect(sidebarSource).not.toMatch(/项目说明/);
   });
 
-  it("shows /agent/run only as advanced temporary analysis", () => {
+  it("shows /agent/run as the primary product research destination", () => {
     const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
-    expect(mainNavBlock).not.toMatch(/\/agent\/run/);
-    expect(advancedBlock).toMatch(/高级临时分析/);
-    expect(advancedBlock).toMatch(/\/agent\/run/);
+    expect(mainNavBlock).toMatch(/商品研究/);
+    expect(mainNavBlock).toMatch(/\/agent\/run/);
+    expect(advancedBlock).not.toMatch(/\/agent\/run/);
   });
 
   it("does not contain dangerous copy in nav labels", () => {
@@ -175,28 +183,25 @@ describe("/agent archive page", () => {
 describe("HomeDashboardClient navigation", () => {
   const homeSource = readComponentSource("components/HomeDashboardClient.tsx");
 
-  it("shows market screening and task center as the primary workflow", () => {
-    expect(homeSource).toMatch(/市场预筛/);
-    expect(homeSource).toMatch(/任务中心/);
+  it("positions the product as an AI cross-border product research assistant", () => {
+    expect(homeSource).toMatch(/AI 跨境商品研究助手/);
+    expect(homeSource).toMatch(/辅助研究 · 人工确认/);
   });
 
-  it("keeps /agent/run only as advanced temporary analysis", () => {
-    expect(homeSource).toMatch(/高级临时分析/);
-    expect(homeSource).toMatch(/\/agent\/run/);
-  });
-
-  it("states the evidence-first onboarding and primary routes", () => {
+  it("shows the five-stage user workflow and primary routes", () => {
     const workflowStepsSection = homeSource.match(/workflowSteps[\s\S]*?\] as const/);
-    expect(workflowStepsSection?.[0]).toMatch(/市场预筛/);
-    expect(workflowStepsSection?.[0]).toMatch(/任务中心/);
+    expect(workflowStepsSection?.[0]).toMatch(/发现商品/);
+    expect(workflowStepsSection?.[0]).toMatch(/商品研究/);
+    expect(workflowStepsSection?.[0]).toMatch(/Listing 准备/);
+    expect(workflowStepsSection?.[0]).toMatch(/图片创作/);
+    expect(workflowStepsSection?.[0]).toMatch(/人工决定/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/agent\/run"/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/listing-studio"/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/image-studio"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);
-    expect(workflowStepsSection?.[0]).not.toMatch(/href:\s*"\/agent\/run"/);
-    expect(homeSource).toMatch(/定义调查目标/);
-    expect(homeSource).toMatch(/获取一批市场商品/);
-    expect(homeSource).toMatch(/系统整理证据并缩小范围/);
-    expect(homeSource).toMatch(/人工决定继续调查哪些/);
-    expect(homeSource).not.toMatch(/输入 2-3 个候选品/);
+    expect(homeSource).toMatch(/五阶段研究流程/);
+    expect(homeSource).toMatch(/当前为人工复核版/);
   });
 
   it("does not show old direction entries as primary CTAs", () => {
@@ -209,9 +214,9 @@ describe("HomeDashboardClient navigation", () => {
     }
   });
 
-  it("uses 受控自动化 and 人工复核 copy", () => {
-    expect(homeSource).toMatch(/受控自动化/);
-    expect(homeSource).toMatch(/人工复核/);
+  it("uses research assistance and human confirmation copy", () => {
+    expect(homeSource).toMatch(/辅助研究/);
+    expect(homeSource).toMatch(/人工确认/);
   });
 
   it("does not use 无人值守全自动", () => {
@@ -231,10 +236,14 @@ describe("AgentRunClient main flow links", () => {
     expect(agentRunSource).not.toMatch(/返回单品分析页查看细节/);
   });
 
-  it("labels the route as advanced ad hoc analysis without Evidence screening status", () => {
-    expect(agentRunSource).toMatch(/高级临时分析/);
-    expect(agentRunSource).toMatch(/未接入新 Evidence，不代表已完成市场预筛/);
-    expect(agentRunSource).toMatch(/8 步受控流程/);
+  it("shows the three research phases while preserving the old flow as technical detail", () => {
+    expect(agentRunSource).toMatch(/三阶段商品研究/);
+    expect(agentRunSource).toMatch(/商品理解/);
+    expect(agentRunSource).toMatch(/市场研究/);
+    expect(agentRunSource).toMatch(/创作准备/);
+    expect(agentRunSource).toMatch(/高级技术信息 \/ 原流程详情/);
+    expect(agentRunSource).toMatch(/agent-run-technical-details/);
+    expect(agentRunSource).toMatch(/TIMELINE_STEPS\.map/);
     expect(agentRunSource).toMatch(/saveAgentRunCache/);
     expect(agentRunSource).toMatch(/loadAgentRunCache/);
     expect(agentRunSource).toMatch(/\/api\/workflows\/product-analysis/);
@@ -259,18 +268,21 @@ describe("WorkflowBatchClient advanced Alpha positioning", () => {
 describe("TaskRecordsList operational positioning", () => {
   const tasksSource = readComponentSource("components/TaskRecordsList.tsx");
 
-  it("describes task center as an operations follow-up surface, not a report archive", () => {
-    expect(tasksSource).toMatch(/任务中心用于跟进商品从候选、分析、Listing 准备到人工决策的状态/);
-    expect(tasksSource).toMatch(/不只是 AI 报告仓库/);
+  it("describes the route as product research history", () => {
+    expect(tasksSource).toMatch(/研究历史/);
+    expect(tasksSource).toMatch(/按商品查看已经完成的研究、创作准备和人工结论/);
+    expect(tasksSource).toMatch(/最终决定始终由你确认/);
   });
 
-  it("shows B3 operations fields in task cards", () => {
+  it("shows product-facing fields and keeps operational evidence collapsed", () => {
+    expect(tasksSource).toMatch(/deriveProductResearchPresentation/);
     expect(tasksSource).toMatch(/deriveTaskOperationSummary/);
-    expect(tasksSource).toMatch(/运营阶段/);
-    expect(tasksSource).toMatch(/AI 决策/);
-    expect(tasksSource).toMatch(/风险等级/);
-    expect(tasksSource).toMatch(/Listing 准备/);
-    expect(tasksSource).toMatch(/人工复核/);
+    expect(tasksSource).toMatch(/当前阶段/);
+    expect(tasksSource).toMatch(/已生成内容/);
+    expect(tasksSource).toMatch(/最后更新/);
+    expect(tasksSource).toMatch(/下一步/);
+    expect(tasksSource).toMatch(/技术状态与证据/);
+    expect(tasksSource).toMatch(/内部流水线、风险统计和优先处理建议，默认折叠/);
   });
 });
 

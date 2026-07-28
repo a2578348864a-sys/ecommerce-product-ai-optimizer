@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import { AgentRunClient, type AgentRunSourceMeta } from "@/components/agent/AgentRunClient";
 import { parseCandidateEvidenceParam } from "@/lib/candidateEvidence";
 import { parseR22MarketDecisionSnapshot } from "@/lib/r22DecisionModel";
+
+export const metadata: Metadata = {
+  title: "商品研究 - 轻选 Agent",
+  description: "分三阶段理解商品、研究市场并准备 Listing 与图片方案，最终由人工确认。",
+};
 
 type AgentRunSearchParams = {
   product?: string | string[];

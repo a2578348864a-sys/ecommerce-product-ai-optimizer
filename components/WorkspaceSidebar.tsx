@@ -6,27 +6,29 @@ import {
   FileText,
   History,
   Image,
+  LayoutDashboard,
   ListChecks,
   Package,
+  Search,
   Sparkles,
-  Target,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 
 export const workspaceNavItems = [
-  { label: "市场预筛", href: "/opportunities", icon: Target },
-  { label: "任务中心", href: "/tasks", icon: History },
+  { label: "工作台", href: "/", icon: LayoutDashboard },
+  { label: "发现商品", href: "/opportunities", icon: Search },
+  { label: "商品研究", href: "/agent/run", icon: Sparkles },
   { label: "Listing Studio", href: "/listing-studio", icon: FileText },
   { label: "Image Studio", href: "/image-studio", icon: Image },
+  { label: "研究历史", href: "/tasks", icon: History },
 ] as const;
 
 const advancedNavItems = [
-  { label: "高级临时分析", href: "/agent/run", icon: Sparkles },
   { label: "批量分析（高级 / Alpha）", href: "/workflow/batch", icon: ListChecks },
 ] as const;
 
-const mobileNavItems = [...workspaceNavItems, advancedNavItems[0]] as const;
+const mobileNavItems = workspaceNavItems;
 type SidebarNavItem = (typeof workspaceNavItems)[number] | (typeof advancedNavItems)[number];
 
 function isActivePath(pathname: string, href: string) {
@@ -101,9 +103,11 @@ export function WorkspaceSidebar() {
               <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-teal-700">受控自动化 · 人工复核版</p>
-              <p className="section-title mt-0.5 truncate text-lg font-semibold">轻选 Agent</p>
-              <p className="muted-text mt-1 text-sm leading-6">先分析，再人工复核</p>
+              <p className="text-xs font-semibold text-teal-700">轻选 Agent</p>
+              <p className="mt-0.5 whitespace-nowrap text-sm font-semibold leading-5 text-slate-950">
+                AI 跨境商品研究助手
+              </p>
+              <p className="muted-text mt-1 text-sm leading-6">辅助研究 · 人工决定</p>
             </div>
           </div>
         </div>
@@ -119,7 +123,7 @@ export function WorkspaceSidebar() {
               <NavLink key={item.href} item={item} pathname={pathname} compact />
             ))}
             <p className="px-2 pt-1 text-xs leading-5 text-slate-400">
-              高级工具不代表已完成市场预筛，结果必须人工复核。
+              高级工具仅作补充分析，结果仍需人工确认。
             </p>
           </div>
         </nav>

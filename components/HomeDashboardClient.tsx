@@ -6,13 +6,13 @@ import {
   ArrowRight,
   CheckCircle2,
   ClipboardCheck,
-  History,
+  FileText,
+  Image,
   Loader2,
   Lock,
   Route,
   Search,
   Sparkles,
-  Target,
   Unlock,
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
@@ -38,7 +38,7 @@ type TaskLoadState =
   | { status: "ready"; summary: TaskFollowUpSummary; message: string }
   | { status: "unavailable"; summary: null; message: string };
 
-const taskFallbackMessage = "输入访问密码后显示真实任务统计。";
+const taskFallbackMessage = "输入访问密码后显示真实研究历史统计。";
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
@@ -97,18 +97,49 @@ function StatCard({
 
 const workflowSteps = [
   {
-    title: "市场预筛",
-    description: "定义调查目标，获取一批市场商品，由系统整理证据并缩小范围。",
+    label: "发现商品",
     href: "/opportunities",
-    icon: Target,
+    cta: "去发现商品",
+    description: "集中查看候选商品和市场信号，选择值得继续研究的对象。",
+    icon: Search,
   },
   {
-    title: "任务中心",
-    description: "人工决定继续调查哪些，并在后续任务中记录推进状态与复盘。",
+    label: "商品研究",
+    href: "/agent/run",
+    cta: "开始商品研究",
+    description: "理解商品、研究市场，并把未知风险留给人工核验。",
+    icon: Sparkles,
+  },
+  {
+    label: "Listing 准备",
+    href: "/listing-studio",
+    cta: "打开 Listing Studio",
+    description: "基于已确认的商品事实准备可审核的 Listing 草稿。",
+    icon: FileText,
+  },
+  {
+    label: "图片创作",
+    href: "/image-studio",
+    cta: "打开 Image Studio",
+    description: "把商品事实转化为可比较、可复核的图片方案。",
+    icon: Image,
+  },
+  {
+    label: "人工决定",
     href: "/tasks",
-    icon: History,
+    cta: "查看研究历史",
+    description: "回看研究和创作结果，由你决定下一步是否继续。",
+    icon: ClipboardCheck,
   },
 ] as const;
+
+function productLanguage(value: string) {
+  return value
+    .replaceAll("机会雷达", "发现商品")
+    .replaceAll("候选池", "候选商品")
+    .replaceAll("单品分析", "商品研究")
+    .replaceAll("任务中心", "研究历史");
+}
 
 export function HomeDashboardClient() {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
@@ -117,7 +148,7 @@ export function HomeDashboardClient() {
   const [taskLoad, setTaskLoad] = useState<TaskLoadState>({
     status: "loading",
     summary: null,
-    message: "正在读取任务统计。",
+    message: "正在读取研究历史统计。",
   });
 
   // ── Password input & unlock state ──
@@ -202,7 +233,7 @@ export function HomeDashboardClient() {
     const controller = new AbortController();
 
     async function loadTasks() {
-      setTaskLoad({ status: "loading", summary: null, message: "正在读取任务统计。" });
+      setTaskLoad({ status: "loading", summary: null, message: "正在读取研究历史统计。" });
       try {
         const response = await fetch("/api/tasks?limit=50", {
           method: "GET",
@@ -224,7 +255,7 @@ export function HomeDashboardClient() {
         setTaskLoad({
           status: "ready",
           summary: summarizeTaskFollowUp(items),
-          message: "已读取本地任务统计。",
+          message: "已读取本地研究历史统计。",
         });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -258,13 +289,13 @@ export function HomeDashboardClient() {
               <div className="min-w-0">
                 <p className="eyebrow">Qingxuan Agent Alpha</p>
                 <h1 className="mt-2 max-w-3xl text-2xl font-semibold text-slate-950 sm:text-3xl">
-                  轻选 Agent 工作台
+                  AI 跨境商品研究助手
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  轻选 Agent 以市场证据为起点，先缩小调查范围，再由人工决定是否继续推进。
+                  从候选发现到 Listing 和图片准备，用一条清晰流程完成商品研究。
                 </p>
               </div>
-              <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">受控自动化 · 人工确认</span>
+              <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">辅助研究 · 人工确认</span>
             </div>
             <WorkspaceMobileNav />
           </header>
@@ -290,6 +321,9 @@ export function HomeDashboardClient() {
                   >
                     <input
                       type="password"
+                      name="accessPassword"
+                      aria-label="访问密码"
+                      autoComplete="current-password"
                       value={passwordInput}
                       onChange={(e) => {
                         setPasswordInput(e.target.value);
@@ -320,7 +354,11 @@ export function HomeDashboardClient() {
                     </button>
                   </form>
                   {passwordError ? (
-                    <p className="mt-3 text-sm font-semibold text-rose-600" data-testid="home-password-error">
+                    <p
+                      className="mt-3 text-sm font-semibold text-rose-600"
+                      data-testid="home-password-error"
+                      role="alert"
+                    >
                       {passwordError}
                     </p>
                   ) : null}
@@ -355,30 +393,30 @@ export function HomeDashboardClient() {
           <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="grid min-w-0 gap-4 md:grid-cols-3">
               <StatCard
-                title="候选池"
+                title="候选商品"
                 value={formatNumber(candidateSummary.total)}
                 description={`值得深挖 ${formatNumber(candidateSummary.worthAnalyzing)} 个，暂缓/高风险 ${formatNumber(candidateSummary.pausedOrHighRisk)} 个。`}
                 href="/opportunities"
-                cta="进入候选池"
+                cta="查看候选商品"
               />
               <StatCard
-                title="任务跟进"
+                title="研究历史"
                 value={taskSummary ? formatNumber(taskSummary.total) : "—"}
                 description={taskSummary
                   ? `待复核 ${formatNumber(taskSummary.pendingReview)} 个，可跟进 ${formatNumber(taskSummary.followable)} 个。`
                   : taskLoad.message}
                 href="/tasks"
-                cta="进入任务中心"
+                cta="查看研究历史"
                 tone={taskSummary ? "indigo" : "slate"}
               />
               <StatCard
-                title="最近分析"
+                title="最近研究"
                 value={recentSingleRun?.productName || "暂无"}
                 description={recentSingleRun
-                  ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到任务中心" : "尚未保存"}`
-                  : "还没有可恢复的单品分析结果。"}
+                  ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到研究历史" : "尚未保存"}`
+                  : "还没有可恢复的商品研究结果。"}
                 href="/agent/run"
-                cta="高级临时分析"
+                cta="继续商品研究"
                 tone={recentSingleRun?.savedTaskId ? "teal" : "amber"}
               />
             </div>
@@ -390,16 +428,16 @@ export function HomeDashboardClient() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-teal-700">推荐下一步</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-950">{recommendation.title}</h2>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-950">{productLanguage(recommendation.title)}</h2>
                 </div>
               </div>
-              <p className="mt-4 text-sm leading-6 text-slate-500">{recommendation.description}</p>
+              <p className="mt-4 text-sm leading-6 text-slate-500">{productLanguage(recommendation.description)}</p>
               <Link href={recommendation.href} className="linear-button-primary mt-5 inline-flex h-11 w-full items-center justify-center gap-2 px-4 text-sm font-semibold">
-                {recommendation.cta}
+                {productLanguage(recommendation.cta)}
                 <ArrowRight className="size-4" />
               </Link>
               <p className="mt-3 text-xs leading-5 text-slate-400">
-                本页只读取浏览器本地状态和任务列表，不自动采购、不自动上架、不自动投广告。
+                本页只读取浏览器本地状态和研究历史，不自动采购、不自动上架、不自动投广告。
               </p>
             </aside>
           </section>
@@ -407,27 +445,17 @@ export function HomeDashboardClient() {
           {isNewUser ? (
             <section className="surface-card p-5 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="linear-kicker">新手三步开始</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-950">没产品时，先把候选池建起来</h2>
+                <div className="max-w-2xl">
+                  <p className="linear-kicker">新手起点</p>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-950">没有现成商品，就先从发现商品开始</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    先收集候选和市场信号，再选择一个商品进入研究；系统只整理证据，不替你做商业决定。
+                  </p>
                 </div>
                 <Link href="/opportunities" className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
-                  开始市场预筛
+                  去发现商品
                   <ArrowRight className="size-4" />
                 </Link>
-              </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-4">
-                {[
-                  "定义调查目标",
-                  "获取一批市场商品",
-                  "系统整理证据并缩小范围",
-                  "人工决定继续调查哪些",
-                ].map((item, index) => (
-                  <div key={item} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <p className="text-xs font-semibold text-teal-700">第 {index + 1} 步</p>
-                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{item}</p>
-                  </div>
-                ))}
               </div>
             </section>
           ) : null}
@@ -435,16 +463,16 @@ export function HomeDashboardClient() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <Route className="size-5 text-teal-700" />
-              <h2 className="text-xl font-semibold text-slate-950">三步主路径</h2>
+              <h2 className="text-xl font-semibold text-slate-950">五阶段研究流程</h2>
             </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               {workflowSteps.map((step, index) => {
                 const Icon = step.icon;
                 return (
                   <Link
                     key={step.href}
                     href={step.href}
-                    className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-teal-200 hover:bg-teal-50/40"
+                    className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-teal-200 hover:bg-teal-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="linear-icon size-9 rounded-xl">
@@ -452,8 +480,12 @@ export function HomeDashboardClient() {
                       </div>
                       <span className="text-xs font-semibold text-slate-400">{String(index + 1).padStart(2, "0")}</span>
                     </div>
-                    <h3 className="mt-4 text-base font-semibold text-slate-950">{step.title}</h3>
+                    <h3 className="mt-4 text-base font-semibold text-slate-950">{step.label}</h3>
                     <p className="mt-2 text-sm leading-6 text-slate-500">{step.description}</p>
+                    <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
+                      {step.cta}
+                      <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                    </span>
                   </Link>
                 );
               })}

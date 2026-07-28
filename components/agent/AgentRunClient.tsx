@@ -128,6 +128,18 @@ type TimelineStep = {
   icon: typeof Search;
 };
 
+type ResearchStage = {
+  key: "understanding" | "market" | "creative";
+  title: string;
+  description: string;
+  completedContent: string;
+  nextAction: string;
+  actionLabel: string;
+  actionHref: string;
+  stepKeys: TimelineStep["key"][];
+  icon: typeof Search;
+};
+
 const TIMELINE_STEPS: TimelineStep[] = [
   {
     key: "normalize",
@@ -187,6 +199,42 @@ const TIMELINE_STEPS: TimelineStep[] = [
   },
 ];
 
+const RESEARCH_STAGES: ResearchStage[] = [
+  {
+    key: "understanding",
+    title: "商品理解",
+    description: "整理商品信息、用户场景和已有的基础市场信息。",
+    completedContent: "商品信息、用户场景和基础市场信息已整理。",
+    nextAction: "先确认商品是什么、面向谁，以及哪些信息仍需补充。",
+    actionLabel: "填写商品信息",
+    actionHref: "#product-research-input",
+    stepKeys: ["normalize"],
+    icon: Search,
+  },
+  {
+    key: "market",
+    title: "市场研究",
+    description: "查看市场机会、竞争情况和风险提示。",
+    completedContent: "市场机会、竞争情况和风险提示已整理。",
+    nextAction: "结合现有证据判断哪些方向值得继续人工研究。",
+    actionLabel: "开始市场研究",
+    actionHref: "#product-research-input",
+    stepKeys: ["market", "sourcing", "profit", "risk"],
+    icon: Target,
+  },
+  {
+    key: "creative",
+    title: "创作准备",
+    description: "整理 Listing、关键词和图片需求，等待人工决定。",
+    completedContent: "Listing、关键词和图片需求草稿已整理。",
+    nextAction: "内容只作为草稿，不会自动保存、发布或上架。",
+    actionLabel: "打开 Listing Studio",
+    actionHref: "/listing-studio",
+    stepKeys: ["listing", "report", "manual"],
+    icon: Sparkles,
+  },
+];
+
 const INITIAL_STATUSES: Record<TimelineStep["key"], TimelineStatus> = {
   normalize: "idle",
   market: "idle",
@@ -197,6 +245,17 @@ const INITIAL_STATUSES: Record<TimelineStep["key"], TimelineStatus> = {
   report: "idle",
   manual: "idle",
 };
+
+export function normalizeCachedStepStatuses(value: unknown) {
+  const cached = typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Partial<Record<TimelineStep["key"], TimelineStatus>>
+    : {};
+  return {
+    ...INITIAL_STATUSES,
+    ...cached,
+    sourcing: "needs_manual_review" as const,
+  };
+}
 
 const MANUAL_ITEMS = [
   { key: "sourcing", label: "已人工复核供货可行性和供应商证据" },
@@ -241,10 +300,19 @@ function statusClass(status: TimelineStatus) {
   }
 }
 
-function riskTone(level?: string) {
-  if (level === "green") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (level === "red") return "border-rose-200 bg-rose-50 text-rose-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
+function getResearchStageStatus(
+  stage: ResearchStage,
+  stepStatuses: Record<TimelineStep["key"], TimelineStatus>,
+): TimelineStatus {
+  const statuses = stage.stepKeys.map((key) => stepStatuses[key]);
+
+  if (statuses.includes("failed")) return "failed";
+  if (statuses.includes("paused")) return "paused";
+  if (statuses.includes("running")) return "running";
+  if (statuses.every((status) => status === "completed")) return "completed";
+  if (statuses.includes("needs_manual_review")) return "needs_manual_review";
+  if (statuses.some((status) => status === "completed" || status === "pending")) return "pending";
+  return "idle";
 }
 
 function riskLabel(level?: string) {
@@ -443,10 +511,7 @@ export function AgentRunClient({
     cacheRestoreAttempted.current = true;
     setProductName(cached.productName || nameFromUrl);
     setPhase((cached.phase as RunPhase) || "idle");
-    setStepStatuses({
-      ...INITIAL_STATUSES,
-      ...(cached.stepStatuses as Partial<Record<TimelineStep["key"], TimelineStatus>> || {}),
-    });
+    setStepStatuses(normalizeCachedStepStatuses(cached.stepStatuses));
     setResult((cached.result as ApiWorkflowResult) || null);
     if (cached.profitSnapshot) setProfitSnapshot(cached.profitSnapshot as ProfitSnapshot);
     if (cached.riskReviewSnapshot) setRiskReviewSnapshot(cached.riskReviewSnapshot as RiskReviewSnapshot);
@@ -518,23 +583,10 @@ export function AgentRunClient({
     setManualDecisionReason("");
     setManualDecisionNextAction("");
 
-    const runOrder: TimelineStep["key"][] = ["normalize", "market", "sourcing", "profit", "risk", "listing", "report", "manual"];
-    let cursor = 0;
     setStepStatuses({
       ...INITIAL_STATUSES,
       normalize: "running",
     });
-    const timer = window.setInterval(() => {
-      cursor += 1;
-      setStepStatuses((current) => {
-        const next = { ...current };
-        const previous = runOrder[cursor - 1];
-        const active = runOrder[cursor];
-        if (previous && next[previous] === "running") next[previous] = "completed";
-        if (active) next[active] = "running";
-        return next;
-      });
-    }, 450);
 
     try {
       const response = await fetch("/api/workflows/product-analysis", {
@@ -549,8 +601,6 @@ export function AgentRunClient({
         }),
       });
       const data = await response.json() as ApiWorkflowResult | ApiErrorResponse;
-      window.clearInterval(timer);
-
       if (!response.ok || !data.ok) {
         const message = data.ok ? "主链路分析失败，请稍后重试。" : data.error?.message || "主链路分析失败，请稍后重试。";
         // Auth errors (401/403) should NOT pollute business run state
@@ -561,13 +611,7 @@ export function AgentRunClient({
         } else {
           setPhase("failed");
           setError(message);
-          setStepStatuses((current) => {
-            const next = { ...current };
-            for (const key of runOrder) {
-              if (next[key] === "running") next[key] = "failed";
-            }
-            return next;
-          });
+          setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" });
         }
         return;
       }
@@ -580,7 +624,7 @@ export function AgentRunClient({
       setStepStatuses({
         normalize: apiStatusToTimeline(getApiStep(workflowResult, "normalize")?.status),
         market: workflowResult.finalReport ? "completed" : "needs_manual_review",
-        sourcing: apiStatusToTimeline(getApiStep(workflowResult, "sourcing")?.status),
+        sourcing: "needs_manual_review",
         profit: "needs_manual_review",
         risk: riskLevel === "red" ? "paused" : "needs_manual_review",
         listing: apiStatusToTimeline(getApiStep(workflowResult, "listing")?.status),
@@ -591,16 +635,9 @@ export function AgentRunClient({
         setError(workflowResult.warnings.join("；"));
       }
     } catch (runError) {
-      window.clearInterval(timer);
       setPhase("failed");
       setError(runError instanceof Error ? runError.message : "网络异常，请稍后重试。");
-      setStepStatuses((current) => {
-        const next = { ...current };
-        for (const key of runOrder) {
-          if (next[key] === "running") next[key] = "failed";
-        }
-        return next;
-      });
+      setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" });
     }
   }
 
@@ -692,7 +729,7 @@ export function AgentRunClient({
   }
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="高级临时分析" returnUrl="/agent/run" />;
+    return <WorkspaceLockedPrompt pageName="商品研究" returnUrl="/agent/run" />;
   }
 
   return (
@@ -704,19 +741,19 @@ export function AgentRunClient({
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="eyebrow">受控自动化 · Alpha MVP</p>
-                <h1 className="section-title mt-1 text-2xl">高级临时分析</h1>
+                <p className="eyebrow">辅助研究 · 人工确认</p>
+                <h1 className="section-title mt-1 text-2xl">商品研究</h1>
                 <p className="muted-text mt-1 max-w-3xl text-sm leading-6">
-                  从一个商品出发运行既有 8 步受控流程。未接入新 Evidence，不代表已完成市场预筛。
-                  当前为受控自动化工作流，AI 负责预筛和建议，最终商业动作需人工确认。
+                  从一个商品出发，依次完成商品理解、市场研究和创作准备。
+                  AI 只负责整理与建议，不代替供应商、成本、合规核验，最终决定始终由人工完成。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link href="/opportunities" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                  候选池
+                  发现商品
                 </Link>
                 <Link href="/tasks" className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                  任务中心
+                  研究历史
                 </Link>
               </div>
             </div>
@@ -736,15 +773,17 @@ export function AgentRunClient({
             </div>
           </section>
 
-          <section className="surface-card p-4 sm:p-5">
+          <section id="product-research-input" className="surface-card scroll-mt-4 p-4 sm:p-5">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
               <div>
                 <label className="text-sm font-semibold text-slate-700" htmlFor="agent-run-product">
-                  输入产品 / 从候选带入
+                  输入商品 / 从发现商品带入
                 </label>
                 <input
                   id="agent-run-product"
+                  name="productName"
                   type="text"
+                  autoComplete="off"
                   value={productName}
                   onChange={(event) => {
                     setProductName(event.target.value.slice(0, 120));
@@ -753,13 +792,13 @@ export function AgentRunClient({
                   onKeyDown={(event) => {
                     if (event.key === "Enter") void handleRun();
                   }}
-                  placeholder="例如：桌面手机支架、硅胶折叠水杯、宠物慢食碗"
+                  placeholder="例如：桌面手机支架、硅胶折叠水杯、宠物慢食碗…"
                   disabled={isRunning}
                   className="mt-1 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>{productName.length}/120</span>
-                  <span>可以输入产品名称，也可以后续从候选池带入。</span>
+                  <span>可以输入商品名称，也可以从发现商品带入。</span>
                   {sourceMeta ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-700">
                       已从候选带入：{sourceMeta.opportunityTitle}
@@ -778,12 +817,12 @@ export function AgentRunClient({
                   {isRunning ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
-                      主链路分析中
+                      商品研究中
                     </>
                   ) : (
                     <>
                       <Sparkles className="size-4" />
-                      开始主链路分析
+                      开始商品研究
                     </>
                   )}
                 </button>
@@ -819,9 +858,9 @@ export function AgentRunClient({
             ) : null}
             {sourceMeta ? (
               <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-sm leading-6 text-indigo-800">
-                <p className="font-semibold">已带入候选池上下文</p>
+                <p className="font-semibold">已带入发现商品上下文</p>
                 <p className="mt-1">
-                  来自候选池：{sourceMeta.sourceTitle || sourceMeta.opportunityTitle}
+                  来自发现商品：{sourceMeta.sourceTitle || sourceMeta.opportunityTitle}
                   {sourceMeta.candidateId ? ` · 候选 ID：${sourceMeta.candidateId}` : ""}
                 </p>
                 {sourceMeta.originalName || sourceMeta.analyzedName ? (
@@ -838,7 +877,7 @@ export function AgentRunClient({
                   </div>
                 ) : null}
                 <p className="mt-1 text-xs font-semibold">
-                  不会自动开始 AI 分析，仍需你手动点击“开始主链路分析”。
+                  不会自动开始 AI 分析，仍需你手动点击“开始商品研究”。
                 </p>
               </div>
             ) : null}
@@ -847,37 +886,108 @@ export function AgentRunClient({
           <section className="surface-card p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="linear-kicker">一条主链路</p>
+                <p className="linear-kicker">三阶段商品研究</p>
                 <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                  从输入到任务沉淀的 8 步受控流程
+                  先理解，再研究，最后准备创作
                 </h2>
               </div>
               <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
                 {phase === "failed" ? "分析未完成，可重新开始" : needsManualReview ? "等待人工确认" : isRunning ? "运行中" : "未开始"}
               </span>
             </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 lg:grid-cols-3">
+              {RESEARCH_STAGES.map((stage, index) => (
+                <ResearchStageCard
+                  key={stage.key}
+                  index={index}
+                  stage={stage}
+                  status={getResearchStageStatus(stage, stepStatuses)}
+                />
+              ))}
+            </div>
+          </section>
+
+          <details
+            data-testid="agent-run-technical-details"
+            className="surface-card p-4 sm:p-5"
+          >
+            <summary className="cursor-pointer list-none select-none">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="linear-kicker">高级技术信息</p>
+                  <h2 className="mt-1 text-base font-semibold text-slate-900">
+                    高级技术信息 / 原流程详情
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    展开后可查看系统内部 8 步执行状态，不影响上方三阶段研究口径。
+                  </p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">
+                  默认折叠
+                </span>
+              </div>
+            </summary>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {TIMELINE_STEPS.map((step) => (
                 <TimelineCard key={step.key} step={step} status={stepStatuses[step.key]} />
               ))}
             </div>
-          </section>
+          </details>
+
+          <details
+            data-testid="agent-run-human-verification"
+            className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5"
+          >
+            <summary className="cursor-pointer list-none select-none">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-amber-900">待人工核验</p>
+                  <p className="mt-1 text-sm leading-6 text-amber-800">
+                    这些内容缺少可靠的一手证据，不作为 AI 已确认结论。
+                  </p>
+                </div>
+                <span className="rounded-full border border-amber-200 bg-white/80 px-3 py-1 text-xs font-semibold text-amber-700">
+                  默认折叠
+                </span>
+              </div>
+            </summary>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <div className="rounded-xl border border-amber-200 bg-white/80 p-4">
+                <p className="font-semibold text-slate-900">供货与供应商</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  当前没有可靠供应商数据，需要人工寻找和确认。
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-white/80 p-4">
+                <p className="font-semibold text-slate-900">成本与利润</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  需要补充采购、物流、平台费用和广告预算后才能计算。
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-white/80 p-4">
+                <p className="font-semibold text-slate-900">合规与知识产权</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  不能替代专业合规或知识产权审核。
+                </p>
+              </div>
+            </div>
+          </details>
 
           {phase === "failed" ? (
             <section className="surface-card border-rose-200 bg-rose-50/70 p-4 sm:p-5">
               <div className="flex items-start gap-3">
                 <XCircle className="mt-0.5 size-5 shrink-0 text-rose-600" />
                 <div>
-                  <h2 className="text-lg font-semibold text-rose-900">主链路分析失败</h2>
+                  <h2 className="text-lg font-semibold text-rose-900">商品研究未完成</h2>
                   <p className="mt-1 text-sm leading-6 text-rose-700">
-                    {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始，或进入任务中心查看已保存的运营记录。"}
+                    {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始，或进入研究历史查看已保存的记录。"}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={resetRun} className="linear-button-primary inline-flex h-10 items-center px-4 text-sm font-semibold">
                       重新开始
                     </button>
                     <Link href="/tasks" className="linear-button inline-flex h-10 items-center px-4 text-sm font-semibold">
-                      查看任务中心
+                      查看研究历史
                     </Link>
                   </div>
                 </div>
@@ -901,7 +1011,7 @@ export function AgentRunClient({
                 <DecisionEvidencePanel evidence={decisionEvidence} />
               </div>
               <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4 mt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">Agent 主链路结论 · {result.productName}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">商品研究结论 · {result.productName}</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <h2 className="break-words text-2xl font-bold tracking-tight text-slate-950">
@@ -912,8 +1022,8 @@ export function AgentRunClient({
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  <span className={`rounded-full border px-3 py-1 text-sm font-bold ${riskTone(report.riskLevel)}`}>
-                    {riskLabel(report.riskLevel)}
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-bold text-amber-800">
+                    风险提示：{riskLabel(report.riskLevel)}（待人工核验）
                   </span>
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-700">
                     {report.beginnerFit || "需人工判断"}
@@ -944,9 +1054,9 @@ export function AgentRunClient({
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <SummaryMetric label="AI 步骤" value={`${result.costGuard.aiStepsCompleted}/${result.costGuard.aiStepsRequested}`} />
-                <SummaryMetric label="兜底步骤" value={String(result.costGuard.fallbackSteps)} />
-                <SummaryMetric label="工作流状态" value={result.status === "completed" ? "已完成" : "需复核"} />
+                <SummaryMetric label="研究状态" value={result.status === "completed" ? "已生成研究结论" : "需要人工复核"} />
+                <SummaryMetric label="风险提示" value={`${riskLabel(report.riskLevel)}（待人工核验）`} />
+                <SummaryMetric label="人工确认" value={manualReady ? "4 项已确认" : "待完成 4 项"} />
                 <SummaryMetric label="保存状态" value={savedTaskId ? "已保存" : "未保存"} />
                 {result.r22CommercialValidation ? (
                   <SummaryMetric label="商业决策" value="待真实供应与成本资料" />
@@ -1038,6 +1148,7 @@ export function AgentRunClient({
                     </label>
                     <select
                       id="agent-run-decision-status"
+                      name="decisionStatus"
                       value={manualDecisionStatus}
                       onChange={(event) => setManualDecisionStatus(normalizeDecisionStatus(event.target.value))}
                       className="mt-1 h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
@@ -1051,6 +1162,7 @@ export function AgentRunClient({
                     <label className="block text-xs font-bold text-amber-900">
                       决定原因
                       <textarea
+                        name="decisionReason"
                         value={manualDecisionReason}
                         onChange={(event) => setManualDecisionReason(event.target.value.slice(0, 500))}
                         rows={3}
@@ -1061,6 +1173,7 @@ export function AgentRunClient({
                     <label className="block text-xs font-bold text-amber-900">
                       下一步动作
                       <textarea
+                        name="decisionNextAction"
                         value={manualDecisionNextAction}
                         onChange={(event) => setManualDecisionNextAction(event.target.value.slice(0, 300))}
                         rows={3}
@@ -1076,7 +1189,7 @@ export function AgentRunClient({
                       <CheckCircle2 className="size-4" />
                       {result.r22CommercialValidation
                         ? "已保存商业验证任务"
-                        : "已保存，进入运营跟进"}
+                        : "已保存，进入研究历史"}
                     </Link>
                   ) : (
                     <button
@@ -1103,7 +1216,7 @@ export function AgentRunClient({
                     暂不保存
                   </button>
                   <Link href="/tasks" className="linear-button-soft inline-flex h-11 items-center gap-2 px-4 text-sm font-semibold">
-                    查看任务中心
+                    查看研究历史
                     <ArrowRight className="size-4" />
                   </Link>
                 </div>
@@ -1114,7 +1227,7 @@ export function AgentRunClient({
           ) : null}
 
           <p className="text-center text-xs text-slate-400">
-            高级临时分析 · 未接入新 Evidence · AI / 规则预筛 · 人工最终确认
+            商品研究 · AI / 规则辅助 · 人工最终确认
           </p>
         </div>
       </div>
@@ -1143,6 +1256,59 @@ function TimelineCard({ step, status }: { step: TimelineStep; status: TimelineSt
         </div>
       </div>
     </div>
+  );
+}
+
+function ResearchStageCard({
+  stage,
+  status,
+  index,
+}: {
+  stage: ResearchStage;
+  status: TimelineStatus;
+  index: number;
+}) {
+  const Icon = stage.icon;
+  return (
+    <article
+      data-testid="agent-run-research-stage"
+      className="relative overflow-hidden rounded-2xl border border-teal-100 bg-gradient-to-b from-white to-teal-50/50 p-4"
+    >
+      <div className="flex items-start gap-3">
+        <span className="linear-icon size-10 shrink-0 rounded-xl bg-teal-50 text-teal-700">
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold tracking-[0.12em] text-teal-600">
+              阶段 {index + 1}
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${statusClass(status)}`}>
+              {status === "running" ? <Loader2 className="mr-1 inline size-3 animate-spin" /> : null}
+              {statusLabel(status)}
+            </span>
+          </div>
+          <h3 className="mt-2 text-base font-bold text-slate-950">{stage.title}</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-600">{stage.description}</p>
+          <div className="mt-3 rounded-xl border border-teal-100 bg-white/80 p-3 text-xs leading-5 text-slate-600">
+            <p className="font-semibold text-slate-700">已完成内容</p>
+            <p className="mt-1">
+              {status === "completed" ? stage.completedContent : "尚未完成；完成后会在这里汇总。"}
+            </p>
+          </div>
+          <p className="mt-3 border-t border-teal-100 pt-3 text-xs leading-5 text-slate-500">
+            {stage.nextAction}
+          </p>
+          <Link
+            href={stage.actionHref}
+            data-testid="agent-run-research-stage-action"
+            className="linear-button mt-3 inline-flex h-9 items-center justify-center px-3 text-xs font-semibold"
+          >
+            {stage.actionLabel}
+          </Link>
+        </div>
+      </div>
+    </article>
   );
 }
 

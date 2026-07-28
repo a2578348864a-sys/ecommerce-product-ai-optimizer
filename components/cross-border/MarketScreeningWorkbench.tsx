@@ -92,6 +92,13 @@ function detailStatusLabel(status: MarketScreeningBatchHealthView["optionalDetai
   return "可选详情证据：未附加";
 }
 
+function researchStatusLabel(status: MarketScreeningWorkbenchView["items"][number]["status"]) {
+  if (status === "advance") return "优先研究";
+  if (status === "watch") return "继续观察";
+  if (status === "reject") return "暂不研究";
+  return "证据不足";
+}
+
 function HealthSummary({ health }: { health: MarketScreeningBatchHealthView }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -113,24 +120,30 @@ function HealthSummary({ health }: { health: MarketScreeningBatchHealthView }) {
 function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView; partial: boolean }) {
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
-      <section className="surface-card border-teal-200 bg-teal-50/50 p-5" data-region="workbench-status">
-        <p className="eyebrow">工作台状态</p>
+      <section className="workspace-header order-1" data-region="workbench-status">
+        <p className="eyebrow">发现商品</p>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-950">市场预筛工作台</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              冻结批次 {view.manifestId} · {view.batchReadiness.status} · 只读证据投影
+            <h1 className="section-title text-2xl">商品候选池</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              先浏览商品和市场信号，再选择值得继续研究的对象。这里不是正式选品结论，
+              每个商品都需要人工决定下一步。
             </p>
             {partial ? (
               <p className="mt-2 font-semibold text-amber-700">部分来源失败，结果仅用于受限预筛</p>
             ) : null}
           </div>
-          <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-sm font-semibold text-teal-700">
-            frozen_validation_batch
-          </span>
+          <Link href="/agent/run" className="linear-button-primary inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
+            开始商品研究
+          </Link>
         </div>
       </section>
 
+      <details className="surface-card order-3 p-5" data-region="advanced-evidence">
+        <summary className="cursor-pointer text-base font-semibold text-slate-700">
+          高级证据详情 <span className="text-sm font-normal text-slate-400">· Manifest、来源健康、门禁与内部阶段</span>
+        </summary>
+        <div className="mt-4 space-y-4">
       <BriefRegion brief={view.brief} />
       <SourcesRegion sources={view.sourceRuns} />
 
@@ -158,15 +171,27 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
           {view.stage1Summary.rankingRunId} · {view.stage1Summary.ruleVersion}
         </p>
       </section>
-
       <section className="surface-card p-5" data-region="stage-1-5">
-        <p className="eyebrow">Stage 1.5 调查短名单</p>
+        <p className="eyebrow">Stage 1.5 调查分区</p>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          advance {view.stage15Summary.advance} · watch {view.stage15Summary.watch} · reject {view.stage15Summary.reject}
+          · insufficient {view.stage15Summary.insufficient}
+        </p>
+      </section>
+        </div>
+      </details>
+
+      <section className="surface-card order-2 p-5" data-region="candidate-pool">
+        <p className="eyebrow">候选商品池</p>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-slate-950">最多 5 个继续调查对象，不是商业候选</h2>
+            <h2 className="text-xl font-semibold text-slate-950">{view.items.length} 个商品等待人工研究</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              市场信号用于安排研究顺序，不代表可采购、可上架或一定有利润。
+            </p>
             <p className="mt-2 text-sm text-slate-600">
-              advance {view.stage15Summary.advance} · watch {view.stage15Summary.watch} · reject {view.stage15Summary.reject}
-              · insufficient {view.stage15Summary.insufficient}
+              优先研究 {view.stage15Summary.advance} · 继续观察 {view.stage15Summary.watch} · 暂不研究 {view.stage15Summary.reject}
+              · 证据不足 {view.stage15Summary.insufficient}
             </p>
             {partial ? (
               <p className="mt-2 font-semibold text-amber-700">部分来源失败，结果仅用于受限预筛</p>
@@ -187,7 +212,14 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
               <div className="flex aspect-[4/3] items-center justify-center bg-slate-100">
                 {item.image.status === "available" && item.image.dataUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.image.dataUrl} alt={item.title.value ?? item.asin} className="size-full object-contain" />
+                  <img
+                    src={item.image.dataUrl}
+                    alt={item.title.value ?? item.asin}
+                    width={640}
+                    height={480}
+                    loading="lazy"
+                    className="size-full object-contain"
+                  />
                 ) : (
                   <p className="px-4 text-center text-sm font-semibold text-slate-400">
                     {item.image.status === "image_integrity_failed" ? "图片完整性校验失败" : "图片未缓存"}
@@ -197,14 +229,14 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
               <div className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">
-                    {item.status}
+                    {researchStatusLabel(item.status)}
                   </span>
                   <span className="text-xs text-slate-400">{item.asin}</span>
                 </div>
                 <h3 className="mt-3 line-clamp-3 text-base font-semibold leading-6 text-slate-950">
                   {item.title.value ?? "标题缺失"}
                 </h3>
-                <p className="mt-1 text-xs text-slate-400">{evidenceNote(item.title)}</p>
+                <p className="mt-1 text-xs text-slate-500">来源：{item.title.source}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-xs text-slate-400">价格</p>
@@ -221,8 +253,13 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
                     <p className="mt-1 text-sm font-bold text-slate-800">{item.reviewCount.value ?? "缺失"}</p>
                   </div>
                 </div>
-                <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-slate-700">功能、材料与详情证据</summary>
+                <details className="mt-4" data-testid="market-screening-preview">
+                  <summary className="linear-button-primary flex h-10 w-full cursor-pointer list-none items-center justify-center px-4 text-sm font-semibold">
+                    查看市场预览
+                  </summary>
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-700">原始证据与原因码</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{evidenceNote(item.title)}</p>
                   {item.features.value ? (
                     <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
                       {item.features.value.slice(0, 3).map((feature) => <li key={feature}>- {feature}</li>)}
@@ -230,20 +267,22 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
                   ) : (
                     <p className="mt-2 text-xs text-slate-500">{item.features.missingReason}</p>
                   )}
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {item.reasonCodes.slice(0, 3).join(" · ") || "无额外原因码"}
+                  </p>
+                  <p className="mt-2 text-xs font-semibold text-slate-600">原始建议</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    {item.nextActions.slice(0, 2).join(" · ") || "等待人工指定"}
+                  </p>
+                  </div>
                 </details>
-                <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/60 p-3 text-xs leading-5 text-amber-800">
-                  <p className="font-semibold">为什么进入当前分区</p>
-                  <p className="mt-1">{item.reasonCodes.slice(0, 3).join(" · ") || "无额外原因码"}</p>
-                  <p className="mt-2 font-semibold">下一步只验证</p>
-                  <p className="mt-1">{item.nextActions.slice(0, 2).join(" · ") || "等待人工指定"}</p>
-                </div>
               </div>
             </article>
           ))}
         </div>
       </section>
 
-      <section className="surface-card p-5" data-region="advanced-import-history">
+      <section className="surface-card order-4 p-5" data-region="advanced-import-history">
         <p className="eyebrow">高级导入 / 历史候选</p>
         <h2 className="mt-1 text-xl font-semibold text-slate-950">兼容入口仅作补充</h2>
         <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -270,25 +309,35 @@ export function MarketScreeningWorkbench({ model }: { model: MarketScreeningWork
       return (
         <div className="mx-auto flex max-w-7xl flex-col gap-4">
           <section className="surface-card border-amber-200 bg-amber-50/60 p-5">
-            <p className="eyebrow">工作台状态</p>
-            <h1 className="mt-1 text-2xl font-semibold text-slate-950">上游证据可信，Stage 尚未就绪</h1>
-            <p className="mt-2 text-sm text-slate-600">不展示排名、Stage 1.5 分区或商品卡。</p>
+            <p className="eyebrow">发现商品</p>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-950">候选商品池正在准备</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              当前证据已读取，但还不能形成可供人工研究的商品列表。
+            </p>
           </section>
-          <BriefRegion brief={model.view.brief} />
-          <SourcesRegion sources={model.view.sourceRuns} />
-          <section className="surface-card p-5">
-            <p className="eyebrow">批次健康</p>
-            <div className="mt-4"><HealthSummary health={model.view.batchHealth} /></div>
-          </section>
+          <details className="surface-card p-5">
+            <summary className="cursor-pointer font-semibold text-slate-700">高级证据详情</summary>
+            <div className="mt-4 space-y-4">
+              <BriefRegion brief={model.view.brief} />
+              <SourcesRegion sources={model.view.sourceRuns} />
+              <HealthSummary health={model.view.batchHealth} />
+            </div>
+          </details>
         </div>
       );
     case "blocked":
       return (
         <section className="mx-auto max-w-3xl rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
-          <p className="text-sm font-semibold text-rose-700">批次已阻断</p>
-          <h1 className="mt-2 text-2xl font-bold text-slate-950">证据身份或完整性未通过</h1>
-          <p className="mt-3 break-all text-sm text-slate-600">错误码：{model.errorCode}</p>
-          <p className="mt-2 text-sm text-slate-500">{model.reasonCodes.join(" · ")}</p>
+          <p className="eyebrow text-rose-700">发现商品</p>
+          <h1 className="mt-2 text-2xl font-bold text-slate-950">商品候选暂时不可用</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            当前数据没有通过完整性检查，因此不会展示可能误导你的候选商品。
+          </p>
+          <details className="mt-4 rounded-xl border border-rose-100 bg-rose-50/60 p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-rose-700">高级证据详情</summary>
+            <p className="mt-3 break-all text-sm text-slate-600">错误码：{model.errorCode}</p>
+            <p className="mt-2 text-sm text-slate-500">{model.reasonCodes.join(" · ")}</p>
+          </details>
         </section>
       );
     default:
