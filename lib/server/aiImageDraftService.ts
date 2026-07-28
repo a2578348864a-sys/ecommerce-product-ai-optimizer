@@ -54,6 +54,7 @@ export type AiImageServiceErrorCode =
   | "image_storage_failed"
   | "image_snapshot_save_failed"
   | "image_ledger_failed"
+  | "visitor_ai_quota_commit_failed"
   | "image_provider_untrusted_result_url"
   | "image_provider_result_dns_rejected"
   | "image_provider_result_redirect_rejected"
@@ -171,12 +172,30 @@ function safeUpdateLedger(input: Parameters<typeof updateAiImageRequest>[0]): vo
   }
 }
 
-function safeCommitVisitorQuota(task: LoadedAiImageTask, requestHash: string): DemoAccessSnapshot | null {
+function updateLedgerStrict(input: Parameters<typeof updateAiImageRequest>[0]): void {
+  const updated = updateAiImageRequest(input);
+  if (!updated || updated.status !== input.status) throw new Error("AI_IMAGE_LEDGER_UPDATE_FAILED");
+}
+
+function tryCommitVisitorQuota(
+  task: LoadedAiImageTask,
+  requestHash: string,
+): { ok: true; snapshot: DemoAccessSnapshot | null } | { ok: false } {
+  if (task.accessMode !== "visitor") return { ok: true, snapshot: null };
   try {
-    return commitVisitorImageAiCalls(task.accessContext, requestHash);
+    const snapshot = commitVisitorImageAiCalls(task.accessContext, requestHash);
+    return snapshot ? { ok: true, snapshot } : { ok: false };
   } catch {
-    return null;
+    return { ok: false };
   }
+}
+
+function quotaCommitFailure(): AiImageServiceResult {
+  return fail(
+    "visitor_ai_quota_commit_failed",
+    "访客额度结算暂不可确认，已保留本次请求；请使用同一请求标识重试，不会再次调用 AI。",
+    true,
+  );
 }
 
 function safeRefundVisitorQuota(task: LoadedAiImageTask, requestHash: string): DemoAccessSnapshot | null {
@@ -190,6 +209,7 @@ function safeRefundVisitorQuota(task: LoadedAiImageTask, requestHash: string): D
 export async function generateAiImageDraft(input: {
   loadedTask: LoadedAiImageTask;
   request: AiImageGenerateRequest;
+  requestContextHash?: string;
   provider?: AiImageProvider;
   now?: string;
 }): Promise<AiImageServiceResult> {
@@ -210,6 +230,7 @@ export async function generateAiImageDraft(input: {
     imageType: input.request.imageType,
     count: input.request.count,
     additionalDirection: input.request.additionalDirection,
+    requestContextHash: input.requestContextHash,
   });
   const taskLockKey = `${input.loadedTask.accessMode}:${accessScope}:${input.loadedTask.taskId}`;
   if (inFlightTasks.has(taskLockKey)) return fail("image_request_in_progress", "当前任务已有图片正在生成，请稍候。", true);
@@ -237,17 +258,34 @@ export async function generateAiImageDraft(input: {
       if (ledger.entry.status === "committed") {
         const duplicate = duplicateResult(input.loadedTask, requestHash, ledger.entry.itemIds);
         if (duplicate.ok && input.loadedTask.accessMode === "visitor") {
-          duplicate.data.visitorAccess = safeCommitVisitorQuota(input.loadedTask, requestHash);
+          const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+          if (!committed.ok) return quotaCommitFailure();
+          duplicate.data.visitorAccess = committed.snapshot;
         }
         return duplicate;
       }
       if (["reserved", "provider_called", "provider_result_received", "asset_ingested", "provider_succeeded", "stored"].includes(ledger.entry.status)) {
         const recovered = duplicateResult(input.loadedTask, requestHash, ledger.entry.itemIds);
         if (recovered.ok) {
-          safeUpdateLedger({ requestHash, status: "committed", itemIds: recovered.data.items.map((item) => item.id), now: input.now });
+          let visitorAccess: DemoAccessSnapshot | null = null;
           if (input.loadedTask.accessMode === "visitor") {
-            recovered.data.visitorAccess = safeCommitVisitorQuota(input.loadedTask, requestHash);
+            const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+            if (!committed.ok) return quotaCommitFailure();
+            visitorAccess = committed.snapshot;
           }
+          try {
+            updateLedgerStrict({
+              requestHash,
+              status: "committed",
+              providerStage: "completed",
+              providerCostConsumed: true,
+              itemIds: recovered.data.items.map((item) => item.id),
+              now: input.now,
+            });
+          } catch {
+            return fail("image_ledger_failed", "图片结果已安全保存，但请求账本恢复失败；请使用同一请求重试。", true);
+          }
+          recovered.data.visitorAccess = visitorAccess;
           return recovered;
         }
         const nowMs = Date.parse(input.now || new Date().toISOString());
@@ -256,22 +294,33 @@ export async function generateAiImageDraft(input: {
           const costConsumed = ledger.entry.providerCostConsumed === true
             || ["provider_result_received", "asset_ingested", "provider_succeeded", "stored"].includes(ledger.entry.status);
           if (input.loadedTask.accessMode === "visitor") {
-            if (costConsumed) safeCommitVisitorQuota(input.loadedTask, requestHash);
+            if (costConsumed) {
+              const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+              if (!committed.ok) return quotaCommitFailure();
+            }
             else safeRefundVisitorQuota(input.loadedTask, requestHash);
           }
-          safeUpdateLedger({
-            requestHash,
-            status: costConsumed ? "failed_after_provider_result" : "refunded",
-            providerCostConsumed: costConsumed,
-            failureStage: costConsumed ? "snapshot_persistence" : "provider_call",
-            errorCode: "image_request_stale",
-            now: input.now,
-          });
+          try {
+            updateLedgerStrict({
+              requestHash,
+              status: costConsumed ? "failed_after_provider_result" : "refunded",
+              providerCostConsumed: costConsumed,
+              failureStage: costConsumed ? "snapshot_persistence" : "provider_call",
+              errorCode: "image_request_stale",
+              now: input.now,
+            });
+          } catch {
+            return fail("image_ledger_failed", "陈旧图片请求恢复失败；本次没有再次调用 AI。", true);
+          }
           return fail("image_request_already_failed", costConsumed
             ? "上一次请求已在 Provider 返回结果后中断，额度已消耗，请使用新的请求标识重新发起。"
             : "上一次请求已中断且额度已恢复，请使用新的请求标识重新发起。", false);
         }
         return fail("image_request_in_progress", "同一请求正在处理中，请勿重复提交。", true);
+      }
+      if (input.loadedTask.accessMode === "visitor" && ledger.entry.providerCostConsumed === true) {
+        const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+        if (!committed.ok) return quotaCommitFailure();
       }
       return fail("image_request_already_failed", "同一请求已失败，请修改后使用新的请求标识。", false);
     }
@@ -283,12 +332,17 @@ export async function generateAiImageDraft(input: {
     }
     quotaReserved = input.loadedTask.accessMode === "visitor";
 
-    safeUpdateLedger({
-      requestHash,
-      status: "provider_called",
-      providerStage: "provider_called",
-      now: input.now,
-    });
+    try {
+      updateLedgerStrict({
+        requestHash,
+        status: "provider_called",
+        providerStage: "provider_called",
+        now: input.now,
+      });
+    } catch {
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      return fail("image_ledger_failed", "图片请求账本无法记录 Provider 调用边界，本次没有调用 AI。", false);
+    }
 
     const prompt = buildAiImagePrompt({
       imageType: input.request.imageType,
@@ -299,17 +353,30 @@ export async function generateAiImageDraft(input: {
     const provider = input.provider || getAiImageProvider();
     let providerResult: AiImageProviderOutput;
     let providerResultObserved = false;
+    let visitorAccess: DemoAccessSnapshot | null = null;
+    let resultLedgerBoundaryFailed = false;
+    const commitReservedVisitorQuota = () => {
+      if (!quotaReserved) return true;
+      const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+      if (!committed.ok) return false;
+      visitorAccess = committed.snapshot;
+      return true;
+    };
     const markProviderResultReceived = () => {
       if (providerResultObserved) return;
       providerResultObserved = true;
-      if (quotaReserved) safeCommitVisitorQuota(input.loadedTask, requestHash);
-      safeUpdateLedger({
-        requestHash,
-        status: "provider_result_received",
-        providerStage: "provider_result_received",
-        providerCostConsumed: true,
-        now: input.now,
-      });
+      commitReservedVisitorQuota();
+      try {
+        updateLedgerStrict({
+          requestHash,
+          status: "provider_result_received",
+          providerStage: "provider_result_received",
+          providerCostConsumed: true,
+          now: input.now,
+        });
+      } catch {
+        resultLedgerBoundaryFailed = true;
+      }
     };
     try {
       providerResult = await callProviderOnce(provider, {
@@ -322,9 +389,10 @@ export async function generateAiImageDraft(input: {
       const mapped = providerFailure(error);
       const providerCostConsumed = mapped.providerCostConsumed || providerResultObserved;
       const refundable = !providerCostConsumed && mapped.refundable;
+      let quotaSettled = true;
       if (quotaReserved) {
         if (refundable) safeRefundVisitorQuota(input.loadedTask, requestHash);
-        else safeCommitVisitorQuota(input.loadedTask, requestHash);
+        else quotaSettled = commitReservedVisitorQuota();
       }
       safeUpdateLedger({
         requestHash,
@@ -337,14 +405,19 @@ export async function generateAiImageDraft(input: {
         errorCode: mapped.code,
         now: input.now,
       });
+      if (!quotaSettled) return quotaCommitFailure();
+      if (resultLedgerBoundaryFailed) {
+        return fail("image_ledger_failed", "Provider 已返回结果，但图片请求账本更新失败；请使用同一请求重试。", true);
+      }
       return fail(mapped.code, mapped.message, mapped.retryable);
     }
 
     const providerCostConsumed = providerResult.images.length > 0;
     if (providerCostConsumed) markProviderResultReceived();
     if (providerResult.images.length !== input.request.count) {
+      let quotaSettled = true;
       if (quotaReserved) {
-        if (providerCostConsumed) safeCommitVisitorQuota(input.loadedTask, requestHash);
+        if (providerCostConsumed) quotaSettled = commitReservedVisitorQuota();
         else safeRefundVisitorQuota(input.loadedTask, requestHash);
       }
       safeUpdateLedger({
@@ -356,6 +429,10 @@ export async function generateAiImageDraft(input: {
         errorCode: "image_response_invalid",
         now: input.now,
       });
+      if (!quotaSettled) return quotaCommitFailure();
+      if (resultLedgerBoundaryFailed) {
+        return fail("image_ledger_failed", "Provider 已返回结果，但图片请求账本更新失败；请使用同一请求重试。", true);
+      }
       return fail("image_response_invalid", providerCostConsumed
         ? "图片服务返回数量异常，Provider 调用已消耗。"
         : "图片服务没有返回候选结果，本次额度已返还。", true);
@@ -404,7 +481,7 @@ export async function generateAiImageDraft(input: {
       const failureStage = error instanceof Error && error.message.startsWith("AI_IMAGE_")
         ? "asset_validation"
         : "asset_storage";
-      if (quotaReserved) safeCommitVisitorQuota(input.loadedTask, requestHash);
+      const quotaSettled = commitReservedVisitorQuota();
       safeUpdateLedger({
         requestHash,
         status: "failed_after_provider_result",
@@ -414,6 +491,10 @@ export async function generateAiImageDraft(input: {
         errorCode: "image_storage_failed",
         now: input.now,
       });
+      if (!quotaSettled) return quotaCommitFailure();
+      if (resultLedgerBoundaryFailed) {
+        return fail("image_ledger_failed", "Provider 已返回结果，但图片请求账本更新失败；请使用同一请求重试。", true);
+      }
       return fail("image_storage_failed", "图片保存或校验失败，Provider 调用已消耗。", true);
     }
     safeUpdateLedger({
@@ -435,7 +516,7 @@ export async function generateAiImageDraft(input: {
       await input.loadedTask.persistResult(merged.result);
     } catch {
       await Promise.all(storedKeys.map((key) => deleteAiImage(key).catch(() => undefined)));
-      if (quotaReserved) safeCommitVisitorQuota(input.loadedTask, requestHash);
+      const quotaSettled = commitReservedVisitorQuota();
       safeUpdateLedger({
         requestHash,
         status: "failed_after_provider_result",
@@ -445,20 +526,38 @@ export async function generateAiImageDraft(input: {
         errorCode: "image_snapshot_save_failed",
         now: input.now,
       });
+      if (!quotaSettled) return quotaCommitFailure();
+      if (resultLedgerBoundaryFailed) {
+        return fail("image_ledger_failed", "Provider 已返回结果，但图片请求账本更新失败；请使用同一请求重试。", true);
+      }
       return fail("image_snapshot_save_failed", "任务图片快照保存失败，Provider 调用已消耗。", true);
     }
 
-    safeUpdateLedger({
-      requestHash,
-      status: "committed",
-      providerStage: "completed",
-      providerCostConsumed: true,
-      itemIds: items.map((item) => item.id),
-      now: input.now,
-    });
-    const visitorAccess = quotaReserved
-      ? safeCommitVisitorQuota(input.loadedTask, requestHash) || reservation.snapshot
-      : null;
+    try {
+      updateLedgerStrict({
+        requestHash,
+        status: "stored",
+        providerStage: "asset_ingested",
+        providerCostConsumed: true,
+        itemIds: items.map((item) => item.id),
+        now: input.now,
+      });
+    } catch {
+      return fail("image_ledger_failed", "图片结果已安全保存，但请求账本更新失败；请使用同一请求重试。", true);
+    }
+    if (!commitReservedVisitorQuota()) return quotaCommitFailure();
+    try {
+      updateLedgerStrict({
+        requestHash,
+        status: "committed",
+        providerStage: "completed",
+        providerCostConsumed: true,
+        itemIds: items.map((item) => item.id),
+        now: input.now,
+      });
+    } catch {
+      return fail("image_ledger_failed", "图片结果已安全保存，但请求账本提交失败；请使用同一请求重试。", true);
+    }
     return { ok: true, data: { snapshot: merged.snapshot, items, duplicate: false, visitorAccess } };
   } finally {
     inFlightTasks.delete(taskLockKey);

@@ -81,4 +81,30 @@ describe("listingClaimFilter", () => {
     expect(result.cleaned.sellingPoints).toContain("Adjustable angle");
     expect(result.cleaned.sellingPoints).toContain("Compact desktop storage");
   });
+
+  it("defensively removes literal user-prohibited claims without echoing them in result metadata", () => {
+    const draft = {
+      ...buildMockAiListingDraft({ productName: "Desktop Stand" }),
+      titles: ["UltraShield Desktop Stand"],
+      bullets: ["Includes ultrashield finish and C++ compatibility."],
+      description: "Full-width spelling: ＵｌｔｒａＳｈｉｅｌｄ.",
+      keywords: ["UltraShield", "C++ compatibility"],
+      sellingPoints: ["UltraShield finish"],
+      riskNotes: ["Check UltraShield before publishing."],
+      complianceWarnings: ["Do not mention C++ compatibility."],
+      blockedClaims: ["UltraShield"],
+      reviewChecklist: ["Remove C++ compatibility."],
+    };
+
+    const result = filterListingClaims(draft, {
+      prohibitedClaims: ["UltraShield", "C++"],
+    });
+    const serialized = JSON.stringify(result.cleaned).normalize("NFKC").toLocaleLowerCase();
+
+    expect(serialized).not.toContain("ultrashield");
+    expect(serialized).not.toContain("c++");
+    expect(result.blockedClaims).toContain("User-prohibited claim");
+    expect(result.blockedClaims).not.toContain("UltraShield");
+    expect(result.cleaned.complianceWarnings.join(" ")).toMatch(/Human review is required/);
+  });
 });

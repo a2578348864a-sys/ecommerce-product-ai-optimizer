@@ -3,7 +3,15 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createDemoAccess, getDemoAccessById, incrementDemoAiCalls, refundDemoAiImageCalls, reserveDemoAiImageCalls } from "@/lib/server/demoAccess";
+import {
+  commitDemoAiImageCalls,
+  createDemoAccess,
+  getDemoAccessById,
+  incrementDemoAiCalls,
+  recoverExpiredDemoAiReservations,
+  refundDemoAiImageCalls,
+  reserveDemoAiImageCalls,
+} from "@/lib/server/demoAccess";
 import { beginAiImageRequest, buildAiImageIdempotencyScopeHash, buildAiImageRequestHash, getAiImageRequest } from "@/lib/server/aiImageDraftLedger";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { consumeDemoAiCalls, ensureDemoAiQuota } from "@/lib/server/demoGuard";
@@ -395,6 +403,56 @@ describe("AI image draft service", () => {
     expect(reserveDemoAiImageCalls(record.id, reservationHash, 1).ok).toBe(true);
     refundDemoAiImageCalls(record.id, reservationHash);
     refundDemoAiImageCalls(record.id, reservationHash);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+  });
+
+  it("does not treat an expired refunded image reservation as committed", () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const reservationHash = "e".repeat(64);
+    const nowMs = Date.parse("2026-07-26T00:00:00.000Z");
+    expect(reserveDemoAiImageCalls(record.id, reservationHash, 1, {
+      kind: "image",
+      leaseMs: 1_000,
+      nowMs,
+    }).ok).toBe(true);
+
+    recoverExpiredDemoAiReservations(record.id, nowMs + 1_001);
+
+    expect(commitDemoAiImageCalls(record.id, reservationHash)).toBeNull();
+    expect(getDemoAccessById(record.id)).toMatchObject({
+      usedAiCalls: 0,
+      aiImageQuotaReservations: {
+        [reservationHash]: { status: "refunded", chargedCount: 0 },
+      },
+    });
+  });
+
+  it("never returns a paid result when its Visitor reservation was already refunded", async () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const loadedTask = visitorTask(record.id);
+    const generateRequest = request();
+    const requestHash = buildAiImageRequestHash({
+      accessMode: "visitor",
+      accessScope: record.id,
+      taskId: loadedTask.taskId,
+      idempotencyKey: generateRequest.idempotencyKey,
+      imageType: generateRequest.imageType,
+      count: generateRequest.count,
+    });
+    let providerCalls = 0;
+    const successProvider = createMockAiImageProvider("success");
+    const provider: AiImageProvider = async (providerInput) => {
+      providerCalls += 1;
+      refundDemoAiImageCalls(record.id, requestHash);
+      return successProvider(providerInput);
+    };
+
+    const first = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+    const retry = await generateAiImageDraft({ loadedTask, request: generateRequest, provider });
+
+    expect(first).toMatchObject({ ok: false, error: { code: "visitor_ai_quota_commit_failed" } });
+    expect(retry).toMatchObject({ ok: false, error: { code: "visitor_ai_quota_commit_failed" } });
+    expect(providerCalls).toBe(1);
     expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
   });
 

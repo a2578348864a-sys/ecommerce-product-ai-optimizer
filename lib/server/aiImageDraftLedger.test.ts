@@ -34,6 +34,24 @@ describe("AI image request ledger", () => {
     expect(getAiImageRequest(hash)?.status).toBe("committed");
   });
 
+  it("keeps the legacy Task hash unchanged and scopes optional Studio context", () => {
+    const input = {
+      accessMode: "owner" as const,
+      accessScope: "owner",
+      taskId: "task-1",
+      idempotencyKey: "key-1",
+      imageType: "white_background_concept" as const,
+      count: 1 as const,
+    };
+    const legacy = buildAiImageRequestHash(input);
+
+    expect(legacy).toBe("bdd5d40de114c042b33017917b20460bc0164b36851cc464a103f7abc660d6da");
+    expect(buildAiImageRequestHash({ ...input, requestContextHash: "a".repeat(64) })).not.toBe(legacy);
+    expect(buildAiImageRequestHash({ ...input, requestContextHash: "a".repeat(64) })).not.toBe(
+      buildAiImageRequestHash({ ...input, requestContextHash: "b".repeat(64) }),
+    );
+  });
+
   it("keeps provider cost and failure stage immutable after a consumed failure", () => {
     const hash = "c".repeat(64);
     beginAiImageRequest({ requestHash: hash, idempotencyScopeHash: "d".repeat(64), taskId: "task-cost", accessMode: "owner" });

@@ -88,6 +88,25 @@ type AiImageRequestIdentity = {
   idempotencyKey: string;
 };
 
+type AiCallRequestIdentity = {
+  accessMode: AiImageAccessMode;
+  accessScope: string;
+  operation: string;
+  idempotencyKey: string;
+};
+
+export function buildAiCallIdempotencyScopeHash(input: AiCallRequestIdentity): string {
+  return createHash("sha256")
+    .update(`${input.accessMode}\0${input.accessScope}\0${input.operation}\0${input.idempotencyKey}`)
+    .digest("hex");
+}
+
+export function buildAiCallRequestHash(input: AiCallRequestIdentity & { requestFingerprint: string }): string {
+  return createHash("sha256")
+    .update(`${buildAiCallIdempotencyScopeHash(input)}\0${input.requestFingerprint}`)
+    .digest("hex");
+}
+
 export function buildAiImageIdempotencyScopeHash(input: AiImageRequestIdentity): string {
   return createHash("sha256")
     .update(`${input.accessMode}\0${input.accessScope}\0${input.taskId}\0${input.idempotencyKey}`)
@@ -98,10 +117,11 @@ export function buildAiImageRequestHash(input: AiImageRequestIdentity & {
   imageType: AiImageDraftType;
   count: 1 | 2;
   additionalDirection?: string;
+  requestContextHash?: string;
 }): string {
-  return createHash("sha256")
-    .update(`${buildAiImageIdempotencyScopeHash(input)}\0${input.imageType}\0${input.count}\0${input.additionalDirection || ""}`)
-    .digest("hex");
+  const legacyPayload = `${buildAiImageIdempotencyScopeHash(input)}\0${input.imageType}\0${input.count}\0${input.additionalDirection || ""}`;
+  const payload = input.requestContextHash ? `${legacyPayload}\0${input.requestContextHash}` : legacyPayload;
+  return createHash("sha256").update(payload).digest("hex");
 }
 
 export function beginAiImageRequest(input: {

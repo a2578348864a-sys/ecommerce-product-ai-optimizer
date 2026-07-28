@@ -346,7 +346,7 @@ export function commitDemoAiImageCalls(id: string, requestHash: string): DemoAcc
     reservation.updatedAt = new Date().toISOString();
     saveDemoAccessStore(store);
   }
-  return access;
+  return reservation.status === "committed" ? access : null;
 }
 
 export type DemoAiCallSettlementResult =

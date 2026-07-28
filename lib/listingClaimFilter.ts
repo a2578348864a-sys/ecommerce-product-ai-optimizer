@@ -29,6 +29,34 @@ export const LISTING_CLAIM_RULES: ClaimRule[] = [
 ];
 
 const WARNING = "Blocked unverified listing claims. Human review is required before publishing.";
+const USER_PROHIBITED_CLAIM = "User-prohibited claim";
+
+export type ListingClaimFilterOptions = {
+  prohibitedClaims?: string[];
+  customClaimLabel?: string;
+};
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildUserProhibitedRules(values: string[] = [], label = USER_PROHIBITED_CLAIM): ClaimRule[] {
+  const seen = new Set<string>();
+  return values
+    .slice(0, 12)
+    .map((value) => value.normalize("NFKC").trim())
+    .filter((value) => {
+      const key = value.toLocaleLowerCase();
+      if (!key || value.length > 200 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((value) => ({
+      label,
+      pattern: new RegExp(escapeRegExp(value), "giu"),
+      replacement: "",
+    }));
+}
 
 function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
@@ -36,9 +64,10 @@ function unique(values: string[]) {
 
 export function detectListingClaims(text: string): string[] {
   const matches: string[] = [];
+  const normalized = text.normalize("NFKC");
   for (const rule of LISTING_CLAIM_RULES) {
     rule.pattern.lastIndex = 0;
-    if (rule.pattern.test(text)) matches.push(rule.label);
+    if (rule.pattern.test(normalized)) matches.push(rule.label);
   }
   return unique(matches);
 }
@@ -47,9 +76,9 @@ export function containsListingBannedClaim(text: string) {
   return detectListingClaims(text).length > 0;
 }
 
-function cleanText(text: string, blockedClaims: string[]) {
-  let cleaned = text;
-  for (const rule of LISTING_CLAIM_RULES) {
+function cleanTextWithRules(text: string, blockedClaims: string[], rules: ClaimRule[]) {
+  let cleaned = text.normalize("NFKC");
+  for (const rule of rules) {
     rule.pattern.lastIndex = 0;
     if (rule.pattern.test(cleaned)) {
       blockedClaims.push(rule.label);
@@ -57,31 +86,45 @@ function cleanText(text: string, blockedClaims: string[]) {
       cleaned = cleaned.replace(rule.pattern, rule.replacement);
     }
   }
-  return cleaned.replace(/\s{2,}/g, " ").trim();
+  return cleaned.replace(/\s{2,}/g, " ").replace(/\s+([,.;:!?])/g, "$1").trim();
 }
 
-function cleanStringArray(values: string[], blockedClaims: string[]) {
-  return values.map((value) => cleanText(value, blockedClaims)).filter(Boolean);
+function cleanText(text: string, blockedClaims: string[], customRules: ClaimRule[]) {
+  return cleanTextWithRules(text, blockedClaims, [...LISTING_CLAIM_RULES, ...customRules]);
 }
 
-export function filterListingClaims(draft: AiListingPackDraft): {
+function cleanStringArray(values: string[], blockedClaims: string[], customRules: ClaimRule[]) {
+  return values.map((value) => cleanText(value, blockedClaims, customRules)).filter(Boolean);
+}
+
+export function filterListingClaims(
+  draft: AiListingPackDraft,
+  options: ListingClaimFilterOptions = {},
+): {
   cleaned: AiListingPackDraft;
   blockedClaims: string[];
   complianceWarnings: string[];
 } {
   const blockedClaims: string[] = [];
+  const customRules = buildUserProhibitedRules(
+    options.prohibitedClaims,
+    options.customClaimLabel || USER_PROHIBITED_CLAIM,
+  );
+  const existingBlockedClaims = draft.blockedClaims
+    .map((value) => cleanTextWithRules(value, blockedClaims, customRules))
+    .filter(Boolean);
 
   const cleaned: AiListingPackDraft = {
     ...draft,
-    titles: cleanStringArray(draft.titles, blockedClaims),
-    bullets: cleanStringArray(draft.bullets, blockedClaims),
-    description: cleanText(draft.description, blockedClaims),
-    keywords: cleanStringArray(draft.keywords, blockedClaims),
-    sellingPoints: cleanStringArray(draft.sellingPoints, blockedClaims),
-    riskNotes: cleanStringArray(draft.riskNotes, blockedClaims),
-    reviewChecklist: cleanStringArray(draft.reviewChecklist, blockedClaims),
-    complianceWarnings: cleanStringArray(draft.complianceWarnings, blockedClaims),
-    blockedClaims: unique([...draft.blockedClaims, ...blockedClaims]),
+    titles: cleanStringArray(draft.titles, blockedClaims, customRules),
+    bullets: cleanStringArray(draft.bullets, blockedClaims, customRules),
+    description: cleanText(draft.description, blockedClaims, customRules),
+    keywords: cleanStringArray(draft.keywords, blockedClaims, customRules),
+    sellingPoints: cleanStringArray(draft.sellingPoints, blockedClaims, customRules),
+    riskNotes: cleanStringArray(draft.riskNotes, blockedClaims, customRules),
+    reviewChecklist: cleanStringArray(draft.reviewChecklist, blockedClaims, customRules),
+    complianceWarnings: cleanStringArray(draft.complianceWarnings, blockedClaims, customRules),
+    blockedClaims: unique([...existingBlockedClaims, ...blockedClaims]),
   };
 
   const warnings = blockedClaims.length > 0

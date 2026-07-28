@@ -1,4 +1,5 @@
-import { containsListingBannedClaim } from "@/lib/listingClaimFilter";
+import { containsListingBannedClaim, filterListingClaims } from "@/lib/listingClaimFilter";
+import type { StudioListingPreferences } from "@/lib/studioListingInput";
 
 export type AiListingDraftSource = "mock_ai_draft" | "real_ai_draft";
 
@@ -30,6 +31,7 @@ type MockDraftInput = {
   riskLevel?: string | null;
   category?: string | null;
   sellingPoints?: string[];
+  studioPreferences?: StudioListingPreferences;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -149,7 +151,177 @@ function safeSellingPoints(input: MockDraftInput) {
   ];
 }
 
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const normalized = value.trim().toLocaleLowerCase();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function buildStudioMockDraft(input: MockDraftInput, preferences: StudioListingPreferences): AiListingPackDraft {
+  const productName = pickProductName(input);
+  const riskLevel = text(input.riskLevel, "manual review required");
+  const category = text(input.category, "cross-border product");
+  const decisionSummary = text(input.decisionSummary, "Product facts still need manual verification.");
+  const basePoints = safeSellingPoints(input);
+  const confirmedFacts = stringArray(preferences.confirmedFacts);
+  const unverifiedFacts = stringArray(preferences.unverifiedFacts);
+  const prohibitedClaims = stringArray(preferences.prohibitedClaims);
+  const listingObjective = preferences.listingObjective || "balanced";
+  const points = uniqueStrings([
+    ...confirmedFacts,
+    ...preferences.differentiators,
+    preferences.coreFunction,
+    ...basePoints,
+  ]).slice(0, 6);
+  const primaryKeyword = preferences.primaryKeywords[0] || productName;
+  const keywords = uniqueStrings([
+    ...preferences.primaryKeywords,
+    ...preferences.secondaryKeywords,
+    productName,
+    category,
+  ]).slice(0, 12);
+  const competitorNote = preferences.competitorKeywords.length
+    ? `${preferences.competitorKeywords.length} competitor research term(s) were supplied for leakage checks only and excluded from the draft.`
+    : "No competitor research terms were supplied.";
+  const confirmedFactText = confirmedFacts.slice(0, 3).join("; ");
+  const pendingFactNote = unverifiedFacts.length
+    ? `Pending manual confirmation; do not use as product facts: ${unverifiedFacts.join("; ")}.`
+    : "No pending fact statements were supplied.";
+  const prohibitedNote = prohibitedClaims.length
+    ? `${prohibitedClaims.length} operator-prohibited claim(s) must remain excluded from all output.`
+    : "No additional operator-prohibited claims were supplied.";
+
+  if (preferences.outputLanguage === "de") {
+    const toneLead = {
+      professional: "Sachlicher Produktentwurf",
+      conversion: "Nutzenorientierter Produktentwurf",
+      concise: "Kompakter Produktentwurf",
+      brand: "Markenorientierter Produktentwurf",
+    }[preferences.tone];
+    const objectiveLead = {
+      balanced: "Ausgewogene, faktische Struktur",
+      seo: "Suchorientierte Struktur ohne Rankingversprechen",
+      conversion: "Nutzenorientierte Struktur ohne Conversionversprechen",
+      brand: "Markenkonsistente Struktur",
+    }[listingObjective];
+    const audience = preferences.targetAudience || "die vorgesehene Zielgruppe";
+    const problem = preferences.problemSolved || "den beschriebenen Anwendungsbedarf";
+    const functionText = preferences.coreFunction || points[0];
+    const differences = preferences.differentiators.length
+      ? preferences.differentiators.join("; ")
+      : points.join("; ");
+
+    return {
+      source: "mock_ai_draft",
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      model: "mock",
+      humanReviewRequired: true,
+      titles: [
+        `${primaryKeyword} – ${productName} für den Markt ${preferences.targetMarket}`,
+        `${productName} für ${audience}`,
+      ],
+      bullets: [
+        `Kernfunktion: ${functionText}. Bestätigte Angaben: ${confirmedFactText || "keine angegeben"}. Vor Veröffentlichung anhand des Produktmusters prüfen.`,
+        `Zielgruppe: ${audience}. Der Entwurf adressiert: ${problem}.`,
+        `Unterscheidungsmerkmale: ${differences}. Nur belegbare Produktfakten übernehmen.`,
+        `SEO-Hinweis für ${preferences.targetMarket}: ${preferences.secondaryKeywords.join(", ") || "keine zusätzlichen Suchbegriffe angegeben"}. Begriffe natürlich und sachlich verwenden.`,
+        `Risikostufe ${riskLevel}: Lieferantendokumente, Schutzrechte und Plattformregeln manuell prüfen.`,
+      ],
+      description: `${toneLead}. ${objectiveLead} für ${productName} im Markt ${preferences.targetMarket}. ${decisionSummary} Bestätigte Angaben: ${confirmedFactText || "keine angegeben"}. Kernfunktion: ${functionText}. Zielgruppe: ${audience}. Bedarf: ${problem}. Die Angaben sind ein Mock-Produktentwurf und müssen vor Nutzung manuell mit Produktunterlagen und Plattformregeln abgeglichen werden.`,
+      keywords,
+      sellingPoints: points,
+      riskNotes: [
+        "Produktdaten, Lieferantendokumente, Schutzrechte und lokale Anforderungen vor Veröffentlichung prüfen.",
+        `Aktuelles Risikosignal: ${riskLevel}.`,
+        pendingFactNote,
+        prohibitedNote,
+        competitorNote,
+      ],
+      complianceWarnings: [],
+      blockedClaims: [],
+      reviewChecklist: [
+        "Manuelle Prüfung vor Veröffentlichung erforderlich.",
+        "Material, Maße, Lieferumfang und Kompatibilität mit den Lieferantendokumenten abgleichen.",
+        competitorNote,
+      ],
+    };
+  }
+
+  const toneLead = {
+    professional: "Professional factual draft",
+    conversion: "Benefit-led draft",
+    concise: "Concise product draft",
+    brand: "Brand-led product draft",
+  }[preferences.tone];
+  const objectiveLead = {
+    balanced: "Balanced factual structure",
+    seo: "Search-focused structure without ranking promises",
+    conversion: "Benefit-focused structure without conversion promises",
+    brand: "Brand-consistent factual structure",
+  }[listingObjective];
+  const audience = preferences.targetAudience || "the intended customer";
+  const problem = preferences.problemSolved || "the stated use need";
+  const functionText = preferences.coreFunction || points[0];
+  const differences = preferences.differentiators.length
+    ? preferences.differentiators.join("; ")
+    : points.join("; ");
+
+  return {
+    source: "mock_ai_draft",
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    model: "mock",
+    humanReviewRequired: true,
+    titles: [
+      `${primaryKeyword} | ${productName} for ${preferences.targetMarket}`,
+      `${productName} for ${audience}`,
+    ],
+    bullets: [
+      `Core function: ${functionText}. Confirmed facts: ${confirmedFactText || "none supplied"}. Verify this statement against the product sample before publishing.`,
+      `Designed for ${audience} and the stated need: ${problem}.`,
+      `Differentiators for review: ${differences}. Keep only product facts that can be supported.`,
+      `SEO context for ${preferences.targetMarket}: ${preferences.secondaryKeywords.join(", ") || "no secondary keywords supplied"}. Use terms naturally and accurately.`,
+      `Risk level is ${riskLevel}. Review supplier documents, IP exposure, local requirements and platform rules.`,
+    ],
+    description: `${toneLead}. ${objectiveLead} for ${productName} in the ${preferences.targetMarket} market. ${decisionSummary} Confirmed facts: ${confirmedFactText || "none supplied"}. Core function: ${functionText}. Intended audience: ${audience}. Use need: ${problem}. This Mock listing draft must be checked manually against product documents and platform rules before use.`,
+    keywords,
+    sellingPoints: points,
+    riskNotes: [
+      "Verify product facts, supplier documents, IP exposure and local requirements before publishing.",
+      `Current risk signal: ${riskLevel}.`,
+      pendingFactNote,
+      prohibitedNote,
+      competitorNote,
+    ],
+    complianceWarnings: [],
+    blockedClaims: [],
+    reviewChecklist: [
+      "Human review required before publishing.",
+      "Confirm material, dimensions, package contents and compatibility with supplier documents.",
+      competitorNote,
+    ],
+  };
+}
+
 export function buildMockAiListingDraft(input: MockDraftInput): AiListingPackDraft {
+  if (input.studioPreferences) {
+    const competitorFiltered = filterListingClaims(
+      buildStudioMockDraft(input, input.studioPreferences),
+      {
+        prohibitedClaims: input.studioPreferences.competitorKeywords,
+        customClaimLabel: "Competitor research term",
+      },
+    ).cleaned;
+    return filterListingClaims(competitorFiltered, {
+      prohibitedClaims: input.studioPreferences.prohibitedClaims,
+    }).cleaned;
+  }
+
   const productName = pickProductName(input);
   const riskLevel = text(input.riskLevel, "manual review required");
   const category = text(input.category, "cross-border product");

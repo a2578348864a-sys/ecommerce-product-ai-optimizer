@@ -60,3 +60,6 @@ data/demo-sandbox.json
 data/demo-sandbox.test-system-recovery3.json
 # Private AI image drafts and request ledger
 data/ai-image-drafts/
+# Short-lived standalone Studio result manifests
+data/studio-image-results/
+data/studio-listing-results/

@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  FileText,
   History,
+  Image,
   ListChecks,
   Package,
   Sparkles,
@@ -15,6 +17,8 @@ import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 export const workspaceNavItems = [
   { label: "市场预筛", href: "/opportunities", icon: Target },
   { label: "任务中心", href: "/tasks", icon: History },
+  { label: "Listing Studio", href: "/listing-studio", icon: FileText },
+  { label: "Image Studio", href: "/image-studio", icon: Image },
 ] as const;
 
 const advancedNavItems = [
