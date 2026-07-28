@@ -11,6 +11,11 @@ import {
   parseStoredCandidateSourceMeta,
   type CandidateSaveItem,
 } from "@/lib/server/candidateSourceSave";
+import {
+  ProductResearchImageConflictError,
+  mergeCandidateProductImageSnapshot,
+  readCandidateProductImageSnapshot,
+} from "@/lib/productResearchImage";
 import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
 import { stableHash } from "@/lib/upstream/pipeline";
 
@@ -475,19 +480,45 @@ export async function selectMarketScreeningCandidateForResearch(
         "该 Candidate 当前状态不可研究。",
       );
     }
+    const incomingProductImage = readCandidateProductImageSnapshot(input.sourceMetaJson);
+    let mergedProductImage: { changed: boolean; sourceMetaJson: string };
+    try {
+      mergedProductImage = mergeCandidateProductImageSnapshot(
+        record.sourceMetaJson,
+        incomingProductImage,
+      );
+    } catch (error) {
+      if (error instanceof ProductResearchImageConflictError) {
+        throw new MarketScreeningCandidateError(
+          "candidate_evidence_conflict",
+          "同一市场商品身份的商品图片 Hash 冲突。",
+        );
+      }
+      throw error;
+    }
     validateCandidate?.(toCandidateItem(record));
-    if (record.status === "pending") {
+    const shouldPromote = record.status === "pending";
+    if (shouldPromote || mergedProductImage.changed) {
       assertCandidateSourceUpdateAllowed({
         sourceMetaJson: record.sourceMetaJson,
         reviewIntegrity: buildCandidateEvidenceReview(record).integrity,
         currentStatus: record.status,
-        targetStatus: "worth_analyzing",
+        targetStatus: shouldPromote ? "worth_analyzing" : record.status,
         sourceReviewAcknowledged: true,
-        requestedFields: ["status"],
+        requestedFields: [
+          ...(shouldPromote ? ["status"] : []),
+          ...(mergedProductImage.changed ? ["sourceMetaJson"] : []),
+        ],
       });
       record = await tx.opportunityCandidate.update({
         where: { id: record.id },
-        data: { status: "worth_analyzing", lastActionAt: new Date() },
+        data: {
+          ...(shouldPromote ? { status: "worth_analyzing" } : {}),
+          ...(mergedProductImage.changed
+            ? { sourceMetaJson: mergedProductImage.sourceMetaJson }
+            : {}),
+          lastActionAt: new Date(),
+        },
       });
     }
     if (record.status !== "worth_analyzing" && record.status !== "analyzed") {

@@ -42,6 +42,10 @@ import {
   parseR22MarketDecisionFromAnalysisJson,
   type R22MarketDecisionSnapshot,
 } from "@/lib/r22DecisionModel";
+import {
+  readCandidateProductImageSnapshot,
+  type ProductResearchImageSnapshot,
+} from "@/lib/productResearchImage";
 
 export const runtime = "nodejs";
 
@@ -153,6 +157,8 @@ type SourceMeta = {
     riskLabel: string;
     summaryLabel: string;
     capturedAt: string;
+    identityHash?: string;
+    productImageSnapshot?: ProductResearchImageSnapshot;
   };
 };
 
@@ -306,6 +312,7 @@ function buildAuthoritativeSourceMeta(candidate: AuthoritativeCandidate, capture
   const candidateType = asString(storedMeta.candidateType).slice(0, 40);
   const sourceUrl = sanitizeCandidateSourceUrl(candidate.link);
   const r22MarketDecisionSnapshot = parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
+  const productImageSnapshot = readCandidateProductImageSnapshot(candidate.sourceMetaJson);
 
   return {
     source: "opportunity",
@@ -338,6 +345,10 @@ function buildAuthoritativeSourceMeta(candidate: AuthoritativeCandidate, capture
       riskLabel: candidate.riskLabel,
       summaryLabel: candidate.summaryLabel,
       capturedAt,
+      ...(productImageSnapshot ? {
+        identityHash: productImageSnapshot.candidateIdentityHash,
+        productImageSnapshot,
+      } : {}),
     },
   };
 }

@@ -6,12 +6,18 @@ import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import {
   getSandboxTask,
+  getSandboxCandidate,
   updateSandboxTask,
   deleteSandboxTask,
   sandboxTaskToDetail,
   isSandboxTaskId,
 } from "@/lib/server/demoSandbox";
 import { cleanupAiImageTask } from "@/lib/server/aiImageDraftStorage";
+import {
+  getResearchTaskCandidateId,
+  resolveResearchTaskProductImage,
+  type ResearchProductImageDisplay,
+} from "@/lib/productResearchImage";
 
 export const runtime = "nodejs";
 
@@ -35,6 +41,7 @@ type ViralTaskItem = {
   level: string;
   oneLineSummary: string;
   result: unknown;
+  productImage: ResearchProductImageDisplay | null;
 };
 
 type ApiResponse =
@@ -92,6 +99,29 @@ function toTaskItem(record: {
     level: record.level,
     oneLineSummary: record.oneLineSummary,
     result: safeParseJson(record.resultJson),
+    productImage: null,
+  };
+}
+
+async function addOwnerProductImage(item: ViralTaskItem): Promise<ViralTaskItem> {
+  const fixedImage = resolveResearchTaskProductImage({
+    taskResult: item.result,
+    candidates: [],
+  });
+  if (fixedImage) return { ...item, productImage: fixedImage };
+
+  const candidateId = getResearchTaskCandidateId(item.result);
+  if (!candidateId) return item;
+  const candidate = await prisma.opportunityCandidate.findFirst({
+    where: { id: candidateId },
+    select: { id: true, name: true, sourceMetaJson: true },
+  });
+  return {
+    ...item,
+    productImage: resolveResearchTaskProductImage({
+      taskResult: item.result,
+      candidates: candidate ? [candidate] : [],
+    }),
   };
 }
 
@@ -183,7 +213,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!ctx || ctx.mode !== "demo") return notFoundResponse();
     const task = getSandboxTask(ctx.demoAccessId, id);
     if (!task) return notFoundResponse();
-    return jsonResponse({ ok: true, data: sandboxTaskToDetail(task) });
+    const result = safeParseJson(task.resultJson);
+    const candidateId = getResearchTaskCandidateId(result);
+    const candidate = candidateId
+      ? getSandboxCandidate(ctx.demoAccessId, candidateId)
+      : null;
+    const data = {
+      ...sandboxTaskToDetail(task),
+      result,
+      productImage: resolveResearchTaskProductImage({
+        taskResult: result,
+        candidates: candidate ? [candidate] : [],
+      }),
+    } as unknown as ViralTaskItem;
+    return jsonResponse({ ok: true, data });
   }
 
   // Access-Control-Fix.1: Demo users cannot read official (Owner) task details.
@@ -200,7 +243,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return jsonResponse({
       ok: true,
-      data: toTaskItem(record),
+      data: await addOwnerProductImage(toTaskItem(record)),
     });
   } catch (error) {
     return isDatabaseError(error) ? databaseError() : serverError();

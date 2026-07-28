@@ -717,9 +717,6 @@ export function WorkflowClient({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Link href="/workflow/batch" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                  批量分析
-                </Link>
                 <Link href="/tasks" className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
                   任务中心
                 </Link>

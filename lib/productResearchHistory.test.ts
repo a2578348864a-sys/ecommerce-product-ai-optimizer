@@ -16,7 +16,11 @@ describe("product research history presentation", () => {
     expect(list).toContain("研究历史");
     expect(list).toContain("最后更新");
     expect(list).toContain("已生成内容");
-    expect(list).toContain('aria-label="商品图片占位"');
+    expect(list).toContain("ResearchProductImage");
+    expect(detail).toContain("ResearchProductImage");
+    expect(source("components/ResearchProductImage.tsx")).toContain('loading="lazy"');
+    expect(source("components/ResearchProductImage.tsx")).toContain("onError=");
+    expect(source("components/ResearchProductImage.tsx")).toContain("object-contain");
     expect(list).toContain("技术状态与证据");
     expect(detail).toContain("商品研究结果");
     expect(detail).toContain("人工核验");

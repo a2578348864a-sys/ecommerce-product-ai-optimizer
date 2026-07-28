@@ -59,6 +59,22 @@ beforeEach(async () => {
     summaryLabel: "test-title",
     status: "worth_analyzing",
     sourceMetaJson: JSON.stringify({
+      marketScreeningIdentity: {
+        productKey: "amazon:US:B012345678",
+        identityHash: "1".repeat(64),
+      },
+      productImageSnapshot: {
+        version: "market-screening-product-image.v1",
+        source: "stage15_screening_preview_cache",
+        status: "available",
+        productKey: "amazon:US:B012345678",
+        candidateIdentityHash: "1".repeat(64),
+        mimeType: "image/png",
+        bytes: 8,
+        contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        capturedAt: "2026-07-28T01:00:00.000Z",
+      },
       evidenceSnapshot: {
         version: 1,
         sourceType: "web",
@@ -273,6 +289,10 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
           cookie: "session=abc",
         },
         importedAt: "2026-06-26T10:00:00.000Z",
+        productImageSnapshot: {
+          dataUrl: "https://evil.example/forged.png",
+          contentHash: "f".repeat(64),
+        },
       },
       agentRunSnapshot: { source: "agent_run", steps: [] },
       listingPrepSnapshot: { titleStructure: { recommendedTitle: "Test Title" }, keywordPool: { coreWords: ["test"] } },
@@ -310,7 +330,17 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
       id: "test-candidate",
       name: "桌面手机支架",
       status: "worth_analyzing",
+      identityHash: "1".repeat(64),
+      productImageSnapshot: {
+        version: "market-screening-product-image.v1",
+        status: "available",
+        productKey: "amazon:US:B012345678",
+        candidateIdentityHash: "1".repeat(64),
+        contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      },
     });
+    expect(JSON.stringify(result.sourceMeta)).not.toContain("evil.example");
     expect(result.candidateToTask).toMatchObject({
       candidateId: "test-candidate",
       confirmation: "human_review",

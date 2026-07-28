@@ -32,6 +32,9 @@ const mockPrisma = {
       resultJson: '{"score":80,"level":"高潜力"}',
     }),
   },
+  opportunityCandidate: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 };
 
 vi.mock("@/lib/server/db", () => ({
@@ -108,6 +111,65 @@ async function getJsonStatus(response: Response) {
 }
 
 describe("GET /api/tasks", () => {
+  it("resolves an old Task image only from its exact authoritative Candidate id", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-with-candidate",
+      createdAt: new Date("2026-07-28T01:00:00.000Z"),
+      updatedAt: new Date("2026-07-28T01:00:00.000Z"),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 80,
+      level: "yellow",
+      oneLineSummary: "summary",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId: "candidate-exact" },
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([{
+      id: "candidate-exact",
+      name: "Same Product Title",
+      sourceMetaJson: JSON.stringify({
+        marketScreeningIdentity: {
+          productKey: "amazon:US:B012345678",
+          identityHash: "1".repeat(64),
+        },
+        productImageSnapshot: {
+          version: "market-screening-product-image.v1",
+          source: "stage15_screening_preview_cache",
+          status: "available",
+          productKey: "amazon:US:B012345678",
+          candidateIdentityHash: "1".repeat(64),
+          mimeType: "image/png",
+          bytes: 8,
+          contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+          dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+          capturedAt: "2026-07-28T01:00:00.000Z",
+        },
+      }),
+    }]);
+
+    const response = await GET(createRequest({
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const { body } = await getJsonStatus(response);
+
+    expect(body.data.items[0].productImage).toMatchObject({
+      provenance: "candidate_fallback",
+      contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+    });
+    expect(mockPrisma.opportunityCandidate.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ["candidate-exact"] } },
+      select: { id: true, name: true, sourceMetaJson: true },
+    });
+  });
+
   it("无密码 → 返回 401", async () => {
     const request = createRequest({ url: "http://localhost:3000/api/tasks?type=viral" });
     const response = await GET(request);

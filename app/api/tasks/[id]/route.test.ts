@@ -36,6 +36,7 @@ const mockPrisma = {
     delete: vi.fn().mockResolvedValue(mockRecord),
   },
   opportunityCandidate: {
+    findFirst: vi.fn().mockResolvedValue(null),
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
 };
@@ -68,7 +69,8 @@ beforeEach(async () => {
   mockPrisma.viralAnalysisRecord.findFirst.mockResolvedValue(mockRecord);
   mockPrisma.viralAnalysisRecord.update.mockResolvedValue({ id: "task-001", decisionStatus: "continue" });
   mockPrisma.viralAnalysisRecord.delete.mockResolvedValue(mockRecord);
-  mockPrisma.opportunityCandidate.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.opportunityCandidate.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.opportunityCandidate.findFirst.mockResolvedValue(null);
   mockPrisma.$transaction.mockImplementation(async (callback: (tx: typeof mockPrisma) => Promise<unknown>) => callback(mockPrisma));
   const mod = await import("./route");
   GET = mod.GET;
@@ -112,6 +114,49 @@ async function getJsonStatus(response: Response) {
 }
 
 describe("GET /api/tasks/[id]", () => {
+  it("returns the fixed Task image snapshot without trusting a mutable Candidate", async () => {
+    const taskImage = {
+      version: "market-screening-product-image.v1",
+      source: "stage15_screening_preview_cache",
+      status: "available",
+      productKey: "amazon:US:B012345678",
+      candidateIdentityHash: "1".repeat(64),
+      mimeType: "image/png",
+      bytes: 8,
+      contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+      dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      capturedAt: "2026-07-28T01:00:00.000Z",
+    };
+    mockPrisma.viralAnalysisRecord.findFirst.mockResolvedValueOnce({
+      ...mockRecord,
+      resultJson: JSON.stringify({
+        sourceMeta: {
+          source: "opportunity",
+          candidateId: "candidate-exact",
+          candidateSnapshot: {
+            version: 1,
+            id: "candidate-exact",
+            identityHash: "1".repeat(64),
+            productImageSnapshot: taskImage,
+          },
+        },
+        candidateToTask: { version: 1, candidateId: "candidate-exact" },
+      }),
+    });
+
+    const response = await GET(createRequest({
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }), createContext("task-001"));
+    const { body } = await getJsonStatus(response);
+
+    expect(body.data.productImage).toMatchObject({
+      provenance: "task_snapshot",
+      contentHash: taskImage.contentHash,
+      dataUrl: taskImage.dataUrl,
+    });
+    expect(mockPrisma.opportunityCandidate.findFirst).not.toHaveBeenCalled();
+  });
+
   it("无密码 → 返回 401", async () => {
     const request = createRequest({});
     const response = await GET(request, createContext("task-001"));

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({
   requireAuthenticated: vi.fn(),
   loadMarketScreeningBatch: vi.fn(),
+  loadStage15ScreeningPreview: vi.fn(),
   buildMarketScreeningWorkbenchRenderModel: vi.fn(),
   getActiveProductionMarketScreeningRegistration: vi.fn(),
   selectMarketScreeningCandidateForResearch: vi.fn(),
@@ -24,6 +26,10 @@ vi.mock("@/lib/server/demoGuard", () => ({
 
 vi.mock("@/lib/marketScreeningBatchLoader", () => ({
   loadMarketScreeningBatch: mocks.loadMarketScreeningBatch,
+}));
+
+vi.mock("@/lib/stage15ScreeningPreviewLoader", () => ({
+  loadStage15ScreeningPreview: mocks.loadStage15ScreeningPreview,
 }));
 
 vi.mock("@/lib/marketScreeningWorkbench", () => ({
@@ -283,7 +289,7 @@ function readyModel(
           confidence: "high",
           missingReason: null,
         },
-        image: { status: "available", dataUrl: "data:image/jpeg;base64,dGVzdA==" },
+        image: { status: "available", dataUrl: "data:image/jpeg;base64,/9j/" },
         price: {
           value: { amount: overrides.priceAmount ?? 19.99, currency: "USD" },
           source: "importPackage",
@@ -343,6 +349,10 @@ beforeEach(() => {
   );
   mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "owner" } });
   mocks.loadMarketScreeningBatch.mockReturnValue({ status: "ready" });
+  mocks.loadStage15ScreeningPreview.mockReturnValue({
+    status: "ready",
+    preview: { version: "test-preview" },
+  });
   mocks.buildMarketScreeningWorkbenchRenderModel.mockReturnValue(readyModel());
   mocks.getActiveProductionMarketScreeningRegistration.mockReturnValue(PRODUCTION_REGISTRATION);
   mocks.selectMarketScreeningCandidateForResearch.mockResolvedValue({
@@ -417,10 +427,30 @@ describe("POST /api/opportunity-candidates/from-market-screening", () => {
     expect(identity.identityHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(identity.evidenceHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(sourceMeta.marketScreeningIdentity).toEqual(identity);
+    expect(sourceMeta.productImageSnapshot).toMatchObject({
+      version: "market-screening-product-image.v1",
+      source: "stage15_screening_preview_cache",
+      status: "available",
+      productKey: PRODUCT_KEY,
+      candidateIdentityHash: identity.identityHash,
+      mimeType: "image/jpeg",
+      bytes: 3,
+      contentHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      dataUrl: "data:image/jpeg;base64,/9j/",
+      capturedAt: "2026-07-28T01:00:00.000Z",
+    });
     expect(mocks.loadMarketScreeningBatch).toHaveBeenCalledWith(expect.objectContaining({
       environment: "production",
       productionRegistration: PRODUCTION_REGISTRATION,
     }));
+    expect(mocks.loadStage15ScreeningPreview).toHaveBeenCalledWith(expect.objectContaining({
+      environment: "production",
+      productionRegistration: PRODUCTION_REGISTRATION,
+    }));
+    expect(mocks.buildMarketScreeningWorkbenchRenderModel).toHaveBeenCalledWith(
+      expect.anything(),
+      { version: "test-preview" },
+    );
     const url = new URL(body.href, "http://localhost:3000");
     expect(url.searchParams.get("candidateId")).toBe("candidate-created");
     expect(url.searchParams.get("productName")).toBe(PRODUCT_NAME);
@@ -633,6 +663,51 @@ describe("POST /api/opportunity-candidates/from-market-screening", () => {
     expect(second.status).toBe(409);
     expect(secondBody.error.code).toBe("candidate_evidence_conflict");
     expect(mocks.saveLegacySandboxCandidates).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed instead of overwriting a conflicting Candidate image hash", async () => {
+    mocks.requireAuthenticated.mockReturnValue({
+      ok: true,
+      context: { mode: "demo", demoAccessId: "visitor-a" },
+    });
+    let stored: Record<string, unknown> | null = null;
+    mocks.listSandboxCandidates.mockImplementation(() => stored ? [stored] : []);
+    mocks.saveLegacySandboxCandidates.mockImplementation(
+      (_demoAccessId: string, inputs: Array<Record<string, unknown>>) => {
+        stored = {
+          ...candidate("sandbox_candidate_image_conflict", "pending"),
+          sourceMetaJson: inputs[0].sourceMetaJson,
+        };
+        return { items: [stored], created: 1 };
+      },
+    );
+    mocks.updateSandboxCandidate.mockImplementation(
+      (_demoAccessId: string, _candidateId: string, patch: Record<string, unknown>) => {
+        stored = { ...stored, ...patch };
+        return stored;
+      },
+    );
+
+    const first = await POST(createRequest({ productKey: PRODUCT_KEY }) as never);
+    expect(first.status).toBe(200);
+    const storedCandidate = stored as Record<string, unknown> | null;
+    const sourceMeta = JSON.parse(String(storedCandidate?.sourceMetaJson ?? "{}"));
+    const conflictingBytes = Buffer.from([0xff, 0xd8, 0xff, 0x01]);
+    sourceMeta.productImageSnapshot = {
+      ...sourceMeta.productImageSnapshot,
+      bytes: conflictingBytes.length,
+      contentHash: createHash("sha256").update(conflictingBytes).digest("hex"),
+      dataUrl: `data:image/jpeg;base64,${conflictingBytes.toString("base64")}`,
+    };
+    stored = { ...(storedCandidate ?? {}), sourceMetaJson: JSON.stringify(sourceMeta) };
+
+    const second = await POST(createRequest({ productKey: PRODUCT_KEY }) as never);
+    const body = await second.json();
+
+    expect(second.status).toBe(409);
+    expect(body.error.code).toBe("candidate_evidence_conflict");
+    expect(JSON.parse(String(stored.sourceMetaJson)).productImageSnapshot.contentHash)
+      .toBe(createHash("sha256").update(conflictingBytes).digest("hex"));
   });
 
   it("fails closed when a valid Visitor identity has a related malformed duplicate", async () => {

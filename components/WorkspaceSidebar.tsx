@@ -7,7 +7,6 @@ import {
   History,
   Image,
   LayoutDashboard,
-  ListChecks,
   Package,
   Search,
   Sparkles,
@@ -24,12 +23,8 @@ export const workspaceNavItems = [
   { label: "研究历史", href: "/tasks", icon: History },
 ] as const;
 
-const advancedNavItems = [
-  { label: "批量分析（高级 / Alpha）", href: "/workflow/batch", icon: ListChecks },
-] as const;
-
 const mobileNavItems = workspaceNavItems;
-type SidebarNavItem = (typeof workspaceNavItems)[number] | (typeof advancedNavItems)[number];
+type SidebarNavItem = (typeof workspaceNavItems)[number];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -117,15 +112,6 @@ export function WorkspaceSidebar() {
           {workspaceNavItems.map((item) => (
             <NavLink key={item.href} item={item} pathname={pathname} />
           ))}
-          <div className="mt-3 border-t border-slate-100 pt-3">
-            <p className="px-2 pb-1 text-xs font-semibold text-slate-400">高级 / Alpha</p>
-            {advancedNavItems.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} compact />
-            ))}
-            <p className="px-2 pt-1 text-xs leading-5 text-slate-400">
-              高级工具仅作补充分析，结果仍需人工确认。
-            </p>
-          </div>
         </nav>
       </div>
     </aside>

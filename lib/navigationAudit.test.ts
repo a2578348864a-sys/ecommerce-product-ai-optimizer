@@ -49,13 +49,11 @@ describe("WorkspaceSidebar navigation", () => {
     expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
   });
 
-  it("keeps only batch analysis in the advanced section", () => {
+  it("does not render an empty advanced section or expose legacy batch analysis", () => {
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
-    expect(advancedBlock).toMatch(/批量分析（高级 \/ Alpha）/);
-    expect(advancedBlock).toMatch(/\/workflow\/batch/);
-    expect(advancedBlock).not.toMatch(/\/agent\/run/);
-    expect(sidebarSource).toMatch(/高级 \/ Alpha/);
-    expect(sidebarSource).toMatch(/高级工具仅作补充分析，结果仍需人工确认/);
+    expect(advancedBlock).toBe("");
+    expect(sidebarSource).not.toMatch(/\/workflow\/batch/);
+    expect(sidebarSource).not.toMatch(/高级 \/ Alpha/);
   });
 
   it("does not show old direction entries in navigation", () => {
@@ -114,6 +112,22 @@ describe("WorkspaceSidebar navigation", () => {
         expect(label).not.toContain(d);
       }
     }
+  });
+});
+
+describe("legacy batch public entrance freeze", () => {
+  it("removes ordinary links while preserving the direct route implementation", () => {
+    for (const file of [
+      "components/WorkspaceSidebar.tsx",
+      "components/HomeDashboardClient.tsx",
+      "components/cross-border/WorkflowClient.tsx",
+      "components/TaskRecordsList.tsx",
+      "components/TaskRecordDetail.tsx",
+    ]) {
+      expect(readComponentSource(file)).not.toMatch(/href=["{]?"\/workflow\/batch/);
+    }
+    expect(() => readFileSync(resolve(__dirname, "..", "app/workflow/batch/page.tsx"), "utf8")).not.toThrow();
+    expect(() => readFileSync(resolve(__dirname, "..", "components/cross-border/WorkflowBatchClient.tsx"), "utf8")).not.toThrow();
   });
 });
 

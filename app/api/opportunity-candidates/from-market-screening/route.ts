@@ -8,6 +8,13 @@ import { loadMarketScreeningBatch } from "@/lib/marketScreeningBatchLoader";
 import type { ProductionBatchRegistration } from "@/lib/marketScreeningBatchManifest";
 import { getActiveProductionMarketScreeningRegistration } from "@/lib/marketScreeningProductionRegistry";
 import { resolveProjectMaterialsRoot } from "@/lib/projectMaterialsRoot";
+import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader";
+import {
+  ProductResearchImageConflictError,
+  buildAuthoritativeProductImageSnapshot,
+  mergeCandidateProductImageSnapshot,
+  readCandidateProductImageSnapshot,
+} from "@/lib/productResearchImage";
 import {
   buildMarketScreeningWorkbenchRenderModel,
   type MarketScreeningItemView,
@@ -183,6 +190,19 @@ function buildCandidateInput(
     asin: item.asin,
     evidenceHash,
   });
+  let productImageSnapshot;
+  if (item.image.status === "available" && item.image.dataUrl) {
+    try {
+      productImageSnapshot = buildAuthoritativeProductImageSnapshot({
+        dataUrl: item.image.dataUrl,
+        productKey: item.productKey,
+        candidateIdentityHash: identity.identityHash,
+        capturedAt: item.title.capturedAt || new Date().toISOString(),
+      });
+    } catch {
+      productImageSnapshot = undefined;
+    }
+  }
 
   return {
     identity,
@@ -204,6 +224,7 @@ function buildCandidateInput(
         marketScreeningIdentity: identity,
         marketScreening,
         evidenceSnapshot,
+        ...(productImageSnapshot ? { productImageSnapshot } : {}),
       }),
       analysisJson: JSON.stringify({
         version: "candidate-analysis-v2",
@@ -286,12 +307,39 @@ function selectSandboxCandidate(
 
   assertCandidateCanEnterResearch(candidate);
   buildHandoff(candidate, explicitMarketWatchReview);
-  if (candidate.status === "pending") {
+  let mergedProductImage: { changed: boolean; sourceMetaJson: string };
+  try {
+    mergedProductImage = mergeCandidateProductImageSnapshot(
+      candidate.sourceMetaJson,
+      readCandidateProductImageSnapshot(input.sourceMetaJson),
+    );
+  } catch (error) {
+    if (error instanceof ProductResearchImageConflictError) {
+      throw new MarketScreeningCandidateError(
+        "candidate_evidence_conflict",
+        "同一市场商品身份的商品图片 Hash 冲突。",
+      );
+    }
+    throw error;
+  }
+  const shouldPromote = candidate.status === "pending";
+  if (shouldPromote || mergedProductImage.changed) {
     const updated = updateSandboxCandidate(
       demoAccessId,
       candidate.id,
-      { status: "worth_analyzing" },
-      { sourceReviewAcknowledged: true, requestedFields: ["status"] },
+      {
+        ...(shouldPromote ? { status: "worth_analyzing" as const } : {}),
+        ...(mergedProductImage.changed
+          ? { sourceMetaJson: mergedProductImage.sourceMetaJson }
+          : {}),
+      },
+      {
+        sourceReviewAcknowledged: true,
+        requestedFields: [
+          ...(shouldPromote ? ["status"] : []),
+          ...(mergedProductImage.changed ? ["sourceMetaJson"] : []),
+        ],
+      },
     );
     candidate = updated ? sandboxCandidateToListItem(updated) as CandidateRecord : null;
   }
@@ -377,7 +425,15 @@ export async function POST(request: NextRequest) {
       projectMaterialsRoot: materialsRoot.projectMaterialsRoot,
       productionRegistration,
     });
-    const model = buildMarketScreeningWorkbenchRenderModel(batch);
+    const preview = loadStage15ScreeningPreview({
+      environment: "production",
+      projectMaterialsRoot: materialsRoot.projectMaterialsRoot,
+      productionRegistration,
+    });
+    const model = buildMarketScreeningWorkbenchRenderModel(
+      batch,
+      preview.status === "ready" ? preview.preview : undefined,
+    );
     if (model.status !== "ready") {
       throw new CandidateSelectionError(
         "market_screening_not_ready",

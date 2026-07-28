@@ -102,6 +102,33 @@ function authoritativeCandidate(id = "candidate-a") {
   };
 }
 
+function authoritativeCandidateWithImage(id: string) {
+  const candidate = authoritativeCandidate(id);
+  const sourceMeta = JSON.parse(candidate.sourceMetaJson);
+  return {
+    ...candidate,
+    sourceMetaJson: JSON.stringify({
+      ...sourceMeta,
+      marketScreeningIdentity: {
+        productKey: "amazon:US:B012345678",
+        identityHash: "1".repeat(64),
+      },
+      productImageSnapshot: {
+        version: "market-screening-product-image.v1",
+        source: "stage15_screening_preview_cache",
+        status: "available",
+        productKey: "amazon:US:B012345678",
+        candidateIdentityHash: "1".repeat(64),
+        mimeType: "image/png",
+        bytes: 8,
+        contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+        dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        capturedAt: "2026-07-28T01:00:00.000Z",
+      },
+    }),
+  };
+}
+
 function verifiedAuthoritativeCandidate(id = "candidate-a") {
   const sourceEvidence = normalizeSourceEvidenceV2({
     version: "candidate-source-v2",
@@ -646,7 +673,7 @@ describe("save-task runProof trust boundary", () => {
     authState.context = { mode: "demo", demoAccessId: "visitor-a" };
     mocks.getSandboxCandidate.mockImplementation((demoAccessId: string, candidateId: string) => (
       demoAccessId === "visitor-a" && candidateId === "sandbox_candidate_a"
-        ? authoritativeCandidate(candidateId)
+        ? authoritativeCandidateWithImage(candidateId)
         : null
     ));
 
@@ -669,6 +696,14 @@ describe("save-task runProof trust boundary", () => {
     expect(mocks.candidateFindUnique).not.toHaveBeenCalled();
     const savedResult = JSON.parse(mocks.createSandboxTaskAndLinkCandidate.mock.calls[0][2].resultJson);
     expect(savedResult.sourceMeta.candidateId).toBe("sandbox_candidate_a");
+    expect(savedResult.sourceMeta.candidateSnapshot).toMatchObject({
+      id: "sandbox_candidate_a",
+      identityHash: "1".repeat(64),
+      productImageSnapshot: {
+        status: "available",
+        contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+      },
+    });
   });
 
   it("maps a repeated Visitor Candidate conversion to 409 without a manual fallback write", async () => {

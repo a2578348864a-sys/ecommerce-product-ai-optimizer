@@ -5,9 +5,19 @@ import { ALL_KNOWN_PLATFORMS } from "@/lib/types";
 import { normalizeTaskRecord } from "@/lib/tasks/normalizeTaskRecord";
 import { checkAccessPassword, getAccessContext } from "@/lib/server/accessPassword";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
-import { listSandboxTasks, createSandboxTask, sandboxTaskToListItem } from "@/lib/server/demoSandbox";
+import {
+  listSandboxCandidates,
+  listSandboxTasks,
+  createSandboxTask,
+  sandboxTaskToListItem,
+} from "@/lib/server/demoSandbox";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { SEARCHABLE_TASK_TYPES } from "@/lib/taskConcepts";
+import {
+  getResearchTaskCandidateId,
+  resolveResearchTaskProductImage,
+  type ResearchProductImageDisplay,
+} from "@/lib/productResearchImage";
 
 export const runtime = "nodejs";
 
@@ -36,6 +46,7 @@ type ViralTaskItem = {
   level: string;
   oneLineSummary: string;
   result: unknown;
+  productImage: ResearchProductImageDisplay | null;
 };
 
 type ApiResponse =
@@ -153,6 +164,20 @@ function toTaskItem(record: {
     level: normalized.level,
     oneLineSummary: normalized.oneLineSummary,
     result: normalized.result,
+    productImage: null,
+  };
+}
+
+function addProductImage(
+  item: ViralTaskItem,
+  candidates: readonly { id: string; name?: string; sourceMetaJson: string }[],
+): ViralTaskItem {
+  return {
+    ...item,
+    productImage: resolveResearchTaskProductImage({
+      taskResult: item.result,
+      candidates,
+    }),
   };
 }
 
@@ -228,7 +253,16 @@ export async function GET(request: NextRequest) {
   if (ctx && ctx.mode === "demo") {
     try {
       const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
-      const sandboxItems = sandboxTasks.map((t) => sandboxTaskToListItem(t));
+      const sandboxCandidates = listSandboxCandidates(ctx.demoAccessId);
+      const sandboxItems = sandboxTasks.map((task) => {
+        const result = safeParseJson(task.resultJson);
+        const item = {
+          ...sandboxTaskToListItem(task),
+          result,
+          productImage: null,
+        } as unknown as ViralTaskItem;
+        return addProductImage(item, sandboxCandidates);
+      });
       const total = sandboxItems.length;
       const paged = sandboxItems.slice(offset, offset + limit);
 
@@ -263,7 +297,19 @@ export async function GET(request: NextRequest) {
       prisma.viralAnalysisRecord.count({ where }),
     ]);
 
-    const items = records.map(toTaskItem);
+    const baseItems = records.map(toTaskItem);
+    const candidateIds = Array.from(new Set(
+      baseItems
+        .map((item) => getResearchTaskCandidateId(item.result))
+        .filter((id): id is string => Boolean(id)),
+    ));
+    const candidates = candidateIds.length
+      ? await prisma.opportunityCandidate.findMany({
+        where: { id: { in: candidateIds } },
+        select: { id: true, name: true, sourceMetaJson: true },
+      })
+      : [];
+    const items = baseItems.map((item) => addProductImage(item, candidates));
 
     const nextOffset = offset + items.length;
     const hasMore = nextOffset < total;

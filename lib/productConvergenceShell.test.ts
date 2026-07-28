@@ -32,13 +32,13 @@ describe("Product Architecture Convergence shell", () => {
     ]);
   });
 
-  it("keeps ad hoc product research out of advanced navigation and aligns mobile navigation", () => {
+  it("hides legacy batch analysis and aligns mobile navigation", () => {
     const advanced = labeledRoutes(arrayBlock(sidebarSource, "advancedNavItems"));
 
-    expect(advanced).toEqual([
-      { label: "批量分析（高级 / Alpha）", href: "/workflow/batch" },
-    ]);
+    expect(advanced).toEqual([]);
     expect(sidebarSource).toMatch(/const mobileNavItems = workspaceNavItems;/);
+    expect(sidebarSource).not.toContain("/workflow/batch");
+    expect(sidebarSource).not.toContain("高级 / Alpha");
     expect(sidebarSource).not.toContain("高级临时分析");
   });
 

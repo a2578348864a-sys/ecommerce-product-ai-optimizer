@@ -56,6 +56,8 @@ import {
 } from "@/lib/productPipeline";
 import { deriveDisplayLifecycle, getAvailableTransitions, getLifecycleStatusLabel, getLifecycleStatusDescription, getLifecycleNextAction, transitionLifecycle, type LifecycleStatus, type ProductLifecycle } from "@/lib/workflowLifecycle";
 import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
+import { ResearchProductImage } from "@/components/ResearchProductImage";
+import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -79,6 +81,7 @@ type TaskCenterItem = {
   level: string;
   oneLineSummary: string;
   result: unknown;
+  productImage: ResearchProductImageDisplay | null;
 };
 
 type DetailResponse =
@@ -1288,7 +1291,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </div>
               ) : null}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
+                <div className="flex min-w-0 items-start gap-4">
+                  <ResearchProductImage
+                    image={record.productImage}
+                    alt={getTitle(record)}
+                    size="detail"
+                  />
+                  <div className="min-w-0">
                   <p className="text-sm font-bold text-teal-700">商品概览</p>
                   <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">
                     {getTitle(record)}
@@ -1296,6 +1305,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <p className="mt-3 text-sm leading-6 text-slate-600">
                     {presentation?.researchConclusions[0] || record.oneLineSummary}
                   </p>
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {showListingPackShortcut ? (
@@ -1533,9 +1543,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </button>
                 <Link href="/tasks" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
                   返回研究历史
-                </Link>
-                <Link href="/workflow/batch" className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  继续批量分析
                 </Link>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>

@@ -36,6 +36,8 @@ import {
   type PipelineStatus,
 } from "@/lib/productPipeline";
 import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
+import { ResearchProductImage } from "@/components/ResearchProductImage";
+import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -66,6 +68,7 @@ type TaskCenterItem = {
   level: string;
   oneLineSummary: string;
   result: unknown;
+  productImage: ResearchProductImageDisplay | null;
 };
 
 type TaskPageInfo = {
@@ -1093,13 +1096,10 @@ export function TaskRecordsList() {
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start gap-3">
-                              <div
-                                role="img"
-                                aria-label="商品图片占位"
-                                className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-400"
-                              >
-                                商品图
-                              </div>
+                              <ResearchProductImage
+                                image={item.productImage}
+                                alt={summary.productName}
+                              />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
                                   <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
@@ -1240,15 +1240,6 @@ export function TaskRecordsList() {
                                     onClick={() => setOpenMoreId(null)}
                                   />
                                   <div role="menu" className="absolute right-0 top-full z-20 mt-1 w-40 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                                    <Link
-                                      href="/workflow/batch"
-                                      role="menuitem"
-                                      onClick={() => setOpenMoreId(null)}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
-                                    >
-                                      继续批量分析
-                                    </Link>
-                                    <div className="mx-2 my-1 border-t border-slate-100" />
                                     <button
                                       type="button"
                                       role="menuitem"
