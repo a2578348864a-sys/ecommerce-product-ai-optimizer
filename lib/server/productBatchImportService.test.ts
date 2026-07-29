@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createDemoAccess,
@@ -97,6 +98,123 @@ describe("shared SellerSprite ProductBatch import", () => {
 
     expect(result.batch.reportType).toBe("search_results");
     expect(JSON.parse(result.batch.normalizedSnapshotJson!).reportType).toBe("search_results");
+  });
+
+  it("keeps validated Data URL compatibility and never persists an untrusted remote URL", async () => {
+    const pngBytes = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01,
+    ]);
+    const dataUrl = `data:image/png;base64,${pngBytes.toString("base64")}`;
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
+    const rows = SELLERSPRITE_SANITIZED_ROWS.map((row, index) => ({
+      ...row,
+      商品主图: index === 0 ? dataUrl : "https://images.example.invalid/product.jpg",
+    }));
+    const result = await importSellerSpriteProductBatch({
+      ...input(store),
+      bytes: new Uint8Array(createSellerSpritePreviewTestWorkbook({ rows })),
+      reportType: null,
+    });
+    const items = await store.getBatchItems(result.batch.id);
+    const cached = items.find((item) => item.asin === SELLERSPRITE_SANITIZED_ROWS[0].ASIN);
+    const remote = items.find((item) => item.asin === SELLERSPRITE_SANITIZED_ROWS[1].ASIN);
+
+    expect(JSON.parse(cached!.imageSnapshotJson)).toMatchObject({
+      version: "product-batch-image-snapshot.v1",
+      status: "cached",
+      mimeType: "image/png",
+      sizeBytes: pngBytes.length,
+      byteLength: pngBytes.length,
+      base64: pngBytes.toString("base64"),
+      sourceKind: "xlsx_embedded",
+    });
+    expect(JSON.parse(remote!.imageSnapshotJson)).toMatchObject({
+      version: "product-batch-image-snapshot.v1",
+      status: "not_cached",
+      reason: "remote_fetch_failed",
+    });
+    expect(remote!.imageSnapshotJson).not.toContain("images.example.invalid");
+  });
+
+  it("prefers an exact embedded 图片 anchor and uses the controlled main-image fetch only when absent", async () => {
+    const embeddedJpeg = Buffer.from([0xff, 0xd8, 0xff, 0x01]);
+    const lowerPriorityPng = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01,
+    ]);
+    const fetchedPng = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x02,
+    ]);
+    const rows = SELLERSPRITE_SANITIZED_ROWS.map((row, index) => ({
+      ...row,
+      商品主图: index === 1
+        ? "https://m.media-amazon.com/images/I/fallback.png"
+        : "https://m.media-amazon.com/images/I/unused.png",
+    }));
+    const fetchMainImage = vi.fn(async () => ({
+      bytes: fetchedPng,
+      mimeType: "image/png" as const,
+      sha256: createHash("sha256").update(fetchedPng).digest("hex"),
+    }));
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
+    const result = await importSellerSpriteProductBatch({
+      ...input(store),
+      bytes: new Uint8Array(createSellerSpritePreviewTestWorkbook({
+        rows,
+        embeddedImages: [
+          { rowIndex: 1, columnIndex: 1, bytes: embeddedJpeg },
+          { rowIndex: 1, columnIndex: 13, bytes: lowerPriorityPng },
+        ],
+      })),
+      fetchMainImage,
+    });
+    const items = await store.getBatchItems(result.batch.id);
+    const first = JSON.parse(items.find(
+      (item) => item.asin === SELLERSPRITE_SANITIZED_ROWS[0].ASIN,
+    )!.imageSnapshotJson);
+    const second = JSON.parse(items.find(
+      (item) => item.asin === SELLERSPRITE_SANITIZED_ROWS[1].ASIN,
+    )!.imageSnapshotJson);
+
+    expect(first).toMatchObject({
+      status: "cached",
+      mimeType: "image/jpeg",
+      sourceKind: "xlsx_embedded",
+      sha256: createHash("sha256").update(embeddedJpeg).digest("hex"),
+    });
+    expect(second).toMatchObject({
+      status: "cached",
+      mimeType: "image/png",
+      sourceKind: "xlsx_main_image_url",
+      sha256: createHash("sha256").update(fetchedPng).digest("hex"),
+    });
+    expect(fetchMainImage).toHaveBeenCalledOnce();
+    expect(fetchMainImage).toHaveBeenCalledWith(
+      "https://m.media-amazon.com/images/I/fallback.png",
+    );
+  });
+
+  it("keeps the batch ready with a safe not_cached reason when the remote download fails", async () => {
+    const rows = SELLERSPRITE_SANITIZED_ROWS.map((row) => ({
+      ...row,
+      商品主图: "https://m.media-amazon.com/images/I/unavailable.jpg",
+    }));
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
+    const result = await importSellerSpriteProductBatch({
+      ...input(store),
+      bytes: new Uint8Array(createSellerSpritePreviewTestWorkbook({ rows })),
+      fetchMainImage: async () => {
+        throw new Error("safe synthetic failure");
+      },
+    });
+    const items = await store.getBatchItems(result.batch.id);
+
+    expect(result.batch.batchStatus).toBe("ready");
+    expect(items.every((item) => {
+      const image = JSON.parse(item.imageSnapshotJson);
+      return image.status === "not_cached" && image.reason === "remote_fetch_failed";
+    })).toBe(true);
+    expect(items.map((item) => item.imageSnapshotJson).join(""))
+      .not.toContain("m.media-amazon.com");
   });
 
   it("produces the same Snapshot v3 and Ranking v2 for separate role stores", async () => {

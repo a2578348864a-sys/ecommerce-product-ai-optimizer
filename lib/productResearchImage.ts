@@ -19,7 +19,7 @@ export type ResearchProductImageDisplay = {
   dataUrl: string;
   mimeType: ProductResearchImageSnapshot["mimeType"];
   contentHash: string;
-  provenance: "task_snapshot" | "candidate_fallback";
+  provenance: "task_snapshot" | "candidate_fallback" | "product_batch_snapshot";
 };
 
 type CandidateImageRecord = {

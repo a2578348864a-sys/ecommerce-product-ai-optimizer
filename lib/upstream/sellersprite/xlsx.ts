@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
 
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
@@ -8,9 +9,18 @@ const MAX_COMPRESSION_RATIO = 200;
 const MAX_WORKSHEET_ROWS = 100_000;
 const MAX_WORKSHEET_CELLS = 1_000_000;
 const MAX_WORKSHEET_COLUMNS = 512;
+const MAX_EMBEDDED_IMAGE_BYTES = 2 * 1024 * 1024;
 const WORKSHEET_RELATIONSHIP_TYPES = new Set([
   "http://schemas.openxmlformats.org/officedocument/2006/relationships/worksheet",
   "http://purl.oclc.org/ooxml/officedocument/relationships/worksheet",
+]);
+const DRAWING_RELATIONSHIP_TYPES = new Set([
+  "http://schemas.openxmlformats.org/officedocument/2006/relationships/drawing",
+  "http://purl.oclc.org/ooxml/officedocument/relationships/drawing",
+]);
+const IMAGE_RELATIONSHIP_TYPES = new Set([
+  "http://schemas.openxmlformats.org/officedocument/2006/relationships/image",
+  "http://purl.oclc.org/ooxml/officedocument/relationships/image",
 ]);
 
 interface ZipEntry {
@@ -35,6 +45,29 @@ export interface XlsxSheet {
 
 export interface XlsxWorkbook {
   sheets: ReadonlyArray<XlsxSheet>;
+}
+
+export interface XlsxEmbeddedImage {
+  sheetName: string;
+  rowNumber: number;
+  columnIndex: number;
+  columnHeader: string | null;
+  mimeType: "image/jpeg" | "image/png";
+  byteLength: number;
+  sha256: string;
+  bytes: Uint8Array;
+}
+
+export interface XlsxEmbeddedImageRejection {
+  sheetName: string;
+  rowNumber: number;
+  columnIndex: number;
+  reason: "unsupported_image_type" | "image_too_large";
+}
+
+export interface XlsxEmbeddedImageParseResult {
+  images: ReadonlyArray<XlsxEmbeddedImage>;
+  rejected: ReadonlyArray<XlsxEmbeddedImageRejection>;
 }
 
 export class SellerSpriteXlsxError extends Error {
@@ -342,6 +375,232 @@ function resolveWorkbookTarget(target: string): string {
     }
   }
   return parts.join("/");
+}
+
+function relationshipPartPath(sourcePart: string): string {
+  const slash = sourcePart.lastIndexOf("/");
+  const directory = slash >= 0 ? sourcePart.slice(0, slash) : "";
+  const fileName = slash >= 0 ? sourcePart.slice(slash + 1) : sourcePart;
+  return `${directory ? `${directory}/` : ""}_rels/${fileName}.rels`;
+}
+
+function resolvePartTarget(sourcePart: string, target: string): string {
+  const normalized = target.replaceAll("\\", "/");
+  const base = normalized.startsWith("/")
+    ? normalized.replace(/^\/+/, "")
+    : `${sourcePart.slice(0, sourcePart.lastIndexOf("/") + 1)}${normalized}`;
+  const parts: string[] = [];
+  for (const part of base.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (parts.length === 0) {
+        fail("unsafe_xlsx_archive_path", "OOXML relationship escapes the archive root");
+      }
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  const resolved = parts.join("/");
+  if (!resolved.startsWith("xl/")) {
+    fail("unsafe_xlsx_archive_path", "OOXML relationship escapes the xl package");
+  }
+  return resolved;
+}
+
+function relationshipMap(xml: string, context: string): Map<string, {
+  target: string;
+  type: string;
+}> {
+  const relationships = new Map<string, { target: string; type: string }>();
+  for (
+    const match of xml.matchAll(
+      /<(?:[^<>\s/:]+:)?Relationship\b([^>]*?)\/?>/g,
+    )
+  ) {
+    const attributes = parseAttributes(match[1]);
+    if (!attributes.Id || !attributes.Target || !attributes.Type) {
+      fail("invalid_xlsx", `${context} contains an incomplete relationship`);
+    }
+    if (relationships.has(attributes.Id)) {
+      fail("invalid_xlsx", `${context} contains duplicate relationship identifiers`);
+    }
+    relationships.set(attributes.Id, {
+      target: attributes.Target,
+      type: attributes.Type.toLowerCase(),
+    });
+  }
+  return relationships;
+}
+
+function imageMime(bytes: Buffer): "image/jpeg" | "image/png" | null {
+  const jpeg = bytes.length >= 3
+    && bytes[0] === 0xff
+    && bytes[1] === 0xd8
+    && bytes[2] === 0xff;
+  if (jpeg) return "image/jpeg";
+  const png = bytes.length >= 8
+    && bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a;
+  return png ? "image/png" : null;
+}
+
+function anchorCoordinate(
+  anchorBody: string,
+  sheet: XlsxSheet,
+): { rowNumber: number; columnIndex: number } {
+  const from = /<(?:[^<>\s/:]+:)?from\b[^>]*>([\s\S]*?)<\/(?:[^<>\s/:]+:)?from>/
+    .exec(anchorBody)?.[1];
+  if (!from) fail("invalid_xlsx", "Drawing anchor is missing its origin");
+  const rowText = /<(?:[^<>\s/:]+:)?row\b[^>]*>(\d+)<\/(?:[^<>\s/:]+:)?row>/
+    .exec(from)?.[1];
+  const columnText = /<(?:[^<>\s/:]+:)?col\b[^>]*>(\d+)<\/(?:[^<>\s/:]+:)?col>/
+    .exec(from)?.[1];
+  const rowIndex = Number(rowText);
+  const columnIndex = Number(columnText);
+  const rowNumber = rowIndex + 1;
+  const headerWidth = sheet.rows[0]?.values.length ?? 0;
+  if (!Number.isSafeInteger(rowIndex)
+    || !Number.isSafeInteger(columnIndex)
+    || rowIndex < 0
+    || rowIndex >= MAX_WORKSHEET_ROWS
+    || columnIndex < 0
+    || columnIndex >= MAX_WORKSHEET_COLUMNS
+    || columnIndex >= headerWidth
+    || !sheet.rows.some((row) => row.rowNumber === rowNumber)) {
+    fail("xlsx_drawing_anchor_out_of_bounds", "Drawing anchor is outside the worksheet data range");
+  }
+  return { rowNumber, columnIndex };
+}
+
+export function parseXlsxEmbeddedImages(
+  input: Uint8Array,
+  requestedSheetName: string,
+): XlsxEmbeddedImageParseResult {
+  const workbook = parseXlsxWorkbook(input);
+  const sheet = workbook.sheets.find((candidate) => candidate.name === requestedSheetName);
+  if (!sheet) fail("unsupported_sheet", "Requested worksheet was not found");
+
+  const buffer = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  const entries = readZipEntries(buffer);
+  const readText = (name: string, required = true): string | null => {
+    const entry = entries.get(name);
+    if (!entry) {
+      if (required) fail("invalid_xlsx", `XLSX entry is missing: ${name}`);
+      return null;
+    }
+    return readEntry(buffer, entry).toString("utf8");
+  };
+
+  const workbookXml = readText("xl/workbook.xml")!;
+  const workbookRelationships = relationshipMap(
+    readText("xl/_rels/workbook.xml.rels")!,
+    "Workbook",
+  );
+  let sheetPath: string | null = null;
+  for (const match of workbookXml.matchAll(/<sheet\b([^>]*?)\/?>/g)) {
+    const attributes = parseAttributes(match[1]);
+    if (attributes.name !== requestedSheetName || !attributes["r:id"]) continue;
+    const relationship = workbookRelationships.get(attributes["r:id"]);
+    if (!relationship || !WORKSHEET_RELATIONSHIP_TYPES.has(relationship.type)) {
+      fail("invalid_xlsx", "Workbook sheet relationship is invalid");
+    }
+    sheetPath = resolveWorkbookTarget(relationship.target);
+    break;
+  }
+  if (!sheetPath || !/^xl\/worksheets\/[^/]+\.xml$/i.test(sheetPath)) {
+    fail("invalid_xlsx", "Workbook worksheet target is invalid");
+  }
+
+  const sheetXml = readText(sheetPath)!;
+  const drawingIds = [...sheetXml.matchAll(
+    /<(?:[^<>\s/:]+:)?drawing\b([^>]*?)\/?>/g,
+  )].map((match) => parseAttributes(match[1])["r:id"]).filter(Boolean);
+  if (drawingIds.length === 0) return { images: [], rejected: [] };
+  if (new Set(drawingIds).size !== drawingIds.length) {
+    fail("invalid_xlsx", "Worksheet contains duplicate drawing references");
+  }
+  const sheetRelationshipsPath = relationshipPartPath(sheetPath);
+  const sheetRelationships = relationshipMap(
+    readText(sheetRelationshipsPath)!,
+    "Worksheet",
+  );
+
+  const images: XlsxEmbeddedImage[] = [];
+  const rejected: XlsxEmbeddedImageRejection[] = [];
+  for (const drawingId of drawingIds) {
+    const drawingRelationship = sheetRelationships.get(drawingId);
+    if (!drawingRelationship
+      || !DRAWING_RELATIONSHIP_TYPES.has(drawingRelationship.type)) {
+      fail("invalid_xlsx", "Worksheet drawing relationship is invalid");
+    }
+    const drawingPath = resolvePartTarget(sheetPath, drawingRelationship.target);
+    if (!/^xl\/drawings\/[^/]+\.xml$/i.test(drawingPath)) {
+      fail("invalid_xlsx", "Worksheet drawing target is outside xl/drawings");
+    }
+    const drawingXml = readText(drawingPath)!;
+    const drawingRelationships = relationshipMap(
+      readText(relationshipPartPath(drawingPath))!,
+      "Drawing",
+    );
+    for (
+      const anchorMatch of drawingXml.matchAll(
+        /<(?:[^<>\s/:]+:)?(oneCellAnchor|twoCellAnchor)\b[^>]*>([\s\S]*?)<\/(?:[^<>\s/:]+:)?\1>/g,
+      )
+    ) {
+      const coordinate = anchorCoordinate(anchorMatch[2], sheet);
+      const embedIds = [...anchorMatch[2].matchAll(
+        /<(?:[^<>\s/:]+:)?blip\b([^>]*?)\/?>/g,
+      )].map((match) => parseAttributes(match[1])["r:embed"]).filter(Boolean);
+      if (embedIds.length !== 1) {
+        fail("invalid_xlsx", "Drawing anchor must reference exactly one embedded image");
+      }
+      const imageRelationship = drawingRelationships.get(embedIds[0]);
+      if (!imageRelationship || !IMAGE_RELATIONSHIP_TYPES.has(imageRelationship.type)) {
+        fail("invalid_xlsx", "Drawing image relationship is invalid");
+      }
+      const mediaPath = resolvePartTarget(drawingPath, imageRelationship.target);
+      if (!/^xl\/media\/[^/]+$/i.test(mediaPath)) {
+        fail("invalid_xlsx", "Drawing image target is outside xl/media");
+      }
+      const entry = entries.get(mediaPath);
+      if (!entry) fail("invalid_xlsx", "Drawing image target is missing");
+      if (entry.uncompressedSize > MAX_EMBEDDED_IMAGE_BYTES) {
+        rejected.push({
+          sheetName: requestedSheetName,
+          ...coordinate,
+          reason: "image_too_large",
+        });
+        continue;
+      }
+      const bytes = readEntry(buffer, entry);
+      const mimeType = imageMime(bytes);
+      if (!mimeType) {
+        rejected.push({
+          sheetName: requestedSheetName,
+          ...coordinate,
+          reason: "unsupported_image_type",
+        });
+        continue;
+      }
+      images.push({
+        sheetName: requestedSheetName,
+        ...coordinate,
+        columnHeader: sheet.rows[0]?.values[coordinate.columnIndex]?.trim() || null,
+        mimeType,
+        byteLength: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        bytes: new Uint8Array(bytes),
+      });
+    }
+  }
+  return { images, rejected };
 }
 
 export function parseXlsxWorkbook(input: Uint8Array): XlsxWorkbook {

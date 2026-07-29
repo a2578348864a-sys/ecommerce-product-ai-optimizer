@@ -280,11 +280,26 @@ export function assertActiveSelection(input: ProductDiscoverySelectionInput): vo
 export type ProductBatchImageSnapshot =
   | { status: "not_cached" }
   | {
+    version: "product-batch-image-snapshot.v1";
+    status: "not_cached";
+    reason:
+      | "not_available"
+      | "embedded_image_rejected"
+      | "ambiguous_embedded_image"
+      | "remote_url_rejected"
+      | "remote_fetch_failed";
+    capturedAt: string;
+  }
+  | {
     status: "cached";
     mimeType: "image/jpeg" | "image/png";
     sizeBytes: number;
     sha256: string;
     base64: string;
+    version?: "product-batch-image-snapshot.v1";
+    byteLength?: number;
+    sourceKind?: "xlsx_embedded" | "xlsx_main_image_url";
+    capturedAt?: string;
   };
 
 function decodeStrictBase64(value: string): Buffer {
@@ -306,10 +321,28 @@ export function assertProductBatchImageSnapshot(imageSnapshotJson: string): void
   assertJsonFieldWithinLimit("imageSnapshotJson", imageSnapshotJson);
   const snapshot = parseJsonObject(imageSnapshotJson, "imageSnapshotJson");
   if (snapshot.status === "not_cached") {
-    if (Object.keys(snapshot).length !== 1) {
+    if (Object.keys(snapshot).length === 1) return;
+    const reasons = new Set([
+      "not_available",
+      "embedded_image_rejected",
+      "ambiguous_embedded_image",
+      "remote_url_rejected",
+      "remote_fetch_failed",
+    ]);
+    if (snapshot.version !== "product-batch-image-snapshot.v1"
+      || !reasons.has(String(snapshot.reason))
+      || typeof snapshot.capturedAt !== "string"
+      || snapshot.capturedAt.length > 40
+      || Number.isNaN(Date.parse(snapshot.capturedAt))
+      || Object.keys(snapshot).some((key) => ![
+        "version",
+        "status",
+        "reason",
+        "capturedAt",
+      ].includes(key))) {
       contractError(
         "batch_image_not_cached_invalid",
-        "A not_cached image snapshot cannot contain image bytes or remote references.",
+        "A versioned not_cached image snapshot requires only a safe reason and capture time.",
       );
     }
     return;
@@ -319,6 +352,40 @@ export function assertProductBatchImageSnapshot(imageSnapshotJson: string): void
   }
   if (snapshot.mimeType !== "image/jpeg" && snapshot.mimeType !== "image/png") {
     contractError("batch_image_mime_invalid", "Only JPEG and PNG images are supported.");
+  }
+  if (snapshot.version !== undefined) {
+    if (snapshot.version !== "product-batch-image-snapshot.v1"
+      || snapshot.byteLength !== snapshot.sizeBytes
+      || (snapshot.sourceKind !== "xlsx_embedded"
+        && snapshot.sourceKind !== "xlsx_main_image_url")
+      || typeof snapshot.capturedAt !== "string"
+      || snapshot.capturedAt.length > 40
+      || Number.isNaN(Date.parse(snapshot.capturedAt))
+      || Object.keys(snapshot).some((key) => ![
+        "version",
+        "status",
+        "mimeType",
+        "sizeBytes",
+        "byteLength",
+        "sha256",
+        "base64",
+        "sourceKind",
+        "capturedAt",
+      ].includes(key))) {
+      contractError(
+        "batch_image_snapshot_metadata_invalid",
+        "Versioned cached images require bounded source metadata.",
+      );
+    }
+  } else if (
+    snapshot.byteLength !== undefined
+    || snapshot.sourceKind !== undefined
+    || snapshot.capturedAt !== undefined
+  ) {
+    contractError(
+      "batch_image_snapshot_metadata_invalid",
+      "Legacy cached images cannot partially claim versioned source metadata.",
+    );
   }
   if (!Number.isSafeInteger(snapshot.sizeBytes) || (snapshot.sizeBytes as number) < 1) {
     contractError("batch_image_size_invalid", "Cached image size must be a positive integer.");

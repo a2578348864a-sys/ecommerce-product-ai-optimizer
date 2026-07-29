@@ -15,11 +15,13 @@ import {
   getAccessToken,
   updateDemoAccessInfo,
 } from "@/lib/client/accessToken";
+import { ResearchProductImage } from "@/components/ResearchProductImage";
 import {
   AMAZON_US_TOP_LEVEL_CATEGORIES,
   productBatchReportTypeLabel,
   type ProductBatchImportInspection,
 } from "@/lib/productBatchPresentation";
+import { readProductBatchItemImageSnapshot } from "@/lib/productBatchImagePresentation";
 import type {
   ProductBatchItemView,
   ProductBatchSelectionView,
@@ -431,17 +433,26 @@ export function ProductBatchManagerView({
                 selectedBatch,
                 selection,
               });
+              const productImage = readProductBatchItemImageSnapshot(item.imageSnapshotJson);
               return (
               <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">
-                    {item.researchPriority}
-                  </span>
-                  <span className="text-xs text-slate-400">{item.asin ?? "ASIN 缺失"}</span>
+                <div className="flex items-start gap-3">
+                  <ResearchProductImage
+                    image={productImage}
+                    alt={metricValue(item, "productTitle")}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">
+                        {item.researchPriority}
+                      </span>
+                      <span className="text-xs text-slate-400">{item.asin ?? "ASIN 缺失"}</span>
+                    </div>
+                    <h3 className="mt-3 line-clamp-3 font-semibold leading-6 text-slate-950">
+                      {metricValue(item, "productTitle")}
+                    </h3>
+                  </div>
                 </div>
-                <h3 className="mt-3 line-clamp-3 font-semibold leading-6 text-slate-950">
-                  {metricValue(item, "productTitle")}
-                </h3>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
                   <p className="rounded-lg bg-slate-50 p-2">价格<br /><b>{metricValue(item, "price")}</b></p>
                   <p className="rounded-lg bg-slate-50 p-2">评分<br /><b>{metricValue(item, "rating")}</b></p>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
+import { ResearchProductImage } from "@/components/ResearchProductImage";
 import { useAccessPassword } from "@/lib/client/accessPassword";
 import {
   buildAccessHeaders,
@@ -57,6 +58,7 @@ import {
   parseCandidateResearchContext,
   type CandidateResearchContext,
 } from "@/lib/candidateResearchContext";
+import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -437,6 +439,8 @@ export function AgentRunClient({
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [productName, setProductName] = useState(candidateMode ? "" : initialProductName || "");
   const [sourceMeta, setSourceMeta] = useState<AgentRunSourceMeta | null>(null);
+  const [candidateProductImage, setCandidateProductImage] =
+    useState<ResearchProductImageDisplay | null>(null);
   const [candidateContextState, setCandidateContextState] = useState<CandidateContextState>(
     candidateMode ? "candidate_context_loading" : "candidate_context_ready",
   );
@@ -581,6 +585,7 @@ export function AgentRunClient({
     const clearCandidateUi = () => {
       setProductName("");
       setSourceMeta(null);
+      setCandidateProductImage(null);
       setPhase("idle");
       setStepStatuses(INITIAL_STATUSES);
       setResult(null);
@@ -633,6 +638,7 @@ export function AgentRunClient({
         const authorizedSourceMeta = sourceMetaFromResearchContext(context);
         setProductName(context.productName);
         setSourceMeta(authorizedSourceMeta);
+        setCandidateProductImage(context.productImage || null);
         setCandidateContextState("candidate_context_ready");
       } catch (cause) {
         if (controller.signal.aborted) return;
@@ -1107,6 +1113,17 @@ export function AgentRunClient({
                     ? "SellerSprite ProductBatch 研究上下文"
                     : "已带入发现商品上下文"}
                 </p>
+                <div className="mt-2 flex items-center gap-3">
+                  <ResearchProductImage
+                    image={candidateProductImage}
+                    alt={productName || "候选商品"}
+                  />
+                  <p className="text-xs text-indigo-700">
+                    {candidateProductImage
+                      ? "商品图片来自已验证并缓存的 Candidate 快照。"
+                      : "当前商品没有可验证的本地图片快照，使用统一占位图。"}
+                  </p>
+                </div>
                 {sourceMeta.originKind === "seller_sprite_product_batch" ? (
                   <>
                     <p className="mt-1">

@@ -8,6 +8,7 @@ import {
 import { evaluateCandidateResearchEligibility } from "@/lib/server/candidateResearchEligibility";
 import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
 import type { CandidateResearchContext } from "@/lib/candidateResearchContext";
+import { readCandidateProductImageSnapshot } from "@/lib/productResearchImage";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,17 @@ export async function GET(request: NextRequest) {
   if (analysisContext.integrity === "unverified") return notFound();
   const contextHash = createCandidateAnalysisBindingHash(candidate, analysisContext);
   const capturedAt = analysisContext.facts.capturedAt;
+  const imageSnapshot = readCandidateProductImageSnapshot(candidate.sourceMetaJson);
+  const productImage = imageSnapshot
+    ? {
+      dataUrl: imageSnapshot.dataUrl,
+      mimeType: imageSnapshot.mimeType,
+      contentHash: imageSnapshot.contentHash,
+      provenance: imageSnapshot.source === "sellersprite_product_batch"
+        ? "product_batch_snapshot" as const
+        : "candidate_fallback" as const,
+    }
+    : undefined;
 
   let data: CandidateResearchContext;
   if (eligibility.originKind === "seller_sprite_product_batch") {
@@ -80,6 +92,7 @@ export async function GET(request: NextRequest) {
       sellerSpriteDisclaimerVersion: source.sellerSpriteDisclaimerVersion,
       capturedAt,
       contextHash,
+      ...(productImage ? { productImage } : {}),
     };
   } else {
     const publicContext = analysisContext.integrity === "verified_public"
@@ -96,6 +109,7 @@ export async function GET(request: NextRequest) {
       promotionEligible: false,
       capturedAt,
       contextHash,
+      ...(productImage ? { productImage } : {}),
     };
   }
 

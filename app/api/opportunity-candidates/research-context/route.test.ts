@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 
 const state: {
   context: { mode: "owner" } | { mode: "demo"; demoAccessId: string };
@@ -119,6 +120,40 @@ describe("GET /api/opportunity-candidates/research-context", () => {
     expect(body.data).not.toHaveProperty("sourceMetaJson");
     expect(body.data).not.toHaveProperty("analysisJson");
     expect(JSON.stringify(body)).not.toContain("forged");
+  });
+
+  it("returns a validated cached ProductBatch image without exposing raw Candidate metadata", async () => {
+    const imageBytes = Buffer.from([0xff, 0xd8, 0xff]);
+    const imageHash = createHash("sha256").update(imageBytes).digest("hex");
+    mocks.getAuthoritativeCandidate.mockResolvedValueOnce({
+      ...candidate(),
+      sourceMetaJson: JSON.stringify({
+        originKind: "seller_sprite_product_batch",
+        productKey: "amazon:US:B000000001",
+        itemIdentityHash: "1".repeat(64),
+        capturedAt: "2026-07-28T00:00:00.000Z",
+        imageSnapshot: {
+          status: "cached",
+          mimeType: "image/jpeg",
+          sizeBytes: imageBytes.length,
+          sha256: imageHash,
+          base64: imageBytes.toString("base64"),
+        },
+      }),
+    });
+
+    const response = await GET(request("sandbox_candidate_a") as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.productImage).toEqual({
+      dataUrl: `data:image/jpeg;base64,${imageBytes.toString("base64")}`,
+      mimeType: "image/jpeg",
+      contentHash: imageHash,
+      provenance: "product_batch_snapshot",
+    });
+    expect(body.data).not.toHaveProperty("sourceMetaJson");
+    expect(JSON.stringify(body)).not.toContain("itemIdentityHash");
   });
 
   it("returns the same 404 for another Visitor's Candidate and for an unknown Candidate", async () => {

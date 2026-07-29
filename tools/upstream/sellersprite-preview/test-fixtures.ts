@@ -14,13 +14,17 @@ function crc32(input: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function createStoredZip(entries: ReadonlyArray<readonly [string, string]>): Buffer {
+function createStoredZip(
+  entries: ReadonlyArray<readonly [string, string | Uint8Array]>,
+): Buffer {
   const localParts: Buffer[] = [];
   const centralParts: Buffer[] = [];
   let offset = 0;
   for (const [name, text] of entries) {
     const nameBytes = Buffer.from(name, "utf8");
-    const content = Buffer.from(text, "utf8");
+    const content = typeof text === "string"
+      ? Buffer.from(text, "utf8")
+      : Buffer.from(text);
     const checksum = crc32(content);
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -79,6 +83,7 @@ function columnName(index: number): string {
 function sheetXml(
   headers: readonly string[],
   rows: ReadonlyArray<Readonly<Record<string, string>>>,
+  drawingRelationshipId?: string,
 ): string {
   const allRows = [
     Object.fromEntries(headers.map((header) => [header, header])),
@@ -95,11 +100,23 @@ function sheetXml(
   });
   return [
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',
+    drawingRelationshipId
+      ? ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      : ">",
     `<dimension ref="A1:${columnName(headers.length - 1)}${allRows.length}"/>`,
     `<sheetData>${renderedRows.join("")}</sheetData>`,
+    drawingRelationshipId ? `<drawing r:id="${drawingRelationshipId}"/>` : "",
     "</worksheet>",
   ].join("");
+}
+
+export interface SellerSpritePreviewEmbeddedImage {
+  rowIndex: number;
+  columnIndex: number;
+  bytes: Uint8Array;
+  mediaName?: string;
+  relationshipTarget?: string;
 }
 
 export interface SellerSpritePreviewWorkbookOptions {
@@ -108,6 +125,8 @@ export interface SellerSpritePreviewWorkbookOptions {
   includeBrands?: boolean;
   includeSellers?: boolean;
   sellersHeaders?: readonly string[];
+  embeddedImages?: ReadonlyArray<SellerSpritePreviewEmbeddedImage>;
+  drawingTarget?: string;
 }
 
 export function createSellerSpritePreviewTestWorkbook(
@@ -162,12 +181,67 @@ export function createSellerSpritePreviewTestWorkbook(
     ].join("")),
     "</Relationships>",
   ].join("");
+  const embeddedImages = options.embeddedImages ?? [];
+  const drawingRelationshipId = embeddedImages.length > 0 ? "rIdProductDrawing" : undefined;
+  const worksheetRelationships = drawingRelationshipId ? [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    `<Relationship Id="${drawingRelationshipId}"`,
+    ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"',
+    ` Target="${xmlEscape(options.drawingTarget ?? "../drawings/drawing1.xml")}"/>`,
+    "</Relationships>",
+  ].join("") : null;
+  const drawing = drawingRelationshipId ? [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"',
+    ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"',
+    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+    ...embeddedImages.map((image, index) => [
+      "<xdr:oneCellAnchor>",
+      `<xdr:from><xdr:col>${image.columnIndex}</xdr:col><xdr:colOff>0</xdr:colOff>`,
+      `<xdr:row>${image.rowIndex}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`,
+      "<xdr:ext cx=\"100\" cy=\"100\"/>",
+      `<xdr:pic><xdr:blipFill><a:blip r:embed="rIdImage${index + 1}"/>`,
+      "</xdr:blipFill></xdr:pic><xdr:clientData/>",
+      "</xdr:oneCellAnchor>",
+    ].join("")),
+    "</xdr:wsDr>",
+  ].join("") : null;
+  const drawingRelationships = drawingRelationshipId ? [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+    ...embeddedImages.map((image, index) => [
+      `<Relationship Id="rIdImage${index + 1}"`,
+      ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"',
+      ` Target="${xmlEscape(
+        image.relationshipTarget ?? `../media/${image.mediaName ?? `image${index + 1}.png`}`,
+      )}"/>`,
+    ].join("")),
+    "</Relationships>",
+  ].join("") : null;
   return createStoredZip([
     ["xl/workbook.xml", workbook],
     ["xl/_rels/workbook.xml.rels", relationships],
     ...sheetDefinitions.map((sheet, index) => [
       `xl/worksheets/sheet${index + 1}.xml`,
-      sheetXml(sheet.headers, sheet.rows),
+      sheetXml(
+        sheet.headers,
+        sheet.rows,
+        index === 0 ? drawingRelationshipId : undefined,
+      ),
+    ] as const),
+    ...(worksheetRelationships ? [[
+      "xl/worksheets/_rels/sheet1.xml.rels",
+      worksheetRelationships,
+    ] as const] : []),
+    ...(drawing ? [["xl/drawings/drawing1.xml", drawing] as const] : []),
+    ...(drawingRelationships ? [[
+      "xl/drawings/_rels/drawing1.xml.rels",
+      drawingRelationships,
+    ] as const] : []),
+    ...embeddedImages.map((image, index) => [
+      `xl/media/${image.mediaName ?? `image${index + 1}.png`}`,
+      image.bytes,
     ] as const),
   ]);
 }

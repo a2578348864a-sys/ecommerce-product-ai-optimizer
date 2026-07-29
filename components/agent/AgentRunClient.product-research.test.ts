@@ -107,6 +107,8 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).toContain("candidate_context_invalid");
     expect(clientSource).toContain("候选不存在或不属于当前访问身份，请返回发现商品重新选择。");
     expect(clientSource).toContain("/api/opportunity-candidates/research-context");
+    expect(clientSource).toContain("ResearchProductImage");
+    expect(clientSource).toContain("商品图片来自已验证并缓存的 Candidate 快照。");
     expect(clientSource).toContain("updateDemoAccessSnapshot");
   });
 });

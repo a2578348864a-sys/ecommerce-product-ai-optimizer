@@ -63,7 +63,14 @@ function toPercentInput(rate: unknown) {
 }
 
 export function hasCompleteProfitInput(purchaseCost: unknown, salePrice: unknown) {
-  return normalizeNumber(purchaseCost) > 0 && normalizeNumber(salePrice) > 0;
+  const hasExplicitNonNegativeNumber = (value: unknown) => {
+    if (typeof value === "string" && value.trim().length === 0) return false;
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) && parsed >= 0;
+  };
+
+  return hasExplicitNonNegativeNumber(purchaseCost)
+    && hasExplicitNonNegativeNumber(salePrice);
 }
 
 function decideProfit(estimatedProfit: number, estimatedMarginRate: number, hasResult: boolean): ProfitDecision {
@@ -110,8 +117,13 @@ export function ProfitSnapshotCard({
     return { purchase, sale, feeRate };
   }, [purchaseCost, salePrice, platformFeeRatePercent]);
 
+  const hasCompleteInputs = useMemo(
+    () => hasCompleteProfitInput(purchaseCost, salePrice),
+    [purchaseCost, salePrice],
+  );
+
   const result = useMemo(() => {
-    if (!hasCompleteProfitInput(inputs.purchase, inputs.sale)) return null;
+    if (!hasCompleteInputs || inputs.sale <= 0) return null;
 
     return calculateProfit({
       purchasePrice: String(inputs.purchase),
@@ -123,7 +135,7 @@ export function ProfitSnapshotCard({
       manualSellingPrice: String(inputs.sale),
       currency: currencyHint,
     });
-  }, [inputs, currencyHint]);
+  }, [inputs, currencyHint, hasCompleteInputs]);
 
   const snapshot: ProfitSnapshot = useMemo(() => {
     const hasResult = Boolean(result);
@@ -147,8 +159,8 @@ export function ProfitSnapshotCard({
   }, [result, normalizedInitial, inputs, createdAt, currencyHint]);
 
   useEffect(() => {
-    onChange?.(result ? snapshot : null);
-  }, [snapshot, result, onChange]);
+    onChange?.(hasCompleteInputs ? snapshot : null);
+  }, [snapshot, hasCompleteInputs, onChange]);
 
   const decisionLabel = DECISION_LABELS[snapshot.decision];
   const decisionColor = DECISION_COLORS[snapshot.decision];

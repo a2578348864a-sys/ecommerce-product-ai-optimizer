@@ -187,6 +187,29 @@ describe("ProductBatch unified role UI", () => {
     expect(mixed).toMatch(/<button[^>]*disabled[^>]*>导入新批次<\/button>/);
   });
 
+  it("shows a validated cached product image and keeps a safe placeholder otherwise", () => {
+    const pngBytes = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01,
+    ]);
+    const cached = render("owner", {
+      selectedItem: {
+        ...item,
+        imageSnapshotJson: JSON.stringify({
+          status: "cached",
+          mimeType: "image/png",
+          sizeBytes: pngBytes.length,
+          sha256: "275f1bcbbb585c71e3b2184304eccfa0e37de92022ca3b6f4e9c10df32318d85",
+          base64: pngBytes.toString("base64"),
+        }),
+      },
+    });
+    const missing = render("owner");
+
+    expect(cached).toContain("data:image/png;base64,");
+    expect(missing).toContain("商品图片暂不可用");
+    expect(missing).not.toContain("<img");
+  });
+
   it("distinguishes a resolved zero price from a missing price", () => {
     const zeroPrice = render("owner", {
       selectedItem: {

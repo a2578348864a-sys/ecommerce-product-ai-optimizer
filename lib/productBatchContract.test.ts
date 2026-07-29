@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -170,6 +172,32 @@ describe("ProductBatch V1 bounded JSON and item semantics", () => {
     expect(() => assertProductBatchImageSnapshot(
       JSON.stringify({ status: "not_cached" }),
     )).not.toThrow();
+    expect(() => assertProductBatchImageSnapshot(JSON.stringify({
+      version: "product-batch-image-snapshot.v1",
+      status: "not_cached",
+      reason: "remote_fetch_failed",
+      capturedAt: "2026-07-29T00:00:00.000Z",
+    }))).not.toThrow();
+  });
+
+  it("accepts complete versioned image provenance but rejects partial metadata", () => {
+    const bytes = Buffer.from([0xff, 0xd8, 0xff, 0x01]);
+    const snapshot = {
+      version: "product-batch-image-snapshot.v1",
+      status: "cached",
+      mimeType: "image/jpeg",
+      sizeBytes: bytes.byteLength,
+      byteLength: bytes.byteLength,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      base64: bytes.toString("base64"),
+      sourceKind: "xlsx_embedded",
+      capturedAt: "2026-07-29T00:00:00.000Z",
+    };
+    expect(() => assertProductBatchImageSnapshot(JSON.stringify(snapshot))).not.toThrow();
+    expect(() => assertProductBatchImageSnapshot(JSON.stringify({
+      ...snapshot,
+      byteLength: snapshot.byteLength + 1,
+    }))).toThrow(ProductBatchContractError);
   });
 
   it("rejects promotion and advance/watch/reject semantics", () => {
