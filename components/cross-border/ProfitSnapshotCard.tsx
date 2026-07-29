@@ -28,7 +28,7 @@ type LegacyProfitSnapshot = Partial<ProfitSnapshot> & {
 
 type ProfitSnapshotCardProps = {
   initial?: LegacyProfitSnapshot;
-  onChange?: (snapshot: ProfitSnapshot) => void;
+  onChange?: (snapshot: ProfitSnapshot | null) => void;
   readonly?: boolean;
   currency?: string;
 };
@@ -60,6 +60,10 @@ function formatPercent(value: number) {
 function toPercentInput(rate: unknown) {
   const normalized = normalizeNumber(rate, 0.15);
   return normalized > 1 ? normalized : normalized * 100;
+}
+
+export function hasCompleteProfitInput(purchaseCost: unknown, salePrice: unknown) {
+  return normalizeNumber(purchaseCost) > 0 && normalizeNumber(salePrice) > 0;
 }
 
 function decideProfit(estimatedProfit: number, estimatedMarginRate: number, hasResult: boolean): ProfitDecision {
@@ -107,7 +111,7 @@ export function ProfitSnapshotCard({
   }, [purchaseCost, salePrice, platformFeeRatePercent]);
 
   const result = useMemo(() => {
-    if (inputs.purchase <= 0 || inputs.sale <= 0) return null;
+    if (!hasCompleteProfitInput(inputs.purchase, inputs.sale)) return null;
 
     return calculateProfit({
       purchasePrice: String(inputs.purchase),
@@ -143,8 +147,8 @@ export function ProfitSnapshotCard({
   }, [result, normalizedInitial, inputs, createdAt, currencyHint]);
 
   useEffect(() => {
-    onChange?.(snapshot);
-  }, [snapshot, onChange]);
+    onChange?.(result ? snapshot : null);
+  }, [snapshot, result, onChange]);
 
   const decisionLabel = DECISION_LABELS[snapshot.decision];
   const decisionColor = DECISION_COLORS[snapshot.decision];

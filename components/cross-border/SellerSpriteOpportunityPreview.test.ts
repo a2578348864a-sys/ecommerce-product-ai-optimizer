@@ -161,7 +161,7 @@ describe("SellerSprite opportunity preview presentation", () => {
       data: viewModel("category_current"),
     }));
     expect(html).toContain("类目当前商品");
-    expect(html).toContain("Category Current 记录");
+    expect(html).toContain("类目当前商品记录");
     expect(html).toContain("大类 BSR");
     expect(html).toContain("小类 BSR");
     expect(html).toContain("搜索位置：不适用");

@@ -10,7 +10,15 @@ import {
   getRemainingAiCalls,
 } from "@/lib/server/demoAccess";
 import { createDemoProductBatchStore } from "@/lib/server/demoProductBatchStore";
-import { importSellerSpriteProductBatch } from "@/lib/server/productBatchImportService";
+import {
+  importSellerSpriteProductBatch,
+  inspectSellerSpriteProductBatch,
+} from "@/lib/server/productBatchImportService";
+import { SELLERSPRITE_SANITIZED_ROWS } from "@/lib/upstream/sellersprite/fixtures/search-export.sanitized.v1";
+import {
+  SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+  SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+} from "@/lib/upstream/sellersprite/fixtures/category-current.sanitized.v1";
 import { createSellerSpritePreviewTestWorkbook } from "@/tools/upstream/sellersprite-preview/test-fixtures";
 
 let root: string;
@@ -39,6 +47,58 @@ function input(store: ReturnType<typeof createDemoProductBatchStore>) {
 }
 
 describe("shared SellerSprite ProductBatch import", () => {
+  it("inspects report type and category before persistence without inventing a query", () => {
+    const categoryCurrent = inspectSellerSpriteProductBatch(
+      new Uint8Array(createSellerSpritePreviewTestWorkbook({
+        headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+        rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS.map((row) => ({
+          ...row,
+          大类目: "Kitchen & Dining",
+        })),
+      })),
+      new Date("2026-07-29T00:00:00.000Z"),
+    );
+    const searchResults = inspectSellerSpriteProductBatch(
+      new Uint8Array(createSellerSpritePreviewTestWorkbook({
+        rows: SELLERSPRITE_SANITIZED_ROWS.map((row) => ({
+          ...row,
+          大类目: "Home & Kitchen",
+        })),
+      })),
+      new Date("2026-07-29T00:00:00.000Z"),
+    );
+
+    expect(categoryCurrent).toMatchObject({
+      reportType: "category_current",
+      reportTypeDetected: true,
+      categoryDetection: {
+        status: "detected",
+        category: "Kitchen & Dining",
+      },
+      query: null,
+      queryDetection: "not_available",
+    });
+    expect(searchResults).toMatchObject({
+      reportType: "search_results",
+      reportTypeDetected: true,
+      categoryDetection: {
+        status: "detected",
+        category: "Home & Kitchen",
+      },
+    });
+  });
+
+  it("uses the frozen workbook structure detector when no report type is selected", async () => {
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
+    const result = await importSellerSpriteProductBatch({
+      ...input(store),
+      reportType: null,
+    });
+
+    expect(result.batch.reportType).toBe("search_results");
+    expect(JSON.parse(result.batch.normalizedSnapshotJson!).reportType).toBe("search_results");
+  });
+
   it("produces the same Snapshot v3 and Ranking v2 for separate role stores", async () => {
     const ownerLike = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
     const visitor = createDemoProductBatchStore("demo_bbbbbbbbbbbbbbbb", { root });

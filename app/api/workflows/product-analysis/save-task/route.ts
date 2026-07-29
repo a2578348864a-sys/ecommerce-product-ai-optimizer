@@ -52,6 +52,11 @@ import {
   parseProductBatchCandidateSource,
   type ProductBatchCandidateSourceV1,
 } from "@/lib/server/productBatchCandidateSource";
+import {
+  buildProductBatchListingFacts,
+  type ProductBatchListingFactsV1,
+} from "@/lib/server/productBatchListingFacts";
+import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
 
 export const runtime = "nodejs";
 
@@ -153,6 +158,7 @@ type SourceMeta = {
   researchMode?: "market_research_only";
   promotionEligible?: false;
   productBatchSnapshot?: ProductBatchCandidateSourceV1;
+  productBatchListingFacts?: ProductBatchListingFactsV1;
   candidateSnapshot?: {
     version: 1;
     id: string;
@@ -318,7 +324,11 @@ function parseStoredCandidateMeta(value: string): Record<string, unknown> {
   }
 }
 
-function buildAuthoritativeSourceMeta(candidate: AuthoritativeCandidate, capturedAt: string): SourceMeta {
+function buildAuthoritativeSourceMeta(
+  candidate: AuthoritativeCandidate,
+  capturedAt: string,
+  productBatchListingFacts: ProductBatchListingFactsV1 | null,
+): SourceMeta {
   const storedMeta = parseStoredCandidateMeta(candidate.sourceMetaJson);
   const productBatchSnapshot = parseProductBatchCandidateSource(candidate.sourceMetaJson);
   const evidenceSnapshot = parseCandidateEvidenceSnapshot(storedMeta.evidenceSnapshot);
@@ -351,6 +361,7 @@ function buildAuthoritativeSourceMeta(candidate: AuthoritativeCandidate, capture
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
       productBatchSnapshot,
+      ...(productBatchListingFacts ? { productBatchListingFacts } : {}),
     } : {}),
     candidateSnapshot: {
       version: 1,
@@ -529,6 +540,7 @@ export async function POST(request: NextRequest) {
   let candidateAnalysisContext: CandidateAnalysisContextV1 | null = null;
   let r22CommercialValidation: R22CommercialRunSnapshot | null = null;
   let productBatchCandidateSource: ProductBatchCandidateSourceV1 | null = null;
+  let productBatchListingFacts: ProductBatchListingFactsV1 | null = null;
   if (workflowInput.candidateId) {
     const candidate = await getAuthoritativeCandidate(auth.context, workflowInput.candidateId);
     if (!candidate) {
@@ -556,6 +568,20 @@ export async function POST(request: NextRequest) {
       }, 409);
     }
     productBatchCandidateSource = researchEligibility.productBatchSource ?? null;
+    if (productBatchCandidateSource) {
+      try {
+        const batch = await getProductBatchStore(auth.context)
+          .getBatch(productBatchCandidateSource.productBatchId);
+        productBatchListingFacts = batch
+          ? buildProductBatchListingFacts({
+              batch,
+              source: productBatchCandidateSource,
+            })
+          : null;
+      } catch {
+        productBatchListingFacts = null;
+      }
+    }
     candidateAnalysisContext = buildCandidateAnalysisContext(candidate);
     if (workflowInput.contextHash !== createCandidateAnalysisBindingHash(candidate, candidateAnalysisContext)) {
       return jsonResponse({
@@ -609,7 +635,11 @@ export async function POST(request: NextRequest) {
         },
       }, 409);
     }
-    sourceMeta = buildAuthoritativeSourceMeta(candidate, candidateCapturedAt);
+    sourceMeta = buildAuthoritativeSourceMeta(
+      candidate,
+      candidateCapturedAt,
+      productBatchListingFacts,
+    );
   } else if (clientSourceMeta) {
     return jsonResponse({ ok: false, error: { code: "candidate_binding_mismatch", message: "手工分析不能附加未签名候选关系。" } }, 409);
   }

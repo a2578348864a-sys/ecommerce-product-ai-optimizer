@@ -55,7 +55,11 @@ import {
   type PipelineStatus,
 } from "@/lib/productPipeline";
 import { deriveDisplayLifecycle, getAvailableTransitions, getLifecycleStatusLabel, getLifecycleStatusDescription, getLifecycleNextAction, transitionLifecycle, type LifecycleStatus, type ProductLifecycle } from "@/lib/workflowLifecycle";
-import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
+import {
+  deriveProductResearchPresentation,
+  formatResearchMoney,
+  formatResearchRate,
+} from "@/lib/productResearchPresentation";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 
@@ -392,16 +396,12 @@ function WorkflowDecisionSummary({
                 {(() => {
                   const ps = result.profitSnapshot as Record<string, unknown>;
                   const currency = (ps.currency as string) || "¥";
-                  const purchaseCost = Number(ps.purchaseCost) || 0;
-                  const salePrice = Number(ps.salePrice) || 0;
-                  const estimatedProfit = Number(ps.estimatedProfit) || 0;
-                  const estimatedMarginRate = Number(ps.estimatedMarginRate) || 0;
                   return (
                     <>
-                      <span>采购成本：{currency}{purchaseCost.toFixed(2)}</span>
-                      <span>建议售价：{currency}{salePrice.toFixed(2)}</span>
-                      <span>预估利润：{currency}{estimatedProfit.toFixed(2)}</span>
-                      <span>毛利率：{(estimatedMarginRate * 100).toFixed(1)}%</span>
+                      <span>采购成本：{formatResearchMoney(ps.purchaseCost, currency, "待确认")}</span>
+                      <span>建议售价：{formatResearchMoney(ps.salePrice, currency, "待确认")}</span>
+                      <span>预估利润：{formatResearchMoney(ps.estimatedProfit, currency, "不可估算")}</span>
+                      <span>毛利率：{formatResearchRate(ps.estimatedMarginRate, "不可估算")}</span>
                     </>
                   );
                 })()}

@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   getProductBatchStore: vi.fn(),
   getProductBatchAccessSummary: vi.fn(),
   importSellerSpriteProductBatch: vi.fn(),
+  inspectSellerSpriteProductBatch: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
@@ -36,6 +37,7 @@ vi.mock("@/lib/server/productBatchStoreResolver", () => ({
 
 vi.mock("@/lib/server/productBatchImportService", () => ({
   importSellerSpriteProductBatch: mocks.importSellerSpriteProductBatch,
+  inspectSellerSpriteProductBatch: mocks.inspectSellerSpriteProductBatch,
   ProductBatchImportError: class ProductBatchImportError extends Error {
     constructor(public code: string, message: string) {
       super(message);
@@ -57,15 +59,18 @@ function request(
   return new NextRequest(`http://localhost:43128${path}`, init);
 }
 
-function formRequest(extra: Record<string, string> = {}) {
+function formRequest(extra: Record<string, string | null> = {}) {
   const form = new FormData();
   form.set("file", new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], "input.xlsx"));
   form.set("reportType", "search_results");
   form.set("query", "organizer");
-  form.set("category", "Home");
+  form.set("category", "Home & Kitchen");
   form.set("priceMin", "10");
   form.set("priceMax", "40");
-  for (const [key, value] of Object.entries(extra)) form.set(key, value);
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === null) form.delete(key);
+    else form.set(key, value);
+  }
   return request("/api/product-batches", {
     method: "POST",
     body: form,
@@ -138,6 +143,48 @@ describe("unified ProductBatch API", () => {
       const rejected = await POST(formRequest({ [field]: "owner" }));
       expect(rejected.status).toBe(400);
     }
+  });
+  mocks.inspectSellerSpriteProductBatch.mockReturnValue({
+    reportType: "category_current",
+    reportTypeDetected: true,
+    categoryDetection: {
+      status: "detected",
+      category: "Kitchen & Dining",
+      distribution: [{ category: "Kitchen & Dining", count: 10 }],
+      validCategoryCount: 10,
+    },
+    query: null,
+    queryDetection: "not_available",
+  });
+
+  it("accepts an omitted report type and delegates authoritative detection to the import service", async () => {
+    const response = await POST(formRequest({ reportType: null }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.importSellerSpriteProductBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ reportType: null }),
+    );
+  });
+
+  it("inspects the selected workbook before requiring import brief fields and does not open a Store", async () => {
+    const response = await POST(formRequest({
+      operation: "inspect",
+      reportType: null,
+      query: null,
+      category: null,
+      priceMin: null,
+      priceMax: null,
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toMatchObject({
+      reportType: "category_current",
+      categoryDetection: { category: "Kitchen & Dining" },
+    });
+    expect(mocks.inspectSellerSpriteProductBatch).toHaveBeenCalledOnce();
+    expect(mocks.importSellerSpriteProductBatch).not.toHaveBeenCalled();
+    expect(mocks.getProductBatchStore).not.toHaveBeenCalled();
   });
 
   it("fails closed for a batch outside the authenticated Store", async () => {

@@ -1,7 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { deriveProductResearchPresentation } from "./productResearchPresentation";
+import {
+  deriveProductResearchPresentation,
+  formatResearchMoney,
+  formatResearchRate,
+} from "./productResearchPresentation";
 
 describe("deriveProductResearchPresentation", () => {
+  it("does not turn absent financial evidence into a numeric zero", () => {
+    expect(formatResearchMoney(undefined, "¥", "待确认")).toBe("待确认");
+    expect(formatResearchMoney(null, "$", "待确认")).toBe("待确认");
+    expect(formatResearchMoney(0, "$", "待确认")).toBe("$0.00");
+    expect(formatResearchMoney(12.5, "$", "待确认")).toBe("$12.50");
+    expect(formatResearchRate(undefined, "不可估算")).toBe("不可估算");
+    expect(formatResearchRate(0, "不可估算")).toBe("0.0%");
+    expect(formatResearchRate(0.25, "不可估算")).toBe("25.0%");
+  });
+
   it("does not present a technical completed status as completed research without business facts", () => {
     const presentation = deriveProductResearchPresentation({
       id: "task-001",

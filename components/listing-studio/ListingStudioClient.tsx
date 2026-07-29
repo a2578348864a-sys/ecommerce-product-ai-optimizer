@@ -150,7 +150,12 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     setCategory((current) => current || taskPrefill.data.category);
     setIntent((current) => ({
       ...current,
+      targetMarket: taskPrefill.data.targetMarket || current.targetMarket,
       differentiators: current.differentiators || taskPrefill.data.sellingPoints,
+      confirmedFacts: current.confirmedFacts || taskPrefill.data.confirmedFacts,
+      unverifiedFacts: current.unverifiedFacts || taskPrefill.data.unverifiedFacts,
+      primaryKeyword: current.primaryKeyword || taskPrefill.data.primaryKeyword,
+      secondaryKeywords: current.secondaryKeywords || taskPrefill.data.secondaryKeywords,
     }));
   }, [taskPrefill]);
 

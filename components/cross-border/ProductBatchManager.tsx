@@ -1,13 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 
 import {
   buildAccessHeaders,
   getAccessToken,
   updateDemoAccessInfo,
 } from "@/lib/client/accessToken";
+import {
+  AMAZON_US_TOP_LEVEL_CATEGORIES,
+  productBatchReportTypeLabel,
+  type ProductBatchImportInspection,
+} from "@/lib/productBatchPresentation";
 import type {
   ProductBatchItemView,
   ProductBatchSelectionView,
@@ -15,6 +27,8 @@ import type {
 } from "@/lib/productBatchStore";
 
 type ViewState = "loading" | "ready" | "unauthenticated" | "error";
+type ImportInspectionState = "idle" | "loading" | "ready" | "manual" | "error";
+type ReportType = "search_results" | "category_current";
 
 interface ProductBatchManagerViewProps {
   state: ViewState;
@@ -27,7 +41,15 @@ interface ProductBatchManagerViewProps {
   selectedItems: ProductBatchItemView[];
   busy: boolean;
   errorMessage?: string | null;
+  manualReportTypeRequired?: boolean;
+  importInspectionState?: ImportInspectionState;
+  importInspection?: ProductBatchImportInspection | null;
+  selectedReportType?: ReportType | "";
+  selectedCategory?: string;
   onImport?: (event: FormEvent<HTMLFormElement>) => void;
+  onImportFileChange?: (event: ChangeEvent<HTMLInputElement>) => void;
+  onReportTypeChange?: (reportType: ReportType) => void;
+  onCategoryChange?: (category: string) => void;
   onViewItems?: (batchId: string) => void;
   onActivate?: (batchId: string) => void;
   onArchive?: (batchId: string) => void;
@@ -65,14 +87,14 @@ function metricValue(
       providerMetrics?: Record<string, { status?: string; normalized?: unknown }>;
     };
     const metric = product.providerMetrics?.[field];
-    if (metric?.status !== "resolved") return "缺失";
+    if (metric?.status !== "resolved") return field === "price" ? "待确认" : "缺失";
     if (typeof metric.normalized === "string" || typeof metric.normalized === "number") {
       return String(metric.normalized);
     }
   } catch {
     // A corrupt item should remain visibly unavailable, never be guessed.
   }
-  return "缺失";
+  return field === "price" ? "待确认" : "缺失";
 }
 
 function researchBlockedReason(input: {
@@ -107,7 +129,15 @@ export function ProductBatchManagerView({
   selectedItems,
   busy,
   errorMessage,
+  manualReportTypeRequired = false,
+  importInspectionState = "idle",
+  importInspection = null,
+  selectedReportType = "",
+  selectedCategory = "",
   onImport,
+  onImportFileChange,
+  onReportTypeChange,
+  onCategoryChange,
   onViewItems,
   onActivate,
   onArchive,
@@ -140,6 +170,19 @@ export function ProductBatchManagerView({
       </section>
     );
   }
+
+  const detectedReportType = importInspection?.reportTypeDetected
+    && importInspection.reportType !== "unknown"
+    ? importInspection.reportType
+    : null;
+  const effectiveReportType = detectedReportType ?? selectedReportType;
+  const showManualReportType = manualReportTypeRequired
+    || importInspectionState === "manual"
+    || importInspectionState === "error";
+  const categoryNeedsConfirmation = importInspection?.categoryDetection.status
+    === "mixed_requires_confirmation";
+  const importReady = Boolean(effectiveReportType && selectedCategory)
+    && importInspectionState !== "loading";
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4" data-testid="product-batch-manager">
@@ -186,36 +229,83 @@ export function ProductBatchManagerView({
               type="file"
               name="file"
               accept=".xlsx"
+              onChange={onImportFileChange}
               className="mt-1 block h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
             />
           </label>
-          <label>
-            <span className="text-xs font-semibold text-slate-600">报表类型</span>
-            <select
-              name="reportType"
-              defaultValue="search_results"
-              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value="search_results">Search Results</option>
-              <option value="category_current">Category Current</option>
-            </select>
-          </label>
-          <label>
-            <span className="text-xs font-semibold text-slate-600">查询词</span>
-            <input
-              name="query"
-              defaultValue="organizer"
-              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-            />
-          </label>
+          {showManualReportType ? (
+            <label>
+              <span className="text-xs font-semibold text-slate-600">手动选择报表类型</span>
+              <select
+                name="reportType"
+                value={selectedReportType}
+                required
+                onChange={(event) => onReportTypeChange?.(
+                  event.target.value as ReportType,
+                )}
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">请选择</option>
+                <option value="search_results">搜索结果报表</option>
+                <option value="category_current">类目商品报表</option>
+              </select>
+            </label>
+          ) : (
+            <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-700">
+              <span className="font-semibold">
+                {importInspectionState === "loading"
+                  ? "正在识别报表类型"
+                  : detectedReportType
+                    ? `已识别：${productBatchReportTypeLabel(detectedReportType)}`
+                    : "选择文件后自动识别报表类型"}
+              </span>
+              <br />
+              无法识别时再由你手动选择。
+              {detectedReportType ? (
+                <input type="hidden" name="reportType" value={detectedReportType} />
+              ) : null}
+            </div>
+          )}
+          {effectiveReportType === "search_results" ? (
+            <label>
+              <span className="text-xs font-semibold text-slate-600">查询词（无法从本文件可靠识别）</span>
+              <input
+                required
+                name="query"
+                placeholder="请按导出时使用的查询词填写"
+                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+              />
+            </label>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+              查询词仅用于搜索结果报表；不会从商品标题猜测。
+            </div>
+          )}
           <label>
             <span className="text-xs font-semibold text-slate-600">类目</span>
-            <input
+            <select
               required
               name="category"
-              defaultValue="Home"
+              value={selectedCategory}
+              onChange={(event) => onCategoryChange?.(event.target.value)}
               className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-            />
+            >
+              <option value="">请选择 Amazon US 一级类目</option>
+              {AMAZON_US_TOP_LEVEL_CATEGORIES.map((category) => (
+                <option key={category.value} value={category.value}>
+                  {category.label} · {category.value}
+                </option>
+              ))}
+            </select>
+            {categoryNeedsConfirmation ? (
+              <span className="mt-1 block text-xs leading-5 text-amber-700">
+                检测到多个商品类目，请确认主要研究类目。
+              </span>
+            ) : importInspection?.categoryDetection.status === "detected" ? (
+              <span className="mt-1 block text-xs leading-5 text-teal-700">
+                已按报表大类目自动预选，可人工修正。
+              </span>
+            ) : null}
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label>
@@ -242,7 +332,7 @@ export function ProductBatchManagerView({
           <div className="sm:col-span-2 lg:col-span-6">
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || !importReady}
               className="linear-button-primary inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold sm:w-auto"
             >
               {busy ? "处理中…" : "导入新批次"}
@@ -290,7 +380,7 @@ export function ProductBatchManagerView({
                     <div>
                       <h3 className="font-semibold text-slate-950">{batch.batchName}</h3>
                       <p className="mt-1 text-xs text-slate-500">
-                        {batch.reportType} · {batch.acceptedCount ?? 0} 个商品 · {formatDate(batch.importedAt)}
+                        {productBatchReportTypeLabel(batch.reportType)} · {batch.acceptedCount ?? 0} 个商品 · {formatDate(batch.importedAt)}
                       </p>
                     </div>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
@@ -416,6 +506,14 @@ export function ProductBatchManager() {
   const [selectedItems, setSelectedItems] = useState<ProductBatchItemView[]>([]);
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [manualReportTypeRequired, setManualReportTypeRequired] = useState(false);
+  const [importInspectionState, setImportInspectionState] =
+    useState<ImportInspectionState>("idle");
+  const [importInspection, setImportInspection] =
+    useState<ProductBatchImportInspection | null>(null);
+  const [selectedReportType, setSelectedReportType] = useState<ReportType | "">("");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const inspectionSequence = useRef(0);
 
   const applyAccess = (data: Pick<ListPayload, "accessMode" | "remainingAiCalls">) => {
     setAccessMode(data.accessMode);
@@ -474,6 +572,58 @@ export function ProductBatchManager() {
     void refresh();
   }, [refresh]);
 
+  const handleImportFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null;
+    const sequence = inspectionSequence.current + 1;
+    inspectionSequence.current = sequence;
+    setImportInspection(null);
+    setSelectedReportType("");
+    setSelectedCategory("");
+    setManualReportTypeRequired(false);
+    setErrorMessage(null);
+    if (!file) {
+      setImportInspectionState("idle");
+      return;
+    }
+    setImportInspectionState("loading");
+    void (async () => {
+      const formData = new FormData();
+      formData.set("operation", "inspect");
+      formData.set("file", file);
+      try {
+        const response = await fetch("/api/product-batches", {
+          method: "POST",
+          headers: buildAccessHeaders(),
+          body: formData,
+        });
+        const body = await response.json() as {
+          ok?: boolean;
+          data?: ProductBatchImportInspection;
+        };
+        if (sequence !== inspectionSequence.current) return;
+        if (!response.ok || !body.data) throw new Error(responseError(body));
+        setImportInspection(body.data);
+        if (!body.data.reportTypeDetected || body.data.reportType === "unknown") {
+          setImportInspectionState("manual");
+          setManualReportTypeRequired(true);
+          return;
+        }
+        setSelectedReportType(body.data.reportType);
+        setSelectedCategory(body.data.categoryDetection.category ?? "");
+        setImportInspectionState("ready");
+      } catch (error) {
+        if (sequence !== inspectionSequence.current) return;
+        setImportInspectionState("error");
+        setManualReportTypeRequired(true);
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "无法识别报表，请核对文件后手动选择。",
+        );
+      }
+    })();
+  };
+
   const runMutation = async (action: () => Promise<void>) => {
     setBusy(true);
     setErrorMessage(null);
@@ -491,6 +641,7 @@ export function ProductBatchManager() {
   const handleImport = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    formData.set("operation", "import");
     if (formData.get("reportType") === "category_current") formData.delete("query");
     void runMutation(async () => {
       const response = await fetch("/api/product-batches", {
@@ -506,7 +657,20 @@ export function ProductBatchManager() {
           remainingAiCalls: number | null;
         };
       };
-      if (!response.ok || !body.data) throw new Error(responseError(body));
+      if (!response.ok || !body.data) {
+        const code = typeof body === "object"
+          && body !== null
+          && "error" in body
+          && typeof (body as { error?: { code?: unknown } }).error?.code === "string"
+          ? (body as { error: { code: string } }).error.code
+          : "";
+        if (code === "report_type_required") {
+          setManualReportTypeRequired(true);
+          setImportInspectionState("manual");
+        }
+        throw new Error(responseError(body));
+      }
+      setManualReportTypeRequired(false);
       applyAccess(body.data);
       await loadDetail(body.data.batch.id);
     });
@@ -579,7 +743,15 @@ export function ProductBatchManager() {
       selectedItems={selectedItems}
       busy={busy}
       errorMessage={errorMessage}
+      manualReportTypeRequired={manualReportTypeRequired}
+      importInspectionState={importInspectionState}
+      importInspection={importInspection}
+      selectedReportType={selectedReportType}
+      selectedCategory={selectedCategory}
       onImport={handleImport}
+      onImportFileChange={handleImportFileChange}
+      onReportTypeChange={setSelectedReportType}
+      onCategoryChange={setSelectedCategory}
       onViewItems={(batchId) => {
         setBusy(true);
         void loadDetail(batchId)

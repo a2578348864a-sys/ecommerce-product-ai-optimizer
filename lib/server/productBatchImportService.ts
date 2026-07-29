@@ -7,6 +7,10 @@ import type {
   ProductBatchStore,
   ProductBatchView,
 } from "@/lib/productBatchStore";
+import {
+  detectProductBatchCategory,
+  type ProductBatchImportInspection,
+} from "@/lib/productBatchPresentation";
 import { sellerSpriteStableHash } from "@/lib/upstream/sellersprite/canonical";
 import { buildSellerSpriteBriefBoundShadowReport } from "@/lib/upstream/sellersprite/briefBoundShadowReport";
 import { rankSellerSpriteMarketSignals } from "@/lib/upstream/sellersprite/marketSignalRanking";
@@ -35,7 +39,7 @@ export interface SellerSpriteProductBatchImportInput {
   store: ProductBatchStore;
   bytes: Uint8Array;
   sourceFileName: string;
-  reportType: SellerSpriteReportType;
+  reportType: SellerSpriteReportType | null;
   query: string | null;
   category: string;
   priceMin: number;
@@ -46,6 +50,48 @@ export interface SellerSpriteProductBatchImportInput {
 export interface SellerSpriteProductBatchImportResult {
   batch: ProductBatchView;
   created: boolean;
+}
+
+export function inspectSellerSpriteProductBatch(
+  bytes: Uint8Array,
+  now = new Date(),
+): ProductBatchImportInspection {
+  if (Number.isNaN(now.getTime())) {
+    fail("import_time_invalid", "Import time is invalid.");
+  }
+  const precheck = precheckSellerSpriteXlsx(bytes, {
+    capturedAt: now.toISOString(),
+  });
+  if (precheck.reportType === "unknown") {
+    const blocking = precheck.errors.some((error) => (
+      error.severity === "error"
+      && error.code !== "unsupported_report_type"
+    ));
+    if (blocking) workbookFailure(precheck);
+    return {
+      reportType: "unknown",
+      reportTypeDetected: false,
+      categoryDetection: detectProductBatchCategory({
+        reportType: "unknown",
+        rootCategories: [],
+      }),
+      query: null,
+      queryDetection: "not_available",
+    };
+  }
+  workbookFailure(precheck);
+  return {
+    reportType: precheck.reportType,
+    reportTypeDetected: true,
+    categoryDetection: detectProductBatchCategory({
+      reportType: precheck.reportType,
+      rootCategories: precheck.records
+        .map((record) => record.rootCategory.normalized)
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+    }),
+    query: null,
+    queryDetection: "not_available",
+  };
 }
 
 function fail(code: string, message: string): never {
@@ -151,9 +197,13 @@ export async function importSellerSpriteProductBatch(
   const capturedAt = now.toISOString();
   const precheck = precheckSellerSpriteXlsx(input.bytes, {
     capturedAt,
-    expectedReportType: input.reportType,
+    ...(input.reportType ? { expectedReportType: input.reportType } : {}),
   });
+  if (!input.reportType && precheck.reportType === "unknown") {
+    fail("report_type_required", "SellerSprite report type could not be detected.");
+  }
   workbookFailure(precheck);
+  const reportType = precheck.reportType as SellerSpriteReportType;
   const snapshot = buildSellerSpriteMarketSnapshot(precheck);
   const briefCommon = {
     marketplace: "amazon.com",
@@ -162,7 +212,7 @@ export async function importSellerSpriteProductBatch(
     category: input.category,
     priceMin: input.priceMin,
     priceMax: input.priceMax,
-    requiredSignals: input.reportType === "search_results"
+    requiredSignals: reportType === "search_results"
       ? ["price", "rating", "reviews", "searchRank"]
       : ["price", "rating", "reviews"],
     optionalSignals: [
@@ -175,15 +225,15 @@ export async function importSellerSpriteProductBatch(
   };
   let brief;
   try {
-    brief = input.reportType === "search_results"
+    brief = reportType === "search_results"
       ? createSellerSpriteShadowSelectionBrief({
           ...briefCommon,
-          reportType: input.reportType,
+          reportType,
           query: input.query ?? "",
         })
       : createSellerSpriteShadowSelectionBrief({
           ...briefCommon,
-          reportType: input.reportType,
+          reportType,
           query: null,
         });
   } catch {
@@ -230,7 +280,7 @@ export async function importSellerSpriteProductBatch(
       : `${input.category} · 当前商品`,
     marketplace: "US",
     currency: "USD",
-    reportType: input.reportType,
+    reportType,
     query: brief.query,
     category: brief.category,
     priceMinCents: toCents(brief.priceMin, "priceMin"),

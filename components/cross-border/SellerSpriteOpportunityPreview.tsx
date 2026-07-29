@@ -21,6 +21,7 @@ import {
 } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { AMAZON_US_TOP_LEVEL_CATEGORIES } from "@/lib/productBatchPresentation";
 import type {
   SellerSpriteOpportunityPreviewViewModel,
   SellerSpritePreviewProduct,
@@ -905,7 +906,7 @@ export function SellerSpritePreviewResults({
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
-            label={data.reportType === "search_results" ? "Search Appearance" : "Category Current 记录"}
+            label={data.reportType === "search_results" ? "关键词搜索出现次数" : "类目当前商品记录"}
             value={data.occurrenceCount}
           />
           <SummaryCard label="唯一商品" value={data.productCount} note={`唯一 ASIN ${data.uniqueAsinCount}`} />
@@ -915,7 +916,7 @@ export function SellerSpritePreviewResults({
             value={data.duplicateOccurrenceGroupCount}
             note={data.reportType === "search_results"
               ? "保留各次搜索出现，不合并指标"
-              : "保留各条 Category Current 记录，不合并指标"}
+              : "保留各条类目当前商品记录，不合并指标"}
           />
         </div>
         {data.reportType === "search_results" ? (
@@ -1024,7 +1025,7 @@ export function SellerSpritePreviewResults({
                 <th className="px-3 py-3">评分 / 评论</th>
                 {data.reportType === "search_results" ? (
                   <>
-                    <th className="px-3 py-3">Search Appearance</th>
+                    <th className="px-3 py-3">关键词搜索位置</th>
                     <th className="px-3 py-3">最佳搜索位置</th>
                   </>
                 ) : (
@@ -1182,12 +1183,17 @@ function PreviewForm({
           ) : null}
           <label className="text-sm font-semibold text-slate-700">
             商品类目
-            <input
+            <select
               name="category"
-              placeholder="例如：Home & Kitchen"
-              maxLength={200}
+              defaultValue="Home & Kitchen"
               className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-            />
+            >
+              {AMAZON_US_TOP_LEVEL_CATEGORIES.map((category) => (
+                <option key={category.value} value={category.value}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">

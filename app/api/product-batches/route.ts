@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   PRODUCT_BATCH_MAX_XLSX_BYTES,
 } from "@/lib/productBatchContract";
+import { isAmazonUsTopLevelCategory } from "@/lib/productBatchPresentation";
 import { productBatchResponseShape } from "@/lib/productBatchStore";
 import {
   ACTIVE_PRODUCTION_MARKET_SCREENING_REGISTRATION_ID,
@@ -11,6 +12,7 @@ import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   ProductBatchImportError,
   importSellerSpriteProductBatch,
+  inspectSellerSpriteProductBatch,
 } from "@/lib/server/productBatchImportService";
 import {
   getProductBatchAccessSummary,
@@ -114,6 +116,7 @@ function caughtError(error: unknown) {
   if (error instanceof ProductBatchImportError) {
     const badRequest = new Set([
       "brief_validation_failed",
+      "report_type_required",
       "report_type_mismatch",
       "unsupported_report_type",
       "unsupported_sheet",
@@ -123,8 +126,10 @@ function caughtError(error: unknown) {
     return errorResponse(
       badRequest.has(error.code) ? 422 : 500,
       error.code,
-      badRequest.has(error.code)
-        ? "SellerSprite 文件或筛选条件未通过检查。"
+      error.code === "report_type_required"
+        ? "无法自动识别报表类型，请手动选择后重试。"
+        : badRequest.has(error.code)
+          ? "SellerSprite 文件或筛选条件未通过检查。"
         : "ProductBatch 导入失败。",
     );
   }
@@ -199,29 +204,9 @@ export async function POST(request: NextRequest) {
   if (file.size > PRODUCT_BATCH_MAX_XLSX_BYTES) {
     return errorResponse(413, "file_too_large", "文件超过 10 MiB 限制。");
   }
-  const reportTypeValue = textField(formData, "reportType");
-  if (reportTypeValue !== "search_results" && reportTypeValue !== "category_current") {
-    return errorResponse(400, "unsupported_report_type", "报表类型无效。");
-  }
-  const queryEntries = formData.getAll("query");
-  if (reportTypeValue === "category_current" && queryEntries.length > 0) {
-    return errorResponse(400, "query_not_applicable", "类目当前商品报表不使用查询词。");
-  }
-  const query = reportTypeValue === "search_results"
-    ? textField(formData, "query")
-    : null;
-  const category = textField(formData, "category");
-  const priceMin = moneyField(textField(formData, "priceMin"));
-  const priceMax = moneyField(textField(formData, "priceMax"));
-  if (
-    (reportTypeValue === "search_results" && (!query || query.length > 200))
-    || !category
-    || category.length > 200
-    || priceMin === null
-    || priceMax === null
-    || priceMin > priceMax
-  ) {
-    return errorResponse(400, "brief_validation_failed", "筛选条件无效。");
+  const operation = textField(formData, "operation") || "import";
+  if (operation !== "import" && operation !== "inspect") {
+    return errorResponse(400, "unsupported_operation", "商品批次操作无效。");
   }
   let bytes: Uint8Array;
   try {
@@ -232,13 +217,51 @@ export async function POST(request: NextRequest) {
   if (!hasZipMagic(bytes)) {
     return errorResponse(422, "unsafe_xlsx", "XLSX 未通过安全检查。");
   }
+  if (operation === "inspect") {
+    try {
+      return NextResponse.json({
+        ok: true,
+        data: inspectSellerSpriteProductBatch(bytes),
+      });
+    } catch (error) {
+      return caughtError(error);
+    }
+  }
+  const reportTypeValue = textField(formData, "reportType");
+  const reportType = reportTypeValue === null || reportTypeValue === ""
+    ? null
+    : reportTypeValue;
+  if (reportType !== null
+    && reportType !== "search_results"
+    && reportType !== "category_current") {
+    return errorResponse(400, "unsupported_report_type", "报表类型无效。");
+  }
+  const queryEntries = formData.getAll("query");
+  if (reportType === "category_current" && queryEntries.length > 0) {
+    return errorResponse(400, "query_not_applicable", "类目当前商品报表不使用查询词。");
+  }
+  const query = reportType === "category_current" ? null : textField(formData, "query");
+  const category = textField(formData, "category");
+  const priceMin = moneyField(textField(formData, "priceMin"));
+  const priceMax = moneyField(textField(formData, "priceMax"));
+  if (
+    (reportType === "search_results" && (!query || query.length > 200))
+    || !category
+    || category.length > 200
+    || !isAmazonUsTopLevelCategory(category)
+    || priceMin === null
+    || priceMax === null
+    || priceMin > priceMax
+  ) {
+    return errorResponse(400, "brief_validation_failed", "筛选条件无效。");
+  }
   try {
     const store = getProductBatchStore(auth.context);
     const result = await importSellerSpriteProductBatch({
       store,
       bytes,
       sourceFileName,
-      reportType: reportTypeValue,
+      reportType,
       query,
       category,
       priceMin,

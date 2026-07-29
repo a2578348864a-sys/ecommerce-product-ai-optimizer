@@ -76,6 +76,10 @@ function render(
       updatedAt: string;
     };
     selectedItem?: ProductBatchItemView;
+    manualReportTypeRequired?: boolean;
+    importInspectionState?: "idle" | "loading" | "ready" | "manual" | "error";
+    categoryStatus?: "detected" | "mixed_requires_confirmation" | "unknown";
+    selectedCategory?: string;
   } = {},
 ) {
   const selectedBatch = overrides.selectedBatch ?? batch;
@@ -93,6 +97,27 @@ function render(
     selectedBatch,
     selectedItems: [overrides.selectedItem ?? item],
     busy: false,
+    manualReportTypeRequired: overrides.manualReportTypeRequired,
+    importInspectionState: overrides.importInspectionState ?? "ready",
+    importInspection: {
+      reportType: "search_results",
+      reportTypeDetected: true,
+      categoryDetection: {
+        status: overrides.categoryStatus ?? "detected",
+        category: overrides.categoryStatus === "mixed_requires_confirmation"
+          ? null
+          : "Home & Kitchen",
+        distribution: [
+          { category: "Home & Kitchen", count: 8 },
+          { category: "Sports & Outdoors", count: 2 },
+        ],
+        validCategoryCount: 10,
+      },
+      query: null,
+      queryDetection: "not_available",
+    },
+    selectedReportType: "search_results",
+    selectedCategory: overrides.selectedCategory ?? "Home & Kitchen",
     onResearchItem: () => undefined,
   }));
 }
@@ -132,6 +157,62 @@ describe("ProductBatch unified role UI", () => {
     expect(owner).toContain("研究此商品");
     expect(html.match(/研究此商品/g)).toHaveLength(1);
     expect(html).not.toContain("/agent/run");
+  });
+
+  it("uses Chinese report labels, a first-level category selector, and only asks for report type after detection fails", () => {
+    const automatic = render("owner");
+    const fallback = render("owner", {
+      manualReportTypeRequired: true,
+      importInspectionState: "manual",
+    });
+
+    expect(automatic).toContain("已识别：搜索结果报表");
+    expect(automatic).not.toContain(">search_results<");
+    expect(automatic).not.toContain("手动选择报表类型");
+    expect(automatic).toContain("家居与厨房");
+    expect(automatic).toMatch(/<select[^>]*name="category"/);
+    expect(fallback).toContain("手动选择报表类型");
+    expect(fallback).toContain("搜索结果报表");
+    expect(fallback).toContain("类目商品报表");
+  });
+
+  it("requires confirmation instead of silently choosing the first category in a mixed report", () => {
+    const mixed = render("owner", {
+      categoryStatus: "mixed_requires_confirmation",
+      selectedCategory: "",
+    });
+
+    expect(mixed).toContain("检测到多个商品类目，请确认主要研究类目");
+    expect(mixed).toMatch(/<option value=""[^>]*>请选择 Amazon US 一级类目<\/option>/);
+    expect(mixed).toMatch(/<button[^>]*disabled[^>]*>导入新批次<\/button>/);
+  });
+
+  it("distinguishes a resolved zero price from a missing price", () => {
+    const zeroPrice = render("owner", {
+      selectedItem: {
+        ...item,
+        normalizedProductJson: JSON.stringify({
+          providerMetrics: {
+            productTitle: { status: "resolved", normalized: "Free sample" },
+            price: { status: "resolved", normalized: 0 },
+          },
+        }),
+      },
+    });
+    const missingPrice = render("owner", {
+      selectedItem: {
+        ...item,
+        normalizedProductJson: JSON.stringify({
+          providerMetrics: {
+            productTitle: { status: "resolved", normalized: "Unknown price" },
+            price: { status: "missing", normalized: null },
+          },
+        }),
+      },
+    });
+
+    expect(zeroPrice).toContain("价格<br/><b>0</b>");
+    expect(missingPrice).toContain("价格<br/><b>待确认</b>");
   });
 
   it("disables research when the batch is not active, passing, or source-safe", () => {

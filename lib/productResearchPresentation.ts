@@ -84,6 +84,22 @@ function hasMeaningfulValue(value: unknown): boolean {
   return Object.values(value).some(hasMeaningfulValue);
 }
 
+export function formatResearchMoney(
+  value: unknown,
+  currency: string,
+  missingLabel: string,
+): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${currency}${value.toFixed(2)}`
+    : missingLabel;
+}
+
+export function formatResearchRate(value: unknown, missingLabel: string): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${(value * 100).toFixed(1)}%`
+    : missingLabel;
+}
+
 function recordHasContent(
   value: unknown,
   keys: readonly string[],
