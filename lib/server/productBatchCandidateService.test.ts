@@ -163,6 +163,11 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
     );
 
     expect(first.candidateId).toBe(repeated.candidateId);
+    expect(first.destinationUrl).toBe(
+      `/agent/run?source=opportunity&candidateId=${encodeURIComponent(first.candidateId)}`,
+    );
+    expect(first.destinationUrl).not.toContain("sourceMeta");
+    expect(first.destinationUrl).not.toContain("Closet");
     expect(first.created).toBe(true);
     expect(repeated.created).toBe(false);
     expect(mocks.txCreate).toHaveBeenCalledTimes(1);

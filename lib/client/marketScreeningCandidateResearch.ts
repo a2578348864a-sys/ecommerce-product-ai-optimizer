@@ -36,7 +36,7 @@ function isValidCandidateHandoff(
   return url.pathname === "/agent/run"
     && url.searchParams.get("source") === "opportunity"
     && url.searchParams.get("candidateId") === item.id
-    && url.searchParams.get("productName") === item.name;
+    && [...url.searchParams.keys()].every((key) => key === "source" || key === "candidateId");
 }
 
 export async function requestMarketScreeningCandidateResearch(

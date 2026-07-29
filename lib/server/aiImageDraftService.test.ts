@@ -8,6 +8,7 @@ import {
   createDemoAccess,
   getDemoAccessById,
   incrementDemoAiCalls,
+  markDemoAiCallProviderStarted,
   recoverExpiredDemoAiReservations,
   refundDemoAiImageCalls,
   reserveDemoAiImageCalls,
@@ -141,7 +142,7 @@ describe("AI image draft service", () => {
     ["timeout", "image_provider_timeout"],
     ["network_error", "image_provider_error"],
     ["empty", "image_response_invalid"],
-  ] as const)("calls the provider once for %s and returns a refundable error", async (scenario, expectedCode) => {
+  ] as const)("calls the provider once for %s and charges one AI job", async (scenario, expectedCode) => {
     const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
     const loadedTask = visitorTask(record.id);
     const generateRequest = request();
@@ -154,7 +155,7 @@ describe("AI image draft service", () => {
     expect(result).toMatchObject({ ok: false, error: { code: expectedCode } });
     expect(result.ok ? "" : result.error.message).toMatch(/[\u4e00-\u9fff]/);
     expect(calls).toBe(1);
-    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
     expect(loadedTask.task.resultJson).toBe("{}");
     expect(existsSync(process.env.AI_IMAGE_DRAFT_STORAGE_ROOT!)).toBe(false);
     const requestHash = buildAiImageRequestHash({
@@ -165,7 +166,11 @@ describe("AI image draft service", () => {
       imageType: generateRequest.imageType,
       count: generateRequest.count,
     });
-    expect(getAiImageRequest(requestHash)).toMatchObject({ status: "refunded", errorCode: expectedCode });
+    expect(getAiImageRequest(requestHash)).toMatchObject({
+      status: "failed_non_refundable",
+      providerCostConsumed: true,
+      errorCode: expectedCode,
+    });
 
     const repeated = await generateAiImageDraft({
       loadedTask,
@@ -174,7 +179,7 @@ describe("AI image draft service", () => {
     });
     expect(repeated).toMatchObject({ ok: false, error: { code: "image_request_already_failed" } });
     expect(calls).toBe(1);
-    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
   });
 
   it("calls the provider once for content blocks and keeps the visitor call charged", async () => {
@@ -242,11 +247,11 @@ describe("AI image draft service", () => {
     });
   });
 
-  it("refunds a count mismatch when the provider returned no candidate result", async () => {
+  it("charges one job for a count mismatch after the Provider started", async () => {
     const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
     const result = await generateAiImageDraft({ loadedTask: visitorTask(record.id), request: request(), provider: createMockAiImageProvider("count_mismatch") });
     expect(result).toMatchObject({ ok: false, error: { code: "image_response_invalid" } });
-    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(0);
+    expect(getDemoAccessById(record.id)?.usedAiCalls).toBe(1);
   });
 
   it("charges once when the provider returns a partial candidate batch", async () => {
@@ -423,6 +428,32 @@ describe("AI image draft service", () => {
       usedAiCalls: 0,
       aiImageQuotaReservations: {
         [reservationHash]: { status: "refunded", chargedCount: 0 },
+      },
+    });
+  });
+
+  it("commits one ai_jobs_v1 image job when recovery sees a persisted Provider start", () => {
+    const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });
+    const reservationHash = "d".repeat(64);
+    const nowMs = Date.parse("2026-07-26T00:00:00.000Z");
+    expect(reserveDemoAiImageCalls(record.id, reservationHash, 1, {
+      kind: "image",
+      leaseMs: 1_000,
+      nowMs,
+      quotaMetric: "ai_jobs_v1",
+      jobType: "image_generation",
+      jobRequestId: reservationHash,
+      providerCallsPlanned: 1,
+    }).ok).toBe(true);
+    expect(markDemoAiCallProviderStarted(record.id, reservationHash, 1, nowMs + 100).ok)
+      .toBe(true);
+
+    recoverExpiredDemoAiReservations(record.id, nowMs + 1_001);
+
+    expect(getDemoAccessById(record.id)).toMatchObject({
+      usedAiCalls: 1,
+      aiImageQuotaReservations: {
+        [reservationHash]: { status: "committed", chargedCount: 1 },
       },
     });
   });

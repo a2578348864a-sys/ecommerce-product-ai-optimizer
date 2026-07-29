@@ -13,7 +13,7 @@
 
 import "server-only";
 import type { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   recoverExpiredDemoAiReservations,
   isDemoAccessActive,
@@ -26,6 +26,7 @@ import {
   markDemoAiCallProviderStarted,
   DEMO_TEXT_AI_RESERVATION_LEASE_MS,
   DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
+  type DemoAiJobType,
   type DemoAccessRecord,
 } from "@/lib/server/demoAccess";
 import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
@@ -45,11 +46,28 @@ export interface DemoAccessSnapshot {
   usedAiCalls: number;
   remainingAiCalls: number;
   isActive: boolean;
+  quotaMetric: "ai_jobs_v1";
+  maxAiJobs: number;
+  usedAiJobs: number;
+  remainingAiJobs: number;
 }
 
 export type DemoAiQuotaReservation = {
   reservationId: string;
   plannedCount: number;
+};
+
+export type DemoAiJobQuotaReservation = {
+  reservationId: string;
+  jobType: DemoAiJobType;
+  jobRequestId: string;
+  quotaMetric: "ai_jobs_v1";
+  providerCallsPlanned: number;
+  duplicate: boolean;
+  status: "reserved" | "committed" | "refunded";
+  providerCallsStarted?: number;
+  providerCallsCompleted?: number;
+  providerCallsFailed?: number;
 };
 
 // ── Error helpers ───────────────────────────────
@@ -113,14 +131,19 @@ export function demoInactiveResponse() {
 // ── Snapshot builder ─────────────────────────────
 
 export function buildDemoAccessSnapshot(record: DemoAccessRecord): DemoAccessSnapshot {
+  const remainingAiJobs = getRemainingAiCalls(record);
   return {
     id: record.id,
     label: record.label,
     expiresAt: record.expiresAt,
     maxAiCalls: record.maxAiCalls,
     usedAiCalls: record.usedAiCalls,
-    remainingAiCalls: getRemainingAiCalls(record),
+    remainingAiCalls: remainingAiJobs,
     isActive: record.isActive,
+    quotaMetric: "ai_jobs_v1",
+    maxAiJobs: record.maxAiCalls,
+    usedAiJobs: record.usedAiCalls,
+    remainingAiJobs,
   };
 }
 
@@ -336,6 +359,198 @@ export function markDemoAiProviderCallStarted(
   return { ok: true };
 }
 
+type ReserveDemoAiJobInput = {
+  jobType: DemoAiJobType;
+  jobRequestId: string;
+  providerCallsPlanned: number;
+  leaseMs?: number;
+  nowMs?: number;
+};
+
+type DemoAiJobFailure = {
+  ok: false;
+  status: number;
+  code: string;
+  message: string;
+  snapshot: DemoAccessSnapshot | null;
+};
+
+function demoAiJobReservationId(jobType: DemoAiJobType, jobRequestId: string): string {
+  return `job-${createHash("sha256").update(`${jobType}:${jobRequestId}`, "utf8").digest("hex")}`;
+}
+
+export function reserveDemoAiJob(
+  ctx: AccessContext,
+  input: ReserveDemoAiJobInput,
+):
+  | {
+      ok: true;
+      reservation: DemoAiJobQuotaReservation | null;
+      snapshot: DemoAccessSnapshot | null;
+    }
+  | DemoAiJobFailure {
+  if (ctx.mode === "owner") {
+    return { ok: true, reservation: null, snapshot: null };
+  }
+  if (!input.jobRequestId.trim()
+    || input.jobRequestId.length > 128
+    || !Number.isInteger(input.providerCallsPlanned)
+    || input.providerCallsPlanned <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      code: "invalid_ai_job_request",
+      message: "AI 作业请求标识或 Provider 计划无效。",
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
+
+  const reservationId = demoAiJobReservationId(input.jobType, input.jobRequestId);
+  const reserved = reserveDemoAiImageCalls(ctx.demoAccessId, reservationId, 1, {
+    kind: "text",
+    leaseMs: Math.max(DEMO_TEXT_AI_RESERVATION_LEASE_MS, input.leaseMs ?? 0),
+    nowMs: input.nowMs,
+    quotaMetric: "ai_jobs_v1",
+    jobType: input.jobType,
+    jobRequestId: input.jobRequestId,
+    providerCallsPlanned: input.providerCallsPlanned,
+  });
+  if (!reserved.ok) {
+    const error = quotaReservationError(reserved.code);
+    return {
+      ...error,
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
+  const stored = reserved.record.aiImageQuotaReservations?.[reservationId];
+  if (!stored) {
+    return {
+      ok: false,
+      status: 500,
+      code: "demo_ai_quota_reservation_missing",
+      message: "AI 作业额度预留状态缺失。",
+      snapshot: buildDemoAccessSnapshot(reserved.record),
+    };
+  }
+  return {
+    ok: true,
+    reservation: {
+      reservationId,
+      jobType: input.jobType,
+      jobRequestId: input.jobRequestId,
+      quotaMetric: "ai_jobs_v1",
+      providerCallsPlanned: input.providerCallsPlanned,
+      duplicate: reserved.duplicate,
+      status: stored.status,
+      ...(stored.providerStartedCount !== undefined
+        ? { providerCallsStarted: stored.providerStartedCount }
+        : {}),
+      ...(stored.providerCallsCompleted !== undefined
+        ? { providerCallsCompleted: stored.providerCallsCompleted }
+        : {}),
+      ...(stored.providerCallsFailed !== undefined
+        ? { providerCallsFailed: stored.providerCallsFailed }
+        : {}),
+    },
+    snapshot: buildDemoAccessSnapshot(reserved.record),
+  };
+}
+
+export function markDemoAiJobProviderCallStarted(
+  ctx: AccessContext,
+  reservation: DemoAiJobQuotaReservation | null,
+  startedCount: number,
+):
+  | { ok: true }
+  | { ok: false; status: number; code: string; message: string } {
+  if (ctx.mode === "owner") return { ok: true };
+  if (!reservation) {
+    return {
+      ok: false,
+      status: 500,
+      code: "demo_ai_quota_reservation_missing",
+      message: "AI 作业额度预留状态缺失。",
+    };
+  }
+  const marked = markDemoAiCallProviderStarted(
+    ctx.demoAccessId,
+    reservation.reservationId,
+    startedCount,
+  );
+  if (!marked.ok) {
+    return {
+      ok: false,
+      status: 500,
+      code: marked.code === "reservation_not_found"
+        ? "demo_ai_quota_reservation_missing"
+        : "demo_ai_quota_provider_start_failed",
+      message: "AI 作业 Provider 启动审计无法持久化。",
+    };
+  }
+  return { ok: true };
+}
+
+export function settleDemoAiJob(
+  ctx: AccessContext,
+  reservation: DemoAiJobQuotaReservation | null,
+  audit: {
+    providerCallsStarted: number;
+    providerCallsCompleted: number;
+    providerCallsFailed: number;
+  },
+):
+  | {
+      ok: true;
+      snapshot: DemoAccessSnapshot | null;
+      status: "committed" | "refunded";
+      duplicate: boolean;
+    }
+  | DemoAiJobFailure {
+  if (ctx.mode === "owner") {
+    return {
+      ok: true,
+      snapshot: null,
+      status: audit.providerCallsStarted > 0 ? "committed" : "refunded",
+      duplicate: false,
+    };
+  }
+  if (!reservation) {
+    return {
+      ok: false,
+      status: 500,
+      code: "demo_ai_quota_reservation_missing",
+      message: "AI 作业额度结算状态缺失。",
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
+  const settled = settleDemoAiCallReservation(
+    ctx.demoAccessId,
+    reservation.reservationId,
+    audit.providerCallsStarted,
+    {
+      providerCallsCompleted: audit.providerCallsCompleted,
+      providerCallsFailed: audit.providerCallsFailed,
+    },
+  );
+  if (!settled.ok) {
+    return {
+      ok: false,
+      status: 500,
+      code: settled.code === "reservation_not_found"
+        ? "demo_ai_quota_reservation_missing"
+        : "demo_ai_quota_settlement_failed",
+      message: "AI 作业额度结算失败，请稍后重试。",
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
+  return {
+    ok: true,
+    snapshot: buildDemoAccessSnapshot(settled.record),
+    status: audit.providerCallsStarted > 0 ? "committed" : "refunded",
+    duplicate: settled.duplicate,
+  };
+}
+
 /**
  * Commit an atomic reservation after a successful text AI provider response.
  * Missing reservations fail closed so callers cannot silently bypass the quota gate.
@@ -383,12 +598,16 @@ export type VisitorImageQuotaResult =
 export function reserveVisitorImageAiCalls(
   ctx: AccessContext,
   requestHash: string,
-  count: number,
+  _requestedImageCount: number,
 ): VisitorImageQuotaResult {
   if (ctx.mode === "owner") return { ok: true, snapshot: null, duplicate: false };
-  const result = reserveDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash, count, {
+  const result = reserveDemoAiImageCalls((ctx as DemoAccessContext).demoAccessId, requestHash, 1, {
     kind: "image",
     leaseMs: DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
+    quotaMetric: "ai_jobs_v1",
+    jobType: "image_generation",
+    jobRequestId: requestHash,
+    providerCallsPlanned: 1,
   });
   if (result.ok) {
     return { ok: true, snapshot: buildDemoAccessSnapshot(result.record), duplicate: result.duplicate };
@@ -401,6 +620,19 @@ export function reserveVisitorImageAiCalls(
     reservation_conflict: { status: 409, code: "image_request_conflict", message: "请求标识与已有请求不一致。" },
   };
   return { ok: false, ...messages[result.code] };
+}
+
+export function markVisitorImageAiProviderStarted(
+  ctx: AccessContext,
+  requestHash: string,
+): { ok: true } | { ok: false; code: string } {
+  if (ctx.mode === "owner") return { ok: true };
+  const marked = markDemoAiCallProviderStarted(
+    (ctx as DemoAccessContext).demoAccessId,
+    requestHash,
+    1,
+  );
+  return marked.ok ? { ok: true } : { ok: false, code: marked.code };
 }
 
 export function commitVisitorImageAiCalls(ctx: AccessContext, requestHash: string): DemoAccessSnapshot | null {

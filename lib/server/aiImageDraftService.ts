@@ -26,6 +26,7 @@ import {
 import {
   commitVisitorImageAiCalls,
   reserveVisitorImageAiCalls,
+  markVisitorImageAiProviderStarted,
   refundVisitorImageAiCalls,
   type DemoAccessSnapshot,
 } from "@/lib/server/demoGuard";
@@ -343,6 +344,24 @@ export async function generateAiImageDraft(input: {
       if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
       return fail("image_ledger_failed", "图片请求账本无法记录 Provider 调用边界，本次没有调用 AI。", false);
     }
+    const providerStartAudit = markVisitorImageAiProviderStarted(
+      input.loadedTask.accessContext,
+      requestHash,
+    );
+    if (!providerStartAudit.ok) {
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      safeUpdateLedger({
+        requestHash,
+        status: "refunded",
+        errorCode: providerStartAudit.code,
+        now: input.now,
+      });
+      return fail(
+        "image_quota_provider_start_failed",
+        "图片 AI 作业启动审计失败，本次没有调用 AI。",
+        false,
+      );
+    }
 
     const prompt = buildAiImagePrompt({
       imageType: input.request.imageType,
@@ -387,20 +406,16 @@ export async function generateAiImageDraft(input: {
       });
     } catch (error) {
       const mapped = providerFailure(error);
-      const providerCostConsumed = mapped.providerCostConsumed || providerResultObserved;
-      const refundable = !providerCostConsumed && mapped.refundable;
+      const providerResultKnown = mapped.providerCostConsumed || providerResultObserved;
       let quotaSettled = true;
-      if (quotaReserved) {
-        if (refundable) safeRefundVisitorQuota(input.loadedTask, requestHash);
-        else quotaSettled = commitReservedVisitorQuota();
-      }
+      if (quotaReserved) quotaSettled = commitReservedVisitorQuota();
       safeUpdateLedger({
         requestHash,
-        status: providerCostConsumed
+        status: providerResultKnown
           ? "failed_after_provider_result"
-          : refundable ? "refunded" : "failed_non_refundable",
-        providerStage: providerCostConsumed ? "provider_result_received" : "provider_called",
-        providerCostConsumed,
+          : "failed_non_refundable",
+        providerStage: providerResultKnown ? "provider_result_received" : "provider_called",
+        providerCostConsumed: true,
         failureStage: mapped.failureStage,
         errorCode: mapped.code,
         now: input.now,
@@ -416,15 +431,12 @@ export async function generateAiImageDraft(input: {
     if (providerCostConsumed) markProviderResultReceived();
     if (providerResult.images.length !== input.request.count) {
       let quotaSettled = true;
-      if (quotaReserved) {
-        if (providerCostConsumed) quotaSettled = commitReservedVisitorQuota();
-        else safeRefundVisitorQuota(input.loadedTask, requestHash);
-      }
+      if (quotaReserved) quotaSettled = commitReservedVisitorQuota();
       safeUpdateLedger({
         requestHash,
-        status: providerCostConsumed ? "failed_after_provider_result" : "refunded",
+        status: providerCostConsumed ? "failed_after_provider_result" : "failed_non_refundable",
         providerStage: providerCostConsumed ? "provider_result_received" : "provider_called",
-        providerCostConsumed,
+        providerCostConsumed: true,
         failureStage: providerCostConsumed ? "provider_response" : "provider_call",
         errorCode: "image_response_invalid",
         now: input.now,
@@ -435,7 +447,7 @@ export async function generateAiImageDraft(input: {
       }
       return fail("image_response_invalid", providerCostConsumed
         ? "图片服务返回数量异常，Provider 调用已消耗。"
-        : "图片服务没有返回候选结果，本次额度已返还。", true);
+        : "图片服务没有返回候选结果，但 Provider 已启动并消耗 1 次真实 AI 操作。", true);
     }
 
     const createdAt = input.now || new Date().toISOString();

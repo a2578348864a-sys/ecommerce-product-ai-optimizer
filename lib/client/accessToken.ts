@@ -21,11 +21,16 @@ export interface DemoAccessInfo {
   maxAiCalls: number;
   usedAiCalls: number;
   remainingAiCalls: number;
+  quotaMetric?: "ai_jobs_v1";
+  maxAiJobs?: number;
+  usedAiJobs?: number;
+  remainingAiJobs?: number;
 }
 
 const TOKEN_KEY = "qx:access-token:session:v1";
 const MODE_KEY = "qx:access-mode:session:v1";
 const DEMO_ACCESS_KEY = "qx:demo-access:session:v1";
+export const DEMO_ACCESS_UPDATED_EVENT = "qx:demo-access-updated";
 const ACCESS_TOKEN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getStorage(): Storage | null {
@@ -106,11 +111,44 @@ export function getDemoAccessInfo(): DemoAccessInfo | null {
 export function updateDemoAccessInfo(update: Partial<DemoAccessInfo>): void {
   const current = getDemoAccessInfo();
   if (!current) return;
+  updateDemoAccessSnapshot({
+    ...current,
+    ...update,
+    id: current.id,
+  });
+}
+
+/**
+ * Apply a server-authoritative Visitor quota snapshot and notify current-page consumers.
+ * AI usage is monotonic within one login session so late responses cannot restore spent jobs.
+ */
+export function updateDemoAccessSnapshot(snapshot: DemoAccessInfo): void {
+  const current = getDemoAccessInfo();
+  if (!current || snapshot.id !== current.id) return;
   const storage = getStorage();
   if (!storage) return;
   try {
-    const merged = { ...current, ...update };
+    const usedAiCalls = Math.max(current.usedAiCalls, snapshot.usedAiCalls);
+    const remainingAiCalls = Math.min(current.remainingAiCalls, snapshot.remainingAiCalls);
+    const merged: DemoAccessInfo = {
+      ...current,
+      ...snapshot,
+      usedAiCalls,
+      remainingAiCalls,
+      ...(snapshot.quotaMetric === "ai_jobs_v1" ? {
+        quotaMetric: "ai_jobs_v1",
+        maxAiJobs: snapshot.maxAiJobs ?? snapshot.maxAiCalls,
+        usedAiJobs: Math.max(current.usedAiJobs ?? current.usedAiCalls, snapshot.usedAiJobs ?? usedAiCalls),
+        remainingAiJobs: Math.min(
+          current.remainingAiJobs ?? current.remainingAiCalls,
+          snapshot.remainingAiJobs ?? remainingAiCalls,
+        ),
+      } : {}),
+    };
     storage.setItem(DEMO_ACCESS_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent<DemoAccessInfo>(DEMO_ACCESS_UPDATED_EVENT, {
+      detail: merged,
+    }));
   } catch {
     // ignore
   }

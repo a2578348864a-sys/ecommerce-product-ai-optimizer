@@ -13,6 +13,7 @@ import {
 const mocks = vi.hoisted(() => ({
   requireAuthenticated: vi.fn(),
   reserveVisitorImageAiCalls: vi.fn(),
+  markVisitorImageAiProviderStarted: vi.fn(),
   commitVisitorImageAiCalls: vi.fn(),
   refundVisitorImageAiCalls: vi.fn(),
   imageEnabled: false,
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   reserveVisitorImageAiCalls: mocks.reserveVisitorImageAiCalls,
+  markVisitorImageAiProviderStarted: mocks.markVisitorImageAiProviderStarted,
   commitVisitorImageAiCalls: mocks.commitVisitorImageAiCalls,
   refundVisitorImageAiCalls: mocks.refundVisitorImageAiCalls,
 }));
@@ -146,6 +148,7 @@ describe("POST /api/image-studio", () => {
       context: OWNER_CONTEXT,
     });
     mocks.reserveVisitorImageAiCalls.mockReturnValue({ ok: true, snapshot: null, duplicate: false });
+    mocks.markVisitorImageAiProviderStarted.mockReturnValue({ ok: true });
     mocks.commitVisitorImageAiCalls.mockReturnValue({ remainingAiCalls: 1 });
     mocks.refundVisitorImageAiCalls.mockReturnValue(null);
     setAiImageProviderForTests(successfulProvider());
@@ -336,7 +339,7 @@ describe("POST /api/image-studio", () => {
     expect(providerCalls).toBe(0);
   });
 
-  it("refunds Visitor quota when the Stub Provider fails before returning a result", async () => {
+  it("charges one Visitor AI job after the Stub Provider starts and then fails", async () => {
     mocks.imageEnabled = true;
     mocks.visitorImageEnabled = true;
     mocks.requireAuthenticated.mockReturnValue({ ok: true, context: VISITOR_CONTEXT });
@@ -350,8 +353,8 @@ describe("POST /api/image-studio", () => {
     expect(response.status).toBe(502);
     expect((await response.json()).error.code).toBe("image_provider_unavailable");
     expect(providerCalls).toBe(1);
-    expect(mocks.refundVisitorImageAiCalls).toHaveBeenCalledTimes(1);
-    expect(mocks.commitVisitorImageAiCalls).not.toHaveBeenCalled();
+    expect(mocks.commitVisitorImageAiCalls).toHaveBeenCalledTimes(1);
+    expect(mocks.refundVisitorImageAiCalls).not.toHaveBeenCalled();
   });
 
   it("does not refund after a Provider result fails image validation and removes partial files", async () => {

@@ -22,7 +22,13 @@ import {
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { useAccessPassword } from "@/lib/client/accessPassword";
-import { buildAccessHeaders, getAccessMode, getDemoAccessInfo } from "@/lib/client/accessToken";
+import {
+  buildAccessHeaders,
+  getAccessMode,
+  getDemoAccessInfo,
+  updateDemoAccessSnapshot,
+  type DemoAccessInfo,
+} from "@/lib/client/accessToken";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
 import { ListingPrepPackageCard } from "@/components/cross-border/ListingPrepPackageCard";
@@ -30,7 +36,13 @@ import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
-import { saveAgentRunCache, loadAgentRunCache, loadLatestAgentRunCache, type CachedSourceMeta } from "@/lib/agentRunCache";
+import {
+  clearAgentRunCandidateCaches,
+  saveAgentRunCache,
+  loadAgentRunCache,
+  loadLatestAgentRunCache,
+  type CachedSourceMeta,
+} from "@/lib/agentRunCache";
 import { canSubmitAgentRunSave, getAgentRunSaveErrorMessage } from "@/lib/agentRunSave";
 import { isAuthoritativeCandidateId } from "@/lib/opportunityCandidatePool";
 import type { CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
@@ -41,6 +53,10 @@ import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
 import { buildDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { decisionStatusOptions, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
+import {
+  parseCandidateResearchContext,
+  type CandidateResearchContext,
+} from "@/lib/candidateResearchContext";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -88,6 +104,7 @@ type ApiWorkflowResult = {
   };
   warnings: string[];
   r22CommercialValidation?: R22CommercialRunSnapshot;
+  demoAccess?: DemoAccessInfo;
 };
 
 type ApiErrorResponse = {
@@ -96,6 +113,14 @@ type ApiErrorResponse = {
     code?: string;
     message?: string;
   };
+  demoAccess?: DemoAccessInfo;
+};
+
+type ApiIdempotentReplay = {
+  ok: true;
+  idempotentReplay: true;
+  aiJob: { status: "committed" | "refunded" };
+  demoAccess?: DemoAccessInfo;
 };
 
 export type AgentRunSourceMeta = {
@@ -116,6 +141,7 @@ export type AgentRunSourceMeta = {
   r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot;
   originKind?: "legacy_market_screening" | "seller_sprite_product_batch";
   productBatchId?: string;
+  productBatchName?: string;
   productBatchItemId?: string;
   marketplace?: string;
   asin?: string | null;
@@ -128,10 +154,15 @@ export type AgentRunSourceMeta = {
   sellerSpriteDisclaimerVersion?: string;
   researchMode?: "market_research_only";
   promotionEligible?: false;
+  contextHash?: string;
   importedAt: string;
 };
 
 type RunPhase = "idle" | "running" | "completed" | "failed" | "needs_manual_review";
+type CandidateContextState =
+  | "candidate_context_loading"
+  | "candidate_context_ready"
+  | "candidate_context_invalid";
 type TimelineStatus = "idle" | "pending" | "running" | "completed" | "needs_manual_review" | "paused" | "failed";
 
 type TimelineStep = {
@@ -358,17 +389,57 @@ function getApiStep(result: ApiWorkflowResult | null, key: ApiStepKey) {
   return result?.steps.find((step) => step.key === key) || null;
 }
 
+function sourceMetaFromResearchContext(
+  context: CandidateResearchContext,
+): AgentRunSourceMeta {
+  return {
+    source: "opportunity",
+    from: "opportunity",
+    entry: "candidate_to_agent_run",
+    opportunityTitle: context.productName,
+    opportunitySource: context.sourceLabel,
+    candidateId: context.candidateId,
+    sourceTitle: context.productName,
+    analyzedName: context.productName,
+    originKind: context.sourceType,
+    ...(context.productBatchName ? { productBatchName: context.productBatchName } : {}),
+    ...(context.productBatchId ? { productBatchId: context.productBatchId } : {}),
+    ...(context.productBatchItemId ? { productBatchItemId: context.productBatchItemId } : {}),
+    ...(context.marketplace ? { marketplace: context.marketplace } : {}),
+    ...(context.asin !== undefined ? { asin: context.asin } : {}),
+    ...(context.reportType ? { reportType: context.reportType } : {}),
+    ...(context.query !== undefined ? { query: context.query } : {}),
+    ...(context.category !== undefined ? { category: context.category } : {}),
+    researchPriority: context.researchPriority,
+    evidenceStatus: context.evidenceStatus,
+    ...(context.sellerSpriteDisclaimerVersion
+      ? { sellerSpriteDisclaimerVersion: context.sellerSpriteDisclaimerVersion }
+      : {}),
+    ...(context.sourceType === "seller_sprite_product_batch"
+      ? { researchMode: "market_research_only" as const }
+      : {}),
+    promotionEligible: false,
+    contextHash: context.contextHash,
+    importedAt: context.capturedAt,
+  };
+}
+
 export function AgentRunClient({
   initialProductName,
-  initialSourceMeta,
+  candidateMode = false,
+  candidateId,
 }: {
   initialProductName?: string;
-  initialSourceMeta?: AgentRunSourceMeta | null;
+  candidateMode?: boolean;
+  candidateId?: string;
 }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
-  const [productName, setProductName] = useState(initialProductName || "");
-  const [sourceMeta] = useState<AgentRunSourceMeta | null>(initialSourceMeta || null);
+  const [productName, setProductName] = useState(candidateMode ? "" : initialProductName || "");
+  const [sourceMeta, setSourceMeta] = useState<AgentRunSourceMeta | null>(null);
+  const [candidateContextState, setCandidateContextState] = useState<CandidateContextState>(
+    candidateMode ? "candidate_context_loading" : "candidate_context_ready",
+  );
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [stepStatuses, setStepStatuses] = useState(INITIAL_STATUSES);
   const [result, setResult] = useState<ApiWorkflowResult | null>(null);
@@ -389,6 +460,7 @@ export function AgentRunClient({
   const [saving, setSaving] = useState(false);
   const [savedTaskId, setSavedTaskId] = useState("");
   const summaryRef = useRef<HTMLDivElement | null>(null);
+  const jobRequestIdRef = useRef("");
 
   const report = result?.finalReport || null;
   const manualReady = MANUAL_ITEMS.every((item) => manualChecked[item.key]);
@@ -462,6 +534,7 @@ export function AgentRunClient({
     setSaveError("");
     setSaving(false);
     setSavedTaskId("");
+    jobRequestIdRef.current = "";
     cacheRestoreAttempted.current = false;
     // Clear agent run cache (scoped to current access mode only)
     try {
@@ -469,7 +542,7 @@ export function AgentRunClient({
       const mode = getAccessMode();
       const info = getDemoAccessInfo();
       const scope = mode === "demo" ? (info?.id || "demo") : "owner";
-      const scopePfx = `agent-run:v1:${mode === "demo" ? `demo:${info?.id || "demo"}:` : "owner:"}`;
+      const scopePfx = `agent-run:v2:${mode === "demo" ? `demo:${info?.id || "demo"}:` : "owner:"}`;
       const keysToRemove: string[] = [];
       for (let i = 0; i < storage.length; i++) {
         const key = storage.key(i);
@@ -480,10 +553,10 @@ export function AgentRunClient({
   }, []);
 
   useEffect(() => {
-    if (initialProductName) {
+    if (!candidateMode && initialProductName) {
       setProductName(initialProductName);
     }
-  }, [initialProductName]);
+  }, [candidateMode, initialProductName]);
 
   useEffect(() => {
     if (!result?.workflowId) return;
@@ -503,6 +576,81 @@ export function AgentRunClient({
     return "owner";
   }, [isAccessPasswordReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!candidateMode || !isAccessPasswordReady || !unlocked) return;
+    const clearCandidateUi = () => {
+      setProductName("");
+      setSourceMeta(null);
+      setPhase("idle");
+      setStepStatuses(INITIAL_STATUSES);
+      setResult(null);
+      setProfitSnapshot(null);
+      setRiskReviewSnapshot(null);
+      setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
+      setSavedTaskId("");
+      setError("");
+      setSaveError("");
+      jobRequestIdRef.current = "";
+    };
+    const normalizedCandidateId = candidateId?.trim() || "";
+    if (!isAuthoritativeCandidateId(normalizedCandidateId)) {
+      clearCandidateUi();
+      setCandidateContextState("candidate_context_invalid");
+      if (normalizedCandidateId) {
+        clearAgentRunCandidateCaches(normalizedCandidateId, cacheScope);
+      }
+      return;
+    }
+
+    const controller = new AbortController();
+    clearCandidateUi();
+    setCandidateContextState("candidate_context_loading");
+    cacheRestoreAttempted.current = false;
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/opportunity-candidates/research-context?candidateId=${encodeURIComponent(normalizedCandidateId)}`,
+          {
+            method: "GET",
+            headers: buildAccessHeaders(),
+            signal: controller.signal,
+          },
+        );
+        const payload = await response.json().catch(() => null) as {
+          ok?: boolean;
+          data?: unknown;
+        } | null;
+        const context = response.ok && payload?.ok
+          ? parseCandidateResearchContext(payload.data)
+          : null;
+        if (!context || context.candidateId !== normalizedCandidateId) {
+          clearAgentRunCandidateCaches(normalizedCandidateId, cacheScope);
+          clearCandidateUi();
+          setCandidateContextState("candidate_context_invalid");
+          return;
+        }
+        const authorizedSourceMeta = sourceMetaFromResearchContext(context);
+        setProductName(context.productName);
+        setSourceMeta(authorizedSourceMeta);
+        setCandidateContextState("candidate_context_ready");
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        clearAgentRunCandidateCaches(normalizedCandidateId, cacheScope);
+        clearCandidateUi();
+        setCandidateContextState("candidate_context_invalid");
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    candidateMode,
+    candidateId,
+    isAccessPasswordReady,
+    unlocked,
+    cacheScope,
+  ]);
+
   // Cache restore: after auth hydration, try to restore a previously saved run.
   // Uses initialProductName (from URL/server props) directly, not productName state,
   // to avoid race with the setProductName useEffect.
@@ -510,11 +658,14 @@ export function AgentRunClient({
   useEffect(() => {
     if (!isAccessPasswordReady) return;
     if (cacheRestoreAttempted.current) return;
+    if (candidateMode && candidateContextState !== "candidate_context_ready") return;
+    if (candidateMode && !sourceMeta) return;
 
-    const nameFromUrl = (initialProductName || "").trim();
+    const nameFromUrl = (candidateMode ? productName : initialProductName || "").trim();
+    const cacheSourceMeta = candidateMode ? sourceMeta : null;
     const cached = nameFromUrl
-      ? loadAgentRunCache(nameFromUrl, initialSourceMeta || null, cacheScope)
-      : loadLatestAgentRunCache(initialSourceMeta || null, cacheScope);
+      ? loadAgentRunCache(nameFromUrl, cacheSourceMeta, cacheScope)
+      : loadLatestAgentRunCache(cacheSourceMeta, cacheScope);
     if (!cached) {
       cacheRestoreAttempted.current = true;
       return;
@@ -539,7 +690,15 @@ export function AgentRunClient({
     setManualDecisionReason(typeof cached.manualDecisionReason === "string" ? cached.manualDecisionReason : "");
     setManualDecisionNextAction(typeof cached.manualDecisionNextAction === "string" ? cached.manualDecisionNextAction : "");
     if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
-  }, [isAccessPasswordReady, cacheScope]);
+  }, [
+    isAccessPasswordReady,
+    cacheScope,
+    candidateMode,
+    candidateContextState,
+    sourceMeta,
+    productName,
+    initialProductName,
+  ]);
 
   const persistCurrentRunCache = useCallback(() => {
     if (phase !== "needs_manual_review" && phase !== "completed") return;
@@ -569,6 +728,10 @@ export function AgentRunClient({
   async function handleRun() {
     const name = productName.trim();
     if (isRunning) return;
+    if (candidateMode && candidateContextState !== "candidate_context_ready") {
+      setError("候选不存在或不属于当前访问身份，请返回发现商品重新选择。");
+      return;
+    }
     if (sourceMeta && !isAuthoritativeCandidateId(sourceMeta.candidateId)) {
       setError("该候选仅存在于本浏览器草稿中，请返回候选品池保存为服务端 Candidate 后再进入 Agent。");
       return;
@@ -603,6 +766,9 @@ export function AgentRunClient({
     });
 
     try {
+      if (!jobRequestIdRef.current) {
+        jobRequestIdRef.current = crypto.randomUUID();
+      }
       const response = await fetch("/api/workflows/product-analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...accessHeaders },
@@ -610,11 +776,13 @@ export function AgentRunClient({
           productName: name,
           source: sourceMeta ? "opportunity" : "manual",
           candidateId: sourceMeta?.candidateId || undefined,
+          jobRequestId: jobRequestIdRef.current,
           accessPassword: currentAccessCredential,
           accessToken: accessHeaders["x-access-token"] || undefined,
         }),
       });
-      const data = await response.json() as ApiWorkflowResult | ApiErrorResponse;
+      const data = await response.json() as ApiWorkflowResult | ApiErrorResponse | ApiIdempotentReplay;
+      if (data.demoAccess) updateDemoAccessSnapshot(data.demoAccess);
       if (!response.ok || !data.ok) {
         const message = data.ok ? "主链路分析失败，请稍后重试。" : data.error?.message || "主链路分析失败，请稍后重试。";
         // Auth errors (401/403) should NOT pollute business run state
@@ -627,6 +795,16 @@ export function AgentRunClient({
           setError(message);
           setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" });
         }
+        jobRequestIdRef.current = "";
+        return;
+      }
+      if ("idempotentReplay" in data) {
+        setPhase("idle");
+        setStepStatuses(INITIAL_STATUSES);
+        setError(data.aiJob.status === "committed"
+          ? "该次商品研究作业已结算且不会重复扣费；请从研究历史恢复已保存结果，或重新开始一次新研究。"
+          : "该次商品研究未启动 Provider，额度未扣减；请重新开始。");
+        jobRequestIdRef.current = "";
         return;
       }
 
@@ -648,6 +826,7 @@ export function AgentRunClient({
       if (workflowResult.warnings.length) {
         setError(workflowResult.warnings.join("；"));
       }
+      jobRequestIdRef.current = "";
     } catch (runError) {
       setPhase("failed");
       setError(runError instanceof Error ? runError.message : "网络异常，请稍后重试。");
@@ -838,12 +1017,12 @@ export function AgentRunClient({
                     if (event.key === "Enter") void handleRun();
                   }}
                   placeholder="例如：桌面手机支架、硅胶折叠水杯、宠物慢食碗…"
-                  disabled={isRunning}
+                  disabled={isRunning || candidateMode}
                   className="mt-1 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-100 disabled:opacity-60"
                 />
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <span>{productName.length}/120</span>
-                  <span>可以输入商品名称，也可以从发现商品带入。</span>
+                  <span>{candidateMode ? "候选商品信息由当前访问身份授权后加载。" : "可以输入商品名称，也可以从发现商品带入。"}</span>
                   {sourceMeta ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 font-semibold text-teal-700">
                       已从候选带入：{sourceMeta.opportunityTitle}
@@ -856,7 +1035,11 @@ export function AgentRunClient({
                   type="button"
                   data-testid="agent-run-start"
                   onClick={() => void handleRun()}
-                  disabled={isRunning || productName.trim().length < 2}
+                  disabled={
+                    isRunning
+                    || productName.trim().length < 2
+                    || (candidateMode && candidateContextState !== "candidate_context_ready")
+                  }
                   className="linear-button-primary inline-flex h-12 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:opacity-50"
                 >
                   {isRunning ? (
@@ -890,6 +1073,22 @@ export function AgentRunClient({
                 <Link href="/" className="mt-2 inline-block text-sm font-semibold text-rose-600 underline">返回首页重新登录</Link>
               </div>
             ) : null}
+            {candidateMode && candidateContextState === "candidate_context_loading" ? (
+              <div
+                className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-6 text-sky-700"
+                data-testid="agent-run-candidate-context-loading"
+              >
+                正在验证候选商品与当前访问身份…
+              </div>
+            ) : null}
+            {candidateMode && candidateContextState === "candidate_context_invalid" ? (
+              <div
+                className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-700"
+                data-testid="agent-run-candidate-context-invalid"
+              >
+                候选不存在或不属于当前访问身份，请返回发现商品重新选择。
+              </div>
+            ) : null}
             {error ? (
               <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-800" data-testid="agent-run-error">
                 {error}
@@ -911,7 +1110,7 @@ export function AgentRunClient({
                 {sourceMeta.originKind === "seller_sprite_product_batch" ? (
                   <>
                     <p className="mt-1">
-                      批次：{sourceMeta.productBatchId} · 商品：{sourceMeta.asin || sourceMeta.productBatchItemId}
+                      批次：{sourceMeta.productBatchName || sourceMeta.productBatchId} · 商品：{sourceMeta.asin || sourceMeta.productBatchItemId}
                       {sourceMeta.candidateId ? ` · Candidate ID：${sourceMeta.candidateId}` : ""}
                     </p>
                     <p className="mt-1 text-xs">

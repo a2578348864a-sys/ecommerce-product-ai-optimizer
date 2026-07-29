@@ -19,6 +19,12 @@ import { resolve } from "path";
 
 export const DEMO_TEXT_AI_RESERVATION_LEASE_MS = 5 * 60 * 1000;
 export const DEMO_IMAGE_AI_RESERVATION_LEASE_MS = 30 * 60 * 1000;
+export const DEMO_AI_JOB_TYPES = [
+  "product_research",
+  "listing_generation",
+  "image_generation",
+] as const;
+export type DemoAiJobType = typeof DEMO_AI_JOB_TYPES[number];
 
 // ── Types ───────────────────────────────────────
 
@@ -44,6 +50,13 @@ export interface DemoAccessRecord {
     chargedCount?: number;
     providerStartedCount?: number;
     providerStartedAt?: string;
+    quotaMetric?: "ai_jobs_v1";
+    jobType?: DemoAiJobType;
+    jobRequestId?: string;
+    providerCallsPlanned?: number;
+    providerCallsCompleted?: number;
+    providerCallsFailed?: number;
+    settledAt?: string;
   }>;
 }
 
@@ -269,13 +282,21 @@ function recoverExpiredReservations(access: DemoAccessRecord, nowMs: number): bo
       ? explicitExpiry
       : Number.isFinite(createdAt) ? createdAt + DEMO_IMAGE_AI_RESERVATION_LEASE_MS : Number.POSITIVE_INFINITY;
     if (leaseExpiresAt > nowMs) continue;
-    const persistedStartedCount = reservation.kind === "text"
+    const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
+      ? reservation.providerCallsPlanned ?? 0
+      : reservation.count;
+    const persistedStartedCount = (reservation.kind === "text"
+      || reservation.quotaMetric === "ai_jobs_v1")
       && Number.isInteger(reservation.providerStartedCount)
-      ? Math.max(0, Math.min(reservation.count, reservation.providerStartedCount || 0))
+      ? Math.max(0, Math.min(providerLimit, reservation.providerStartedCount || 0))
       : 0;
-    access.usedAiCalls = Math.max(0, access.usedAiCalls - (reservation.count - persistedStartedCount));
+    const chargedCount = reservation.quotaMetric === "ai_jobs_v1"
+      ? (persistedStartedCount > 0 ? 1 : 0)
+      : persistedStartedCount;
+    access.usedAiCalls = Math.max(0, access.usedAiCalls - (reservation.count - chargedCount));
     reservation.status = persistedStartedCount > 0 ? "committed" : "refunded";
-    reservation.chargedCount = persistedStartedCount;
+    reservation.chargedCount = chargedCount;
+    reservation.settledAt = new Date(nowMs).toISOString();
     reservation.updatedAt = new Date(nowMs).toISOString();
     changed = true;
   }
@@ -294,7 +315,15 @@ export function reserveDemoAiImageCalls(
   id: string,
   requestHash: string,
   count: number,
-  options: { kind?: "text" | "image"; leaseMs?: number; nowMs?: number } = {},
+  options: {
+    kind?: "text" | "image";
+    leaseMs?: number;
+    nowMs?: number;
+    quotaMetric?: "ai_jobs_v1";
+    jobType?: DemoAiJobType;
+    jobRequestId?: string;
+    providerCallsPlanned?: number;
+  } = {},
 ): DemoAiImageQuotaResult {
   const store = loadDemoAccessStore();
   const idx = store.accesses.findIndex((access) => access.id === id);
@@ -308,7 +337,14 @@ export function reserveDemoAiImageCalls(
   const reservations = access.aiImageQuotaReservations || {};
   const existing = reservations[requestHash];
   if (existing) {
-    if (existing.count !== count) { saveRecovery(); return { ok: false, code: "reservation_conflict" }; }
+    if (existing.count !== count
+      || existing.quotaMetric !== options.quotaMetric
+      || existing.jobType !== options.jobType
+      || existing.jobRequestId !== options.jobRequestId
+      || existing.providerCallsPlanned !== options.providerCallsPlanned) {
+      saveRecovery();
+      return { ok: false, code: "reservation_conflict" };
+    }
     saveRecovery();
     return { ok: true, record: access, duplicate: true };
   }
@@ -329,6 +365,12 @@ export function reserveDemoAiImageCalls(
       updatedAt: now,
       kind: options.kind || "image",
       leaseExpiresAt: new Date(nowMs + leaseMs).toISOString(),
+      ...(options.quotaMetric ? { quotaMetric: options.quotaMetric } : {}),
+      ...(options.jobType ? { jobType: options.jobType } : {}),
+      ...(options.jobRequestId ? { jobRequestId: options.jobRequestId } : {}),
+      ...(options.providerCallsPlanned !== undefined
+        ? { providerCallsPlanned: options.providerCallsPlanned }
+        : {}),
     },
   };
   saveDemoAccessStore(store);
@@ -342,8 +384,11 @@ export function commitDemoAiImageCalls(id: string, requestHash: string): DemoAcc
   if (!access || !reservation) return null;
   if (reservation.status === "reserved") {
     reservation.status = "committed";
-    reservation.chargedCount = reservation.providerStartedCount ?? reservation.count;
+    reservation.chargedCount = reservation.quotaMetric === "ai_jobs_v1"
+      ? 1
+      : reservation.providerStartedCount ?? reservation.count;
     reservation.updatedAt = new Date().toISOString();
+    reservation.settledAt = reservation.updatedAt;
     saveDemoAccessStore(store);
   }
   return reservation.status === "committed" ? access : null;
@@ -375,16 +420,18 @@ export function markDemoAiCallProviderStarted(
 
   const reservation = access.aiImageQuotaReservations?.[requestHash];
   if (!reservation) return { ok: false, code: "reservation_not_found" };
-  if (reservation.kind && reservation.kind !== "text") {
+  if (reservation.kind && reservation.kind !== "text"
+    && reservation.quotaMetric !== "ai_jobs_v1") {
     return { ok: false, code: "reservation_conflict" };
   }
-  if (!Number.isInteger(startedCount) || startedCount <= 0 || startedCount > reservation.count) {
+  const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
+    ? reservation.providerCallsPlanned ?? 0
+    : reservation.count;
+  if (!Number.isInteger(startedCount) || startedCount <= 0 || startedCount > providerLimit) {
     return { ok: false, code: "invalid_started_count" };
   }
   if (reservation.status !== "reserved") {
-    const chargedCount = reservation.chargedCount
-      ?? (reservation.status === "committed" ? reservation.count : 0);
-    return chargedCount === startedCount
+    return reservation.providerStartedCount === startedCount
       ? { ok: true, record: access, duplicate: true }
       : { ok: false, code: "reservation_conflict" };
   }
@@ -409,6 +456,10 @@ export function settleDemoAiCallReservation(
   id: string,
   requestHash: string,
   startedCount: number,
+  audit: {
+    providerCallsCompleted?: number;
+    providerCallsFailed?: number;
+  } = {},
 ): DemoAiCallSettlementResult {
   const store = loadDemoAccessStore();
   const access = store.accesses.find((item) => item.id === id);
@@ -419,7 +470,17 @@ export function settleDemoAiCallReservation(
   if (reservation.kind && reservation.kind !== "text") {
     return { ok: false, code: "reservation_conflict" };
   }
-  if (!Number.isInteger(startedCount) || startedCount < 0 || startedCount > reservation.count) {
+  const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
+    ? reservation.providerCallsPlanned ?? 0
+    : reservation.count;
+  if (!Number.isInteger(startedCount) || startedCount < 0 || startedCount > providerLimit) {
+    return { ok: false, code: "invalid_started_count" };
+  }
+  const completedCount = audit.providerCallsCompleted ?? Math.max(0, startedCount);
+  const failedCount = audit.providerCallsFailed ?? 0;
+  if (!Number.isInteger(completedCount) || completedCount < 0
+    || !Number.isInteger(failedCount) || failedCount < 0
+    || completedCount + failedCount !== startedCount) {
     return { ok: false, code: "invalid_started_count" };
   }
   if (reservation.providerStartedCount !== undefined
@@ -428,18 +489,25 @@ export function settleDemoAiCallReservation(
   }
 
   if (reservation.status !== "reserved") {
-    const chargedCount = reservation.chargedCount
-      ?? (reservation.status === "committed" ? reservation.count : 0);
-    return chargedCount === startedCount
+    return reservation.providerStartedCount === startedCount
+      && (reservation.providerCallsCompleted ?? completedCount) === completedCount
+      && (reservation.providerCallsFailed ?? failedCount) === failedCount
       ? { ok: true, record: access, duplicate: true }
       : { ok: false, code: "reservation_conflict" };
   }
 
-  const unusedCount = reservation.count - startedCount;
+  const chargedCount = reservation.quotaMetric === "ai_jobs_v1"
+    ? (startedCount > 0 ? 1 : 0)
+    : startedCount;
+  const unusedCount = reservation.count - chargedCount;
   access.usedAiCalls = Math.max(0, access.usedAiCalls - unusedCount);
   reservation.status = startedCount > 0 ? "committed" : "refunded";
-  reservation.chargedCount = startedCount;
+  reservation.chargedCount = chargedCount;
+  reservation.providerStartedCount = startedCount;
+  reservation.providerCallsCompleted = completedCount;
+  reservation.providerCallsFailed = failedCount;
   reservation.updatedAt = new Date().toISOString();
+  reservation.settledAt = reservation.updatedAt;
   saveDemoAccessStore(store);
   return { ok: true, record: access, duplicate: false };
 }

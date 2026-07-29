@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clearAgentRunCandidateCaches,
   loadAgentRunCache,
   loadLatestAgentRunCache,
   saveAgentRunCache,
@@ -145,5 +146,68 @@ describe("agentRunCache scope isolation", () => {
     // loadLatestAgentRunCache with demo scope should NOT find it
     const demoLatest = loadLatestAgentRunCache(null, "demo-x");
     expect(demoLatest).toBeNull();
+  });
+
+  it("binds Candidate caches to access scope, candidateId, and server contextHash", () => {
+    const sourceMeta = {
+      candidateId: "sandbox_candidate_a",
+      contextHash: "a".repeat(64),
+    };
+    const data = {
+      phase: "completed",
+      stepStatuses: {},
+      result: { ok: true },
+      profitSnapshot: null,
+      riskReviewSnapshot: null,
+      manualChecked: {},
+      savedTaskId: "",
+    };
+    saveAgentRunCache("Visitor A Product", sourceMeta, data, "visitor-a");
+
+    expect(loadAgentRunCache("Visitor A Product", sourceMeta, "visitor-a")).not.toBeNull();
+    expect(loadAgentRunCache("Visitor A Product", sourceMeta, "visitor-b")).toBeNull();
+    expect(loadAgentRunCache("Visitor A Product", {
+      ...sourceMeta,
+      contextHash: "b".repeat(64),
+    }, "visitor-a")).toBeNull();
+  });
+
+  it("clears only the current identity's Candidate cache after authorization failure", () => {
+    const sourceMeta = {
+      candidateId: "sandbox_candidate_a",
+      contextHash: "a".repeat(64),
+    };
+    const data = {
+      phase: "completed",
+      stepStatuses: {},
+      result: { ok: true },
+      profitSnapshot: null,
+      riskReviewSnapshot: null,
+      manualChecked: {},
+      savedTaskId: "",
+    };
+    saveAgentRunCache("Visitor A Product", sourceMeta, data, "visitor-a");
+    saveAgentRunCache("Visitor A Product", sourceMeta, data, "visitor-b");
+
+    clearAgentRunCandidateCaches("sandbox_candidate_a", "visitor-b");
+
+    expect(loadAgentRunCache("Visitor A Product", sourceMeta, "visitor-b")).toBeNull();
+    expect(loadAgentRunCache("Visitor A Product", sourceMeta, "visitor-a")).not.toBeNull();
+  });
+
+  it("ignores old v1 Candidate cache records instead of migrating them", () => {
+    sessionStore.set("agent-run:v1:demo:visitor-b:sandbox_candidate_a", JSON.stringify({
+      version: 1,
+      savedAt: Date.now(),
+      ttlMs: 60_000,
+      productName: "Visitor A Product",
+      sourceMeta: { candidateId: "sandbox_candidate_a" },
+      phase: "completed",
+    }));
+
+    expect(loadLatestAgentRunCache({
+      candidateId: "sandbox_candidate_a",
+      contextHash: "a".repeat(64),
+    }, "visitor-b")).toBeNull();
   });
 });

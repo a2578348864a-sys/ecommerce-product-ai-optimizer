@@ -90,42 +90,23 @@ describe("商品研究三阶段主视图", () => {
     });
   });
 
-  it("清楚展示 ProductBatch 的研究来源且不宣称商业晋级", () => {
+  it("Candidate 授权完成前不渲染 URL 伪造的商品上下文", () => {
     const html = renderToStaticMarkup(
       createElement(AgentRunClient, {
-        initialProductName: "Closet organizer",
-        initialSourceMeta: {
-          source: "opportunity",
-          opportunityTitle: "Closet organizer",
-          opportunitySource: "SellerSprite ProductBatch",
-          candidateId: "candidate-product-batch-a",
-          originKind: "seller_sprite_product_batch",
-          productBatchId: "batch-a",
-          productBatchItemId: "item-a",
-          marketplace: "US",
-          asin: "B000000001",
-          reportType: "search_results",
-          query: "organizer",
-          category: "Home",
-          researchPriority: "priority_1",
-          evidenceStatus: "sufficient_for_comparison",
-          evidenceHash: "a".repeat(64),
-          sellerSpriteDisclaimerVersion: "sellersprite-v1-frozen.2026-07-27",
-          researchMode: "market_research_only",
-          promotionEligible: false,
-          importedAt: "2026-07-28T00:00:00.000Z",
-        },
+        candidateMode: true,
+        candidateId: "sandbox_candidate_a",
       }),
     );
 
-    expect(html).toContain("SellerSprite ProductBatch");
-    expect(html).toContain("batch-a");
-    expect(html).toContain("B000000001");
-    expect(html).toContain("organizer");
-    expect(html).toContain("priority_1");
-    expect(html).toContain("sufficient_for_comparison");
-    expect(html).toContain("仅用于市场研究");
-    expect(html).not.toContain("已晋级");
-    expect(html).not.toContain("通过 R2.2");
+    expect(html).toContain("正在验证候选商品");
+    expect(html).not.toContain("Visitor A secret product");
+    expect(html).not.toContain("A-SECRET-ASIN");
+    expect(html).not.toContain("visitor-a-batch");
+    expect(clientSource).toContain("candidate_context_loading");
+    expect(clientSource).toContain("candidate_context_ready");
+    expect(clientSource).toContain("candidate_context_invalid");
+    expect(clientSource).toContain("候选不存在或不属于当前访问身份，请返回发现商品重新选择。");
+    expect(clientSource).toContain("/api/opportunity-candidates/research-context");
+    expect(clientSource).toContain("updateDemoAccessSnapshot");
   });
 });

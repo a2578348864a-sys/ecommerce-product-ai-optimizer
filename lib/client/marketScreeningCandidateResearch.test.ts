@@ -5,7 +5,7 @@ describe("requestMarketScreeningCandidateResearch", () => {
   it("submits only the trusted product key and returns the authoritative Candidate handoff", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({
       ok: true,
-      href: "/agent/run?source=opportunity&candidateId=candidate-123&productName=Desk+Stand",
+      href: "/agent/run?source=opportunity&candidateId=candidate-123",
       item: { id: "candidate-123", name: "Desk Stand" },
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
 
@@ -15,7 +15,7 @@ describe("requestMarketScreeningCandidateResearch", () => {
       fetcher,
     );
 
-    expect(href).toBe("/agent/run?source=opportunity&candidateId=candidate-123&productName=Desk+Stand");
+    expect(href).toBe("/agent/run?source=opportunity&candidateId=candidate-123");
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/opportunity-candidates/from-market-screening");
@@ -42,7 +42,7 @@ describe("requestMarketScreeningCandidateResearch", () => {
 
   it.each([
     {
-      href: "/agent/run?source=opportunity&candidateId=candidate-999&productName=Desk+Stand",
+      href: "/agent/run?source=opportunity&candidateId=candidate-999",
       item: { id: "candidate-123", name: "Desk Stand" },
     },
     {

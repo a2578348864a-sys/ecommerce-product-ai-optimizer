@@ -363,7 +363,7 @@ beforeEach(() => {
 });
 
 describe("POST /api/opportunity-candidates/from-market-screening", () => {
-  it("reuses an existing authoritative Candidate and returns a complete /agent/run handoff", async () => {
+  it("reuses an existing authoritative Candidate and returns an opaque /agent/run handoff", async () => {
     mocks.selectMarketScreeningCandidateForResearch.mockResolvedValue({
       candidate: candidate("candidate-existing"),
       created: false,
@@ -379,11 +379,10 @@ describe("POST /api/opportunity-candidates/from-market-screening", () => {
     expect(url.pathname).toBe("/agent/run");
     expect(url.searchParams.get("source")).toBe("opportunity");
     expect(url.searchParams.get("candidateId")).toBe("candidate-existing");
-    expect(url.searchParams.get("productName")).toBe(PRODUCT_NAME);
-    expect(JSON.parse(url.searchParams.get("evidence") || "{}")).toMatchObject({
-      sourceType: "market_screening_batch",
-      sourceName: "importPackage",
-    });
+    expect([...url.searchParams.keys()].sort()).toEqual(["candidateId", "source"]);
+    expect(url.searchParams.get("productName")).toBeNull();
+    expect(url.searchParams.get("evidence")).toBeNull();
+    expect(url.searchParams.get("sourceMeta")).toBeNull();
     expect(mocks.selectMarketScreeningCandidateForResearch).toHaveBeenCalledOnce();
   });
 
@@ -453,7 +452,8 @@ describe("POST /api/opportunity-candidates/from-market-screening", () => {
     );
     const url = new URL(body.href, "http://localhost:3000");
     expect(url.searchParams.get("candidateId")).toBe("candidate-created");
-    expect(url.searchParams.get("productName")).toBe(PRODUCT_NAME);
+    expect([...url.searchParams.keys()].sort()).toEqual(["candidateId", "source"]);
+    expect(url.searchParams.get("productName")).toBeNull();
   });
 
   it("runs the real Owner transaction and serializes concurrent repeat selection", async () => {

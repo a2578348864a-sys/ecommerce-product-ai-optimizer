@@ -25,7 +25,7 @@ function marketSnapshot(marketDecision: R22MarketDecisionSnapshot["marketDecisio
 }
 
 describe("buildCandidateAgentRunHref", () => {
-  it("builds candidate pool handoff URL for /agent/run (Phase Direction-Recovery.3: Gen2 main entry)", () => {
+  it("builds an opaque Candidate-only handoff URL for /agent/run", () => {
     const href = buildCandidateAgentRunHref({
       candidateId: "test-candidate",
       name: "桌面手机支架",
@@ -43,19 +43,11 @@ describe("buildCandidateAgentRunHref", () => {
     const url = new URL(href, "http://localhost:3005");
     expect(url.pathname).toBe("/agent/run");
     expect(url.searchParams.get("source")).toBe("opportunity");
-    expect(url.searchParams.get("from")).toBe("opportunity");
-    expect(url.searchParams.get("entry")).toBe("candidate_to_agent_run");
     expect(url.searchParams.get("candidateId")).toBe("test-candidate");
-    expect(url.searchParams.get("productName")).toBe("桌面手机支架");
-    expect(url.searchParams.get("product")).toBe("桌面手机支架");
-    expect(url.searchParams.get("sourceTitle")).toBe("test-title");
-    expect(url.searchParams.get("sourceUrl")).toBe("https://example.com/item");
-    expect(url.searchParams.get("opportunityScore")).toBe("86");
-    expect(url.searchParams.get("originalName")).toBe("原始候选：phone stand");
-    expect(url.searchParams.get("analyzedName")).toBe("桌面手机支架");
+    expect([...url.searchParams.keys()].sort()).toEqual(["candidateId", "source"]);
   });
 
-  it("carries compact candidate evidence snapshot to /agent/run", () => {
+  it("never carries Candidate evidence or source details in the URL", () => {
     const href = buildCandidateAgentRunHref({
       candidateId: "test-candidate",
       name: "Desk Phone Stand",
@@ -80,10 +72,10 @@ describe("buildCandidateAgentRunHref", () => {
     expect(href).not.toBeNull();
     if (!href) throw new Error("expected authoritative Candidate href");
     const url = new URL(href, "http://localhost:3005");
-    const encoded = url.searchParams.get("evidence");
-    expect(encoded).toBeTruthy();
-    expect(decodeURIComponent(encoded || "")).toContain("qualityScore");
-    expect(decodeURIComponent(encoded || "")).not.toContain("cookie");
+    expect(url.searchParams.get("evidence")).toBeNull();
+    expect(url.searchParams.get("productName")).toBeNull();
+    expect(url.searchParams.get("sourceUrl")).toBeNull();
+    expect(url.searchParams.get("r22Market")).toBeNull();
   });
 
   it("fails closed for missing or local draft candidate ids", () => {
@@ -99,8 +91,7 @@ describe("buildCandidateAgentRunHref", () => {
     });
     expect(href).not.toBeNull();
     const parsed = new URL(href || "", "http://localhost:3005");
-    expect(JSON.parse(parsed.searchParams.get("r22Market") || "{}").marketDecision)
-      .toBe("market_shortlisted");
+    expect(parsed.searchParams.get("r22Market")).toBeNull();
     expect(buildCandidateAgentRunHref({
       candidateId: "test-candidate",
       marketDecisionSnapshot: marketSnapshot("market_reject"),

@@ -74,28 +74,41 @@
 - `app/api/tasks/[id]/image-draft/route.test.ts`
 - `app/api/workflows/product-analysis/route.quota.test.ts`
 
-## 文本 AI 配额生命周期
+## Visitor AI 作业额度生命周期
 
-Visitor 文本 AI 调用保持以下顺序：
+Visitor 的用户额度单位固定为一次用户可见的真实 AI 作业，`quotaMetric=ai_jobs_v1`。兼容字段
+`usedAiCalls` / `remainingAiCalls` 也表示 AI 作业数，不再表示内部 Provider 请求数。
 
-1. 在 Provider 调用前按计划调用数原子预留额度。
-2. 每次真正跨过 Provider 调用边界前，持久化累计 `providerStartedCount`。
-3. 请求结束时按实际启动数结算。
-4. 未启动的计划额度退回；已启动调用保持计费。
-5. reservation 缺失、越序累计、重复但不一致的结算必须 fail-closed，不能静默绕过。
-6. Owner 路径不建立或结算 Visitor reservation。
+正式作业类型至少包括：
 
-批量串行 Provider 调用使用调用方明确传入的 lease 需求，但不得低于文本默认租约；具体数值只读取代码常量和调用点。
+- `product_research`
+- `listing_generation`
+- `image_generation`
+
+作业保持以下顺序：
+
+1. 客户端为一次明确操作生成 `jobRequestId`，服务端按 Visitor、作业类型和请求标识幂等。
+2. 在任何 Provider 启动前原子预留 1 个作业额度。
+3. 每次跨过 Provider 启动边界前，仅持久化 `providerStartedCount` 审计；不得追加用户额度。
+4. 没有 Provider 启动时释放预留并扣 0；至少一个 Provider 启动时提交 1 个作业额度。
+5. Provider 启动后的部分失败、fallback 或下游失败仍只扣 1 个作业额度。
+6. 相同作业请求重放返回原结算状态，不重复启动 Provider 或扣费。
+7. 第 5 个新作业允许执行；第 6 个新作业必须在任何 Provider 启动前 fail-closed。
+8. reservation 缺失、越序累计、重复但不一致的结算必须 fail-closed，不能静默绕过。
+9. Owner 路径不建立或结算 Visitor reservation。
+
+商品研究内部可以计划并审计多个 Provider 步骤，但一次点击最多扣 1 次。Listing 和 Image
+一次真实生成操作也各扣 1 次；Mock、解析、Ranking、ProductBatch、Candidate 和 Task 保存不扣。
 
 ## 图片 AI 配额与幂等生命周期
 
 Visitor 图片调用同时受访问主体、任务、幂等键、请求语义、配额 reservation 和持久化 ledger 约束。
 
-- Provider 调用前先原子预扣共享 Visitor 额度。
+- Provider 调用前先原子预扣 1 个 `image_generation` 作业额度，不按返回图片数量计费。
 - 同一作用域和相同请求语义的重复请求复用既有结果，不重复调用 Provider、重复写图片或重复扣费。
 - 同一幂等键对应不同请求语义时返回冲突，不覆盖旧记录。
-- Provider 尚未产生候选结果且调用失败时，允许幂等退款。
-- Provider 已返回候选结果后，即使后续 MIME、下载、解码、资产校验或存储失败，也视为 Provider 成本已发生，不退款。
+- Provider 尚未启动时允许幂等退款。
+- Provider 一旦启动，即使未返回候选结果，或后续 MIME、下载、解码、资产校验或存储失败，也提交 1 个作业额度。
 - `provider_result_received` 及其后的失败状态必须由 ledger 持久化，不能回退成可退款状态。
 - 退款、提交和终态更新必须幂等；重复恢复不得二次退款或二次扣费。
 - Owner 图片路径不消耗 Visitor 配额，但仍受真实 AI 总开关、幂等和存储安全约束。
@@ -106,7 +119,7 @@ Visitor 图片调用同时受访问主体、任务、幂等键、请求语义、
 - 并发请求只能有不超过剩余额度的 reservation 成功；失败请求不得造成负额度或覆盖已有 reservation。
 - reservation 使用请求标识区分；相同标识但数量或语义不一致时显式冲突。
 - 过期的未启动文本 reservation 退回全部未用额度。
-- 过期但已经记录部分 Provider 启动的文本 reservation 只保留已启动部分计费。
+- 过期但已经记录 Provider 启动的作业 reservation 只保留 1 个作业计费。
 - 已提交或已退款 reservation 的恢复不得再次改变额度。
 - 图片恢复同时核对 quota store 和 durable ledger；若已经进入不可退款边界，不得因进程重启或后续失败退款。
 - 损坏、缺失或互相矛盾的持久化状态必须 fail-closed，并返回受控错误，不猜测修复真实额度。
@@ -125,12 +138,12 @@ Visitor 图片调用同时受访问主体、任务、幂等键、请求语义、
 - Owner 正式路径不写入 sandbox。
 - 错误响应不泄露资源是否存在或内部秘密。
 
-### 文本配额
+### AI 作业配额
 
 - 额度充足、不足和恰好耗尽。
 - Owner 不预留、不结算 Visitor 额度。
-- 计划调用全部启动。
-- 只启动部分调用并释放未使用额度。
+- 一次商品研究的 4 个 Provider 全部启动但只扣 1 个作业。
+- 只启动部分 Provider 仍最多扣 1 个作业。
 - Provider 启动前失败。
 - Provider 启动后失败。
 - reservation 缺失、重复结算、越序累计和数量冲突。
@@ -145,7 +158,7 @@ Visitor 图片调用同时受访问主体、任务、幂等键、请求语义、
 - 相同幂等键、相同语义的成功重放。
 - 相同幂等键、不同语义的冲突。
 - Provider 调用前失败并退款。
-- Provider 无候选结果并退款。
+- Provider 未启动并退款；Provider 已启动但无候选结果仍扣 1 个作业。
 - Provider 已返回候选结果后，下游失败不退款。
 - MIME、下载、解码、资产校验和存储失败边界。
 - 并发请求只成功预扣允许的次数。

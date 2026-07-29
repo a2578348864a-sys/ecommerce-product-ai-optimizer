@@ -169,7 +169,6 @@ function conversionResult(
   const search = new URLSearchParams({
     source: "opportunity",
     candidateId: candidate.id,
-    sourceMeta: JSON.stringify(sourceMeta),
   });
   return {
     candidateId: candidate.id,

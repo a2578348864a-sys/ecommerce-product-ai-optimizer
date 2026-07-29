@@ -29,6 +29,12 @@ import {
   ensureDemoAiQuota,
   consumeDemoAiCalls,
   reserveDemoAiCalls,
+  reserveDemoAiJob,
+  markDemoAiJobProviderCallStarted,
+  settleDemoAiJob,
+  reserveVisitorImageAiCalls,
+  markVisitorImageAiProviderStarted,
+  commitVisitorImageAiCalls,
   settleDemoAiCalls,
   getLatestDemoSnapshot,
   type GuardResult,
@@ -273,6 +279,186 @@ describe("explicit Demo AI quota reservations", () => {
 
     expect(reserved).toEqual({ ok: true, reservation: null });
     expect(settleDemoAiCalls(owner, null, 100)).toEqual({ ok: true, snapshot: null });
+  });
+});
+
+describe("Demo AI job quota v1", () => {
+  beforeEach(() => saveDemoAccessStore(emptyStore()));
+  afterEach(() => saveDemoAccessStore(emptyStore()));
+
+  it("charges one job after four Provider calls and preserves Provider audit counts", () => {
+    const { record } = createDemoAccess({ label: "Job", hours: 24, maxAiCalls: 5 });
+    const ctx = makeDemoCtx(record.id);
+    const reserved = reserveDemoAiJob(ctx, {
+      jobType: "product_research",
+      jobRequestId: "11111111-1111-4111-8111-111111111111",
+      providerCallsPlanned: 4,
+    });
+
+    expect(reserved.ok).toBe(true);
+    if (!reserved.ok || !reserved.reservation) return;
+    for (let count = 1; count <= 4; count += 1) {
+      expect(markDemoAiJobProviderCallStarted(ctx, reserved.reservation, count))
+        .toEqual({ ok: true });
+    }
+    const settled = settleDemoAiJob(ctx, reserved.reservation, {
+      providerCallsStarted: 4,
+      providerCallsCompleted: 4,
+      providerCallsFailed: 0,
+    });
+
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) return;
+    expect(settled.snapshot).toMatchObject({
+      quotaMetric: "ai_jobs_v1",
+      usedAiJobs: 1,
+      remainingAiJobs: 4,
+      usedAiCalls: 1,
+      remainingAiCalls: 4,
+    });
+    expect(loadDemoAccessStore().accesses[0].aiImageQuotaReservations?.[
+      reserved.reservation.reservationId
+    ]).toMatchObject({
+      count: 1,
+      status: "committed",
+      chargedCount: 1,
+      quotaMetric: "ai_jobs_v1",
+      jobType: "product_research",
+      providerCallsPlanned: 4,
+      providerStartedCount: 4,
+      providerCallsCompleted: 4,
+      providerCallsFailed: 0,
+    });
+  });
+
+  it("refunds a job when no Provider starts and charges once after a started failure", () => {
+    const { record } = createDemoAccess({ label: "Boundaries", hours: 24, maxAiCalls: 5 });
+    const ctx = makeDemoCtx(record.id);
+    const beforeStart = reserveDemoAiJob(ctx, {
+      jobType: "product_research",
+      jobRequestId: "22222222-2222-4222-8222-222222222222",
+      providerCallsPlanned: 4,
+    });
+    expect(beforeStart.ok).toBe(true);
+    if (!beforeStart.ok || !beforeStart.reservation) return;
+    expect(settleDemoAiJob(ctx, beforeStart.reservation, {
+      providerCallsStarted: 0,
+      providerCallsCompleted: 0,
+      providerCallsFailed: 0,
+    })).toMatchObject({ ok: true, status: "refunded" });
+    expect(getLatestDemoSnapshot(ctx)?.usedAiJobs).toBe(0);
+
+    const afterStart = reserveDemoAiJob(ctx, {
+      jobType: "product_research",
+      jobRequestId: "33333333-3333-4333-8333-333333333333",
+      providerCallsPlanned: 4,
+    });
+    expect(afterStart.ok).toBe(true);
+    if (!afterStart.ok || !afterStart.reservation) return;
+    expect(markDemoAiJobProviderCallStarted(ctx, afterStart.reservation, 1)).toEqual({ ok: true });
+    expect(settleDemoAiJob(ctx, afterStart.reservation, {
+      providerCallsStarted: 1,
+      providerCallsCompleted: 0,
+      providerCallsFailed: 1,
+    })).toMatchObject({ ok: true, status: "committed" });
+    expect(getLatestDemoSnapshot(ctx)?.usedAiJobs).toBe(1);
+  });
+
+  it("allows five distinct jobs, rejects the sixth, and replays the same request idempotently", () => {
+    const { record } = createDemoAccess({ label: "Five jobs", hours: 24, maxAiCalls: 5 });
+    const ctx = makeDemoCtx(record.id);
+    for (let index = 1; index <= 5; index += 1) {
+      const jobRequestId = `${String(index).repeat(8)}-${String(index).repeat(4)}-4${String(index).repeat(3)}-8${String(index).repeat(3)}-${String(index).repeat(12)}`;
+      const reserved = reserveDemoAiJob(ctx, {
+        jobType: "product_research",
+        jobRequestId,
+        providerCallsPlanned: 4,
+      });
+      expect(reserved.ok).toBe(true);
+      if (!reserved.ok || !reserved.reservation) return;
+      expect(markDemoAiJobProviderCallStarted(ctx, reserved.reservation, 1)).toEqual({ ok: true });
+      expect(settleDemoAiJob(ctx, reserved.reservation, {
+        providerCallsStarted: 1,
+        providerCallsCompleted: 1,
+        providerCallsFailed: 0,
+      })).toMatchObject({ ok: true, status: "committed" });
+
+      const replay = reserveDemoAiJob(ctx, {
+        jobType: "product_research",
+        jobRequestId,
+        providerCallsPlanned: 4,
+      });
+      expect(replay).toMatchObject({
+        ok: true,
+        reservation: { duplicate: true, status: "committed" },
+      });
+      expect(getLatestDemoSnapshot(ctx)?.usedAiJobs).toBe(index);
+    }
+
+    const sixth = reserveDemoAiJob(ctx, {
+      jobType: "product_research",
+      jobRequestId: "66666666-6666-4666-8666-666666666666",
+      providerCallsPlanned: 4,
+    });
+    expect(sixth).toMatchObject({
+      ok: false,
+      code: "demo_ai_quota_exceeded",
+      snapshot: { usedAiJobs: 5, remainingAiJobs: 0 },
+    });
+  });
+
+  it("keeps Owner outside Visitor job accounting and isolates Visitor ledgers", () => {
+    const { record: a } = createDemoAccess({ label: "A", hours: 24, maxAiCalls: 5 });
+    const { record: b } = createDemoAccess({ label: "B", hours: 24, maxAiCalls: 5 });
+    const owner = makeOwnerCtx();
+    const visitorA = makeDemoCtx(a.id);
+    const visitorB = makeDemoCtx(b.id);
+
+    expect(reserveDemoAiJob(owner, {
+      jobType: "product_research",
+      jobRequestId: "77777777-7777-4777-8777-777777777777",
+      providerCallsPlanned: 4,
+    })).toEqual({ ok: true, reservation: null, snapshot: null });
+
+    const reserved = reserveDemoAiJob(visitorA, {
+      jobType: "product_research",
+      jobRequestId: "88888888-8888-4888-8888-888888888888",
+      providerCallsPlanned: 4,
+    });
+    expect(reserved.ok).toBe(true);
+    if (!reserved.ok || !reserved.reservation) return;
+    markDemoAiJobProviderCallStarted(visitorA, reserved.reservation, 1);
+    settleDemoAiJob(visitorA, reserved.reservation, {
+      providerCallsStarted: 1,
+      providerCallsCompleted: 1,
+      providerCallsFailed: 0,
+    });
+
+    expect(getLatestDemoSnapshot(visitorA)?.usedAiJobs).toBe(1);
+    expect(getLatestDemoSnapshot(visitorB)?.usedAiJobs).toBe(0);
+  });
+
+  it("charges one image_generation job even when one click requests four images", () => {
+    const { record } = createDemoAccess({ label: "Images", hours: 24, maxAiCalls: 5 });
+    const ctx = makeDemoCtx(record.id);
+    const requestHash = "a".repeat(64);
+
+    expect(reserveVisitorImageAiCalls(ctx, requestHash, 4)).toMatchObject({
+      ok: true,
+      snapshot: { usedAiJobs: 1, remainingAiJobs: 4 },
+    });
+    expect(markVisitorImageAiProviderStarted(ctx, requestHash)).toEqual({ ok: true });
+    expect(commitVisitorImageAiCalls(ctx, requestHash)).toMatchObject({
+      usedAiJobs: 1,
+      remainingAiJobs: 4,
+    });
+    expect(loadDemoAccessStore().accesses[0].aiImageQuotaReservations?.[requestHash])
+      .toMatchObject({
+        count: 1,
+        quotaMetric: "ai_jobs_v1",
+        jobType: "image_generation",
+        providerCallsPlanned: 1,
+      });
   });
 });
 

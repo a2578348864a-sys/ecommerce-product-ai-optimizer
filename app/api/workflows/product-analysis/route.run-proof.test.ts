@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
   runListingStep: vi.fn(),
   reserveDemoAiCalls: vi.fn(),
   settleDemoAiCalls: vi.fn(),
+  reserveDemoAiJob: vi.fn(),
+  markDemoAiJobProviderCallStarted: vi.fn(),
+  settleDemoAiJob: vi.fn(),
   productBatchGetBatch: vi.fn(),
   productBatchGetItems: vi.fn(),
 }));
@@ -28,6 +31,9 @@ vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: () => ({ ok: true, context: authState.context }),
   reserveDemoAiCalls: mocks.reserveDemoAiCalls,
   settleDemoAiCalls: mocks.settleDemoAiCalls,
+  reserveDemoAiJob: mocks.reserveDemoAiJob,
+  markDemoAiJobProviderCallStarted: mocks.markDemoAiJobProviderCallStarted,
+  settleDemoAiJob: mocks.settleDemoAiJob,
 }));
 
 vi.mock("@/lib/server/db", () => ({
@@ -66,7 +72,10 @@ function createRequest(body: Record<string, unknown>) {
     url: "http://localhost:3000/api/workflows/product-analysis",
     nextUrl: new URL("http://localhost:3000/api/workflows/product-analysis"),
     headers: new Headers(),
-    json: async () => body,
+    json: async () => ({
+      jobRequestId: "99999999-9999-4999-8999-999999999999",
+      ...body,
+    }),
   };
 }
 
@@ -319,6 +328,26 @@ beforeEach(() => {
     reservation: { reservationId: "text-test", plannedCount: 1 },
   });
   mocks.settleDemoAiCalls.mockReturnValue({ ok: true, snapshot: null });
+  mocks.reserveDemoAiJob.mockReturnValue({
+    ok: true,
+    reservation: {
+      reservationId: "job-test",
+      jobType: "product_research",
+      jobRequestId: "99999999-9999-4999-8999-999999999999",
+      quotaMetric: "ai_jobs_v1",
+      providerCallsPlanned: 1,
+      duplicate: false,
+      status: "reserved",
+    },
+    snapshot: null,
+  });
+  mocks.markDemoAiJobProviderCallStarted.mockReturnValue({ ok: true });
+  mocks.settleDemoAiJob.mockReturnValue({
+    ok: true,
+    snapshot: null,
+    status: "refunded",
+    duplicate: false,
+  });
 });
 
 describe("product-analysis trusted run creation", () => {
@@ -730,11 +759,13 @@ describe("product-analysis trusted run creation", () => {
       productName: "桌面手机支架",
       source: "opportunity",
       candidateId: "sandbox_candidate_b",
-      options: noAiOptions(),
+      options: oneAiStepOptions(),
     }) as never));
 
     expect(result.status).toBe(404);
     expect(result.body.error.code).toBe("candidate_not_found");
+    expect(mocks.reserveDemoAiJob).not.toHaveBeenCalled();
+    expect(mocks.runSourcingStep).not.toHaveBeenCalled();
   });
 
   it("rejects Visitor's abandoned Candidate before starting analysis", async () => {

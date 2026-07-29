@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
-import { getAccessMode, getDemoAccessInfo, type DemoAccessInfo } from "@/lib/client/accessToken";
+import {
+  DEMO_ACCESS_UPDATED_EVENT,
+  getAccessMode,
+  getDemoAccessInfo,
+  type DemoAccessInfo,
+} from "@/lib/client/accessToken";
 
 function formatExpiry(isoString: string | null): string {
   if (!isoString) return "";
@@ -31,6 +36,12 @@ export function DemoAccessBanner() {
     setMode(getAccessMode());
     setDemo(getDemoAccessInfo());
     setHydrated(true);
+    const handleUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<DemoAccessInfo>).detail;
+      setDemo(detail || getDemoAccessInfo());
+    };
+    window.addEventListener(DEMO_ACCESS_UPDATED_EVENT, handleUpdate);
+    return () => window.removeEventListener(DEMO_ACCESS_UPDATED_EVENT, handleUpdate);
   }, []);
 
   // Add body padding when banner is visible
@@ -52,9 +63,9 @@ export function DemoAccessBanner() {
   if (isExpired) {
     content = "临时访问已过期，请联系管理员获取新的访问码";
   } else if (isQuotaExhausted) {
-    content = `访客体验 · AI 分析额度已用完 · 正式数据只读`;
+    content = "访客体验 · 真实 AI 操作次数已用完 · 正式数据只读";
   } else {
-    content = `访客体验 · 正式数据只读 · 新增/修改仅保存到访客沙盒 · AI 额度 ${demo.remainingAiCalls}/${demo.maxAiCalls}${demo.expiresAt ? ` · 有效期至 ${formatExpiry(demo.expiresAt)}` : ""}`;
+    content = `访客体验 · 正式数据只读 · 新增/修改仅保存到访客沙盒 · 真实 AI 操作次数 ${demo.remainingAiCalls}/${demo.maxAiCalls}${demo.expiresAt ? ` · 有效期至 ${formatExpiry(demo.expiresAt)}` : ""}`;
   }
 
   const tone = isExpired ? "border-rose-200 bg-rose-50/90 text-rose-700" : "border-amber-200 bg-amber-50/90 text-amber-700";

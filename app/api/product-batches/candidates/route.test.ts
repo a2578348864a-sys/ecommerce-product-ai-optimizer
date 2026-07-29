@@ -43,7 +43,7 @@ beforeEach(() => {
     candidateId: "candidate-a",
     created: true,
     destination: "research",
-    destinationUrl: "/agent/run?source=opportunity&candidateId=candidate-a&sourceMeta=%7B%7D",
+    destinationUrl: "/agent/run?source=opportunity&candidateId=candidate-a",
     sourceMeta: {
       version: "product-batch-agent-run-source.v1",
       originKind: "seller_sprite_product_batch",

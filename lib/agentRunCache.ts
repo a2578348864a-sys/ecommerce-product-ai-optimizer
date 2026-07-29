@@ -22,12 +22,14 @@ export type CachedSourceMeta = {
   entry?: string;
   opportunityTitle?: string;
   candidateId?: string;
+  contextHash?: string;
   sourceTitle?: string;
   importedAt?: string;
 };
 
 export type CachedAgentRun = {
-  version: 1;
+  version: 2;
+  accessScope: string;
   savedAt: number;
   ttlMs: number;
   productName: string;
@@ -46,12 +48,16 @@ export type CachedAgentRun = {
 
 // ── Constants ───────────────────────────────────
 
-const CACHE_PREFIX = "agent-run:v1";
+const CACHE_PREFIX = "agent-run:v2";
 const DEFAULT_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 function scopePrefix(scope?: string | null): string {
   if (!scope || scope === "owner") return "owner:";
   return `demo:${scope}:`; // scope = demoAccessId for demo users
+}
+
+function normalizedScope(scope?: string | null): string {
+  return !scope || scope === "owner" ? "owner" : `demo:${scope}`;
 }
 
 // ── Helpers ─────────────────────────────────────
@@ -65,11 +71,17 @@ function getStorage(): Storage | null {
   }
 }
 
-function buildCacheKey(productName: string, candidateId?: string | null, scope?: string | null): string {
+function buildCacheKey(
+  productName: string,
+  candidateId?: string | null,
+  contextHash?: string | null,
+  scope?: string | null,
+): string {
   const sp = scopePrefix(scope);
   const normalized = (productName || "unknown").trim().slice(0, 80);
   if (candidateId) {
-    return `${CACHE_PREFIX}:${sp}${candidateId}`;
+    if (!contextHash || !/^[a-f0-9]{64}$/i.test(contextHash)) return "";
+    return `${CACHE_PREFIX}:${sp}candidate:${candidateId}:${contextHash.toLowerCase()}`;
   }
   return `${CACHE_PREFIX}:${sp}product:${normalized}`;
 }
@@ -77,7 +89,7 @@ function buildCacheKey(productName: string, candidateId?: string | null, scope?:
 function parseCachedRun(raw: string | null): CachedAgentRun | null {
   if (!raw) return null;
   const cache = JSON.parse(raw) as CachedAgentRun;
-  if (!cache || cache.version !== 1) return null;
+  if (!cache || cache.version !== 2 || typeof cache.accessScope !== "string") return null;
   if (Date.now() - cache.savedAt > (cache.ttlMs || DEFAULT_TTL_MS)) return null;
   if (typeof cache.productName !== "string" || !cache.productName.trim()) return null;
   return cache;
@@ -91,22 +103,37 @@ export function getAgentRunCacheKey(
   sourceMeta?: CachedSourceMeta | null,
   scope?: string | null,
 ): string {
-  return buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
+  return buildCacheKey(
+    productName,
+    sourceMeta?.candidateId || null,
+    sourceMeta?.contextHash || null,
+    scope,
+  );
 }
 
 /** Write the current run state to sessionStorage */
 export function saveAgentRunCache(
   productName: string,
   sourceMeta: CachedSourceMeta | null,
-  data: Omit<CachedAgentRun, "version" | "savedAt" | "ttlMs" | "productName" | "sourceMeta">,
+  data: Omit<
+    CachedAgentRun,
+    "version" | "accessScope" | "savedAt" | "ttlMs" | "productName" | "sourceMeta"
+  >,
   scope?: string | null,
 ): void {
   const storage = getStorage();
   if (!storage) return;
   try {
-    const key = buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
+    const key = buildCacheKey(
+      productName,
+      sourceMeta?.candidateId || null,
+      sourceMeta?.contextHash || null,
+      scope,
+    );
+    if (!key) return;
     const cache: CachedAgentRun = {
-      version: 1,
+      version: 2,
+      accessScope: normalizedScope(scope),
       savedAt: Date.now(),
       ttlMs: DEFAULT_TTL_MS,
       productName,
@@ -128,7 +155,13 @@ export function loadAgentRunCache(
   const storage = getStorage();
   if (!storage) return null;
   try {
-    const key = buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
+    const key = buildCacheKey(
+      productName,
+      sourceMeta?.candidateId || null,
+      sourceMeta?.contextHash || null,
+      scope,
+    );
+    if (!key) return null;
     const raw = storage.getItem(key);
     if (!raw) return null;
 
@@ -136,6 +169,12 @@ export function loadAgentRunCache(
     if (!cache) {
       storage.removeItem(key);
       return null;
+    }
+
+    if (cache.accessScope !== normalizedScope(scope)) return null;
+    if (sourceMeta?.candidateId) {
+      if (cache.sourceMeta?.candidateId !== sourceMeta.candidateId
+        || cache.sourceMeta?.contextHash !== sourceMeta.contextHash) return null;
     }
 
     // Product name match (prevent cross-contamination)
@@ -178,7 +217,12 @@ export function loadLatestAgentRunCache(
         continue;
       }
 
-      if (candidateId && cache.sourceMeta?.candidateId !== candidateId) continue;
+      if (cache.accessScope !== normalizedScope(scope)) continue;
+      if (candidateId && (
+        cache.sourceMeta?.candidateId !== candidateId
+        || !sourceMeta?.contextHash
+        || cache.sourceMeta?.contextHash !== sourceMeta.contextHash
+      )) continue;
       matches.push(cache);
     }
 
@@ -199,8 +243,33 @@ export function clearAgentRunCache(
   const storage = getStorage();
   if (!storage) return;
   try {
-    const key = buildCacheKey(productName, sourceMeta?.candidateId || null, scope);
-    storage.removeItem(key);
+    const key = buildCacheKey(
+      productName,
+      sourceMeta?.candidateId || null,
+      sourceMeta?.contextHash || null,
+      scope,
+    );
+    if (key) storage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+/** Clear all v2 cache entries for one Candidate within the current authenticated identity. */
+export function clearAgentRunCandidateCaches(
+  candidateId: string,
+  scope?: string | null,
+): void {
+  const storage = getStorage();
+  if (!storage || !candidateId.trim()) return;
+  try {
+    const prefix = `${CACHE_PREFIX}:${scopePrefix(scope)}candidate:${candidateId.trim()}:`;
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    keys.forEach((key) => storage.removeItem(key));
   } catch {
     // ignore
   }

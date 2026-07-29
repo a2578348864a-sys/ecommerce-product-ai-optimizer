@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import {
   requireAuthenticated,
-  reserveDemoAiCalls,
-  markDemoAiProviderCallStarted,
-  settleDemoAiCalls,
+  reserveDemoAiJob,
+  markDemoAiJobProviderCallStarted,
+  settleDemoAiJob,
   type DemoAccessSnapshot,
-  type DemoAiQuotaReservation,
+  type DemoAiJobQuotaReservation,
 } from "@/lib/server/demoGuard";
 import {
   getAuthoritativeCandidate,
@@ -56,6 +56,7 @@ export const runtime = "nodejs";
 export const maxDuration = 180;
 
 const MAX_PRODUCT_NAME_LENGTH = 120;
+const JOB_REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -98,11 +99,26 @@ type WorkflowResult = {
     aiStepsRequested: number;
     aiStepsCompleted: number;
     fallbackSteps: number;
+    providerCallsPlanned: number;
+    providerCallsStarted: number;
+    providerCallsCompleted: number;
+    providerCallsFailed: number;
+    quotaMetric: "ai_jobs_v1";
   };
   warnings: string[];
   r22CommercialValidation?: R22CommercialRunSnapshot;
   researchMode?: "market_research_only";
   promotionEligible?: false;
+  aiJob?: {
+    jobType: "product_research";
+    jobRequestId: string;
+    status: "committed" | "refunded";
+    quotaMetric: "ai_jobs_v1";
+    providerCallsPlanned: number;
+    providerCallsStarted: number;
+    providerCallsCompleted: number;
+    providerCallsFailed: number;
+  };
 };
 
 /* ── Helpers ───────────────────────────────────── */
@@ -335,18 +351,59 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  let quotaReservation: DemoAiQuotaReservation | null = null;
+  const jobRequestId = asString(body.jobRequestId).slice(0, 128);
+  if (accessCtx.mode === "demo" && !JOB_REQUEST_ID_PATTERN.test(jobRequestId)) {
+    return NextResponse.json(
+      { ok: false, error: { code: "invalid_ai_job_request", message: "AI 作业请求标识无效，请重新发起。" } },
+      { status: 400 },
+    );
+  }
+  let quotaReservation: DemoAiJobQuotaReservation | null = null;
   if (accessCtx.mode === "demo" && plannedAiCalls > 0) {
-    const quota = reserveDemoAiCalls(accessCtx, plannedAiCalls, {
+    const quota = reserveDemoAiJob(accessCtx, {
+      jobType: "product_research",
+      jobRequestId,
+      providerCallsPlanned: plannedAiCalls,
       leaseMs: plannedAiCalls * PRODUCT_ANALYSIS_AI_TIMEOUT_MS + 60_000,
     });
     if (!quota.ok) {
       return NextResponse.json(
-        { ok: false, error: { code: quota.code, message: quota.message } },
+        {
+          ok: false,
+          error: { code: quota.code, message: quota.message },
+          ...(quota.snapshot ? { demoAccess: quota.snapshot } : {}),
+        },
         { status: quota.status },
       );
     }
     quotaReservation = quota.reservation;
+    if (quotaReservation?.duplicate) {
+      if (quotaReservation.status === "reserved") {
+        return NextResponse.json({
+          ok: false,
+          error: {
+            code: "ai_job_in_progress",
+            message: "同一商品研究作业正在执行，请勿重复提交。",
+          },
+          ...(quota.snapshot ? { demoAccess: quota.snapshot } : {}),
+        }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        idempotentReplay: true,
+        aiJob: {
+          jobType: quotaReservation.jobType,
+          jobRequestId: quotaReservation.jobRequestId,
+          status: quotaReservation.status,
+          providerCallsPlanned: quotaReservation.providerCallsPlanned,
+          providerCallsStarted: quotaReservation.providerCallsStarted ?? 0,
+          providerCallsCompleted: quotaReservation.providerCallsCompleted ?? 0,
+          providerCallsFailed: quotaReservation.providerCallsFailed ?? 0,
+          quotaMetric: quotaReservation.quotaMetric,
+        },
+        ...(quota.snapshot ? { demoAccess: quota.snapshot } : {}),
+      }, { status: 200 });
+    }
   }
 
   const workflowId = makeWorkflowId();
@@ -360,22 +417,32 @@ export async function POST(request: NextRequest) {
   let aiStepsCompleted = 0;
   let fallbackSteps = 0;
   let providerCallStartedCount = 0;
+  let providerCallsCompleted = 0;
   const persistProviderCallStart = async () => {
     const nextStartedCount = providerCallStartedCount + 1;
-    const marked = markDemoAiProviderCallStarted(accessCtx, quotaReservation, nextStartedCount);
+    const marked = markDemoAiJobProviderCallStarted(accessCtx, quotaReservation, nextStartedCount);
     if (!marked.ok) throw new Error(marked.code);
     providerCallStartedCount = nextStartedCount;
   };
 
   const settleUnexpectedFailure = (error: unknown) => {
     if (accessCtx.mode === "demo" && quotaReservation) {
-      const settlement = settleDemoAiCalls(accessCtx, quotaReservation, providerCallStartedCount);
+      const settlement = settleDemoAiJob(accessCtx, quotaReservation, {
+        providerCallsStarted: providerCallStartedCount,
+        providerCallsCompleted,
+        providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
+      });
       if (!settlement.ok) {
         return NextResponse.json(
-          { ok: false, error: { code: settlement.code, message: settlement.message } },
+          {
+            ok: false,
+            error: { code: settlement.code, message: settlement.message },
+            ...(settlement.snapshot ? { demoAccess: settlement.snapshot } : {}),
+          },
           { status: settlement.status },
         );
       }
+      demoScreen = settlement.snapshot;
     }
     return NextResponse.json(
       {
@@ -384,6 +451,7 @@ export async function POST(request: NextRequest) {
           code: "pipeline_error",
           message: error instanceof Error ? error.message : "商品分析流程异常。",
         },
+        ...(demoScreen ? { demoAccess: demoScreen } : {}),
       },
       { status: 500 },
     );
@@ -397,6 +465,7 @@ export async function POST(request: NextRequest) {
   if (runSourcing) {
     aiStepsRequested++;
     const startedAt = new Date().toISOString();
+    const providerCallsBeforeStep = providerCallStartedCount;
     let result;
     try {
       result = await runSourcingStep(productName, analysisDescription, {
@@ -406,6 +475,9 @@ export async function POST(request: NextRequest) {
       return settleUnexpectedFailure(error);
     }
     sourcingResult = result.data;
+    if (providerCallStartedCount > providerCallsBeforeStep && result.status === "completed") {
+      providerCallsCompleted++;
+    }
     if (result.status === "completed") {
       aiStepsCompleted++;
     } else {
@@ -421,6 +493,7 @@ export async function POST(request: NextRequest) {
   if (runRisk) {
     aiStepsRequested++;
     const startedAt = new Date().toISOString();
+    const providerCallsBeforeStep = providerCallStartedCount;
     let result;
     try {
       result = await runRiskStep(productName, analysisDescription, {
@@ -430,6 +503,9 @@ export async function POST(request: NextRequest) {
       return settleUnexpectedFailure(error);
     }
     riskResult = result.data;
+    if (providerCallStartedCount > providerCallsBeforeStep && result.status === "completed") {
+      providerCallsCompleted++;
+    }
     if (result.status === "completed") {
       aiStepsCompleted++;
     } else {
@@ -445,6 +521,7 @@ export async function POST(request: NextRequest) {
   if (runSummary) {
     aiStepsRequested++;
     const startedAt = new Date().toISOString();
+    const providerCallsBeforeStep = providerCallStartedCount;
     let result;
     try {
       result = await runSummaryStep(productName, analysisDescription, sourcingResult, riskResult, {
@@ -454,6 +531,9 @@ export async function POST(request: NextRequest) {
       return settleUnexpectedFailure(error);
     }
     summaryResult = result.data;
+    if (providerCallStartedCount > providerCallsBeforeStep && result.status === "completed") {
+      providerCallsCompleted++;
+    }
     if (result.status === "completed") {
       aiStepsCompleted++;
     } else {
@@ -469,6 +549,7 @@ export async function POST(request: NextRequest) {
   if (runListing) {
     aiStepsRequested++;
     const startedAt = new Date().toISOString();
+    const providerCallsBeforeStep = providerCallStartedCount;
     let result;
     try {
       result = await runListingStep(productName, summaryResult, {
@@ -478,6 +559,9 @@ export async function POST(request: NextRequest) {
       return settleUnexpectedFailure(error);
     }
     listingResult = result.data;
+    if (providerCallStartedCount > providerCallsBeforeStep && result.status === "completed") {
+      providerCallsCompleted++;
+    }
     if (result.status === "completed") {
       aiStepsCompleted++;
     } else {
@@ -489,10 +573,18 @@ export async function POST(request: NextRequest) {
   }
 
   if (accessCtx.mode === "demo" && quotaReservation) {
-    const settlement = settleDemoAiCalls(accessCtx, quotaReservation, providerCallStartedCount);
+    const settlement = settleDemoAiJob(accessCtx, quotaReservation, {
+      providerCallsStarted: providerCallStartedCount,
+      providerCallsCompleted,
+      providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
+    });
     if (!settlement.ok) {
       return NextResponse.json(
-        { ok: false, error: { code: settlement.code, message: settlement.message } },
+        {
+          ok: false,
+          error: { code: settlement.code, message: settlement.message },
+          ...(settlement.snapshot ? { demoAccess: settlement.snapshot } : {}),
+        },
         { status: settlement.status },
       );
     }
@@ -529,12 +621,33 @@ export async function POST(request: NextRequest) {
     summary: summaryResult,
     listing: listingResult,
     finalReport,
-    costGuard: { aiStepsRequested, aiStepsCompleted, fallbackSteps },
+    costGuard: {
+      aiStepsRequested,
+      aiStepsCompleted,
+      fallbackSteps,
+      providerCallsPlanned: plannedAiCalls,
+      providerCallsStarted: providerCallStartedCount,
+      providerCallsCompleted,
+      providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
+      quotaMetric: "ai_jobs_v1",
+    },
     warnings,
     ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
     ...(productBatchResearchMode ? {
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
+    } : {}),
+    ...(quotaReservation ? {
+      aiJob: {
+        jobType: "product_research" as const,
+        jobRequestId: quotaReservation.jobRequestId,
+        status: (providerCallStartedCount > 0 ? "committed" : "refunded") as "committed" | "refunded",
+        quotaMetric: "ai_jobs_v1" as const,
+        providerCallsPlanned: plannedAiCalls,
+        providerCallsStarted: providerCallStartedCount,
+        providerCallsCompleted,
+        providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
+      },
     } : {}),
     // Demo-Login.1-E: include latest demo snapshot for Banner update
     ...(demoScreen ? { demoAccess: demoScreen } : {}),
@@ -552,7 +665,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ...result, runProof }, { status: 200 });
   } catch {
     return NextResponse.json(
-      { ok: false, error: { code: "run_proof_unavailable", message: "分析结果暂时无法生成可信凭证，请稍后重试。" } },
+      {
+        ok: false,
+        error: { code: "run_proof_unavailable", message: "分析结果暂时无法生成可信凭证，请稍后重试。" },
+        ...(demoScreen ? { demoAccess: demoScreen } : {}),
+      },
       { status: 500 },
     );
   }
