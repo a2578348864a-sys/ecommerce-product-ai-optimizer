@@ -47,7 +47,7 @@ export default function OpportunitiesPage() {
             <ProductBatchManager />
             <details className="surface-card mx-auto w-full max-w-7xl p-4">
               <summary className="cursor-pointer text-sm font-semibold text-slate-700">
-                Legacy 冻结候选兼容视图
+                旧版候选兼容视图
               </summary>
               <div className="mt-4">
                 <MarketScreeningWorkbench model={model} />

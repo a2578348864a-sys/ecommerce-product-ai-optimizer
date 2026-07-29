@@ -15,6 +15,8 @@ describe("发现商品产品层收敛", () => {
     expect(pageSource).toMatch(/WorkspaceMobileNav/);
     expect(pageSource).toMatch(/发现商品 - 轻选 Agent/);
     expect(pageSource).not.toMatch(/市场预筛工作台 - 轻选 Agent/);
+    expect(pageSource).toMatch(/旧版候选兼容视图/);
+    expect(pageSource).not.toMatch(/Legacy 冻结候选兼容视图/);
   });
 
   it("优先展示候选商品池和逐商品研究动作", () => {

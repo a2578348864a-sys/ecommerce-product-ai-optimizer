@@ -131,7 +131,7 @@ describe("ProductBatch unified role UI", () => {
       "批次历史",
       "查看商品",
       "设置为当前",
-      "切回 Legacy",
+      "查看旧版候选",
       "归档",
     ]) {
       expect(owner).toContain(label);
@@ -166,7 +166,10 @@ describe("ProductBatch unified role UI", () => {
       importInspectionState: "manual",
     });
 
-    expect(automatic).toContain("已识别：搜索结果报表");
+    expect(automatic).toContain("已自动识别文件结构");
+    expect(automatic).toContain("高级信息");
+    expect(automatic).toContain("报表类型：搜索结果报表");
+    expect(automatic).toMatch(/<details[^>]*><summary[^>]*>高级信息<\/summary>/);
     expect(automatic).not.toContain(">search_results<");
     expect(automatic).not.toContain("手动选择报表类型");
     expect(automatic).toContain("家居与厨房");
@@ -174,6 +177,25 @@ describe("ProductBatch unified role UI", () => {
     expect(fallback).toContain("手动选择报表类型");
     expect(fallback).toContain("搜索结果报表");
     expect(fallback).toContain("类目商品报表");
+  });
+
+  it("keeps report and item internals collapsed and removes developer-facing labels", () => {
+    const html = render("owner", {
+      selection: {
+        activeProductBatchId: null,
+        activeLegacyRegistrationId: "production-registration-20260717-01",
+        updatedAt: batch.updatedAt,
+      },
+    });
+
+    expect(html).toContain("旧版候选批次");
+    expect(html).toContain("查看旧版候选");
+    expect(html).toContain("内部研究顺序：priority_1");
+    expect(html).toContain("ASIN：B000000001");
+    expect(html).not.toContain("ProductBatch V1");
+    expect(html).not.toContain("切回 Legacy");
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>高级信息<\/summary>/);
+    expect(html).not.toMatch(/<details[^>]*open/);
   });
 
   it("requires confirmation instead of silently choosing the first category in a mixed report", () => {

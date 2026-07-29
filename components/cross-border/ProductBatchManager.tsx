@@ -150,7 +150,7 @@ export function ProductBatchManagerView({
   if (state === "loading") {
     return (
       <section className="surface-card mx-auto max-w-7xl p-5" aria-busy="true">
-        <p className="eyebrow">ProductBatch V1</p>
+        <p className="eyebrow">商品批次</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-950">正在读取你的商品批次</h1>
       </section>
     );
@@ -158,7 +158,7 @@ export function ProductBatchManagerView({
   if (state === "unauthenticated") {
     return (
       <section className="surface-card mx-auto max-w-7xl p-5">
-        <p className="eyebrow">ProductBatch V1</p>
+        <p className="eyebrow">商品批次</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-950">登录后管理商品批次</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
           未登录状态不会读取或展示 Owner、Visitor 的私有批次数据。
@@ -191,7 +191,7 @@ export function ProductBatchManagerView({
       <section className="workspace-header">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="eyebrow">ProductBatch V1</p>
+            <p className="eyebrow">商品批次</p>
             <h1 className="section-title mt-1 text-2xl">SellerSprite 商品批次</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               上传 SellerSprite 官方 XLSX，创建批次并由你决定当前查看哪一批商品。
@@ -210,7 +210,7 @@ export function ProductBatchManagerView({
         {accessMode === "visitor" ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
             <p className="font-semibold">访客体验 · 剩余真实 AI 额度 {remainingAiCalls ?? 0}/5</p>
-            <p>批次数据保存在当前身份的独立访客沙盒；导入、解析、Ranking、切换和归档不消耗额度。</p>
+            <p>批次数据保存在当前身份的独立访客沙盒；导入、解析、研究排序、切换和归档不消耗额度。</p>
           </div>
         ) : null}
         {state === "error" && errorMessage ? (
@@ -256,13 +256,19 @@ export function ProductBatchManagerView({
             <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-700">
               <span className="font-semibold">
                 {importInspectionState === "loading"
-                  ? "正在识别报表类型"
+                  ? "正在识别文件结构"
                   : detectedReportType
-                    ? `已识别：${productBatchReportTypeLabel(detectedReportType)}`
-                    : "选择文件后自动识别报表类型"}
+                    ? "已自动识别文件结构"
+                    : "选择文件后自动识别文件结构"}
               </span>
               <br />
               无法识别时再由你手动选择。
+              {detectedReportType ? (
+                <details className="mt-2 text-slate-600">
+                  <summary className="cursor-pointer font-semibold">高级信息</summary>
+                  <p className="mt-1">报表类型：{productBatchReportTypeLabel(detectedReportType)}</p>
+                </details>
+              ) : null}
               {detectedReportType ? (
                 <input type="hidden" name="reportType" value={detectedReportType} />
               ) : null}
@@ -350,9 +356,9 @@ export function ProductBatchManagerView({
             <h2 className="mt-1 text-xl font-semibold text-slate-950">
               {selection?.activeProductBatchId
                 ? batches.find((candidate) => candidate.id === selection.activeProductBatchId)
-                  ?.batchName ?? "ProductBatch"
+                  ?.batchName ?? "商品批次"
                 : selection?.activeLegacyRegistrationId
-                  ? "Legacy 冻结批次"
+                  ? "旧版候选批次"
                   : "尚未选择"}
             </h2>
           </div>
@@ -362,7 +368,7 @@ export function ProductBatchManagerView({
             onClick={onActivateLegacy}
             className="linear-button h-10 px-4 text-sm font-semibold"
           >
-            切回 Legacy
+            查看旧版候选
           </button>
         </div>
       </section>
@@ -371,7 +377,7 @@ export function ProductBatchManagerView({
         <p className="eyebrow">批次历史</p>
         <h2 className="mt-1 text-xl font-semibold text-slate-950">{batches.length} 个商品批次</h2>
         {batches.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">尚未导入 ProductBatch。</p>
+          <p className="mt-3 text-sm text-slate-500">尚未导入商品批次。</p>
         ) : (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {batches.map((batch) => {
@@ -382,8 +388,12 @@ export function ProductBatchManagerView({
                     <div>
                       <h3 className="font-semibold text-slate-950">{batch.batchName}</h3>
                       <p className="mt-1 text-xs text-slate-500">
-                        {productBatchReportTypeLabel(batch.reportType)} · {batch.acceptedCount ?? 0} 个商品 · {formatDate(batch.importedAt)}
+                        {batch.acceptedCount ?? 0} 个商品 · {formatDate(batch.importedAt)}
                       </p>
+                      <details className="mt-2 text-xs text-slate-500">
+                        <summary className="cursor-pointer font-semibold">高级信息</summary>
+                        <p className="mt-1">报表类型：{productBatchReportTypeLabel(batch.reportType)}</p>
+                      </details>
                     </div>
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
                       {active ? "当前 · " : ""}{batchStatus(batch.batchStatus)}
@@ -442,15 +452,14 @@ export function ProductBatchManagerView({
                     alt={metricValue(item, "productTitle")}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700">
-                        {item.researchPriority}
-                      </span>
-                      <span className="text-xs text-slate-400">{item.asin ?? "ASIN 缺失"}</span>
-                    </div>
-                    <h3 className="mt-3 line-clamp-3 font-semibold leading-6 text-slate-950">
+                    <h3 className="line-clamp-3 font-semibold leading-6 text-slate-950">
                       {metricValue(item, "productTitle")}
                     </h3>
+                    <details className="mt-2 text-xs text-slate-500">
+                      <summary className="cursor-pointer font-semibold">高级信息</summary>
+                      <p className="mt-1">内部研究顺序：{item.researchPriority}</p>
+                      <p>ASIN：{item.asin ?? "缺失"}</p>
+                    </details>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
@@ -473,7 +482,7 @@ export function ProductBatchManagerView({
                   </p>
                 ) : (
                   <p className="mt-2 text-xs leading-5 text-slate-500">
-                    只创建或复用 Candidate；不会自动调用 AI，也不会消耗额度。
+                    只会准备研究对象；不会自动调用 AI，也不会消耗额度。
                   </p>
                 )}
               </article>
