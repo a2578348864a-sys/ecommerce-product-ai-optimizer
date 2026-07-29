@@ -74,6 +74,20 @@ describe("deriveTaskWorkflowSummary", () => {
     expect(summary.missingFields).toContain("finalReport");
   });
 
+  it("normalizes the system task suffix for legacy history cards without a result product name", () => {
+    const summary = deriveTaskWorkflowSummary({
+      type: "workflow",
+      title: "桌面收纳盒 一键分析",
+      materialText: "桌面收纳盒",
+      oneLineSummary: "",
+      level: "",
+      decisionStatus: "pending",
+      result: {},
+    });
+
+    expect(summary.productName).toBe("桌面收纳盒");
+  });
+
   it("prefers agentOutputSnapshot for stable task summary fields", () => {
     const summary = deriveTaskWorkflowSummary({
       type: "workflow",

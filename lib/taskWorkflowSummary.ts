@@ -1,6 +1,7 @@
 import { getDecisionStatusOption, type DecisionStatus } from "@/lib/tasks/decisionStatus";
 import { parseCandidateEvidenceSnapshot, type CandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
+import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 
 export type TaskWorkflowSummaryInput = {
   type?: string | null;
@@ -273,6 +274,12 @@ function getPriority(
 }
 
 export function deriveTaskWorkflowSummary(input: TaskWorkflowSummaryInput): TaskWorkflowSummary {
+  const productName = resolveTaskProductDisplayName({
+    resultProductName: isRecord(input.result) ? input.result.productName : "",
+    taskTitle: input.title,
+    materialText: input.materialText,
+    fallback: "暂无",
+  });
   const agentOutputSnapshot = extractAgentOutputSnapshotFromTask(input.result);
   if (agentOutputSnapshot) {
     const risk = riskFromAgentSnapshot(agentOutputSnapshot.riskSnapshot.riskLevel);
@@ -287,7 +294,7 @@ export function deriveTaskWorkflowSummary(input: TaskWorkflowSummaryInput): Task
     const priority = getPriority(input, risk.tone, verdictLabel, agentOutputSnapshot.nextActionSnapshot.primaryAction === "small_batch_test", []);
 
     return {
-      productName: text(isRecord(input.result) ? input.result.productName : "") || text(input.title) || text(input.materialText) || "暂无",
+      productName,
       verdictLabel,
       riskLabel: risk.label,
       riskTone: risk.tone,
@@ -305,7 +312,6 @@ export function deriveTaskWorkflowSummary(input: TaskWorkflowSummaryInput): Task
 
   const finalReport = getFinalReport(input.result);
   const missingFields: string[] = [];
-  const productName = text(isRecord(input.result) ? input.result.productName : "") || text(input.title) || text(input.materialText) || "暂无";
   const verdictLabel = text(finalReport?.finalVerdict) || text(input.oneLineSummary) || "暂无";
   const risk = getRisk(input, finalReport);
   const beginnerLabel = text(finalReport?.beginnerFit) || "暂无";

@@ -62,6 +62,7 @@ import {
 } from "@/lib/productResearchPresentation";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
+import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -114,7 +115,12 @@ function sourceLabel(source: string) {
 }
 
 function getTitle(item: TaskCenterItem) {
-  return item.title?.trim() || item.materialText.trim().slice(0, 20) || "未命名记录";
+  return resolveTaskProductDisplayName({
+    resultProductName: isRecordValue(item.result) ? item.result.productName : "",
+    taskTitle: item.title,
+    materialText: item.materialText.trim().slice(0, 20),
+    fallback: "未命名记录",
+  });
 }
 
 function getTaskTypeLabel(item: TaskCenterItem) {

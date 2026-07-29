@@ -117,6 +117,24 @@ describe("Studio task prefill", () => {
     expect(extractStudioTaskPrefill({ id: "", title: "No id" })).toBeNull();
   });
 
+  it("uses the real result name and cleans legacy task-title suffixes for both Studios", () => {
+    expect(extractStudioTaskPrefill({
+      id: "task-result-name",
+      title: "Closet organizer 一键分析",
+      materialText: "Closet organizer",
+      result: {
+        productName: "Closet organizer",
+      },
+    })?.productName).toBe("Closet organizer");
+
+    expect(extractStudioTaskPrefill({
+      id: "task-legacy-title",
+      title: "Legacy desk stand 一键分析",
+      materialText: "Legacy desk stand",
+      result: {},
+    })?.productName).toBe("Legacy desk stand");
+  });
+
   it("forwards the optional taskId into both independent Studio clients", () => {
     const listingPage = readFileSync(resolve(process.cwd(), "app/listing-studio/page.tsx"), "utf8");
     const imagePage = readFileSync(resolve(process.cwd(), "app/image-studio/page.tsx"), "utf8");

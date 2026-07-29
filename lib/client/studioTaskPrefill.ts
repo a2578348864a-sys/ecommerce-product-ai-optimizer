@@ -1,4 +1,5 @@
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import type { StudioTargetMarket } from "@/lib/studioListingInput";
 
 export type StudioTaskPrefill = {
@@ -125,10 +126,12 @@ export function extractStudioTaskPrefill(value: unknown): StudioTaskPrefill | nu
   const keywordPool = isRecord(listingPrep.keywordPool) ? listingPrep.keywordPool : {};
   const agentOutput = isRecord(result.agentOutputSnapshot) ? result.agentOutputSnapshot : {};
   const listingSnapshot = isRecord(agentOutput.listingSnapshot) ? agentOutput.listingSnapshot : {};
-  const productName = cleanText(value.title, 200)
-    || cleanText(result.productName, 200)
-    || cleanText(productFacts.productTitle, 200)
-    || cleanText(value.materialText, 200);
+  const productName = resolveTaskProductDisplayName({
+    resultProductName: cleanText(result.productName, 200),
+    taskTitle: cleanText(value.title, 200),
+    materialText: cleanText(productFacts.productTitle, 200)
+      || cleanText(value.materialText, 200),
+  }).slice(0, 200);
   const confirmedFacts = factLines(
     productBatchListingFacts,
     AUTHORITATIVE_LISTING_FACT_LABELS,
