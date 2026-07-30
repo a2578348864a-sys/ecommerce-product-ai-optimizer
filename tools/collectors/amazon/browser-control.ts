@@ -1,4 +1,3 @@
-import { once } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createConnection } from "node:net";
@@ -24,7 +23,10 @@ import {
   type AmazonPageDiagnosticInput,
   type AmazonPageDomSignals,
 } from "./page-diagnostics";
-
+import {
+  forceTerminateOwnedProcessTree,
+  waitForOwnedProcessExit,
+} from "./owned-process-tree";
 export type BrowserExecutableCandidate = {
   browser: "chrome" | "edge";
   locationType: "system" | "system_x86";
@@ -540,25 +542,6 @@ async function evaluateByValue<T>(client: CdpClient, sessionId: string, expressi
   return evaluated.result?.value as T;
 }
 
-async function waitForProcessExit(browserProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
-  if (browserProcess.exitCode !== null || browserProcess.signalCode !== null) return true;
-  return await Promise.race([
-    once(browserProcess, "exit").then(() => true),
-    delay(timeoutMs).then(() => false),
-  ]);
-}
-
-function forceTerminateOwnedProcess(browserProcess: ChildProcess): void {
-  if (!browserProcess.pid) return;
-  if (process.platform === "win32") {
-    spawnSync("taskkill.exe", ["/PID", String(browserProcess.pid), "/T", "/F"], {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    return;
-  }
-  browserProcess.kill("SIGKILL");
-}
 
 function browserLaunchArguments(profile: IsolatedBrowserProfile, headless: boolean): string[] {
   return [
@@ -1253,7 +1236,7 @@ export async function runAmazonSearchCanaryBrowser(input: {
     pageClosed = closed.success === true;
     targetId = null;
     await client.send("Browser.close");
-    browserClosed = await waitForProcessExit(browserProcess, 5_000);
+    browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
   } catch (error) {
     primaryError = error;
   } finally {
@@ -1267,11 +1250,11 @@ export async function runAmazonSearchCanaryBrowser(input: {
     }
     client?.close();
     if (browserProcess && !browserClosed) {
-      browserClosed = await waitForProcessExit(browserProcess, 1_000);
+      browserClosed = await waitForOwnedProcessExit(browserProcess, 1_000);
       if (!browserClosed) {
         forcedTerminationUsed = true;
-        forceTerminateOwnedProcess(browserProcess);
-        browserClosed = await waitForProcessExit(browserProcess, 5_000);
+        forceTerminateOwnedProcessTree(browserProcess);
+        browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
       }
     }
     if (debugPort > 0) debugPortReleased = await waitForReleasedPort(debugPort, 5_000);
@@ -1392,11 +1375,11 @@ export async function openIsolatedPublicBrowserSession(input: {
       client = null;
     }
     if (browserProcess) {
-      browserClosed = await waitForProcessExit(browserProcess, 2_000);
+      browserClosed = await waitForOwnedProcessExit(browserProcess, 2_000);
       if (!browserClosed) {
         forcedTerminationUsed = true;
-        forceTerminateOwnedProcess(browserProcess);
-        browserClosed = await waitForProcessExit(browserProcess, 5_000);
+        forceTerminateOwnedProcessTree(browserProcess);
+        browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
       }
     }
     const debugPortReleased = debugPort === 0 || await waitForReleasedPort(debugPort, 5_000);
@@ -1564,11 +1547,11 @@ export async function openHumanAssistedAmazonBrowser(input: {
       client = null;
     }
     if (browserProcess) {
-      browserClosed = await waitForProcessExit(browserProcess, 2_000);
+      browserClosed = await waitForOwnedProcessExit(browserProcess, 2_000);
       if (!browserClosed) {
         forcedTerminationUsed = true;
-        forceTerminateOwnedProcess(browserProcess);
-        browserClosed = await waitForProcessExit(browserProcess, 5_000);
+        forceTerminateOwnedProcessTree(browserProcess);
+        browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
       }
     }
     const debugPortReleased = debugPort === 0 || await waitForReleasedPort(debugPort, 5_000);
@@ -1812,7 +1795,7 @@ export async function runLocalBrowserControlSmoke(input: {
     if (!pageClosed) throw new Error("CDP_TARGET_CLOSE_FAILED");
     targetId = null;
     await client.send("Browser.close");
-    browserClosed = await waitForProcessExit(browserProcess, 5_000);
+    browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
   } catch (error) {
     primaryError = error;
   } finally {
@@ -1826,18 +1809,18 @@ export async function runLocalBrowserControlSmoke(input: {
       }
       try {
         await client.send("Browser.close");
-        if (browserProcess) browserClosed = await waitForProcessExit(browserProcess, 5_000);
+        if (browserProcess) browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
       } catch {
         // The owned process fallback below remains responsible for cleanup.
       }
     }
     client?.close();
     if (browserProcess && !browserClosed) {
-      browserClosed = await waitForProcessExit(browserProcess, 1_000);
+      browserClosed = await waitForOwnedProcessExit(browserProcess, 1_000);
       if (!browserClosed) {
         forcedTerminationUsed = true;
-        forceTerminateOwnedProcess(browserProcess);
-        browserClosed = await waitForProcessExit(browserProcess, 5_000);
+        forceTerminateOwnedProcessTree(browserProcess);
+        browserClosed = await waitForOwnedProcessExit(browserProcess, 5_000);
       }
     }
     if (debugPort > 0) debugPortReleased = await waitForReleasedPort(debugPort, 5_000);

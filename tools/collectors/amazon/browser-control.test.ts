@@ -1,7 +1,9 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildAmazonBrowserLaunchArguments,
   buildAmazonHomeUrl,
@@ -14,18 +16,126 @@ import {
   isAllowedAmazonSearchPageUrl,
   isAllowedPublicNavigationUrl,
   validatePublicDomExpression,
-  openIsolatedPublicBrowserSession,
-  openHumanAssistedAmazonBrowser,
   resolveSystemBrowser,
-  runLocalBrowserControlSmoke,
   shouldContinueAfterHomepageDiagnostic,
   type BrowserExecutableCandidate,
-  type LocalBrowserControlFailure,
-  type LocalBrowserControlResult,
 } from "./browser-control";
+import {
+  forceTerminateOwnedProcessTree,
+  isRecordedProcessAlive,
+  waitForRecordedProcessIdsToExit,
+} from "./owned-process-tree";
 
-const localFixturePath = fileURLToPath(new URL("./fixtures/browser-control-local.html", import.meta.url));
+const controlledNodeProcessTreeFixturePath = fileURLToPath(
+  new URL("./fixtures/controlled-node-process-tree.mjs", import.meta.url),
+);
+type ControlledReady = {
+  type: "controlled-ready";
+  mode: "root" | "sentinel";
+  runId: string;
+  pid: number;
+  grandchildPid: number | null;
+};
+const forceTerminableTestProcesses = new Set<ChildProcess>();
+const sentinelTestProcesses = new Map<ChildProcess, string>();
+const forceTerminableProcessIds = new Set<number>();
+const recordedTestProcessIds = new Set<number>();
 
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function recordTestProcess(child: ChildProcess, mode: "root" | "sentinel" | "exit-before-ready", runId: string): ChildProcess {
+  if (!isPositiveInteger(child.pid)) throw new Error("CONTROLLED_PROCESS_PID_UNAVAILABLE");
+  recordedTestProcessIds.add(child.pid);
+  if (mode === "sentinel") sentinelTestProcesses.set(child, runId);
+  else {
+    forceTerminableTestProcesses.add(child);
+    forceTerminableProcessIds.add(child.pid);
+  }
+  return child;
+}
+
+function spawnControlledTestProcess(mode: "root" | "sentinel" | "exit-before-ready", runId: string): ChildProcess {
+  return recordTestProcess(spawn(process.execPath, [controlledNodeProcessTreeFixturePath, mode, runId], {
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+    windowsHide: true,
+  }), mode, runId);
+}
+
+function parseControlledReady(value: unknown, runId: string): ControlledReady | null {
+  if (!value || typeof value !== "object") return null;
+  const message = value as Record<string, unknown>;
+  if (
+    message.type !== "controlled-ready"
+    || message.runId !== runId
+    || (message.mode !== "root" && message.mode !== "sentinel")
+    || !isPositiveInteger(message.pid)
+    || (message.grandchildPid !== null && !isPositiveInteger(message.grandchildPid))
+  ) return null;
+  return {
+    type: "controlled-ready",
+    mode: message.mode,
+    runId,
+    pid: message.pid,
+    grandchildPid: message.grandchildPid as number | null,
+  };
+}
+
+async function waitForControlledReady(child: ChildProcess, runId: string): Promise<ControlledReady> {
+  return await new Promise<ControlledReady>((resolve, reject) => {
+    let settled = false;
+    const finish = (outcome: ControlledReady | Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", onExit);
+      child.removeListener("error", onError);
+      if (outcome instanceof Error) reject(outcome);
+      else resolve(outcome);
+    };
+    const onMessage = (message: unknown) => {
+      const ready = parseControlledReady(message, runId);
+      if (ready) finish(ready);
+    };
+    const onExit = () => finish(new Error("CONTROLLED_PROCESS_EXITED_BEFORE_READY"));
+    const onError = () => finish(new Error("CONTROLLED_PROCESS_START_FAILED"));
+    const timeout = setTimeout(() => finish(new Error("CONTROLLED_PROCESS_READY_TIMEOUT")), 2_000);
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}
+
+async function requestControlledShutdown(child: ChildProcess, runId: string): Promise<void> {
+  if (!isPositiveInteger(child.pid) || child.exitCode !== null || child.signalCode !== null) return;
+  if (!child.connected) {
+    const alreadyExited = await waitForRecordedProcessIdsToExit([child.pid], 2_000);
+    if (alreadyExited.exited) return;
+    throw new Error("CONTROLLED_SENTINEL_IPC_UNAVAILABLE");
+  }
+  child.send({ type: "controlled-shutdown", runId });
+  const cleanup = await waitForRecordedProcessIdsToExit([child.pid], 2_000);
+  if (!cleanup.exited) throw new Error("CONTROLLED_SENTINEL_GRACEFUL_CLEANUP_INCOMPLETE");
+}
+
+afterEach(async () => {
+  for (const child of forceTerminableTestProcesses) {
+    if (child.exitCode === null && child.signalCode === null) forceTerminateOwnedProcessTree(child);
+  }
+  const forcedCleanup = await waitForRecordedProcessIdsToExit([...forceTerminableProcessIds], 2_000);
+  for (const [sentinel, runId] of sentinelTestProcesses) await requestControlledShutdown(sentinel, runId);
+  const sentinelProcessIds = [...sentinelTestProcesses.keys()]
+    .map((child) => child.pid)
+    .filter(isPositiveInteger);
+  const sentinelCleanup = await waitForRecordedProcessIdsToExit(sentinelProcessIds, 2_000);
+  forceTerminableTestProcesses.clear();
+  sentinelTestProcesses.clear();
+  forceTerminableProcessIds.clear();
+  recordedTestProcessIds.clear();
+  if (!forcedCleanup.exited || !sentinelCleanup.exited) throw new Error("CONTROLLED_PROCESS_CLEANUP_INCOMPLETE");
+});
 describe("amazon collector isolated browser control", () => {
   it("stops after the homepage in diagnostic-only mode even when Amazon markers are normal", () => {
     expect(shouldContinueAfterHomepageDiagnostic("amazon_normal", true)).toBe(false);
@@ -79,11 +189,11 @@ describe("amazon collector isolated browser control", () => {
   });
   it("resolves the first existing supported system browser without consulting a user profile", () => {
     const candidates: BrowserExecutableCandidate[] = [
-      { browser: "chrome", locationType: "system", executablePath: "C:\\missing\\chrome.exe" },
-      { browser: "edge", locationType: "system", executablePath: "C:\\browser\\msedge.exe" },
+      { browser: "chrome", locationType: "system", executablePath: "C:\\synthetic\\first.exe" },
+      { browser: "edge", locationType: "system", executablePath: "C:\\synthetic\\second.exe" },
     ];
 
-    expect(resolveSystemBrowser(candidates, (path) => path === "C:\\browser\\msedge.exe")).toEqual(candidates[1]);
+    expect(resolveSystemBrowser(candidates, (path) => path === "C:\\synthetic\\second.exe")).toEqual(candidates[1]);
   });
 
   it("creates and removes a new isolated profile only inside the supplied safe temp root", async () => {
@@ -120,111 +230,45 @@ describe("amazon collector isolated browser control", () => {
     expect(await isLoopbackPortReleased(address.port)).toBe(true);
   });
 
-  const installedBrowser = resolveSystemBrowser();
-  it.runIf(Boolean(installedBrowser))(
-    "opens and cleans the budgeted public session without external navigation",
-    async () => {
-      const session = await openIsolatedPublicBrowserSession({
-        browser: installedBrowser!,
-        allowedOrigins: ["https://www.alibaba.com"],
-        maxNavigations: 4,
-        headless: true,
-      });
-      expect(await session.evaluateDomByValue<string>("document.title")).toBe("");
-      expect(session.navigationCount).toBe(0);
-      const cleanup = await session.close();
-      expect(cleanup).toMatchObject({
-        pageClosed: true,
-        browserClosed: true,
-        debugPortReleased: true,
-        profileRemoved: true,
-        browserProcessBaselineRestored: true,
-      });
-    },
-    30_000,
-  );
-  it.runIf(Boolean(installedBrowser))(
-    "opens the human-assisted session on about:blank and cleans it without external navigation",
-    async () => {
-      const session = await openHumanAssistedAmazonBrowser({ browser: installedBrowser!, headless: false });
-      expect(session.profileLocationType).toBe("system_temp");
-      expect(session.debugPort).toBeGreaterThan(0);
-      const inspection = await session.inspectCurrentPage({
-        query: "closet organizer",
-        capturedAt: "2026-07-14T05:00:00.000Z",
-        maxAppearances: 20,
-        expectedPostalCode: "10001",
-      });
-      expect(inspection.diagnostic.classification).toBe("blank_page");
-      expect(inspection.allowedSearchPage).toBe(false);
-      expect(inspection.extraction).toBeNull();
-      const cleanup = await session.close();
-      expect(cleanup).toMatchObject({
-        pageClosed: true,
-        browserClosed: true,
-        debugPortReleased: true,
-        profileRemoved: true,
-        browserProcessBaselineRestored: true,
-      });
-    },
-    30_000,
-  );
+  // Manual-only integration scope is retained: isolated executable launch,
+  // DevTools transport, offline page control, and cleanup require explicit
+  // human authorization and never run in the default automated suite.
+  it("closes only the recorded root process tree while leaving an independent sentinel running", async () => {
+    const runId = randomUUID();
+    const root = spawnControlledTestProcess("root", runId);
+    const rootReady = await waitForControlledReady(root, runId);
+    expect(rootReady.mode).toBe("root");
+    expect(rootReady.pid).toBe(root.pid);
+    expect(rootReady.grandchildPid).toEqual(expect.any(Number));
+    if (!isPositiveInteger(rootReady.grandchildPid)) throw new Error("CONTROLLED_GRANDCHILD_PID_UNAVAILABLE");
+    recordedTestProcessIds.add(rootReady.grandchildPid);
+    forceTerminableProcessIds.add(rootReady.grandchildPid);
 
-  it.runIf(Boolean(installedBrowser))(
-    "starts, controls, closes, and cleans two independent visible local-browser runs",
-    async () => {
-      const first = await runLocalBrowserControlSmoke({
-        browser: installedBrowser!,
-        localFixturePath,
-        headless: false,
-      });
-      const second = await runLocalBrowserControlSmoke({
-        browser: installedBrowser!,
-        localFixturePath,
-        headless: false,
-      });
+    const sentinel = spawnControlledTestProcess("sentinel", runId);
+    const sentinelReady = await waitForControlledReady(sentinel, runId);
+    expect(sentinelReady.mode).toBe("sentinel");
+    expect(sentinelReady.pid).toBe(sentinel.pid);
+    expect(sentinelReady.grandchildPid).toBeNull();
+    expect(isRecordedProcessAlive(sentinelReady.pid)).toBe(true);
 
-      for (const result of [first, second]) {
-        expect(result.pageUrlProtocol).toBe("file:");
-        expect(result.title).toBe("Amazon Collector Local Control Fixture");
-        expect(result.probeText).toBe("local-browser-control-ok");
-        expect(result.diagnosticClassification).toBe("unexpected_redirect");
-        expect(result.pageCreated).toBe(true);
-        expect(result.pageClosed).toBe(true);
-        expect(result.browserClosed).toBe(true);
-        expect(result.forcedTerminationUsed).toBe(false);
-        expect(result.debugPortReleased).toBe(true);
-        expect(result.profileRemoved).toBe(true);
-      }
-      expect(first.profileId).not.toBe(second.profileId);
-      expect(first.debugPort).not.toBe(0);
-      expect(second.debugPort).not.toBe(0);
-    },
-    60_000,
-  );
+    const timeout = await waitForRecordedProcessIdsToExit([sentinelReady.pid], 50);
+    expect(timeout).toEqual({ exited: false, remainingProcessIds: [sentinelReady.pid] });
 
-  it.runIf(Boolean(installedBrowser))(
-    "closes the browser, releases the port, and removes the profile after an offline probe exception",
-    async () => {
-      const outcome: LocalBrowserControlResult | LocalBrowserControlFailure = await runLocalBrowserControlSmoke({
-        browser: installedBrowser!,
-        localFixturePath,
-        headless: false,
-        expectedProbeText: "intentional-mismatch",
-      }).catch((error: unknown) => error as LocalBrowserControlFailure);
+    forceTerminateOwnedProcessTree(root);
+    const treeCleanup = await waitForRecordedProcessIdsToExit([rootReady.pid, rootReady.grandchildPid], 2_000);
+    expect(treeCleanup).toEqual({ exited: true, remainingProcessIds: [] });
+    forceTerminateOwnedProcessTree(root);
+    expect(isRecordedProcessAlive(sentinelReady.pid)).toBe(true);
+    await requestControlledShutdown(sentinel, runId);
+    sentinelTestProcesses.delete(sentinel);
+    await expect(waitForRecordedProcessIdsToExit([sentinelReady.pid], 2_000))
+      .resolves.toEqual({ exited: true, remainingProcessIds: [] });
+  });
 
-      expect(outcome).toBeInstanceOf(Error);
-      if (!(outcome instanceof Error)) throw new Error("EXPECTED_LOCAL_BROWSER_CONTROL_FAILURE");
-      const failure = outcome as LocalBrowserControlFailure;
-      expect(failure.message).toBe("LOCAL_BROWSER_PROBE_MISMATCH");
-      expect(failure.cleanup).toEqual({
-        pageClosed: true,
-        browserClosed: true,
-        forcedTerminationUsed: false,
-        debugPortReleased: true,
-        profileRemoved: true,
-      });
-    },
-    30_000,
-  );
+  it("reports a controlled start failure before a root process is ready", async () => {
+    const child = spawnControlledTestProcess("exit-before-ready", randomUUID());
+    await expect(waitForControlledReady(child, "unused")).rejects.toThrow("CONTROLLED_PROCESS_EXITED_BEFORE_READY");
+    await expect(waitForRecordedProcessIdsToExit([child.pid!], 2_000))
+      .resolves.toEqual({ exited: true, remainingProcessIds: [] });
+  });
 });
