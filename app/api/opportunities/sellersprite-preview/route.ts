@@ -1,358 +1,128 @@
-import { randomUUID } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
-import { requireOwnerOnly } from "@/lib/server/demoGuard";
+import type { NextRequest } from "next/server";
+import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { hasSellerSpritePreviewSameOrigin } from "@/lib/server/sellerSpritePreviewOrigin";
+import { reserveSellerSpritePreviewRequest } from "@/lib/server/sellerSpritePreviewRateLimit";
 import {
-  buildSellerSpriteOpportunityPreviewViewModel,
-  SELLERSPRITE_PREVIEW_MAX_FILE_BYTES,
-  SELLERSPRITE_PREVIEW_MAX_REQUEST_BYTES,
-} from "@/lib/sellerSpriteOpportunityPreview";
-import { buildSellerSpriteBriefBoundShadowReport } from "@/lib/upstream/sellersprite/briefBoundShadowReport";
-import { rankSellerSpriteMarketSignals } from "@/lib/upstream/sellersprite/marketSignalRanking";
-import { buildSellerSpriteMarketSnapshot } from "@/lib/upstream/sellersprite/marketSnapshot";
-import { precheckSellerSpriteXlsx } from "@/lib/upstream/sellersprite/precheck";
-import { createSellerSpriteShadowSelectionBrief } from "@/lib/upstream/sellersprite/shadowBrief";
-import type { SellerSpriteReportType } from "@/lib/upstream/sellersprite/reportType";
+  SellerSpritePreviewError,
+  precheckSellerSpritePreview,
+} from "@/lib/upstream/sellersprite/preview";
+import {
+  DEFAULT_SELLERSPRITE_PREVIEW_XLSX_LIMITS,
+  isSellerSpritePreviewXlsxZipMagic,
+  SellerSpritePreviewXlsxError,
+} from "@/lib/upstream/sellersprite/previewXlsx";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
-type PreviewErrorCode =
-  | "not_found"
-  | "owner_required"
-  | "origin_not_allowed"
-  | "missing_file"
-  | "unsupported_file_extension"
-  | "file_too_large"
-  | "report_type_required"
-  | "unsupported_report_type"
-  | "report_type_mismatch"
-  | "query_not_applicable"
-  | "client_computed_ranking_not_allowed"
-  | "unsafe_xlsx"
-  | "unsupported_sheet"
-  | "invalid_workbook"
-  | "brief_validation_failed"
-  | "no_accepted_rows"
-  | "ranking_integrity_failed"
-  | "internal_error";
+const MAX_UPLOAD_BYTES = DEFAULT_SELLERSPRITE_PREVIEW_XLSX_LIMITS.maxSourceBytes;
+const MAX_MULTIPART_BYTES = MAX_UPLOAD_BYTES + 64 * 1024;
+const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-const ERROR_MESSAGES: Record<PreviewErrorCode, string> = {
-  not_found: "该本地预览能力在当前环境不可用。",
-  owner_required: "仅 Owner 可使用 SellerSprite 本地预览。",
-  origin_not_allowed: "请求来源不受信任。",
-  missing_file: "请选择一个 SellerSprite XLSX 文件。",
-  unsupported_file_extension: "仅支持单个 .xlsx 文件。",
-  file_too_large: "文件超过 10 MiB 限制。",
-  report_type_required: "请选择 SellerSprite 报表类型。",
-  unsupported_report_type: "该 SellerSprite 报表类型暂不受支持。",
-  report_type_mismatch: "所选报表类型与文件结构不一致，请确认文件来源。",
-  query_not_applicable: "类目当前商品报表不需要查询词，请移除后重试。",
-  client_computed_ranking_not_allowed: "不得提交客户端计算的市场排序字段。",
-  unsafe_xlsx: "XLSX 文件未通过安全检查。",
-  unsupported_sheet: "未找到受支持的 SellerSprite US 商品工作表。",
-  invalid_workbook: "XLSX 工作簿结构或字段不符合预检合同。",
-  brief_validation_failed: "市场、查询、类目或 USD 价格范围无效。",
-  no_accepted_rows: "工作簿没有可用于预览的有效商品行。",
-  ranking_integrity_failed: "市场排序结果未通过服务端完整性检查。",
-  internal_error: "生成本地预览时发生内部错误。",
-};
-
-const CLIENT_COMPUTED_RANKING_FIELDS = [
-  "snapshot",
-  "ranking",
-  "rankingHash",
-  "normalizedBusinessHash",
-  "sourceBoundSnapshotHash",
-  "briefHash",
-  "signalScore",
-  "products",
-  "componentScores",
-] as const;
-
-function errorResponse(code: PreviewErrorCode, status: number) {
-  return NextResponse.json(
-    { ok: false, error: { code, message: ERROR_MESSAGES[code] } },
-    { status },
-  );
-}
-
-function environmentGate() {
-  return process.env.NODE_ENV === "production"
-    ? errorResponse("not_found", 404)
-    : null;
-}
-
-function ownerGate(request: NextRequest) {
-  const guard = requireOwnerOnly(request);
-  return guard.ok
-    ? null
-    : errorResponse("owner_required", guard.status);
-}
-
-function sameOriginGate(request: NextRequest) {
-  const suppliedOrigin = request.headers.get("origin");
-  const requestUrl = new URL(request.url);
-  const host = request.headers.get("host");
-  let expectedOrigin = requestUrl.origin;
-  if (host !== null) {
-    try {
-      expectedOrigin = new URL(`${requestUrl.protocol}//${host}`).origin;
-    } catch {
-      return errorResponse("origin_not_allowed", 403);
-    }
-  }
-  if (suppliedOrigin !== null) {
-    return suppliedOrigin === expectedOrigin
-      ? null
-      : errorResponse("origin_not_allowed", 403);
-  }
-  const suppliedReferer = request.headers.get("referer");
-  const fetchSite = request.headers.get("sec-fetch-site");
-  try {
-    if (
-      suppliedReferer !== null
-      && new URL(suppliedReferer).origin === expectedOrigin
-      && (fetchSite === null || fetchSite === "same-origin")
-    ) {
-      return null;
-    }
-  } catch {
-    // Fall through to the fail-closed response.
-  }
-  return errorResponse("origin_not_allowed", 403);
-}
-
-function contentLengthGate(request: NextRequest) {
-  const raw = request.headers.get("content-length");
-  if (raw === null) return null;
-  const length = Number(raw);
-  return Number.isSafeInteger(length)
-    && length >= 0
-    && length <= SELLERSPRITE_PREVIEW_MAX_REQUEST_BYTES
-    ? null
-    : errorResponse("file_too_large", 413);
-}
-
-function isZipMagic(bytes: Uint8Array): boolean {
-  if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) return false;
-  return (
-    (bytes[2] === 0x03 && bytes[3] === 0x04)
-    || (bytes[2] === 0x05 && bytes[3] === 0x06)
-    || (bytes[2] === 0x07 && bytes[3] === 0x08)
-  );
-}
-
-function singleTextField(formData: FormData, field: string): string | null {
-  const values = formData.getAll(field);
-  return values.length === 1 && typeof values[0] === "string"
-    ? values[0].trim()
-    : null;
-}
-
-function parseUsdValue(value: string | null): number | null {
-  if (value === null || value === "" || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
-    return null;
-  }
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function safeFileName(fileName: string): string | null {
-  if (
-    fileName === ""
-    || fileName.includes("/")
-    || fileName.includes("\\")
-    || !fileName.toLowerCase().endsWith(".xlsx")
-  ) {
-    return null;
-  }
-  return fileName;
-}
-
-function workbookError(precheck: ReturnType<typeof precheckSellerSpriteXlsx>) {
-  const fatalErrors = precheck.errors.filter(
-    (error) => error.severity === "error" && error.rowNumber === undefined,
-  );
-  if (fatalErrors.length === 0) return null;
-  if (fatalErrors.some((error) => error.code === "unsupported_sheet")) {
-    return errorResponse("unsupported_sheet", 422);
-  }
-  if (fatalErrors.some((error) => error.code === "report_type_mismatch")) {
-    return errorResponse("report_type_mismatch", 422);
-  }
-  if (fatalErrors.some((error) => error.code === "unsupported_report_type")) {
-    return errorResponse("unsupported_report_type", 422);
-  }
-  if (
-    fatalErrors.some((error) => (
-      error.code === "invalid_xlsx"
-      || error.code === "xlsx_file_too_large"
-      || error.code === "xlsx_archive_limit_exceeded"
-      || error.code === "unsupported_xlsx_feature"
-      || error.code.startsWith("unsafe_xlsx_")
-    ))
-  ) {
-    return errorResponse("unsafe_xlsx", 422);
-  }
-  return errorResponse("invalid_workbook", 422);
-}
-
-export async function GET(request: NextRequest) {
-  const unavailable = environmentGate();
-  if (unavailable) return unavailable;
-  const denied = ownerGate(request);
-  if (denied) return denied;
-  return NextResponse.json({
-    ok: true,
-    data: {
-      available: true,
-      ownerOnly: true,
-      productionEffect: false,
-      productionDatabaseWritten: false,
-    },
+function error(
+  status: number,
+  code: string,
+  message: string,
+  details?: { reasonCode: string; stage: string },
+): Response {
+  return Response.json({ ok: false, error: { code, ...(details ?? {}), message } }, {
+    status,
+    headers: { "Cache-Control": "no-store" },
   });
 }
 
-export async function POST(request: NextRequest) {
-  const unavailable = environmentGate();
-  if (unavailable) return unavailable;
+function subjectFromAccessContext(context: { mode: string; demoAccessId?: string }): string {
+  return context.mode === "demo" && context.demoAccessId
+    ? `visitor:${context.demoAccessId}`
+    : "owner";
+}
 
-  const denied = ownerGate(request);
-  if (denied) return denied;
+function isSafeXlsxFileName(name: string): boolean {
+  return Boolean(name)
+    && !/[\\/\u0000]/.test(name)
+    && name.toLowerCase().endsWith(".xlsx");
+}
 
-  const wrongOrigin = sameOriginGate(request);
-  if (wrongOrigin) return wrongOrigin;
+function isSupportedXlsxMimeType(value: string): boolean {
+  return value.toLowerCase() === XLSX_MIME_TYPE;
+}
 
-  const tooLargeRequest = contentLengthGate(request);
-  if (tooLargeRequest) return tooLargeRequest;
-  if (!request.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data")) {
-    return errorResponse("missing_file", 400);
-  }
-
-  let formData: FormData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return errorResponse("missing_file", 400);
-  }
-  if (CLIENT_COMPUTED_RANKING_FIELDS.some((field) => formData.has(field))) {
-    return errorResponse("client_computed_ranking_not_allowed", 400);
-  }
-
-  const fileEntries = [...formData.entries()].filter(([, value]) => value instanceof File);
-  const selectedFiles = formData.getAll("file").filter((value) => value instanceof File);
-  if (fileEntries.length === 0 || selectedFiles.length === 0) {
-    return errorResponse("missing_file", 400);
-  }
-  if (fileEntries.length !== 1 || selectedFiles.length !== 1) {
-    return errorResponse("unsupported_file_extension", 400);
-  }
-
-  const file = selectedFiles[0];
-  const sourceFileName = safeFileName(file.name);
-  if (!sourceFileName) return errorResponse("unsupported_file_extension", 400);
-  if (file.size === 0) return errorResponse("invalid_workbook", 422);
-  if (file.size > SELLERSPRITE_PREVIEW_MAX_FILE_BYTES) {
-    return errorResponse("file_too_large", 413);
-  }
-
-  const reportTypeValue = singleTextField(formData, "reportType");
-  if (reportTypeValue === null || reportTypeValue === "") {
-    return errorResponse("report_type_required", 400);
-  }
-  if (reportTypeValue !== "search_results" && reportTypeValue !== "category_current") {
-    return errorResponse("unsupported_report_type", 400);
-  }
-  const reportType: SellerSpriteReportType = reportTypeValue;
-  const queryEntries = formData.getAll("query");
-  if (reportType === "category_current" && queryEntries.length > 0) {
-    return errorResponse("query_not_applicable", 400);
-  }
-  const query = reportType === "search_results"
-    ? singleTextField(formData, "query")
+function parseSingleFile(form: FormData): File | null {
+  const entries = [...form.entries()];
+  if (entries.length !== 1 || entries[0]?.[0] !== "file") return null;
+  const value = entries[0][1];
+  return typeof value === "object" && value !== null && "arrayBuffer" in value && "name" in value
+    ? value as File
     : null;
-  const category = singleTextField(formData, "category");
-  const priceMin = parseUsdValue(singleTextField(formData, "priceMin"));
-  const priceMax = parseUsdValue(singleTextField(formData, "priceMax"));
-  if (
-    (reportType === "search_results"
-      && (query === null || query === "" || query.length > 200))
-    || category === null
-    || category === ""
-    || category.length > 200
-    || priceMin === null
-    || priceMax === null
-    || priceMin > priceMax
-  ) {
-    return errorResponse("brief_validation_failed", 400);
+}
+
+function hasSafeMultipartContentLength(request: Request): boolean {
+  const contentLength = request.headers.get("content-length");
+  if (!contentLength || !/^\d+$/.test(contentLength)) return false;
+  const parsed = Number(contentLength);
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_MULTIPART_BYTES;
+}
+
+export async function POST(request: NextRequest): Promise<Response> {
+  if (!hasSellerSpritePreviewSameOrigin(request)) {
+    return error(403, "same_origin_required", "请求来源无效。");
+  }
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data;")) {
+    return error(415, "xlsx_multipart_required", "只接受单个 XLSX 文件上传。");
+  }
+  if (!hasSafeMultipartContentLength(request)) {
+    return error(413, "upload_too_large", "上传内容大小无效或超出限制。");
   }
 
-  let bytes: Uint8Array;
-  try {
-    bytes = new Uint8Array(await file.arrayBuffer());
-  } catch {
-    return errorResponse("invalid_workbook", 422);
-  }
-  if (!isZipMagic(bytes)) return errorResponse("unsafe_xlsx", 422);
+  const guard = requireAuthenticated(request);
+  if (!guard.ok) return error(guard.status, guard.code, guard.message);
+  const reservation = reserveSellerSpritePreviewRequest(subjectFromAccessContext(guard.context));
+  if (!reservation.ok) return error(429, "preview_rate_limited", "预览请求过于频繁，请稍后重试。");
 
-  const now = new Date().toISOString();
   try {
-    const precheck = precheckSellerSpriteXlsx(bytes, {
-      capturedAt: now,
-      expectedReportType: reportType,
-    });
-    const fatalWorkbookError = workbookError(precheck);
-    if (fatalWorkbookError) return fatalWorkbookError;
-    if (precheck.acceptedRows === 0) return errorResponse("no_accepted_rows", 422);
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch {
+      return error(400, "invalid_multipart", "无法读取上传文件。");
+    }
+    const file = parseSingleFile(form);
+    if (!file) return error(400, "single_xlsx_required", "只能上传一个名为 file 的 XLSX 文件。");
+    if (!isSafeXlsxFileName(file.name) || !isSupportedXlsxMimeType(file.type)) {
+      return error(415, "xlsx_required", "只支持卖家精灵导出的 Amazon 美国站搜索结果 XLSX。");
+    }
+    if (file.size < 1 || file.size > MAX_UPLOAD_BYTES) {
+      return error(413, "upload_too_large", "XLSX 文件大小超出限制。");
+    }
 
-    const snapshot = buildSellerSpriteMarketSnapshot(precheck);
-    const briefCommon = {
-      marketplace: "amazon.com",
-      market: "US",
-      currency: "USD",
-      category,
-      priceMin,
-      priceMax,
-      requiredSignals: reportType === "search_results"
-        ? ["price", "rating", "reviews", "searchRank"]
-        : ["price", "rating", "reviews"],
-      optionalSignals: ["estimatedMonthlySales", "estimatedMonthlyRevenue", "variationCount"],
-      createdAt: now,
-      briefSource: "sellersprite-opportunity-preview-ui",
-    };
-    const brief = reportType === "search_results"
-      ? createSellerSpriteShadowSelectionBrief({
-          ...briefCommon,
-          reportType,
-          query: query!,
-        })
-      : createSellerSpriteShadowSelectionBrief({
-          ...briefCommon,
-          reportType,
-          query: null,
-        });
-    const report = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
-    const ranking = rankSellerSpriteMarketSignals({ snapshot, brief });
-    const viewModel = buildSellerSpriteOpportunityPreviewViewModel({
-      requestId: randomUUID(),
-      sourceFileName,
-      headerColumnCount: precheck.headerColumnCount,
-      snapshot,
-      brief,
-      report,
-      ranking,
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!isSellerSpritePreviewXlsxZipMagic(bytes)) {
+      return error(422, "invalid_xlsx", "XLSX 文件未通过安全检查。");
+    }
+    const preview = precheckSellerSpritePreview(bytes);
+    return Response.json({ ok: true, preview }, {
+      status: preview.blockingErrors.length > 0 ? 422 : 200,
+      headers: { "Cache-Control": "no-store" },
     });
-    return NextResponse.json({ ok: true, data: viewModel });
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("SELLERSPRITE_BRIEF_")) {
-      return errorResponse("brief_validation_failed", 400);
+  } catch (caught) {
+    if (caught instanceof SellerSpritePreviewXlsxError) {
+      if (caught.code === "unsupported_xlsx_feature") {
+        return error(
+          422,
+          caught.code,
+          "该 XLSX 包含当前安全解析器不支持的工作簿特征。",
+          {
+            reasonCode: caught.reasonCode ?? "unsupported_ooxml_feature",
+            stage: caught.stage ?? "ooxml_package",
+          },
+        );
+      }
+      return error(422, caught.code, "XLSX 文件未通过安全检查或报表合同校验。");
     }
-    if (
-      error instanceof Error
-      && error.message === "SELLERSPRITE_RANKING_INTEGRITY_FAILED"
-    ) {
-      return errorResponse("ranking_integrity_failed", 500);
+    if (caught instanceof SellerSpritePreviewError) {
+      return error(422, caught.code, "XLSX 文件未通过安全检查或报表合同校验。");
     }
-    return errorResponse("internal_error", 500);
+    return error(422, "invalid_xlsx", "无法安全解析 XLSX 文件。");
+  } finally {
+    reservation.release();
   }
 }

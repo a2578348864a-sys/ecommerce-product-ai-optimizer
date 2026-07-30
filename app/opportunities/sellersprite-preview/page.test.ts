@@ -1,36 +1,33 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
 
-const { notFoundMock } = vi.hoisted(() => ({
-  notFoundMock: vi.fn(() => {
-    throw new Error("NEXT_NOT_FOUND");
-  }),
-}));
-
-vi.mock("next/navigation", () => ({
-  notFound: notFoundMock,
-}));
-
-vi.mock("@/components/cross-border/SellerSpriteOpportunityPreview", () => ({
-  SellerSpriteOpportunityPreview: () => null,
-}));
-
-import SellerSpriteOpportunityPreviewPage from "./page";
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.clearAllMocks();
-});
-
-describe("SellerSprite opportunity preview page gate", () => {
-  it("is not routable in production", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    expect(() => SellerSpriteOpportunityPreviewPage()).toThrow("NEXT_NOT_FOUND");
-    expect(notFoundMock).toHaveBeenCalledOnce();
+describe("SellerSprite Preview V2 page entry", () => {
+  it("uses the V2 workspace shell while keeping Preview isolated from the opportunities main page", async () => {
+    const source = await readFile(new URL("./page.tsx", import.meta.url), "utf8");
+    expect(source).toContain("SellerSpritePreviewPanel");
+    expect(source).toContain("WorkspaceSidebar");
+    expect(source).toContain("WorkspaceMobileNav");
+    expect(source).toContain("workspace-layout");
+    expect(source).toContain('href="/opportunities"');
+    expect(source).toContain("发现商品");
+    expect(source).toContain("卖家精灵数据导入");
+    expect(source).toContain("商品报表安全预览");
+    expect(source).toContain("卖家精灵美国站搜索结果导出");
+    expect(source).toContain("只读预览，尚未进入商品研究池");
+    expect(source).toContain("不是 Amazon 官方导出");
+    expect(source).not.toContain("notFound");
+    expect(source).not.toContain("opportunityCandidateService");
+    expect(source).not.toMatch(/Ranking|Snapshot|Shadow Report|机会分|推荐采购/);
   });
 
-  it("renders only in a non-production environment", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    expect(SellerSpriteOpportunityPreviewPage()).not.toBeNull();
-    expect(notFoundMock).not.toHaveBeenCalled();
+  it("uses the existing child-route navigation rule so 发现商品 is active", async () => {
+    const sidebar = await readFile(
+      new URL("../../../components/WorkspaceSidebar.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sidebar).toContain('{ label: "发现商品", href: "/opportunities"');
+    expect(sidebar).toContain('pathname.startsWith(href + "/")');
+    expect(sidebar).toContain("linear-nav-active");
   });
 });
