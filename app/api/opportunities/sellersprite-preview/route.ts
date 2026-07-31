@@ -117,7 +117,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             preview.acceptedRowsDigest!,
             preview.acceptedRowCount,
             preview.warningDigest!,
-            preview.acceptedRowCount,
+            preview.warnings.length,
             preview.parserContractVersion!
           );
         } catch {

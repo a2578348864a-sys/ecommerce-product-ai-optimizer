@@ -43,6 +43,14 @@ import {
   parseProductBatchCandidateAnalysis,
   parseProductBatchCandidateSource,
 } from "@/lib/server/productBatchCandidateSource";
+import {
+  buildSellerSpriteCandidateSourceMeta,
+  parseSellerSpriteCandidateSourceMeta,
+  sellerSpriteCandidateIdentityKey,
+  SELLERSPRITE_IMPORT_MARKETPLACE,
+  type SellerSpriteImportRow,
+  type SellerSpriteImportSummary,
+} from "@/lib/server/sellerSpriteImportContract";
 
 // ── Types ───────────────────────────────────────
 
@@ -948,6 +956,85 @@ export function deleteSandboxCandidate(
     candidates: store.candidates.filter((_, index) => index !== idx),
   });
   return "deleted";
+}
+
+// ── SellerSprite Candidate Authority (Visitor path) ─────────────────────────
+// Runs entirely inside one withSandboxSubjectLock: load → scan identity →
+// decide created/skipped/conflict → mutate → save once. No nested re-acquire.
+
+export function importSellerSpriteCandidatesForVisitor(
+  demoAccessId: string,
+  input: {
+    rows: SellerSpriteImportRow[];
+    sourceFileSha256: string;
+    importedAt: string;
+  },
+): Promise<SellerSpriteImportSummary> {
+  return withSandboxSubjectLock(demoAccessId, () => {
+    const store = loadDemoSandboxStoreStrict();
+    const byKey = new Map<string, SandboxCandidate>();
+    for (const candidate of store.candidates) {
+      if (candidate.demoAccessId !== demoAccessId) continue;
+      const meta = parseSellerSpriteCandidateSourceMeta(candidate.sourceMetaJson);
+      if (!meta) continue;
+      const key = sellerSpriteCandidateIdentityKey(meta);
+      if (!byKey.has(key)) byKey.set(key, candidate);
+    }
+
+    const created: SellerSpriteImportSummary["created"] = [];
+    const skipped: SellerSpriteImportSummary["skipped"] = [];
+    const conflicts: SellerSpriteImportSummary["conflicts"] = [];
+    let changed = false;
+
+    for (const row of input.rows) {
+      const key = `${SELLERSPRITE_IMPORT_MARKETPLACE}:${row.asin}`;
+      const existing = byKey.get(key);
+      if (!existing) {
+        const sourceMetaJson = buildSellerSpriteCandidateSourceMeta(row, input.sourceFileSha256, input.importedAt);
+        const candidate: SandboxCandidate = {
+          id: generateSandboxCandidateId(),
+          demoAccessId,
+          name: row.title,
+          rawInput: "",
+          link: row.amazonUrl,
+          score: 0,
+          source: "SellerSprite",
+          keyword: "",
+          riskLevel: "",
+          riskLabel: "",
+          summaryLabel: "",
+          status: "pending",
+          sourceMetaJson,
+          analysisJson: "{}",
+          createdAt: input.importedAt,
+          convertedTaskId: null,
+          originProductBatchItemId: null,
+          lastActionAt: null,
+        };
+        store.candidates.push(candidate);
+        created.push({ rowHash: row.rowHash, candidateId: candidate.id });
+        byKey.set(key, candidate);
+        changed = true;
+        continue;
+      }
+      const existingMeta = parseSellerSpriteCandidateSourceMeta(existing.sourceMetaJson);
+      const sameSnapshot = Boolean(existingMeta)
+        && existingMeta!.source.sourceFileSha256 === input.sourceFileSha256
+        && existingMeta!.source.rowHash === row.rowHash;
+      if (sameSnapshot) {
+        skipped.push({ rowHash: row.rowHash, candidateId: existing.id, reason: "already_imported" });
+      } else {
+        conflicts.push({
+          rowHash: row.rowHash,
+          candidateId: existing.id,
+          reason: "candidate_exists_with_different_snapshot",
+        });
+      }
+    }
+
+    if (changed) saveDemoSandboxStore(store);
+    return { created, skipped, conflicts };
+  });
 }
 
 export function importSandboxCandidates(

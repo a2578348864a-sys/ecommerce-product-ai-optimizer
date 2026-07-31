@@ -146,7 +146,7 @@ describe("SellerSprite Preview Import Token", () => {
     const result = verifySellerSpritePreviewImportToken(token);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toBe("preview_token_expired");
+      expect(result.reason).toBe("preview_token_not_yet_valid");
     }
     vi.mocked(Date.now).mockRestore();
   });

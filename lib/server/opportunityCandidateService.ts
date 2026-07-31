@@ -1,6 +1,14 @@
 import { prisma } from "@/lib/server/db";
 import type { Prisma } from "@prisma/client";
 import {
+  buildSellerSpriteCandidateSourceMeta,
+  parseSellerSpriteCandidateSourceMeta,
+  sellerSpriteCandidateIdentityKey,
+  SELLERSPRITE_IMPORT_MARKETPLACE,
+  type SellerSpriteImportRow,
+  type SellerSpriteImportSummary,
+} from "@/lib/server/sellerSpriteImportContract";
+import {
   assertCandidateSourceUpdateAllowed,
   getCandidateSourceIntegrity,
   type CandidateSourceIntegrity,
@@ -835,4 +843,96 @@ export async function importLocalCandidates(
 ): Promise<{ imported: number; skipped: number }> {
   const result = await upsertCandidates(items);
   return { imported: result.created + result.updated, skipped: 0 };
+}
+
+// ── SellerSprite Candidate Authority (Owner path) ───────────────────────────
+// single_process_only: an in-process promise lock serializes the whole
+// read → decide → transaction-create → return scope for the Owner domain.
+
+const OWNER_SELLERSPRITE_IMPORT_LOCK_KEY = "sellersprite-candidate-import:owner";
+const ownerSellerSpriteImportLocks = new Map<string, Promise<void>>();
+
+async function withOwnerSellerSpriteImportLock<T>(action: () => Promise<T>): Promise<T> {
+  const previous = ownerSellerSpriteImportLocks.get(OWNER_SELLERSPRITE_IMPORT_LOCK_KEY) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolveLock) => {
+    release = resolveLock;
+  });
+  ownerSellerSpriteImportLocks.set(OWNER_SELLERSPRITE_IMPORT_LOCK_KEY, current);
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (ownerSellerSpriteImportLocks.get(OWNER_SELLERSPRITE_IMPORT_LOCK_KEY) === current) {
+      ownerSellerSpriteImportLocks.delete(OWNER_SELLERSPRITE_IMPORT_LOCK_KEY);
+    }
+  }
+}
+
+export async function importOwnerSellerSpriteCandidates(input: {
+  rows: SellerSpriteImportRow[];
+  sourceFileSha256: string;
+  importedAt: string;
+}): Promise<SellerSpriteImportSummary> {
+  return withOwnerSellerSpriteImportLock(async () => {
+    return prisma.$transaction(async (tx) => {
+      const all = await tx.opportunityCandidate.findMany();
+      const byKey = new Map<string, (typeof all)[number]>();
+      for (const record of all) {
+        const meta = parseSellerSpriteCandidateSourceMeta(record.sourceMetaJson);
+        if (!meta) continue;
+        const key = sellerSpriteCandidateIdentityKey(meta);
+        if (!byKey.has(key)) byKey.set(key, record);
+      }
+
+      const created: SellerSpriteImportSummary["created"] = [];
+      const skipped: SellerSpriteImportSummary["skipped"] = [];
+      const conflicts: SellerSpriteImportSummary["conflicts"] = [];
+
+      for (const row of input.rows) {
+        const key = `${SELLERSPRITE_IMPORT_MARKETPLACE}:${row.asin}`;
+        const existing = byKey.get(key);
+        if (!existing) {
+          const sourceMetaJson = buildSellerSpriteCandidateSourceMeta(row, input.sourceFileSha256, input.importedAt);
+          const record = await tx.opportunityCandidate.create({
+            data: {
+              name: row.title,
+              rawInput: "",
+              link: row.amazonUrl,
+              score: 0,
+              source: "SellerSprite",
+              keyword: "",
+              riskLevel: "",
+              riskLabel: "",
+              summaryLabel: "",
+              status: "pending",
+              sourceMetaJson,
+              analysisJson: "{}",
+              convertedTaskId: null,
+              lastActionAt: new Date(),
+            },
+          });
+          created.push({ rowHash: row.rowHash, candidateId: record.id });
+          byKey.set(key, record);
+          continue;
+        }
+        const existingMeta = parseSellerSpriteCandidateSourceMeta(existing.sourceMetaJson);
+        const sameSnapshot = Boolean(existingMeta)
+          && existingMeta!.source.sourceFileSha256 === input.sourceFileSha256
+          && existingMeta!.source.rowHash === row.rowHash;
+        if (sameSnapshot) {
+          skipped.push({ rowHash: row.rowHash, candidateId: existing.id, reason: "already_imported" });
+        } else {
+          conflicts.push({
+            rowHash: row.rowHash,
+            candidateId: existing.id,
+            reason: "candidate_exists_with_different_snapshot",
+          });
+        }
+      }
+
+      return { created, skipped, conflicts };
+    });
+  });
 }

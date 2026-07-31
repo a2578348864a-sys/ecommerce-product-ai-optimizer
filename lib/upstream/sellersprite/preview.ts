@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { computeSellerSpriteRowHash } from "../../server/sellerSpriteImportContract";
 import { parseSellerSpritePreviewXlsx } from "./previewXlsx";
 
 const REPORT_SHEET_NAME = "US";
@@ -107,6 +108,8 @@ export type SellerSpriteAcceptedPreviewRow = {
   fieldStatus: PreviewFieldStatusMap;
   missingFields: string[];
   warnings: Array<{ code: "missing_optional_field" | "unknown_optional_field"; field: string }>;
+  /** Populated by the precheck return for every accepted row. */
+  rowHash?: string;
 };
 
 export type SellerSpritePreviewResult = {
@@ -491,7 +494,15 @@ export function precheckSellerSpritePreview(input: Uint8Array): SellerSpritePrev
     },
     acceptedRowCount: accepted.length,
     rejectedRowCount: rejected.length,
-    acceptedRows: accepted.slice(0, MAX_PREVIEW_ROWS),
+    acceptedRows: accepted.map((row) => ({
+      ...row,
+      rowHash: computeSellerSpriteRowHash({
+        rowNumber: row.rowNumber,
+        asin: row.facts.asin,
+        title: row.facts.title,
+        amazonUrl: row.facts.amazonUrl,
+      }),
+    })).slice(0, MAX_PREVIEW_ROWS),
     rejectedRows: rejected.slice(0, MAX_REJECTED_ROWS),
     duplicates: duplicates.slice(0, MAX_DUPLICATE_GROUPS),
     warnings,

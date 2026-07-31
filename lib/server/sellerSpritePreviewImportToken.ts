@@ -12,6 +12,28 @@ function getSigningKey(): Buffer | null {
     .digest();
 }
 
+export const SELLERSPRITE_PREVIEW_IMPORT_PURPOSE = "qingxuan:sellersprite-preview-import:v1";
+
+export function sellerSpritePreviewImportSubjectScopeHash(subjectScope: string): string {
+  return createHmac("sha256", SELLERSPRITE_PREVIEW_IMPORT_PURPOSE)
+    .update(subjectScope)
+    .digest("hex")
+    .toLowerCase();
+}
+
+export type SellerSpritePreviewImportTokenPayload = {
+  version: string;
+  subjectScopeHash: string;
+  sourceFileSha256: string;
+  acceptedRowsDigest: string;
+  acceptedRowCount: number;
+  warningDigest: string;
+  warningCount: number;
+  parserContractVersion: string;
+  issuedAt: number;
+  expiresAt: number;
+};
+
 export function generateSellerSpritePreviewImportToken(
   subjectScope: string,
   sourceFileSha256: string,
@@ -29,11 +51,7 @@ export function generateSellerSpritePreviewImportToken(
   const now = Date.now();
   const expiresAt = now + 300 * 1000; // 5 minutes
 
-  const purpose = "qingxuan:sellersprite-preview-import:v1";
-  const subjectScopeHash = createHmac("sha256", purpose)
-    .update(subjectScope)
-    .digest("hex")
-    .toLowerCase();
+  const subjectScopeHash = sellerSpritePreviewImportSubjectScopeHash(subjectScope);
 
   const payload = {
     version: "sellersprite_preview_import_v1",
@@ -61,7 +79,7 @@ export function generateSellerSpritePreviewImportToken(
 
 export function verifySellerSpritePreviewImportToken(token: string): {
   ok: true;
-  payload: any;
+  payload: SellerSpritePreviewImportTokenPayload;
 } | {
   ok: false;
   reason: string;
@@ -83,7 +101,7 @@ export function verifySellerSpritePreviewImportToken(token: string): {
   const b64Payload = parts[1];
   const b64Sig = parts[2];
   const payloadJson = Buffer.from(b64Payload, "base64url").toString("utf-8");
-  const payload = JSON.parse(payloadJson);
+  const payload = JSON.parse(payloadJson) as SellerSpritePreviewImportTokenPayload;
 
   // Signature verification
   const computedSig = createHmac("sha256", key).update(payloadJson).digest();
@@ -92,10 +110,16 @@ export function verifySellerSpritePreviewImportToken(token: string): {
   }
 
   const now = Date.now();
-  const issued = payload.issuedAt;
-  const expires = payload.expiresAt;
-  if (now < issued - 30000 || now > expires + 30000) {
+  const issued = Number(payload.issuedAt);
+  const expires = Number(payload.expiresAt);
+  if (!Number.isFinite(issued) || !Number.isFinite(expires)) {
+    return { ok: false, reason: "malformed_preview_token" };
+  }
+  if (now > expires + 30000) {
     return { ok: false, reason: "preview_token_expired" };
+  }
+  if (now < issued - 30000) {
+    return { ok: false, reason: "preview_token_not_yet_valid" };
   }
 
   if (payload.version !== "sellersprite_preview_import_v1" || payload.parserContractVersion !== "sellersprite_preview_import_v1") {
