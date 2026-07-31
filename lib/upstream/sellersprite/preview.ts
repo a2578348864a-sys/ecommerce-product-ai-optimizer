@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { parseSellerSpritePreviewXlsx } from "./previewXlsx";
 
 const REPORT_SHEET_NAME = "US";
+// Standard SellerSprite Amazon US search-results workbook layout:
+// a visible "US" business sheet plus optional metadata sheets. Any other
+// worksheet name is rejected fail-closed. Selection is by exact name only.
+const ALLOWED_WORKSHEET_NAMES = new Set(["US", "Brands", "Sellers", "Note"]);
 const MAX_PREVIEW_ROWS = 200;
 const MAX_REJECTED_ROWS = 100;
 const MAX_DUPLICATE_GROUPS = 100;
@@ -318,11 +322,23 @@ function buildRow(
   statuses.brand = fieldStatus("brand", brand.cell);
   const category = readText(values, indexes.get("category"), "category", reasons);
   statuses.category = fieldStatus("category", category.cell);
-  const searchRank = readNumber(values, indexes.get("searchRank"), "searchRank", reasons, {
-    min: 0,
-    max: 1_000_000_000,
-    integer: true,
-  });
+  const searchRank = ((): { value: number | undefined; cell: CellValue } => {
+    const searchRankCell = cellValue(values, indexes.get("searchRank"));
+    if (searchRankCell.kind === "value") {
+      const stripped = searchRankCell.value.replaceAll(",", "");
+      if (!/^(?:\d+|\d+\.\d+)$/.test(stripped)) {
+        // Real SellerSprite search rank is a display string such as
+        // "自然位:第1页第1位" or "广告位:第1页第8位". Treat non-numeric
+        // rank text as unknown instead of rejecting the whole row.
+        return { value: undefined, cell: { value: "", kind: "unknown" } };
+      }
+    }
+    return readNumber(values, indexes.get("searchRank"), "searchRank", reasons, {
+      min: 0,
+      max: 1_000_000_000,
+      integer: true,
+    });
+  })();
   statuses.searchRank = fieldStatus("searchRank", searchRank.cell);
   const estimatedMonthlySales = readNumber(values, indexes.get("estimatedMonthlySales"), "estimatedMonthlySales", reasons, {
     min: 0,
@@ -390,14 +406,23 @@ function hasCriticalConflict(rows: readonly SellerSpriteAcceptedPreviewRow[]): b
 
 export function precheckSellerSpritePreview(input: Uint8Array): SellerSpritePreviewResult {
   const workbook = parseSellerSpritePreviewXlsx(input);
-  const expectedSheets = workbook.sheets.filter((sheet) => normalize(sheet.name) === REPORT_SHEET_NAME || normalize(sheet.name) === 'US');
-  if (expectedSheets.length === 0) {
+  // Fail closed on any worksheet name outside the standard SellerSprite set.
+  // Hidden sheets are already rejected at the OOXML decode layer.
+  for (const ws of workbook.sheets) {
+    if (!ALLOWED_WORKSHEET_NAMES.has(ws.name)) {
+      fail("unsupported_report_layout", `报表包含不受支持的工作表“${ws.name}”。`);
+    }
+  }
+  // Select the business sheet by exact name only. Metadata sheets
+  // (Brands / Sellers / Note) never participate in product-row parsing.
+  const businessSheets = workbook.sheets.filter((ws) => ws.name === REPORT_SHEET_NAME);
+  if (businessSheets.length === 0) {
     fail("unsupported_report_layout", "只支持卖家精灵导出的 Amazon 美国站搜索结果 XLSX。");
   }
-  if (expectedSheets.length !== 1 || workbook.sheets.length !== 1) {
-    fail("ambiguous_product_worksheet", "报表必须且只能包含一个可见的 US Search Results 工作表。");
+  if (businessSheets.length !== 1) {
+    fail("ambiguous_product_worksheet", "报表必须且只能包含一个可见的 US 工作表。");
   }
-  const sheet = expectedSheets[0];
+  const sheet = businessSheets[0];
   const header = sheet.rows[0];
   if (header.rowNumber !== 1) fail("unsupported_report_layout", "报表首行必须是字段表头。");
   const indexes = headerIndexes(header.values);

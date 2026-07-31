@@ -94,6 +94,25 @@ function columnName(index: number): string {
   return result;
 }
 
+function buildWorksheetXml(
+  headers: readonly string[],
+  rows: ReadonlyArray<ReadonlyArray<string | null>>,
+): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>',
+    `<row r="1">${headers.map((header, index) => `<c r="${columnName(index)}1" t="inlineStr"><is><t>${xmlEscape(header)}</t></is></c>`).join("")}</row>`,
+    ...rows.map((row, rowIndex) => {
+      const rowNumber = rowIndex + 2;
+      const cells = row.flatMap((value, columnIndex) => value === null
+        ? []
+        : [`<c r="${columnName(columnIndex)}${rowNumber}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`]);
+      return `<row r="${rowNumber}">${cells.join("")}</row>`;
+    }),
+    "</sheetData></worksheet>",
+  ].join("");
+}
+
 export function createSellerSpritePreviewWorkbook(options: {
   headers: readonly string[];
   rows: ReadonlyArray<ReadonlyArray<string | null>>;
@@ -105,19 +124,7 @@ export function createSellerSpritePreviewWorkbook(options: {
   workbookRelationshipsXmlOverride?: string;
   extraEntries?: readonly StoredZipEntry[];
 }): Buffer {
-  const sheetXml = options.sheetXmlOverride ?? [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>',
-    `<row r="1">${options.headers.map((header, index) => `<c r="${columnName(index)}1" t="inlineStr"><is><t>${xmlEscape(header)}</t></is></c>`).join("")}</row>`,
-    ...options.rows.map((row, rowIndex) => {
-      const rowNumber = rowIndex + 2;
-      const cells = row.flatMap((value, columnIndex) => value === null
-        ? []
-        : [`<c r="${columnName(columnIndex)}${rowNumber}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`]);
-      return `<row r="${rowNumber}">${cells.join("")}</row>`;
-    }),
-    "</sheetData></worksheet>",
-  ].join("");
+  const sheetXml = options.sheetXmlOverride ?? buildWorksheetXml(options.headers, options.rows);
 
   return createStoredZip([
     {
@@ -136,6 +143,70 @@ export function createSellerSpritePreviewWorkbook(options: {
         ?? '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
     },
     { name: "xl/worksheets/sheet1.xml", content: sheetXml },
+    ...(options.extraEntries ?? []),
+  ]);
+}
+
+export type PreviewFixtureSheetSpec = {
+  name: string;
+  state?: "hidden" | "veryHidden";
+  headers?: readonly string[];
+  rows?: ReadonlyArray<ReadonlyArray<string | null>>;
+};
+
+/**
+ * Build a multi-worksheet workbook fixture with fully controlled sheet order.
+ * Used to model the real SellerSprite layout: a "US" business sheet plus
+ * optional "Brands" / "Sellers" / "Note" metadata sheets.
+ */
+export function createSellerSpritePreviewWorkbookWithSheets(
+  sheets: readonly PreviewFixtureSheetSpec[],
+  options: {
+    extraEntries?: readonly StoredZipEntry[];
+    contentTypesXmlOverride?: string;
+    workbookRelationshipsXmlOverride?: string;
+    activeTab?: number;
+  } = {},
+): Buffer {
+  if (sheets.length === 0) throw new Error("at least one sheet required");
+  const seen = new Set<string>();
+  for (const sheet of sheets) {
+    if (!sheet.name || seen.has(sheet.name)) throw new Error("duplicate or missing sheet name");
+    seen.add(sheet.name);
+  }
+
+  const workbookPr = options.activeTab !== undefined
+    ? `<workbookPr activeTab="${options.activeTab}"/>`
+    : "";
+  const workbookXml = [
+    '<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">',
+    workbookPr,
+    `<sheets>${sheets.map((sheet, index) => (
+      `<sheet name="${xmlEscape(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"${sheet.state ? ` state="${sheet.state}"` : ""}/>`
+    )).join("")}</sheets></workbook>`,
+  ].join("");
+
+  const relsXml = options.workbookRelationshipsXmlOverride
+    ?? [
+      '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+      sheets.map((_, index) => (
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`
+      )).join(""),
+      "</Relationships>",
+    ].join("");
+
+  return createStoredZip([
+    {
+      name: "[Content_Types].xml",
+      content: options.contentTypesXmlOverride
+        ?? '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+    },
+    { name: "xl/workbook.xml", content: workbookXml },
+    { name: "xl/_rels/workbook.xml.rels", content: relsXml },
+    ...sheets.map((sheet, index) => ({
+      name: `xl/worksheets/sheet${index + 1}.xml`,
+      content: buildWorksheetXml(sheet.headers ?? [], sheet.rows ?? []),
+    })),
     ...(options.extraEntries ?? []),
   ]);
 }

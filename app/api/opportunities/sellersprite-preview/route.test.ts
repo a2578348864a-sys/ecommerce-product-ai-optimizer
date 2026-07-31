@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSellerSpritePreviewWorkbook } from "@/lib/upstream/sellersprite/previewTestFixtures";
+import {
+  createSellerSpritePreviewWorkbook,
+  createSellerSpritePreviewWorkbookWithSheets,
+} from "@/lib/upstream/sellersprite/previewTestFixtures";
 
 const auth = vi.hoisted(() => vi.fn());
 
@@ -416,6 +419,23 @@ describe("POST /api/opportunities/sellersprite-preview", () => {
     const ownerPayload = JSON.parse(Buffer.from(ownerParts[1], "base64url").toString("utf-8"));
     const visitorPayload = JSON.parse(Buffer.from(visitorParts[1], "base64url").toString("utf-8"));
     expect(ownerPayload.subjectScopeHash).not.toBe(visitorPayload.subjectScopeHash);
+  });
+
+  it("issues an importToken for a valid multi-sheet standard workbook", async () => {
+    const multiSheetSource = createSellerSpritePreviewWorkbookWithSheets([
+      { name: "Note", headers: ["Note"], rows: [["private"]] },
+      { name: "US", headers, rows: [["B0TEST0001", "Test product", "https://www.amazon.com/dp/B0TEST0001"]] },
+      { name: "Brands", headers: ["Brand"], rows: [["Brand A"]] },
+      { name: "Sellers", headers: ["Seller"], rows: [["Seller X"]] },
+    ]);
+    authenticated("owner");
+    const response = await POST(requestFor(multiSheetSource));
+    expect(response.status).toBe(200);
+    const payload = await json(response);
+    const preview = payload.preview as Record<string, unknown>;
+    expect(preview.acceptedRowCount).toBe(1);
+    expect((preview.blockingErrors as unknown[]).length).toBe(0);
+    expect(preview.importToken).toMatch(/^preview-import-v1\./);
   });
 });
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createSellerSpritePreviewWorkbook } from "./previewTestFixtures";
+import {
+  createSellerSpritePreviewWorkbook,
+  createSellerSpritePreviewWorkbookWithSheets,
+} from "./previewTestFixtures";
 import { precheckSellerSpritePreview, SellerSpritePreviewError } from "./preview";
+import { SellerSpritePreviewXlsxError } from "./previewXlsx";
 
 const headers = [
   "ASIN",
@@ -47,6 +51,22 @@ function expectPrecheckFailure(input: Uint8Array, code: SellerSpritePreviewError
   } catch (error) {
     expect(error).toBeInstanceOf(SellerSpritePreviewError);
     expect((error as SellerSpritePreviewError).code).toBe(code);
+  }
+}
+
+function expectXlsxFailure(
+  input: Uint8Array,
+  code: string,
+  reasonCode?: string,
+): void {
+  try {
+    precheckSellerSpritePreview(input);
+    throw new Error("expected preview precheck to fail");
+  } catch (error) {
+    expect(error).toBeInstanceOf(SellerSpritePreviewXlsxError);
+    const xlsxError = error as SellerSpritePreviewXlsxError;
+    expect(xlsxError.code).toBe(code);
+    if (reasonCode !== undefined) expect(xlsxError.reasonCode).toBe(reasonCode);
   }
 }
 
@@ -128,6 +148,16 @@ describe("SellerSprite Amazon US Search Results preview precheck", () => {
     }), "unsupported_report_layout");
   });
 
+  it("accepts non-numeric real SellerSprite search-rank text as unknown", () => {
+    const textRank = [...validRow];
+    textRank[10] = "自然位:第1页第1位";
+    const result = precheckSellerSpritePreview(createSellerSpritePreviewWorkbook({ headers, rows: [textRank] }));
+    expect(result.acceptedRowCount).toBe(1);
+    expect(result.acceptedRows[0].fieldStatus.searchRank).toBe("unknown");
+    expect(result.acceptedRows[0].missingFields).toContain("searchRank");
+    expect(result.acceptedRows[0].estimates).not.toHaveProperty("searchRank");
+  });
+
   it("quarantines invalid rows while retaining safe rows and preserves missing versus unknown", () => {
     const badAsin = [...validRow];
     badAsin[0] = "invalid";
@@ -199,5 +229,199 @@ describe("SellerSprite Amazon US Search Results preview precheck", () => {
       rowNumbers: [2, 3],
     }]);
     expect(blocked.acceptedRows).toHaveLength(2);
+  });
+
+  describe("standard SellerSprite workbook layout", () => {
+    const businessSheet = { name: "US", headers, rows: [validRow] };
+    const metadataSheets = [
+      { name: "Brands", headers: ["Brand"], rows: [["Brand A"]] },
+      { name: "Sellers", headers: ["Seller"], rows: [["Seller X"]] },
+      { name: "Note", headers: ["Note"], rows: [["private metadata note"]] },
+    ];
+
+    it("accepts a lone US sheet", () => {
+      const result = precheckSellerSpritePreview(createSellerSpritePreviewWorkbookWithSheets([businessSheet]));
+      expect(result.acceptedRowCount).toBe(1);
+      expect(result.acceptedRows[0].facts.asin).toBe("B0TEST0001");
+    });
+
+    it("accepts US + Brands + Sellers + Note", () => {
+      const result = precheckSellerSpritePreview(
+        createSellerSpritePreviewWorkbookWithSheets([businessSheet, ...metadataSheets]),
+      );
+      expect(result.acceptedRowCount).toBe(1);
+      expect(result.schemaVersion).toBe("sellersprite_preview_v1");
+    });
+
+    it("accepts US + Brands + Sellers + Note in any sheet order", () => {
+      const reordered = createSellerSpritePreviewWorkbookWithSheets([
+        metadataSheets[2], // Note
+        metadataSheets[0], // Brands
+        businessSheet,     // US
+        metadataSheets[1], // Sellers
+      ]);
+      const result = precheckSellerSpritePreview(reordered);
+      expect(result.acceptedRowCount).toBe(1);
+    });
+
+    it("accepts only a subset of optional metadata sheets", () => {
+      const result = precheckSellerSpritePreview(
+        createSellerSpritePreviewWorkbookWithSheets([businessSheet, metadataSheets[0]]),
+      );
+      expect(result.acceptedRowCount).toBe(1);
+    });
+
+    it("rejects a workbook without a US sheet", () => {
+      expectPrecheckFailure(
+        createSellerSpritePreviewWorkbookWithSheets([metadataSheets[0], metadataSheets[1]]),
+        "unsupported_report_layout",
+      );
+    });
+
+    it("rejects a hidden US sheet", () => {
+      expectXlsxFailure(
+        createSellerSpritePreviewWorkbookWithSheets([{ ...businessSheet, state: "hidden" }]),
+        "unsupported_xlsx_feature",
+        "hidden_worksheet_rejected",
+      );
+    });
+
+    it("rejects a veryHidden US sheet", () => {
+      expectXlsxFailure(
+        createSellerSpritePreviewWorkbookWithSheets([{ ...businessSheet, state: "veryHidden" }]),
+        "unsupported_xlsx_feature",
+        "hidden_worksheet_rejected",
+      );
+    });
+
+    it("rejects a lowercase us sheet name", () => {
+      expectPrecheckFailure(
+        createSellerSpritePreviewWorkbookWithSheets([{ name: "us", headers, rows: [validRow] }]),
+        "unsupported_report_layout",
+      );
+    });
+
+    it("rejects a US Search Results sheet name", () => {
+      expectPrecheckFailure(
+        createSellerSpritePreviewWorkbookWithSheets([{ name: "US Search Results", headers, rows: [validRow] }]),
+        "unsupported_report_layout",
+      );
+    });
+
+    it("rejects an unknown visible worksheet", () => {
+      expectPrecheckFailure(
+        createSellerSpritePreviewWorkbookWithSheets([
+          businessSheet,
+          { name: "Extra", headers: ["x"], rows: [["y"]] },
+        ]),
+        "unsupported_report_layout",
+      );
+    });
+
+    it("rejects an unknown hidden worksheet", () => {
+      expectXlsxFailure(
+        createSellerSpritePreviewWorkbookWithSheets([
+          businessSheet,
+          { name: "Extra", state: "hidden", headers: ["x"], rows: [["y"]] },
+        ]),
+        "unsupported_xlsx_feature",
+        "hidden_worksheet_rejected",
+      );
+    });
+
+    it("does not treat Brands, Sellers, or Note as the business sheet", () => {
+      for (const meta of metadataSheets) {
+        // Even with product-looking content, a metadata-only workbook is rejected.
+        expectPrecheckFailure(
+          createSellerSpritePreviewWorkbookWithSheets([{ ...meta, headers, rows: [validRow] }]),
+          "unsupported_report_layout",
+        );
+      }
+    });
+
+    it("selects US even when it is not the first worksheet", () => {
+      const result = precheckSellerSpritePreview(
+        createSellerSpritePreviewWorkbookWithSheets([
+          metadataSheets[0],
+          metadataSheets[1],
+          businessSheet,
+        ]),
+      );
+      expect(result.acceptedRowCount).toBe(1);
+    });
+
+    it("selects US regardless of the activeTab indicator", () => {
+      const result = precheckSellerSpritePreview(
+        createSellerSpritePreviewWorkbookWithSheets(
+          [businessSheet, metadataSheets[0]],
+          { activeTab: 1 },
+        ),
+      );
+      expect(result.acceptedRowCount).toBe(1);
+    });
+
+    it("extracts product rows only from the US sheet", () => {
+      const result = precheckSellerSpritePreview(
+        createSellerSpritePreviewWorkbookWithSheets([
+          businessSheet,
+          { name: "Brands", headers, rows: [validRow] },
+        ]),
+      );
+      expect(result.acceptedRowCount).toBe(1);
+      expect(result.acceptedRows[0].facts.asin).toBe("B0TEST0001");
+    });
+
+    it("metadata sheet content does not affect acceptedRowsDigest", () => {
+      const withMarker = (marker: string) => createSellerSpritePreviewWorkbookWithSheets([
+        businessSheet,
+        { name: "Note", headers: ["Note"], rows: [[marker]] },
+      ]);
+      const digestA = precheckSellerSpritePreview(withMarker("alpha-marker")).acceptedRowsDigest;
+      const digestB = precheckSellerSpritePreview(withMarker("beta-marker")).acceptedRowsDigest;
+      expect(digestA).toBe(digestB);
+    });
+
+    it("metadata sheet content never enters the Preview DTO", () => {
+      const marker = "PRIVATE-METADATA-MARKER";
+      const result = precheckSellerSpritePreview(
+        createSellerSpritePreviewWorkbookWithSheets([
+          businessSheet,
+          { name: "Note", headers: ["Note"], rows: [[marker]] },
+        ]),
+      );
+      expect(JSON.stringify(result)).not.toContain(marker);
+      expect(JSON.stringify(result)).not.toContain("private metadata note");
+    });
+
+    it("rejects dangerous OOXML relationships inside metadata sheets at the package level", () => {
+      const source = createSellerSpritePreviewWorkbookWithSheets(
+        [businessSheet, metadataSheets[0]],
+        {
+          extraEntries: [{
+            name: "xl/worksheets/_rels/sheet2.xml.rels",
+            content: [
+              '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+              '<Relationship Id="bad-link" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" TargetMode="External" Target="http://insecure.example.test/link"/>',
+              "</Relationships>",
+            ].join(""),
+          }],
+        },
+      );
+      expectXlsxFailure(source, "unsupported_xlsx_feature", "insecure_hyperlink_relationship_rejected");
+    });
+
+    it("keeps accepting safe HTTPS hyperlink relationships on any sheet", () => {
+      const source = createSellerSpritePreviewWorkbookWithSheets(
+        [businessSheet, metadataSheets[0]],
+        {
+          extraEntries: [{
+            name: "xl/worksheets/_rels/sheet2.xml.rels",
+            content: safeWorksheetHyperlinkRelationships,
+          }],
+        },
+      );
+      const result = precheckSellerSpritePreview(source);
+      expect(result.acceptedRowCount).toBe(1);
+    });
   });
 });
