@@ -34,7 +34,7 @@ export type VerifiedToken = {
   payload: SignedTokenPayload;
 } | {
   ok: false;
-  reason: "expired" | "invalid_signature" | "malformed" | "wrong_version";
+  reason: "expired" | "invalid_signature" | "malformed" | "wrong_version" | "clock_offset_too_large";
 };
 
 // ── Constants ───────────────────────────────────
@@ -153,3 +153,6 @@ export function verifySignedToken(token: string): VerifiedToken {
 
   return { ok: true, mode: payload.mode, token, payload };
 }
+
+
+

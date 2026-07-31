@@ -10,6 +10,7 @@ vi.mock("@/lib/server/demoGuard", () => ({
 }));
 
 import { resetSellerSpritePreviewRateLimitForTest } from "@/lib/server/sellerSpritePreviewRateLimit";
+import { generateSellerSpritePreviewImportToken } from "@/lib/server/sellerSpritePreviewImportToken";
 import { POST } from "./route";
 
 const headers = ["ASIN", "商品标题", "商品详情页链接"];
@@ -78,9 +79,13 @@ describe("POST /api/opportunities/sellersprite-preview", () => {
   beforeEach(() => {
     auth.mockReset();
     resetSellerSpritePreviewRateLimitForTest();
+    vi.stubEnv("ACCESS_PASSWORD", "test-access-password-for-token-signing");
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
 
   it("allows exact Origin for Owner and Visitor through the same authenticated handler", async () => {
     authenticated("owner");
@@ -91,7 +96,16 @@ describe("POST /api/opportunities/sellersprite-preview", () => {
     expect(ownerResponse.status).toBe(200);
     expect(visitorResponse.status).toBe(200);
     expect(ownerResponse.headers.get("cache-control")).toBe("no-store");
-    expect(await visitorResponse.json()).toEqual(await ownerResponse.json());
+    const ownerJson = await ownerResponse.json();
+    const visitorJson = await visitorResponse.json();
+    expect(ownerJson.preview.importToken).toBeDefined();
+    expect(visitorJson.preview.importToken).toBeDefined();
+    expect(ownerJson.preview.importToken).toMatch(/^preview-import-v1\./);
+    expect(visitorJson.preview.importToken).toMatch(/^preview-import-v1\./);
+    // Structurally equivalent except importToken (different issuedAt)
+    const { importToken: _ot, ...ownerRest } = ownerJson.preview as Record<string, unknown>;
+    const { importToken: _vt, ...visitorRest } = visitorJson.preview as Record<string, unknown>;
+    expect(visitorRest).toEqual(ownerRest);
   });
 
   it("allows the exact same-origin Referer fallback for both modes", async () => {
@@ -102,7 +116,11 @@ describe("POST /api/opportunities/sellersprite-preview", () => {
 
     expect(ownerResponse.status).toBe(200);
     expect(visitorResponse.status).toBe(200);
-    expect(await visitorResponse.json()).toEqual(await ownerResponse.json());
+    const ownerJson = await ownerResponse.json();
+    const visitorJson = await visitorResponse.json();
+    const { importToken: _ot, ...ownerRest } = ownerJson.preview as Record<string, unknown>;
+    const { importToken: _vt, ...visitorRest } = visitorJson.preview as Record<string, unknown>;
+    expect(visitorRest).toEqual(ownerRest);
   });
 
   it("uses standard URL origin normalization while retaining exact scheme, host, and port checks", async () => {
@@ -315,4 +333,90 @@ describe("POST /api/opportunities/sellersprite-preview", () => {
     expect(sourceText).not.toMatch(/prisma|opportunityCandidateService|Task|Evidence|aiClient|fetch\(/i);
     expect(sourceText).not.toMatch(/node:fs|writeFile|appendFile|mkdir|rename|unlink/i);
   });
+
+  it("does not return importToken for HTTP 401", async () => {
+    auth.mockReturnValue({ ok: false, status: 401, code: "invalid_access", message: "login required" });
+    const response = await POST(requestFor());
+    expect(response.status).toBe(401);
+    const payload = await json(response);
+    expect(payload.preview).toBeUndefined();
+  });
+
+  it("does not return importToken when blockingErrors exist", async () => {
+    // Create a workbook with conflicting duplicate ASIN rows
+    const conflictSource = createSellerSpritePreviewWorkbook({
+      headers,
+      rows: [
+        ["B0CONFLICT", "Product A", "https://www.amazon.com/dp/B0CONFLICT"],
+        ["B0CONFLICT", "Product B Different", "https://www.amazon.com/dp/B0CONFLICT"],
+      ],
+    });
+    authenticated("owner");
+    const response = await POST(requestFor(conflictSource));
+    const payload = await json(response);
+    expect(response.status).toBe(422);
+    expect(payload.ok).toBe(true);
+    const preview = payload.preview as Record<string, unknown>;
+    expect((preview.blockingErrors as unknown[]).length).toBeGreaterThan(0);
+    expect(preview.importToken).toBeUndefined();
+  });
+
+  it("does not return importToken when acceptedRows is empty", async () => {
+    const emptySource = createSellerSpritePreviewWorkbook({
+      headers,
+      rows: [],
+    });
+    authenticated("owner");
+    const response = await POST(requestFor(emptySource));
+    const payload = await json(response);
+    expect(response.status).toBe(422);
+    expect(payload.ok).toBe(false);
+    expect(payload.preview).toBeUndefined();
+  });
+
+  it("returns preview without importToken when secret is missing (fail-closed)", async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv("ACCESS_PASSWORD", "");
+    vi.stubEnv("APP_ACCESS_PASSWORD", "");
+    authenticated("owner");
+    const response = await POST(requestFor());
+    const payload = await json(response);
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    const preview = payload.preview as Record<string, unknown>;
+    expect(preview.acceptedRowCount).toBe(1);
+    expect(preview.importToken).toBeUndefined();
+  });
+
+  it("does not leak secret or stack trace in any error response", async () => {
+    const secretMarker = SYNTHETIC_SECRET;
+    authenticated("owner");
+    // Invalid XLSX to trigger error path
+    const response = await POST(requestFor(new TextEncoder().encode("not a ZIP")));
+    const payload = await json(response);
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain(secretMarker);
+    expect(serialized.toLowerCase()).not.toContain("stack");
+    expect(serialized).not.toContain("ACCESS_PASSWORD");
+  });
+
+  it("Owner and Visitor tokens have different subjectScopeHash", async () => {
+    authenticated("owner");
+    const ownerResponse = await POST(requestFor());
+    authenticated("demo", "visitor-a");
+    const visitorResponse = await POST(requestFor());
+    const ownerJson = await ownerResponse.json();
+    const visitorJson = await visitorResponse.json();
+    expect(ownerJson.preview.importToken).toBeDefined();
+    expect(visitorJson.preview.importToken).toBeDefined();
+
+    // Decode tokens and compare subjectScopeHash
+    const ownerParts = (ownerJson.preview.importToken as string).split(".");
+    const visitorParts = (visitorJson.preview.importToken as string).split(".");
+    const ownerPayload = JSON.parse(Buffer.from(ownerParts[1], "base64url").toString("utf-8"));
+    const visitorPayload = JSON.parse(Buffer.from(visitorParts[1], "base64url").toString("utf-8"));
+    expect(ownerPayload.subjectScopeHash).not.toBe(visitorPayload.subjectScopeHash);
+  });
 });
+
+const SYNTHETIC_SECRET = "test-access-password-for-token-signing";

@@ -116,6 +116,9 @@ export type SellerSpritePreviewResult = {
   warnings: Array<{ code: "duplicate_asin" | "invalid_rows_quarantined"; rowNumbers?: number[] }>;
   blockingErrors: Array<{ code: "duplicate_asin_conflict"; status: "conflict"; asin: string; rowNumbers: number[] }>;
   previewTruncated: boolean;
+  acceptedRowsDigest?: string;
+  warningDigest?: string;
+  parserContractVersion?: string;
 };
 
 type CellValue = { value: string; kind: "value" | "missing" | "unknown" };
@@ -436,6 +439,25 @@ export function precheckSellerSpritePreview(input: Uint8Array): SellerSpritePrev
     warnings.push({ code: "duplicate_asin", rowNumbers: duplicate.rowNumbers });
   }
 
+  // compute canonical digests as per contract (no token generation here)
+  const rowHashes = accepted.map((row) => row.facts.asin).sort().join(",");
+  const acceptedRowsDigest = createHash("sha256")
+    .update(JSON.stringify(rowHashes))
+    .digest("hex")
+    .toLowerCase();
+
+  // warningDigest canonical
+  const warningItems = rejected.map((r) => ({
+    code: "invalid_rows_quarantined",
+    rowNumber: r.rowNumber,
+  }));
+  const warningDigest = createHash("sha256")
+    .update(JSON.stringify(warningItems.sort((a, b) => a.rowNumber - b.rowNumber)))
+    .digest("hex")
+    .toLowerCase();
+
+  const parserContractVersion = "sellersprite_preview_import_v1";
+
   return {
     schemaVersion: "sellersprite_preview_v1",
     source: {
@@ -452,5 +474,8 @@ export function precheckSellerSpritePreview(input: Uint8Array): SellerSpritePrev
     previewTruncated: accepted.length > MAX_PREVIEW_ROWS
       || rejected.length > MAX_REJECTED_ROWS
       || duplicates.length > MAX_DUPLICATE_GROUPS,
+    acceptedRowsDigest,
+    warningDigest,
+    parserContractVersion,
   };
 }

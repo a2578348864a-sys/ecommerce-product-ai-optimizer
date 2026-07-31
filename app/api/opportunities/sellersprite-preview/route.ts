@@ -11,6 +11,7 @@ import {
   isSellerSpritePreviewXlsxZipMagic,
   SellerSpritePreviewXlsxError,
 } from "@/lib/upstream/sellersprite/previewXlsx";
+import { generateSellerSpritePreviewImportToken } from "@/lib/server/sellerSpritePreviewImportToken";
 
 export const runtime = "nodejs";
 
@@ -99,7 +100,34 @@ export async function POST(request: NextRequest): Promise<Response> {
       return error(422, "invalid_xlsx", "XLSX 文件未通过安全检查。");
     }
     const preview = precheckSellerSpritePreview(bytes);
-    return Response.json({ ok: true, preview }, {
+
+    let importToken: string | undefined;
+    if (
+      preview.blockingErrors.length === 0 &&
+      preview.acceptedRowCount >= 1 &&
+      preview.source.sourceFileSha256
+    ) {
+      const guard = requireAuthenticated(request);
+      if (guard.ok) {
+        try {
+          const subjectScope = subjectFromAccessContext(guard.context);
+          importToken = generateSellerSpritePreviewImportToken(
+            subjectScope,
+            preview.source.sourceFileSha256,
+            preview.acceptedRowsDigest!,
+            preview.acceptedRowCount,
+            preview.warningDigest!,
+            preview.acceptedRowCount,
+            preview.parserContractVersion!
+          );
+        } catch {
+          // Token generation failed (e.g. SIGNING_KEY_MISSING).
+          // Fail-closed: return preview without importToken.
+        }
+      }
+    }
+
+    return Response.json({ ok: true, preview: { ...preview, importToken } }, {
       status: preview.blockingErrors.length > 0 ? 422 : 200,
       headers: { "Cache-Control": "no-store" },
     });
