@@ -240,4 +240,110 @@ describe("GET /api/opportunity-candidates/research-context", () => {
     expect(response.status).toBe(401);
     expect(mocks.getAuthoritativeCandidate).not.toHaveBeenCalled();
   });
+
+  it("returns the SellerSprite market-research context for an eligible pending Candidate", async () => {
+    state.context = { mode: "demo", demoAccessId: "visitor-a" };
+    mocks.getAuthoritativeCandidate.mockResolvedValueOnce({
+      ...candidate("sandbox_candidate_a"),
+      name: "Powder Sunscreen",
+      status: "pending",
+    });
+    mocks.evaluateCandidateResearchEligibility.mockResolvedValueOnce({
+      allowed: true,
+      originKind: "seller_sprite_market_research",
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      reasons: [],
+      sellerSpriteSource: {
+        asin: "B0TEST0001",
+        parentAsin: null,
+        productUrl: "https://www.amazon.com/dp/B0TEST0001",
+        title: "Powder Sunscreen",
+        imageUrl: null,
+        priceUsd: 14.19,
+        rating: 4.2,
+        reviewCount: 6,
+        brand: "Hawaiian Tropic",
+        category: "Beauty",
+        searchRank: null,
+        estimatedMonthlySales: 26065,
+        estimatedMonthlyRevenueUsd: 369862,
+        importedAt: "2026-07-31T09:00:00.000Z",
+        disclaimer: "third_party_estimate_point_in_time",
+      },
+    });
+    mocks.buildCandidateAnalysisContext.mockReturnValueOnce({
+      version: "candidate-analysis-context-v1",
+      integrity: "verified_seller_sprite",
+      facts: {
+        capturedAt: "2026-07-31T09:00:00.000Z",
+        originKind: "seller_sprite_market_research",
+        marketplace: "Amazon US",
+        reportType: "SellerSprite Search Results",
+        asin: "B0TEST0001",
+        parentAsin: null,
+        productUrl: "https://www.amazon.com/dp/B0TEST0001",
+        title: "Powder Sunscreen",
+        imageUrl: null,
+        priceUsd: 14.19,
+        rating: 4.2,
+        reviewCount: 6,
+        brand: "Hawaiian Tropic",
+        category: "Beauty",
+        searchRank: null,
+        estimatedMonthlySales: 26065,
+        estimatedMonthlyRevenueUsd: 369862,
+        disclaimer: "third_party_estimate_point_in_time",
+      },
+      assessment: { researchMode: "market_research_only", promotionEligible: false },
+    });
+
+    const response = await GET(request("sandbox_candidate_a") as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data).toMatchObject({
+      candidateId: "sandbox_candidate_a",
+      productName: "Powder Sunscreen",
+      sourceType: "seller_sprite_market_research",
+      sourceLabel: "SellerSprite 市场调查",
+      marketplace: "Amazon US",
+      reportType: "SellerSprite Search Results",
+      asin: "B0TEST0001",
+      productUrl: "https://www.amazon.com/dp/B0TEST0001",
+      title: "Powder Sunscreen",
+      priceUsd: 14.19,
+      rating: 4.2,
+      reviewCount: 6,
+      estimatedMonthlySales: 26065,
+      disclaimer: "third_party_estimate_point_in_time",
+      promotionEligible: false,
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain("sourceFileSha256");
+    expect(serialized).not.toContain("rowHash");
+    expect(serialized).not.toContain("subjectScope");
+    expect(serialized).not.toContain("demoAccessId");
+    expect(serialized).not.toContain("sourceMetaJson");
+    expect(serialized).not.toContain("analysisJson");
+  });
+
+  it("keeps 404 for a pending legacy Candidate while SellerSprite pending is allowed", async () => {
+    state.context = { mode: "owner" };
+    mocks.getAuthoritativeCandidate.mockResolvedValueOnce({
+      ...candidate("candidate-legacy-pending"),
+      name: "Legacy pending",
+      status: "pending",
+    });
+    mocks.evaluateCandidateResearchEligibility.mockResolvedValueOnce({
+      allowed: false,
+      originKind: "legacy_market_screening",
+      researchMode: "legacy_r22_stage2",
+      promotionEligible: false,
+      reasons: ["candidate_not_ready"],
+    });
+
+    const response = await GET(request("candidate-legacy-pending") as never);
+    expect(response.status).toBe(404);
+  });
 });

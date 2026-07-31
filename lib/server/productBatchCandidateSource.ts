@@ -12,6 +12,7 @@ import type {
 export const CANDIDATE_ORIGIN_KINDS = {
   legacyMarketScreening: "legacy_market_screening",
   sellerSpriteProductBatch: "seller_sprite_product_batch",
+  sellerSpriteMarketResearch: "seller_sprite_market_research",
 } as const;
 
 export type CandidateOriginKind =

@@ -6,6 +6,7 @@ import {
   createCandidateAnalysisBindingHash,
 } from "@/lib/server/candidateAnalysisContext";
 import { evaluateCandidateResearchEligibility } from "@/lib/server/candidateResearchEligibility";
+import { CANDIDATE_ORIGIN_KINDS } from "@/lib/server/productBatchCandidateSource";
 import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
 import type { CandidateResearchContext } from "@/lib/candidateResearchContext";
 import { readCandidateProductImageSnapshot } from "@/lib/productResearchImage";
@@ -93,6 +94,36 @@ export async function GET(request: NextRequest) {
       capturedAt,
       contextHash,
       ...(productImage ? { productImage } : {}),
+    };
+  } else if (eligibility.originKind === CANDIDATE_ORIGIN_KINDS.sellerSpriteMarketResearch) {
+    if (analysisContext.integrity !== "verified_seller_sprite") return notFound();
+    const facts = analysisContext.facts;
+    data = {
+      candidateId: candidate.id,
+      productName: bounded(candidate.name, 120),
+      sourceType: "seller_sprite_market_research",
+      sourceLabel: "SellerSprite 市场调查",
+      marketplace: facts.marketplace,
+      reportType: facts.reportType,
+      asin: facts.asin,
+      parentAsin: facts.parentAsin,
+      productUrl: facts.productUrl,
+      title: facts.title,
+      imageUrl: facts.imageUrl,
+      priceUsd: facts.priceUsd,
+      rating: facts.rating,
+      reviewCount: facts.reviewCount,
+      brand: facts.brand,
+      category: facts.category,
+      searchRank: facts.searchRank,
+      estimatedMonthlySales: facts.estimatedMonthlySales,
+      estimatedMonthlyRevenueUsd: facts.estimatedMonthlyRevenueUsd,
+      disclaimer: facts.disclaimer,
+      evidenceStatus: "sellersprite_market_research",
+      researchPriority: "人工研究",
+      promotionEligible: false,
+      capturedAt: facts.capturedAt,
+      contextHash,
     };
   } else {
     const publicContext = analysisContext.integrity === "verified_public"

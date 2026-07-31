@@ -141,13 +141,13 @@ export type AgentRunSourceMeta = {
   analyzedName?: string;
   evidenceSnapshot?: CandidateEvidenceSnapshot;
   r22MarketDecisionSnapshot?: R22MarketDecisionSnapshot;
-  originKind?: "legacy_market_screening" | "seller_sprite_product_batch";
+  originKind?: "legacy_market_screening" | "seller_sprite_product_batch" | "seller_sprite_market_research";
   productBatchId?: string;
   productBatchName?: string;
   productBatchItemId?: string;
   marketplace?: string;
   asin?: string | null;
-  reportType?: "search_results" | "category_current";
+  reportType?: "search_results" | "category_current" | "SellerSprite Search Results";
   query?: string | null;
   category?: string | null;
   researchPriority?: string;

@@ -13,6 +13,7 @@ import {
   type ProductBatchCandidateSourceV1,
 } from "@/lib/server/productBatchCandidateSource";
 import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
+import { parseSellerSpriteCandidateSourceMeta } from "@/lib/server/sellerSpriteImportContract";
 
 type ResearchCandidate = {
   id: string;
@@ -31,7 +32,75 @@ export type CandidateResearchEligibility = {
   promotionEligible: boolean;
   reasons: string[];
   productBatchSource?: ProductBatchCandidateSourceV1;
+  sellerSpriteSource?: SellerSpriteMarketResearchSource;
 };
+
+/**
+ * Frozen SellerSprite market-research source, validated from the server-side
+ * saved `sellersprite_candidate_source_v1` snapshot only.
+ */
+export type SellerSpriteMarketResearchSource = {
+  asin: string;
+  parentAsin: string | null;
+  productUrl: string;
+  title: string;
+  imageUrl: string | null;
+  priceUsd: number | null;
+  rating: number | null;
+  reviewCount: number | null;
+  brand: string | null;
+  category: string | null;
+  searchRank: number | null;
+  estimatedMonthlySales: number | null;
+  estimatedMonthlyRevenueUsd: number | null;
+  importedAt: string;
+  disclaimer: "third_party_estimate_point_in_time";
+};
+
+export function parseSellerSpriteMarketResearchSource(
+  sourceMetaJson: string,
+): SellerSpriteMarketResearchSource | null {
+  const meta = parseSellerSpriteCandidateSourceMeta(sourceMetaJson);
+  if (!meta) return null;
+  // Exact provider / report-type contract.
+  if (meta.source.provider !== "SellerSprite") return null;
+  if (meta.source.type !== "sellersprite_xlsx") return null;
+
+  // Validated Amazon US product URL whose ASIN matches the identity.
+  let url: URL;
+  try {
+    url = new URL(meta.identity.productUrl);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+  if (url.hostname.toLowerCase() !== "amazon.com"
+    && url.hostname.toLowerCase() !== "www.amazon.com") return null;
+  const urlAsin = /\/(?:dp|gp\/product)\/([A-Za-z0-9]{10})(?:[/?]|$)/i
+    .exec(url.pathname)?.[1]?.toUpperCase();
+  if (!urlAsin || urlAsin !== meta.identity.asin) return null;
+
+  const title = meta.snapshot.title;
+  if (!title || !title.trim()) return null;
+
+  return {
+    asin: meta.identity.asin,
+    parentAsin: meta.identity.parentAsin,
+    productUrl: meta.identity.productUrl,
+    title,
+    imageUrl: meta.snapshot.imageUrl,
+    priceUsd: meta.snapshot.priceUsd,
+    rating: meta.snapshot.rating,
+    reviewCount: meta.snapshot.reviewCount,
+    brand: meta.snapshot.brand,
+    category: meta.snapshot.category,
+    searchRank: meta.estimates.searchRank,
+    estimatedMonthlySales: meta.estimates.estimatedMonthlySales,
+    estimatedMonthlyRevenueUsd: meta.estimates.estimatedMonthlyRevenueUsd,
+    importedAt: meta.source.importedAt,
+    disclaimer: "third_party_estimate_point_in_time",
+  };
+}
 
 function normalizedName(value: string): string {
   return value.normalize("NFC").trim().toLowerCase().replace(/\s+/g, " ");
@@ -54,6 +123,28 @@ function blocked(
 export function evaluateStoredCandidateResearchEligibility(
   candidate: ResearchCandidate,
 ): CandidateResearchEligibility {
+  // Frozen SellerSprite market-research source. `status = "pending"` stays
+  // untouched; only terminal states and already-linked candidates are blocked.
+  const sellerSpriteSource = parseSellerSpriteMarketResearchSource(candidate.sourceMetaJson);
+  if (sellerSpriteSource) {
+    const originKind = CANDIDATE_ORIGIN_KINDS.sellerSpriteMarketResearch;
+    const researchMode = "market_research_only" as const;
+    if (candidate.status === "rejected" || candidate.status === "paused") {
+      return blocked(originKind, researchMode, "candidate_not_ready");
+    }
+    if (candidate.convertedTaskId) {
+      return blocked(originKind, researchMode, "candidate_already_linked");
+    }
+    return {
+      allowed: true,
+      originKind,
+      researchMode,
+      promotionEligible: false,
+      reasons: [],
+      sellerSpriteSource,
+    };
+  }
+
   if (claimsProductBatchCandidateSource(candidate.sourceMetaJson)) {
     const originKind = CANDIDATE_ORIGIN_KINDS.sellerSpriteProductBatch;
     const researchMode = "market_research_only" as const;

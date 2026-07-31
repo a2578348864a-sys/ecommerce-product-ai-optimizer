@@ -5,9 +5,11 @@ import type {
 } from "@/lib/candidateEvidenceReview";
 import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
 import {
+  CANDIDATE_ORIGIN_KINDS,
   parseProductBatchCandidateSource,
   type ProductBatchCandidateProductFacts,
 } from "@/lib/server/productBatchCandidateSource";
+import { parseSellerSpriteCandidateSourceMeta } from "@/lib/server/sellerSpriteImportContract";
 
 type CandidateAnalysisContextRecord = {
   sourceMetaJson?: unknown;
@@ -61,6 +63,34 @@ export type CandidateAnalysisContextV1 =
         itemHash: string;
         sellerSpriteDisclaimerVersion: string;
         productFacts: ProductBatchCandidateProductFacts;
+      };
+      assessment: {
+        researchMode: "market_research_only";
+        promotionEligible: false;
+      };
+    }
+  | {
+      version: "candidate-analysis-context-v1";
+      integrity: "verified_seller_sprite";
+      facts: {
+        capturedAt: string;
+        originKind: "seller_sprite_market_research";
+        marketplace: "Amazon US";
+        reportType: "SellerSprite Search Results";
+        asin: string;
+        parentAsin: string | null;
+        productUrl: string;
+        title: string;
+        imageUrl: string | null;
+        priceUsd: number | null;
+        rating: number | null;
+        reviewCount: number | null;
+        brand: string | null;
+        category: string | null;
+        searchRank: number | null;
+        estimatedMonthlySales: number | null;
+        estimatedMonthlyRevenueUsd: number | null;
+        disclaimer: "third_party_estimate_point_in_time";
       };
       assessment: {
         researchMode: "market_research_only";
@@ -139,6 +169,41 @@ function storedR22MarketDecisionHash(value: unknown): string | null {
 export function buildCandidateAnalysisContext(
   candidate: CandidateAnalysisContextRecord,
 ): CandidateAnalysisContextV1 {
+  // Frozen SellerSprite market-research snapshot (single-row source meta v1).
+  const sellerSpriteMeta = parseSellerSpriteCandidateSourceMeta(
+    typeof candidate.sourceMetaJson === "string" ? candidate.sourceMetaJson : "",
+  );
+  if (sellerSpriteMeta) {
+    return {
+      version: "candidate-analysis-context-v1",
+      integrity: "verified_seller_sprite",
+      facts: {
+        capturedAt: sellerSpriteMeta.source.importedAt,
+        originKind: CANDIDATE_ORIGIN_KINDS.sellerSpriteMarketResearch,
+        marketplace: "Amazon US",
+        reportType: "SellerSprite Search Results",
+        asin: sellerSpriteMeta.identity.asin,
+        parentAsin: sellerSpriteMeta.identity.parentAsin,
+        productUrl: sellerSpriteMeta.identity.productUrl,
+        title: sellerSpriteMeta.snapshot.title,
+        imageUrl: sellerSpriteMeta.snapshot.imageUrl,
+        priceUsd: sellerSpriteMeta.snapshot.priceUsd,
+        rating: sellerSpriteMeta.snapshot.rating,
+        reviewCount: sellerSpriteMeta.snapshot.reviewCount,
+        brand: sellerSpriteMeta.snapshot.brand,
+        category: sellerSpriteMeta.snapshot.category,
+        searchRank: sellerSpriteMeta.estimates.searchRank,
+        estimatedMonthlySales: sellerSpriteMeta.estimates.estimatedMonthlySales,
+        estimatedMonthlyRevenueUsd: sellerSpriteMeta.estimates.estimatedMonthlyRevenueUsd,
+        disclaimer: "third_party_estimate_point_in_time",
+      },
+      assessment: {
+        researchMode: "market_research_only",
+        promotionEligible: false,
+      },
+    };
+  }
+
   const productBatchSource = parseProductBatchCandidateSource(candidate.sourceMetaJson);
   if (productBatchSource) {
     return {

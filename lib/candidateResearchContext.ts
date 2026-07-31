@@ -3,16 +3,28 @@ import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 export type CandidateResearchContext = {
   candidateId: string;
   productName: string;
-  sourceType: "legacy_market_screening" | "seller_sprite_product_batch";
+  sourceType: "legacy_market_screening" | "seller_sprite_product_batch" | "seller_sprite_market_research";
   sourceLabel: string;
   productBatchName?: string;
   productBatchId?: string;
   productBatchItemId?: string;
   marketplace?: string;
   asin?: string | null;
-  reportType?: "search_results" | "category_current";
-  query?: string | null;
+  parentAsin?: string | null;
+  productUrl?: string;
+  title?: string;
+  imageUrl?: string | null;
+  priceUsd?: number | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  brand?: string | null;
   category?: string | null;
+  searchRank?: number | null;
+  estimatedMonthlySales?: number | null;
+  estimatedMonthlyRevenueUsd?: number | null;
+  disclaimer?: "third_party_estimate_point_in_time";
+  reportType?: "search_results" | "category_current" | "SellerSprite Search Results";
+  query?: string | null;
   evidenceStatus: string;
   researchPriority: string;
   promotionEligible: false;
@@ -72,7 +84,8 @@ export function parseCandidateResearchContext(value: unknown): CandidateResearch
   if (!isRecord(value)) return null;
   const sourceType = value.sourceType;
   if (sourceType !== "legacy_market_screening"
-    && sourceType !== "seller_sprite_product_batch") return null;
+    && sourceType !== "seller_sprite_product_batch"
+    && sourceType !== "seller_sprite_market_research") return null;
   if (typeof value.candidateId !== "string" || !value.candidateId.trim()
     || typeof value.productName !== "string" || !value.productName.trim()
     || typeof value.sourceLabel !== "string" || !value.sourceLabel.trim()
@@ -94,6 +107,16 @@ export function parseCandidateResearchContext(value: unknown): CandidateResearch
       || (value.category !== null && typeof value.category !== "string")
       || typeof value.sellerSpriteDisclaimerVersion !== "string"
       || !value.sellerSpriteDisclaimerVersion.trim()) {
+      return null;
+    }
+  }
+  if (sourceType === "seller_sprite_market_research") {
+    if (typeof value.marketplace !== "string" || !value.marketplace.trim()
+      || (value.reportType !== "SellerSprite Search Results")
+      || typeof value.asin !== "string" || !/^[A-Z0-9]{10}$/.test(value.asin)
+      || typeof value.productUrl !== "string" || !value.productUrl.trim()
+      || typeof value.title !== "string" || !value.title.trim()
+      || value.disclaimer !== "third_party_estimate_point_in_time") {
       return null;
     }
   }
