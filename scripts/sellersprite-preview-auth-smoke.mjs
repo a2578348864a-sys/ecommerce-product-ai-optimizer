@@ -12,6 +12,7 @@ import {
   cleanupSmokeRuntime,
   formatSmokeRuntimeStartOutput,
   getSmokeRuntimeStatus,
+  seedConvertedTaskFixture,
   startSmokeRuntime,
   stopSmokeRuntime,
 } from "./local-smoke-runtime.mjs";
@@ -38,7 +39,10 @@ function assertPortFree(port) {
 }
 
 function parseAcceptanceArguments(args) {
-  if (args.length === 0) return { realFile: null, realSha256: null };
+  if (args.length === 0) return { mode: "preview", realFile: null, realSha256: null };
+  if (args.length === 1 && args[0] === "--converted-task-fixture") {
+    return { mode: "converted-task-fixture", realFile: null, realSha256: null };
+  }
   if (args.length !== 4 || args[0] !== "--real-file" || args[2] !== "--real-sha256") {
     throw new Error("smoke_arguments_invalid");
   }
@@ -50,7 +54,7 @@ function parseAcceptanceArguments(args) {
   if (fileSha256(realFile).toLowerCase() !== realSha256) {
     throw new Error("smoke_real_file_hash_mismatch");
   }
-  return { realFile, realSha256 };
+  return { mode: "preview", realFile, realSha256 };
 }
 
 function isCredentialFree(value, credentials) {
@@ -91,7 +95,18 @@ function cdpClient(webSocketUrl) {
   const socket = new WebSocket(webSocketUrl);
   let nextId = 1;
   const pending = new Map();
-  const state = { request: null, response: null, finishedAt: null, consoleErrorCount: 0, externalHttpRequestCount: 0 };
+  const state = {
+    request: null,
+    response: null,
+    finishedAt: null,
+    consoleErrorCount: 0,
+    externalHttpRequestCount: 0,
+    researchContextRequestCount: 0,
+    agentNavigationCount: 0,
+    aiCallCount: 0,
+    taskCreateCount: 0,
+    candidateCreateCount: 0,
+  };
   const ready = new Promise((resolveReady, rejectReady) => {
     socket.addEventListener("open", resolveReady, { once: true });
     socket.addEventListener("error", rejectReady, { once: true });
@@ -114,6 +129,24 @@ function cdpClient(webSocketUrl) {
     if (message.method === "Network.requestWillBeSent" && typeof params.request?.url === "string") {
       try {
         const requestUrl = new URL(params.request.url);
+        const method = String(params.request?.method ?? "GET").toUpperCase();
+        if (requestUrl.origin === `http://${HOST}:${PORT}`) {
+          if (requestUrl.pathname === "/api/opportunity-candidates/research-context") state.researchContextRequestCount += 1;
+          if (requestUrl.pathname === "/agent/run") state.agentNavigationCount += 1;
+          if (method === "POST" && (
+            requestUrl.pathname === "/api/tasks"
+            || requestUrl.pathname === "/api/workflows/product-analysis/save-task"
+          )) state.taskCreateCount += 1;
+          if (method === "POST" && (
+            requestUrl.pathname.startsWith("/api/opportunity-candidates")
+            || requestUrl.pathname === "/api/opportunities/sellersprite-import"
+          )) state.candidateCreateCount += 1;
+          if (method === "POST" && (
+            requestUrl.pathname.startsWith("/api/workflows/product-analysis")
+            || requestUrl.pathname.startsWith("/api/viral/analyze")
+            || requestUrl.pathname.startsWith("/api/agent")
+          )) state.aiCallCount += 1;
+        }
         if ((requestUrl.protocol === "http:" || requestUrl.protocol === "https:") && requestUrl.origin !== `http://${HOST}:${PORT}`) {
           state.externalHttpRequestCount += 1;
         }
@@ -216,9 +249,16 @@ async function login(client, sessionId, mode, password, inspection) {
   await client.send("Page.navigate", { url: `http://${HOST}:${PORT}/` }, sessionId);
   await waitFor(client, sessionId, "document.readyState === 'complete'");
   const selector = mode === "owner" ? "#owner-password" : "#guest-password";
-  if (mode === "visitor") await evaluate(client, sessionId, "document.querySelector('[role=tab][aria-selected=\"false\"]')?.click(); true");
   for (let index = 0; index < 100; index += 1) {
     if (await evaluate(client, sessionId, `Boolean(document.querySelector(${JSON.stringify(selector)}))`)) break;
+    if (mode === "visitor") {
+      await evaluate(client, sessionId, `(() => {
+        const tabList = document.querySelector('[role="tablist"]');
+        const tabs = [...(tabList?.querySelectorAll('[role="tab"]') ?? [])];
+        tabs[1]?.click();
+        return true;
+      })()`);
+    }
     await wait(50);
   }
   inspection.beforeSubmit = await evaluate(client, sessionId, "(() => ({ ownerControl: Boolean(document.querySelector('#owner-password')), visitorControl: Boolean(document.querySelector('#guest-password')), previewControl: Boolean(document.querySelector('#sellersprite-xlsx')), ready: document.readyState === 'complete', pagePath: location.pathname }))()");
@@ -413,6 +453,109 @@ async function inspectCandidatePoolPage(client, sessionId) {
   return await inspectCandidatePoolDom(client, sessionId);
 }
 
+async function inspectConvertedCandidateAction(client, sessionId) {
+  await inspectCandidatePoolPage(client, sessionId);
+  const result = await evaluate(client, sessionId, `(() => {
+    const list = document.querySelector('[aria-label="Candidate 列表"]');
+    const cards = [...(list?.querySelectorAll('article') ?? [])];
+    const taskLinks = [...(list?.querySelectorAll('a[href^="/tasks/"]') ?? [])];
+    const agentLinks = [...(list?.querySelectorAll('a[href^="/agent/run"]') ?? [])];
+    const actionText = taskLinks[0]?.textContent?.trim() ?? '';
+    return {
+      path: location.pathname,
+      cardCount: cards.length,
+      taskLinkCount: taskLinks.length,
+      taskPath: taskLinks[0]?.getAttribute('href') ?? null,
+      researchResultAction: actionText === '查看研究结果',
+      startOrContinueAction: ['开始研究', '继续研究'].includes(actionText),
+      agentLinkCount: agentLinks.length,
+      errorVisible: Boolean(document.querySelector('[role="alert"]')),
+    };
+  })()`);
+  if (result.cardCount !== 1
+    || result.taskLinkCount !== 1
+    || typeof result.taskPath !== "string"
+    || !/^\/tasks\/[A-Za-z0-9_-]+$/.test(result.taskPath)
+    || !result.researchResultAction
+    || result.startOrContinueAction
+    || result.agentLinkCount !== 0
+    || result.errorVisible) {
+    throw new Error("smoke_converted_candidate_action_invalid");
+  }
+  return result;
+}
+
+async function probeTaskAccess(client, sessionId, taskPath) {
+  if (!/^\/tasks\/[A-Za-z0-9_-]+$/.test(taskPath)) throw new Error("smoke_task_path_invalid");
+  return await evaluate(client, sessionId, `(() => {
+    const token = sessionStorage.getItem('qx:access-token:session:v1') || '';
+    if (!token) return { status: 0, ok: false, notFound: false };
+    return fetch(${JSON.stringify(`/api${taskPath}`)}, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { 'x-access-token': token, 'x-access-password': token },
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => null);
+      return {
+        status: response.status,
+        ok: response.ok && payload?.ok === true,
+        notFound: response.status === 404 && payload?.ok === false && payload?.error?.code === 'not_found',
+      };
+    });
+  })()`);
+}
+
+async function verifyConvertedCandidateFlow(client, sessionId, mode, password, { relogin = false } = {}) {
+  const pool = await readCandidatePool(client, sessionId);
+  if (pool.total !== 1) throw new Error("smoke_converted_candidate_total_invalid");
+  const before = await inspectConvertedCandidateAction(client, sessionId);
+  const ownTask = await probeTaskAccess(client, sessionId, before.taskPath);
+  if (ownTask.status !== 200 || !ownTask.ok) throw new Error("smoke_converted_task_unavailable");
+
+  const clicked = await evaluate(client, sessionId, `(() => {
+    const link = document.querySelector(${JSON.stringify(`a[href="${before.taskPath}"]`)});
+    if (!link) return false;
+    link.click();
+    return true;
+  })()`);
+  if (!clicked) throw new Error("smoke_converted_task_link_missing");
+  await waitFor(client, sessionId, `location.pathname === ${JSON.stringify(before.taskPath)}`);
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[data-testid=\"research-summary\"]'))");
+  const detail = await evaluate(client, sessionId, "(() => ({ path: location.pathname, summaryVisible: Boolean(document.querySelector('[data-testid=\"research-summary\"]')), errorVisible: Boolean(document.querySelector('[role=\"alert\"]')) }))()");
+  if (!detail.summaryVisible || detail.errorVisible || detail.path.startsWith("/agent/run")) {
+    throw new Error("smoke_converted_task_detail_invalid");
+  }
+
+  await client.send("Page.reload", { ignoreCache: true }, sessionId);
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[data-testid=\"research-summary\"]'))");
+  const refreshedDetailVisible = await evaluate(client, sessionId, "Boolean(document.querySelector('[data-testid=\"research-summary\"]')) && location.pathname.startsWith('/tasks/')");
+  if (!refreshedDetailVisible) throw new Error("smoke_converted_task_refresh_failed");
+
+  const afterRefresh = await inspectConvertedCandidateAction(client, sessionId);
+  if (afterRefresh.taskPath !== before.taskPath) throw new Error("smoke_converted_candidate_link_drifted");
+
+  let reloginVerified = false;
+  if (relogin) {
+    const reopened = await pageSession(client);
+    await login(client, reopened.sessionId, mode, password, {});
+    const afterRelogin = await inspectConvertedCandidateAction(client, reopened.sessionId);
+    reloginVerified = afterRelogin.taskPath === before.taskPath;
+    if (!reloginVerified) throw new Error("smoke_converted_candidate_relogin_failed");
+  }
+
+  return {
+    taskPath: before.taskPath,
+    candidateVisible: true,
+    researchResultAction: before.researchResultAction,
+    startOrContinueAction: before.startOrContinueAction,
+    taskHttpStatus: ownTask.status,
+    detailVisible: detail.summaryVisible,
+    refreshVerified: afterRefresh.researchResultAction,
+    reloginVerified,
+    agentNavigation: detail.path.startsWith("/agent/run"),
+  };
+}
+
 async function verifyPoolRecovery(client, sessionId, mode, password, expectedTotal) {
   const initialApi = await readCandidatePool(client, sessionId);
   const initialPage = await inspectCandidatePoolPage(client, sessionId);
@@ -491,7 +634,7 @@ async function main() {
   let ownerPassword; let visitorAPassword; let visitorBPassword;
   let phase = "preflight";
   let cliStartOutput;
-  const report = { ownerFirst: null, ownerLoginState: null, ownerNormal: null, ownerPool: null, ownerHome: null, pagination: null, visitorA: null, visitorAPool: null, visitorB: null, visitorBPool: null, isolation: null, realFile: null, sideEffects: null, isolatedDbUnchangedDuringPreview: null, credentialLeakCheck: null, failurePhase: null, failureCode: null, cleanup: null };
+  const report = { ownerFirst: null, ownerLoginState: null, ownerNormal: null, ownerPool: null, ownerHome: null, pagination: null, visitorA: null, visitorAPool: null, visitorB: null, visitorBPool: null, isolation: null, realFile: null, convertedTaskFixture: null, ownerConverted: null, visitorAConverted: null, visitorBConverted: null, taskIsolation: null, sideEffects: null, isolatedDbUnchangedDuringPreview: null, credentialLeakCheck: null, failurePhase: null, failureCode: null, cleanup: null };
   try {
     assertPortFree(PORT); assertPortFree(CDP_PORT);
     phase = "start_runtime";
@@ -501,6 +644,115 @@ async function main() {
     visitorAPassword = smoke.visitorPassword;
     delete smoke.ownerPassword;
     delete smoke.visitorPassword;
+    if (acceptanceArgs.mode === "converted-task-fixture") {
+      visitorBPassword = randomBytes(18).toString("base64url");
+      appendSyntheticVisitor(join(runtimeRoot, "demo-access.json"), visitorBPassword);
+      phase = "seed_converted_task_fixture";
+      report.convertedTaskFixture = await seedConvertedTaskFixture({
+        runtimeRoot,
+        worktreeRoot: WORKTREE,
+      });
+      phase = "start_chrome";
+      chrome = await startChrome(runtimeRoot);
+      phase = "connect_cdp";
+      client = cdpClient(chrome.webSocketDebuggerUrl); await client.ready;
+
+      phase = "owner_converted_task";
+      const owner = await pageSession(client);
+      report.ownerLoginState = {};
+      await login(client, owner.sessionId, "owner", ownerPassword, report.ownerLoginState);
+      const ownerBefore = {
+        candidateTotal: (await readCandidatePool(client, owner.sessionId)).total,
+        taskTotal: await readTaskTotal(client, owner.sessionId),
+      };
+      const ownerFlow = await verifyConvertedCandidateFlow(client, owner.sessionId, "owner", ownerPassword);
+      const ownerTaskPath = ownerFlow.taskPath;
+      delete ownerFlow.taskPath;
+      report.ownerConverted = ownerFlow;
+
+      phase = "visitor_a_converted_task";
+      const visitorA = await pageSession(client);
+      await login(client, visitorA.sessionId, "visitor", visitorAPassword, {});
+      const visitorABefore = {
+        candidateTotal: (await readCandidatePool(client, visitorA.sessionId)).total,
+        taskTotal: await readTaskTotal(client, visitorA.sessionId),
+      };
+      const visitorAFlow = await verifyConvertedCandidateFlow(
+        client,
+        visitorA.sessionId,
+        "visitor",
+        visitorAPassword,
+        { relogin: true },
+      );
+      const visitorATaskPath = visitorAFlow.taskPath;
+      delete visitorAFlow.taskPath;
+      report.visitorAConverted = visitorAFlow;
+
+      phase = "visitor_b_isolation";
+      const visitorB = await pageSession(client);
+      await login(client, visitorB.sessionId, "visitor", visitorBPassword, {});
+      const visitorBCandidates = await readCandidatePool(client, visitorB.sessionId);
+      const visitorBTasks = await readTaskTotal(client, visitorB.sessionId);
+      const visitorBPool = await inspectCandidatePoolPage(client, visitorB.sessionId);
+      report.visitorBConverted = {
+        candidateTotal: visitorBCandidates.total,
+        taskTotal: visitorBTasks,
+        cardCount: visitorBPool.cardCount,
+        empty: visitorBCandidates.total === 0 && visitorBTasks === 0 && visitorBPool.cardCount === 0,
+      };
+
+      const visitorBToVisitorA = await probeTaskAccess(client, visitorB.sessionId, visitorATaskPath);
+      const ownerToVisitorA = await probeTaskAccess(client, owner.sessionId, visitorATaskPath);
+      const visitorAToOwner = await probeTaskAccess(client, visitorA.sessionId, ownerTaskPath);
+      report.taskIsolation = {
+        visitorBToVisitorA: visitorBToVisitorA.status === 404 && visitorBToVisitorA.notFound,
+        ownerToVisitorA: ownerToVisitorA.status === 404 && ownerToVisitorA.notFound,
+        visitorAToOwner: visitorAToOwner.status === 404 && visitorAToOwner.notFound,
+        existenceHidden: [visitorBToVisitorA, ownerToVisitorA, visitorAToOwner]
+          .every((result) => result.status === 404 && result.notFound),
+      };
+
+      const ownerAfter = {
+        candidateTotal: (await readCandidatePool(client, owner.sessionId)).total,
+        taskTotal: await readTaskTotal(client, owner.sessionId),
+      };
+      const visitorAAfter = {
+        candidateTotal: (await readCandidatePool(client, visitorA.sessionId)).total,
+        taskTotal: await readTaskTotal(client, visitorA.sessionId),
+      };
+      const visitorBAfter = {
+        candidateTotal: (await readCandidatePool(client, visitorB.sessionId)).total,
+        taskTotal: await readTaskTotal(client, visitorB.sessionId),
+      };
+      report.sideEffects = {
+        ownerCountsUnchanged: JSON.stringify(ownerBefore) === JSON.stringify(ownerAfter),
+        visitorACountsUnchanged: JSON.stringify(visitorABefore) === JSON.stringify(visitorAAfter),
+        visitorBCountsUnchanged: visitorBAfter.candidateTotal === 0 && visitorBAfter.taskTotal === 0,
+        researchContextRequestCount: client.state.researchContextRequestCount,
+        agentNavigationCount: client.state.agentNavigationCount,
+        aiCallCount: client.state.aiCallCount,
+        taskCreateCount: client.state.taskCreateCount,
+        candidateCreateCount: client.state.candidateCreateCount,
+        externalBusinessRequestCount: client.state.externalHttpRequestCount,
+        syntheticVisitorAiUsage: readSyntheticAiUsage(join(runtimeRoot, "demo-access.json")),
+      };
+      if (!report.visitorBConverted.empty
+        || !report.taskIsolation.existenceHidden
+        || !report.sideEffects.ownerCountsUnchanged
+        || !report.sideEffects.visitorACountsUnchanged
+        || !report.sideEffects.visitorBCountsUnchanged
+        || report.sideEffects.researchContextRequestCount !== 0
+        || report.sideEffects.agentNavigationCount !== 0
+        || report.sideEffects.aiCallCount !== 0
+        || report.sideEffects.taskCreateCount !== 0
+        || report.sideEffects.candidateCreateCount !== 0
+        || report.sideEffects.externalBusinessRequestCount !== 0
+        || report.sideEffects.syntheticVisitorAiUsage !== 0) {
+        throw new Error("smoke_converted_task_side_effect_or_isolation_failed");
+      }
+      phase = "complete";
+      return;
+    }
     const fixturePath = join(runtimeRoot, "synthetic-last-round.xlsx");
     const fixtureTool = join(WORKTREE, "node_modules", "tsx", "dist", "cli.mjs");
     const fixtureScript = join(WORKTREE, "scripts", "sellersprite-preview-smoke-fixtures.ts");
@@ -589,7 +841,7 @@ async function main() {
     phase = "complete";
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
-    report.failureCode = /^smoke_(?:arguments_invalid|real_file_invalid|real_file_hash_mismatch|real_file_contract_mismatch|real_file_pool_recovery_failed|login_control_missing|login_not_completed|preview_control_missing|preview_response_missing|file_input_missing|file_not_selected|fixture_write_failed|chrome_cdp_timeout|page_timeout|page_script_failed|port_not_free|candidate_row_missing|candidate_confirmation_missing|candidate_confirmation_disabled|candidate_import_failed|candidate_pool_read_failed|candidate_page_seed_failed|candidate_recovery_failed|candidate_home_navigation_failed|candidate_pagination_first_page_failed|candidate_pagination_recovery_failed|candidate_isolation_failed|task_total_read_failed|unexpected_business_side_effect)$/.test(code)
+    report.failureCode = /^smoke_(?:arguments_invalid|real_file_invalid|real_file_hash_mismatch|real_file_contract_mismatch|real_file_pool_recovery_failed|login_control_missing|login_not_completed|preview_control_missing|preview_response_missing|file_input_missing|file_not_selected|fixture_write_failed|chrome_cdp_timeout|page_timeout|page_script_failed|port_not_free|candidate_row_missing|candidate_confirmation_missing|candidate_confirmation_disabled|candidate_import_failed|candidate_pool_read_failed|candidate_page_seed_failed|candidate_recovery_failed|candidate_home_navigation_failed|candidate_pagination_first_page_failed|candidate_pagination_recovery_failed|candidate_isolation_failed|task_total_read_failed|unexpected_business_side_effect|converted_candidate_action_invalid|task_path_invalid|converted_candidate_total_invalid|converted_task_unavailable|converted_task_link_missing|converted_task_detail_invalid|converted_task_refresh_failed|converted_candidate_link_drifted|converted_candidate_relogin_failed|converted_task_side_effect_or_isolation_failed)$/.test(code)
       ? code
       : "acceptance_driver_failed";
   } finally {

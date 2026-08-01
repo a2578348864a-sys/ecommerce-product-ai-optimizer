@@ -5,6 +5,16 @@ import { describe, expect, it } from "vitest";
 const DRIVER = resolve("scripts/sellersprite-preview-auth-smoke.mjs");
 
 describe("SellerSprite Preview acceptance driver credential flow", () => {
+  it("accepts an explicit converted-task fixture mode without adding a second browser entrypoint", () => {
+    const source = readFileSync(DRIVER, "utf8");
+
+    expect(source).toContain('args.length === 1 && args[0] === "--converted-task-fixture"');
+    expect(source).toContain('mode: "converted-task-fixture"');
+    expect(source).toContain('mode: "preview"');
+    expect(source).toContain("const tabList = document.querySelector('[role=\"tablist\"]')");
+    expect(source).toContain("tabs[1]?.click()");
+  });
+
   it("uses the programmatic Smoke Runtime result and never parses or prints credentials", () => {
     const source = readFileSync(DRIVER, "utf8");
 
@@ -40,5 +50,20 @@ describe("SellerSprite Preview acceptance driver credential flow", () => {
     expect(source).toContain("--real-sha256");
     expect(source).not.toContain("Search(powder-sunscreen-for-face)-10-US-20260730.xlsx");
     expect(source).not.toContain("C:\\Users\\a2578\\Downloads");
+  });
+
+  it("reuses the existing driver for converted-task navigation and cross-identity denial", () => {
+    const source = readFileSync(DRIVER, "utf8");
+
+    expect(source).toContain("seedConvertedTaskFixture");
+    expect(source).toContain("verifyConvertedCandidateFlow");
+    expect(source).toContain("probeTaskAccess");
+    expect(source).toContain("convertedTaskFixture");
+    expect(source).toContain("researchContextRequestCount");
+    expect(source).toContain("agentNavigationCount");
+    expect(source).toContain("taskCreateCount");
+    expect(source).toContain("candidateCreateCount");
+    expect(source).not.toContain("ownerTaskId:");
+    expect(source).not.toContain("visitorTaskId:");
   });
 });

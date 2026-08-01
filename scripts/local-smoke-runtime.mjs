@@ -14,6 +14,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -35,6 +36,11 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SMOKE_SCHEMA_VERSION = "qingxuan-local-smoke-runtime.v1";
 const SMOKE_PORT = "3115";
 const LOCAL_HOST = "127.0.0.1";
+const CONVERTED_FIXTURE_TIME = "2026-08-01T00:00:00.000Z";
+const OWNER_FIXTURE_CANDIDATE_ID = "smoke_owner_candidate_converted_v1";
+const OWNER_FIXTURE_TASK_ID = "smoke_owner_task_converted_v1";
+const VISITOR_FIXTURE_CANDIDATE_ID = "sandbox_candidate_converted_fixture_v1";
+const VISITOR_FIXTURE_TASK_ID = "sandbox_task_converted_fixture_v1";
 const SAFE_ENVIRONMENT_KEYS = [
   "APPDATA",
   "COMSPEC",
@@ -105,7 +111,7 @@ export function isInsideGitRepository(path) {
 
 export function parseSmokeRuntimeArguments(args = []) {
   const [action, ...options] = args;
-  if (!["start", "status", "stop", "cleanup", "serve"].includes(action)) {
+  if (!["start", "status", "stop", "cleanup", "serve", "seed-converted-task-fixture"].includes(action)) {
     throw new Error("smoke_action_invalid");
   }
   const values = {};
@@ -360,6 +366,260 @@ function writeSmokeMarker(marker) {
     `${JSON.stringify(marker, null, 2)}\n`,
     "utf8",
   );
+}
+
+export function validateConvertedTaskFixtureTarget({
+  runtimeRoot,
+  marker,
+  allowedParent = getDefaultSmokeParent(),
+  worktreeRoot = process.cwd(),
+  pathExists = existsSync,
+  isInsideGitRepository: insideGit = isInsideGitRepository,
+  hasReparsePoint: containsReparsePoint = hasReparsePoint,
+  isProcessAlive: processAlive = isProcessAlive,
+} = {}) {
+  const root = assertAbsoluteLocalPath(runtimeRoot, "smoke_runtime_root_absolute_required");
+  const parent = assertAbsoluteLocalPath(allowedParent, "smoke_parent_absolute_required");
+  if (dirname(root) !== parent) throw new Error("smoke_runtime_parent_invalid");
+  if (isPathWithin(worktreeRoot, root) || isPathWithin(root, worktreeRoot)) {
+    throw new Error("smoke_runtime_inside_worktree");
+  }
+  if (insideGit(parent)) throw new Error("smoke_runtime_inside_git_repository");
+  if (containsReparsePoint(parent)) throw new Error("smoke_runtime_reparse_point_forbidden");
+
+  const ownedMarker = assertMarker(marker, root);
+  if (resolve(ownedMarker.worktreeRoot) !== resolve(worktreeRoot)) {
+    throw new Error("smoke_marker_worktree_mismatch");
+  }
+  const expected = {
+    databasePath: join(root, "dev.db"),
+    demoAccessStorePath: join(root, "demo-access.json"),
+    demoSandboxStorePath: join(root, "demo-sandbox.json"),
+  };
+  if (resolve(ownedMarker.databasePath) !== expected.databasePath) {
+    throw new Error("smoke_fixture_database_path_invalid");
+  }
+  if (resolve(ownedMarker.demoAccessStorePath) !== expected.demoAccessStorePath) {
+    throw new Error("smoke_fixture_access_path_invalid");
+  }
+  if (resolve(ownedMarker.demoSandboxStorePath) !== expected.demoSandboxStorePath) {
+    throw new Error("smoke_fixture_sandbox_path_invalid");
+  }
+  if (!Object.values(expected).every((path) => pathExists(path))) {
+    throw new Error("smoke_fixture_storage_missing");
+  }
+  if (!Number.isInteger(ownedMarker.ownedPid)) throw new Error("smoke_owned_pid_missing");
+  if (!processAlive(ownedMarker.ownedPid)) throw new Error("smoke_runtime_not_running");
+  return expected;
+}
+
+function readSyntheticVisitorIds(storePath) {
+  const store = JSON.parse(readFileSync(storePath, "utf8"));
+  const accesses = Array.isArray(store?.accesses) ? store.accesses : [];
+  if (store?.version !== 1 || accesses.length !== 2) {
+    throw new Error("smoke_fixture_visitor_access_invalid");
+  }
+  const ids = accesses.map((record) => (
+    typeof record?.id === "string" ? record.id.trim() : ""
+  ));
+  if (ids.some((id) => !id) || new Set(ids).size !== 2) {
+    throw new Error("smoke_fixture_visitor_access_invalid");
+  }
+  return { visitorAId: ids[0], visitorBId: ids[1] };
+}
+
+function writeSyntheticSandboxFixture(storePath, visitorAId, visitorBId) {
+  const store = JSON.parse(readFileSync(storePath, "utf8"));
+  if (store?.version !== 1 || !Array.isArray(store.tasks) || !Array.isArray(store.candidates)) {
+    throw new Error("smoke_fixture_sandbox_invalid");
+  }
+  const fixtureIds = new Set([VISITOR_FIXTURE_CANDIDATE_ID, VISITOR_FIXTURE_TASK_ID]);
+  if (store.tasks.some((task) => !fixtureIds.has(task?.id))
+    || store.candidates.some((candidate) => !fixtureIds.has(candidate?.id))) {
+    throw new Error("smoke_fixture_sandbox_not_fresh");
+  }
+  const resultJson = JSON.stringify({
+    productName: "Synthetic converted product for isolated browser acceptance",
+    finalReport: { finalVerdict: "Synthetic test result only" },
+    candidateToTask: { version: 1, candidateId: VISITOR_FIXTURE_CANDIDATE_ID },
+  });
+  const task = {
+    id: VISITOR_FIXTURE_TASK_ID,
+    demoAccessId: visitorAId,
+    type: "workflow",
+    title: "Synthetic converted research result",
+    decisionStatus: "pending",
+    platform: "Amazon US",
+    productUrl: null,
+    materialText: "Synthetic fixture material only.",
+    source: "isolated_smoke_fixture",
+    score: 0,
+    level: "test",
+    oneLineSummary: "Synthetic converted-task fixture.",
+    resultJson,
+    productLifecycle: "{}",
+    createdAt: CONVERTED_FIXTURE_TIME,
+    updatedAt: CONVERTED_FIXTURE_TIME,
+  };
+  const candidate = {
+    id: VISITOR_FIXTURE_CANDIDATE_ID,
+    demoAccessId: visitorAId,
+    name: "Synthetic converted candidate for isolated browser acceptance",
+    rawInput: "Synthetic fixture input only.",
+    link: null,
+    score: 0,
+    source: "isolated_smoke_fixture",
+    keyword: "synthetic-fixture",
+    riskLevel: "unknown",
+    riskLabel: "Synthetic test only",
+    summaryLabel: "Converted research fixture",
+    status: "analyzed",
+    sourceMetaJson: JSON.stringify({ schema: "isolated_smoke_fixture_v1" }),
+    analysisJson: "{}",
+    createdAt: CONVERTED_FIXTURE_TIME,
+    convertedTaskId: VISITOR_FIXTURE_TASK_ID,
+    originProductBatchItemId: null,
+    lastActionAt: CONVERTED_FIXTURE_TIME,
+  };
+  const nextStore = { version: 1, tasks: [task], candidates: [candidate] };
+  if (nextStore.tasks.some((item) => item.demoAccessId === visitorBId)
+    || nextStore.candidates.some((item) => item.demoAccessId === visitorBId)) {
+    throw new Error("smoke_fixture_visitor_b_not_empty");
+  }
+  const temporaryPath = `${storePath}.fixture.tmp`;
+  writeFileSync(temporaryPath, `${JSON.stringify(nextStore, null, 2)}\n`, {
+    encoding: "utf8",
+    flag: "w",
+  });
+  renameSync(temporaryPath, storePath);
+}
+
+async function writeSyntheticOwnerFixture(databasePath) {
+  const { PrismaClient } = await import("@prisma/client");
+  const prisma = new PrismaClient({
+    datasources: { db: { url: `file:${resolve(databasePath).replaceAll("\\", "/")}` } },
+  });
+  const fixtureTime = new Date(CONVERTED_FIXTURE_TIME);
+  const resultJson = JSON.stringify({
+    productName: "Synthetic converted product for isolated browser acceptance",
+    finalReport: { finalVerdict: "Synthetic test result only" },
+    candidateToTask: { version: 1, candidateId: OWNER_FIXTURE_CANDIDATE_ID },
+  });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const foreignTaskCount = await tx.viralAnalysisRecord.count({
+        where: { id: { not: OWNER_FIXTURE_TASK_ID } },
+      });
+      const foreignCandidateCount = await tx.opportunityCandidate.count({
+        where: { id: { not: OWNER_FIXTURE_CANDIDATE_ID } },
+      });
+      if (foreignTaskCount !== 0 || foreignCandidateCount !== 0) {
+        throw new Error("smoke_fixture_owner_database_not_fresh");
+      }
+      await tx.viralAnalysisRecord.upsert({
+        where: { id: OWNER_FIXTURE_TASK_ID },
+        create: {
+          id: OWNER_FIXTURE_TASK_ID,
+          createdAt: fixtureTime,
+          updatedAt: fixtureTime,
+          type: "workflow",
+          decisionStatus: "pending",
+          title: "Synthetic converted research result",
+          platform: "Amazon US",
+          productUrl: null,
+          materialText: "Synthetic fixture material only.",
+          source: "isolated_smoke_fixture",
+          score: 0,
+          level: "test",
+          oneLineSummary: "Synthetic converted-task fixture.",
+          resultJson,
+        },
+        update: {
+          updatedAt: fixtureTime,
+          resultJson,
+        },
+      });
+      await tx.opportunityCandidate.upsert({
+        where: { id: OWNER_FIXTURE_CANDIDATE_ID },
+        create: {
+          id: OWNER_FIXTURE_CANDIDATE_ID,
+          name: "Synthetic converted candidate for isolated browser acceptance",
+          rawInput: "Synthetic fixture input only.",
+          link: null,
+          score: 0,
+          source: "isolated_smoke_fixture",
+          keyword: "synthetic-fixture",
+          riskLevel: "unknown",
+          riskLabel: "Synthetic test only",
+          summaryLabel: "Converted research fixture",
+          status: "analyzed",
+          sourceMetaJson: JSON.stringify({ schema: "isolated_smoke_fixture_v1" }),
+          analysisJson: "{}",
+          convertedTaskId: OWNER_FIXTURE_TASK_ID,
+          createdAt: fixtureTime,
+          updatedAt: fixtureTime,
+          lastActionAt: fixtureTime,
+        },
+        update: {
+          status: "analyzed",
+          convertedTaskId: OWNER_FIXTURE_TASK_ID,
+          updatedAt: fixtureTime,
+          lastActionAt: fixtureTime,
+        },
+      });
+      return {
+        ownerCandidateCount: await tx.opportunityCandidate.count(),
+        ownerTaskCount: await tx.viralAnalysisRecord.count(),
+      };
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+export async function seedConvertedTaskFixture({
+  runtimeRoot,
+  allowedParent = getDefaultSmokeParent(),
+  worktreeRoot = process.cwd(),
+  isInsideGitRepository: insideGit = isInsideGitRepository,
+  hasReparsePoint: containsReparsePoint = hasReparsePoint,
+  isProcessAlive: processAlive = isProcessAlive,
+} = {}) {
+  const marker = readSmokeMarker(runtimeRoot);
+  const paths = validateConvertedTaskFixtureTarget({
+    runtimeRoot,
+    marker,
+    allowedParent,
+    worktreeRoot,
+    isInsideGitRepository: insideGit,
+    hasReparsePoint: containsReparsePoint,
+    isProcessAlive: processAlive,
+  });
+  const { visitorAId, visitorBId } = readSyntheticVisitorIds(paths.demoAccessStorePath);
+  const owner = await writeSyntheticOwnerFixture(paths.databasePath);
+  writeSyntheticSandboxFixture(paths.demoSandboxStorePath, visitorAId, visitorBId);
+  const sandbox = JSON.parse(readFileSync(paths.demoSandboxStorePath, "utf8"));
+  const countFor = (items, accessId) => items.filter((item) => item.demoAccessId === accessId).length;
+  return {
+    status: "converted_task_fixture_seeded",
+    ...owner,
+    visitorACandidateCount: countFor(sandbox.candidates, visitorAId),
+    visitorATaskCount: countFor(sandbox.tasks, visitorAId),
+    visitorBCandidateCount: countFor(sandbox.candidates, visitorBId),
+    visitorBTaskCount: countFor(sandbox.tasks, visitorBId),
+  };
+}
+
+export function formatConvertedTaskFixtureOutput(result) {
+  return JSON.stringify({
+    status: result.status,
+    ownerCandidateCount: result.ownerCandidateCount,
+    ownerTaskCount: result.ownerTaskCount,
+    visitorACandidateCount: result.visitorACandidateCount,
+    visitorATaskCount: result.visitorATaskCount,
+    visitorBCandidateCount: result.visitorBCandidateCount,
+    visitorBTaskCount: result.visitorBTaskCount,
+  });
 }
 
 export function validateOwnedRuntimeProcess(marker, processInfo) {
@@ -674,6 +934,7 @@ export async function runSmokeRuntimeCli(
   {
     startSmokeRuntimeImpl = startSmokeRuntime,
     serveSmokeRuntimeImpl = serveSmokeRuntime,
+    seedConvertedTaskFixtureImpl = seedConvertedTaskFixture,
     getSmokeRuntimeStatusImpl = getSmokeRuntimeStatus,
     stopSmokeRuntimeImpl = stopSmokeRuntime,
     cleanupSmokeRuntimeImpl = cleanupSmokeRuntime,
@@ -691,6 +952,11 @@ export async function runSmokeRuntimeCli(
     }
     if (parsed.action === "serve") {
       await serveSmokeRuntimeImpl(parsed);
+      return 0;
+    }
+    if (parsed.action === "seed-converted-task-fixture") {
+      const result = await seedConvertedTaskFixtureImpl(parsed);
+      writeStdout(formatConvertedTaskFixtureOutput(result));
       return 0;
     }
     if (parsed.action === "status") {

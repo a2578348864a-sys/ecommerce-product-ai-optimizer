@@ -6,9 +6,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { PrismaClient } from "@prisma/client";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { findDemoAccessByPassword } from "@/lib/server/demoAccess";
 
@@ -41,6 +43,18 @@ describe("local isolated Smoke Runtime", () => {
       "start", "--runtime-root", "relative", "--port", "3115",
     ])).toThrow("smoke_runtime_root_absolute_required");
     expect(() => runtime.parseSmokeRuntimeArguments(["unknown"])).toThrow("smoke_action_invalid");
+  });
+
+  it("accepts the isolated converted-task fixture action without a caller-controlled port", async () => {
+    const runtime = await loadRuntime();
+    const root = join(TEST_ROOT, "seller-preview-3115-converted-fixture-parse");
+
+    expect(runtime.parseSmokeRuntimeArguments([
+      "seed-converted-task-fixture", "--runtime-root", root,
+    ])).toEqual({ action: "seed-converted-task-fixture", runtimeRoot: root });
+    expect(() => runtime.parseSmokeRuntimeArguments([
+      "seed-converted-task-fixture", "--runtime-root", root, "--port", "3005",
+    ])).toThrow("smoke_arguments_invalid");
   });
 
   it("keeps every runtime artifact under a new non-Git root outside the worktree", async () => {
@@ -89,6 +103,63 @@ describe("local isolated Smoke Runtime", () => {
     })).toThrow("smoke_runtime_reparse_point_forbidden");
   });
 
+  it("accepts only a live marker whose database and Visitor stores are owned by the isolated root", async () => {
+    const runtime = await loadRuntime();
+    const allowedParent = join(TEST_ROOT, "converted-fixture-targets");
+    const runtimeRoot = join(allowedParent, "seller-preview-3115-owned");
+    const paths = {
+      databasePath: join(runtimeRoot, "dev.db"),
+      demoAccessStorePath: join(runtimeRoot, "demo-access.json"),
+      demoSandboxStorePath: join(runtimeRoot, "demo-sandbox.json"),
+    };
+    const marker = runtime.buildSmokeMarker({
+      runtimeRoot,
+      worktreeRoot: resolve("."),
+      port: "3115",
+      ...paths,
+      launchId: "fixture-launch-id",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      ownedPid: 4242,
+      listenerPid: 4343,
+    });
+    const options = {
+      runtimeRoot,
+      marker,
+      allowedParent,
+      worktreeRoot: resolve("."),
+      pathExists: () => true,
+      isInsideGitRepository: () => false,
+      hasReparsePoint: () => false,
+      isProcessAlive: () => true,
+    };
+
+    expect(runtime.validateConvertedTaskFixtureTarget(options)).toMatchObject(paths);
+    expect(() => runtime.validateConvertedTaskFixtureTarget({
+      ...options,
+      marker: { ...marker, port: 3005 },
+    })).toThrow("smoke_marker_port_invalid");
+    expect(() => runtime.validateConvertedTaskFixtureTarget({
+      ...options,
+      marker: { ...marker, databasePath: resolve("prisma/dev.db") },
+    })).toThrow("smoke_fixture_database_path_invalid");
+    expect(() => runtime.validateConvertedTaskFixtureTarget({
+      ...options,
+      marker: { ...marker, demoSandboxStorePath: resolve("data/demo-sandbox.json") },
+    })).toThrow("smoke_fixture_sandbox_path_invalid");
+    expect(() => runtime.validateConvertedTaskFixtureTarget({
+      ...options,
+      marker: { ...marker, ownedPid: undefined },
+    })).toThrow("smoke_owned_pid_missing");
+    expect(() => runtime.validateConvertedTaskFixtureTarget({
+      ...options,
+      isProcessAlive: () => false,
+    })).toThrow("smoke_runtime_not_running");
+    expect(() => runtime.validateConvertedTaskFixtureTarget({
+      ...options,
+      runtimeRoot: join(TEST_ROOT, "not-the-allowed-parent", "runtime"),
+    })).toThrow("smoke_runtime_parent_invalid");
+  });
+
   it("creates a one-record Visitor store accepted by the existing authentication module", async () => {
     const runtime = await loadRuntime();
     const root = join(TEST_ROOT, "visitor-store");
@@ -114,6 +185,102 @@ describe("local isolated Smoke Runtime", () => {
     expect(stored).not.toContain(visitorPassword);
     expect(stored).toContain("\"version\": 1");
   });
+
+  it("creates one linked Owner fixture and one linked Visitor A fixture without populating Visitor B", async () => {
+    const runtime = await loadRuntime();
+    const allowedParent = join(TEST_ROOT, "converted-fixture-integration");
+    const runtimeRoot = join(allowedParent, "seller-preview-3115-converted");
+    mkdirSync(runtimeRoot, { recursive: true });
+    const databasePath = join(runtimeRoot, "dev.db");
+    const demoAccessStorePath = join(runtimeRoot, "demo-access.json");
+    const demoSandboxStorePath = join(runtimeRoot, "demo-sandbox.json");
+    const env = runtime.buildSanitizedSmokeEnvironment({
+      parentEnv: process.env,
+      ownerPassword: "synthetic-owner-test-only",
+      databasePath,
+      demoAccessStorePath,
+      demoSandboxStorePath,
+    });
+    const migrate = spawnSync(process.execPath, [
+      resolve("node_modules/prisma/build/index.js"), "migrate", "deploy",
+    ], {
+      cwd: resolve("."),
+      env,
+      encoding: "utf8",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    expect(migrate.status).toBe(0);
+    writeFileSync(demoAccessStorePath, `${JSON.stringify({
+      version: 1,
+      accesses: [
+        { id: "demo_fixture_visitor_a", label: "Synthetic Visitor A" },
+        { id: "demo_fixture_visitor_b", label: "Synthetic Visitor B" },
+      ],
+    }, null, 2)}\n`);
+    runtime.createSyntheticDemoSandboxStore(demoSandboxStorePath);
+    const marker = runtime.buildSmokeMarker({
+      runtimeRoot,
+      worktreeRoot: resolve("."),
+      port: "3115",
+      databasePath,
+      demoAccessStorePath,
+      demoSandboxStorePath,
+      launchId: "converted-fixture-test-launch",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      ownedPid: 4242,
+      listenerPid: 4343,
+    });
+    writeFileSync(join(runtimeRoot, "smoke-runtime.json"), `${JSON.stringify(marker, null, 2)}\n`);
+
+    const first = await runtime.seedConvertedTaskFixture({
+      runtimeRoot,
+      allowedParent,
+      worktreeRoot: resolve("."),
+      isInsideGitRepository: () => false,
+      hasReparsePoint: () => false,
+      isProcessAlive: () => true,
+    });
+    const second = await runtime.seedConvertedTaskFixture({
+      runtimeRoot,
+      allowedParent,
+      worktreeRoot: resolve("."),
+      isInsideGitRepository: () => false,
+      hasReparsePoint: () => false,
+      isProcessAlive: () => true,
+    });
+    expect(first).toEqual({
+      status: "converted_task_fixture_seeded",
+      ownerCandidateCount: 1,
+      ownerTaskCount: 1,
+      visitorACandidateCount: 1,
+      visitorATaskCount: 1,
+      visitorBCandidateCount: 0,
+      visitorBTaskCount: 0,
+    });
+    expect(second).toEqual(first);
+
+    const prisma = new PrismaClient({
+      datasources: { db: { url: `file:${databasePath.replaceAll("\\", "/")}` } },
+    });
+    try {
+      const ownerCandidates = await prisma.opportunityCandidate.findMany();
+      const ownerTasks = await prisma.viralAnalysisRecord.findMany();
+      expect(ownerCandidates).toHaveLength(1);
+      expect(ownerTasks).toHaveLength(1);
+      expect(ownerCandidates[0].convertedTaskId).toBe(ownerTasks[0].id);
+    } finally {
+      await prisma.$disconnect();
+    }
+    const sandbox = JSON.parse(readFileSync(demoSandboxStorePath, "utf8"));
+    const visitorACandidates = sandbox.candidates.filter((item: { demoAccessId: string }) => item.demoAccessId === "demo_fixture_visitor_a");
+    const visitorATasks = sandbox.tasks.filter((item: { demoAccessId: string }) => item.demoAccessId === "demo_fixture_visitor_a");
+    expect(visitorACandidates).toHaveLength(1);
+    expect(visitorATasks).toHaveLength(1);
+    expect(visitorACandidates[0].convertedTaskId).toBe(visitorATasks[0].id);
+    expect(sandbox.candidates.filter((item: { demoAccessId: string }) => item.demoAccessId === "demo_fixture_visitor_b")).toHaveLength(0);
+    expect(sandbox.tasks.filter((item: { demoAccessId: string }) => item.demoAccessId === "demo_fixture_visitor_b")).toHaveLength(0);
+  }, 30_000);
 
   it("sanitizes inherited credentials and keeps synthetic secrets out of CLI and marker data", async () => {
     const runtime = await loadRuntime();
@@ -253,6 +420,56 @@ describe("local isolated Smoke Runtime", () => {
     expect(failureStderr).toEqual([JSON.stringify({ status: "smoke_runtime_failed" })]);
   });
 
+  it("publishes only aggregate fixture counts and rejects a runtime without its owned marker", async () => {
+    const runtime = await loadRuntime();
+    const root = join(TEST_ROOT, "seller-preview-3115-fixture-cli");
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const result = {
+      status: "converted_task_fixture_seeded",
+      ownerCandidateCount: 1,
+      ownerTaskCount: 1,
+      visitorACandidateCount: 1,
+      visitorATaskCount: 1,
+      visitorBCandidateCount: 0,
+      visitorBTaskCount: 0,
+      ownerCandidateId: "INTERNAL_CANDIDATE_SENTINEL",
+      ownerTaskId: "INTERNAL_TASK_SENTINEL",
+      password: "CREDENTIAL_SENTINEL",
+    };
+    const exitCode = await runtime.runSmokeRuntimeCli([
+      "seed-converted-task-fixture", "--runtime-root", root,
+    ], {
+      seedConvertedTaskFixtureImpl: async () => result,
+      writeStdout: (value: string) => stdout.push(value),
+      writeStderr: (value: string) => stderr.push(value),
+    });
+    const output = stdout.join("\n");
+    expect(exitCode).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(JSON.parse(output)).toEqual({
+      status: "converted_task_fixture_seeded",
+      ownerCandidateCount: 1,
+      ownerTaskCount: 1,
+      visitorACandidateCount: 1,
+      visitorATaskCount: 1,
+      visitorBCandidateCount: 0,
+      visitorBTaskCount: 0,
+    });
+    expect(output).not.toMatch(/INTERNAL_|CREDENTIAL_SENTINEL/);
+
+    const missingRoot = join(TEST_ROOT, "missing-marker-parent", "missing-runtime");
+    mkdirSync(missingRoot, { recursive: true });
+    await expect(runtime.seedConvertedTaskFixture({
+      runtimeRoot: missingRoot,
+      allowedParent: resolve(missingRoot, ".."),
+      worktreeRoot: resolve("."),
+      isInsideGitRepository: () => false,
+      hasReparsePoint: () => false,
+      isProcessAlive: () => true,
+    })).rejects.toThrow("smoke_marker_missing");
+  });
+
   it("uses only migrate deploy with the worktree-local locked Prisma CLI", async () => {
     const runtime = await loadRuntime();
     const spec = runtime.buildPrismaMigrationSpec({
@@ -332,5 +549,6 @@ describe("local isolated Smoke Runtime", () => {
     expect(source).not.toMatch(new RegExp("taskkill[^\\n]*/IM|chrome|edge|firefox|brave|opera", "i"));
     expect(source).not.toMatch(/migrate\s+dev|db\s+push|db\s+seed/i);
     expect(source).not.toMatch(/show-credentials|formatOneTimeSmokeCredentials/i);
+    expect(source).not.toMatch(/fetch\(|openai|anthropic|deepseek/i);
   });
 });
