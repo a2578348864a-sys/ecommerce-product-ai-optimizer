@@ -27,9 +27,9 @@ export default function SellerSpritePreviewPage() {
             <div className="space-y-3">
               <p className="eyebrow">卖家精灵美国站搜索结果导出</p>
               <div>
-                <h1 className="section-title text-2xl sm:text-3xl">商品报表安全预览</h1>
+                <h1 className="section-title text-2xl sm:text-3xl">上传并选择 SellerSprite 商品</h1>
                 <p className="mt-2 text-sm text-slate-600">
-                  只支持卖家精灵导出的 Amazon 美国站搜索结果 XLSX。
+                  只支持卖家精灵导出的 Amazon 美国站搜索结果 XLSX；本页只做结构检查、异常隔离和人工选择。
                 </p>
               </div>
               <p className="text-sm font-medium text-teal-800">只读预览，尚未进入商品研究池</p>

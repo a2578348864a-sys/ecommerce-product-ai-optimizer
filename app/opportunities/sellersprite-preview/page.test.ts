@@ -11,8 +11,9 @@ describe("SellerSprite Preview V2 page entry", () => {
     expect(source).toContain('href="/opportunities"');
     expect(source).toContain("发现商品");
     expect(source).toContain("卖家精灵数据导入");
-    expect(source).toContain("商品报表安全预览");
+    expect(source).toContain("上传并选择 SellerSprite 商品");
     expect(source).toContain("卖家精灵美国站搜索结果导出");
+    expect(source).toContain("结构检查、异常隔离和人工选择");
     expect(source).toContain("只读预览，尚未进入商品研究池");
     expect(source).toContain("不是 Amazon 官方导出");
     expect(source).not.toContain("notFound");

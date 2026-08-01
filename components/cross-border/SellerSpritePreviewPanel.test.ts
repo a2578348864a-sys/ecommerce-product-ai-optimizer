@@ -6,6 +6,15 @@ async function panelSource(): Promise<string> {
 }
 
 describe("SellerSpritePreviewPanel V2 contract", () => {
+  it("delegates response presentation to the behavior-tested results view", async () => {
+    const source = await panelSource();
+
+    expect(source).toContain("SellerSpritePreviewResults");
+    expect(source).toContain("<SellerSpritePreviewResults");
+    expect(source).not.toContain("<table");
+    expect(source).not.toContain("row.facts.amazonUrl");
+  });
+
   it("uses the shared authenticated Preview endpoint without owning a second workspace shell", async () => {
     const source = await panelSource();
     expect(source).toContain('fetch("/api/opportunities/sellersprite-preview"');
@@ -60,9 +69,9 @@ describe("SellerSpritePreviewPanel V2 contract", () => {
     expect(source).not.toMatch(/agent\/run\?.*(asin|title|rowHash)/i);
   });
 
-  it("keeps invalid rows non-selectable and surfaces token expiry with a regenerate action", async () => {
+  it("delegates invalid-row presentation and surfaces token expiry with a regenerate action", async () => {
     const source = await panelSource();
-    expect(source).toContain("隔离异常行（不可选择）");
+    expect(source).toContain("SellerSpritePreviewResults");
     expect(source).toContain("isTokenExpiryCode(");
     expect(source).toContain("重新生成预览");
     expect(source).toContain("文件只在当前页面会话中保留");

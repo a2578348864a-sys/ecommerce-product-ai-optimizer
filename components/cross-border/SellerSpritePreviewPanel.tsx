@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { SellerSpritePreviewResults } from "@/components/cross-border/SellerSpritePreviewResults";
 import {
   buildCandidateResearchHref,
   buildImportFormData,
@@ -18,26 +19,11 @@ import {
   toggleRowSelection,
   type SellerSpriteImportResult,
 } from "@/lib/client/sellerSpriteImportWorkflow";
-import type { SellerSpriteAcceptedPreviewRow, SellerSpritePreviewResult } from "@/lib/upstream/sellersprite/preview";
+import type { SellerSpritePreviewResult } from "@/lib/upstream/sellersprite/preview";
 
 type PreviewResponse =
   | { ok: true; preview: SellerSpritePreviewResult & { importToken?: string } }
   | { ok: false; error?: { code?: string; message?: string } };
-
-function fieldStatusLabel(status: SellerSpriteAcceptedPreviewRow["fieldStatus"][keyof SellerSpriteAcceptedPreviewRow["fieldStatus"]]): string {
-  const labels = {
-    source_fact: "来源事实",
-    third_party_estimate: "第三方估算",
-    snapshot: "时间点快照",
-    missing: "缺失",
-    unknown: "无法确认",
-  } as const;
-  return labels[status];
-}
-
-function missingText(fields: readonly string[]): string {
-  return fields.length > 0 ? `缺失或无法确认：${fields.join("、")}` : "字段完整";
-}
 
 export function SellerSpritePreviewPanel() {
   const [file, setFile] = useState<File | null>(null);
@@ -244,126 +230,21 @@ export function SellerSpritePreviewPanel() {
 
       {preview ? (
         <div className="space-y-5">
-          <section className="surface-card-soft p-4 text-sm text-slate-800" aria-label="预览摘要">
-            <p>数据源：{preview.source.sourceProvider}；市场：{preview.source.marketplace}；报表：{preview.source.reportType}</p>
-            <p>合法行：{preview.acceptedRowCount}；隔离异常行：{preview.rejectedRowCount}</p>
-            <p>源文件 SHA-256：<code className="break-all">{preview.source.sourceFileSha256}</code></p>
-            {preview.previewTruncated ? <p>为保护响应体积，列表只展示前若干行。</p> : null}
-          </section>
-
-          {hasBlockingErrors ? (
-            <section className="surface-card border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" aria-label="阻断冲突">
-              <h2 className="font-semibold">阻断：重复 ASIN 的关键字段冲突</h2>
-              <p>这些行没有被任选为唯一商品，请修正源报表后重新预览。存在阻断冲突时不能导入。</p>
-              <ul className="mt-2 list-disc pl-5">
-                {preview.blockingErrors.map((issue) => (
-                  <li key={`${issue.asin}-${issue.rowNumbers.join("-")}`}>{issue.asin}：第 {issue.rowNumbers.join("、")} 行</li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          {!hasImportToken && !hasBlockingErrors ? (
-            <p role="alert" className="surface-card border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              本次预览未生成导入凭证（Token），无法加入商品研究池。请重新预览。
-            </p>
-          ) : null}
-
-          {preview.duplicates.length > 0 ? (
-            <section className="surface-card p-4 text-sm text-slate-800" aria-label="重复 ASIN">
-              <h2 className="font-semibold">重复 ASIN</h2>
-              <ul className="mt-2 list-disc pl-5">
-                {preview.duplicates.map((item) => (
-                  <li key={item.asin}>{item.asin}：第 {item.rowNumbers.join("、")} 行{item.hasCriticalConflict ? "（关键字段冲突）" : ""}</li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          <section className="surface-card overflow-x-auto" aria-label="合法商品行预览">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-              <div className="text-sm text-slate-700">
-                已选择 <span className="font-semibold">{selectedRowHashes.length}</span> 项（最多 {SELLERSPRITE_IMPORT_MAX_SELECTED_ROWS} 项）
-              </div>
-              <button
-                type="button"
-                className="linear-button-secondary inline-flex min-h-9 items-center px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed"
-                onClick={handleSelectAll}
-                disabled={!canSelect}
-              >
-                全选
-              </button>
-              <button
-                type="button"
-                className="linear-button-secondary inline-flex min-h-9 items-center px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed"
-                onClick={() => { setSelectedRowHashes([]); setSelectAllOverLimit(false); }}
-                disabled={!canSelect || selectedRowHashes.length === 0}
-              >
-                取消全选
-              </button>
-            </div>
-            {selectAllOverLimit ? (
-              <p role="alert" className="px-3 pb-2 text-sm text-amber-800">
-                合法行超过 {SELLERSPRITE_IMPORT_MAX_SELECTED_ROWS} 项，只允许最多选择 {SELLERSPRITE_IMPORT_MAX_SELECTED_ROWS} 项。
-              </p>
-            ) : null}
-            {!canSelect ? (
-              <p className="px-3 pb-2 text-sm text-slate-500">
-                {hasBlockingErrors ? "存在阻断冲突，无法选择商品。"
-                  : !hasImportToken ? "没有导入凭证，无法选择商品。"
-                    : isImporting ? "导入进行中，选择已暂时禁用。" : ""}
-              </p>
-            ) : null}
-            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-              <thead className="bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="px-3 py-2 w-10">选择</th>
-                  <th className="px-3 py-2">行</th>
-                  <th className="px-3 py-2">来源事实与快照</th>
-                  <th className="px-3 py-2">第三方估算</th>
-                  <th className="px-3 py-2">字段状态</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {acceptedRows.map((row) => {
-                  const rowHash = row.rowHash ?? "";
-                  const isSelected = selectedRowHashes.includes(rowHash);
-                  const isProcessed = processed.has(rowHash);
-                  return (
-                    <tr key={row.rowNumber} className={isProcessed ? "bg-slate-50/60" : undefined}>
-                      <td className="px-3 py-3 align-top">
-                        <input
-                          type="checkbox"
-                          aria-label={`选择第 ${row.rowNumber} 行商品`}
-                          checked={isSelected}
-                          disabled={!canSelect || isProcessed || !rowHash}
-                          onChange={() => toggleRow(rowHash)}
-                        />
-                        {isProcessed ? <span className="ml-1 text-xs text-teal-700">已处理</span> : null}
-                      </td>
-                      <td className="px-3 py-3 align-top">{row.rowNumber}</td>
-                      <td className="px-3 py-3 align-top">
-                        <p className="font-medium">{row.facts.title}</p>
-                        <p>{row.facts.asin}{row.facts.parentAsin ? ` · Parent ${row.facts.parentAsin}` : ""}</p>
-                        <p className="break-all">{row.facts.amazonUrl}</p>
-                        <p>{row.facts.priceUsd === undefined ? "价格未知" : `$${row.facts.priceUsd}`} · {row.facts.rating === undefined ? "评分未知" : `评分 ${row.facts.rating}`} · {row.facts.reviewCount === undefined ? "评论数未知" : `评论数 ${row.facts.reviewCount}`}</p>
-                        <p>{row.facts.brand ?? "品牌未知"} · {row.facts.category ?? "类目未知"}</p>
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <p>{row.estimates.searchRank === undefined ? "排名未知" : `搜索排名 ${row.estimates.searchRank}`}</p>
-                        <p>{row.estimates.estimatedMonthlySales === undefined ? "月销量估算未知" : `月销量估算 ${row.estimates.estimatedMonthlySales}`}</p>
-                        <p>{row.estimates.estimatedMonthlyRevenueUsd === undefined ? "月销售额估算未知" : `月销售额估算 $${row.estimates.estimatedMonthlyRevenueUsd}`}</p>
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <p>{missingText(row.missingFields)}</p>
-                        <p className="mt-1 text-xs text-slate-600">价格：{fieldStatusLabel(row.fieldStatus.priceUsd)}；排名：{fieldStatusLabel(row.fieldStatus.searchRank)}</p>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
+          <SellerSpritePreviewResults
+            preview={preview}
+            selectedRowHashes={selectedRowHashes}
+            processedRowHashes={processed}
+            canSelect={canSelect}
+            isImporting={isImporting}
+            selectAllOverLimit={selectAllOverLimit}
+            maxSelectedRows={SELLERSPRITE_IMPORT_MAX_SELECTED_ROWS}
+            onSelectAll={handleSelectAll}
+            onClearSelection={() => {
+              setSelectedRowHashes([]);
+              setSelectAllOverLimit(false);
+            }}
+            onToggleRow={toggleRow}
+          />
 
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -500,16 +381,6 @@ export function SellerSpritePreviewPanel() {
             </section>
           ) : null}
 
-          {preview.rejectedRows.length > 0 ? (
-            <section className="surface-card p-4 text-sm text-slate-800" aria-label="隔离异常行">
-              <h2 className="font-semibold">隔离异常行（不可选择）</h2>
-              <ul className="mt-2 list-disc pl-5">
-                {preview.rejectedRows.map((row) => (
-                  <li key={row.rowNumber}>第 {row.rowNumber} 行：{row.reasons.map((reason) => reason.field ? `${reason.field}：${reason.code}` : reason.code).join("；")}</li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
         </div>
       ) : null}
     </section>
