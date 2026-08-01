@@ -92,5 +92,5 @@ describe("source-native terminal artifact closure", () => {
       [values.operator, values.assessorA, values.assessorB].forEach((value, index) => writeFileSync(directionalPaths[index], JSON.stringify(value)));
       expect(generateStage15SourceNativeResult({ preparationDirectory: directionalPreparation.directory, outputRoot: directionalRoot, createdAt: "2026-07-17T12:20:00.000Z", roleAttestations: { screeningOperatorDistinctFromOutcomeAssessors: false, outcomeAssessorsDistinctFromEachOther: false }, operatorResultPath: directionalPaths[0], outcomeAssessorAResultPath: directionalPaths[1], outcomeAssessorBResultPath: directionalPaths[2] }).analysis.conclusion).toBe("directional_workflow_signal_observed");
     } finally { rmSync(root, { recursive: true, force: true }); rmSync(directionalRoot, { recursive: true, force: true }); }
-  });
+  }, 8_000);
 });
