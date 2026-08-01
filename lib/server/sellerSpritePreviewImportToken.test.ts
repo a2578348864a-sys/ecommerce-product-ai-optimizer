@@ -252,6 +252,61 @@ describe("SellerSprite Preview Import Token", () => {
     }
   });
 
+  it.each([
+    ["malformed Base64 payload", "*"],
+    ["invalid UTF-8 payload", Buffer.from([0xff]).toString("base64url")],
+    ["malformed JSON payload", Buffer.from("{", "utf-8").toString("base64url")],
+    ["non-object JSON payload", Buffer.from("null", "utf-8").toString("base64url")],
+  ])("fails closed for %s without throwing", async (_label, payload) => {
+    const { verifySellerSpritePreviewImportToken } = await freshModule();
+    const token = `preview-import-v1.${payload}.AA`;
+    expect(() => verifySellerSpritePreviewImportToken(token)).not.toThrow();
+    const result = verifySellerSpritePreviewImportToken(token);
+    expect(result).toEqual({ ok: false, reason: "malformed_preview_token" });
+  });
+
+  it("fails closed when a signed payload is missing a required field", async () => {
+    const { generateSellerSpritePreviewImportToken, verifySellerSpritePreviewImportToken } =
+      await freshModule();
+    const token = generateSellerSpritePreviewImportToken(
+      "owner",
+      defaults.sourceFileSha256,
+      undefined as unknown as string,
+      defaults.acceptedRowCount,
+      defaults.warningDigest,
+      defaults.warningCount,
+      defaults.parserContractVersion,
+    );
+    expect(() => verifySellerSpritePreviewImportToken(token)).not.toThrow();
+    expect(verifySellerSpritePreviewImportToken(token)).toEqual({
+      ok: false,
+      reason: "malformed_preview_token",
+    });
+  });
+
+  it.each([
+    ["empty signature", ""],
+    ["invalid Base64 signature", "*"],
+    ["short signature", Buffer.alloc(31, 0x11).toString("base64url")],
+    ["long signature", Buffer.alloc(33, 0x11).toString("base64url")],
+    ["invalid decoded signature length", "AA"],
+  ])("fails closed for %s without throwing", async (_label, signature) => {
+    const { generateSellerSpritePreviewImportToken, verifySellerSpritePreviewImportToken } =
+      await freshModule();
+    const validToken = generateSellerSpritePreviewImportToken(
+      "owner", defaults.sourceFileSha256, defaults.acceptedRowsDigest,
+      defaults.acceptedRowCount, defaults.warningDigest, defaults.warningCount,
+      defaults.parserContractVersion,
+    );
+    const [prefix, payload] = validToken.split(".");
+    const token = `${prefix}.${payload}.${signature}`;
+    expect(() => verifySellerSpritePreviewImportToken(token)).not.toThrow();
+    expect(verifySellerSpritePreviewImportToken(token)).toEqual({
+      ok: false,
+      reason: "invalid_preview_token_signature",
+    });
+  });
+
   it("token payload does not contain ASIN, title, or URL", async () => {
     const { generateSellerSpritePreviewImportToken, verifySellerSpritePreviewImportToken } =
       await freshModule();

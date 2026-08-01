@@ -1,7 +1,23 @@
-import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const SELLERSPRITE_PREVIEW_IMPORT_MAX_TOKEN_UTF8_BYTES = 2048;
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function toBase64url(buf: Buffer): string {
   return buf.toString("base64url");
+}
+
+function fromBase64urlStrict(value: string): Buffer | null {
+  if (!value || !BASE64URL_PATTERN.test(value)) return null;
+  try {
+    const decoded = Buffer.from(value, "base64url");
+    if (decoded.length === 0 || decoded.toString("base64url") !== value) {
+      return null;
+    }
+    return decoded;
+  } catch {
+    return null;
+  }
 }
 
 function getSigningKey(): Buffer | null {
@@ -33,6 +49,25 @@ export type SellerSpritePreviewImportTokenPayload = {
   issuedAt: number;
   expiresAt: number;
 };
+
+function isSellerSpritePreviewImportTokenPayload(
+  value: unknown,
+): value is SellerSpritePreviewImportTokenPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const payload = value as Record<string, unknown>;
+  return (
+    typeof payload.version === "string" && payload.version.length > 0 &&
+    typeof payload.subjectScopeHash === "string" && payload.subjectScopeHash.length > 0 &&
+    typeof payload.sourceFileSha256 === "string" && payload.sourceFileSha256.length > 0 &&
+    typeof payload.acceptedRowsDigest === "string" && payload.acceptedRowsDigest.length > 0 &&
+    Number.isInteger(payload.acceptedRowCount) && Number(payload.acceptedRowCount) >= 0 &&
+    typeof payload.warningDigest === "string" && payload.warningDigest.length > 0 &&
+    Number.isInteger(payload.warningCount) && Number(payload.warningCount) >= 0 &&
+    typeof payload.parserContractVersion === "string" && payload.parserContractVersion.length > 0 &&
+    typeof payload.issuedAt === "number" && Number.isFinite(payload.issuedAt) &&
+    typeof payload.expiresAt === "number" && Number.isFinite(payload.expiresAt)
+  );
+}
 
 export function generateSellerSpritePreviewImportToken(
   subjectScope: string,
@@ -92,6 +127,9 @@ export function verifySellerSpritePreviewImportToken(token: string): {
   if (typeof token !== "string" || !token.startsWith("preview-import-v1.")) {
     return { ok: false, reason: "malformed_preview_token" };
   }
+  if (Buffer.byteLength(token, "utf-8") > SELLERSPRITE_PREVIEW_IMPORT_MAX_TOKEN_UTF8_BYTES) {
+    return { ok: false, reason: "malformed_preview_token" };
+  }
 
   const parts = token.split(".");
   if (parts.length !== 3) {
@@ -100,14 +138,37 @@ export function verifySellerSpritePreviewImportToken(token: string): {
 
   const b64Payload = parts[1];
   const b64Sig = parts[2];
-  const payloadJson = Buffer.from(b64Payload, "base64url").toString("utf-8");
-  const payload = JSON.parse(payloadJson) as SellerSpritePreviewImportTokenPayload;
+  const payloadBytes = fromBase64urlStrict(b64Payload);
+  if (!payloadBytes) {
+    return { ok: false, reason: "malformed_preview_token" };
+  }
+
+  let payloadJson: string;
+  let parsedPayload: unknown;
+  try {
+    payloadJson = new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes);
+    parsedPayload = JSON.parse(payloadJson) as unknown;
+  } catch {
+    return { ok: false, reason: "malformed_preview_token" };
+  }
+  if (!parsedPayload || typeof parsedPayload !== "object" || Array.isArray(parsedPayload)) {
+    return { ok: false, reason: "malformed_preview_token" };
+  }
 
   // Signature verification
   const computedSig = createHmac("sha256", key).update(payloadJson).digest();
-  if (!timingSafeEqual(Buffer.from(b64Sig, "base64url"), computedSig)) {
+  const providedSig = fromBase64urlStrict(b64Sig);
+  if (!providedSig || providedSig.length !== computedSig.length) {
     return { ok: false, reason: "invalid_preview_token_signature" };
   }
+  if (!timingSafeEqual(providedSig, computedSig)) {
+    return { ok: false, reason: "invalid_preview_token_signature" };
+  }
+
+  if (!isSellerSpritePreviewImportTokenPayload(parsedPayload)) {
+    return { ok: false, reason: "malformed_preview_token" };
+  }
+  const payload = parsedPayload;
 
   const now = Date.now();
   const issued = Number(payload.issuedAt);
