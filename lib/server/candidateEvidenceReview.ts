@@ -21,7 +21,14 @@ type CandidateEvidenceRecord = {
   sourceMetaJson?: unknown;
   analysisJson?: unknown;
   link?: unknown;
+  source?: unknown;
 };
+
+export type CandidatePublicSourceKind =
+  | "sellersprite_direct"
+  | "product_batch"
+  | "manual"
+  | "other";
 
 const PUBLIC_CANDIDATE_FIELDS = [
   "id",
@@ -68,6 +75,45 @@ function normalizedOpenUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function normalizePublicMarketplace(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.normalize("NFC").trim().replace(/\s+/gu, " ");
+  if (!normalized || normalized.length > 32 || !/^[\p{L}\p{N} ._-]+$/u.test(normalized)) return null;
+  const upper = normalized.toUpperCase();
+  if (upper === "US" || upper === "AMAZON US") return "Amazon US";
+  return normalized;
+}
+
+function publicSourceClassification(input: {
+  sourceMeta: Record<string, unknown> | null;
+  source: unknown;
+}): { sourceKind: CandidatePublicSourceKind; marketplace: string | null } {
+  const { sourceMeta } = input;
+  const nestedSource = isRecord(sourceMeta?.source) ? sourceMeta.source : null;
+  if (sourceMeta?.schema === "sellersprite_candidate_source_v1"
+    && nestedSource?.provider === "SellerSprite"
+    && nestedSource.type === "sellersprite_xlsx") {
+    return {
+      sourceKind: "sellersprite_direct",
+      marketplace: normalizePublicMarketplace(nestedSource.marketplace),
+    };
+  }
+  if (sourceMeta?.version === "product-batch-candidate-source.v1"
+    && sourceMeta.originKind === "seller_sprite_product_batch") {
+    return {
+      sourceKind: "product_batch",
+      marketplace: normalizePublicMarketplace(sourceMeta.marketplace),
+    };
+  }
+  const source = typeof input.source === "string" ? input.source.trim().toLowerCase() : "";
+  const manual = source.includes("manual")
+    || source.includes("人工")
+    || source.includes("本浏览器")
+    || source.includes("访客输入")
+    || source.includes("访客导入");
+  return { sourceKind: manual ? "manual" : "other", marketplace: null };
 }
 
 function unverified(input: CandidateEvidenceRecord): CandidateEvidenceReviewV1 {
@@ -170,6 +216,10 @@ export function toPublicOpportunityCandidate<T extends object>(candidate: T) {
     if (record[field] !== undefined) publicFields[field] = record[field];
   }
   const parsedSourceMeta = parseRecord(sourceMetaJson);
+  const publicSource = publicSourceClassification({
+    sourceMeta: parsedSourceMeta,
+    source: record.source,
+  });
   const evidenceSnapshot = parseCandidateEvidenceSnapshot(parsedSourceMeta?.evidenceSnapshot);
   const sourceReview = buildCandidateEvidenceReview({
     sourceMetaJson,
@@ -180,6 +230,7 @@ export function toPublicOpportunityCandidate<T extends object>(candidate: T) {
 
   return {
     ...publicFields,
+    ...publicSource,
     ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
     ...(r22MarketDecisionSnapshot ? { r22MarketDecisionSnapshot } : {}),
     sourceIntegrity: sourceReview.integrity,

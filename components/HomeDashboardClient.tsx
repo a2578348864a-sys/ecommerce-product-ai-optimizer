@@ -17,7 +17,7 @@ import {
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
-import { readCandidatePool } from "@/lib/opportunityCandidatePool";
+import { serverCandidateToPoolItem, type OpportunityCandidatePoolItem } from "@/lib/opportunityCandidatePool";
 import {
   getRecommendedNextAction,
   parseRecentSingleRun,
@@ -36,6 +36,11 @@ type TaskLoadState =
   | { status: "loading"; summary: null; message: string }
   | { status: "ready"; summary: TaskFollowUpSummary; message: string }
   | { status: "unavailable"; summary: null; message: string };
+
+type CandidateLoadState =
+  | { status: "loading"; items: OpportunityCandidatePoolItem[]; total: number; message: string }
+  | { status: "ready"; items: OpportunityCandidatePoolItem[]; total: number; message: string }
+  | { status: "unavailable"; items: OpportunityCandidatePoolItem[]; total: number; message: string };
 
 const taskFallbackMessage = "输入访问密码后显示真实研究历史统计。";
 
@@ -103,10 +108,10 @@ const workflowSteps = [
     icon: Search,
   },
   {
-    label: "商品研究",
-    href: "/agent/run",
-    cta: "开始商品研究",
-    description: "理解商品、研究市场，并把未知风险留给人工核验。",
+    label: "商品研究池",
+    href: "/opportunity-candidates",
+    cta: "打开商品研究池",
+    description: "从已保存的 Candidate 中选择商品，恢复或开始研究。",
     icon: Sparkles,
   },
   {
@@ -142,7 +147,12 @@ function productLanguage(value: string) {
 
 export function HomeDashboardClient() {
   const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const [candidateItems, setCandidateItems] = useState(() => readCandidatePool(null));
+  const [candidateLoad, setCandidateLoad] = useState<CandidateLoadState>({
+    status: "loading",
+    items: [],
+    total: 0,
+    message: "正在读取商品研究池。",
+  });
   const [recentSingleRun, setRecentSingleRun] = useState(() => parseRecentSingleRun(null));
   const [taskLoad, setTaskLoad] = useState<TaskLoadState>({
     status: "loading",
@@ -213,10 +223,8 @@ export function HomeDashboardClient() {
 
   useEffect(() => {
     try {
-      setCandidateItems(readCandidatePool(window.localStorage));
       setRecentSingleRun(parseRecentSingleRun(window.localStorage.getItem(WORKFLOW_SINGLE_RUN_STORAGE_KEY)));
     } catch {
-      setCandidateItems([]);
       setRecentSingleRun(null);
     }
   }, []);
@@ -225,6 +233,7 @@ export function HomeDashboardClient() {
     if (!isAccessPasswordReady) return;
 
     if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setCandidateLoad({ status: "unavailable", items: [], total: 0, message: "商品研究池暂不可用。" });
       setTaskLoad({ status: "unavailable", summary: null, message: taskFallbackMessage });
       return;
     }
@@ -262,12 +271,43 @@ export function HomeDashboardClient() {
       }
     }
 
+    async function loadCandidates() {
+      setCandidateLoad({ status: "loading", items: [], total: 0, message: "正在读取商品研究池。" });
+      try {
+        const response = await fetch("/api/opportunity-candidates?limit=100&offset=0", {
+          method: "GET",
+          headers: { ...buildAccessHeaders() },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        if (!response.ok || !payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true
+          || !("items" in payload) || !Array.isArray(payload.items)
+          || !("total" in payload) || !Number.isInteger(payload.total)) {
+          throw new Error("candidate_count_unavailable");
+        }
+        setCandidateLoad({
+          status: "ready",
+          items: payload.items.map((item) => serverCandidateToPoolItem(item as Record<string, unknown>)),
+          total: payload.total as number,
+          message: "已读取服务端商品研究池。",
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setCandidateLoad({ status: "unavailable", items: [], total: 0, message: "商品研究池暂不可用。" });
+      }
+    }
+
+    void loadCandidates();
     void loadTasks();
 
     return () => controller.abort();
   }, [accessPassword, isAccessPasswordReady]);
 
-  const candidateSummary = useMemo(() => summarizeCandidatePool(candidateItems), [candidateItems]);
+  const candidateSummary = useMemo(() => ({
+    ...summarizeCandidatePool(candidateLoad.items),
+    total: candidateLoad.status === "ready" ? candidateLoad.total : 0,
+  }), [candidateLoad]);
   const taskSummary = taskLoad.summary;
   const recommendation = useMemo(() => getRecommendedNextAction({
     candidatePool: candidateSummary,
@@ -276,10 +316,10 @@ export function HomeDashboardClient() {
   }), [candidateSummary, taskSummary, recentSingleRun]);
 
   const workflowStateByHref: Record<(typeof workflowSteps)[number]["href"], string> = {
-    "/opportunities": candidateSummary.total > 0
+    "/opportunities": "导入或手工选择商品",
+    "/opportunity-candidates": candidateLoad.status === "ready" && candidateSummary.total > 0
       ? `已有 ${formatNumber(candidateSummary.total)} 个候选`
-      : "建议从这里开始",
-    "/agent/run": recentSingleRun ? "已有研究，可继续" : "等待选择商品",
+      : candidateLoad.status === "unavailable" ? "暂不可用" : "等待选择商品",
     "/listing-studio": recentSingleRun ? "可准备文案草稿" : "等待研究结果",
     "/image-studio": recentSingleRun ? "可准备图片方案" : "等待商品事实",
     "/tasks": taskSummary?.pendingReview
@@ -287,7 +327,7 @@ export function HomeDashboardClient() {
       : "由你完成最终确认",
   };
 
-  const isNewUser = candidateSummary.total === 0 && !recentSingleRun && (!taskSummary || taskSummary.total === 0);
+  const isNewUser = candidateLoad.status === "ready" && candidateSummary.total === 0 && !recentSingleRun && (!taskSummary || taskSummary.total === 0);
 
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8" data-testid="home-dashboard">
@@ -462,11 +502,14 @@ export function HomeDashboardClient() {
           <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="grid min-w-0 gap-4 md:grid-cols-3">
               <StatCard
-                title="候选商品"
-                value={formatNumber(candidateSummary.total)}
-                description={`值得深挖 ${formatNumber(candidateSummary.worthAnalyzing)} 个，暂缓/高风险 ${formatNumber(candidateSummary.pausedOrHighRisk)} 个。`}
-                href="/opportunities"
-                cta="查看候选商品"
+                title="商品研究池"
+                value={candidateLoad.status === "ready" ? formatNumber(candidateSummary.total) : "暂不可用"}
+                description={candidateLoad.status === "ready"
+                  ? "数量来自当前身份的服务端 Candidate。"
+                  : candidateLoad.message}
+                href="/opportunity-candidates"
+                cta="查看商品研究池"
+                tone={candidateLoad.status === "ready" ? "teal" : "slate"}
               />
               <StatCard
                 title="研究历史"

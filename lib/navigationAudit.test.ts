@@ -35,14 +35,14 @@ describe("WorkspaceSidebar navigation", () => {
     expect(mainLabels).toEqual([
       "工作台",
       "发现商品",
-      "商品研究",
+      "商品研究池",
       "Listing Studio",
       "Image Studio",
       "研究历史",
     ]);
     expect(mainNavBlock).toMatch(/href:\s*"\/"/);
     expect(mainNavBlock).toMatch(/\/opportunities/);
-    expect(mainNavBlock).toMatch(/\/agent\/run/);
+    expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
     expect(mainNavBlock).toMatch(/\/listing-studio/);
     expect(mainNavBlock).toMatch(/\/image-studio/);
     expect(mainNavBlock).toMatch(/\/tasks/);
@@ -81,12 +81,12 @@ describe("WorkspaceSidebar navigation", () => {
     expect(sidebarSource).not.toMatch(/项目说明/);
   });
 
-  it("shows /agent/run as the primary product research destination", () => {
+  it("shows /opportunity-candidates as the primary product research destination", () => {
     const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
     const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
     expect(mainNavBlock).toMatch(/商品研究/);
-    expect(mainNavBlock).toMatch(/\/agent\/run/);
-    expect(advancedBlock).not.toMatch(/\/agent\/run/);
+    expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
+    expect(advancedBlock).not.toMatch(/\/opportunity-candidates/);
   });
 
   it("does not contain dangerous copy in nav labels", () => {
@@ -210,7 +210,7 @@ describe("HomeDashboardClient navigation", () => {
     expect(workflowStepsSection?.[0]).toMatch(/图片创作/);
     expect(workflowStepsSection?.[0]).toMatch(/人工确认/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
-    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/agent\/run"/);
+    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunity-candidates"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/listing-studio"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/image-studio"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);

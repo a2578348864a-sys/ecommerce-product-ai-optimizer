@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getOpportunitiesSurfaceCopy } from "@/components/cross-border/OpportunitiesForm";
-
 const importPageSource = readFileSync(
   resolve(process.cwd(), "app/opportunities/import/page.tsx"),
   "utf8",
@@ -13,13 +11,9 @@ const opportunitiesPageSource = readFileSync(
 );
 
 describe("advanced opportunities import compatibility entry", () => {
-  it("renders the existing form in the advanced import surface", () => {
-    expect(importPageSource).toContain('<OpportunitiesForm surface="advanced_import" />');
-    expect(getOpportunitiesSurfaceCopy("advanced_import")).toEqual({
-      eyebrow: "高级工具",
-      title: "手工导入外部来源",
-      description: "保留现有 URL、RSS、Sitemap 与历史候选流程；导入不等于完成 Evidence 筛选或进入调查短名单。",
-    });
+  it("redirects the legacy import URL to the research-pool manual compatibility section", () => {
+    expect(importPageSource).toContain('redirect("/opportunity-candidates?mode=manual")');
+    expect(importPageSource).not.toContain("OpportunitiesForm");
   });
 
   it("keeps import advanced after the formal route switches to the read-only workbench", () => {

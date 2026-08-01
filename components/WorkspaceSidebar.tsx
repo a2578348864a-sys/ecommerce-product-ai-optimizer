@@ -17,7 +17,7 @@ import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: LayoutDashboard },
   { label: "发现商品", href: "/opportunities", icon: Search },
-  { label: "商品研究", href: "/agent/run", icon: Sparkles },
+  { label: "商品研究池", href: "/opportunity-candidates", icon: Sparkles },
   { label: "Listing Studio", href: "/listing-studio", icon: FileText },
   { label: "Image Studio", href: "/image-studio", icon: Image },
   { label: "研究历史", href: "/tasks", icon: History },

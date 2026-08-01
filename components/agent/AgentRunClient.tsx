@@ -948,6 +948,9 @@ export function AgentRunClient({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <Link href="/opportunity-candidates" className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
+                  商品研究池
+                </Link>
                 <Link href="/opportunities" className="linear-button-soft inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
                   发现商品
                 </Link>
@@ -1004,6 +1007,17 @@ export function AgentRunClient({
           </section>
 
           <section id="product-research-input" className="surface-card scroll-mt-4 p-4 sm:p-5">
+            {!candidateMode ? (
+              <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm leading-6 text-teal-900">
+                <p className="font-semibold">先从商品研究池选择商品</p>
+                <p className="mt-1">
+                  研究池会保持 Candidate 身份和来源上下文；下方输入框仅作为旧版手工输入兼容。
+                </p>
+                <Link href="/opportunity-candidates" className="mt-2 inline-flex font-semibold text-teal-800 underline decoration-teal-300">
+                  打开商品研究池
+                </Link>
+              </div>
+            ) : null}
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
               <div>
                 <label className="text-sm font-semibold text-slate-700" htmlFor="agent-run-product">

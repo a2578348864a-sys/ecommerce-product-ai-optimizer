@@ -64,6 +64,8 @@ describe("SellerSpritePreviewPanel V2 contract", () => {
     expect(source).toContain("来源快照不同");
     expect(source).toContain("继续调查");
     expect(source).toContain("buildCandidateResearchHref(");
+    expect(source).toContain('href="/opportunity-candidates"');
+    expect(source).toContain("查看商品研究池");
     expect(source).toContain("row.candidateId");
     // No manual URL assembly with ASIN/title.
     expect(source).not.toMatch(/agent\/run\?.*(asin|title|rowHash)/i);

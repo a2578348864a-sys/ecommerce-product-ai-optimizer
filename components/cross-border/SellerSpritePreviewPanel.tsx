@@ -313,7 +313,12 @@ export function SellerSpritePreviewPanel() {
 
           {importResult ? (
             <section className="surface-card p-5" aria-label="导入结果">
-              <h2 className="section-title text-base">导入结果</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="section-title text-base">导入结果</h2>
+                <Link href="/opportunity-candidates" className="linear-button inline-flex h-9 items-center px-3 text-sm font-semibold">
+                  查看商品研究池
+                </Link>
+              </div>
               <p className="mt-1 text-sm text-slate-800">
                 新增 {importResult.created.length} 项 · 已存在 {importResult.skipped.length} 项 · 冲突 {importResult.conflicts.length} 项
               </p>

@@ -25,7 +25,7 @@ describe("Product Architecture Convergence shell", () => {
     expect(primary).toEqual([
       { label: "工作台", href: "/" },
       { label: "发现商品", href: "/opportunities" },
-      { label: "商品研究", href: "/agent/run" },
+      { label: "商品研究池", href: "/opportunity-candidates" },
       { label: "Listing Studio", href: "/listing-studio" },
       { label: "Image Studio", href: "/image-studio" },
       { label: "研究历史", href: "/tasks" },
@@ -56,7 +56,7 @@ describe("Product Architecture Convergence shell", () => {
 
     expect(labeledRoutes(journey)).toEqual([
       { label: "发现商品", href: "/opportunities" },
-      { label: "商品研究", href: "/agent/run" },
+      { label: "商品研究池", href: "/opportunity-candidates" },
       { label: "Listing 准备", href: "/listing-studio" },
       { label: "图片创作", href: "/image-studio" },
       { label: "人工确认", href: "/tasks" },
@@ -64,7 +64,7 @@ describe("Product Architecture Convergence shell", () => {
 
     for (const cta of [
       "去发现商品",
-      "开始商品研究",
+      "打开商品研究池",
       "打开 Listing Studio",
       "打开 Image Studio",
       "查看研究历史",

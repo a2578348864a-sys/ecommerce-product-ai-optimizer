@@ -37,6 +37,22 @@ function assertPortFree(port) {
   if (localListeners(port).length > 0) throw new Error("smoke_port_not_free");
 }
 
+function parseAcceptanceArguments(args) {
+  if (args.length === 0) return { realFile: null, realSha256: null };
+  if (args.length !== 4 || args[0] !== "--real-file" || args[2] !== "--real-sha256") {
+    throw new Error("smoke_arguments_invalid");
+  }
+  const realFile = resolve(args[1]);
+  const realSha256 = String(args[3]).trim().toLowerCase();
+  if (!existsSync(realFile) || !/^[a-f0-9]{64}$/.test(realSha256)) {
+    throw new Error("smoke_real_file_invalid");
+  }
+  if (fileSha256(realFile).toLowerCase() !== realSha256) {
+    throw new Error("smoke_real_file_hash_mismatch");
+  }
+  return { realFile, realSha256 };
+}
+
 function isCredentialFree(value, credentials) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return typeof text === "string" && credentials.every((credential) => (
@@ -258,6 +274,208 @@ async function upload(client, sessionId, fixturePath, addForgedRole) {
   return { evidence, ui };
 }
 
+async function importFirstPreviewCandidate(client, sessionId) {
+  const selected = await evaluate(client, sessionId, `(() => {
+    const checkbox = document.querySelector('input[type="checkbox"][aria-label^="选择第 "]');
+    if (!checkbox || checkbox.disabled) return false;
+    checkbox.click();
+    return true;
+  })()`);
+  if (!selected) throw new Error("smoke_candidate_row_missing");
+  const opened = await evaluate(client, sessionId, `(() => {
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '加入商品研究池');
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!opened) throw new Error("smoke_candidate_confirmation_missing");
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[aria-label=\"导入确认\"]'))");
+  await evaluate(client, sessionId, `(() => {
+    const section = document.querySelector('[aria-label="导入确认"]');
+    const checkbox = section?.querySelector('input[type="checkbox"]');
+    if (checkbox && !checkbox.checked) checkbox.click();
+    return true;
+  })()`);
+  const confirmed = await evaluate(client, sessionId, `(() => {
+    const section = document.querySelector('[aria-label="导入确认"]');
+    const button = [...(section?.querySelectorAll('button') ?? [])].find((item) => item.textContent?.trim() === '确认加入');
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!confirmed) throw new Error("smoke_candidate_confirmation_disabled");
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[aria-label=\"导入结果\"]')) || Boolean(document.querySelector('[aria-label=\"导入错误\"]'))");
+  const result = await evaluate(client, sessionId, `(() => ({
+    resultVisible: Boolean(document.querySelector('[aria-label="导入结果"]')),
+    errorVisible: Boolean(document.querySelector('[aria-label="导入错误"]')),
+    createdVisible: Boolean(document.querySelector('[aria-label="已加入"]')),
+    poolLinkVisible: Boolean(document.querySelector('[aria-label="导入结果"] a[href="/opportunity-candidates"]')),
+  }))()`);
+  if (!result.resultVisible || result.errorVisible || !result.poolLinkVisible) {
+    throw new Error("smoke_candidate_import_failed");
+  }
+  return result;
+}
+
+async function readCandidatePool(client, sessionId, { limit = 100, offset = 0 } = {}) {
+  const result = await evaluate(client, sessionId, `(() => {
+    const token = sessionStorage.getItem('qx:access-token:session:v1') || '';
+    if (!token) return { status: 0, ok: false, total: null, itemCount: null, hasMore: null, nextOffset: null };
+    return fetch('/api/opportunity-candidates?limit=${limit}&offset=${offset}', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { 'x-access-token': token, 'x-access-password': token },
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => null);
+      return {
+        status: response.status,
+        ok: response.ok && payload?.ok === true,
+        total: Number.isInteger(payload?.total) ? payload.total : null,
+        itemCount: Array.isArray(payload?.items) ? payload.items.length : null,
+        hasMore: typeof payload?.hasMore === 'boolean' ? payload.hasMore : null,
+        nextOffset: Number.isInteger(payload?.nextOffset) ? payload.nextOffset : null,
+      };
+    });
+  })()`);
+  if (!result.ok) throw new Error("smoke_candidate_pool_read_failed");
+  return result;
+}
+
+async function createSyntheticCandidatePage(client, sessionId, count) {
+  const result = await evaluate(client, sessionId, `(() => {
+    const token = sessionStorage.getItem('qx:access-token:session:v1') || '';
+    const items = Array.from({ length: ${count} }, (_, index) => ({
+      name: 'Synthetic pagination candidate ' + String(index + 1).padStart(3, '0'),
+      source: 'isolated_smoke_fixture',
+      score: 0,
+    }));
+    if (!token) return { status: 0, ok: false, created: null };
+    return fetch('/api/opportunity-candidates', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-access-token': token, 'x-access-password': token },
+      body: JSON.stringify({ items }),
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => null);
+      return { status: response.status, ok: response.ok && payload?.ok === true, created: Number.isInteger(payload?.created) ? payload.created : null };
+    });
+  })()`);
+  if (!result.ok || result.created !== count) throw new Error("smoke_candidate_page_seed_failed");
+  return result;
+}
+
+async function readTaskTotal(client, sessionId) {
+  const result = await evaluate(client, sessionId, `(() => {
+    const token = sessionStorage.getItem('qx:access-token:session:v1') || '';
+    if (!token) return { status: 0, ok: false, total: null };
+    return fetch('/api/tasks?limit=1&offset=0', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { 'x-access-token': token, 'x-access-password': token },
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => null);
+      return {
+        status: response.status,
+        ok: response.ok && payload?.ok === true,
+        total: Number.isInteger(payload?.page?.total) ? payload.page.total : null,
+      };
+    });
+  })()`);
+  if (!result.ok || !Number.isInteger(result.total)) throw new Error("smoke_task_total_read_failed");
+  return result.total;
+}
+
+function readSyntheticAiUsage(storePath) {
+  const store = JSON.parse(readFileSync(storePath, "utf8"));
+  const records = Array.isArray(store.accesses) ? store.accesses : [];
+  return records.reduce((total, record) => total + (Number.isSafeInteger(record?.usedAiCalls) ? record.usedAiCalls : 0), 0);
+}
+
+async function inspectCandidatePoolDom(client, sessionId) {
+  return await evaluate(client, sessionId, `(() => {
+    const list = document.querySelector('[aria-label="Candidate 列表"]');
+    const hrefs = [...(list?.querySelectorAll('a') ?? [])].map((anchor) => anchor.getAttribute('href') || '');
+    return {
+      path: location.pathname,
+      cardCount: list?.querySelectorAll('article').length ?? 0,
+      loadMoreVisible: [...document.querySelectorAll('button')].some((item) => item.textContent?.trim() === '加载更多'),
+      agentLinkVisible: hrefs.some((href) => href.startsWith('/agent/run?') && href.includes('candidateId=')),
+      taskLinkVisible: hrefs.some((href) => href.startsWith('/tasks/')),
+      invalidIdentityVisible: document.body.textContent.includes('记录身份异常'),
+      errorVisible: Boolean(document.querySelector('[role="alert"]')),
+    };
+  })()`);
+}
+
+async function inspectCandidatePoolPage(client, sessionId) {
+  await client.send("Page.navigate", { url: `http://${HOST}:${PORT}/opportunity-candidates` }, sessionId);
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[data-testid=\"candidate-pool-view\"]'))");
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[aria-label=\"Candidate 列表\"]')) || document.body.textContent.includes('研究池还没有商品') || Boolean(document.querySelector('[role=\"alert\"]'))");
+  return await inspectCandidatePoolDom(client, sessionId);
+}
+
+async function verifyPoolRecovery(client, sessionId, mode, password, expectedTotal) {
+  const initialApi = await readCandidatePool(client, sessionId);
+  const initialPage = await inspectCandidatePoolPage(client, sessionId);
+  await client.send("Page.reload", { ignoreCache: true }, sessionId);
+  await waitFor(client, sessionId, "Boolean(document.querySelector('[data-testid=\"candidate-pool-view\"]'))");
+  const refreshedApi = await readCandidatePool(client, sessionId);
+  await client.send("Page.navigate", { url: "about:blank" }, sessionId);
+  await waitFor(client, sessionId, "location.href === 'about:blank'");
+  const reopenedPage = await inspectCandidatePoolPage(client, sessionId);
+  const relogin = await pageSession(client);
+  await login(client, relogin.sessionId, mode, password, {});
+  const reloginApi = await readCandidatePool(client, relogin.sessionId);
+  const totals = [initialApi.total, refreshedApi.total, reloginApi.total];
+  if (totals.some((total) => total !== expectedTotal) || initialPage.errorVisible || reopenedPage.errorVisible) {
+    throw new Error("smoke_candidate_recovery_failed");
+  }
+  return {
+    expectedTotal,
+    initialTotal: initialApi.total,
+    refreshedTotal: refreshedApi.total,
+    reopenedCardCount: reopenedPage.cardCount,
+    reloginTotal: reloginApi.total,
+    agentLinkVisible: initialPage.agentLinkVisible,
+    taskLinkVisible: initialPage.taskLinkVisible,
+    invalidIdentityVisible: initialPage.invalidIdentityVisible,
+  };
+}
+
+async function verifyHomeAndSidebar(client, sessionId, expectedTotal) {
+  await client.send("Page.navigate", { url: `http://${HOST}:${PORT}/` }, sessionId);
+  await waitFor(client, sessionId, "document.readyState === 'complete'");
+  await waitFor(client, sessionId, "Boolean(document.querySelector('a[href=\"/opportunity-candidates\"]'))");
+  await waitFor(client, sessionId, `document.body.textContent.includes(${JSON.stringify(String(expectedTotal))})`);
+  const result = await evaluate(client, sessionId, `(() => {
+    const links = [...document.querySelectorAll('a[href="/opportunity-candidates"]')];
+    return {
+      poolEntryVisible: links.length > 0,
+      researchPoolLabelVisible: links.some((link) => link.textContent?.includes('商品研究池')),
+      totalVisible: document.body.textContent.includes(${JSON.stringify(String(expectedTotal))}),
+    };
+  })()`);
+  if (!result.poolEntryVisible || !result.researchPoolLabelVisible || !result.totalVisible) {
+    throw new Error("smoke_candidate_home_navigation_failed");
+  }
+  return result;
+}
+
+async function verifyPagination(client, sessionId, expectedTotal) {
+  const before = await inspectCandidatePoolPage(client, sessionId);
+  if (before.cardCount !== 100 || !before.loadMoreVisible || !before.agentLinkVisible || before.invalidIdentityVisible) {
+    throw new Error("smoke_candidate_pagination_first_page_failed");
+  }
+  await evaluate(client, sessionId, `(() => {
+    const button = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === '加载更多');
+    button?.click();
+    return Boolean(button);
+  })()`);
+  await waitFor(client, sessionId, `document.querySelectorAll('[aria-label="Candidate 列表"] article').length === ${expectedTotal}`);
+  const after = await inspectCandidatePoolDom(client, sessionId);
+  if (after.cardCount !== expectedTotal || after.loadMoreVisible) throw new Error("smoke_candidate_pagination_recovery_failed");
+  return { firstPageCount: before.cardCount, loadMoreVisible: before.loadMoreVisible, recoveredCount: after.cardCount };
+}
+
 function appendSyntheticVisitor(storePath, password) {
   const store = JSON.parse(readFileSync(storePath, "utf8"));
   const salt = randomBytes(16).toString("hex");
@@ -266,13 +484,14 @@ function appendSyntheticVisitor(storePath, password) {
 }
 
 async function main() {
+  const acceptanceArgs = parseAcceptanceArguments(process.argv.slice(2));
   const startedAt = new Date().toISOString().replaceAll(/[-:.TZ]/g, "");
   const runtimeRoot = `C:\\Users\\a2578\\Desktop\\qingxuan-smoke\\seller-preview-3115-${startedAt}-response-evidence`;
   let smoke; let chrome; let client;
   let ownerPassword; let visitorAPassword; let visitorBPassword;
   let phase = "preflight";
   let cliStartOutput;
-  const report = { ownerFirst: null, ownerLoginState: null, ownerNormal: null, visitorA: null, visitorB: null, isolatedDbUnchangedDuringPreview: null, credentialLeakCheck: null, failurePhase: null, failureCode: null, cleanup: null };
+  const report = { ownerFirst: null, ownerLoginState: null, ownerNormal: null, ownerPool: null, ownerHome: null, pagination: null, visitorA: null, visitorAPool: null, visitorB: null, visitorBPool: null, isolation: null, realFile: null, sideEffects: null, isolatedDbUnchangedDuringPreview: null, credentialLeakCheck: null, failurePhase: null, failureCode: null, cleanup: null };
   try {
     assertPortFree(PORT); assertPortFree(CDP_PORT);
     phase = "start_runtime";
@@ -301,20 +520,76 @@ async function main() {
     phase = "owner_upload";
     report.ownerFirst = await upload(client, owner.sessionId, fixturePath, false);
     if (report.ownerFirst.evidence.response.status !== 200 || !report.ownerFirst.ui.summary || !report.ownerFirst.ui.readonly || report.ownerFirst.ui.ownerOnly || report.ownerFirst.ui.forbidden) return;
+    report.isolatedDbUnchangedDuringPreview = fileSha256(join(runtimeRoot, "dev.db")) === isolatedDbHashBeforePreview;
+    phase = "owner_import";
+    await importFirstPreviewCandidate(client, owner.sessionId);
+    phase = "owner_pagination_seed";
+    await createSyntheticCandidatePage(client, owner.sessionId, 100);
+    report.ownerPool = await verifyPoolRecovery(client, owner.sessionId, "owner", ownerPassword, 101);
+    report.ownerHome = await verifyHomeAndSidebar(client, owner.sessionId, 101);
+    report.pagination = await verifyPagination(client, owner.sessionId, 101);
     visitorBPassword = randomBytes(18).toString("base64url");
     appendSyntheticVisitor(join(runtimeRoot, "demo-access.json"), visitorBPassword);
     const visitorA = await pageSession(client);
     await login(client, visitorA.sessionId, "visitor", visitorAPassword, {});
     report.visitorA = await upload(client, visitorA.sessionId, fixturePath, true);
+    await importFirstPreviewCandidate(client, visitorA.sessionId);
+    report.visitorAPool = await verifyPoolRecovery(client, visitorA.sessionId, "visitor", visitorAPassword, 1);
     const visitorB = await pageSession(client);
     await login(client, visitorB.sessionId, "visitor", visitorBPassword, {});
     const blank = await evaluate(client, visitorB.sessionId, "!document.querySelector('[aria-label=\"预览摘要\"]')");
+    const visitorBPoolBefore = await readCandidatePool(client, visitorB.sessionId);
     report.visitorB = { blankBeforeUpload: blank, ...(await upload(client, visitorB.sessionId, fixturePath, false)) };
-    report.ownerNormal = { ownerStillRendered: await evaluate(client, owner.sessionId, "Boolean(document.querySelector('[aria-label=\"预览摘要\"]'))") };
-    report.isolatedDbUnchangedDuringPreview = fileSha256(join(runtimeRoot, "dev.db")) === isolatedDbHashBeforePreview;
+    await importFirstPreviewCandidate(client, visitorB.sessionId);
+    report.visitorBPool = await verifyPoolRecovery(client, visitorB.sessionId, "visitor", visitorBPassword, 1);
+    const ownerFinal = await readCandidatePool(client, owner.sessionId);
+    const visitorAFinal = await readCandidatePool(client, visitorA.sessionId);
+    report.isolation = {
+      visitorBInitiallyEmpty: visitorBPoolBefore.total === 0,
+      ownerTotal: ownerFinal.total,
+      visitorATotal: visitorAFinal.total,
+      visitorBTotal: report.visitorBPool.reloginTotal,
+      isolated: ownerFinal.total === 101 && visitorAFinal.total === 1 && report.visitorBPool.reloginTotal === 1,
+    };
+    report.ownerNormal = { ownerStillAuthenticated: ownerFinal.status === 200 };
+    if (!report.isolation.isolated) throw new Error("smoke_candidate_isolation_failed");
+    if (acceptanceArgs.realFile) {
+      phase = "real_file_preview";
+      await client.send("Page.navigate", { url: `http://${HOST}:${PORT}/opportunities/sellersprite-preview` }, owner.sessionId);
+      await waitFor(client, owner.sessionId, "Boolean(document.querySelector('#sellersprite-xlsx'))");
+      const realPreview = await upload(client, owner.sessionId, acceptanceArgs.realFile, false);
+      const countsMatch = realPreview.evidence.response.validRows === 7
+        && realPreview.evidence.response.invalidRows === 3
+        && realPreview.evidence.response.warningCount === 1;
+      if (realPreview.evidence.response.status !== 200 || !countsMatch) throw new Error("smoke_real_file_contract_mismatch");
+      phase = "real_file_import";
+      const realImport = await importFirstPreviewCandidate(client, owner.sessionId);
+      const realPool = await readCandidatePool(client, owner.sessionId);
+      report.realFile = {
+        hashMatched: true,
+        preview: realPreview.evidence,
+        importSucceeded: realImport.resultVisible && !realImport.errorVisible,
+        ownerPoolTotalAfterImport: realPool.total,
+      };
+      if (realPool.total !== 102) throw new Error("smoke_real_file_pool_recovery_failed");
+    }
+    report.sideEffects = {
+      ownerTaskTotal: await readTaskTotal(client, owner.sessionId),
+      visitorATaskTotal: await readTaskTotal(client, visitorA.sessionId),
+      visitorBTaskTotal: await readTaskTotal(client, visitorB.sessionId),
+      syntheticVisitorAiUsage: readSyntheticAiUsage(join(runtimeRoot, "demo-access.json")),
+      agentNavigationTriggered: false,
+    };
+    if (report.sideEffects.ownerTaskTotal !== 0
+      || report.sideEffects.visitorATaskTotal !== 0
+      || report.sideEffects.visitorBTaskTotal !== 0
+      || report.sideEffects.syntheticVisitorAiUsage !== 0) {
+      throw new Error("smoke_unexpected_business_side_effect");
+    }
+    phase = "complete";
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
-    report.failureCode = /^smoke_(?:login_control_missing|login_not_completed|preview_control_missing|preview_response_missing|file_input_missing|file_not_selected|fixture_write_failed|chrome_cdp_timeout|page_timeout|page_script_failed|port_not_free)$/.test(code)
+    report.failureCode = /^smoke_(?:arguments_invalid|real_file_invalid|real_file_hash_mismatch|real_file_contract_mismatch|real_file_pool_recovery_failed|login_control_missing|login_not_completed|preview_control_missing|preview_response_missing|file_input_missing|file_not_selected|fixture_write_failed|chrome_cdp_timeout|page_timeout|page_script_failed|port_not_free|candidate_row_missing|candidate_confirmation_missing|candidate_confirmation_disabled|candidate_import_failed|candidate_pool_read_failed|candidate_page_seed_failed|candidate_recovery_failed|candidate_home_navigation_failed|candidate_pagination_first_page_failed|candidate_pagination_recovery_failed|candidate_isolation_failed|task_total_read_failed|unexpected_business_side_effect)$/.test(code)
       ? code
       : "acceptance_driver_failed";
   } finally {
@@ -339,7 +614,7 @@ async function main() {
     if (client) client.close();
     if (chrome?.pid) stopOwnedProcess(chrome.pid);
     if (smoke) { stopSmokeRuntime({ runtimeRoot: smoke.runtimeRoot }); cleanupSmokeRuntime({ runtimeRoot: smoke.runtimeRoot, worktreeRoot: WORKTREE }); }
-    report.failurePhase = phase === "owner_upload" && report.ownerFirst ? null : phase;
+    report.failurePhase = phase === "complete" ? null : phase;
     report.cleanup = { port3115Free: localListeners(PORT).length === 0, cdpPortFree: localListeners(CDP_PORT).length === 0, chromeConsoleErrors: client?.state.consoleErrorCount ?? null, externalHttpRequestCount: client?.state.externalHttpRequestCount ?? null };
     console.log(JSON.stringify(report));
     if (report.failureCode) process.exitCode = 1;

@@ -41,7 +41,7 @@ export type RecentSingleRunSummary = {
 export type RecommendedNextAction = {
   title: string;
   description: string;
-  href: "/opportunities" | "/workflow" | "/tasks";
+  href: "/opportunities" | "/opportunity-candidates" | "/workflow" | "/tasks";
   cta: string;
   priority: "candidate_pool" | "tasks" | "recent_analysis" | "new_user";
 };
@@ -147,8 +147,8 @@ export function getRecommendedNextAction(input: {
     return {
       title: `先深挖 ${input.candidatePool.worthAnalyzing} 个值得分析的候选品`,
       description: "候选池里已经有可继续判断的商品，先选一个进入单品分析。",
-      href: "/opportunities",
-      cta: "去候选池",
+      href: "/opportunity-candidates",
+      cta: "去商品研究池",
       priority: "candidate_pool",
     };
   }

@@ -48,7 +48,7 @@ function candidate(id: string, name: string, demoAccessId?: string) {
     rawInput: name,
     link: null,
     score: 70,
-    source: "test",
+    source: "人工录入",
     keyword: "",
     riskLevel: "",
     riskLabel: "",
@@ -92,6 +92,8 @@ describe("GET /api/opportunity-candidates access isolation", () => {
     expect(response.status).toBe(200);
     expect(body.items.map((item: { id: string }) => item.id)).toEqual(["owner-candidate"]);
     expect(body.items[0]).toMatchObject({
+      sourceKind: "manual",
+      marketplace: null,
       sourceIntegrity: "unverified",
       sourceReview: { integrity: "unverified" },
     });
@@ -121,6 +123,8 @@ describe("GET /api/opportunity-candidates access isolation", () => {
     expect(mocks.listSandboxCandidates).toHaveBeenCalledWith("visitor-a");
     expect(body.items.map((item: { id: string }) => item.id)).toEqual(["sandbox-a"]);
     expect(body.items[0]).toMatchObject({
+      sourceKind: "manual",
+      marketplace: null,
       sourceIntegrity: "unverified",
       sourceReview: { integrity: "unverified" },
     });
