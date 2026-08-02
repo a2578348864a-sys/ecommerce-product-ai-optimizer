@@ -3,6 +3,7 @@ import {
   candidatePrimaryHref,
   mergeCandidatePages,
   parseCandidateListResponse,
+  type CandidateResearchPoolItem,
 } from "@/lib/candidateResearchPool";
 
 function apiItem(index: number, options: {
@@ -10,7 +11,8 @@ function apiItem(index: number, options: {
   researchAction?: "converted" | "research_available" | "research_blocked" | "runtime_validation_required";
   researchBlockReasonCode?: "candidate_not_ready" | null;
   researchActionMessage?: string | null;
-} = {}) {
+  researchDecision?: unknown;
+} = {}): CandidateResearchPoolItem {
   return {
     id: `candidate-${index}`,
     name: `Candidate ${index}`,
@@ -21,6 +23,7 @@ function apiItem(index: number, options: {
     researchAction: options.researchAction ?? "research_available",
     researchBlockReasonCode: options.researchBlockReasonCode ?? null,
     researchActionMessage: options.researchActionMessage ?? null,
+    researchDecision: (options.researchDecision ?? null) as CandidateResearchPoolItem["researchDecision"],
     updatedAt: "2026-08-01T00:00:00.000Z",
   };
 }

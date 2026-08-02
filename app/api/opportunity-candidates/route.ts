@@ -19,6 +19,10 @@ import {
   type CandidateSourceSaveErrorCode,
 } from "@/lib/server/candidateSourceSave";
 import { toPublicOpportunityCandidate } from "@/lib/server/candidateEvidenceReview";
+import {
+  getCandidateResearchDecisionProjections,
+} from "@/lib/server/productResearchRecordStore";
+import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 
@@ -37,6 +41,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
+}
+
+async function projectCandidateItems(
+  context: AccessContext,
+  candidates: Array<Record<string, unknown> & { id: string; convertedTaskId?: string | null }>,
+) {
+  const taskIds = candidates
+    .map((candidate) => candidate.convertedTaskId)
+    .filter((taskId): taskId is string => typeof taskId === "string" && taskId.length > 0);
+  const projections = await getCandidateResearchDecisionProjections(context, taskIds);
+  return candidates.map((candidate) => {
+    const projection = candidate.convertedTaskId
+      ? projections.get(candidate.convertedTaskId)
+      : null;
+    const researchDecision = projection
+      && (projection.summary.legacy || projection.candidateId === candidate.id)
+      ? projection.summary
+      : null;
+    return {
+      ...toPublicOpportunityCandidate(candidate),
+      researchDecision,
+    };
+  });
 }
 
 const CANDIDATE_SAVE_CODES = new Set<CandidateSourceSaveErrorCode>([
@@ -94,9 +121,10 @@ export async function GET(request: NextRequest) {
         .filter((candidate) => !isValidCandidateStatus(status) || candidate.status === status)
         .filter((candidate) => !normalizedQuery || candidate.name.toLowerCase().includes(normalizedQuery))
         .sort((a, b) => sort === "score" ? b.score - a.score : 0);
-      const pagedItems = sandboxItems
+      const pagedCandidates = sandboxItems
         .slice(normalizedOffset, normalizedOffset + normalizedLimit)
-        .map((candidate) => toPublicOpportunityCandidate(sandboxCandidateToListItem(candidate)));
+        .map((candidate) => sandboxCandidateToListItem(candidate));
+      const pagedItems = await projectCandidateItems(ctx, pagedCandidates);
       const nextOffset = normalizedOffset + pagedItems.length;
 
       return json({
@@ -111,7 +139,7 @@ export async function GET(request: NextRequest) {
     const result = await listCandidates({ status, q, sort, limit, offset });
     return json({
       ok: true,
-      items: result.items.map(toPublicOpportunityCandidate),
+      items: await projectCandidateItems(ctx, result.items),
       total: result.total,
       hasMore: result.hasMore,
       nextOffset: result.nextOffset,

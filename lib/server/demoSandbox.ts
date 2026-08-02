@@ -478,6 +478,48 @@ export function updateSandboxTask(
   return task;
 }
 
+export function updateSandboxTaskResearchRecordCas(
+  demoAccessId: string,
+  taskId: string,
+  input: {
+    expectedResultJson: string;
+    expectedUpdatedAt: string;
+    resultJson: string;
+    decisionStatus: string;
+    updatedAt: string;
+  },
+): Promise<
+  | { status: "updated"; task: SandboxTask }
+  | { status: "conflict"; task: SandboxTask }
+  | { status: "not_found" }
+> {
+  return withSandboxSubjectLock(demoAccessId, () => {
+    const store = loadDemoSandboxStoreStrict();
+    const index = store.tasks.findIndex(
+      (task) => task.id === taskId && task.demoAccessId === demoAccessId,
+    );
+    if (index === -1) return { status: "not_found" as const };
+    const current = store.tasks[index];
+    if (current.resultJson !== input.expectedResultJson
+      || current.updatedAt !== input.expectedUpdatedAt) {
+      return { status: "conflict" as const, task: current };
+    }
+    const updated: SandboxTask = {
+      ...current,
+      resultJson: input.resultJson,
+      decisionStatus: input.decisionStatus,
+      updatedAt: input.updatedAt,
+    };
+    const nextStore: DemoSandboxStore = {
+      version: 1,
+      tasks: store.tasks.map((task, taskIndex) => taskIndex === index ? updated : task),
+      candidates: store.candidates,
+    };
+    saveDemoSandboxStore(nextStore);
+    return { status: "updated" as const, task: updated };
+  });
+}
+
 export function updateSandboxTaskLifecycle(
   demoAccessId: string,
   taskId: string,

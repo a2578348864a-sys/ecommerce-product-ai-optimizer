@@ -27,8 +27,31 @@ export type CandidateResearchPoolItem = {
   researchAction: CandidateResearchAction;
   researchBlockReasonCode: CandidateResearchBlockReasonCode | null;
   researchActionMessage: string | null;
+  researchDecision: CandidateResearchDecisionSummary | null;
   updatedAt: string;
 };
+
+export type CandidateResearchDecisionSummary =
+  | {
+      schema: "product-research-record.v1";
+      status: "creative_ready" | "needs_information" | "abandoned";
+      label: string;
+      reasonSummary: string;
+      nextActionSummary: string | null;
+      revision: number;
+      decidedAt: string;
+      legacy: false;
+    }
+  | {
+      schema: null;
+      status: null;
+      label: "旧版研究记录";
+      reasonSummary: "";
+      nextActionSummary: null;
+      revision: null;
+      decidedAt: null;
+      legacy: true;
+    };
 
 export type CandidateResearchPoolPage = {
   items: CandidateResearchPoolItem[];
@@ -75,6 +98,56 @@ function text(value: unknown, maxLength: number): string | null {
   return normalized && normalized.length <= maxLength ? normalized : null;
 }
 
+function parseResearchDecision(value: unknown): CandidateResearchDecisionSummary | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value) || typeof value.legacy !== "boolean") return null;
+  if (value.legacy === true) {
+    return value.schema === null
+      && value.status === null
+      && value.label === "旧版研究记录"
+      && value.reasonSummary === ""
+      && value.nextActionSummary === null
+      && value.revision === null
+      && value.decidedAt === null
+      ? {
+          schema: null,
+          status: null,
+          label: "旧版研究记录",
+          reasonSummary: "",
+          nextActionSummary: null,
+          revision: null,
+          decidedAt: null,
+          legacy: true,
+        }
+      : null;
+  }
+  const statuses = new Set(["creative_ready", "needs_information", "abandoned"]);
+  const label = text(value.label, 32);
+  const reasonSummary = text(value.reasonSummary, 240);
+  const nextActionSummary = value.nextActionSummary === null ? null : text(value.nextActionSummary, 240);
+  const decidedAt = text(value.decidedAt, 40);
+  if (value.schema !== "product-research-record.v1"
+    || typeof value.status !== "string"
+    || !statuses.has(value.status)
+    || !label
+    || !reasonSummary
+    || (value.nextActionSummary !== null && !nextActionSummary)
+    || !Number.isSafeInteger(value.revision)
+    || Number(value.revision) < 1
+    || !decidedAt
+    || Number.isNaN(Date.parse(decidedAt))) return null;
+  return {
+    schema: "product-research-record.v1",
+    status: value.status as "creative_ready" | "needs_information" | "abandoned",
+    label,
+    reasonSummary,
+    nextActionSummary,
+    revision: value.revision as number,
+    decidedAt,
+    legacy: false,
+  };
+}
+
 function parseItem(value: unknown): CandidateResearchPoolItem | null {
   if (!isRecord(value)) return null;
   const id = text(value.id, 120);
@@ -105,6 +178,9 @@ function parseItem(value: unknown): CandidateResearchPoolItem | null {
     ? researchBlockReasonCode === null || researchActionMessage === null
     : researchBlockReasonCode !== null) return null;
   if (researchAction === "runtime_validation_required" && researchActionMessage === null) return null;
+  const researchDecision = parseResearchDecision(value.researchDecision);
+  if (value.researchDecision !== null && value.researchDecision !== undefined && !researchDecision) return null;
+  if (researchAction !== "converted" && researchDecision !== null) return null;
   return {
     id,
     name,
@@ -115,6 +191,7 @@ function parseItem(value: unknown): CandidateResearchPoolItem | null {
     researchAction,
     researchBlockReasonCode: researchBlockReasonCode as CandidateResearchBlockReasonCode | null,
     researchActionMessage,
+    researchDecision,
     updatedAt,
   };
 }

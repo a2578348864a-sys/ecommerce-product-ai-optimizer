@@ -13,6 +13,7 @@ const item = {
   researchAction: "research_available" as const,
   researchBlockReasonCode: null,
   researchActionMessage: null,
+  researchDecision: null,
   updatedAt: "2026-08-01T00:00:00.000Z",
 };
 
@@ -98,5 +99,31 @@ describe("CandidatePoolView", () => {
     });
     expect(html).toContain("/tasks/task-101");
     expect(html).toContain("查看研究结果");
+    expect(html).toContain("尚无正式决定");
+  });
+
+  it("renders only the safe decision summary for a converted Candidate", () => {
+    const html = render({
+      items: [{
+        ...item,
+        convertedTaskId: "task-101",
+        researchAction: "converted",
+        researchDecision: {
+          schema: "product-research-record.v1",
+          status: "needs_information",
+          label: "待补信息",
+          reasonSummary: "需要补充供应商证明。",
+          nextActionSummary: "收集证明后再复核。",
+          revision: 2,
+          decidedAt: "2026-08-03T01:00:00.000Z",
+          legacy: false,
+        },
+      }],
+    });
+
+    expect(html).toContain("待补信息");
+    expect(html).toContain("需要补充供应商证明");
+    expect(html).toContain("第 2 版");
+    expect(html).not.toContain("decisionEvents");
   });
 });

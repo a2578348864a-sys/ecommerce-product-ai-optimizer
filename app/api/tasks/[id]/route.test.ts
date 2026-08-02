@@ -217,6 +217,30 @@ describe("GET /api/tasks/[id]", () => {
     expect(status).toBe(500);
     expect(body.error).toContain("ACCESS_PASSWORD");
   });
+
+  it("rejects generic decisionStatus writes for versioned product-research records", async () => {
+    mockPrisma.viralAnalysisRecord.findFirst.mockResolvedValueOnce({
+      ...mockRecord,
+      resultJson: JSON.stringify({
+        researchRecord: {
+          schema: "product-research-record.v1",
+          revision: 1,
+        },
+      }),
+    });
+
+    const request = createRequest({
+      method: "PATCH",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+      body: { decisionStatus: "continue" },
+    });
+    const response = await PATCH(request, createContext("task-001"));
+    const { status, body } = await getJsonStatus(response);
+
+    expect(status).toBe(409);
+    expect(body.error.code).toBe("versioned_decision_route_required");
+    expect(mockPrisma.viralAnalysisRecord.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("DELETE /api/tasks/[id]", () => {

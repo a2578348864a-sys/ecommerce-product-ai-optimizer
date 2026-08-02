@@ -311,6 +311,36 @@ const MANUAL_ITEMS = [
   { key: "listing", label: "已确认 Listing / 关键词草稿不会直接发布" },
 ] as const;
 
+type ProductResearchDecisionStatus = "creative_ready" | "needs_information" | "abandoned";
+
+const PRODUCT_RESEARCH_DECISION_OPTIONS: Array<{
+  value: ProductResearchDecisionStatus;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "creative_ready",
+    label: "进入创作准备",
+    description: "仅表示可以开始内容准备，不代表采购、盈利、合规或上架成立；不会自动创建 Listing、图片或发布任务。",
+  },
+  {
+    value: "needs_information",
+    label: "待补信息",
+    description: "记录仍缺少的证据和明确的下一步补充动作。",
+  },
+  {
+    value: "abandoned",
+    label: "放弃研究",
+    description: "保留原因和历史，不删除 Candidate 或已有研究证据。",
+  },
+];
+
+function compatibilityDecisionStatus(status: ProductResearchDecisionStatus): DecisionStatus {
+  if (status === "creative_ready") return "continue";
+  if (status === "needs_information") return "need_info";
+  return "rejected";
+}
+
 type ManualItemKey = (typeof MANUAL_ITEMS)[number]["key"];
 
 function statusLabel(status: TimelineStatus) {
@@ -456,6 +486,8 @@ export function AgentRunClient({
     listing: false,
   });
   const [manualDecisionStatus, setManualDecisionStatus] = useState<DecisionStatus>("need_info");
+  const [productResearchDecisionStatus, setProductResearchDecisionStatus] =
+    useState<ProductResearchDecisionStatus>("needs_information");
   const [manualDecisionReason, setManualDecisionReason] = useState("");
   const [manualDecisionNextAction, setManualDecisionNextAction] = useState("");
   const [error, setError] = useState("");
@@ -465,9 +497,22 @@ export function AgentRunClient({
   const [savedTaskId, setSavedTaskId] = useState("");
   const summaryRef = useRef<HTMLDivElement | null>(null);
   const jobRequestIdRef = useRef("");
+  const researchDecisionIdRef = useRef("");
 
   const report = result?.finalReport || null;
   const manualReady = MANUAL_ITEMS.every((item) => manualChecked[item.key]);
+  const manualReviewGateSatisfied = !candidateMode
+    ? manualReady
+    : productResearchDecisionStatus !== "creative_ready" || manualReady;
+  const candidateDecisionValid = !candidateMode || (
+    manualDecisionReason.trim().length > 0
+    && (productResearchDecisionStatus !== "needs_information"
+      || manualDecisionNextAction.trim().length > 0)
+    && (productResearchDecisionStatus !== "creative_ready"
+      || (result?.status === "completed" && manualReady))
+    && (result?.status !== "partial_failed"
+      || productResearchDecisionStatus === "needs_information")
+  );
   const isRunning = phase === "running";
   const needsManualReview = phase === "needs_manual_review" || phase === "completed";
 
@@ -496,12 +541,14 @@ export function AgentRunClient({
     });
   }, [result, sourceMeta, profitSnapshot, riskReviewSnapshot]);
   const humanDecisionDraft = useMemo(() => ({
-    status: manualDecisionStatus,
+    status: candidateMode
+      ? compatibilityDecisionStatus(productResearchDecisionStatus)
+      : manualDecisionStatus,
     reason: manualDecisionReason,
     nextAction: manualDecisionNextAction,
     confirmedItems: MANUAL_ITEMS.filter((item) => manualChecked[item.key]).map((item) => item.label),
     unconfirmedItems: MANUAL_ITEMS.filter((item) => !manualChecked[item.key]).map((item) => item.label),
-  }), [manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, manualChecked]);
+  }), [candidateMode, productResearchDecisionStatus, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, manualChecked]);
   const decisionEvidence = useMemo(() => {
     if (!result) return null;
     return buildDecisionEvidenceSnapshot({
@@ -531,6 +578,7 @@ export function AgentRunClient({
     setRiskReviewSnapshot(null);
     setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
     setManualDecisionStatus("need_info");
+    setProductResearchDecisionStatus("needs_information");
     setManualDecisionReason("");
     setManualDecisionNextAction("");
     setError("");
@@ -539,6 +587,7 @@ export function AgentRunClient({
     setSaving(false);
     setSavedTaskId("");
     jobRequestIdRef.current = "";
+    researchDecisionIdRef.current = "";
     cacheRestoreAttempted.current = false;
     // Clear agent run cache (scoped to current access mode only)
     try {
@@ -592,10 +641,15 @@ export function AgentRunClient({
       setProfitSnapshot(null);
       setRiskReviewSnapshot(null);
       setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
+      setManualDecisionStatus("need_info");
+      setProductResearchDecisionStatus("needs_information");
+      setManualDecisionReason("");
+      setManualDecisionNextAction("");
       setSavedTaskId("");
       setError("");
       setSaveError("");
       jobRequestIdRef.current = "";
+      researchDecisionIdRef.current = "";
     };
     const normalizedCandidateId = candidateId?.trim() || "";
     if (!isAuthoritativeCandidateId(normalizedCandidateId)) {
@@ -692,7 +746,17 @@ export function AgentRunClient({
         ...(cached.manualChecked as Partial<Record<ManualItemKey, boolean>> || {}),
       });
     }
-    setManualDecisionStatus(normalizeDecisionStatus(cached.manualDecisionStatus || "need_info"));
+    const cachedDecisionStatus = normalizeDecisionStatus(cached.manualDecisionStatus || "need_info");
+    setManualDecisionStatus(cachedDecisionStatus);
+    if (candidateMode) {
+      setProductResearchDecisionStatus(
+        cachedDecisionStatus === "continue"
+          ? "creative_ready"
+          : cachedDecisionStatus === "rejected"
+            ? "abandoned"
+            : "needs_information",
+      );
+    }
     setManualDecisionReason(typeof cached.manualDecisionReason === "string" ? cached.manualDecisionReason : "");
     setManualDecisionNextAction(typeof cached.manualDecisionNextAction === "string" ? cached.manualDecisionNextAction : "");
     if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
@@ -719,12 +783,14 @@ export function AgentRunClient({
       profitSnapshot: profitSnapshot as unknown,
       riskReviewSnapshot: riskReviewSnapshot as unknown,
       manualChecked,
-      manualDecisionStatus,
+      manualDecisionStatus: candidateMode
+        ? compatibilityDecisionStatus(productResearchDecisionStatus)
+        : manualDecisionStatus,
       manualDecisionReason,
       manualDecisionNextAction,
       savedTaskId,
     }, cacheScope);
-  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, savedTaskId, cacheScope]);
+  }, [phase, productName, sourceMeta, stepStatuses, result, profitSnapshot, riskReviewSnapshot, manualChecked, candidateMode, productResearchDecisionStatus, manualDecisionStatus, manualDecisionReason, manualDecisionNextAction, savedTaskId, cacheScope]);
 
   // Cache save: after analysis completes, persist to sessionStorage
   useEffect(() => {
@@ -763,8 +829,10 @@ export function AgentRunClient({
     setRiskReviewSnapshot(null);
     setManualChecked({ sourcing: false, profit: false, risk: false, listing: false });
     setManualDecisionStatus("need_info");
+    setProductResearchDecisionStatus("needs_information");
     setManualDecisionReason("");
     setManualDecisionNextAction("");
+    researchDecisionIdRef.current = "";
 
     setStepStatuses({
       ...INITIAL_STATUSES,
@@ -843,9 +911,20 @@ export function AgentRunClient({
   async function saveToTasks() {
     if (!result) return;
     persistCurrentRunCache();
-    if (!canSubmitAgentRunSave({ hasResult: true, saving, savedTaskId, manualReady })) {
+    if (!canSubmitAgentRunSave({
+      hasResult: true,
+      saving,
+      savedTaskId,
+      manualReady: manualReviewGateSatisfied,
+    })) {
       if (saving || savedTaskId) return;
-      setSaveError("请先完成 4 项人工确认，再保存任务。");
+      setSaveError(candidateMode
+        ? "进入创作准备前，请先完成 4 项人工确认。"
+        : "请先完成 4 项人工确认，再保存任务。");
+      return;
+    }
+    if (!candidateDecisionValid) {
+      setSaveError("请填写决定原因；选择待补信息时还需填写下一步动作。进入创作准备仅适用于完整完成且已人工复核的研究。");
       return;
     }
 
@@ -859,6 +938,9 @@ export function AgentRunClient({
     setSaving(true);
     setSaveError("");
     try {
+      if (candidateMode && !researchDecisionIdRef.current) {
+        researchDecisionIdRef.current = crypto.randomUUID();
+      }
       const response = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...saveAccessHeaders },
@@ -877,12 +959,22 @@ export function AgentRunClient({
           sourceMeta,
           profitSnapshot,
           riskReviewSnapshot,
-          decisionStatus: manualDecisionStatus,
+          decisionStatus: candidateMode
+            ? compatibilityDecisionStatus(productResearchDecisionStatus)
+            : manualDecisionStatus,
           humanConfirmed: true,
           humanDecision: {
             ...humanDecisionDraft,
             decidedAt: new Date().toISOString(),
           },
+          ...(candidateMode ? {
+            productResearchDecision: {
+              decisionId: researchDecisionIdRef.current,
+              status: productResearchDecisionStatus,
+              reason: manualDecisionReason,
+              nextAction: manualDecisionNextAction || null,
+            },
+          } : {}),
           agentRunSnapshot: buildAgentRunSnapshot({
             workflowResult: result as Record<string, unknown>,
             riskReviewSnapshot,
@@ -1404,7 +1496,7 @@ export function AgentRunClient({
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                 <p className="text-sm font-bold text-amber-900">人工确认与任务沉淀</p>
                 <p className="mt-1 text-sm leading-6 text-amber-800">
-                  勾选后才允许点击“人工确认后保存任务”。这一步只由人工触发，不会自动保存任务或修改任务状态。
+                  以下是流程复核声明，不代表商品字段已被人工确认。勾选后才允许点击“人工确认后保存任务”，且不会自动保存任务或修改任务状态。
                 </p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {MANUAL_ITEMS.map((item) => (
@@ -1428,14 +1520,41 @@ export function AgentRunClient({
                     <select
                       id="agent-run-decision-status"
                       name="decisionStatus"
-                      value={manualDecisionStatus}
-                      onChange={(event) => setManualDecisionStatus(normalizeDecisionStatus(event.target.value))}
+                      value={candidateMode ? productResearchDecisionStatus : manualDecisionStatus}
+                      onChange={(event) => {
+                        if (candidateMode) {
+                          setProductResearchDecisionStatus(event.target.value as ProductResearchDecisionStatus);
+                        } else {
+                          setManualDecisionStatus(normalizeDecisionStatus(event.target.value));
+                        }
+                      }}
                       className="mt-1 h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                     >
-                      {decisionStatusOptions.filter((option) => option.value).map((option) => (
-                        <option key={option.value} value={option.value}>{option.shortLabel}</option>
-                      ))}
+                      {candidateMode
+                        ? PRODUCT_RESEARCH_DECISION_OPTIONS.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                            disabled={
+                              (result.status === "partial_failed" && option.value !== "needs_information")
+                              || (option.value === "creative_ready" && (result.status !== "completed" || !manualReady))
+                            }
+                          >
+                            {option.label}
+                          </option>
+                        ))
+                        : decisionStatusOptions.filter((option) => option.value).map((option) => (
+                          <option key={option.value} value={option.value}>{option.shortLabel}</option>
+                        ))}
                     </select>
+                    {candidateMode ? (
+                      <div className="mt-2 space-y-1 text-xs leading-5 text-amber-800">
+                        <p>{PRODUCT_RESEARCH_DECISION_OPTIONS.find((option) => option.value === productResearchDecisionStatus)?.description}</p>
+                        {result.status === "partial_failed" ? (
+                          <p>partial_failed 可在未完成四项流程复核时保存为“待补信息”，但不能进入创作准备或放弃研究。</p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="block text-xs font-bold text-amber-900">
@@ -1443,7 +1562,7 @@ export function AgentRunClient({
                       <textarea
                         name="decisionReason"
                         value={manualDecisionReason}
-                        onChange={(event) => setManualDecisionReason(event.target.value.slice(0, 500))}
+                        onChange={(event) => setManualDecisionReason(event.target.value.slice(0, 1000))}
                         rows={3}
                         placeholder="例如：成本还缺物流/广告/退货率，先补资料；或风险可控，进入小单验证。"
                         className="mt-1 w-full resize-none rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
@@ -1454,7 +1573,7 @@ export function AgentRunClient({
                       <textarea
                         name="decisionNextAction"
                         value={manualDecisionNextAction}
-                        onChange={(event) => setManualDecisionNextAction(event.target.value.slice(0, 300))}
+                        onChange={(event) => setManualDecisionNextAction(event.target.value.slice(0, 1000))}
                         rows={3}
                         placeholder="例如：补供应商报价和平台认证；复核商标风险；整理小单测试清单。"
                         className="mt-1 w-full resize-none rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
@@ -1475,7 +1594,7 @@ export function AgentRunClient({
                       type="button"
                       data-testid="agent-run-save-task"
                       onClick={() => void saveToTasks()}
-                      disabled={saving || !manualReady}
+                      disabled={saving || !manualReviewGateSatisfied || !candidateDecisionValid}
                       className="linear-button-primary inline-flex h-11 items-center gap-2 px-5 text-sm font-semibold disabled:opacity-50"
                     >
                       {saving ? (

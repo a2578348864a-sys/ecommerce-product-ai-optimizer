@@ -180,6 +180,27 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                       <span className="text-xs text-slate-500">{item.marketplace || "市场待确认"}</span>
                     </div>
                     <h3 className="mt-3 break-words text-base font-semibold text-slate-950">{item.name}</h3>
+                    {item.researchAction === "converted" && item.researchDecision ? (
+                      <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-sm text-slate-700">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-emerald-800">{item.researchDecision.label}</span>
+                          {!item.researchDecision.legacy ? (
+                            <span className="text-xs text-slate-500">第 {item.researchDecision.revision} 版</span>
+                          ) : null}
+                        </div>
+                        {!item.researchDecision.legacy && item.researchDecision.reasonSummary ? (
+                          <p className="mt-1 leading-6">{item.researchDecision.reasonSummary}</p>
+                        ) : null}
+                        {!item.researchDecision.legacy && item.researchDecision.nextActionSummary ? (
+                          <p className="mt-1 text-xs leading-5 text-slate-500">下一步：{item.researchDecision.nextActionSummary}</p>
+                        ) : null}
+                      </div>
+                    ) : item.researchAction === "converted" ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                        <p className="font-semibold text-slate-700">尚无正式决定</p>
+                        <p className="mt-1 text-xs leading-5">可查看关联研究记录；系统不会从旧状态推测新版正式决定。</p>
+                      </div>
+                    ) : null}
                     <p className="mt-2 text-xs text-slate-400">最近更新：{formatDate(item.updatedAt)}</p>
                   </div>
                   {href ? (

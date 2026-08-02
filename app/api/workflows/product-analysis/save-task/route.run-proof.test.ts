@@ -415,6 +415,7 @@ function signedBody(input: {
   zeroRequestedSteps?: boolean;
   productBatchResearchMode?: boolean;
   attachForbiddenR22?: boolean;
+  includeDecision?: boolean;
 }) {
   const status = input.status ?? "completed";
   const candidateId = input.candidateId ?? null;
@@ -494,6 +495,21 @@ function signedBody(input: {
     },
     decisionStatus: "continue",
     humanConfirmed: true,
+    ...(candidateId && input.includeDecision !== false ? {
+      productResearchDecision: status === "partial_failed"
+        ? {
+            decisionId: "11111111-1111-4111-8111-111111111111",
+            status: "needs_information",
+            reason: "A failed step needs more evidence.",
+            nextAction: "Collect the missing evidence and run again.",
+          }
+        : {
+            decisionId: "11111111-1111-4111-8111-111111111111",
+            status: "creative_ready",
+            reason: "All four process checks are reviewed.",
+            nextAction: "Keep this record ready for a later handoff.",
+          },
+    } : {}),
     humanDecision: {
       status: "continue",
       reason: "人工确认继续",
@@ -536,6 +552,22 @@ beforeEach(() => {
 });
 
 describe("save-task runProof trust boundary", () => {
+  it("requires an explicit versioned decision for a Candidate-bound save", async () => {
+    const candidate = sellerSpriteDirectCandidate();
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+
+    const result = await responseJson(await POST(createRequest(signedBody({
+      candidateId: candidate.id,
+      candidate,
+      productBatchResearchMode: true,
+      includeDecision: false,
+    })) as never));
+
+    expect(result.status).toBe(400);
+    expect(result.body.error.code).toBe("product_research_decision_required");
+    expect(mocks.ownerTransaction).not.toHaveBeenCalled();
+  });
+
   it("independently rejects a signed workflow snapshot with zero requested AI steps", async () => {
     const result = await responseJson(await POST(createRequest(signedBody({
       zeroRequestedSteps: true,
@@ -591,7 +623,26 @@ describe("save-task runProof trust boundary", () => {
       promotionEligible: false,
       candidateToTask: { candidateId: candidate.id },
       candidateAnalysisContext: { integrity: "verified_seller_sprite" },
+      researchRecord: {
+        schema: "product-research-record.v1",
+        revision: 1,
+        candidateId: candidate.id,
+        runId: RUN_ID,
+        latestDecision: {
+          decisionId: "11111111-1111-4111-8111-111111111111",
+          status: "creative_ready",
+          actor: { mode: "owner", actorRef: "owner:v1" },
+        },
+      },
+      researchVerification: {
+        schema: "product-research-verification.v1",
+        candidateId: candidate.id,
+        runId: RUN_ID,
+      },
     });
+    expect(stored.researchRecord.researchHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(stored.researchRecord.decisionEvents).toHaveLength(1);
+    expect(mocks.txTaskCreate.mock.calls[0][0].data.decisionStatus).toBe("continue");
     expect(stored).not.toHaveProperty("r22CommercialValidation");
     expect(stored).not.toHaveProperty("productBatchBinding");
     expect(mocks.txCandidateUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -625,7 +676,20 @@ describe("save-task runProof trust boundary", () => {
       researchMode: "market_research_only",
       promotionEligible: false,
       candidateAnalysisContext: { integrity: "verified_seller_sprite" },
+      researchRecord: {
+        schema: "product-research-record.v1",
+        revision: 1,
+        candidateId: candidate.id,
+        latestDecision: {
+          status: "creative_ready",
+          actor: {
+            mode: "visitor",
+            actorRef: expect.stringMatching(/^visitor:[a-f0-9]{16}$/),
+          },
+        },
+      },
     });
+    expect(JSON.stringify(stored)).not.toContain("visitor-a");
     expect(stored).not.toHaveProperty("r22CommercialValidation");
     expect(mocks.ownerTransaction).not.toHaveBeenCalled();
   });

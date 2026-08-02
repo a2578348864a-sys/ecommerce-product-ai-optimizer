@@ -18,6 +18,7 @@ import {
   resolveResearchTaskProductImage,
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
+import { hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
 
 export const runtime = "nodejs";
 
@@ -144,6 +145,16 @@ function invalidDecisionStatusResponse() {
     ok: false,
     error: { code: "invalid_decision_status", message: "人工状态只能是待判断、可继续、需补资料或已淘汰。" },
   }, 400);
+}
+
+function versionedDecisionRouteRequiredResponse() {
+  return jsonResponse({
+    ok: false,
+    error: {
+      code: "versioned_decision_route_required",
+      message: "该研究记录使用版本化人工决定，请通过研究决定接口更新。",
+    },
+  }, 409);
 }
 
 function databaseError() {
@@ -324,6 +335,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (auth.context.mode === "demo") {
       const decisionStatus = bodyRecord.decisionStatus;
       if (!isDecisionStatus(decisionStatus)) return invalidDecisionStatusResponse();
+      const current = getSandboxTask(auth.context.demoAccessId, id);
+      if (!current) return notFoundResponse();
+      if (hasProductResearchRecordNamespace(safeParseJson(current.resultJson))) {
+        return versionedDecisionRouteRequiredResponse();
+      }
       const updated = updateSandboxTask(auth.context.demoAccessId, id, { decisionStatus: decisionStatus as string });
       if (!updated) return notFoundResponse();
       return jsonResponse({ ok: true, data: { id: updated.id, decisionStatus: updated.decisionStatus as DecisionStatus } });
@@ -340,6 +356,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (!isDecisionStatus(decisionStatus)) return invalidDecisionStatusResponse();
 
   try {
+    const current = await prisma.viralAnalysisRecord.findFirst({
+      where: { id },
+      select: { id: true, resultJson: true },
+    });
+    if (!current) return notFoundResponse();
+    if (hasProductResearchRecordNamespace(safeParseJson(current.resultJson))) {
+      return versionedDecisionRouteRequiredResponse();
+    }
     const record = await prisma.viralAnalysisRecord.update({
       where: { id },
       data: { decisionStatus },

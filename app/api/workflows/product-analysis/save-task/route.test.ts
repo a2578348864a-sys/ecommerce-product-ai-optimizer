@@ -252,12 +252,38 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(result.finalReport.finalVerdict).toBe("建议小单测试");
   });
 
+  it("rejects a formal product research decision on a name-only run", async () => {
+    const response = await POST(createRequest({
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: workflowResult(),
+      reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
+      humanConfirmed: true,
+      productResearchDecision: {
+        decisionId: "20111111-1111-4111-8111-111111111111",
+        status: "creative_ready",
+        reason: "A name-only request cannot establish Candidate identity.",
+        nextAction: null,
+      },
+    }));
+    const result = await readJson(response);
+
+    expect(result.status).toBe(400);
+    expect(result.body.error.code).toBe("product_research_candidate_required");
+    expect(mockPrisma.viralAnalysisRecord.create).not.toHaveBeenCalled();
+  });
+
   it("keeps candidate pool source metadata for agent run saves", async () => {
     const response = await POST(createRequest({
       accessPassword: CORRECT_PASSWORD,
       workflowResult: workflowResult(),
       reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true },
       humanConfirmed: true,
+      productResearchDecision: {
+        decisionId: "21111111-1111-4111-8111-111111111111",
+        status: "creative_ready",
+        reason: "All four process checks are reviewed.",
+        nextAction: "Keep the record ready for a later handoff.",
+      },
       source: "agent_run",
       sourceMeta: {
         source: "opportunity",
@@ -349,6 +375,57 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
     expect(result.listingPrepSnapshot.keywordPool.coreWords).toEqual(["test"]);
   });
 
+  it("persists partial_failed Candidate research only as needs_information", async () => {
+    const base = {
+      accessPassword: CORRECT_PASSWORD,
+      workflowResult: { ...workflowResult(), status: "partial_failed" },
+      reviewState: {
+        sourcingReviewed: true,
+        riskReviewed: true,
+        summaryReviewed: true,
+        listingReviewed: false,
+      },
+      humanConfirmed: true,
+      source: "agent_run",
+      sourceMeta: {
+        source: "opportunity",
+        from: "opportunity",
+        entry: "candidate_to_agent_m1",
+        candidateId: "test-candidate",
+      },
+    };
+
+    const accepted = await POST(createRequest({
+      ...base,
+      productResearchDecision: {
+        decisionId: "41111111-1111-4111-8111-111111111111",
+        status: "needs_information",
+        reason: "The listing review step did not complete.",
+        nextAction: "Resolve the failed step before proceeding.",
+      },
+    }));
+    const acceptedBody = await readJson(accepted);
+
+    expect(acceptedBody.status).toBe(200);
+    expect(savedResultJson().researchRecord.latestDecision.status).toBe("needs_information");
+
+    mockPrisma.viralAnalysisRecord.create.mockClear();
+    const rejected = await POST(createRequest({
+      ...base,
+      productResearchDecision: {
+        decisionId: "42222222-2222-4222-8222-222222222222",
+        status: "creative_ready",
+        reason: "This should remain blocked.",
+        nextAction: null,
+      },
+    }));
+    const rejectedBody = await readJson(rejected);
+
+    expect(rejectedBody.status).toBe(409);
+    expect(rejectedBody.body.error.code).toBe("partial_failed_requires_information");
+    expect(mockPrisma.viralAnalysisRecord.create).not.toHaveBeenCalled();
+  });
+
   it("saves normalized agentOutputSnapshot while preserving B1 evidence", async () => {
     const response = await POST(createRequest({
       accessPassword: CORRECT_PASSWORD,
@@ -381,6 +458,12 @@ describe("POST /api/workflows/product-analysis/save-task", () => {
         },
       },
       humanConfirmed: true,
+      productResearchDecision: {
+        decisionId: "31111111-1111-4111-8111-111111111111",
+        status: "creative_ready",
+        reason: "All four process checks are reviewed.",
+        nextAction: "Keep the record ready for a later handoff.",
+      },
     }));
 
     const { status, body } = await readJson(response);

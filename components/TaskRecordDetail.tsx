@@ -63,6 +63,7 @@ import {
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
+import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -163,6 +164,13 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasVersionedProductResearchRecord(result: unknown) {
+  if (!isRecordValue(result)) return false;
+  const researchRecord = result.researchRecord;
+  return isRecordValue(researchRecord)
+    && researchRecord.schema === "product-research-record.v1";
+}
+
 function ResultList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
 
@@ -215,6 +223,7 @@ function WorkflowDecisionSummary({
   const isWorkflow = true; // only called for workflow tasks
   const hasProfitSnapshot = isRecordValue(result) && isRecordValue(result.profitSnapshot);
   const hasRiskReviewSnapshot = isRecordValue(result) && isRecordValue(result.riskReviewSnapshot);
+  const hasVersionedDecision = hasVersionedProductResearchRecord(result);
   const hasListingData = isRecordValue(result) && isRecordValue(result.listing);
   const listingData = hasListingData ? (result.listing as { title?: string; keywords?: string[]; complianceNotes?: string[] }) : null;
   const agentOutputSnapshot = extractAgentOutputSnapshotFromTask(result);
@@ -261,7 +270,9 @@ function WorkflowDecisionSummary({
       {/* ── Section 1: Hero — 当前决策与下一步 ── */}
       <TaskDecisionHero
         verdictLabel={summary.verdictLabel}
-        reason={summary.reason}
+        reason={hasVersionedDecision
+          ? "这是初始分析与流程复核快照；当前正式决定、原因和下一步以上方版本化面板为准。"
+          : summary.reason}
         riskLabel={summary.riskLabel}
         riskTone={summary.riskTone}
         beginnerLabel={summary.beginnerLabel}
@@ -284,6 +295,11 @@ function WorkflowDecisionSummary({
         <DecisionCardUI card={decisionCard} compact />
       </div>
       <div className="mt-4">
+        {hasVersionedDecision ? (
+          <p className="mb-2 text-xs font-semibold text-slate-500">
+            初始流程复核快照，不是当前正式研究决定。
+          </p>
+        ) : null}
         <DecisionEvidencePanel evidence={decisionEvidence} compact />
       </div>
 
@@ -546,17 +562,26 @@ function WorkflowDecisionSummary({
           )}
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
             <p className="text-xs font-bold text-slate-400">人工决策</p>
-            <select
-              value={decisionStatus}
-              onChange={(event) => onDecisionChange(event.target.value as DecisionStatus)}
-              disabled={updatingDecision}
-              className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {decisionStatusOptions.filter((option) => option.value).map((status) => (
-                <option key={status.value} value={status.value}>{status.shortLabel}</option>
-              ))}
-            </select>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{decisionOption.description}</p>
+            {hasVersionedDecision ? (
+              <div className="mt-2 rounded-lg border border-teal-200 bg-white px-3 py-2">
+                <p className="text-sm font-semibold text-teal-800">版本化研究决定请在上方专用面板更新。</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">这里的旧状态仅作兼容展示，不再作为正式研究决定入口。</p>
+              </div>
+            ) : (
+              <>
+                <select
+                  value={decisionStatus}
+                  onChange={(event) => onDecisionChange(event.target.value as DecisionStatus)}
+                  disabled={updatingDecision}
+                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {decisionStatusOptions.filter((option) => option.value).map((status) => (
+                    <option key={status.value} value={status.value}>{status.shortLabel}</option>
+                  ))}
+                </select>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{decisionOption.description}</p>
+              </>
+            )}
             {decisionMessage ? (
               <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
             ) : null}
@@ -1385,6 +1410,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     </div>
                   </section>
                 </>
+              ) : null}
+
+              {record.type === "workflow" ? (
+                <ProductResearchDecisionPanel
+                  taskId={record.id}
+                  onUpdated={() => setRefreshKey((current) => current + 1)}
+                />
               ) : null}
 
               {record.type === "workflow" && isRecordValue(record.result) ? (

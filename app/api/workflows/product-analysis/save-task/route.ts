@@ -57,6 +57,18 @@ import {
   type ProductBatchListingFactsV1,
 } from "@/lib/server/productBatchListingFacts";
 import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
+import {
+  PRODUCT_RESEARCH_HASH_SCHEMA,
+  ProductResearchRecordError,
+  buildProductResearchActor,
+  buildProductResearchHash,
+  createInitialProductResearchRecord,
+  createProductResearchVerification,
+  productResearchDecisionToCompatibilityStatus,
+  type ProductResearchDecisionInput,
+  type ProductResearchRecordV1,
+  type ProductResearchVerificationV1,
+} from "@/lib/productResearchRecord";
 
 export const runtime = "nodejs";
 
@@ -497,6 +509,15 @@ export async function POST(request: NextRequest) {
   if (!workflowInput.candidateId && workflowInput.contextHash) {
     return jsonResponse({ ok: false, error: { code: "invalid_run_input", message: "手工分析不能附加 Candidate 证据上下文。" } }, 400);
   }
+  if (!workflowInput.candidateId && body.productResearchDecision !== undefined) {
+    return jsonResponse({
+      ok: false,
+      error: {
+        code: "product_research_candidate_required",
+        message: "正式商品研究决定必须绑定服务端 Candidate；名称级分析保持旧版兼容记录。",
+      },
+    }, 400);
+  }
 
   const clientSourceMeta = parseSourceMeta(body.sourceMeta, productName);
   const clientSourceCandidateId = clientSourceMeta?.candidateId ?? null;
@@ -678,12 +699,22 @@ export async function POST(request: NextRequest) {
 
   // Parse and validate reviewState
   const reviewState = parseReviewState(body.reviewState);
-  if (workflowInput.candidateId && (body.humanConfirmed !== true || !reviewState?.allReviewed)) {
+  const requestedProductResearchStatus = isRecord(body.productResearchDecision)
+    ? body.productResearchDecision.status
+    : null;
+  const missingRequiredCompletedReview = workflowStatus === "completed"
+    && requestedProductResearchStatus === "creative_ready"
+    && !reviewState?.allReviewed;
+  if (workflowInput.candidateId && (
+    body.humanConfirmed !== true
+    || !reviewState
+    || missingRequiredCompletedReview
+  )) {
     return jsonResponse({
       ok: false,
       error: {
         code: "candidate_human_confirmation_required",
-        message: "候选商品必须完成全部人工复核并明确确认后，才能创建任务。",
+        message: "候选商品必须提交完整的流程复核状态并明确确认后，才能创建研究记录。",
       },
     }, 409);
   }
@@ -721,7 +752,90 @@ export async function POST(request: NextRequest) {
     }
   }
   const requestedDecisionStatus = isDecisionStatus(body.decisionStatus) ? body.decisionStatus : "pending";
-  const decisionStatus = workflowStatus === "partial_failed" ? "need_info" : requestedDecisionStatus;
+  let decisionStatus = workflowStatus === "partial_failed" ? "need_info" : requestedDecisionStatus;
+  let researchRecord: ProductResearchRecordV1 | null = null;
+  let researchVerification: ProductResearchVerificationV1 | null = null;
+  if (workflowInput.candidateId) {
+    const rawDecision = body.productResearchDecision;
+    if (!isRecord(rawDecision)) {
+      return jsonResponse({
+        ok: false,
+        error: {
+          code: "product_research_decision_required",
+          message: "保存候选商品研究前，请明确选择人工决定并填写原因。",
+        },
+      }, 400);
+    }
+    const allowedDecisionKeys = new Set(["decisionId", "status", "reason", "nextAction"]);
+    if (Object.keys(rawDecision).some((key) => !allowedDecisionKeys.has(key))) {
+      return jsonResponse({
+        ok: false,
+        error: {
+          code: "invalid_product_research_decision",
+          message: "人工决定包含不受支持的字段。",
+        },
+      }, 400);
+    }
+    const decision: ProductResearchDecisionInput = {
+      decisionId: typeof rawDecision.decisionId === "string" ? rawDecision.decisionId : "",
+      status: rawDecision.status as ProductResearchDecisionInput["status"],
+      reason: typeof rawDecision.reason === "string" ? rawDecision.reason : "",
+      nextAction: typeof rawDecision.nextAction === "string" || rawDecision.nextAction === null
+        ? rawDecision.nextAction
+        : null,
+    };
+    const reviewSummary = {
+      sourcingReviewed: reviewState!.sourcingReviewed,
+      riskReviewed: reviewState!.riskReviewed,
+      summaryReviewed: reviewState!.summaryReviewed,
+      listingReviewed: reviewState!.listingReviewed,
+      reviewedCount: reviewState!.reviewedCount,
+      totalReviewSteps: reviewState!.totalReviewSteps,
+      allReviewed: reviewState!.allReviewed,
+    };
+    const hashInput = {
+      schema: PRODUCT_RESEARCH_HASH_SCHEMA,
+      candidateId: workflowInput.candidateId,
+      runId,
+      contextHash: workflowInput.contextHash!,
+      inputHash: proofPayload.inputHash,
+      resultHash: proofPayload.resultHash,
+      workflowStatus: workflowStatus as "completed" | "partial_failed",
+      reviewState: reviewSummary,
+    } as const;
+    try {
+      researchVerification = createProductResearchVerification(hashInput);
+      researchRecord = createInitialProductResearchRecord({
+        candidateId: workflowInput.candidateId,
+        runId,
+        contextHash: workflowInput.contextHash!,
+        researchHash: buildProductResearchHash(hashInput),
+        workflowStatus: hashInput.workflowStatus,
+        reviewState: reviewSummary,
+        decision,
+        actor: buildProductResearchActor(auth.context),
+        now: candidateCapturedAt,
+      });
+      decisionStatus = productResearchDecisionToCompatibilityStatus(
+        researchRecord.latestDecision.status,
+      );
+    } catch (error) {
+      if (error instanceof ProductResearchRecordError) {
+        const conflictCodes = new Set([
+          "creative_ready_not_allowed",
+          "partial_failed_requires_information",
+        ]);
+        return jsonResponse({
+          ok: false,
+          error: { code: error.code, message: error.message },
+        }, conflictCodes.has(error.code) ? 409 : 400);
+      }
+      return jsonResponse({
+        ok: false,
+        error: { code: "invalid_product_research_decision", message: "人工决定无效。" },
+      }, 400);
+    }
+  }
   const humanDecisionInput = isRecord(body.humanDecision) ? body.humanDecision : {
     status: decisionStatus,
     reason: "",
@@ -788,6 +902,8 @@ export async function POST(request: NextRequest) {
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
     } : {}),
+    ...(researchRecord ? { researchRecord } : {}),
+    ...(researchVerification ? { researchVerification } : {}),
     ...(productBatchCandidateSource ? {
       productBatchBinding: {
         version: "product-batch-task-binding.v1",

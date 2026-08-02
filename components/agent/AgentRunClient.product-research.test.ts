@@ -56,9 +56,20 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).toContain("不能替代专业合规或知识产权审核。");
 
     expect(clientSource).toContain("const manualReady = MANUAL_ITEMS.every");
-    expect(clientSource).toContain("disabled={saving || !manualReady}");
-    expect(clientSource).toContain("请先完成 4 项人工确认，再保存任务。");
+    expect(clientSource).toContain("以下是流程复核声明，不代表商品字段已被人工确认");
+    expect(clientSource).toContain("const manualReviewGateSatisfied = !candidateMode");
+    expect(clientSource).toContain(': productResearchDecisionStatus !== "creative_ready" || manualReady');
+    expect(clientSource).toContain("disabled={saving || !manualReviewGateSatisfied || !candidateDecisionValid}");
+    expect(clientSource).toContain("进入创作准备前，请先完成 4 项人工确认。");
     expect(clientSource).toContain("/api/workflows/product-analysis/save-task");
+    expect(clientSource).toContain("productResearchDecision:");
+    expect(clientSource).toContain('value: "creative_ready"');
+    expect(clientSource).toContain('value: "needs_information"');
+    expect(clientSource).toContain('value: "abandoned"');
+    expect(clientSource).toContain("researchDecisionIdRef.current = crypto.randomUUID()");
+    expect(clientSource).toContain('result.status === "partial_failed" && option.value !== "needs_information"');
+    expect(clientSource).toContain('partial_failed 可在未完成四项流程复核时保存为“待补信息”');
+    expect(clientSource).toContain("不会自动创建 Listing、图片或发布任务");
   });
 
   it("不使用计时器伪造完成状态，失败后也不会保留推测完成步骤", () => {

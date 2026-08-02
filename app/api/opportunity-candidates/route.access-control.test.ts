@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     sourceMode: "demo_sandbox",
     isSandbox: true,
   })),
+  getDecisionProjections: vi.fn(),
 }));
 
 vi.mock("@/lib/server/accessPassword", () => ({
@@ -31,6 +32,10 @@ vi.mock("@/lib/server/opportunityCandidateService", () => ({
   isValidCandidateStatus: vi.fn(),
   listCandidates: mocks.listCandidates,
   upsertCandidates: vi.fn(),
+}));
+
+vi.mock("@/lib/server/productResearchRecordStore", () => ({
+  getCandidateResearchDecisionProjections: mocks.getDecisionProjections,
 }));
 
 import { GET } from "./route";
@@ -116,6 +121,7 @@ beforeEach(() => {
       ? [candidate("sandbox-a", "Visitor A candidate", "visitor-a")]
       : [candidate("sandbox-b", "Visitor B candidate", "visitor-b")]
   ));
+  mocks.getDecisionProjections.mockResolvedValue(new Map());
 });
 
 describe("GET /api/opportunity-candidates access isolation", () => {
@@ -198,5 +204,50 @@ describe("GET /api/opportunity-candidates access isolation", () => {
     });
     expect(JSON.stringify(ownerBody)).not.toContain("sourceFileSha256");
     expect(JSON.stringify(visitorBody)).not.toContain("sourceFileSha256");
+  });
+
+  it("adds only the safe versioned decision summary for converted Candidates", async () => {
+    mocks.listCandidates.mockResolvedValueOnce({
+      items: [{ ...candidate("owner-candidate", "Owner candidate"), convertedTaskId: "task-1" }],
+      total: 1,
+      hasMore: false,
+      nextOffset: null,
+    });
+    mocks.getDecisionProjections.mockResolvedValueOnce(new Map([[
+      "task-1",
+      {
+        candidateId: "owner-candidate",
+        summary: {
+          schema: "product-research-record.v1",
+          status: "needs_information",
+          label: "待补信息",
+          reasonSummary: "Need supplier evidence.",
+          nextActionSummary: "Collect the certificate.",
+          revision: 2,
+          decidedAt: "2026-08-03T01:00:00.000Z",
+          legacy: false,
+        },
+      },
+    ]]));
+
+    const body = await (await GET(createRequest("owner-token") as never)).json();
+
+    expect(body.items[0].researchDecision).toEqual({
+      schema: "product-research-record.v1",
+      status: "needs_information",
+      label: "待补信息",
+      reasonSummary: "Need supplier evidence.",
+      nextActionSummary: "Collect the certificate.",
+      revision: 2,
+      decidedAt: "2026-08-03T01:00:00.000Z",
+      legacy: false,
+    });
+    expect(JSON.stringify(body)).not.toContain("decisionEvents");
+    expect(JSON.stringify(body)).not.toContain("actorRef");
+    expect(JSON.stringify(body)).not.toContain("resultJson");
+    expect(mocks.getDecisionProjections).toHaveBeenCalledWith(
+      { mode: "owner", token: "owner-token" },
+      ["task-1"],
+    );
   });
 });
