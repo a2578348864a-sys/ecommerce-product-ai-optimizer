@@ -73,6 +73,11 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function researchActionLabel(item: CandidateResearchPoolItem): string {
+  if (item.researchAction === "converted") return "查看研究结果";
+  return "开始／继续研究";
+}
+
 export function CandidatePoolView(props: CandidatePoolViewProps) {
   return (
     <div className="space-y-4" data-testid="candidate-pool-view">
@@ -161,7 +166,6 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
         <section className="grid gap-3" aria-label="Candidate 列表">
           {props.items.map((item) => {
             const href = candidatePrimaryHref(item);
-            const converted = Boolean(item.convertedTaskId);
             return (
               <article key={item.id} className="surface-card p-4 sm:p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -180,11 +184,13 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                   </div>
                   {href ? (
                     <Link href={href} className="linear-button-primary inline-flex h-10 shrink-0 items-center justify-center gap-2 px-4 text-sm font-semibold">
-                      {converted ? "查看研究结果" : item.status === "pending" ? "开始研究" : "继续研究"}
+                      {researchActionLabel(item)}
                       <ArrowRight className="size-4" />
                     </Link>
                   ) : (
-                    <span className="text-sm text-amber-700">记录身份异常，暂不能进入研究</span>
+                    <span className="max-w-xs text-sm leading-6 text-amber-700">
+                      {item.researchActionMessage || "当前不能进入研究。"}
+                    </span>
                   )}
                 </div>
               </article>

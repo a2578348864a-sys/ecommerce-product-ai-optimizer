@@ -10,6 +10,9 @@ const item = {
   sourceKind: "sellersprite_direct" as const,
   marketplace: "Amazon US",
   convertedTaskId: null,
+  researchAction: "research_available" as const,
+  researchBlockReasonCode: null,
+  researchActionMessage: null,
   updatedAt: "2026-08-01T00:00:00.000Z",
 };
 
@@ -58,5 +61,42 @@ describe("CandidatePoolView", () => {
     expect(html).toContain("手工添加（旧版兼容）");
     expect(html).not.toContain("仅 Owner");
     expect(html).not.toContain("localStorage");
+  });
+
+  it("renders the server-owned blocked reason without an Agent link", () => {
+    const html = render({
+      items: [{
+        ...item,
+        researchAction: "research_blocked",
+        researchBlockReasonCode: "candidate_not_ready",
+        researchActionMessage: "该候选尚未满足研究条件。",
+      }],
+    });
+    expect(html).toContain("该候选尚未满足研究条件。");
+    expect(html).not.toContain("/agent/run?");
+  });
+
+  it("does not render runtime validation as an available research link", () => {
+    const html = render({
+      items: [{
+        ...item,
+        researchAction: "runtime_validation_required",
+        researchActionMessage: "进入研究前需要服务端再次校验来源。",
+      }],
+    });
+    expect(html).toContain("进入研究前需要服务端再次校验来源。");
+    expect(html).not.toContain("/agent/run?");
+  });
+
+  it("renders the converted action from the server projection", () => {
+    const html = render({
+      items: [{
+        ...item,
+        convertedTaskId: "task-101",
+        researchAction: "converted",
+      }],
+    });
+    expect(html).toContain("/tasks/task-101");
+    expect(html).toContain("查看研究结果");
   });
 });

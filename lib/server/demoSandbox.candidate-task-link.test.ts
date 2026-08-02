@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createSandboxCandidate,
   createSandboxTaskAndLinkCandidate,
+  createSandboxTaskAndLinkCandidateAtomic,
   deleteSandboxCandidate,
   deleteSandboxTask,
   listSandboxCandidates,
@@ -17,6 +18,10 @@ import {
   buildCandidateAnalysisContext,
   createCandidateAnalysisBindingHash,
 } from "@/lib/server/candidateAnalysisContext";
+import {
+  buildSellerSpriteCandidateSourceMeta,
+  computeSellerSpriteRowHash,
+} from "@/lib/server/sellerSpriteImportContract";
 
 const ROOT = mkdtempSync(join(tmpdir(), "candidate-task-link-"));
 const STORE_PATH = join(ROOT, "sandbox.json");
@@ -66,7 +71,58 @@ function expectLinkError(action: () => unknown, code: string) {
   }
 }
 
+function createSellerSpritePending(demoAccessId: string) {
+  const asin = "B0TEST0001";
+  const title = "Powder sunscreen";
+  const amazonUrl = `https://www.amazon.com/dp/${asin}`;
+  return createSandboxCandidate(demoAccessId, {
+    name: title,
+    source: "SellerSprite",
+    status: "pending",
+    sourceMetaJson: buildSellerSpriteCandidateSourceMeta({
+      rowHash: computeSellerSpriteRowHash({ rowNumber: 2, asin, title, amazonUrl }),
+      rowNumber: 2,
+      asin,
+      parentAsin: null,
+      title,
+      amazonUrl,
+      imageUrl: null,
+      priceUsd: 14.19,
+      rating: 4.2,
+      reviewCount: 6,
+      brand: "Example",
+      category: "Beauty",
+      searchRank: null,
+      estimatedMonthlySales: 26065,
+      estimatedMonthlyRevenueUsd: 369862,
+    }, "f".repeat(64), "2026-07-31T09:00:00.000Z"),
+  });
+}
+
 describe("Visitor Candidate → Task atomic link", () => {
+  it("allows one concurrent save for a SellerSprite pending Candidate and creates no orphan record", async () => {
+    const candidate = createSellerSpritePending("visitor-a");
+    const guard = conversionGuard(candidate);
+
+    const results = await Promise.allSettled([
+      createSandboxTaskAndLinkCandidateAtomic("visitor-a", candidate.id, taskInput(), guard),
+      createSandboxTaskAndLinkCandidateAtomic("visitor-a", candidate.id, taskInput(), guard),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      status: "rejected",
+      reason: { code: "candidate_already_converted" },
+    });
+    expect(listSandboxCandidates("visitor-a")).toHaveLength(1);
+    expect(listSandboxTasks("visitor-a")).toHaveLength(1);
+    expect(listSandboxCandidates("visitor-a")[0].convertedTaskId)
+      .toBe(listSandboxTasks("visitor-a")[0].id);
+    expect(listSandboxCandidates("visitor-b")).toHaveLength(0);
+    expect(listSandboxTasks("visitor-b")).toHaveLength(0);
+  });
+
   it("unlinks a Candidate when its Task is deleted so it can be converted again", () => {
     const candidate = createSandboxCandidate("visitor-a", {
       name: "Re-convertible Widget",

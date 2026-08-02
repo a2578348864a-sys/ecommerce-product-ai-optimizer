@@ -17,7 +17,6 @@ import {
   createCandidateAnalysisBindingHash,
   formatCandidateAnalysisPromptContext,
 } from "@/lib/server/candidateAnalysisContext";
-import { isCandidateReadyForAgent } from "@/lib/opportunityCandidatePool";
 import {
   buildR22PendingCommercialRunSnapshot,
   type R22CommercialRunSnapshot,
@@ -267,7 +266,7 @@ export async function POST(request: NextRequest) {
   let productName = clientProductName;
   let candidateForAnalysis: AuthoritativeCandidate | null = null;
   let r22MarketDecision: R22MarketDecisionSnapshot | null = null;
-  let productBatchResearchMode = false;
+  let marketResearchOnly = false;
   if (candidateId) {
     const candidate = await getAuthoritativeCandidate(accessCtx, candidateId);
     if (!candidate) {
@@ -276,15 +275,13 @@ export async function POST(request: NextRequest) {
         { status: 404 },
       );
     }
-    if (!isCandidateReadyForAgent(candidate.status)) {
+    if (candidate.convertedTaskId) {
       return NextResponse.json(
         {
           ok: false,
           error: {
-            code: "candidate_not_ready",
-            message: candidate.status === "rejected"
-              ? "该候选已放弃，请先恢复并重新选择后再分析。"
-              : "该候选尚未进入待分析队列，请先在候选品池中确认。",
+            code: "candidate_already_converted",
+            message: "该候选已经生成研究记录，请从商品研究池查看结果。",
           },
         },
         { status: 409 },
@@ -293,24 +290,36 @@ export async function POST(request: NextRequest) {
     const researchEligibility = await evaluateCandidateResearchEligibility(accessCtx, candidate);
     if (!researchEligibility.allowed) {
       const productBatch = researchEligibility.originKind === "seller_sprite_product_batch";
+      const marketResearch = researchEligibility.researchMode === "market_research_only";
+      const candidateNotReady = researchEligibility.reasons.includes("candidate_not_ready");
       return NextResponse.json(
         {
           ok: false,
           error: {
-            code: productBatch
-              ? "candidate_product_batch_research_blocked"
-              : "candidate_r22_stage2_blocked",
-            message: productBatch
-              ? "该 ProductBatch Candidate 的来源或状态已变化，不能进入商品研究。"
-              : "该候选未通过 R2.2 市场晋级门禁，不能进入商业深挖。",
+            code: candidateNotReady
+              ? "candidate_not_ready"
+              : productBatch
+                ? "candidate_product_batch_research_blocked"
+                : marketResearch
+                  ? "candidate_market_research_blocked"
+                  : "candidate_r22_stage2_blocked",
+            message: candidateNotReady
+              ? candidate.status === "rejected"
+                ? "该候选已放弃，请先恢复并重新选择后再分析。"
+                : "该候选尚未满足当前研究条件。"
+              : productBatch
+                ? "该 ProductBatch Candidate 的来源或状态已变化，不能进入商品研究。"
+                : marketResearch
+                  ? "该 SellerSprite Candidate 的来源或状态已变化，不能进入商品研究。"
+                  : "该候选未通过 R2.2 市场晋级门禁，不能进入商业深挖。",
             reasons: researchEligibility.reasons,
           },
         },
         { status: 409 },
       );
     }
-    productBatchResearchMode = researchEligibility.originKind === "seller_sprite_product_batch";
-    r22MarketDecision = productBatchResearchMode
+    marketResearchOnly = researchEligibility.researchMode === "market_research_only";
+    r22MarketDecision = marketResearchOnly
       ? null
       : parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
     productName = candidate.name.trim().slice(0, MAX_PRODUCT_NAME_LENGTH);
@@ -326,7 +335,13 @@ export async function POST(request: NextRequest) {
     ? buildCandidateAnalysisContext(candidateForAnalysis)
     : null;
   const analysisDescription = candidateAnalysisContext
-    ? formatCandidateAnalysisPromptContext(candidateAnalysisContext)
+    ? [
+        formatCandidateAnalysisPromptContext(candidateAnalysisContext),
+        ...(marketResearchOnly ? [
+          "当前只允许 market_research_only 市场研究；promotionEligible=false。",
+          "不得声称已晋级、通过 R2.2、适合采购、可自动上架或形成正式商业结论。",
+        ] : []),
+      ].join("\n")
     : productName;
   const candidateContextHash = candidateForAnalysis && candidateAnalysisContext
     ? createCandidateAnalysisBindingHash(candidateForAnalysis, candidateAnalysisContext)
@@ -594,7 +609,7 @@ export async function POST(request: NextRequest) {
   // Step 5: Final Report
   const reportStartedAt = new Date().toISOString();
   const finalReport = buildFinalReport(sourcingResult, riskResult, summaryResult, {
-    researchOnly: productBatchResearchMode,
+    researchOnly: marketResearchOnly,
   });
   steps.push(stepResult("report", "生成最终报告", "completed", `最终结论：${finalReport.finalVerdict}，风险等级：${finalReport.riskLevel}`, [], reportStartedAt, new Date().toISOString()));
 
@@ -633,7 +648,7 @@ export async function POST(request: NextRequest) {
     },
     warnings,
     ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
-    ...(productBatchResearchMode ? {
+    ...(marketResearchOnly ? {
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
     } : {}),

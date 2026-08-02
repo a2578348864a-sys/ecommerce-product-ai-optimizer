@@ -18,6 +18,10 @@ import {
 import { buildWorkflowBatchSavePayload } from "@/components/cross-border/workflowBatchRunCache";
 import { buildR22PendingCommercialRunSnapshot } from "@/lib/r22CommercialValidation";
 import { parseR22MarketDecisionFromAnalysisJson } from "@/lib/r22DecisionModel";
+import {
+  buildSellerSpriteCandidateSourceMeta,
+  computeSellerSpriteRowHash,
+} from "@/lib/server/sellerSpriteImportContract";
 
 const authState: {
   context: { mode: "owner" } | { mode: "demo"; demoAccessId: string };
@@ -136,6 +140,45 @@ function authoritativeCandidateWithImage(id: string) {
         capturedAt: "2026-07-28T01:00:00.000Z",
       },
     }),
+  };
+}
+
+function sellerSpriteDirectCandidate() {
+  const asin = "B0TEST0001";
+  const title = "Powder sunscreen";
+  const amazonUrl = `https://www.amazon.com/dp/${asin}`;
+  return {
+    id: "candidate-sellersprite-direct",
+    name: title,
+    rawInput: title,
+    link: amazonUrl,
+    score: 0,
+    source: "SellerSprite",
+    keyword: "powder sunscreen",
+    riskLevel: "unknown",
+    riskLabel: "待核验",
+    summaryLabel: "SellerSprite 市场研究候选",
+    status: "pending",
+    sourceMetaJson: buildSellerSpriteCandidateSourceMeta({
+      rowHash: computeSellerSpriteRowHash({ rowNumber: 2, asin, title, amazonUrl }),
+      rowNumber: 2,
+      asin,
+      parentAsin: null,
+      title,
+      amazonUrl,
+      imageUrl: null,
+      priceUsd: 14.19,
+      rating: 4.2,
+      reviewCount: 6,
+      brand: "Example",
+      category: "Beauty",
+      searchRank: null,
+      estimatedMonthlySales: 26065,
+      estimatedMonthlyRevenueUsd: 369862,
+    }, "f".repeat(64), "2026-07-31T09:00:00.000Z"),
+    analysisJson: "{}",
+    convertedTaskId: null,
+    originProductBatchItemId: null,
   };
 }
 
@@ -523,6 +566,94 @@ describe("save-task runProof trust boundary", () => {
     });
   });
 
+  it("saves an eligible SellerSprite direct pending Candidate with the market-only contract", async () => {
+    const candidate = sellerSpriteDirectCandidate();
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+    mocks.txCandidateFindUnique.mockResolvedValue(candidate);
+    mocks.txTaskCreate.mockResolvedValue({
+      id: "task-sellersprite-direct",
+      title: "Powder sunscreen 一键分析",
+    });
+    mocks.txCandidateUpdateMany.mockImplementationOnce(async ({ where }) => ({
+      count: where.status === "pending" ? 1 : 0,
+    }));
+
+    const result = await responseJson(await POST(createRequest(signedBody({
+      candidateId: candidate.id,
+      candidate,
+      productBatchResearchMode: true,
+    })) as never));
+
+    expect(result.status).toBe(200);
+    const stored = JSON.parse(mocks.txTaskCreate.mock.calls[0][0].data.resultJson);
+    expect(stored).toMatchObject({
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      candidateToTask: { candidateId: candidate.id },
+      candidateAnalysisContext: { integrity: "verified_seller_sprite" },
+    });
+    expect(stored).not.toHaveProperty("r22CommercialValidation");
+    expect(stored).not.toHaveProperty("productBatchBinding");
+    expect(mocks.txCandidateUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: candidate.id,
+        convertedTaskId: null,
+        status: "pending",
+      }),
+      data: expect.objectContaining({ convertedTaskId: "task-sellersprite-direct" }),
+    }));
+  });
+
+  it("uses the same SellerSprite pending save contract for a Visitor sandbox Candidate", async () => {
+    authState.context = { mode: "demo", demoAccessId: "visitor-a" };
+    const candidate = { ...sellerSpriteDirectCandidate(), id: "sandbox_candidate_sellersprite_a" };
+    mocks.getSandboxCandidate.mockImplementation((demoAccessId: string, candidateId: string) => (
+      demoAccessId === "visitor-a" && candidateId === candidate.id ? candidate : null
+    ));
+
+    const result = await responseJson(await POST(createRequest(signedBody({
+      subject: "demo:visitor-a",
+      candidateId: candidate.id,
+      candidate,
+      productBatchResearchMode: true,
+    })) as never));
+
+    expect(result.status).toBe(200);
+    expect(mocks.createSandboxTaskAndLinkCandidate).toHaveBeenCalledTimes(1);
+    const stored = JSON.parse(mocks.createSandboxTaskAndLinkCandidate.mock.calls[0][2].resultJson);
+    expect(stored).toMatchObject({
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      candidateAnalysisContext: { integrity: "verified_seller_sprite" },
+    });
+    expect(stored).not.toHaveProperty("r22CommercialValidation");
+    expect(mocks.ownerTransaction).not.toHaveBeenCalled();
+  });
+
+  it("ignores forged client eligibility when saving a legacy pending Candidate", async () => {
+    const candidate = {
+      ...authoritativeCandidate("candidate-legacy-pending"),
+      status: "pending",
+      sourceMetaJson: "{}",
+      analysisJson: "{}",
+      convertedTaskId: null,
+      originProductBatchItemId: null,
+    };
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+
+    const result = await responseJson(await POST(createRequest({
+      ...signedBody({ candidateId: candidate.id, candidate }),
+      eligibility: { allowed: true },
+      researchAction: "research_available",
+      researchMode: "market_research_only",
+    }) as never));
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("candidate_not_ready_for_conversion");
+    expect(mocks.ownerTransaction).not.toHaveBeenCalled();
+    expect(mocks.txTaskCreate).not.toHaveBeenCalled();
+  });
+
   it("saves a ProductBatch research Task with immutable Candidate and batch bindings", async () => {
     const candidate = productBatchCandidate();
     const source = productBatchSourceRecords(candidate);
@@ -663,7 +794,10 @@ describe("save-task runProof trust boundary", () => {
       where: {
         id: "candidate-a",
         convertedTaskId: null,
-        status: { in: ["worth_analyzing", "analyzed"] },
+        name: "桌面手机支架",
+        status: "worth_analyzing",
+        sourceMetaJson: authoritativeCandidate().sourceMetaJson,
+        analysisJson: authoritativeCandidate().analysisJson,
       },
       data: {
         convertedTaskId: "task-owner-001",

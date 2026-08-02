@@ -13,7 +13,7 @@ import {
 
 const CORRECT_PASSWORD = "ci-test-password";
 
-const mockPrisma = {
+const mockPrisma = vi.hoisted(() => ({
   $transaction: vi.fn(),
   viralAnalysisRecord: {
     create: vi.fn().mockResolvedValue({
@@ -25,7 +25,7 @@ const mockPrisma = {
     findUnique: vi.fn(),
     updateMany: vi.fn(),
   },
-};
+}));
 
 vi.mock("@/lib/server/db", () => ({
   prisma: mockPrisma,

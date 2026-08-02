@@ -299,7 +299,8 @@ type CandidateConversionErrorCode =
   | "candidate_changed_since_analysis"
   | "candidate_context_changed_since_analysis"
   | "candidate_r22_stage2_blocked"
-  | "candidate_product_batch_research_blocked";
+  | "candidate_product_batch_research_blocked"
+  | "candidate_market_research_blocked";
 
 class CandidateConversionError extends Error {
   constructor(
@@ -541,6 +542,7 @@ export async function POST(request: NextRequest) {
   let r22CommercialValidation: R22CommercialRunSnapshot | null = null;
   let productBatchCandidateSource: ProductBatchCandidateSourceV1 | null = null;
   let productBatchListingFacts: ProductBatchListingFactsV1 | null = null;
+  let marketResearchOnly = false;
   if (workflowInput.candidateId) {
     const candidate = await getAuthoritativeCandidate(auth.context, workflowInput.candidateId);
     if (!candidate) {
@@ -552,22 +554,37 @@ export async function POST(request: NextRequest) {
     const researchEligibility = await evaluateCandidateResearchEligibility(auth.context, candidate);
     if (!researchEligibility.allowed) {
       const productBatch = researchEligibility.originKind === "seller_sprite_product_batch";
-      const gateCode = productBatch
-        ? "candidate_product_batch_research_blocked"
-        : researchEligibility.reasons.includes("invalid_analysis_json")
-          ? "candidate_context_changed_since_analysis"
-          : "candidate_r22_stage2_blocked";
+      const marketResearch = researchEligibility.researchMode === "market_research_only";
+      const alreadyConverted = researchEligibility.alreadyConverted;
+      const gateCode = alreadyConverted
+        ? "candidate_already_converted"
+        : productBatch
+          ? "candidate_product_batch_research_blocked"
+          : marketResearch
+            ? "candidate_market_research_blocked"
+            : researchEligibility.reasons.includes("candidate_not_ready")
+              ? "candidate_not_ready_for_conversion"
+              : researchEligibility.reasons.includes("invalid_analysis_json")
+                ? "candidate_context_changed_since_analysis"
+                : "candidate_r22_stage2_blocked";
       return jsonResponse({
         ok: false,
         error: {
           code: gateCode,
-          message: productBatch
-            ? "ProductBatch Candidate 的来源或状态已变化，不能保存研究任务。"
-            : "该候选未通过 R2.2 市场晋级门禁，不能保存为商业深挖任务。",
+          message: alreadyConverted
+            ? "该候选已经生成研究记录，不能重复保存。"
+            : productBatch
+              ? "ProductBatch Candidate 的来源或状态已变化，不能保存研究任务。"
+              : marketResearch
+                ? "SellerSprite Candidate 的来源或状态已变化，不能保存研究任务。"
+                : researchEligibility.reasons.includes("candidate_not_ready")
+                  ? "该候选尚未满足当前研究保存条件。"
+                  : "该候选未通过 R2.2 市场晋级门禁，不能保存为商业深挖任务。",
         },
       }, 409);
     }
     productBatchCandidateSource = researchEligibility.productBatchSource ?? null;
+    marketResearchOnly = researchEligibility.researchMode === "market_research_only";
     if (productBatchCandidateSource) {
       try {
         const batch = await getProductBatchStore(auth.context)
@@ -592,18 +609,23 @@ export async function POST(request: NextRequest) {
         },
       }, 409);
     }
-    const r22MarketDecision = productBatchCandidateSource
+    const r22MarketDecision = marketResearchOnly
       ? null
       : parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
-    if (productBatchCandidateSource) {
+    if (marketResearchOnly) {
       if (workflowResult.researchMode !== "market_research_only"
         || workflowResult.promotionEligible !== false
         || workflowResult.r22CommercialValidation !== undefined) {
+        const productBatch = Boolean(productBatchCandidateSource);
         return jsonResponse({
           ok: false,
           error: {
-            code: "candidate_product_batch_research_snapshot_invalid",
-            message: "ProductBatch 研究结果缺少只读研究口径，或附带了禁止的商业晋级快照。",
+            code: productBatch
+              ? "candidate_product_batch_research_snapshot_invalid"
+              : "candidate_market_research_snapshot_invalid",
+            message: productBatch
+              ? "ProductBatch 研究结果缺少只读研究口径，或附带了禁止的商业晋级快照。"
+              : "SellerSprite 研究结果缺少只读研究口径，或附带了禁止的商业晋级快照。",
           },
         }, 409);
       }
@@ -635,11 +657,17 @@ export async function POST(request: NextRequest) {
         },
       }, 409);
     }
-    sourceMeta = buildAuthoritativeSourceMeta(
-      candidate,
-      candidateCapturedAt,
-      productBatchListingFacts,
-    );
+    sourceMeta = {
+      ...buildAuthoritativeSourceMeta(
+        candidate,
+        candidateCapturedAt,
+        productBatchListingFacts,
+      ),
+      ...(marketResearchOnly ? {
+        researchMode: "market_research_only" as const,
+        promotionEligible: false as const,
+      } : {}),
+    };
   } else if (clientSourceMeta) {
     return jsonResponse({ ok: false, error: { code: "candidate_binding_mismatch", message: "手工分析不能附加未签名候选关系。" } }, 409);
   }
@@ -756,9 +784,11 @@ export async function POST(request: NextRequest) {
     } : {}),
     ...(candidateAnalysisContext ? { candidateAnalysisContext } : {}),
     ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
-    ...(productBatchCandidateSource ? {
+    ...(marketResearchOnly ? {
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
+    } : {}),
+    ...(productBatchCandidateSource ? {
       productBatchBinding: {
         version: "product-batch-task-binding.v1",
         candidateId: workflowInput.candidateId,
@@ -911,17 +941,28 @@ export async function POST(request: NextRequest) {
         if (!currentResearchEligibility.allowed) {
           const productBatch =
             currentResearchEligibility.originKind === "seller_sprite_product_batch";
+          const marketResearch = currentResearchEligibility.researchMode === "market_research_only";
           throw new CandidateConversionError(
             productBatch
               ? "candidate_product_batch_research_blocked"
-              : currentResearchEligibility.reasons.includes("candidate_not_ready")
-                ? "candidate_not_ready_for_conversion"
-                : currentResearchEligibility.reasons.includes("invalid_analysis_json")
-                  ? "candidate_context_changed_since_analysis"
-                  : "candidate_r22_stage2_blocked",
+              : marketResearch
+                ? "candidate_market_research_blocked"
+                : currentResearchEligibility.reasons.includes("candidate_not_ready")
+                  ? "candidate_not_ready_for_conversion"
+                  : currentResearchEligibility.reasons.includes("invalid_analysis_json")
+                    ? "candidate_context_changed_since_analysis"
+                    : "candidate_r22_stage2_blocked",
             productBatch
               ? "ProductBatch Candidate 来源或状态已变化，当前不能创建研究任务。"
-              : "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
+              : marketResearch
+                ? "SellerSprite Candidate 来源或状态已变化，当前不能创建研究任务。"
+                : "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
+          );
+        }
+        if ((currentResearchEligibility.researchMode === "market_research_only") !== marketResearchOnly) {
+          throw new CandidateConversionError(
+            "candidate_context_changed_since_analysis",
+            "候选研究范围在分析后已发生变化，请重新分析后再保存。",
           );
         }
         if (normalizeComparableProductName(currentCandidate.name)
@@ -944,7 +985,10 @@ export async function POST(request: NextRequest) {
           where: {
             id: workflowInput.candidateId!,
             convertedTaskId: null,
-            status: { in: ["worth_analyzing", "analyzed"] },
+            name: currentCandidate.name,
+            status: currentCandidate.status,
+            sourceMetaJson: currentCandidate.sourceMetaJson,
+            analysisJson: currentCandidate.analysisJson,
           },
           data: {
             convertedTaskId: task.id,

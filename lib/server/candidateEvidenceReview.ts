@@ -16,6 +16,7 @@ import {
 } from "@/lib/ruleAssessmentPolicy";
 import { assessSourceEvidenceV2 } from "@/lib/server/sourceEvidenceAssessment";
 import { parseR22MarketDecisionFromAnalysisJson } from "@/lib/r22DecisionModel";
+import { projectStoredCandidateResearchAction } from "@/lib/server/candidateResearchEligibility";
 
 type CandidateEvidenceRecord = {
   sourceMetaJson?: unknown;
@@ -227,12 +228,25 @@ export function toPublicOpportunityCandidate<T extends object>(candidate: T) {
     link: record.link,
   });
   const r22MarketDecisionSnapshot = parseR22MarketDecisionFromAnalysisJson(analysisJson);
+  const researchProjection = projectStoredCandidateResearchAction({
+    id: typeof record.id === "string" ? record.id : "",
+    name: typeof record.name === "string" ? record.name : "",
+    source: typeof record.source === "string" ? record.source : "",
+    status: typeof record.status === "string" ? record.status : "",
+    convertedTaskId: typeof record.convertedTaskId === "string" ? record.convertedTaskId : null,
+    originProductBatchItemId: typeof record.originProductBatchItemId === "string"
+      ? record.originProductBatchItemId
+      : undefined,
+    sourceMetaJson: typeof sourceMetaJson === "string" ? sourceMetaJson : "",
+    analysisJson: typeof analysisJson === "string" ? analysisJson : "",
+  });
 
   return {
     ...publicFields,
     ...publicSource,
     ...(evidenceSnapshot ? { evidenceSnapshot } : {}),
     ...(r22MarketDecisionSnapshot ? { r22MarketDecisionSnapshot } : {}),
+    ...researchProjection,
     sourceIntegrity: sourceReview.integrity,
     sourceReview,
   };

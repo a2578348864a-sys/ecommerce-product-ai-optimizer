@@ -212,6 +212,11 @@ describe("ProductBatch Candidate source contract", () => {
 
     expect(evaluateStoredCandidateResearchEligibility(candidate)).toEqual({
       allowed: true,
+      researchAction: "runtime_validation_required",
+      researchBlockReasonCode: null,
+      researchActionMessage: "进入研究前需要服务端再次校验来源。",
+      alreadyConverted: false,
+      requiresRuntimeValidation: true,
       originKind: "seller_sprite_product_batch",
       researchMode: "market_research_only",
       promotionEligible: false,

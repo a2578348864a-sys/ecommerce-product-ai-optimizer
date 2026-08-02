@@ -6,6 +6,7 @@ import {
 import {
   evaluateStoredCandidateResearchEligibility,
   parseSellerSpriteMarketResearchSource,
+  projectStoredCandidateResearchAction,
 } from "@/lib/server/candidateResearchEligibility";
 import { CANDIDATE_ORIGIN_KINDS } from "@/lib/server/productBatchCandidateSource";
 
@@ -61,13 +62,16 @@ function sellerSpriteMeta(overrides: {
 }
 
 function candidate(overrides: {
+  name?: string;
+  source?: string;
   status?: string;
   convertedTaskId?: string | null;
   sourceMetaJson?: string;
 } = {}) {
   return {
     id: "candidate-sellersprite-1",
-    name: "Test product",
+    name: overrides.name ?? "Test product",
+    source: overrides.source ?? "SellerSprite",
     status: overrides.status ?? "pending",
     convertedTaskId: overrides.convertedTaskId ?? null,
     originProductBatchItemId: null,
@@ -84,6 +88,16 @@ describe("SellerSprite market-research eligibility", () => {
     expect(result.researchMode).toBe("market_research_only");
     expect(result.promotionEligible).toBe(false);
     expect(result.sellerSpriteSource?.asin).toBe("B0TEST0001");
+    expect(result.researchAction).toBe("research_available");
+    expect(result.requiresRuntimeValidation).toBe(false);
+  });
+
+  it("projects the SellerSprite pending action from the server contract", () => {
+    expect(projectStoredCandidateResearchAction(candidate())).toEqual({
+      researchAction: "research_available",
+      researchBlockReasonCode: null,
+      researchActionMessage: null,
+    });
   });
 
   it("allows a Visitor SellerSprite pending candidate with the same contract", () => {
@@ -105,6 +119,8 @@ describe("SellerSprite market-research eligibility", () => {
     const result = evaluateStoredCandidateResearchEligibility(legacy);
     expect(result.allowed).toBe(false);
     expect(result.reasons).toContain("candidate_not_ready");
+    expect(result.researchAction).toBe("research_blocked");
+    expect(result.researchBlockReasonCode).toBe("candidate_not_ready");
   });
 
   it("keeps product-batch candidates on their existing path", () => {
@@ -153,6 +169,37 @@ describe("SellerSprite market-research eligibility", () => {
     const result = evaluateStoredCandidateResearchEligibility(candidate({ convertedTaskId: "task-1" }));
     expect(result.allowed).toBe(false);
     expect(result.reasons).toContain("candidate_already_linked");
+    expect(result.researchAction).toBe("converted");
+    expect(result.alreadyConverted).toBe(true);
+    expect(projectStoredCandidateResearchAction(candidate({ convertedTaskId: "task-1" }))).toEqual({
+      researchAction: "converted",
+      researchBlockReasonCode: null,
+      researchActionMessage: null,
+    });
+  });
+
+  it("fails closed when a claimed SellerSprite source contract is incomplete", () => {
+    const meta = JSON.parse(sellerSpriteMeta());
+    meta.source.sourceFileSha256 = "not-a-sha256";
+    const result = evaluateStoredCandidateResearchEligibility(candidate({
+      status: "analyzed",
+      sourceMetaJson: JSON.stringify(meta),
+    }));
+
+    expect(result).toMatchObject({
+      allowed: false,
+      researchAction: "research_blocked",
+      researchBlockReasonCode: "source_contract_invalid",
+      researchMode: "market_research_only",
+      promotionEligible: false,
+      reasons: ["seller_sprite_source_invalid"],
+    });
+  });
+
+  it("rejects a Candidate name that no longer matches the imported identity", () => {
+    const result = evaluateStoredCandidateResearchEligibility(candidate({ name: "Different product" }));
+    expect(result.allowed).toBe(false);
+    expect(result.reasons).toEqual(["seller_sprite_identity_mismatch"]);
   });
 
   it("rejects a corrupted sourceMetaJson", () => {

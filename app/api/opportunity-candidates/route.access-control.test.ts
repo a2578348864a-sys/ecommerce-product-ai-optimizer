@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildSellerSpriteCandidateSourceMeta,
+  computeSellerSpriteRowHash,
+} from "@/lib/server/sellerSpriteImportContract";
 
 const mocks = vi.hoisted(() => ({
   checkAccessPassword: vi.fn(),
@@ -56,8 +60,38 @@ function candidate(id: string, name: string, demoAccessId?: string) {
     status: "pending",
     sourceMetaJson: "{}",
     analysisJson: "{}",
+    convertedTaskId: null,
+    originProductBatchItemId: null,
     createdAt: "2026-07-11T00:00:00.000Z",
     ...(demoAccessId ? { demoAccessId } : {}),
+  };
+}
+
+function sellerSpriteCandidate(id: string, demoAccessId?: string) {
+  const asin = "B0TEST0001";
+  const title = "Powder sunscreen";
+  const amazonUrl = `https://www.amazon.com/dp/${asin}`;
+  return {
+    ...candidate(id, title, demoAccessId),
+    source: "SellerSprite",
+    link: amazonUrl,
+    sourceMetaJson: buildSellerSpriteCandidateSourceMeta({
+      rowHash: computeSellerSpriteRowHash({ rowNumber: 2, asin, title, amazonUrl }),
+      rowNumber: 2,
+      asin,
+      parentAsin: null,
+      title,
+      amazonUrl,
+      imageUrl: null,
+      priceUsd: 14.19,
+      rating: 4.2,
+      reviewCount: 6,
+      brand: "Example",
+      category: "Beauty",
+      searchRank: null,
+      estimatedMonthlySales: 26065,
+      estimatedMonthlyRevenueUsd: 369862,
+    }, "f".repeat(64), "2026-07-31T09:00:00.000Z"),
   };
 }
 
@@ -96,6 +130,8 @@ describe("GET /api/opportunity-candidates access isolation", () => {
       marketplace: null,
       sourceIntegrity: "unverified",
       sourceReview: { integrity: "unverified" },
+      researchAction: "research_blocked",
+      researchBlockReasonCode: "candidate_not_ready",
     });
     expect(body.items[0]).not.toHaveProperty("sourceMetaJson");
     expect(body.items[0]).not.toHaveProperty("analysisJson");
@@ -127,10 +163,40 @@ describe("GET /api/opportunity-candidates access isolation", () => {
       marketplace: null,
       sourceIntegrity: "unverified",
       sourceReview: { integrity: "unverified" },
+      researchAction: "research_blocked",
+      researchBlockReasonCode: "candidate_not_ready",
     });
     expect(body.items[0]).not.toHaveProperty("sourceMetaJson");
     expect(body.items[0]).not.toHaveProperty("analysisJson");
     expect(JSON.stringify(body)).not.toContain("sandbox-b");
     expect(mocks.listCandidates).not.toHaveBeenCalled();
+  });
+
+  it("projects the same SellerSprite research action for Owner and Visitor", async () => {
+    mocks.listCandidates.mockResolvedValueOnce({
+      items: [sellerSpriteCandidate("owner-sellersprite")],
+      total: 1,
+      hasMore: false,
+      nextOffset: null,
+    });
+    mocks.listSandboxCandidates.mockReturnValueOnce([
+      sellerSpriteCandidate("sandbox-sellersprite", "visitor-a"),
+    ]);
+
+    const ownerBody = await (await GET(createRequest("owner-token") as never)).json();
+    const visitorBody = await (await GET(createRequest("visitor-a-token") as never)).json();
+
+    expect(ownerBody.items[0]).toMatchObject({
+      sourceKind: "sellersprite_direct",
+      researchAction: "research_available",
+      researchBlockReasonCode: null,
+    });
+    expect(visitorBody.items[0]).toMatchObject({
+      sourceKind: "sellersprite_direct",
+      researchAction: "research_available",
+      researchBlockReasonCode: null,
+    });
+    expect(JSON.stringify(ownerBody)).not.toContain("sourceFileSha256");
+    expect(JSON.stringify(visitorBody)).not.toContain("sourceFileSha256");
   });
 });

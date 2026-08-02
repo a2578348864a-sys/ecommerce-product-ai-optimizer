@@ -6,6 +6,10 @@ import {
   normalizeRuleAssessmentV1,
   normalizeSourceEvidenceV2,
 } from "@/lib/sourceEvidenceContract";
+import {
+  buildSellerSpriteCandidateSourceMeta,
+  computeSellerSpriteRowHash,
+} from "@/lib/server/sellerSpriteImportContract";
 
 const authState: {
   context: { mode: "owner" } | { mode: "demo"; demoAccessId: string };
@@ -151,6 +155,45 @@ function signedCandidate() {
       assessmentHash: createAssessmentHash(ruleAssessment),
       ruleAssessment,
     }),
+  };
+}
+
+function sellerSpriteDirectCandidate() {
+  const asin = "B0TEST0001";
+  const title = "Powder sunscreen";
+  const amazonUrl = `https://www.amazon.com/dp/${asin}`;
+  return {
+    id: "candidate-sellersprite-direct",
+    name: title,
+    rawInput: title,
+    link: amazonUrl,
+    score: 0,
+    source: "SellerSprite",
+    keyword: "powder sunscreen",
+    riskLevel: "unknown",
+    riskLabel: "待核验",
+    summaryLabel: "SellerSprite 市场研究候选",
+    status: "pending",
+    sourceMetaJson: buildSellerSpriteCandidateSourceMeta({
+      rowHash: computeSellerSpriteRowHash({ rowNumber: 2, asin, title, amazonUrl }),
+      rowNumber: 2,
+      asin,
+      parentAsin: null,
+      title,
+      amazonUrl,
+      imageUrl: null,
+      priceUsd: 14.19,
+      rating: 4.2,
+      reviewCount: 6,
+      brand: "Example",
+      category: "Beauty",
+      searchRank: null,
+      estimatedMonthlySales: 26065,
+      estimatedMonthlyRevenueUsd: 369862,
+    }, "f".repeat(64), "2026-07-31T09:00:00.000Z"),
+    analysisJson: "{}",
+    convertedTaskId: null,
+    originProductBatchItemId: null,
   };
 }
 
@@ -617,6 +660,67 @@ describe("product-analysis trusted run creation", () => {
     expect(JSON.stringify(result.body.finalReport)).not.toMatch(/适合新手|小单测试|联系.*供应商/);
     expect(mocks.runSourcingStep.mock.calls[0][1]).toContain("SellerSprite ProductBatch");
     expect(mocks.runSourcingStep.mock.calls[0][1]).toContain("不得声称已晋级");
+  });
+
+  it("runs an eligible SellerSprite direct pending Candidate as market_research_only", async () => {
+    const candidate = sellerSpriteDirectCandidate();
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+
+    const result = await readJson(await POST(createRequest({
+      productName: "client-forged title",
+      source: "opportunity",
+      candidateId: candidate.id,
+      researchAction: "research_available",
+      options: oneAiStepOptions(),
+    }) as never));
+
+    expect(result.status).toBe(200);
+    expect(result.body.productName).toBe("Powder sunscreen");
+    expect(result.body.researchMode).toBe("market_research_only");
+    expect(result.body.promotionEligible).toBe(false);
+    expect(result.body.r22CommercialValidation).toBeUndefined();
+    expect(result.body.finalReport).toMatchObject({
+      finalVerdict: "仅供市场研究，等待人工核验",
+      beginnerFit: "尚未形成商业判断",
+      canTestSmallBatch: false,
+    });
+    expect(mocks.runSourcingStep).toHaveBeenCalledOnce();
+    expect(mocks.runSourcingStep.mock.calls[0][1]).toContain("promotionEligible=false");
+    expect(mocks.runSourcingStep.mock.calls[0][1]).toContain("不得声称已晋级");
+  });
+
+  it("uses the same SellerSprite pending contract for a Visitor sandbox Candidate", async () => {
+    authState.context = { mode: "demo", demoAccessId: "visitor-a" };
+    const candidate = { ...sellerSpriteDirectCandidate(), id: "sandbox_candidate_sellersprite_a" };
+    mocks.getSandboxCandidate.mockImplementation((demoAccessId: string, candidateId: string) => (
+      demoAccessId === "visitor-a" && candidateId === candidate.id ? candidate : null
+    ));
+
+    const result = await readJson(await POST(createRequest({
+      candidateId: candidate.id,
+      source: "opportunity",
+      options: oneAiStepOptions(),
+    }) as never));
+
+    expect(result.status).toBe(200);
+    expect(result.body.researchMode).toBe("market_research_only");
+    expect(result.body.promotionEligible).toBe(false);
+    expect(result.body.r22CommercialValidation).toBeUndefined();
+    expect(mocks.candidateFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects an already-converted Candidate before starting analysis", async () => {
+    const candidate = { ...sellerSpriteDirectCandidate(), convertedTaskId: "task-existing" };
+    mocks.candidateFindUnique.mockResolvedValue(candidate);
+
+    const result = await readJson(await POST(createRequest({
+      candidateId: candidate.id,
+      options: oneAiStepOptions(),
+    }) as never));
+
+    expect(result.status).toBe(409);
+    expect(result.body.error.code).toBe("candidate_already_converted");
+    expect(mocks.runSourcingStep).not.toHaveBeenCalled();
   });
 
   it("fails closed when current ProductBatch evidence no longer matches Candidate hashes", async () => {
