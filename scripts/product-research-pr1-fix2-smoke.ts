@@ -32,6 +32,7 @@ import {
   createWorkflowResultHash,
   createWorkflowRunProof,
 } from "@/lib/server/workflowRunProof";
+import { buildSmokeProviderEvidence } from "./product-research-pr1-smoke-evidence";
 
 const WORKTREE = resolve(process.cwd());
 const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
@@ -45,6 +46,7 @@ const nodeRequestEvidence = {
   productionPortAccessCount: 0,
   listingMutationRequestCount: 0,
   imageMutationRequestCount: 0,
+  aiRouteRequestCount: 0,
   server5xxCount: 0,
 };
 const FORBIDDEN_KEYS = new Set([
@@ -95,6 +97,28 @@ function assert(condition: unknown, code: string): asserts condition {
 
 function wait(milliseconds: number) {
   return new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
+}
+
+async function removeSmokeRootWithRetry(runtimeRoot: string) {
+  const exactRoot = resolve(runtimeRoot);
+  assert(
+    dirname(exactRoot) === SMOKE_PARENT
+      && exactRoot.startsWith(`${SMOKE_PARENT}\\product-research-pr1-fix3-`),
+    "smoke_cleanup_identity_invalid",
+  );
+  for (let attempt = 1; attempt <= 50; attempt += 1) {
+    if (!existsSync(exactRoot)) return attempt - 1;
+    try {
+      rmSync(exactRoot, { recursive: true, force: true });
+    } catch (error) {
+      const code = error instanceof Error && "code" in error
+        ? String((error as NodeJS.ErrnoException).code ?? "")
+        : "";
+      if (attempt === 50 || !["EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) throw error;
+      await wait(100);
+    }
+  }
+  return 50;
 }
 
 function jsonRecord(value: unknown): JsonRecord {
@@ -287,6 +311,12 @@ async function api(baseUrl: string, token: string, path: string, init: RequestIn
   }
   if (method !== "GET" && (target.pathname.includes("image-draft") || target.pathname.includes("ai-image"))) {
     nodeRequestEvidence.imageMutationRequestCount += 1;
+  }
+  if (method !== "GET" && (
+    target.pathname === "/api/workflows/product-analysis"
+    || target.pathname === "/api/agent/run"
+  )) {
+    nodeRequestEvidence.aiRouteRequestCount += 1;
   }
   const response = await fetch(target, {
     ...init,
@@ -1232,7 +1262,6 @@ async function main() {
       researchRecordSchema: formalResearch.schema,
       researchRecordCreated: 1,
       candidateLinked: true,
-      providerCallsStarted: 0,
     };
 
     report.mountedBrowser = await runMountedConflictCheck({
@@ -1286,8 +1315,11 @@ async function main() {
       + Number(visitorOriginalCandidate?.convertedTaskId !== visitorTaskId)
       + Number(typeof linkedFormal?.convertedTaskId !== "string");
     const mounted = jsonRecord(report.mountedBrowser);
-    const realAiRequestCount = Number(mounted.aiRequestCount ?? 0)
-      + Number(jsonRecord(report.formalCandidate).providerCallsStarted ?? 0);
+    const providerEvidence = buildSmokeProviderEvidence({
+      browserAiRouteRequests: Number(mounted.aiRequestCount ?? 0),
+      driverAiRouteRequests: nodeRequestEvidence.aiRouteRequestCount,
+      providerPathInScope: false,
+    });
     const externalBusinessRequestCount = Number(mounted.externalHttpRequestCount ?? 0)
       + nodeRequestEvidence.externalHttpRequestCount;
     const autoListingRequestCount = Number(mounted.listingMutationRequestCount ?? 0)
@@ -1295,7 +1327,11 @@ async function main() {
     const autoImageRequestCount = Number(mounted.imageMutationRequestCount ?? 0)
       + nodeRequestEvidence.imageMutationRequestCount;
     const server5xxCount = Number(mounted.server5xxCount ?? 0) + nodeRequestEvidence.server5xxCount;
-    assert(realAiRequestCount === 0, "smoke_real_ai_side_effect");
+    assert(
+      providerEvidence.browserAiRouteRequests.value === 0
+        && providerEvidence.driverAiRouteRequests.value === 0,
+      "smoke_ai_route_side_effect",
+    );
     assert(externalBusinessRequestCount === 0, "smoke_external_business_side_effect");
     assert(autoListingRequestCount === 0 && autoImageRequestCount === 0, "smoke_auto_studio_side_effect");
     assert(nodeRequestEvidence.productionPortAccessCount === 0, "smoke_production_port_access");
@@ -1303,7 +1339,7 @@ async function main() {
     assert(unexpectedCandidateCreates === 0 && unexpectedResearchRecordCreates === 0, "smoke_unexpected_record_create");
     assert(convertedTaskIdUnexpectedChanges === 0, "smoke_unexpected_candidate_link_change");
     report.sideEffects = {
-      realAiRequestCount: { status: "verified_zero", value: realAiRequestCount, source: "browser_cdp_plus_workflow_run_proof" },
+      ...providerEvidence,
       externalBusinessRequestCount: { status: "verified_zero", value: externalBusinessRequestCount, source: "browser_cdp_plus_driver_url_instrumentation" },
       autoListingRequestCount: { status: "verified_zero", value: autoListingRequestCount, source: "browser_cdp_plus_driver_url_instrumentation" },
       autoImageRequestCount: { status: "verified_zero", value: autoImageRequestCount, source: "browser_cdp_plus_driver_url_instrumentation" },
@@ -1316,7 +1352,7 @@ async function main() {
       coverage: {
         browserRequests: "CDP Network events",
         driverRequests: nodeRequestEvidence.requestCount,
-        runtimeOutboundCaveat: "No OS-level packet capture; exercised runtime routes have no provider call and the child environment contains no provider credential.",
+        runtimeOutboundCaveat: "No process-level or OS-level observation; runtimeAllOutboundNetwork remains unverified.",
       },
     };
     report.database = {
@@ -1341,8 +1377,7 @@ async function main() {
     report.portReleased = await isPortFree(port);
     report.cdpPortReleased = await isPortFree(CDP_PORT);
     const exactRoot = resolve(runtimeRoot);
-    assert(dirname(exactRoot) === SMOKE_PARENT && exactRoot.startsWith(`${SMOKE_PARENT}\\product-research-pr1-fix3-`), "smoke_cleanup_identity_invalid");
-    if (existsSync(exactRoot)) rmSync(exactRoot, { recursive: true, force: true });
+    report.cleanupAttempts = await removeSmokeRootWithRetry(exactRoot);
     report.runtimeRootRemoved = !existsSync(exactRoot);
     assert(report.portReleased && report.cdpPortReleased && report.runtimeRootRemoved, "smoke_cleanup_failed");
   }

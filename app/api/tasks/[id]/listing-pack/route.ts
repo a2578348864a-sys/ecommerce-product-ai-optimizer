@@ -9,11 +9,10 @@ import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   TaskResultJsonMutationError,
-  mutateTaskResultJson,
 } from "@/lib/server/taskResultJsonMutation";
 import {
   buildListingPackSnapshot,
-  createListingPackResultMutation,
+  taskResultWriterPersistence,
 } from "@/lib/server/taskResultWriterServices";
 
 export const runtime = "nodejs";
@@ -67,11 +66,10 @@ export async function PATCH(
   }
 
   try {
-    await mutateTaskResultJson({
+    await taskResultWriterPersistence.persistListingPack({
       context,
       taskId: id,
-      writer: "listing-pack",
-      mutate: createListingPackResultMutation(enforcedSnapshot),
+      snapshot: enforcedSnapshot,
     });
     return json({ ok: true, data: { id, savedAt: enforcedSnapshot.savedAt as string } });
   } catch (error) {

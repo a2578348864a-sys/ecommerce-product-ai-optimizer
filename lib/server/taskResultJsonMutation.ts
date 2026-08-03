@@ -53,7 +53,7 @@ type TaskResultJsonMutationOutput<T> = {
   updatedAt?: string;
 };
 
-type TaskResultJsonMutationInput<T> = {
+export type TaskResultJsonMutationInput<T> = {
   context: AccessContext;
   taskId: string;
   writer: TaskResultJsonWriter;
@@ -70,6 +70,17 @@ export type TaskResultJsonDatabase = {
     updateMany(args: unknown): Promise<{ count: number }>;
   };
 };
+
+export type TaskResultJsonMutator = <T>(
+  input: TaskResultJsonMutationInput<T>,
+) => Promise<{
+  resultJson: string;
+  value: T;
+  decisionStatus?: string;
+  visitorProductLifecycle?: string;
+  updatedAt: string;
+  snapshot: TaskResultJsonSnapshot;
+}>;
 
 export class TaskResultJsonMutationError extends Error {
   constructor(
@@ -304,11 +315,18 @@ async function mutateVisitorTaskResultJson<T>(input: TaskResultJsonMutationInput
   return result.value;
 }
 
-export async function mutateTaskResultJson<T>(input: TaskResultJsonMutationInput<T>) {
-  return input.context.mode === "demo"
-    ? mutateVisitorTaskResultJson(input)
-    : mutateOwnerTaskResultJson(prisma as unknown as TaskResultJsonDatabase, input);
+export function createTaskResultJsonMutator(input: {
+  ownerDatabase?: TaskResultJsonDatabase;
+} = {}): TaskResultJsonMutator {
+  const ownerDatabase = input.ownerDatabase ?? prisma as unknown as TaskResultJsonDatabase;
+  return async <T>(mutation: TaskResultJsonMutationInput<T>) => (
+    mutation.context.mode === "demo"
+      ? mutateVisitorTaskResultJson(mutation)
+      : mutateOwnerTaskResultJson(ownerDatabase, mutation)
+  );
 }
+
+export const mutateTaskResultJson = createTaskResultJsonMutator();
 
 export async function updateLegacySandboxTaskDecisionStatusAtomic(input: {
   context: Extract<AccessContext, { mode: "demo" }>;

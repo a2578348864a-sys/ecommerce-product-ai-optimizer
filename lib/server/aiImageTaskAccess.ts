@@ -6,8 +6,7 @@ import { requireAuthenticated } from "@/lib/server/demoGuard";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import type { AiImageAccessMode, AiImageTaskContext } from "@/lib/aiImageDraft";
 import { prisma } from "@/lib/server/db";
-import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
-import { createAiImageResultMutation } from "@/lib/server/taskResultWriterServices";
+import { taskResultWriterPersistence } from "@/lib/server/taskResultWriterServices";
 
 export type LoadedAiImageTask = {
   taskId: string;
@@ -56,12 +55,11 @@ export async function loadAiImageTask(input: {
           if (!Object.prototype.hasOwnProperty.call(result, "aiImageDraftSnapshot")) {
             throw new Error("AI_IMAGE_SNAPSHOT_MISSING");
           }
-          await mutateTaskResultJson({
+          await taskResultWriterPersistence.persistAiImage({
             context: auth.context,
             taskId: input.taskId,
-            writer: "ai-image",
             expectedStorageVersion: storageVersion,
-            mutate: createAiImageResultMutation(result.aiImageDraftSnapshot),
+            snapshot: result.aiImageDraftSnapshot,
           });
         },
       },
@@ -101,12 +99,11 @@ export async function loadAiImageTask(input: {
         if (!Object.prototype.hasOwnProperty.call(result, "aiImageDraftSnapshot")) {
           throw new Error("AI_IMAGE_SNAPSHOT_MISSING");
         }
-        await mutateTaskResultJson({
+        await taskResultWriterPersistence.persistAiImage({
           context: auth.context,
           taskId: input.taskId,
-          writer: "ai-image",
           expectedStorageVersion: { resultJson: task.resultJson, updatedAt: task.updatedAt },
-          mutate: createAiImageResultMutation(result.aiImageDraftSnapshot),
+          snapshot: result.aiImageDraftSnapshot,
         });
       },
     },

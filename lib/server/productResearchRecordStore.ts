@@ -10,7 +10,6 @@ import {
 } from "@/lib/server/demoSandbox";
 import {
   TaskResultJsonMutationError,
-  mutateTaskResultJson,
 } from "@/lib/server/taskResultJsonMutation";
 import {
   ProductResearchRecordError,
@@ -26,7 +25,7 @@ import {
   type ProductResearchDecisionInput,
   type ProductResearchRecordV1,
 } from "@/lib/productResearchRecord";
-import { createResearchDecisionResultMutation } from "@/lib/server/taskResultWriterServices";
+import { taskResultWriterPersistence } from "@/lib/server/taskResultWriterServices";
 
 type RawTaskSnapshot = {
   id: string;
@@ -302,19 +301,16 @@ export async function updateProductResearchDecision(
     appended.record.latestDecision.status,
   );
   try {
-    await mutateTaskResultJson({
+    await taskResultWriterPersistence.persistResearchDecision({
       context,
       taskId,
-      writer: "research-decision",
       expectedStorageVersion: {
         resultJson: snapshot.resultJson,
         updatedAt: snapshot.updatedAt,
       },
-      mutate: createResearchDecisionResultMutation({
-        record: appended.record,
-        decisionStatus: compatibilityStatus,
-        updatedAt: now,
-      }),
+      record: appended.record,
+      decisionStatus: compatibilityStatus,
+      updatedAt: now,
     });
   } catch (error) {
     if (error instanceof TaskResultJsonMutationError) {

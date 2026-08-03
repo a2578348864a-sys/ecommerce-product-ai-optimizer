@@ -18,12 +18,9 @@ import {
 import {
   commitOwnerTaskResultJsonMutationForTest,
   loadOwnerTaskResultJsonSnapshotForTest,
-  mutateOwnerTaskResultJsonForTest,
 } from "@/lib/server/taskResultJsonMutation.testSupport";
 import {
-  createAiImageResultMutation,
-  createListingPackResultMutation,
-  createResearchDecisionResultMutation,
+  createTaskResultWriterPersistence,
 } from "@/lib/server/taskResultWriterServices";
 
 let root = "";
@@ -33,6 +30,32 @@ let second: PrismaClient | undefined;
 
 function database(client: PrismaClient) {
   return client as unknown as TaskResultJsonDatabase;
+}
+
+const ownerContext = { mode: "owner", token: "synthetic-owner-token" } as const;
+
+function createCommitBarrier(participants: number) {
+  let arrivals = 0;
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => { release = resolve; });
+  return async () => {
+    arrivals += 1;
+    if (arrivals === participants) release();
+    await ready;
+  };
+}
+
+function databaseWithCommitBarrier(client: PrismaClient, beforeCommit: () => Promise<void>) {
+  const delegate = database(client);
+  return {
+    viralAnalysisRecord: {
+      findUnique: (args: unknown) => delegate.viralAnalysisRecord.findUnique(args),
+      updateMany: async (args: unknown) => {
+        await beforeCommit();
+        return delegate.viralAnalysisRecord.updateMany(args);
+      },
+    },
+  } satisfies TaskResultJsonDatabase;
 }
 
 function protectedDocument() {
@@ -156,38 +179,32 @@ afterEach(async () => {
 
 describe("real SQLite task resultJson CAS", () => {
   it("allows exactly one of two concurrent decisions from the same storage snapshot", async () => {
-    let arrivals = 0;
-    let release!: () => void;
-    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    const beforeCommit = createCommitBarrier(2);
+    const firstWriter = createTaskResultWriterPersistence({
+      ownerDatabase: databaseWithCommitBarrier(first!, beforeCommit),
+    });
+    const secondWriter = createTaskResultWriterPersistence({
+      ownerDatabase: databaseWithCommitBarrier(second!, beforeCommit),
+    });
     const runDecision = (
-      client: PrismaClient,
+      writer: ReturnType<typeof createTaskResultWriterPersistence>,
       input: { id: string; status: "needs_information" | "abandoned"; reason: string; nextAction: string | null; now: string },
-    ) => mutateOwnerTaskResultJsonForTest(database(client), {
+    ) => writer.persistResearchDecision({
+      context: ownerContext,
       taskId: "task-sqlite",
-      writer: "research-decision",
-      mutate: async (document) => {
-        arrivals += 1;
-        if (arrivals === 2) release();
-        await barrier;
-        const current = document as ReturnType<typeof protectedDocument>;
-        const resultJson = decisionResult(current, input);
-        const record = getProductResearchRecord(JSON.parse(resultJson))!;
-        return createResearchDecisionResultMutation({
-          record,
-          decisionStatus: input.status === "abandoned" ? "rejected" : "need_info",
-          updatedAt: input.now,
-        })(document);
-      },
+      record: getProductResearchRecord(JSON.parse(decisionResult(protectedDocument(), input)))!,
+      decisionStatus: input.status === "abandoned" ? "rejected" : "need_info",
+      updatedAt: input.now,
     });
     const settled = await Promise.allSettled([
-      runDecision(first!, {
+      runDecision(firstWriter, {
         id: "22222222-2222-4222-8222-222222222222",
         status: "needs_information",
         reason: "Need another source.",
         nextAction: "Collect it.",
         now: "2026-08-03T01:00:00.000Z",
       }),
-      runDecision(second!, {
+      runDecision(secondWriter, {
         id: "33333333-3333-4333-8333-333333333333",
         status: "abandoned",
         reason: "Stop this research.",
@@ -206,52 +223,44 @@ describe("real SQLite task resultJson CAS", () => {
   });
 
   it("preserves the decision and Listing namespaces across a real concurrent race and retry", async () => {
-    let arrivals = 0;
-    let release!: () => void;
-    const barrier = new Promise<void>((resolveBarrier) => { release = resolveBarrier; });
-    const decision = () => mutateOwnerTaskResultJsonForTest(database(first!), {
-      taskId: "task-sqlite",
-      writer: "research-decision",
-      mutate: async (document) => {
-        arrivals += 1;
-        if (arrivals === 2) release();
-        await barrier;
-        const current = document as ReturnType<typeof protectedDocument>;
-        const result = JSON.parse(decisionResult(current, {
-            id: "44444444-4444-4444-8444-444444444444",
-            status: "needs_information",
-            reason: "Need another source.",
-            nextAction: "Collect it.",
-            now: "2026-08-03T02:00:00.000Z",
-          }));
-        return createResearchDecisionResultMutation({
-          record: getProductResearchRecord(result)!,
-          decisionStatus: "need_info",
-          updatedAt: "2026-08-03T02:00:00.000Z",
-        })(document);
-      },
+    const beforeCommit = createCommitBarrier(2);
+    const firstWriter = createTaskResultWriterPersistence({
+      ownerDatabase: databaseWithCommitBarrier(first!, beforeCommit),
     });
-    const listing = () => mutateOwnerTaskResultJsonForTest(database(second!), {
-      taskId: "task-sqlite",
-      writer: "listing-pack",
-      mutate: async (document) => {
-        arrivals += 1;
-        if (arrivals === 2) release();
-        await barrier;
-        return createListingPackResultMutation(
-          { source: "synthetic" },
-          "2026-08-03T02:00:01.000Z",
-        )(document);
-      },
+    const secondWriter = createTaskResultWriterPersistence({
+      ownerDatabase: databaseWithCommitBarrier(second!, beforeCommit),
     });
-    const settled = await Promise.allSettled([decision(), listing()]);
+    const retryWriter = createTaskResultWriterPersistence({ ownerDatabase: database(first!) });
+    const decisionInput = {
+      id: "44444444-4444-4444-8444-444444444444",
+      status: "needs_information" as const,
+      reason: "Need another source.",
+      nextAction: "Collect it.",
+      now: "2026-08-03T02:00:00.000Z",
+    };
+    const decisionRecord = getProductResearchRecord(JSON.parse(decisionResult(protectedDocument(), decisionInput)))!;
+    const decision = (writer: ReturnType<typeof createTaskResultWriterPersistence>) => writer.persistResearchDecision({
+      context: ownerContext,
+      taskId: "task-sqlite",
+      record: decisionRecord,
+      decisionStatus: "need_info",
+      updatedAt: decisionInput.now,
+    });
+    const listing = (writer: ReturnType<typeof createTaskResultWriterPersistence>, at: string) => writer.persistListingPack({
+      context: ownerContext,
+      taskId: "task-sqlite",
+      snapshot: { source: "synthetic" },
+      updatedAt: at,
+    });
+    const settled = await Promise.allSettled([
+      decision(firstWriter),
+      listing(secondWriter, "2026-08-03T02:00:01.000Z"),
+    ]);
     expect(settled.filter((item) => item.status === "fulfilled")).toHaveLength(1);
     if (settled[0].status === "rejected") {
-      arrivals = 2;
-      await decision();
+      await decision(retryWriter);
     } else {
-      arrivals = 2;
-      await listing();
+      await listing(retryWriter, "2026-08-03T02:00:02.000Z");
     }
     const saved = await first!.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
     const parsed = JSON.parse(saved!.resultJson);
@@ -263,36 +272,40 @@ describe("real SQLite task resultJson CAS", () => {
   });
 
   it("preserves Listing, Image, research, and unknown namespaces across a real concurrent race and retry", async () => {
-    let arrivals = 0;
-    let release!: () => void;
-    const barrier = new Promise<void>((resolveBarrier) => { release = resolveBarrier; });
-    const run = (
-      client: PrismaClient,
-      writer: "listing-pack" | "ai-image",
-      key: "listingPackSnapshot" | "aiImageDraftSnapshot",
-      at: string,
-    ) => mutateOwnerTaskResultJsonForTest(database(client), {
-      taskId: "task-sqlite",
-      writer,
-      mutate: async (document) => {
-        arrivals += 1;
-        if (arrivals === 2) release();
-        await barrier;
-        return writer === "listing-pack"
-          ? createListingPackResultMutation({ source: "synthetic" }, at)(document)
-          : createAiImageResultMutation({ source: "synthetic" }, at)(document);
-      },
+    const beforeCommit = createCommitBarrier(2);
+    const firstWriter = createTaskResultWriterPersistence({
+      ownerDatabase: databaseWithCommitBarrier(first!, beforeCommit),
     });
+    const secondWriter = createTaskResultWriterPersistence({
+      ownerDatabase: databaseWithCommitBarrier(second!, beforeCommit),
+    });
+    const retryWriter = createTaskResultWriterPersistence({ ownerDatabase: database(first!) });
+    const run = (
+      service: ReturnType<typeof createTaskResultWriterPersistence>,
+      writer: "listing-pack" | "ai-image",
+      at: string,
+    ) => writer === "listing-pack"
+      ? service.persistListingPack({
+          context: ownerContext,
+          taskId: "task-sqlite",
+          snapshot: { source: "synthetic" },
+          updatedAt: at,
+        })
+      : service.persistAiImage({
+          context: ownerContext,
+          taskId: "task-sqlite",
+          snapshot: { source: "synthetic" },
+          updatedAt: at,
+        });
     const settled = await Promise.allSettled([
-      run(first!, "listing-pack", "listingPackSnapshot", "2026-08-03T02:10:00.000Z"),
-      run(second!, "ai-image", "aiImageDraftSnapshot", "2026-08-03T02:10:01.000Z"),
+      run(firstWriter, "listing-pack", "2026-08-03T02:10:00.000Z"),
+      run(secondWriter, "ai-image", "2026-08-03T02:10:01.000Z"),
     ]);
     expect(settled.filter((item) => item.status === "fulfilled")).toHaveLength(1);
-    arrivals = 2;
     if (settled[0].status === "rejected") {
-      await run(first!, "listing-pack", "listingPackSnapshot", "2026-08-03T02:10:02.000Z");
+      await run(retryWriter, "listing-pack", "2026-08-03T02:10:02.000Z");
     } else {
-      await run(second!, "ai-image", "aiImageDraftSnapshot", "2026-08-03T02:10:02.000Z");
+      await run(retryWriter, "ai-image", "2026-08-03T02:10:02.000Z");
     }
     const saved = await first!.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
     const parsed = JSON.parse(saved!.resultJson);

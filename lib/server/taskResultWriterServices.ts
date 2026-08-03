@@ -4,6 +4,12 @@ import {
   mergeProductResearchRecord,
   type ProductResearchRecordV1,
 } from "@/lib/productResearchRecord";
+import type { AccessContext } from "@/lib/server/accessPassword";
+import {
+  createTaskResultJsonMutator,
+  type TaskResultJsonDatabase,
+  type TaskResultJsonStorageVersion,
+} from "@/lib/server/taskResultJsonMutation";
 
 export function buildListingPackSnapshot(
   snapshot: Record<string, unknown>,
@@ -58,3 +64,62 @@ export function createResearchDecisionResultMutation(input: {
     updatedAt: input.updatedAt,
   });
 }
+
+type WriterInput = {
+  context: AccessContext;
+  taskId: string;
+  expectedStorageVersion?: TaskResultJsonStorageVersion;
+};
+
+export function createTaskResultWriterPersistence(input: {
+  ownerDatabase?: TaskResultJsonDatabase;
+} = {}) {
+  const mutate = createTaskResultJsonMutator(input);
+  return Object.freeze({
+    persistResearchDecision(request: WriterInput & {
+      record: ProductResearchRecordV1;
+      decisionStatus: string;
+      updatedAt: string;
+    }) {
+      return mutate({
+        context: request.context,
+        taskId: request.taskId,
+        writer: "research-decision",
+        expectedStorageVersion: request.expectedStorageVersion,
+        mutate: createResearchDecisionResultMutation({
+          record: request.record,
+          decisionStatus: request.decisionStatus,
+          updatedAt: request.updatedAt,
+        }),
+      });
+    },
+
+    persistListingPack(request: WriterInput & {
+      snapshot: Record<string, unknown>;
+      updatedAt?: string;
+    }) {
+      return mutate({
+        context: request.context,
+        taskId: request.taskId,
+        writer: "listing-pack",
+        expectedStorageVersion: request.expectedStorageVersion,
+        mutate: createListingPackResultMutation(request.snapshot, request.updatedAt),
+      });
+    },
+
+    persistAiImage(request: WriterInput & {
+      snapshot: unknown;
+      updatedAt?: string;
+    }) {
+      return mutate({
+        context: request.context,
+        taskId: request.taskId,
+        writer: "ai-image",
+        expectedStorageVersion: request.expectedStorageVersion,
+        mutate: createAiImageResultMutation(request.snapshot, request.updatedAt),
+      });
+    },
+  });
+}
+
+export const taskResultWriterPersistence = createTaskResultWriterPersistence();
