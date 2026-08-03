@@ -38,6 +38,10 @@ import {
 import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
+import {
+  getProductResearchDecisionLabel,
+  isProductResearchDecisionStatus,
+} from "@/lib/productResearchDecisionContract";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -166,6 +170,89 @@ function getStringArray(result: unknown, key: string) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string").slice(0, 5)
     : [];
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getVersionedDecisionSummary(result: unknown) {
+  if (!isRecordValue(result) || !isRecordValue(result.researchRecord)) return null;
+  const record = result.researchRecord;
+  if (record.schema !== "product-research-record.v1"
+    || !Number.isSafeInteger(record.revision)
+    || !isRecordValue(record.latestDecision)
+    || !isProductResearchDecisionStatus(record.latestDecision.status)
+    || typeof record.latestDecision.reason !== "string") {
+    return null;
+  }
+  return {
+    revision: record.revision as number,
+    status: record.latestDecision.status,
+    reason: record.latestDecision.reason,
+    nextAction: typeof record.latestDecision.nextAction === "string"
+      ? record.latestDecision.nextAction
+      : null,
+  };
+}
+
+export function TaskDecisionControl({
+  taskId,
+  result,
+  legacyDecisionStatus,
+  updating,
+  onLegacyDecisionChange,
+}: {
+  taskId: string;
+  result: unknown;
+  legacyDecisionStatus: DecisionStatus;
+  updating: boolean;
+  onLegacyDecisionChange: (status: DecisionStatus) => void;
+}) {
+  const versioned = getVersionedDecisionSummary(result);
+  if (versioned) {
+    return (
+      <div className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4 md:col-span-2" data-testid="versioned-research-decision-summary">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-bold text-slate-950">正式研究决定 · 版本 {versioned.revision}</p>
+            <p className="mt-1 text-sm font-semibold text-teal-800">
+              {getProductResearchDecisionLabel(versioned.status)}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{versioned.reason}</p>
+            {versioned.nextAction ? (
+              <p className="mt-1 text-xs leading-5 text-teal-700">下一步：{versioned.nextAction}</p>
+            ) : null}
+          </div>
+          <Link href={`/tasks/${taskId}#product-research-decision`} className="linear-button inline-flex h-9 items-center px-3 text-xs font-semibold">
+            打开正式决定面板
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4 md:col-span-2" data-testid="legacy-decision-control">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-bold text-slate-950">人工决策状态</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            {getDecisionStatusOption(legacyDecisionStatus).description} 旧版记录继续使用兼容状态控件。
+          </p>
+        </div>
+        <select
+          value={legacyDecisionStatus}
+          onChange={(event) => onLegacyDecisionChange(event.target.value as DecisionStatus)}
+          disabled={updating}
+          className="input-soft h-11 min-w-[160px] px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {decisionStatusOptions.filter((option) => option.value).map((option) => (
+            <option key={option.value} value={option.value}>{option.shortLabel}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
 }
 
 function getReviewDisplay(item: TaskCenterItem, agentState: ReturnType<typeof deriveAgentNextStepPanelState>) {
@@ -1271,26 +1358,13 @@ export function TaskRecordsList() {
                                 {summary.reason} AI 结果只用于辅助判断，采购、上架、投广告等真实动作必须人工确认。
                               </p>
                             </div>
-                            <div className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4 md:col-span-2">
-                              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                <div>
-                                  <p className="text-sm font-bold text-slate-950">人工决策状态</p>
-                                  <p className="mt-1 text-sm leading-6 text-slate-600">
-                                    {getDecisionStatusOption(item.decisionStatus).description} AI 结果仅供初筛，关键动作需人工确认。
-                                  </p>
-                                </div>
-                                <select
-                                  value={item.decisionStatus}
-                                  onChange={(event) => void updateDecisionStatus(item, event.target.value as DecisionStatus)}
-                                  disabled={updatingDecisionId === item.id}
-                                  className="input-soft h-11 min-w-[160px] px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {decisionStatusOptions.filter((option) => option.value).map((option) => (
-                                    <option key={option.value} value={option.value}>{option.shortLabel}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            </div>
+                            <TaskDecisionControl
+                              taskId={item.id}
+                              result={item.result}
+                              legacyDecisionStatus={item.decisionStatus}
+                              updating={updatingDecisionId === item.id}
+                              onLegacyDecisionChange={(next) => void updateDecisionStatus(item, next)}
+                            />
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
                               <p className="text-sm font-bold text-slate-950">执行步骤预留</p>
                               <div className="mt-3 grid gap-2 sm:grid-cols-4">

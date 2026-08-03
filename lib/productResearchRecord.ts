@@ -1,4 +1,15 @@
 import { createHash } from "node:crypto";
+import {
+  isProductResearchDecisionStatus,
+  type ProductResearchDecisionStatus,
+} from "@/lib/productResearchDecisionContract";
+
+export {
+  PRODUCT_RESEARCH_DECISION_OPTIONS,
+  getProductResearchDecisionLabel,
+  isProductResearchDecisionStatus,
+  type ProductResearchDecisionStatus,
+} from "@/lib/productResearchDecisionContract";
 
 export const PRODUCT_RESEARCH_RECORD_SCHEMA = "product-research-record.v1" as const;
 export const PRODUCT_RESEARCH_HASH_SCHEMA = "product-research-hash.v1" as const;
@@ -11,11 +22,6 @@ const MAX_TEXT_LENGTH = 1_000;
 const MAX_EVENT_COUNT = 50;
 const MAX_RECORD_BYTES = 128 * 1024;
 const MAX_REVISION = 1_000_000;
-
-export type ProductResearchDecisionStatus =
-  | "creative_ready"
-  | "needs_information"
-  | "abandoned";
 
 export type ProductResearchWorkflowStatus = "completed" | "partial_failed";
 
@@ -157,7 +163,7 @@ function normalizeText(value: unknown, field: "reason" | "nextAction", required:
   if (typeof value !== "string") {
     throw new ProductResearchRecordError(`invalid_${field}`, `${field} must be a string`);
   }
-  const normalized = value.trim();
+  const normalized = value.normalize("NFC").trim();
   if (!normalized) {
     if (required) throw new ProductResearchRecordError(`${field === "reason" ? "reason" : "next_action"}_required`, `${field} is required`);
     return null;
@@ -260,18 +266,16 @@ function sameDecisionPayload(
 ): boolean {
   return event.decisionId === input.decisionId
     && event.status === input.status
-    && event.reason === input.reason
-    && event.nextAction === input.nextAction;
+    && event.reason.normalize("NFC") === input.reason
+    && (event.nextAction === null
+      ? input.nextAction === null
+      : event.nextAction.normalize("NFC") === input.nextAction);
 }
 
 function assertRecordSize(record: ProductResearchRecordV1): void {
   if (Buffer.byteLength(JSON.stringify(record), "utf8") > MAX_RECORD_BYTES) {
     throw new ProductResearchRecordError("research_record_too_large", "researchRecord exceeds 128 KiB");
   }
-}
-
-export function isProductResearchDecisionStatus(value: unknown): value is ProductResearchDecisionStatus {
-  return value === "creative_ready" || value === "needs_information" || value === "abandoned";
 }
 
 export function buildProductResearchActor(

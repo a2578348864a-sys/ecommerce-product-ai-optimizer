@@ -101,13 +101,16 @@ describe("/api/tasks/[id]/research-decision", () => {
     expect(body.data.record).toMatchObject({
       schema: "product-research-record.v1",
       revision: 1,
-      researchHash: "d".repeat(64),
+      researchHashFingerprint: "d".repeat(12),
       latestDecision: {
         revision: 1,
         status: "needs_information",
         actorMode: "owner",
+        researchHashFingerprint: "d".repeat(12),
       },
     });
+    expect(JSON.stringify(body)).not.toContain("d".repeat(64));
+    expect(body.data.record).not.toHaveProperty("researchHash");
     expect(JSON.stringify(body)).not.toContain("candidate-secret-id");
     expect(JSON.stringify(body)).not.toContain("workflow-internal-id");
     expect(JSON.stringify(body)).not.toContain("contextHash");

@@ -19,6 +19,7 @@ import {
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
 import { hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
+import { sanitizeProductResearchResultForBrowser } from "@/lib/productResearchPublicDto";
 
 export const runtime = "nodejs";
 
@@ -99,7 +100,7 @@ function toTaskItem(record: {
     score: record.score,
     level: record.level,
     oneLineSummary: record.oneLineSummary,
-    result: safeParseJson(record.resultJson),
+    result: sanitizeProductResearchResultForBrowser(safeParseJson(record.resultJson)),
     productImage: null,
   };
 }
@@ -154,6 +155,13 @@ function versionedDecisionRouteRequiredResponse() {
       code: "versioned_decision_route_required",
       message: "该研究记录使用版本化人工决定，请通过研究决定接口更新。",
     },
+  }, 409);
+}
+
+function invalidStoredResultResponse() {
+  return jsonResponse({
+    ok: false,
+    error: { code: "invalid_result_json", message: "任务结果结构异常，已阻止兼容状态写入。" },
   }, 409);
 }
 
@@ -225,13 +233,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const task = getSandboxTask(ctx.demoAccessId, id);
     if (!task) return notFoundResponse();
     const result = safeParseJson(task.resultJson);
+    const publicResult = sanitizeProductResearchResultForBrowser(result);
     const candidateId = getResearchTaskCandidateId(result);
     const candidate = candidateId
       ? getSandboxCandidate(ctx.demoAccessId, candidateId)
       : null;
     const data = {
       ...sandboxTaskToDetail(task),
-      result,
+      resultJson: publicResult,
+      result: publicResult,
       productImage: resolveResearchTaskProductImage({
         taskResult: result,
         candidates: candidate ? [candidate] : [],
@@ -337,7 +347,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!isDecisionStatus(decisionStatus)) return invalidDecisionStatusResponse();
       const current = getSandboxTask(auth.context.demoAccessId, id);
       if (!current) return notFoundResponse();
-      if (hasProductResearchRecordNamespace(safeParseJson(current.resultJson))) {
+      const currentResult = safeParseJson(current.resultJson);
+      if (!isRecord(currentResult)) return invalidStoredResultResponse();
+      if (Object.prototype.hasOwnProperty.call(currentResult, "researchRecord")
+        || hasProductResearchRecordNamespace(currentResult)) {
         return versionedDecisionRouteRequiredResponse();
       }
       const updated = updateSandboxTask(auth.context.demoAccessId, id, { decisionStatus: decisionStatus as string });
@@ -361,7 +374,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       select: { id: true, resultJson: true },
     });
     if (!current) return notFoundResponse();
-    if (hasProductResearchRecordNamespace(safeParseJson(current.resultJson))) {
+    const currentResult = safeParseJson(current.resultJson);
+    if (!isRecord(currentResult)) return invalidStoredResultResponse();
+    if (Object.prototype.hasOwnProperty.call(currentResult, "researchRecord")
+      || hasProductResearchRecordNamespace(currentResult)) {
       return versionedDecisionRouteRequiredResponse();
     }
     const record = await prisma.viralAnalysisRecord.update({

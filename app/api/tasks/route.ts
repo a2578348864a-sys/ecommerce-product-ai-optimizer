@@ -18,6 +18,7 @@ import {
   resolveResearchTaskProductImage,
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
+import { sanitizeProductResearchResultForBrowser } from "@/lib/productResearchPublicDto";
 
 export const runtime = "nodejs";
 
@@ -163,7 +164,7 @@ function toTaskItem(record: {
     score: normalized.score,
     level: normalized.level,
     oneLineSummary: normalized.oneLineSummary,
-    result: normalized.result,
+    result: sanitizeProductResearchResultForBrowser(normalized.result),
     productImage: null,
   };
 }
@@ -255,7 +256,7 @@ export async function GET(request: NextRequest) {
       const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
       const sandboxCandidates = listSandboxCandidates(ctx.demoAccessId);
       const sandboxItems = sandboxTasks.map((task) => {
-        const result = safeParseJson(task.resultJson);
+        const result = sanitizeProductResearchResultForBrowser(safeParseJson(task.resultJson));
         const item = {
           ...sandboxTaskToListItem(task),
           result,
@@ -394,6 +395,17 @@ export async function POST(request: NextRequest) {
     return jsonResponse({
       ok: false,
       error: { code: "missing_result", message: "请先生成分析结果再保存。" },
+    }, 400);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body.result, "researchRecord")
+    || Object.prototype.hasOwnProperty.call(body.result, "researchVerification")) {
+    return jsonResponse({
+      ok: false,
+      error: {
+        code: "reserved_research_namespace",
+        message: "正式商品研究记录只能由 Candidate 研究保存流程创建。",
+      },
     }, 400);
   }
 

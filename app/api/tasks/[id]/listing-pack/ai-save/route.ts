@@ -1,18 +1,16 @@
-import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/server/db";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
-import {
-  getSandboxTask,
-  isSandboxTaskId,
-  updateSandboxTask,
-} from "@/lib/server/demoSandbox";
+import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   buildAiListingPackSaveResult,
   type AiListingPackSnapshot,
   type AiListingSaveErrorCode,
 } from "@/lib/aiListingSnapshot";
 import { buildAuditEntry, writeAuditLog } from "@/lib/server/listingSnapshotAudit";
+import {
+  TaskResultJsonMutationError,
+  mutateTaskResultJson,
+} from "@/lib/server/taskResultJsonMutation";
 
 export const runtime = "nodejs";
 
@@ -84,6 +82,16 @@ function success(snapshot: AiListingPackSnapshot): ApiResponse {
   };
 }
 
+class AiListingMutationError extends Error {
+  constructor(
+    public readonly code: ApiErrorCode,
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id?: string }> },
@@ -115,86 +123,59 @@ export async function POST(
   const savedAt = new Date().toISOString();
 
   try {
+    let context = auth.context;
     if (isSandboxTaskId(id)) {
-      const existing = getSandboxTask(auth.context.mode === "demo" ? auth.context.demoAccessId : "", id);
-      if (!existing) {
+      if (context.mode !== "demo") {
         return json({ ok: false, error: { code: "task_not_found", message: "当前任务不存在或已被删除。" } }, 404);
       }
-
-      const built = buildAiListingPackSaveResult({
-        resultJson: existing.resultJson,
-        listingPack,
-        overwrite,
-        savedAt,
-      });
-
-      if (!built.ok) {
-        return json({
-          ok: false,
-          error: {
-            code: saveErrorCode(built.error.code),
-            message: saveErrorMessage(built.error.code, built.error.message),
-          },
-        }, saveErrorStatus(built.error.code));
+    } else {
+      const ownerAuth = requireOwnerOnly(request, bodyRecord);
+      if (!ownerAuth.ok) {
+        const code = ownerAuth.status === 401 ? "unauthorized" : ownerAuth.code;
+        const message = ownerAuth.status === 401 ? "请先回首页解锁工作台。" : ownerAuth.message;
+        return json({ ok: false, error: { code, message } }, ownerAuth.status);
       }
-
-      const updated = updateSandboxTask(auth.context.mode === "demo" ? auth.context.demoAccessId : "", id, {
-        resultJson: JSON.stringify(built.resultJson),
-      });
-      if (!updated) {
-        return json({ ok: false, error: { code: "ai_listing_save_failed", message: "保存失败，当前草稿仍保留在页面中，可稍后重试。" } }, 500);
-      }
-
-      // DB-Protection.1: post-save audit (best-effort, does not affect main flow)
-      try { writeAuditLog(buildAuditEntry(id, built.snapshot)); } catch { /* ignore */ }
-
-      return json(success(built.snapshot));
+      context = ownerAuth.context;
     }
-
-    const ownerAuth = requireOwnerOnly(request, bodyRecord);
-    if (!ownerAuth.ok) {
-      const code = ownerAuth.status === 401 ? "unauthorized" : ownerAuth.code;
-      const message = ownerAuth.status === 401 ? "璇峰厛鍥為椤佃В閿佸伐浣滃彴銆?" : ownerAuth.message;
-      return json({ ok: false, error: { code, message } }, ownerAuth.status);
-    }
-
-    const existing = await prisma.viralAnalysisRecord.findUnique({
-      where: { id },
-      select: { resultJson: true },
-    });
-
-    if (!existing) {
-      return json({ ok: false, error: { code: "task_not_found", message: "当前任务不存在或已被删除。" } }, 404);
-    }
-
-    const built = buildAiListingPackSaveResult({
-      resultJson: existing.resultJson,
-      listingPack,
-      overwrite,
-      savedAt,
-    });
-
-    if (!built.ok) {
-      return json({
-        ok: false,
-        error: {
-          code: saveErrorCode(built.error.code),
-          message: saveErrorMessage(built.error.code, built.error.message),
-        },
-      }, saveErrorStatus(built.error.code));
-    }
-
-    await prisma.viralAnalysisRecord.update({
-      where: { id },
-      data: { resultJson: JSON.stringify(built.resultJson) },
+    const mutation = await mutateTaskResultJson({
+      context,
+      taskId: id,
+      writer: "ai-listing",
+      mutate: (current) => {
+        const built = buildAiListingPackSaveResult({
+          resultJson: current,
+          listingPack,
+          overwrite,
+          savedAt,
+        });
+        if (!built.ok) {
+          throw new AiListingMutationError(
+            saveErrorCode(built.error.code),
+            saveErrorStatus(built.error.code),
+            saveErrorMessage(built.error.code, built.error.message),
+          );
+        }
+        return { result: built.resultJson, value: built.snapshot };
+      },
     });
 
     // DB-Protection.1: post-save audit (best-effort, does not affect main flow)
-    try { writeAuditLog(buildAuditEntry(id, built.snapshot)); } catch { /* ignore */ }
+    try { writeAuditLog(buildAuditEntry(id, mutation.value)); } catch { /* ignore */ }
 
-    return json(success(built.snapshot));
+    return json(success(mutation.value));
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+    if (error instanceof AiListingMutationError) {
+      return json({ ok: false, error: { code: error.code, message: error.message } }, error.status);
+    }
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") {
+        return json({ ok: false, error: { code: "task_not_found", message: "当前任务不存在或已被删除。" } }, 404);
+      }
+      if (error.status === 409) {
+        return json({ ok: false, error: { code: error.code, message: error.message } }, 409);
+      }
+    }
+    if (error instanceof Error && error.message === "TASK_NOT_FOUND") {
       return json({ ok: false, error: { code: "task_not_found", message: "当前任务不存在或已被删除。" } }, 404);
     }
     return json({ ok: false, error: { code: "ai_listing_save_failed", message: "保存失败，当前草稿仍保留在页面中，可稍后重试。" } }, 500);

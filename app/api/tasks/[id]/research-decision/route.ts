@@ -10,6 +10,7 @@ import type {
   ProductResearchDecisionEvent,
   ProductResearchDecisionInput,
 } from "@/lib/productResearchRecord";
+import { toResearchHashFingerprint } from "@/lib/productResearchPublicDto";
 
 export const runtime = "nodejs";
 
@@ -61,7 +62,7 @@ function safeEvent(event: ProductResearchDecisionEvent) {
     status: event.status,
     reason: event.reason,
     nextAction: event.nextAction,
-    researchHash: event.researchHash,
+    researchHashFingerprint: toResearchHashFingerprint(event.researchHash),
     decidedAt: event.decidedAt,
     actorMode: event.actor.mode,
   };
@@ -76,7 +77,7 @@ function safeState(state: ProductResearchDecisionState) {
     record: record ? {
       schema: record.schema,
       revision: record.revision,
-      researchHash: record.researchHash,
+      researchHashFingerprint: toResearchHashFingerprint(record.researchHash),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
       latestDecision: safeEvent(record.latestDecision),

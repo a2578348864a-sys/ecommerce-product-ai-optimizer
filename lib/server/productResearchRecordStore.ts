@@ -7,8 +7,11 @@ import {
   getSandboxTask,
   isSandboxTaskId,
   listSandboxTasks,
-  updateSandboxTaskResearchRecordCas,
 } from "@/lib/server/demoSandbox";
+import {
+  TaskResultJsonMutationError,
+  mutateTaskResultJson,
+} from "@/lib/server/taskResultJsonMutation";
 import {
   ProductResearchRecordError,
   appendProductResearchDecision,
@@ -295,49 +298,39 @@ export async function updateProductResearchDecision(
   }
 
   const now = appended.record.updatedAt;
-  const nextResultJson = JSON.stringify(mergeProductResearchRecord(parsed.result, appended.record));
   const compatibilityStatus = productResearchDecisionToCompatibilityStatus(
     appended.record.latestDecision.status,
   );
-
-  if (context.mode === "demo") {
-    const update = await updateSandboxTaskResearchRecordCas(context.demoAccessId, taskId, {
-      expectedResultJson: snapshot.resultJson,
-      expectedUpdatedAt: String(snapshot.updatedAt),
-      resultJson: nextResultJson,
-      decisionStatus: compatibilityStatus,
-      updatedAt: now,
-    });
-    if (update.status === "not_found") notFound();
-    if (update.status === "conflict") {
-      throw new ProductResearchStoreError(
-        "research_record_conflict",
-        409,
-        "研究记录已更新，请刷新后重试。",
-        currentRevisionFromSnapshot(update.task),
-      );
-    }
-  } else {
-    const updated = await prisma.viralAnalysisRecord.updateMany({
-      where: {
-        id: taskId,
-        updatedAt: snapshot.updatedAt as Date,
+  try {
+    await mutateTaskResultJson({
+      context,
+      taskId,
+      writer: "research-decision",
+      expectedStorageVersion: {
         resultJson: snapshot.resultJson,
+        updatedAt: snapshot.updatedAt,
       },
-      data: {
-        resultJson: nextResultJson,
+      mutate: (current) => ({
+        result: mergeProductResearchRecord(current, appended.record),
+        value: null,
         decisionStatus: compatibilityStatus,
-        updatedAt: new Date(now),
-      },
+        updatedAt: now,
+      }),
     });
-    if (updated.count !== 1) {
-      throw new ProductResearchStoreError(
-        "research_record_conflict",
-        409,
-        "研究记录已更新，请刷新后重试。",
-        await loadCurrentRevision(context, taskId),
-      );
+  } catch (error) {
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") notFound();
+      if (error.code === "task_result_conflict") {
+        throw new ProductResearchStoreError(
+          "research_record_conflict",
+          409,
+          "研究记录已更新，请刷新后重试。",
+          await loadCurrentRevision(context, taskId),
+        );
+      }
+      throw new ProductResearchStoreError(error.code, error.status, error.message);
     }
+    throw error;
   }
 
   return {

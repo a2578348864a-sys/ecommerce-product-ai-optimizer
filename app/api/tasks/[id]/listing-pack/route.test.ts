@@ -1,23 +1,23 @@
-/**
- * Core-4-Fix.1-Test — PATCH /api/tasks/[id]/listing-pack route tests
- */
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PRODUCT_RESEARCH_HASH_SCHEMA,
+  appendProductResearchDecision,
+  buildProductResearchHash,
+  createInitialProductResearchRecord,
+  createProductResearchVerification,
+} from "@/lib/productResearchRecord";
 
-const authState = vi.hoisted(() => ({
-  mode: "owner" as "owner" | "demo",
-}));
+const authState = vi.hoisted(() => ({ mode: "owner" as "owner" | "demo" }));
 
-// Mock prisma
 vi.mock("@/lib/server/db", () => ({
   prisma: {
     viralAnalysisRecord: {
       findUnique: vi.fn(),
-      update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
 
-// Mock access password for owner auth
 vi.mock("@/lib/server/accessPassword", () => ({
   getAccessPassword: () => "test-pwd",
   getAccessContext: () => ({ mode: "owner", token: "tok_test" }),
@@ -25,22 +25,17 @@ vi.mock("@/lib/server/accessPassword", () => ({
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
-  requireAuthenticated: () => (
-    authState.mode === "demo"
-      ? { ok: true, context: { mode: "demo", demoAccessId: "demo-hr" } }
-      : { ok: true, context: { mode: "owner" } }
-  ),
-  requireOwnerOnly: () => (
-    authState.mode === "demo"
-      ? { ok: false, status: 403, code: "demo_action_forbidden", message: "demo cannot write official data" }
-      : { ok: true, context: { mode: "owner" } }
-  ),
+  requireAuthenticated: () => authState.mode === "demo"
+    ? { ok: true, context: { mode: "demo", demoAccessId: "demo-hr" } }
+    : { ok: true, context: { mode: "owner" } },
+  requireOwnerOnly: () => authState.mode === "demo"
+    ? { ok: false, status: 403, code: "demo_action_forbidden", message: "demo cannot write official data" }
+    : { ok: true, context: { mode: "owner" } },
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: () => false,
-  getSandboxTask: () => null,
-  updateSandboxTask: () => null,
+  mutateSandboxTaskAtomic: vi.fn(),
 }));
 
 import { prisma } from "@/lib/server/db";
@@ -50,116 +45,179 @@ const VALID_SNAPSHOT = {
   source: "rule_based",
   generatedAt: "2025-01-01T00:00:00.000Z",
   productName: "Test Product",
-  pack: { titleDrafts: ["Test"], bulletPoints: ["Test bullet"], coreKeywords: [], longTailKeywords: [], scenarioKeywords: [], audienceKeywords: [], featureKeywords: [], sellingPoints: [], targetAudience: [], imageRequirements: [], priceSuggestion: "", riskTerms: [], prePublishChecklist: [], disclaimer: "", source: "rule_based", generatedAt: "" },
+  pack: { titleDrafts: ["Test"], bulletPoints: ["Test bullet"] },
   markdown: "# Test",
   safety: { unverifiedClaimsSanitized: true, requiresHumanReview: true, autoListing: false },
 };
 
+function ownerSnapshot(resultJson: string, id = "task-1") {
+  return {
+    id,
+    type: "workflow",
+    updatedAt: new Date("2026-08-03T03:00:00.000Z"),
+    resultJson,
+    decisionStatus: "continue",
+  };
+}
+
+function versionedResult(revision: 1 | 2) {
+  const verification = createProductResearchVerification({
+    schema: PRODUCT_RESEARCH_HASH_SCHEMA,
+    candidateId: "candidate-1",
+    runId: "wf-run-12345678",
+    contextHash: "a".repeat(64),
+    inputHash: "b".repeat(64),
+    resultHash: "c".repeat(64),
+    workflowStatus: "completed",
+    reviewState: {
+      sourcingReviewed: true,
+      riskReviewed: true,
+      summaryReviewed: true,
+      listingReviewed: true,
+      reviewedCount: 4,
+      totalReviewSteps: 4,
+      allReviewed: true,
+    },
+  });
+  const initial = createInitialProductResearchRecord({
+    candidateId: verification.candidateId,
+    runId: verification.runId,
+    contextHash: verification.contextHash,
+    researchHash: buildProductResearchHash({ ...verification, schema: PRODUCT_RESEARCH_HASH_SCHEMA }),
+    workflowStatus: verification.workflowStatus,
+    reviewState: verification.reviewState,
+    actor: { mode: "owner", actorRef: "owner:v1" },
+    now: "2026-08-03T01:00:00.000Z",
+    decision: {
+      decisionId: "11111111-1111-4111-8111-111111111111",
+      status: "creative_ready",
+      reason: "Initial decision.",
+      nextAction: null,
+    },
+  });
+  const record = revision === 1 ? initial : appendProductResearchDecision({
+    record: initial,
+    expectedRevision: 1,
+    workflowStatus: verification.workflowStatus,
+    reviewState: verification.reviewState,
+    actor: { mode: "owner", actorRef: "owner:v1" },
+    now: "2026-08-03T02:00:00.000Z",
+    decision: {
+      decisionId: "22222222-2222-4222-8222-222222222222",
+      status: "needs_information",
+      reason: "New evidence is required.",
+      nextAction: "Collect the evidence.",
+    },
+  }).record;
+  return JSON.stringify({
+    unknownNamespace: { keep: true },
+    researchRecord: record,
+    researchVerification: verification,
+  });
+}
+
 async function callPATCH(taskId: string, body: unknown) {
   const { PATCH } = await import("@/app/api/tasks/[id]/listing-pack/route");
-  const req = new Request(`http://localhost/api/tasks/${taskId}/listing-pack`, {
+  return PATCH(new Request(`http://localhost/api/tasks/${taskId}/listing-pack`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", "x-access-token": "tok_test" },
     body: JSON.stringify(body),
-  });
-  // Pass body as raw JSON string in request
-  return PATCH(req as any, { params: Promise.resolve({ id: taskId }) });
+  }) as never, { params: Promise.resolve({ id: taskId }) });
 }
 
 describe("PATCH /api/tasks/[id]/listing-pack", () => {
   beforeEach(() => {
     authState.mode = "owner";
     vi.clearAllMocks();
+    vi.mocked(prisma.viralAnalysisRecord.updateMany).mockResolvedValue({ count: 1 } as never);
   });
 
-  it("saves valid listingPackSnapshot and returns savedAt", async () => {
-    const mockFind = prisma.viralAnalysisRecord.findUnique as ReturnType<typeof vi.fn>;
-    const mockUpdate = prisma.viralAnalysisRecord.update as ReturnType<typeof vi.fn>;
-    mockFind.mockResolvedValue({ resultJson: '{"existingField":"keep-me"}' });
-    mockUpdate.mockResolvedValue({ id: "task-1" });
-
+  it("saves only listingPackSnapshot and preserves unknown fields", async () => {
+    vi.mocked(prisma.viralAnalysisRecord.findUnique).mockResolvedValue(ownerSnapshot('{"existingField":"keep-me"}') as never);
     const res = await callPATCH("task-1", { listingPackSnapshot: VALID_SNAPSHOT });
     const data = await res.json();
+    const updateCall = vi.mocked(prisma.viralAnalysisRecord.updateMany).mock.calls[0][0] as never as { data: { resultJson: string } };
+    const merged = JSON.parse(updateCall.data.resultJson);
 
     expect(res.status).toBe(200);
-    expect(data.ok).toBe(true);
-    expect(data.data.id).toBe("task-1");
-    expect(data.data.savedAt).toBeTruthy();
-
-    // Verify resultJson merge preserved existing field
-    const updateCall = mockUpdate.mock.calls[0][0];
-    const merged = JSON.parse(updateCall.data.resultJson);
+    expect(data).toMatchObject({ ok: true, data: { id: "task-1" } });
     expect(merged.existingField).toBe("keep-me");
-    expect(merged.listingPackSnapshot).toBeTruthy();
-    expect(merged.listingPackSnapshot.safety.autoListing).toBe(false);
-    expect(merged.listingPackSnapshot.safety.requiresHumanReview).toBe(true);
-    expect(merged.listingPackSnapshot.safety.unverifiedClaimsSanitized).toBe(true);
-  });
-
-  it("enforces safety fields even when client sends false values", async () => {
-    const mockFind = prisma.viralAnalysisRecord.findUnique as ReturnType<typeof vi.fn>;
-    const mockUpdate = prisma.viralAnalysisRecord.update as ReturnType<typeof vi.fn>;
-    mockFind.mockResolvedValue({ resultJson: '{}' });
-    mockUpdate.mockResolvedValue({ id: "task-2" });
-
-    const badSnapshot = {
-      ...VALID_SNAPSHOT,
-      safety: { unverifiedClaimsSanitized: false, requiresHumanReview: false, autoListing: true },
-    };
-    const res = await callPATCH("task-2", { listingPackSnapshot: badSnapshot });
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    const updateCall = mockUpdate.mock.calls[0][0];
-    const merged = JSON.parse(updateCall.data.resultJson);
-    expect(merged.listingPackSnapshot.safety.autoListing).toBe(false);
-    expect(merged.listingPackSnapshot.safety.requiresHumanReview).toBe(true);
-    expect(merged.listingPackSnapshot.safety.unverifiedClaimsSanitized).toBe(true);
-  });
-
-  it("returns 400 when listingPackSnapshot is missing", async () => {
-    const res = await callPATCH("task-3", {});
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.ok).toBe(false);
-  });
-
-  it("returns 400 when body is not valid JSON", async () => {
-    const { PATCH } = await import("@/app/api/tasks/[id]/listing-pack/route");
-    const req = new Request("http://localhost/api/tasks/task-4/listing-pack", {
-      method: "PATCH",
-      headers: { "Content-Type": "text/plain", "x-access-token": "tok_test" },
-      body: "not json",
+    expect(merged.listingPackSnapshot.safety).toMatchObject({
+      autoListing: false,
+      requiresHumanReview: true,
+      unverifiedClaimsSanitized: true,
     });
-    const res = await PATCH(req as any, { params: Promise.resolve({ id: "task-4" }) });
+  });
+
+  it("enforces safety fields even when the client sends unsafe values", async () => {
+    vi.mocked(prisma.viralAnalysisRecord.findUnique).mockResolvedValue(ownerSnapshot("{}") as never);
+    const res = await callPATCH("task-2", {
+      listingPackSnapshot: {
+        ...VALID_SNAPSHOT,
+        safety: { unverifiedClaimsSanitized: false, requiresHumanReview: false, autoListing: true },
+      },
+    });
+    const call = vi.mocked(prisma.viralAnalysisRecord.updateMany).mock.calls[0][0] as never as { data: { resultJson: string } };
+    expect(res.status).toBe(200);
+    expect(JSON.parse(call.data.resultJson).listingPackSnapshot.safety).toMatchObject({
+      autoListing: false,
+      requiresHumanReview: true,
+      unverifiedClaimsSanitized: true,
+    });
+  });
+
+  it("rejects a stale Listing Pack writer instead of overwriting revision 2", async () => {
+    const staleResult = versionedResult(1);
+    const latestResult = versionedResult(2);
+    let storedResultJson = staleResult;
+    (vi.mocked(prisma.viralAnalysisRecord.findUnique) as any).mockImplementation(async () => {
+      const snapshot = ownerSnapshot(storedResultJson, "task-race");
+      storedResultJson = latestResult;
+      return snapshot as never;
+    });
+    (vi.mocked(prisma.viralAnalysisRecord.updateMany) as any).mockImplementation(async (args: unknown) => {
+      const input = args as never as { where: { resultJson: string }; data: { resultJson: string } };
+      if (storedResultJson !== input.where.resultJson) return { count: 0 } as never;
+      storedResultJson = input.data.resultJson;
+      return { count: 1 } as never;
+    });
+
+    const res = await callPATCH("task-race", { listingPackSnapshot: VALID_SNAPSHOT });
+    const current = JSON.parse(storedResultJson);
+    expect(res.status).toBe(409);
+    expect(current.researchRecord.revision).toBe(2);
+    expect(current.researchRecord.decisionEvents).toHaveLength(2);
+    expect(current.unknownNamespace).toEqual({ keep: true });
+  });
+
+  it("fails closed for malformed resultJson", async () => {
+    vi.mocked(prisma.viralAnalysisRecord.findUnique).mockResolvedValue(ownerSnapshot("{bad") as never);
+    const res = await callPATCH("task-bad", { listingPackSnapshot: VALID_SNAPSHOT });
+    expect(res.status).toBe(409);
+    expect(vi.mocked(prisma.viralAnalysisRecord.updateMany)).not.toHaveBeenCalled();
+  });
+
+  it("validates request errors and missing tasks", async () => {
+    expect((await callPATCH("task-3", {})).status).toBe(400);
+    expect((await callPATCH("", { listingPackSnapshot: VALID_SNAPSHOT })).status).toBe(400);
+    vi.mocked(prisma.viralAnalysisRecord.findUnique).mockResolvedValue(null);
+    expect((await callPATCH("missing", { listingPackSnapshot: VALID_SNAPSHOT })).status).toBe(404);
+  });
+
+  it("rejects invalid JSON", async () => {
+    const { PATCH } = await import("@/app/api/tasks/[id]/listing-pack/route");
+    const res = await PATCH(new Request("http://localhost/api/tasks/task-4/listing-pack", {
+      method: "PATCH",
+      body: "not json",
+    }) as never, { params: Promise.resolve({ id: "task-4" }) });
     expect(res.status).toBe(400);
   });
 
-  it("returns 404 when task does not exist", async () => {
-    const mockFind = prisma.viralAnalysisRecord.findUnique as ReturnType<typeof vi.fn>;
-    mockFind.mockResolvedValue(null);
-
-    const res = await callPATCH("nonexistent", { listingPackSnapshot: VALID_SNAPSHOT });
-    expect(res.status).toBe(404);
-    const data = await res.json();
-    expect(data.ok).toBe(false);
-  });
-
-  it("returns 400 when task id is missing", async () => {
-    const res = await callPATCH("", { listingPackSnapshot: VALID_SNAPSHOT });
-    expect(res.status).toBe(400);
-  });
-
-  it("blocks demo from saving listing snapshot to an official task", async () => {
+  it("blocks Visitor from saving an official task before storage access", async () => {
     authState.mode = "demo";
-    const mockUpdate = prisma.viralAnalysisRecord.update as ReturnType<typeof vi.fn>;
-
     const res = await callPATCH("task-official", { listingPackSnapshot: VALID_SNAPSHOT });
-    const data = await res.json();
-
     expect(res.status).toBe(403);
-    expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("demo_action_forbidden");
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.viralAnalysisRecord.findUnique)).not.toHaveBeenCalled();
+    expect(vi.mocked(prisma.viralAnalysisRecord.updateMany)).not.toHaveBeenCalled();
   });
 });

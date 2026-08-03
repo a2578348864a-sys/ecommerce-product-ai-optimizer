@@ -334,3 +334,30 @@ describe("POST /api/tasks", () => {
     expect(body.error?.code || body.error).toBeTruthy();
   });
 });
+
+describe("POST /api/tasks reserved research namespace", () => {
+  it("rejects client-created researchRecord namespaces on the generic task route", async () => {
+    const request = createRequest({
+      method: "POST",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+      body: {
+        type: "viral",
+        title: "Synthetic",
+        platform: "tiktok",
+        source: "ai",
+        materialText: "Synthetic",
+        result: {
+          score: 80,
+          level: "low",
+          oneLineSummary: "Synthetic",
+          researchRecord: { schema: "product-research-record.v1", revision: 999 },
+        },
+      },
+    });
+    const response = await POST(request);
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(400);
+    expect(body.error.code).toBe("reserved_research_namespace");
+    expect(mockPrisma.viralAnalysisRecord.create).not.toHaveBeenCalled();
+  });
+});

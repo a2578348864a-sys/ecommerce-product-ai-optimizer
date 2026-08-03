@@ -17,6 +17,7 @@ import {
   buildAiImageRequestHash,
   updateAiImageRequest,
 } from "@/lib/server/aiImageDraftLedger";
+import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import {
   cleanupAiImageTask,
   decodeAiImageBase64,
@@ -526,21 +527,26 @@ export async function generateAiImageDraft(input: {
     });
     try {
       await input.loadedTask.persistResult(merged.result);
-    } catch {
+    } catch (error) {
       await Promise.all(storedKeys.map((key) => deleteAiImage(key).catch(() => undefined)));
       const quotaSettled = commitReservedVisitorQuota();
+      const conflict = error instanceof TaskResultJsonMutationError
+        && error.code === "task_result_conflict";
       safeUpdateLedger({
         requestHash,
         status: "failed_after_provider_result",
         providerStage: "asset_ingested",
         providerCostConsumed: true,
         failureStage: "snapshot_persistence",
-        errorCode: "image_snapshot_save_failed",
+        errorCode: conflict ? "image_request_conflict" : "image_snapshot_save_failed",
         now: input.now,
       });
       if (!quotaSettled) return quotaCommitFailure();
       if (resultLedgerBoundaryFailed) {
         return fail("image_ledger_failed", "Provider 已返回结果，但图片请求账本更新失败；请使用同一请求重试。", true);
+      }
+      if (conflict) {
+        return fail("image_request_conflict", "任务已在其他页面更新，图片结果未覆盖较新的研究状态。", true);
       }
       return fail("image_snapshot_save_failed", "任务图片快照保存失败，Provider 调用已消耗。", true);
     }

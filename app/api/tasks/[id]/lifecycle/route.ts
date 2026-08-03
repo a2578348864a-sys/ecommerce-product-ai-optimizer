@@ -4,10 +4,12 @@
  * No schema changes — writes to resultJson.productLifecycle.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/server/db";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
-import { isSandboxTaskId, updateSandboxTaskLifecycle, getSandboxTask } from "@/lib/server/demoSandbox";
-import { Prisma } from "@prisma/client";
+import { isSandboxTaskId } from "@/lib/server/demoSandbox";
+import {
+  TaskResultJsonMutationError,
+  mutateTaskResultJson,
+} from "@/lib/server/taskResultJsonMutation";
 import {
   isValidLifecycleStatus,
   isValidLifecycleReasonCode,
@@ -45,8 +47,14 @@ async function getId(context: { params: Promise<{ id: string }> }): Promise<stri
   }
 }
 
-function isDatabaseError(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError;
+class LifecycleMutationError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 export async function PATCH(
@@ -66,24 +74,18 @@ export async function PATCH(
   const id = await getId(context);
   if (!id) return jsonResponse({ ok: false, error: { code: "invalid_id", message: "缺少有效 task id。" } }, 400);
 
-  // Demo-Sandbox.1-B: allow sandbox lifecycle for demo
+  let accessContext;
   if (isSandboxTaskId(id)) {
     const auth = requireAuthenticated(request, bodyRecord);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-    if (auth.context.mode === "demo") {
-      const updated = updateSandboxTaskLifecycle(auth.context.demoAccessId, id, bodyRecord);
-      if (!updated) return jsonResponse({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, 404);
-      const parsed = (() => { try { return JSON.parse(updated.productLifecycle); } catch { return {}; } })();
-      return jsonResponse({ ok: true, taskId: updated.id, productLifecycle: parsed });
+    if (auth.context.mode !== "demo") {
+      return jsonResponse({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, 404);
     }
-    return jsonResponse({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, 404);
-  }
-
-  // Auth — Demo-Login.1-F: Owner only for official tasks
-  const auth = requireOwnerOnly(request, bodyRecord);
-  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-  if (!id) {
-    return jsonResponse({ ok: false, error: { code: "invalid_id", message: "无效的任务 ID。" } }, 400);
+    accessContext = auth.context;
+  } else {
+    const auth = requireOwnerOnly(request, bodyRecord);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    accessContext = auth.context;
   }
 
   // Validate status
@@ -105,68 +107,61 @@ export async function PATCH(
   }
 
   try {
-    // Fetch task
-    const task = await prisma.viralAnalysisRecord.findUnique({
-      where: { id },
-      select: { id: true, type: true, resultJson: true },
-    });
-
-    if (!task) {
-      return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
-    }
-
-    // Only workflow tasks
-    if (task.type !== "workflow") {
-      return jsonResponse({ ok: false, error: { code: "wrong_task_type", message: "只有单品分析任务支持生命周期状态。" } }, 400);
-    }
-
-    // Parse current resultJson
-    let parsed: Record<string, unknown> = {};
-    try {
-      if (typeof task.resultJson === "string") {
-        parsed = JSON.parse(task.resultJson);
-      } else if (isRecord(task.resultJson)) {
-        parsed = task.resultJson as Record<string, unknown>;
-      }
-    } catch {
-      return jsonResponse({ ok: false, error: { code: "invalid_result_json", message: "任务数据损坏，无法读取。" } }, 500);
-    }
-
-    // Get current lifecycle
-    const currentLifecycle = normalizeProductLifecycle(parsed.productLifecycle);
-
-    // Validate transition
-    if (!isValidLifecycleTransition(currentLifecycle?.status || "analyzed", newStatus as LifecycleStatus)) {
-      const fromLabel = currentLifecycle ? getLifecycleStatusLabel(currentLifecycle.status) : "已分析";
-      const toLabel = getLifecycleStatusLabel(newStatus as LifecycleStatus);
-      return jsonResponse({
-        ok: false,
-        error: { code: "invalid_transition", message: `无法从「${fromLabel}」切换到「${toLabel}」。` },
-      }, 400);
-    }
-
-    // Transition
-    const result = transitionLifecycle(currentLifecycle, newStatus as LifecycleStatus, reasonCode || undefined, reasonText || undefined);
-    if (!result.ok) {
-      return jsonResponse({ ok: false, error: result.error }, 400);
-    }
-
-    // Update resultJson
-    const updatedResultJson = { ...parsed, productLifecycle: result.lifecycle };
-
-    await prisma.viralAnalysisRecord.update({
-      where: { id },
-      data: { resultJson: JSON.stringify(updatedResultJson) },
+    const mutation = await mutateTaskResultJson({
+      context: accessContext,
+      taskId: id,
+      writer: "lifecycle",
+      mutate: (current, snapshot) => {
+        if (snapshot.type !== "workflow") {
+          throw new LifecycleMutationError("wrong_task_type", 400, "只有单品分析任务支持生命周期状态。");
+        }
+        let lifecycleSource = current.productLifecycle;
+        if (lifecycleSource === undefined && snapshot.productLifecycle) {
+          try { lifecycleSource = JSON.parse(snapshot.productLifecycle); } catch { lifecycleSource = undefined; }
+        }
+        const currentLifecycle = normalizeProductLifecycle(lifecycleSource);
+        if (!isValidLifecycleTransition(currentLifecycle?.status || "analyzed", newStatus as LifecycleStatus)) {
+          const fromLabel = currentLifecycle ? getLifecycleStatusLabel(currentLifecycle.status) : "已分析";
+          const toLabel = getLifecycleStatusLabel(newStatus as LifecycleStatus);
+          throw new LifecycleMutationError(
+            "invalid_transition",
+            400,
+            `无法从「${fromLabel}」切换到「${toLabel}」。`,
+          );
+        }
+        const result = transitionLifecycle(
+          currentLifecycle,
+          newStatus as LifecycleStatus,
+          reasonCode || undefined,
+          reasonText || undefined,
+        );
+        if (!result.ok) {
+          throw new LifecycleMutationError(result.error.code, 400, result.error.message);
+        }
+        return {
+          result: { ...current, productLifecycle: result.lifecycle },
+          value: result.lifecycle,
+          visitorProductLifecycle: JSON.stringify(result.lifecycle),
+        };
+      },
     });
 
     return jsonResponse({
       ok: true,
       taskId: id,
-      productLifecycle: result.lifecycle,
+      productLifecycle: mutation.value,
     });
   } catch (error) {
-    if (isDatabaseError(error) && (error as Prisma.PrismaClientKnownRequestError).code === "P2025") {
-      return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
+    if (error instanceof LifecycleMutationError) {
+      return jsonResponse({ ok: false, error: { code: error.code, message: error.message } }, error.status);
+    }
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") {
+        return jsonResponse({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
+      }
+      if (error.status === 409) {
+        return jsonResponse({ ok: false, error: { code: error.code, message: error.message } }, 409);
+      }
     }
     return jsonResponse({ ok: false, error: { code: "server_error", message: "服务器错误，请稍后重试。" } }, 500);
   }

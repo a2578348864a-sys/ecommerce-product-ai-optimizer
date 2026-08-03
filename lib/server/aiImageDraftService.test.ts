@@ -21,6 +21,7 @@ import type { LoadedAiImageTask } from "@/lib/server/aiImageTaskAccess";
 import type { AiImageProvider } from "@/lib/server/openaiImageClient";
 import { AiImageProviderError } from "@/lib/server/openaiImageClient";
 import { createMockAiImageProvider } from "@/tests/helpers/mockAiImageProvider";
+import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 
 let root = "";
 
@@ -552,6 +553,26 @@ describe("AI image draft service", () => {
     loadedTask.persistResult = async () => { throw new Error("test persistence failure"); };
     const result = await generateAiImageDraft({ loadedTask, request: request(), provider: createMockAiImageProvider("success") });
     expect(result).toMatchObject({ ok: false, error: { code: "image_snapshot_save_failed" } });
+    expect(loadedTask.task.resultJson).toBe(original);
+    const imageRoot = process.env.AI_IMAGE_DRAFT_STORAGE_ROOT!;
+    const files = existsSync(imageRoot)
+      ? readdirSync(imageRoot, { recursive: true }).filter((name) => String(name).endsWith(".png"))
+      : [];
+    expect(files).toHaveLength(0);
+  });
+
+  it("returns a stable conflict and removes stored files when task CAS loses", async () => {
+    const loadedTask = ownerTask();
+    const original = loadedTask.task.resultJson;
+    loadedTask.persistResult = async () => {
+      throw new TaskResultJsonMutationError("task_result_conflict", 409, "conflict");
+    };
+    const result = await generateAiImageDraft({
+      loadedTask,
+      request: request(),
+      provider: createMockAiImageProvider("success"),
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: "image_request_conflict" } });
     expect(loadedTask.task.resultJson).toBe(original);
     const imageRoot = process.env.AI_IMAGE_DRAFT_STORAGE_ROOT!;
     const files = existsSync(imageRoot)

@@ -241,6 +241,22 @@ describe("GET /api/tasks/[id]", () => {
     expect(body.error.code).toBe("versioned_decision_route_required");
     expect(mockPrisma.viralAnalysisRecord.update).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["{bad", "invalid_result_json"],
+    [JSON.stringify({ researchRecord: "malformed" }), "versioned_decision_route_required"],
+  ])("fails closed instead of using the Legacy decisionStatus writer for protected data", async (resultJson, code) => {
+    mockPrisma.viralAnalysisRecord.findFirst.mockResolvedValueOnce({ ...mockRecord, resultJson });
+    const request = createRequest({
+      method: "PATCH",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+      body: { decisionStatus: "continue" },
+    });
+    const response = await PATCH(request, createContext("task-001"));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe(code);
+    expect(mockPrisma.viralAnalysisRecord.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("DELETE /api/tasks/[id]", () => {

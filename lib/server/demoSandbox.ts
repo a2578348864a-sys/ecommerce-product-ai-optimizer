@@ -460,6 +460,9 @@ export function updateSandboxTask(
   taskId: string,
   patch: SandboxTaskPatch,
 ): SandboxTask | null {
+  if (patch.resultJson !== undefined) {
+    throw new Error("TASK_RESULT_JSON_MUTATION_SERVICE_REQUIRED");
+  }
   const store = loadDemoSandboxStore();
   const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
   if (idx === -1) return null;
@@ -470,12 +473,40 @@ export function updateSandboxTask(
   if (patch.score !== undefined) task.score = patch.score;
   if (patch.level !== undefined) task.level = patch.level;
   if (patch.oneLineSummary !== undefined) task.oneLineSummary = patch.oneLineSummary;
-  if (patch.resultJson !== undefined) task.resultJson = patch.resultJson;
   if (patch.productLifecycle !== undefined) task.productLifecycle = patch.productLifecycle;
   task.updatedAt = new Date().toISOString();
 
   saveDemoSandboxStore(store);
   return task;
+}
+
+export function mutateSandboxTaskAtomic<T>(
+  demoAccessId: string,
+  taskId: string,
+  action: (task: SandboxTask) => Promise<{ task: SandboxTask; value: T }> | { task: SandboxTask; value: T },
+): Promise<
+  | { status: "updated"; task: SandboxTask; value: T }
+  | { status: "not_found" }
+> {
+  return withSandboxSubjectLock(demoAccessId, async () => {
+    const store = loadDemoSandboxStoreStrict();
+    const index = store.tasks.findIndex(
+      (task) => task.id === taskId && task.demoAccessId === demoAccessId,
+    );
+    if (index === -1) return { status: "not_found" as const };
+    const current = { ...store.tasks[index] };
+    const result = await action(current);
+    if (result.task.id !== current.id || result.task.demoAccessId !== current.demoAccessId) {
+      throw new Error("SANDBOX_TASK_IDENTITY_MUTATION_FORBIDDEN");
+    }
+    const nextStore: DemoSandboxStore = {
+      version: 1,
+      tasks: store.tasks.map((task, taskIndex) => taskIndex === index ? result.task : task),
+      candidates: store.candidates,
+    };
+    saveDemoSandboxStore(nextStore);
+    return { status: "updated" as const, task: result.task, value: result.value };
+  });
 }
 
 export function updateSandboxTaskResearchRecordCas(
@@ -493,16 +524,10 @@ export function updateSandboxTaskResearchRecordCas(
   | { status: "conflict"; task: SandboxTask }
   | { status: "not_found" }
 > {
-  return withSandboxSubjectLock(demoAccessId, () => {
-    const store = loadDemoSandboxStoreStrict();
-    const index = store.tasks.findIndex(
-      (task) => task.id === taskId && task.demoAccessId === demoAccessId,
-    );
-    if (index === -1) return { status: "not_found" as const };
-    const current = store.tasks[index];
+  return mutateSandboxTaskAtomic(demoAccessId, taskId, (current) => {
     if (current.resultJson !== input.expectedResultJson
       || current.updatedAt !== input.expectedUpdatedAt) {
-      return { status: "conflict" as const, task: current };
+      throw Object.assign(new Error("SANDBOX_TASK_CAS_CONFLICT"), { current });
     }
     const updated: SandboxTask = {
       ...current,
@@ -510,14 +535,17 @@ export function updateSandboxTaskResearchRecordCas(
       decisionStatus: input.decisionStatus,
       updatedAt: input.updatedAt,
     };
-    const nextStore: DemoSandboxStore = {
-      version: 1,
-      tasks: store.tasks.map((task, taskIndex) => taskIndex === index ? updated : task),
-      candidates: store.candidates,
-    };
-    saveDemoSandboxStore(nextStore);
-    return { status: "updated" as const, task: updated };
-  });
+    return { task: updated, value: null };
+  }).then((result) => result.status === "not_found"
+    ? result
+    : { status: "updated" as const, task: result.task })
+    .catch((error: unknown) => {
+      if (error instanceof Error && error.message === "SANDBOX_TASK_CAS_CONFLICT"
+        && "current" in error) {
+        return { status: "conflict" as const, task: (error as Error & { current: SandboxTask }).current };
+      }
+      throw error;
+    });
 }
 
 export function updateSandboxTaskLifecycle(

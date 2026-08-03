@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
-
-type DecisionStatus = "creative_ready" | "needs_information" | "abandoned";
+import {
+  PRODUCT_RESEARCH_DECISION_OPTIONS,
+  getProductResearchDecisionLabel,
+  type ProductResearchDecisionStatus as DecisionStatus,
+} from "@/lib/productResearchDecisionContract";
 
 type DecisionEvent = {
   revision: number;
   status: DecisionStatus;
   reason: string;
   nextAction: string | null;
-  researchHash: string;
+  researchHashFingerprint: string | null;
   decidedAt: string;
   actorMode: "owner" | "visitor";
 };
@@ -18,7 +21,7 @@ type DecisionEvent = {
 type DecisionRecord = {
   schema: "product-research-record.v1";
   revision: number;
-  researchHash: string;
+  researchHashFingerprint: string | null;
   createdAt: string;
   updatedAt: string;
   latestDecision: DecisionEvent;
@@ -36,26 +39,8 @@ type DecisionResponse =
   | { ok: true; data: DecisionState; idempotent?: boolean }
   | { ok: false; error: { code: string; message: string; currentRevision?: number } };
 
-const OPTIONS: Array<{ value: DecisionStatus; label: string; description: string }> = [
-  {
-    value: "creative_ready",
-    label: "进入创作准备",
-    description: "仅表示可以开始内容准备，不代表采购、盈利、合规或上架成立。",
-  },
-  {
-    value: "needs_information",
-    label: "待补信息",
-    description: "记录缺失证据与下一步补充动作，研究仍保持开放。",
-  },
-  {
-    value: "abandoned",
-    label: "放弃研究",
-    description: "停止继续推进，但完整保留 Candidate、研究依据和决定历史。",
-  },
-];
-
 function statusLabel(status: DecisionStatus) {
-  return OPTIONS.find((option) => option.value === status)?.label ?? status;
+  return getProductResearchDecisionLabel(status);
 }
 
 function formatDate(value: string) {
@@ -65,8 +50,59 @@ function formatDate(value: string) {
     : new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function hashFingerprint(hash: string) {
-  return hash.length === 64 ? `${hash.slice(0, 10)}…${hash.slice(-6)}` : "指纹不可用";
+type DecisionFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+export async function fetchProductResearchDecisionState(
+  taskId: string,
+  fetcher: DecisionFetch = fetch,
+): Promise<DecisionState> {
+  const response = await fetcher(`/api/tasks/${encodeURIComponent(taskId)}/research-decision`, {
+    cache: "no-store",
+    headers: buildAccessHeaders(),
+  });
+  const data = await response.json() as DecisionResponse;
+  if (!response.ok || !data.ok) {
+    throw new Error(data.ok ? "研究决定读取失败。" : data.error.message);
+  }
+  return data.data;
+}
+
+export async function submitProductResearchDecision(input: {
+  taskId: string;
+  expectedRevision: number;
+  decisionId: string;
+  status: DecisionStatus;
+  reason: string;
+  nextAction: string | null;
+  fetcher?: DecisionFetch;
+}): Promise<
+  | { kind: "saved"; state: DecisionState; idempotent: boolean }
+  | { kind: "conflict"; state: DecisionState }
+  | { kind: "rejected"; message: string }
+> {
+  const fetcher = input.fetcher ?? fetch;
+  const response = await fetcher(`/api/tasks/${encodeURIComponent(input.taskId)}/research-decision`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
+    body: JSON.stringify({
+      expectedRevision: input.expectedRevision,
+      decisionId: input.decisionId,
+      status: input.status,
+      reason: input.reason,
+      nextAction: input.nextAction,
+    }),
+  });
+  const data = await response.json() as DecisionResponse;
+  if (response.ok && data.ok) {
+    return { kind: "saved", state: data.data, idempotent: data.idempotent === true };
+  }
+  if (!data.ok && data.error.code === "research_record_conflict") {
+    return {
+      kind: "conflict",
+      state: await fetchProductResearchDecisionState(input.taskId, fetcher),
+    };
+  }
+  return { kind: "rejected", message: data.ok ? "研究决定保存失败。" : data.error.message };
 }
 
 export function ProductResearchDecisionPanel({
@@ -87,21 +123,14 @@ export function ProductResearchDecisionPanel({
   const decisionIdRef = useRef("");
 
   const loadState = useCallback(async () => {
-    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/research-decision`, {
-      cache: "no-store",
-      headers: buildAccessHeaders(),
-    });
-    const data = await response.json() as DecisionResponse;
-    if (!response.ok || !data.ok) {
-      throw new Error(data.ok ? "研究决定读取失败。" : data.error.message);
+    const data = await fetchProductResearchDecisionState(taskId);
+    setState(data);
+    if (data.record) {
+      setStatus(data.record.latestDecision.status);
+      setReason(data.record.latestDecision.reason);
+      setNextAction(data.record.latestDecision.nextAction ?? "");
     }
-    setState(data.data);
-    if (data.data.record) {
-      setStatus(data.data.record.latestDecision.status);
-      setReason(data.data.record.latestDecision.reason);
-      setNextAction(data.data.record.latestDecision.nextAction ?? "");
-    }
-    return data.data;
+    return data;
   }, [taskId]);
 
   useEffect(() => {
@@ -130,31 +159,32 @@ export function ProductResearchDecisionPanel({
     setMessage("");
     setError("");
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/research-decision`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({
-          expectedRevision: state.record.revision,
-          decisionId: decisionIdRef.current,
-          status,
-          reason,
-          nextAction: nextAction || null,
-        }),
+      const outcome = await submitProductResearchDecision({
+        taskId,
+        expectedRevision: state.record.revision,
+        decisionId: decisionIdRef.current,
+        status,
+        reason,
+        nextAction: nextAction || null,
       });
-      const data = await response.json() as DecisionResponse;
-      if (!response.ok || !data.ok) {
-        if (!data.ok && data.error.code === "research_record_conflict") {
-          await loadState();
-          decisionIdRef.current = "";
-          setError("该记录已在其他页面更新，已加载最新版本，请重新确认后保存。");
-          return;
+      if (outcome.kind === "conflict") {
+        setState(outcome.state);
+        if (outcome.state.record) {
+          setStatus(outcome.state.record.latestDecision.status);
+          setReason(outcome.state.record.latestDecision.reason);
+          setNextAction(outcome.state.record.latestDecision.nextAction ?? "");
         }
-        setError(data.ok ? "研究决定保存失败。" : data.error.message);
+        decisionIdRef.current = "";
+        setError("该记录已在其他页面更新，已加载最新版本，请重新确认后保存。");
         return;
       }
-      setState(data.data);
+      if (outcome.kind === "rejected") {
+        setError(outcome.message);
+        return;
+      }
+      setState(outcome.state);
       decisionIdRef.current = "";
-      setMessage(data.idempotent ? "该决定已保存，无需重复写入。" : "研究决定已保存并追加到历史。");
+      setMessage(outcome.idempotent ? "该决定已保存，无需重复写入。" : "研究决定已保存并追加到历史。");
       onUpdated?.();
     } catch {
       setError("网络异常，研究决定尚未确认保存。可直接重试，本次重试会复用同一决定编号。");
@@ -184,7 +214,7 @@ export function ProductResearchDecisionPanel({
 
   const record = state.record;
   const latest = record.latestDecision;
-  const selected = OPTIONS.find((option) => option.value === status)!;
+  const selected = PRODUCT_RESEARCH_DECISION_OPTIONS.find((option) => option.value === status)!;
 
   return (
     <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/40 p-4" data-testid="product-research-decision-panel">
@@ -197,8 +227,8 @@ export function ProductResearchDecisionPanel({
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-teal-800">版本 {state.record.revision}</span>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600" title={record.researchHash}>
-            研究指纹 {hashFingerprint(record.researchHash)}
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
+            研究指纹 {record.researchHashFingerprint ?? "不可用"}
           </span>
         </div>
       </div>
@@ -231,7 +261,7 @@ export function ProductResearchDecisionPanel({
               onChange={(event) => setStatus(event.target.value as DecisionStatus)}
               className="input-soft mt-1 h-11 w-full px-3 text-sm font-semibold text-slate-800"
             >
-              {OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              {PRODUCT_RESEARCH_DECISION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <p className="mt-2 text-xs leading-5 text-slate-500">{selected.description}</p>
           </div>

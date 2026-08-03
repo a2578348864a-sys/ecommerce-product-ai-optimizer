@@ -4,15 +4,13 @@
  * No schema change, no AI call, no auto-publish.
  */
 
-import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/server/db";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
-  getSandboxTask,
-  updateSandboxTask,
-  isSandboxTaskId,
-} from "@/lib/server/demoSandbox";
+  TaskResultJsonMutationError,
+  mutateTaskResultJson,
+} from "@/lib/server/taskResultJsonMutation";
 
 export const runtime = "nodejs";
 
@@ -62,46 +60,39 @@ export async function PATCH(
     savedAt: new Date().toISOString(),
   };
 
-  // Demo sandbox
+  let context;
   if (isSandboxTaskId(id)) {
     const auth = requireAuthenticated(request, bodyRecord);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-
-    const existing = getSandboxTask(auth.context.mode === "demo" ? auth.context.demoAccessId : "", id);
-    if (!existing) return json({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
-
-    let existingResult: Record<string, unknown> = {};
-    try { existingResult = JSON.parse(existing.resultJson || "{}"); } catch { /* ignore */ }
-    const merged = { ...existingResult, listingPackSnapshot: enforcedSnapshot };
-    const updated = updateSandboxTask(auth.context.mode === "demo" ? auth.context.demoAccessId : "", id, { resultJson: JSON.stringify(merged) });
-    if (!updated) return json({ ok: false, error: { code: "save_failed", message: "保存失败。" } }, 500);
-    return json({ ok: true, data: { id: updated.id, savedAt: enforcedSnapshot.savedAt as string } });
+    if (auth.context.mode !== "demo") {
+      return json({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
+    }
+    context = auth.context;
+  } else {
+    const auth = requireOwnerOnly(request, bodyRecord);
+    if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+    context = auth.context;
   }
 
-  // Owner: Prisma
-  const auth = requireOwnerOnly(request, bodyRecord);
-  if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
-
   try {
-    const existing = await prisma.viralAnalysisRecord.findUnique({
-      where: { id },
-      select: { resultJson: true },
+    await mutateTaskResultJson({
+      context,
+      taskId: id,
+      writer: "listing-pack",
+      mutate: (current) => ({
+        result: { ...current, listingPackSnapshot: enforcedSnapshot },
+        value: null,
+      }),
     });
-    if (!existing) return json({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
-
-    let existingResult: Record<string, unknown> = {};
-    try { existingResult = JSON.parse(existing.resultJson || "{}"); } catch { /* ignore */ }
-    const merged = { ...existingResult, listingPackSnapshot: enforcedSnapshot };
-
-    await prisma.viralAnalysisRecord.update({
-      where: { id },
-      data: { resultJson: JSON.stringify(merged) },
-    });
-
     return json({ ok: true, data: { id, savedAt: enforcedSnapshot.savedAt as string } });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      return json({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") {
+        return json({ ok: false, error: { code: "not_found", message: "任务不存在。" } }, 404);
+      }
+      if (error.status === 409) {
+        return json({ ok: false, error: { code: error.code, message: error.message } }, 409);
+      }
     }
     return json({ ok: false, error: { code: "save_failed", message: "保存失败，请稍后重试。" } }, 500);
   }

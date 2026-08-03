@@ -2,10 +2,11 @@ import "server-only";
 
 import type { NextRequest } from "next/server";
 import type { AccessContext } from "@/lib/server/accessPassword";
-import { prisma } from "@/lib/server/db";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
-import { getSandboxTask, isSandboxTaskId, updateSandboxTask } from "@/lib/server/demoSandbox";
+import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import type { AiImageAccessMode, AiImageTaskContext } from "@/lib/aiImageDraft";
+import { prisma } from "@/lib/server/db";
+import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 
 export type LoadedAiImageTask = {
   taskId: string;
@@ -35,6 +36,7 @@ export async function loadAiImageTask(input: {
     const task = getSandboxTask(auth.context.demoAccessId, input.taskId);
     if (!task) return { ok: false, status: 404, code: "task_not_found", message: "当前任务不存在。" };
     const visitorAccessId = auth.context.demoAccessId;
+    const storageVersion = { resultJson: task.resultJson, updatedAt: task.updatedAt };
     return {
       ok: true,
       data: {
@@ -50,8 +52,19 @@ export async function loadAiImageTask(input: {
           resultJson: task.resultJson,
         },
         persistResult: async (result) => {
-          const updated = updateSandboxTask(visitorAccessId, input.taskId, { resultJson: JSON.stringify(result) });
-          if (!updated) throw new Error("VISITOR_TASK_UPDATE_FAILED");
+          if (!Object.prototype.hasOwnProperty.call(result, "aiImageDraftSnapshot")) {
+            throw new Error("AI_IMAGE_SNAPSHOT_MISSING");
+          }
+          await mutateTaskResultJson({
+            context: auth.context,
+            taskId: input.taskId,
+            writer: "ai-image",
+            expectedStorageVersion: storageVersion,
+            mutate: (current) => ({
+              result: { ...current, aiImageDraftSnapshot: result.aiImageDraftSnapshot },
+              value: null,
+            }),
+          });
         },
       },
     };
@@ -63,7 +76,14 @@ export async function loadAiImageTask(input: {
 
   const task = await prisma.viralAnalysisRecord.findUnique({
     where: { id: input.taskId },
-    select: { title: true, materialText: true, level: true, oneLineSummary: true, resultJson: true },
+    select: {
+      title: true,
+      materialText: true,
+      level: true,
+      oneLineSummary: true,
+      resultJson: true,
+      updatedAt: true,
+    },
   });
   if (!task) return { ok: false, status: 404, code: "task_not_found", message: "当前任务不存在。" };
   return {
@@ -72,11 +92,26 @@ export async function loadAiImageTask(input: {
       taskId: input.taskId,
       accessMode: "owner",
       accessContext: auth.context,
-      task,
+      task: {
+        title: task.title,
+        materialText: task.materialText,
+        level: task.level,
+        oneLineSummary: task.oneLineSummary,
+        resultJson: task.resultJson,
+      },
       persistResult: async (result) => {
-        await prisma.viralAnalysisRecord.update({
-          where: { id: input.taskId },
-          data: { resultJson: JSON.stringify(result) },
+        if (!Object.prototype.hasOwnProperty.call(result, "aiImageDraftSnapshot")) {
+          throw new Error("AI_IMAGE_SNAPSHOT_MISSING");
+        }
+        await mutateTaskResultJson({
+          context: auth.context,
+          taskId: input.taskId,
+          writer: "ai-image",
+          expectedStorageVersion: { resultJson: task.resultJson, updatedAt: task.updatedAt },
+          mutate: (current) => ({
+            result: { ...current, aiImageDraftSnapshot: result.aiImageDraftSnapshot },
+            value: null,
+          }),
         });
       },
     },

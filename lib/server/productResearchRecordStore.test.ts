@@ -9,17 +9,19 @@ import {
 
 const mocks = vi.hoisted(() => ({
   recordFindFirst: vi.fn(),
+  recordFindUnique: vi.fn(),
   recordUpdateMany: vi.fn(),
   candidateFindFirst: vi.fn(),
   getSandboxTask: vi.fn(),
   getSandboxCandidate: vi.fn(),
-  sandboxCas: vi.fn(),
+  sandboxAtomic: vi.fn(),
 }));
 
 vi.mock("@/lib/server/db", () => ({
   prisma: {
     viralAnalysisRecord: {
       findFirst: mocks.recordFindFirst,
+      findUnique: mocks.recordFindUnique,
       updateMany: mocks.recordUpdateMany,
     },
     opportunityCandidate: {
@@ -32,7 +34,7 @@ vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: (id: string) => id.startsWith("sandbox_task_"),
   getSandboxTask: mocks.getSandboxTask,
   getSandboxCandidate: mocks.getSandboxCandidate,
-  updateSandboxTaskResearchRecordCas: mocks.sandboxCas,
+  mutateSandboxTaskAtomic: mocks.sandboxAtomic,
 }));
 
 import {
@@ -88,6 +90,7 @@ const resultJson = JSON.stringify({
 function ownerTask(overrides: Record<string, unknown> = {}) {
   return {
     id: "task-1",
+    type: "workflow",
     updatedAt: new Date("2026-08-03T00:00:00.000Z"),
     resultJson,
     decisionStatus: "continue",
@@ -109,6 +112,7 @@ function sandboxTask(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.recordFindFirst.mockResolvedValue(ownerTask());
+  mocks.recordFindUnique.mockResolvedValue(ownerTask());
   mocks.recordUpdateMany.mockResolvedValue({ count: 1 });
   mocks.candidateFindFirst.mockResolvedValue({ id: "candidate-1" });
   mocks.getSandboxTask.mockImplementation((demoAccessId: string, taskId: string) => (
@@ -119,7 +123,15 @@ beforeEach(() => {
       ? { id: candidateId, convertedTaskId: "sandbox_task_1" }
       : null
   ));
-  mocks.sandboxCas.mockResolvedValue({ status: "updated", task: sandboxTask() });
+  mocks.sandboxAtomic.mockImplementation(async (
+    demoAccessId: string,
+    taskId: string,
+    action: (task: ReturnType<typeof sandboxTask>) => Promise<{ task: ReturnType<typeof sandboxTask>; value: unknown }>,
+  ) => {
+    if (demoAccessId !== "visitor-a" || taskId !== "sandbox_task_1") return { status: "not_found" };
+    const output = await action(sandboxTask());
+    return { status: "updated", task: output.task, value: output.value };
+  });
 });
 
 describe("product research record store", () => {
@@ -265,12 +277,13 @@ describe("product research record store", () => {
     });
 
     expect(result.kind).toBe("updated");
-    expect(mocks.sandboxCas).toHaveBeenCalledWith("visitor-a", "sandbox_task_1", expect.objectContaining({
-      expectedResultJson: resultJson,
-      expectedUpdatedAt: "2026-08-03T00:00:00.000Z",
-      decisionStatus: "rejected",
-    }));
+    expect(mocks.sandboxAtomic).toHaveBeenCalledWith(
+      "visitor-a",
+      "sandbox_task_1",
+      expect.any(Function),
+    );
     expect(mocks.recordFindFirst).not.toHaveBeenCalled();
+    expect(mocks.recordFindUnique).not.toHaveBeenCalled();
   });
 
   it("returns not_found for cross-identity task IDs", async () => {

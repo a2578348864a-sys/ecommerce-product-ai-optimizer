@@ -334,4 +334,64 @@ describe("product-research-record.v1", () => {
     expect(Buffer.byteLength(JSON.stringify(oversized), "utf8")).toBeGreaterThan(128 * 1024);
     expect(parseProductResearchRecord(oversized)).toBeNull();
   });
+
+  it("normalizes reason and nextAction to NFC before persistence and idempotency comparison", () => {
+    const decisionId = "77777777-7777-4777-8777-777777777777";
+    const decomposedReason = "Cafe\u0301 evidence reviewed";
+    const decomposedNextAction = "Re\u0301sume later";
+    const first = appendProductResearchDecision({
+      record: initial(),
+      expectedRevision: 1,
+      workflowStatus: "completed",
+      reviewState: HASH_INPUT.reviewState,
+      actor: OWNER,
+      now: "2026-08-03T03:00:00.000Z",
+      decision: {
+        decisionId,
+        status: "needs_information",
+        reason: `  ${decomposedReason}  `,
+        nextAction: `  ${decomposedNextAction}  `,
+      },
+    });
+    expect(first.kind).toBe("updated");
+    expect(first.record.latestDecision.reason).toBe(decomposedReason.normalize("NFC"));
+    expect(first.record.latestDecision.nextAction).toBe(decomposedNextAction.normalize("NFC"));
+
+    const replay = appendProductResearchDecision({
+      record: first.record,
+      expectedRevision: 1,
+      workflowStatus: "completed",
+      reviewState: HASH_INPUT.reviewState,
+      actor: OWNER,
+      now: "2026-08-03T04:00:00.000Z",
+      decision: {
+        decisionId,
+        status: "needs_information",
+        reason: decomposedReason.normalize("NFC"),
+        nextAction: decomposedNextAction.normalize("NFC"),
+      },
+    });
+    expect(replay.kind).toBe("idempotent");
+    expect(replay.record.revision).toBe(2);
+  });
+
+  it("applies length validation after NFC normalization", () => {
+    const normalizedThousand = "e\u0301".repeat(1000);
+    const result = appendProductResearchDecision({
+      record: initial(),
+      expectedRevision: 1,
+      workflowStatus: "completed",
+      reviewState: HASH_INPUT.reviewState,
+      actor: OWNER,
+      now: "2026-08-03T05:00:00.000Z",
+      decision: {
+        decisionId: "88888888-8888-4888-8888-888888888888",
+        status: "abandoned",
+        reason: normalizedThousand,
+        nextAction: null,
+      },
+    });
+    expect(result.record.latestDecision.reason).toHaveLength(1000);
+    expect(result.record.latestDecision.reason).toBe(result.record.latestDecision.reason.normalize("NFC"));
+  });
 });
