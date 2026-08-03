@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./*"],
+      "server-only": ["./__mocks__/server-only.ts"]
+    }
+  },
+  "include": ["./product-research-pr1-fix2-smoke.ts"]
+}

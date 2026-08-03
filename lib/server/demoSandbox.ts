@@ -51,6 +51,7 @@ import {
   type SellerSpriteImportRow,
   type SellerSpriteImportSummary,
 } from "@/lib/server/sellerSpriteImportContract";
+import { assertGenericTaskResultAllowed } from "@/lib/server/taskResultNamespacePolicy";
 
 // ── Types ───────────────────────────────────────
 
@@ -116,13 +117,10 @@ export interface CreateSandboxTaskInput {
 }
 
 export interface SandboxTaskPatch {
-  decisionStatus?: string;
   title?: string;
   score?: number;
   level?: string;
   oneLineSummary?: string;
-  resultJson?: string;
-  productLifecycle?: string;
 }
 
 export type SandboxCandidateTaskLinkErrorCode =
@@ -246,7 +244,7 @@ function loadDemoSandboxStoreStrict(): DemoSandboxStore {
   return parsed as DemoSandboxStore;
 }
 
-export function saveDemoSandboxStore(store: DemoSandboxStore): void {
+function saveDemoSandboxStore(store: DemoSandboxStore): void {
   ensureDir();
   const storePath = getStorePath();
   const backupPath = `${storePath}.backup`;
@@ -329,7 +327,7 @@ function buildSandboxTask(
   };
 }
 
-export function createSandboxTask(
+export function createTrustedSandboxTask(
   demoAccessId: string,
   input: CreateSandboxTaskInput,
 ): SandboxTask {
@@ -460,107 +458,32 @@ export function updateSandboxTask(
   taskId: string,
   patch: SandboxTaskPatch,
 ): SandboxTask | null {
-  if (patch.resultJson !== undefined) {
-    throw new Error("TASK_RESULT_JSON_MUTATION_SERVICE_REQUIRED");
-  }
   const store = loadDemoSandboxStore();
   const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
   if (idx === -1) return null;
 
   const task = store.tasks[idx];
-  if (patch.decisionStatus !== undefined) task.decisionStatus = patch.decisionStatus;
   if (patch.title !== undefined) task.title = patch.title;
   if (patch.score !== undefined) task.score = patch.score;
   if (patch.level !== undefined) task.level = patch.level;
   if (patch.oneLineSummary !== undefined) task.oneLineSummary = patch.oneLineSummary;
-  if (patch.productLifecycle !== undefined) task.productLifecycle = patch.productLifecycle;
   task.updatedAt = new Date().toISOString();
 
   saveDemoSandboxStore(store);
   return task;
 }
 
-export function mutateSandboxTaskAtomic<T>(
+export function createGenericSandboxTask(
   demoAccessId: string,
-  taskId: string,
-  action: (task: SandboxTask) => Promise<{ task: SandboxTask; value: T }> | { task: SandboxTask; value: T },
-): Promise<
-  | { status: "updated"; task: SandboxTask; value: T }
-  | { status: "not_found" }
-> {
-  return withSandboxSubjectLock(demoAccessId, async () => {
-    const store = loadDemoSandboxStoreStrict();
-    const index = store.tasks.findIndex(
-      (task) => task.id === taskId && task.demoAccessId === demoAccessId,
-    );
-    if (index === -1) return { status: "not_found" as const };
-    const current = { ...store.tasks[index] };
-    const result = await action(current);
-    if (result.task.id !== current.id || result.task.demoAccessId !== current.demoAccessId) {
-      throw new Error("SANDBOX_TASK_IDENTITY_MUTATION_FORBIDDEN");
-    }
-    const nextStore: DemoSandboxStore = {
-      version: 1,
-      tasks: store.tasks.map((task, taskIndex) => taskIndex === index ? result.task : task),
-      candidates: store.candidates,
-    };
-    saveDemoSandboxStore(nextStore);
-    return { status: "updated" as const, task: result.task, value: result.value };
-  });
-}
-
-export function updateSandboxTaskResearchRecordCas(
-  demoAccessId: string,
-  taskId: string,
-  input: {
-    expectedResultJson: string;
-    expectedUpdatedAt: string;
-    resultJson: string;
-    decisionStatus: string;
-    updatedAt: string;
-  },
-): Promise<
-  | { status: "updated"; task: SandboxTask }
-  | { status: "conflict"; task: SandboxTask }
-  | { status: "not_found" }
-> {
-  return mutateSandboxTaskAtomic(demoAccessId, taskId, (current) => {
-    if (current.resultJson !== input.expectedResultJson
-      || current.updatedAt !== input.expectedUpdatedAt) {
-      throw Object.assign(new Error("SANDBOX_TASK_CAS_CONFLICT"), { current });
-    }
-    const updated: SandboxTask = {
-      ...current,
-      resultJson: input.resultJson,
-      decisionStatus: input.decisionStatus,
-      updatedAt: input.updatedAt,
-    };
-    return { task: updated, value: null };
-  }).then((result) => result.status === "not_found"
-    ? result
-    : { status: "updated" as const, task: result.task })
-    .catch((error: unknown) => {
-      if (error instanceof Error && error.message === "SANDBOX_TASK_CAS_CONFLICT"
-        && "current" in error) {
-        return { status: "conflict" as const, task: (error as Error & { current: SandboxTask }).current };
-      }
-      throw error;
-    });
-}
-
-export function updateSandboxTaskLifecycle(
-  demoAccessId: string,
-  taskId: string,
-  lifecycle: Record<string, unknown>,
-): SandboxTask | null {
-  const store = loadDemoSandboxStore();
-  const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
-  if (idx === -1) return null;
-
-  store.tasks[idx].productLifecycle = JSON.stringify(lifecycle);
-  store.tasks[idx].updatedAt = new Date().toISOString();
-  saveDemoSandboxStore(store);
-  return store.tasks[idx];
+  input: CreateSandboxTaskInput,
+): SandboxTask {
+  let result: unknown;
+  try { result = JSON.parse(input.resultJson || "{}"); } catch { throw new Error("TASK_RESULT_JSON_INVALID"); }
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    throw new Error("TASK_RESULT_JSON_INVALID");
+  }
+  assertGenericTaskResultAllowed(result as Record<string, unknown>);
+  return createTrustedSandboxTask(demoAccessId, input);
 }
 
 export function deleteSandboxTask(demoAccessId: string, taskId: string): boolean {

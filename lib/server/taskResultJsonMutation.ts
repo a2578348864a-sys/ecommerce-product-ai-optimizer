@@ -3,10 +3,8 @@ import "server-only";
 import { isDeepStrictEqual } from "node:util";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
-import {
-  mutateSandboxTaskAtomic,
-  type SandboxTask,
-} from "@/lib/server/demoSandbox";
+import type { SandboxTask } from "@/lib/server/demoSandbox";
+import { mutateSandboxTaskResultJsonInternal } from "@/lib/server/demoSandboxTaskMutation.internal";
 import {
   getProductResearchRecord,
   getProductResearchVerification,
@@ -16,6 +14,7 @@ import {
 
 export type TaskResultJsonWriter =
   | "research-decision"
+  | "legacy-decision"
   | "lifecycle"
   | "listing-pack"
   | "ai-listing"
@@ -23,6 +22,7 @@ export type TaskResultJsonWriter =
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord"],
+  "legacy-decision": [],
   lifecycle: ["productLifecycle"],
   "listing-pack": ["listingPackSnapshot"],
   "ai-listing": ["aiListingPackSnapshot"],
@@ -145,7 +145,9 @@ function validateColumnChanges<T>(
   writer: TaskResultJsonWriter,
   output: TaskResultJsonMutationOutput<T>,
 ): void {
-  if (output.decisionStatus !== undefined && writer !== "research-decision") {
+  if (output.decisionStatus !== undefined
+    && writer !== "research-decision"
+    && writer !== "legacy-decision") {
     throw new TaskResultJsonMutationError(
       "namespace_contract_invalid",
       500,
@@ -305,7 +307,7 @@ async function mutateVisitorTaskResultJson<T>(input: TaskResultJsonMutationInput
   if (input.context.mode !== "demo") {
     throw new TaskResultJsonMutationError("not_found", 404, "任务不存在。");
   }
-  const result = await mutateSandboxTaskAtomic(
+  const result = await mutateSandboxTaskResultJsonInternal(
     input.context.demoAccessId,
     input.taskId,
     async (task: SandboxTask) => {
@@ -354,6 +356,29 @@ export async function mutateTaskResultJson<T>(input: TaskResultJsonMutationInput
   return input.context.mode === "demo"
     ? mutateVisitorTaskResultJson(input)
     : mutateOwnerTaskResultJson(prisma as unknown as TaskResultJsonDatabase, input);
+}
+
+export async function updateLegacySandboxTaskDecisionStatusAtomic(input: {
+  context: Extract<AccessContext, { mode: "demo" }>;
+  taskId: string;
+  decisionStatus: string;
+}) {
+  return mutateVisitorTaskResultJson({
+    context: input.context,
+    taskId: input.taskId,
+    writer: "legacy-decision",
+    mutate: (current) => {
+      if (["researchRecord", "researchVerification", "researchHash", "decisionEvents"]
+        .some((key) => Object.prototype.hasOwnProperty.call(current, key))) {
+        throw new TaskResultJsonMutationError(
+          "versioned_research_decision_route_required",
+          409,
+          "新版研究记录必须使用正式研究决定接口更新。",
+        );
+      }
+      return { result: current, decisionStatus: input.decisionStatus, value: null };
+    },
+  });
 }
 
 export async function mutateOwnerTaskResultJsonForTest<T>(

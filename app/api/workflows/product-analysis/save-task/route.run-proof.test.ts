@@ -34,7 +34,7 @@ const mocks = vi.hoisted(() => ({
   txTaskCreate: vi.fn(),
   txCandidateFindUnique: vi.fn(),
   txCandidateUpdateMany: vi.fn(),
-  createSandboxTask: vi.fn(),
+  createTrustedSandboxTask: vi.fn(),
   createSandboxTaskAndLinkCandidate: vi.fn(),
   getSandboxCandidate: vi.fn(),
   productBatchGetBatch: vi.fn(),
@@ -60,7 +60,7 @@ vi.mock("@/lib/server/db", () => ({
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({
-  createSandboxTask: mocks.createSandboxTask,
+  createTrustedSandboxTask: mocks.createTrustedSandboxTask,
   createSandboxTaskAndLinkCandidate: mocks.createSandboxTaskAndLinkCandidate,
   createSandboxTaskAndLinkCandidateAtomic: mocks.createSandboxTaskAndLinkCandidate,
   SandboxCandidateTaskLinkError: mocks.SandboxCandidateTaskLinkError,
@@ -541,7 +541,7 @@ beforeEach(() => {
       updateMany: mocks.txCandidateUpdateMany,
     },
   }));
-  mocks.createSandboxTask.mockReturnValue({ id: "sandbox_task_001", title: "桌面手机支架 一键分析" });
+  mocks.createTrustedSandboxTask.mockReturnValue({ id: "sandbox_task_001", title: "桌面手机支架 一键分析" });
   mocks.createSandboxTaskAndLinkCandidate.mockReturnValue({
     id: "sandbox_task_linked_001",
     title: "桌面手机支架 一键分析",
@@ -1113,7 +1113,7 @@ describe("save-task runProof trust boundary", () => {
       expectedProductName: "桌面手机支架",
       expectedContextHash: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
-    expect(mocks.createSandboxTask).not.toHaveBeenCalled();
+    expect(mocks.createTrustedSandboxTask).not.toHaveBeenCalled();
     expect(mocks.candidateFindUnique).not.toHaveBeenCalled();
     const savedResult = JSON.parse(mocks.createSandboxTaskAndLinkCandidate.mock.calls[0][2].resultJson);
     expect(savedResult.sourceMeta.candidateId).toBe("sandbox_candidate_a");
@@ -1144,7 +1144,7 @@ describe("save-task runProof trust boundary", () => {
 
     expect(result.status).toBe(409);
     expect(result.body.error.code).toBe("candidate_already_converted");
-    expect(mocks.createSandboxTask).not.toHaveBeenCalled();
+    expect(mocks.createTrustedSandboxTask).not.toHaveBeenCalled();
   });
 
   it("rejects Visitor A when the Candidate belongs to Visitor B", async () => {
@@ -1158,7 +1158,7 @@ describe("save-task runProof trust boundary", () => {
 
     expect(result.status).toBe(404);
     expect(result.body.error.code).toBe("candidate_not_found");
-    expect(mocks.createSandboxTask).not.toHaveBeenCalled();
+    expect(mocks.createTrustedSandboxTask).not.toHaveBeenCalled();
   });
 
   it.each(["failed", "blocked", "insufficient_evidence"] as const)(
@@ -1216,7 +1216,7 @@ describe("save-task runProof trust boundary", () => {
     const result = await responseJson(await POST(createRequest(signedBody({ subject: "demo:visitor-a" })) as never));
 
     expect(result.status).toBe(200);
-    expect(mocks.createSandboxTask).toHaveBeenCalledTimes(1);
+    expect(mocks.createTrustedSandboxTask).toHaveBeenCalledTimes(1);
     expect(mocks.prismaCreate).not.toHaveBeenCalled();
   });
 
@@ -1226,6 +1226,6 @@ describe("save-task runProof trust boundary", () => {
 
     expect(result.status).toBe(403);
     expect(result.body.error.code).toBe("run_subject_mismatch");
-    expect(mocks.createSandboxTask).not.toHaveBeenCalled();
+    expect(mocks.createTrustedSandboxTask).not.toHaveBeenCalled();
   });
 });

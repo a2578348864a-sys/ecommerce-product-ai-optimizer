@@ -19,7 +19,9 @@ vi.mock("@/lib/server/demoGuard", () => ({
 
 vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: () => false,
-  mutateSandboxTaskAtomic: vi.fn(),
+}));
+vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
+  mutateSandboxTaskResultJsonInternal: vi.fn(),
 }));
 
 vi.mock("@/lib/server/aiClient", () => ({

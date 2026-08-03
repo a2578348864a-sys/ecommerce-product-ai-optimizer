@@ -177,21 +177,20 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 }
 
 function getVersionedDecisionSummary(result: unknown) {
-  if (!isRecordValue(result) || !isRecordValue(result.researchRecord)) return null;
-  const record = result.researchRecord;
-  if (record.schema !== "product-research-record.v1"
-    || !Number.isSafeInteger(record.revision)
-    || !isRecordValue(record.latestDecision)
-    || !isProductResearchDecisionStatus(record.latestDecision.status)
-    || typeof record.latestDecision.reason !== "string") {
+  if (!isRecordValue(result) || !isRecordValue(result.productResearchSummary)) return null;
+  const summary = result.productResearchSummary;
+  if (summary.schema !== "product-research-record.v1"
+    || !Number.isSafeInteger(summary.revision)
+    || !isProductResearchDecisionStatus(summary.status)
+    || typeof summary.reasonSummary !== "string") {
     return null;
   }
   return {
-    revision: record.revision as number,
-    status: record.latestDecision.status,
-    reason: record.latestDecision.reason,
-    nextAction: typeof record.latestDecision.nextAction === "string"
-      ? record.latestDecision.nextAction
+    revision: summary.revision as number,
+    status: summary.status,
+    reason: summary.reasonSummary,
+    nextAction: typeof summary.nextActionSummary === "string"
+      ? summary.nextActionSummary
       : null,
   };
 }

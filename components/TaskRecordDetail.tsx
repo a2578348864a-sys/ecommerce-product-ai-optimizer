@@ -166,9 +166,9 @@ function isRecordValue(value: unknown): value is Record<string, unknown> {
 
 function hasVersionedProductResearchRecord(result: unknown) {
   if (!isRecordValue(result)) return false;
-  const researchRecord = result.researchRecord;
-  return isRecordValue(researchRecord)
-    && researchRecord.schema === "product-research-record.v1";
+  const summary = result.productResearchSummary;
+  return isRecordValue(summary)
+    && summary.schema === "product-research-record.v1";
 }
 
 function ResultList({ title, items }: { title: string; items: string[] }) {

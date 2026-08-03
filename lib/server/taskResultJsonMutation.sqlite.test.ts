@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
@@ -18,8 +19,9 @@ import {
 } from "@/lib/server/taskResultJsonMutation";
 
 let root = "";
-let first: PrismaClient;
-let second: PrismaClient;
+let databasePath = "";
+let first: PrismaClient | undefined;
+let second: PrismaClient | undefined;
 
 function database(client: PrismaClient) {
   return client as unknown as TaskResultJsonDatabase;
@@ -95,28 +97,21 @@ function decisionResult(current: ReturnType<typeof protectedDocument>, input: {
 
 beforeEach(async () => {
   root = mkdtempSync(join(tmpdir(), "product-research-cas-"));
-  const databasePath = join(root, "cas.db").replaceAll("\\", "/");
-  const url = `file:${databasePath}`;
-  first = new PrismaClient({ datasources: { db: { url } } });
-  second = new PrismaClient({ datasources: { db: { url } } });
-  await first.$executeRawUnsafe(`
-    CREATE TABLE "ViralAnalysisRecord" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "createdAt" DATETIME NOT NULL,
-      "updatedAt" DATETIME NOT NULL,
-      "type" TEXT NOT NULL DEFAULT 'viral',
-      "decisionStatus" TEXT NOT NULL DEFAULT 'pending',
-      "title" TEXT,
-      "platform" TEXT NOT NULL,
-      "productUrl" TEXT,
-      "materialText" TEXT NOT NULL,
-      "source" TEXT NOT NULL,
-      "score" INTEGER NOT NULL,
-      "level" TEXT NOT NULL,
-      "oneLineSummary" TEXT NOT NULL,
-      "resultJson" TEXT NOT NULL
-    )
-  `);
+  databasePath = join(root, "cas.db");
+  const schemaPath = join(root, "schema.prisma");
+  copyFileSync(join(process.cwd(), "prisma", "schema.prisma"), schemaPath);
+  const url = "file:./cas.db";
+  execFileSync(process.execPath, [
+    join(process.cwd(), "node_modules", "prisma", "build", "index.js"),
+    "db", "push", "--skip-generate", "--schema", schemaPath,
+  ], {
+    cwd: process.cwd(),
+    env: { ...process.env, DATABASE_URL: url, DEBUG: "prisma:*", RUST_LOG: "info" },
+    stdio: "pipe",
+  });
+  const absoluteUrl = `file:${databasePath.replaceAll("\\", "/")}`;
+  first = new PrismaClient({ datasources: { db: { url: absoluteUrl } } });
+  second = new PrismaClient({ datasources: { db: { url: absoluteUrl } } });
   const document = protectedDocument();
   await first.viralAnalysisRecord.create({
     data: {
@@ -140,8 +135,15 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await Promise.allSettled([first.$disconnect(), second.$disconnect()]);
+  await Promise.allSettled([
+    first?.$disconnect() ?? Promise.resolve(),
+    second?.$disconnect() ?? Promise.resolve(),
+  ]);
   rmSync(root, { recursive: true, force: true });
+  for (const path of [databasePath, `${databasePath}-journal`, `${databasePath}-wal`, `${databasePath}-shm`]) {
+    expect(existsSync(path)).toBe(false);
+  }
+  expect(existsSync(root)).toBe(false);
 });
 
 describe("real SQLite task resultJson CAS", () => {
@@ -170,14 +172,14 @@ describe("real SQLite task resultJson CAS", () => {
       },
     });
     const settled = await Promise.allSettled([
-      runDecision(first, {
+      runDecision(first!, {
         id: "22222222-2222-4222-8222-222222222222",
         status: "needs_information",
         reason: "Need another source.",
         nextAction: "Collect it.",
         now: "2026-08-03T01:00:00.000Z",
       }),
-      runDecision(second, {
+      runDecision(second!, {
         id: "33333333-3333-4333-8333-333333333333",
         status: "abandoned",
         reason: "Stop this research.",
@@ -188,85 +190,129 @@ describe("real SQLite task resultJson CAS", () => {
     expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     const rejected = settled.find((result) => result.status === "rejected");
     expect(rejected).toMatchObject({ reason: { code: "task_result_conflict", status: 409 } });
-    const saved = await first.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
+    const saved = await first!.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
     const parsed = JSON.parse(saved!.resultJson);
     expect(parsed.researchRecord.revision).toBe(2);
     expect(parsed.researchRecord.decisionEvents).toHaveLength(2);
     expect(saved!.decisionStatus).toBe(parsed.researchRecord.latestDecision.status === "abandoned" ? "rejected" : "need_info");
   });
 
-  it("never loses a decision when it races lifecycle or Listing, and merges safely on a fresh retry", async () => {
-    const decisionSnapshot = await loadOwnerTaskResultJsonSnapshot(database(first), "task-sqlite");
-    const lifecycleSnapshot = await loadOwnerTaskResultJsonSnapshot(database(second), "task-sqlite");
-    const current = protectedDocument();
-    const decisionJson = decisionResult(current, {
-      id: "44444444-4444-4444-8444-444444444444",
-      status: "needs_information",
-      reason: "Need another source.",
-      nextAction: "Collect it.",
-      now: "2026-08-03T02:00:00.000Z",
+  it("preserves the decision and Listing namespaces across a real concurrent race and retry", async () => {
+    let arrivals = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolveBarrier) => { release = resolveBarrier; });
+    const decision = () => mutateOwnerTaskResultJsonForTest(database(first!), {
+      taskId: "task-sqlite",
+      writer: "research-decision",
+      mutate: async (document) => {
+        arrivals += 1;
+        if (arrivals === 2) release();
+        await barrier;
+        const current = document as ReturnType<typeof protectedDocument>;
+        return {
+          result: JSON.parse(decisionResult(current, {
+            id: "44444444-4444-4444-8444-444444444444",
+            status: "needs_information",
+            reason: "Need another source.",
+            nextAction: "Collect it.",
+            now: "2026-08-03T02:00:00.000Z",
+          })),
+          value: null,
+          decisionStatus: "need_info",
+          updatedAt: "2026-08-03T02:00:00.000Z",
+        };
+      },
     });
-    const lifecycleJson = JSON.stringify({ ...current, productLifecycle: { state: "paused" } });
-    const results = await Promise.all([
-      commitOwnerTaskResultJsonMutation(database(first), {
-        snapshot: decisionSnapshot!,
-        resultJson: decisionJson,
-        decisionStatus: "need_info",
-        updatedAt: "2026-08-03T02:00:00.000Z",
-      }),
-      commitOwnerTaskResultJsonMutation(database(second), {
-        snapshot: lifecycleSnapshot!,
-        resultJson: lifecycleJson,
-        updatedAt: "2026-08-03T02:00:01.000Z",
-      }),
-    ]);
-    expect(results.filter(Boolean)).toHaveLength(1);
-
-    await mutateOwnerTaskResultJsonForTest(database(second), {
+    const listing = () => mutateOwnerTaskResultJsonForTest(database(second!), {
       taskId: "task-sqlite",
       writer: "listing-pack",
-      mutate: (document) => ({
-        result: { ...document, listingPackSnapshot: { source: "synthetic" } },
-        value: null,
-        updatedAt: "2026-08-03T02:00:02.000Z",
-      }),
+      mutate: async (document) => {
+        arrivals += 1;
+        if (arrivals === 2) release();
+        await barrier;
+        return {
+          result: { ...document, listingPackSnapshot: { source: "synthetic" } },
+          value: null,
+          updatedAt: "2026-08-03T02:00:01.000Z",
+        };
+      },
     });
-    await mutateOwnerTaskResultJsonForTest(database(first), {
-      taskId: "task-sqlite",
-      writer: "lifecycle",
-      mutate: (document) => ({
-        result: { ...document, productLifecycle: { state: "ready" } },
-        value: null,
-        updatedAt: "2026-08-03T02:00:03.000Z",
-      }),
-    });
-    const saved = await first.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
+    const settled = await Promise.allSettled([decision(), listing()]);
+    expect(settled.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+    if (settled[0].status === "rejected") {
+      arrivals = 2;
+      await decision();
+    } else {
+      arrivals = 2;
+      await listing();
+    }
+    const saved = await first!.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
     const parsed = JSON.parse(saved!.resultJson);
     expect(parsed.listingPackSnapshot).toEqual({ source: "synthetic" });
-    expect(parsed.productLifecycle).toEqual({ state: "ready" });
     expect(parsed.unknownNamespace).toEqual({ keep: true });
-    expect(parsed.researchRecord.decisionEvents).toHaveLength(results[0] ? 2 : 1);
+    expect(parsed.researchRecord.revision).toBe(2);
+    expect(parsed.researchRecord.decisionEvents).toHaveLength(2);
+    expect(saved!.decisionStatus).toBe("need_info");
+  });
+
+  it("preserves Listing, Image, research, and unknown namespaces across a real concurrent race and retry", async () => {
+    let arrivals = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolveBarrier) => { release = resolveBarrier; });
+    const run = (
+      client: PrismaClient,
+      writer: "listing-pack" | "ai-image",
+      key: "listingPackSnapshot" | "aiImageDraftSnapshot",
+      at: string,
+    ) => mutateOwnerTaskResultJsonForTest(database(client), {
+      taskId: "task-sqlite",
+      writer,
+      mutate: async (document) => {
+        arrivals += 1;
+        if (arrivals === 2) release();
+        await barrier;
+        return { result: { ...document, [key]: { source: "synthetic" } }, value: null, updatedAt: at };
+      },
+    });
+    const settled = await Promise.allSettled([
+      run(first!, "listing-pack", "listingPackSnapshot", "2026-08-03T02:10:00.000Z"),
+      run(second!, "ai-image", "aiImageDraftSnapshot", "2026-08-03T02:10:01.000Z"),
+    ]);
+    expect(settled.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+    arrivals = 2;
+    if (settled[0].status === "rejected") {
+      await run(first!, "listing-pack", "listingPackSnapshot", "2026-08-03T02:10:02.000Z");
+    } else {
+      await run(second!, "ai-image", "aiImageDraftSnapshot", "2026-08-03T02:10:02.000Z");
+    }
+    const saved = await first!.viralAnalysisRecord.findUnique({ where: { id: "task-sqlite" } });
+    const parsed = JSON.parse(saved!.resultJson);
+    expect(parsed.listingPackSnapshot).toEqual({ source: "synthetic" });
+    expect(parsed.aiImageDraftSnapshot).toEqual({ source: "synthetic" });
+    expect(parsed.unknownNamespace).toEqual({ keep: true });
+    expect(parsed.researchRecord.revision).toBe(1);
+    expect(parsed.researchRecord.decisionEvents).toHaveLength(1);
   });
 
   it("fails stale CAS when either updatedAt or resultJson changed", async () => {
-    const original = await loadOwnerTaskResultJsonSnapshot(database(first), "task-sqlite");
-    await first.viralAnalysisRecord.update({
+    const original = await loadOwnerTaskResultJsonSnapshot(database(first!), "task-sqlite");
+    await first!.viralAnalysisRecord.update({
       where: { id: "task-sqlite" },
       data: { updatedAt: new Date("2026-08-03T03:00:00.000Z") },
     });
-    expect(await commitOwnerTaskResultJsonMutation(database(second), {
+    expect(await commitOwnerTaskResultJsonMutation(database(second!), {
       snapshot: original!,
       resultJson: original!.resultJson,
       updatedAt: "2026-08-03T03:00:01.000Z",
     })).toBe(false);
 
-    const current = await loadOwnerTaskResultJsonSnapshot(database(first), "task-sqlite");
+    const current = await loadOwnerTaskResultJsonSnapshot(database(first!), "task-sqlite");
     const changed = JSON.stringify({ ...JSON.parse(current!.resultJson), externalNamespace: { changed: true } });
-    await first.viralAnalysisRecord.update({
+    await first!.viralAnalysisRecord.update({
       where: { id: "task-sqlite" },
       data: { resultJson: changed, updatedAt: current!.updatedAt as Date },
     });
-    expect(await commitOwnerTaskResultJsonMutation(database(second), {
+    expect(await commitOwnerTaskResultJsonMutation(database(second!), {
       snapshot: current!,
       resultJson: current!.resultJson,
       updatedAt: "2026-08-03T03:00:02.000Z",

@@ -8,7 +8,7 @@ import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   listSandboxCandidates,
   listSandboxTasks,
-  createSandboxTask,
+  createGenericSandboxTask,
   sandboxTaskToListItem,
 } from "@/lib/server/demoSandbox";
 import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "@/lib/tasks/decisionStatus";
@@ -18,7 +18,11 @@ import {
   resolveResearchTaskProductImage,
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
-import { sanitizeProductResearchResultForBrowser } from "@/lib/productResearchPublicDto";
+import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
+import {
+  assertGenericTaskResultAllowed,
+  TaskResultNamespacePolicyError,
+} from "@/lib/server/taskResultNamespacePolicy";
 
 export const runtime = "nodejs";
 
@@ -164,19 +168,20 @@ function toTaskItem(record: {
     score: normalized.score,
     level: normalized.level,
     oneLineSummary: normalized.oneLineSummary,
-    result: sanitizeProductResearchResultForBrowser(normalized.result),
+    result: projectTaskResultForBrowser(normalized.result, "list"),
     productImage: null,
   };
 }
 
 function addProductImage(
   item: ViralTaskItem,
+  rawResult: unknown,
   candidates: readonly { id: string; name?: string; sourceMetaJson: string }[],
 ): ViralTaskItem {
   return {
     ...item,
     productImage: resolveResearchTaskProductImage({
-      taskResult: item.result,
+      taskResult: rawResult,
       candidates,
     }),
   };
@@ -256,13 +261,14 @@ export async function GET(request: NextRequest) {
       const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
       const sandboxCandidates = listSandboxCandidates(ctx.demoAccessId);
       const sandboxItems = sandboxTasks.map((task) => {
-        const result = sanitizeProductResearchResultForBrowser(safeParseJson(task.resultJson));
+        const rawResult = safeParseJson(task.resultJson);
+        const result = projectTaskResultForBrowser(rawResult, "list");
         const item = {
           ...sandboxTaskToListItem(task),
           result,
           productImage: null,
         } as unknown as ViralTaskItem;
-        return addProductImage(item, sandboxCandidates);
+        return addProductImage(item, rawResult, sandboxCandidates);
       });
       const total = sandboxItems.length;
       const paged = sandboxItems.slice(offset, offset + limit);
@@ -298,10 +304,11 @@ export async function GET(request: NextRequest) {
       prisma.viralAnalysisRecord.count({ where }),
     ]);
 
+    const rawResults = records.map((record) => safeParseJson(record.resultJson));
     const baseItems = records.map(toTaskItem);
     const candidateIds = Array.from(new Set(
-      baseItems
-        .map((item) => getResearchTaskCandidateId(item.result))
+      rawResults
+        .map((result) => getResearchTaskCandidateId(result))
         .filter((id): id is string => Boolean(id)),
     ));
     const candidates = candidateIds.length
@@ -310,7 +317,7 @@ export async function GET(request: NextRequest) {
         select: { id: true, name: true, sourceMetaJson: true },
       })
       : [];
-    const items = baseItems.map((item) => addProductImage(item, candidates));
+    const items = baseItems.map((item, index) => addProductImage(item, rawResults[index], candidates));
 
     const nextOffset = offset + items.length;
     const hasMore = nextOffset < total;
@@ -398,12 +405,14 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  if (Object.prototype.hasOwnProperty.call(body.result, "researchRecord")
-    || Object.prototype.hasOwnProperty.call(body.result, "researchVerification")) {
+  try {
+    assertGenericTaskResultAllowed(body.result);
+  } catch (error) {
+    if (!(error instanceof TaskResultNamespacePolicyError)) throw error;
     return jsonResponse({
       ok: false,
       error: {
-        code: "reserved_research_namespace",
+        code: error.code,
         message: "正式商品研究记录只能由 Candidate 研究保存流程创建。",
       },
     }, 400);
@@ -413,7 +422,7 @@ export async function POST(request: NextRequest) {
 
   // Demo-Sandbox.1-B: Demo writes to sandbox
   if (auth.context.mode === "demo") {
-    const sandboxTask = createSandboxTask(auth.context.demoAccessId, {
+    const sandboxTask = createGenericSandboxTask(auth.context.demoAccessId, {
       type: taskType,
       title: asOptionalString(body.title) || asOptionalString(body.productName),
       platform: platform || "manual",
@@ -425,7 +434,11 @@ export async function POST(request: NextRequest) {
     });
     return jsonResponse({
       ok: true,
-      data: sandboxTaskToListItem(sandboxTask) as unknown as ViralTaskItem,
+      data: {
+        ...sandboxTaskToListItem(sandboxTask),
+        result: projectTaskResultForBrowser(body.result, "list"),
+        productImage: null,
+      } as unknown as ViralTaskItem,
     });
   }
 

@@ -4,13 +4,9 @@ import {
   ProductResearchStoreError,
   getProductResearchDecisionState,
   updateProductResearchDecision,
-  type ProductResearchDecisionState,
 } from "@/lib/server/productResearchRecordStore";
-import type {
-  ProductResearchDecisionEvent,
-  ProductResearchDecisionInput,
-} from "@/lib/productResearchRecord";
-import { toResearchHashFingerprint } from "@/lib/productResearchPublicDto";
+import type { ProductResearchDecisionInput } from "@/lib/productResearchRecord";
+import { projectProductResearchDecisionStateForBrowser } from "@/lib/productResearchPublicDto";
 
 export const runtime = "nodejs";
 
@@ -56,36 +52,6 @@ function invalidRequest() {
   }, 400);
 }
 
-function safeEvent(event: ProductResearchDecisionEvent) {
-  return {
-    revision: event.revision,
-    status: event.status,
-    reason: event.reason,
-    nextAction: event.nextAction,
-    researchHashFingerprint: toResearchHashFingerprint(event.researchHash),
-    decidedAt: event.decidedAt,
-    actorMode: event.actor.mode,
-  };
-}
-
-function safeState(state: ProductResearchDecisionState) {
-  const record = state.record;
-  return {
-    taskId: state.taskId,
-    legacy: state.legacy,
-    readOnly: state.readOnly,
-    record: record ? {
-      schema: record.schema,
-      revision: record.revision,
-      researchHashFingerprint: toResearchHashFingerprint(record.researchHash),
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      latestDecision: safeEvent(record.latestDecision),
-      decisionEvents: record.decisionEvents.map(safeEvent),
-    } : null,
-  };
-}
-
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = requireAuthenticated(request);
   if (!auth.ok) {
@@ -94,7 +60,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const taskId = await getTaskId(context);
   if (!taskId) return invalidRequest();
   try {
-    return json({ ok: true, data: safeState(await getProductResearchDecisionState(auth.context, taskId)) });
+    return json({
+      ok: true,
+      data: projectProductResearchDecisionStateForBrowser(
+        await getProductResearchDecisionState(auth.context, taskId),
+      ),
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -141,7 +112,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     });
     return json({
       ok: true,
-      data: safeState(result.state),
+      data: projectProductResearchDecisionStateForBrowser(result.state),
       idempotent: result.kind === "idempotent",
     });
   } catch (error) {

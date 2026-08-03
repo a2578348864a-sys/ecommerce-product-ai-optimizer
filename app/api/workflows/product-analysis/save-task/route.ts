@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
-  createSandboxTask,
+  createTrustedSandboxTask,
   createSandboxTaskAndLinkCandidateAtomic,
   SandboxCandidateTaskLinkError,
 } from "@/lib/server/demoSandbox";
@@ -964,7 +964,7 @@ export async function POST(request: NextRequest) {
             expectedContextHash: workflowInput.contextHash!,
           },
         )
-        : createSandboxTask(auth.context.demoAccessId, sandboxInput);
+        : createTrustedSandboxTask(auth.context.demoAccessId, sandboxInput);
 
       return jsonResponse({
         ok: true,

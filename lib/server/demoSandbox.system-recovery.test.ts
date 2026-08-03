@@ -28,8 +28,7 @@ import {
 } from "@/lib/server/demoAccess";
 import {
   loadDemoSandboxStore,
-  saveDemoSandboxStore,
-  createSandboxTask,
+  createTrustedSandboxTask,
   deleteSandboxTask,
   updateSandboxTask,
   listSandboxTasks,
@@ -44,6 +43,7 @@ import {
   markOfficialTaskReadonly,
   type DemoSandboxStore,
 } from "@/lib/server/demoSandbox";
+import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 
 // ── Isolated store path ────────────────────────────
 
@@ -55,7 +55,7 @@ process.env.DEMO_ACCESS_STORE_PATH = TEST_ACCESS_STORE_PATH;
 beforeEach(() => {
   process.env.DEMO_SANDBOX_STORE_PATH = TEST_STORE_PATH;
   // Start with empty store
-  saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] });
+  replaceDemoSandboxStoreForTest({ version: 1, tasks: [], candidates: [] });
 });
 
 afterEach(() => {
@@ -100,8 +100,8 @@ describe("Demo sandbox — task CRUD", () => {
 
   afterEach(() => cleanup());
 
-  it("createSandboxTask generates a sandbox-prefixed ID", () => {
-    const task = createSandboxTask(demoAccessId, { title: "Test Task" });
+  it("createTrustedSandboxTask generates a sandbox-prefixed ID", () => {
+    const task = createTrustedSandboxTask(demoAccessId, { title: "Test Task" });
     expect(isSandboxTaskId(task.id)).toBe(true);
     expect(task.id).toMatch(/^sandbox_task_/);
     expect(task.title).toBe("Test Task");
@@ -109,14 +109,14 @@ describe("Demo sandbox — task CRUD", () => {
   });
 
   it("listSandboxTasks returns only tasks for given demoAccessId", () => {
-    createSandboxTask(demoAccessId, { title: "Task A" });
-    createSandboxTask(demoAccessId, { title: "Task B" });
+    createTrustedSandboxTask(demoAccessId, { title: "Task A" });
+    createTrustedSandboxTask(demoAccessId, { title: "Task B" });
     const tasks = listSandboxTasks(demoAccessId);
     expect(tasks).toHaveLength(2);
   });
 
   it("listSandboxTasks isolates between different demo users", () => {
-    createSandboxTask(demoAccessId, { title: "User 1 Task" });
+    createTrustedSandboxTask(demoAccessId, { title: "User 1 Task" });
     const tasks1 = listSandboxTasks(demoAccessId);
     const tasks2 = listSandboxTasks("other_demo_id");
     expect(tasks1).toHaveLength(1);
@@ -124,20 +124,20 @@ describe("Demo sandbox — task CRUD", () => {
   });
 
   it("updateSandboxTask modifies fields", () => {
-    const task = createSandboxTask(demoAccessId, { title: "Original" });
+    const task = createTrustedSandboxTask(demoAccessId, { title: "Original" });
     const updated = updateSandboxTask(demoAccessId, task.id, { title: "Updated" });
     expect(updated).not.toBeNull();
     expect(updated!.title).toBe("Updated");
   });
 
   it("updateSandboxTask returns null for wrong demoAccessId", () => {
-    const task = createSandboxTask(demoAccessId, { title: "Mine" });
+    const task = createTrustedSandboxTask(demoAccessId, { title: "Mine" });
     const updated = updateSandboxTask("wrong_id", task.id, { title: "Hacked" });
     expect(updated).toBeNull();
   });
 
   it("deleteSandboxTask removes the task", () => {
-    const task = createSandboxTask(demoAccessId, { title: "To Delete" });
+    const task = createTrustedSandboxTask(demoAccessId, { title: "To Delete" });
     const deleted = deleteSandboxTask(demoAccessId, task.id);
     expect(deleted).toBe(true);
     const remaining = listSandboxTasks(demoAccessId);
@@ -145,7 +145,7 @@ describe("Demo sandbox — task CRUD", () => {
   });
 
   it("deleteSandboxTask returns false for wrong demoAccessId", () => {
-    const task = createSandboxTask(demoAccessId, { title: "Protected" });
+    const task = createTrustedSandboxTask(demoAccessId, { title: "Protected" });
     const deleted = deleteSandboxTask("wrong_id", task.id);
     expect(deleted).toBe(false);
   });
@@ -224,7 +224,7 @@ describe("Demo sandbox — candidate CRUD", () => {
 describe("Demo sandbox — isolation from official data", () => {
   it("sandbox tasks are not stored in Prisma DB scope", () => {
     // Sandbox stores to file, not DB — ID prefix confirms this
-    const t1 = createSandboxTask("demo_abc", { title: "Sandbox Task" });
+    const t1 = createTrustedSandboxTask("demo_abc", { title: "Sandbox Task" });
     expect(t1.id).toMatch(/^sandbox_task_/);
     // Official tasks have Prisma cuid format
     expect(t1.id).not.toMatch(/^cm/); // Prisma CUIDs start with 'c'
@@ -252,7 +252,7 @@ describe("Demo sandbox — format helpers", () => {
   afterEach(() => cleanup());
 
   it("sandbox task list items include sourceMode and permissions", () => {
-    const task = createSandboxTask(demoAccessId, { title: "Format Test" });
+    const task = createTrustedSandboxTask(demoAccessId, { title: "Format Test" });
     const item = sandboxTaskToListItem(task);
     expect(item.sourceMode).toBe("demo_sandbox");
     expect(item.isSandbox).toBe(true);

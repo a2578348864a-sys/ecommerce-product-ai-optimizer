@@ -19,7 +19,9 @@ vi.mock("@/lib/server/demoGuard", () => ({
 
 vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: (id: string) => id.startsWith("sandbox_"),
-  mutateSandboxTaskAtomic: mocks.sandboxAtomic,
+}));
+vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
+  mutateSandboxTaskResultJsonInternal: mocks.sandboxAtomic,
 }));
 
 function callPATCH(id: string) {

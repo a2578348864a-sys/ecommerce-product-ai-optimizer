@@ -35,7 +35,9 @@ vi.mock("@/lib/server/demoGuard", () => ({
 
 vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: () => false,
-  mutateSandboxTaskAtomic: vi.fn(),
+}));
+vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
+  mutateSandboxTaskResultJsonInternal: vi.fn(),
 }));
 
 import { prisma } from "@/lib/server/db";

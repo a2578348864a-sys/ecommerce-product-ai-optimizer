@@ -3,7 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveDemoAccessStore } from "@/lib/server/demoAccess";
-import { saveDemoSandboxStore } from "@/lib/server/demoSandbox";
+import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 
 let root = "";
 let cwdSpy: ReturnType<typeof vi.spyOn>;
@@ -25,7 +25,7 @@ afterEach(() => {
 describe("test store default isolation", () => {
   it("never falls back to business data files when test overrides are absent", () => {
     saveDemoAccessStore({ version: 1, accesses: [] });
-    saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] });
+    replaceDemoSandboxStoreForTest({ version: 1, tasks: [], candidates: [] });
 
     expect(existsSync(join(root, ".next", "test-stores", "demo-access.default.json"))).toBe(true);
     expect(existsSync(join(root, ".next", "test-stores", "demo-sandbox.default.json"))).toBe(true);

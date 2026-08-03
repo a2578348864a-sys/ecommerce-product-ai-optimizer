@@ -9,7 +9,8 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { createOwnerSession, createDemoSession, deleteAccessSession } from "@/lib/server/accessSession";
 import { createDemoAccess, loadDemoAccessStore, saveDemoAccessStore, type DemoAccessStore } from "@/lib/server/demoAccess";
-import { createSandboxTask, isSandboxTaskId, getSandboxTask, listSandboxTasks, sandboxTaskToListItem, loadDemoSandboxStore, saveDemoSandboxStore, type DemoSandboxStore } from "@/lib/server/demoSandbox";
+import { createTrustedSandboxTask, isSandboxTaskId, getSandboxTask, listSandboxTasks, sandboxTaskToListItem, loadDemoSandboxStore, type DemoSandboxStore } from "@/lib/server/demoSandbox";
+import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 import { getAccessContext, checkAccessPassword } from "@/lib/server/accessPassword";
 
 function buildGetRequest(token: string): NextRequest {
@@ -32,7 +33,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
     process.env.DEMO_SANDBOX_STORE_PATH = ".next/test-stores/demo-sandbox.test-system-recovery3.json";
 
     // Start with empty sandbox
-    saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] });
+    replaceDemoSandboxStoreForTest({ version: 1, tasks: [], candidates: [] });
 
     const ownerSession = createOwnerSession();
     ownerToken = ownerSession.token;
@@ -70,15 +71,15 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
   });
 
   // ── Sandbox task creation and listing ──
-  it("sandbox task created via createSandboxTask is visible in listSandboxTasks", () => {
-    const task = createSandboxTask(demoAccessId, { title: "Sandbox List Test" });
+  it("sandbox task created via createTrustedSandboxTask is visible in listSandboxTasks", () => {
+    const task = createTrustedSandboxTask(demoAccessId, { title: "Sandbox List Test" });
     const tasks = listSandboxTasks(demoAccessId);
     expect(tasks.length).toBeGreaterThanOrEqual(1);
     expect(tasks.some(t => t.id === task.id)).toBe(true);
   });
 
   it("listSandboxTasks isolates between different demo users", () => {
-    createSandboxTask(demoAccessId, { title: "User A Task" });
+    createTrustedSandboxTask(demoAccessId, { title: "User A Task" });
     const tasksA = listSandboxTasks(demoAccessId);
     const tasksB = listSandboxTasks("other_demo_id");
     expect(tasksA.length).toBeGreaterThanOrEqual(1);
@@ -95,7 +96,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
   // ── End-to-end: demo token → getAccessContext → listSandboxTasks ──
   it("full flow: demo token yields demo context which yields sandbox tasks", () => {
     // Step 1: Create sandbox task
-    const task = createSandboxTask(demoAccessId, { title: "E2E List Test Task" });
+    const task = createTrustedSandboxTask(demoAccessId, { title: "E2E List Test Task" });
     expect(task.id).toMatch(/^sandbox_task_/);
 
     // Step 2: Simulate GET /api/tasks request with demo token headers
@@ -127,7 +128,7 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
 });
 
 // ── Access-Control-Fix.1: Demo isolation guards ──
-// Note: createSandboxTask already imported at top of file
+// Note: createTrustedSandboxTask already imported at top of file
 
 describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
   let demoSandboxStoreBefore: DemoSandboxStore;
@@ -139,7 +140,7 @@ describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
   });
 
   afterEach(() => {
-    saveDemoSandboxStore(demoSandboxStoreBefore);
+    replaceDemoSandboxStoreForTest(demoSandboxStoreBefore);
     saveDemoAccessStore(demoAccessStoreBefore);
   });
 
@@ -150,7 +151,7 @@ describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
   });
 
   it("sandbox task ID starts with sandbox_ prefix and is scoped to demoAccessId", () => {
-    const task = createSandboxTask("demo-user-001", { title: "Test" });
+    const task = createTrustedSandboxTask("demo-user-001", { title: "Test" });
     expect(isSandboxTaskId(task.id)).toBe(true);
     expect(task.id).toMatch(/^sandbox_task_/);
     expect(task.demoAccessId).toBe("demo-user-001");
@@ -182,7 +183,7 @@ describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
   });
 
   it("guard logic: demo mode + sandbox ID → allow", () => {
-    const task = createSandboxTask("scope-test-demo", { title: "Demo Task" });
+    const task = createTrustedSandboxTask("scope-test-demo", { title: "Demo Task" });
     const isSandbox = isSandboxTaskId(task.id);
     expect(isSandbox).toBe(true);
 

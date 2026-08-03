@@ -60,7 +60,7 @@ vi.mock("@/lib/server/demoSandbox", () => ({
     return { id, demoAccessId: owner, title: "Sandbox Task", type: "workflow", result: {} };
   }),
   sandboxTaskToDetail: vi.fn((task: unknown) => task),
-  createSandboxTask: vi.fn(),
+  createTrustedSandboxTask: vi.fn(),
   listSandboxTasks: vi.fn(() => []),
 }));
 

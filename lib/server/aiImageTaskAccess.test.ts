@@ -22,11 +22,13 @@ vi.mock("@/lib/server/db", () => ({
 vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: (id: string) => id.startsWith("sandbox_"),
   getSandboxTask: (accessId: string) => state.sandboxTask?.demoAccessId === accessId ? state.sandboxTask : null,
-  mutateSandboxTaskAtomic: state.sandboxAtomic,
+}));
+vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
+  mutateSandboxTaskResultJsonInternal: state.sandboxAtomic,
 }));
 
 import { prisma } from "@/lib/server/db";
-import { mutateSandboxTaskAtomic } from "@/lib/server/demoSandbox";
+import { mutateSandboxTaskResultJsonInternal } from "@/lib/server/demoSandboxTaskMutation.internal";
 import { loadAiImageTask } from "@/lib/server/aiImageTaskAccess";
 
 const request = new Request("http://localhost/api/tasks/task-1/image-draft") as any;
@@ -99,7 +101,7 @@ describe("AI image task access", () => {
     const result = await loadAiImageTask({ request, taskId: "sandbox_task-1" });
     expect(result).toMatchObject({ ok: true, data: { accessMode: "visitor", visitorAccessId: "visitor-1" } });
     if (result.ok) await result.data.persistResult({ aiImageDraftSnapshot: { saved: true } });
-    expect(mutateSandboxTaskAtomic).toHaveBeenCalledWith("visitor-1", "sandbox_task-1", expect.any(Function));
+    expect(mutateSandboxTaskResultJsonInternal).toHaveBeenCalledWith("visitor-1", "sandbox_task-1", expect.any(Function));
     expect(JSON.parse(state.sandboxTask.resultJson)).toEqual({
       unknownNamespace: { keep: true },
       aiImageDraftSnapshot: { saved: true },

@@ -51,8 +51,8 @@ import {
   createSandboxTaskAndLinkCandidate,
   deleteSandboxCandidate,
   loadDemoSandboxStore,
-  saveDemoSandboxStore,
 } from "@/lib/server/demoSandbox";
+import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 import {
   buildCandidateAnalysisContext,
   createCandidateAnalysisBindingHash,
@@ -179,7 +179,7 @@ describe("demo Sandbox recoverable replacement", () => {
       fileSystem.files.set(target, value);
     });
 
-    expect(() => saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] })).toThrow("EIO");
+    expect(() => replaceDemoSandboxStoreForTest({ version: 1, tasks: [], candidates: [] })).toThrow("EIO");
     expect(fileSystem.files.get(STORE_PATH)).toBe(ORIGINAL);
     expect(fileSystem.files.has(BACKUP_PATH)).toBe(false);
     expect(fileSystem.files.get(NEIGHBOR_PATH)).toBe("neighbor");

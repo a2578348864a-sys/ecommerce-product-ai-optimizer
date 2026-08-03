@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import { SYSTEM_MANAGED_TASK_RESULT_KEYS } from "@/lib/server/taskResultNamespacePolicy";
 
 /**
  * /api/tasks route 测试
@@ -111,6 +112,46 @@ async function getJsonStatus(response: Response) {
 }
 
 describe("GET /api/tasks", () => {
+  it("returns an allowlisted Owner result while resolving product image from the raw server binding", async () => {
+    const fullHash = "a".repeat(64);
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-canary",
+      createdAt: new Date("2026-08-03T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-03T00:00:00.000Z"),
+      type: "workflow",
+      decisionStatus: "continue",
+      title: "Synthetic",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Synthetic",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "Synthetic",
+      resultJson: JSON.stringify({
+        productName: "Synthetic",
+        sourceMeta: { source: "opportunity", sourceTitle: "Synthetic source", candidateId: "candidate-exact", contextHash: fullHash },
+        researchVerification: { inputHash: fullHash, resultHash: fullHash },
+        futureSecretField: "hidden",
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    expect(body.data.items[0].result).toEqual({
+      productName: "Synthetic",
+      sourceMeta: { source: "opportunity", sourceTitle: "Synthetic source" },
+    });
+    const serialized = JSON.stringify(body);
+    for (const key of ["candidateId", "contextHash", "researchVerification", "inputHash", "resultHash", "futureSecretField"]) {
+      expect(serialized).not.toContain(`\"${key}\"`);
+    }
+    expect(mockPrisma.opportunityCandidate.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ["candidate-exact"] } },
+    }));
+  });
+
   it("resolves an old Task image only from its exact authoritative Candidate id", async () => {
     mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
       id: "task-with-candidate",
@@ -336,7 +377,7 @@ describe("POST /api/tasks", () => {
 });
 
 describe("POST /api/tasks reserved research namespace", () => {
-  it("rejects client-created researchRecord namespaces on the generic task route", async () => {
+  it.each(SYSTEM_MANAGED_TASK_RESULT_KEYS)("rejects the %s namespace before Owner storage", async (reservedKey) => {
     const request = createRequest({
       method: "POST",
       headers: { "x-access-password": CORRECT_PASSWORD },
@@ -350,14 +391,14 @@ describe("POST /api/tasks reserved research namespace", () => {
           score: 80,
           level: "low",
           oneLineSummary: "Synthetic",
-          researchRecord: { schema: "product-research-record.v1", revision: 999 },
+          [reservedKey]: { injected: true },
         },
       },
     });
     const response = await POST(request);
     const { status, body } = await getJsonStatus(response);
     expect(status).toBe(400);
-    expect(body.error.code).toBe("reserved_research_namespace");
+    expect(body.error.code).toBe("reserved_system_namespace");
     expect(mockPrisma.viralAnalysisRecord.create).not.toHaveBeenCalled();
   });
 });

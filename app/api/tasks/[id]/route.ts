@@ -7,7 +7,6 @@ import { isDecisionStatus, normalizeDecisionStatus, type DecisionStatus } from "
 import {
   getSandboxTask,
   getSandboxCandidate,
-  updateSandboxTask,
   deleteSandboxTask,
   sandboxTaskToDetail,
   isSandboxTaskId,
@@ -19,7 +18,11 @@ import {
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
 import { hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
-import { sanitizeProductResearchResultForBrowser } from "@/lib/productResearchPublicDto";
+import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
+import {
+  TaskResultJsonMutationError,
+  updateLegacySandboxTaskDecisionStatusAtomic,
+} from "@/lib/server/taskResultJsonMutation";
 
 export const runtime = "nodejs";
 
@@ -100,19 +103,19 @@ function toTaskItem(record: {
     score: record.score,
     level: record.level,
     oneLineSummary: record.oneLineSummary,
-    result: sanitizeProductResearchResultForBrowser(safeParseJson(record.resultJson)),
+    result: projectTaskResultForBrowser(safeParseJson(record.resultJson), "detail"),
     productImage: null,
   };
 }
 
-async function addOwnerProductImage(item: ViralTaskItem): Promise<ViralTaskItem> {
+async function addOwnerProductImage(item: ViralTaskItem, rawResult: unknown): Promise<ViralTaskItem> {
   const fixedImage = resolveResearchTaskProductImage({
-    taskResult: item.result,
+    taskResult: rawResult,
     candidates: [],
   });
   if (fixedImage) return { ...item, productImage: fixedImage };
 
-  const candidateId = getResearchTaskCandidateId(item.result);
+  const candidateId = getResearchTaskCandidateId(rawResult);
   if (!candidateId) return item;
   const candidate = await prisma.opportunityCandidate.findFirst({
     where: { id: candidateId },
@@ -121,7 +124,7 @@ async function addOwnerProductImage(item: ViralTaskItem): Promise<ViralTaskItem>
   return {
     ...item,
     productImage: resolveResearchTaskProductImage({
-      taskResult: item.result,
+      taskResult: rawResult,
       candidates: candidate ? [candidate] : [],
     }),
   };
@@ -233,13 +236,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const task = getSandboxTask(ctx.demoAccessId, id);
     if (!task) return notFoundResponse();
     const result = safeParseJson(task.resultJson);
-    const publicResult = sanitizeProductResearchResultForBrowser(result);
+    const publicResult = projectTaskResultForBrowser(result, "detail");
     const candidateId = getResearchTaskCandidateId(result);
     const candidate = candidateId
       ? getSandboxCandidate(ctx.demoAccessId, candidateId)
       : null;
     const data = {
-      ...sandboxTaskToDetail(task),
+        ...sandboxTaskToDetail(task),
       resultJson: publicResult,
       result: publicResult,
       productImage: resolveResearchTaskProductImage({
@@ -264,7 +267,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return jsonResponse({
       ok: true,
-      data: await addOwnerProductImage(toTaskItem(record)),
+      data: await addOwnerProductImage(toTaskItem(record), safeParseJson(record.resultJson)),
     });
   } catch (error) {
     return isDatabaseError(error) ? databaseError() : serverError();
@@ -353,9 +356,22 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         || hasProductResearchRecordNamespace(currentResult)) {
         return versionedDecisionRouteRequiredResponse();
       }
-      const updated = updateSandboxTask(auth.context.demoAccessId, id, { decisionStatus: decisionStatus as string });
-      if (!updated) return notFoundResponse();
-      return jsonResponse({ ok: true, data: { id: updated.id, decisionStatus: updated.decisionStatus as DecisionStatus } });
+      try {
+        await updateLegacySandboxTaskDecisionStatusAtomic({
+          context: auth.context,
+          taskId: id,
+          decisionStatus: decisionStatus as string,
+        });
+      } catch (error) {
+        if (error instanceof TaskResultJsonMutationError) {
+          if (error.code === "not_found") return notFoundResponse();
+          if (error.code === "versioned_research_decision_route_required") {
+            return versionedDecisionRouteRequiredResponse();
+          }
+        }
+        throw error;
+      }
+      return jsonResponse({ ok: true, data: { id, decisionStatus: decisionStatus as DecisionStatus } });
     }
     return notFoundResponse();
   }

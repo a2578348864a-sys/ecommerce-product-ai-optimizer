@@ -11,9 +11,9 @@ import {
   listSandboxCandidates,
   listSandboxTasks,
   sandboxCandidateToListItem,
-  saveDemoSandboxStore,
   SandboxCandidateTaskLinkError,
 } from "@/lib/server/demoSandbox";
+import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 import {
   buildCandidateAnalysisContext,
   createCandidateAnalysisBindingHash,
@@ -36,7 +36,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] });
+  replaceDemoSandboxStoreForTest({ version: 1, tasks: [], candidates: [] });
 });
 
 function taskInput() {
@@ -251,7 +251,7 @@ describe("Visitor Candidate → Task atomic link", () => {
     });
     const analysis = JSON.parse(candidate.analysisJson);
     analysis.r22MarketDecision.candidateId = candidate.id;
-    saveDemoSandboxStore({
+    replaceDemoSandboxStoreForTest({
       version: 1,
       tasks: [],
       candidates: [{ ...candidate, analysisJson: JSON.stringify(analysis) }],

@@ -11,12 +11,12 @@ import {
 } from "@/lib/sourceEvidenceContract";
 import {
   loadDemoSandboxStore,
-  saveDemoSandboxStore,
   saveLegacySandboxCandidates,
   saveSignedSandboxCandidates,
   sandboxCandidateToListItem,
   updateSandboxCandidate,
 } from "@/lib/server/demoSandbox";
+import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 
 const TEST_ROOT = mkdtempSync(join(tmpdir(), "candidate-signed-sandbox-"));
 const TEST_STORE_PATH = join(TEST_ROOT, "sandbox.json");
@@ -136,7 +136,7 @@ function validSignedStoredChain() {
 
 beforeEach(() => {
   process.env.DEMO_SANDBOX_STORE_PATH = TEST_STORE_PATH;
-  saveDemoSandboxStore({ version: 1, tasks: [], candidates: [] });
+  replaceDemoSandboxStoreForTest({ version: 1, tasks: [], candidates: [] });
 });
 
 afterEach(() => {
@@ -211,7 +211,7 @@ describe("saveSignedSandboxCandidates", () => {
       analysisJson: "{}",
       createdAt: "2026-07-11T12:00:00.000Z",
     });
-    saveDemoSandboxStore(store);
+    replaceDemoSandboxStoreForTest(store);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
     expect(() => saveSignedSandboxCandidates("visitor-a", [draft("Product A")]))
@@ -232,7 +232,7 @@ describe("saveLegacySandboxCandidates downgrade guard", () => {
     const candidate = saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]).items[0];
     const store = loadDemoSandboxStore();
     store.candidates[0] = { ...candidate, convertedTaskId: "sandbox_task_existing" };
-    saveDemoSandboxStore(store);
+    replaceDemoSandboxStoreForTest(store);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
     expect(() => saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]))
@@ -285,7 +285,7 @@ describe("updateSandboxCandidate source integrity policy", () => {
     const created = saveSignedSandboxCandidates("visitor-a", [draft("Product A")]).items[0];
     const store = loadDemoSandboxStore();
     Object.assign(store.candidates.find((candidate) => candidate.id === created.id)!, validSignedStoredChain());
-    saveDemoSandboxStore(store);
+    replaceDemoSandboxStoreForTest(store);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
     expect(() => updateSandboxCandidate("visitor-a", created.id, { name: "Tampered" }, {

@@ -34,7 +34,9 @@ vi.mock("@/lib/server/demoSandbox", () => ({
   isSandboxTaskId: (id: string) => id.startsWith("sandbox_task_"),
   getSandboxTask: mocks.getSandboxTask,
   getSandboxCandidate: mocks.getSandboxCandidate,
-  mutateSandboxTaskAtomic: mocks.sandboxAtomic,
+}));
+vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
+  mutateSandboxTaskResultJsonInternal: mocks.sandboxAtomic,
 }));
 
 import {
