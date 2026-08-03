@@ -1,0 +1,68 @@
+{
+  "schema": "product-creative-handoff-fingerprint-golden.v1",
+  "vectors": [
+    {
+      "name": "minimal-confirmed-handoff-candidate",
+      "candidate": {
+        "sourceResearch": {
+          "recordSchema": "product-research-record.v1",
+          "candidateId": "candidate-golden-1",
+          "researchRevision": 3,
+          "researchHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "workflowStatus": "completed",
+          "decisionStatus": "creative_ready",
+          "candidateSourceFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "productIdentity": {
+          "displayName": "Synthetic organizer",
+          "marketplace": "Amazon US",
+          "identityConfirmedAt": "2026-08-04T00:00:00.000Z"
+        },
+        "confirmedFacts": [
+          {
+            "factId": "11111111-1111-4111-8111-111111111111",
+            "field": "material",
+            "label": "Material",
+            "value": "Paperboard",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": ["listing", "image"],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "material",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "1111111111111111"
+              },
+              "confirmedAt": "2026-08-04T00:00:00.000Z",
+              "confirmationReference": "manual-review:material:v1"
+            },
+            "confirmedAt": "2026-08-04T00:00:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "1111111111111111"
+            }
+          }
+        ],
+        "stableSourceFacts": [],
+        "aiCreativeReferences": [],
+        "issues": [],
+        "prohibitedClaims": [
+          {
+            "claimId": "22222222-2222-4222-8222-222222222222",
+            "category": "unconfirmed_dimension",
+            "summary": "Do not state dimensions.",
+            "appliesTo": ["both"],
+            "source": "system_rule"
+          }
+        ],
+        "creativePreferences": {
+          "evidenceTier": "creative_preference",
+          "tone": "clear"
+        },
+        "visualReferences": [],
+        "humanReviewRequired": true
+      },
+      "expectedFingerprint": "d78fcf5b75dd12de237549133cf4f96864dbf9418c5eb691ea31b344e3c08e57"
+    }
+  ]
+}

@@ -1,0 +1,357 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:qingxuan:product-creative-handoff:v1",
+  "title": "Product Creative Handoff V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "handoffId",
+    "taskId",
+    "candidateId",
+    "currentRevision",
+    "controlState",
+    "createdAt",
+    "createdBy",
+    "researchMode",
+    "promotionEligible",
+    "versions"
+  ],
+  "properties": {
+    "schema": { "const": "product-creative-handoff.v1" },
+    "handoffId": { "type": "string", "format": "uuid" },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "candidateId": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "currentRevision": { "type": "integer", "minimum": 1, "maximum": 10 },
+    "controlState": { "enum": ["active", "revoked"] },
+    "revokedAt": { "type": "string", "format": "date-time" },
+    "revokeReasonCode": {
+      "enum": ["explicit_user_revoke", "decision_changed", "identity_invalid", "verification_invalid"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "$ref": "#/$defs/internalActor" },
+    "researchMode": { "const": "market_research_only" },
+    "promotionEligible": { "const": false },
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/handoffVersion" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "controlState": { "const": "revoked" } } },
+      "then": { "required": ["revokedAt", "revokeReasonCode"] }
+    },
+    {
+      "if": { "properties": { "controlState": { "const": "active" } } },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["revokedAt"] },
+            { "required": ["revokeReasonCode"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "internalActor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "subjectFingerprint"],
+      "properties": {
+        "mode": { "enum": ["owner", "visitor"] },
+        "subjectFingerprint": { "type": "string", "pattern": "^[a-f0-9]{16}$" }
+      }
+    },
+    "factValue": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "maxLength": 1000 },
+        { "type": "number" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+        }
+      ]
+    },
+    "usageScopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "enum": ["listing", "image", "internal"] }
+    },
+    "snapshotSourceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "sourceField", "sourceSnapshotFingerprint"],
+      "properties": {
+        "sourceKind": { "enum": ["candidate_snapshot", "seller_sprite_snapshot", "research_result"] },
+        "sourceField": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "sourceSnapshotFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "capturedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "userConfirmationReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "sourceField", "confirmedBy", "confirmedAt", "confirmationReference"],
+      "properties": {
+        "sourceKind": { "const": "user_confirmation" },
+        "sourceField": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "confirmedBy": { "$ref": "#/$defs/internalActor" },
+        "confirmedAt": { "type": "string", "format": "date-time" },
+        "confirmationReference": { "type": "string", "minLength": 1, "maxLength": 240 }
+      }
+    },
+    "sourceReference": {
+      "oneOf": [
+        { "$ref": "#/$defs/snapshotSourceReference" },
+        { "$ref": "#/$defs/userConfirmationReference" }
+      ]
+    },
+    "confirmedFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "confirmedAt", "confirmedBy"
+      ],
+      "properties": {
+        "factId": { "type": "string", "format": "uuid" },
+        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "value": { "$ref": "#/$defs/factValue" },
+        "evidenceTier": { "const": "human_confirmed" },
+        "usageScopes": { "$ref": "#/$defs/usageScopes" },
+        "sourceRef": { "$ref": "#/$defs/userConfirmationReference" },
+        "confirmedAt": { "type": "string", "format": "date-time" },
+        "confirmedBy": { "$ref": "#/$defs/internalActor" }
+      }
+    },
+    "stableSourceFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "stabilityRule"],
+      "properties": {
+        "factId": { "type": "string", "format": "uuid" },
+        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "value": { "$ref": "#/$defs/factValue" },
+        "evidenceTier": { "const": "source_snapshot" },
+        "usageScopes": {
+          "type": "array",
+          "prefixItems": [{ "const": "internal" }],
+          "items": false,
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "sourceRef": { "$ref": "#/$defs/snapshotSourceReference" },
+        "stabilityRule": { "enum": ["identity_only", "routing_only", "human_confirmation_required_for_claim"] }
+      }
+    },
+    "aiCreativeReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["referenceId", "field", "summary", "evidenceTier", "allowedUse", "prohibitedUses"],
+      "properties": {
+        "referenceId": { "type": "string", "format": "uuid" },
+        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "evidenceTier": { "const": "ai_hypothesis" },
+        "allowedUse": { "enum": ["tone", "layout", "composition", "non_factual_angle"] },
+        "prohibitedUses": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["title_fact", "bullet_fact", "parameter", "certification", "performance_claim", "image_text", "packaging", "logo"]
+          },
+          "allOf": [
+            { "contains": { "const": "title_fact" } },
+            { "contains": { "const": "bullet_fact" } },
+            { "contains": { "const": "parameter" } },
+            { "contains": { "const": "certification" } },
+            { "contains": { "const": "performance_claim" } },
+            { "contains": { "const": "image_text" } }
+          ]
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issueId", "field", "kind", "summary", "risk", "blocks", "recommendedAction"],
+      "properties": {
+        "issueId": { "type": "string", "format": "uuid" },
+        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "kind": { "enum": ["missing", "conflict"] },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "sourceSummaries": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+        },
+        "risk": { "enum": ["low", "medium", "high", "blocking"] },
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "listing_title", "listing_bullets", "listing_description", "search_terms", "image_product_depiction",
+              "image_text", "packaging", "logo", "certification", "performance_claim"
+            ]
+          }
+        },
+        "recommendedAction": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "prohibitedClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "category", "summary", "appliesTo", "source"],
+      "properties": {
+        "claimId": { "type": "string", "format": "uuid" },
+        "category": {
+          "enum": [
+            "unconfirmed_material", "unconfirmed_dimension", "unconfirmed_performance", "unconfirmed_certification",
+            "brand_authorization", "health_safety_environment", "competitor_trademark", "absolute_claim",
+            "invented_accessory", "invented_packaging", "other"
+          ]
+        },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "appliesTo": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "enum": ["listing", "image", "both"] }
+        },
+        "source": { "enum": ["system_rule", "research_issue", "user_restriction"] }
+      }
+    },
+    "creativePreferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceTier"],
+      "properties": {
+        "evidenceTier": { "const": "creative_preference" },
+        "targetMarket": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "tone": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "targetAudiencePreference": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "imageStyle": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "backgroundPreference": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "compositionPreference": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "visualReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetFingerprint", "sourceTier", "identityBound", "humanApprovedForReference", "approvedAt"],
+      "properties": {
+        "assetFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceTier": { "enum": ["source_snapshot", "human_confirmed"] },
+        "identityBound": { "const": true },
+        "humanApprovedForReference": { "const": true },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "sourceResearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recordSchema", "candidateId", "researchRevision", "researchHash", "workflowStatus", "decisionStatus", "candidateSourceFingerprint"
+      ],
+      "properties": {
+        "recordSchema": { "const": "product-research-record.v1" },
+        "candidateId": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "researchRevision": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "researchHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "workflowStatus": { "const": "completed" },
+        "decisionStatus": { "const": "creative_ready" },
+        "candidateSourceFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "productIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "identityConfirmedAt"],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "marketplace": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "identityConfirmedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "confirmation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confirmed", "confirmedAt", "confirmedBy"],
+      "properties": {
+        "confirmed": { "const": true },
+        "confirmedAt": { "type": "string", "format": "date-time" },
+        "confirmedBy": { "$ref": "#/$defs/internalActor" }
+      }
+    },
+    "handoffVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision", "createdAt", "createdBy", "sourceResearch", "productIdentity", "confirmedFacts",
+        "stableSourceFacts", "aiCreativeReferences", "issues", "prohibitedClaims", "creativePreferences",
+        "visualReferences", "confirmation", "humanReviewRequired", "handoffFingerprint"
+      ],
+      "properties": {
+        "revision": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "$ref": "#/$defs/internalActor" },
+        "sourceResearch": { "$ref": "#/$defs/sourceResearch" },
+        "productIdentity": { "$ref": "#/$defs/productIdentity" },
+        "confirmedFacts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/confirmedFact" }
+        },
+        "stableSourceFacts": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/stableSourceFact" }
+        },
+        "aiCreativeReferences": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/aiCreativeReference" }
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 30,
+          "items": { "$ref": "#/$defs/issue" }
+        },
+        "prohibitedClaims": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/prohibitedClaim" }
+        },
+        "creativePreferences": { "$ref": "#/$defs/creativePreferences" },
+        "visualReferences": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/visualReference" }
+        },
+        "confirmation": { "$ref": "#/$defs/confirmation" },
+        "humanReviewRequired": { "const": true },
+        "handoffFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}
