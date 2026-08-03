@@ -168,7 +168,15 @@ function toTaskItem(record: {
     score: normalized.score,
     level: normalized.level,
     oneLineSummary: normalized.oneLineSummary,
-    result: projectTaskResultForBrowser(normalized.result, "list"),
+    result: projectTaskResultForBrowser(normalized.result, "list", {
+      id: normalized.id,
+      type: normalized.type,
+      title: normalized.title,
+      materialText: normalized.materialText,
+      oneLineSummary: normalized.oneLineSummary,
+      level: normalized.level,
+      decisionStatus: normalizeDecisionStatus(record.decisionStatus),
+    }),
     productImage: null,
   };
 }
@@ -262,9 +270,18 @@ export async function GET(request: NextRequest) {
       const sandboxCandidates = listSandboxCandidates(ctx.demoAccessId);
       const sandboxItems = sandboxTasks.map((task) => {
         const rawResult = safeParseJson(task.resultJson);
-        const result = projectTaskResultForBrowser(rawResult, "list");
+        const listedTask = sandboxTaskToListItem(task);
+        const result = projectTaskResultForBrowser(rawResult, "list", {
+          id: listedTask.id,
+          type: listedTask.type,
+          title: listedTask.title,
+          materialText: listedTask.materialText,
+          oneLineSummary: listedTask.oneLineSummary,
+          level: listedTask.level,
+          decisionStatus: normalizeDecisionStatus(listedTask.decisionStatus),
+        });
         const item = {
-          ...sandboxTaskToListItem(task),
+          ...listedTask,
           result,
           productImage: null,
         } as unknown as ViralTaskItem;
@@ -422,7 +439,7 @@ export async function POST(request: NextRequest) {
 
   // Demo-Sandbox.1-B: Demo writes to sandbox
   if (auth.context.mode === "demo") {
-    const sandboxTask = createGenericSandboxTask(auth.context.demoAccessId, {
+    const sandboxTask = await createGenericSandboxTask(auth.context.demoAccessId, {
       type: taskType,
       title: asOptionalString(body.title) || asOptionalString(body.productName),
       platform: platform || "manual",
@@ -436,7 +453,15 @@ export async function POST(request: NextRequest) {
       ok: true,
       data: {
         ...sandboxTaskToListItem(sandboxTask),
-        result: projectTaskResultForBrowser(body.result, "list"),
+        result: projectTaskResultForBrowser(body.result, "list", {
+          id: sandboxTask.id,
+          type: sandboxTask.type,
+          title: sandboxTask.title,
+          materialText: sandboxTask.materialText,
+          oneLineSummary: sandboxTask.oneLineSummary,
+          level: sandboxTask.level,
+          decisionStatus: normalizeDecisionStatus(sandboxTask.decisionStatus),
+        }),
         productImage: null,
       } as unknown as ViralTaskItem,
     });

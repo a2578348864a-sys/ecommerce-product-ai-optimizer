@@ -283,7 +283,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const auth = requireAuthenticated(request);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     if (auth.context.mode === "demo") {
-      const deleted = deleteSandboxTask(auth.context.demoAccessId, id);
+      const deleted = await deleteSandboxTask(auth.context.demoAccessId, id);
       if (!deleted) return notFoundResponse();
       await cleanupTaskImages({
         accessMode: "visitor",

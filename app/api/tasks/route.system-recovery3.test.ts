@@ -71,15 +71,15 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
   });
 
   // ── Sandbox task creation and listing ──
-  it("sandbox task created via createTrustedSandboxTask is visible in listSandboxTasks", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "Sandbox List Test" });
+  it("sandbox task created via createTrustedSandboxTask is visible in listSandboxTasks", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "Sandbox List Test" });
     const tasks = listSandboxTasks(demoAccessId);
     expect(tasks.length).toBeGreaterThanOrEqual(1);
     expect(tasks.some(t => t.id === task.id)).toBe(true);
   });
 
-  it("listSandboxTasks isolates between different demo users", () => {
-    createTrustedSandboxTask(demoAccessId, { title: "User A Task" });
+  it("listSandboxTasks isolates between different demo users", async () => {
+    await createTrustedSandboxTask(demoAccessId, { title: "User A Task" });
     const tasksA = listSandboxTasks(demoAccessId);
     const tasksB = listSandboxTasks("other_demo_id");
     expect(tasksA.length).toBeGreaterThanOrEqual(1);
@@ -94,9 +94,9 @@ describe("System-Recovery.3 — Demo sandbox tasks in GET /api/tasks", () => {
   });
 
   // ── End-to-end: demo token → getAccessContext → listSandboxTasks ──
-  it("full flow: demo token yields demo context which yields sandbox tasks", () => {
+  it("full flow: demo token yields demo context which yields sandbox tasks", async () => {
     // Step 1: Create sandbox task
-    const task = createTrustedSandboxTask(demoAccessId, { title: "E2E List Test Task" });
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "E2E List Test Task" });
     expect(task.id).toMatch(/^sandbox_task_/);
 
     // Step 2: Simulate GET /api/tasks request with demo token headers
@@ -150,8 +150,8 @@ describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
     expect(isSandboxTaskId("")).toBe(false);
   });
 
-  it("sandbox task ID starts with sandbox_ prefix and is scoped to demoAccessId", () => {
-    const task = createTrustedSandboxTask("demo-user-001", { title: "Test" });
+  it("sandbox task ID starts with sandbox_ prefix and is scoped to demoAccessId", async () => {
+    const task = await createTrustedSandboxTask("demo-user-001", { title: "Test" });
     expect(isSandboxTaskId(task.id)).toBe(true);
     expect(task.id).toMatch(/^sandbox_task_/);
     expect(task.demoAccessId).toBe("demo-user-001");
@@ -182,8 +182,8 @@ describe("Access-Control-Fix.1 — Demo task isolation guards", () => {
     expect(shouldReject("owner")).toBe(false);
   });
 
-  it("guard logic: demo mode + sandbox ID → allow", () => {
-    const task = createTrustedSandboxTask("scope-test-demo", { title: "Demo Task" });
+  it("guard logic: demo mode + sandbox ID → allow", async () => {
+    const task = await createTrustedSandboxTask("scope-test-demo", { title: "Demo Task" });
     const isSandbox = isSandboxTaskId(task.id);
     expect(isSandbox).toBe(true);
 

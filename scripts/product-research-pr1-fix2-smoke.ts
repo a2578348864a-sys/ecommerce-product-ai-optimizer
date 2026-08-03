@@ -36,9 +36,17 @@ import {
 const WORKTREE = resolve(process.cwd());
 const SMOKE_PARENT = "C:\\Users\\a2578\\Desktop\\qingxuan-smoke";
 const HOST = "127.0.0.1";
-const PORTS = [3124, 3125] as const;
-const CDP_PORT = 24812;
+const PORTS = [3128, 3129] as const;
+const CDP_PORT = 24813;
 const CHROME = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+const nodeRequestEvidence = {
+  requestCount: 0,
+  externalHttpRequestCount: 0,
+  productionPortAccessCount: 0,
+  listingMutationRequestCount: 0,
+  imageMutationRequestCount: 0,
+  server5xxCount: 0,
+};
 const FORBIDDEN_KEYS = new Set([
   "actorRef",
   "decisionId",
@@ -92,6 +100,12 @@ function wait(milliseconds: number) {
 function jsonRecord(value: unknown): JsonRecord {
   assert(typeof value === "object" && value !== null && !Array.isArray(value), "smoke_json_object_required");
   return value as JsonRecord;
+}
+
+function optionalJsonRecord(value: unknown): JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
 }
 
 function publicErrorCode(value: unknown): string {
@@ -221,7 +235,7 @@ function buildProtectedResult(input: {
   assert(appended.kind === "updated", "smoke_initial_revision_failed");
   return {
     productName: "Synthetic product research record",
-    status: "completed",
+    status: ["completed", "private-scalar-array-canary"],
     score: 0,
     level: "low",
     oneLineSummary: "Synthetic isolated record.",
@@ -261,7 +275,20 @@ function hasForbiddenProjection(value: unknown): boolean {
 }
 
 async function api(baseUrl: string, token: string, path: string, init: RequestInit = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const target = new URL(path, baseUrl);
+  const method = String(init.method ?? "GET").toUpperCase();
+  nodeRequestEvidence.requestCount += 1;
+  if ((target.protocol === "http:" || target.protocol === "https:") && target.hostname !== HOST) {
+    nodeRequestEvidence.externalHttpRequestCount += 1;
+  }
+  if (target.port === "3005") nodeRequestEvidence.productionPortAccessCount += 1;
+  if (method !== "GET" && target.pathname.includes("listing-pack")) {
+    nodeRequestEvidence.listingMutationRequestCount += 1;
+  }
+  if (method !== "GET" && (target.pathname.includes("image-draft") || target.pathname.includes("ai-image"))) {
+    nodeRequestEvidence.imageMutationRequestCount += 1;
+  }
+  const response = await fetch(target, {
     ...init,
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
@@ -270,6 +297,7 @@ async function api(baseUrl: string, token: string, path: string, init: RequestIn
       ...(init.headers ?? {}),
     },
   });
+  if (response.status >= 500) nodeRequestEvidence.server5xxCount += 1;
   const body = await response.json().catch(() => null);
   return { status: response.status, body };
 }
@@ -417,6 +445,12 @@ function cdpClient(webSocketUrl: string) {
     imageReadRequestCount: 0,
     imageMutationRequestCount: 0,
     aiRequestCount: 0,
+    decisionPatchRequests: [] as Array<{
+      requestId: string;
+      sessionId?: string;
+      body: JsonRecord;
+      status?: number;
+    }>,
   };
   const ready = new Promise<void>((resolveReady, rejectReady) => {
     socket.addEventListener("open", () => resolveReady(), { once: true });
@@ -456,6 +490,15 @@ function cdpClient(webSocketUrl: string) {
                   ? "other-api"
                   : "page-resource";
         requests.set(String(message.params.requestId), { category, method: requestMethod });
+        if (category === "research-decision" && requestMethod === "PATCH") {
+          let body: JsonRecord = {};
+          try { body = jsonRecord(JSON.parse(String(message.params?.request?.postData ?? "{}"))); } catch { /* invalid body is evidence */ }
+          state.decisionPatchRequests.push({
+            requestId: String(message.params.requestId),
+            ...(typeof message.sessionId === "string" ? { sessionId: message.sessionId } : {}),
+            body,
+          });
+        }
         if ((url.protocol === "http:" || url.protocol === "https:") && url.hostname !== HOST) {
           state.externalHttpRequestCount += 1;
         }
@@ -483,6 +526,10 @@ function cdpClient(webSocketUrl: string) {
         });
       }
       if (status >= 500) state.server5xxCount += 1;
+      const decisionPatch = state.decisionPatchRequests.find(
+        (entry) => entry.requestId === String(message.params.requestId),
+      );
+      if (decisionPatch) decisionPatch.status = status;
     }
   });
   return {
@@ -608,6 +655,20 @@ async function runMountedConflictCheck(input: {
       sessionStorage.setItem('qx:access-expires:session:v2', String(Date.now() + 3600000));
       return true;
     })()`);
+    await client.send("Page.navigate", { url: `${input.baseUrl}/tasks` }, page.sessionId);
+    await waitFor(
+      client,
+      page.sessionId,
+      "document.body.innerText.includes('Synthetic product research record')",
+      160,
+      "smoke_task_list_render_timeout",
+    );
+    const listPageRendered = await evaluate(
+      client,
+      page.sessionId,
+      "document.body.innerText.includes('Synthetic product research record')",
+    );
+    assert(listPageRendered === true, "smoke_task_list_allowlist_regression");
     await client.send("Page.navigate", { url: `${input.baseUrl}/tasks/${encodeURIComponent(input.taskId)}` }, page.sessionId);
     await waitFor(
       client,
@@ -623,42 +684,6 @@ async function runMountedConflictCheck(input: {
       160,
       "smoke_initial_revision_render_timeout",
     );
-    await evaluate(client, page.sessionId, `(() => {
-      const nativeFetch = window.fetch.bind(window);
-      window.__pr1Fix2PatchBodies = [];
-      window.__pr1Fix2PatchOutcomes = [];
-      window.fetch = async (resource, init) => {
-        const url = typeof resource === 'string' ? resource : resource.url;
-        const isDecisionPatch = url.includes('/research-decision') && init?.method === 'PATCH';
-        if (isDecisionPatch) {
-          window.__pr1Fix2PatchBodies.push(JSON.parse(String(init.body)));
-        }
-        const response = isDecisionPatch && window.__pr1Fix2PatchBodies.length === 1
-          ? new Response(JSON.stringify({
-            ok: false,
-            error: {
-              code: 'research_record_conflict',
-              message: 'Synthetic stale decision conflict.',
-              currentRevision: 4,
-            },
-          }), { status: 409, headers: { 'Content-Type': 'application/json' } })
-          : await nativeFetch(resource, init);
-        if (isDecisionPatch) {
-          const outcome = { status: response.status, code: null, revision: null };
-          try {
-            const payload = await response.clone().json();
-            outcome.code = payload?.error?.code ?? null;
-            outcome.revision = payload?.data?.record?.revision ?? null;
-          } catch {
-            // Status remains sufficient when a response has no JSON payload.
-          }
-          window.__pr1Fix2PatchOutcomes.push(outcome);
-        }
-        return response;
-      };
-      return true;
-    })()`);
-
     const serverUpdates = [
       {
         expectedRevision: 2,
@@ -732,7 +757,6 @@ async function runMountedConflictCheck(input: {
         conflictVisible: text.includes('已加载最新版本'),
         staleSuccessVisible: text.includes('研究决定已保存并追加到历史'),
         busyCleared: button && !button.disabled && !button.textContent.includes('保存中'),
-        patchBodies: window.__pr1Fix2PatchBodies,
       };
     })()`);
     assert(conflictState.latestRevisionVisible, "smoke_conflict_revision_not_loaded");
@@ -783,23 +807,34 @@ async function runMountedConflictCheck(input: {
         "smoke_fresh_save_timeout",
       );
     } catch {
-      const diagnostics = await evaluate(client, page.sessionId, `(() => ({
-        patchCount: window.__pr1Fix2PatchBodies?.length ?? 0,
-        outcomes: window.__pr1Fix2PatchOutcomes ?? [],
-      }))()`);
-      const latest = Array.isArray(diagnostics.outcomes) ? diagnostics.outcomes.at(-1) : null;
+      const latest = client.state.decisionPatchRequests.at(-1);
       throw new Error(
-        `smoke_fresh_save_timeout_${diagnostics.patchCount}_${latest?.status ?? 0}_${latest?.code ?? "none"}_${latest?.revision ?? 0}`,
+        `smoke_fresh_save_timeout_${client.state.decisionPatchRequests.length}_${latest?.status ?? 0}`,
       );
     }
     const finalState = await evaluate(client, page.sessionId, `(() => ({
-      patchBodies: window.__pr1Fix2PatchBodies,
-      patchOutcomes: window.__pr1Fix2PatchOutcomes,
       revisionFiveVisible: document.body.innerText.includes('版本 5'),
       reasonVisible: document.body.innerText.includes('Synthetic browser revision five.'),
     }))()`);
-    const revisions = (finalState.patchBodies as Array<{ expectedRevision?: unknown }>).map((body) => body.expectedRevision);
-    const patchOutcomes = finalState.patchOutcomes as Array<{ status?: unknown; code?: unknown; revision?: unknown }>;
+    const revisions = client.state.decisionPatchRequests.map((entry) => entry.body.expectedRevision);
+    const patchOutcomes = await Promise.all(client.state.decisionPatchRequests.map(async (entry) => {
+      let payload: JsonRecord = {};
+      try {
+        const responseBody = await client.send(
+          "Network.getResponseBody",
+          { requestId: entry.requestId },
+          entry.sessionId,
+        );
+        payload = jsonRecord(JSON.parse(String(responseBody.body ?? "{}")));
+      } catch {
+        // The status remains machine-observed even when Chrome evicts a body.
+      }
+      return {
+        status: entry.status,
+        code: optionalJsonRecord(payload.error).code,
+        revision: optionalJsonRecord(optionalJsonRecord(payload.data).record).revision,
+      };
+    }));
     assert(revisions.length === 2 && revisions[0] === 2 && revisions[1] === 4, "smoke_browser_expected_revision_drift");
     assert(
       patchOutcomes.length === 2
@@ -843,6 +878,7 @@ async function runMountedConflictCheck(input: {
       imageReadRequestCount: client.state.imageReadRequestCount,
       imageMutationRequestCount: client.state.imageMutationRequestCount,
       aiRequestCount: client.state.aiRequestCount,
+      listPageRendered,
     };
   } finally {
     try {
@@ -884,7 +920,7 @@ async function main() {
   if (!existsSync(SMOKE_PARENT)) mkdirSync(SMOKE_PARENT, { recursive: true });
   assert(!lstatSync(SMOKE_PARENT).isSymbolicLink(), "smoke_parent_reparse_forbidden");
   const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-  const runtimeRoot = join(SMOKE_PARENT, `product-research-pr1-fix2-${timestamp}`);
+  const runtimeRoot = join(SMOKE_PARENT, `product-research-pr1-fix3-${timestamp}`);
   assert(dirname(runtimeRoot) === SMOKE_PARENT && !existsSync(runtimeRoot), "smoke_root_identity_invalid");
   const port = await selectPort();
   const baseUrl = `http://${HOST}:${port}`;
@@ -1015,6 +1051,18 @@ async function main() {
         },
       });
     });
+    const initialOwnerCounts = {
+      candidates: await prisma.opportunityCandidate.count(),
+      researchRecords: await prisma.viralAnalysisRecord.count(),
+    };
+    const initialVisitorStore = JSON.parse(readFileSync(sandboxStorePath, "utf8")) as {
+      tasks: unknown[];
+      candidates: unknown[];
+    };
+    const initialVisitorCounts = {
+      candidates: initialVisitorStore.candidates.length,
+      researchRecords: initialVisitorStore.tasks.length,
+    };
 
     const sanitizedEnv: Record<string, string | undefined> = {};
     for (const key of ["APPDATA", "COMSPEC", "LOCALAPPDATA", "NUMBER_OF_PROCESSORS", "OS", "PATH", "PATHEXT", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "WINDIR"]) {
@@ -1070,8 +1118,17 @@ async function main() {
       const detail = await api(baseUrl, token, `/api/tasks/${encodeURIComponent(taskId)}`);
       const decision = await api(baseUrl, token, `/api/tasks/${encodeURIComponent(taskId)}/research-decision`);
       assert(list.status === 200 && detail.status === 200 && decision.status === 200, "smoke_dto_status_failed");
+      const serializedResponses = JSON.stringify([list.body, detail.body, decision.body]);
       assert(!hasForbiddenProjection(list.body) && !hasForbiddenProjection(detail.body) && !hasForbiddenProjection(decision.body), "smoke_dto_forbidden_field");
-      dtoChecks.push({ label, list: list.status, detail: detail.status, decision: decision.status, forbiddenFieldPresent: false });
+      assert(!serializedResponses.includes("private-scalar-array-canary"), "smoke_dto_scalar_array_leak");
+      dtoChecks.push({
+        label,
+        list: list.status,
+        detail: detail.status,
+        decision: decision.status,
+        forbiddenFieldPresent: false,
+        scalarArrayCanaryPresent: false,
+      });
     }
     const crossVisitor = await api(baseUrl, visitorB.token, `/api/tasks/${encodeURIComponent(visitorTaskId)}`);
     const crossVisitorDecision = await api(baseUrl, visitorB.token, `/api/tasks/${encodeURIComponent(visitorTaskId)}/research-decision`);
@@ -1192,6 +1249,7 @@ async function main() {
     assert(finalOwner!.decisionStatus === "need_info", "smoke_final_owner_compatibility_status_invalid");
 
     const runtimeLog = readFileSync(logPath, "utf8");
+    let credentialLeakCount = 0;
     for (const secret of [
       ownerPassword,
       visitorAPassword,
@@ -1201,19 +1259,65 @@ async function main() {
       visitorA.token,
       visitorB.token,
     ]) {
-      assert(!runtimeLog.includes(secret), "smoke_runtime_log_secret_leak");
+      if (runtimeLog.includes(secret)) credentialLeakCount += 1;
     }
+    assert(credentialLeakCount === 0, "smoke_runtime_log_secret_leak");
+    const finalOwnerCounts = {
+      candidates: await prisma.opportunityCandidate.count(),
+      researchRecords: await prisma.viralAnalysisRecord.count(),
+    };
+    const finalVisitorStore = JSON.parse(readFileSync(sandboxStorePath, "utf8")) as {
+      tasks: Array<{ id?: unknown }>;
+      candidates: Array<{ id?: unknown; convertedTaskId?: unknown }>;
+    };
+    const ownerOriginalCandidate = await prisma.opportunityCandidate.findUnique({ where: { id: ownerCandidateId } });
+    const visitorOriginalCandidate = finalVisitorStore.candidates.find((candidate) => candidate.id === visitorCandidateId);
+    const expectedOwnerCandidateCreates = 1;
+    const expectedOwnerResearchCreates = 2;
+    const expectedVisitorCandidateCreates = 0;
+    const expectedVisitorResearchCreates = 1;
+    const unexpectedCandidateCreates =
+      (finalOwnerCounts.candidates - initialOwnerCounts.candidates - expectedOwnerCandidateCreates)
+      + (finalVisitorStore.candidates.length - initialVisitorCounts.candidates - expectedVisitorCandidateCreates);
+    const unexpectedResearchRecordCreates =
+      (finalOwnerCounts.researchRecords - initialOwnerCounts.researchRecords - expectedOwnerResearchCreates)
+      + (finalVisitorStore.tasks.length - initialVisitorCounts.researchRecords - expectedVisitorResearchCreates);
+    const convertedTaskIdUnexpectedChanges = Number(ownerOriginalCandidate?.convertedTaskId !== ownerTaskId)
+      + Number(visitorOriginalCandidate?.convertedTaskId !== visitorTaskId)
+      + Number(typeof linkedFormal?.convertedTaskId !== "string");
+    const mounted = jsonRecord(report.mountedBrowser);
+    const realAiRequestCount = Number(mounted.aiRequestCount ?? 0)
+      + Number(jsonRecord(report.formalCandidate).providerCallsStarted ?? 0);
+    const externalBusinessRequestCount = Number(mounted.externalHttpRequestCount ?? 0)
+      + nodeRequestEvidence.externalHttpRequestCount;
+    const autoListingRequestCount = Number(mounted.listingMutationRequestCount ?? 0)
+      + nodeRequestEvidence.listingMutationRequestCount;
+    const autoImageRequestCount = Number(mounted.imageMutationRequestCount ?? 0)
+      + nodeRequestEvidence.imageMutationRequestCount;
+    const server5xxCount = Number(mounted.server5xxCount ?? 0) + nodeRequestEvidence.server5xxCount;
+    assert(realAiRequestCount === 0, "smoke_real_ai_side_effect");
+    assert(externalBusinessRequestCount === 0, "smoke_external_business_side_effect");
+    assert(autoListingRequestCount === 0 && autoImageRequestCount === 0, "smoke_auto_studio_side_effect");
+    assert(nodeRequestEvidence.productionPortAccessCount === 0, "smoke_production_port_access");
+    assert(server5xxCount === 0, "smoke_server_5xx_side_effect");
+    assert(unexpectedCandidateCreates === 0 && unexpectedResearchRecordCreates === 0, "smoke_unexpected_record_create");
+    assert(convertedTaskIdUnexpectedChanges === 0, "smoke_unexpected_candidate_link_change");
     report.sideEffects = {
-      realAiRequestCount: 0,
-      externalBusinessRequestCount: 0,
-      autoListingRequestCount: 0,
-      autoImageRequestCount: 0,
-      productionPortAccessCount: 0,
-      server5xxCount: 0,
-      unexpectedCandidateCreates: 0,
-      unexpectedResearchRecordCreates: 0,
-      convertedTaskIdUnexpectedChanges: 0,
-      credentialLeakDetected: false,
+      realAiRequestCount: { status: "verified_zero", value: realAiRequestCount, source: "browser_cdp_plus_workflow_run_proof" },
+      externalBusinessRequestCount: { status: "verified_zero", value: externalBusinessRequestCount, source: "browser_cdp_plus_driver_url_instrumentation" },
+      autoListingRequestCount: { status: "verified_zero", value: autoListingRequestCount, source: "browser_cdp_plus_driver_url_instrumentation" },
+      autoImageRequestCount: { status: "verified_zero", value: autoImageRequestCount, source: "browser_cdp_plus_driver_url_instrumentation" },
+      productionPortAccessCount: { status: "verified_zero", value: nodeRequestEvidence.productionPortAccessCount, source: "driver_url_instrumentation" },
+      server5xxCount: { status: "verified_zero", value: server5xxCount, source: "browser_cdp_plus_driver_response_instrumentation" },
+      unexpectedCandidateCreates: { status: "verified_zero", value: unexpectedCandidateCreates, source: "isolated_store_before_after_counts" },
+      unexpectedResearchRecordCreates: { status: "verified_zero", value: unexpectedResearchRecordCreates, source: "isolated_store_before_after_counts" },
+      convertedTaskIdUnexpectedChanges: { status: "verified_zero", value: convertedTaskIdUnexpectedChanges, source: "isolated_store_identity_checks" },
+      credentialLeakDetected: { status: "verified_zero", value: credentialLeakCount, source: "runtime_log_secret_scan" },
+      coverage: {
+        browserRequests: "CDP Network events",
+        driverRequests: nodeRequestEvidence.requestCount,
+        runtimeOutboundCaveat: "No OS-level packet capture; exercised runtime routes have no provider call and the child environment contains no provider credential.",
+      },
     };
     report.database = {
       quickCheck: ((await prisma.$queryRawUnsafe("PRAGMA quick_check")) as Array<Record<string, string>>)[0]?.quick_check ?? "unknown",
@@ -1237,7 +1341,7 @@ async function main() {
     report.portReleased = await isPortFree(port);
     report.cdpPortReleased = await isPortFree(CDP_PORT);
     const exactRoot = resolve(runtimeRoot);
-    assert(dirname(exactRoot) === SMOKE_PARENT && exactRoot.startsWith(`${SMOKE_PARENT}\\product-research-pr1-fix2-`), "smoke_cleanup_identity_invalid");
+    assert(dirname(exactRoot) === SMOKE_PARENT && exactRoot.startsWith(`${SMOKE_PARENT}\\product-research-pr1-fix3-`), "smoke_cleanup_identity_invalid");
     if (existsSync(exactRoot)) rmSync(exactRoot, { recursive: true, force: true });
     report.runtimeRootRemoved = !existsSync(exactRoot);
     assert(report.portReleased && report.cdpPortReleased && report.runtimeRootRemoved, "smoke_cleanup_failed");

@@ -11,6 +11,10 @@ import {
   hasProductResearchRecordNamespace,
   verifyProductResearchHash,
 } from "@/lib/productResearchRecord";
+import {
+  commitOwnerTaskResultJsonMutationInternal,
+  loadOwnerTaskResultJsonSnapshotInternal,
+} from "@/lib/server/taskResultJsonMutation.owner.internal";
 
 export type TaskResultJsonWriter =
   | "research-decision"
@@ -77,11 +81,9 @@ export class TaskResultJsonMutationError extends Error {
     this.name = "TaskResultJsonMutationError";
   }
 }
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
 function parseResultJson(value: string): Record<string, unknown> {
   let parsed: unknown;
   try {
@@ -216,61 +218,11 @@ export function applyTaskResultJsonMutation<T>(input: {
     };
   });
 }
-
-export async function loadOwnerTaskResultJsonSnapshot(
-  database: TaskResultJsonDatabase,
-  taskId: string,
-): Promise<TaskResultJsonSnapshot | null> {
-  const value = await database.viralAnalysisRecord.findUnique({
-    where: { id: taskId },
-    select: {
-      id: true,
-      type: true,
-      updatedAt: true,
-      resultJson: true,
-      decisionStatus: true,
-    },
-  });
-  if (!isRecord(value)
-    || typeof value.id !== "string"
-    || typeof value.type !== "string"
-    || typeof value.resultJson !== "string"
-    || typeof value.decisionStatus !== "string"
-    || (!(value.updatedAt instanceof Date) && typeof value.updatedAt !== "string")) {
-    return null;
-  }
-  return value as TaskResultJsonSnapshot;
-}
-
-export async function commitOwnerTaskResultJsonMutation(
-  database: TaskResultJsonDatabase,
-  input: {
-    snapshot: TaskResultJsonSnapshot;
-    resultJson: string;
-    decisionStatus?: string;
-    updatedAt: string;
-  },
-): Promise<boolean> {
-  const result = await database.viralAnalysisRecord.updateMany({
-    where: {
-      id: input.snapshot.id,
-      updatedAt: input.snapshot.updatedAt,
-      resultJson: input.snapshot.resultJson,
-    },
-    data: {
-      resultJson: input.resultJson,
-      ...(input.decisionStatus === undefined ? {} : { decisionStatus: input.decisionStatus }),
-      updatedAt: new Date(input.updatedAt),
-    },
-  });
-  return result.count === 1;
-}
-
 async function mutateOwnerTaskResultJson<T>(
   database: TaskResultJsonDatabase,
   input: TaskResultJsonMutationInput<T>,
 ) {
-  const snapshot = await loadOwnerTaskResultJsonSnapshot(database, input.taskId);
+  const snapshot = await loadOwnerTaskResultJsonSnapshotInternal(database, input.taskId);
   if (!snapshot) {
     throw new TaskResultJsonMutationError("not_found", 404, "任务不存在。");
   }
@@ -287,7 +239,7 @@ async function mutateOwnerTaskResultJson<T>(
     snapshot,
     mutate: input.mutate,
   });
-  const committed = await commitOwnerTaskResultJsonMutation(database, {
+  const committed = await commitOwnerTaskResultJsonMutationInternal(database, {
     snapshot,
     resultJson: next.resultJson,
     decisionStatus: next.decisionStatus,
@@ -378,15 +330,5 @@ export async function updateLegacySandboxTaskDecisionStatusAtomic(input: {
       }
       return { result: current, decisionStatus: input.decisionStatus, value: null };
     },
-  });
-}
-
-export async function mutateOwnerTaskResultJsonForTest<T>(
-  database: TaskResultJsonDatabase,
-  input: Omit<TaskResultJsonMutationInput<T>, "context">,
-) {
-  return mutateOwnerTaskResultJson(database, {
-    ...input,
-    context: { mode: "owner", token: "" },
   });
 }

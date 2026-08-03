@@ -274,7 +274,7 @@ async function selectOwnerCandidate(
   );
 }
 
-function selectSandboxCandidate(
+async function selectSandboxCandidate(
   demoAccessId: string,
   input: CandidateSaveItem,
   identity: MarketScreeningCandidateIdentity,
@@ -288,7 +288,7 @@ function selectSandboxCandidate(
   let created = false;
 
   if (!candidate) {
-    const saved = saveLegacySandboxCandidates(demoAccessId, [input]);
+    const saved = await saveLegacySandboxCandidates(demoAccessId, [input]);
     const sandboxCandidate = saved.items[0] ?? null;
     candidate = sandboxCandidate ? sandboxCandidateToListItem(sandboxCandidate) as CandidateRecord : null;
     created = saved.created > 0;
@@ -324,7 +324,7 @@ function selectSandboxCandidate(
   }
   const shouldPromote = candidate.status === "pending";
   if (shouldPromote || mergedProductImage.changed) {
-    const updated = updateSandboxCandidate(
+    const updated = await updateSandboxCandidate(
       demoAccessId,
       candidate.id,
       {

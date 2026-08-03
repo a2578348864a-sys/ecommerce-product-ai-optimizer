@@ -19,7 +19,6 @@ import {
   getProductResearchRecord,
   getProductResearchVerification,
   hasProductResearchRecordNamespace,
-  mergeProductResearchRecord,
   productResearchDecisionToCompatibilityStatus,
   toProductResearchDecisionSummary,
   type ProductResearchDecisionSummary,
@@ -27,6 +26,7 @@ import {
   type ProductResearchDecisionInput,
   type ProductResearchRecordV1,
 } from "@/lib/productResearchRecord";
+import { createResearchDecisionResultMutation } from "@/lib/server/taskResultWriterServices";
 
 type RawTaskSnapshot = {
   id: string;
@@ -310,9 +310,8 @@ export async function updateProductResearchDecision(
         resultJson: snapshot.resultJson,
         updatedAt: snapshot.updatedAt,
       },
-      mutate: (current) => ({
-        result: mergeProductResearchRecord(current, appended.record),
-        value: null,
+      mutate: createResearchDecisionResultMutation({
+        record: appended.record,
         decisionStatus: compatibilityStatus,
         updatedAt: now,
       }),

@@ -5,11 +5,27 @@ import {
   type ProductResearchRecordV1,
 } from "@/lib/productResearchRecord";
 import { getProductResearchDecisionLabel } from "@/lib/productResearchDecisionContract";
+import { deriveAgentNextStepPanelState } from "@/components/agentNextStepPanelModel";
+import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
+import { derivePipelineStatus } from "@/lib/productPipeline";
+import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
+import { deriveTaskWorkflowSummary, getTaskSourceMeta } from "@/lib/taskWorkflowSummary";
+import { hasAiListingPack } from "@/lib/tasks/listingSnapshotUi";
+import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 
 export const PRODUCT_RESEARCH_HASH_FINGERPRINT_LENGTH = 12;
 
 type JsonRecord = Record<string, unknown>;
 type BrowserProjectionScope = "list" | "detail";
+export type TaskListProjectionContext = {
+  readonly id?: string;
+  readonly type?: string | null;
+  readonly title?: string | null;
+  readonly materialText?: string | null;
+  readonly oneLineSummary?: string | null;
+  readonly level?: string | null;
+  readonly decisionStatus?: DecisionStatus | null;
+};
 type ProjectionSpec =
   | { readonly kind: "scalar" }
   | { readonly kind: "array"; readonly item: ProjectionSpec }
@@ -396,6 +412,10 @@ const listingSpec = objectOf({
 const LIST_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   productName: scalar,
   status: scalar,
+};
+
+const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
+  ...LIST_FIELDS,
   score: scalar,
   level: scalar,
   oneLineSummary: scalar,
@@ -410,10 +430,6 @@ const LIST_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   painPoints: stringList,
   hooks: stringList,
   risks: stringList,
-};
-
-const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
-  ...LIST_FIELDS,
   summary: scalar,
   steps: arrayOf(objectOf({
     key: scalar,
@@ -465,13 +481,6 @@ function projectBySpec(value: unknown, spec: ProjectionSpec, depth = 0): unknown
   if (spec.kind === "scalar") {
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (Array.isArray(value)) {
-      const items = value.slice(0, 200).filter((item) => (
-        item === null || typeof item === "string" || typeof item === "boolean"
-        || (typeof item === "number" && Number.isFinite(item))
-      ));
-      return items;
-    }
     return undefined;
   }
   if (spec.kind === "array") {
@@ -521,6 +530,88 @@ function projectResearchSummary(record: ProductResearchRecordV1) {
   };
 }
 
+function boundedStrings(value: unknown, limit = 5) {
+  return Array.isArray(value)
+    ? value
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.normalize("NFC").trim().slice(0, 240))
+      .slice(0, limit)
+    : [];
+}
+
+function projectLegacyListSummary(value: JsonRecord, context: TaskListProjectionContext) {
+  const decisionStatus = context.decisionStatus ?? "pending";
+  const summaryInput = {
+    type: context.type,
+    title: context.title,
+    materialText: context.materialText,
+    oneLineSummary: context.oneLineSummary,
+    level: context.level,
+    decisionStatus,
+    result: value,
+  };
+  const workflow = deriveTaskWorkflowSummary(summaryInput);
+  const operation = deriveTaskOperationSummary(summaryInput);
+  const agent = deriveAgentNextStepPanelState({
+    taskType: context.type ?? undefined,
+    decisionStatus,
+    result: value,
+  });
+  const presentation = deriveProductResearchPresentation({
+    id: context.id ?? "",
+    title: workflow.productName,
+    type: context.type,
+    decisionStatus,
+    result: value,
+  });
+
+  return {
+    workflow: {
+      ...workflow,
+      verdictLabel: workflow.verdictLabel.slice(0, 240),
+      primaryNextAction: workflow.primaryNextAction.slice(0, 240),
+      nextActions: boundedStrings(workflow.nextActions),
+      reason: workflow.reason.slice(0, 240),
+      missingFields: boundedStrings(workflow.missingFields),
+    },
+    operation: {
+      stage: operation.stage,
+      stageLabel: operation.stageLabel,
+      decision: operation.decision,
+      decisionLabel: operation.decisionLabel,
+      riskLevel: operation.riskLevel,
+      riskLabel: operation.riskLabel,
+      primaryAction: operation.primaryAction,
+      actionLabel: operation.actionLabel.slice(0, 240),
+      blockingIssues: boundedStrings(operation.blockingIssues),
+      evidenceSummary: operation.evidenceSummary.slice(0, 240),
+      listingReadiness: operation.listingReadiness,
+      listingReadinessLabel: operation.listingReadinessLabel,
+      ...(operation.sourceQualityScore !== undefined
+        ? { sourceQualityScore: operation.sourceQualityScore }
+        : {}),
+      ...(operation.confidence ? { confidence: operation.confidence } : {}),
+      fallbackUsed: operation.fallbackUsed,
+    },
+    agent,
+    presentation: {
+      stage: presentation.stage,
+      artifacts: presentation.artifacts,
+      researchConclusions: boundedStrings(presentation.researchConclusions),
+      actions: presentation.actions,
+    },
+    pipelineStatus: derivePipelineStatus(summaryInput),
+    hasListingPack: hasAiListingPack(value),
+    hasCandidateSource: getTaskSourceMeta(value) !== null,
+    details: {
+      sellingPoints: boundedStrings(value.sellingPoints),
+      painPoints: boundedStrings(value.painPoints),
+      hooks: boundedStrings(value.hooks),
+      risks: boundedStrings(value.risks),
+    },
+  };
+}
+
 export function toResearchHashFingerprint(value: unknown): string | null {
   return researchHashFingerprint(value);
 }
@@ -528,6 +619,7 @@ export function toResearchHashFingerprint(value: unknown): string | null {
 export function projectTaskResultForBrowser(
   value: unknown,
   scope: BrowserProjectionScope,
+  context: TaskListProjectionContext = {},
 ): JsonRecord {
   if (!isRecord(value)) return {};
   const output: JsonRecord = {};
@@ -539,6 +631,7 @@ export function projectTaskResultForBrowser(
   }
   const record = parseProductResearchRecord(value.researchRecord);
   if (record) output.productResearchSummary = projectResearchSummary(record);
+  if (scope === "list") output.legacyListSummary = projectLegacyListSummary(value, context);
   return output;
 }
 

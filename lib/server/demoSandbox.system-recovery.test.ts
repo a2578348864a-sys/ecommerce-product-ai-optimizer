@@ -100,53 +100,53 @@ describe("Demo sandbox — task CRUD", () => {
 
   afterEach(() => cleanup());
 
-  it("createTrustedSandboxTask generates a sandbox-prefixed ID", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "Test Task" });
+  it("createTrustedSandboxTask generates a sandbox-prefixed ID", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "Test Task" });
     expect(isSandboxTaskId(task.id)).toBe(true);
     expect(task.id).toMatch(/^sandbox_task_/);
     expect(task.title).toBe("Test Task");
     expect(task.demoAccessId).toBe(demoAccessId);
   });
 
-  it("listSandboxTasks returns only tasks for given demoAccessId", () => {
-    createTrustedSandboxTask(demoAccessId, { title: "Task A" });
-    createTrustedSandboxTask(demoAccessId, { title: "Task B" });
+  it("listSandboxTasks returns only tasks for given demoAccessId", async () => {
+    await createTrustedSandboxTask(demoAccessId, { title: "Task A" });
+    await createTrustedSandboxTask(demoAccessId, { title: "Task B" });
     const tasks = listSandboxTasks(demoAccessId);
     expect(tasks).toHaveLength(2);
   });
 
-  it("listSandboxTasks isolates between different demo users", () => {
-    createTrustedSandboxTask(demoAccessId, { title: "User 1 Task" });
+  it("listSandboxTasks isolates between different demo users", async () => {
+    await createTrustedSandboxTask(demoAccessId, { title: "User 1 Task" });
     const tasks1 = listSandboxTasks(demoAccessId);
     const tasks2 = listSandboxTasks("other_demo_id");
     expect(tasks1).toHaveLength(1);
     expect(tasks2).toHaveLength(0);
   });
 
-  it("updateSandboxTask modifies fields", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "Original" });
-    const updated = updateSandboxTask(demoAccessId, task.id, { title: "Updated" });
+  it("updateSandboxTask modifies fields", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "Original" });
+    const updated = await updateSandboxTask(demoAccessId, task.id, { title: "Updated" });
     expect(updated).not.toBeNull();
     expect(updated!.title).toBe("Updated");
   });
 
-  it("updateSandboxTask returns null for wrong demoAccessId", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "Mine" });
-    const updated = updateSandboxTask("wrong_id", task.id, { title: "Hacked" });
+  it("updateSandboxTask returns null for wrong demoAccessId", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "Mine" });
+    const updated = await updateSandboxTask("wrong_id", task.id, { title: "Hacked" });
     expect(updated).toBeNull();
   });
 
-  it("deleteSandboxTask removes the task", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "To Delete" });
-    const deleted = deleteSandboxTask(demoAccessId, task.id);
+  it("deleteSandboxTask removes the task", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "To Delete" });
+    const deleted = await deleteSandboxTask(demoAccessId, task.id);
     expect(deleted).toBe(true);
     const remaining = listSandboxTasks(demoAccessId);
     expect(remaining).toHaveLength(0);
   });
 
-  it("deleteSandboxTask returns false for wrong demoAccessId", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "Protected" });
-    const deleted = deleteSandboxTask("wrong_id", task.id);
+  it("deleteSandboxTask returns false for wrong demoAccessId", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "Protected" });
+    const deleted = await deleteSandboxTask("wrong_id", task.id);
     expect(deleted).toBe(false);
   });
 
@@ -166,8 +166,8 @@ describe("Demo sandbox — candidate CRUD", () => {
 
   afterEach(() => cleanup());
 
-  it("createSandboxCandidate generates a sandbox-prefixed ID", () => {
-    const candidate = createSandboxCandidate(demoAccessId, {
+  it("createSandboxCandidate generates a sandbox-prefixed ID", async () => {
+    const candidate = await createSandboxCandidate(demoAccessId, {
       name: "Test Product",
       source: "访客输入",
     });
@@ -176,37 +176,37 @@ describe("Demo sandbox — candidate CRUD", () => {
     expect(candidate.demoAccessId).toBe(demoAccessId);
   });
 
-  it("listSandboxCandidates returns only for given demoAccessId", () => {
-    createSandboxCandidate(demoAccessId, { name: "C1" });
-    createSandboxCandidate(demoAccessId, { name: "C2" });
+  it("listSandboxCandidates returns only for given demoAccessId", async () => {
+    await createSandboxCandidate(demoAccessId, { name: "C1" });
+    await createSandboxCandidate(demoAccessId, { name: "C2" });
     const candidates = listSandboxCandidates(demoAccessId);
     expect(candidates).toHaveLength(2);
   });
 
-  it("updateSandboxCandidate modifies fields", () => {
-    const c = createSandboxCandidate(demoAccessId, { name: "Original" });
-    const updated = updateSandboxCandidate(demoAccessId, c.id, { name: "Updated" });
+  it("updateSandboxCandidate modifies fields", async () => {
+    const c = await createSandboxCandidate(demoAccessId, { name: "Original" });
+    const updated = await updateSandboxCandidate(demoAccessId, c.id, { name: "Updated" });
     expect(updated).not.toBeNull();
     expect(updated!.name).toBe("Updated");
   });
 
-  it("updateSandboxCandidate returns null for wrong demoAccessId", () => {
-    const c = createSandboxCandidate(demoAccessId, { name: "Mine" });
-    const updated = updateSandboxCandidate("wrong_id", c.id, { name: "Hacked" });
+  it("updateSandboxCandidate returns null for wrong demoAccessId", async () => {
+    const c = await createSandboxCandidate(demoAccessId, { name: "Mine" });
+    const updated = await updateSandboxCandidate("wrong_id", c.id, { name: "Hacked" });
     expect(updated).toBeNull();
   });
 
-  it("deleteSandboxCandidate removes the candidate", () => {
-    const c = createSandboxCandidate(demoAccessId, { name: "To Delete" });
-    const deleted = deleteSandboxCandidate(demoAccessId, c.id);
+  it("deleteSandboxCandidate removes the candidate", async () => {
+    const c = await createSandboxCandidate(demoAccessId, { name: "To Delete" });
+    const deleted = await deleteSandboxCandidate(demoAccessId, c.id);
     expect(deleted).toBe("deleted");
     const remaining = listSandboxCandidates(demoAccessId);
     expect(remaining).toHaveLength(0);
   });
 
-  it("deleteSandboxCandidate returns false for wrong demoAccessId", () => {
-    const c = createSandboxCandidate(demoAccessId, { name: "Protected" });
-    const deleted = deleteSandboxCandidate("wrong_id", c.id);
+  it("deleteSandboxCandidate returns false for wrong demoAccessId", async () => {
+    const c = await createSandboxCandidate(demoAccessId, { name: "Protected" });
+    const deleted = await deleteSandboxCandidate("wrong_id", c.id);
     expect(deleted).toBe("not_found");
   });
 
@@ -222,16 +222,16 @@ describe("Demo sandbox — candidate CRUD", () => {
 // ═══════════════════════════════════════════════════
 
 describe("Demo sandbox — isolation from official data", () => {
-  it("sandbox tasks are not stored in Prisma DB scope", () => {
+  it("sandbox tasks are not stored in Prisma DB scope", async () => {
     // Sandbox stores to file, not DB — ID prefix confirms this
-    const t1 = createTrustedSandboxTask("demo_abc", { title: "Sandbox Task" });
+    const t1 = await createTrustedSandboxTask("demo_abc", { title: "Sandbox Task" });
     expect(t1.id).toMatch(/^sandbox_task_/);
     // Official tasks have Prisma cuid format
     expect(t1.id).not.toMatch(/^cm/); // Prisma CUIDs start with 'c'
   });
 
-  it("sandbox candidates are not stored in Prisma DB scope", () => {
-    const c1 = createSandboxCandidate("demo_abc", { name: "Sandbox Candidate" });
+  it("sandbox candidates are not stored in Prisma DB scope", async () => {
+    const c1 = await createSandboxCandidate("demo_abc", { name: "Sandbox Candidate" });
     expect(c1.id).toMatch(/^sandbox_candidate_/);
     expect(c1.id).not.toMatch(/^cm/);
   });
@@ -251,8 +251,8 @@ describe("Demo sandbox — format helpers", () => {
 
   afterEach(() => cleanup());
 
-  it("sandbox task list items include sourceMode and permissions", () => {
-    const task = createTrustedSandboxTask(demoAccessId, { title: "Format Test" });
+  it("sandbox task list items include sourceMode and permissions", async () => {
+    const task = await createTrustedSandboxTask(demoAccessId, { title: "Format Test" });
     const item = sandboxTaskToListItem(task);
     expect(item.sourceMode).toBe("demo_sandbox");
     expect(item.isSandbox).toBe(true);
@@ -260,8 +260,8 @@ describe("Demo sandbox — format helpers", () => {
     expect(item.canDelete).toBe(true);
   });
 
-  it("sandbox candidate list items include sourceMode and permissions", () => {
-    const c = createSandboxCandidate(demoAccessId, { name: "Format Candidate" });
+  it("sandbox candidate list items include sourceMode and permissions", async () => {
+    const c = await createSandboxCandidate(demoAccessId, { name: "Format Candidate" });
     const item = sandboxCandidateToListItem(c);
     expect(item.sourceMode).toBe("demo_sandbox");
     expect(item.isSandbox).toBe(true);

@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
   if (preflight.mode === "signed_source_v2") {
     try {
       if (auth.context.mode === "demo") {
-        const result = saveSignedSandboxCandidates(auth.context.demoAccessId, preflight.items);
+        const result = await saveSignedSandboxCandidates(auth.context.demoAccessId, preflight.items);
         return json({
           ok: true,
           items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
   // Demo-Sandbox.1-C: Demo writes to sandbox
   if (auth.context.mode === "demo") {
     try {
-      const result = saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
+      const result = await saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
       return json({
         ok: true,
         items: result.items.map((item) => toPublicOpportunityCandidate(sandboxCandidateToListItem(item))),

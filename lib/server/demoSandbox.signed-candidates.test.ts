@@ -148,8 +148,8 @@ afterAll(() => {
 });
 
 describe("saveSignedSandboxCandidates", () => {
-  it("creates the whole batch for the current Visitor in one save", () => {
-    const result = saveSignedSandboxCandidates("visitor-a", [
+  it("creates the whole batch for the current Visitor in one save", async () => {
+    const result = await saveSignedSandboxCandidates("visitor-a", [
       draft("Product A"),
       draft("Product B", HASH_B),
     ]);
@@ -161,30 +161,30 @@ describe("saveSignedSandboxCandidates", () => {
     expect(sandboxCandidateToListItem(store.candidates[0]).sourceIntegrity).toBe("verified_public");
   });
 
-  it("keeps same Evidence unchanged without rewriting the file", () => {
-    saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
+  it("keeps same Evidence unchanged without rewriting the file", async () => {
+    await saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    const result = saveSignedSandboxCandidates("visitor-a", [draft("  PRODUCT   A ")]);
+    const result = await saveSignedSandboxCandidates("visitor-a", [draft("  PRODUCT   A ")]);
 
     expect(result).toMatchObject({ created: 0, unchanged: 1 });
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
   });
 
-  it("rejects a conflicting batch without changing the store", () => {
-    saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
+  it("rejects a conflicting batch without changing the store", async () => {
+    await saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    expect(() => saveSignedSandboxCandidates("visitor-a", [
+    await expect(saveSignedSandboxCandidates("visitor-a", [
       draft("Product B", HASH_B),
       draft("Product A", HASH_B),
-    ])).toThrowError(expect.objectContaining({ code: "candidate_source_conflict" }));
+    ])).rejects.toMatchObject({ code: "candidate_source_conflict" });
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
   });
 
-  it("isolates same-name Candidates between Visitor A and Visitor B", () => {
-    saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
-    const result = saveSignedSandboxCandidates("visitor-b", [draft("Product A", HASH_B)]);
+  it("isolates same-name Candidates between Visitor A and Visitor B", async () => {
+    await saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
+    const result = await saveSignedSandboxCandidates("visitor-b", [draft("Product A", HASH_B)]);
 
     expect(result).toMatchObject({ created: 1, unchanged: 0 });
     const store = loadDemoSandboxStore();
@@ -192,7 +192,7 @@ describe("saveSignedSandboxCandidates", () => {
     expect(new Set(store.candidates.map((item) => item.demoAccessId))).toEqual(new Set(["visitor-a", "visitor-b"]));
   });
 
-  it("fails closed when an existing same-name record is legacy or malformed", () => {
+  it("fails closed when an existing same-name record is legacy or malformed", async () => {
     const store = loadDemoSandboxStore();
     store.candidates.push({
       id: "sandbox_candidate_legacy",
@@ -214,47 +214,47 @@ describe("saveSignedSandboxCandidates", () => {
     replaceDemoSandboxStoreForTest(store);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    expect(() => saveSignedSandboxCandidates("visitor-a", [draft("Product A")]))
-      .toThrowError(expect.objectContaining({ code: "candidate_source_conflict" }));
+    await expect(saveSignedSandboxCandidates("visitor-a", [draft("Product A")]))
+      .rejects.toMatchObject({ code: "candidate_source_conflict" });
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
   });
 
-  it("does not treat corrupt store text as permission to overwrite signed data", () => {
+  it("does not treat corrupt store text as permission to overwrite signed data", async () => {
     writeFileSync(TEST_STORE_PATH, "not-json", "utf8");
-    expect(() => saveSignedSandboxCandidates("visitor-a", [draft("Product A")]))
-      .toThrow("DEMO_SANDBOX_STORE_INVALID");
+    await expect(saveSignedSandboxCandidates("visitor-a", [draft("Product A")]))
+      .rejects.toThrow("DEMO_SANDBOX_STORE_INVALID");
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe("not-json");
   });
 });
 
 describe("saveLegacySandboxCandidates downgrade guard", () => {
-  it("rejects a same-name legacy save after the Visitor Candidate has converted", () => {
-    const candidate = saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]).items[0];
+  it("rejects a same-name legacy save after the Visitor Candidate has converted", async () => {
+    const candidate = (await saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")])).items[0];
     const store = loadDemoSandboxStore();
     store.candidates[0] = { ...candidate, convertedTaskId: "sandbox_task_existing" };
     replaceDemoSandboxStoreForTest(store);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    expect(() => saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]))
-      .toThrowError(expect.objectContaining({ code: "candidate_source_conflict" }));
+    await expect(saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]))
+      .rejects.toMatchObject({ code: "candidate_source_conflict" });
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
   });
 
-  it("rejects the whole legacy batch when the current Visitor already has a signed identity", () => {
-    saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
+  it("rejects the whole legacy batch when the current Visitor already has a signed identity", async () => {
+    await saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    expect(() => saveLegacySandboxCandidates("visitor-a", [
+    await expect(saveLegacySandboxCandidates("visitor-a", [
       legacyDraft("Product B"),
       legacyDraft("Product A"),
-    ])).toThrowError(expect.objectContaining({ code: "candidate_source_conflict" }));
+    ])).rejects.toMatchObject({ code: "candidate_source_conflict" });
 
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
   });
 
-  it("does not let Visitor A signed data block Visitor B legacy input", () => {
-    saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
-    const result = saveLegacySandboxCandidates("visitor-b", [
+  it("does not let Visitor A signed data block Visitor B legacy input", async () => {
+    await saveSignedSandboxCandidates("visitor-a", [draft("Product A")]);
+    const result = await saveLegacySandboxCandidates("visitor-b", [
       legacyDraft("Product A"),
     ]);
 
@@ -265,55 +265,55 @@ describe("saveLegacySandboxCandidates downgrade guard", () => {
 });
 
 describe("updateSandboxCandidate source integrity policy", () => {
-  it("requires strict acknowledgement before an unverified Candidate enters ready state", () => {
-    const created = saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")]).items[0];
+  it("requires strict acknowledgement before an unverified Candidate enters ready state", async () => {
+    const created = (await saveLegacySandboxCandidates("visitor-a", [legacyDraft("Product A")])).items[0];
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    expect(() => updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
+    await expect(updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
       sourceReviewAcknowledged: "true",
       requestedFields: ["status", "sourceReviewAcknowledged"],
-    })).toThrowError(expect.objectContaining({ code: "source_review_required" }));
+    })).rejects.toMatchObject({ code: "source_review_required" });
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
 
-    expect(updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
+    expect(await updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
       sourceReviewAcknowledged: true,
       requestedFields: ["status", "sourceReviewAcknowledged"],
     })).toMatchObject({ status: "worth_analyzing" });
   });
 
-  it("locks signed source-derived fields but allows status", () => {
-    const created = saveSignedSandboxCandidates("visitor-a", [draft("Product A")]).items[0];
+  it("locks signed source-derived fields but allows status", async () => {
+    const created = (await saveSignedSandboxCandidates("visitor-a", [draft("Product A")])).items[0];
     const store = loadDemoSandboxStore();
     Object.assign(store.candidates.find((candidate) => candidate.id === created.id)!, validSignedStoredChain());
     replaceDemoSandboxStoreForTest(store);
     const before = readFileSync(TEST_STORE_PATH, "utf8");
 
-    expect(() => updateSandboxCandidate("visitor-a", created.id, { name: "Tampered" }, {
+    await expect(updateSandboxCandidate("visitor-a", created.id, { name: "Tampered" }, {
       requestedFields: ["name"],
-    })).toThrowError(expect.objectContaining({ code: "verified_source_fields_locked" }));
+    })).rejects.toMatchObject({ code: "verified_source_fields_locked" });
     expect(readFileSync(TEST_STORE_PATH, "utf8")).toBe(before);
 
-    expect(updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
+    expect(await updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
       requestedFields: ["status"],
     })).toMatchObject({ status: "worth_analyzing", name: "Product A" });
   });
 
-  it("requires acknowledgement when signed source metadata has an invalid Assessment chain", () => {
-    const created = saveSignedSandboxCandidates("visitor-a", [draft("Product A")]).items[0];
+  it("requires acknowledgement when signed source metadata has an invalid Assessment chain", async () => {
+    const created = (await saveSignedSandboxCandidates("visitor-a", [draft("Product A")])).items[0];
 
-    expect(() => updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
+    await expect(updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
       requestedFields: ["status"],
-    })).toThrowError(expect.objectContaining({ code: "source_review_required" }));
+    })).rejects.toMatchObject({ code: "source_review_required" });
 
-    expect(updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
+    expect(await updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
       sourceReviewAcknowledged: true,
       requestedFields: ["status", "sourceReviewAcknowledged"],
     })).toMatchObject({ status: "worth_analyzing" });
   });
 
-  it("does not let Visitor A acknowledge Visitor B Candidate", () => {
-    const created = saveLegacySandboxCandidates("visitor-b", [legacyDraft("Product A")]).items[0];
-    expect(updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
+  it("does not let Visitor A acknowledge Visitor B Candidate", async () => {
+    const created = (await saveLegacySandboxCandidates("visitor-b", [legacyDraft("Product A")])).items[0];
+    expect(await updateSandboxCandidate("visitor-a", created.id, { status: "worth_analyzing" }, {
       sourceReviewAcknowledged: true,
       requestedFields: ["status", "sourceReviewAcknowledged"],
     })).toBeNull();

@@ -67,10 +67,14 @@ describe("Visitor task list DTO security", () => {
     const response = await GET(new NextRequest("http://localhost/api/tasks"));
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body.data.items[0].result).toEqual({
+    expect(body.data.items[0].result).toMatchObject({
       productName: "Synthetic",
-      sourceMeta: { source: "opportunity", sourceTitle: "Safe" },
+      legacyListSummary: {
+        hasCandidateSource: true,
+        workflow: { productName: "Synthetic" },
+      },
     });
+    expect(body.data.items[0].result).not.toHaveProperty("sourceMeta");
     const serialized = JSON.stringify(body);
     for (const key of ["candidateId", "contextHash", "researchVerification", "inputHash", "resultHash", "actorRef", "decisionId", "futureSecretField"]) {
       expect(serialized).not.toContain(`\"${key}\"`);

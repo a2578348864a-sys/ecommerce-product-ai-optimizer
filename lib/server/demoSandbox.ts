@@ -9,19 +9,6 @@
 
 import "server-only";
 import {
-  closeSync,
-  existsSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from "fs";
-import { randomBytes } from "crypto";
-import { resolve } from "path";
-import {
   assertCandidateSourceUpdateAllowed,
   getCandidateSourceIntegrity,
 } from "@/lib/candidateSourceIntegrity";
@@ -52,6 +39,10 @@ import {
   type SellerSpriteImportSummary,
 } from "@/lib/server/sellerSpriteImportContract";
 import { assertGenericTaskResultAllowed } from "@/lib/server/taskResultNamespacePolicy";
+import {
+  mutateDemoSandboxStore,
+  readDemoSandboxStore,
+} from "@/lib/server/demoSandboxStore.internal";
 
 // ── Types ───────────────────────────────────────
 
@@ -156,135 +147,8 @@ export class SandboxProductBatchCandidateError extends Error {
   }
 }
 
-// ── File path ───────────────────────────────────
-
-function getStorePath(): string {
-  if (process.env.DEMO_SANDBOX_STORE_PATH) {
-    return process.env.DEMO_SANDBOX_STORE_PATH;
-  }
-  if (process.env.NODE_ENV === "test") {
-    return resolve(process.cwd(), ".next", "test-stores", "demo-sandbox.default.json");
-  }
-  const dataDir = resolve(process.cwd(), "data");
-  return resolve(dataDir, "demo-sandbox.json");
-}
-
-function ensureDir(): void {
-  const p = getStorePath();
-  const dir = resolve(p, "..");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-}
-
-function recoverDemoSandboxBackup(storePath: string): void {
-  const backupPath = `${storePath}.backup`;
-  if (existsSync(storePath)) {
-    if (existsSync(backupPath)) unlinkSync(backupPath);
-    return;
-  }
-  if (existsSync(backupPath)) renameSync(backupPath, storePath);
-}
-
-const sandboxSubjectLocks = new Map<string, Promise<void>>();
-
-async function withSandboxSubjectLock<T>(
-  demoAccessId: string,
-  action: () => T | Promise<T>,
-): Promise<T> {
-  const key = `${getStorePath().toLowerCase()}::${demoAccessId}`;
-  const previous = sandboxSubjectLocks.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolveLock) => {
-    release = resolveLock;
-  });
-  sandboxSubjectLocks.set(key, current);
-  await previous;
-  try {
-    return await action();
-  } finally {
-    release();
-    if (sandboxSubjectLocks.get(key) === current) sandboxSubjectLocks.delete(key);
-  }
-}
-
-// ── Store I/O ───────────────────────────────────
-
 export function loadDemoSandboxStore(): DemoSandboxStore {
-  ensureDir();
-  const p = getStorePath();
-  recoverDemoSandboxBackup(p);
-  if (!existsSync(p)) return { version: 1, tasks: [], candidates: [] };
-  try {
-    const raw = readFileSync(p, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed?.version === 1 && Array.isArray(parsed.tasks)) {
-      return parsed as DemoSandboxStore;
-    }
-  } catch { /* corrupt — start fresh */ }
-  return { version: 1, tasks: [], candidates: [] };
-}
-
-function loadDemoSandboxStoreStrict(): DemoSandboxStore {
-  ensureDir();
-  const p = getStorePath();
-  recoverDemoSandboxBackup(p);
-  if (!existsSync(p)) return { version: 1, tasks: [], candidates: [] };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(p, "utf-8"));
-  } catch {
-    throw new Error("DEMO_SANDBOX_STORE_INVALID");
-  }
-  if (typeof parsed !== "object"
-    || parsed === null
-    || (parsed as { version?: unknown }).version !== 1
-    || !Array.isArray((parsed as { tasks?: unknown }).tasks)
-    || !Array.isArray((parsed as { candidates?: unknown }).candidates)) {
-    throw new Error("DEMO_SANDBOX_STORE_INVALID");
-  }
-  return parsed as DemoSandboxStore;
-}
-
-function saveDemoSandboxStore(store: DemoSandboxStore): void {
-  ensureDir();
-  const storePath = getStorePath();
-  const backupPath = `${storePath}.backup`;
-  const tempPath = `${storePath}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
-  recoverDemoSandboxBackup(storePath);
-  let descriptor: number | null = null;
-  try {
-    descriptor = openSync(tempPath, "wx", 0o600);
-    writeFileSync(descriptor, `${JSON.stringify(store, null, 2)}\n`, "utf-8");
-    fsyncSync(descriptor);
-    closeSync(descriptor);
-    descriptor = null;
-    try {
-      renameSync(tempPath, storePath);
-    } catch (error) {
-      const code = error instanceof Error && "code" in error ? String(error.code) : "";
-      if (code !== "EPERM" && code !== "EEXIST") throw error;
-      let originalMoved = false;
-      if (existsSync(storePath)) {
-        renameSync(storePath, backupPath);
-        originalMoved = true;
-      }
-      try {
-        renameSync(tempPath, storePath);
-      } catch (replacementError) {
-        if (originalMoved && existsSync(backupPath) && !existsSync(storePath)) {
-          try {
-            renameSync(backupPath, storePath);
-          } catch {
-            // Keep the controlled backup for recovery on the next load.
-          }
-        }
-        throw replacementError;
-      }
-      if (originalMoved && existsSync(backupPath)) unlinkSync(backupPath);
-    }
-  } finally {
-    if (descriptor !== null) closeSync(descriptor);
-    if (existsSync(tempPath)) unlinkSync(tempPath);
-  }
+  return readDemoSandboxStore();
 }
 
 // ── ID helpers ──────────────────────────────────
@@ -330,27 +194,21 @@ function buildSandboxTask(
 export function createTrustedSandboxTask(
   demoAccessId: string,
   input: CreateSandboxTaskInput,
-): SandboxTask {
-  const store = loadDemoSandboxStore();
-  const now = new Date().toISOString();
-
-  const task = buildSandboxTask(demoAccessId, input, now);
-
-  store.tasks.push(task);
-  saveDemoSandboxStore(store);
-  return task;
+): Promise<SandboxTask> {
+  return mutateDemoSandboxStore<SandboxTask>((store) => {
+    const task = buildSandboxTask(demoAccessId, input);
+    store.tasks.push(task);
+    return { value: structuredClone(task), changed: true };
+  });
 }
 
-function createSandboxTaskAndLinkCandidateUnlocked(
+function linkCandidateAndCreateTask(
+  store: DemoSandboxStore,
   demoAccessId: string,
   candidateId: string,
   input: CreateSandboxTaskInput,
-  guard: {
-    expectedProductName: string;
-    expectedContextHash: string;
-  },
+  guard: { expectedProductName: string; expectedContextHash: string },
 ): SandboxTask {
-  const store = loadDemoSandboxStoreStrict();
   const candidateIndex = store.candidates.findIndex(
     (candidate) => candidate.id === candidateId && candidate.demoAccessId === demoAccessId,
   );
@@ -403,15 +261,8 @@ function createSandboxTaskAndLinkCandidateUnlocked(
     convertedTaskId: task.id,
     lastActionAt: now,
   };
-  const nextStore: DemoSandboxStore = {
-    version: 1,
-    tasks: [...store.tasks, task],
-    candidates: store.candidates.map((item, index) => (
-      index === candidateIndex ? linkedCandidate : item
-    )),
-  };
-
-  saveDemoSandboxStore(nextStore);
+  store.tasks.push(task);
+  store.candidates[candidateIndex] = linkedCandidate;
   return task;
 }
 
@@ -423,8 +274,8 @@ export function createSandboxTaskAndLinkCandidate(
     expectedProductName: string;
     expectedContextHash: string;
   },
-): SandboxTask {
-  return createSandboxTaskAndLinkCandidateUnlocked(demoAccessId, candidateId, input, guard);
+): Promise<SandboxTask> {
+  return createSandboxTaskAndLinkCandidateAtomic(demoAccessId, candidateId, input, guard);
 }
 
 export function createSandboxTaskAndLinkCandidateAtomic(
@@ -436,9 +287,10 @@ export function createSandboxTaskAndLinkCandidateAtomic(
     expectedContextHash: string;
   },
 ): Promise<SandboxTask> {
-  return withSandboxSubjectLock(demoAccessId, () => (
-    createSandboxTaskAndLinkCandidateUnlocked(demoAccessId, candidateId, input, guard)
-  ));
+  return mutateDemoSandboxStore((store) => {
+    const task = linkCandidateAndCreateTask(store, demoAccessId, candidateId, input, guard);
+    return { value: structuredClone(task), changed: true };
+  });
 }
 
 export function listSandboxTasks(demoAccessId: string): SandboxTask[] {
@@ -457,26 +309,24 @@ export function updateSandboxTask(
   demoAccessId: string,
   taskId: string,
   patch: SandboxTaskPatch,
-): SandboxTask | null {
-  const store = loadDemoSandboxStore();
-  const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
-  if (idx === -1) return null;
-
-  const task = store.tasks[idx];
-  if (patch.title !== undefined) task.title = patch.title;
-  if (patch.score !== undefined) task.score = patch.score;
-  if (patch.level !== undefined) task.level = patch.level;
-  if (patch.oneLineSummary !== undefined) task.oneLineSummary = patch.oneLineSummary;
-  task.updatedAt = new Date().toISOString();
-
-  saveDemoSandboxStore(store);
-  return task;
+): Promise<SandboxTask | null> {
+  return mutateDemoSandboxStore((store) => {
+    const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
+    if (idx === -1) return { value: null, changed: false };
+    const task = store.tasks[idx];
+    if (patch.title !== undefined) task.title = patch.title;
+    if (patch.score !== undefined) task.score = patch.score;
+    if (patch.level !== undefined) task.level = patch.level;
+    if (patch.oneLineSummary !== undefined) task.oneLineSummary = patch.oneLineSummary;
+    task.updatedAt = new Date().toISOString();
+    return { value: structuredClone(task), changed: true };
+  });
 }
 
 export function createGenericSandboxTask(
   demoAccessId: string,
   input: CreateSandboxTaskInput,
-): SandboxTask {
+): Promise<SandboxTask> {
   let result: unknown;
   try { result = JSON.parse(input.resultJson || "{}"); } catch { throw new Error("TASK_RESULT_JSON_INVALID"); }
   if (typeof result !== "object" || result === null || Array.isArray(result)) {
@@ -486,20 +336,20 @@ export function createGenericSandboxTask(
   return createTrustedSandboxTask(demoAccessId, input);
 }
 
-export function deleteSandboxTask(demoAccessId: string, taskId: string): boolean {
-  const store = loadDemoSandboxStore();
-  const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
-  if (idx === -1) return false;
-  const now = new Date().toISOString();
-  for (const candidate of store.candidates) {
-    if (candidate.demoAccessId === demoAccessId && candidate.convertedTaskId === taskId) {
-      candidate.convertedTaskId = null;
-      candidate.lastActionAt = now;
+export function deleteSandboxTask(demoAccessId: string, taskId: string): Promise<boolean> {
+  return mutateDemoSandboxStore((store) => {
+    const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
+    if (idx === -1) return { value: false, changed: false };
+    const now = new Date().toISOString();
+    for (const candidate of store.candidates) {
+      if (candidate.demoAccessId === demoAccessId && candidate.convertedTaskId === taskId) {
+        candidate.convertedTaskId = null;
+        candidate.lastActionAt = now;
+      }
     }
-  }
-  store.tasks.splice(idx, 1);
-  saveDemoSandboxStore(store);
-  return true;
+    store.tasks.splice(idx, 1);
+    return { value: true, changed: true };
+  });
 }
 
 // ── Format helpers (for API responses) ──────────
@@ -616,11 +466,10 @@ function generateSandboxCandidateId(): string {
 export function createSandboxCandidate(
   demoAccessId: string,
   input: CreateSandboxCandidateInput,
-): SandboxCandidate {
-  const store = loadDemoSandboxStore();
-  const now = new Date().toISOString();
-
-  const candidate: SandboxCandidate = {
+): Promise<SandboxCandidate> {
+  return mutateDemoSandboxStore((store) => {
+    const now = new Date().toISOString();
+    const candidate: SandboxCandidate = {
     id: generateSandboxCandidateId(),
     demoAccessId,
     name: input.name,
@@ -639,11 +488,10 @@ export function createSandboxCandidate(
     convertedTaskId: null,
     originProductBatchItemId: input.originProductBatchItemId ?? null,
     lastActionAt: null,
-  };
-
-  store.candidates.push(candidate);
-  saveDemoSandboxStore(store);
-  return candidate;
+    };
+    store.candidates.push(candidate);
+    return { value: structuredClone(candidate), changed: true };
+  });
 }
 
 export interface CreateSandboxProductBatchCandidateInput extends CreateSandboxCandidateInput {
@@ -693,8 +541,7 @@ export async function createOrReuseSandboxProductBatchCandidate(
   input: CreateSandboxProductBatchCandidateInput,
 ): Promise<{ candidate: SandboxCandidate; created: boolean }> {
   const incoming = validateSandboxProductBatchCandidateInput(input);
-  return withSandboxSubjectLock(demoAccessId, () => {
-    const store = loadDemoSandboxStoreStrict();
+  return mutateDemoSandboxStore<{ candidate: SandboxCandidate; created: boolean }>((store) => {
     const matches = store.candidates.filter((candidate) => (
       candidate.demoAccessId === demoAccessId
       && candidate.originProductBatchItemId === input.originProductBatchItemId
@@ -718,7 +565,7 @@ export async function createOrReuseSandboxProductBatchCandidate(
           "ProductBatch Candidate 的不可变来源已发生冲突。",
         );
       }
-      return { candidate: structuredClone(existing), created: false };
+      return { value: { candidate: structuredClone(existing), created: false }, changed: false };
     }
 
     const now = new Date().toISOString();
@@ -743,16 +590,15 @@ export async function createOrReuseSandboxProductBatchCandidate(
       lastActionAt: null,
     };
     store.candidates.push(candidate);
-    saveDemoSandboxStore(store);
-    return { candidate: structuredClone(candidate), created: true };
+    return { value: { candidate: structuredClone(candidate), created: true }, changed: true };
   });
 }
 
 export function saveSignedSandboxCandidates(
   demoAccessId: string,
   inputs: CandidateSaveItem[],
-): { items: SandboxCandidate[]; created: number; unchanged: number } {
-  const store = loadDemoSandboxStoreStrict();
+): Promise<{ items: SandboxCandidate[]; created: number; unchanged: number }> {
+  return mutateDemoSandboxStore((store) => {
   const existingByIdentity = new Map<string, SandboxCandidate[]>();
   for (const candidate of store.candidates) {
     if (candidate.demoAccessId !== demoAccessId) continue;
@@ -789,11 +635,11 @@ export function saveSignedSandboxCandidates(
   }
 
   if (decisions.every((decision) => decision.kind === "unchanged")) {
-    return {
-      items: decisions.map((decision) => (decision as { kind: "unchanged"; candidate: SandboxCandidate }).candidate),
+    return { value: {
+      items: decisions.map((decision) => structuredClone((decision as { kind: "unchanged"; candidate: SandboxCandidate }).candidate)),
       created: 0,
       unchanged,
-    };
+    }, changed: false };
   }
 
   const now = new Date().toISOString();
@@ -828,15 +674,15 @@ export function saveSignedSandboxCandidates(
     items.push(candidate);
     created += 1;
   }
-  saveDemoSandboxStore(store);
-  return { items, created, unchanged };
+  return { value: { items: structuredClone(items), created, unchanged }, changed: created > 0 };
+  });
 }
 
 export function saveLegacySandboxCandidates(
   demoAccessId: string,
   inputs: CandidateSaveItem[],
-): { items: SandboxCandidate[]; created: number } {
-  const store = loadDemoSandboxStoreStrict();
+): Promise<{ items: SandboxCandidate[]; created: number }> {
+  return mutateDemoSandboxStore((store) => {
   const existingByIdentity = new Map<string, SandboxCandidate[]>();
   for (const candidate of store.candidates) {
     if (candidate.demoAccessId !== demoAccessId) continue;
@@ -883,8 +729,8 @@ export function saveLegacySandboxCandidates(
     lastActionAt: null,
   }));
   store.candidates.push(...items);
-  saveDemoSandboxStore(store);
-  return { items, created: items.length };
+  return { value: { items: structuredClone(items), created: items.length }, changed: items.length > 0 };
+  });
 }
 
 export function listSandboxCandidates(demoAccessId: string): SandboxCandidate[] {
@@ -907,10 +753,10 @@ export function updateSandboxCandidate(
     sourceReviewAcknowledged?: unknown;
     requestedFields?: readonly string[];
   } = {},
-): SandboxCandidate | null {
-  const store = loadDemoSandboxStore();
+): Promise<SandboxCandidate | null> {
+  return mutateDemoSandboxStore((store) => {
   const idx = store.candidates.findIndex((c) => c.id === candidateId && c.demoAccessId === demoAccessId);
-  if (idx === -1) return null;
+  if (idx === -1) return { value: null, changed: false };
 
   const c = store.candidates[idx];
   assertCandidateSourceUpdateAllowed({
@@ -931,29 +777,26 @@ export function updateSandboxCandidate(
   if (patch.analysisJson !== undefined) c.analysisJson = patch.analysisJson;
   if (patch.sourceMetaJson !== undefined) c.sourceMetaJson = patch.sourceMetaJson;
 
-  saveDemoSandboxStore(store);
-  return c;
+  return { value: structuredClone(c), changed: true };
+  });
 }
 
 export function deleteSandboxCandidate(
   demoAccessId: string,
   candidateId: string,
-): SandboxCandidateDeleteResult {
-  const store = loadDemoSandboxStoreStrict();
+): Promise<SandboxCandidateDeleteResult> {
+  return mutateDemoSandboxStore((store) => {
   const idx = store.candidates.findIndex((c) => c.id === candidateId && c.demoAccessId === demoAccessId);
-  if (idx === -1) return "not_found";
-  if (store.candidates[idx].convertedTaskId) return "linked_task";
-
-  saveDemoSandboxStore({
-    ...store,
-    candidates: store.candidates.filter((_, index) => index !== idx),
+  if (idx === -1) return { value: "not_found" as const, changed: false };
+  if (store.candidates[idx].convertedTaskId) return { value: "linked_task" as const, changed: false };
+  store.candidates.splice(idx, 1);
+  return { value: "deleted" as const, changed: true };
   });
-  return "deleted";
 }
 
 // ── SellerSprite Candidate Authority (Visitor path) ─────────────────────────
-// Runs entirely inside one withSandboxSubjectLock: load → scan identity →
-// decide created/skipped/conflict → mutate → save once. No nested re-acquire.
+// Runs entirely inside the physical Store mutation lock: strict re-read → scan
+// identity → decide created/skipped/conflict → mutate → atomic save once.
 
 export function importSellerSpriteCandidatesForVisitor(
   demoAccessId: string,
@@ -963,8 +806,7 @@ export function importSellerSpriteCandidatesForVisitor(
     importedAt: string;
   },
 ): Promise<SellerSpriteImportSummary> {
-  return withSandboxSubjectLock(demoAccessId, () => {
-    const store = loadDemoSandboxStoreStrict();
+  return mutateDemoSandboxStore((store) => {
     const byKey = new Map<string, SandboxCandidate>();
     for (const candidate of store.candidates) {
       if (candidate.demoAccessId !== demoAccessId) continue;
@@ -1025,16 +867,15 @@ export function importSellerSpriteCandidatesForVisitor(
       }
     }
 
-    if (changed) saveDemoSandboxStore(store);
-    return { created, skipped, conflicts };
+    return { value: { created, skipped, conflicts }, changed };
   });
 }
 
 export function importSandboxCandidates(
   demoAccessId: string,
   inputs: SandboxCandidateImportInput[],
-): { imported: number; skipped: number } {
-  const store = loadDemoSandboxStore();
+): Promise<{ imported: number; skipped: number }> {
+  return mutateDemoSandboxStore((store) => {
   const now = new Date().toISOString();
   let imported = 0;
   let skipped = 0;
@@ -1063,8 +904,8 @@ export function importSandboxCandidates(
     imported++;
   }
 
-  if (imported > 0) saveDemoSandboxStore(store);
-  return { imported, skipped };
+  return { value: { imported, skipped }, changed: imported > 0 };
+  });
 }
 
 // ── Candidate format helpers ────────────────────

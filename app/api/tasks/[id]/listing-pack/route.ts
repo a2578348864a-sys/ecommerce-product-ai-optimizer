@@ -11,6 +11,10 @@ import {
   TaskResultJsonMutationError,
   mutateTaskResultJson,
 } from "@/lib/server/taskResultJsonMutation";
+import {
+  buildListingPackSnapshot,
+  createListingPackResultMutation,
+} from "@/lib/server/taskResultWriterServices";
 
 export const runtime = "nodejs";
 
@@ -46,19 +50,7 @@ export async function PATCH(
   }
 
   // Safety enforcement
-  const safety = isRecord(snapshot.safety) ? snapshot.safety : {};
-  const enforcedSafety = {
-    ...safety,
-    unverifiedClaimsSanitized: true,
-    requiresHumanReview: true,
-    autoListing: false,
-  };
-
-  const enforcedSnapshot = {
-    ...snapshot,
-    safety: enforcedSafety,
-    savedAt: new Date().toISOString(),
-  };
+  const enforcedSnapshot = buildListingPackSnapshot(snapshot);
 
   let context;
   if (isSandboxTaskId(id)) {
@@ -79,10 +71,7 @@ export async function PATCH(
       context,
       taskId: id,
       writer: "listing-pack",
-      mutate: (current) => ({
-        result: { ...current, listingPackSnapshot: enforcedSnapshot },
-        value: null,
-      }),
+      mutate: createListingPackResultMutation(enforcedSnapshot),
     });
     return json({ ok: true, data: { id, savedAt: enforcedSnapshot.savedAt as string } });
   } catch (error) {

@@ -7,6 +7,7 @@ import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import type { AiImageAccessMode, AiImageTaskContext } from "@/lib/aiImageDraft";
 import { prisma } from "@/lib/server/db";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
+import { createAiImageResultMutation } from "@/lib/server/taskResultWriterServices";
 
 export type LoadedAiImageTask = {
   taskId: string;
@@ -60,10 +61,7 @@ export async function loadAiImageTask(input: {
             taskId: input.taskId,
             writer: "ai-image",
             expectedStorageVersion: storageVersion,
-            mutate: (current) => ({
-              result: { ...current, aiImageDraftSnapshot: result.aiImageDraftSnapshot },
-              value: null,
-            }),
+            mutate: createAiImageResultMutation(result.aiImageDraftSnapshot),
           });
         },
       },
@@ -108,10 +106,7 @@ export async function loadAiImageTask(input: {
           taskId: input.taskId,
           writer: "ai-image",
           expectedStorageVersion: { resultJson: task.resultJson, updatedAt: task.updatedAt },
-          mutate: (current) => ({
-            result: { ...current, aiImageDraftSnapshot: result.aiImageDraftSnapshot },
-            value: null,
-          }),
+          mutate: createAiImageResultMutation(result.aiImageDraftSnapshot),
         });
       },
     },

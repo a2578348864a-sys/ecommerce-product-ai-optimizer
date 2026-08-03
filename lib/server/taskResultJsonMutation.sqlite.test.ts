@@ -10,13 +10,21 @@ import {
   buildProductResearchHash,
   createInitialProductResearchRecord,
   createProductResearchVerification,
+  getProductResearchRecord,
 } from "@/lib/productResearchRecord";
 import {
-  commitOwnerTaskResultJsonMutation,
-  loadOwnerTaskResultJsonSnapshot,
-  mutateOwnerTaskResultJsonForTest,
   type TaskResultJsonDatabase,
 } from "@/lib/server/taskResultJsonMutation";
+import {
+  commitOwnerTaskResultJsonMutationForTest,
+  loadOwnerTaskResultJsonSnapshotForTest,
+  mutateOwnerTaskResultJsonForTest,
+} from "@/lib/server/taskResultJsonMutation.testSupport";
+import {
+  createAiImageResultMutation,
+  createListingPackResultMutation,
+  createResearchDecisionResultMutation,
+} from "@/lib/server/taskResultWriterServices";
 
 let root = "";
 let databasePath = "";
@@ -163,12 +171,12 @@ describe("real SQLite task resultJson CAS", () => {
         await barrier;
         const current = document as ReturnType<typeof protectedDocument>;
         const resultJson = decisionResult(current, input);
-        return {
-          result: JSON.parse(resultJson),
-          value: null,
+        const record = getProductResearchRecord(JSON.parse(resultJson))!;
+        return createResearchDecisionResultMutation({
+          record,
           decisionStatus: input.status === "abandoned" ? "rejected" : "need_info",
           updatedAt: input.now,
-        };
+        })(document);
       },
     });
     const settled = await Promise.allSettled([
@@ -209,18 +217,18 @@ describe("real SQLite task resultJson CAS", () => {
         if (arrivals === 2) release();
         await barrier;
         const current = document as ReturnType<typeof protectedDocument>;
-        return {
-          result: JSON.parse(decisionResult(current, {
+        const result = JSON.parse(decisionResult(current, {
             id: "44444444-4444-4444-8444-444444444444",
             status: "needs_information",
             reason: "Need another source.",
             nextAction: "Collect it.",
             now: "2026-08-03T02:00:00.000Z",
-          })),
-          value: null,
+          }));
+        return createResearchDecisionResultMutation({
+          record: getProductResearchRecord(result)!,
           decisionStatus: "need_info",
           updatedAt: "2026-08-03T02:00:00.000Z",
-        };
+        })(document);
       },
     });
     const listing = () => mutateOwnerTaskResultJsonForTest(database(second!), {
@@ -230,11 +238,10 @@ describe("real SQLite task resultJson CAS", () => {
         arrivals += 1;
         if (arrivals === 2) release();
         await barrier;
-        return {
-          result: { ...document, listingPackSnapshot: { source: "synthetic" } },
-          value: null,
-          updatedAt: "2026-08-03T02:00:01.000Z",
-        };
+        return createListingPackResultMutation(
+          { source: "synthetic" },
+          "2026-08-03T02:00:01.000Z",
+        )(document);
       },
     });
     const settled = await Promise.allSettled([decision(), listing()]);
@@ -271,7 +278,9 @@ describe("real SQLite task resultJson CAS", () => {
         arrivals += 1;
         if (arrivals === 2) release();
         await barrier;
-        return { result: { ...document, [key]: { source: "synthetic" } }, value: null, updatedAt: at };
+        return writer === "listing-pack"
+          ? createListingPackResultMutation({ source: "synthetic" }, at)(document)
+          : createAiImageResultMutation({ source: "synthetic" }, at)(document);
       },
     });
     const settled = await Promise.allSettled([
@@ -295,24 +304,24 @@ describe("real SQLite task resultJson CAS", () => {
   });
 
   it("fails stale CAS when either updatedAt or resultJson changed", async () => {
-    const original = await loadOwnerTaskResultJsonSnapshot(database(first!), "task-sqlite");
+    const original = await loadOwnerTaskResultJsonSnapshotForTest(database(first!), "task-sqlite");
     await first!.viralAnalysisRecord.update({
       where: { id: "task-sqlite" },
       data: { updatedAt: new Date("2026-08-03T03:00:00.000Z") },
     });
-    expect(await commitOwnerTaskResultJsonMutation(database(second!), {
+    expect(await commitOwnerTaskResultJsonMutationForTest(database(second!), {
       snapshot: original!,
       resultJson: original!.resultJson,
       updatedAt: "2026-08-03T03:00:01.000Z",
     })).toBe(false);
 
-    const current = await loadOwnerTaskResultJsonSnapshot(database(first!), "task-sqlite");
+    const current = await loadOwnerTaskResultJsonSnapshotForTest(database(first!), "task-sqlite");
     const changed = JSON.stringify({ ...JSON.parse(current!.resultJson), externalNamespace: { changed: true } });
     await first!.viralAnalysisRecord.update({
       where: { id: "task-sqlite" },
       data: { resultJson: changed, updatedAt: current!.updatedAt as Date },
     });
-    expect(await commitOwnerTaskResultJsonMutation(database(second!), {
+    expect(await commitOwnerTaskResultJsonMutationForTest(database(second!), {
       snapshot: current!,
       resultJson: current!.resultJson,
       updatedAt: "2026-08-03T03:00:02.000Z",

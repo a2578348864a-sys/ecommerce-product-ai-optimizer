@@ -28,8 +28,8 @@ describe("Visitor generic task creation boundary", () => {
     expect(listSandboxTasks("visitor-generic")).toHaveLength(0);
   });
 
-  it("allows an ordinary legacy/mock result", () => {
-    createGenericSandboxTask("visitor-generic", {
+  it("allows an ordinary legacy/mock result", async () => {
+    await createGenericSandboxTask("visitor-generic", {
       source: "mock",
       resultJson: JSON.stringify({ score: 1, sellingPoints: ["Synthetic"] }),
     });

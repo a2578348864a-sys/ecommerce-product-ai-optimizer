@@ -22,7 +22,6 @@ import {
   buildBatchDeleteConfirmationMessage,
   buildTaskDeleteConfirmationMessage,
   formatTaskIdSuffix,
-  getAiListingPackSnapshot,
   hasAiListingPack,
   LISTING_PACK_FILTER_PARAM,
   LISTING_PACK_FILTER_LABEL,
@@ -157,6 +156,10 @@ function getTaskStatusClass() {
 }
 
 function getAgentStatus(item: TaskCenterItem) {
+  const summary = getLegacyListSummary(item.result);
+  if (summary && isRecordValue(summary.agent) && isRecordValue(summary.agent.agentStatus)) {
+    return summary.agent.agentStatus as ReturnType<typeof deriveAgentNextStepPanelState>["agentStatus"];
+  }
   return deriveAgentNextStepPanelState({
     taskType: item.type,
     decisionStatus: item.decisionStatus,
@@ -166,6 +169,13 @@ function getAgentStatus(item: TaskCenterItem) {
 
 function getStringArray(result: unknown, key: string) {
   if (typeof result !== "object" || result === null || Array.isArray(result)) return [];
+  const summary = getLegacyListSummary(result);
+  if (summary && isRecordValue(summary.details)) {
+    const summarized = summary.details[key];
+    return Array.isArray(summarized)
+      ? summarized.filter((item): item is string => typeof item === "string").slice(0, 5)
+      : [];
+  }
   const value = Reflect.get(result, key);
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string").slice(0, 5)
@@ -174,6 +184,78 @@ function getStringArray(result: unknown, key: string) {
 
 function isRecordValue(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getLegacyListSummary(result: unknown) {
+  if (!isRecordValue(result) || !isRecordValue(result.legacyListSummary)) return null;
+  return result.legacyListSummary;
+}
+
+function getWorkflowSummary(item: TaskCenterItem) {
+  const summary = getLegacyListSummary(item.result);
+  if (summary && isRecordValue(summary.workflow)) {
+    return summary.workflow as ReturnType<typeof deriveTaskWorkflowSummary>;
+  }
+  return deriveTaskWorkflowSummary({
+    type: item.type,
+    title: item.title,
+    materialText: item.materialText,
+    oneLineSummary: item.oneLineSummary,
+    level: item.level,
+    decisionStatus: item.decisionStatus,
+    result: item.result,
+  });
+}
+
+function getOperationSummary(item: TaskCenterItem) {
+  const summary = getLegacyListSummary(item.result);
+  if (summary && isRecordValue(summary.operation)) {
+    return summary.operation as ReturnType<typeof deriveTaskOperationSummary>;
+  }
+  return deriveTaskOperationSummary({
+    type: item.type,
+    title: item.title,
+    materialText: item.materialText,
+    oneLineSummary: item.oneLineSummary,
+    level: item.level,
+    decisionStatus: item.decisionStatus,
+    result: item.result,
+  });
+}
+
+function getPresentation(item: TaskCenterItem, productName: string) {
+  const summary = getLegacyListSummary(item.result);
+  if (summary && isRecordValue(summary.presentation)) {
+    return summary.presentation as ReturnType<typeof deriveProductResearchPresentation>;
+  }
+  return deriveProductResearchPresentation({
+    id: item.id,
+    title: productName,
+    type: item.type,
+    decisionStatus: item.decisionStatus,
+    result: item.result,
+  });
+}
+
+function taskHasListingPack(item: TaskCenterItem) {
+  const summary = getLegacyListSummary(item.result);
+  return summary && typeof summary.hasListingPack === "boolean"
+    ? summary.hasListingPack
+    : hasAiListingPack(item.result);
+}
+
+function taskHasCandidateSource(item: TaskCenterItem) {
+  const summary = getLegacyListSummary(item.result);
+  return summary && typeof summary.hasCandidateSource === "boolean"
+    ? summary.hasCandidateSource
+    : getTaskSourceMeta(item.result) !== null;
+}
+
+function listingPackResultForUi(item: TaskCenterItem) {
+  if (!getLegacyListSummary(item.result)) return item.result;
+  return taskHasListingPack(item)
+    ? { aiListingPackSnapshot: { snapshotType: "ai_listing_pack" } }
+    : {};
 }
 
 function getVersionedDecisionSummary(result: unknown) {
@@ -566,7 +648,7 @@ export function TaskRecordsList() {
 
     const confirmed = window.confirm(buildTaskDeleteConfirmationMessage({
       title: getTitle(item),
-      result: item.result,
+      result: listingPackResultForUi(item),
     }));
     if (!confirmed) return;
 
@@ -628,7 +710,7 @@ export function TaskRecordsList() {
     if (selectedIds.size === 0 || batchDeleting) return;
     const ids = [...selectedIds];
     const hasListingPackSnapshot = items.some((item) => (
-      selectedIds.has(item.id) && Boolean(getAiListingPackSnapshot(item.result))
+      selectedIds.has(item.id) && taskHasListingPack(item)
     ));
     const confirmed = window.confirm(
       buildBatchDeleteConfirmationMessage({
@@ -727,7 +809,7 @@ export function TaskRecordsList() {
   const visibleItems = (() => {
     let result = items;
     if (agentStatus) result = result.filter((item) => getAgentStatus(item).key === agentStatus);
-    if (hasListingPackFilter) result = result.filter((item) => hasAiListingPack(item.result));
+    if (hasListingPackFilter) result = result.filter(taskHasListingPack);
     return result;
   })();
   const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus || hasListingPackFilter);
@@ -738,23 +820,14 @@ export function TaskRecordsList() {
     return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
   }), [hasActiveFilters, highlightedTaskId, visibleItems]);
   const priorityItem = !loading && !error ? displayItems[0] : null;
-  const prioritySummary = priorityItem
-    ? deriveTaskWorkflowSummary({
-      type: priorityItem.type,
-      title: priorityItem.title,
-      materialText: priorityItem.materialText,
-      oneLineSummary: priorityItem.oneLineSummary,
-      level: priorityItem.level,
-      decisionStatus: priorityItem.decisionStatus,
-      result: priorityItem.result,
-    })
-    : null;
+  const prioritySummary = priorityItem ? getWorkflowSummary(priorityItem) : null;
   const priorityAgentState = priorityItem
-    ? deriveAgentNextStepPanelState({
-      taskType: priorityItem.type,
-      decisionStatus: priorityItem.decisionStatus,
-      result: priorityItem.result,
-    })
+    ? (getLegacyListSummary(priorityItem.result)?.agent as ReturnType<typeof deriveAgentNextStepPanelState>
+      | undefined) ?? deriveAgentNextStepPanelState({
+        taskType: priorityItem.type,
+        decisionStatus: priorityItem.decisionStatus,
+        result: priorityItem.result,
+      })
     : null;
   const operationStats = useMemo(() => {
     const batchGroups = new Map<string, { total: number; loaded: number; followable: number; cautious: number }>();
@@ -764,15 +837,7 @@ export function TaskRecordsList() {
     let decided = 0;
 
     for (const item of visibleItems) {
-      const summary = deriveTaskWorkflowSummary({
-        type: item.type,
-        title: item.title,
-        materialText: item.materialText,
-        oneLineSummary: item.oneLineSummary,
-        level: item.level,
-        decisionStatus: item.decisionStatus,
-        result: item.result,
-      });
+      const summary = getWorkflowSummary(item);
       const agentState = deriveAgentNextStepPanelState({
         taskType: item.type,
         decisionStatus: item.decisionStatus,
@@ -807,8 +872,20 @@ export function TaskRecordsList() {
   }, [visibleItems]);
 
   const pipelineCounts = useMemo(() => {
-    const inputs = visibleItems.map((t) => ({ decisionStatus: t.decisionStatus, level: t.level, result: t.result }));
-    return summarizePipeline(inputs);
+    const counts = summarizePipeline([]);
+    for (const item of visibleItems) {
+      const summary = getLegacyListSummary(item.result);
+      const status = summary && typeof summary.pipelineStatus === "string"
+        && Object.prototype.hasOwnProperty.call(counts, summary.pipelineStatus)
+        ? summary.pipelineStatus as PipelineStatus
+        : null;
+      if (status) counts[status] += 1;
+      else {
+        const fallback = summarizePipeline([{ decisionStatus: item.decisionStatus, level: item.level, result: item.result }]);
+        for (const key of Object.keys(counts) as PipelineStatus[]) counts[key] += fallback[key];
+      }
+    }
+    return counts;
   }, [visibleItems]);
 
   const isListingPackEmpty = !loading && !error && visibleItems.length === 0 && hasListingPackFilter && items.length > 0;
@@ -1135,41 +1212,20 @@ export function TaskRecordsList() {
                 <div className="mt-6 space-y-4">
                   {displayItems.map((item) => {
                     const open = openId === item.id;
-                    const agentState = deriveAgentNextStepPanelState({
-                      taskType: item.type,
-                      decisionStatus: item.decisionStatus,
-                      result: item.result,
-                    });
+                    const agentState = (getLegacyListSummary(item.result)?.agent as ReturnType<typeof deriveAgentNextStepPanelState>
+                      | undefined) ?? deriveAgentNextStepPanelState({
+                        taskType: item.type,
+                        decisionStatus: item.decisionStatus,
+                        result: item.result,
+                      });
                     const itemAgentStatus = agentState.agentStatus;
                     const highlighted = item.id === highlightedTaskId;
-                    const summary = deriveTaskWorkflowSummary({
-                      type: item.type,
-                      title: item.title,
-                      materialText: item.materialText,
-                      oneLineSummary: item.oneLineSummary,
-                      level: item.level,
-                      decisionStatus: item.decisionStatus,
-                      result: item.result,
-                    });
-                    const operationSummary = deriveTaskOperationSummary({
-                      type: item.type,
-                      title: item.title,
-                      materialText: item.materialText,
-                      oneLineSummary: item.oneLineSummary,
-                      level: item.level,
-                      decisionStatus: item.decisionStatus,
-                      result: item.result,
-                    });
+                    const summary = getWorkflowSummary(item);
+                    const operationSummary = getOperationSummary(item);
                     const batchMeta = summary.batchMeta;
-                    const sourceMeta = getTaskSourceMeta(item.result);
+                    const hasCandidateSource = taskHasCandidateSource(item);
                     const batchGroup = batchMeta ? operationStats.batchGroups.get(batchMeta.batchId) : null;
-                    const presentation = deriveProductResearchPresentation({
-                      id: item.id,
-                      title: summary.productName,
-                      type: item.type,
-                      decisionStatus: item.decisionStatus,
-                      result: item.result,
-                    });
+                    const presentation = getPresentation(item, summary.productName);
                     const artifactLabel = presentation.artifacts.length
                       ? presentation.artifacts.map((artifact) => artifact.label).join("、")
                       : "暂无已保存产物";
@@ -1251,7 +1307,7 @@ export function TaskRecordsList() {
                                 <span>{getTaskTypeLabel(item)}</span>
                                 <span>{getAgentTypeLabel(item)}</span>
                                 <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
-                                {sourceMeta ? <span>来自候选池</span> : null}
+                                {hasCandidateSource ? <span>来自候选池</span> : null}
                               </div>
                               <p className="mt-2 text-xs leading-5 text-slate-600">{operationSummary.evidenceSummary}</p>
                               {batchMeta && batchGroup ? (

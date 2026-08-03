@@ -964,7 +964,7 @@ export async function POST(request: NextRequest) {
             expectedContextHash: workflowInput.contextHash!,
           },
         )
-        : createTrustedSandboxTask(auth.context.demoAccessId, sandboxInput);
+        : await createTrustedSandboxTask(auth.context.demoAccessId, sandboxInput);
 
       return jsonResponse({
         ok: true,

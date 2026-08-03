@@ -139,10 +139,14 @@ describe("GET /api/tasks", () => {
     mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
     const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
     const body = await response.json();
-    expect(body.data.items[0].result).toEqual({
+    expect(body.data.items[0].result).toMatchObject({
       productName: "Synthetic",
-      sourceMeta: { source: "opportunity", sourceTitle: "Synthetic source" },
+      legacyListSummary: {
+        hasCandidateSource: true,
+        workflow: { productName: "Synthetic" },
+      },
     });
+    expect(body.data.items[0].result).not.toHaveProperty("sourceMeta");
     const serialized = JSON.stringify(body);
     for (const key of ["candidateId", "contextHash", "researchVerification", "inputHash", "resultHash", "futureSecretField"]) {
       expect(serialized).not.toContain(`\"${key}\"`);

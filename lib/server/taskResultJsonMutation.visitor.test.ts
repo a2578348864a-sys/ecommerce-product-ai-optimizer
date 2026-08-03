@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe("Visitor task resultJson subject-lock CAS", () => {
   it("re-reads inside the subject lock and rejects one stale concurrent namespace writer", async () => {
-    const task = createTrustedSandboxTask("visitor-a", {
+    const task = await createTrustedSandboxTask("visitor-a", {
       type: "workflow",
       resultJson: JSON.stringify({ unknownNamespace: { keep: true } }),
       decisionStatus: "continue",
@@ -91,7 +91,7 @@ describe("Visitor task resultJson subject-lock CAS", () => {
   });
 
   it("does not expose or mutate another Visitor's task", async () => {
-    const task = createTrustedSandboxTask("visitor-a", { type: "workflow", resultJson: "{}" });
+    const task = await createTrustedSandboxTask("visitor-a", { type: "workflow", resultJson: "{}" });
     await expect(mutateTaskResultJson({
       context: { ...visitor, demoAccessId: "visitor-b" },
       taskId: task.id,

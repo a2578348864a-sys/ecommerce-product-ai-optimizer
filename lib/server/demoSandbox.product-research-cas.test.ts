@@ -20,7 +20,7 @@ afterEach(() => {
   rmSync(tempDirectory, { recursive: true, force: true });
 });
 
-function mutateVisitor(task: ReturnType<typeof createTrustedSandboxTask>, demoAccessId: string, marker: string) {
+function mutateVisitor(task: Awaited<ReturnType<typeof createTrustedSandboxTask>>, demoAccessId: string, marker: string) {
   return mutateTaskResultJson({
     context: {
       mode: "demo",
@@ -42,7 +42,7 @@ function mutateVisitor(task: ReturnType<typeof createTrustedSandboxTask>, demoAc
 
 describe("Visitor product-research shared mutation CAS", () => {
   it("updates only the owning Visitor through the shared namespace writer", async () => {
-    const task = createTrustedSandboxTask("visitor-a", { resultJson: '{"unknownNamespace":{"keep":true}}' });
+    const task = await createTrustedSandboxTask("visitor-a", { resultJson: '{"unknownNamespace":{"keep":true}}' });
     await mutateVisitor(task, "visitor-a", "winner");
     expect(JSON.parse(getSandboxTask("visitor-a", task.id)!.resultJson)).toEqual({
       unknownNamespace: { keep: true },
@@ -51,7 +51,7 @@ describe("Visitor product-research shared mutation CAS", () => {
   });
 
   it("returns conflict for a stale snapshot and does not overwrite the winner", async () => {
-    const task = createTrustedSandboxTask("visitor-a", { resultJson: '{"unknownNamespace":{"keep":true}}' });
+    const task = await createTrustedSandboxTask("visitor-a", { resultJson: '{"unknownNamespace":{"keep":true}}' });
     await mutateVisitor(task, "visitor-a", "winner");
     await expect(mutateVisitor(task, "visitor-a", "loser")).rejects.toMatchObject({
       code: "task_result_conflict",
@@ -62,7 +62,7 @@ describe("Visitor product-research shared mutation CAS", () => {
   });
 
   it("returns not_found across Visitor identities without publishing a file change", async () => {
-    const task = createTrustedSandboxTask("visitor-a", { resultJson: "{}" });
+    const task = await createTrustedSandboxTask("visitor-a", { resultJson: "{}" });
     const before = getSandboxTask("visitor-a", task.id);
     await expect(mutateVisitor(task, "visitor-b", "forbidden")).rejects.toMatchObject({
       code: "not_found",

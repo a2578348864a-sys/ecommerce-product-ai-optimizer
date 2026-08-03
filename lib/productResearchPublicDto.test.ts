@@ -140,14 +140,73 @@ function expectNoForbiddenFields(value: unknown) {
 }
 
 describe("product research browser DTO allowlist", () => {
+  it.each(["list", "detail"] as const)("rejects arrays supplied to scalar fields for %s", (scope) => {
+    const projected = projectTaskResultForBrowser({
+      status: ["safe", "private-canary"],
+      finalReport: {
+        riskLevel: ["yellow", "private-canary"],
+      },
+      sourceMeta: {
+        source: ["SellerSprite", "private-canary"],
+      },
+    }, scope) as Record<string, any>;
+
+    expect(JSON.stringify(projected)).not.toContain("private-canary");
+    expect(projected).not.toHaveProperty("status");
+    if (scope === "detail") {
+      expect(projected.finalReport).not.toHaveProperty("riskLevel");
+      expect(projected.sourceMeta).not.toHaveProperty("source");
+    } else {
+      expect(projected).not.toHaveProperty("finalReport");
+      expect(projected).not.toHaveProperty("sourceMeta");
+    }
+  });
+
+  it("keeps list projections bounded to summaries instead of detail snapshots", () => {
+    const projected = projectTaskResultForBrowser(internalResult(), "list");
+    const serialized = JSON.stringify(projected);
+
+    expect(projected).not.toHaveProperty("finalReport");
+    expect(projected).not.toHaveProperty("reviewState");
+    expect(projected).not.toHaveProperty("agentOutputSnapshot");
+    expect(projected).not.toHaveProperty("listingPackSnapshot");
+    expect(projected).not.toHaveProperty("aiListingPackSnapshot");
+    expect(projected).not.toHaveProperty("aiImageDraftSnapshot");
+    expect(projected).not.toHaveProperty("sourceMeta");
+    expect(Buffer.byteLength(serialized, "utf8")).toBeLessThanOrEqual(8 * 1024);
+  });
+
+  it("keeps a 50-item list projection below the response budget", () => {
+    const items = Array.from({ length: 50 }, (_, index) => ({
+      id: `synthetic-${index}`,
+      result: projectTaskResultForBrowser(internalResult(), "list", {
+        id: `synthetic-${index}`,
+        type: "workflow",
+        title: "Synthetic product",
+        materialText: "Synthetic material",
+        oneLineSummary: "Synthetic summary",
+        level: "yellow",
+        decisionStatus: "need_info",
+      }),
+    }));
+    expect(Buffer.byteLength(JSON.stringify({ items }), "utf8")).toBeLessThanOrEqual(1024 * 1024);
+  });
+
   it.each(["list", "detail"] as const)("defaults unknown and binding fields to denied for %s", (scope) => {
     const result = projectTaskResultForBrowser(internalResult(), scope) as Record<string, any>;
     expect(result.productName).toBe("Synthetic product");
-    expect(result.sellingPoints).toEqual(["safe point"]);
-    expect(result.finalReport).toEqual({ verdict: "cautious", reason: "Safe summary." });
-    expect(result.agentOutputSnapshot.sourcingSnapshot).not.toHaveProperty("futureSecretField");
-    expect(result.agentOutputSnapshot.sourcingSnapshot).not.toHaveProperty("innocentLookingInternal");
-    expect(result.sourceMeta).toEqual({ source: "opportunity", sourceTitle: "Synthetic source" });
+    if (scope === "detail") {
+      expect(result.sellingPoints).toEqual(["safe point"]);
+      expect(result.finalReport).toEqual({ verdict: "cautious", reason: "Safe summary." });
+      expect(result.agentOutputSnapshot.sourcingSnapshot).not.toHaveProperty("futureSecretField");
+      expect(result.agentOutputSnapshot.sourcingSnapshot).not.toHaveProperty("innocentLookingInternal");
+      expect(result.sourceMeta).toEqual({ source: "opportunity", sourceTitle: "Synthetic source" });
+    } else {
+      expect(result.legacyListSummary.details.sellingPoints).toEqual(["safe point"]);
+      expect(result).not.toHaveProperty("finalReport");
+      expect(result).not.toHaveProperty("agentOutputSnapshot");
+      expect(result).not.toHaveProperty("sourceMeta");
+    }
     expect(result.productResearchSummary).toMatchObject({
       schema: "product-research-record.v1",
       revision: 2,

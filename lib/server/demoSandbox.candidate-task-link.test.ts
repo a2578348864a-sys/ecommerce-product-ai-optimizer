@@ -61,9 +61,9 @@ function conversionGuard(candidate: {
   };
 }
 
-function expectLinkError(action: () => unknown, code: string) {
+async function expectLinkError(action: () => Promise<unknown>, code: string) {
   try {
-    action();
+    await action();
     throw new Error("expected link error");
   } catch (error) {
     expect(error).toBeInstanceOf(SandboxCandidateTaskLinkError);
@@ -101,7 +101,7 @@ function createSellerSpritePending(demoAccessId: string) {
 
 describe("Visitor Candidate → Task atomic link", () => {
   it("allows one concurrent save for a SellerSprite pending Candidate and creates no orphan record", async () => {
-    const candidate = createSellerSpritePending("visitor-a");
+    const candidate = await createSellerSpritePending("visitor-a");
     const guard = conversionGuard(candidate);
 
     const results = await Promise.allSettled([
@@ -123,22 +123,22 @@ describe("Visitor Candidate → Task atomic link", () => {
     expect(listSandboxTasks("visitor-b")).toHaveLength(0);
   });
 
-  it("unlinks a Candidate when its Task is deleted so it can be converted again", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("unlinks a Candidate when its Task is deleted so it can be converted again", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "Re-convertible Widget",
       status: "worth_analyzing",
     });
-    const first = createSandboxTaskAndLinkCandidate(
+    const first = await createSandboxTaskAndLinkCandidate(
       "visitor-a",
       candidate.id,
       taskInput(),
       conversionGuard(candidate),
     );
 
-    expect(deleteSandboxTask("visitor-a", first.id)).toBe(true);
+    expect(await deleteSandboxTask("visitor-a", first.id)).toBe(true);
     const unlinked = listSandboxCandidates("visitor-a")[0];
     expect(unlinked.convertedTaskId).toBeNull();
-    const second = createSandboxTaskAndLinkCandidate(
+    const second = await createSandboxTaskAndLinkCandidate(
       "visitor-a",
       candidate.id,
       taskInput(),
@@ -147,39 +147,39 @@ describe("Visitor Candidate → Task atomic link", () => {
     expect(second.id).not.toBe(first.id);
   });
 
-  it("makes a Candidate deletable after deleting its linked Task", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("makes a Candidate deletable after deleting its linked Task", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "Delete after Task",
       status: "worth_analyzing",
     });
-    const task = createSandboxTaskAndLinkCandidate(
+    const task = await createSandboxTaskAndLinkCandidate(
       "visitor-a", candidate.id, taskInput(), conversionGuard(candidate),
     );
 
-    expect(deleteSandboxTask("visitor-a", task.id)).toBe(true);
-    expect(deleteSandboxCandidate("visitor-a", candidate.id)).toBe("deleted");
+    expect(await deleteSandboxTask("visitor-a", task.id)).toBe(true);
+    expect(await deleteSandboxCandidate("visitor-a", candidate.id)).toBe("deleted");
   });
 
-  it("does not unlink another Visitor's Candidate when a cross-scope Task delete is attempted", () => {
-    const candidate = createSandboxCandidate("visitor-b", {
+  it("does not unlink another Visitor's Candidate when a cross-scope Task delete is attempted", async () => {
+    const candidate = await createSandboxCandidate("visitor-b", {
       name: "Visitor B linked product",
       status: "worth_analyzing",
     });
-    const task = createSandboxTaskAndLinkCandidate(
+    const task = await createSandboxTaskAndLinkCandidate(
       "visitor-b", candidate.id, taskInput(), conversionGuard(candidate),
     );
 
-    expect(deleteSandboxTask("visitor-a", task.id)).toBe(false);
+    expect(await deleteSandboxTask("visitor-a", task.id)).toBe(false);
     expect(listSandboxCandidates("visitor-b")[0].convertedTaskId).toBe(task.id);
   });
 
-  it("persists the Task and Candidate link in the same Store publication", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("persists the Task and Candidate link in the same Store publication", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "Foldable Widget",
       status: "worth_analyzing",
     });
 
-    const task = createSandboxTaskAndLinkCandidate(
+    const task = await createSandboxTaskAndLinkCandidate(
       "visitor-a",
       candidate.id,
       taskInput(),
@@ -196,13 +196,13 @@ describe("Visitor Candidate → Task atomic link", () => {
     });
   });
 
-  it("rejects Visitor A converting Visitor B's Candidate without creating a Task", () => {
-    const candidate = createSandboxCandidate("visitor-b", {
+  it("rejects Visitor A converting Visitor B's Candidate without creating a Task", async () => {
+    const candidate = await createSandboxCandidate("visitor-b", {
       name: "Visitor B Product",
       status: "worth_analyzing",
     });
 
-    expectLinkError(
+    await expectLinkError(
       () => createSandboxTaskAndLinkCandidate("visitor-a", candidate.id, taskInput(), conversionGuard(candidate)),
       "candidate_not_found",
     );
@@ -210,21 +210,21 @@ describe("Visitor Candidate → Task atomic link", () => {
     expect(listSandboxTasks("visitor-b")).toHaveLength(0);
   });
 
-  it("rejects a Candidate that left the analyzable queue", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("rejects a Candidate that left the analyzable queue", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "Abandoned Product",
       status: "rejected",
     });
 
-    expectLinkError(
+    await expectLinkError(
       () => createSandboxTaskAndLinkCandidate("visitor-a", candidate.id, taskInput(), conversionGuard(candidate)),
       "candidate_not_ready_for_conversion",
     );
     expect(listSandboxTasks("visitor-a")).toHaveLength(0);
   });
 
-  it("rechecks the authoritative R2.2 gate inside the strict Visitor store write", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("rechecks the authoritative R2.2 gate inside the strict Visitor store write", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "Rejected by R2.2",
       status: "worth_analyzing",
       analysisJson: JSON.stringify({
@@ -257,30 +257,30 @@ describe("Visitor Candidate → Task atomic link", () => {
       candidates: [{ ...candidate, analysisJson: JSON.stringify(analysis) }],
     });
     const current = listSandboxCandidates("visitor-a")[0];
-    expectLinkError(
+    await expectLinkError(
       () => createSandboxTaskAndLinkCandidate("visitor-a", current.id, taskInput(), conversionGuard(current)),
       "candidate_r22_stage2_blocked",
     );
     expect(listSandboxTasks("visitor-a")).toHaveLength(0);
   });
 
-  it("rejects replay after the Candidate already converted and creates no duplicate Task", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("rejects replay after the Candidate already converted and creates no duplicate Task", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "One Task Only",
       status: "analyzed",
     });
     const guard = conversionGuard(candidate);
-    const first = createSandboxTaskAndLinkCandidate("visitor-a", candidate.id, taskInput(), guard);
+    const first = await createSandboxTaskAndLinkCandidate("visitor-a", candidate.id, taskInput(), guard);
 
-    expectLinkError(
+    await expectLinkError(
       () => createSandboxTaskAndLinkCandidate("visitor-a", candidate.id, taskInput(), guard),
       "candidate_already_converted",
     );
     expect(listSandboxTasks("visitor-a").map((task) => task.id)).toEqual([first.id]);
   });
 
-  it("rejects when the authoritative Candidate name changed after analysis", () => {
-    const candidate = createSandboxCandidate("visitor-a", {
+  it("rejects when the authoritative Candidate name changed after analysis", async () => {
+    const candidate = await createSandboxCandidate("visitor-a", {
       name: "Current Product Name",
       status: "worth_analyzing",
     });
@@ -289,7 +289,7 @@ describe("Visitor Candidate → Task atomic link", () => {
       expectedProductName: "Analyzed Product Name",
     };
 
-    expectLinkError(
+    await expectLinkError(
       () => createSandboxTaskAndLinkCandidate("visitor-a", candidate.id, taskInput(), guard),
       "candidate_changed_since_analysis",
     );

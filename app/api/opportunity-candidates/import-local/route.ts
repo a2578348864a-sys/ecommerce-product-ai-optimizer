@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (auth.context.mode === "demo") {
-      const result = saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
+      const result = await saveLegacySandboxCandidates(auth.context.demoAccessId, preflight.items);
       return json({
         ok: true,
         imported: result.created,

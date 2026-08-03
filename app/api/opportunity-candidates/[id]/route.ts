@@ -113,7 +113,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       if (typeof body.name === "string") update.name = body.name;
       if (body.link !== undefined) update.link = typeof body.link === "string" ? body.link : null;
       try {
-        const updated = updateSandboxCandidate(auth.context.demoAccessId, id, update, {
+        const updated = await updateSandboxCandidate(auth.context.demoAccessId, id, update, {
           sourceReviewAcknowledged: body.sourceReviewAcknowledged === true ? true : undefined,
           requestedFields: Object.keys(body),
         });
@@ -188,7 +188,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     const auth = requireAuthenticated(request);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     if (auth.context.mode === "demo") {
-      const result = deleteSandboxCandidate(auth.context.demoAccessId, id);
+      const result = await deleteSandboxCandidate(auth.context.demoAccessId, id);
       return candidateDeleteResponse(result, id, "未找到该候选。");
     }
     return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);

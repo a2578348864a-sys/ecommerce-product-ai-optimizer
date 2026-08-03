@@ -103,7 +103,7 @@ beforeEach(() => {
 });
 
 describe("demo Sandbox recoverable replacement", () => {
-  it("keeps the original Candidate and creates no Task when combined publication fails", () => {
+  it("keeps the original Candidate and creates no Task when combined publication fails", async () => {
     const atomicCandidate = {
       id: "sandbox_candidate_atomic",
       demoAccessId: "visitor-a",
@@ -146,7 +146,7 @@ describe("demo Sandbox recoverable replacement", () => {
       fileSystem.files.set(target, value);
     });
 
-    expect(() => createSandboxTaskAndLinkCandidate("visitor-a", "sandbox_candidate_atomic", {
+    await expect(createSandboxTaskAndLinkCandidate("visitor-a", "sandbox_candidate_atomic", {
       title: "Atomic Product 一键分析",
     }, {
       expectedProductName: "Atomic Product",
@@ -154,7 +154,7 @@ describe("demo Sandbox recoverable replacement", () => {
         atomicCandidate,
         buildCandidateAnalysisContext(atomicCandidate),
       ),
-    })).toThrow("EIO");
+    })).rejects.toThrow("EIO");
     expect(fileSystem.files.get(STORE_PATH)).toBe(originalJson);
     expect(JSON.parse(fileSystem.files.get(STORE_PATH)!).tasks).toHaveLength(0);
     expect(JSON.parse(fileSystem.files.get(STORE_PATH)!).candidates[0].convertedTaskId).toBeNull();
@@ -209,7 +209,7 @@ describe("demo Sandbox recoverable replacement", () => {
 });
 
 describe("demo Sandbox Candidate delete lifecycle", () => {
-  it("returns linked_task and publishes nothing for a converted Candidate", () => {
+  it("returns linked_task and publishes nothing for a converted Candidate", async () => {
     const originalJson = JSON.stringify({
       version: 1,
       tasks: [],
@@ -217,12 +217,12 @@ describe("demo Sandbox Candidate delete lifecycle", () => {
     });
     fileSystem.files.set(STORE_PATH, originalJson);
 
-    expect(deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("linked_task");
+    expect(await deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("linked_task");
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.files.get(STORE_PATH)).toBe(originalJson);
   });
 
-  it("returns not_found without publishing when Visitor A targets Visitor B Candidate", () => {
+  it("returns not_found without publishing when Visitor A targets Visitor B Candidate", async () => {
     const originalJson = JSON.stringify({
       version: 1,
       tasks: [],
@@ -230,19 +230,19 @@ describe("demo Sandbox Candidate delete lifecycle", () => {
     });
     fileSystem.files.set(STORE_PATH, originalJson);
 
-    expect(deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("not_found");
+    expect(await deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("not_found");
     expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
     expect(fileSystem.files.get(STORE_PATH)).toBe(originalJson);
   });
 
-  it("deletes an unlinked Candidate through the existing atomic publication", () => {
+  it("deletes an unlinked Candidate through the existing atomic publication", async () => {
     fileSystem.files.set(STORE_PATH, JSON.stringify({
       version: 1,
       tasks: [],
       candidates: [candidate()],
     }));
 
-    expect(deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("deleted");
+    expect(await deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("deleted");
     expect(fileSystem.writeFileSync).toHaveBeenCalledOnce();
     expect(JSON.parse(fileSystem.files.get(STORE_PATH)!)).toMatchObject({ candidates: [] });
   });
