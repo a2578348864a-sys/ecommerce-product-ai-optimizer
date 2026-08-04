@@ -5,17 +5,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schema",
-    "handoffId",
-    "taskId",
-    "candidateId",
-    "currentRevision",
-    "controlState",
-    "createdAt",
-    "createdBy",
-    "researchMode",
-    "promotionEligible",
-    "versions"
+    "schema", "handoffId", "taskId", "candidateId", "currentRevision",
+    "controlState", "createdAt", "createdBy", "researchMode", "promotionEligible", "versions"
   ],
   "properties": {
     "schema": { "const": "product-creative-handoff.v1" },
@@ -46,14 +37,7 @@
     },
     {
       "if": { "properties": { "controlState": { "const": "active" } } },
-      "then": {
-        "not": {
-          "anyOf": [
-            { "required": ["revokedAt"] },
-            { "required": ["revokeReasonCode"] }
-          ]
-        }
-      }
+      "then": { "not": { "required": ["revokedAt"] }, "not": { "required": ["revokeReasonCode"] } }
     }
   ],
   "$defs": {
@@ -68,33 +52,50 @@
     },
     "factValue": {
       "oneOf": [
-        { "type": "string", "minLength": 1, "maxLength": 1000 },
+        { "type": "string", "maxLength": 1000 },
         { "type": "number" },
         { "type": "boolean" },
-        {
-          "type": "array",
-          "maxItems": 20,
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1, "maxLength": 300 }
-        }
+        { "type": "array", "items": { "type": "string", "maxLength": 300 }, "minItems": 1, "maxItems": 20, "uniqueItems": true }
       ]
     },
     "usageScopes": {
       "type": "array",
+      "items": { "enum": ["listing", "image", "internal"] },
       "minItems": 1,
       "maxItems": 3,
-      "uniqueItems": true,
-      "items": { "enum": ["listing", "image", "internal"] }
+      "uniqueItems": true
     },
-    "snapshotSourceReference": {
+    "candidateSnapshotReference": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceKind", "sourceField", "sourceSnapshotFingerprint"],
+      "required": ["sourceKind", "sourceField", "candidateSnapshotFingerprint", "capturedAt"],
       "properties": {
-        "sourceKind": { "enum": ["candidate_snapshot", "seller_sprite_snapshot", "research_result"] },
-        "sourceField": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "sourceSnapshotFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sourceKind": { "const": "candidate_snapshot" },
+        "sourceField": { "type": "string", "maxLength": 160 },
+        "candidateSnapshotFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "capturedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "sellerSpriteSnapshotReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "sourceField", "sellerSpriteSnapshotFingerprint", "capturedAt"],
+      "properties": {
+        "sourceKind": { "const": "seller_sprite_snapshot" },
+        "sourceField": { "type": "string", "maxLength": 160 },
+        "sellerSpriteSnapshotFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "capturedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "researchResultReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceKind", "sourceField", "researchResultFingerprint", "researchRevision"],
+      "properties": {
+        "sourceKind": { "const": "research_result" },
+        "sourceField": { "type": "string", "maxLength": 160 },
+        "researchResultFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "researchRevision": { "type": "integer", "minimum": 1, "maximum": 1000000 }
       }
     },
     "userConfirmationReference": {
@@ -103,28 +104,35 @@
       "required": ["sourceKind", "sourceField", "confirmedBy", "confirmedAt", "confirmationReference"],
       "properties": {
         "sourceKind": { "const": "user_confirmation" },
-        "sourceField": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "sourceField": { "type": "string", "maxLength": 160 },
         "confirmedBy": { "$ref": "#/$defs/internalActor" },
         "confirmedAt": { "type": "string", "format": "date-time" },
-        "confirmationReference": { "type": "string", "minLength": 1, "maxLength": 240 }
+        "confirmationReference": { "type": "string", "maxLength": 240 }
       }
+    },
+    "snapshotSourceReference": {
+      "oneOf": [
+        { "$ref": "#/$defs/candidateSnapshotReference" },
+        { "$ref": "#/$defs/sellerSpriteSnapshotReference" },
+        { "$ref": "#/$defs/researchResultReference" }
+      ]
     },
     "sourceReference": {
       "oneOf": [
-        { "$ref": "#/$defs/snapshotSourceReference" },
+        { "$ref": "#/$defs/candidateSnapshotReference" },
+        { "$ref": "#/$defs/sellerSpriteSnapshotReference" },
+        { "$ref": "#/$defs/researchResultReference" },
         { "$ref": "#/$defs/userConfirmationReference" }
       ]
     },
     "confirmedFact": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "confirmedAt", "confirmedBy"
-      ],
+      "required": ["factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "confirmedAt", "confirmedBy"],
       "properties": {
         "factId": { "type": "string", "format": "uuid" },
-        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
-        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "field": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
         "value": { "$ref": "#/$defs/factValue" },
         "evidenceTier": { "const": "human_confirmed" },
         "usageScopes": { "$ref": "#/$defs/usageScopes" },
@@ -139,19 +147,20 @@
       "required": ["factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "stabilityRule"],
       "properties": {
         "factId": { "type": "string", "format": "uuid" },
-        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
-        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "field": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
         "value": { "$ref": "#/$defs/factValue" },
         "evidenceTier": { "const": "source_snapshot" },
         "usageScopes": {
-          "type": "array",
           "prefixItems": [{ "const": "internal" }],
           "items": false,
           "minItems": 1,
           "maxItems": 1
         },
         "sourceRef": { "$ref": "#/$defs/snapshotSourceReference" },
-        "stabilityRule": { "enum": ["identity_only", "routing_only", "human_confirmation_required_for_claim"] }
+        "stabilityRule": {
+          "enum": ["identity_only", "routing_only", "human_confirmation_required_for_claim"]
+        }
       }
     },
     "aiCreativeReference": {
@@ -160,28 +169,26 @@
       "required": ["referenceId", "field", "summary", "evidenceTier", "allowedUse", "prohibitedUses"],
       "properties": {
         "referenceId": { "type": "string", "format": "uuid" },
-        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "field": { "type": "string", "minLength": 1, "maxLength": 160 },
         "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
         "evidenceTier": { "const": "ai_hypothesis" },
         "allowedUse": { "enum": ["tone", "layout", "composition", "non_factual_angle"] },
         "prohibitedUses": {
           "type": "array",
+          "items": { "enum": ["title_fact", "bullet_fact", "parameter", "certification", "performance_claim", "image_text", "packaging", "logo"] },
           "minItems": 6,
           "maxItems": 8,
-          "uniqueItems": true,
-          "items": {
-            "enum": ["title_fact", "bullet_fact", "parameter", "certification", "performance_claim", "image_text", "packaging", "logo"]
-          },
-          "allOf": [
-            { "contains": { "const": "title_fact" } },
-            { "contains": { "const": "bullet_fact" } },
-            { "contains": { "const": "parameter" } },
-            { "contains": { "const": "certification" } },
-            { "contains": { "const": "performance_claim" } },
-            { "contains": { "const": "image_text" } }
-          ]
+          "uniqueItems": true
         }
-      }
+      },
+      "allOf": [
+        { "contains": { "properties": { "prohibitedUses": { "contains": { "const": "title_fact" } } } } },
+        { "contains": { "properties": { "prohibitedUses": { "contains": { "const": "bullet_fact" } } } } },
+        { "contains": { "properties": { "prohibitedUses": { "contains": { "const": "parameter" } } } } },
+        { "contains": { "properties": { "prohibitedUses": { "contains": { "const": "certification" } } } } },
+        { "contains": { "properties": { "prohibitedUses": { "contains": { "const": "performance_claim" } } } } },
+        { "contains": { "properties": { "prohibitedUses": { "contains": { "const": "image_text" } } } } }
+      ]
     },
     "issue": {
       "type": "object",
@@ -189,27 +196,17 @@
       "required": ["issueId", "field", "kind", "summary", "risk", "blocks", "recommendedAction"],
       "properties": {
         "issueId": { "type": "string", "format": "uuid" },
-        "field": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "field": { "type": "string", "minLength": 1, "maxLength": 160 },
         "kind": { "enum": ["missing", "conflict"] },
         "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
-        "sourceSummaries": {
-          "type": "array",
-          "maxItems": 5,
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
-        },
+        "sourceSummaries": { "type": "array", "items": { "type": "string", "maxLength": 240 }, "maxItems": 5, "uniqueItems": true },
         "risk": { "enum": ["low", "medium", "high", "blocking"] },
         "blocks": {
           "type": "array",
+          "items": { "enum": ["listing_title", "listing_bullets", "listing_description", "search_terms", "image_product_depiction", "image_text", "packaging", "logo", "certification", "performance_claim"] },
           "minItems": 1,
           "maxItems": 10,
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "listing_title", "listing_bullets", "listing_description", "search_terms", "image_product_depiction",
-              "image_text", "packaging", "logo", "certification", "performance_claim"
-            ]
-          }
+          "uniqueItems": true
         },
         "recommendedAction": { "type": "string", "minLength": 1, "maxLength": 500 }
       }
@@ -221,20 +218,10 @@
       "properties": {
         "claimId": { "type": "string", "format": "uuid" },
         "category": {
-          "enum": [
-            "unconfirmed_material", "unconfirmed_dimension", "unconfirmed_performance", "unconfirmed_certification",
-            "brand_authorization", "health_safety_environment", "competitor_trademark", "absolute_claim",
-            "invented_accessory", "invented_packaging", "other"
-          ]
+          "enum": ["unconfirmed_material", "unconfirmed_dimension", "unconfirmed_performance", "unconfirmed_certification", "brand_authorization", "health_safety_environment", "competitor_trademark", "absolute_claim", "invented_accessory", "invented_packaging", "other"]
         },
         "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
-        "appliesTo": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 3,
-          "uniqueItems": true,
-          "items": { "enum": ["listing", "image", "both"] }
-        },
+        "appliesTo": { "type": "array", "items": { "enum": ["listing", "image", "both"] }, "minItems": 1, "maxItems": 3, "uniqueItems": true },
         "source": { "enum": ["system_rule", "research_issue", "user_restriction"] }
       }
     },
@@ -244,33 +231,33 @@
       "required": ["evidenceTier"],
       "properties": {
         "evidenceTier": { "const": "creative_preference" },
-        "targetMarket": { "type": "string", "minLength": 1, "maxLength": 32 },
-        "language": { "type": "string", "minLength": 1, "maxLength": 32 },
-        "tone": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "targetAudiencePreference": { "type": "string", "minLength": 1, "maxLength": 300 },
-        "imageStyle": { "type": "string", "minLength": 1, "maxLength": 120 },
-        "backgroundPreference": { "type": "string", "minLength": 1, "maxLength": 300 },
-        "compositionPreference": { "type": "string", "minLength": 1, "maxLength": 300 }
+        "targetMarket": { "type": "string", "maxLength": 32 },
+        "language": { "type": "string", "maxLength": 32 },
+        "tone": { "type": "string", "maxLength": 80 },
+        "targetAudiencePreference": { "type": "string", "maxLength": 300 },
+        "imageStyle": { "type": "string", "maxLength": 120 },
+        "backgroundPreference": { "type": "string", "maxLength": 300 },
+        "compositionPreference": { "type": "string", "maxLength": 300 }
       }
     },
     "visualReference": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["assetFingerprint", "sourceTier", "identityBound", "humanApprovedForReference", "approvedAt"],
+      "required": ["assetFingerprint", "sourceTier", "identityBound", "humanApprovedForReference", "approvedBy", "approvedAt", "confirmationReference"],
       "properties": {
         "assetFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "sourceTier": { "enum": ["source_snapshot", "human_confirmed"] },
         "identityBound": { "const": true },
         "humanApprovedForReference": { "const": true },
-        "approvedAt": { "type": "string", "format": "date-time" }
+        "approvedBy": { "$ref": "#/$defs/internalActor" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "confirmationReference": { "type": "string", "minLength": 1, "maxLength": 240 }
       }
     },
     "sourceResearch": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "recordSchema", "candidateId", "researchRevision", "researchHash", "workflowStatus", "decisionStatus", "candidateSourceFingerprint"
-      ],
+      "required": ["recordSchema", "candidateId", "researchRevision", "researchHash", "workflowStatus", "decisionStatus", "candidateSourceFingerprint"],
       "properties": {
         "recordSchema": { "const": "product-research-record.v1" },
         "candidateId": { "type": "string", "minLength": 1, "maxLength": 120 },
@@ -287,7 +274,7 @@
       "required": ["displayName", "identityConfirmedAt"],
       "properties": {
         "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "marketplace": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "marketplace": { "type": "string", "maxLength": 32 },
         "identityConfirmedAt": { "type": "string", "format": "date-time" }
       }
     },
@@ -305,52 +292,27 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "revision", "createdAt", "createdBy", "sourceResearch", "productIdentity", "confirmedFacts",
-        "stableSourceFacts", "aiCreativeReferences", "issues", "prohibitedClaims", "creativePreferences",
-        "visualReferences", "confirmation", "humanReviewRequired", "handoffFingerprint"
+        "sourceResearch", "productIdentity", "confirmedFacts", "stableSourceFacts",
+        "aiCreativeReferences", "issues", "prohibitedClaims", "creativePreferences",
+        "visualReferences", "humanReviewRequired", "revision", "createdAt", "createdBy",
+        "confirmation", "handoffFingerprint"
       ],
       "properties": {
         "revision": { "type": "integer", "minimum": 1, "maximum": 10 },
         "createdAt": { "type": "string", "format": "date-time" },
         "createdBy": { "$ref": "#/$defs/internalActor" },
+        "confirmation": { "$ref": "#/$defs/confirmation" },
+        "handoffFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "sourceResearch": { "$ref": "#/$defs/sourceResearch" },
         "productIdentity": { "$ref": "#/$defs/productIdentity" },
-        "confirmedFacts": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 50,
-          "items": { "$ref": "#/$defs/confirmedFact" }
-        },
-        "stableSourceFacts": {
-          "type": "array",
-          "maxItems": 20,
-          "items": { "$ref": "#/$defs/stableSourceFact" }
-        },
-        "aiCreativeReferences": {
-          "type": "array",
-          "maxItems": 20,
-          "items": { "$ref": "#/$defs/aiCreativeReference" }
-        },
-        "issues": {
-          "type": "array",
-          "maxItems": 30,
-          "items": { "$ref": "#/$defs/issue" }
-        },
-        "prohibitedClaims": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 50,
-          "items": { "$ref": "#/$defs/prohibitedClaim" }
-        },
+        "confirmedFacts": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/$defs/confirmedFact" } },
+        "stableSourceFacts": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/stableSourceFact" } },
+        "aiCreativeReferences": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/aiCreativeReference" } },
+        "issues": { "type": "array", "maxItems": 30, "items": { "$ref": "#/$defs/issue" } },
+        "prohibitedClaims": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/$defs/prohibitedClaim" } },
         "creativePreferences": { "$ref": "#/$defs/creativePreferences" },
-        "visualReferences": {
-          "type": "array",
-          "maxItems": 5,
-          "items": { "$ref": "#/$defs/visualReference" }
-        },
-        "confirmation": { "$ref": "#/$defs/confirmation" },
-        "humanReviewRequired": { "const": true },
-        "handoffFingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        "visualReferences": { "type": "array", "maxItems": 5, "items": { "$ref": "#/$defs/visualReference" } },
+        "humanReviewRequired": { "const": true }
       }
     }
   }

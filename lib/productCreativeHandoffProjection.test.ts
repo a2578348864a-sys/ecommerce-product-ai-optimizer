@@ -46,7 +46,8 @@ function projectionInput(): ProductCreativeHandoffProjectionInput {
           sourceRef: {
             sourceKind: "seller_sprite_snapshot",
             sourceField: "title",
-            sourceSnapshotFingerprint: "c".repeat(64),
+            sellerSpriteSnapshotFingerprint: "c".repeat(64),
+            capturedAt: "2026-08-04T00:00:00.000Z",
           },
           stabilityRule: "human_confirmation_required_for_claim",
         },

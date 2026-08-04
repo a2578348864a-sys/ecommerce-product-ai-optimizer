@@ -62,14 +62,20 @@ describe("product-creative-handoff.v1 JSON Schema boundary", () => {
     visit(PRODUCT_CREATIVE_HANDOFF_JSON_SCHEMA);
   });
 
-  it("uses discriminated sourceReference definitions instead of requiring a fake snapshot hash", () => {
+  it("uses a 4-branch discriminated sourceReference union with branch-specific fingerprints", () => {
     const definitions = PRODUCT_CREATIVE_HANDOFF_JSON_SCHEMA.$defs;
-    expect(definitions.snapshotSourceReference.required).toContain("sourceSnapshotFingerprint");
+    // Each variant has its own fingerprint field
+    expect(definitions.candidateSnapshotReference.required).toContain("candidateSnapshotFingerprint");
+    expect(definitions.sellerSpriteSnapshotReference.required).toContain("sellerSpriteSnapshotFingerprint");
+    expect(definitions.researchResultReference.required).toContain("researchResultFingerprint");
+    // User confirmation cannot accept snapshot fingerprint
     expect(definitions.userConfirmationReference.required).toEqual(expect.arrayContaining([
-      "confirmedBy",
-      "confirmedAt",
-      "confirmationReference",
+      "confirmedBy", "confirmedAt", "confirmationReference",
     ]));
-    expect(definitions.userConfirmationReference.properties).not.toHaveProperty("sourceSnapshotFingerprint");
+    expect(definitions.userConfirmationReference.properties).not.toHaveProperty("candidateSnapshotFingerprint");
+    expect(definitions.userConfirmationReference.properties).not.toHaveProperty("sellerSpriteSnapshotFingerprint");
+    expect(definitions.userConfirmationReference.properties).not.toHaveProperty("researchResultFingerprint");
+    // sourceReference is a oneOf with 4 branches
+    expect(definitions.sourceReference.oneOf).toHaveLength(4);
   });
 });

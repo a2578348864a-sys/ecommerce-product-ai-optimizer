@@ -65,7 +65,7 @@ export function validHandoffCandidate(): ProductCreativeHandoffCandidate {
         sourceRef: {
           sourceKind: "seller_sprite_snapshot",
           sourceField: "title",
-          sourceSnapshotFingerprint: "c".repeat(64),
+          sellerSpriteSnapshotFingerprint: "c".repeat(64),
           capturedAt: CREATED_AT,
         },
         stabilityRule: "human_confirmation_required_for_claim",
@@ -121,7 +121,9 @@ export function validHandoffCandidate(): ProductCreativeHandoffCandidate {
         sourceTier: "human_confirmed",
         identityBound: true,
         humanApprovedForReference: true,
+        approvedBy: OWNER,
         approvedAt: CREATED_AT,
+        confirmationReference: "visual-review:hero-image:v1",
       },
     ],
     humanReviewRequired: true,

@@ -17,11 +17,27 @@ export type ProductCreativeHandoffInternalActor = {
   subjectFingerprint: string;
 };
 
-export type ProductCreativeHandoffSnapshotSourceReference = {
-  sourceKind: "candidate_snapshot" | "seller_sprite_snapshot" | "research_result";
+// ─── SourceReference Discriminated Union (4 branches, not 2) ───
+
+export type ProductCreativeHandoffCandidateSnapshotReference = {
+  sourceKind: "candidate_snapshot";
   sourceField: string;
-  sourceSnapshotFingerprint: string;
-  capturedAt?: string;
+  candidateSnapshotFingerprint: string;
+  capturedAt: string;
+};
+
+export type ProductCreativeHandoffSellerSpriteSnapshotReference = {
+  sourceKind: "seller_sprite_snapshot";
+  sourceField: string;
+  sellerSpriteSnapshotFingerprint: string;
+  capturedAt: string;
+};
+
+export type ProductCreativeHandoffResearchResultReference = {
+  sourceKind: "research_result";
+  sourceField: string;
+  researchResultFingerprint: string;
+  researchRevision: number;
 };
 
 export type ProductCreativeHandoffUserConfirmationReference = {
@@ -32,8 +48,16 @@ export type ProductCreativeHandoffUserConfirmationReference = {
   confirmationReference: string;
 };
 
+/** @deprecated Use the 4-branch discriminated union types above. */
+export type ProductCreativeHandoffSnapshotSourceReference =
+  | ProductCreativeHandoffCandidateSnapshotReference
+  | ProductCreativeHandoffSellerSpriteSnapshotReference
+  | ProductCreativeHandoffResearchResultReference;
+
 export type ProductCreativeHandoffSourceReference =
-  | ProductCreativeHandoffSnapshotSourceReference
+  | ProductCreativeHandoffCandidateSnapshotReference
+  | ProductCreativeHandoffSellerSpriteSnapshotReference
+  | ProductCreativeHandoffResearchResultReference
   | ProductCreativeHandoffUserConfirmationReference;
 
 export type ProductCreativeHandoffFactValue = string | number | boolean | string[];
@@ -136,7 +160,9 @@ export type ProductCreativeHandoffVisualReference = {
   sourceTier: "source_snapshot" | "human_confirmed";
   identityBound: true;
   humanApprovedForReference: true;
+  approvedBy: ProductCreativeHandoffInternalActor;
   approvedAt: string;
+  confirmationReference: string;
 };
 
 export type ProductCreativeHandoffSourceResearch = {
@@ -277,23 +303,58 @@ function parseFactValue(value: unknown): ProductCreativeHandoffFactValue | null 
   return parseStringArray(value, 20, 300);
 }
 
-function parseSnapshotSourceReference(value: unknown): ProductCreativeHandoffSnapshotSourceReference | null {
-  if (!isRecord(value) || !hasExactKeys(
-    value,
-    ["sourceKind", "sourceField", "sourceSnapshotFingerprint"],
-    ["capturedAt"],
-  )) return null;
+function parseCandidateSnapshotReference(value: unknown): ProductCreativeHandoffCandidateSnapshotReference | null {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "sourceKind", "sourceField", "candidateSnapshotFingerprint", "capturedAt",
+  ])) return null;
   if (value.sourceKind !== "candidate_snapshot"
-    && value.sourceKind !== "seller_sprite_snapshot"
-    && value.sourceKind !== "research_result") return null;
-  if (!isNfcTrimmedText(value.sourceField, 160) || !isHash(value.sourceSnapshotFingerprint)) return null;
-  if (value.capturedAt !== undefined && !isIsoDate(value.capturedAt)) return null;
+    || !isNfcTrimmedText(value.sourceField, 160)
+    || !isHash(value.candidateSnapshotFingerprint)
+    || !isIsoDate(value.capturedAt)) return null;
   return {
-    sourceKind: value.sourceKind,
-    sourceField: value.sourceField,
-    sourceSnapshotFingerprint: value.sourceSnapshotFingerprint,
-    ...(value.capturedAt ? { capturedAt: value.capturedAt } : {}),
+    sourceKind: "candidate_snapshot",
+    sourceField: value.sourceField as string,
+    candidateSnapshotFingerprint: value.candidateSnapshotFingerprint as string,
+    capturedAt: value.capturedAt as string,
   };
+}
+
+function parseSellerSpriteSnapshotReference(value: unknown): ProductCreativeHandoffSellerSpriteSnapshotReference | null {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "sourceKind", "sourceField", "sellerSpriteSnapshotFingerprint", "capturedAt",
+  ])) return null;
+  if (value.sourceKind !== "seller_sprite_snapshot"
+    || !isNfcTrimmedText(value.sourceField, 160)
+    || !isHash(value.sellerSpriteSnapshotFingerprint)
+    || !isIsoDate(value.capturedAt)) return null;
+  return {
+    sourceKind: "seller_sprite_snapshot",
+    sourceField: value.sourceField as string,
+    sellerSpriteSnapshotFingerprint: value.sellerSpriteSnapshotFingerprint as string,
+    capturedAt: value.capturedAt as string,
+  };
+}
+
+function parseResearchResultReference(value: unknown): ProductCreativeHandoffResearchResultReference | null {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "sourceKind", "sourceField", "researchResultFingerprint", "researchRevision",
+  ])) return null;
+  if (value.sourceKind !== "research_result"
+    || !isNfcTrimmedText(value.sourceField, 160)
+    || !isHash(value.researchResultFingerprint)
+    || !isSafeIntegerBetween(value.researchRevision, 1, 1_000_000)) return null;
+  return {
+    sourceKind: "research_result",
+    sourceField: value.sourceField as string,
+    researchResultFingerprint: value.researchResultFingerprint as string,
+    researchRevision: value.researchRevision as number,
+  };
+}
+
+function parseSnapshotSourceReference(value: unknown): ProductCreativeHandoffSnapshotSourceReference | null {
+  return parseCandidateSnapshotReference(value)
+    ?? parseSellerSpriteSnapshotReference(value)
+    ?? parseResearchResultReference(value);
 }
 
 function parseUserConfirmationReference(value: unknown): ProductCreativeHandoffUserConfirmationReference | null {
@@ -452,6 +513,8 @@ function parseProhibitedClaim(value: unknown): ProductCreativeHandoffProhibitedC
     || (value.source !== "system_rule" && value.source !== "research_issue" && value.source !== "user_restriction")) return null;
   const appliesTo = parseUniqueEnumArray(value.appliesTo, ["listing", "image", "both"] as const, 1, 3);
   if (!appliesTo) return null;
+  // P1-2: "both" is exclusive — must not coexist with "listing" or "image"
+  if (appliesTo.includes("both") && (appliesTo.includes("listing") || appliesTo.includes("image"))) return null;
   return {
     claimId: value.claimId.toLowerCase(),
     category: value.category as ProductCreativeHandoffProhibitedClaim["category"],
@@ -483,19 +546,25 @@ function parseCreativePreferences(value: unknown): ProductCreativeHandoffCreativ
 
 function parseVisualReference(value: unknown): ProductCreativeHandoffVisualReference | null {
   if (!isRecord(value) || !hasExactKeys(value, [
-    "assetFingerprint", "sourceTier", "identityBound", "humanApprovedForReference", "approvedAt",
+    "assetFingerprint", "sourceTier", "identityBound", "humanApprovedForReference",
+    "approvedBy", "approvedAt", "confirmationReference",
   ])) return null;
+  const approvedBy = parseActor(value.approvedBy);
   if (!isHash(value.assetFingerprint)
     || (value.sourceTier !== "source_snapshot" && value.sourceTier !== "human_confirmed")
     || value.identityBound !== true
     || value.humanApprovedForReference !== true
-    || !isIsoDate(value.approvedAt)) return null;
+    || !approvedBy
+    || !isIsoDate(value.approvedAt)
+    || !isNfcTrimmedText(value.confirmationReference, 240)) return null;
   return {
-    assetFingerprint: value.assetFingerprint,
-    sourceTier: value.sourceTier,
+    assetFingerprint: value.assetFingerprint as string,
+    sourceTier: value.sourceTier as "source_snapshot" | "human_confirmed",
     identityBound: true,
     humanApprovedForReference: true,
-    approvedAt: value.approvedAt,
+    approvedBy,
+    approvedAt: value.approvedAt as string,
+    confirmationReference: value.confirmationReference as string,
   };
 }
 
@@ -574,6 +643,11 @@ function parseCandidate(value: unknown): ProductCreativeHandoffCandidate | null 
   if (new Set(parsedIssues.map((item) => item.issueId)).size !== parsedIssues.length) return null;
   if (new Set(parsedClaims.map((item) => item.claimId)).size !== parsedClaims.length) return null;
   if (new Set(parsedVisualReferences.map((item) => item.assetFingerprint)).size !== parsedVisualReferences.length) return null;
+  // P1-3: Cross-tier field conflict — confirmed and stable facts must not share the same field
+  const confirmedFields = new Set(parsedConfirmed.map((item) => item.field));
+  if (parsedStable.some((item) => confirmedFields.has(item.field))) return null;
+  // P1-1: Blocking issue invalidates the entire handoff candidate
+  if (parsedIssues.some((issue) => issue.risk === "blocking")) return null;
   return {
     sourceResearch,
     productIdentity,
