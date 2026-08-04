@@ -333,7 +333,12 @@ export async function POST(
     if (gate.handoffContractInvalid) {
       return errorResponse(500, "handoff_contract_invalid", "创作交接合同结构异常，已阻止覆盖。");
     }
-    if (!gate.allowed || !gate.candidate) {
+    // Fix.5: no_confirmed_facts 是合法研究状态（来源层可见，可提交 confirmable selectionId），
+    // 由锁内确认转换决定成败；其他拒绝状态才阻断。
+    if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
+      return errorResponse(422, "research_gate_failed", "当前研究状态不允许创建创作交接。");
+    }
+    if (!gate.candidate) {
       return errorResponse(422, "research_gate_failed", "当前研究状态不允许创建创作交接。");
     }
 

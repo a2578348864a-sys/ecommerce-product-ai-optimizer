@@ -594,7 +594,8 @@ export async function getCreativeHandoffDetail(
   context: AccessContext,
 ): Promise<{ detail: CreativeHandoffDetail | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
-  if (!gate.allowed) return { detail: null, gate };
+  // Fix.5: no_confirmed_facts 是合法研究状态 — 已存在的 Handoff 仍需可查看/可撤回
+  if (!gate.allowed && gate.reason !== "no_confirmed_facts") return { detail: null, gate };
 
   const handoff = gate.currentHandoff;
   if (!handoff) {
