@@ -84,6 +84,29 @@ function protectedDocument() {
     researchVerification: verification,
     unknownNamespace: { keep: true },
     productLifecycle: { state: "investigating" },
+    candidateAnalysisContext: {
+      candidateId: verification.candidateId,
+      productName: "Synthetic Product",
+      sourceType: "seller_sprite_market_research",
+      sourceLabel: "SellerSprite",
+      marketplace: "US",
+      asin: "B0ABCDEF12",
+      productUrl: "https://example.com/synthetic",
+      title: "Synthetic Product Title",
+      brand: "SyntheticBrand",
+      category: "Kitchen",
+      priceUsd: 19.99,
+      rating: 4.5,
+      reviewCount: 120,
+      disclaimer: "third_party_estimate_point_in_time",
+      reportType: "SellerSprite Search Results",
+      query: "synthetic",
+      evidenceStatus: "ok",
+      researchPriority: "high",
+      promotionEligible: false,
+      capturedAt: "2026-08-05T00:00:00.000Z",
+      contextHash: "a".repeat(64),
+    },
   };
 }
 
@@ -201,16 +224,18 @@ afterEach(async () => {
 
 describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   async function firstCreate() {
+    // Fix.3: 无人工确认事实时 Gate 降级（no_confirmed_facts）— Preview 提供来源层，不可直接创建。
+    // Persistence 层幂等闭环验证使用合法 candidate 注入（Fix.2 同模式，已验证）。
     const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
-    expect(preview.gate.allowed).toBe(true);
-    const { resultJsonHash, updatedAt } = preview.gate.storageVersion!;
-    const sv = { resultJsonHash, updatedAt };
+    expect(preview.gate.allowed).toBe(false);
+    expect(preview.gate.reason).toBe("no_confirmed_facts");
+    // storageVersion 从 Gate 获取（合法研究数据的哈希）
+    const sv = preview.gate.storageVersion!;
     const fp = `sha256:${"a".repeat(64)}`;
-    // gate.candidate 的 confirmedFacts 为空（事实投影属 PR2-2）— 注入合法候选
     const candidate = buildLegalCandidate(protectedDocument());
     const result = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: preview.gate.candidate!.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
       candidate,
@@ -509,7 +534,8 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
       data: { resultJson: JSON.stringify(task.resultJson) },
     });
     const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
-    expect(preview.gate.allowed).toBe(true);
+    // 非法 Ledger → ledgerInvalid=true（fail-closed 标记）
+    expect(preview.gate.ledgerInvalid).toBe(true);
     const sv = preview.gate.storageVersion!;
     const candidate = buildLegalCandidate(protectedDocument());
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
@@ -651,7 +677,8 @@ describe("Preview/Detail storageVersion 返回", () => {
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     });
     const preview2 = await generateCreativeHandoffPreview("task-e2e", ownerContext);
-    expect(preview2.preview!.expectedCurrentHandoffRevision).toBe(1);
+    // 创建后 Gate.currentHandoff 反映 Revision 1
+    expect(preview2.gate.currentHandoff?.currentRevision).toBe(1);
   });
 });
 

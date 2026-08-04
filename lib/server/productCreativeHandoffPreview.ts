@@ -13,7 +13,12 @@ import {
 } from "@/lib/productResearchRecord";
 import {
   projectProductCreativeHandoffCandidate,
+  ProductCreativeHandoffProjectionError,
+  type ProductCreativeHandoffProjectionEvidence,
 } from "@/lib/productCreativeHandoffProjection";
+import { buildProductCreativeHandoffProjectionEvidence, ProjectionEvidenceAdapterError } from "@/lib/productCreativeHandoffProjectionEvidence";
+import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
+import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import {
   parseProductCreativeHandoff,
 } from "@/lib/productCreativeHandoff";
@@ -29,6 +34,7 @@ import type {
 
 export type CreativeHandoffEligibility =
   | "eligible"
+  | "no_confirmed_facts"
   | "legacy_not_supported"
   | "decision_not_creative_ready"
   | "workflow_incomplete"
@@ -124,6 +130,8 @@ export type CreativeHandoffGateResult = {
   /** 当前存储的 Request Ledger（严格解析失败时 null 且 ledgerInvalid=true） */
   requestLedger?: CreativeHandoffRequestLedgerV1 | null;
   ledgerInvalid?: boolean;
+  /** 无人工确认事实时展示的证据层（来源/AI/issues，不可创建） */
+  evidenceLayers?: ProductCreativeHandoffProjectionEvidence[];
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -240,35 +248,118 @@ export async function checkCreativeHandoffGate(
   const recAny = record as unknown as Record<string, unknown>;
   const verAny = verification as unknown as Record<string, unknown>;
 
-  const candidate: ProductCreativeHandoffCandidate = {
-    sourceResearch: {
-      recordSchema: "product-research-record.v1",
-      candidateId: (recAny.candidateId as string) || "",
-      researchRevision: (recAny.revision as number) || 1,
-      researchHash: (verAny.researchHash as string) || "",
-      workflowStatus: "completed",
-      decisionStatus: "creative_ready",
-      candidateSourceFingerprint: (verAny.candidateSourceFingerprint as string) || "",
-    },
-    productIdentity: {
-      displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
-      identityConfirmedAt: (taskRec.createdAt as string) || new Date().toISOString(),
-    },
-    confirmedFacts: [],
-    stableSourceFacts: [],
-    aiCreativeReferences: [],
-    issues: [],
-    prohibitedClaims: [{
-      claimId: "00000000-0000-4000-8000-000000000001",
-      category: "absolute_claim" as const,
-      summary: "Do not make absolute claims.",
-      appliesTo: ["both" as const],
-      source: "system_rule" as const,
-    }],
-    creativePreferences: { evidenceTier: "creative_preference" as const },
-    visualReferences: [],
-    humanReviewRequired: true,
-  };
+  // ── Fix.3: 真实投影链 — 从权威 Task 构造 ProjectionEvidence → projectProductCreativeHandoffCandidate ──
+  // 同一商品实体门禁 + 五层证据边界均由 Adapter / 投影函数保证。
+  let candidate: ProductCreativeHandoffCandidate | null = null;
+  let projectionBlockingCodes: string[] = [];
+  let projectionChecks: { checkId: string; passed: boolean; blocksHandoff: boolean; summary: string }[] = [];
+  let noConfirmedFacts = false;
+  const contextRaw = resultJson.candidateAnalysisContext;
+  const researchContext = contextRaw !== undefined ? parseCandidateResearchContext(contextRaw) : null;
+  const agentOutput = extractAgentOutputSnapshotFromTask(resultJson);
+  if (researchContext) {
+    const projectionInput = buildProductCreativeHandoffProjectionEvidence({
+      researchRecord: record,
+      context: researchContext,
+      agentOutput,
+      researchRevision: record.revision,
+      researchHash: record.researchHash,
+    });
+    projectionChecks = projectionInput.deterministicChecks;
+    try {
+      const projectionResult = projectProductCreativeHandoffCandidate({
+        sourceResearch: {
+          recordSchema: "product-research-record.v1",
+          candidateId: record.candidateId,
+          researchRevision: record.revision,
+          researchHash: record.researchHash,
+          workflowStatus: "completed",
+          decisionStatus: "creative_ready",
+          candidateSourceFingerprint: researchContext.contextHash.slice(0, 16),
+        },
+        productIdentity: {
+          displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
+          identityConfirmedAt: (taskRec.createdAt as string) || new Date().toISOString(),
+        },
+        evidence: projectionInput.evidence,
+        prohibitedClaims: [{
+          claimId: "00000000-0000-4000-8000-000000000001",
+          category: "absolute_claim" as const,
+          summary: "Do not make absolute claims.",
+          appliesTo: ["both" as const],
+          source: "system_rule" as const,
+        }],
+        creativePreferences: { evidenceTier: "creative_preference" as const },
+        visualReferences: [],
+      });
+      candidate = projectionResult.candidate;
+      projectionBlockingCodes = projectionResult.blockingCodes;
+    } catch (error) {
+      if (error instanceof ProductCreativeHandoffProjectionError
+        && error.code === "invalid_projected_candidate") {
+        // 无人工确认事实（PR2-0 强制 confirmedFacts ≥1，当前系统无 user_confirmation 生产点）
+        // Preview 仍可显示来源/AI/issues 层；Create 将返回 no_facts_selected。
+        noConfirmedFacts = true;
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  if (noConfirmedFacts) {
+    // 研究合法但无人工确认事实（PR2-0 强制 confirmedFacts ≥1，当前系统无 user_confirmation 生产点）
+    // Preview 仍显示来源/AI/issues 层（指令第十一节）；Create 将返回 no_facts_selected。
+    // 把投影前的证据层附加到 Gate（供 Preview 展示），但 allowed=false（不可创建）。
+    const contextRaw2 = resultJson.candidateAnalysisContext;
+    const researchContext2 = contextRaw2 !== undefined ? parseCandidateResearchContext(contextRaw2) : null;
+    const agentOutput2 = extractAgentOutputSnapshotFromTask(resultJson);
+    let evidenceLayers: ProductCreativeHandoffProjectionEvidence[] = [];
+    if (researchContext2) {
+      try {
+        evidenceLayers = buildProductCreativeHandoffProjectionEvidence({
+          researchRecord: record,
+          context: researchContext2,
+          agentOutput: agentOutput2,
+          researchRevision: record.revision,
+          researchHash: record.researchHash,
+        }).evidence;
+      } catch { /* 投影失败时不展示 */ }
+    }
+    // Ledger fail-closed 状态（与主路径一致）
+    let ledgerInvalidHere = false;
+    const ledgerRawHere = resultJson.creativeHandoffRequestLedger;
+    if (ledgerRawHere !== undefined && !parseRequestLedger(ledgerRawHere)) {
+      ledgerInvalidHere = true;
+    }
+    // currentHandoff 状态（供 Detail 显示 revision/controlState）
+    let currentHandoffHere: ProductCreativeHandoffV1 | null = null;
+    const handoffRawHere = resultJson.creativeHandoff;
+    if (handoffRawHere !== undefined) {
+      currentHandoffHere = parseProductCreativeHandoff(handoffRawHere);
+    }
+    return {
+      allowed: false,
+      reason: "no_confirmed_facts",
+      storageVersion: {
+        resultJsonHash: fullHash(resultJsonStr || ""),
+        updatedAt: updatedAt || new Date().toISOString(),
+      },
+      handoffContractInvalid: false,
+      evidenceLayers,
+      ledgerInvalid: ledgerInvalidHere,
+      currentHandoff: currentHandoffHere,
+    };
+  }
+
+  if (!candidate && projectionBlockingCodes.length === 0) {
+    // 无 candidateAnalysisContext 或投影失败 → 按 legacy_not_supported 处理（fail-closed）
+    return { allowed: false, reason: "legacy_not_supported", storageVersion: undefined, handoffContractInvalid: false };
+  }
+
+  // blocking issue 门禁
+  if (!candidate || projectionBlockingCodes.length > 0) {
+    return { allowed: false, reason: "blocking_issue_present", storageVersion: undefined };
+  }
 
   const currentHandoffRaw = resultJson.creativeHandoff;
   let currentHandoff: ProductCreativeHandoffV1 | null = null;
@@ -311,6 +402,51 @@ export async function generateCreativeHandoffPreview(
   context: AccessContext,
 ): Promise<{ preview: CreativeHandoffPreview | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
+
+  // 无人工确认事实：返回来源层信息（stable/AI/issues），不可创建
+  if (!gate.allowed && gate.reason === "no_confirmed_facts" && gate.evidenceLayers) {
+    const layers = gate.evidenceLayers;
+    const preview: CreativeHandoffPreview = {
+      eligibility: "eligible",
+      researchDecisionSummary: {
+        decisionStatus: "creative_ready",
+        workflowStatus: "completed",
+        researchRevision: gate.candidate?.sourceResearch.researchRevision ?? 1,
+        researchFingerprint: "",
+      },
+      candidateFactOptions: [],
+      stableSourceFacts: layers
+        .filter((e): e is Extract<typeof e, { evidenceTier: "source_snapshot" }> => e.evidenceTier === "source_snapshot")
+        .map((e) => ({
+          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, gate.candidate?.sourceResearch.researchRevision ?? 1, "stable", e.fact.factId),
+          field: e.fact.field,
+          label: e.fact.label,
+          stabilityRule: e.fact.stabilityRule,
+        })),
+      aiReferences: layers
+        .filter((e): e is Extract<typeof e, { evidenceTier: "ai_hypothesis" }> => e.evidenceTier === "ai_hypothesis")
+        .map((e) => ({
+          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, gate.candidate?.sourceResearch.researchRevision ?? 1, "ai", e.reference.referenceId),
+          field: e.reference.field,
+          summary: e.reference.summary.slice(0, 200),
+          allowedUse: e.reference.allowedUse,
+        })),
+      issues: layers
+        .filter((e): e is Extract<typeof e, { evidenceTier: "unknown_or_conflict" }> => e.evidenceTier === "unknown_or_conflict")
+        .map((e) => ({
+          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, gate.candidate?.sourceResearch.researchRevision ?? 1, "issue", e.issue.issueId),
+          field: e.issue.field,
+          kind: e.issue.kind,
+          summary: e.issue.summary.slice(0, 200),
+          risk: e.issue.risk,
+        })),
+      expectedResearchRevision: gate.candidate?.sourceResearch.researchRevision ?? 1,
+      expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,
+      storageVersion: gate.storageVersion,
+    };
+    return { preview, gate };
+  }
+
   if (!gate.allowed || !gate.candidate) return { preview: null, gate };
 
   const subjectKind = context.mode === "owner" ? "owner" : "visitor";

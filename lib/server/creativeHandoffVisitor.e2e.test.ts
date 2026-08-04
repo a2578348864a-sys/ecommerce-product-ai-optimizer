@@ -138,6 +138,29 @@ function researchDocument(candidateId: string) {
     researchRecord,
     researchVerification: verification,
     unknownNamespace: { keep: true },
+    candidateAnalysisContext: {
+      candidateId,
+      productName: "Visitor Product",
+      sourceType: "seller_sprite_market_research",
+      sourceLabel: "SellerSprite",
+      marketplace: "US",
+      asin: "B0ABCDEF12",
+      productUrl: "https://example.com/visitor",
+      title: "Visitor Product Title",
+      brand: "VisitorBrand",
+      category: "Kitchen",
+      priceUsd: 19.99,
+      rating: 4.5,
+      reviewCount: 120,
+      disclaimer: "third_party_estimate_point_in_time",
+      reportType: "SellerSprite Search Results",
+      query: "visitor",
+      evidenceStatus: "ok",
+      researchPriority: "high",
+      promotionEligible: false,
+      capturedAt: NOW,
+      contextHash: "a".repeat(64),
+    },
   });
 }
 
@@ -192,7 +215,8 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
   async function visitorFirstCreate(demoAccessId = DEMO_A, taskId = "demo-task-a", requestId = REQ_A1) {
     const ctx = visitorContext(demoAccessId);
     const preview = await generateCreativeHandoffPreview(taskId, ctx);
-    expect(preview.gate.allowed).toBe(true);
+    // Fix.3: 无人工确认事实 → no_confirmed_facts 降级（合法研究数据）
+    expect(preview.gate.reason).toBe("no_confirmed_facts");
     const sv = preview.gate.storageVersion!;
     const candidate = buildLegalCandidate("candidate-visitor");
     const result = await createOrAppendCreativeHandoff(taskId, ctx, {
@@ -283,7 +307,9 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     expect(preview.gate.allowed).toBe(false);
     const ctxB = visitorContext(DEMO_B);
     const previewB = await generateCreativeHandoffPreview("demo-task-b", ctxB);
-    expect(previewB.gate.allowed).toBe(true); // B 自己的任务可访问
+    // B 自己的任务 → 合法研究数据（no_confirmed_facts 降级），非 legacy_not_supported
+    expect(previewB.gate.allowed).toBe(false);
+    expect(previewB.gate.reason).toBe("no_confirmed_facts");
   });
 
   it("V6. 同 requestId 并发 → 只写一次", async () => {
@@ -347,6 +373,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     for (let i = 0; i < 10; i++) {
       const reqId = `550e8400-e29b-41d4-a716-${(446655440000 + i).toString().padStart(12, "0")}`;
       const p = await generateCreativeHandoffPreview("demo-task-a", ctx);
+      expect(p.gate.reason).toBe("no_confirmed_facts");
       const result = await createOrAppendCreativeHandoff("demo-task-a", ctx, {
         requestId: reqId,
         expectedResearchRevision: 1,
@@ -368,7 +395,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     expect(parsed.creativeHandoff.versions.length).toBe(10);
     const ledger = parseRequestLedger(parsed.creativeHandoffRequestLedger)!;
     expect(ledger.entries.length).toBe(10);
-    expect(preview.gate.allowed).toBe(true);
+    expect(preview.gate.reason).toBe("no_confirmed_facts");
   });
 
   it("V8b. 第 11 版拒绝（PR2-0 上限）, Ledger 不追加", async () => {
@@ -378,6 +405,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     for (let i = 0; i < 10; i++) {
       const reqId = `550e8400-e29b-41d4-a716-${(446655440000 + i).toString().padStart(12, "0")}`;
       const p = await generateCreativeHandoffPreview("demo-task-a", ctx);
+      expect(p.gate.reason).toBe("no_confirmed_facts");
       await createOrAppendCreativeHandoff("demo-task-a", ctx, {
         requestId: reqId,
         expectedResearchRevision: 1,

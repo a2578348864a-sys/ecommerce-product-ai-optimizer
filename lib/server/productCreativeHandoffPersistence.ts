@@ -194,10 +194,24 @@ export async function createOrAppendCreativeHandoff(
       assertStorageVersionMatches(snapshot, input.expectedStorageVersion);
 
       // ── 3) Gate（CAS/lock 内重执行）──
-      if (!gate.allowed || !gate.candidate) {
+      if (gate.handoffContractInvalid) {
+        throw new CreativeHandoffPersistenceError("handoff_contract_invalid", 500, "创作交接合同结构异常，已阻止覆盖。");
+      }
+      if (gate.ledgerInvalid) {
+        throw new CreativeHandoffPersistenceError("idempotency_ledger_invalid", 500, "幂等账本合同结构异常，已阻止写入。");
+      }
+      // 无人工确认事实（no_confirmed_facts）→ 由输入候选的 confirmedFacts 决定；
+      // 研究数据本身合法时允许走写入，Route 层已按选择过滤（无选择 → no_facts_selected）。
+      if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
         throw new CreativeHandoffPersistenceError("research_gate_failed", 422, "当前研究状态不允许创建创作交接。");
       }
-      if (input.expectedResearchRevision !== gate.candidate.sourceResearch.researchRevision) {
+      if (gate.reason === "no_confirmed_facts" && input.candidate.confirmedFacts.length < 1) {
+        throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项可用的商品事实。");
+      }
+      // no_confirmed_facts 时 gate.candidate 为 undefined — 用输入候选的 sourceResearch 校验版本
+      const gateRevision = gate.candidate?.sourceResearch.researchRevision
+        ?? input.candidate.sourceResearch.researchRevision;
+      if (input.expectedResearchRevision !== gateRevision) {
         throw new CreativeHandoffPersistenceError("research_revision_changed", 409, "研究数据已更新，请刷新后重新确认。");
       }
 
@@ -209,8 +223,10 @@ export async function createOrAppendCreativeHandoff(
         throw new CreativeHandoffPersistenceError("creative_handoff_conflict", 409, "交接版本状态异常。");
       }
 
-      // ── 5) Candidate 身份绑定 ──
-      if (currentHandoff && currentHandoff.candidateId !== gate.candidate.sourceResearch.candidateId) {
+      // ── 5) Candidate 身份绑定（no_confirmed_facts 时 gate.candidate 为 undefined — 用输入候选）──
+      const effectiveCandidateId = gate.candidate?.sourceResearch.candidateId
+        ?? input.candidate.sourceResearch.candidateId;
+      if (currentHandoff && currentHandoff.candidateId !== effectiveCandidateId) {
         throw new CreativeHandoffPersistenceError("candidate_identity_mismatch", 409, "候选人身份不匹配。");
       }
 
@@ -221,7 +237,7 @@ export async function createOrAppendCreativeHandoff(
         handoff = createProductCreativeHandoff({
           handoffId,
           taskId,
-          candidateId: gate.candidate.sourceResearch.candidateId,
+          candidateId: effectiveCandidateId,
           createdAt: now,
           createdBy: actor,
           candidate: input.candidate,
