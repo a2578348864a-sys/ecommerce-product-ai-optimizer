@@ -177,7 +177,9 @@ function makeSelectionId(
     taskId,
     researchRevision,
     category: prefix,
-    contentFingerprint: safeFingerprint(id),
+    // Fix.5: confirm 类 selectionId 必须用原始稳定 factId（与 Persistence encodeConfirmSelectionId 一致）；
+    // 其他展示类（stable/ai/issue 等）保持 safeFingerprint 展示语义。
+    contentFingerprint: prefix === "confirm" ? id : safeFingerprint(id),
   });
   return `${prefix}:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
 }
@@ -453,22 +455,39 @@ export async function generateCreativeHandoffPreview(
 ): Promise<{ preview: CreativeHandoffPreview | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
 
-  // 无人工确认事实：返回来源层信息（stable/AI/issues），不可创建
+  // 无人工确认事实：返回来源层信息（stable/AI/issues）+ confirmable 候选，不可创建
   if (!gate.allowed && gate.reason === "no_confirmed_facts" && gate.evidenceLayers) {
     const layers = gate.evidenceLayers;
+    const degradedRevision = gate.candidate?.sourceResearch.researchRevision ?? 1;
+    const degradedSelection = (prefix: string, id: string) =>
+      makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, degradedRevision, prefix, id);
+    // Fix.5: 降级分支复用与正常 eligible 分支完全相同的候选构造（同一函数、同一 selectionId 作用域）
+    const degradedConfirmables = gate.candidate
+      ? buildConfirmableCandidates(gate.candidate.stableSourceFacts).map((c) => ({
+          selectionId: degradedSelection("confirm", c.selectionKey),
+          canonicalField: c.field,
+          displayValue: typeof c.value === "string" ? c.value.slice(0, 200) : String(c.value).slice(0, 200),
+          sourceKindSummary: c.sourceKind,
+          capturedAt: c.capturedAt,
+          allowedUsageScopes: c.allowedUsageScopes,
+          humanConfirmationRequired: true as const,
+          provenanceSummary: `来源快照 (${c.sourceKind}) 捕获于 ${c.capturedAt.slice(0, 10)}，需人工确认后方可作事实使用。`,
+        }))
+      : [];
     const preview: CreativeHandoffPreview = {
       eligibility: "eligible",
       researchDecisionSummary: {
         decisionStatus: "creative_ready",
         workflowStatus: "completed",
-        researchRevision: gate.candidate?.sourceResearch.researchRevision ?? 1,
+        researchRevision: degradedRevision,
         researchFingerprint: "",
       },
       candidateFactOptions: [],
+      confirmableFactCandidates: degradedConfirmables,
       stableSourceFacts: layers
         .filter((e): e is Extract<typeof e, { evidenceTier: "source_snapshot" }> => e.evidenceTier === "source_snapshot")
         .map((e) => ({
-          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, gate.candidate?.sourceResearch.researchRevision ?? 1, "stable", e.fact.factId),
+          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, degradedRevision, "stable", e.fact.factId),
           field: e.fact.field,
           label: e.fact.label,
           stabilityRule: e.fact.stabilityRule,
@@ -476,7 +495,7 @@ export async function generateCreativeHandoffPreview(
       aiReferences: layers
         .filter((e): e is Extract<typeof e, { evidenceTier: "ai_hypothesis" }> => e.evidenceTier === "ai_hypothesis")
         .map((e) => ({
-          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, gate.candidate?.sourceResearch.researchRevision ?? 1, "ai", e.reference.referenceId),
+          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, degradedRevision, "ai", e.reference.referenceId),
           field: e.reference.field,
           summary: e.reference.summary.slice(0, 200),
           allowedUse: e.reference.allowedUse,
@@ -484,13 +503,13 @@ export async function generateCreativeHandoffPreview(
       issues: layers
         .filter((e): e is Extract<typeof e, { evidenceTier: "unknown_or_conflict" }> => e.evidenceTier === "unknown_or_conflict")
         .map((e) => ({
-          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, gate.candidate?.sourceResearch.researchRevision ?? 1, "issue", e.issue.issueId),
+          selectionId: makeSelectionId(context.mode === "owner" ? "owner" : "visitor", taskId, degradedRevision, "issue", e.issue.issueId),
           field: e.issue.field,
           kind: e.issue.kind,
           summary: e.issue.summary.slice(0, 200),
           risk: e.issue.risk,
         })),
-      expectedResearchRevision: gate.candidate?.sourceResearch.researchRevision ?? 1,
+      expectedResearchRevision: degradedRevision,
       expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,
       storageVersion: gate.storageVersion,
     };
