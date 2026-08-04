@@ -33,12 +33,12 @@ const CREATED_AT = "2026-08-04T00:00:00.000Z";
 function minimalValidVersion() {
   return {
     sourceResearch: {
-      recordSchema: "product-research-record.v1",
+      recordSchema: "product-research-record.v1" as const,
       candidateId: "candidate-p-1",
       researchRevision: 1,
       researchHash: "a".repeat(64),
-      workflowStatus: "completed",
-      decisionStatus: "creative_ready",
+      workflowStatus: "completed" as const,
+      decisionStatus: "creative_ready" as const,
       candidateSourceFingerprint: "b".repeat(64),
     },
     productIdentity: {
