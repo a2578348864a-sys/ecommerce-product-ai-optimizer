@@ -22,7 +22,8 @@ export type TaskResultJsonWriter =
   | "lifecycle"
   | "listing-pack"
   | "ai-listing"
-  | "ai-image";
+  | "ai-image"
+  | "creative-handoff";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord"],
@@ -31,6 +32,7 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "listing-pack": ["listingPackSnapshot"],
   "ai-listing": ["aiListingPackSnapshot"],
   "ai-image": ["aiImageDraftSnapshot"],
+  "creative-handoff": ["creativeHandoff"],
 };
 
 export type TaskResultJsonStorageVersion = {
