@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "node:crypto";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import {
@@ -11,52 +10,169 @@ import {
   revokeCreativeHandoffAction,
   CreativeHandoffPersistenceError,
 } from "@/lib/server/productCreativeHandoffPersistence";
+import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
 import type { ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
 
-// ─── Helpers ──────────────────────────────────────────────
+// ─── 常量 ────────────────────────────────────────────────
+
+const MAX_BODY_BYTES = 128 * 1024; // 128 KiB
+const MAX_SELECTION_ITEMS = 256;
+const MAX_SELECTION_ITEM_LENGTH = 256;
+const MAX_CREATIVE_PREFERENCES_BYTES = 16 * 1024; // 16 KiB
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const VALID_ACTIONS = new Set(["create", "revoke"]);
+const VALID_REVOKE_REASONS = new Set([
+  "explicit_user_revoke",
+  "decision_changed",
+  "identity_invalid",
+  "verification_invalid",
+]);
+
+// 顶层允许字段白名单（按 action 分派）
+const CREATE_TOP_LEVEL_FIELDS = new Set([
+  "action",
+  "requestId",
+  "expectedResearchRevision",
+  "expectedCurrentHandoffRevision",
+  "expectedStorageVersion",
+  "selectedFactIds",
+  "confirmed",
+  "creativePreferences",
+]);
+const REVOKE_TOP_LEVEL_FIELDS = new Set([
+  "action",
+  "requestId",
+  "expectedCurrentHandoffRevision",
+  "expectedStorageVersion",
+  "revokeReasonCode",
+]);
+
+// 禁止输入字段（任意层级检测的关键字）
+const FORBIDDEN_KEYS = new Set([
+  "creativeHandoff",
+  "creativeHandoffRequestLedger",
+  "candidateId",
+  "handoffId",
+  "revision",
+  "fingerprint",
+  "requestKeyHash",
+  "requestFingerprint",
+  "resultJson",
+  "writerKind",
+  "ownedNamespaces",
+  "createdBy",
+  "confirmedBy",
+  "approvedBy",
+  "createdAt",
+  "confirmedAt",
+  "controlState",
+  "effectiveStatus",
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+// ─── 错误响应 ────────────────────────────────────────────
 
 function errorResponse(status: number, code: string, message: string) {
   return NextResponse.json({ error: { code, message } }, { status });
-}
-
-function sha256Short(s: string): string {
-  return createHash("sha256").update(s).digest("hex").slice(0, 16);
-}
-
-const ALLOWED_METHODS_GET = new Set(["mode"]);
-const ALLOWED_CREATE_FIELDS = new Set([
-  "requestId", "expectedResearchRevision", "expectedCurrentHandoffRevision",
-  "expectedStorageVersion", "selectedFactIds", "confirmed",
-]);
-const ALLOWED_REVOKE_FIELDS = new Set([
-  "requestId", "expectedCurrentHandoffRevision", "expectedStorageVersion", "revokeReasonCode",
-]);
-const VALID_ACTIONS = new Set(["create", "revoke"]);
-
-function rejectUnknownFields(body: Record<string, unknown>, allowed: Set<string>, action: string): string | null {
-  for (const key of Object.keys(body)) {
-    if (!allowed.has(key)) return key;
-  }
-  return null;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** 递归检测禁止字段（含嵌套与原型污染）。 */
+function containsForbiddenKey(value: unknown, depth = 0): string | null {
+  if (depth > 16) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const hit = containsForbiddenKey(item, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (isRecord(value)) {
+    for (const key of Object.keys(value)) {
+      if (FORBIDDEN_KEYS.has(key)) return key;
+      if (key.startsWith("_")) return key; // 内部下划线字段一律拒绝
+    }
+    for (const key of Object.keys(value)) {
+      const hit = containsForbiddenKey(value[key], depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  return null;
+}
+
+function parseStorageVersion(value: unknown): { resultJsonHash: string; updatedAt: string } | null {
+  if (!isRecord(value)) return null;
+  if (Object.keys(value).length !== 2) return null;
+  if (typeof value.resultJsonHash !== "string" || !/^[a-f0-9]{64}$/.test(value.resultJsonHash)) return null;
+  if (typeof value.updatedAt !== "string" || !value.updatedAt) return null;
+  const parsed = new Date(value.updatedAt);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return { resultJsonHash: value.resultJsonHash, updatedAt: parsed.toISOString() };
+}
+
+function parseSelectionIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_SELECTION_ITEMS) return null;
+  const out: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || item.length === 0 || item.length > MAX_SELECTION_ITEM_LENGTH) return null;
+    out.push(item);
+  }
+  if (new Set(out).size !== out.length) return null; // 重复拒绝
+  return out;
+}
+
+function parseCreativePreferences(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value) || Object.keys(value).length === 0) return null;
+  const allowed = new Set(["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference"]);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) return null;
+    const item = value[key];
+    if (typeof item !== "string" || item.length > 300) return null;
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+  if (bytes > MAX_CREATIVE_PREFERENCES_BYTES) return null;
+  return { ...value };
+}
+
+function parseRequestId(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > 128) return null;
+  if (!UUID_PATTERN.test(value)) return null;
+  return value.toLowerCase();
+}
+
+function parseExpectedRevision(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return null;
+  return value;
+}
+
+// ─── Auth ────────────────────────────────────────────────
+
 function getAuth(req: NextRequest, id: string, bodyRecord: Record<string, unknown>) {
   if (id.startsWith("demo-") || id.startsWith("sandbox-")) {
     const auth = requireAuthenticated(req, bodyRecord);
-    if (!auth.ok) return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status }) };
-    if (auth.context!.mode !== "demo") return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, { status: 404 }) };
+    if (!auth.ok) {
+      return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status }) };
+    }
+    if (auth.context!.mode !== "demo") {
+      return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: "not_found", message: "未找到该任务。" } }, { status: 404 }) };
+    }
     return { auth, ctx: auth.context!, error: null };
   }
   const auth = requireOwnerOnly(req, bodyRecord);
-  if (!auth.ok) return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status }) };
+  if (!auth.ok) {
+    return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status }) };
+  }
   return { auth, ctx: auth.context!, error: null };
 }
 
-// ─── GET ──────────────────────────────────────────────────
+// ─── GET ─────────────────────────────────────────────────
 
 export async function GET(
   req: NextRequest,
@@ -90,42 +206,88 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  let body: unknown;
-  try { body = await req.json(); } catch {
+  // ── 请求体大小预检（Content-Length）──
+  const contentLength = Number(req.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    return errorResponse(413, "request_too_large", "请求体过大。");
+  }
+
+  let rawBody: string;
+  try {
+    const buffer = await req.arrayBuffer();
+    if (buffer.byteLength > MAX_BODY_BYTES) {
+      return errorResponse(413, "request_too_large", "请求体过大。");
+    }
+    rawBody = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
     return errorResponse(400, "invalid_json", "请求格式无效。");
   }
-  if (!isRecord(body)) return errorResponse(400, "invalid_json", "请求格式无效。");
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
+    return errorResponse(413, "request_too_large", "请求体过大。");
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return errorResponse(400, "invalid_json", "请求格式无效。");
+  }
+  if (!isRecord(body)) {
+    return errorResponse(400, "invalid_json", "请求格式无效。");
+  }
 
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
 
-  // P2-2 fix: Strict action enum
-  const action = body.action as string | undefined;
-  if (!action || !VALID_ACTIONS.has(action)) {
+  // ── 禁止字段检测（任意层级）──
+  const forbidden = containsForbiddenKey(body);
+  if (forbidden) {
+    return errorResponse(400, "forbidden_field", `禁止字段: ${forbidden}`);
+  }
+
+  // ── action ──
+  const action = body.action;
+  if (typeof action !== "string" || !VALID_ACTIONS.has(action)) {
     return errorResponse(400, "invalid_action", "不支持的操作类型。");
+  }
+
+  // ── 顶层未知字段白名单（按 action）──
+  const allowedTopLevel = action === "create" ? CREATE_TOP_LEVEL_FIELDS : REVOKE_TOP_LEVEL_FIELDS;
+  for (const key of Object.keys(body)) {
+    if (!allowedTopLevel.has(key)) {
+      return errorResponse(400, "unknown_field", `未知字段: ${key}`);
+    }
+  }
+
+  // ── requestId ──
+  const requestId = parseRequestId(body.requestId);
+  if (!requestId) {
+    return errorResponse(400, "invalid_request_id", "请求标识必须是有效的 UUID。");
+  }
+
+  // ── expectedStorageVersion（必填，Fix.2 P1-1）──
+  const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
+  if (!expectedStorageVersion) {
+    return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
   }
 
   // ── REVOKE ──
   if (action === "revoke") {
-    // P2-1 fix: Reject unknown fields
-    const unknownKey = rejectUnknownFields(body, ALLOWED_REVOKE_FIELDS, action);
-    if (unknownKey) return errorResponse(400, "unknown_field", `未知字段: ${unknownKey}`);
-
-    const requestId = body.requestId as string | undefined;
-    const reasonCode = body.revokeReasonCode as string | undefined;
-    const allowedReasons = ["explicit_user_revoke", "decision_changed", "identity_invalid", "verification_invalid"];
-    const expectedCurrentHandoffRevision = body.expectedCurrentHandoffRevision as number | undefined;
-    const expectedStorageVersion = body.expectedStorageVersion as { resultJson: string; updatedAt: string } | undefined;
-
-    if (!requestId || typeof requestId !== "string") return errorResponse(400, "missing_request_id", "缺少幂等请求标识。");
-    if (!reasonCode || !allowedReasons.includes(reasonCode)) return errorResponse(400, "invalid_revoke_reason", "撤回原因无效。");
-    if (typeof expectedCurrentHandoffRevision !== "number" || expectedCurrentHandoffRevision < 1) return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");
+    const reasonCode = body.revokeReasonCode;
+    if (typeof reasonCode !== "string" || !VALID_REVOKE_REASONS.has(reasonCode)) {
+      return errorResponse(400, "invalid_revoke_reason", "撤回原因无效。");
+    }
+    const expectedCurrentHandoffRevision = parseExpectedRevision(body.expectedCurrentHandoffRevision);
+    if (expectedCurrentHandoffRevision === null || expectedCurrentHandoffRevision < 1) {
+      return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");
+    }
 
     try {
       const result = await revokeCreativeHandoffAction(id, ctx, {
         requestId,
         revokeReasonCode: reasonCode as "explicit_user_revoke",
-      }, expectedStorageVersion);
+        expectedStorageVersion,
+      });
 
       return NextResponse.json({
         handoffId: result.handoff.handoffId,
@@ -140,44 +302,62 @@ export async function POST(
   }
 
   // ── CREATE ──
-  // P2-1 fix: Reject unknown fields
-  const unknownKey = rejectUnknownFields(body, ALLOWED_CREATE_FIELDS, action);
-  if (unknownKey) return errorResponse(400, "unknown_field", `未知字段: ${unknownKey}`);
-
-  const requestId = body.requestId as string | undefined;
-  const expectedResearchRevision = body.expectedResearchRevision as number | undefined;
-  const expectedCurrentHandoffRevision = body.expectedCurrentHandoffRevision as number | undefined;
-  const expectedStorageVersion = body.expectedStorageVersion as { resultJson: string; updatedAt: string } | undefined;
-  const selectedFactIds = body.selectedFactIds as string[] | undefined;
-  const confirmed = body.confirmed as boolean | undefined;
-
-  if (!requestId || typeof requestId !== "string") return errorResponse(400, "missing_request_id", "缺少幂等请求标识。");
-  if (typeof expectedResearchRevision !== "number" || expectedResearchRevision < 1) return errorResponse(400, "invalid_research_revision", "研究版本无效。");
-  if (typeof expectedCurrentHandoffRevision !== "number" || expectedCurrentHandoffRevision < 0) return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");
-  if (confirmed !== true) return errorResponse(400, "confirmation_required", "请确认创作交接内容后提交。");
+  const expectedResearchRevision = parseExpectedRevision(body.expectedResearchRevision);
+  if (expectedResearchRevision === null || expectedResearchRevision < 1) {
+    return errorResponse(400, "invalid_research_revision", "研究版本无效。");
+  }
+  const expectedCurrentHandoffRevision = parseExpectedRevision(body.expectedCurrentHandoffRevision);
+  if (expectedCurrentHandoffRevision === null) {
+    return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");
+  }
+  if (body.confirmed !== true) {
+    return errorResponse(400, "confirmation_required", "请确认创作交接内容后提交。");
+  }
+  const selectedFactIds = parseSelectionIds(body.selectedFactIds);
+  if (selectedFactIds === null) {
+    return errorResponse(400, "invalid_selection", "选择的商品事实无效。");
+  }
+  let creativePreferences: Record<string, unknown> | undefined;
+  if (body.creativePreferences !== undefined) {
+    const parsedPrefs = parseCreativePreferences(body.creativePreferences);
+    if (parsedPrefs === null) {
+      return errorResponse(400, "invalid_creative_preferences", "创作偏好无效。");
+    }
+    creativePreferences = parsedPrefs;
+  }
 
   try {
     // Get latest server preview for candidate building
     const { gate } = await generateCreativeHandoffPreview(id, ctx);
-    if (!gate.allowed || !gate.candidate) return errorResponse(422, "research_gate_failed", "当前研究状态不允许创建创作交接。");
+    // Fail-closed: 已存在但解析失败的 Handoff 不得当作 null 覆盖
+    if (gate.handoffContractInvalid) {
+      return errorResponse(500, "handoff_contract_invalid", "创作交接合同结构异常，已阻止覆盖。");
+    }
+    if (!gate.allowed || !gate.candidate) {
+      return errorResponse(422, "research_gate_failed", "当前研究状态不允许创建创作交接。");
+    }
 
     const candidate: ProductCreativeHandoffCandidate = {
       ...gate.candidate,
       confirmedFacts: gate.candidate.confirmedFacts.filter(
-        (f) => selectedFactIds?.includes(f.factId),
+        (f) => selectedFactIds.includes(f.factId),
       ),
+      ...(creativePreferences ? { creativePreferences: { ...gate.candidate.creativePreferences, ...creativePreferences } } : {}),
     };
 
-    if (candidate.confirmedFacts.length < 1) return errorResponse(400, "no_facts_selected", "请至少选择一项可用的商品事实。");
+    if (candidate.confirmedFacts.length < 1) {
+      return errorResponse(400, "no_facts_selected", "请至少选择一项可用的商品事实。");
+    }
 
-    // Build request fingerprint for idempotency
-    const reqFp = sha256Short(JSON.stringify({
+    const requestFingerprint = buildRequestFingerprint({
       action: "create",
-      selectedFactIds: (selectedFactIds || []).sort(),
+      selectedFactIds,
+      creativePreferences,
+      expectedStorageVersion,
       expectedResearchRevision,
       expectedCurrentHandoffRevision,
       confirmed: true,
-    }));
+    });
 
     const result = await createOrAppendCreativeHandoff(id, ctx, {
       requestId,
@@ -185,7 +365,7 @@ export async function POST(
       expectedCurrentHandoffRevision,
       expectedStorageVersion,
       candidate,
-      requestFingerprint: reqFp,
+      requestFingerprint,
     });
 
     return NextResponse.json({

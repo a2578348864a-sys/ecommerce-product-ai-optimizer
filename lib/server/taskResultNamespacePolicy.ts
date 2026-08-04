@@ -11,6 +11,7 @@ export const SYSTEM_MANAGED_TASK_RESULT_KEYS = Object.freeze([
   "aiListingPackSnapshot",
   "aiImageDraftSnapshot",
   "creativeHandoff",
+  "creativeHandoffRequestLedger",
   "candidateToTask",
   "candidateAnalysisContext",
   "r22CommercialValidation",

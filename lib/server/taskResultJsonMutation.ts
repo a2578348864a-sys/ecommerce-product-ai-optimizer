@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
@@ -32,13 +33,21 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "listing-pack": ["listingPackSnapshot"],
   "ai-listing": ["aiListingPackSnapshot"],
   "ai-image": ["aiImageDraftSnapshot"],
-  "creative-handoff": ["creativeHandoff"],
+  "creative-handoff": ["creativeHandoff", "creativeHandoffRequestLedger"],
 };
 
 export type TaskResultJsonStorageVersion = {
   resultJson: string;
   updatedAt: Date | string;
 };
+
+/** 浏览器可提交的 storageVersion：只含 resultJson 的 SHA-256 hex，不泄露完整 resultJson */
+export type TaskResultJsonStorageVersionHash = {
+  resultJsonHash: string;
+  updatedAt: Date | string;
+};
+
+export type TaskResultJsonStorageVersionInput = TaskResultJsonStorageVersion | TaskResultJsonStorageVersionHash;
 
 export type TaskResultJsonSnapshot = TaskResultJsonStorageVersion & {
   id: string;
@@ -59,7 +68,7 @@ export type TaskResultJsonMutationInput<T> = {
   context: AccessContext;
   taskId: string;
   writer: TaskResultJsonWriter;
-  expectedStorageVersion?: TaskResultJsonStorageVersion;
+  expectedStorageVersion?: TaskResultJsonStorageVersionInput;
   mutate: (
     current: Readonly<Record<string, unknown>>,
     snapshot: Readonly<TaskResultJsonSnapshot>,
@@ -149,11 +158,16 @@ function storageTime(value: Date | string): string {
 
 function storageVersionMatches(
   snapshot: TaskResultJsonSnapshot,
-  expected: TaskResultJsonStorageVersion | undefined,
+  expected: TaskResultJsonStorageVersionInput | undefined,
 ): boolean {
   if (!expected) return true;
-  return snapshot.resultJson === expected.resultJson
-    && storageTime(snapshot.updatedAt) === storageTime(expected.updatedAt);
+  const timeMatches = storageTime(snapshot.updatedAt) === storageTime(expected.updatedAt);
+  if (!timeMatches) return false;
+  if ("resultJson" in expected) {
+    return snapshot.resultJson === expected.resultJson;
+  }
+  const hash = createHash("sha256").update(snapshot.resultJson, "utf8").digest("hex");
+  return hash === expected.resultJsonHash;
 }
 
 function validateColumnChanges<T>(

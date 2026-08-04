@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
 import { getSandboxTask } from "@/lib/server/demoSandbox";
@@ -15,6 +17,7 @@ import {
 import {
   parseProductCreativeHandoff,
 } from "@/lib/productCreativeHandoff";
+import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/creativeHandoffRequestLedger";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import type {
   ProductCreativeHandoffCandidate,
@@ -116,6 +119,11 @@ export type CreativeHandoffGateResult = {
   candidate?: ProductCreativeHandoffCandidate;
   currentHandoff?: ProductCreativeHandoffV1 | null;
   storageVersion?: { resultJsonHash: string; updatedAt: string };
+  /** true 当 resultJson 中存在 creativeHandoff 但严格 Parser 失败 — 必须 fail-closed */
+  handoffContractInvalid?: boolean;
+  /** 当前存储的 Request Ledger（严格解析失败时 null 且 ledgerInvalid=true） */
+  requestLedger?: CreativeHandoffRequestLedgerV1 | null;
+  ledgerInvalid?: boolean;
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -126,8 +134,32 @@ function safeFingerprint(s: string): string {
   return Math.abs(h).toString(16).padStart(8, "0").slice(0, 8);
 }
 
-function makeSelectionId(prefix: string, id: string): string {
-  return `${prefix}:${safeFingerprint(id)}`;
+/** SHA-256 hex — 浏览器不可还原完整 resultJson */
+function fullHash(s: string): string {
+  return createHash("sha256").update(s, "utf8").digest("hex");
+}
+
+/**
+ * 服务端确定性 selectionId — 域分隔绑定 subject kind + taskId + researchRevision + 类别 + 规范化内容。
+ * 不包含原始 candidateId；跨 Task / 跨主体 / Revision 变化 / 内容变化后均失效；
+ * 服务端从最新 Preview 重新计算与查找，不作为授权令牌。
+ */
+function makeSelectionId(
+  subjectKind: "owner" | "visitor",
+  taskId: string,
+  researchRevision: number,
+  prefix: string,
+  id: string,
+): string {
+  const canonical = JSON.stringify({
+    schema: "creative-handoff-selection-id:v1",
+    subjectKind,
+    taskId,
+    researchRevision,
+    category: prefix,
+    contentFingerprint: safeFingerprint(id),
+  });
+  return `${prefix}:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
 }
 
 function parseResultJson(raw: unknown): Record<string, unknown> | null {
@@ -240,16 +272,36 @@ export async function checkCreativeHandoffGate(
 
   const currentHandoffRaw = resultJson.creativeHandoff;
   let currentHandoff: ProductCreativeHandoffV1 | null = null;
-  if (typeof currentHandoffRaw === "object" && currentHandoffRaw !== null) {
-    currentHandoff = parseProductCreativeHandoff(currentHandoffRaw);
+  let handoffContractInvalid = false;
+  if (currentHandoffRaw !== undefined) {
+    if (typeof currentHandoffRaw !== "object" || currentHandoffRaw === null) {
+      handoffContractInvalid = true;
+    } else {
+      currentHandoff = parseProductCreativeHandoff(currentHandoffRaw);
+      if (!currentHandoff) handoffContractInvalid = true;
+    }
+  }
+
+  // Ledger 只读解析（fail-closed：解析失败 → ledgerInvalid）
+  let requestLedger: CreativeHandoffRequestLedgerV1 | null = null;
+  let ledgerInvalid = false;
+  const ledgerRaw = resultJson.creativeHandoffRequestLedger;
+  if (ledgerRaw !== undefined) {
+    const parsedLedger = parseRequestLedger(ledgerRaw);
+    if (parsedLedger) requestLedger = parsedLedger;
+    else ledgerInvalid = true;
   }
 
   const storageVersion = {
-    resultJsonHash: safeFingerprint(resultJsonStr || ""),
+    resultJsonHash: fullHash(resultJsonStr || ""),
     updatedAt: updatedAt || new Date().toISOString(),
   };
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion };
+  if (handoffContractInvalid) {
+    return { allowed: false, reason: "legacy_not_supported", candidate: undefined, currentHandoff: null, storageVersion, handoffContractInvalid: true, requestLedger, ledgerInvalid };
+  }
+
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid };
 }
 
 // ─── Preview ──────────────────────────────────────────────
@@ -261,49 +313,53 @@ export async function generateCreativeHandoffPreview(
   const gate = await checkCreativeHandoffGate(taskId, context);
   if (!gate.allowed || !gate.candidate) return { preview: null, gate };
 
+  const subjectKind = context.mode === "owner" ? "owner" : "visitor";
+  const researchRevision = gate.candidate.sourceResearch.researchRevision;
+  const selection = (prefix: string, id: string) => makeSelectionId(subjectKind, taskId, researchRevision, prefix, id);
+
   const preview: CreativeHandoffPreview = {
     eligibility: "eligible",
     researchDecisionSummary: {
       decisionStatus: "creative_ready",
       workflowStatus: "completed",
-      researchRevision: gate.candidate.sourceResearch.researchRevision,
+      researchRevision,
       // P1-2 fix: Safe fingerprint, NOT candidateId
       researchFingerprint: safeFingerprint(gate.candidate.sourceResearch.candidateId),
     },
     candidateFactOptions: gate.candidate.confirmedFacts.map((f: ProductCreativeHandoffConfirmedFact) => ({
-      selectionId: makeSelectionId("fact", f.factId),
+      selectionId: selection("fact", f.factId),
       field: f.field,
       label: f.label,
       valueSummary: typeof f.value === "string" ? f.value.slice(0, 200) : String(f.value).slice(0, 200),
     })),
     stableSourceFacts: gate.candidate.stableSourceFacts.map((f) => ({
-      selectionId: makeSelectionId("stable", f.factId),
+      selectionId: selection("stable", f.factId),
       field: f.field,
       label: f.label,
       stabilityRule: f.stabilityRule,
     })),
     aiReferences: gate.candidate.aiCreativeReferences.map((r) => ({
-      selectionId: makeSelectionId("ai", r.referenceId),
+      selectionId: selection("ai", r.referenceId),
       field: r.field,
       summary: r.summary.slice(0, 200),
       allowedUse: r.allowedUse,
     })),
     issues: gate.candidate.issues.map((i) => ({
-      selectionId: makeSelectionId("issue", i.issueId),
+      selectionId: selection("issue", i.issueId),
       field: i.field,
       kind: i.kind,
       summary: i.summary.slice(0, 200),
       risk: i.risk,
     })),
     prohibitedClaims: gate.candidate.prohibitedClaims.map((c) => ({
-      selectionId: makeSelectionId("claim", c.claimId),
+      selectionId: selection("claim", c.claimId),
       category: c.category,
       summary: c.summary.slice(0, 200),
       appliesTo: [...c.appliesTo],
     })),
     creativePreferences: { tone: (gate.candidate.creativePreferences as Record<string, unknown>).tone as string | undefined },
     visualReferenceCandidates: gate.candidate.visualReferences.map((v) => ({
-      selectionId: makeSelectionId("visual", v.assetFingerprint),
+      selectionId: selection("visual", v.assetFingerprint),
       sourceTier: v.sourceTier,
       approvedForReference: v.humanApprovedForReference === true,
     })),
