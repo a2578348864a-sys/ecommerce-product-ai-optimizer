@@ -9,7 +9,6 @@ import {
   appendProductCreativeHandoffVersion,
   revokeProductCreativeHandoff,
   parseProductCreativeHandoff,
-  calculateHandoffFingerprint,
   type ProductCreativeHandoffV1,
   type ProductCreativeHandoffCandidate,
 } from "@/lib/productCreativeHandoff";
@@ -36,14 +35,6 @@ export type CreateHandoffInput = {
   requestFingerprint: string;
 };
 
-function hashShort(s: string): string {
-  return createHash("sha256").update(s).digest("hex").slice(0, 16);
-}
-
-function buildIdempotencyRef(action: string, taskId: string, requestId: string, fingerprint: string): string {
-  return `idem:${action}:${hashShort(taskId)}:${hashShort(requestId)}:${hashShort(fingerprint)}`;
-}
-
 function buildHandoffId(): string {
   return createHash("sha256").update(crypto.randomUUID()).digest("hex").slice(0, 32);
 }
@@ -61,7 +52,6 @@ export async function createOrAppendCreativeHandoff(
     ? { mode: "owner" as const, subjectFingerprint: (ctxAny.ownerRef as string || "owner") }
     : { mode: "visitor" as const, subjectFingerprint: (ctxAny.demoAccessId as string || "visitor") };
 
-  const idempotencyRef = buildIdempotencyRef("create", taskId, input.requestId, input.requestFingerprint);
   const handoffId = buildHandoffId();
 
   const result = await mutateTaskResultJson<{ handoff: ProductCreativeHandoffV1; isNewRevision: boolean; idempotentReplay: boolean }>({
@@ -91,21 +81,28 @@ export async function createOrAppendCreativeHandoff(
         throw new CreativeHandoffPersistenceError("creative_handoff_conflict", 409, "交接版本状态异常。");
       }
 
-      // ── Idempotency check (B1 fix) ──
-      // Compare candidate fingerprint to detect duplicate submissions
+      // ── Idempotency check (B1 fix: persistent requestId tracking) ──
       if (currentHandoff) {
-        try {
-          const candidateFp = calculateHandoffFingerprint(input.candidate);
-          const existingVersion = currentHandoff.versions.find(
-            (v) => v.handoffFingerprint === candidateFp,
-          );
-          if (existingVersion) {
+        // Check if any version was created with this exact requestId
+        const existingByRequestId = currentHandoff.versions.find(
+          (v) => {
+            const meta = (v as unknown as Record<string, unknown>)._requestMeta as Record<string, unknown> | undefined;
+            return meta?.requestId === input.requestId;
+          },
+        );
+        if (existingByRequestId) {
+          // Compare requestFingerprint to detect semantic change
+          const meta = (existingByRequestId as unknown as Record<string, unknown>)._requestMeta as Record<string, unknown>;
+          if (meta?.requestFingerprint === input.requestFingerprint) {
+            // Same requestId + same content → idempotent replay
             return {
               result: _current as Record<string, unknown>,
               value: { handoff: currentHandoff, isNewRevision: false, idempotentReplay: true },
             };
           }
-        } catch { /* fingerprint calc can throw on invalid candidate — proceed to create */ }
+          // Same requestId + different content → conflict
+          throw new CreativeHandoffPersistenceError("idempotency_conflict", 409, "相同请求ID但内容不同。");
+        }
       }
 
       // Candidate binding check
@@ -134,6 +131,15 @@ export async function createOrAppendCreativeHandoff(
           candidate: input.candidate,
         });
       }
+
+      // Stamp request metadata on the latest version for persistent idempotency
+      const latestVersion = handoff.versions[handoff.versions.length - 1] as unknown as Record<string, unknown>;
+      latestVersion._requestMeta = {
+        requestId: input.requestId,
+        requestFingerprint: input.requestFingerprint,
+        action: "create",
+        stampedAt: now,
+      };
 
       return {
         result: { ..._current, creativeHandoff: handoff as unknown as Record<string, unknown> },
@@ -167,16 +173,17 @@ export async function revokeCreativeHandoffAction(
         throw new CreativeHandoffPersistenceError("not_found", 404, "没有可撤回的创作交接。");
       }
 
-      // Already revoked → idempotent
+      // Already revoked → check _requestMeta for idempotency
       if (gate.currentHandoff.controlState !== "active") {
-        // Same reason → idempotent, different reason → conflict
-        if (gate.currentHandoff.revokeReasonCode === input.revokeReasonCode) {
+        const revokeMeta = (gate.currentHandoff as unknown as Record<string, unknown>)._revokeMeta as Record<string, unknown> | undefined;
+        if (revokeMeta?.requestId === input.requestId) {
+          // Same requestId replayed → idempotent
           return {
             result: _current as Record<string, unknown>,
             value: { handoff: gate.currentHandoff, idempotentReplay: true },
           };
         }
-        throw new CreativeHandoffPersistenceError("idempotency_conflict", 409, "已撤回的交接无法用不同原因再次撤回。");
+        throw new CreativeHandoffPersistenceError("idempotency_conflict", 409, "已撤回的交接无法用不同请求再次撤回。");
       }
 
       const revoked = revokeProductCreativeHandoff(gate.currentHandoff, {
@@ -184,8 +191,13 @@ export async function revokeCreativeHandoffAction(
         reasonCode: input.revokeReasonCode,
       });
 
-      // Stamp the revoke reason into the confirmation reference field for audit
-      (revoked as Record<string, unknown>).revokeRequestId = input.requestId;
+      // Stamp revoke idempotency metadata for persistent tracking
+      (revoked as unknown as Record<string, unknown>)._revokeMeta = {
+        requestId: input.requestId,
+        action: "revoke",
+        reasonCode: input.revokeReasonCode,
+        stampedAt: now,
+      };
 
       return {
         result: { ..._current, creativeHandoff: revoked as unknown as Record<string, unknown> },
