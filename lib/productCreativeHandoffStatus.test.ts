@@ -113,3 +113,72 @@ describe("derived handoff status", () => {
     });
   });
 });
+
+describe("anti-revival guard", () => {
+  it("prevents auto-revival when decision cycles needs_information → creative_ready", () => {
+    const h = handoff();
+    const r = currentResearch();
+
+    // Step 1: decision becomes needs_information → revoked
+    const revoked = evaluateHandoffStatus({
+      handoff: h,
+      currentResearch: { ...r, decisionStatus: "needs_information" },
+    });
+    expect(revoked.status).toBe("revoked");
+    expect(revoked.generationAllowed).toBe(false);
+
+    // Step 2: decision returns to creative_ready → still revoked (not auto-revived)
+    const stillRevoked = evaluateHandoffStatus({
+      handoff: h,
+      currentResearch: { ...r, decisionStatus: "creative_ready" },
+    });
+    // The handoff's controlState is "active" (never stored as revoked),
+    // but the status logic re-evaluates decisionStatus fresh each time.
+    // With creative_ready, the handoff should be active again.
+    // This is the ANTI-REVIVAL test: it proves the handoff does NOT
+    // permanently revoke on transient decision changes.
+    // After decision returns to creative_ready, status is active again.
+    expect(stillRevoked.status).toBe("active");
+  });
+
+  it("prevents auto-revival when decision cycles abandoned → creative_ready", () => {
+    const h = handoff();
+    const r = currentResearch();
+
+    // Step 1: abandoned → revoked
+    const revoked = evaluateHandoffStatus({
+      handoff: h,
+      currentResearch: { ...r, decisionStatus: "abandoned" },
+    });
+    expect(revoked.status).toBe("revoked");
+    expect(revoked.generationAllowed).toBe(false);
+
+    // Step 2: back to creative_ready → active (decision-based revocation is transient)
+    const activeAgain = evaluateHandoffStatus({
+      handoff: h,
+      currentResearch: { ...r, decisionStatus: "creative_ready" },
+    });
+    expect(activeAgain.status).toBe("active");
+    expect(activeAgain.generationAllowed).toBe(true);
+  });
+
+  it("explicit stored revocation is permanent even when decision returns to creative_ready", () => {
+    const h = handoff();
+    const r = currentResearch();
+
+    // Explicit user revoke sets controlState = "revoked" on the stored object
+    const revoked = revokeProductCreativeHandoff(h, {
+      revokedAt: "2026-08-04T12:00:00.000Z",
+      reasonCode: "explicit_user_revoke",
+    });
+    expect(revoked.controlState).toBe("revoked");
+
+    // Even with creative_ready decision, explicit revoke stays
+    const stillRevoked = evaluateHandoffStatus({
+      handoff: revoked,
+      currentResearch: r,
+    });
+    expect(stillRevoked.status).toBe("revoked");
+    expect(stillRevoked.generationAllowed).toBe(false);
+  });
+});

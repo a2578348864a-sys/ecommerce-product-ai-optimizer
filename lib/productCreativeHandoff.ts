@@ -229,6 +229,127 @@ export class ProductCreativeHandoffError extends Error {
   }
 }
 
+/** Stable error codes — must remain distinct for machine-readability. */
+export const HANDOFF_ERROR_CODES = {
+  SOURCE_REFERENCE_INVALID: "source_reference_invalid",
+  BLOCKING_ISSUE_PRESENT: "blocking_issue_present",
+  CROSS_TIER_FACT_CONFLICT: "cross_tier_fact_conflict",
+  USAGE_SCOPE_INVALID: "usage_scope_invalid",
+  VISUAL_APPROVAL_INVALID: "visual_approval_invalid",
+  CONFIRMATION_BINDING_INVALID: "confirmation_binding_invalid",
+  DUPLICATE_SEMANTIC_ID: "duplicate_semantic_id",
+  REVISION_INVALID: "revision_invalid",
+  CAPACITY_EXCEEDED: "capacity_exceeded",
+  HANDOFF_REACTIVATION_FORBIDDEN: "handoff_reactivation_forbidden",
+  CONFIRMED_FACT_REQUIRES_USER_CONFIRMATION: "confirmed_fact_requires_user_confirmation",
+  INVALID_HANDOFF_CANDIDATE: "invalid_handoff_candidate",
+  HANDOFF_TOO_LARGE: "handoff_too_large",
+  HANDOFF_REVOKED: "handoff_revoked",
+  HANDOFF_VERSION_LIMIT_REACHED: "handoff_version_limit_reached",
+  VISUAL_REFERENCE_NOT_APPROVED: "visual_reference_not_approved",
+  APPLIES_TO_BOTH_EXCLUSIVE: "applies_to_both_exclusive",
+  APPLIES_TO_INVALID: "applies_to_invalid",
+  IDENTITY_MISMATCH: "identity_mismatch",
+  CONFIRMATION_REQUIRED: "confirmation_required",
+} as const;
+
+export type HandoffErrorCode = typeof HANDOFF_ERROR_CODES[keyof typeof HANDOFF_ERROR_CODES];
+
+export type ProductCreativeHandoffParseResult =
+  | { ok: true; value: ProductCreativeHandoffV1 }
+  | { ok: false; errors: HandoffErrorCode[] };
+
+export function parseProductCreativeHandoffWithErrors(value: unknown): ProductCreativeHandoffParseResult {
+  const result = parseProductCreativeHandoff(value);
+  if (result !== null) return { ok: true, value: result };
+
+  // Probe individual failure categories by checking specific invariants
+  const errors: HandoffErrorCode[] = [];
+  if (!isRecord(value)) return { ok: false, errors: ["invalid_handoff_candidate" as HandoffErrorCode] };
+
+  // Check source references
+  const probed = probeHandoffErrors(value);
+  return { ok: false, errors: probed };
+}
+
+function probeHandoffErrors(value: Record<string, unknown>): HandoffErrorCode[] {
+  const errors: HandoffErrorCode[] = [];
+
+  // Check candidate-level issues
+  const versions = Array.isArray(value.versions) ? value.versions : [];
+  for (const v of versions) {
+    if (!isRecord(v)) continue;
+    const candidate = {
+      sourceResearch: v.sourceResearch, productIdentity: v.productIdentity,
+      confirmedFacts: v.confirmedFacts, stableSourceFacts: v.stableSourceFacts,
+      aiCreativeReferences: v.aiCreativeReferences, issues: v.issues,
+      prohibitedClaims: v.prohibitedClaims, creativePreferences: v.creativePreferences,
+      visualReferences: v.visualReferences, humanReviewRequired: v.humanReviewRequired,
+    };
+
+    // Blocking issue probe
+    if (Array.isArray(v.issues)) {
+      for (const issue of v.issues) {
+        if (isRecord(issue) && issue.risk === "blocking") {
+          errors.push("blocking_issue_present" as HandoffErrorCode);
+        }
+      }
+    }
+
+    // Cross-tier conflict probe
+    if (Array.isArray(v.confirmedFacts) && Array.isArray(v.stableSourceFacts)) {
+      const cfFields = new Set<string>();
+      for (const f of v.confirmedFacts) {
+        if (isRecord(f) && typeof f.field === "string") cfFields.add(f.field);
+      }
+      for (const f of v.stableSourceFacts) {
+        if (isRecord(f) && typeof f.field === "string" && cfFields.has(f.field)) {
+          errors.push("cross_tier_fact_conflict" as HandoffErrorCode);
+        }
+      }
+    }
+
+    // appliesTo both exclusive probe
+    if (Array.isArray(v.prohibitedClaims)) {
+      for (const c of v.prohibitedClaims) {
+        if (isRecord(c) && Array.isArray(c.appliesTo)) {
+          const a = c.appliesTo as string[];
+          if (a.includes("both") && (a.includes("listing") || a.includes("image"))) {
+            errors.push("applies_to_both_exclusive" as HandoffErrorCode);
+          }
+        }
+      }
+    }
+
+    // Version/confirmation binding probe
+    if (isRecord(v) && isRecord(v.confirmation)) {
+      const createdAt = v.createdAt, confirmedAt = v.confirmation.confirmedAt;
+      if (typeof createdAt === "string" && typeof confirmedAt === "string" && createdAt !== confirmedAt) {
+        errors.push("confirmation_binding_invalid" as HandoffErrorCode);
+      }
+      if (isRecord(v.createdBy) && isRecord(v.confirmation.confirmedBy)) {
+        const cb = v.createdBy as Record<string,unknown>;
+        const cf = v.confirmation.confirmedBy as Record<string,unknown>;
+        if (cb.mode !== cf.mode || cb.subjectFingerprint !== cf.subjectFingerprint) {
+          errors.push("confirmation_binding_invalid" as HandoffErrorCode);
+        }
+      }
+    }
+
+    // Visual approval probe
+    if (Array.isArray(v.visualReferences)) {
+      for (const vr of v.visualReferences) {
+        if (isRecord(vr) && vr.humanApprovedForReference !== true) {
+          errors.push("visual_approval_invalid" as HandoffErrorCode);
+        }
+      }
+    }
+  }
+
+  // Deduplicate
+  return [...new Set(errors)];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -775,6 +896,9 @@ function parseVersion(value: unknown): ProductCreativeHandoffVersion | null {
   if (!isRecord(value.confirmation) || !hasExactKeys(value.confirmation, ["confirmed", "confirmedAt", "confirmedBy"])) return null;
   const confirmedBy = parseActor(value.confirmation.confirmedBy);
   if (value.confirmation.confirmed !== true || !isIsoDate(value.confirmation.confirmedAt) || !confirmedBy) return null;
+  // P1-5b: Version/Confirmation binding — createdBy must equal confirmedBy, createdAt must equal confirmedAt
+  if (value.createdAt !== value.confirmation.confirmedAt) return null;
+  if (createdBy.mode !== confirmedBy.mode || createdBy.subjectFingerprint !== confirmedBy.subjectFingerprint) return null;
   if (value.handoffFingerprint !== calculateHandoffFingerprint(candidate)) return null;
   return {
     revision: value.revision,

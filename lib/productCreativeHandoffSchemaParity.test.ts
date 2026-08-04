@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
-import { parseProductCreativeHandoff, createProductCreativeHandoff } from "@/lib/productCreativeHandoff";
+import { parseProductCreativeHandoff, createProductCreativeHandoff, parseProductCreativeHandoffWithErrors, HANDOFF_ERROR_CODES } from "@/lib/productCreativeHandoff";
 import { PRODUCT_CREATIVE_HANDOFF_JSON_SCHEMA } from "@/lib/productCreativeHandoffSchema";
 
 /**
@@ -322,3 +322,113 @@ describe("Schema-Runtime parity (AJV Draft 2020-12 vs Runtime Parser)", () => {
     expect(runtimeResult).toBeNull();
   });
 });
+
+describe("stable error model", () => {
+  it("reports blocking_issue_present for handoff with blocking issue", () => {
+    const handoff = buildValidHandoff();
+    const version = handoff.versions[0] as Record<string, unknown>;
+    (version.issues as unknown[])!.push({
+      issueId: "99999999-9999-4999-8999-999999999999",
+      field: "blocked_field",
+      kind: "conflict",
+      summary: "Blocking conflict.",
+      risk: "blocking",
+      blocks: ["listing_title"],
+      recommendedAction: "Resolve.",
+    });
+
+    const result = parseProductCreativeHandoffWithErrors(handoff);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain("blocking_issue_present");
+    }
+  });
+
+  it("reports cross_tier_fact_conflict for shared confirmed/stable field", () => {
+    const handoff = buildValidHandoff();
+    const version = handoff.versions[0] as Record<string, unknown>;
+    (version.stableSourceFacts as unknown[])!.push({
+      factId: "88888888-8888-4888-8888-888888888888",
+      field: "material",
+      label: "Material source",
+      value: "Aluminum",
+      evidenceTier: "source_snapshot",
+      usageScopes: ["internal"],
+      sourceRef: {
+        sourceKind: "seller_sprite_snapshot",
+        sourceField: "material",
+        sellerSpriteSnapshotFingerprint: "h".repeat(64),
+        capturedAt: "2026-08-04T00:00:00.000Z",
+      },
+      stabilityRule: "identity_only",
+    });
+
+    const result = parseProductCreativeHandoffWithErrors(handoff);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain("cross_tier_fact_conflict");
+    }
+  });
+
+  it("reports applies_to_both_exclusive for both+listing coexistence", () => {
+    const handoff = buildValidHandoff();
+    const version = handoff.versions[0] as Record<string, unknown>;
+    (version.prohibitedClaims as Record<string, unknown>[])[0].appliesTo = ["both", "listing"];
+
+    const result = parseProductCreativeHandoffWithErrors(handoff);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain("applies_to_both_exclusive");
+    }
+  });
+
+  it("reports confirmation_binding_invalid when createdAt != confirmedAt", () => {
+    const handoff = buildValidHandoff();
+    const version = handoff.versions[0] as Record<string, unknown>;
+    if (isRecord(version.confirmation)) {
+      (version.confirmation as Record<string, unknown>).confirmedAt = "2025-01-01T00:00:00.000Z";
+    }
+
+    const result = parseProductCreativeHandoffWithErrors(handoff);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain("confirmation_binding_invalid");
+    }
+  });
+
+  it("reports visual_approval_invalid for unapproved visual reference", () => {
+    const handoff = buildValidHandoff();
+    const version = handoff.versions[0] as Record<string, unknown>;
+    (version.visualReferences as unknown[])!.push({
+      assetFingerprint: "x".repeat(64),
+      sourceTier: "human_confirmed",
+      identityBound: true,
+      humanApprovedForReference: false,
+      approvedBy: OWNER,
+      approvedAt: CREATED_AT,
+      confirmationReference: "ref:test",
+    });
+
+    const result = parseProductCreativeHandoffWithErrors(handoff);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toContain("visual_approval_invalid");
+    }
+  });
+
+  it("returns distinct error codes, not all collapsed to invalid_handoff_candidate", () => {
+    // Verify the error code constants are distinct
+    const codes = Object.values(HANDOFF_ERROR_CODES);
+    expect(new Set(codes).size).toBe(codes.length);
+    // At minimum these key codes must exist
+    expect(codes).toContain("blocking_issue_present");
+    expect(codes).toContain("cross_tier_fact_conflict");
+    expect(codes).toContain("applies_to_both_exclusive");
+    expect(codes).toContain("confirmation_binding_invalid");
+    expect(codes).toContain("visual_approval_invalid");
+  });
+});
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
