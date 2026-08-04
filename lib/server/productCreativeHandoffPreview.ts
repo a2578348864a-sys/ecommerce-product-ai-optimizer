@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
+import { getSandboxTask } from "@/lib/server/demoSandbox";
 import {
   getProductResearchRecord,
   getProductResearchVerification,
@@ -21,7 +22,7 @@ import type {
   ProductCreativeHandoffConfirmedFact,
 } from "@/lib/productCreativeHandoff";
 
-// ─── Types ───────────────────────────────────────────────
+// ─── DTO types ────────────────────────────────────────────
 
 export type CreativeHandoffEligibility =
   | "eligible"
@@ -34,41 +35,43 @@ export type CreativeHandoffEligibility =
   | "blocking_issue_present"
   | "research_mode_invalid";
 
+/** Safe browser preview — no candidateId, no internal hashes, no actor refs */
 export type CreativeHandoffPreview = {
   eligibility: CreativeHandoffEligibility;
   researchDecisionSummary?: {
     decisionStatus: string;
     workflowStatus: string;
     researchRevision: number;
-    candidateId: string;
+    /** Safe short research fingerprint — not the full hash */
+    researchFingerprint: string;
   };
   candidateFactOptions?: {
-    factId: string;
+    selectionId: string;
     field: string;
     label: string;
     valueSummary: string;
   }[];
   stableSourceFacts?: {
-    factId: string;
+    selectionId: string;
     field: string;
     label: string;
     stabilityRule: string;
   }[];
   aiReferences?: {
-    referenceId: string;
+    selectionId: string;
     field: string;
     summary: string;
     allowedUse: string;
   }[];
   issues?: {
-    issueId: string;
+    selectionId: string;
     field: string;
     kind: string;
     summary: string;
     risk: string;
   }[];
   prohibitedClaims?: {
-    claimId: string;
+    selectionId: string;
     category: string;
     summary: string;
     appliesTo: string[];
@@ -80,7 +83,7 @@ export type CreativeHandoffPreview = {
     imageStyle?: string;
   };
   visualReferenceCandidates?: {
-    assetFingerprint: string;
+    selectionId: string;
     sourceTier: string;
     approvedForReference: boolean;
   }[];
@@ -90,6 +93,7 @@ export type CreativeHandoffPreview = {
   storageVersion?: { resultJsonHash: string; updatedAt: string };
 };
 
+/** Safe browser detail */
 export type CreativeHandoffDetail = {
   handoffId?: string;
   currentRevision?: number;
@@ -99,21 +103,9 @@ export type CreativeHandoffDetail = {
   canCreateNewRevision: boolean;
   humanReviewRequired: boolean;
   sourceResearchRevision?: number;
-  confirmedFacts?: {
-    field: string;
-    label: string;
-    usageScopes: string[];
-  }[];
-  prohibitedClaims?: {
-    category: string;
-    summary: string;
-    appliesTo: string[];
-  }[];
-  versions?: {
-    revision: number;
-    createdAt: string;
-    confirmedFactFields: string[];
-  }[];
+  confirmedFacts?: { field: string; label: string; usageScopes: string[] }[];
+  prohibitedClaims?: { category: string; summary: string; appliesTo: string[] }[];
+  versions?: { revision: number; createdAt: string; confirmedFactFields: string[] }[];
   createdAt?: string;
   storageVersion?: { resultJsonHash: string; updatedAt: string };
 };
@@ -121,90 +113,101 @@ export type CreativeHandoffDetail = {
 export type CreativeHandoffGateResult = {
   allowed: boolean;
   reason: CreativeHandoffEligibility;
-  researchRecord?: Record<string, unknown>;
   candidate?: ProductCreativeHandoffCandidate;
   currentHandoff?: ProductCreativeHandoffV1 | null;
+  storageVersion?: { resultJsonHash: string; updatedAt: string };
 };
 
-// ─── Internal helpers ────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────
 
-function hashShort(value: string): string {
-  // Safe 16-char fingerprint for DTO — NOT for identity verification
+function safeFingerprint(s: string): string {
   let h = 0;
-  for (let i = 0; i < value.length; i++) {
-    h = ((h << 5) - h) + value.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h).toString(16).padStart(8, "0").slice(0, 16);
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+  return Math.abs(h).toString(16).padStart(8, "0").slice(0, 8);
 }
 
-function parseTaskResultJson(raw: unknown): Record<string, unknown> | null {
+function makeSelectionId(prefix: string, id: string): string {
+  return `${prefix}:${safeFingerprint(id)}`;
+}
+
+function parseResultJson(raw: unknown): Record<string, unknown> | null {
   if (typeof raw !== "string") return null;
   try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch { /* invalid JSON */ }
-  return null;
+    const p = JSON.parse(raw);
+    return (typeof p === "object" && p !== null && !Array.isArray(p)) ? p as Record<string, unknown> : null;
+  } catch { return null; }
 }
 
-// ─── Gate check ──────────────────────────────────────────
+// ─── Gate (dual storage path) ─────────────────────────────
 
 export async function checkCreativeHandoffGate(
   taskId: string,
   context: AccessContext,
 ): Promise<CreativeHandoffGateResult> {
-  const task = await prisma.viralAnalysisRecord.findUnique({ where: { id: taskId } }) as Record<string, unknown> | null;
-  if (!task) {
-    return { allowed: false, reason: "legacy_not_supported" };
+  let task: Record<string, unknown> | null = null;
+  let resultJsonStr: string | null = null;
+  let updatedAt: string | null = null;
+
+  // ── P1-4 fix: Dual storage path ──
+  const isSandbox = taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
+  if (isSandbox) {
+    const ctxAny = context as unknown as Record<string, unknown>;
+    const demoAccessId = ctxAny.demoAccessId as string;
+    if (!demoAccessId) return { allowed: false, reason: "legacy_not_supported" };
+    const sandbox = getSandboxTask(demoAccessId, taskId);
+    if (!sandbox) return { allowed: false, reason: "legacy_not_supported" };
+    const sb = sandbox as unknown as Record<string, unknown>;
+    task = sb;
+    resultJsonStr = sb.resultJson as string;
+    updatedAt = sb.updatedAt as string;
+  } else {
+    const db = await prisma.viralAnalysisRecord.findUnique({ where: { id: taskId } });
+    if (!db) return { allowed: false, reason: "legacy_not_supported" };
+    task = db as unknown as Record<string, unknown>;
+    resultJsonStr = (db as Record<string, unknown>).resultJson as string;
+    updatedAt = (db as Record<string, unknown>).updatedAt as unknown as string;
   }
 
-  // Verify ownership
+  const ctxAny = context as unknown as Record<string, unknown>;
+
+  // Ownership check
   const taskUserId = task.userId as string | undefined;
   const taskDemoAccessId = task.demoAccessId as string | undefined;
-  const ctxAny = context as unknown as Record<string, unknown>;
-  const isOwner = context.mode === "owner" && taskUserId === (ctxAny.ownerRef as string);
-  const isVisitor = context.mode === "demo" && taskDemoAccessId === (ctxAny.demoAccessId as string);
-  if (!isOwner && !isVisitor) {
+  if (context.mode === "owner" && taskUserId !== (ctxAny.ownerRef as string)) {
+    return { allowed: false, reason: "legacy_not_supported" };
+  }
+  if (context.mode === "demo" && taskDemoAccessId !== (ctxAny.demoAccessId as string)) {
     return { allowed: false, reason: "legacy_not_supported" };
   }
 
-  const resultJson = parseTaskResultJson(task.resultJson);
-  if (!resultJson) {
-    return { allowed: false, reason: "legacy_not_supported" };
-  }
+  const resultJson = parseResultJson(resultJsonStr || "");
+  if (!resultJson) return { allowed: false, reason: "legacy_not_supported" };
 
-  // Check product-research-record.v1
   if (!hasProductResearchRecordNamespace(resultJson)) {
     return { allowed: false, reason: "legacy_not_supported" };
   }
 
   const record = getProductResearchRecord(resultJson);
   const verification = getProductResearchVerification(resultJson);
-  if (!record || !verification) {
-    return { allowed: false, reason: "legacy_not_supported" };
-  }
+  if (!record || !verification) return { allowed: false, reason: "legacy_not_supported" };
 
-  // Verify research hash
   if (!verifyProductResearchHash(record, verification)) {
     return { allowed: false, reason: "research_hash_invalid" };
   }
 
-  // Check decision status
   if (record.latestDecision?.status !== "creative_ready") {
     return { allowed: false, reason: "decision_not_creative_ready" };
   }
 
-  // Check research mode
-  const researchMode = (task as Record<string, unknown>).researchMode as string | undefined;
+  const taskRec = task as Record<string, unknown>;
+  const researchMode = taskRec.researchMode as string | undefined;
   if (researchMode && researchMode !== "market_research_only") {
     return { allowed: false, reason: "research_mode_invalid" };
   }
 
-  // Build candidate for projection
   const recAny = record as unknown as Record<string, unknown>;
   const verAny = verification as unknown as Record<string, unknown>;
+
   const candidate: ProductCreativeHandoffCandidate = {
     sourceResearch: {
       recordSchema: "product-research-record.v1",
@@ -213,64 +216,50 @@ export async function checkCreativeHandoffGate(
       researchHash: (verAny.researchHash as string) || "",
       workflowStatus: "completed",
       decisionStatus: "creative_ready",
-      candidateSourceFingerprint: (verAny.candidateSourceFingerprint as string) || (recAny.candidateId as string) || "",
+      candidateSourceFingerprint: (verAny.candidateSourceFingerprint as string) || "",
     },
     productIdentity: {
-      displayName: (task.productName as string) || (task.title as string) || "",
-      identityConfirmedAt: (task.createdAt as string) || new Date().toISOString(),
+      displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
+      identityConfirmedAt: (taskRec.createdAt as string) || new Date().toISOString(),
     },
     confirmedFacts: [],
     stableSourceFacts: [],
     aiCreativeReferences: [],
     issues: [],
-    prohibitedClaims: [{ claimId: "00000000-0000-4000-8000-000000000001", category: "absolute_claim" as const, summary: "Do not make absolute claims.", appliesTo: ["both" as const], source: "system_rule" as const }],
+    prohibitedClaims: [{
+      claimId: "00000000-0000-4000-8000-000000000001",
+      category: "absolute_claim" as const,
+      summary: "Do not make absolute claims.",
+      appliesTo: ["both" as const],
+      source: "system_rule" as const,
+    }],
     creativePreferences: { evidenceTier: "creative_preference" as const },
     visualReferences: [],
     humanReviewRequired: true,
   };
 
-  // Load current handoff if exists
   const currentHandoffRaw = resultJson.creativeHandoff;
   let currentHandoff: ProductCreativeHandoffV1 | null = null;
   if (typeof currentHandoffRaw === "object" && currentHandoffRaw !== null) {
     currentHandoff = parseProductCreativeHandoff(currentHandoffRaw);
   }
 
-  return {
-    allowed: true,
-    reason: "eligible",
-    researchRecord: record as Record<string, unknown>,
-    candidate,
-    currentHandoff,
+  const storageVersion = {
+    resultJsonHash: safeFingerprint(resultJsonStr || ""),
+    updatedAt: updatedAt || new Date().toISOString(),
   };
+
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion };
 }
 
-// ─── Preview generation ──────────────────────────────────
+// ─── Preview ──────────────────────────────────────────────
 
 export async function generateCreativeHandoffPreview(
   taskId: string,
   context: AccessContext,
 ): Promise<{ preview: CreativeHandoffPreview | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
-
-  if (!gate.allowed || !gate.candidate) {
-    return {
-      preview: null,
-      gate,
-    };
-  }
-
-  // Use PR2-0 projection
-  const projection = projectProductCreativeHandoffCandidate({
-    sourceResearch: gate.candidate.sourceResearch,
-    productIdentity: gate.candidate.productIdentity,
-    evidence: [],
-    prohibitedClaims: gate.candidate.prohibitedClaims,
-    creativePreferences: gate.candidate.creativePreferences,
-    visualReferences: gate.candidate.visualReferences,
-  });
-
-  const resultJsonHash = hashShort(JSON.stringify(gate.researchRecord || {}));
+  if (!gate.allowed || !gate.candidate) return { preview: null, gate };
 
   const preview: CreativeHandoffPreview = {
     eligibility: "eligible",
@@ -278,81 +267,68 @@ export async function generateCreativeHandoffPreview(
       decisionStatus: "creative_ready",
       workflowStatus: "completed",
       researchRevision: gate.candidate.sourceResearch.researchRevision,
-      candidateId: gate.candidate.sourceResearch.candidateId,
+      // P1-2 fix: Safe fingerprint, NOT candidateId
+      researchFingerprint: safeFingerprint(gate.candidate.sourceResearch.candidateId),
     },
     candidateFactOptions: gate.candidate.confirmedFacts.map((f: ProductCreativeHandoffConfirmedFact) => ({
-      factId: f.factId,
+      selectionId: makeSelectionId("fact", f.factId),
       field: f.field,
       label: f.label,
       valueSummary: typeof f.value === "string" ? f.value.slice(0, 200) : String(f.value).slice(0, 200),
     })),
     stableSourceFacts: gate.candidate.stableSourceFacts.map((f) => ({
-      factId: f.factId,
+      selectionId: makeSelectionId("stable", f.factId),
       field: f.field,
       label: f.label,
       stabilityRule: f.stabilityRule,
     })),
     aiReferences: gate.candidate.aiCreativeReferences.map((r) => ({
-      referenceId: r.referenceId,
+      selectionId: makeSelectionId("ai", r.referenceId),
       field: r.field,
       summary: r.summary.slice(0, 200),
       allowedUse: r.allowedUse,
     })),
     issues: gate.candidate.issues.map((i) => ({
-      issueId: i.issueId,
+      selectionId: makeSelectionId("issue", i.issueId),
       field: i.field,
       kind: i.kind,
       summary: i.summary.slice(0, 200),
       risk: i.risk,
     })),
     prohibitedClaims: gate.candidate.prohibitedClaims.map((c) => ({
-      claimId: c.claimId,
+      selectionId: makeSelectionId("claim", c.claimId),
       category: c.category,
       summary: c.summary.slice(0, 200),
       appliesTo: [...c.appliesTo],
     })),
-    creativePreferences: gate.candidate.creativePreferences.evidenceTier ? {
-      tone: (gate.candidate.creativePreferences as Record<string, unknown>).tone as string | undefined,
-    } : undefined,
+    creativePreferences: { tone: (gate.candidate.creativePreferences as Record<string, unknown>).tone as string | undefined },
     visualReferenceCandidates: gate.candidate.visualReferences.map((v) => ({
-      assetFingerprint: v.assetFingerprint,
+      selectionId: makeSelectionId("visual", v.assetFingerprint),
       sourceTier: v.sourceTier,
       approvedForReference: v.humanApprovedForReference === true,
     })),
-    blockingCodes: projection.blockingCodes,
     expectedResearchRevision: gate.candidate.sourceResearch.researchRevision,
     expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,
-    storageVersion: { resultJsonHash, updatedAt: new Date().toISOString() },
+    storageVersion: gate.storageVersion,
   };
 
   return { preview, gate };
 }
 
-// ─── Detail generation ───────────────────────────────────
+// ─── Detail ───────────────────────────────────────────────
 
 export async function getCreativeHandoffDetail(
   taskId: string,
   context: AccessContext,
 ): Promise<{ detail: CreativeHandoffDetail | null; gate: CreativeHandoffGateResult }> {
   const gate = await checkCreativeHandoffGate(taskId, context);
-
-  if (!gate.allowed) {
-    return { detail: null, gate };
-  }
+  if (!gate.allowed) return { detail: null, gate };
 
   const handoff = gate.currentHandoff;
   if (!handoff) {
-    return {
-      detail: {
-        effectiveStatus: "no_handoff",
-        canCreateNewRevision: true,
-        humanReviewRequired: true,
-      },
-      gate,
-    };
+    return { detail: { effectiveStatus: "no_handoff", canCreateNewRevision: true, humanReviewRequired: true }, gate };
   }
 
-  // Calculate effective status using PR2-0 pure function
   const currentResearch = {
     candidateId: gate.candidate?.sourceResearch.candidateId || "",
     researchRevision: gate.candidate?.sourceResearch.researchRevision || 1,
@@ -366,10 +342,10 @@ export async function getCreativeHandoffDetail(
   let effectiveStatus = "active";
   let staleReasonCode: string | undefined;
   try {
-    const statusResult = evaluateHandoffStatus({ handoff, currentResearch });
-    effectiveStatus = statusResult.status;
-    staleReasonCode = statusResult.reasonCode;
-  } catch { /* use defaults */ }
+    const sr = evaluateHandoffStatus({ handoff, currentResearch });
+    effectiveStatus = sr.status;
+    staleReasonCode = sr.reasonCode;
+  } catch { /* keep defaults */ }
 
   const detail: CreativeHandoffDetail = {
     handoffId: handoff.handoffId,
@@ -396,11 +372,7 @@ export async function getCreativeHandoffDetail(
       confirmedFactFields: v.confirmedFacts.map((f) => f.field),
     })),
     createdAt: handoff.createdAt,
-    storageVersion: {
-      resultJsonHash: hashShort(JSON.stringify(gate.researchRecord || {})),
-      updatedAt: new Date().toISOString(),
-    },
+    storageVersion: gate.storageVersion,
   };
-
   return { detail, gate };
 }
