@@ -25,6 +25,11 @@ import {
   type CreativeHandoffRequestLedgerV1,
 } from "@/lib/creativeHandoffRequestLedger";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
+import {
+  buildConfirmableCandidates,
+  confirmSelectedProductFacts,
+  type ConfirmableFactCandidate,
+} from "@/lib/productCreativeHandoffConfirmation";
 
 export class CreativeHandoffPersistenceError extends Error {
   constructor(
@@ -42,7 +47,8 @@ export type CreateHandoffInput = {
   expectedResearchRevision: number;
   expectedCurrentHandoffRevision: number;
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
-  candidate: ProductCreativeHandoffCandidate;
+  /** 浏览器提交的 confirmable selectionIds（服务端锁内重新投影后匹配） */
+  selectedFactCandidateIds: string[];
   /** Canonical fingerprint of the request payload (buildRequestFingerprint) */
   requestFingerprint: string;
 };
@@ -75,6 +81,51 @@ function deriveSubjectFingerprint(subject: { kind: "owner" | "visitor"; ref: str
 function actorOf(context: AccessContext): { mode: "owner" | "visitor"; subjectFingerprint: string } {
   const subject = subjectRefOf(context);
   return { mode: subject.kind, subjectFingerprint: deriveSubjectFingerprint(subject) };
+}
+
+/** 与 Preview 一致的 selectionId 编码（confirm 前缀 + 域分隔 SHA-256） */
+function encodeConfirmSelectionId(
+  actor: { mode: "owner" | "visitor"; subjectFingerprint: string },
+  taskId: string,
+  researchRevision: number,
+  stableFactId: string,
+): string {
+  const canonical = JSON.stringify({
+    schema: "creative-handoff-selection-id:v1",
+    subjectKind: actor.mode,
+    taskId,
+    researchRevision,
+    category: "confirm",
+    contentFingerprint: stableFactId,
+  });
+  return `confirm:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
+}
+
+/** 解析浏览器 selectionId → 匹配的候选（枚举最新候选重新计算匹配） */
+function resolveConfirmSelectionIds(
+  selectionIds: string[],
+  actor: { mode: "owner" | "visitor"; subjectFingerprint: string },
+  taskId: string,
+  researchRevision: number,
+  confirmables: ConfirmableFactCandidate[],
+): string[] {
+  const idToKey = new Map<string, string>();
+  for (const candidate of confirmables) {
+    idToKey.set(encodeConfirmSelectionId(actor, taskId, researchRevision, candidate.selectionKey), candidate.selectionKey);
+  }
+  const resolved: string[] = [];
+  for (const selectionId of selectionIds) {
+    const key = idToKey.get(selectionId);
+    if (!key) return [];
+    resolved.push(key);
+  }
+  return resolved;
+}
+
+/** 服务端确认引用：从 requestKeyHash 安全派生，不暴露 requestId */
+function buildConfirmationReference(requestKeyHash: string, confirmedAt: string): string {
+  const digest = createHash("sha256").update(`confirmation-ref:v1:${requestKeyHash}:${confirmedAt}`, "utf8").digest("hex");
+  return `confirm:${digest.slice(0, 32)}`;
 }
 
 function readLedgerRaw(result: Readonly<Record<string, unknown>>): unknown {
@@ -205,12 +256,46 @@ export async function createOrAppendCreativeHandoff(
       if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
         throw new CreativeHandoffPersistenceError("research_gate_failed", 422, "当前研究状态不允许创建创作交接。");
       }
-      if (gate.reason === "no_confirmed_facts" && input.candidate.confirmedFacts.length < 1) {
+      if (!gate.candidate) {
+        throw new CreativeHandoffPersistenceError("research_gate_failed", 422, "当前研究状态不允许创建创作交接。");
+      }
+      // 锁内重新生成 confirmable 候选 → 匹配浏览器 selectionId → 服务端确认转换
+      const gateCandidate = gate.candidate as ProductCreativeHandoffCandidate;
+      const confirmables = buildConfirmableCandidates(gateCandidate.stableSourceFacts);
+      const resolvedKeys = resolveConfirmSelectionIds(
+        input.selectedFactCandidateIds,
+        actor,
+        taskId,
+        gateCandidate.sourceResearch.researchRevision,
+        confirmables,
+      );
+      if (resolvedKeys.length !== input.selectedFactCandidateIds.length) {
+        throw new CreativeHandoffPersistenceError("invalid_selection", 400, "选择项与最新研究状态不匹配，请刷新后重试。");
+      }
+      if (resolvedKeys.length < 1) {
         throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项可用的商品事实。");
       }
-      // no_confirmed_facts 时 gate.candidate 为 undefined — 用输入候选的 sourceResearch 校验版本
-      const gateRevision = gate.candidate?.sourceResearch.researchRevision
-        ?? input.candidate.sourceResearch.researchRevision;
+      const conversion = confirmSelectedProductFacts({
+        stableSourceFacts: gateCandidate.stableSourceFacts,
+        confirmableCandidates: confirmables,
+        selectedKeys: resolvedKeys,
+        actor,
+        confirmedAt: now,
+        confirmationReference: buildConfirmationReference(requestKeyHash, now),
+        candidateId: gateCandidate.sourceResearch.candidateId,
+      });
+      if (conversion.confirmedFacts.length !== resolvedKeys.length) {
+        throw new CreativeHandoffPersistenceError("invalid_selection", 400, "部分选择项不可确认。");
+      }
+      // 跨层排他后的最终候选
+      const finalCandidate: ProductCreativeHandoffCandidate = {
+        ...gateCandidate,
+        confirmedFacts: conversion.confirmedFacts,
+        stableSourceFacts: conversion.remainingStableSourceFacts,
+      };
+
+      // 版本校验（用锁内最新投影）
+      const gateRevision = gateCandidate.sourceResearch.researchRevision;
       if (input.expectedResearchRevision !== gateRevision) {
         throw new CreativeHandoffPersistenceError("research_revision_changed", 409, "研究数据已更新，请刷新后重新确认。");
       }
@@ -223,9 +308,8 @@ export async function createOrAppendCreativeHandoff(
         throw new CreativeHandoffPersistenceError("creative_handoff_conflict", 409, "交接版本状态异常。");
       }
 
-      // ── 5) Candidate 身份绑定（no_confirmed_facts 时 gate.candidate 为 undefined — 用输入候选）──
-      const effectiveCandidateId = gate.candidate?.sourceResearch.candidateId
-        ?? input.candidate.sourceResearch.candidateId;
+      // ── 5) Candidate 身份绑定（用锁内最新投影候选）──
+      const effectiveCandidateId = gateCandidate.sourceResearch.candidateId;
       if (currentHandoff && currentHandoff.candidateId !== effectiveCandidateId) {
         throw new CreativeHandoffPersistenceError("candidate_identity_mismatch", 409, "候选人身份不匹配。");
       }
@@ -240,7 +324,7 @@ export async function createOrAppendCreativeHandoff(
           candidateId: effectiveCandidateId,
           createdAt: now,
           createdBy: actor,
-          candidate: input.candidate,
+          candidate: finalCandidate,
         });
         outcomeKind = "created";
       } else {
@@ -248,7 +332,7 @@ export async function createOrAppendCreativeHandoff(
           handoff: currentHandoff,
           createdAt: now,
           createdBy: actor,
-          candidate: input.candidate,
+          candidate: finalCandidate,
         });
         outcomeKind = "appended";
       }

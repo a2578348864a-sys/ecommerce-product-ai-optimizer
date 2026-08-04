@@ -45,7 +45,7 @@ const VALID_CREATE = {
   expectedResearchRevision: 1,
   expectedCurrentHandoffRevision: 0,
   expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
-  selectedFactIds: ["fact:abc"],
+  selectedFactCandidateIds: ["fact:abc"],
   confirmed: true,
 };
 
@@ -83,25 +83,25 @@ describe("Route 严格请求合同", () => {
   });
 
   it("49. 非字符串 selection 拒绝", async () => {
-    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactIds: [123] }), { params: Promise.resolve({ id: "task-1" }) });
+    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactCandidateIds: [123] }), { params: Promise.resolve({ id: "task-1" }) });
     const j = await responseJson(res);
     expect(res.status).toBe(400);
     expect(j.body.error.code).toBe("invalid_selection");
   });
 
   it("50. 重复 selection 拒绝", async () => {
-    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactIds: ["fact:a", "fact:a"] }), { params: Promise.resolve({ id: "task-1" }) });
+    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactCandidateIds: ["fact:a", "fact:a"] }), { params: Promise.resolve({ id: "task-1" }) });
     expect(res.status).toBe(400);
   });
 
   it("51. 超长 selection 拒绝", async () => {
-    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactIds: ["x".repeat(300)] }), { params: Promise.resolve({ id: "task-1" }) });
+    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactCandidateIds: ["x".repeat(300)] }), { params: Promise.resolve({ id: "task-1" }) });
     expect(res.status).toBe(400);
   });
 
   it("52. 超多 selection 拒绝（>256）", async () => {
     const many = Array.from({ length: 300 }, (_, i) => `fact:${i}`);
-    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactIds: many }), { params: Promise.resolve({ id: "task-1" }) });
+    const res = await POST(makeRequest({ ...VALID_CREATE, selectedFactCandidateIds: many }), { params: Promise.resolve({ id: "task-1" }) });
     expect(res.status).toBe(400);
   });
 

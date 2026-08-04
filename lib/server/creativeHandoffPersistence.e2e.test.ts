@@ -33,6 +33,7 @@ import {
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { parseRequestLedger } from "@/lib/creativeHandoffRequestLedger";
 import { parseProductCreativeHandoff, type ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
+import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 
 let root = "";
 let databasePath = "";
@@ -167,6 +168,33 @@ function buildLegalCandidate(base: ReturnType<typeof protectedDocument>): Produc
   };
 }
 
+function encodeConfirmSelectionIdForTest(
+  context: { mode: string },
+  taskId: string,
+  researchRevision: number,
+  stableFactId: string,
+): string {
+  const canonical = JSON.stringify({
+    schema: "creative-handoff-selection-id:v1",
+    subjectKind: context.mode,
+    taskId,
+    researchRevision,
+    category: "confirm",
+    contentFingerprint: stableFactId,
+  });
+  return `confirm:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
+}
+
+function buildConfirmableCandidatesForTest() {
+  // 从 Gate 证据层（candidateAnalysisContext 投影）生成 confirmable 候选
+  // 直接构造与 Adapter 输出一致的 stable facts（brand/category/price 等）
+  const now = "2026-08-05T00:00:00.000Z";
+  return [
+    { selectionKey: "stable-brand", field: "brand", label: "品牌", value: "SyntheticBrand", sourceKind: "candidate_snapshot", capturedAt: now, stabilityRule: "human_confirmation_required_for_claim", allowedUsageScopes: ["internal", "listing"] },
+    { selectionKey: "stable-category", field: "category", label: "类目", value: "Kitchen", sourceKind: "candidate_snapshot", capturedAt: now, stabilityRule: "human_confirmation_required_for_claim", allowedUsageScopes: ["internal", "listing"] },
+  ] as const;
+}
+
 async function loadTask(c: PrismaClient, id: string) {
   const row = await c.viralAnalysisRecord.findUnique({ where: { id } });
   return { row, resultJson: JSON.parse(row!.resultJson) };
@@ -224,24 +252,28 @@ afterEach(async () => {
 
 describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   async function firstCreate() {
-    // Fix.3: 无人工确认事实时 Gate 降级（no_confirmed_facts）— Preview 提供来源层，不可直接创建。
-    // Persistence 层幂等闭环验证使用合法 candidate 注入（Fix.2 同模式，已验证）。
+    // Fix.4: 浏览器提交 confirmable selectionIds；服务端锁内重新投影并确认转换。
     const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
     expect(preview.gate.allowed).toBe(false);
     expect(preview.gate.reason).toBe("no_confirmed_facts");
     // storageVersion 从 Gate 获取（合法研究数据的哈希）
     const sv = preview.gate.storageVersion!;
     const fp = `sha256:${"a".repeat(64)}`;
-    const candidate = buildLegalCandidate(protectedDocument());
+    // 从 Gate 候选（锁内投影产物）生成 confirmable selectionIds
+    // 用与 Persistence 相同的编码逻辑（encodeConfirmSelectionId 语义）
+    const gateCandidate = preview.gate.candidate!;
+    const confirmables = buildConfirmableCandidates(gateCandidate.stableSourceFacts);
+    expect(confirmables.length).toBeGreaterThanOrEqual(2); // brand/category/price 等
+    const selectionIds = confirmables.map((c) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, c.selectionKey));
     const result = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
-    return { result, preview, sv, fp, candidate };
+    return { result, preview, sv, fp, selectionIds };
   }
 
   it("19. requestId != handoffId — 服务端生成", async () => {
@@ -251,16 +283,16 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   });
 
   it("20. 同 requestId 同语义重放 → 原 Revision, 不新增版本", async () => {
-    const { result, sv, fp, candidate } = await firstCreate();
+    const { result, sv, fp, selectionIds } = await firstCreate();
     const { resultJson } = await loadTask(client!, "task-e2e");
     const before = resultJson.creativeHandoff.versions.length;
 
     const replay = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: result.handoff.currentRevision,
       expectedStorageVersion: sv, // 第一次后的旧 storageVersion — 重放必须先命中 Ledger
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     expect(replay.idempotentReplay).toBe(true);
@@ -272,15 +304,15 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   });
 
   it("21/22. 重放不增加 versions 也不增加 Ledger", async () => {
-    const { result, sv, fp, candidate } = await firstCreate();
+    const { result, sv, fp, selectionIds } = await firstCreate();
     const before = await loadTask(client!, "task-e2e");
     const beforeLedger = parseRequestLedger(before.resultJson.creativeHandoffRequestLedger)!;
     await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: result.handoff.currentRevision,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     const after = await loadTask(client!, "task-e2e");
@@ -290,29 +322,29 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   });
 
   it("23. 重放 createdAt 不变", async () => {
-    const { result, sv, fp, candidate } = await firstCreate();
+    const { result, sv, fp, selectionIds } = await firstCreate();
     const originalCreatedAt = result.handoff.createdAt;
     const replay = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: result.handoff.currentRevision,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     expect(replay.handoff.createdAt).toBe(originalCreatedAt);
   });
 
   it("24. 同 requestId 不同选择 → 409 idempotency_conflict, 数据零变化", async () => {
-    const { sv, fp, candidate } = await firstCreate();
+    const { sv, fp, selectionIds } = await firstCreate();
     const before = await loadTask(client!, "task-e2e");
     const diffFp = `sha256:${"b".repeat(64)}`;
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: diffFp,
     })).rejects.toMatchObject({ code: "idempotency_conflict", status: 409 });
     const after = await loadTask(client!, "task-e2e");
@@ -321,7 +353,7 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   });
 
   it("26. 同 requestId 不同 expected 版本 → 409 idempotency_conflict", async () => {
-    const { sv, candidate } = await firstCreate();
+    const { sv, selectionIds } = await firstCreate();
     // 同 requestId、但 expected 版本不同 → fingerprint 不同 → 409
     const diffFp = buildRequestFingerprintFor({
       selectedFactIds: [],
@@ -334,22 +366,22 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
       expectedResearchRevision: 99,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: diffFp,
     })).rejects.toMatchObject({ code: "idempotency_conflict", status: 409 });
   });
 
   it("27. 不同 requestId 相同内容 → 正常 append, 不算重放", async () => {
-    const { result, fp, candidate } = await firstCreate();
+    const { result, fp, selectionIds } = await firstCreate();
     // 重新获取最新 storageVersion（模拟客户端刷新 Preview）
     const preview2 = await generateCreativeHandoffPreview("task-e2e", ownerContext);
     const sv2 = preview2.gate.storageVersion!;
     const app = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ2,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv2,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp, // 相同内容指纹
     });
     expect(app.idempotentReplay).toBe(false);
@@ -359,16 +391,16 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   });
 
   it("29. Revision 2 存在后重放 Revision 1 请求 → 幂等命中, 不新增 Revision 3", async () => {
-    const { sv, fp, candidate } = await firstCreate();
+    const { sv, fp, selectionIds } = await firstCreate();
     // 创建 Revision 2
     const preview2 = await generateCreativeHandoffPreview("task-e2e", ownerContext);
     const sv2real = preview2.gate.storageVersion!;
     await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ2,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv2real,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     const before = await loadTask(client!, "task-e2e");
@@ -376,10 +408,10 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
     // 重放 Revision 1 的请求（旧 storageVersion）→ 幂等命中, 不新增
     const replay = await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 2,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     expect(replay.idempotentReplay).toBe(true);
@@ -395,13 +427,14 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
     const { resultJsonHash, updatedAt } = preview.gate.storageVersion!;
     const sv = { resultJsonHash, updatedAt };
     const fp = `sha256:${"a".repeat(64)}`;
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     const run = () => createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     const [a, b] = await Promise.allSettled([run(), run()]);
@@ -415,7 +448,7 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
   });
 
   it("31. Revoke 成功 → controlState=revoked, Ledger 新增 revoked 条目", async () => {
-    const { fp, candidate } = await firstCreate();
+    const { fp, selectionIds } = await firstCreate();
     // 重新获取最新 storageVersion（模拟客户端刷新）
     const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
     const sv = preview.gate.storageVersion!;
@@ -429,7 +462,7 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
     const ledger = parseRequestLedger(task.resultJson.creativeHandoffRequestLedger)!;
     const revokeEntry = ledger.entries.find((e) => e.action === "revoke");
     expect(revokeEntry?.outcomeKind).toBe("revoked");
-    expect(candidate).toBeTruthy();
+    expect(selectionIds).toBeTruthy();
     expect(fp).toBeTruthy();
   });
 
@@ -521,7 +554,7 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: new Date().toISOString() },
-      candidate: null as never,
+      selectedFactCandidateIds: [],
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     })).rejects.toMatchObject({ code: "handoff_contract_invalid", status: 500 });
   });
@@ -537,13 +570,13 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
     // 非法 Ledger → ledgerInvalid=true（fail-closed 标记）
     expect(preview.gate.ledgerInvalid).toBe(true);
     const sv = preview.gate.storageVersion!;
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidatesForTest().map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: [],
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     })).rejects.toMatchObject({ code: "idempotency_ledger_invalid", status: 500 });
   });
@@ -575,13 +608,14 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
     });
     const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
     const sv = preview.gate.storageVersion!;
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ2,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"b".repeat(64)}`,
     })).rejects.toMatchObject({ code: "idempotency_ledger_capacity_exceeded" });
     const after = await loadTask(client!, "task-e2e");
@@ -595,13 +629,13 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
     // 先创建一次
     await firstCreate();
     // 用旧的 sv 再创建（不同 requestId）→ 应 409
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidatesForTest().map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ2,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: [],
       requestFingerprint: `sha256:${"b".repeat(64)}`,
     })).rejects.toMatchObject({ code: "task_result_conflict", status: 409 });
   });
@@ -616,13 +650,13 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
       where: { id: "task-e2e" },
       data: { resultJson: JSON.stringify(task.resultJson) },
     });
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidatesForTest().map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: [],
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     })).rejects.toMatchObject({ code: "task_result_conflict", status: 409 });
   });
@@ -637,13 +671,13 @@ describe("Owner 端到端幂等闭环（真实 SQLite CAS）", () => {
       where: { id: "task-e2e" },
       data: { resultJson: JSON.stringify(task.resultJson) },
     });
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidatesForTest().map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await expect(createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ2,
-      expectedResearchRevision: candidate.sourceResearch.researchRevision,
+      expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: [],
       requestFingerprint: `sha256:${"b".repeat(64)}`,
     })).rejects.toMatchObject({ code: "task_result_conflict" });
     const after = await loadTask(client!, "task-e2e");
@@ -667,13 +701,14 @@ describe("Preview/Detail storageVersion 返回", () => {
     // firstCreate 定义在 Owner describe 内 — 直接复制最小创建流程
     const preview = await generateCreativeHandoffPreview("task-e2e", ownerContext);
     const sv = preview.gate.storageVersion!;
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     });
     const preview2 = await generateCreativeHandoffPreview("task-e2e", ownerContext);
@@ -693,13 +728,14 @@ describe("Request 哈希域分离端到端", () => {
       expectedCurrentHandoffRevision: 0,
       sv,
     });
-    const candidate = buildLegalCandidate(protectedDocument());
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdForTest(ownerContext, "task-e2e", 1, cc.selectionKey));
     await createOrAppendCreativeHandoff("task-e2e", ownerContext, {
       requestId: REQ,
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp,
     });
     // 重放但 fingerprint 不同（同 key）→ 409
@@ -714,7 +750,7 @@ describe("Request 哈希域分离端到端", () => {
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: fp2,
     })).rejects.toMatchObject({ code: "idempotency_conflict", status: 409 });
   });

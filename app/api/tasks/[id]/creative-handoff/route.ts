@@ -36,7 +36,7 @@ const CREATE_TOP_LEVEL_FIELDS = new Set([
   "expectedResearchRevision",
   "expectedCurrentHandoffRevision",
   "expectedStorageVersion",
-  "selectedFactIds",
+  "selectedFactCandidateIds",
   "confirmed",
   "creativePreferences",
 ]);
@@ -313,8 +313,8 @@ export async function POST(
   if (body.confirmed !== true) {
     return errorResponse(400, "confirmation_required", "请确认创作交接内容后提交。");
   }
-  const selectedFactIds = parseSelectionIds(body.selectedFactIds);
-  if (selectedFactIds === null) {
+  const selectedFactCandidateIds = parseSelectionIds(body.selectedFactCandidateIds);
+  if (selectedFactCandidateIds === null) {
     return errorResponse(400, "invalid_selection", "选择的商品事实无效。");
   }
   let creativePreferences: Record<string, unknown> | undefined;
@@ -337,21 +337,15 @@ export async function POST(
       return errorResponse(422, "research_gate_failed", "当前研究状态不允许创建创作交接。");
     }
 
-    const candidate: ProductCreativeHandoffCandidate = {
-      ...gate.candidate,
-      confirmedFacts: gate.candidate.confirmedFacts.filter(
-        (f) => selectedFactIds.includes(f.factId),
-      ),
-      ...(creativePreferences ? { creativePreferences: { ...gate.candidate.creativePreferences, ...creativePreferences } } : {}),
-    };
-
-    if (candidate.confirmedFacts.length < 1) {
+    // Fix.4: 浏览器只提交 confirmable selectionIds；候选匹配/确认转换在锁内由服务端完成。
+    // 预检：确认候选存在（与 Persistence 锁内校验一致，此处仅提前拒绝）
+    if (selectedFactCandidateIds.length < 1) {
       return errorResponse(400, "no_facts_selected", "请至少选择一项可用的商品事实。");
     }
 
     const requestFingerprint = buildRequestFingerprint({
       action: "create",
-      selectedFactIds,
+      selectedFactIds: selectedFactCandidateIds,
       creativePreferences,
       expectedStorageVersion,
       expectedResearchRevision,
@@ -364,7 +358,7 @@ export async function POST(
       expectedResearchRevision,
       expectedCurrentHandoffRevision,
       expectedStorageVersion,
-      candidate,
+      selectedFactCandidateIds,
       requestFingerprint,
     });
 

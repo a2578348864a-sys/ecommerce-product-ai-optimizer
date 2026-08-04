@@ -17,6 +17,7 @@ import {
   type ProductCreativeHandoffProjectionEvidence,
 } from "@/lib/productCreativeHandoffProjection";
 import { buildProductCreativeHandoffProjectionEvidence, ProjectionEvidenceAdapterError } from "@/lib/productCreativeHandoffProjectionEvidence";
+import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import {
@@ -59,6 +60,17 @@ export type CreativeHandoffPreview = {
     field: string;
     label: string;
     valueSummary: string;
+  }[];
+  /** Fix.4: 可人工确认候选（仅服务端稳定来源事实，AI/unknown/conflict 永不进入） */
+  confirmableFactCandidates?: {
+    selectionId: string;
+    canonicalField: string;
+    displayValue: string;
+    sourceKindSummary: string;
+    capturedAt: string;
+    allowedUsageScopes: string[];
+    humanConfirmationRequired: true;
+    provenanceSummary: string;
   }[];
   stableSourceFacts?: {
     selectionId: string;
@@ -279,7 +291,7 @@ export async function checkCreativeHandoffGate(
         },
         productIdentity: {
           displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
-          identityConfirmedAt: (taskRec.createdAt as string) || new Date().toISOString(),
+          identityConfirmedAt: (taskRec.createdAt instanceof Date ? taskRec.createdAt.toISOString() : (taskRec.createdAt as string)) || new Date().toISOString(),
         },
         evidence: projectionInput.evidence,
         prohibitedClaims: [{
@@ -337,6 +349,43 @@ export async function checkCreativeHandoffGate(
     if (handoffRawHere !== undefined) {
       currentHandoffHere = parseProductCreativeHandoff(handoffRawHere);
     }
+    // Fix.4: 从证据层构造候选（含 stable facts，confirmedFacts 留空）
+    // 供 Persistence 锁内生成 confirmable 候选；Preview 展示来源层。
+    const candidateHere: ProductCreativeHandoffCandidate = {
+      sourceResearch: {
+        recordSchema: "product-research-record.v1",
+        candidateId: record.candidateId,
+        researchRevision: record.revision,
+        researchHash: record.researchHash,
+        workflowStatus: "completed",
+        decisionStatus: "creative_ready",
+        candidateSourceFingerprint: (researchContext2?.contextHash ?? "0".repeat(64)),
+      },
+      productIdentity: {
+        displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
+        identityConfirmedAt: (taskRec.createdAt instanceof Date ? taskRec.createdAt.toISOString() : (taskRec.createdAt as string)) || new Date().toISOString(),
+      },
+      confirmedFacts: [],
+      stableSourceFacts: evidenceLayers
+        .filter((e): e is Extract<typeof e, { evidenceTier: "source_snapshot" }> => e.evidenceTier === "source_snapshot")
+        .map((e) => e.fact),
+      aiCreativeReferences: evidenceLayers
+        .filter((e): e is Extract<typeof e, { evidenceTier: "ai_hypothesis" }> => e.evidenceTier === "ai_hypothesis")
+        .map((e) => e.reference),
+      issues: evidenceLayers
+        .filter((e): e is Extract<typeof e, { evidenceTier: "unknown_or_conflict" }> => e.evidenceTier === "unknown_or_conflict")
+        .map((e) => e.issue),
+      prohibitedClaims: [{
+        claimId: "00000000-0000-4000-8000-000000000001",
+        category: "absolute_claim" as const,
+        summary: "Do not make absolute claims.",
+        appliesTo: ["both" as const],
+        source: "system_rule" as const,
+      }],
+      creativePreferences: { evidenceTier: "creative_preference" as const },
+      visualReferences: [],
+      humanReviewRequired: true,
+    };
     return {
       allowed: false,
       reason: "no_confirmed_facts",
@@ -348,6 +397,7 @@ export async function checkCreativeHandoffGate(
       evidenceLayers,
       ledgerInvalid: ledgerInvalidHere,
       currentHandoff: currentHandoffHere,
+      candidate: candidateHere,
     };
   }
 
@@ -467,6 +517,17 @@ export async function generateCreativeHandoffPreview(
       field: f.field,
       label: f.label,
       valueSummary: typeof f.value === "string" ? f.value.slice(0, 200) : String(f.value).slice(0, 200),
+    })),
+    // Fix.4: 可人工确认候选（仅 stable 层 human_confirmation_required_for_claim）
+    confirmableFactCandidates: buildConfirmableCandidates(gate.candidate.stableSourceFacts).map((c) => ({
+      selectionId: selection("confirm", c.selectionKey),
+      canonicalField: c.field,
+      displayValue: typeof c.value === "string" ? c.value.slice(0, 200) : String(c.value).slice(0, 200),
+      sourceKindSummary: c.sourceKind,
+      capturedAt: c.capturedAt,
+      allowedUsageScopes: c.allowedUsageScopes,
+      humanConfirmationRequired: true,
+      provenanceSummary: `来源快照 (${c.sourceKind}) 捕获于 ${c.capturedAt.slice(0, 10)}，需人工确认后方可作事实使用。`,
     })),
     stableSourceFacts: gate.candidate.stableSourceFacts.map((f) => ({
       selectionId: selection("stable", f.factId),

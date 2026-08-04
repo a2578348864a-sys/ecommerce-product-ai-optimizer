@@ -21,6 +21,8 @@ import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHand
 import { parseRequestLedger } from "@/lib/creativeHandoffRequestLedger";
 import { parseProductCreativeHandoff, type ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
 import { createEmptyRequestLedger } from "@/lib/creativeHandoffRequestLedger";
+import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
+import { createHash } from "node:crypto";
 
 // 模块加载前隔离 Visitor Store 与 demo access 存储
 vi.hoisted(() => {
@@ -212,22 +214,49 @@ afterEach(async () => {
 });
 
 describe("Visitor 锁内幂等闭环（真实 Store）", () => {
-  async function visitorFirstCreate(demoAccessId = DEMO_A, taskId = "demo-task-a", requestId = REQ_A1) {
+  function encodeConfirmSelectionIdVisitor(
+    context: { mode: string },
+    taskId: string,
+    researchRevision: number,
+    stableFactId: string,
+  ): string {
+    const canonical = JSON.stringify({
+      schema: "creative-handoff-selection-id:v1",
+      subjectKind: "visitor",
+      taskId,
+      researchRevision,
+      category: "confirm",
+      contentFingerprint: stableFactId,
+    });
+    return `confirm:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
+  }
+
+  function buildConfirmableCandidatesVisitor() {
+    const now = "2026-08-05T00:00:00.000Z";
+    return [
+      { selectionKey: "stable-brand", field: "brand", label: "品牌", value: "VisitorBrand", sourceKind: "candidate_snapshot", capturedAt: now, stabilityRule: "human_confirmation_required_for_claim", allowedUsageScopes: ["internal", "listing"] },
+      { selectionKey: "stable-category", field: "category", label: "类目", value: "Kitchen", sourceKind: "candidate_snapshot", capturedAt: now, stabilityRule: "human_confirmation_required_for_claim", allowedUsageScopes: ["internal", "listing"] },
+    ] as const;
+  }
+
+    async function visitorFirstCreate(demoAccessId = DEMO_A, taskId = "demo-task-a", requestId = REQ_A1) {
     const ctx = visitorContext(demoAccessId);
     const preview = await generateCreativeHandoffPreview(taskId, ctx);
     // Fix.3: 无人工确认事实 → no_confirmed_facts 降级（合法研究数据）
     expect(preview.gate.reason).toBe("no_confirmed_facts");
     const sv = preview.gate.storageVersion!;
-    const candidate = buildLegalCandidate("candidate-visitor");
+    // Fix.4: 从 Gate 候选（锁内投影产物）生成 confirmable selectionIds
+    const confirmables = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts);
+    const selectionIds = confirmables.map((cc) => encodeConfirmSelectionIdVisitor(ctx, taskId, preview.gate.candidate!.sourceResearch.researchRevision, cc.selectionKey));
     const result = await createOrAppendCreativeHandoff(taskId, ctx, {
       requestId,
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     });
-    return { result, preview, sv, candidate, ctx };
+    return { result, preview, sv, selectionIds, ctx };
   }
 
   it("V1. Visitor 创建成功 → Handoff + Ledger 原子写入", async () => {
@@ -244,13 +273,13 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
   });
 
   it("V2. Visitor 同 requestId 重放 → 幂等, 不新增版本", async () => {
-    const { result, sv, candidate, ctx } = await visitorFirstCreate();
+    const { result, sv, selectionIds, ctx } = await visitorFirstCreate();
     const replay = await createOrAppendCreativeHandoff("demo-task-a", ctx, {
       requestId: REQ_A1,
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: result.handoff.currentRevision,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     });
     expect(replay.idempotentReplay).toBe(true);
@@ -260,7 +289,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
   });
 
   it("V3. Visitor 创建 Revision 2（不同 requestId 相同内容）", async () => {
-    const { result, candidate, ctx } = await visitorFirstCreate();
+    const { result, selectionIds, ctx } = await visitorFirstCreate();
     const preview2 = await generateCreativeHandoffPreview("demo-task-a", ctx);
     const sv2 = preview2.gate.storageVersion!;
     const app = await createOrAppendCreativeHandoff("demo-task-a", ctx, {
@@ -268,7 +297,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 1,
       expectedStorageVersion: sv2,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     });
     expect(app.idempotentReplay).toBe(false);
@@ -277,7 +306,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
   });
 
   it("V4. Visitor Revoke + 重放", async () => {
-    const { candidate, ctx } = await visitorFirstCreate();
+    const { selectionIds, ctx } = await visitorFirstCreate();
     const preview = await generateCreativeHandoffPreview("demo-task-a", ctx);
     const sv = preview.gate.storageVersion!;
     const first = await revokeCreativeHandoffAction("demo-task-a", ctx, {
@@ -297,7 +326,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     const parsed = JSON.parse(task.resultJson);
     const ledger = parseRequestLedger(parsed.creativeHandoffRequestLedger)!;
     expect(ledger.entries.filter((e) => e.action === "revoke")).toHaveLength(1);
-    expect(candidate).toBeTruthy();
+    expect(selectionIds).toBeTruthy();
   });
 
   it("V5. Visitor A 访问 Visitor B 的 Task → 404 / 不可见", async () => {
@@ -316,13 +345,14 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     const ctx = visitorContext(DEMO_A);
     const preview = await generateCreativeHandoffPreview("demo-task-a", ctx);
     const sv = preview.gate.storageVersion!;
-    const candidate = buildLegalCandidate("candidate-visitor");
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdVisitor(ctx, "demo-task-a", preview.gate.candidate!.sourceResearch.researchRevision, cc.selectionKey));
     const run = () => createOrAppendCreativeHandoff("demo-task-a", ctx, {
       requestId: REQ_A1,
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 0,
       expectedStorageVersion: sv,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"a".repeat(64)}`,
     });
     const [a, b] = await Promise.allSettled([run(), run()]);
@@ -338,14 +368,17 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
     const ctxB = visitorContext(DEMO_B);
     const pa = await generateCreativeHandoffPreview("demo-task-a", ctxA);
     const pb = await generateCreativeHandoffPreview("demo-task-b", ctxB);
-    const ca = buildLegalCandidate("candidate-visitor");
+    const selA = buildConfirmableCandidates(pa.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdVisitor(ctxA, "demo-task-a", pa.gate.candidate!.sourceResearch.researchRevision, cc.selectionKey));
+    const selB = buildConfirmableCandidates(pb.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdVisitor(ctxB, "demo-task-b", pb.gate.candidate!.sourceResearch.researchRevision, cc.selectionKey));
     await Promise.all([
       createOrAppendCreativeHandoff("demo-task-a", ctxA, {
         requestId: REQ_A1,
         expectedResearchRevision: 1,
         expectedCurrentHandoffRevision: 0,
         expectedStorageVersion: pa.gate.storageVersion!,
-        candidate: ca,
+        selectedFactCandidateIds: selA,
         requestFingerprint: `sha256:${"a".repeat(64)}`,
       }),
       createOrAppendCreativeHandoff("demo-task-b", ctxB, {
@@ -353,7 +386,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
         expectedResearchRevision: 1,
         expectedCurrentHandoffRevision: 0,
         expectedStorageVersion: pb.gate.storageVersion!,
-        candidate: ca,
+        selectedFactCandidateIds: selB,
         requestFingerprint: `sha256:${"b".repeat(64)}`,
       }),
     ]);
@@ -368,7 +401,8 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
   it("V8. 高频竞争 10 轮 append → 0 丢数据, 0 损坏", async () => {
     const ctx = visitorContext(DEMO_A);
     const preview = await generateCreativeHandoffPreview("demo-task-a", ctx);
-    const candidate = buildLegalCandidate("candidate-visitor");
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdVisitor(ctx, "demo-task-a", preview.gate.candidate!.sourceResearch.researchRevision, cc.selectionKey));
     // 10 轮不同 requestId（append 链，PR2-0 上限 10 版）
     for (let i = 0; i < 10; i++) {
       const reqId = `550e8400-e29b-41d4-a716-${(446655440000 + i).toString().padStart(12, "0")}`;
@@ -379,7 +413,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
         expectedResearchRevision: 1,
         expectedCurrentHandoffRevision: p.preview!.expectedCurrentHandoffRevision ?? 0,
         expectedStorageVersion: p.gate.storageVersion!,
-        candidate,
+        selectedFactCandidateIds: selectionIds,
         requestFingerprint: `sha256:${(i.toString(16).repeat(64)).slice(0, 64)}`,
       });
       expect(result.handoff.currentRevision).toBe(i + 1);
@@ -400,7 +434,9 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
 
   it("V8b. 第 11 版拒绝（PR2-0 上限）, Ledger 不追加", async () => {
     const ctx = visitorContext(DEMO_A);
-    const candidate = buildLegalCandidate("candidate-visitor");
+    const preview = await generateCreativeHandoffPreview("demo-task-a", ctx);
+    const selectionIds = buildConfirmableCandidates(preview.gate.candidate!.stableSourceFacts)
+      .map((cc) => encodeConfirmSelectionIdVisitor(ctx, "demo-task-a", preview.gate.candidate!.sourceResearch.researchRevision, cc.selectionKey));
     // 先创建 10 版
     for (let i = 0; i < 10; i++) {
       const reqId = `550e8400-e29b-41d4-a716-${(446655440000 + i).toString().padStart(12, "0")}`;
@@ -411,7 +447,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
         expectedResearchRevision: 1,
         expectedCurrentHandoffRevision: p.preview!.expectedCurrentHandoffRevision ?? 0,
         expectedStorageVersion: p.gate.storageVersion!,
-        candidate,
+        selectedFactCandidateIds: selectionIds,
         requestFingerprint: `sha256:${(i.toString(16).repeat(64)).slice(0, 64)}`,
       });
     }
@@ -421,7 +457,7 @@ describe("Visitor 锁内幂等闭环（真实 Store）", () => {
       expectedResearchRevision: 1,
       expectedCurrentHandoffRevision: 10,
       expectedStorageVersion: p.gate.storageVersion!,
-      candidate,
+      selectedFactCandidateIds: selectionIds,
       requestFingerprint: `sha256:${"d".repeat(64)}`,
     })).rejects.toMatchObject({ code: "handoff_version_limit_reached" });
     // 数据零变化
