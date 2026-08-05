@@ -40,6 +40,39 @@ vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
   mutateSandboxTaskResultJsonInternal: vi.fn(),
 }));
 
+// PR2-2 Final-Fix (BLOCKER-1): 默认 gate 返回有效 binding（模拟已通过新流程保存过的任务）
+const gateState = vi.hoisted(() => ({
+  hasBinding: true,
+  binding: {
+    schema: "listing-handoff-binding.v1",
+    sourceHandoffId: "handoff-1",
+    sourceHandoffRevision: 1,
+    sourceHandoffFingerprintHash: "a".repeat(64),
+    sourceResearchRevision: 1,
+    generationInputFingerprint: "b".repeat(64),
+    generatedAt: "2026-08-05T00:00:00.000Z",
+    model: "mock-listing-provider-v1",
+    generationSource: "creative_handoff",
+    humanReviewRequired: true,
+    requestIdHash: "c".repeat(64),
+  },
+}));
+
+vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
+  checkCreativeHandoffGate: vi.fn(async () => ({
+    allowed: true,
+    reason: "eligible",
+    currentHandoff: {
+      schema: "product-creative-handoff.v1",
+      handoffId: "handoff-1",
+      controlState: "active",
+      currentRevision: 1,
+      versions: [{ revision: 1 }],
+    },
+    listingHandoffBindingRaw: gateState.hasBinding ? gateState.binding : undefined,
+  })),
+}));
+
 import { prisma } from "@/lib/server/db";
 
 const VALID_SNAPSHOT = {
@@ -221,5 +254,46 @@ describe("PATCH /api/tasks/[id]/listing-pack", () => {
     expect(res.status).toBe(403);
     expect(vi.mocked(prisma.viralAnalysisRecord.findUnique)).not.toHaveBeenCalled();
     expect(vi.mocked(prisma.viralAnalysisRecord.updateMany)).not.toHaveBeenCalled();
+  });
+
+  // ── PR2-2 Final-Fix (BLOCKER-1): 旧路径封堵测试 ──
+
+  it("rejects legacy listing-pack save when no Handoff binding exists", async () => {
+    authState.mode = "owner";
+    gateState.hasBinding = false;
+    try {
+      const res = await callPATCH("task-1", { listingPackSnapshot: VALID_SNAPSHOT });
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe("handoff_required");
+      expect(vi.mocked(prisma.viralAnalysisRecord.updateMany)).not.toHaveBeenCalled();
+    } finally {
+      gateState.hasBinding = true;
+    }
+  });
+
+  it("rejects listing-pack save when binding is malformed — fail-closed", async () => {
+    authState.mode = "owner";
+    gateState.hasBinding = true;
+    gateState.binding = { schema: "listing-handoff-binding.v1", broken: true } as never;
+    try {
+      const res = await callPATCH("task-1", { listingPackSnapshot: VALID_SNAPSHOT });
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe("handoff_required");
+      expect(vi.mocked(prisma.viralAnalysisRecord.updateMany)).not.toHaveBeenCalled();
+    } finally {
+      gateState.binding = {
+        schema: "listing-handoff-binding.v1",
+        sourceHandoffId: "handoff-1",
+        sourceHandoffRevision: 1,
+        sourceHandoffFingerprintHash: "a".repeat(64),
+        sourceResearchRevision: 1,
+        generationInputFingerprint: "b".repeat(64),
+        generatedAt: "2026-08-05T00:00:00.000Z",
+        model: "mock-listing-provider-v1",
+        generationSource: "creative_handoff",
+        humanReviewRequired: true,
+        requestIdHash: "c".repeat(64),
+      };
+    }
   });
 });

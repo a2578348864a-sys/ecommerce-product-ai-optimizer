@@ -344,9 +344,10 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     // 阶段B 延迟期间，另一 writer（模拟 Decision）通过真实 CAS 通道提交
     const genPromise2 = generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider, providerOptions: { delayMs: 300 } });
     await new Promise((r) => setTimeout(r, 50));
-    const { commitOwnerTaskResultJsonMutationInternal } = await import("@/lib/server/taskResultJsonMutation.owner.internal");
+    // PR2-2 Final-Fix (P1-2): 走公开 test-support 适配器（架构批准的唯一测试入口），不直接 import owner.internal
+    const { commitOwnerTaskResultJsonMutationForTest } = await import("@/lib/server/taskResultJsonMutation.testSupport");
     const row1 = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr22" } });
-    const committed2 = await commitOwnerTaskResultJsonMutationInternal(client as never as TaskResultJsonDatabase, {
+    const committed2 = await commitOwnerTaskResultJsonMutationForTest(client as never as TaskResultJsonDatabase, {
       snapshot: { id: "task-pr22", updatedAt: row1!.updatedAt, resultJson: row1!.resultJson as string, type: "workflow", decisionStatus: "continue" },
       resultJson: row1!.resultJson as string, // 内容不变，仅推进 updatedAt（等同任何 writer 的 CAS 提交）
       updatedAt: "2026-08-05T01:30:00.000Z",

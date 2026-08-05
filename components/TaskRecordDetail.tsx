@@ -498,17 +498,6 @@ function WorkflowDecisionSummary({
         })()}
       />
 
-      <AiListingDraftPreviewCard
-        taskId={taskId}
-        initialSavedSnapshot={(() => {
-          try {
-            const snap = (result as Record<string, unknown>)?.aiListingPackSnapshot as Record<string, unknown> | undefined;
-            if (snap?.snapshotType === "ai_listing_pack") return snap as AiListingPackSnapshot;
-          } catch { /* ignore */ }
-          return null;
-        })()}
-      />
-
       <AiImageDraftCard
         taskId={taskId}
         initialSnapshot={extractAiImageDraftSnapshot(result)}
@@ -1532,7 +1521,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
               ) : null}
               {aiListingPackSnapshot ? (
                 <section id={LISTING_PACK_ANCHOR_ID} className="scroll-mt-24">
-                  <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} />
+                  {/* PR2-2 Final-Fix (BLOCKER-1): 旧入口只读化 — 已保存草稿仅展示，生成/保存走「创作交接」区域 */}
+                  <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} readOnly />
                 </section>
               ) : null}
 

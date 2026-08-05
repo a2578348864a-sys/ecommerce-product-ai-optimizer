@@ -37,7 +37,9 @@ describe("task and Visitor Store internal mutation boundaries", () => {
       "lib/server/taskResultJsonMutation.testSupport.ts",
       "lib/server/taskResultJsonMutation.ts",
     ]);
+    // PR2-2 Final-Fix (P1-2): 并发 e2e 经公开 test-support 适配器访问 CAS（不再直接 import owner.internal）
     expect(importers("@/lib/server/taskResultJsonMutation.testSupport")).toEqual([
+      "lib/listingHandoff/listingHandoffConcurrency.e2e.test.ts",
       "lib/server/taskResultJsonMutation.sqlite.test.ts",
     ]);
     const publicModule = readFileSync(join(process.cwd(), "lib/server/taskResultJsonMutation.ts"), "utf8");

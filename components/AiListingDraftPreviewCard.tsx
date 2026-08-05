@@ -166,10 +166,13 @@ export function AiListingDraftPreviewCard({
   taskId,
   initialDraft = null,
   initialSavedSnapshot = null,
+  readOnly = false,
 }: {
   taskId: string;
   initialDraft?: AiListingPackDraft | null;
   initialSavedSnapshot?: AiListingPackSnapshot | null;
+  /** PR2-2 Final-Fix (BLOCKER-1): 只读模式隐藏旧生成/保存入口，仅展示已保存内容 */
+  readOnly?: boolean;
 }) {
   const [draft, setDraft] = useState<AiListingPackDraft | null>(initialSavedSnapshot || initialDraft);
   const [savedSnapshot, setSavedSnapshot] = useState<AiListingPackSnapshot | null>(initialSavedSnapshot);
@@ -312,59 +315,63 @@ export function AiListingDraftPreviewCard({
         系统不会自动上架，也不会承诺收益或销量表现。
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void handleGenerate("mock")}
-          disabled={loading || realLoading}
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-          data-testid="ai-listing-draft-generate"
-        >
-          {loading ? "正在生成草稿预览..." : draft ? "重新生成预览" : "生成草稿预览"}
-        </button>
-        {draft ? (
+      {!readOnly ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={handleCopy}
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
-            data-testid="ai-listing-draft-copy"
-          >
-            {copyMessage === "已复制" ? "已复制" : "复制 Markdown"}
-          </button>
-        ) : null}
-        {draft ? (
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || draftSaved}
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 px-4 text-sm font-bold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
-            data-testid="ai-listing-draft-save"
-          >
-            {saving ? "保存中..." : draftSaved ? "已保存" : (savedSnapshot || overwriteRequired) ? "覆盖保存" : "保存到任务记录"}
-          </button>
-        ) : null}
-        {copyMessage && copyMessage !== "已复制" ? <p className="text-sm font-semibold text-rose-600">{copyMessage}</p> : null}
-      </div>
-
-      <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-sky-900">真实 AI 生成草稿</p>
-            <p className="mt-1 text-sm leading-6 text-sky-800">
-              会消耗真实 AI 额度，当前仅生成草稿，不会自动保存；生成内容必须人工复核，也不会自动上架。
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRealGenerateClick}
+            onClick={() => void handleGenerate("mock")}
             disabled={loading || realLoading}
-            className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-sky-300 bg-white px-4 text-sm font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-            data-testid="ai-listing-draft-real-open"
+            className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            data-testid="ai-listing-draft-generate"
           >
-            {realLoading ? "真实 AI 请求中..." : "真实 AI 生成草稿"}
+            {loading ? "正在生成草稿预览..." : draft ? "重新生成预览" : "生成草稿预览"}
           </button>
+          {draft ? (
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
+              data-testid="ai-listing-draft-copy"
+            >
+              {copyMessage === "已复制" ? "已复制" : "复制 Markdown"}
+            </button>
+          ) : null}
+          {draft ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || draftSaved}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 px-4 text-sm font-bold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+              data-testid="ai-listing-draft-save"
+            >
+              {saving ? "保存中..." : draftSaved ? "已保存" : (savedSnapshot || overwriteRequired) ? "覆盖保存" : "保存到任务记录"}
+            </button>
+          ) : null}
+          {copyMessage && copyMessage !== "已复制" ? <p className="text-sm font-semibold text-rose-600">{copyMessage}</p> : null}
         </div>
-      </div>
+      ) : null}
+
+      {!readOnly ? (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-sky-900">真实 AI 生成草稿</p>
+              <p className="mt-1 text-sm leading-6 text-sky-800">
+                会消耗真实 AI 额度，当前仅生成草稿，不会自动保存；生成内容必须人工复核，也不会自动上架。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRealGenerateClick}
+              disabled={loading || realLoading}
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-sky-300 bg-white px-4 text-sm font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+              data-testid="ai-listing-draft-real-open"
+            >
+              {realLoading ? "真实 AI 请求中..." : "真实 AI 生成草稿"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {realConfirmOpen ? (
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3" role="dialog" aria-modal="true" aria-label="真实 AI 生成二次确认">

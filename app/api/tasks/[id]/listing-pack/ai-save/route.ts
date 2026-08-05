@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
+import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
+import { parseListingHandoffBinding } from "@/lib/listingHandoff/listingBinding";
 import {
   buildAiListingPackSaveResult,
   type AiListingPackSnapshot,
@@ -121,6 +123,31 @@ export async function POST(
   const listingPack = bodyRecord.listingPack;
   const overwrite = bodyRecord.overwrite === true;
   const savedAt = new Date().toISOString();
+
+  // PR2-2 Final-Fix (BLOCKER-1): 旧路径封堵 — 所有 Listing 保存必须经过 Creative Handoff Gate。
+  // 无 binding（含 legacy 草稿）一律拒绝：防止无 Handoff 来源草稿写入并覆盖 handoff-bound 草稿。
+  try {
+    const gate = await checkCreativeHandoffGate(id, auth.context);
+    const bindingRaw = gate.listingHandoffBindingRaw;
+    const binding = bindingRaw === undefined ? null : parseListingHandoffBinding(bindingRaw);
+    if (!binding) {
+      return json({
+        ok: false,
+        error: {
+          code: "handoff_required",
+          message: "Listing 草稿必须基于已确认的创作交接（Creative Handoff）。请使用「创作交接」区域生成并保存 Listing。",
+        },
+      }, 422);
+    }
+  } catch {
+    return json({
+      ok: false,
+      error: {
+        code: "handoff_required",
+        message: "Listing 草稿必须基于已确认的创作交接（Creative Handoff）。请使用「创作交接」区域生成并保存 Listing。",
+      },
+    }, 422);
+  }
 
   try {
     let context = auth.context;

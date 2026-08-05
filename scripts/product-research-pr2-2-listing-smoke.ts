@@ -614,6 +614,43 @@ async function main() {
     const visitorB = await login(baseUrl, visitorBPassword);
     assert(owner.mode === "owner" && visitorA.mode === "demo" && visitorB.mode === "demo", "smoke_login_mode_invalid");
 
+    // ── PR2-2 Final-Fix (BLOCKER-1): 旧路径封堵浏览器层验证（在创建 Handoff 之前：无 binding）──
+    // 1) 旧 ai-generate（real 模式）→ 422 handoff_required（realMode 一律拒绝）
+    const oldGenReal = await api(baseUrl, owner.token, `/api/tasks/${encodeURIComponent(ownerTaskId)}/listing-pack/ai-generate`, {
+      method: "POST",
+      body: JSON.stringify({ mode: "real", confirmRealAi: true }),
+    });
+    assert(oldGenReal.status === 422, `smoke_old_generate_real_not_blocked:${oldGenReal.status}:${JSON.stringify(oldGenReal.body)}`);
+    assert((jsonRecord(oldGenReal.body).error as JsonRecord).code === "handoff_required", "smoke_old_generate_real_code");
+    // 2) 旧 ai-generate（mock 模式，无 Handoff）→ 422 handoff_required
+    const oldGenMock = await api(baseUrl, owner.token, `/api/tasks/${encodeURIComponent(ownerTaskId)}/listing-pack/ai-generate`, {
+      method: "POST",
+      body: JSON.stringify({ mode: "mock" }),
+    });
+    assert(oldGenMock.status === 422, `smoke_old_generate_mock_not_blocked:${oldGenMock.status}:${JSON.stringify(oldGenMock.body)}`);
+    assert((jsonRecord(oldGenMock.body).error as JsonRecord).code === "handoff_required", "smoke_old_generate_mock_code");
+    // 3) 旧 ai-save（无 binding）→ 422 handoff_required
+    const oldSave = await api(baseUrl, owner.token, `/api/tasks/${encodeURIComponent(ownerTaskId)}/listing-pack/ai-save`, {
+      method: "POST",
+      body: JSON.stringify({ listingPack: { titles: ["x"] }, overwrite: true }),
+    });
+    assert(oldSave.status === 422, `smoke_old_save_not_blocked:${oldSave.status}:${JSON.stringify(oldSave.body)}`);
+    assert((jsonRecord(oldSave.body).error as JsonRecord).code === "handoff_required", "smoke_old_save_code");
+    // 4) 旧 listing-pack PATCH（无 binding）→ 422 handoff_required
+    const oldPatch = await api(baseUrl, owner.token, `/api/tasks/${encodeURIComponent(ownerTaskId)}/listing-pack`, {
+      method: "PATCH",
+      body: JSON.stringify({ listingPackSnapshot: { version: 1 } }),
+    });
+    assert(oldPatch.status === 422, `smoke_old_patch_not_blocked:${oldPatch.status}:${JSON.stringify(oldPatch.body)}`);
+    assert((jsonRecord(oldPatch.body).error as JsonRecord).code === "handoff_required", "smoke_old_patch_code");
+    report.oldPathBlocked = {
+      aiGenerateReal: oldGenReal.status,
+      aiGenerateMock: oldGenMock.status,
+      aiSave: oldSave.status,
+      listingPackPatch: oldPatch.status,
+      code: "handoff_required",
+    };
+
     // ── 建立 active Handoff（Owner）──
     await createHandoffViaApi(baseUrl, owner.token, ownerTaskId, "550e8400-e29b-41d4-a716-446655440000", "owner");
     await createHandoffViaApi(baseUrl, visitorA.token, visitorTaskId, "550e8400-e29b-41d4-a716-446655440001", "demo");

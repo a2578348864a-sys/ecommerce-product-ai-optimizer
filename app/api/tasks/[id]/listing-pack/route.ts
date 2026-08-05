@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
+import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
+import { parseListingHandoffBinding } from "@/lib/listingHandoff/listingBinding";
 import {
   TaskResultJsonMutationError,
 } from "@/lib/server/taskResultJsonMutation";
@@ -63,6 +65,31 @@ export async function PATCH(
     const auth = requireOwnerOnly(request, bodyRecord);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     context = auth.context;
+  }
+
+  // PR2-2 Final-Fix (BLOCKER-1): 旧路径封堵 — Listing 保存必须经过 Creative Handoff Gate。
+  // 无 binding 一律拒绝（legacy/绕过路径不能写入 listingPackSnapshot）。
+  try {
+    const gate = await checkCreativeHandoffGate(id, context);
+    const bindingRaw = gate.listingHandoffBindingRaw;
+    const binding = bindingRaw === undefined ? null : parseListingHandoffBinding(bindingRaw);
+    if (!binding) {
+      return json({
+        ok: false,
+        error: {
+          code: "handoff_required",
+          message: "Listing 保存必须基于已确认的创作交接（Creative Handoff）。",
+        },
+      }, 422);
+    }
+  } catch {
+    return json({
+      ok: false,
+      error: {
+        code: "handoff_required",
+        message: "Listing 保存必须基于已确认的创作交接（Creative Handoff）。",
+      },
+    }, 422);
   }
 
   try {

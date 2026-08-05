@@ -8,6 +8,7 @@ import { buildListingInputFromCreativeHandoff, type ListingGenerationInput } fro
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus, isHandoffListedDraftShape, type ListingHandoffBindingV1, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { createMockListingProvider, type MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
 import { buildListingPromptFromInput, assertPromptIsSafe } from "@/lib/listingHandoff/listingPrompt";
+import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
@@ -295,10 +296,21 @@ export async function generateListingDraftFromHandoff(
       if (!schema.ok) {
         throw new ListingHandoffError("listing_schema_invalid", 422, "生成的草稿未通过结构校验。");
       }
+      // Claim Filter（既有逐字规则 + Handoff prohibitedClaims）
       const filtered = filterListingClaims(schema.data, {
         prohibitedClaims: generationInput.prohibitedClaims,
         customClaimLabel: "Handoff prohibited claim",
       });
+      // Claim Evidence Mapping（P1-1）：结构化事实证据验证（数值/材质/尺寸/认证/性能/兼容性/AI参考/Unknown/Conflict）
+      // 任一事实性声明无 Handoff 证据 → 拒绝保存（不保存草稿、不覆盖旧草稿、不修改 Handoff）
+      const evidence = verifyListingClaims(filtered.cleaned, generationInput);
+      if (!listingClaimsHaveEvidence(evidence)) {
+        throw new ListingHandoffError(
+          "listing_claims_unsupported",
+          422,
+          `草稿含无证据支持的事实性声明（${evidence.rejectedReason ?? "unknown"}），请调整后重新生成。`,
+        );
+      }
 
       const status: ListingStatus = computeListingStatus({
         binding,

@@ -36,6 +36,37 @@ vi.mock("@/lib/server/demoSandbox", () => ({
   getSandboxTask: () => null,
 }));
 
+// PR2-2 Final-Fix (BLOCKER-1): 默认 mock gate 返回 active Handoff（合法生成路径）
+const gateState = vi.hoisted(() => ({
+  allowed: true,
+  currentHandoff: null as null | {
+    schema: string;
+    handoffId: string;
+    controlState: string;
+    currentRevision: number;
+    versions: Array<{ revision: number }>;
+  },
+  listingHandoffBindingRaw: undefined,
+}));
+
+// 默认 active Handoff（合法生成路径）
+gateState.currentHandoff = {
+  schema: "product-creative-handoff.v1",
+  handoffId: "handoff-1",
+  controlState: "active",
+  currentRevision: 1,
+  versions: [{ revision: 1 }],
+};
+
+vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
+  checkCreativeHandoffGate: vi.fn(async () => ({
+    allowed: gateState.allowed,
+    reason: "eligible",
+    currentHandoff: gateState.currentHandoff,
+    listingHandoffBindingRaw: gateState.listingHandoffBindingRaw,
+  })),
+}));
+
 vi.mock("@/lib/server/aiClient", () => ({
   callAiJson: mocks.callAiJson,
 }));
@@ -183,140 +214,151 @@ describe("POST /api/tasks/[id]/listing-pack/ai-generate", () => {
     expect(mocks.callAiJson).not.toHaveBeenCalled();
   });
 
-  it("rejects mode=real without confirmRealAi and does not call real AI", async () => {
+  it("rejects mode=real without confirmRealAi — old path gated", async () => {
     const res = await callPOST("task-1", { mode: "real" });
     const data = await res.json();
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("real_ai_confirmation_required");
+    expect(data.error.code).toBe("handoff_required");
     expect(mocks.callAiJson).not.toHaveBeenCalled();
     expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
-  it("rejects mode=real with confirmRealAi=false and does not call real AI", async () => {
+  it("rejects mode=real with confirmRealAi=false — old path gated", async () => {
     const res = await callPOST("task-1", { mode: "real", confirmRealAi: false });
     const data = await res.json();
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("real_ai_confirmation_required");
+    expect(data.error.code).toBe("handoff_required");
     expect(mocks.callAiJson).not.toHaveBeenCalled();
     expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
-  it("rejects confirmed real mode when real AI listing is disabled and does not call real AI", async () => {
+  it("rejects confirmed real mode when real AI listing is disabled — old path gated", async () => {
     const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
     const data = await res.json();
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(422);
     expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("real_ai_disabled");
+    expect(data.error.code).toBe("handoff_required");
     expect(mocks.callAiJson).not.toHaveBeenCalled();
     expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
-  it("uses the injected fake client for confirmed real mode and returns a validated real_ai_draft", async () => {
-    const route = await import("@/app/api/tasks/[id]/listing-pack/ai-generate/route");
-    const fakeClient = vi.fn().mockResolvedValue({
-      model: "fake-listing-model",
-      titles: ["Desktop Phone Stand for Workspace Use"],
-      bullets: ["Adjustable stand for desk organization.", "FDA Approved claim should be filtered."],
-      description: "A practical desktop phone stand for hands-free viewing.",
-      keywords: ["desktop phone stand", "workspace accessory"],
-      sellingPoints: ["Adjustable viewing angle"],
-      riskNotes: ["Confirm material and dimensions before publishing."],
-      complianceWarnings: [],
-      blockedClaims: [],
-      reviewChecklist: ["Check supplier documents before publishing."],
-    });
+  it("rejects confirmed real mode — old path gated, real AI must never be called", async () => {
+    const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
+    const data = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(data.ok).toBe(false);
+    expect(data.error.code).toBe("handoff_required");
+    expect(mocks.callAiJson).not.toHaveBeenCalled();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects real mode even when real AI listing is enabled — no real AI on the old path", async () => {
     setRealAiListingEnabledForTests(true);
-    setRealAiListingClientForTests(fakeClient);
+    setRealAiListingClientForTests(vi.fn());
     try {
-      const req = new Request("http://localhost/api/tasks/task-1/listing-pack/ai-generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-access-token": "tok_test" },
-        body: JSON.stringify({ mode: "real", confirmRealAi: true }),
-      });
-      const res = await route.POST(req as any, { params: Promise.resolve({ id: "task-1" }) });
+      const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
       const data = await res.json();
 
-      expect(res.status).toBe(200);
-      expect(data.ok).toBe(true);
-      expect(data.data.meta).toEqual({
-        mode: "real",
-        saved: false,
-        nextStep: "review_before_save",
-      });
-      expect(data.data.listingPack.source).toBe("real_ai_draft");
-      expect(data.data.listingPack.model).toBe("fake-listing-model");
-      expect(validateAiListingPackDraft(data.data.listingPack).ok).toBe(true);
-      expect(fakeClient).toHaveBeenCalledTimes(1);
-      expect(fakeClient.mock.calls[0][0].context.productName).toBe("Desktop Phone Stand");
-      const visibleText = [
-        ...data.data.listingPack.titles,
-        ...data.data.listingPack.bullets,
-        data.data.listingPack.description,
-        ...data.data.listingPack.sellingPoints,
-      ].join(" ");
-      expect(visibleText).not.toMatch(/FDA Approved/);
-      expect(data.data.listingPack.blockedClaims).toContain("FDA Approved");
+      expect(res.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.error.code).toBe("handoff_required");
       expect(mocks.callAiJson).not.toHaveBeenCalled();
-      expect(mocks.update).not.toHaveBeenCalled();
-      expect(mocks.create).not.toHaveBeenCalled();
-      expect(mocks.delete).not.toHaveBeenCalled();
     } finally {
       setRealAiListingEnabledForTests(false);
       setRealAiListingClientForTests(null);
     }
   });
 
-  it("maps fake client timeout to ai_timeout without returning a savable draft", async () => {
+  it("rejects mock generation when Handoff gate is not active (no handoff)", async () => {
+    gateState.allowed = false;
+    gateState.currentHandoff = null;
+    try {
+      const res = await callPOST("task-1", { mode: "mock" });
+      const data = await res.json();
+
+      expect(res.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.error.code).toBe("handoff_required");
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.create).not.toHaveBeenCalled();
+    } finally {
+      gateState.allowed = true;
+      gateState.currentHandoff = {
+        schema: "product-creative-handoff.v1",
+        handoffId: "handoff-1",
+        controlState: "active",
+        currentRevision: 1,
+        versions: [{ revision: 1 }],
+      };
+    }
+  });
+
+  it("rejects mock generation when Handoff is revoked", async () => {
+    gateState.allowed = true;
+    gateState.currentHandoff = {
+      schema: "product-creative-handoff.v1",
+      handoffId: "handoff-1",
+      controlState: "revoked",
+      currentRevision: 1,
+      versions: [{ revision: 1 }],
+    };
+    try {
+      const res = await callPOST("task-1", { mode: "mock" });
+      const data = await res.json();
+
+      expect(res.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.error.code).toBe("handoff_required");
+      expect(mocks.update).not.toHaveBeenCalled();
+    } finally {
+      gateState.currentHandoff = {
+        schema: "product-creative-handoff.v1",
+        handoffId: "handoff-1",
+        controlState: "active",
+        currentRevision: 1,
+        versions: [{ revision: 1 }],
+      };
+    }
+  });
+
+  it("rejects mock generation when gate is blocked (blocking_issue_present)", async () => {
+    gateState.allowed = false;
+    gateState.currentHandoff = {
+      schema: "product-creative-handoff.v1",
+      handoffId: "handoff-1",
+      controlState: "active",
+      currentRevision: 1,
+      versions: [{ revision: 1 }],
+    };
+    try {
+      const res = await callPOST("task-1", { mode: "mock" });
+      const data = await res.json();
+
+      expect(res.status).toBe(422);
+      expect(data.ok).toBe(false);
+      expect(data.error.code).toBe("handoff_required");
+      expect(mocks.update).not.toHaveBeenCalled();
+    } finally {
+      gateState.allowed = true;
+    }
+  });
+
+  it("maps real-mode provider errors to 422 handoff_required without calling provider", async () => {
     setRealAiListingEnabledForTests(true);
     setRealAiListingClientForTests(vi.fn().mockRejectedValue({ code: "timeout" }));
     const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
     const data = await res.json();
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(422);
     expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("ai_timeout");
+    expect(data.error.code).toBe("handoff_required");
     expect(data.data).toBeUndefined();
-    expect(mocks.update).not.toHaveBeenCalled();
-  });
-
-  it("maps fake client non-json response to ai_json_parse_failed", async () => {
-    setRealAiListingEnabledForTests(true);
-    setRealAiListingClientForTests(vi.fn().mockResolvedValue("not json"));
-    const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
-    const data = await res.json();
-
-    expect(res.status).toBe(502);
-    expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("ai_json_parse_failed");
-    expect(mocks.update).not.toHaveBeenCalled();
-  });
-
-  it("maps incomplete fake client output to ai_schema_invalid", async () => {
-    setRealAiListingEnabledForTests(true);
-    setRealAiListingClientForTests(vi.fn().mockResolvedValue({ model: "fake-listing-model", titles: [] }));
-    const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
-    const data = await res.json();
-
-    expect(res.status).toBe(502);
-    expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("ai_schema_invalid");
-    expect(mocks.update).not.toHaveBeenCalled();
-  });
-
-  it("maps fake client provider errors to ai_provider_error", async () => {
-    setRealAiListingEnabledForTests(true);
-    setRealAiListingClientForTests(vi.fn().mockRejectedValue(new Error("provider unavailable")));
-    const res = await callPOST("task-1", { mode: "real", confirmRealAi: true });
-    const data = await res.json();
-
-    expect(res.status).toBe(502);
-    expect(data.ok).toBe(false);
-    expect(data.error.code).toBe("ai_provider_error");
     expect(mocks.update).not.toHaveBeenCalled();
   });
 

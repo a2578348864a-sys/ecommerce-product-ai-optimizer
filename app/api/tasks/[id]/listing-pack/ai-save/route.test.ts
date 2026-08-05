@@ -24,6 +24,39 @@ vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
   mutateSandboxTaskResultJsonInternal: vi.fn(),
 }));
 
+// PR2-2 Final-Fix (BLOCKER-1): 默认 gate 返回有效 binding（模拟已通过新流程保存过的任务）
+const gateState = vi.hoisted(() => ({
+  hasBinding: true,
+  binding: {
+    schema: "listing-handoff-binding.v1",
+    sourceHandoffId: "handoff-1",
+    sourceHandoffRevision: 1,
+    sourceHandoffFingerprintHash: "a".repeat(64),
+    sourceResearchRevision: 1,
+    generationInputFingerprint: "b".repeat(64),
+    generatedAt: "2026-08-05T00:00:00.000Z",
+    model: "mock-listing-provider-v1",
+    generationSource: "creative_handoff",
+    humanReviewRequired: true,
+    requestIdHash: "c".repeat(64),
+  },
+}));
+
+vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
+  checkCreativeHandoffGate: vi.fn(async () => ({
+    allowed: true,
+    reason: "eligible",
+    currentHandoff: {
+      schema: "product-creative-handoff.v1",
+      handoffId: "handoff-1",
+      controlState: "active",
+      currentRevision: 1,
+      versions: [{ revision: 1 }],
+    },
+    listingHandoffBindingRaw: gateState.hasBinding ? gateState.binding : undefined,
+  })),
+}));
+
 vi.mock("@/lib/server/aiClient", () => ({
   callAiJson: vi.fn(() => { throw new Error("real AI must not be called"); }),
   callAiText: vi.fn(() => { throw new Error("real AI must not be called"); }),
@@ -161,5 +194,57 @@ describe("POST /api/tasks/[id]/listing-pack/ai-save", () => {
     }) as never, { params: Promise.resolve({ id: "task-1" }) });
     expect(res.status).toBe(400);
     expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  // ── PR2-2 Final-Fix (BLOCKER-1): 旧路径封堵测试 ──
+
+  it("rejects ai-save when no Handoff binding exists — legacy draft cannot be saved via old path", async () => {
+    gateState.hasBinding = false;
+    try {
+      const res = await callPOST("task-1", { listingPack: draft() });
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe("handoff_required");
+      expect(mocks.updateMany).not.toHaveBeenCalled();
+    } finally {
+      gateState.hasBinding = true;
+    }
+  });
+
+  it("rejects ai-save when binding is malformed — fail-closed", async () => {
+    gateState.hasBinding = true;
+    gateState.binding = { schema: "listing-handoff-binding.v1", broken: true } as never;
+    try {
+      const res = await callPOST("task-1", { listingPack: draft() });
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe("handoff_required");
+      expect(mocks.updateMany).not.toHaveBeenCalled();
+    } finally {
+      gateState.binding = {
+        schema: "listing-handoff-binding.v1",
+        sourceHandoffId: "handoff-1",
+        sourceHandoffRevision: 1,
+        sourceHandoffFingerprintHash: "a".repeat(64),
+        sourceResearchRevision: 1,
+        generationInputFingerprint: "b".repeat(64),
+        generatedAt: "2026-08-05T00:00:00.000Z",
+        model: "mock-listing-provider-v1",
+        generationSource: "creative_handoff",
+        humanReviewRequired: true,
+        requestIdHash: "c".repeat(64),
+      };
+    }
+  });
+
+  it("old ai-save cannot overwrite a handoff-bound draft with unbound content", async () => {
+    // 即使 overwrite=true，旧路径保存的内容来自无 Handoff 请求体；
+    // 服务端以 binding 存在为保存前提（内容绑定关系由新流程保证）。
+    mocks.findUnique.mockResolvedValue(snapshot(JSON.stringify({ listingHandoffBinding: gateState.binding })));
+    const res = await callPOST("task-1", { listingPack: draft(), overwrite: true });
+    const data = await res.json();
+    expect(res.status).toBe(200);
+    expect(data.data.aiListingPackSnapshot.snapshotType).toBe("ai_listing_pack");
+    const call = mocks.updateMany.mock.calls[0][0] as { data: { resultJson: string } };
+    const merged = JSON.parse(call.data.resultJson);
+    expect(merged.listingHandoffBinding).toBeDefined();
   });
 });

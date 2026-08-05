@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/server/db";
 import {
-  consumeDemoAiCalls,
-  ensureDemoAiQuota,
   requireAuthenticated,
   requireOwnerOnly,
-  type DemoAccessSnapshot,
 } from "@/lib/server/demoGuard";
-import { generateRealAiListingDraft } from "@/lib/server/aiListingGenerator";
-import { isRealAiListingEnabled } from "@/lib/server/realAiListingGate";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
+import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { buildMockAiListingDraft, validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
@@ -20,12 +16,7 @@ type ApiErrorCode =
   | "unauthorized"
   | "task_not_found"
   | "missing_task_context"
-  | "real_ai_confirmation_required"
-  | "real_ai_disabled"
-  | "ai_timeout"
-  | "ai_json_parse_failed"
-  | "ai_schema_invalid"
-  | "ai_provider_error"
+  | "handoff_required"
   | "invalid_ai_listing_pack"
   | "ai_listing_generation_failed"
   | "invalid_json";
@@ -49,7 +40,6 @@ type ApiResponse =
           nextStep: "review_before_save";
         };
       };
-      demoAccess?: DemoAccessSnapshot;
     }
   | { ok: false; error: { code: ApiErrorCode | string; message: string } };
 
@@ -89,42 +79,6 @@ async function parseOptionalBody(request: NextRequest) {
 
 function getGenerationMode(bodyRecord: Record<string, unknown>) {
   return bodyRecord.mode === "real" ? "real" : "mock";
-}
-
-function guardRealAiRequest(bodyRecord: Record<string, unknown>) {
-  if (bodyRecord.confirmRealAi !== true) {
-    return json({
-      ok: false,
-      error: {
-        code: "real_ai_confirmation_required",
-        message: "Real AI generation was not confirmed.",
-      },
-    }, 400);
-  }
-
-  if (!isRealAiListingEnabled()) {
-    return json({
-      ok: false,
-      error: {
-        code: "real_ai_disabled",
-        message: "Real AI listing generation is disabled.",
-      },
-    }, 403);
-  }
-
-  return null;
-}
-
-function realAiErrorStatus(code: string) {
-  if (
-    code === "ai_timeout"
-    || code === "ai_json_parse_failed"
-    || code === "ai_schema_invalid"
-    || code === "ai_provider_error"
-  ) {
-    return 502;
-  }
-  return 500;
 }
 
 function getNestedRecord(source: Record<string, unknown>, key: string) {
@@ -242,13 +196,36 @@ export async function POST(
 
   try {
     const realMode = getGenerationMode(bodyRecord) === "real";
+    // PR2-2 Final-Fix (BLOCKER-1): real 模式一律拒绝 — 统一走 Handoff 链（Mock Provider），
+    // 防止旧路径调用真实 AI Provider 绕过证据验证。所有 Listing 生成必须基于 active Handoff。
     if (realMode) {
-      const guarded = guardRealAiRequest(bodyRecord);
-      if (guarded) return guarded;
+      return json({
+        ok: false,
+        error: {
+          code: "handoff_required",
+          message: "Listing 生成必须基于已确认的创作交接（Creative Handoff）。请使用「创作交接」区域生成 Listing。",
+        },
+      }, 422);
     }
 
     const loaded = await loadTaskForGenerate(request, id, bodyRecord);
     if (!loaded.ok) return loaded.response;
+
+    // PR2-2 Final-Fix (BLOCKER-1): 旧路径封堵 — 所有 Listing 生成必须经过 Creative Handoff Gate。
+    // 无 active Handoff（含 legacy/无研究记录/stale/revoked/blocking）一律拒绝，返回 handoff_required。
+    // 统一链：active Handoff → Listing Input → Generation → Schema → Claim Filter → Binding → Writer
+    const gate = await checkCreativeHandoffGate(id, loaded.accessContext);
+    const handoff = gate.currentHandoff ?? null;
+    const gateOk = gate.allowed && !!handoff && handoff.controlState === "active" && gate.reason !== "blocking_issue_present";
+    if (!gateOk) {
+      return json({
+        ok: false,
+        error: {
+          code: "handoff_required",
+          message: "Listing 生成必须基于已确认的创作交接（Creative Handoff）。请使用「创作交接」区域生成 Listing。",
+        },
+      }, 422);
+    }
 
     const context = buildContext(loaded.task);
     if (!text(context.productName)) {
@@ -256,40 +233,6 @@ export async function POST(
         ok: false,
         error: { code: "missing_task_context", message: "Task context is not enough to generate a listing draft." },
       }, 400);
-    }
-
-    if (realMode) {
-      if (loaded.accessContext.mode === "demo") {
-        const quota = ensureDemoAiQuota(loaded.accessContext, 1);
-        if (!quota.ok) {
-          return json({ ok: false, error: { code: quota.code, message: quota.message } }, quota.status);
-        }
-      }
-
-      const generated = await generateRealAiListingDraft(context);
-      if (!generated.ok) {
-        return json({
-          ok: false,
-          error: { code: generated.error.code, message: generated.error.message },
-        }, realAiErrorStatus(generated.error.code));
-      }
-
-      const demoAccess = loaded.accessContext.mode === "demo"
-        ? consumeDemoAiCalls(loaded.accessContext, 1)
-        : null;
-
-      return json({
-        ok: true,
-        data: {
-          listingPack: generated.data,
-          meta: {
-            mode: "real",
-            saved: false,
-            nextStep: "review_before_save",
-          },
-        },
-        ...(demoAccess ? { demoAccess } : {}),
-      });
     }
 
     const draft = buildMockAiListingDraft(context);
