@@ -192,6 +192,7 @@ export function buildRequestFingerprint(input: {
   action: CreativeHandoffLedgerAction;
   // create
   selectedFactIds?: string[];
+  selectedVisualReferenceIds?: string[];
   creativePreferences?: Record<string, unknown>;
   expectedStorageVersion?: { resultJsonHash?: string; resultJson?: string; updatedAt: string | Date };
   expectedResearchRevision?: number;
@@ -204,6 +205,7 @@ export function buildRequestFingerprint(input: {
     schema: CREATIVE_HANDOFF_REQUEST_FINGERPRINT_SCHEMA,
     action: input.action,
     selectedFactIds: (input.selectedFactIds ?? []).slice().sort(),
+    selectedVisualReferenceIds: (input.selectedVisualReferenceIds ?? []).slice().sort(),
     creativePreferences: input.creativePreferences ?? undefined,
     expectedStorageVersion: input.expectedStorageVersion === undefined
       ? undefined

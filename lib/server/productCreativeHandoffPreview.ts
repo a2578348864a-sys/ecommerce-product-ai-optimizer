@@ -19,6 +19,7 @@ import {
 import { buildProductCreativeHandoffProjectionEvidence, ProjectionEvidenceAdapterError } from "@/lib/productCreativeHandoffProjectionEvidence";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
+import { extractVisualReferenceCandidates } from "@/lib/server/visualReferenceCandidates";
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import {
   parseProductCreativeHandoff,
@@ -152,6 +153,14 @@ export type CreativeHandoffGateResult = {
   imageHandoffBindingRaw?: unknown;
   /** PR2-3: 当前存储的 Image Draft 摘要原始值（只读） */
   imageDraftRaw?: unknown;
+  /** V2 Final Integration: 生产视觉参考候选（从 candidateAnalysisContext.productImage 解析，安全摘要） */
+  visualReferenceCandidates?: Array<{
+    selectionId: string;
+    sourceKind: string;
+    summary: string;
+    contentHash: string;
+    approvable: true;
+  }>;
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -412,6 +421,15 @@ export async function checkCreativeHandoffGate(
       listingDraftRaw: resultJson.aiListingPackSnapshot,
       imageHandoffBindingRaw: resultJson.imageHandoffBinding,
       imageDraftRaw: resultJson.aiImageDraftSnapshot,
+      // V2 Final Integration: 降级分支也暴露生产视觉候选（从 researchContext2.productImage 解析）
+      visualReferenceCandidates: researchContext2
+        ? extractVisualReferenceCandidates(
+            researchContext2,
+            context.mode === "owner" ? "owner" : "visitor",
+            taskId,
+            record.revision,
+          )
+        : [],
     };
   }
 
@@ -459,7 +477,15 @@ export async function checkCreativeHandoffGate(
     return { allowed: false, reason: "legacy_not_supported", candidate: undefined, currentHandoff: null, storageVersion, handoffContractInvalid: true, requestLedger, ledgerInvalid };
   }
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot };
+  // V2 Final Integration: 生产视觉参考候选（candidateAnalysisContext.productImage → 安全候选）
+  const visualCandidates = extractVisualReferenceCandidates(
+    researchContext,
+    context.mode === "owner" ? "owner" : "visitor",
+    taskId,
+    record.revision,
+  );
+
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, visualReferenceCandidates: visualCandidates };
 }
 
 // ─── Preview ──────────────────────────────────────────────
@@ -527,6 +553,14 @@ export async function generateCreativeHandoffPreview(
       expectedResearchRevision: degradedRevision,
       expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,
       storageVersion: gate.storageVersion,
+      // V2 Final Integration: 降级分支也展示生产视觉候选（用户可批准；批准后 Create 仍可执行）
+      visualReferenceCandidates: (gate.visualReferenceCandidates ?? []).map((v) => ({
+        selectionId: v.selectionId,
+        sourceTier: v.sourceKind,
+        approvedForReference: v.approvable === true,
+        summary: v.summary,
+        contentHash: v.contentHash.slice(0, 8),
+      })),
     };
     return { preview, gate };
   }
@@ -589,10 +623,12 @@ export async function generateCreativeHandoffPreview(
       appliesTo: [...c.appliesTo],
     })),
     creativePreferences: { tone: (gate.candidate.creativePreferences as Record<string, unknown>).tone as string | undefined },
-    visualReferenceCandidates: gate.candidate.visualReferences.map((v) => ({
-      selectionId: selection("visual", v.assetFingerprint),
-      sourceTier: v.sourceTier,
-      approvedForReference: v.humanApprovedForReference === true,
+    visualReferenceCandidates: (gate.visualReferenceCandidates ?? []).map((v) => ({
+      selectionId: v.selectionId,
+      sourceTier: v.sourceKind,
+      approvedForReference: v.approvable === true,
+      summary: v.summary,
+      contentHash: v.contentHash.slice(0, 8),
     })),
     expectedResearchRevision: gate.candidate.sourceResearch.researchRevision,
     expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,

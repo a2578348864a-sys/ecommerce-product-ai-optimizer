@@ -38,6 +38,7 @@ const CREATE_TOP_LEVEL_FIELDS = new Set([
   "expectedCurrentHandoffRevision",
   "expectedStorageVersion",
   "selectedFactCandidateIds",
+  "selectedVisualReferenceCandidateIds",
   "confirmed",
   "creativePreferences",
 ]);
@@ -374,9 +375,18 @@ export async function POST(
       return errorResponse(400, "no_facts_selected", "请至少选择一项可用的商品事实。");
     }
 
+    // V2 Final Integration: 视觉参考候选选择（用户勾选「批准作为产品视觉参考」；未提供=空=不批准）
+    const selectedVisualReferenceIds = body.selectedVisualReferenceCandidateIds === undefined
+      ? []
+      : parseSelectionIds(body.selectedVisualReferenceCandidateIds);
+    if (selectedVisualReferenceIds === null) {
+      return errorResponse(400, "invalid_visual_reference_selection", "视觉参考选择无效。");
+    }
+
     const requestFingerprint = buildRequestFingerprint({
       action: "create",
       selectedFactIds: selectedFactCandidateIds,
+      selectedVisualReferenceIds: selectedVisualReferenceIds,
       creativePreferences,
       expectedStorageVersion,
       expectedResearchRevision,
@@ -390,6 +400,7 @@ export async function POST(
       expectedCurrentHandoffRevision,
       expectedStorageVersion,
       selectedFactCandidateIds,
+      selectedVisualReferenceCandidateIds: selectedVisualReferenceIds,
       requestFingerprint,
     });
 

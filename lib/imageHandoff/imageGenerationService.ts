@@ -4,9 +4,10 @@ import { createHash } from "node:crypto";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { mutateTaskResultJson, TaskResultJsonMutationError, type TaskResultJsonStorageVersionHash } from "@/lib/server/taskResultJsonMutation";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
-import { buildImageInputFromCreativeHandoff, type ImageGenerationInput, type ImageVisualMode } from "@/lib/imageHandoff/imageGenerationInput";
+import { buildImageInputFromCreativeHandoff, validateApprovedVisualSelection, type ImageGenerationInput, type ImageVisualMode } from "@/lib/imageHandoff/imageGenerationInput";
 import { buildImageHandoffBinding, parseImageHandoffBinding, computeImageStatus, type ImageHandoffBindingV1, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
+import { createImageProviderByMode, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
 import { buildImagePromptFromInput, assertImagePromptIsSafe } from "@/lib/imageHandoff/imagePrompt";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
@@ -121,7 +122,9 @@ export function setImageProviderForTests(provider: MockImageProvider | null) {
 
 function defaultImageProvider(): MockImageProvider {
   if (injectedImageProviderForTests) return injectedImageProviderForTests.provider;
-  return createMockImageProvider();
+  // V2 Final Integration: Provider 模式由服务端环境决定（IMAGE_PROVIDER_MODE=mock|real，fail-closed）。
+  // 测试默认 mock；生产候选配置 real。不重新实现 Service，仅替换阶段B Adapter。
+  return createImageProviderByMode();
 }
 
 export type ImageGenerationOptions = {
@@ -186,6 +189,15 @@ export async function generateImageDraftFromHandoff(
     }
   }
 
+  // ── V2 Final Integration（规格九节）: approvedVisualReferenceSelectionIds 语义校验 ──
+  // Handoff 批准参考 = 用户已批准集合；Browser 提交的 selectionIds = 本次草稿选择子集。
+  // 未选择：composition 允许 / product_visual 拒绝；非当前/过期参考拒绝。
+  const selectionCheck = validateApprovedVisualSelection(generationInput, input.approvedVisualReferenceSelectionIds);
+  if (!selectionCheck.ok) {
+    throw new ImageHandoffError(selectionCheck.code, 422, selectionCheck.message);
+  }
+  const selectedVisualReferences = selectionCheck.selected;
+
   // ── 幂等预检（阶段A，Provider 调用之前）──
   let idempotentPrefetchHit = false;
   const existingBindingRawA = gateA.imageHandoffBindingRaw;
@@ -207,7 +219,18 @@ export async function generateImageDraftFromHandoff(
   }
   let providerResult: unknown = null;
   if (!idempotentPrefetchHit) {
-    providerResult = await provider.generate(generationInput, options.providerOptions);
+    // V2 Final Integration: 真实 Provider 需持久化图片资产（accessMode/taskId 由服务传入；Mock 忽略 persist）
+    const realPersist = realImageProviderEnabled() ? {
+      accessMode: context.mode === "demo" ? ("visitor" as const) : ("owner" as const),
+      visitorAccessId: (context as unknown as { demoAccessId?: string }).demoAccessId,
+      taskId,
+    } : undefined;
+    providerResult = await provider.generate(
+      generationInput,
+      realPersist
+        ? { ...(options.providerOptions ?? {}), persist: realPersist } as never
+        : options.providerOptions,
+    );
   }
   const rawDraft = !idempotentPrefetchHit && isRecord(providerResult) ? providerResult : null;
   if (!idempotentPrefetchHit && !rawDraft) {
@@ -220,8 +243,10 @@ export async function generateImageDraftFromHandoff(
     sourceHandoffRevision: handoffA.currentRevision,
     sourceHandoffFingerprint: handoffA.versions[handoffA.versions.length - 1].handoffFingerprint,
     sourceResearchRevision: researchRevision,
-    generationInputFingerprint: buildResult.generationInputFingerprint,
-    visualReferenceFingerprint: generationInput.approvedVisualReferences[0]?.referenceFingerprint ?? null,
+    generationInputFingerprint: selectedVisualReferences.length > 0
+      ? sha256(`${buildResult.generationInputFingerprint}:visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`)
+      : buildResult.generationInputFingerprint,
+    visualReferenceFingerprint: selectedVisualReferences[0]?.referenceFingerprint ?? null,
     mode: generationInput.mode,
     generatedAt: new Date().toISOString(),
     model: provider.model,

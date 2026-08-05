@@ -25,6 +25,8 @@ import {
   type CreativeHandoffRequestLedgerV1,
 } from "@/lib/creativeHandoffRequestLedger";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
+import { resolveVisualReferenceSelectionIds, buildApprovedVisualReference } from "@/lib/server/visualReferenceCandidates";
+import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
 import {
   buildConfirmableCandidates,
   confirmSelectedProductFacts,
@@ -49,6 +51,8 @@ export type CreateHandoffInput = {
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
   /** 浏览器提交的 confirmable selectionIds（服务端锁内重新投影后匹配） */
   selectedFactCandidateIds: string[];
+  /** V2 Final Integration: 浏览器提交的视觉参考候选 selectionIds（用户勾选「批准作为产品视觉参考」） */
+  selectedVisualReferenceCandidateIds?: string[];
   /** Canonical fingerprint of the request payload (buildRequestFingerprint) */
   requestFingerprint: string;
 };
@@ -294,6 +298,38 @@ export async function createOrAppendCreativeHandoff(
         stableSourceFacts: conversion.remainingStableSourceFacts,
       };
 
+      // ── V2 Final Integration: 视觉参考批准（锁内重新解析候选 → 校验 → 写入 visualReferences）──
+      // 用户勾选「批准作为产品视觉参考」时：服务器重新解析任务自有图片候选（selectionId 绑定
+      // Task/Candidate/researchRevision/contentHash），校验仍属于当前 Task/Candidate/Revision，
+      // 写入 identityBound=true + 批准主体/时间/引用。未选择时 visualReferences=[]（合法，仅 composition）。
+      let approvedVisualReferences: ProductCreativeHandoffCandidate["visualReferences"] = [];
+      const selectedVisualIds = input.selectedVisualReferenceCandidateIds ?? [];
+      if (selectedVisualIds.length > 0) {
+        const contextRaw = (current as Record<string, unknown>).candidateAnalysisContext;
+        const researchContext = contextRaw !== undefined ? parseCandidateResearchContext(contextRaw) : null;
+        const resolvedVisuals = resolveVisualReferenceSelectionIds(
+          selectedVisualIds,
+          researchContext,
+          actor.mode,
+          taskId,
+          input.expectedResearchRevision,
+        );
+        approvedVisualReferences = resolvedVisuals.map((resolved) => ({
+          ...buildApprovedVisualReference({
+            actor,
+            resolved,
+            approvedAt: now,
+            confirmationReference: buildConfirmationReference(requestKeyHash, now),
+          }),
+          identityBound: true as const,
+          humanApprovedForReference: true as const,
+        }));
+      }
+      const finalCandidateWithVisuals: ProductCreativeHandoffCandidate = {
+        ...finalCandidate,
+        visualReferences: approvedVisualReferences,
+      };
+
       // 版本校验（用锁内最新投影）
       const gateRevision = gateCandidate.sourceResearch.researchRevision;
       if (input.expectedResearchRevision !== gateRevision) {
@@ -324,7 +360,7 @@ export async function createOrAppendCreativeHandoff(
           candidateId: effectiveCandidateId,
           createdAt: now,
           createdBy: actor,
-          candidate: finalCandidate,
+          candidate: finalCandidateWithVisuals,
         });
         outcomeKind = "created";
       } else {
@@ -332,7 +368,7 @@ export async function createOrAppendCreativeHandoff(
           handoff: currentHandoff,
           createdAt: now,
           createdBy: actor,
-          candidate: finalCandidate,
+          candidate: finalCandidateWithVisuals,
         });
         outcomeKind = "appended";
       }

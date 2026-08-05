@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -144,6 +145,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           approvedVisualReferenceSummary = approvedRefs.map((r) => ({
             referenceFingerprint: r.assetFingerprint.slice(0, 16),
             summary: `approved visual reference ${r.assetFingerprint.slice(0, 8)}`,
+            // V2 Final Integration: 服务端确定性 selectionId（与 imageGenerationInput 编码一致；
+            // Browser 只能提交该 selectionId，不能提交 Approval 对象/URL）
+            selectionId: `visual-ref:${createHash("sha256").update(`${handoff.handoffId}:${handoff.currentRevision}:${r.assetFingerprint}`).digest("hex").slice(0, 24)}`,
           }));
         } else {
           mode = "composition_concept";

@@ -7,6 +7,7 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import { buildListingInputFromCreativeHandoff, type ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus, isHandoffListedDraftShape, type ListingHandoffBindingV1, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { createMockListingProvider, type MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
+import { createListingProviderByMode } from "@/lib/listingHandoff/realListingProvider";
 import { buildListingPromptFromInput, assertPromptIsSafe } from "@/lib/listingHandoff/listingPrompt";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
@@ -143,7 +144,9 @@ export function setListingProviderForTests(provider: MockListingProvider | null)
 
 function defaultProvider(): MockListingProvider {
   if (injectedProviderForTests) return injectedProviderForTests.provider;
-  return createMockListingProvider();
+  // V2 Final Integration: Provider 模式由服务端环境决定（LISTING_PROVIDER_MODE=mock|real，fail-closed）。
+  // 测试默认 mock；生产候选配置 real。不重新实现 Service，仅替换阶段B Adapter。
+  return createListingProviderByMode();
 }
 
 export type ListingGenerationOptions = {

@@ -26,7 +26,7 @@ export type ImageGenerationInput = {
     researchRevision: number;
   };
   productFacts: Array<{ field: string; label: string; value: string }>;
-  approvedVisualReferences: Array<{ referenceFingerprint: string; summary: string }>;
+  approvedVisualReferences: Array<{ referenceFingerprint: string; summary: string; selectionId: string; approvedAt: string | null }>;
   compositionReferences: string[];
   creativePreferences: Record<string, string>;
   prohibitedVisualClaims: string[];
@@ -41,6 +41,10 @@ export type ImageHandoffGateResult =
   | { ok: false; code: string; message: string };
 
 const IMAGE_USAGE = "image";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -116,9 +120,16 @@ export function buildImageInputFromCreativeHandoff(
     .filter((fact) => fact.value.length > 0);
 
   // 已批准视觉参考（严格门禁）
+  // V2 Final Integration: 每个批准参考生成服务端确定性 selectionId（binding 当前 Handoff + assetFingerprint），
+  // Browser 在 Image Generate 时只能提交这些 selectionId 的子集（规格九节）。
   const approvedVisualReferences = version.visualReferences
     .filter(isApprovedVisualReference)
-    .map((ref) => ({ referenceFingerprint: ref.assetFingerprint.slice(0, 16), summary: `approved visual reference ${ref.assetFingerprint.slice(0, 8)}` }));
+    .map((ref) => ({
+      referenceFingerprint: ref.assetFingerprint.slice(0, 16),
+      summary: `approved visual reference ${ref.assetFingerprint.slice(0, 8)}`,
+      selectionId: `visual-ref:${sha256(`${handoff.handoffId}:${handoff.currentRevision}:${ref.assetFingerprint}`).slice(0, 24)}`,
+      approvedAt: typeof ref.approvedAt === "string" ? ref.approvedAt : null,
+    }));
 
   // AI 参考 → 仅构图参考（永不进入产品外观事实）
   const compositionReferences = version.aiCreativeReferences
@@ -201,4 +212,40 @@ export const IMAGE_INPUT_FORBIDDEN_KEYS = Object.freeze([
 /** 确保稳定字段不被未知 key 覆盖（exact keys 防护） */
 export function hasForbiddenImageInputKey(input: Record<string, unknown>): boolean {
   return IMAGE_INPUT_FORBIDDEN_KEYS.some((key) => Object.prototype.hasOwnProperty.call(input, key));
+}
+
+/**
+ * V2 Final Integration（规格九节）: 校验 Browser 提交的 approvedVisualReferenceSelectionIds。
+ * 语义：Handoff 中的 visualReferences = 用户已批准的参考集合；
+ *       Image Generate 的 selectionIds = 本次图片草稿从已批准集合中选择的子集。
+ * 规则：
+ *   - 未选择：composition_concept 允许；product_visual_draft 拒绝（image_visual_reference_required）。
+ *   - 选择非当前 Handoff 参考（不存在的 selectionId）→ 拒绝（image_visual_reference_invalid）。
+ *   - 选择过期/撤销参考（selectionId 不在当前批准集）→ 拒绝。
+ *   - 选择集合法时返回该子集（参与 generationInputFingerprint / visualReferenceFingerprint）。
+ * 失败返回 { ok: false, code, message }；成功返回 { ok: true, selected }。
+ */
+export function validateApprovedVisualSelection(
+  input: ImageGenerationInput,
+  browserSelectionIds: string[] | undefined,
+): { ok: true; selected: Array<{ referenceFingerprint: string; selectionId: string }> }
+  | { ok: false; code: string; message: string } {
+  const approved = input.approvedVisualReferences;
+  if (!browserSelectionIds || browserSelectionIds.length === 0) {
+    // 未选择：composition 允许；product_visual 必须选择
+    if (input.mode === "product_visual_draft") {
+      return { ok: false, code: "image_visual_reference_required", message: "产品视觉草稿必须从已批准参考中选择。当前未选择任何视觉参考，只能生成构图概念。" };
+    }
+    return { ok: true, selected: [] };
+  }
+  const bySelectionId = new Map(approved.map((ref) => [ref.selectionId, ref]));
+  const selected: Array<{ referenceFingerprint: string; selectionId: string }> = [];
+  for (const id of browserSelectionIds) {
+    const ref = bySelectionId.get(id);
+    if (!ref) {
+      return { ok: false, code: "image_visual_reference_invalid", message: "选择的视觉参考不属于当前交接的批准参考集合（可能已过期或已被撤销）。" };
+    }
+    selected.push({ referenceFingerprint: ref.referenceFingerprint, selectionId: ref.selectionId });
+  }
+  return { ok: true, selected };
 }
