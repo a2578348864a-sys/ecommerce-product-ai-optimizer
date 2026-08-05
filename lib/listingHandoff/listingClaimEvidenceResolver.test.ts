@@ -57,7 +57,7 @@ describe("Claim Evidence Mapping — 数字", () => {
     const draft = baseDraft({ bullets: ["重量 800g 便于携带"] });
     const result = verifyListingClaims(draft, baseInput());
     expect(result.unsupportedClaims).toHaveLength(1);
-    expect(result.unsupportedClaims[0].reason).toBe("number_without_evidence");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_numeric_claim");
     expect(listingClaimsHaveEvidence(result)).toBe(false);
   });
 
@@ -65,7 +65,7 @@ describe("Claim Evidence Mapping — 数字", () => {
     const input = baseInput({ productFacts: [{ field: "productName", label: "商品名", value: "Stand" }] });
     const draft = baseDraft({ bullets: ["仅 9.9 美元"] });
     const result = verifyListingClaims(draft, input);
-    expect(result.unsupportedClaims[0].reason).toBe("number_invented_without_fact");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_numeric_claim");
   });
 });
 
@@ -77,18 +77,18 @@ describe("Claim Evidence Mapping — 材质", () => {
     expect(result.unsupportedClaims).toEqual([]);
   });
 
-  it("M2. 材质被扩写（航空级 ABS）→ 拒绝（unsupported_qualifier 优先拦截）", () => {
+  it("M2. 材质被扩写（航空级 ABS）→ 拒绝（unsupported_material）", () => {
     const draft = baseDraft({ bullets: ["航空级 ABS 外壳"] });
     const result = verifyListingClaims(draft, baseInput());
-    // "航空级"是扩写词 → 无证据定性词拦截（先于材质证据检查）
-    expect(result.unsupportedClaims[0].reason).toBe("unsupported_qualifier");
+    // "航空级"是材质等级扩写 → unsupported_material_claim
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_material_claim");
   });
 
   it("M3. 无材质事实时出现材质断言 → 拒绝", () => {
     const input = baseInput({ productFacts: [{ field: "productName", label: "商品名", value: "Stand" }] });
     const draft = baseDraft({ bullets: ["优质金属用料"] });
     const result = verifyListingClaims(draft, input);
-    expect(result.unsupportedClaims[0].reason).toBe("material_without_evidence");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_material_claim");
   });
 });
 
@@ -104,7 +104,7 @@ describe("Claim Evidence Mapping — 尺寸", () => {
     const input = baseInput({ productFacts: [{ field: "productName", label: "商品名", value: "Stand" }] });
     const draft = baseDraft({ bullets: ["超大尺寸设计"] });
     const result = verifyListingClaims(draft, input);
-    expect(result.unsupportedClaims[0].reason).toBe("unsupported_qualifier");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_dimension_claim");
   });
 });
 
@@ -113,14 +113,14 @@ describe("Claim Evidence Mapping — 认证", () => {
   it("C1. 无认证事实输出认证声称 → 拒绝（certification_without_evidence）", () => {
     const draft = baseDraft({ bullets: ["已通过 CE 认证"] });
     const result = verifyListingClaims(draft, baseInput());
-    expect(result.unsupportedClaims[0].reason).toBe("certification_without_evidence");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_certification_claim");
   });
 
-  it("C2. 有认证事实时输出认证 → 通过", () => {
+  it("C2. 有认证事实时输出认证 → 通过（值原样）", () => {
     const input = baseInput({ productFacts: [
-      { field: "certification", label: "认证", value: "CE Certified" },
+      { field: "certification", label: "认证", value: "CE" },
     ] });
-    const draft = baseDraft({ bullets: ["已获 CE 认证"] });
+    const draft = baseDraft({ bullets: ["CE 认证"] });
     const result = verifyListingClaims(draft, input);
     expect(result.unsupportedClaims).toEqual([]);
   });
@@ -131,16 +131,19 @@ describe("Claim Evidence Mapping — 性能", () => {
   it("P1. 无性能事实输出性能声称 → 拒绝（performance_without_evidence）", () => {
     const draft = baseDraft({ bullets: ["提升 50% 效果"] });
     const result = verifyListingClaims(draft, baseInput());
-    expect(result.unsupportedClaims[0].reason).toBe("performance_without_evidence");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_performance_claim");
   });
 
-  it("P2. 有性能事实时输出性能 → 通过", () => {
+  it("P2. 有性能事实时输出性能值 → 通过（仅值原样，性能修饰词拒绝）", () => {
     const input = baseInput({ productFacts: [
-      { field: "performance", label: "性能", value: "提升 50% 响应速度" },
+      { field: "performance", label: "性能", value: "50%" },
     ] });
-    const draft = baseDraft({ bullets: ["响应速度提升 50%"] });
-    const result = verifyListingClaims(draft, input);
-    expect(result.unsupportedClaims).toEqual([]);
+    // 仅值原样 → 通过
+    const r1 = verifyListingClaims(baseDraft({ bullets: ["50%"] }), input);
+    expect(r1.unsupportedClaims).toEqual([]);
+    // 性能修饰词（提升）+ 值 → 拒绝（修饰无依据）
+    const r2 = verifyListingClaims(baseDraft({ bullets: ["性能提升 50%"] }), input);
+    expect(r2.unsupportedClaims.length).toBeGreaterThan(0);
   });
 });
 
@@ -149,14 +152,14 @@ describe("Claim Evidence Mapping — 兼容性", () => {
   it("CP1. 无兼容事实输出兼容声称 → 拒绝（compatibility_without_evidence）", () => {
     const draft = baseDraft({ bullets: ["兼容 iPhone 15"] });
     const result = verifyListingClaims(draft, baseInput());
-    expect(result.unsupportedClaims[0].reason).toBe("compatibility_without_evidence");
+    expect(result.unsupportedClaims[0].reason).toBe("unsupported_compatibility_claim");
   });
 
-  it("CP2. 有兼容事实时输出兼容 → 通过", () => {
+  it("CP2. 有兼容事实时输出兼容 → 通过（值原样）", () => {
     const input = baseInput({ productFacts: [
       { field: "compatibility", label: "兼容性", value: "iPhone 15" },
     ] });
-    const draft = baseDraft({ bullets: ["兼容 iPhone 15"] });
+    const draft = baseDraft({ bullets: ["iPhone 15"] });
     const result = verifyListingClaims(draft, input);
     expect(result.unsupportedClaims).toEqual([]);
   });
@@ -167,7 +170,7 @@ describe("Claim Evidence Mapping — AI Reference", () => {
   it("R1. 参考事实化改写 → 拒绝（ai_reference_factualized）", () => {
     const draft = baseDraft({ bullets: ["专为户外设计"] });
     const result = verifyListingClaims(draft, baseInput());
-    expect(result.unsupportedClaims[0].reason).toBe("ai_reference_factualized");
+    expect(result.unsupportedClaims[0].reason).toBe("ai_reference_fact_claim");
   });
 
   it("R2. 参考仅用于措辞（非事实化）→ 通过", () => {
@@ -183,7 +186,7 @@ describe("Claim Evidence Mapping — Unknown", () => {
     const input = baseInput({ unknowns: ["材质待确认"] });
     const draft = baseDraft({ bullets: ["采用不锈钢材质"] });
     const result = verifyListingClaims(draft, input);
-    expect(result.unsupportedClaims[0].reason).toContain("unknown_completed");
+    expect(result.unsupportedClaims[0].reason).toContain("unknown_fact_claim");
   });
 });
 
@@ -193,7 +196,7 @@ describe("Claim Evidence Mapping — Conflict", () => {
     const input = baseInput({ unknowns: ["尺寸 A/B 冲突"] });
     const draft = baseDraft({ bullets: ["采用尺寸 A"] });
     const result = verifyListingClaims(draft, input);
-    expect(result.unsupportedClaims[0].reason).toBe("conflict_adjudicated");
+    expect(result.unsupportedClaims[0].reason).toBe("conflict_fact_claim");
   });
 
   it("CF2. 冲突项仅提示人工确认（说明性）→ 通过", () => {

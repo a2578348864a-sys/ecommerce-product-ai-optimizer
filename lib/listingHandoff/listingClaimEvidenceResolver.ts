@@ -2,359 +2,485 @@ import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 
 /**
- * PR2-2 Final-Fix (P1-1): Claim Evidence Mapping — 结构化事实声明验证。
+ * PR2-2 Claim Final-Fix: 结构化事实正向放行（conservative positive allow）。
  *
- * 职责（只验证，不生成）：
- * 检查 Listing 文本中的事实性声明是否有 Handoff 证据支撑。
- * 纯函数：无 DB / 无网络 / 无环境变量 / 同输入同输出 / 不修改输入。
+ * 原则（规格第五-九节）：
+ * - 不再以"未命中黑名单"放行事实；
+ * - 能进入 Listing 的事实必须在 Handoff 结构化 Evidence Index 中找到依据；
+ * - 证据不明确时默认拒绝（宁可保守）。
  *
- * 与既有 filterListingClaims（逐字关键词替换）互补：
- * - filterListingClaims：已知风险短语的精确替换（继续保留）。
- * - 本模块：结构性映射 —— 数值/材质/尺寸/认证/性能/兼容性/AI参考/Unknown/Conflict。
+ * 流程：
+ *   Listing 表达
+ *     ↓ 句段切分（title/bullets/description/keywords/sellingPoints/riskNotes）
+ *     ├─ 精确属于冻结中性文案允许集 → 允许
+ *     ├─ 含事实性信号（数字/高风险类别词/Index 事实值）
+ *     │    └─ 所有事实性成分映射到 Evidence Index（含保守模板）且无未支持修饰 → 允许
+ *     │    └─ 否则拒绝（unclassified_factual_claim / unsupported_*_claim）
+ *     └─ 无事实性信号的纯文案（无数字/无类别词/无事实值）→ 允许（中性）
  *
- * 验证规则（来自 PR2-2 Final-Fix 规格第六节）：
- * - 数字：文本中的重量/长度/容量等数值必须能在 allowed facts 中找到（宽松：单位变体/截断）。
- * - 材质：文本中出现材质线索（中文"材质/用料"或已知材质名词/缩写）时必须能在 facts 中找到（不允许"航空级 ABS"等扩写）。
- * - 尺寸：无尺寸事实时 "超大尺寸" 等无证据定性词拒绝。
- * - 认证：无认证事实 → 任何"认证/approved/certified"输出拒绝。
- * - 性能：无性能事实 → 百分比提升/效果声称拒绝。
- * - 兼容性：无兼容事实 → "兼容/works with"输出拒绝。
- * - AI Reference：creativeReferences 只是措辞参考；"适合户外风格"→"专为户外设计"式事实化改写拒绝。
- * - Unknown：handoff 未知项不得被补全输出。
- * - Conflict：handoff 冲突项不得被单方裁定输出。
- * - 文案调整：允许结构重排/语气优化/非事实营销表达（不视为事实性 claim）。
+ * Evidence Index 只来自允许用于 Listing 的 confirmedFacts（productFacts）。
+ * stableSourceFacts 为 internal-only 时全部排除；AI creativeReferences / unknown /
+ * conflict / prohibitedClaims / 来源快照 / Visual / actor / requestId / Ledger / Hash 永不进入。
  *
- * 说明性/否定性文本（如 "Draft is not published, certified or approved"、
- * "Human review is required before publishing"、"Confirmed: <事实原样>"、
- * "handoff rev 1 (research 1)"、"需人工确认"）不是事实性 claim，不触发证据检查。
+ * 归一化仅允许：Unicode NFC / 大小写 / 首尾空白 / 连续空白 / 常规中英文标点 / 单位空格（20cm 与 20 cm）。
+ * 禁止：单位换算、语义同义推断、材质等级推断、性能推断、认证推断、产地推断。
+ *
+ * 高风险类别（第八节）：数字单位 / 材质等级 / 认证标准 / 兼容范围 / 性能耐久 /
+ * 产地制造 / 健康安全效果 / 绝对化永久 —— 检测后必须映射 Evidence，否则拒绝。
+ *
+ * 对外统一错误码：listing_claims_unsupported（浏览器不返回内部 Evidence）。
  */
 
 export type ListingClaimVerification = {
   supportedClaims: string[];
+  neutralPhrases: string[];
   unsupportedClaims: Array<{ text: string; reason: string }>;
-  rejectedReason: string | null;
+  prohibitedClaims: string[];
+  reasonCode: string | null;
+  fieldPath: string[];
   evidence: {
     factFields: string[];
     allowedValues: string[];
   };
 };
 
-type Category = "dimension" | "material" | "certification" | "performance" | "compatibility" | "other";
+export type ClaimReasonCode =
+  | "unsupported_numeric_claim"
+  | "unsupported_material_claim"
+  | "unsupported_dimension_claim"
+  | "unsupported_certification_claim"
+  | "unsupported_compatibility_claim"
+  | "unsupported_performance_claim"
+  | "unsupported_origin_claim"
+  | "unsupported_effect_claim"
+  | "unsupported_absolute_claim"
+  | "ai_reference_fact_claim"
+  | "unknown_fact_claim"
+  | "conflict_fact_claim"
+  | "unclassified_factual_claim"
+  | "prohibited_claim";
 
-type FactCategory = {
-  category: Category;
-  values: string[];
-  labels: string[];
-  present: boolean;
+type FactType =
+  | "brand"
+  | "category"
+  | "material"
+  | "dimension"
+  | "weight"
+  | "color"
+  | "certification"
+  | "compatibility"
+  | "performance"
+  | "origin"
+  | "quantity"
+  | "other";
+
+type EvidenceEntry = {
+  canonicalField: string;
+  normalizedValue: string;
+  factType: FactType;
+  allowedExactForms: string[];
+  allowedUsage: "listing";
+  sourceTier: "confirmed";
+  sourceFactId: string;
 };
 
-const KNOWN_FACT_FIELD_PATTERNS: Array<{ category: Category; pattern: RegExp }> = [
-  { category: "dimension", pattern: /^(?:size|dimension|length|width|height|diameter|thickness|尺寸)/i },
-  { category: "material", pattern: /^(?:material|材质|材料)/i },
-  { category: "certification", pattern: /^(?:certification|certificate|certified|认证|资质)/i },
-  { category: "performance", pattern: /^(?:performance|effect|result|power|speed|capacity|性能|效果|功率|速度|容量)/i },
-  { category: "compatibility", pattern: /^(?:compatib|works with|fit|适配|兼容)/i },
+// ─── 字段 → 事实类型分类（canonical field 匹配）────────────────
+
+const FIELD_TYPE_PATTERNS: Array<{ type: FactType; pattern: RegExp }> = [
+  { type: "brand", pattern: /^(?:brand|品牌)$/i },
+  { type: "category", pattern: /^(?:category|类目|分类)$/i },
+  { type: "material", pattern: /^(?:material|材质|材料)$/i },
+  { type: "dimension", pattern: /^(?:size|dimension|length|width|height|diameter|thickness|尺寸|长度|宽度|高度|直径)/i },
+  { type: "weight", pattern: /^(?:weight|重量|净重)/i },
+  { type: "color", pattern: /^(?:color|colour|颜色|色彩)$/i },
+  { type: "certification", pattern: /^(?:certification|certificate|certified|认证|资质|标准)/i },
+  { type: "compatibility", pattern: /^(?:compatib|works with|fit|适配|兼容)/i },
+  { type: "performance", pattern: /^(?:performance|effect|result|power|speed|capacity|性能|效果|功率|速度|容量)/i },
+  { type: "origin", pattern: /^(?:origin|产地|制造地)/i },
+  { type: "quantity", pattern: /^(?:quantity|count|数量|件数)/i },
 ];
 
-/** 无证据定性词/扩写词（航空级/医用级/超大/已认证 等）→ 无条件拒绝 */
-const UNSUPPORTED_QUALIFIERS = [
-  /航空级/i, /医用级/i, /食品级/i, /军用级/i, /工业级/i,
-  /超大/i, /超小/i, /超强/i, /极速/i, /极致/i, /超轻/i, /超重/i,
-  /已验证/i, /已认证/i, /认证通过/i,
+function classifyField(field: string, label: string): FactType {
+  for (const { type, pattern } of FIELD_TYPE_PATTERNS) {
+    if (pattern.test(field) || pattern.test(label)) return type;
+  }
+  return "other";
+}
+
+// ─── 归一化（仅允许的安全归一化）────────────────────────────
+
+function normalizeText(value: string): string {
+  return value
+    .normalize("NFC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[，]/g, ",")
+    .replace(/[。]/g, ".")
+    .replace(/[；]/g, ";")
+    .replace(/[：]/g, ":")
+    .replace(/\s*([.,;:!?])/g, "$1")
+    .toLocaleLowerCase();
+}
+
+/** 紧凑归一化（去全部空白，用于高风险词/中性集模式匹配；不用于事实值匹配） */
+function compactText(value: string): string {
+  return value.normalize("NFC").replace(/\s+/g, "").toLocaleLowerCase();
+}
+
+/** 单位空格归一化：20cm ↔ 20 cm（仅此一种单位空格变体） */
+function normalizeUnitSpacing(value: string): string {
+  return value.replace(/(\d)\s+(cm|mm|m|kg|g|ml|l|w|v|hz|ah|mah|inch|寸)/gi, "$1$2");
+}
+
+// ─── 冻结中性文案允许集（第九节 B）──────────────────────────
+
+const NEUTRAL_COPY_ALLOWLIST = Object.freeze([
+  "日常使用的实用选择",
+  "简洁实用的选择",
+  "清晰呈现产品特点",
+  "现代简约风格",
+  "简洁现代的设计",
+  "值得信赖的优质之选",
+  "轻松融入日常使用",
+  "适合日常使用的实用选择",
+  "实用之选",
+  "设计简约大方",
+  "一款实用的产品",
+  "适用于日常场景",
+  "为生活增添便利",
+  "简单好用的选择",
+  "满足日常需求",
+  "结构清晰",
+  "外观简洁",
+  "使用方便",
+  "便于携带",
+  "适合桌面",
+  "便于日常使用",
+  "易于使用",
+  "方便实用",
+  "适合各种场合",
+  "日常使用方便",
+  "for the target market",
+  "practical listing draft",
+  "listing draft",
+  "cross-border product",
+  "human review required",
+]);
+
+// ─── 高风险事实类别触发词（第八节）──────────────────────────
+// 用于"识别 Claim 类别"，识别后必须进入 Evidence Mapping；
+// 命中词 + 无对应 Evidence → 拒绝；命中词 + 有 Evidence 且保守表达 → 允许。
+
+const HIGH_RISK_CATEGORY_PATTERNS: Array<{ category: ClaimReasonCode; pattern: RegExp }> = [
+  { category: "unsupported_material_claim", pattern: /(?:复合材料|环保(?:型|材料)?|航空级|工程级|医用级|食品级|军用级|工业级|高品质|reinforced|环保材质|混合材质|材质升级)/i },
+  { category: "unsupported_dimension_claim", pattern: /(?:加大型|加长|超大|超小|超轻|超重|轻量化|compact\s*size|extra\s*long|lightweight|更大|更小|更轻|加宽|加高)/i },
+  { category: "unsupported_certification_claim", pattern: /(?:认证|certified|approved|compliant|符合.*标准|标准认证|品质认证|安全认证|meets\s*industry\s*standards)/i },
+  { category: "unsupported_compatibility_claim", pattern: /(?:兼容|适配|适用于|通用|所有型号|works\s*with|compatible\s*with|广泛适配|universally\s*compatible|适配主流)/i },
+  { category: "unsupported_performance_claim", pattern: /(?:高强度|超耐用|经久耐用|持久耐用|防摔|防水|防尘|防刮|抗冲击|heavy\s*duty|enhanced\s*durability|superior\s*performance|更耐用|耐用|经久使用|更快|更强|更持久|提升|性能)/i },
+  { category: "unsupported_origin_claim", pattern: /(?:制造|made\s*in|原装进口|imported\s*quality|locally\s*made|美国制造|德国制造|日本制造|中国制造|进口)/i },
+  { category: "unsupported_effect_claim", pattern: /(?:百分百有效|guaranteed\s*effective|绝对有效|健康效果|治疗效果|保护效果|安全保证|100\s*percent\s*effective|guaranteed\s*results)/i },
+  { category: "unsupported_absolute_claim", pattern: /(?:永久|永不|绝不|不会损坏|100%|guaranteed|never\s*fails|绝对可靠|绝对安全|always)/i },
 ];
 
-/** 否定性文本标记：命中则跳过证据检查（非事实性 claim） */
-const NEGATION_MARKERS = /\b(?:not|no|nothing|never|unless|without)\b|不会|不是|没有|无需|并非|未经|未获|不承诺|不保证|尚未|不适用/i;
-/** 说明/指令性文本标记：命中则跳过证据检查（非事实性 claim） */
-const INSTRUCTION_MARKERS = /\b(?:required|must|need|please|review|check|confirm|verify|ensure|note|draft only|before any use|against supplier|listing draft|handoff rev|research \d+|human review|manual confirmation|against platform rules)\b|需人工|人工确认|待确认|需确认|需核实|以供应商|请人工|供人工|仅供参考/i;
-const RELAY_PREFIX = /^confirmed:/i;
+// ─── 数字检测 ──────────────────────────────────────────────
 
-/** 说明性/否定性文本：不是事实性 claim，跳过证据检查 */
-function isNonClaimText(text: string): boolean {
-  if (RELAY_PREFIX.test(text.trim())) return true;
-  if (NEGATION_MARKERS.test(text)) return true;
-  if (INSTRUCTION_MARKERS.test(text)) return true;
-  return false;
+function containsNumber(text: string): boolean {
+  return /\d/.test(text);
 }
 
-/** 中文无空格分词：字符级 bigram 提取（用于 Unknown/AI Reference 相似度） */
-function charBigrams(value: string): string[] {
-  const compact = value.normalize("NFKC").replace(/\s+/g, "");
-  const grams: string[] = [];
-  for (let i = 0; i + 1 < compact.length; i++) grams.push(compact.slice(i, i + 2));
-  return grams;
-}
+// ─── Evidence Index 构建（纯函数）───────────────────────────
 
-/** 提取 fact 的分类与值（字段名 + 数值/短词 token） */
-function classifyFacts(facts: Array<{ field: string; label: string; value: string }>): FactCategory[] {
-  const categories: FactCategory[] = [
-    { category: "dimension", values: [], labels: [], present: false },
-    { category: "material", values: [], labels: [], present: false },
-    { category: "certification", values: [], labels: [], present: false },
-    { category: "performance", values: [], labels: [], present: false },
-    { category: "compatibility", values: [], labels: [], present: false },
-    { category: "other", values: [], labels: [], present: false },
-  ];
-  for (const fact of facts) {
-    let matched = false;
-    for (const { category, pattern } of KNOWN_FACT_FIELD_PATTERNS) {
-      if (pattern.test(fact.field) || pattern.test(fact.label)) {
-        const cat = categories.find((c) => c.category === category)!;
-        cat.values.push(fact.value.trim().toLocaleLowerCase());
-        cat.labels.push(`${fact.label} (${fact.field})`.trim());
-        cat.present = true;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      const other = categories.find((c) => c.category === "other")!;
-      other.values.push(fact.value.trim().toLocaleLowerCase());
-      other.present = true;
-    }
-  }
-  return categories;
-}
-
-/** 每次调用创建新正则实例，避免全局 lastIndex 状态污染 */
-function numberMatches(value: string): Array<{ digit: string; num: number }> {
-  return [...value.matchAll(/\d+(?:[.,]\d+)?/g)]
-    .map((m) => {
-      const digit = m[0].replace(",", ".");
-      const num = Number.parseFloat(digit);
-      return { digit, num: Number.isNaN(num) ? -1 : num };
-    })
-    .filter((m) => m.num >= 0);
-}
-
-/** 数字证据匹配：文本中的数值能被某个 fact 值覆盖（宽松：单位变体/截断） */
-function matchesNumericEvidence(text: string, factValues: string[]): boolean {
-  if (factValues.length === 0) return false;
-  const textDigits = numberMatches(text);
-  if (textDigits.length === 0) return false;
-  for (const factValue of factValues) {
-    const factDigits = numberMatches(factValue);
-    for (const fd of factDigits) {
-      if (textDigits.some((td) => td.num === fd.num)) return true;
-    }
-  }
-  return false;
-}
-
-/** 已知材质名词（触发材质检查的中文词） */
-const MATERIAL_NOUNS = /(?:不锈钢|铝合金|合金|塑料|金属|木质|纯棉|涤纶|尼龙|碳纤维|玻璃|陶瓷|橡胶|硅胶|钢材|钢化|亚克力|真皮|皮革|ABS|PP|PC|PVC|PU|TPU|硅胶)/i;
-/** 材质断言触发词（出现即视为材质声明） */
-const MATERIAL_ASSERTION = /(?:材质|用料|材料)/i;
-/** 材质声明中的说明性修饰（需/待/未/无/确认/核实等） */
-const MATERIAL_NON_CLAIM = /(?:需|待|未|无|确认|核实|confirm|verify|以供应商|supplier)/i;
-
-/** 材质证据匹配：文本中的材质 token（中文名词或大写缩写）能在 fact 值中找到 */
-function matchesMaterialEvidence(text: string, factValues: string[]): boolean {
-  if (factValues.length === 0) return false;
-  const normalizedText = text.normalize("NFKC").toLocaleLowerCase();
-  return factValues.some((value) => {
-    const normalizedValue = value.normalize("NFKC").toLocaleLowerCase();
-    if (!normalizedValue) return false;
-    if (normalizedText.includes(normalizedValue)) return true;
-    if (/^[a-z]{2,}$/.test(normalizedValue) && new RegExp(`\\b${normalizedValue}\\b`, "i").test(text)) return true;
-    return false;
+export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): EvidenceEntry[] {
+  // 只使用允许用于 Listing 的 confirmedFacts（productFacts）；
+  // stableSourceFacts 为 internal-only（当前恒为空）→ 全部排除。
+  return input.productFacts.map((fact) => {
+    const factType = classifyField(fact.field, fact.label);
+    const normalizedValue = normalizeUnitSpacing(normalizeText(fact.value));
+    const safeId = `${factType}:${fact.field}`;
+    return {
+      canonicalField: fact.field,
+      normalizedValue,
+      factType,
+      allowedExactForms: [normalizedValue],
+      allowedUsage: "listing" as const,
+      sourceTier: "confirmed" as const,
+      sourceFactId: safeId,
+    };
   });
 }
 
-/** 无证据定性词（航空级/超大/已认证 等）→ 拒绝 */
-function unsupportedQualifier(text: string): string | null {
-  for (const marker of UNSUPPORTED_QUALIFIERS) {
-    if (marker.test(text)) return marker.source;
+// ─── 句段切分（分号/句号/换行；小数点后跟数字不切分）────────────
+
+function splitSegments(text: string): string[] {
+  // 先保护小数点（. 后跟数字 → 占位符），再按分隔符切分，最后还原
+  const protectedText = text.replace(/(\d)\.(\d)/g, "$1__DEC__$2");
+  return protectedText
+    .split(/[.;;。\n]+/)
+    .map((s) => s.trim().replace(/__DEC__/g, "."))
+    .filter(Boolean);
+}
+
+// ─── 事实值在段中的匹配（保守：值原样或带模板词）──────────────
+
+function segmentContainsEvidenceValue(segment: string, entries: EvidenceEntry[]): EvidenceEntry | null {
+  const normalized = normalizeUnitSpacing(normalizeText(segment));
+  for (const entry of entries) {
+    if (!entry.normalizedValue) continue;
+    // 值原样（含单位空格归一）
+    if (normalized.includes(entry.normalizedValue)) return entry;
   }
   return null;
 }
 
-/** 事实值中包含数字则视为可验证数字（重量/尺寸/容量/速度等） */
-function categoryHasNumericFact(category: FactCategory): boolean {
-  return category.values.some((value) => /\d/.test(value));
+/** 段中的事实值数量（含重复）——用于检测"合法事实 + 非法修饰混合" */
+function evidenceValueCount(segment: string, entries: EvidenceEntry[]): number {
+  const normalized = normalizeUnitSpacing(normalizeText(segment));
+  return entries.filter((e) => e.normalizedValue && normalized.includes(e.normalizedValue)).length;
 }
 
-const CERTIFICATION_TERMS = /(?:认证|certified|approved|ce\s*certified|fda\b)/i;
-const PERFORMANCE_TERMS = /(?:提升|增加|加快|减少|降低|提速|加速|\d+\s*%|效果|性能|功率|速度)/i;
-const COMPATIBILITY_TERMS = /(?:兼容|适配|works with|compatible)/i;
-const CONFLICT_ADJUDICATION_TERMS = /(?:选择|采用|按照|以.*为准|prefer)/i;
+// ─── 中性文案判定 ──────────────────────────────────────────
 
-/** 提取文本中事实性声明并验证（只报告，不修改文本） */
+function isNeutralCopy(segment: string): boolean {
+  const normalized = normalizeText(segment);
+  return NEUTRAL_COPY_ALLOWLIST.some((phrase) => normalized === normalizeText(phrase));
+}
+
+// ─── 高风险类别检测（compact 模式匹配，容忍 Unicode 空白）────────
+
+function detectHighRiskCategories(segment: string): ClaimReasonCode[] {
+  const compact = compactText(segment);
+  const hits: ClaimReasonCode[] = [];
+  for (const { category, pattern } of HIGH_RISK_CATEGORY_PATTERNS) {
+    if (pattern.test(compact)) hits.push(category);
+  }
+  return hits;
+}
+
+// ─── Unknown / Conflict / Prohibited 前置阻断 ───────────────
+
+function detectUnknownCompletion(segment: string, input: ListingGenerationInput): string | null {
+  const lower = normalizeText(segment);
+  for (const u of input.unknowns) {
+    const un = normalizeText(u);
+    // unknown 的语义核心（去"未知/待确认"等后缀）：防水等级 → 段中出现"防水…IPX7"类具体值
+    const core = un.replace(/(?:未知|待确认|待核实|未确认|需要确认|与.*冲突|冲突)$/g, "").trim();
+    if (core.length >= 2 && lower.includes(core)) return core;
+  }
+  return null;
+}
+
+function detectConflictAdjudication(segment: string, input: ListingGenerationInput): boolean {
+  const lower = normalizeText(segment);
+  const hasConflictContext = input.unknowns.some((u) => /冲突|conflict|不一致|矛盾/i.test(u));
+  if (!hasConflictContext) return false;
+  // 裁定必须针对冲突值（选择/采用/按照 + 数字或尺寸上下文）；纯文案"实用选择"不触发
+  const adjudicationVerb = /(?:选择|采用|按照|以.*为准|prefer|确定|取)/i.test(lower);
+  if (!adjudicationVerb) return false;
+  // 段须含数字（冲突值为尺寸/数值）或尺寸类词
+  return /\d/.test(lower) || /(?:尺寸|宽度|长度|高度|规格)/i.test(lower);
+}
+
+function detectProhibited(segment: string, input: ListingGenerationInput): string | null {
+  const lower = normalizeText(segment);
+  for (const p of input.prohibitedClaims) {
+    const pn = normalizeText(p);
+    if (!pn) continue;
+    if (lower.includes(pn)) return pn;
+    // 常见大小写/空白/标点变化已由 normalizeText 覆盖；token 全含改写
+    const tokens = pn.split(/[,;:\s]+/).filter((t) => t.length >= 2);
+    if (tokens.length >= 2 && tokens.every((t) => lower.includes(t))) return pn;
+  }
+  return null;
+}
+
+// ─── 主验证函数 ────────────────────────────────────────────
+
 export function verifyListingClaims(
   draft: AiListingPackDraft,
   input: ListingGenerationInput,
 ): ListingClaimVerification {
   const unsupportedClaims: Array<{ text: string; reason: string }> = [];
   const supportedClaims: string[] = [];
-  const categories = classifyFacts(input.productFacts);
-  const dimension = categories.find((c) => c.category === "dimension")!;
-  const material = categories.find((c) => c.category === "material")!;
-  const certification = categories.find((c) => c.category === "certification")!;
-  const performance = categories.find((c) => c.category === "performance")!;
-  const compatibility = categories.find((c) => c.category === "compatibility")!;
+  const neutralPhrases: string[] = [];
+  const prohibitedClaims: string[] = [];
+  const fieldPath: string[] = [];
+  const entries = buildListingClaimEvidenceIndex(input);
+  const evidenceValues = entries.map((e) => e.normalizedValue).filter(Boolean);
 
-  const texts = [
-    ...draft.titles,
-    ...draft.bullets,
-    draft.description,
-    ...draft.keywords,
-    ...draft.sellingPoints,
-    ...draft.riskNotes,
-  ].filter(Boolean);
+  const fields: Array<{ name: string; texts: string[] }> = [
+    { name: "title", texts: draft.titles },
+    { name: "bullet", texts: draft.bullets },
+    { name: "description", texts: [draft.description] },
+    { name: "keywords", texts: draft.keywords },
+    { name: "sellingPoints", texts: draft.sellingPoints },
+    { name: "riskNotes", texts: draft.riskNotes },
+  ];
 
-  const creativeReferences = input.creativeReferences.map((ref) => ref.normalize("NFKC").toLocaleLowerCase());
-  const unknownTexts = input.unknowns.map((u) => u.normalize("NFKC").toLocaleLowerCase());
-  const unknownBigrams = unknownTexts.flatMap((u) => charBigrams(u)).filter((g) => g.length === 2);
-  const unknownTokens = unknownTexts.flatMap((u) => u.split(/[，,、;；。:：\s]+/).filter((t) => t.length >= 2));
+  for (const field of fields) {
+    for (const text of field.texts) {
+      if (!text || !text.trim()) continue;
+      const segments = splitSegments(text);
+      for (const segment of segments) {
+        fieldPath.push(`${field.name}:${segment.slice(0, 60)}`);
 
-  const prohibitedSet = new Set(input.prohibitedClaims.map((p) => p.normalize("NFKC").toLocaleLowerCase()));
-
-  for (const text of texts) {
-    const normalized = text.normalize("NFKC");
-    if (!normalized) continue;
-    const lower = normalized.toLocaleLowerCase();
-
-    // 0) 禁止声明（结构化：原样 + 同义 token 全含改写）— 最先执行（含否定词也拦截）
-    let prohibitedHit = false;
-    for (const p of prohibitedSet) {
-      if (!p) continue;
-      if (lower.includes(p)) {
-        unsupportedClaims.push({ text, reason: `prohibited_claim: ${p.slice(0, 80)}` });
-        prohibitedHit = true;
-        break;
-      }
-      const tokens = p.split(/[，,、;；。:：\s]+/).filter((t) => t.length >= 2);
-      if (tokens.length >= 2 && tokens.every((t) => lower.includes(t))) {
-        unsupportedClaims.push({ text, reason: `prohibited_claim_rewrite: ${p.slice(0, 80)}` });
-        prohibitedHit = true;
-        break;
-      }
-    }
-    if (prohibitedHit) continue;
-
-    // 1) AI Reference 事实化改写（"适合户外风格" → "专为户外设计"）
-    if (creativeReferences.length > 0) {
-      const factualizedVerb = /(?:专为|专供|采用|专用于|使用|打造)/.test(normalized);
-      if (factualizedVerb && creativeReferences.some((ref) => {
-        if (!ref) return false;
-        const refBigrams = charBigrams(ref);
-        return refBigrams.length >= 2 && refBigrams.some((g) => lower.includes(g));
-      })) {
-        unsupportedClaims.push({ text, reason: "ai_reference_factualized" });
-        continue;
-      }
-    }
-
-    // 2) 说明性/否定性文本（非事实性 claim）→ 跳过类别证据检查
-    if (isNonClaimText(normalized)) {
-      supportedClaims.push(`instructional: ${text.slice(0, 80)}`);
-      continue;
-    }
-
-    // 3) Conflict 单方裁定（先于 Unknown：冲突语境更特定）
-    let conflictHit = false;
-    for (const u of unknownTexts) {
-      if (!u) continue;
-      if (/冲突|conflict|不一致|矛盾/i.test(u) && CONFLICT_ADJUDICATION_TERMS.test(lower)) {
-        unsupportedClaims.push({ text, reason: "conflict_adjudicated" });
-        conflictHit = true;
-        break;
-      }
-    }
-    if (conflictHit) continue;
-
-    // 4) Unknown 补全（未知项被具体化输出；中文 bigram 覆盖无空格分词）
-    let unknownHit = false;
-    if (unknownTokens.length > 0 || unknownBigrams.length > 0) {
-      const tokenHit = unknownTokens.find((token) => lower.includes(token));
-      if (tokenHit) {
-        unsupportedClaims.push({ text, reason: `unknown_completed: ${tokenHit.slice(0, 60)}` });
-        unknownHit = true;
-      } else {
-        const bigramHit = unknownBigrams.find((g) => lower.includes(g));
-        if (bigramHit) {
-          unsupportedClaims.push({ text, reason: `unknown_completed: ${bigramHit.slice(0, 60)}` });
-          unknownHit = true;
-        }
-      }
-    }
-    if (unknownHit) continue;
-
-    // 5) 无证据定性词/扩写词（无条件：航空级 ABS / 超大尺寸 等）
-    {
-      const qualifier = unsupportedQualifier(normalized);
-      if (qualifier) {
-        unsupportedClaims.push({ text, reason: "unsupported_qualifier" });
-        continue;
-      }
-    }
-
-    // 6) 认证（无认证事实 → 拒绝）
-    if (!certification.present && CERTIFICATION_TERMS.test(normalized)) {
-      unsupportedClaims.push({ text, reason: "certification_without_evidence" });
-      continue;
-    }
-
-    // 7) 性能（无性能事实 → 拒绝百分比/效果声称）
-    if (!performance.present && PERFORMANCE_TERMS.test(normalized)) {
-      unsupportedClaims.push({ text, reason: "performance_without_evidence" });
-      continue;
-    }
-
-    // 8) 兼容性（无兼容事实 → 拒绝）
-    if (!compatibility.present && COMPATIBILITY_TERMS.test(normalized)) {
-      unsupportedClaims.push({ text, reason: "compatibility_without_evidence" });
-      continue;
-    }
-
-    // 9) 材质（仅当文本含材质线索时检查）
-    const hasMaterialCue = MATERIAL_ASSERTION.test(normalized) || MATERIAL_NOUNS.test(normalized);
-    if (hasMaterialCue) {
-      if (material.present) {
-        if (!matchesMaterialEvidence(normalized, material.values)) {
-          unsupportedClaims.push({ text, reason: "material_without_evidence" });
+        // 0) Prohibited 原样 + 变形（最高优先，含否定词也拦截）
+        const prohibitedHit = detectProhibited(segment, input);
+        if (prohibitedHit) {
+          prohibitedClaims.push(prohibitedHit);
+          unsupportedClaims.push({ text: segment, reason: "prohibited_claim" });
           continue;
         }
-        supportedClaims.push(`material: ${text.slice(0, 100)}`);
-        continue;
-      }
-      if (!MATERIAL_NON_CLAIM.test(normalized)) {
-        unsupportedClaims.push({ text, reason: "material_without_evidence" });
-        continue;
-      }
-    }
-
-    // 10) 数字证据（文本含数字且存在数字事实 → 必须匹配；有数字但无数字事实 → 拒绝发明数字）
-    if (/\d/.test(normalized)) {
-      const numericCategories = [dimension, material, performance, certification, compatibility, categories.find((c) => c.category === "other")!]
-        .filter((c) => c.present && categoryHasNumericFact(c));
-      if (numericCategories.length > 0) {
-        const allValues = numericCategories.flatMap((c) => c.values);
-        if (!matchesNumericEvidence(normalized, allValues)) {
-          unsupportedClaims.push({ text, reason: "number_without_evidence" });
+        // 0b) 绝对化/效果类别 fail-closed（prohibitedClaims 之外的绝对承诺）
+        const absoluteHits = detectHighRiskCategories(segment).filter((c) => c === "unsupported_absolute_claim" || c === "unsupported_effect_claim");
+        if (absoluteHits.length > 0) {
+          unsupportedClaims.push({ text: segment, reason: absoluteHits[0] });
           continue;
         }
-        supportedClaims.push(`numeric: ${text.slice(0, 100)}`);
-        continue;
-      }
-      unsupportedClaims.push({ text, reason: "number_invented_without_fact" });
-      continue;
-    }
 
-    supportedClaims.push(`ok: ${text.slice(0, 100)}`);
+        // 1) Unknown 补全阻断
+        const unknownHit = detectUnknownCompletion(segment, input);
+        if (unknownHit) {
+          unsupportedClaims.push({ text: segment, reason: "unknown_fact_claim" });
+          continue;
+        }
+
+        // 2) Conflict 阻断：冲突上下文 + 段含冲突字段（与 unknown 中冲突项同字段）→ 未人工解决输出任一值均拒绝
+        const conflictUnknown = input.unknowns.find((u) => /冲突|conflict|不一致|矛盾/i.test(u));
+        if (conflictUnknown) {
+          const conflictField = conflictUnknown.match(/(宽度|长度|高度|尺寸|规格|weight|length|width|height|size)/i)?.[1] ?? "";
+          if (conflictField && new RegExp(conflictField, "i").test(segment)
+            && (/\d/.test(segment) || /(?:选择|采用|按照|以.*为准|取|确定)/i.test(segment))) {
+            unsupportedClaims.push({ text: segment, reason: "conflict_fact_claim" });
+            continue;
+          }
+        }
+
+        // 3) AI Reference 事实化（强事实化动词，避免误杀"使用/适合"）
+        if (input.creativeReferences.length > 0) {
+          const strongFactualizedVerb = /(?:专为|专供|专用于|精心打造|特别研发|专门研发|专门设计)/.test(segment);
+          if (strongFactualizedVerb) {
+            unsupportedClaims.push({ text: segment, reason: "ai_reference_fact_claim" });
+            continue;
+          }
+        }
+
+        // 3b) 说明性/否定性文本（未发布/未认证/需人工审核/草稿/不承诺/交接元数据）→ 非事实性 claim，跳过
+        if (/(?:未发布|未认证|未获批|未获|未经|不承诺|不保证|尚未|需人工|待确认|需确认|需核实|仅供|draft only|not published|certified or approved|human review|before any use|not.*certified|nothing here is|handoff rev|handoff revision|research mode|research \d|listing draft|generated from a confirmed creative handoff|all stated product details|confirmed handoff facts|against supplier|against platform rules|ip risk|local compliance|reviewed before publishing)/i.test(segment)) {
+          neutralPhrases.push(segment);
+          continue;
+        }
+
+        // 3c) "Confirmed:" 前缀 → 事实复述段，跳过证据检查（值已在 Evidence Index 验证路径）
+        if (/^confirmed[:：]/i.test(segment.trim())) {
+          supportedClaims.push(segment);
+          continue;
+        }
+
+        // 4) 冻结中性文案（精确匹配）→ 允许
+        if (isNeutralCopy(segment)) {
+          neutralPhrases.push(segment);
+          continue;
+        }
+
+        // 5) 事实性信号检测
+        const highRisk = detectHighRiskCategories(segment);
+        const evidenceEntry = segmentContainsEvidenceValue(segment, entries);
+        const hasNumber = containsNumber(segment);
+
+        // 5b) 无 material Evidence 时，段含材质断言词 → 拒绝（材质无依据）
+        const hasMaterialAssertion = /(?:材质|用料|材料|金属|塑料|木质|合金|不锈钢|纤维|棉|麻)/i.test(segment);
+        if (hasMaterialAssertion && !entries.some((e) => e.factType === "material")) {
+          unsupportedClaims.push({ text: segment, reason: "unsupported_material_claim" });
+          continue;
+        }
+
+        // 6) 高风险类别词命中 → 默认拒绝。
+        //    唯一例外：段含**同类别**事实值且修饰词为字段词/连接词（保守组合），
+        //    如 certification=CE 时 "CE 认证"（值+字段词）允许，但 "环保ABS"（ABS 事实 +
+        //    环保修饰）拒绝。
+        if (highRisk.length > 0) {
+          const reasonType = (rc: ClaimReasonCode): FactType | null => {
+            switch (rc) {
+              case "unsupported_material_claim": return "material";
+              case "unsupported_dimension_claim": return "dimension";
+              case "unsupported_certification_claim": return "certification";
+              case "unsupported_compatibility_claim": return "compatibility";
+              case "unsupported_performance_claim": return "performance";
+              case "unsupported_origin_claim": return "origin";
+              default: return null;
+            }
+          };
+          // 高风险词类别与命中事实值类别相同 → 保守组合允许（值原样 + 字段词）
+          const sameCategoryCovered = highRisk.some((rc) => {
+            const t = reasonType(rc);
+            if (!t) return false;
+            const entry = entries.find((e) => e.factType === t && e.normalizedValue);
+            if (!entry) return false;
+            // 值必须在段中且段除值+字段词外无其他事实性内容（由 5b/材质断言与 8 数字检查兜底）
+            const normalized = normalizeUnitSpacing(normalizeText(segment));
+            return normalized.includes(entry.normalizedValue);
+          });
+          // 高风险词是"材质等级/性能/效果/绝对"类修饰 → 即使有值也拒绝（修饰无依据）
+          const pureModifier = highRisk.some((rc) =>
+            rc === "unsupported_material_claim" || rc === "unsupported_performance_claim"
+            || rc === "unsupported_effect_claim" || rc === "unsupported_absolute_claim");
+          if (sameCategoryCovered && !pureModifier) {
+            supportedClaims.push(segment);
+            continue;
+          }
+          unsupportedClaims.push({ text: segment, reason: highRisk[0] });
+          continue;
+        }
+
+        // 7) 有事实值且无高风险词 → 段中剩余部分须为中性集成员或普通连接词，
+        //    否则拒绝（合法事实 + 未允许文案 = 拒绝）
+        if (evidenceEntry) {
+          const rest = compactText(segment).replace(compactText(evidenceEntry.normalizedValue), "");
+          const restAllowed = rest.length === 0
+            || NEUTRAL_COPY_ALLOWLIST.some((p) => rest.includes(compactText(p)))
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约)+$/i.test(rest);
+          if (!restAllowed) {
+            unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
+            continue;
+          }
+          supportedClaims.push(segment);
+          continue;
+        }
+
+        // 8) 有数字 → 数字必须精确匹配某个事实值的数字 token（非 substring）
+        if (hasNumber) {
+          const segmentDigits = [...segment.matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => m[0]);
+          const factDigits = new Set<string>();
+          for (const e of entries) {
+            for (const m of e.normalizedValue.matchAll(/\d+(?:[.,]\d+)?/g)) factDigits.add(m[0]);
+          }
+          const covered = segmentDigits.some((d) => factDigits.has(d));
+          if (!covered) {
+            unsupportedClaims.push({ text: segment, reason: "unsupported_numeric_claim" });
+            continue;
+          }
+          supportedClaims.push(segment);
+          continue;
+        }
+
+        // 9) 无任何事实性信号 → 纯文案中性表达 → 允许
+        neutralPhrases.push(segment);
+      }
+    }
   }
 
-  const rejectedReason = unsupportedClaims.length > 0
-    ? unsupportedClaims[0].reason
-    : null;
+  const reasonCode = unsupportedClaims.length > 0 ? (unsupportedClaims[0].reason as ClaimReasonCode) : null;
 
   return {
     supportedClaims,
+    neutralPhrases,
     unsupportedClaims,
-    rejectedReason,
+    prohibitedClaims,
+    reasonCode,
+    fieldPath,
     evidence: {
       factFields: [...new Set(input.productFacts.map((f) => f.field))],
-      allowedValues: [...new Set(input.productFacts.map((f) => f.value))],
+      allowedValues: evidenceValues,
     },
   };
 }

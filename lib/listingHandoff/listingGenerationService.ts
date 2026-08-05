@@ -308,7 +308,7 @@ export async function generateListingDraftFromHandoff(
         throw new ListingHandoffError(
           "listing_claims_unsupported",
           422,
-          `草稿含无证据支持的事实性声明（${evidence.rejectedReason ?? "unknown"}），请调整后重新生成。`,
+          `草稿含无证据支持的事实性声明（${evidence.reasonCode ?? "unknown"}），请调整后重新生成。`,
         );
       }
 
