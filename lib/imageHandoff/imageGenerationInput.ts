@@ -27,6 +27,8 @@ export type ImageGenerationInput = {
   };
   productFacts: Array<{ field: string; label: string; value: string }>;
   approvedVisualReferences: Array<{ referenceFingerprint: string; summary: string; selectionId: string; approvedAt: string | null }>;
+  /** Final Capability: 批准参考的原始图片（dataUrl base64；仅服务端真实 Provider 使用；mock 与 fingerprint 忽略） */
+  referenceImageDataUrl?: string;
   compositionReferences: string[];
   creativePreferences: Record<string, string>;
   prohibitedVisualClaims: string[];

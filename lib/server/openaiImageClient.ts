@@ -152,7 +152,7 @@ function assetFailureStage(code: ImageUrlFetchError["code"]): AiImageProviderFai
   return code === "image_provider_untrusted_result_url" ? "provider_response" : "asset_download";
 }
 
-function mapProviderError(error: unknown, providerResultReceived = false): AiImageProviderError {
+export function mapProviderError(error: unknown, providerResultReceived = false): AiImageProviderError {
   if (error instanceof AiImageProviderError) return error;
   if (error instanceof ImageUrlFetchError) {
     return new AiImageProviderError(

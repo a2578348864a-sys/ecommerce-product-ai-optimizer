@@ -177,6 +177,10 @@ export async function generateImageDraftFromHandoff(
     throw new ImageHandoffError(buildResult.code, 422, buildResult.message);
   }
   const generationInput = buildResult.input;
+  // Final Capability: product_visual_draft 真实参考图输入（从 gate 解析的批准参考图片；仅服务端）
+  if (input.mode === "product_visual_draft" && gateA.approvedReferenceImageDataUrl) {
+    generationInput.referenceImageDataUrl = gateA.approvedReferenceImageDataUrl;
+  }
 
   // 模式门禁：composition_concept 不需要参考；product_visual_draft 必须有批准参考
   if (input.mode !== generationInput.mode) {
@@ -225,12 +229,19 @@ export async function generateImageDraftFromHandoff(
       visitorAccessId: (context as unknown as { demoAccessId?: string }).demoAccessId,
       taskId,
     } : undefined;
-    providerResult = await provider.generate(
-      generationInput,
-      realPersist
-        ? { ...(options.providerOptions ?? {}), persist: realPersist } as never
-        : options.providerOptions,
-    );
+    try {
+      providerResult = await provider.generate(
+        generationInput,
+        realPersist
+          ? { ...(options.providerOptions ?? {}), persist: realPersist } as never
+          : options.providerOptions,
+      );
+    } catch (providerError) {
+      // 真实 Provider 失败：映射为稳定业务错误（不返回 500；不自动重试）
+      // 配置缺失/能力不可用/Provider 拒绝 → 422 image_provider_failed（如实暴露原因摘要）
+      const message = String(providerError instanceof Error ? providerError.message : providerError).slice(0, 200);
+      throw new ImageHandoffError("image_provider_failed", 422, message);
+    }
   }
   const rawDraft = !idempotentPrefetchHit && isRecord(providerResult) ? providerResult : null;
   if (!idempotentPrefetchHit && !rawDraft) {

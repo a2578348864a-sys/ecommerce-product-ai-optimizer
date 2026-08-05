@@ -48,13 +48,28 @@ export function realImageProviderEnabled(): boolean {
   }
 }
 
-/** 真实 Provider 能力声明（审计确认）：仅文生图；product_visual_draft 不支持参考图 */
+/** 真实 Provider 能力声明（审计确认）：文生图 + 参考图生图（images.edit；gpt-image-2 支持） */
 export const REAL_IMAGE_PROVIDER_CAPABILITY = Object.freeze({
   textToImage: true,
-  referenceImage: false,
-  supportedModes: ["composition_concept"] as ImageVisualMode[],
-  note: "现有 openaiImageClient 仅支持文生图（imageType/prompt/size），无参考图参数；product_visual_draft 保持 mock-only。",
+  referenceImage: true,
+  supportedModes: ["composition_concept", "product_visual_draft"] as ImageVisualMode[],
+  note: "openai SDK images.edit（multipart image+prompt，gpt-image-2 支持 input_fidelity）；参考图真实作为 Provider 输入。",
 } as const);
+
+/** product_visual_draft 的编辑 Prompt：保持批准参考产品形态；不增加未知配件/功能/认证/Logo */
+function buildProductVisualPrompt(input: ImageGenerationInput): string {
+  const factLines = input.productFacts.slice(0, 8).map((f) => `${f.label}: ${f.value}`).join("; ");
+  return [
+    "Edit the attached approved product reference image into a product visual draft for listing material planning.",
+    "Keep the product shape, structure, materials and packaging text exactly as shown in the reference image.",
+    "Do NOT add functions, accessories, certifications, logos, or packaging text that are not in the reference image.",
+    "Do NOT alter logos or packaging text shown in the reference.",
+    "Adjust background, composition, lighting and colour direction only.",
+    "Unknown or conflicting details must stay visually neutral; never infer or complete.",
+    "The output remains a human-review draft and must not be presented as a finished product photo.",
+    factLines ? `Confirmed facts for context only: ${factLines}.` : "",
+  ].filter(Boolean).join(" ");
+}
 
 /** 从新链安全输入构造现有真实 Provider 所需输入（composition 模式；仅允许字段） */
 function buildRealImageInput(input: ImageGenerationInput) {
@@ -100,7 +115,66 @@ export function createRealImageProvider(): RealImageProvider {
     async generate(input: ImageGenerationInput, options: RealImageProviderOptions = {}) {
       calls += 1;
       if (input.mode === "product_visual_draft") {
-        throw new Error("real_image_provider_reference_unsupported: 现有真实 Provider 仅支持文生图，不支持参考图/图生图；product_visual_draft 保持禁用。");
+        // Final Capability: 参考图生图（images.edit）——参考图必须真实作为 Provider 输入
+        if (!input.referenceImageDataUrl) {
+          throw new Error("real_image_provider_reference_missing: product_visual_draft 需要批准参考图（referenceImageDataUrl 缺失）。");
+        }
+        const { generateOpenAiImageEdit } = await import("@/lib/server/openaiImageEditClient") as typeof import("@/lib/server/openaiImageEditClient");
+        const output = await generateOpenAiImageEdit({
+          imageDataUrl: input.referenceImageDataUrl,
+          prompt: buildProductVisualPrompt(input),
+        });
+        const first = output.images[0];
+        if (!first?.base64) {
+          throw new Error("real_image_provider_empty: Provider 返回空图片。");
+        }
+        let stored: {
+          id: string; storageKey: string; mimeType: string; width?: number; height?: number;
+          fileSizeBytes: number; sha256: string;
+        } | null = null;
+        if (options.persist) {
+          const { decodeAiImageBase64, storeAiImage } = await import("@/lib/server/aiImageDraftStorage") as typeof import("@/lib/server/aiImageDraftStorage");
+          try {
+            const bytes = decodeAiImageBase64(first.base64);
+            stored = await storeAiImage({
+              accessMode: options.persist.accessMode,
+              visitorAccessId: options.persist.visitorAccessId,
+              taskId: options.persist.taskId,
+              bytes,
+            });
+          } catch (error) {
+            throw new Error(`real_image_persist_failed:${String(error instanceof Error ? error.message : error)}`);
+          }
+        }
+        return {
+          id: stored?.id ?? `real-${randomUUID()}`,
+          imageType: "lifestyle_scene",
+          model: output.model,
+          createdAt: new Date().toISOString(),
+          storageKey: stored?.storageKey ?? null,
+          mimeType: stored?.mimeType ?? "image/webp",
+          width: stored?.width,
+          height: stored?.height,
+          fileSizeBytes: stored?.fileSizeBytes ?? 0,
+          sha256: stored?.sha256 ?? createHash("sha256").update(first.base64).digest("hex").slice(0, 16),
+          reviewStatus: "needs_human_review",
+          accessMode: options.persist?.accessMode ?? "owner",
+          source: "real_ai_image_draft",
+          safetyWarnings: ["Product visual draft based on approved reference; human review required before any use.", "Product consistency must be checked against the approved reference."],
+          promptSummary: "Product visual draft derived strictly from the approved visual reference.",
+          promptHash: "real",
+          requestKeyHash: "real",
+          generationBasis: {
+            productName: "product visual draft",
+            sellingPoints: [],
+            riskWarnings: [],
+            missingFacts: [],
+            imageMaterialNeeds: [],
+          },
+          handoffMode: "product_visual_draft" as const,
+          approvedReferenceFingerprint: input.approvedVisualReferences[0]?.referenceFingerprint ?? null,
+          compositionSummary: "Product visual draft derived strictly from the approved visual reference (real reference-image provider).",
+        };
       }
       const { generateOpenAiImage } = await import("@/lib/server/openaiImageClient") as typeof import("@/lib/server/openaiImageClient");
       const providerInput = buildRealImageInput(input);

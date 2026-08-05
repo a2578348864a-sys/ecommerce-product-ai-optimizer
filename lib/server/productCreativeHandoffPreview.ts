@@ -2,6 +2,10 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+function hash256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
@@ -161,6 +165,8 @@ export type CreativeHandoffGateResult = {
     contentHash: string;
     approvable: true;
   }>;
+  /** Final Capability: 批准参考的原始图片（dataUrl base64；仅服务端使用，供真实参考图 Provider 输入；Browser DTO 绝不包含） */
+  approvedReferenceImageDataUrl?: string | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -430,6 +436,15 @@ export async function checkCreativeHandoffGate(
             record.revision,
           )
         : [],
+      // Final Capability: 降级分支同样提供批准参考图（供真实参考图 Provider 输入）
+      approvedReferenceImageDataUrl: (() => {
+        const ref = currentHandoffHere?.versions?.[currentHandoffHere.versions.length - 1]?.visualReferences?.[0];
+        if (ref && researchContext2?.productImage
+          && ref.assetFingerprint === hash256(`visual-reference:${researchContext2.productImage.contentHash}`)) {
+          return researchContext2.productImage.dataUrl;
+        }
+        return null;
+      })(),
     };
   }
 
@@ -485,7 +500,19 @@ export async function checkCreativeHandoffGate(
     record.revision,
   );
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, visualReferenceCandidates: visualCandidates };
+  // Final Capability: 批准参考的原始图片（仅当 Handoff 有批准视觉参考且 contentHash 匹配当前候选时）
+  // 从 researchContext.productImage.dataUrl 直接取得；供真实参考图 Provider（images.edit）输入。
+  // 此字段只进服务端 input（阶段B），Browser DTO 与 mock 路径均不包含。
+  let approvedReferenceImageDataUrl: string | null = null;
+  // 从当前 Handoff 的批准参考读取（投影 candidate 的 visualReferences 恒空；必须读 currentHandoff 版本）
+  const approvedVisualRef = currentHandoff?.versions?.[currentHandoff.versions.length - 1]?.visualReferences?.[0]
+    ?? candidate?.visualReferences?.[0];
+  if (approvedVisualRef && researchContext?.productImage
+    && approvedVisualRef.assetFingerprint === hash256(`visual-reference:${researchContext.productImage.contentHash}`)) {
+    approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
+  }
+
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl };
 }
 
 // ─── Preview ──────────────────────────────────────────────

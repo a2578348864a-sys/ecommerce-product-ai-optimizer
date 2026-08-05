@@ -124,6 +124,8 @@ function buildRealAiListingPrompt(context: RealAiListingContext) {
     "Do not use absolute promises such as 100% guaranteed, guaranteed profit, best seller guaranteed, or equivalent Chinese claims.",
     "Keep wording factual and tell the operator what must be verified manually.",
     "Only confirmed facts may be stated as product facts in titles, bulletPoints, description, keywords or sellingPoints.",
+    "When the user context provides confirmedFacts, every factual statement about the product MUST be written as a verbatim recital prefixed with the exact label format 'Confirmed: <label>: <value>' using ONLY the exact values listed.",
+    "You MUST NOT add, combine, infer, or describe any product attribute that is not one of the exact confirmed values (no material/colour/size/quantity/feature words beyond the listed values, no benefit or usage descriptions).",
     "Unverified facts may appear only in riskWarnings or reviewChecklist, clearly labelled for manual confirmation.",
     "Operator-prohibited claims must not appear anywhere in the output, including warnings, checklist or metadata.",
     "The listingObjective is a writing preference only; never promise conversion, ranking or other outcomes.",

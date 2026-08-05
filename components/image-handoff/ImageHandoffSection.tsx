@@ -24,7 +24,7 @@ type ImageStateData = {
   staleReasonCode: string | null;
   humanReviewRequired: boolean;
   draft: ImageDraftSafeSummary | null;
-  approvedVisualReferenceSummary: Array<{ referenceFingerprint: string; summary: string }>;
+  approvedVisualReferenceSummary: Array<{ referenceFingerprint: string; summary: string; selectionId?: string }>;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   expectedHandoffRevision: number | null;
   allowedModes: Array<"composition_concept" | "product_visual_draft">;
@@ -105,6 +105,10 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
       expectedStorageVersion: state.storageVersion,
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
+      // Final Capability: product_visual_draft 提交服务端批准参考的 selectionId（首个批准参考）
+      ...(state.mode === "product_visual_draft" && state.approvedVisualReferenceSummary?.[0]
+        ? { approvedVisualReferenceSelectionIds: [(state.approvedVisualReferenceSummary[0] as { selectionId?: string }).selectionId].filter(Boolean) }
+        : {}),
       confirmed: true,
     };
     setRetryBody(body);

@@ -140,17 +140,17 @@ describe("V2-FI-10 Provider 模式 fail-closed", () => {
 });
 
 describe("V2-FI-12/13 真实 Image Provider Adapter", () => {
-  it("29. 能力声明：仅文生图（无参考图）", () => {
+  it("29. 能力声明：文生图 + 参考图生图（images.edit）", () => {
     expect(REAL_IMAGE_PROVIDER_CAPABILITY.textToImage).toBe(true);
-    expect(REAL_IMAGE_PROVIDER_CAPABILITY.referenceImage).toBe(false);
-    expect(REAL_IMAGE_PROVIDER_CAPABILITY.supportedModes).toEqual(["composition_concept"]);
+    expect(REAL_IMAGE_PROVIDER_CAPABILITY.referenceImage).toBe(true);
+    expect(REAL_IMAGE_PROVIDER_CAPABILITY.supportedModes).toEqual(["composition_concept", "product_visual_draft"]);
   });
 
-  it("30. product_visual_draft 请求 → 安全拒绝（不支持参考图）", async () => {
+  it("30. product_visual_draft 缺参考图 → 安全拒绝（referenceImageDataUrl 缺失）", async () => {
     const provider = createRealImageProvider();
-    const visualInput = { ...imageInput, mode: "product_visual_draft" as const };
-    await expect(provider.generate(visualInput)).rejects.toThrow(/real_image_provider_reference_unsupported/);
-    expect(provider.callCount).toBe(1); // 调用计数记录（未浪费真实调用——测试注入 mock）
+    const visualInput = { ...imageInput, mode: "product_visual_draft" as const, referenceImageDataUrl: undefined };
+    await expect(provider.generate(visualInput)).rejects.toThrow(/real_image_provider_reference_missing/);
+    expect(provider.callCount).toBe(1);
   });
 
   it("31. Image 模式 fail-closed", () => {

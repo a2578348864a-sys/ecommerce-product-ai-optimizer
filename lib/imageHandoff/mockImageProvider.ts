@@ -177,6 +177,7 @@ export function assertMockImageInputIsSafe(records: readonly MockImageProviderCa
     "schema", "mode", "source", "productFacts", "approvedVisualReferences",
     "compositionReferences", "creativePreferences", "prohibitedVisualClaims",
     "unknowns", "humanReviewRequired", "researchMode", "promotionEligible",
+    "referenceImageDataUrl",
   ];
   for (const record of records) {
     if (record.received.hasInternalKey) return false;
