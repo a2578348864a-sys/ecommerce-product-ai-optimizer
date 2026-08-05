@@ -187,13 +187,27 @@ export async function GET(
     const mode = url.searchParams.get("mode");
     if (mode === "preview") {
       const { preview, gate } = await generateCreativeHandoffPreview(id, ctx);
+      // Micro-Gate: 跨身份/不存在资源统一 404 — 不泄露 legacy_not_supported 等业务状态
+      if (!gate.allowed && gate.reason === "legacy_not_supported") {
+        return errorResponse(404, "task_not_found", "任务不存在。");
+      }
       return NextResponse.json({ preview, gateReason: gate.reason });
     }
     const { detail, gate } = await getCreativeHandoffDetail(id, ctx);
+    if (!gate.allowed && gate.reason === "legacy_not_supported") {
+      return errorResponse(404, "task_not_found", "任务不存在。");
+    }
     return NextResponse.json({ detail, gateReason: gate.reason });
   } catch (err) {
-    if (err instanceof CreativeHandoffPersistenceError) return errorResponse(err.status, err.code, err.message);
-    if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
+    if (err instanceof CreativeHandoffPersistenceError) {
+      // Micro-Gate: 统一不存在错误码 — 不泄露资源存在性
+      const code = err.code === "not_found" ? "task_not_found" : err.code;
+      return errorResponse(err.status, code, err.message);
+    }
+    if (err instanceof TaskResultJsonMutationError) {
+      const code = err.code === "not_found" ? "task_not_found" : err.code;
+      return errorResponse(err.status, code, err.message);
+    }
     throw err;
   }
 }
@@ -295,8 +309,15 @@ export async function POST(
         idempotentReplay: result.idempotentReplay,
       });
     } catch (err) {
-      if (err instanceof CreativeHandoffPersistenceError) return errorResponse(err.status, err.code, err.message);
-      if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
+      // Micro-Gate: 统一不存在错误码 — 不泄露资源存在性
+      if (err instanceof CreativeHandoffPersistenceError) {
+        const code = err.code === "not_found" ? "task_not_found" : err.code;
+        return errorResponse(err.status, code, err.message);
+      }
+      if (err instanceof TaskResultJsonMutationError) {
+        const code = err.code === "not_found" ? "task_not_found" : err.code;
+        return errorResponse(err.status, code, err.message);
+      }
       throw err;
     }
   }
@@ -336,6 +357,10 @@ export async function POST(
     // Fix.5: no_confirmed_facts 是合法研究状态（来源层可见，可提交 confirmable selectionId），
     // 由锁内确认转换决定成败；其他拒绝状态才阻断。
     if (!gate.allowed && gate.reason !== "no_confirmed_facts") {
+      // Micro-Gate: 跨身份/不存在资源统一 404 — 不泄露 legacy_not_supported 等业务状态
+      if (gate.reason === "legacy_not_supported") {
+        return errorResponse(404, "task_not_found", "任务不存在。");
+      }
       return errorResponse(422, "research_gate_failed", "当前研究状态不允许创建创作交接。");
     }
     if (!gate.candidate) {
@@ -374,8 +399,15 @@ export async function POST(
       idempotentReplay: result.idempotentReplay,
     }, { status: result.isNewRevision && !result.idempotentReplay ? 201 : 200 });
   } catch (err) {
-    if (err instanceof CreativeHandoffPersistenceError) return errorResponse(err.status, err.code, err.message);
-    if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
+    if (err instanceof CreativeHandoffPersistenceError) {
+      // Micro-Gate: 统一不存在错误码 — 不泄露资源存在性
+      const code = err.code === "not_found" ? "task_not_found" : err.code;
+      return errorResponse(err.status, code, err.message);
+    }
+    if (err instanceof TaskResultJsonMutationError) {
+      const code = err.code === "not_found" ? "task_not_found" : err.code;
+      return errorResponse(err.status, code, err.message);
+    }
     throw err;
   }
 }
