@@ -144,6 +144,10 @@ export type CreativeHandoffGateResult = {
   ledgerInvalid?: boolean;
   /** 无人工确认事实时展示的证据层（来源/AI/issues，不可创建） */
   evidenceLayers?: ProductCreativeHandoffProjectionEvidence[];
+  /** PR2-2: Listing Handoff Binding 原始值（只读，供 Listing 状态计算） */
+  listingHandoffBindingRaw?: unknown;
+  /** PR2-2: 当前存储的 Listing 草稿原始值（只读，供 Listing 状态/摘要计算） */
+  listingDraftRaw?: unknown;
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -400,6 +404,8 @@ export async function checkCreativeHandoffGate(
       ledgerInvalid: ledgerInvalidHere,
       currentHandoff: currentHandoffHere,
       candidate: candidateHere,
+      listingHandoffBindingRaw: resultJson.listingHandoffBinding,
+      listingDraftRaw: resultJson.aiListingPackSnapshot,
     };
   }
 
@@ -435,6 +441,9 @@ export async function checkCreativeHandoffGate(
     else ledgerInvalid = true;
   }
 
+  const listingHandoffBindingRaw = resultJson.listingHandoffBinding;
+  const listingDraftRaw = resultJson.aiListingPackSnapshot;
+
   const storageVersion = {
     resultJsonHash: fullHash(resultJsonStr || ""),
     updatedAt: updatedAt || new Date().toISOString(),
@@ -444,7 +453,7 @@ export async function checkCreativeHandoffGate(
     return { allowed: false, reason: "legacy_not_supported", candidate: undefined, currentHandoff: null, storageVersion, handoffContractInvalid: true, requestLedger, ledgerInvalid };
   }
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid };
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw };
 }
 
 // ─── Preview ──────────────────────────────────────────────
