@@ -32,7 +32,7 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   lifecycle: ["productLifecycle"],
   "listing-pack": ["listingPackSnapshot"],
   "ai-listing": ["aiListingPackSnapshot", "listingHandoffBinding"],
-  "ai-image": ["aiImageDraftSnapshot"],
+  "ai-image": ["aiImageDraftSnapshot", "imageHandoffBinding"],
   "creative-handoff": ["creativeHandoff", "creativeHandoffRequestLedger"],
 };
 

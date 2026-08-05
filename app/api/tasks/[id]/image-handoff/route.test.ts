@@ -1,0 +1,250 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  requireAuthenticated: vi.fn(),
+  requireOwnerOnly: vi.fn(),
+  checkCreativeHandoffGate: vi.fn(),
+  generateImageDraftFromHandoff: vi.fn(),
+}));
+
+vi.mock("@/lib/server/demoGuard", () => ({
+  requireAuthenticated: mocks.requireAuthenticated,
+  requireOwnerOnly: mocks.requireOwnerOnly,
+}));
+
+vi.mock("@/lib/server/demoSandbox", () => ({
+  isSandboxTaskId: () => false,
+}));
+
+vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
+  checkCreativeHandoffGate: mocks.checkCreativeHandoffGate,
+}));
+
+vi.mock("@/lib/imageHandoff/imageGenerationService", () => ({
+  generateImageDraftFromHandoff: mocks.generateImageDraftFromHandoff,
+  ImageHandoffError: class ImageHandoffError extends Error {
+    constructor(public code: string, public status: number, message: string) {
+      super(message);
+      this.name = "ImageHandoffError";
+    }
+  },
+  imageDraftSafeSummary: () => null,
+}));
+
+import { ImageHandoffError as MockedImageHandoffError } from "@/lib/imageHandoff/imageGenerationService";
+
+async function callGET(taskId: string) {
+  const { GET } = await import("@/app/api/tasks/[id]/image-handoff/route");
+  return GET(new Request(`http://localhost/api/tasks/${taskId}/image-handoff`, {
+    headers: { "x-access-token": "tok_test" },
+  }) as never, { params: Promise.resolve({ id: taskId }) });
+}
+
+async function callPOST(taskId: string, body: unknown) {
+  const { POST } = await import("@/app/api/tasks/[id]/image-handoff/route");
+  return POST(new Request(`http://localhost/api/tasks/${taskId}/image-handoff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-access-token": "tok_test" },
+    body: JSON.stringify(body),
+  }) as never, { params: Promise.resolve({ id: taskId }) });
+}
+
+function activeGate() {
+  return {
+    allowed: true,
+    reason: "eligible",
+    currentHandoff: {
+      schema: "product-creative-handoff.v1",
+      handoffId: "handoff-1",
+      controlState: "active",
+      currentRevision: 2,
+      versions: [{ revision: 2, visualReferences: [], creativePreferences: {}, confirmedFacts: [], aiCreativeReferences: [] }],
+    },
+    storageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+  };
+}
+
+describe("POST /api/tasks/[id]/image-handoff", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+  });
+
+  it("1. 允许字段白名单：requestId/storageVersion/revision/mode/confirmed", async () => {
+    mocks.generateImageDraftFromHandoff.mockResolvedValue({
+      imageStatus: "concept_only", currentHandoffRevision: 2, sourceHandoffRevision: 2,
+      idempotentReplay: false, humanReviewRequired: true, draft: null,
+    });
+    const res = await callPOST("task-1", {
+      requestId: "550e8400-e29b-41d4-a716-446655440000",
+      expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2,
+      mode: "composition_concept",
+      confirmed: true,
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("2. 未知字段拒绝（unknown_field）", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true, extra: "x",
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("unknown_field");
+  });
+
+  it("3. 禁止字段拒绝：facts", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+      facts: [{ field: "brand", value: "x" }],
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("forbidden_field");
+  });
+
+  it("4. 禁止字段拒绝：prompt", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true, prompt: "draw a product",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("5. 禁止字段拒绝：imageUrl", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true, imageUrl: "https://x.com/a.png",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("6. 禁止字段拒绝：visual approval 对象", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+      approvedBy: { kind: "owner" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("7. 禁止字段拒绝：resultJson", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true, resultJson: "{}",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("8. invalid mode 拒绝", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "invalid_mode", confirmed: true,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("invalid_image_mode");
+  });
+
+  it("9. confirmed 缺失拒绝", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept",
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("confirmation_required");
+  });
+
+  it("10. invalid requestId 拒绝", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("invalid_request_id");
+  });
+
+  it("11. 视觉参考选择数组非法拒绝", async () => {
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+      approvedVisualReferenceSelectionIds: "not-array",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("12. 服务错误传播：handoff_revoked → 422", async () => {
+    mocks.generateImageDraftFromHandoff.mockRejectedValue(
+      new MockedImageHandoffError("handoff_revoked", 422, "revoked"),
+    );
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("13. 服务错误传播：image_idempotency_conflict → 409", async () => {
+    mocks.generateImageDraftFromHandoff.mockRejectedValue(
+      new MockedImageHandoffError("image_idempotency_conflict", 409, "conflict"),
+    );
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+    });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe("GET /api/tasks/[id]/image-handoff", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+  });
+
+  it("14. 无 Handoff → legacy_unbound 且 canGenerate=false", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue({ allowed: false, reason: "legacy_not_supported" });
+    const res = await callGET("task-1");
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.imageStatus).toBe("legacy_unbound");
+    expect(body.data.canGenerate).toBe(false);
+  });
+
+  it("15. active Handoff 无视觉参考 → composition_concept 模式", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callGET("task-1");
+    const body = await res.json();
+    expect(body.data.mode).toBe("composition_concept");
+    expect(body.data.allowedModes).toEqual(["composition_concept"]);
+    expect(body.data.canGenerate).toBe(true);
+  });
+
+  it("16. active Handoff 有批准参考 → product_visual_draft 模式 + 安全摘要", async () => {
+    const gate = activeGate();
+    (gate.currentHandoff.versions as Array<Record<string, unknown>>)[0].visualReferences = [{
+      assetFingerprint: "ref-fp-1234", identityBound: true, humanApprovedForReference: true,
+      approvedBy: { mode: "owner", subjectFingerprint: "sf" }, approvedAt: "2026-08-05T00:00:00.000Z",
+      confirmationReference: "cr-1",
+    }];
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gate);
+    const res = await callGET("task-1");
+    const body = await res.json();
+    expect(body.data.mode).toBe("product_visual_draft");
+    expect(body.data.approvedVisualReferenceSummary).toHaveLength(1);
+    // 安全摘要不含内部对象
+    expect(JSON.stringify(body.data.approvedVisualReferenceSummary)).not.toContain("approvedBy");
+    expect(JSON.stringify(body.data.approvedVisualReferenceSummary)).not.toContain("confirmationReference");
+  });
+
+  it("17. 响应不泄漏内部字段", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callGET("task-1");
+    const raw = await res.text();
+    expect(raw).not.toContain("requestLedger");
+    expect(raw).not.toContain("actorRef");
+    expect(raw).not.toContain("candidateId");
+    expect(raw).not.toContain("researchHash");
+  });
+});
