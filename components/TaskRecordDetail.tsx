@@ -64,6 +64,7 @@ import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
+import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -1418,6 +1419,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   onUpdated={() => setRefreshKey((current) => current + 1)}
                 />
               ) : null}
+
+              {record.type === "workflow" ? <CreativeHandoffPanel taskId={record.id} /> : null}
 
               {record.type === "workflow" && isRecordValue(record.result) ? (
                 <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">

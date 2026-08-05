@@ -1,0 +1,742 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCreativeHandoffApi, HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
+import {
+  ELIGIBILITY_BLOCK_LABELS,
+  REVOKE_REASON_OPTIONS,
+  STALE_REASON_LABELS,
+  type ApiError,
+  type CreativeHandoffDetail,
+  type CreativeHandoffPreview,
+  type RevokeReasonCode,
+} from "@/components/creative-handoff/types";
+
+function formatDate(value?: string) {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function safeSourceKind(kind: string) {
+  const labels: Record<string, string> = {
+    candidate_snapshot: "候选快照",
+    seller_sprite_snapshot: "SellerSprite 快照",
+    research_result: "研究结果",
+    user_confirmation: "人工确认",
+    default: "来源",
+  };
+  return labels[kind] ?? labels.default;
+}
+
+function StaleReasonBadge({ reasonCode }: { reasonCode?: string }) {
+  const label = reasonCode ? (STALE_REASON_LABELS[reasonCode] ?? STALE_REASON_LABELS.default) : STALE_REASON_LABELS.default;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800" title={label}>
+      <span aria-hidden="true">⚠</span> 已过期
+    </span>
+  );
+}
+
+type PanelState =
+  | { kind: "loading" }
+  | { kind: "legacy" }
+  | { kind: "gate_blocked"; reason: string; label: string }
+  | { kind: "not_found" }
+  | { kind: "recoverable_error"; message: string }
+  | { kind: "preview"; preview: CreativeHandoffPreview; detail: CreativeHandoffDetail | null }
+  | { kind: "active"; preview: CreativeHandoffPreview; detail: CreativeHandoffDetail }
+  | { kind: "stale"; preview: CreativeHandoffPreview; detail: CreativeHandoffDetail }
+  | { kind: "revoked"; preview: CreativeHandoffPreview | null; detail: CreativeHandoffDetail }
+  | { kind: "conflict"; message: string };
+
+export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
+  const api = useCreativeHandoffApi(taskId);
+  const [state, setState] = useState<PanelState>({ kind: "loading" });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmed, setConfirmed] = useState(false);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<{ targetMarket?: string; language?: string; tone?: string; imageStyle?: string }>({});
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const deriveState = useCallback(
+    (preview: CreativeHandoffPreview | null, detail: CreativeHandoffDetail | null, gateReason: string): PanelState => {
+      if (!preview) {
+        if (gateReason === "legacy_not_supported") return { kind: "legacy" };
+        if (gateReason === "no_confirmed_facts") return { kind: "gate_blocked", reason: gateReason, label: ELIGIBILITY_BLOCK_LABELS.no_confirmed_facts };
+        if (ELIGIBILITY_BLOCK_LABELS[gateReason]) return { kind: "gate_blocked", reason: gateReason, label: ELIGIBILITY_BLOCK_LABELS[gateReason] };
+        return { kind: "gate_blocked", reason: gateReason, label: ELIGIBILITY_BLOCK_LABELS.default };
+      }
+      if (detail?.controlState === "revoked") return { kind: "revoked", preview, detail };
+      if (detail?.controlState === "active" && detail.effectiveStatus === "stale") return { kind: "stale", preview, detail };
+      if (detail?.controlState === "active") return { kind: "active", preview, detail };
+      return { kind: "preview", preview, detail };
+    },
+    [],
+  );
+
+  const loadAll = useCallback(async () => {
+    const res = await api.load();
+    if (!mounted.current) return;
+    if (res.kind === "error") {
+      if (res.error.status === 404) setState({ kind: "not_found" });
+      else setState({ kind: "recoverable_error", message: res.error.message });
+      return;
+    }
+    setState(deriveState(res.preview, res.detail, res.gateReason));
+  }, [api, deriveState]);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
+
+  const resetSelection = useCallback(() => {
+    setSelectedIds([]);
+    setConfirmed(false);
+    setRequestId(null);
+    setRetryBody(null);
+    setNotice(null);
+  }, []);
+
+  const handleConflict = useCallback(
+    (error: ApiError) => {
+      resetSelection();
+      const message =
+        error.code === "idempotency_conflict"
+          ? "这次请求与之前使用同一请求标识的内容不一致，请重新操作。"
+          : "数据已经更新，请重新确认。";
+      setState({ kind: "conflict", message });
+      void loadAll();
+    },
+    [resetSelection, loadAll],
+  );
+
+  const toggleSelection = useCallback((selectionId: string) => {
+    setSelectedIds((prev) => {
+      const next = prev.includes(selectionId) ? prev.filter((id) => id !== selectionId) : [...prev, selectionId];
+      setRequestId(null);
+      setRetryBody(null);
+      return next;
+    });
+  }, []);
+
+  const submitCreate = useCallback(async () => {
+    if (submitting) return;
+    const preview = state.kind === "preview" || state.kind === "active" || state.kind === "stale" ? state.preview : null;
+    if (!preview?.storageVersion || selectedIds.length < 1 || !confirmed) return;
+    const nextRequestId = requestId ?? crypto.randomUUID();
+    const body = {
+      action: "create",
+      requestId: nextRequestId,
+      selectedFactCandidateIds: selectedIds,
+      expectedStorageVersion: preview.storageVersion,
+      expectedResearchRevision: preview.expectedResearchRevision ?? 1,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      ...(Object.keys(prefs).length ? { creativePreferences: prefs } : {}),
+      confirmed: true,
+    };
+    setSubmitting(true);
+    try {
+      const result = await api.create({
+        requestId: nextRequestId,
+        selectedFactCandidateIds: selectedIds,
+        expectedStorageVersion: preview.storageVersion,
+        expectedResearchRevision: preview.expectedResearchRevision ?? 1,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        creativePreferences: Object.keys(prefs).length ? prefs : undefined,
+        onConflict: handleConflict,
+      });
+      if (!mounted.current) return;
+      if (result.idempotentReplay) {
+        setNotice("该请求已成功提交过，未重复创建。");
+      } else {
+        setNotice(result.isNewRevision ? `已创建交接（版本 ${result.currentRevision}）。` : `已追加版本 ${result.currentRevision}。`);
+      }
+      resetSelection();
+      await loadAll();
+    } catch (err) {
+      if (err instanceof HandoffApiRequestError) {
+        if (err.error.status === 409) {
+          // conflict 已由 onConflict 处理
+        } else {
+          setNotice(`创建失败：${err.error.message}`);
+        }
+      } else {
+        setNotice("网络异常，请重试。");
+        setRetryBody(body as unknown as Record<string, unknown>);
+      }
+    } finally {
+      if (mounted.current) setSubmitting(false);
+    }
+  }, [state, selectedIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting]);
+
+  const retrySameRequest = useCallback(() => {
+    if (!retryBody || !requestId) return;
+    setSubmitting(true);
+    void (async () => {
+      try {
+        const headers = (await import("@/lib/client/accessToken")).buildAccessHeaders();
+        const res = await fetch(`${"/api/tasks"}/${encodeURIComponent(taskId)}/creative-handoff`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(retryBody),
+        });
+        if (res.status === 409) {
+          const json = (await res.json()) as { error?: { code?: string; message?: string } };
+          handleConflict({ status: 409, code: json.error?.code ?? "conflict", message: json.error?.message ?? "冲突" });
+          return;
+        }
+        if (res.ok) {
+          setNotice("重试成功，未重复创建。");
+          resetSelection();
+          await loadAll();
+        } else {
+          setNotice("重试仍失败，请稍后再试。");
+        }
+      } finally {
+        if (mounted.current) setSubmitting(false);
+      }
+    })();
+  }, [retryBody, requestId, taskId, handleConflict, resetSelection, loadAll]);
+
+  const submitRevoke = useCallback(
+    async (reasonCode: RevokeReasonCode) => {
+      const detail = state.kind === "active" || state.kind === "stale" ? state.detail : null;
+      if (!detail?.storageVersion || submitting) return;
+      const revokeRequestId = crypto.randomUUID();
+      setSubmitting(true);
+      try {
+        await api.revoke({
+          requestId: revokeRequestId,
+          revokeReasonCode: reasonCode,
+          expectedStorageVersion: detail.storageVersion,
+          expectedCurrentHandoffRevision: detail.currentRevision ?? 1,
+          onConflict: handleConflict,
+        });
+        if (!mounted.current) return;
+        setNotice("交接已撤回，历史版本仍会保留。");
+        resetSelection();
+        await loadAll();
+      } catch (err) {
+        if (err instanceof HandoffApiRequestError && err.error.status !== 409) {
+          setNotice(`撤回失败：${err.error.message}`);
+        }
+      } finally {
+        if (mounted.current) setSubmitting(false);
+      }
+    },
+    [state, submitting, api, handleConflict, resetSelection, loadAll],
+  );
+
+  const canCreate =
+    selectedIds.length >= 1 &&
+    confirmed &&
+    (state.kind === "preview" || state.kind === "active" || state.kind === "stale") &&
+    !submitting;
+
+  const createButtonLabel =
+    state.kind === "active" || state.kind === "stale" ? "创建新版本" : "创建创作交接";
+
+  return (
+    <section className="mt-5 rounded-2xl border border-teal-200 bg-white p-4" aria-label="创作交接">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-bold text-slate-800">创作交接</h2>
+        <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
+          仅用于市场研究和内容草稿准备 · 仍需人工审核 · 不得直接发布
+        </span>
+      </header>
+
+      {notice ? (
+        <p role="status" className="mt-3 rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          {notice}
+        </p>
+      ) : null}
+
+      {state.kind === "loading" ? (
+        <div className="mt-4 space-y-3" aria-busy="true" aria-label="加载中">
+          <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-slate-100" />
+          <div className="h-24 w-full animate-pulse rounded bg-slate-100" />
+        </div>
+      ) : null}
+
+      {state.kind === "legacy" ? (
+        <p className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600">
+          该记录没有可信商品研究合同，暂不支持创建创作交接。
+          <br />
+          请从商品研究池重新创建正式研究。
+        </p>
+      ) : null}
+
+      {state.kind === "gate_blocked" ? (
+        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-3">
+          <p className="text-sm font-semibold text-amber-800">{state.label}</p>
+          <p className="mt-1 text-xs text-amber-700">暂不能创建创作交接，请先完成研究决定或处理阻塞项。</p>
+        </div>
+      ) : null}
+
+      {state.kind === "not_found" ? (
+        <p role="alert" className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-600">
+          该任务不存在或你无权访问。
+        </p>
+      ) : null}
+
+      {state.kind === "recoverable_error" ? (
+        <div role="alert" className="mt-4 rounded-lg bg-red-50 px-3 py-3">
+          <p className="text-sm text-red-700">{state.message}</p>
+          <button
+            type="button"
+            onClick={() => void loadAll()}
+            className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+          >
+            重试
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "conflict" ? (
+        <div role="alert" className="mt-4 rounded-lg bg-amber-50 px-3 py-3">
+          <p className="text-sm font-semibold text-amber-800">{state.message}</p>
+          <p className="mt-1 text-xs text-amber-700">已清空旧选择，请重新查看最新预览后再次确认。</p>
+        </div>
+      ) : null}
+
+      {(state.kind === "preview" || state.kind === "active" || state.kind === "stale") && state.preview ? (
+        <PreviewSection
+          preview={state.preview}
+          selectedIds={selectedIds}
+          onToggle={toggleSelection}
+          prefs={prefs}
+          onPrefsChange={setPrefs}
+        />
+      ) : null}
+
+      {state.kind === "active" || state.kind === "stale" || state.kind === "revoked" ? (
+        <DetailSection detail={state.detail} stale={state.kind === "stale"} />
+      ) : null}
+
+      {(state.kind === "preview" || state.kind === "active" || state.kind === "stale") && state.preview ? (
+        <ConfirmationSection
+          selectedCount={selectedIds.length}
+          confirmed={confirmed}
+          onConfirmedChange={setConfirmed}
+          canCreate={canCreate}
+          buttonLabel={createButtonLabel}
+          submitting={submitting}
+          onCreate={() => void submitCreate()}
+          hasRetry={Boolean(retryBody) && Boolean(requestId)}
+          onRetry={() => retrySameRequest()}
+        />
+      ) : null}
+
+      {(state.kind === "active" || state.kind === "stale") && state.detail ? (
+        <RevokeSection
+          detail={state.detail}
+          submitting={submitting}
+          onRevoke={submitRevoke}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function PreviewSection({
+  preview,
+  selectedIds,
+  onToggle,
+  prefs,
+  onPrefsChange,
+}: {
+  preview: CreativeHandoffPreview;
+  selectedIds: string[];
+  onToggle: (selectionId: string) => void;
+  prefs: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string };
+  onPrefsChange: (prefs: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string }) => void;
+}) {
+  const confirmables = preview.confirmableFactCandidates ?? [];
+  const stables = preview.stableSourceFacts ?? [];
+  const ais = preview.aiReferences ?? [];
+  const issues = preview.issues ?? [];
+  const claims = preview.prohibitedClaims ?? [];
+  const blockingIssues = issues.filter((issue) => issue.risk === "blocking");
+
+  return (
+    <div className="mt-4 space-y-4">
+      {blockingIssues.length > 0 ? (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-3">
+          <p className="text-sm font-semibold text-red-800">存在阻塞问题，暂不能创建创作交接。</p>
+          {blockingIssues.map((issue) => (
+            <p key={issue.selectionId} className="mt-1 text-xs text-red-700">
+              {issue.field}：{issue.summary}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {/* 1. 来源数据快照 / 3. 可确认事实 */}
+      <section className="rounded-xl border border-slate-200 p-3">
+        <h3 className="text-sm font-semibold text-slate-700">
+          可确认事实
+          <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedIds.length} 项</span>
+        </h3>
+        {confirmables.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">当前没有可人工确认的商品事实。</p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {confirmables.map((item) => (
+              <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
+                <input
+                  id={`confirm-${item.selectionId}`}
+                  type="checkbox"
+                  checked={selectedIds.includes(item.selectionId)}
+                  onChange={() => onToggle(item.selectionId)}
+                  className="mt-0.5 h-4 w-4 accent-teal-600"
+                />
+                <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-slate-800">{item.canonicalField}</span>
+                  <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
+                  <span className="mt-0.5 block text-xs text-slate-400">
+                    {safeSourceKind(item.sourceKindSummary)} · 捕获于 {formatDate(item.capturedAt)} · {item.provenanceSummary}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* 2. 稳定来源事实（只读） */}
+      {stables.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-700">稳定来源事实</h3>
+          <p className="mt-1 text-xs text-slate-400">以下来源信息仅作展示，需人工确认后方可作事实使用。</p>
+          <ul className="mt-2 space-y-1">
+            {stables.map((item) => (
+              <li key={item.selectionId} className="flex items-center gap-2 text-sm text-slate-600">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />
+                {item.label}（{item.stabilityRule === "identity_only" ? "身份标识" : item.stabilityRule === "routing_only" ? "路由信息" : "需人工确认"}）
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* 3. AI 创意参考（只读，无事实复选框） */}
+      {ais.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-700">
+            AI 辅助参考
+            <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700">不能作为商品事实</span>
+          </h3>
+          <ul className="mt-2 space-y-1">
+            {ais.map((item) => (
+              <li key={item.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
+                <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-300" aria-hidden="true" />
+                <span className="min-w-0 break-words">{item.summary}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* 4. 未知／冲突与风险 */}
+      {issues.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-700">未知／冲突与风险</h3>
+          <ul className="mt-2 space-y-1">
+            {issues.map((issue) => (
+              <li key={issue.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
+                <span
+                  className={`mt-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+                    issue.risk === "blocking" ? "bg-red-400" : issue.risk === "high" ? "bg-amber-400" : "bg-slate-300"
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 break-words">
+                  {issue.field}：{issue.summary}
+                  {issue.risk === "blocking" ? <span className="ml-1 font-semibold text-red-700">（阻塞）</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* 5. 禁止声明 */}
+      {claims.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-700">禁止声明</h3>
+          <ul className="mt-2 space-y-1">
+            {claims.map((claim) => (
+              <li key={claim.selectionId} className="text-sm text-slate-600">
+                {claim.summary}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* 6. 创作偏好（最小 UI） */}
+      <section className="rounded-xl border border-slate-200 p-3">
+        <h3 className="text-sm font-semibold text-slate-700">创作偏好</h3>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <PrefInput label="目标市场" value={prefs.targetMarket ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, targetMarket: v })} />
+          <PrefInput label="语言" value={prefs.language ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, language: v })} />
+          <PrefInput label="语气" value={prefs.tone ?? ""} maxLength={80} onChange={(v) => onPrefsChange({ ...prefs, tone: v })} />
+          <PrefInput label="图片风格" value={prefs.imageStyle ?? ""} maxLength={120} onChange={(v) => onPrefsChange({ ...prefs, imageStyle: v })} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PrefInput({
+  label,
+  value,
+  maxLength,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  maxLength: number;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-slate-600">
+        {label}
+        <span className="ml-1 text-slate-400">（{value.length}/{maxLength}）</span>
+      </span>
+      <input
+        type="text"
+        value={value}
+        maxLength={maxLength}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 focus:border-teal-500 focus:outline-none"
+      />
+    </label>
+  );
+}
+
+function DetailSection({ detail, stale }: { detail: CreativeHandoffDetail | null; stale: boolean }) {
+  if (!detail) return null;
+  return (
+    <div className="mt-4 rounded-xl border border-slate-200 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold text-slate-700">当前交接</h3>
+        {detail.controlState === "revoked" ? (
+          <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">已撤回</span>
+        ) : stale ? (
+          <StaleReasonBadge reasonCode={detail.staleReasonCode} />
+        ) : (
+          <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-semibold text-teal-700">生效中</span>
+        )}
+        <span className="text-xs text-slate-400">Revision {detail.currentRevision}</span>
+      </div>
+      <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-xs text-slate-400">创建时间</dt>
+          <dd className="text-slate-700">{formatDate(detail.createdAt)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-400">来源研究版本</dt>
+          <dd className="text-slate-700">{detail.sourceResearchRevision ?? "未知"}</dd>
+        </div>
+      </dl>
+      {detail.confirmedFacts && detail.confirmedFacts.length > 0 ? (
+        <div className="mt-2">
+          <h4 className="text-xs font-semibold text-slate-500">已确认事实</h4>
+          <ul className="mt-1 flex flex-wrap gap-1.5">
+            {detail.confirmedFacts.map((fact) => (
+              <li key={fact.field} className="rounded-full bg-teal-50 px-2 py-0.5 text-xs text-teal-800">
+                {fact.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {detail.versions && detail.versions.length > 0 ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs font-medium text-slate-500">历史版本（{detail.versions.length}）</summary>
+          <ul className="mt-1 space-y-0.5">
+            {[...detail.versions].reverse().map((version) => (
+              <li key={version.revision} className="text-xs text-slate-500">
+                Revision {version.revision} · {formatDate(version.createdAt)} · 已确认 {version.confirmedFactFields.length} 项
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {stale ? (
+        <p className="mt-2 text-xs text-amber-700">
+          旧版本内容仅作查看，不能用于新的内容生成。创建新版本前请重新确认最新事实。
+        </p>
+      ) : null}
+      {detail.controlState === "revoked" ? (
+        <p className="mt-2 text-xs text-slate-500">
+          该交接已撤回。撤回原因与时间见上方；历史版本仍会保留。
+        </p>
+      ) : null}
+      <p className="mt-2 text-xs text-slate-400">
+        交接准备已完成。Listing 与图片接入将在后续阶段开放。
+      </p>
+    </div>
+  );
+}
+
+function ConfirmationSection({
+  selectedCount,
+  confirmed,
+  onConfirmedChange,
+  canCreate,
+  buttonLabel,
+  submitting,
+  onCreate,
+  hasRetry,
+  onRetry,
+}: {
+  selectedCount: number;
+  confirmed: boolean;
+  onConfirmedChange: (v: boolean) => void;
+  canCreate: boolean;
+  buttonLabel: string;
+  submitting: boolean;
+  onCreate: () => void;
+  hasRetry: boolean;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50/40 p-3">
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(e) => onConfirmedChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-teal-600"
+        />
+        <span className="text-sm text-slate-700">
+          我已核对以上选中事实，确认它们可用于后续内容草稿。
+          <br />
+          我理解内容仍需人工审核，不能直接发布。
+        </span>
+      </label>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={!canCreate}
+          onClick={onCreate}
+          className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {submitting ? "提交中…" : buttonLabel}
+        </button>
+        {hasRetry ? (
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={onRetry}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            重试同一请求
+          </button>
+        ) : null}
+        {selectedCount < 1 ? <span className="text-xs text-slate-400">请至少选择一项事实</span> : null}
+        {selectedCount >= 1 && !confirmed ? <span className="text-xs text-slate-400">请先勾选人工确认</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function RevokeSection({
+  detail,
+  submitting,
+  onRevoke,
+}: {
+  detail: CreativeHandoffDetail;
+  submitting: boolean;
+  onRevoke: (reasonCode: RevokeReasonCode) => void;
+}) {
+  const [reason, setReason] = useState<RevokeReasonCode>("explicit_user_revoke");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+
+  if (detail.controlState === "revoked") return null;
+  if (!detail.canCreateNewRevision && detail.controlState !== "active") return null;
+
+  return (
+    <div className="mt-4 rounded-xl border border-red-100 p-3">
+      <h3 className="text-sm font-semibold text-slate-700">撤回交接</h3>
+      <p className="mt-1 text-xs text-slate-500">撤回后，当前交接不能再用于新的内容生成。历史版本仍会保留。</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <label className="text-xs text-slate-600">撤回原因</label>
+        <select
+          value={reason}
+          onChange={(e) => setReason(e.target.value as RevokeReasonCode)}
+          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+        >
+          {REVOKE_REASON_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setConfirmOpen(true)}
+          disabled={submitting}
+          className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
+        >
+          撤回交接
+        </button>
+      </div>
+      {confirmOpen ? (
+        <div role="dialog" aria-modal="true" aria-label="确认撤回" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+          <p className="text-sm text-red-800">确认撤回当前创作交接？历史版本仍会保留。</p>
+          <label className="mt-2 flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-red-600"
+            />
+            <span className="text-sm text-red-800">我确认撤回</span>
+          </label>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={!confirmed || submitting}
+              onClick={() => {
+                onRevoke(reason);
+                setConfirmOpen(false);
+                setConfirmed(false);
+              }}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:bg-slate-300"
+            >
+              确认撤回
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmOpen(false);
+                setConfirmed(false);
+              }}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
