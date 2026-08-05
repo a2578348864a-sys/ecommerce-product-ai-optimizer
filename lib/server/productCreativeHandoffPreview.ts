@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
-import { getSandboxTask } from "@/lib/server/demoSandbox";
+import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   getProductResearchRecord,
   getProductResearchVerification,
@@ -203,7 +203,7 @@ export async function checkCreativeHandoffGate(
   let updatedAt: string | null = null;
 
   // ── P1-4 fix: Dual storage path ──
-  const isSandbox = taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
+  const isSandbox = isSandboxTaskId(taskId) || taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
   if (isSandbox) {
     const ctxAny = context as unknown as Record<string, unknown>;
     const demoAccessId = ctxAny.demoAccessId as string;

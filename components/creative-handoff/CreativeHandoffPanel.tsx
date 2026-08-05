@@ -12,6 +12,21 @@ import {
   type RevokeReasonCode,
 } from "@/components/creative-handoff/types";
 
+/**
+ * 判断错误是否表示“页面依据已过期，必须清空旧选择并重新加载”。
+ * 仅对真实表示旧 Preview 不可用的 409/422 返回 true。
+ */
+function shouldRefreshAfterCreativeHandoffError(status: number, code: string): boolean {
+  if (status === 409) {
+    return ["task_result_conflict", "research_revision_changed", "creative_handoff_conflict", "stale_preview", "idempotency_conflict"].includes(code);
+  }
+  if (status === 422) {
+    // 研究状态已变化（决定变更/工作流不再完成/验证失效）→ 旧 Preview 不可用
+    return ["research_gate_failed", "stale_preview", "research_revision_changed", "decision_not_creative_ready"].includes(code);
+  }
+  return false;
+}
+
 function formatDate(value?: string) {
   if (!value) return "时间未知";
   const date = new Date(value);
@@ -167,8 +182,11 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       await loadAll();
     } catch (err) {
       if (err instanceof HandoffApiRequestError) {
-        if (err.error.status === 409) {
-          // conflict 已由 onConflict 处理
+        if (shouldRefreshAfterCreativeHandoffError(err.error.status, err.error.code)) {
+          // 409/422 stale：由 handleConflict 清空选择+确认+requestId 并重新加载
+          handleConflict(err.error);
+        } else if (err.error.code === "idempotency_conflict") {
+          handleConflict(err.error);
         } else {
           setNotice(`创建失败：${err.error.message}`);
         }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import {
   generateCreativeHandoffPreview,
@@ -155,7 +156,7 @@ function parseExpectedRevision(value: unknown): number | null {
 // ─── Auth ────────────────────────────────────────────────
 
 function getAuth(req: NextRequest, id: string, bodyRecord: Record<string, unknown>) {
-  if (id.startsWith("demo-") || id.startsWith("sandbox-")) {
+  if (isSandboxTaskId(id) || id.startsWith("demo-") || id.startsWith("sandbox-")) {
     const auth = requireAuthenticated(req, bodyRecord);
     if (!auth.ok) {
       return { auth: null, ctx: null as unknown, error: NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status }) };
