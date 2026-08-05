@@ -73,10 +73,23 @@ export async function generateOpenAiImageEdit(input: AiImageEditInput): Promise<
       console.error(`[openaiImageEdit] empty data; response keys: ${shape}`);
       throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
     }
-    // GPT image 模型始终返回 base64
-    const images = items
-      .filter((item): item is { b64_json: string } => typeof (item as { b64_json?: string }).b64_json === "string")
-      .map((item) => ({ base64: item.b64_json }));
+    // 解析顺序（Relay URL 合同兼容，规格四节）：
+    // 1. 优先接受合法 b64_json；2. 否则接受经过严格 URL 验证的 url；3. 都没有 → 稳定合同错误。
+    const images: Array<{ base64: string }> = [];
+    for (const item of items) {
+      const record = item as { b64_json?: string; url?: string };
+      if (typeof record.b64_json === "string" && record.b64_json.length > 0) {
+        images.push({ base64: record.b64_json });
+      } else if (typeof record.url === "string" && record.url.length > 0) {
+        // Relay URL 结果：复用项目安全下载（getImageResultHostWhitelist + downloadImageFromUrl
+        // 的 HTTPS-only/精确主机/DNS/SSRF/重定向限制/超时/MIME/magic bytes 校验），
+        // 不复制第二套不受控 fetch。
+        const { getImageResultHostWhitelist, downloadImageFromUrl } = await import("@/lib/server/aiImageUrlFetcher") as typeof import("@/lib/server/aiImageUrlFetcher");
+        const result = await downloadImageFromUrl(record.url, getImageResultHostWhitelist());
+        images.push({ base64: result.bytes.toString("base64") });
+      }
+      // else: 非法 item 静默跳过（由下方 count 检查兜底）
+    }
     if (images.length === 0) {
       throw new AiImageProviderError("image_provider_incompatible_response", "图片中转站返回了无法识别的响应格式。", false);
     }

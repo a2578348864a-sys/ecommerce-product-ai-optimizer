@@ -9,6 +9,19 @@ import {
   validateImageResultUrl,
 } from "@/lib/server/aiImageUrlFetcher";
 
+/** 默认允许的 Base URL 主机（精确匹配；不得用通配符） */
+export const DEFAULT_IMAGE_BASE_HOSTNAMES = Object.freeze(["api.65535.space"] as const);
+
+/**
+ * 允许的 Base URL 主机精确列表（环境变量 OPENAI_IMAGE_BASE_HOSTS 逗号分隔覆盖）。
+ * 仅 HTTPS；精确主机匹配；禁止通配/contains/endsWith 模糊匹配。
+ */
+export function getAllowedImageBaseHostnames(): Set<string> {
+  const raw = (process.env.OPENAI_IMAGE_BASE_HOSTS || "").trim();
+  if (!raw) return new Set(DEFAULT_IMAGE_BASE_HOSTNAMES);
+  return new Set(raw.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean));
+}
+
 export const ALLOWED_IMAGE_BASE_HOSTNAME = "api.65535.space";
 export const ALLOWED_IMAGE_MODELS = new Set(["gpt-image-2"]);
 const DEFAULT_TIMEOUT_MS = 130_000;
@@ -97,7 +110,7 @@ export function validateImageBaseUrl(raw: string): string {
       false,
     );
   }
-  if (url.hostname !== ALLOWED_IMAGE_BASE_HOSTNAME) {
+  if (!getAllowedImageBaseHostnames().has(url.hostname)) {
     throw new AiImageProviderError(
       "configuration_error",
       "图片中转站域名不在允许列表中。",
