@@ -34,7 +34,7 @@ export type RealAiListingGenerateResult =
   | { ok: false; error: { code: RealAiListingErrorCode; message: string } };
 
 let injectedClientForTests: RealAiListingClient | null = null;
-const LISTING_OUTPUT_TOKEN_BUDGET = 2200;
+const LISTING_OUTPUT_TOKEN_BUDGET = 6000;
 
 export function setRealAiListingClientForTests(client: RealAiListingClient | null) {
   injectedClientForTests = client;
@@ -124,8 +124,14 @@ function buildRealAiListingPrompt(context: RealAiListingContext) {
     "Do not use absolute promises such as 100% guaranteed, guaranteed profit, best seller guaranteed, or equivalent Chinese claims.",
     "Keep wording factual and tell the operator what must be verified manually.",
     "Only confirmed facts may be stated as product facts in titles, bulletPoints, description, keywords or sellingPoints.",
-    "When the user context provides confirmedFacts, every factual statement about the product MUST be written as a verbatim recital prefixed with the exact label format 'Confirmed: <label>: <value>' using ONLY the exact values listed.",
-    "You MUST NOT add, combine, infer, or describe any product attribute that is not one of the exact confirmed values (no material/colour/size/quantity/feature words beyond the listed values, no benefit or usage descriptions).",
+    "When the user context provides confirmedFacts, the confirmedFacts array is the ONLY source of product facts. Each fact has a field label and an exact value.",
+    "Every bulletPoint MUST contain at least one verbatim confirmed value from the confirmedFacts array (for example the exact material, colour, size or quantity value), and MUST NOT state any product attribute whose value is not in the array.",
+    "You MUST produce 1 to 5 bulletPoints. If you cannot fill a bullet with a confirmed value, do not invent one - instead use neutral review wording such as 'Human review required before publishing' or 'Supplier documents must be checked before use'. Never leave bulletPoints empty.",
+    "Prefer bare confirmed values in bullets (for example 'Stainless Steel', 'Black', '30 x 15 x 10 cm', '1 piece') rather than prefixed forms; if a prefix is used, use only these allowed field words: Material, Color, Size, Brand, Category, Price, Rating. Do not use Quantity, Count or other prefix words.",
+    "CRITICAL: each bulletPoint, sellingPoint and titleCandidates entry MUST contain EXACTLY ONE confirmed value and nothing else except optional field words. NEVER join multiple values in one string (no 'A B C' concatenations, no '·' separators).",
+    "keywords MUST each be a single confirmed value verbatim (no combinations like 'SyntheticBrand Kitchen').",
+    "description MUST be a short sentence that repeats at most ONE confirmed value, or a neutral review sentence such as 'Human review required before publishing'. Do not enumerate all facts in the description.",
+    "You MUST NOT add, combine, infer, or describe any product attribute that is not one of the exact confirmed values (no material/colour/size/quantity/feature words beyond the listed values, no benefit or usage descriptions, no certifications or performance claims).",
     "Unverified facts may appear only in riskWarnings or reviewChecklist, clearly labelled for manual confirmation.",
     "Operator-prohibited claims must not appear anywhere in the output, including warnings, checklist or metadata.",
     "The listingObjective is a writing preference only; never promise conversion, ranking or other outcomes.",

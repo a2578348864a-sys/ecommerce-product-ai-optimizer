@@ -89,7 +89,7 @@ describe("generateRealAiListingDraft", () => {
     await generateRealAiListingDraft(studioContext);
 
     expect(mocks.callAiJson).toHaveBeenCalledWith(expect.objectContaining({
-      maxTokens: 2200,
+      maxTokens: 6000,
     }));
   });
 
