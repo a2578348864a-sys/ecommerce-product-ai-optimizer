@@ -27,6 +27,7 @@ import {
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { resolveVisualReferenceSelectionIds, buildApprovedVisualReference } from "@/lib/server/visualReferenceCandidates";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
+import { adaptResearchContextForHandoff } from "@/lib/server/researchContextAdapter";
 import {
   buildConfirmableCandidates,
   confirmSelectedProductFacts,
@@ -305,8 +306,13 @@ export async function createOrAppendCreativeHandoff(
       let approvedVisualReferences: ProductCreativeHandoffCandidate["visualReferences"] = [];
       const selectedVisualIds = input.selectedVisualReferenceCandidateIds ?? [];
       if (selectedVisualIds.length > 0) {
-        const contextRaw = (current as Record<string, unknown>).candidateAnalysisContext;
-        const researchContext = contextRaw !== undefined ? parseCandidateResearchContext(contextRaw) : null;
+        const currentJson = current as Record<string, unknown>;
+        const contextRaw = currentJson.candidateAnalysisContext;
+        // V2 BLOCKER 修复：真实 save-task 写入 V1 格式，经 Adapter 转换（兼容格式原样通过）
+        const adaptedContext = contextRaw !== undefined
+          ? adaptResearchContextForHandoff(currentJson)
+          : null;
+        const researchContext = adaptedContext?.ok === true ? adaptedContext.context : null;
         const resolvedVisuals = resolveVisualReferenceSelectionIds(
           selectedVisualIds,
           researchContext,

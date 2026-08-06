@@ -23,6 +23,7 @@ import {
 import { buildProductCreativeHandoffProjectionEvidence, ProjectionEvidenceAdapterError } from "@/lib/productCreativeHandoffProjectionEvidence";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
+import { adaptResearchContextForHandoff } from "@/lib/server/researchContextAdapter";
 import { extractVisualReferenceCandidates } from "@/lib/server/visualReferenceCandidates";
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import {
@@ -291,8 +292,13 @@ export async function checkCreativeHandoffGate(
   let projectionBlockingCodes: string[] = [];
   let projectionChecks: { checkId: string; passed: boolean; blocksHandoff: boolean; summary: string }[] = [];
   let noConfirmedFacts = false;
+  // V2 BLOCKER 修复：真实 save-task 写入 CandidateAnalysisContextV1，经 Research Context
+  // Adapter 确定性转换为 Handoff 可消费格式；已兼容格式原样通过。适配失败按 fail-closed 处理。
   const contextRaw = resultJson.candidateAnalysisContext;
-  const researchContext = contextRaw !== undefined ? parseCandidateResearchContext(contextRaw) : null;
+  const adaptedContext = contextRaw !== undefined
+    ? adaptResearchContextForHandoff(resultJson)
+    : null;
+  const researchContext = adaptedContext?.ok === true ? adaptedContext.context : null;
   const agentOutput = extractAgentOutputSnapshotFromTask(resultJson);
   if (researchContext) {
     const projectionInput = buildProductCreativeHandoffProjectionEvidence({
@@ -348,7 +354,10 @@ export async function checkCreativeHandoffGate(
     // Preview 仍显示来源/AI/issues 层（指令第十一节）；Create 将返回 no_facts_selected。
     // 把投影前的证据层附加到 Gate（供 Preview 展示），但 allowed=false（不可创建）。
     const contextRaw2 = resultJson.candidateAnalysisContext;
-    const researchContext2 = contextRaw2 !== undefined ? parseCandidateResearchContext(contextRaw2) : null;
+    const adaptedContext2 = contextRaw2 !== undefined
+      ? adaptResearchContextForHandoff(resultJson)
+      : null;
+    const researchContext2 = adaptedContext2?.ok === true ? adaptedContext2.context : null;
     const agentOutput2 = extractAgentOutputSnapshotFromTask(resultJson);
     let evidenceLayers: ProductCreativeHandoffProjectionEvidence[] = [];
     if (researchContext2) {
