@@ -130,5 +130,11 @@ export function createOwnerProductBatchStore(
     async archiveBatch(batchId) {
       return toBatchView(await repository.archiveBatch(batchId));
     },
+    async deleteBatch(batchId) {
+      return repository.deleteBatchForOwner(batchId);
+    },
+    async removeBatchItem(batchId, itemId) {
+      return repository.removeBatchItemForOwner(batchId, itemId);
+    },
   };
 }

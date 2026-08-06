@@ -94,31 +94,34 @@ describe("SellerSpritePreviewResults", () => {
 
     expect(html).toContain("line-clamp-2");
     expect(html).toContain("$19.99");
-    expect(html).toContain("评分 4.5");
-    expect(html).toContain("评论 128");
-    expect(html).toContain("月销量 320");
-    expect(html).toContain("月销售额 $6,396.80");
-    expect(html).toContain("排名暂无");
+    expect(html).toContain("评分");
+    expect(html).toContain("4.5");
+    expect(html).toContain("评论");
+    expect(html).toContain("128");
+    expect(html).toContain("月销量");
+    expect(html).toContain("320");
+    expect(html).toContain("月销售额");
+    expect(html).toContain("$6,396.80");
     expect(html).toContain("存在警告");
     expect(rowDetails).not.toBeNull();
     expect(rowDetails?.[1]).not.toMatch(/\bopen\b/);
     expect(rowDetails?.[2]).toContain("https://www.amazon.com/dp/B000000002");
     expect(rowDetails?.[2]).toContain("B000000001");
     expect(rowDetails?.[2]).toContain("Beauty &amp; Personal Care &gt; Sun Care &gt; Face");
-    expect(html).toContain("overflow-x-auto");
+    // B：卡片式布局（grid 卡片），不再依赖横向滚动表格
+    expect(html).toContain("md:grid-cols-2");
   });
 
-  it("never renders a remote image and keeps rejected rows in a closed non-selectable region", () => {
+  it("shows product thumbnails and keeps rejected rows in a visually separated non-selectable region", () => {
     const html = renderResults();
-    const rejected = html.match(/<details([^>]*)[^>]*data-testid="rejected-rows"[^>]*>([\s\S]*?)<\/details>/);
 
-    expect(html).not.toContain("<img");
-    expect(html).not.toContain("m.media-amazon.com");
-    expect(html).toContain("暂无图片");
-    expect(rejected).not.toBeNull();
-    expect(rejected?.[1]).not.toMatch(/\bopen\b/);
-    expect(rejected?.[2]).toContain("异常隔离行（3）");
-    expect(rejected?.[2]).toContain("第 9 行");
-    expect(rejected?.[2]).not.toContain('type="checkbox"');
+    // B：每项展示缩略图（图片链接仅用于浏览器加载，路由层仍做 SSRF 校验）
+    expect(html).toContain("m.media-amazon.com/images/I/synthetic.jpg");
+    // 异常隔离区视觉分离：独立色块 + 标题 + 明确"不会进入选择或导入"
+    expect(html).toContain("异常隔离区");
+    expect(html).toContain("不会进入选择或导入");
+    expect(html).toContain("第 9 行");
+    // 异常隔离区不可选（无 checkbox）
+    expect(html).not.toContain('aria-label="选择第 9 行商品"');
   });
 });

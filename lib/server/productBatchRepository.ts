@@ -847,6 +847,74 @@ export function createProductBatchRepository(client: PrismaClient = prisma) {
     });
   }
 
+  async function deleteBatchForOwner(
+    batchId: string,
+  ): Promise<{ deleted: boolean }> {
+    return database.$transaction(async (transaction) => {
+      const batch = await requireOwnedBatch(transaction, batchId);
+      const activeRows = await transaction.$queryRaw<Array<{ ownerSubject: string }>>(Prisma.sql`
+        SELECT "ownerSubject"
+        FROM "ProductDiscoverySelection"
+        WHERE "ownerSubject" = ${PRODUCT_BATCH_OWNER_SUBJECT}
+          AND "activeProductBatchId" = ${batchId}
+        LIMIT 1
+      `);
+      if (activeRows.length > 0) {
+        repositoryError(
+          "batch_is_active",
+          "Switch away from a ProductBatch before deleting it.",
+        );
+      }
+      // ProductBatchItem/Selection 对 ProductBatch 为 onDelete: Restrict →
+      // 事务内先删条目，再删批次。
+      await transaction.$executeRaw(Prisma.sql`
+        DELETE FROM "ProductBatchItem"
+        WHERE "batchId" = ${batchId}
+      `);
+      await transaction.$executeRaw(Prisma.sql`
+        DELETE FROM "ProductBatch"
+        WHERE "id" = ${batchId}
+          AND "ownerSubject" = ${PRODUCT_BATCH_OWNER_SUBJECT}
+      `);
+      return { deleted: true };
+    });
+  }
+
+  async function removeBatchItemForOwner(
+    batchId: string,
+    itemId: string,
+  ): Promise<{ removed: boolean }> {
+    return database.$transaction(async (transaction) => {
+      await requireOwnedBatch(transaction, batchId);
+      const activeRows = await transaction.$queryRaw<Array<{ ownerSubject: string }>>(Prisma.sql`
+        SELECT "ownerSubject"
+        FROM "ProductDiscoverySelection"
+        WHERE "ownerSubject" = ${PRODUCT_BATCH_OWNER_SUBJECT}
+          AND "activeProductBatchId" = ${batchId}
+        LIMIT 1
+      `);
+      if (activeRows.length > 0) {
+        repositoryError(
+          "batch_is_active",
+          "Switch away from a ProductBatch before removing items.",
+        );
+      }
+      const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        DELETE FROM "ProductBatchItem"
+        WHERE "batchId" = ${batchId}
+          AND "id" = ${itemId}
+        RETURNING "id"
+      `);
+      if (!rows[0]) {
+        repositoryError(
+          "batch_item_not_found",
+          "ProductBatch item was not found.",
+        );
+      }
+      return { removed: true };
+    });
+  }
+
   return {
     createProcessingBatch,
     findBatchByDedupeKey,
@@ -857,6 +925,8 @@ export function createProductBatchRepository(client: PrismaClient = prisma) {
     markBatchBlocked,
     retryBlockedBatch,
     archiveBatch,
+    deleteBatchForOwner,
+    removeBatchItemForOwner,
     replaceOrInsertBatchItemsDuringProcessing,
     getActiveSelection,
     setActiveBatch,
@@ -884,6 +954,10 @@ export const retryBlockedBatch =
   defaultProductBatchRepository.retryBlockedBatch;
 export const archiveBatch =
   defaultProductBatchRepository.archiveBatch;
+export const deleteBatchForOwner =
+  defaultProductBatchRepository.deleteBatchForOwner;
+export const removeBatchItemForOwner =
+  defaultProductBatchRepository.removeBatchItemForOwner;
 export const replaceOrInsertBatchItemsDuringProcessing =
   defaultProductBatchRepository.replaceOrInsertBatchItemsDuringProcessing;
 export const getActiveSelection =

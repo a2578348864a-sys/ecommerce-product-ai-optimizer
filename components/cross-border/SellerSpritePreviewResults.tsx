@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ImageOff } from "lucide-react";
 
 import type {
@@ -7,6 +8,9 @@ import type {
 } from "@/lib/upstream/sellersprite/preview";
 
 type PreviewWithImportToken = SellerSpritePreviewResult & { importToken?: string };
+
+/** 预览行状态筛选（B：可导入区 / 警告区 / 异常区视觉分离） */
+export type PreviewStatusFilter = "all" | "importable" | "warning" | "rejected";
 
 export type SellerSpritePreviewResultsProps = {
   preview: PreviewWithImportToken;
@@ -20,6 +24,21 @@ export type SellerSpritePreviewResultsProps = {
   onClearSelection: () => void;
   onToggleRow: (rowHash: string) => void;
 };
+
+/** 行分类：警告 > 缺少可选字段 > 可导入 */
+function classifyRow(row: SellerSpriteAcceptedPreviewRow): "warning" | "partial" | "ok" {
+  if (row.warnings.length > 0) return "warning";
+  if (row.missingFields.length > 0) return "partial";
+  return "ok";
+}
+
+function matchFilter(row: SellerSpriteAcceptedPreviewRow, filter: PreviewStatusFilter): boolean {
+  if (filter === "all") return true;
+  const cls = classifyRow(row);
+  if (filter === "warning") return cls === "warning" || cls === "partial";
+  if (filter === "importable") return cls === "ok" || cls === "partial";
+  return false;
+}
 
 const FIELD_STATUS_LABELS: Record<SellerSpritePreviewFieldStatus, string> = {
   source_fact: "来源事实",
@@ -87,6 +106,12 @@ function reasonLabel(reason: { code: string; field?: string }): string {
   return labels[reason.code] ?? (reason.field ? `${reason.field} 字段无效` : "该行不符合导入要求");
 }
 
+const FILTER_OPTIONS: Array<{ value: PreviewStatusFilter; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "importable", label: "可导入" },
+  { value: "warning", label: "警告" },
+];
+
 export function SellerSpritePreviewResults({
   preview,
   selectedRowHashes,
@@ -101,6 +126,8 @@ export function SellerSpritePreviewResults({
 }: SellerSpritePreviewResultsProps) {
   const hasBlockingErrors = preview.blockingErrors.length > 0;
   const hasImportToken = Boolean(preview.importToken);
+  const [filter, setFilter] = useState<PreviewStatusFilter>("all");
+  const visibleRows = preview.acceptedRows.filter((row) => matchFilter(row, filter));
 
   return (
     <div className="space-y-5">
@@ -169,12 +196,32 @@ export function SellerSpritePreviewResults({
         </details>
       ) : null}
 
-      <section className="surface-card overflow-hidden" aria-label="合法商品行预览">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div className="text-sm text-slate-700">
-            已选择 <span className="font-semibold text-slate-950">{selectedRowHashes.length}</span> 项
+      {/* 批量工具条：已选数量 + 全选/取消 + 状态筛选 */}
+      <section className="surface-card p-4" aria-label="预览工具条">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2" aria-label="状态筛选">
+            {FILTER_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={filter === option.value}
+                onClick={() => setFilter(option.value)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  filter === option.value
+                    ? "border-teal-300 bg-teal-50 text-teal-800"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                }`}
+              >
+                {option.label}
+                {option.value === "importable" ? `（${preview.acceptedRows.filter((r) => classifyRow(r) !== "warning").length}）` : ""}
+                {option.value === "warning" ? `（${preview.acceptedRows.filter((r) => classifyRow(r) === "warning").length}）` : ""}
+              </button>
+            ))}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-slate-700">
+              已选择 <span className="font-semibold text-slate-950">{selectedRowHashes.length}</span> 项
+            </span>
             <button
               type="button"
               className="linear-button-secondary inline-flex min-h-9 items-center px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed"
@@ -194,12 +241,12 @@ export function SellerSpritePreviewResults({
           </div>
         </div>
         {selectAllOverLimit ? (
-          <p role="alert" className="px-4 py-2 text-sm text-amber-800">
+          <p role="alert" className="mt-2 text-sm text-amber-800">
             合法行超过 {maxSelectedRows} 项，只允许最多选择 {maxSelectedRows} 项。
           </p>
         ) : null}
         {!canSelect ? (
-          <p className="px-4 py-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-500">
             {hasBlockingErrors
               ? "存在阻断冲突，无法选择商品。"
               : !hasImportToken
@@ -209,103 +256,125 @@ export function SellerSpritePreviewResults({
                   : ""}
           </p>
         ) : null}
-        <div className="overflow-x-auto">
-          <table className="min-w-[960px] divide-y divide-slate-200 text-left text-sm">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="w-20 px-4 py-3">选择</th>
-                <th className="min-w-80 px-4 py-3">商品信息</th>
-                <th className="min-w-44 px-4 py-3">价格与口碑</th>
-                <th className="min-w-52 px-4 py-3">第三方估算</th>
-                <th className="min-w-36 px-4 py-3">字段状态</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {preview.acceptedRows.map((row) => {
-                const rowHash = row.rowHash ?? "";
-                const isSelected = selectedRowHashes.includes(rowHash);
-                const isProcessed = processedRowHashes.has(rowHash);
-                const status = rowStatus(row);
-                return (
-                  <tr key={row.rowNumber} className={isProcessed ? "bg-slate-50/70" : "bg-white"}>
-                    <td className="px-4 py-4 align-top">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          aria-label={`选择第 ${row.rowNumber} 行商品`}
-                          checked={isSelected}
-                          disabled={!canSelect || isProcessed || !rowHash}
-                          onChange={() => onToggleRow(rowHash)}
-                        />
-                        <span className="text-xs text-slate-500">第 {row.rowNumber} 行</span>
-                      </label>
-                      {isProcessed ? <span className="mt-1 block text-xs text-teal-700">已处理</span> : null}
-                    </td>
-                    <td className="px-4 py-4 align-top">
-                      <div className="flex gap-3">
-                        <div className="flex size-14 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400" role="img" aria-label="暂无图片">
-                          <ImageOff aria-hidden="true" className="size-5" />
-                          <span className="mt-1 text-[10px]">暂无图片</span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="line-clamp-2 font-medium leading-5 text-slate-950">{row.facts.title}</p>
-                          <p className="mt-1 text-xs text-slate-500">ASIN {row.facts.asin}</p>
-                          <p className="mt-1 text-xs text-slate-500">{row.facts.brand ?? "品牌暂无"} · {shortCategory(row.facts.category)}</p>
-                          <details className="mt-2 text-xs text-slate-600">
-                            <summary className="cursor-pointer font-semibold text-teal-700 outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
-                              查看详情
-                            </summary>
-                            <div className="mt-2 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                              <p className="break-all">Amazon URL：{row.facts.amazonUrl}</p>
-                              <p>Parent ASIN：{row.facts.parentAsin ?? "暂无"}</p>
-                              <p>完整类目：{row.facts.category ?? "暂无"}</p>
-                              <p>缺失字段：{row.missingFields.length > 0 ? row.missingFields.join("、") : "无"}</p>
-                              <p>
-                                字段状态：价格 {FIELD_STATUS_LABELS[row.fieldStatus.priceUsd]}；排名 {FIELD_STATUS_LABELS[row.fieldStatus.searchRank]}
-                              </p>
-                              <p>第三方估算仅为时间点参考，不构成采购或商业结论。</p>
-                            </div>
-                          </details>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 align-top text-slate-700">
-                      <p className="font-semibold text-slate-950">{currency(row.facts.priceUsd)}</p>
-                      <p className="mt-1">{row.facts.rating === undefined ? "评分暂无" : `评分 ${row.facts.rating}`}</p>
-                      <p className="mt-1">{row.facts.reviewCount === undefined ? "评论暂无" : `评论 ${number(row.facts.reviewCount)}`}</p>
-                    </td>
-                    <td className="px-4 py-4 align-top text-slate-700">
-                      <p>{row.estimates.estimatedMonthlySales === undefined ? "月销量暂无" : `月销量 ${number(row.estimates.estimatedMonthlySales)}`}</p>
-                      <p className="mt-1">{row.estimates.estimatedMonthlyRevenueUsd === undefined ? "月销售额暂无" : `月销售额 ${currency(row.estimates.estimatedMonthlyRevenueUsd)}`}</p>
-                      <p className="mt-1 text-xs text-slate-500">{row.estimates.searchRank === undefined ? "排名暂无" : `搜索排名 ${number(row.estimates.searchRank)}`}</p>
-                    </td>
-                    <td className="px-4 py-4 align-top">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${status.className}`}>
-                        {status.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </section>
 
+      {/* 可导入区：卡片列表 */}
+      <section className="surface-card overflow-hidden" aria-label="可导入商品">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="text-sm text-slate-700">
+            {filter === "all" ? "全部合法商品" : filter === "importable" ? "可导入商品" : "含警告商品"}
+            <span className="ml-1 text-slate-500">（{visibleRows.length}）</span>
+          </div>
+        </div>
+        {visibleRows.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-slate-500">该筛选下没有可展示的商品。</p>
+        ) : (
+          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {visibleRows.map((row) => {
+              const rowHash = row.rowHash ?? "";
+              const isSelected = selectedRowHashes.includes(rowHash);
+              const isProcessed = processedRowHashes.has(rowHash);
+              const status = rowStatus(row);
+              const cls = classifyRow(row);
+              return (
+                <article
+                  key={row.rowNumber}
+                  className={`rounded-2xl border p-4 ${
+                    isProcessed
+                      ? "border-slate-200 bg-slate-50/70"
+                      : cls === "warning"
+                        ? "border-amber-200 bg-amber-50/30"
+                        : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <label className="mt-0.5 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择第 ${row.rowNumber} 行商品`}
+                        checked={isSelected}
+                        disabled={!canSelect || isProcessed || !rowHash}
+                        onChange={() => onToggleRow(rowHash)}
+                        className="h-4 w-4 accent-teal-600"
+                      />
+                      <span className="text-xs text-slate-500">第 {row.rowNumber} 行</span>
+                    </label>
+                    {isProcessed ? <span className="text-xs text-teal-700">已处理</span> : null}
+                    <span className={`ml-auto inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${status.className}`}>
+                      {status.label}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex gap-3">
+                    {row.facts.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- 外部商品图，浏览器直连 + 路由层 SSRF 校验
+                      <img
+                        src={row.facts.imageUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 bg-slate-50 object-contain"
+                        onError={(event) => {
+                          event.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div className="flex size-20 shrink-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-400" role="img" aria-label="暂无图片">
+                        <ImageOff aria-hidden="true" className="size-5" />
+                        <span className="mt-1 text-[10px]">暂无图片</span>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 font-medium leading-5 text-slate-950">{row.facts.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">ASIN {row.facts.asin}</p>
+                      <p className="mt-1 text-xs text-slate-500">{row.facts.brand ?? "品牌暂无"} · {shortCategory(row.facts.category)}</p>
+                      <details className="mt-2 text-xs text-slate-600">
+                        <summary className="cursor-pointer font-semibold text-teal-700 outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
+                          查看详情
+                        </summary>
+                        <div className="mt-2 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <p className="break-all">Amazon URL：{row.facts.amazonUrl}</p>
+                          <p>Parent ASIN：{row.facts.parentAsin ?? "暂无"}</p>
+                          <p>完整类目：{row.facts.category ?? "暂无"}</p>
+                          <p>缺失字段：{row.missingFields.length > 0 ? row.missingFields.join("、") : "无"}</p>
+                          <p>
+                            字段状态：价格 {FIELD_STATUS_LABELS[row.fieldStatus.priceUsd]}；排名 {FIELD_STATUS_LABELS[row.fieldStatus.searchRank]}
+                          </p>
+                          <p>第三方估算仅为时间点参考，不构成采购或商业结论。</p>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                    <p className="rounded-lg bg-slate-50 p-2">价格<br /><b>{currency(row.facts.priceUsd)}</b></p>
+                    <p className="rounded-lg bg-slate-50 p-2">评分<br /><b>{row.facts.rating === undefined ? "暂无" : row.facts.rating}</b></p>
+                    <p className="rounded-lg bg-slate-50 p-2">评论<br /><b>{row.facts.reviewCount === undefined ? "暂无" : number(row.facts.reviewCount)}</b></p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-center text-xs">
+                    <p className="rounded-lg bg-slate-50 p-2">月销量<br /><b>{row.estimates.estimatedMonthlySales === undefined ? "暂无" : number(row.estimates.estimatedMonthlySales)}</b></p>
+                    <p className="rounded-lg bg-slate-50 p-2">月销售额<br /><b>{row.estimates.estimatedMonthlyRevenueUsd === undefined ? "暂无" : currency(row.estimates.estimatedMonthlyRevenueUsd)}</b></p>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* 异常隔离区：视觉分离（独立色块 + 明确标题） */}
       {preview.rejectedRows.length > 0 ? (
-        <details data-testid="rejected-rows" className="surface-card p-4 text-sm text-slate-800">
-          <summary className="cursor-pointer font-semibold outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
-            异常隔离行（{preview.rejectedRowCount}）
-          </summary>
-          <p className="mt-2 text-xs leading-5 text-slate-500">这些行不会进入选择或导入流程。</p>
+        <section data-testid="rejected-rows" className="surface-card border-rose-200 bg-rose-50/40 p-4" aria-label="异常隔离区">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold text-rose-900">异常隔离区（{preview.rejectedRowCount}）</h2>
+            <span className="rounded-full border border-rose-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-rose-700">不会进入选择或导入</span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-600">以下行数据不合规，已从可导入区隔离，不会进入商品研究池。</p>
           <ul className="mt-3 space-y-2">
             {preview.rejectedRows.map((row) => (
-              <li key={row.rowNumber} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <li key={row.rowNumber} className="rounded-lg border border-rose-200 bg-white px-3 py-2">
                 第 {row.rowNumber} 行：{row.reasons.map(reasonLabel).join("；")}
               </li>
             ))}
           </ul>
-        </details>
+        </section>
       ) : null}
     </div>
   );

@@ -1234,38 +1234,36 @@ export function AgentRunClient({
                   <>
                     <p className="mt-1">
                       批次：{sourceMeta.productBatchName || sourceMeta.productBatchId} · 商品：{sourceMeta.asin || sourceMeta.productBatchItemId}
-                      {sourceMeta.candidateId ? ` · Candidate ID：${sourceMeta.candidateId}` : ""}
                     </p>
                     <p className="mt-1 text-xs">
                       市场：{sourceMeta.marketplace || "未提供"} · 报表：{sourceMeta.reportType || "未提供"}
                       {sourceMeta.query ? ` · 查询：${sourceMeta.query}` : ""}
                       {sourceMeta.category ? ` · 类目：${sourceMeta.category}` : ""}
                     </p>
-                    <p className="mt-1 text-xs">
-                      研究优先级：{sourceMeta.researchPriority || "未提供"} · 证据状态：{sourceMeta.evidenceStatus || "未提供"}
-                    </p>
-                    <p className="mt-1 text-xs">
-                      SellerSprite 口径：{sourceMeta.sellerSpriteDisclaimerVersion || "未提供"}
-                    </p>
+                    <details className="mt-2 text-xs text-slate-600">
+                      <summary className="cursor-pointer font-semibold text-indigo-700 outline-none focus-visible:ring-2 focus-visible:ring-teal-500">
+                        高级信息
+                      </summary>
+                      <div className="mt-2 space-y-1 rounded-lg border border-indigo-100 bg-white/70 p-3">
+                        <p>候选 ID：{sourceMeta.candidateId || "未提供"} · 研究优先级：{sourceMeta.researchPriority || "未提供"}</p>
+                        <p>证据状态：{sourceMeta.evidenceStatus || "未提供"}</p>
+                        <p>SellerSprite 口径：{sourceMeta.sellerSpriteDisclaimerVersion || "未提供"}</p>
+                        <p>原始名称：{sourceMeta.originalName || "未提供"} · 分析名称：{sourceMeta.analyzedName || productName}</p>
+                      </div>
+                    </details>
                     <p className="mt-2 rounded-lg border border-indigo-200 bg-white/70 px-2 py-1.5 text-xs font-semibold">
-                      仅用于市场研究；promotionEligible=false，不代表商业晋级或自动选品结论。
+                      仅用于市场研究；不代表商业晋级或自动选品结论。
                     </p>
                   </>
                 ) : (
                   <p className="mt-1">
                     来自发现商品：{sourceMeta.sourceTitle || sourceMeta.opportunityTitle}
-                    {sourceMeta.candidateId ? ` · 候选 ID：${sourceMeta.candidateId}` : ""}
                   </p>
                 )}
-                {sourceMeta.originalName || sourceMeta.analyzedName ? (
-                  <p className="mt-1 text-xs">
-                    原始名称：{sourceMeta.originalName || "未提供"} · 分析名称：{sourceMeta.analyzedName || productName}
-                  </p>
-                ) : null}
                 {sourceMeta.evidenceSnapshot ? (
                   <div className="mt-2 rounded-lg border border-indigo-200 bg-white/70 px-2 py-1.5 text-xs">
                     <p className="font-semibold">
-                      来源证据：{sourceMeta.evidenceSnapshot.decision} · {sourceMeta.evidenceSnapshot.qualityScore}/100 · {sourceMeta.evidenceSnapshot.confidence}
+                      来源证据：{sourceMeta.evidenceSnapshot.decision}
                     </p>
                     <p className="mt-1 text-indigo-700">{sourceMeta.evidenceSnapshot.decisionReason}</p>
                   </div>
@@ -1368,20 +1366,8 @@ export function AgentRunClient({
 
           {result && report ? (
             <>
-              {/* AI Decision Card */}
-              <DecisionCardUI card={buildDecisionCard({
-                resultJson: result as Record<string, unknown>,
-                riskReviewSnapshot: riskReviewSnapshot,
-                profitSnapshot: profitSnapshot,
-                pipelineStatus: phase,
-              })} />
-              <div className="mt-4">
-                <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} />
-              </div>
-              <div className="mt-4">
-                <DecisionEvidencePanel evidence={decisionEvidence} />
-              </div>
-              <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4 mt-4">
+              {/* 商品研究结论（主阅读流）：先看结论，再展开过程细节 */}
+              <section ref={summaryRef} className="surface-card border-teal-200 bg-gradient-to-b from-teal-50/80 to-white p-5 sm:p-6 scroll-mt-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-600">商品研究结论 · {result.productName}</p>
               <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
@@ -1433,6 +1419,24 @@ export function AgentRunClient({
                   <SummaryMetric label="商业决策" value="待真实供应与成本资料" />
                 ) : null}
               </div>
+
+              {/* D：技术详情折叠区（默认关闭）——收纳 AI 决策卡 / 输出快照 / 决策证据链 */}
+              <details className="mt-5 rounded-xl border border-slate-200 bg-white/80 p-3">
+                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                  查看技术详情
+                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，仅供需要核对细节时展开</span>
+                </summary>
+                <div className="mt-3 space-y-4">
+                  <DecisionCardUI card={buildDecisionCard({
+                    resultJson: result as Record<string, unknown>,
+                    riskReviewSnapshot: riskReviewSnapshot,
+                    profitSnapshot: profitSnapshot,
+                    pipelineStatus: phase,
+                  })} />
+                  <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} />
+                  <DecisionEvidencePanel evidence={decisionEvidence} />
+                </div>
+              </details>
 
               <details className="mt-5 rounded-xl border border-slate-200 bg-white/80 p-3">
                 <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">

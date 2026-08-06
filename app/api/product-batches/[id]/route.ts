@@ -42,6 +42,7 @@ function storeError(error: unknown) {
     ? String((error as { code: unknown }).code)
     : "product_batch_internal_error";
   const status = code === "batch_not_found"
+    || code === "batch_item_not_found"
     ? 404
     : code === "batch_is_active"
       || code === "batch_status_transition_forbidden"
@@ -85,24 +86,60 @@ export async function PATCH(request: NextRequest, context: Context) {
     typeof body !== "object"
     || body === null
     || Array.isArray(body)
-    || Object.keys(body).length !== 1
-    || (
-      (body as { action?: unknown }).action !== "activate"
-      && (body as { action?: unknown }).action !== "archive"
+    || !(
+      (body as { action?: unknown }).action === "activate"
+      || (body as { action?: unknown }).action === "archive"
+      || (body as { action?: unknown }).action === "removeItem"
     )
   ) {
+    return errorResponse(400, "invalid_action", "批次操作无效。");
+  }
+  const action = (body as { action: string }).action;
+  if (action === "removeItem") {
+    const keys = Object.keys(body).sort();
+    if (keys.length !== 2 || keys[0] !== "action" || keys[1] !== "itemId") {
+      return errorResponse(400, "invalid_action", "批次操作无效。");
+    }
+  } else if (Object.keys(body).length !== 1) {
     return errorResponse(400, "invalid_action", "批次操作无效。");
   }
   try {
     const store = getProductBatchStore(auth.context);
     const existing = await store.getBatch(id);
     if (!existing) return errorResponse(404, "batch_not_found", "批次不存在。");
-    if ((body as { action: string }).action === "activate") {
+    if (action === "activate") {
       const selection = await store.activateBatch(id);
       return NextResponse.json({ ok: true, data: { selection } });
     }
+    if (action === "removeItem") {
+      const itemId = (body as { itemId?: unknown }).itemId;
+      if (typeof itemId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) {
+        return errorResponse(400, "invalid_item_id", "商品条目标识无效。");
+      }
+      const result = await store.removeBatchItem(id, itemId);
+      return NextResponse.json({ ok: true, data: result });
+    }
     const batch = await store.archiveBatch(id);
     return NextResponse.json({ ok: true, data: { batch } });
+  } catch (error) {
+    return storeError(error);
+  }
+}
+
+export async function DELETE(request: NextRequest, context: Context) {
+  const auth = requireAuthenticated(request);
+  if (!auth.ok) return errorResponse(auth.status, auth.code, auth.message);
+  if (!sameOrigin(request)) {
+    return errorResponse(403, "origin_not_allowed", "请求来源不受信任。");
+  }
+  const { id } = await context.params;
+  if (!validId(id)) return errorResponse(404, "batch_not_found", "批次不存在。");
+  try {
+    const store = getProductBatchStore(auth.context);
+    const existing = await store.getBatch(id);
+    if (!existing) return errorResponse(404, "batch_not_found", "批次不存在。");
+    const result = await store.deleteBatch(id);
+    return NextResponse.json({ ok: true, data: result });
   } catch (error) {
     return storeError(error);
   }

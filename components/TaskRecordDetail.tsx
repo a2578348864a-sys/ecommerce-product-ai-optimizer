@@ -67,6 +67,7 @@ import { ProductResearchDecisionPanel } from "@/components/product-research/Prod
 import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel";
 import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
 import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
+import { WorkflowStepWorkspace, deriveCurrentStepKey } from "@/components/tasks/WorkflowStepWorkspace";
 
 const extendedPlatformLabels: Record<string, string> = {
   ...platformLabels,
@@ -1127,6 +1128,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const aiListingPackSnapshot = useMemo(() => (
     record ? getAiListingPackSnapshot(record.result) : null
   ), [record]);
+  // E：步骤工作台当前步骤推导（handoff/image 产物存在性）
+  const hasImageDraft = Boolean(record?.result
+    && typeof record.result === "object"
+    && "aiImageDraftSnapshot" in record.result);
+  const hasHandoff = Boolean(record?.result
+    && typeof record.result === "object"
+    && "creativeHandoff" in record.result);
   const showListingPackShortcut = record ? shouldShowListingPackShortcut(record.result) : false;
   const showNoListingPackPrompt = record ? !hasAiListingPack(record.result) : false;
   const recordSummary = useMemo(() => {
@@ -1407,17 +1415,52 @@ export function TaskRecordDetail({ id }: { id: string }) {
               ) : null}
 
               {record.type === "workflow" ? (
-                <ProductResearchDecisionPanel
-                  taskId={record.id}
-                  onUpdated={() => setRefreshKey((current) => current + 1)}
+                <WorkflowStepWorkspace
+                  currentKey={deriveCurrentStepKey({
+                    hasImage: Boolean(hasImageDraft),
+                    hasListing: Boolean(aiListingPackSnapshot),
+                    hasHandoff: Boolean(hasHandoff),
+                  })}
+                  steps={[
+                    {
+                      key: "conclusion",
+                      label: "研究结论",
+                      content: (
+                        <div className="space-y-4">
+                          <ProductResearchDecisionPanel
+                            taskId={record.id}
+                            onUpdated={() => setRefreshKey((current) => current + 1)}
+                          />
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "confirmation",
+                      label: "人工确认",
+                      content: (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                          研究决定已记录。创作交接前请确认事实与视觉参考；详见下方「创作交接」步骤。
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "handoff",
+                      label: "创作交接",
+                      content: <CreativeHandoffPanel taskId={record.id} />,
+                    },
+                    {
+                      key: "listing",
+                      label: "Listing 草稿",
+                      content: <ListingHandoffSection taskId={record.id} />,
+                    },
+                    {
+                      key: "image",
+                      label: "产品图片",
+                      content: <ImageHandoffSection taskId={record.id} />,
+                    },
+                  ]}
                 />
               ) : null}
-
-              {record.type === "workflow" ? <CreativeHandoffPanel taskId={record.id} /> : null}
-
-              {record.type === "workflow" ? <ListingHandoffSection taskId={record.id} /> : null}
-
-              {record.type === "workflow" ? <ImageHandoffSection taskId={record.id} /> : null}
 
               {record.type === "workflow" && isRecordValue(record.result) ? (
                 <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">

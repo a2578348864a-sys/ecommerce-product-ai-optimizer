@@ -485,8 +485,60 @@ function PreviewSection({
   const visuals = preview.visualReferenceCandidates ?? [];
   const blockingIssues = issues.filter((issue) => issue.risk === "blocking");
 
+  // F：4 步向导（确认事实 → 确认视觉 → 创作偏好 → 创建交接）
+  const [guideStep, setGuideStep] = useState(1);
+  const stepCount = 4;
+  const factsDone = selectedIds.length >= 1;
+  const canGoNext = (step: number) => {
+    if (step === 1) return factsDone;
+    return true; // 步骤 2/3 均可跳过（视觉参考/创作偏好非必填）
+  };
+  const stepLabels = ["确认可用事实", "确认视觉参考", "填写创作偏好", "创建交接"] as const;
+  // 创建后会开放什么（供步骤 4 展示）
+  const opensAfterCreate = "Listing 草稿 · 产品图片";
+
   return (
     <div className="mt-4 space-y-4">
+      {/* F：步骤指示条 */}
+      <nav className="flex flex-wrap items-center gap-1.5" aria-label="创作交接步骤">
+        {stepLabels.map((label, index) => {
+          const step = index + 1;
+          const active = guideStep === step;
+          const done = step < guideStep || (step === 1 && factsDone);
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-current={active ? "step" : undefined}
+              onClick={() => { if (step < guideStep || canGoNext(guideStep) || guideStep === step) setGuideStep(step); }}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
+                active ? "border-teal-300 bg-teal-50 text-teal-800"
+                  : done ? "border-teal-200 bg-teal-50/40 text-teal-700"
+                    : "border-slate-200 bg-white text-slate-500"
+              }`}
+            >
+              <span className={`flex size-4 items-center justify-center rounded-full text-[10px] ${
+                active || done ? "bg-teal-600 text-white" : "bg-slate-200 text-slate-500"
+              }`}>
+                {done && step < guideStep ? "✓" : step}
+              </span>
+              {label}
+              {active ? <span className="text-[10px] text-teal-500">第 {step} 步</span> : null}
+            </button>
+          );
+        })}
+      </nav>
+      {!factsDone && guideStep === 1 ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          还差：至少勾选 1 项可用事实，才能继续下一步。
+        </p>
+      ) : null}
+      {guideStep === 4 ? (
+        <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          创建后将开放：{opensAfterCreate}。确认后即可开始准备文案与图片草稿。
+        </p>
+      ) : null}
+
       {blockingIssues.length > 0 ? (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-3">
           <p className="text-sm font-semibold text-red-800">存在阻塞问题，暂不能创建创作交接。</p>
@@ -498,165 +550,218 @@ function PreviewSection({
         </div>
       ) : null}
 
-      {/* 1. 来源数据快照 / 3. 可确认事实 */}
-      <section className="rounded-xl border border-slate-200 p-3">
-        <h3 className="text-sm font-semibold text-slate-700">
-          可确认事实
-          <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedIds.length} 项</span>
-        </h3>
-        {confirmables.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">当前没有可人工确认的商品事实。</p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {confirmables.map((item) => (
-              <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
-                <input
-                  id={`confirm-${item.selectionId}`}
-                  type="checkbox"
-                  checked={selectedIds.includes(item.selectionId)}
-                  onChange={() => onToggle(item.selectionId)}
-                  className="mt-0.5 h-4 w-4 accent-teal-600"
-                />
-                <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-800">{item.canonicalField}</span>
-                  <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
-                  <span className="mt-0.5 block text-xs text-slate-400">
-                    {safeSourceKind(item.sourceKindSummary)} · 捕获于 {formatDate(item.capturedAt)} · {item.provenanceSummary}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* 2. 稳定来源事实（只读） */}
-      {stables.length > 0 ? (
-        <section className="rounded-xl border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-700">稳定来源事实</h3>
-          <p className="mt-1 text-xs text-slate-400">以下来源信息仅作展示，需人工确认后方可作事实使用。</p>
-          <ul className="mt-2 space-y-1">
-            {stables.map((item) => (
-              <li key={item.selectionId} className="flex items-center gap-2 text-sm text-slate-600">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />
-                {item.label}（{item.stabilityRule === "identity_only" ? "身份标识" : item.stabilityRule === "routing_only" ? "路由信息" : "需人工确认"}）
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/* 3. AI 创意参考（只读，无事实复选框） */}
-      {ais.length > 0 ? (
-        <section className="rounded-xl border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-700">
-            AI 辅助参考
-            <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700">不能作为商品事实</span>
-          </h3>
-          <ul className="mt-2 space-y-1">
-            {ais.map((item) => (
-              <li key={item.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
-                <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-300" aria-hidden="true" />
-                <span className="min-w-0 break-words">{item.summary}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/* 3.5 视觉参考候选（V2 Final Integration：用户勾选批准 → 创建 Handoff 时提交 selectionId） */}
-      {visuals.length > 0 ? (
-        <section className="rounded-xl border border-teal-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-700">
-            视觉参考
-            <span className="ml-2 rounded bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-700">可批准用于真实产品视觉</span>
-            <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedVisualIds.length} 项</span>
-          </h3>
-          <p className="mt-1 text-xs text-slate-400">
-            勾选后，后续图片生成将以该参考图作为商品外观依据；图片经安全接口读取，不会向浏览器暴露原始来源。
-          </p>
-          <ul className="mt-2 space-y-2">
-            {visuals.map((item) => {
-              const checked = selectedVisualIds.includes(item.selectionId);
-              return (
-                <li key={item.selectionId} className="flex items-start gap-3 rounded-lg bg-teal-50/50 px-2 py-1.5">
-                  <input
-                    id={`visual-${item.selectionId}`}
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => onToggleVisual(item.selectionId)}
-                    className="mt-0.5 h-4 w-4 accent-teal-600"
-                  />
-                  <label htmlFor={`visual-${item.selectionId}`} className="flex min-w-0 flex-1 items-start gap-3">
-                    {/* V2 Visual Preview: 安全缩略图（fetch+鉴权头→blob→objectURL；失败占位不报错） */}
-                    {item.thumbnailUrl ? (
-                      <PrivateThumbnail thumbnailUrl={item.thumbnailUrl} alt="" />
-                    ) : null}
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-slate-800">
-                        {item.summary || "商品图片参考"}
-                      </span>
-                      {/* 缓存隔离修复：contentHash 仅作服务端内部绑定（selectionId/日志），
-                          不向用户展示任何哈希摘要；仅保留来源层级标签 */}
+      {/* 步骤 1：确认可用事实 */}
+      {guideStep === 1 ? (
+        <>
+          {/* 1. 来源数据快照 / 3. 可确认事实 */}
+          <section className="rounded-xl border border-slate-200 p-3">
+            <h3 className="text-sm font-semibold text-slate-700">
+              可确认事实
+              <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedIds.length} 项</span>
+            </h3>
+            {confirmables.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">当前没有可人工确认的商品事实。</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {confirmables.map((item) => (
+                  <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
+                    <input
+                      id={`confirm-${item.selectionId}`}
+                      type="checkbox"
+                      checked={selectedIds.includes(item.selectionId)}
+                      onChange={() => onToggle(item.selectionId)}
+                      className="mt-0.5 h-4 w-4 accent-teal-600"
+                    />
+                    <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-800">{item.canonicalField}</span>
+                      <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
                       <span className="mt-0.5 block text-xs text-slate-400">
-                        {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
+                        {safeSourceKind(item.sourceKindSummary)} · 捕获于 {formatDate(item.capturedAt)} · {item.provenanceSummary}
                       </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* 2. 稳定来源事实（只读） */}
+          {stables.length > 0 ? (
+            <section className="rounded-xl border border-slate-200 p-3">
+              <h3 className="text-sm font-semibold text-slate-700">稳定来源事实</h3>
+              <p className="mt-1 text-xs text-slate-400">以下来源信息仅作展示，需人工确认后方可作事实使用。</p>
+              <ul className="mt-2 space-y-1">
+                {stables.map((item) => (
+                  <li key={item.selectionId} className="flex items-center gap-2 text-sm text-slate-600">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />
+                    {item.label}（{item.stabilityRule === "identity_only" ? "身份标识" : item.stabilityRule === "routing_only" ? "路由信息" : "需人工确认"}）
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {/* 3. AI 创意参考（只读，无事实复选框） */}
+          {ais.length > 0 ? (
+            <section className="rounded-xl border border-slate-200 p-3">
+              <h3 className="text-sm font-semibold text-slate-700">
+                AI 辅助参考
+                <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700">不能作为商品事实</span>
+              </h3>
+              <ul className="mt-2 space-y-1">
+                {ais.map((item) => (
+                  <li key={item.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
+                    <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-300" aria-hidden="true" />
+                    <span className="min-w-0 break-words">{item.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {/* 4. 未知／冲突与风险 */}
+          {issues.length > 0 ? (
+            <section className="rounded-xl border border-slate-200 p-3">
+              <h3 className="text-sm font-semibold text-slate-700">未知／冲突与风险</h3>
+              <ul className="mt-2 space-y-1">
+                {issues.map((issue) => (
+                  <li key={issue.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
+                    <span
+                      className={`mt-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+                        issue.risk === "blocking" ? "bg-red-400" : issue.risk === "high" ? "bg-amber-400" : "bg-slate-300"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 break-words">
+                      {issue.field}：{issue.summary}
+                      {issue.risk === "blocking" ? <span className="ml-1 font-semibold text-red-700">（阻塞）</span> : null}
                     </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {/* 5. 禁止声明 */}
+          {claims.length > 0 ? (
+            <section className="rounded-xl border border-slate-200 p-3">
+              <h3 className="text-sm font-semibold text-slate-700">禁止声明</h3>
+              <ul className="mt-2 space-y-1">
+                {claims.map((claim) => (
+                  <li key={claim.selectionId} className="text-sm text-slate-600">
+                    {claim.summary}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </>
       ) : null}
 
-      {/* 4. 未知／冲突与风险 */}
-      {issues.length > 0 ? (
+      {/* 步骤 2：确认视觉参考 */}
+      {guideStep === 2 ? (
+        <>
+          {visuals.length > 0 ? (
+            <section className="rounded-xl border border-teal-200 p-3">
+              <h3 className="text-sm font-semibold text-slate-700">
+                视觉参考
+                <span className="ml-2 rounded bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-700">可批准用于真实产品视觉</span>
+                <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedVisualIds.length} 项</span>
+              </h3>
+              <p className="mt-1 text-xs text-slate-400">
+                勾选后，后续图片生成将以该参考图作为商品外观依据；图片经安全接口读取，不会向浏览器暴露原始来源。
+              </p>
+              <ul className="mt-2 space-y-2">
+                {visuals.map((item) => {
+                  const checked = selectedVisualIds.includes(item.selectionId);
+                  return (
+                    <li key={item.selectionId} className="flex items-start gap-3 rounded-lg bg-teal-50/50 px-2 py-1.5">
+                      <input
+                        id={`visual-${item.selectionId}`}
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggleVisual(item.selectionId)}
+                        className="mt-0.5 h-4 w-4 accent-teal-600"
+                      />
+                      <label htmlFor={`visual-${item.selectionId}`} className="flex min-w-0 flex-1 items-start gap-3">
+                        {/* V2 Visual Preview: 安全缩略图（fetch+鉴权头→blob→objectURL；失败占位不报错） */}
+                        {item.thumbnailUrl ? (
+                          <PrivateThumbnail thumbnailUrl={item.thumbnailUrl} alt="" />
+                        ) : null}
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-slate-800">
+                            {item.summary || "商品图片参考"}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-slate-400">
+                            {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+              当前没有可批准的视觉参考；可直接进入下一步（不会用真实商品图）。
+            </p>
+          )}
+        </>
+      ) : null}
+
+      {/* 步骤 3：填写创作偏好 */}
+      {guideStep === 3 ? (
         <section className="rounded-xl border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-700">未知／冲突与风险</h3>
-          <ul className="mt-2 space-y-1">
-            {issues.map((issue) => (
-              <li key={issue.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
-                <span
-                  className={`mt-1.5 inline-block h-1.5 w-1.5 rounded-full ${
-                    issue.risk === "blocking" ? "bg-red-400" : issue.risk === "high" ? "bg-amber-400" : "bg-slate-300"
-                  }`}
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 break-words">
-                  {issue.field}：{issue.summary}
-                  {issue.risk === "blocking" ? <span className="ml-1 font-semibold text-red-700">（阻塞）</span> : null}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <h3 className="text-sm font-semibold text-slate-700">创作偏好</h3>
+          <p className="mt-1 text-xs text-slate-400">以下偏好会随创作交接保存，供 Listing / 图片草稿参考。</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <PrefInput label="目标市场" value={prefs.targetMarket ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, targetMarket: v })} />
+            <PrefInput label="语言" value={prefs.language ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, language: v })} />
+            <PrefInput label="语气" value={prefs.tone ?? ""} maxLength={80} onChange={(v) => onPrefsChange({ ...prefs, tone: v })} />
+            <PrefInput label="图片风格" value={prefs.imageStyle ?? ""} maxLength={120} onChange={(v) => onPrefsChange({ ...prefs, imageStyle: v })} />
+          </div>
         </section>
       ) : null}
 
-      {/* 5. 禁止声明 */}
-      {claims.length > 0 ? (
-        <section className="rounded-xl border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-700">禁止声明</h3>
-          <ul className="mt-2 space-y-1">
-            {claims.map((claim) => (
-              <li key={claim.selectionId} className="text-sm text-slate-600">
-                {claim.summary}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {/* 6. 创作偏好（最小 UI） */}
-      <section className="rounded-xl border border-slate-200 p-3">
-        <h3 className="text-sm font-semibold text-slate-700">创作偏好</h3>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          <PrefInput label="目标市场" value={prefs.targetMarket ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, targetMarket: v })} />
-          <PrefInput label="语言" value={prefs.language ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, language: v })} />
-          <PrefInput label="语气" value={prefs.tone ?? ""} maxLength={80} onChange={(v) => onPrefsChange({ ...prefs, tone: v })} />
-          <PrefInput label="图片风格" value={prefs.imageStyle ?? ""} maxLength={120} onChange={(v) => onPrefsChange({ ...prefs, imageStyle: v })} />
+      {/* F：底部导航（上一步 / 下一步） */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+        <div>
+          {guideStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => setGuideStep((current) => Math.max(1, current - 1))}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              上一步
+            </button>
+          ) : null}
         </div>
-      </section>
+        <div>
+          {guideStep < stepCount ? (
+            <button
+              type="button"
+              disabled={!canGoNext(guideStep)}
+              onClick={() => setGuideStep((current) => current + 1)}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              下一步
+            </button>
+          ) : null}
+          {!canGoNext(guideStep) ? (
+            <span className="ml-2 text-xs text-slate-400">请先勾选至少 1 项可用事实</span>
+          ) : null}
+          {guideStep === stepCount ? (
+            <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm leading-6 text-teal-900">
+              <p className="font-semibold">准备就绪，可创建创作交接</p>
+              <p className="mt-1">创建后将开放：{opensAfterCreate}。请回到下方「创建创作交接」区域，勾选人工确认后提交。</p>
+              <p className="mt-1 text-xs text-teal-700">
+                {factsDone ? "已确认可用事实 ✓" : ""} · {selectedVisualIds.length > 0 ? `已批准 ${selectedVisualIds.length} 项视觉参考 ✓` : "未选择视觉参考（可选）"}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

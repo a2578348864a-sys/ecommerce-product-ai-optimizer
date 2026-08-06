@@ -634,6 +634,36 @@ export function createDemoProductBatchStore(
       });
     },
 
+    async deleteBatch(batchId) {
+      return update((store) => {
+        // 存在性检查（不存在即抛 batch_not_found）
+        getRequiredBatch(store, batchId);
+        if (store.selection?.activeProductBatchId === batchId) {
+          fail("batch_is_active", "Switch away from a ProductBatch before deleting it.");
+        }
+        store.batches = store.batches.filter((candidate) => candidate.id !== batchId);
+        store.items = store.items.filter((item) => item.batchId !== batchId);
+        return { deleted: true };
+      });
+    },
+
+    async removeBatchItem(batchId, itemId) {
+      return update((store) => {
+        const batch = getRequiredBatch(store, batchId);
+        if (store.selection?.activeProductBatchId === batchId) {
+          fail("batch_is_active", "Switch away from a ProductBatch before removing items.");
+        }
+        const before = store.items.length;
+        store.items = store.items.filter(
+          (item) => !(item.batchId === batchId && item.id === itemId),
+        );
+        if (store.items.length === before) {
+          fail("batch_item_not_found", "ProductBatch item was not found.");
+        }
+        return { removed: true };
+      });
+    },
+
     debugPathsForTests() {
       return [storePath, root] as const;
     },

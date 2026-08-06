@@ -57,6 +57,8 @@ interface ProductBatchManagerViewProps {
   onArchive?: (batchId: string) => void;
   onActivateLegacy?: () => void;
   onResearchItem?: (productBatchItemId: string) => void;
+  onDeleteBatch?: (batchId: string) => void;
+  onRemoveItem?: (batchId: string, itemId: string) => void;
   onRefresh?: () => void;
 }
 
@@ -145,6 +147,8 @@ export function ProductBatchManagerView({
   onArchive,
   onActivateLegacy,
   onResearchItem,
+  onDeleteBatch,
+  onRemoveItem,
   onRefresh,
 }: ProductBatchManagerViewProps) {
   if (state === "loading") {
@@ -186,6 +190,19 @@ export function ProductBatchManagerView({
   const importReady = Boolean(effectiveReportType && selectedCategory)
     && importInspectionState !== "loading";
 
+  // 顶部概览派生：当前激活批次名 + 商品数（需批次详情已加载）
+  const activeBatch = selection?.activeProductBatchId
+    ? batches.find((candidate) => candidate.id === selection.activeProductBatchId)
+    : null;
+  const activeBatchName = selection?.activeProductBatchId
+    ? (activeBatch?.batchName ?? "已选择（加载中）")
+    : selection?.activeLegacyRegistrationId
+      ? "旧版候选批次"
+      : "尚未选择";
+  const activeBatchItemCount = selectedBatch?.id === activeBatch?.id
+    ? selectedItems.length
+    : null;
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4" data-testid="product-batch-manager">
       <section className="workspace-header">
@@ -218,6 +235,40 @@ export function ProductBatchManagerView({
             {errorMessage}
           </p>
         ) : null}
+      </section>
+
+      {/* 顶部概览：当前批次 / 当前商品数 / 历史批次数 / 主 CTA */}
+      <section className="surface-card p-5" aria-label="运营概览">
+        <div className="grid gap-4 sm:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold text-slate-500">当前批次</p>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-900" title={activeBatchName}>
+              {activeBatchName}
+            </p>
+            {activeBatchItemCount !== null ? (
+              <p className="mt-0.5 text-xs text-slate-500">{activeBatchItemCount} 个商品</p>
+            ) : null}
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold text-slate-500">当前商品数</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">
+              {activeBatchItemCount ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold text-slate-500">历史批次数</p>
+            <p className="mt-1 text-2xl font-bold text-slate-900">{batches.length}</p>
+          </div>
+          <div className="flex flex-col justify-center gap-2 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
+            <p className="text-xs font-semibold text-teal-700">开始选品</p>
+            <a
+              href="/opportunities/sellersprite-preview"
+              className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+            >
+              上传并预览报表
+            </a>
+          </div>
+        </div>
       </section>
 
       <section className="surface-card p-5">
@@ -424,6 +475,14 @@ export function ProductBatchManagerView({
                     >
                       归档
                     </button>
+                    <button
+                      type="button"
+                      disabled={busy || active}
+                      onClick={() => onDeleteBatch?.(batch.id)}
+                      className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      删除
+                    </button>
                   </div>
                 </article>
               );
@@ -475,6 +534,14 @@ export function ProductBatchManagerView({
                   className="linear-button-primary mt-4 h-10 w-full px-4 text-sm font-semibold disabled:opacity-50"
                 >
                   研究此商品
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onRemoveItem?.(selectedBatch.id, item.id)}
+                  className="mt-2 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40"
+                >
+                  移出当前批次
                 </button>
                 {blockedReason ? (
                   <p className="mt-2 text-xs font-semibold leading-5 text-amber-700">
@@ -751,6 +818,45 @@ export function ProductBatchManager() {
     });
   };
 
+  const deleteBatch = (batchId: string) => {
+    const batch = batches.find((candidate) => candidate.id === batchId);
+    const name = batch?.batchName ?? "该批次";
+    if (!window.confirm(`确定删除「${name}」？删除后批次内商品将一并移除，已进入研究池的商品不受影响。`)) {
+      return;
+    }
+    void runMutation(async () => {
+      const response = await fetch(`/api/product-batches/${encodeURIComponent(batchId)}`, {
+        method: "DELETE",
+        headers: buildAccessHeaders(),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(responseError(body));
+      if (selectedBatch?.id === batchId) {
+        setSelectedBatch(null);
+        setSelectedItems([]);
+      }
+    });
+  };
+
+  const removeItem = (batchId: string, itemId: string) => {
+    if (!window.confirm("确定把该商品移出当前批次？已进入研究池的商品不受影响。")) {
+      return;
+    }
+    void runMutation(async () => {
+      const response = await fetch(`/api/product-batches/${encodeURIComponent(batchId)}`, {
+        method: "PATCH",
+        headers: {
+          ...buildAccessHeaders(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "removeItem", itemId }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(responseError(body));
+      await loadDetail(batchId);
+    });
+  };
+
   return (
     <ProductBatchManagerView
       state={state}
@@ -785,6 +891,8 @@ export function ProductBatchManager() {
       onArchive={(batchId) => void patchBatch(batchId, "archive")}
       onActivateLegacy={activateLegacy}
       onResearchItem={researchItem}
+      onDeleteBatch={deleteBatch}
+      onRemoveItem={removeItem}
       onRefresh={() => void refresh()}
     />
   );

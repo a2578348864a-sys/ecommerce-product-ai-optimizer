@@ -15,7 +15,7 @@ import {
 const PAGE_SIZE = 100;
 
 type PoolState = "loading" | "ready" | "error";
-type StatusFilter = "all" | CandidateResearchStatus;
+type StatusFilter = "all" | CandidateResearchStatus | "converted";
 
 export type CandidatePoolViewProps = {
   state: PoolState;
@@ -23,6 +23,8 @@ export type CandidatePoolViewProps = {
   total: number;
   hasMore: boolean;
   statusFilter: StatusFilter;
+  query: string;
+  selectedIds: readonly string[];
   busy: boolean;
   manualOpen: boolean;
   manualName: string;
@@ -31,6 +33,13 @@ export type CandidatePoolViewProps = {
   onRefresh: () => void;
   onLoadMore: () => void;
   onStatusFilterChange: (status: StatusFilter) => void;
+  onQueryChange: (value: string) => void;
+  onToggleSelect: (id: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onDeleteItem: (id: string) => void;
+  onDeleteSelected: () => void;
+  onStartSelected: () => void;
   onManualToggle: () => void;
   onManualNameChange: (value: string) => void;
   onManualUrlChange: (value: string) => void;
@@ -44,6 +53,7 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: "analyzed", label: "研究中" },
   { value: "paused", label: "已暂缓" },
   { value: "rejected", label: "已放弃" },
+  { value: "converted", label: "已转任务" },
 ];
 
 const STATUS_LABEL: Record<CandidateResearchStatus, string> = {
@@ -127,6 +137,54 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
             ))}
           </div>
         </div>
+        {/* C：搜索 + 批量工具条 */}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <label className="min-w-52 flex-1">
+            <span className="sr-only">搜索商品名称</span>
+            <input
+              type="search"
+              value={props.query}
+              onChange={(event) => props.onQueryChange(event.target.value.slice(0, 80))}
+              placeholder="搜索商品名称…"
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-slate-600">已选 <strong className="text-slate-950">{props.selectedIds.length}</strong> 项</span>
+            <button
+              type="button"
+              onClick={props.onSelectAll}
+              disabled={props.busy || props.items.length === 0}
+              className="linear-button-soft h-9 px-3 text-sm font-semibold disabled:opacity-50"
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              onClick={props.onClearSelection}
+              disabled={props.busy || props.selectedIds.length === 0}
+              className="linear-button-soft h-9 px-3 text-sm font-semibold disabled:opacity-50"
+            >
+              取消选择
+            </button>
+            <button
+              type="button"
+              onClick={props.onStartSelected}
+              disabled={props.busy || props.selectedIds.length === 0}
+              className="linear-button-primary h-9 px-3 text-sm font-semibold disabled:opacity-50"
+            >
+              开始研究
+            </button>
+            <button
+              type="button"
+              onClick={props.onDeleteSelected}
+              disabled={props.busy || props.selectedIds.length === 0}
+              className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+            >
+              删除所选
+            </button>
+          </div>
+        </div>
       </section>
 
       {props.state === "loading" ? (
@@ -166,53 +224,80 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
         <section className="grid gap-3" aria-label="Candidate 列表">
           {props.items.map((item) => {
             const href = candidatePrimaryHref(item);
+            const selected = props.selectedIds.includes(item.id);
+            const converted = item.researchAction === "converted";
             return (
-              <article key={item.id} className="surface-card p-4 sm:p-5">
+              <article key={item.id} className={`surface-card p-4 sm:p-5 ${selected ? "border-teal-300 ring-1 ring-teal-200" : ""}`}>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800">
-                        {STATUS_LABEL[item.status]}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-                        {SOURCE_LABEL[item.sourceKind]}
-                      </span>
-                      <span className="text-xs text-slate-500">{item.marketplace || "市场待确认"}</span>
-                    </div>
-                    <h3 className="mt-3 break-words text-base font-semibold text-slate-950">{item.name}</h3>
-                    {item.researchAction === "converted" && item.researchDecision ? (
-                      <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-sm text-slate-700">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-emerald-800">{item.researchDecision.label}</span>
-                          {!item.researchDecision.legacy ? (
-                            <span className="text-xs text-slate-500">第 {item.researchDecision.revision} 版</span>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <label className="mt-1 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择 ${item.name}`}
+                        checked={selected}
+                        onChange={() => props.onToggleSelect(item.id)}
+                        className="h-4 w-4 accent-teal-600"
+                      />
+                    </label>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          converted
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-teal-200 bg-teal-50 text-teal-800"
+                        }`}>
+                          {converted ? "已转任务" : STATUS_LABEL[item.status]}
+                        </span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                          {SOURCE_LABEL[item.sourceKind]}
+                        </span>
+                        <span className="text-xs text-slate-500">{item.marketplace || "市场待确认"}</span>
+                      </div>
+                      <h3 className="mt-3 break-words text-base font-semibold text-slate-950">{item.name}</h3>
+                      {item.researchAction === "converted" && item.researchDecision ? (
+                        <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-sm text-slate-700">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-emerald-800">{item.researchDecision.label}</span>
+                            {!item.researchDecision.legacy ? (
+                              <span className="text-xs text-slate-500">第 {item.researchDecision.revision} 版</span>
+                            ) : null}
+                          </div>
+                          {!item.researchDecision.legacy && item.researchDecision.reasonSummary ? (
+                            <p className="mt-1 leading-6">{item.researchDecision.reasonSummary}</p>
+                          ) : null}
+                          {!item.researchDecision.legacy && item.researchDecision.nextActionSummary ? (
+                            <p className="mt-1 text-xs leading-5 text-slate-500">下一步：{item.researchDecision.nextActionSummary}</p>
                           ) : null}
                         </div>
-                        {!item.researchDecision.legacy && item.researchDecision.reasonSummary ? (
-                          <p className="mt-1 leading-6">{item.researchDecision.reasonSummary}</p>
-                        ) : null}
-                        {!item.researchDecision.legacy && item.researchDecision.nextActionSummary ? (
-                          <p className="mt-1 text-xs leading-5 text-slate-500">下一步：{item.researchDecision.nextActionSummary}</p>
-                        ) : null}
-                      </div>
-                    ) : item.researchAction === "converted" ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                        <p className="font-semibold text-slate-700">尚无正式决定</p>
-                        <p className="mt-1 text-xs leading-5">可查看关联研究记录；系统不会从旧状态推测新版正式决定。</p>
-                      </div>
-                    ) : null}
-                    <p className="mt-2 text-xs text-slate-400">最近更新：{formatDate(item.updatedAt)}</p>
+                      ) : item.researchAction === "converted" ? (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                          <p className="font-semibold text-slate-700">尚无正式决定</p>
+                          <p className="mt-1 text-xs leading-5">可查看关联研究记录；系统不会从旧状态推测新版正式决定。</p>
+                        </div>
+                      ) : null}
+                      <p className="mt-2 text-xs text-slate-400">最近更新：{formatDate(item.updatedAt)}</p>
+                    </div>
                   </div>
-                  {href ? (
-                    <Link href={href} className="linear-button-primary inline-flex h-10 shrink-0 items-center justify-center gap-2 px-4 text-sm font-semibold">
-                      {researchActionLabel(item)}
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  ) : (
-                    <span className="max-w-xs text-sm leading-6 text-amber-700">
-                      {item.researchActionMessage || "当前不能进入研究。"}
-                    </span>
-                  )}
+                  <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                    {href ? (
+                      <Link href={href} className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
+                        {researchActionLabel(item)}
+                        <ArrowRight className="size-4" />
+                      </Link>
+                    ) : (
+                      <span className="max-w-xs text-sm leading-6 text-amber-700">
+                        {item.researchActionMessage || "当前不能进入研究。"}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={props.busy}
+                      onClick={() => props.onDeleteItem(item.id)}
+                      className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
               </article>
             );
@@ -237,7 +322,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
           onClick={props.onManualToggle}
           className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-slate-800"
         >
-          <span className="inline-flex items-center gap-2"><Plus className="size-4 text-teal-700" />手工添加（旧版兼容）</span>
+          <span className="inline-flex items-center gap-2"><Plus className="size-4 text-teal-700" />手工添加商品</span>
           <span className="text-xs text-slate-400">{props.manualOpen ? "收起" : "展开"}</span>
         </button>
         {props.manualOpen ? (
@@ -284,19 +369,28 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [manualOpen, setManualOpen] = useState(manualMode);
   const [manualName, setManualName] = useState("");
   const [manualUrl, setManualUrl] = useState("");
 
-  const load = useCallback(async (offset = 0, append = false, filter = statusFilter) => {
+  const load = useCallback(async (offset = 0, append = false, filter = statusFilter, search = query) => {
     if (!append) setState("loading");
     setBusy(true);
     setMessage("");
     try {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
-      if (filter !== "all") params.set("status", filter);
+      if (filter === "converted") {
+        // 已转任务是派生状态（convertedTaskId 非空），由服务端 status 参数无法表达，
+        // 改为拉全量后前端过滤；此处只限制数量以控制体积。
+        params.set("limit", "200");
+      } else if (filter !== "all") {
+        params.set("status", filter);
+      }
+      if (search.trim()) params.set("q", search.trim());
       const response = await fetch(`/api/opportunity-candidates?${params.toString()}`, {
         method: "GET",
         headers: { ...buildAccessHeaders() },
@@ -305,8 +399,14 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
       const payload: unknown = await response.json().catch(() => null);
       const parsed = response.ok ? parseCandidateListResponse(payload) : null;
       if (!parsed) throw new Error("candidate_pool_response_invalid");
-      setItems((current) => append ? mergeCandidatePages(current, parsed.items) : parsed.items);
-      setTotal(parsed.total);
+      let pageItems = parsed.items;
+      if (filter === "converted") {
+        pageItems = pageItems.filter((item) => item.researchAction === "converted");
+        const kept = new Set(pageItems.map((item) => item.id));
+        setSelectedIds((current) => current.filter((id) => kept.has(id)));
+      }
+      setItems((current) => append ? mergeCandidatePages(current, pageItems) : pageItems);
+      setTotal(filter === "converted" ? pageItems.length : parsed.total);
       setHasMore(parsed.hasMore);
       setNextOffset(parsed.nextOffset);
       setState("ready");
@@ -317,42 +417,132 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
     } finally {
       setBusy(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, query]);
 
   useEffect(() => {
-    void load(0, false, statusFilter);
-  }, [load, statusFilter]);
+    void load(0, false, statusFilter, query);
+  }, [load, statusFilter, query]);
 
-  async function submitManual(event: FormEvent<HTMLFormElement>) {
+  function submitManual(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = manualName.trim();
     if (name.length < 2) return;
     setBusy(true);
     setMessage("");
-    try {
-      const response = await fetch("/api/opportunity-candidates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
-        body: JSON.stringify({
-          name,
-          rawInput: name,
-          link: manualUrl.trim() || null,
-          source: "人工录入",
-          status: "pending",
-        }),
-      });
-      const payload: unknown = await response.json().catch(() => null);
-      if (!response.ok || !payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true) {
-        throw new Error("candidate_manual_save_failed");
+    void (async () => {
+      try {
+        const response = await fetch("/api/opportunity-candidates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
+          body: JSON.stringify({
+            name,
+            rawInput: name,
+            link: manualUrl.trim() || null,
+            source: "人工录入",
+            status: "pending",
+          }),
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        if (!response.ok || !payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true) {
+          throw new Error("candidate_manual_save_failed");
+        }
+        setManualName("");
+        setManualUrl("");
+        setSelectedIds([]);
+        await load(0, false, statusFilter, query);
+      } catch {
+        setMessage("手工添加未完成，请检查输入和登录状态后重试。");
+      } finally {
+        setBusy(false);
       }
-      setManualName("");
-      setManualUrl("");
-      await load(0, false, statusFilter);
-    } catch {
-      setMessage("手工添加未完成，请检查输入和登录状态后重试。");
-    } finally {
-      setBusy(false);
+    })();
+  }
+
+  /** 单个删除（确认弹窗；已转任务候选服务端会拒绝） */
+  function deleteItem(id: string) {
+    const item = items.find((candidate) => candidate.id === id);
+    const label = item?.name ?? "该商品";
+    if (!window.confirm(`确定从研究池删除「${label}」？已转任务的候选无法删除。`)) return;
+    setBusy(true);
+    setMessage("");
+    void (async () => {
+      try {
+        const response = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: buildAccessHeaders(),
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        if (!response.ok) {
+          const code = payload && typeof payload === "object" && "error" in payload
+            && payload.error && typeof payload.error === "object" && "code" in payload.error
+            ? String(payload.error.code)
+            : "";
+          if (code === "linked_task") {
+            setMessage("该候选已转任务，不能删除。请先处理关联任务。");
+            return;
+          }
+          throw new Error("candidate_delete_failed");
+        }
+        setSelectedIds((current) => current.filter((selected) => selected !== id));
+        await load(0, false, statusFilter, query);
+      } catch {
+        setMessage("删除未完成，请稍后重试。");
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }
+
+  /** 批量删除（确认弹窗；已转任务候选服务端拒绝，逐条跳过并汇总） */
+  function deleteSelected() {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`确定删除已选 ${selectedIds.length} 项？已转任务的候选不会被删除。`)) return;
+    setBusy(true);
+    setMessage("");
+    void (async () => {
+      let skipped = 0;
+      let deleted = 0;
+      for (const id of selectedIds) {
+        try {
+          const response = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+            headers: buildAccessHeaders(),
+          });
+          if (response.ok) {
+            deleted += 1;
+          } else {
+            const payload: unknown = await response.json().catch(() => null);
+            const code = payload && typeof payload === "object" && "error" in payload
+              && payload.error && typeof payload.error === "object" && "code" in payload.error
+              ? String(payload.error.code)
+              : "";
+            if (code === "linked_task") skipped += 1;
+          }
+        } catch {
+          // 单条失败不中断批量，继续下一条
+        }
+      }
+      setSelectedIds([]);
+      setMessage(
+        deleted > 0
+          ? `已删除 ${deleted} 项${skipped > 0 ? `，${skipped} 项因已转任务跳过。` : "。"}`
+          : skipped > 0 ? "所选均为已转任务，未删除。" : "没有可删除的候选。",
+      );
+      await load(0, false, statusFilter, query);
+    })();
+  }
+
+  /** 批量开始研究：跳转第一个可研究候选的研究页 */
+  function startSelected() {
+    const first = items.find(
+      (item) => selectedIds.includes(item.id) && item.researchAction === "research_available",
+    );
+    if (!first) {
+      setMessage("已选项中无待研究商品，请先选择状态为「待研究」的商品。");
+      return;
     }
+    const href = candidatePrimaryHref(first);
+    if (href) window.location.assign(href);
   }
 
   return (
@@ -362,17 +552,37 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
       total={total}
       hasMore={hasMore}
       statusFilter={statusFilter}
+      query={query}
+      selectedIds={selectedIds}
       busy={busy}
       manualOpen={manualOpen}
       manualName={manualName}
       manualUrl={manualUrl}
       message={message}
-      onRefresh={() => void load(0, false, statusFilter)}
-      onLoadMore={() => { if (nextOffset !== null) void load(nextOffset, true, statusFilter); }}
+      onRefresh={() => void load(0, false, statusFilter, query)}
+      onLoadMore={() => { if (nextOffset !== null) void load(nextOffset, true, statusFilter, query); }}
       onStatusFilterChange={(filter) => {
         setStatusFilter(filter);
+        setSelectedIds([]);
         setItems([]);
       }}
+      onQueryChange={(value) => {
+        setQuery(value);
+        setSelectedIds([]);
+        setItems([]);
+      }}
+      onToggleSelect={(id) => {
+        setSelectedIds((current) =>
+          current.includes(id) ? current.filter((selected) => selected !== id) : [...current, id],
+        );
+      }}
+      onSelectAll={() => {
+        setSelectedIds(items.filter((item) => item.researchAction !== "converted").map((item) => item.id));
+      }}
+      onClearSelection={() => setSelectedIds([])}
+      onDeleteItem={deleteItem}
+      onDeleteSelected={deleteSelected}
+      onStartSelected={startSelected}
       onManualToggle={() => setManualOpen((current) => !current)}
       onManualNameChange={(value) => setManualName(value.slice(0, 120))}
       onManualUrlChange={(value) => setManualUrl(value.slice(0, 2048))}

@@ -66,6 +66,8 @@ function repositoryDouble() {
       updatedAt: date,
     })),
     archiveBatch: vi.fn(async () => ownerBatch),
+    deleteBatchForOwner: vi.fn(async () => ({ deleted: true })),
+    removeBatchItemForOwner: vi.fn(async () => ({ removed: true })),
   };
 }
 

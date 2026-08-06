@@ -336,9 +336,41 @@ describe("V2 Visual Reference Preview DTO 安全", () => {
   });
 });
 
+describe("F 创作交接 4 步向导", () => {
+  it("56. 4 步步骤条（确认事实/视觉/偏好/创建）", () => {
+    expect(panelSource).toContain("确认可用事实");
+    expect(panelSource).toContain("确认视觉参考");
+    expect(panelSource).toContain("填写创作偏好");
+    expect(panelSource).toContain("创建交接");
+    expect(panelSource).toContain("第 {step} 步");
+    expect(panelSource).toContain("guideStep");
+  });
+
+  it("57. 步骤 1 未选事实时显示还差什么 + 禁用下一步", () => {
+    expect(panelSource).toContain("还差：至少勾选 1 项可用事实，才能继续下一步");
+    expect(panelSource).toContain("!canGoNext(guideStep)");
+    expect(panelSource).toContain("请先勾选至少 1 项可用事实");
+  });
+
+  it("58. 步骤 4 明确创建后开放什么", () => {
+    expect(panelSource).toContain("创建后将开放：");
+    expect(panelSource).toContain("Listing 草稿 · 产品图片");
+    expect(panelSource).toContain("准备就绪，可创建创作交接");
+  });
+
+  it("59. 视觉参考无技术字段（无 hash/指纹/内部命名）", () => {
+    expect(panelSource).not.toContain("图片指纹");
+    expect(panelSource).not.toContain("contentHash ?");
+  });
+});
+
 describe("Task 详情接入", () => {
-  it("接入位置：ProductResearchDecisionPanel 之后，仅 workflow 类型", () => {
+  it("接入位置：创作交接步骤内，仅 workflow 类型（E 步骤工作台）", () => {
     expect(detailSource).toContain('import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel"');
-    expect(detailSource).toContain('record.type === "workflow" ? <CreativeHandoffPanel taskId={record.id} /> : null');
+    // E：CreativeHandoffPanel 作为「创作交接」步骤的内容放入步骤工作台
+    expect(detailSource).toContain("WorkflowStepWorkspace");
+    expect(detailSource).toContain('label: "创作交接"');
+    expect(detailSource).toContain("<CreativeHandoffPanel taskId={record.id} />");
+    expect(detailSource).toContain('record.type === "workflow" ? (');
   });
 });

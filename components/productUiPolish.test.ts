@@ -61,7 +61,9 @@ describe("Product UI polish v2", () => {
     expect(historySource).toContain("技术状态与证据");
     expect(detailSource).toContain("商品研究结果");
     expect(detailSource).toContain("已有产物");
-    expect(detailSource).toContain("技术详情");
+    // E：任务详情为步骤工作台，技术信息收进折叠区
+    expect(detailSource).toContain("技术信息与原始数据");
+    expect(detailSource).toContain("WorkflowStepWorkspace");
   });
 
   it("uses the converged product positioning in page metadata", () => {

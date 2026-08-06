@@ -24,6 +24,8 @@ function render(overrides: Partial<Parameters<typeof CandidatePoolView>[0]> = {}
     total: 101,
     hasMore: true,
     statusFilter: "all",
+    query: "",
+    selectedIds: [],
     busy: false,
     manualOpen: false,
     manualName: "",
@@ -32,6 +34,13 @@ function render(overrides: Partial<Parameters<typeof CandidatePoolView>[0]> = {}
     onRefresh: () => undefined,
     onLoadMore: () => undefined,
     onStatusFilterChange: () => undefined,
+    onQueryChange: () => undefined,
+    onToggleSelect: () => undefined,
+    onSelectAll: () => undefined,
+    onClearSelection: () => undefined,
+    onDeleteItem: () => undefined,
+    onDeleteSelected: () => undefined,
+    onStartSelected: () => undefined,
     onManualToggle: () => undefined,
     onManualNameChange: () => undefined,
     onManualUrlChange: () => undefined,
@@ -48,7 +57,7 @@ describe("CandidatePoolView", () => {
     expect(html).toContain("卖家精灵直接导入");
     expect(html).toContain("Amazon US");
     expect(html).toContain("加载更多");
-    expect(html).toContain("/agent/run?source=opportunity&amp;candidateId=candidate-101");
+    expect(html).toContain("/opportunity-candidates/candidate-101?source=opportunity");
   });
 
   it("renders loading, empty and retryable error states", () => {

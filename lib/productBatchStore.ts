@@ -14,6 +14,8 @@ export const PRODUCT_BATCH_CAPABILITY_MATRIX = {
     activateBatch: true,
     activateLegacy: true,
     archiveBatch: true,
+    deleteBatch: true,
+    removeBatchItem: true,
   },
   visitor: {
     importBatch: true,
@@ -22,6 +24,8 @@ export const PRODUCT_BATCH_CAPABILITY_MATRIX = {
     activateBatch: true,
     activateLegacy: true,
     archiveBatch: true,
+    deleteBatch: true,
+    removeBatchItem: true,
   },
 } as const;
 
@@ -110,6 +114,13 @@ export interface ProductBatchStore {
   activateBatch(batchId: string): Promise<ProductBatchSelectionView>;
   activateLegacy(registrationId: string): Promise<ProductBatchSelectionView>;
   archiveBatch(batchId: string): Promise<ProductBatchView>;
+  /** 删除批次（含其条目）。激活中的批次拒绝删除。 */
+  deleteBatch(batchId: string): Promise<{ deleted: boolean }>;
+  /** 从批次移出单条商品（条目被候选池引用时保留候选）。 */
+  removeBatchItem(
+    batchId: string,
+    itemId: string,
+  ): Promise<{ removed: boolean }>;
 }
 
 export interface ProductBatchListResponse {

@@ -17,6 +17,8 @@ describe("ProductBatch centralized dual-role capability matrix", () => {
       activateBatch: true,
       activateLegacy: true,
       archiveBatch: true,
+      deleteBatch: true,
+      removeBatchItem: true,
     });
   });
 
