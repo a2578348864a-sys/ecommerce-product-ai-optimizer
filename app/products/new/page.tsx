@@ -4,7 +4,7 @@ import { ProductProfitForm } from "@/components/cross-border/ProductProfitForm";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
 export const metadata: Metadata = {
-  title: "利润试算 - 轻选 Agent",
+  title: "利润试算 - 轻选工作台",
   description: "辅助工具：填写跨境商品基础信息，用程序公式实时测算成本、售价和利润。",
 };
 

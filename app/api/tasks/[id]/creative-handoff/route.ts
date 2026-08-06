@@ -133,11 +133,13 @@ function parseSelectionIds(value: unknown): string[] | null {
 
 function parseCreativePreferences(value: unknown): Record<string, unknown> | null {
   if (!isRecord(value) || Object.keys(value).length === 0) return null;
-  const allowed = new Set(["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference"]);
+  const allowed = new Set(["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference", "additionalRequirements"]);
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) return null;
     const item = value[key];
-    if (typeof item !== "string" || item.length > 300) return null;
+    if (typeof item !== "string") return null;
+    const limit = key === "additionalRequirements" ? 200 : 300;
+    if (item.length > limit) return null;
   }
   const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
   if (bytes > MAX_CREATIVE_PREFERENCES_BYTES) return null;
@@ -402,6 +404,9 @@ export async function POST(
       expectedStorageVersion,
       selectedFactCandidateIds,
       selectedVisualReferenceCandidateIds: selectedVisualReferenceIds,
+      ...(creativePreferences && Object.keys(creativePreferences).length > 0
+        ? { creativePreferences: creativePreferences as Record<string, string> }
+        : {}),
       requestFingerprint,
     });
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegacyMigratedPage } from "@/components/LegacyMigratedPage";
 
 export const metadata: Metadata = {
-  title: "风险排查已迁移 - 轻选 Agent",
+  title: "风险排查已迁移 - 轻选工作台",
   description: "风险排查已并入商品研究流程。",
 };
 

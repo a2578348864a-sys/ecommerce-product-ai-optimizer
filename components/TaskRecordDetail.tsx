@@ -133,7 +133,7 @@ function getTaskTypeLabel(item: TaskCenterItem) {
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return TASK_AGENT_LABEL_MAP[item.type || ""] || "规划 Agent";
+  return TASK_AGENT_LABEL_MAP[item.type || ""] || "规划任务";
 }
 
 /** Map raw risk level enum to Chinese display label with tone class */
@@ -595,7 +595,7 @@ function WorkflowDecisionSummary({
       <details className="rounded-2xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
           过程与原始记录
-          <span className="ml-2 text-xs font-medium text-slate-400">Agent 执行过程、完整分析、成本利润明细、JSON，默认折叠</span>
+          <span className="ml-2 text-xs font-medium text-slate-400">研究过程、完整分析、成本利润明细、JSON，默认折叠</span>
         </summary>
 
         <div className="mt-4 space-y-4">
@@ -740,7 +740,7 @@ function buildFinalReportMarkdown(result: Record<string, unknown>) {
   }
 
   lines.push("---");
-  lines.push("轻选 Agent 自动生成 · AI 结论仅供辅助参考");
+  lines.push("轻选工作台自动生成 · AI 结论仅供辅助参考");
   return lines.join("\n");
 }
 
@@ -1536,14 +1536,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   <p className="mt-1 text-sm font-bold text-slate-800">{getTaskTypeLabel(record)}</p>
                 </div>
                 <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">Agent 类型</p>
+                  <p className="text-xs font-bold text-slate-400">任务类型</p>
                   <p className="mt-1 text-sm font-bold text-slate-800">{getAgentTypeLabel(record)}</p>
                 </div>
               </div>
               </details>
 
               <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">Agent 状态和后续能力</summary>
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">任务状态和后续能力</summary>
                 <AgentNextStepPanel
                   className="mt-3"
                   taskType={record.type}

@@ -655,7 +655,7 @@ export function WorkflowClient({
     }
     lines.push("");
     lines.push("---");
-    lines.push("本报告由轻选 Agent 自动生成，AI 结论仅供辅助参考，关键决策需人工确认。");
+    lines.push("本报告由轻选工作台自动生成，AI 结论仅供辅助参考，关键决策需人工确认。");
     return lines.join("\n");
   }
 

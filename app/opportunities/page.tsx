@@ -5,7 +5,7 @@ import { ProductBatchManager } from "@/components/cross-border/ProductBatchManag
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "发现商品 - 轻选 Agent",
+  title: "发现商品 - 轻选工作台",
   description: "上传卖家精灵报表、管理商品批次并决定下一步研究哪些商品。",
 };
 

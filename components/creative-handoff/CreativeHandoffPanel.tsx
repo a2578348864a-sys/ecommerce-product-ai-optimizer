@@ -184,7 +184,8 @@ export type CreativePrefs = {
   language?: string;
   tone?: string;
   imageStyle?: string;
-  extraNote?: string;
+  /** 用户补充要求：仅影响表达/视觉风格，不作为商品事实；最长 200 字 */
+  additionalRequirements?: string;
 };
 
 /** 默认推荐 */
@@ -269,6 +270,18 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
         else setState({ kind: "recoverable_error", message: res.error.message });
         return;
       }
+      // 刷新恢复：从 preview 返回的已保存偏好读回（含 additionalRequirements）
+      if (res.kind === "ok" && res.preview?.creativePreferences) {
+        const saved = res.preview.creativePreferences;
+        setPrefs((current) => ({
+          ...current,
+          ...(saved.targetMarket ? { targetMarket: saved.targetMarket } : {}),
+          ...(saved.language ? { language: saved.language } : {}),
+          ...(saved.tone ? { tone: saved.tone } : {}),
+          ...(saved.imageStyle ? { imageStyle: saved.imageStyle } : {}),
+          ...(saved.additionalRequirements ? { additionalRequirements: saved.additionalRequirements } : {}),
+        }));
+      }
       setState(deriveState(res.preview, res.detail, res.gateReason));
     } finally {
       loadAllRef.current = false;
@@ -324,12 +337,15 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
     const preview = state.kind === "preview" || state.kind === "active" || state.kind === "stale" ? state.preview : null;
     if (!preview?.storageVersion || selectedIds.length < 1 || !confirmed) return;
     const nextRequestId = requestId ?? crypto.randomUUID();
-    // 只提交服务端白名单字段（extraNote 仅前端本地保留，不进入交接合同）
+    // 提交服务端白名单字段（含 additionalRequirements：真实保存到 Handoff，参与指纹/Revision）
     const serverPrefs = {
       ...(prefs.targetMarket ? { targetMarket: prefs.targetMarket } : {}),
       ...(prefs.language ? { language: prefs.language } : {}),
       ...(prefs.tone ? { tone: prefs.tone } : {}),
       ...(prefs.imageStyle ? { imageStyle: prefs.imageStyle } : {}),
+      ...(prefs.additionalRequirements?.trim()
+        ? { additionalRequirements: prefs.additionalRequirements.trim().slice(0, 200) }
+        : {}),
     };
     const body = {
       action: "create",
@@ -912,11 +928,14 @@ function PreviewSection({
             </div>
             <label className="block">
               <span className="text-xs font-semibold text-slate-600">补充要求（可选）</span>
-              <input
-                type="text"
-                value={prefs.extraNote ?? ""}
-                maxLength={120}
-                onChange={(e) => onPrefsChange({ ...prefs, extraNote: e.target.value.slice(0, 120) })}
+              <span className="mt-1 block text-xs leading-5 text-slate-400">
+                可填写特殊的表达或视觉偏好，最多 200 字；不会被视为商品事实。
+              </span>
+              <textarea
+                value={prefs.additionalRequirements ?? ""}
+                maxLength={200}
+                rows={2}
+                onChange={(e) => onPrefsChange({ ...prefs, additionalRequirements: e.target.value.slice(0, 200) })}
                 className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
               />
             </label>

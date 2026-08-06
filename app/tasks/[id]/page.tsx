@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { TaskRecordDetail } from "@/components/TaskRecordDetail";
 
 export const metadata: Metadata = {
-  title: "商品研究结果 - 轻选 Agent",
+  title: "商品研究结果 - 轻选工作台",
   description: "查看单个商品的当前研究阶段、已有产物、人工核验项和下一步动作。",
 };
 

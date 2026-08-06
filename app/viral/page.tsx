@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LegacyMigratedPage } from "@/components/LegacyMigratedPage";
 
 export const metadata: Metadata = {
-  title: "海外爆款趋势拆解已迁移 - 轻选 Agent",
+  title: "海外爆款趋势拆解已迁移 - 轻选工作台",
   description: "爆款拆解能力已并入商品研究主链。",
 };
 

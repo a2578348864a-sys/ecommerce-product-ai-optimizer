@@ -126,9 +126,10 @@ export function buildListingInputFromCreativeHandoff(
   const creativePreferences: Record<string, string> = {};
   const prefs = version.creativePreferences;
   if (isRecord(prefs)) {
-    for (const key of ["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference"] as const) {
+    // additionalRequirements：仅影响语气/结构/表达方式，不作为商品事实（材质/尺寸/性能/认证等禁止从偏好注入）
+    for (const key of ["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference", "additionalRequirements"] as const) {
       const value = prefs[key];
-      if (typeof value === "string" && value.trim()) creativePreferences[key] = value.normalize("NFC").trim().slice(0, 300);
+      if (typeof value === "string" && value.trim()) creativePreferences[key] = value.normalize("NFC").trim().slice(0, key === "additionalRequirements" ? 200 : 300);
     }
   }
 

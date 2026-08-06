@@ -16,18 +16,22 @@ describe("Product UI polish v2", () => {
   const layoutSource = readSource("app/layout.tsx");
 
   it("presents the public first screen as one five-step product journey", () => {
-    expect(loginSource).toContain("AI 跨境商品研究助手");
+    expect(loginSource).toContain("AI 跨境商品研究工作台");
+    expect(loginSource).toContain("轻选工作台");
     expect(loginSource).toContain('data-testid="login-product-journey"');
     expect(loginSource).toMatch(/number:\s*"01",\s*label:\s*"发现商品"/);
     expect(loginSource).toMatch(/number:\s*"02",\s*label:\s*"商品研究"/);
-    expect(loginSource).toMatch(/number:\s*"03",\s*label:\s*"Listing 准备"/);
-    expect(loginSource).toMatch(/number:\s*"04",\s*label:\s*"图片创作"/);
-    expect(loginSource).toMatch(/number:\s*"05",\s*label:\s*"人工确认"/);
+    expect(loginSource).toMatch(/number:\s*"03",\s*label:\s*"人工决策"/);
+    expect(loginSource).toMatch(/number:\s*"04",\s*label:\s*"创作交接"/);
+    expect(loginSource).toMatch(/number:\s*"05",\s*label:\s*"内容草稿"/);
     expect(loginSource).not.toContain("跨境电商运营 Agent 工作台");
     expect(loginSource).not.toContain("商品分析完成");
     expect(loginSource).not.toContain("AI 复核通过");
-    expect(lockedPromptSource).toContain("AI 跨境商品研究助手");
+    expect(loginSource).not.toContain("Owner 密码");
+    expect(loginSource).not.toContain("进入商品研究助手");
+    expect(lockedPromptSource).toContain("轻选工作台");
     expect(lockedPromptSource).not.toContain("跨境电商运营工作台");
+    expect(lockedPromptSource).not.toContain("轻选 Agent");
   });
 
   it("puts the user journey before access and statistics on the signed-in home", () => {
@@ -40,17 +44,19 @@ describe("Product UI polish v2", () => {
     expect(statisticsIndex).toBeGreaterThan(journeyIndex);
     expect(homeSource).toContain("当前状态");
     expect(homeSource).toContain("下一步入口");
-    expect(homeSource).toMatch(/label:\s*"人工确认"/);
-    expect(homeSource).toContain("AI 辅助 · 人工确认");
+    expect(homeSource).toMatch(/label:\s*"内容草稿"/);
+    expect(homeSource).toContain("轻选工作台");
   });
 
-  it("makes the three-stage research flow the first content section", () => {
+  it("makes the research flow the first content section and hides technical panels", () => {
     const flowIndex = agentRunSource.indexOf('data-testid="agent-run-research-flow"');
     const inputIndex = agentRunSource.indexOf('id="product-research-input"');
 
     expect(flowIndex).toBeGreaterThan(-1);
     expect(inputIndex).toBeGreaterThan(flowIndex);
-    expect(agentRunSource).toContain("内部分析记录");
+    // 极简收口：商品研究页不再渲染内部分析记录 / 技术详情入口
+    expect(agentRunSource).not.toContain("内部分析记录");
+    expect(agentRunSource).not.toContain("查看技术详情");
   });
 
   it("keeps history product-facing and titles details as a research result", () => {
@@ -67,7 +73,9 @@ describe("Product UI polish v2", () => {
   });
 
   it("uses the converged product positioning in page metadata", () => {
-    expect(layoutSource).toContain("AI 跨境商品研究助手");
+    expect(layoutSource).toContain("轻选工作台");
+    expect(layoutSource).toContain("AI 跨境商品研究工作台");
     expect(layoutSource).not.toContain("跨境电商运营全流程 Agent 工作台");
+    expect(layoutSource).not.toContain("轻选 Agent");
   });
 });

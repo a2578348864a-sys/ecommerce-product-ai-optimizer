@@ -1269,7 +1269,7 @@ function OpportunitiesFormContent({
                   <ArrowRight className="size-4" />
                 </Link>
                 <p className="text-xs text-slate-400">
-                  轻选 Agent · 受控自动化 + 人工复核
+                  轻选工作台 · 受控自动化 + 人工复核
                 </p>
               </div>
             </div>
@@ -1721,7 +1721,7 @@ function OpportunitiesFormContent({
                   ? "隔离视觉验收数据不会读取或写入浏览器、服务端与生产数据。"
                   : serverAvailable === true
                   ? localDraftCount > 0
-                    ? `已连接服务端候选池；另有 ${localDraftCount} 个本地草稿仅供展示，保存为服务端 Candidate 后才能进入 Agent。`
+                    ? `已连接服务端候选池；另有 ${localDraftCount} 个本地草稿仅供展示，保存为服务端候选后才能进入商品研究。`
                     : serverPoolConnectionPresentation?.poolDescription
                   : serverAvailable === false
                     ? serverPoolConnectionPresentation?.poolDescription
@@ -2016,7 +2016,7 @@ function OpportunitiesFormContent({
                         </p>
                       ) : null}
                       {queuePresentation.state === "analyzing" ? (
-                        <p className="mt-2 text-xs font-semibold text-indigo-700">分析对象已确认，可继续 Agent 分析。</p>
+                        <p className="mt-2 text-xs font-semibold text-indigo-700">分析对象已确认，可继续研究。</p>
                       ) : null}
                       {/* Phase Candidate-Status-M.1: Linked tasks display */}
                       {latestLinkedTask ? (
@@ -2027,7 +2027,7 @@ function OpportunitiesFormContent({
                               </span>
                               {latestLinkedTask.source === "agent_run" ? (
                                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600">
-                                  来自 Agent 主链路
+                                  来自研究主链路
                                 </span>
                               ) : null}
                               {linkedTasks.length > 1 ? (
@@ -2099,8 +2099,8 @@ function OpportunitiesFormContent({
                           {isLocalDraft
                             ? serverAvailable === true
                               ? "请先导入本浏览器候选池"
-                              : "连接服务端并保存后进入 Agent"
-                            : "服务端身份未确认，暂不能进入 Agent"}
+                              : "连接服务端并保存后进入研究"
+                            : "服务端身份未确认，暂不能开始研究"}
                         </span>
                       )}
                       {/* More actions dropdown — portalled to document.body to escape parent overflow clipping */}
@@ -2351,7 +2351,7 @@ function OpportunitiesFormContent({
                           <span className="font-semibold text-teal-700">下一步：</span>
                           <span className="text-teal-700">{c.nextAction}</span>
                           <span className="ml-auto text-[11px] font-semibold text-indigo-700">
-                            请在候选品池中人工确认后进入 Agent
+                            请在候选品池中人工确认后开始研究
                           </span>
                         </div>
                         {c.summary?.downgradeReasons && c.summary.downgradeReasons.length > 0 && (

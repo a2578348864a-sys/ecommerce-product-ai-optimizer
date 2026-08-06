@@ -757,7 +757,7 @@ export function ProductProfitForm() {
       lines.push("");
     }
     lines.push("---");
-    lines.push("> 报告由轻选 Agent 自动生成，仅供运营参考。");
+    lines.push("> 报告由轻选工作台自动生成，仅供运营参考。");
     return lines.join("\n");
   }, [form, profitResult, aiAnalysis]);
 

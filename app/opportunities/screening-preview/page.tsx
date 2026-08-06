@@ -10,7 +10,7 @@ import { loadStage15ScreeningPreview } from "@/lib/stage15ScreeningPreviewLoader
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "调查短名单预览 - 轻选 Agent",
+  title: "调查短名单预览 - 轻选工作台",
   description: "Stage 1.5 本地只读调查短名单预览。",
 };
 

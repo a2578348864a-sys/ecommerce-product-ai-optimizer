@@ -194,25 +194,28 @@ describe("/agent archive page", () => {
 describe("HomeDashboardClient navigation", () => {
   const homeSource = readComponentSource("components/HomeDashboardClient.tsx");
 
-  it("positions the product as an AI cross-border product research assistant", () => {
-    expect(homeSource).toMatch(/AI 跨境商品研究助手/);
-    expect(homeSource).toMatch(/辅助研究 · 人工确认/);
+  it("positions the product as a cross-border research workbench", () => {
+    expect(homeSource).toMatch(/AI 跨境商品研究工作台/);
+    expect(homeSource).toMatch(/轻选工作台/);
+    expect(homeSource).not.toMatch(/AI 跨境商品研究助手/);
+    expect(homeSource).not.toMatch(/轻选 Agent/);
   });
 
   it("shows the five-stage user workflow and primary routes", () => {
     const workflowStepsSection = homeSource.match(/workflowSteps[\s\S]*?\] as const/);
     expect(workflowStepsSection?.[0]).toMatch(/发现商品/);
     expect(workflowStepsSection?.[0]).toMatch(/商品研究/);
-    expect(workflowStepsSection?.[0]).toMatch(/Listing 准备/);
-    expect(workflowStepsSection?.[0]).toMatch(/图片创作/);
-    expect(workflowStepsSection?.[0]).toMatch(/人工确认/);
+    expect(workflowStepsSection?.[0]).toMatch(/人工决策/);
+    expect(workflowStepsSection?.[0]).toMatch(/创作交接/);
+    expect(workflowStepsSection?.[0]).toMatch(/内容草稿/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunity-candidates"/);
     // Listing 与图片创作已收口到任务详情（主链唯一入口）
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);
     expect(workflowStepsSection?.[0]).not.toMatch(/href:\s*"\/listing-studio"/);
     expect(workflowStepsSection?.[0]).not.toMatch(/href:\s*"\/image-studio"/);
-    expect(homeSource).toMatch(/当前为人工复核版/);
+    expect(workflowStepsSection?.[0]).not.toMatch(/Listing 准备/);
+    expect(workflowStepsSection?.[0]).not.toMatch(/图片创作/);
   });
 
   it("does not show old direction entries as primary CTAs", () => {
@@ -225,9 +228,10 @@ describe("HomeDashboardClient navigation", () => {
     }
   });
 
-  it("uses research assistance and human confirmation copy", () => {
-    expect(homeSource).toMatch(/辅助研究/);
-    expect(homeSource).toMatch(/人工确认/);
+  it("uses workbench and research copy without the old assistant wording", () => {
+    expect(homeSource).toMatch(/轻选工作台/);
+    expect(homeSource).toMatch(/商品研究/);
+    expect(homeSource).not.toMatch(/AI 跨境商品研究助手/);
   });
 
   it("does not use 无人值守全自动", () => {
@@ -247,14 +251,15 @@ describe("AgentRunClient main flow links", () => {
     expect(agentRunSource).not.toMatch(/返回单品分析页查看细节/);
   });
 
-  it("shows the three research phases while preserving the old flow as technical detail", () => {
+  it("shows the three research phases and research entry points", () => {
     expect(agentRunSource).toMatch(/三阶段商品研究/);
     expect(agentRunSource).toMatch(/商品理解/);
     expect(agentRunSource).toMatch(/市场研究/);
     expect(agentRunSource).toMatch(/创作准备/);
-    expect(agentRunSource).toMatch(/内部分析记录/);
-    expect(agentRunSource).toMatch(/agent-run-technical-details/);
-    expect(agentRunSource).toMatch(/TIMELINE_STEPS\.map/);
+    // 极简收口：不再渲染内部分析记录 / 技术详情入口
+    expect(agentRunSource).not.toMatch(/内部分析记录/);
+    expect(agentRunSource).not.toMatch(/agent-run-technical-details/);
+    expect(agentRunSource).not.toMatch(/TIMELINE_STEPS\.map/);
     expect(agentRunSource).toMatch(/saveAgentRunCache/);
     expect(agentRunSource).toMatch(/loadAgentRunCache/);
     expect(agentRunSource).toMatch(/\/api\/workflows\/product-analysis/);

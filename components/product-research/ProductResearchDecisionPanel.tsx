@@ -246,7 +246,7 @@ export function ProductResearchDecisionPanel({
         <div className="rounded-xl border border-white bg-white p-3">
           <p className="text-xs font-bold text-slate-400">决定时间 / 身份</p>
           <p className="mt-1 text-sm font-semibold text-slate-700">{formatDate(latest.decidedAt)}</p>
-          <p className="mt-1 text-xs text-slate-500">{latest.actorMode === "owner" ? "Owner" : "Visitor"}</p>
+          <p className="mt-1 text-xs text-slate-500">{latest.actorMode === "owner" ? "管理员" : "访客"}</p>
         </div>
       </div>
 
@@ -310,7 +310,7 @@ export function ProductResearchDecisionPanel({
             <li key={event.revision} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-bold text-slate-900">版本 {event.revision} · {statusLabel(event.status)}</p>
-                <p className="text-xs text-slate-500">{formatDate(event.decidedAt)} · {event.actorMode === "owner" ? "Owner" : "Visitor"}</p>
+                <p className="text-xs text-slate-500">{formatDate(event.decidedAt)} · {event.actorMode === "owner" ? "管理员" : "访客"}</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-700">{event.reason}</p>
               <p className="mt-1 text-xs leading-5 text-teal-700">下一步：{event.nextAction || "无"}</p>

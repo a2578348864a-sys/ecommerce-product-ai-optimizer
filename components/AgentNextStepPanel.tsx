@@ -23,7 +23,7 @@ function riskClassName(riskLevel: string) {
 
 function buildCopyText(state: ReturnType<typeof deriveAgentNextStepPanelState>) {
   const lines: string[] = [];
-  lines.push("# Agent 下一步推进建议");
+  lines.push("# 下一步推进建议");
   lines.push("");
   lines.push(`- 当前阶段：${state.stageLabel}`);
   lines.push(`- 复核进度：${state.reviewState.exists ? `${state.reviewState.reviewedCount}/${state.reviewState.totalReviewSteps}` : "缺少复核状态"}`);
@@ -81,7 +81,7 @@ export function AgentNextStepPanel({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="linear-kicker">Phase 2-G</p>
-          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">Agent 下一步推进</h3>
+          <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">下一步推进</h3>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             受控自动化建议，不会自动执行商业动作。当前面板只根据已有任务结果前端派生，不写回数据库。
           </p>

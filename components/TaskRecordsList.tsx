@@ -129,14 +129,14 @@ const typeLabelMap: Record<string, string> = {
 
 const agentLabelMap: Record<string, string> = {
   workflow: "一键选品工作流",
-  opportunities: "机会雷达 Agent",
-  viral: "海外爆款趋势 Agent",
-  radar: "爆款雷达 Agent",
-  product: "选品分析 Agent",
-  risk: "风险检查 Agent",
-  sourcing: "货源判断 Agent",
-  material: "素材接收 Agent",
-  summary: "小白结论 Agent",
+  opportunities: "机会雷达分析",
+  viral: "海外爆款趋势分析",
+  radar: "爆款雷达分析",
+  product: "选品利润分析",
+  risk: "风险排查",
+  sourcing: "货源判断",
+  material: "素材接收",
+  summary: "小白结论",
 };
 
 function getTaskTypeLabel(item: TaskCenterItem) {
@@ -144,7 +144,7 @@ function getTaskTypeLabel(item: TaskCenterItem) {
 }
 
 function getAgentTypeLabel(item: TaskCenterItem) {
-  return agentLabelMap[item.type || ""] || "未知 Agent";
+  return agentLabelMap[item.type || ""] || "未知任务";
 }
 
 function getTaskStatusLabel() {
@@ -1097,7 +1097,7 @@ export function TaskRecordsList() {
             ) : null}
             {agentStatus ? (
               <p className="mt-2 text-sm text-slate-500">
-                当前 Agent 状态筛选：
+                当前任务状态筛选：
                 <span className="font-bold text-slate-800">
                   {agentStatusFilterOptions.find((item) => item.value === agentStatus)?.label || "未知状态"}
                 </span>
@@ -1163,7 +1163,7 @@ export function TaskRecordsList() {
               <div className="mt-6 rounded-3xl border border-dashed border-slate-200 bg-white/70 p-8">
                 <p className="text-lg font-semibold text-slate-950">没有匹配的任务</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  换个关键词，调整类型、人工状态或 Agent 状态筛选；也可以加载更多后继续筛选当前已加载任务。
+                  换个关键词，调整类型、人工状态或任务状态筛选；也可以加载更多后继续筛选当前已加载任务。
                 </p>
                 <button
                   type="button"

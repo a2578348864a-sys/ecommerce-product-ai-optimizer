@@ -6,7 +6,7 @@ import { SellerSpritePreviewPanel } from "@/components/cross-border/SellerSprite
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "卖家精灵美国站搜索结果导出预览 - 轻选 Agent",
+  title: "卖家精灵美国站搜索结果导出预览 - 轻选工作台",
   description: "只读预览卖家精灵导出的 Amazon 美国站搜索结果 XLSX。",
 };
 

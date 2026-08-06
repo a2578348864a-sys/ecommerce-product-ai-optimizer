@@ -104,36 +104,36 @@ const workflowSteps = [
     label: "发现商品",
     href: "/opportunities",
     cta: "去发现商品",
-    description: "集中查看候选商品和市场信号，选择值得继续研究的对象。",
+    description: "上传报表，筛选候选商品。",
     icon: Search,
   },
   {
-    label: "商品研究池",
+    label: "商品研究",
     href: "/opportunity-candidates",
     cta: "打开商品研究池",
-    description: "从已保存的 Candidate 中选择商品，恢复或开始研究。",
+    description: "整理信息，评估风险，恢复或开始研究。",
     icon: Sparkles,
   },
   {
-    label: "Listing 准备",
+    label: "人工决策",
+    href: "/opportunity-candidates",
+    cta: "查看研究池",
+    description: "确认继续、暂缓或放弃。",
+    icon: ClipboardCheck,
+  },
+  {
+    label: "创作交接",
     href: "/tasks",
-    cta: "在任务详情生成",
-    description: "基于创作交接与已确认事实，在任务详情生成可审核的 Listing 草稿。",
+    cta: "在任务详情确认",
+    description: "确认事实与视觉参考，完成创作交接。",
     icon: FileText,
   },
   {
-    label: "图片创作",
+    label: "内容草稿",
     href: "/tasks",
     cta: "在任务详情生成",
-    description: "批准视觉参考后，在任务详情生成可比较、可复核的产品图片。",
+    description: "生成 Listing 草稿与产品图片，人工复核。",
     icon: Image,
-  },
-  {
-    label: "人工确认",
-    href: "/tasks",
-    cta: "查看研究历史",
-    description: "回看研究和创作结果，由你确认下一步是否继续。",
-    icon: ClipboardCheck,
   },
 ] as const;
 
@@ -336,9 +336,9 @@ export function HomeDashboardClient() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="eyebrow">轻选 Agent</p>
+                <p className="eyebrow">轻选工作台</p>
                 <h1 className="mt-2 max-w-3xl text-2xl font-semibold text-slate-950 sm:text-3xl">
-                  AI 跨境商品研究助手
+                  AI 跨境商品研究工作台
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
                   从候选发现到 Listing 和图片准备，用一条清晰流程完成商品研究。

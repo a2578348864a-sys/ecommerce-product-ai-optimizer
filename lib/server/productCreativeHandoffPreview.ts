@@ -108,6 +108,8 @@ export type CreativeHandoffPreview = {
     language?: string;
     tone?: string;
     imageStyle?: string;
+    /** 用户补充要求（仅影响表达/视觉风格，不作为商品事实；Browser DTO 只返回文案） */
+    additionalRequirements?: string;
   };
   visualReferenceCandidates?: {
     selectionId: string;
@@ -180,6 +182,27 @@ function safeFingerprint(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
   return Math.abs(h).toString(16).padStart(8, "0").slice(0, 8);
+}
+
+/**
+ * 创作偏好恢复：优先读当前 Handoff 最新版本保存的偏好（刷新后恢复），
+ * 无 Handoff 时回退候选投影偏好。additionalRequirements 仅影响表达/视觉风格，不作为商品事实。
+ */
+function prefsFromHandoff(
+  currentHandoff: ProductCreativeHandoffV1 | null | undefined,
+  candidate: ProductCreativeHandoffCandidate | undefined,
+) {
+  const savedPrefs = currentHandoff
+    ? currentHandoff.versions[currentHandoff.versions.length - 1]?.creativePreferences
+    : undefined;
+  const prefsSource = (savedPrefs ?? candidate?.creativePreferences ?? {}) as Record<string, unknown>;
+  return {
+    targetMarket: prefsSource.targetMarket as string | undefined,
+    language: prefsSource.language as string | undefined,
+    tone: prefsSource.tone as string | undefined,
+    imageStyle: prefsSource.imageStyle as string | undefined,
+    additionalRequirements: prefsSource.additionalRequirements as string | undefined,
+  };
 }
 
 /** SHA-256 hex — 浏览器不可还原完整 resultJson */
@@ -603,6 +626,8 @@ export async function generateCreativeHandoffPreview(
         // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
         thumbnailUrl: `/api/tasks/${encodeURIComponent(taskId)}/visual-reference-preview?ref=${encodeURIComponent(v.selectionId)}`,
       })),
+      // 创作偏好恢复（degraded 分支同样读取当前 Handoff 最新版本；仅影响表达/视觉风格）
+      creativePreferences: prefsFromHandoff(gate.currentHandoff, gate.candidate),
     };
     return { preview, gate };
   }
@@ -664,7 +689,8 @@ export async function generateCreativeHandoffPreview(
       summary: c.summary.slice(0, 200),
       appliesTo: [...c.appliesTo],
     })),
-    creativePreferences: { tone: (gate.candidate.creativePreferences as Record<string, unknown>).tone as string | undefined },
+    // 创作偏好（从 currentHandoff 最新版本恢复，无则回退候选投影）
+    creativePreferences: prefsFromHandoff(gate.currentHandoff, gate.candidate),
     visualReferenceCandidates: (gate.visualReferenceCandidates ?? []).map((v) => ({
       selectionId: v.selectionId,
       sourceTier: v.sourceKind,

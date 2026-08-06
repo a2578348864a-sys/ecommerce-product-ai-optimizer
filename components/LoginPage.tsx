@@ -5,7 +5,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Eye,
-  FileText,
   Image,
   Loader2,
   Lock,
@@ -23,15 +22,15 @@ export interface LoginPageProps {
 
 type LoginTab = "owner" | "guest";
 
-const OWNER_PLACEHOLDER = "输入 Owner 密码";
+const OWNER_PLACEHOLDER = "输入管理员密码";
 const GUEST_PLACEHOLDER = "输入访客码";
 
 const productJourney = [
-  { number: "01", label: "发现商品", description: "查看候选与市场信号", icon: Search },
-  { number: "02", label: "商品研究", description: "理解商品、市场与风险", icon: Sparkles },
-  { number: "03", label: "Listing 准备", description: "整理可审核的文案草稿", icon: FileText },
-  { number: "04", label: "图片创作", description: "准备可比较的图片方案", icon: Image },
-  { number: "05", label: "人工确认", description: "确认是否继续下一步", icon: CheckCircle2 },
+  { number: "01", label: "发现商品", description: "上传报表，筛选候选", icon: Search },
+  { number: "02", label: "商品研究", description: "整理信息，评估风险", icon: Sparkles },
+  { number: "03", label: "人工决策", description: "确认继续、暂缓或放弃", icon: CheckCircle2 },
+  { number: "04", label: "创作交接", description: "确认事实与视觉参考", icon: ShieldCheck },
+  { number: "05", label: "内容草稿", description: "生成 Listing 与产品图片", icon: Image },
 ] as const;
 
 export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
@@ -70,24 +69,23 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
               <Sparkles className="size-7" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">轻选 Agent</p>
-              <p className="mt-1 text-xs text-slate-500">辅助研究 · 人工确认</p>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">轻选工作台</p>
+              <p className="mt-1 text-xs text-slate-500">跨境商品研究与内容准备</p>
             </div>
           </div>
 
           <h1
             id="login-title"
-            aria-label="AI 跨境商品研究助手"
+            aria-label="AI 跨境商品研究工作台"
             className="mt-7 max-w-2xl break-words text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-slate-950 sm:text-5xl"
           >
             <span className="block lg:inline">AI 跨境商品</span>{" "}
-            <span className="block lg:inline">研究助手</span>
+            <span className="block lg:inline">研究工作台</span>
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-            <span className="block xl:inline">把分散的选品信息整理成</span>{" "}
-            <span className="block xl:inline">一条清晰的研究流程。</span>{" "}
-            <span className="block xl:inline">AI 帮你理解和创作，</span>{" "}
-            <span className="block xl:inline">商业决定始终由你确认。</span>
+            <span className="block xl:inline">把商品发现、研究判断和内容草稿串成</span>{" "}
+            <span className="block xl:inline">一条清晰流程，</span>{" "}
+            <span className="block xl:inline">关键决定始终由你确认。</span>
           </p>
 
           <ol className="login-product-journey" data-testid="login-product-journey" aria-label="商品研究流程">
@@ -137,7 +135,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
               }`}
             >
               <User className="size-4" aria-hidden="true" />
-              Owner
+              管理员
             </button>
             <button
               type="button"
@@ -156,12 +154,12 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
           {isOwner ? (
             <form onSubmit={handleOwnerSubmit} className="mt-4 flex flex-col gap-3">
               <div>
-                <p className="text-sm font-semibold text-slate-900">Owner 使用</p>
+                <p className="text-sm font-semibold text-slate-900">管理员使用</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">维护候选商品、研究记录与创作内容。</p>
               </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <label className="sr-only" htmlFor="owner-password">Owner 密码</label>
+                <label className="sr-only" htmlFor="owner-password">管理员密码</label>
                 <input
                   id="owner-password"
                   name="ownerPassword"
@@ -183,7 +181,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                 {loading ? (
                   <><Loader2 className="size-4 animate-spin" />验证中…</>
                 ) : (
-                  <>进入商品研究助手<ArrowRight className="size-4" aria-hidden="true" /></>
+                  <>进入轻选工作台<ArrowRight className="size-4" aria-hidden="true" /></>
                 )}
               </button>
             </form>

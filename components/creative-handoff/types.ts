@@ -73,7 +73,7 @@ export type CreativeHandoffPreview = {
   aiReferences?: AiReference[];
   issues?: HandoffIssue[];
   prohibitedClaims?: ProhibitedClaim[];
-  creativePreferences?: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string };
+  creativePreferences?: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string; additionalRequirements?: string };
   visualReferenceCandidates?: {
     selectionId: string;
     sourceTier: string;

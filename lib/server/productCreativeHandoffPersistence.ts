@@ -54,6 +54,8 @@ export type CreateHandoffInput = {
   selectedFactCandidateIds: string[];
   /** V2 Final Integration: 浏览器提交的视觉参考候选 selectionIds（用户勾选「批准作为产品视觉参考」） */
   selectedVisualReferenceCandidateIds?: string[];
+  /** 用户提交的创作偏好（含 additionalRequirements；仅影响表达/视觉风格，不作为商品事实） */
+  creativePreferences?: Record<string, string>;
   /** Canonical fingerprint of the request payload (buildRequestFingerprint) */
   requestFingerprint: string;
 };
@@ -336,6 +338,19 @@ export async function createOrAppendCreativeHandoff(
         visualReferences: approvedVisualReferences,
       };
 
+      // ── 创作偏好落地：合并用户提交的偏好（含 additionalRequirements）到候选 → 写入 Handoff 版本。
+      // 仅影响表达/视觉风格，不作为商品事实；参与指纹与 Revision（指纹含 creativePreferences）。
+      let finalCandidateWithPrefs = finalCandidateWithVisuals;
+      if (input.creativePreferences && Object.keys(input.creativePreferences).length > 0) {
+        finalCandidateWithPrefs = {
+          ...finalCandidateWithVisuals,
+          creativePreferences: {
+            ...(finalCandidateWithVisuals.creativePreferences as Record<string, unknown>),
+            ...input.creativePreferences,
+          } as ProductCreativeHandoffCandidate["creativePreferences"],
+        };
+      }
+
       // 版本校验（用锁内最新投影）
       const gateRevision = gateCandidate.sourceResearch.researchRevision;
       if (input.expectedResearchRevision !== gateRevision) {
@@ -366,7 +381,7 @@ export async function createOrAppendCreativeHandoff(
           candidateId: effectiveCandidateId,
           createdAt: now,
           createdBy: actor,
-          candidate: finalCandidateWithVisuals,
+          candidate: finalCandidateWithPrefs,
         });
         outcomeKind = "created";
       } else {
@@ -374,7 +389,7 @@ export async function createOrAppendCreativeHandoff(
           handoff: currentHandoff,
           createdAt: now,
           createdBy: actor,
-          candidate: finalCandidateWithVisuals,
+          candidate: finalCandidateWithPrefs,
         });
         outcomeKind = "appended";
       }

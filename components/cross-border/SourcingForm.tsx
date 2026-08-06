@@ -244,7 +244,7 @@ export function SourcingForm() {
         <div className="min-w-0 space-y-6">
           <header className="workspace-header">
             <div>
-              <p className="eyebrow">Qingxuan Workspace</p>
+              <p className="eyebrow">轻选工作台</p>
               <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">货源判断</h1>
               <p className="muted-text mt-1 text-sm">判断货源可行性、搜索关键词、价格带和新手可操作性，仅供参考不做采购决策。</p>
             </div>

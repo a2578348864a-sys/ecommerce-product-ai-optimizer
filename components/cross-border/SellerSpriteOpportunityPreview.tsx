@@ -59,7 +59,7 @@ interface PreviewFormValidation {
 
 const API_PATH = "/api/opportunities/sellersprite-preview";
 const ERROR_COPY: Record<string, string> = {
-  owner_required: "仅 Owner 可使用此本地预览。请先用 Owner 身份登录。",
+  owner_required: "仅管理员可使用此本地预览。请先用管理员身份登录。",
   origin_not_allowed: "请求来源校验失败，请从当前本地页面重新发起。",
   missing_file: "请选择一个 SellerSprite 官方 .xlsx 文件。",
   unsupported_file_extension: "仅支持单个 .xlsx 文件，不能上传目录或其他格式。",
@@ -1343,7 +1343,7 @@ export function SellerSpriteOpportunityPreview() {
                 <FileSpreadsheet className="size-5" />
               </div>
               <div>
-                <p className="eyebrow">Owner · 本地开发预览</p>
+                <p className="eyebrow">管理员 · 本地开发预览</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
                   SellerSprite 机会市场预览
                 </h1>
@@ -1359,7 +1359,7 @@ export function SellerSpriteOpportunityPreview() {
             <section className="surface-card-strong flex items-center gap-3 p-5" role="status">
               <RefreshCw className="size-5 animate-spin text-teal-600" />
               <div>
-                <p className="font-semibold text-slate-800">正在核验 Owner 权限</p>
+                <p className="font-semibold text-slate-800">正在核验管理员权限</p>
                 <p className="mt-1 text-sm text-slate-500">授权完成前不会显示文件选择或预览功能。</p>
               </div>
             </section>
@@ -1367,9 +1367,9 @@ export function SellerSpriteOpportunityPreview() {
             <section className="surface-card-strong flex items-start gap-3 border-amber-200 bg-amber-50/70 p-5">
               <LockKeyhole className="mt-0.5 size-5 shrink-0 text-amber-700" />
               <div>
-                <h2 className="font-semibold text-amber-900">Owner 权限未通过</h2>
+                <h2 className="font-semibold text-amber-900">管理员权限未通过</h2>
                 <p className="mt-1 text-sm leading-6 text-amber-800">
-                  此入口不向 Visitor 开放。请用 Owner 身份重新登录后刷新页面。
+                  此入口不向访客开放。请用管理员身份重新登录后刷新页面。
                 </p>
               </div>
             </section>

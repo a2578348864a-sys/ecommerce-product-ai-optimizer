@@ -564,9 +564,9 @@ export function ViralMockAgent() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Overseas Trend Agent</p>
-                <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">海外爆款趋势拆解 Agent</h1>
-                <p className="mt-1 text-sm muted-text">爆款趋势拆解能力 Alpha MVP：先用本地规则模拟，再按需接入 AI 做海外平台运营报告，服务于跨境电商运营 Agent 工作台的选品决策链路。AI 结论仅供辅助参考，关键动作人工确认。</p>
+                <p className="eyebrow">海外爆款趋势分析</p>
+                <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">海外爆款趋势拆解</h1>
+                <p className="mt-1 text-sm muted-text">爆款趋势拆解能力 Alpha MVP：先用本地规则模拟，再按需接入 AI 做海外平台运营报告，服务于轻选工作台的选品决策链路。AI 结论仅供辅助参考，关键动作人工确认。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <span className="linear-pill px-3 py-1 text-sm font-semibold">
@@ -604,7 +604,7 @@ export function ViralMockAgent() {
                   ))}
                 </div>
                 <p className="mt-3 text-xs leading-5 text-slate-500">
-                  V2 预留：未来可联动关键词、找货、发布 Agent；当前仍需人工确认，不自动调用外部平台 API。
+                  V2 预留：未来可联动关键词、找货、发布能力；当前仍需人工确认，不自动调用外部平台 API。
                 </p>
 
                 <button

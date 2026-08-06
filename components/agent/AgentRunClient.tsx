@@ -805,7 +805,7 @@ export function AgentRunClient({
       return;
     }
     if (sourceMeta && !isAuthoritativeCandidateId(sourceMeta.candidateId)) {
-      setError("该候选仅存在于本浏览器草稿中，请返回候选品池保存为服务端 Candidate 后再进入 Agent。");
+      setError("该候选仅存在于本浏览器草稿中，请返回候选品池保存为服务端候选后再进入商品研究。");
       return;
     }
     if (name.length < 2) {

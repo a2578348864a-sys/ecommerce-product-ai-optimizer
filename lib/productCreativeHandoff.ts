@@ -153,6 +153,8 @@ export type ProductCreativeHandoffCreativePreferences = {
   imageStyle?: string;
   backgroundPreference?: string;
   compositionPreference?: string;
+  /** 用户补充要求（仅影响表达/视觉风格，不作为商品事实；最长 200 字，可空） */
+  additionalRequirements?: string;
 };
 
 export type ProductCreativeHandoffVisualReference = {
@@ -647,7 +649,7 @@ function parseProhibitedClaim(value: unknown): ProductCreativeHandoffProhibitedC
 
 function parseCreativePreferences(value: unknown): ProductCreativeHandoffCreativePreferences | null {
   if (!isRecord(value) || !hasExactKeys(value, ["evidenceTier"], [
-    "targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference",
+    "targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference", "additionalRequirements",
   ])) return null;
   if (value.evidenceTier !== "creative_preference") return null;
   const limits: Record<string, number> = {
@@ -658,6 +660,7 @@ function parseCreativePreferences(value: unknown): ProductCreativeHandoffCreativ
     imageStyle: 120,
     backgroundPreference: 300,
     compositionPreference: 300,
+    additionalRequirements: 200,
   };
   for (const [key, limit] of Object.entries(limits)) {
     if (value[key] !== undefined && !isNfcTrimmedText(value[key], limit)) return null;

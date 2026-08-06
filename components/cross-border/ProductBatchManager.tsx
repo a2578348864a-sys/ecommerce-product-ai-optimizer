@@ -165,7 +165,7 @@ export function ProductBatchManagerView({
         <p className="eyebrow">商品批次</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-950">登录后管理商品批次</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          未登录状态不会读取或展示 Owner、Visitor 的私有批次数据。
+          未登录状态不会读取或展示管理员、访客的私有批次数据。
         </p>
         <Link
           href="/"

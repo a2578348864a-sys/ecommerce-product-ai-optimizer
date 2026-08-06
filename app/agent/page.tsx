@@ -4,7 +4,7 @@ import { ArrowRight, Sparkles } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
 export const metadata: Metadata = {
-  title: "商品研究已迁移 - 轻选 Agent",
+  title: "商品研究已迁移 - 轻选工作台",
   description: "商品研究入口已迁移到商品研究池，从这里开始三阶段商品研究。",
 };
 
@@ -38,7 +38,7 @@ export default function AgentPage() {
               </span>
               <div>
                 <p className="text-base font-semibold text-slate-800">
-                  旧版 Agent 路线图已停止维护
+                  旧版研究路线图已停止维护
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   AI 只负责整理与建议，不代替供应商、成本、合规核验，最终决定始终由人工完成。

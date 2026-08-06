@@ -93,9 +93,9 @@ export function WorkspaceSidebar() {
               <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-teal-700">轻选 Agent</p>
+              <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
               <p className="mt-0.5 whitespace-nowrap text-sm font-semibold leading-5 text-slate-950">
-                AI 跨境商品研究助手
+                AI 跨境商品研究工作台
               </p>
               <p className="muted-text mt-1 text-sm leading-6">辅助研究 · 人工决定</p>
             </div>

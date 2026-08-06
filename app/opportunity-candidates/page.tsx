@@ -5,7 +5,7 @@ import { CandidatePoolPanel } from "@/components/cross-border/CandidatePoolView"
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "商品研究池 - 轻选 Agent",
+  title: "商品研究池 - 轻选工作台",
   description: "查看当前身份下已保存的 Candidate，并恢复商品研究。",
 };
 

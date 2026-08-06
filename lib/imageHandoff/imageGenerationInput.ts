@@ -153,9 +153,10 @@ export function buildImageInputFromCreativeHandoff(
   const creativePreferences: Record<string, string> = {};
   const prefs = version.creativePreferences;
   if (isRecord(prefs)) {
-    for (const key of ["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference"] as const) {
+    // additionalRequirements：仅影响背景/构图/光影/风格，不得改变产品主体、Logo、结构、配件或已确认事实
+    for (const key of ["targetMarket", "language", "tone", "targetAudiencePreference", "imageStyle", "backgroundPreference", "compositionPreference", "additionalRequirements"] as const) {
       const value = prefs[key];
-      if (typeof value === "string" && value.trim()) creativePreferences[key] = value.normalize("NFC").trim().slice(0, 300);
+      if (typeof value === "string" && value.trim()) creativePreferences[key] = value.normalize("NFC").trim().slice(0, key === "additionalRequirements" ? 200 : 300);
     }
   }
 

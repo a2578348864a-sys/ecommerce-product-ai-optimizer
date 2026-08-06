@@ -51,7 +51,7 @@ export type AgentNextStepPanelInput = {
 };
 
 export const agentStatusFilterOptions: Array<{ value: "" | AgentStatusKey; label: string }> = [
-  { value: "", label: "全部 Agent 状态" },
+  { value: "", label: "全部任务状态" },
   { value: "needs_review", label: "待复核" },
   { value: "needs_decision", label: "待决策" },
   { value: "can_continue", label: "可人工推进" },

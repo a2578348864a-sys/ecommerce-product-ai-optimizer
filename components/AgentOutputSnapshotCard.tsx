@@ -25,7 +25,7 @@ function reviewLabel(snapshot: AgentOutputSnapshot) {
 
 export function AgentOutputSnapshotCard({
   snapshot,
-  fallbackText = "历史任务未记录标准化 Agent 输出快照",
+  fallbackText = "历史任务未记录标准化研究输出摘要",
   compact = false,
 }: {
   snapshot: AgentOutputSnapshot | null;
@@ -35,7 +35,7 @@ export function AgentOutputSnapshotCard({
   if (!snapshot) {
     return (
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="agent-output-snapshot-fallback">
-        <p className="text-sm font-semibold text-slate-600">Agent 输出结构化快照</p>
+        <p className="text-sm font-semibold text-slate-600">研究输出摘要</p>
         <p className="mt-1 text-sm leading-6 text-slate-500">{fallbackText}</p>
       </section>
     );
@@ -45,7 +45,7 @@ export function AgentOutputSnapshotCard({
     <section className="rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4" data-testid="agent-output-snapshot-card">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-bold text-cyan-900">Agent 输出结构化快照</p>
+          <p className="text-sm font-bold text-cyan-900">研究输出摘要</p>
           <p className="mt-1 text-sm leading-6 text-cyan-700">
             {snapshot.version} · {snapshot.fallbackUsed ? "含 fallback" : "结构完整"} · {reviewLabel(snapshot)}
           </p>

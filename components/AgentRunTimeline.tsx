@@ -35,7 +35,7 @@ export function AgentRunTimeline({
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h4 className="text-base font-bold text-slate-950">Agent 执行过程</h4>
+          <h4 className="text-base font-bold text-slate-950">研究过程</h4>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             从当前任务记录派生，不重新调用 AI，不写入数据库。
           </p>
