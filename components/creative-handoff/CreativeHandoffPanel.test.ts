@@ -59,11 +59,16 @@ describe("CreativeHandoffPanel 状态机", () => {
   });
 });
 
-describe("Preview 六层分区", () => {
-  it("11. 六层分区渲染（可确认/稳定/AI/未知/禁止/偏好）", () => {
-    for (const section of ["可确认事实", "稳定来源事实", "AI 辅助参考", "未知／冲突与风险", "禁止声明", "创作偏好"]) {
-      expect(panelSource).toContain(section);
-    }
+describe("Preview 分区", () => {
+  it("11. 主流程突出可确认事实，参考信息收进默认折叠区", () => {
+    expect(panelSource).toContain("可确认事实");
+    expect(panelSource).toContain("创作偏好");
+    // 参考信息（稳定来源 / AI 参考 / 风险）收进默认折叠的"参考信息"区
+    expect(panelSource).toContain("参考信息");
+    expect(panelSource).toContain("稳定来源信息");
+    expect(panelSource).toContain("AI 参考建议");
+    expect(panelSource).toContain("风险提示");
+    expect(panelSource).toContain("禁止声明");
   });
 
   it("12. confirmable 候选有 Checkbox", () => {
@@ -71,19 +76,19 @@ describe("Preview 六层分区", () => {
     expect(panelSource).toContain("onToggle");
   });
 
-  it("13. 来源快照无事实 Checkbox（稳定来源只读）", () => {
-    // 稳定来源区块不含 checkbox — 只读展示
-    const stableSection = panelSource.slice(panelSource.indexOf("稳定来源事实"), panelSource.indexOf("AI 辅助参考"));
-    expect(stableSection).not.toContain('type="checkbox"');
+  it("13. 参考信息区为只读折叠（无事实 Checkbox）", () => {
+    // 参考信息折叠区不含 checkbox — 只读展示
+    const refSection = panelSource.slice(panelSource.indexOf("参考信息"), panelSource.indexOf("创作偏好"));
+    expect(refSection).not.toContain('type="checkbox"');
   });
 
-  it("14. AI reference 无事实 Checkbox", () => {
-    const aiSection = panelSource.slice(panelSource.indexOf("AI 辅助参考"), panelSource.indexOf("视觉参考"));
+  it("14. AI 参考无事实 Checkbox", () => {
+    const aiSection = panelSource.slice(panelSource.indexOf("AI 参考建议"), panelSource.indexOf("风险提示"));
     expect(aiSection).not.toContain('type="checkbox"');
   });
 
-  it("15. unknown/conflict 无 Checkbox", () => {
-    const issueSection = panelSource.slice(panelSource.indexOf("未知／冲突与风险"), panelSource.indexOf("禁止声明"));
+  it("15. 风险提示无 Checkbox", () => {
+    const issueSection = panelSource.slice(panelSource.indexOf("风险提示"), panelSource.indexOf("禁止声明"));
     expect(issueSection).not.toContain('type="checkbox"');
   });
 
@@ -361,6 +366,32 @@ describe("F 创作交接 4 步向导", () => {
   it("59. 视觉参考无技术字段（无 hash/指纹/内部命名）", () => {
     expect(panelSource).not.toContain("图片指纹");
     expect(panelSource).not.toContain("contentHash ?");
+  });
+
+  it("60. 创作偏好为选项式标签，默认值合理，不再手写四个输入框", () => {
+    expect(panelSource).toContain("Amazon 美国站");
+    expect(panelSource).toContain("专业可信");
+    expect(panelSource).toContain("简洁棚拍");
+    expect(panelSource).toContain("补充要求（可选）");
+    expect(panelSource).toContain("文案语气");
+    expect(panelSource).toContain("图片风格");
+    // 不再使用 PrefInput 四个手写输入框
+    expect(panelSource).not.toContain("<PrefInput");
+    // 目标市场/语言等为标签选择（aria-pressed），非 text 输入
+    expect(panelSource).toContain('aria-pressed={prefs.targetMarket === option.value}');
+  });
+
+  it("61. 事实字段中文化，禁止直接显示内部字段名", () => {
+    expect(panelSource).toContain("factFieldLabel(item.canonicalField)");
+    expect(panelSource).toContain("来自候选商品快照，需人工确认");
+    // 不再显示内部字段名 / 来源 / 技术时间戳
+    expect(panelSource).not.toContain("safeSourceKind(item.sourceKindSummary)");
+    expect(panelSource).not.toContain("捕获于 {formatDate");
+  });
+
+  it("62. 缺失卖点提示不阻塞（用户语言）", () => {
+    expect(panelSource).toContain("当前没有现成商品卖点，不影响继续");
+    expect(panelSource).toContain("系统会根据已确认事实生成保守 Listing 草稿");
   });
 });
 

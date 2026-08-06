@@ -269,15 +269,24 @@ export function buildProductCreativeHandoffProjectionEvidence(
       });
     }
     // blocking issues（nextActionSnapshot.blockingIssues）
+    // 兼容降级：历史快照可能把"Listing bullets / sellingPoints / 关键词"等可补信息
+    // 误记为 blocking。这些只作为普通提示（risk: low），不标记 blocking，不阻断 Handoff。
+    // 真正阻断仅限合规/风险/黑名单等（risk: blocking）。
+    const NON_BLOCKING_HINTS = /bullets?|selling ?points|卖点|关键词|keywords|listing|标题|title/i;
     for (const blocking of cleanStringArray(agentOutput.nextActionSnapshot.blockingIssues, 4, 200)) {
+      const isListableHint = NON_BLOCKING_HINTS.test(blocking);
       issues.push({
         issueId: uuidV4FromSeed(`issue:blocking:${blocking}`, "issue-v1"),
-        field: "blocking",
+        field: isListableHint ? "listing_input" : "blocking",
         kind: "conflict",
         summary: blocking,
-        risk: "blocking",
-        blocks: ["listing_title", "listing_bullets", "listing_description", "search_terms", "image_product_depiction"],
-        recommendedAction: "解决该阻塞项后才能继续创作交接。",
+        risk: isListableHint ? "low" : "blocking",
+        blocks: isListableHint
+          ? ["listing_description"]
+          : ["listing_title", "listing_bullets", "listing_description", "search_terms", "image_product_depiction"],
+        recommendedAction: isListableHint
+          ? "缺少卖点不影响继续，系统会根据已确认事实生成保守 Listing 草稿。"
+          : "解决该阻塞项后才能继续创作交接。",
       });
     }
   }

@@ -196,9 +196,7 @@ export function ProductBatchManagerView({
     : null;
   const activeBatchName = selection?.activeProductBatchId
     ? (activeBatch?.batchName ?? "已选择（加载中）")
-    : selection?.activeLegacyRegistrationId
-      ? "旧版候选批次"
-      : "尚未选择";
+    : "尚未选择";
   const activeBatchItemCount = selectedBatch?.id === activeBatch?.id
     ? selectedItems.length
     : null;
@@ -271,133 +269,23 @@ export function ProductBatchManagerView({
         </div>
       </section>
 
-      <section className="surface-card p-5">
-        <p className="eyebrow">导入新批次</p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-950">SellerSprite XLSX</h2>
-        <form className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" onSubmit={onImport}>
-          <label className="sm:col-span-2 lg:col-span-2">
-            <span className="text-xs font-semibold text-slate-600">官方 XLSX</span>
-            <input
-              required
-              type="file"
-              name="file"
-              accept=".xlsx"
-              onChange={onImportFileChange}
-              className="mt-1 block h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            />
-          </label>
-          {showManualReportType ? (
-            <label>
-              <span className="text-xs font-semibold text-slate-600">手动选择报表类型</span>
-              <select
-                name="reportType"
-                value={selectedReportType}
-                required
-                onChange={(event) => onReportTypeChange?.(
-                  event.target.value as ReportType,
-                )}
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-              >
-                <option value="">请选择</option>
-                <option value="search_results">搜索结果报表</option>
-                <option value="category_current">类目商品报表</option>
-              </select>
-            </label>
-          ) : (
-            <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-700">
-              <span className="font-semibold">
-                {importInspectionState === "loading"
-                  ? "正在识别文件结构"
-                  : detectedReportType
-                    ? "已自动识别文件结构"
-                    : "选择文件后自动识别文件结构"}
-              </span>
-              <br />
-              无法识别时再由你手动选择。
-              {detectedReportType ? (
-                <details className="mt-2 text-slate-600">
-                  <summary className="cursor-pointer font-semibold">高级信息</summary>
-                  <p className="mt-1">报表类型：{productBatchReportTypeLabel(detectedReportType)}</p>
-                </details>
-              ) : null}
-              {detectedReportType ? (
-                <input type="hidden" name="reportType" value={detectedReportType} />
-              ) : null}
-            </div>
-          )}
-          {effectiveReportType === "search_results" ? (
-            <label>
-              <span className="text-xs font-semibold text-slate-600">查询词（无法从本文件可靠识别）</span>
-              <input
-                required
-                name="query"
-                placeholder="请按导出时使用的查询词填写"
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-              />
-            </label>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-              查询词仅用于搜索结果报表；不会从商品标题猜测。
-            </div>
-          )}
-          <label>
-            <span className="text-xs font-semibold text-slate-600">类目</span>
-            <select
-              required
-              name="category"
-              value={selectedCategory}
-              onChange={(event) => onCategoryChange?.(event.target.value)}
-              className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-            >
-              <option value="">请选择 Amazon US 一级类目</option>
-              {AMAZON_US_TOP_LEVEL_CATEGORIES.map((category) => (
-                <option key={category.value} value={category.value}>
-                  {category.label} · {category.value}
-                </option>
-              ))}
-            </select>
-            {categoryNeedsConfirmation ? (
-              <span className="mt-1 block text-xs leading-5 text-amber-700">
-                检测到多个商品类目，请确认主要研究类目。
-              </span>
-            ) : importInspection?.categoryDetection.status === "detected" ? (
-              <span className="mt-1 block text-xs leading-5 text-teal-700">
-                已按报表大类目自动预选，可人工修正。
-              </span>
-            ) : null}
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label>
-              <span className="text-xs font-semibold text-slate-600">最低价</span>
-              <input
-                required
-                name="priceMin"
-                inputMode="decimal"
-                defaultValue="10"
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-              />
-            </label>
-            <label>
-              <span className="text-xs font-semibold text-slate-600">最高价</span>
-              <input
-                required
-                name="priceMax"
-                inputMode="decimal"
-                defaultValue="40"
-                className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
-              />
-            </label>
+      {/* 上传报表统一入口：指向 sellersprite-preview（不再内嵌上传表单） */}
+      <section className="surface-card p-5" aria-label="上传报表入口">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="eyebrow">上传报表</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">卖家精灵报表</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              上传 SellerSprite 美国站搜索结果 XLSX，先安全校验，再选择商品加入研究池。
+            </p>
           </div>
-          <div className="sm:col-span-2 lg:col-span-6">
-            <button
-              type="submit"
-              disabled={busy || !importReady}
-              className="linear-button-primary inline-flex h-11 w-full items-center justify-center px-5 text-sm font-semibold sm:w-auto"
-            >
-              {busy ? "处理中…" : "导入新批次"}
-            </button>
-          </div>
-        </form>
+          <a
+            href="/opportunities/sellersprite-preview"
+            className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+          >
+            上传并预览报表
+          </a>
+        </div>
       </section>
 
       <section className="surface-card p-5">
@@ -408,19 +296,9 @@ export function ProductBatchManagerView({
               {selection?.activeProductBatchId
                 ? batches.find((candidate) => candidate.id === selection.activeProductBatchId)
                   ?.batchName ?? "商品批次"
-                : selection?.activeLegacyRegistrationId
-                  ? "旧版候选批次"
-                  : "尚未选择"}
+                : "尚未选择"}
             </h2>
           </div>
-          <button
-            type="button"
-            disabled={busy || !legacyRegistrationId}
-            onClick={onActivateLegacy}
-            className="linear-button h-10 px-4 text-sm font-semibold"
-          >
-            查看旧版候选
-          </button>
         </div>
       </section>
 
@@ -428,7 +306,15 @@ export function ProductBatchManagerView({
         <p className="eyebrow">批次历史</p>
         <h2 className="mt-1 text-xl font-semibold text-slate-950">{batches.length} 个商品批次</h2>
         {batches.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">尚未导入商品批次。</p>
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
+            <p className="text-sm text-slate-600">还没有商品批次。先上传报表开始选品。</p>
+            <a
+              href="/opportunities/sellersprite-preview"
+              className="linear-button-primary mt-4 inline-flex h-10 items-center justify-center px-5 text-sm font-semibold"
+            >
+              上传并预览报表
+            </a>
+          </div>
         ) : (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {batches.map((batch) => {

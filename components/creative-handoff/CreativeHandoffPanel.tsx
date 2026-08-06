@@ -111,16 +111,89 @@ function formatDate(value?: string) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function safeSourceKind(kind: string) {
-  const labels: Record<string, string> = {
-    candidate_snapshot: "候选快照",
-    seller_sprite_snapshot: "SellerSprite 快照",
-    research_result: "研究结果",
-    user_confirmation: "人工确认",
-    default: "来源",
-  };
-  return labels[kind] ?? labels.default;
+/**
+ * 候选事实字段中文化：禁止向用户显示内部字段名（brand/category 等）。
+ * 未知字段回退为原值仅作最后兜底（不应出现）；绝不显示 Schema 名 / Hash / 技术时间戳。
+ */
+const FACT_FIELD_LABELS: Record<string, string> = {
+  brand: "品牌",
+  category: "商品类目",
+  price_usd: "参考价格（美元）",
+  price: "参考价格",
+  rating: "商品评分",
+  review_count: "评论数量",
+  reviews: "评论数量",
+  asin: "ASIN",
+  product_title: "商品标题",
+  title: "商品标题",
+  product_name: "商品名称",
+  name: "商品名称",
+  marketplace: "目标市场",
+};
+
+function factFieldLabel(field: string): string {
+  const normalized = field.trim();
+  return FACT_FIELD_LABELS[normalized] ?? normalized;
 }
+
+/**
+ * 创作偏好选项化：用户不再手写，改为标签选择。
+ * 默认推荐：Amazon 美国站 / 英语（美国）/ 专业可信 / 简洁棚拍。
+ */
+const MARKET_OPTIONS = [
+  { value: "Amazon 美国站", label: "Amazon 美国站" },
+  { value: "Amazon 英国站", label: "Amazon 英国站" },
+  { value: "Amazon 德国站", label: "Amazon 德国站" },
+  { value: "Amazon 日本站", label: "Amazon 日本站" },
+  { value: "其他", label: "其他" },
+] as const;
+
+const LANGUAGE_OPTIONS = [
+  { value: "英语（美国）", label: "英语（美国）" },
+  { value: "英语（英国）", label: "英语（英国）" },
+  { value: "德语", label: "德语" },
+  { value: "法语", label: "法语" },
+  { value: "意大利语", label: "意大利语" },
+  { value: "西班牙语", label: "西班牙语" },
+  { value: "日语", label: "日语" },
+] as const;
+
+const TONE_OPTIONS = [
+  { value: "专业可信", label: "专业可信" },
+  { value: "简洁直接", label: "简洁直接" },
+  { value: "轻松友好", label: "轻松友好" },
+  { value: "功能导向", label: "功能导向" },
+  { value: "场景导向", label: "场景导向" },
+  { value: "高端质感", label: "高端质感" },
+  { value: "年轻活力", label: "年轻活力" },
+] as const;
+
+const IMAGE_STYLE_OPTIONS = [
+  { value: "白底电商主图", label: "白底电商主图" },
+  { value: "简洁棚拍", label: "简洁棚拍" },
+  { value: "生活方式场景", label: "生活方式场景" },
+  { value: "功能卖点图", label: "功能卖点图" },
+  { value: "对比信息图", label: "对比信息图" },
+  { value: "高端质感", label: "高端质感" },
+  { value: "社交媒体广告图", label: "社交媒体广告图" },
+] as const;
+
+/** 创作偏好（选项式，含可选补充要求） */
+export type CreativePrefs = {
+  targetMarket?: string;
+  language?: string;
+  tone?: string;
+  imageStyle?: string;
+  extraNote?: string;
+};
+
+/** 默认推荐 */
+const DEFAULT_PREFS: CreativePrefs = {
+  targetMarket: "Amazon 美国站",
+  language: "英语（美国）",
+  tone: "专业可信",
+  imageStyle: "简洁棚拍",
+};
 
 function StaleReasonBadge({ reasonCode }: { reasonCode?: string }) {
   const label = reasonCode ? (STALE_REASON_LABELS[reasonCode] ?? STALE_REASON_LABELS.default) : STALE_REASON_LABELS.default;
@@ -154,7 +227,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [prefs, setPrefs] = useState<{ targetMarket?: string; language?: string; tone?: string; imageStyle?: string }>({});
+  const [prefs, setPrefs] = useState<CreativePrefs>({ ...DEFAULT_PREFS });
   const mounted = useRef(true);
   // P1：loadAll 重入保护——effect 依赖稳定后仅挂载/刷新触发一次，绝不重复发起
   const loadAllRef = useRef(false);
@@ -251,6 +324,13 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
     const preview = state.kind === "preview" || state.kind === "active" || state.kind === "stale" ? state.preview : null;
     if (!preview?.storageVersion || selectedIds.length < 1 || !confirmed) return;
     const nextRequestId = requestId ?? crypto.randomUUID();
+    // 只提交服务端白名单字段（extraNote 仅前端本地保留，不进入交接合同）
+    const serverPrefs = {
+      ...(prefs.targetMarket ? { targetMarket: prefs.targetMarket } : {}),
+      ...(prefs.language ? { language: prefs.language } : {}),
+      ...(prefs.tone ? { tone: prefs.tone } : {}),
+      ...(prefs.imageStyle ? { imageStyle: prefs.imageStyle } : {}),
+    };
     const body = {
       action: "create",
       requestId: nextRequestId,
@@ -259,7 +339,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       expectedStorageVersion: preview.storageVersion,
       expectedResearchRevision: preview.expectedResearchRevision ?? 1,
       expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
-      ...(Object.keys(prefs).length ? { creativePreferences: prefs } : {}),
+      ...(Object.keys(serverPrefs).length ? { creativePreferences: serverPrefs } : {}),
       confirmed: true,
     };
     setSubmitting(true);
@@ -271,7 +351,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
         expectedStorageVersion: preview.storageVersion,
         expectedResearchRevision: preview.expectedResearchRevision ?? 1,
         expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
-        creativePreferences: Object.keys(prefs).length ? prefs : undefined,
+        creativePreferences: Object.keys(serverPrefs).length ? serverPrefs : undefined,
         onConflict: handleConflict,
       });
       if (!mounted.current) return;
@@ -488,8 +568,8 @@ function PreviewSection({
   onToggle: (selectionId: string) => void;
   selectedVisualIds: string[];
   onToggleVisual: (selectionId: string) => void;
-  prefs: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string };
-  onPrefsChange: (prefs: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string }) => void;
+  prefs: CreativePrefs;
+  onPrefsChange: (prefs: CreativePrefs) => void;
 }) {
   const confirmables = preview.confirmableFactCandidates ?? [];
   const stables = preview.stableSourceFacts ?? [];
@@ -587,11 +667,9 @@ function PreviewSection({
                       className="mt-0.5 h-4 w-4 accent-teal-600"
                     />
                     <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-slate-800">{item.canonicalField}</span>
+                      <span className="block text-sm font-medium text-slate-800">{factFieldLabel(item.canonicalField)}</span>
                       <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
-                      <span className="mt-0.5 block text-xs text-slate-400">
-                        {safeSourceKind(item.sourceKindSummary)} · 捕获于 {formatDate(item.capturedAt)} · {item.provenanceSummary}
-                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-400">来自候选商品快照，需人工确认</span>
                     </label>
                   </li>
                 ))}
@@ -599,75 +677,89 @@ function PreviewSection({
             )}
           </section>
 
-          {/* 2. 稳定来源事实（只读） */}
-          {stables.length > 0 ? (
-            <section className="rounded-xl border border-slate-200 p-3">
-              <h3 className="text-sm font-semibold text-slate-700">稳定来源事实</h3>
-              <p className="mt-1 text-xs text-slate-400">以下来源信息仅作展示，需人工确认后方可作事实使用。</p>
-              <ul className="mt-2 space-y-1">
-                {stables.map((item) => (
-                  <li key={item.selectionId} className="flex items-center gap-2 text-sm text-slate-600">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />
-                    {item.label}（{item.stabilityRule === "identity_only" ? "身份标识" : item.stabilityRule === "routing_only" ? "路由信息" : "需人工确认"}）
-                  </li>
-                ))}
-              </ul>
-            </section>
+          {/* Listing 卖点提示：缺失卖点 / bullets 不阻塞交接 */}
+          {issues.some((issue) => issue.field === "listing_input") ? (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-600">
+              当前没有现成商品卖点，不影响继续。系统会根据已确认事实生成保守 Listing 草稿。
+            </p>
           ) : null}
 
-          {/* 3. AI 创意参考（只读，无事实复选框） */}
-          {ais.length > 0 ? (
-            <section className="rounded-xl border border-slate-200 p-3">
-              <h3 className="text-sm font-semibold text-slate-700">
-                AI 辅助参考
-                <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700">不能作为商品事实</span>
-              </h3>
-              <ul className="mt-2 space-y-1">
-                {ais.map((item) => (
-                  <li key={item.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
-                    <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-300" aria-hidden="true" />
-                    <span className="min-w-0 break-words">{item.summary}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          {/* 4. 未知／冲突与风险 */}
-          {issues.length > 0 ? (
-            <section className="rounded-xl border border-slate-200 p-3">
-              <h3 className="text-sm font-semibold text-slate-700">未知／冲突与风险</h3>
-              <ul className="mt-2 space-y-1">
-                {issues.map((issue) => (
-                  <li key={issue.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
-                    <span
-                      className={`mt-1.5 inline-block h-1.5 w-1.5 rounded-full ${
-                        issue.risk === "blocking" ? "bg-red-400" : issue.risk === "high" ? "bg-amber-400" : "bg-slate-300"
-                      }`}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 break-words">
-                      {issue.field}：{issue.summary}
-                      {issue.risk === "blocking" ? <span className="ml-1 font-semibold text-red-700">（阻塞）</span> : null}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          {/* 5. 禁止声明 */}
-          {claims.length > 0 ? (
-            <section className="rounded-xl border border-slate-200 p-3">
-              <h3 className="text-sm font-semibold text-slate-700">禁止声明</h3>
-              <ul className="mt-2 space-y-1">
-                {claims.map((claim) => (
-                  <li key={claim.selectionId} className="text-sm text-slate-600">
-                    {claim.summary}
-                  </li>
-                ))}
-              </ul>
-            </section>
+          {/* 参考信息（默认折叠）：稳定来源 / AI 参考 / 风险，改用用户语言 */}
+          {(stables.length > 0 || ais.length > 0 || issues.length > 0 || claims.length > 0) ? (
+            <details className="mt-4 rounded-xl border border-slate-200 bg-white/80 p-3">
+              <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                参考信息
+                <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，不影响确认</span>
+              </summary>
+              <div className="mt-3 space-y-3">
+                {/* 稳定来源事实（只读） */}
+                {stables.length > 0 ? (
+                  <section>
+                    <h3 className="text-sm font-semibold text-slate-700">稳定来源信息</h3>
+                    <ul className="mt-1 space-y-1">
+                      {stables.map((item) => (
+                        <li key={item.selectionId} className="flex items-center gap-2 text-sm text-slate-600">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" aria-hidden="true" />
+                          {factFieldLabel(item.label)}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                {/* AI 创意参考（只读） */}
+                {ais.length > 0 ? (
+                  <section>
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      AI 参考建议
+                      <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-xs font-medium text-violet-700">不能作为商品事实</span>
+                    </h3>
+                    <ul className="mt-1 space-y-1">
+                      {ais.map((item) => (
+                        <li key={item.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
+                          <span className="mt-1.5 inline-block h-1.5 w-1.5 rounded-full bg-violet-300" aria-hidden="true" />
+                          <span className="min-w-0 break-words">{item.summary}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                {/* 未知／冲突与风险（中文风险文案，不显示内部字段名） */}
+                {issues.length > 0 ? (
+                  <section>
+                    <h3 className="text-sm font-semibold text-slate-700">风险提示</h3>
+                    <ul className="mt-1 space-y-1">
+                      {issues.map((issue) => (
+                        <li key={issue.selectionId} className="flex items-start gap-2 text-sm text-slate-600">
+                          <span
+                            className={`mt-1.5 inline-block h-1.5 w-1.5 rounded-full ${
+                              issue.risk === "blocking" ? "bg-red-400" : issue.risk === "high" ? "bg-amber-400" : "bg-slate-300"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 break-words">
+                            {issue.summary}
+                            {issue.risk === "blocking" ? <span className="ml-1 font-semibold text-red-700">（阻塞）</span> : null}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                {/* 禁止声明 */}
+                {claims.length > 0 ? (
+                  <section>
+                    <h3 className="text-sm font-semibold text-slate-700">禁止声明</h3>
+                    <ul className="mt-1 space-y-1">
+                      {claims.map((claim) => (
+                        <li key={claim.selectionId} className="text-sm text-slate-600">
+                          {claim.summary}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+              </div>
+            </details>
           ) : null}
         </>
       ) : null}
@@ -724,16 +816,110 @@ function PreviewSection({
         </>
       ) : null}
 
-      {/* 步骤 3：填写创作偏好 */}
+      {/* 步骤 3：填写创作偏好（选项式标签，非手写输入） */}
       {guideStep === 3 ? (
         <section className="rounded-xl border border-slate-200 p-3">
           <h3 className="text-sm font-semibold text-slate-700">创作偏好</h3>
-          <p className="mt-1 text-xs text-slate-400">以下偏好会随创作交接保存，供 Listing / 图片草稿参考。</p>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <PrefInput label="目标市场" value={prefs.targetMarket ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, targetMarket: v })} />
-            <PrefInput label="语言" value={prefs.language ?? ""} maxLength={32} onChange={(v) => onPrefsChange({ ...prefs, language: v })} />
-            <PrefInput label="语气" value={prefs.tone ?? ""} maxLength={80} onChange={(v) => onPrefsChange({ ...prefs, tone: v })} />
-            <PrefInput label="图片风格" value={prefs.imageStyle ?? ""} maxLength={120} onChange={(v) => onPrefsChange({ ...prefs, imageStyle: v })} />
+          <p className="mt-1 text-xs text-slate-400">选择偏好，随创作交接保存，供 Listing / 图片草稿参考。</p>
+          <div className="mt-3 space-y-4">
+            <div>
+              <p className="text-xs font-semibold text-slate-600">目标市场</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {MARKET_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={prefs.targetMarket === option.value}
+                    onClick={() => {
+                      const next = { ...prefs, targetMarket: option.value };
+                      // 市场变化时语言跟随市场默认
+                      if (option.value === "Amazon 英国站") next.language = "英语（英国）";
+                      else if (option.value === "Amazon 德国站") next.language = "德语";
+                      else if (option.value === "Amazon 日本站") next.language = "日语";
+                      else next.language = "英语（美国）";
+                      onPrefsChange(next);
+                    }}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      prefs.targetMarket === option.value
+                        ? "border-teal-300 bg-teal-50 text-teal-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-600">语言</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {LANGUAGE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={prefs.language === option.value}
+                    onClick={() => onPrefsChange({ ...prefs, language: option.value })}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      prefs.language === option.value
+                        ? "border-teal-300 bg-teal-50 text-teal-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-600">文案语气</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {TONE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={prefs.tone === option.value}
+                    onClick={() => onPrefsChange({ ...prefs, tone: option.value })}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      prefs.tone === option.value
+                        ? "border-teal-300 bg-teal-50 text-teal-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-600">图片风格</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {IMAGE_STYLE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={prefs.imageStyle === option.value}
+                    onClick={() => onPrefsChange({ ...prefs, imageStyle: option.value })}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      prefs.imageStyle === option.value
+                        ? "border-teal-300 bg-teal-50 text-teal-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-600">补充要求（可选）</span>
+              <input
+                type="text"
+                value={prefs.extraNote ?? ""}
+                maxLength={120}
+                onChange={(e) => onPrefsChange({ ...prefs, extraNote: e.target.value.slice(0, 120) })}
+                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
+              />
+            </label>
           </div>
         </section>
       ) : null}
@@ -777,34 +963,6 @@ function PreviewSection({
         </div>
       </div>
     </div>
-  );
-}
-
-function PrefInput({
-  label,
-  value,
-  maxLength,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  maxLength: number;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs font-medium text-slate-600">
-        {label}
-        <span className="ml-1 text-slate-400">（{value.length}/{maxLength}）</span>
-      </span>
-      <input
-        type="text"
-        value={value}
-        maxLength={maxLength}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-800 focus:border-teal-500 focus:outline-none"
-      />
-    </label>
   );
 }
 

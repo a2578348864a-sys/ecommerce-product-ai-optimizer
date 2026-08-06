@@ -80,6 +80,7 @@ function render(
     importInspectionState?: "idle" | "loading" | "ready" | "manual" | "error";
     categoryStatus?: "detected" | "mixed_requires_confirmation" | "unknown";
     selectedCategory?: string;
+    batches?: unknown[];
   } = {},
 ) {
   const selectedBatch = overrides.selectedBatch ?? batch;
@@ -87,7 +88,7 @@ function render(
     state: "ready",
     accessMode,
     remainingAiCalls: accessMode === "visitor" ? 5 : null,
-    batches: [batch],
+    batches: (overrides.batches ?? [batch]) as never,
     selection: overrides.selection ?? {
       activeProductBatchId: batch.id,
       activeLegacyRegistrationId: null,
@@ -127,16 +128,20 @@ describe("ProductBatch unified role UI", () => {
     const owner = render("owner");
     const visitor = render("visitor");
     for (const label of [
-      "导入新批次",
+      "上传报表",
+      "上传并预览报表",
       "批次历史",
       "查看商品",
       "设置为当前",
-      "查看旧版候选",
       "归档",
     ]) {
       expect(owner).toContain(label);
       expect(visitor).toContain(label);
     }
+    // 已移除内嵌上传表单与旧版候选入口
+    expect(owner).not.toContain("导入新批次");
+    expect(owner).not.toContain("查看旧版候选");
+    expect(owner).not.toContain("旧版候选批次");
     expect(visitor).not.toContain("仅 Owner");
     expect(visitor).not.toContain("访客无权上传");
   });
@@ -159,27 +164,25 @@ describe("ProductBatch unified role UI", () => {
     expect(html).not.toContain("/agent/run");
   });
 
-  it("uses Chinese report labels, a first-level category selector, and only asks for report type after detection fails", () => {
+  it("replaces the inline upload form with a single upload entry to sellersprite-preview", () => {
     const automatic = render("owner");
     const fallback = render("owner", {
       manualReportTypeRequired: true,
       importInspectionState: "manual",
     });
 
-    expect(automatic).toContain("已自动识别文件结构");
-    expect(automatic).toContain("高级信息");
-    expect(automatic).toContain("报表类型：搜索结果报表");
-    expect(automatic).toMatch(/<details[^>]*><summary[^>]*>高级信息<\/summary>/);
-    expect(automatic).not.toContain(">search_results<");
+    // 内嵌上传表单已移除，统一入口指向 sellersprite-preview
+    expect(automatic).toContain("上传报表");
+    expect(automatic).toContain("上传并预览报表");
+    expect(automatic).toMatch(/href="\/opportunities\/sellersprite-preview"/);
+    expect(automatic).not.toContain("导入新批次");
+    expect(automatic).not.toContain("已自动识别文件结构");
     expect(automatic).not.toContain("手动选择报表类型");
-    expect(automatic).toContain("家居与厨房");
-    expect(automatic).toMatch(/<select[^>]*name="category"/);
-    expect(fallback).toContain("手动选择报表类型");
-    expect(fallback).toContain("搜索结果报表");
-    expect(fallback).toContain("类目商品报表");
+    // 保留批次商品内部信息折叠（不暴露技术字段名）
+    expect(automatic).toMatch(/<details[^>]*><summary[^>]*>高级信息<\/summary>/);
   });
 
-  it("keeps report and item internals collapsed and removes developer-facing labels", () => {
+  it("removes legacy candidate batch entry while keeping item internals collapsed", () => {
     const html = render("owner", {
       selection: {
         activeProductBatchId: null,
@@ -188,8 +191,9 @@ describe("ProductBatch unified role UI", () => {
       },
     });
 
-    expect(html).toContain("旧版候选批次");
-    expect(html).toContain("查看旧版候选");
+    // 旧版候选批次入口已移除；批次商品内部信息仍折叠展示
+    expect(html).not.toContain("旧版候选批次");
+    expect(html).not.toContain("查看旧版候选");
     expect(html).toContain("内部研究顺序：priority_1");
     expect(html).toContain("ASIN：B000000001");
     expect(html).not.toContain("ProductBatch V1");
@@ -198,15 +202,10 @@ describe("ProductBatch unified role UI", () => {
     expect(html).not.toMatch(/<details[^>]*open/);
   });
 
-  it("requires confirmation instead of silently choosing the first category in a mixed report", () => {
-    const mixed = render("owner", {
-      categoryStatus: "mixed_requires_confirmation",
-      selectedCategory: "",
-    });
-
-    expect(mixed).toContain("检测到多个商品类目，请确认主要研究类目");
-    expect(mixed).toMatch(/<option value=""[^>]*>请选择 Amazon US 一级类目<\/option>/);
-    expect(mixed).toMatch(/<button[^>]*disabled[^>]*>导入新批次<\/button>/);
+  it("shows a clear empty state with upload button when no batch exists", () => {
+    const empty = render("owner", { batches: [] });
+    expect(empty).toContain("还没有商品批次");
+    expect(empty).toContain("上传并预览报表");
   });
 
   it("shows a validated cached product image and keeps a safe placeholder otherwise", () => {
