@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { useCreativeHandoffApi, HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
 import {
   ELIGIBILITY_BLOCK_LABELS,
@@ -11,6 +12,66 @@ import {
   type CreativeHandoffPreview,
   type RevokeReasonCode,
 } from "@/components/creative-handoff/types";
+
+/**
+ * V2 Visual Reference Preview: 安全缩略图。
+ * 图片接口要求鉴权头（x-access-token），<img> 无法携带 → 按既有
+ * AiImageDraftCard.PrivateImage 模式：fetch + 鉴权头 → blob → objectURL。
+ * 失败时显示占位（不中断面板），绝不向浏览器暴露原始 URL / dataUrl。
+ */
+function PrivateThumbnail({ thumbnailUrl, alt }: { thumbnailUrl: string; alt: string }) {
+  const [source, setSource] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    setFailed(false);
+    setSource("");
+    fetch(thumbnailUrl, {
+      headers: buildAccessHeaders(),
+      cache: "force-cache",
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("VISUAL_REFERENCE_LOAD_FAILED");
+        return response.blob();
+      })
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [thumbnailUrl]);
+
+  if (failed) {
+    return (
+      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-center text-[10px] leading-tight text-slate-400">
+        图片不可用
+      </div>
+    );
+  }
+  if (!source) {
+    return (
+      <div className="h-20 w-20 shrink-0 animate-pulse rounded-lg bg-slate-100" aria-label="图片加载中" />
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={source}
+      alt={alt}
+      loading="lazy"
+      className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 bg-white object-contain"
+    />
+  );
+}
 
 /**
  * 判断错误是否表示“页面依据已过期，必须清空旧选择并重新加载”。
@@ -499,13 +560,13 @@ function PreviewSection({
             <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedVisualIds.length} 项</span>
           </h3>
           <p className="mt-1 text-xs text-slate-400">
-            勾选后，后续图片生成将以该参考图作为商品外观依据；图片信息仅展示安全摘要，不会向浏览器提供原始图片。
+            勾选后，后续图片生成将以该参考图作为商品外观依据；图片经安全接口读取，不会向浏览器暴露原始来源。
           </p>
           <ul className="mt-2 space-y-2">
             {visuals.map((item) => {
               const checked = selectedVisualIds.includes(item.selectionId);
               return (
-                <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
+                <li key={item.selectionId} className="flex items-start gap-3 rounded-lg bg-teal-50/50 px-2 py-1.5">
                   <input
                     id={`visual-${item.selectionId}`}
                     type="checkbox"
@@ -513,15 +574,21 @@ function PreviewSection({
                     onChange={() => onToggleVisual(item.selectionId)}
                     className="mt-0.5 h-4 w-4 accent-teal-600"
                   />
-                  <label htmlFor={`visual-${item.selectionId}`} className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-slate-800">
-                      {item.summary || "商品图片参考"}
-                    </span>
-                    {item.contentHash ? (
-                      <span className="mt-0.5 block text-xs text-slate-400">
-                        图片指纹 {item.contentHash} · {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
-                      </span>
+                  <label htmlFor={`visual-${item.selectionId}`} className="flex min-w-0 flex-1 items-start gap-3">
+                    {/* V2 Visual Preview: 安全缩略图（fetch+鉴权头→blob→objectURL；失败占位不报错） */}
+                    {item.thumbnailUrl ? (
+                      <PrivateThumbnail thumbnailUrl={item.thumbnailUrl} alt="" />
                     ) : null}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-800">
+                        {item.summary || "商品图片参考"}
+                      </span>
+                      {item.contentHash ? (
+                        <span className="mt-0.5 block text-xs text-slate-400">
+                          图片指纹 {item.contentHash} · {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
+                        </span>
+                      ) : null}
+                    </span>
                   </label>
                 </li>
               );

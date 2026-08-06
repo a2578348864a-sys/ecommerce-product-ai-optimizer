@@ -275,6 +275,47 @@ describe("DTO 安全", () => {
   });
 });
 
+describe("V2 Visual Reference Preview DTO 安全", () => {
+  it("51. thumbnailUrl 仅含 selectionId（ref=visual:…），无原始 URL/路径/候选 ID", () => {
+    // 服务端构造：/api/tasks/{taskId}/visual-reference-preview?ref=visual:24hex
+    const serverSource = readFileSync(resolve(process.cwd(), "lib/server/productCreativeHandoffPreview.ts"), "utf8");
+    expect(serverSource).toContain("/visual-reference-preview?ref=");
+    expect(serverSource).toContain("encodeURIComponent(v.selectionId)");
+    // thumbnailUrl 构造处绝不使用候选/商品的原始 URL、dataUrl 或候选 ID 作参数
+    const thumbLine = serverSource.split("\n").find((line) => line.includes("thumbnailUrl:")) ?? "";
+    expect(thumbLine).not.toContain("imageUrl");
+    expect(thumbLine).not.toContain("productKey");
+    expect(thumbLine).not.toContain("candidateId");
+    expect(thumbLine).not.toContain("dataUrl");
+    // 浏览器 DTO 类型：thumbnailUrl 为可选中文字段，禁止以 dataUrl/外部 URL 形式存在
+    expect(typeSource).not.toContain("data:image");
+    expect(typeSource).not.toContain("http://");
+    expect(typeSource).not.toContain("https://");
+  });
+
+  it("52. 前端缩略图用安全地址，禁用外链/内联", () => {
+    expect(panelSource).toContain("item.thumbnailUrl");
+    expect(panelSource).toContain("PrivateThumbnail");
+    // 无 base64 dataUrl / 外部 URL / 完整 hash 泄漏
+    expect(panelSource).not.toContain("data:image");
+    expect(panelSource).not.toContain("http://");
+    expect(panelSource).not.toContain("https://");
+    // 鉴权读取：fetch + buildAccessHeaders + blob → objectURL（<img> 无法带鉴权头）
+    expect(panelSource).toContain("buildAccessHeaders");
+    expect(panelSource).toContain("URL.createObjectURL");
+    expect(panelSource).toContain("URL.revokeObjectURL");
+    // 失败时占位而非报错（不中断面板）
+    expect(panelSource).toContain("图片不可用");
+    expect(panelSource).toContain("VISUAL_REFERENCE_LOAD_FAILED");
+  });
+
+  it("53. 视觉参考仍然只提交 selectionId（缩略图不改变提交合同）", () => {
+    expect(apiSource).toContain("selectedVisualReferenceCandidateIds");
+    expect(apiSource).not.toContain("thumbnailUrl");
+    expect(apiSource).not.toContain("selectedVisualThumbnail");
+  });
+});
+
 describe("Task 详情接入", () => {
   it("接入位置：ProductResearchDecisionPanel 之后，仅 workflow 类型", () => {
     expect(detailSource).toContain('import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel"');

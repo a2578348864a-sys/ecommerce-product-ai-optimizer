@@ -113,6 +113,10 @@ export type CreativeHandoffPreview = {
     selectionId: string;
     sourceTier: string;
     approvedForReference: boolean;
+    summary?: string;
+    contentHash?: string;
+    /** V2 Visual Preview: 安全缩略图地址（同源 API；仅当候选人已绑定本任务时非空） */
+    thumbnailUrl?: string;
   }[];
   blockingCodes?: string[];
   expectedResearchRevision?: number;
@@ -596,6 +600,8 @@ export async function generateCreativeHandoffPreview(
         approvedForReference: v.approvable === true,
         summary: v.summary,
         contentHash: v.contentHash.slice(0, 8),
+        // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
+        thumbnailUrl: `/api/tasks/${encodeURIComponent(taskId)}/visual-reference-preview?ref=${encodeURIComponent(v.selectionId)}`,
       })),
     };
     return { preview, gate };
@@ -665,6 +671,8 @@ export async function generateCreativeHandoffPreview(
       approvedForReference: v.approvable === true,
       summary: v.summary,
       contentHash: v.contentHash.slice(0, 8),
+      // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
+      thumbnailUrl: `/api/tasks/${encodeURIComponent(taskId)}/visual-reference-preview?ref=${encodeURIComponent(v.selectionId)}`,
     })),
     expectedResearchRevision: gate.candidate.sourceResearch.researchRevision,
     expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,

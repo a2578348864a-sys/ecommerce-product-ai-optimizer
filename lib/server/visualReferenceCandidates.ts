@@ -40,6 +40,31 @@ function hash256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+/**
+ * 服务端确定性 selectionId（单一事实源）。
+ * visual-reference-preview Route 也用它重建绑定：selectionId 编码了
+ * schema + subjectKind + taskId + candidateId + researchRevision + contentHash24，
+ * 与浏览器提交/展示的 selectionId 完全一致时，图片方可服务。
+ */
+export function buildVisualSelectionId(input: {
+  subjectKind: "owner" | "visitor";
+  taskId: string;
+  candidateId: string;
+  researchRevision: number;
+  contentHash: string;
+}): string {
+  const canonical = JSON.stringify({
+    schema: VISUAL_SELECTION_SCHEMA,
+    subjectKind: input.subjectKind,
+    taskId: input.taskId,
+    candidateId: input.candidateId,
+    researchRevision: input.researchRevision,
+    category: "visual",
+    contentFingerprint: input.contentHash.slice(0, 24),
+  });
+  return `visual:${hash256(canonical).slice(0, 24)}`;
+}
+
 /** 从 candidateAnalysisContext 提取任务自有图片候选（仅当前 Task/Candidate 可追溯资源） */
 export function extractVisualReferenceCandidates(
   context: CandidateResearchContext | null,
@@ -50,17 +75,14 @@ export function extractVisualReferenceCandidates(
   if (!context?.productImage) return [];
   const image = context.productImage;
   if (!image.dataUrl || !image.contentHash) return [];
-  const canonical = JSON.stringify({
-    schema: VISUAL_SELECTION_SCHEMA,
-    subjectKind,
-    taskId,
-    candidateId: context.candidateId,
-    researchRevision,
-    category: "visual",
-    contentFingerprint: image.contentHash.slice(0, 24),
-  });
   return [{
-    selectionId: `visual:${hash256(canonical).slice(0, 24)}`,
+    selectionId: buildVisualSelectionId({
+      subjectKind,
+      taskId,
+      candidateId: context.candidateId,
+      researchRevision,
+      contentHash: image.contentHash,
+    }),
     sourceKind: image.provenance,
     summary: `approved visual reference ${image.contentHash.slice(0, 8)}`,
     contentHash: image.contentHash,

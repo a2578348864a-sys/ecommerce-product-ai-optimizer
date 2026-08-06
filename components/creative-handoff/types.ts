@@ -80,6 +80,8 @@ export type CreativeHandoffPreview = {
     approvedForReference: boolean;
     summary?: string;
     contentHash?: string;
+    /** V2 Visual Preview: 安全缩略图地址（同源 API；仅当候选人已绑定本任务时非空） */
+    thumbnailUrl?: string;
   }[];
   blockingCodes?: string[];
   expectedResearchRevision?: number;
