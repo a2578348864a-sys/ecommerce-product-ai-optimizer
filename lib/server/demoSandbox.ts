@@ -38,6 +38,11 @@ import {
   type SellerSpriteImportRow,
   type SellerSpriteImportSummary,
 } from "@/lib/server/sellerSpriteImportContract";
+import {
+  buildSellerSpriteProductImageSnapshot,
+  fetchSellerSpriteProductImage,
+} from "@/lib/server/sellerSpriteProductImage";
+import { writeCandidateAnalysisImageSnapshot } from "@/lib/server/candidateProductImageAsset";
 import { assertGenericTaskResultAllowed } from "@/lib/server/taskResultNamespacePolicy";
 import {
   mutateDemoSandboxStore,
@@ -806,7 +811,7 @@ export function importSellerSpriteCandidatesForVisitor(
     importedAt: string;
   },
 ): Promise<SellerSpriteImportSummary> {
-  return mutateDemoSandboxStore((store) => {
+  return mutateDemoSandboxStore(async (store) => {
     const byKey = new Map<string, SandboxCandidate>();
     for (const candidate of store.candidates) {
       if (candidate.demoAccessId !== demoAccessId) continue;
@@ -826,6 +831,23 @@ export function importSellerSpriteCandidatesForVisitor(
       const existing = byKey.get(key);
       if (!existing) {
         const sourceMetaJson = buildSellerSpriteCandidateSourceMeta(row, input.sourceFileSha256, input.importedAt);
+        // P1-1: 商品主图资产化（安全下载 → analysisJson.productImageSnapshot）。
+        // 失败降级：不写快照、不中断导入（视觉参考按 composition 路径处理）。
+        let analysisJson = "{}";
+        try {
+          const fetched = await fetchSellerSpriteProductImage(row.imageUrl);
+          if (fetched) {
+            const snapshot = buildSellerSpriteProductImageSnapshot({
+              fetched,
+              asin: row.asin,
+              capturedAt: input.importedAt,
+            });
+            const written = writeCandidateAnalysisImageSnapshot(analysisJson, snapshot);
+            analysisJson = written.analysisJson;
+          }
+        } catch {
+          analysisJson = "{}";
+        }
         const candidate: SandboxCandidate = {
           id: generateSandboxCandidateId(),
           demoAccessId,
@@ -840,7 +862,7 @@ export function importSellerSpriteCandidatesForVisitor(
           summaryLabel: "",
           status: "pending",
           sourceMetaJson,
-          analysisJson: "{}",
+          analysisJson,
           createdAt: input.importedAt,
           convertedTaskId: null,
           originProductBatchItemId: null,

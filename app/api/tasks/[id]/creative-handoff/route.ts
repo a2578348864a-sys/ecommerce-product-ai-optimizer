@@ -13,6 +13,7 @@ import {
 } from "@/lib/server/productCreativeHandoffPersistence";
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
 import type { ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
+import { ProductCreativeHandoffError } from "@/lib/productCreativeHandoff";
 
 // ─── 常量 ────────────────────────────────────────────────
 
@@ -419,6 +420,11 @@ export async function POST(
     if (err instanceof TaskResultJsonMutationError) {
       const code = err.code === "not_found" ? "task_not_found" : err.code;
       return errorResponse(err.status, code, err.message);
+    }
+    if (err instanceof ProductCreativeHandoffError && err.code === "invalid_handoff_candidate") {
+      // P1-2 门禁协调：候选投影失败（如 blocking issue）→ 稳定业务错误 422，
+      // 不再是意外 500；前端可读 code 提示研究状态不允许创建。
+      return errorResponse(422, "invalid_handoff_candidate", "当前研究状态不允许创建创作交接。");
     }
     throw err;
   }

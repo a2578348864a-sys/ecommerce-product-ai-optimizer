@@ -41,7 +41,7 @@ import {
   type R22MarketDecisionSnapshot,
 } from "@/lib/r22DecisionModel";
 import {
-  readCandidateProductImageSnapshot,
+  readCandidateProductImageSnapshotDual,
   type ProductResearchImageSnapshot,
 } from "@/lib/productResearchImage";
 import {
@@ -350,7 +350,10 @@ function buildAuthoritativeSourceMeta(
   const r22MarketDecisionSnapshot = productBatchSnapshot
     ? null
     : parseR22MarketDecisionFromAnalysisJson(candidate.analysisJson);
-  const productImageSnapshot = readCandidateProductImageSnapshot(candidate.sourceMetaJson);
+  const productImageSnapshot = readCandidateProductImageSnapshotDual(
+    candidate.sourceMetaJson,
+    candidate.analysisJson,
+  );
 
   return {
     source: "opportunity",

@@ -330,7 +330,11 @@ export function normalizeAgentOutputSnapshot(input: {
       primaryAction,
       actionLabel: actionLabels[primaryAction],
       checklist: nextSteps.length ? nextSteps : ["复核供应商、风险、利润和 Listing 草稿后再决定。"],
-      blockingIssues: [...riskFlags, ...missingInputs].slice(0, 8),
+      // P1-2 门禁协调：仅真实阻塞项进入 blockingIssues（合规/风险/黑名单）。
+      // 缺失的 Listing 输入（title/bullets/keywords）属于可补信息，作为 low-risk
+      // missing issue 留在证据层，不阻断 Creative Handoff（由 Listing 阶段
+      // 从 confirmedFacts 生成 bullets；人工可在后续补齐后重跑）。
+      blockingIssues: [...riskFlags].slice(0, 8),
       suggestedOwnerStep: sanitizeText(nextSteps[0], actionLabels[primaryAction], 160),
     },
     humanReviewSnapshot: {

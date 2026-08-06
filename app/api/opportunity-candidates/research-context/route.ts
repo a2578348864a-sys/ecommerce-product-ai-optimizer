@@ -9,7 +9,7 @@ import { evaluateCandidateResearchEligibility } from "@/lib/server/candidateRese
 import { CANDIDATE_ORIGIN_KINDS } from "@/lib/server/productBatchCandidateSource";
 import { getProductBatchStore } from "@/lib/server/productBatchStoreResolver";
 import type { CandidateResearchContext } from "@/lib/candidateResearchContext";
-import { readCandidateProductImageSnapshot } from "@/lib/productResearchImage";
+import { readCandidateProductImageSnapshotDual } from "@/lib/productResearchImage";
 
 export const runtime = "nodejs";
 
@@ -51,7 +51,10 @@ export async function GET(request: NextRequest) {
   if (analysisContext.integrity === "unverified") return notFound();
   const contextHash = createCandidateAnalysisBindingHash(candidate, analysisContext);
   const capturedAt = analysisContext.facts.capturedAt;
-  const imageSnapshot = readCandidateProductImageSnapshot(candidate.sourceMetaJson);
+  const imageSnapshot = readCandidateProductImageSnapshotDual(
+    candidate.sourceMetaJson,
+    candidate.analysisJson,
+  );
   const productImage = imageSnapshot
     ? {
       dataUrl: imageSnapshot.dataUrl,
@@ -124,6 +127,7 @@ export async function GET(request: NextRequest) {
       promotionEligible: false,
       capturedAt: facts.capturedAt,
       contextHash,
+      ...(productImage ? { productImage } : {}),
     };
   } else {
     const publicContext = analysisContext.integrity === "verified_public"

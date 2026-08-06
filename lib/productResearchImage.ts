@@ -311,3 +311,27 @@ export function resolveResearchTaskProductImage(input: {
 export function readCandidateProductImageSnapshot(sourceMetaJson: string) {
   return parseCandidateImage(sourceMetaJson);
 }
+
+/**
+ * P1-1：候选商品图片双层读取（sourceMetaJson 权威 → analysisJson 资产回退）。
+ * sourceMetaJson.productImageSnapshot（market-screening / product-batch 既有）
+ * 优先；SellerSprite 导入写入的 analysisJson.productImageSnapshot 作为回退。
+ * 冲突时以 sourceMetaJson 为权威（旧路径不变）。
+ */
+export function readCandidateProductImageSnapshotDual(
+  sourceMetaJson: string,
+  analysisJson: string,
+): ProductResearchImageSnapshot | null {
+  const fromSourceMeta = parseCandidateImage(sourceMetaJson);
+  if (fromSourceMeta) return fromSourceMeta;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(analysisJson || "");
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const snapshot = (parsed as Record<string, unknown>).productImageSnapshot;
+  if (snapshot === undefined) return null;
+  return parseProductImageSnapshot(snapshot);
+}
