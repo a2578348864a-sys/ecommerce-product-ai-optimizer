@@ -1066,7 +1066,7 @@ export function AgentRunClient({
                   先理解，再研究，最后准备创作
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  页面只展示用户需要推进的三个阶段；系统内部步骤收在默认折叠的内部分析记录中。
+                  页面只展示你需要的结论和下一步；系统内部步骤仅用于研究过程，不在此展示。
                 </p>
               </div>
               <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass(phase === "failed" ? "failed" : needsManualReview ? "needs_manual_review" : isRunning ? "running" : "idle")}`}>
@@ -1276,34 +1276,6 @@ export function AgentRunClient({
           </section>
 
           <details
-            data-testid="agent-run-technical-details"
-            className="surface-card p-4 sm:p-5"
-          >
-            <summary className="cursor-pointer list-none select-none">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="linear-kicker">辅助记录</p>
-                  <h2 className="mt-1 text-base font-semibold text-slate-900">
-                    内部分析记录
-                  </h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    展开后可查看系统内部分析步骤和状态。这是辅助研究记录，
-                    不代表系统已经完成商业判断，最终需要人工确认。
-                  </p>
-                </div>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">
-                  默认折叠
-                </span>
-              </div>
-            </summary>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {TIMELINE_STEPS.map((step) => (
-                <TimelineCard key={step.key} step={step} status={stepStatuses[step.key]} />
-              ))}
-            </div>
-          </details>
-
-          <details
             data-testid="agent-run-human-verification"
             className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5"
           >
@@ -1375,7 +1347,7 @@ export function AgentRunClient({
                     {report.finalVerdict || "需要人工复核后再决定"}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-slate-600">
-                    AI 结果只做预筛和建议。请先完成成本利润、合规 / 侵权、Listing 和供应商证据的人工最终确认。
+                    AI 结果只做预筛和建议。请先核对商品事实与风险，再决定是否继续。
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -1393,17 +1365,17 @@ export function AgentRunClient({
 
               <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4">
-                  <p className="text-sm font-bold text-teal-800">下一步动作</p>
+                  <p className="text-sm font-bold text-teal-800">建议下一步</p>
                   <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-700">
-                    {(Array.isArray(report.nextSteps) ? report.nextSteps : []).slice(0, 5).map((item) => (
+                    {(Array.isArray(report.nextSteps) ? report.nextSteps : []).slice(0, 3).map((item) => (
                       <li key={item}>- {item}</li>
                     ))}
                   </ul>
                 </div>
                 <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
-                  <p className="text-sm font-bold text-amber-800">需要人工查证的重点</p>
+                  <p className="text-sm font-bold text-amber-800">尚缺的关键信息</p>
                   <ul className="mt-2 space-y-1.5 text-sm leading-6 text-amber-800">
-                    {(Array.isArray(report.mustCheckBeforeListing) ? report.mustCheckBeforeListing : []).slice(0, 5).map((item) => (
+                    {(Array.isArray(report.mustCheckBeforeListing) ? report.mustCheckBeforeListing : []).slice(0, 3).map((item) => (
                       <li key={item}>- {item}</li>
                     ))}
                   </ul>
@@ -1419,83 +1391,6 @@ export function AgentRunClient({
                   <SummaryMetric label="商业决策" value="待真实供应与成本资料" />
                 ) : null}
               </div>
-
-              {/* D：技术详情折叠区（默认关闭）——收纳 AI 决策卡 / 输出快照 / 决策证据链 */}
-              <details className="mt-5 rounded-xl border border-slate-200 bg-white/80 p-3">
-                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                  查看技术详情
-                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，仅供需要核对细节时展开</span>
-                </summary>
-                <div className="mt-3 space-y-4">
-                  <DecisionCardUI card={buildDecisionCard({
-                    resultJson: result as Record<string, unknown>,
-                    riskReviewSnapshot: riskReviewSnapshot,
-                    profitSnapshot: profitSnapshot,
-                    pipelineStatus: phase,
-                  })} />
-                  <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} />
-                  <DecisionEvidencePanel evidence={decisionEvidence} />
-                </div>
-              </details>
-
-              <details className="mt-5 rounded-xl border border-slate-200 bg-white/80 p-3">
-                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                  成本利润估算 · profitSnapshot
-                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，人工填写后随任务保存</span>
-                </summary>
-                <div className="mt-3">
-                  <ProfitSnapshotCard onChange={setProfitSnapshot} />
-                </div>
-              </details>
-
-              <details className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                  合规 / 侵权 AI / 规则预筛 · riskReviewSnapshot
-                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，人工最终确认后再使用</span>
-                </summary>
-                <div className="mt-3">
-                  <RiskReviewChecklistCard
-                    precheckInput={riskPrecheckInput}
-                    onChange={setRiskReviewSnapshot}
-                  />
-                </div>
-              </details>
-
-              <details className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                  Listing / 关键词准备
-                  <span className="ml-2 text-xs font-medium text-slate-400">上架准备包，默认折叠</span>
-                </summary>
-                <div className="mt-3">
-                  <ListingPrepPackageCard
-                    embedded
-                    listing={{ title: listingTitle, keywords: listingKeywords, complianceNotes: listingNotes }}
-                    riskReviewSnapshot={riskReviewSnapshot}
-                    finalReport={result?.finalReport}
-                    productName={productName.trim() || undefined}
-                  />
-                </div>
-              </details>
-
-              <details className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-3">
-                <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                  完整 AI 分析 / 过程日志 / JSON
-                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，可按需展开</span>
-                </summary>
-                <div className="mt-3 space-y-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-bold text-slate-500">过程日志</p>
-                    <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600">
-                      {result.steps.map((step) => (
-                        <li key={step.key}>- {step.label}：{step.summary}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <pre className="max-h-72 overflow-auto rounded-xl border border-slate-200 bg-slate-950 p-3 text-xs leading-5 text-slate-100">
-                    {JSON.stringify(result, null, 2)}
-                  </pre>
-                </div>
-              </details>
 
               <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                 <p className="text-sm font-bold text-amber-900">人工确认与任务沉淀</p>

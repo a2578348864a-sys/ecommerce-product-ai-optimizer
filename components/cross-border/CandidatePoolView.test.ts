@@ -68,7 +68,7 @@ describe("CandidatePoolView", () => {
 
   it("keeps manual add collapsed by default and never labels the page Owner-only", () => {
     const html = render();
-    expect(html).toContain("手工添加（旧版兼容）");
+    expect(html).toContain("手工添加商品");
     expect(html).not.toContain("仅 Owner");
     expect(html).not.toContain("localStorage");
   });

@@ -35,14 +35,12 @@ describe("商品研究三阶段主视图", () => {
     expect(html).not.toContain(">任务中心<");
   });
 
-  it("把原八步和未验证事项放入默认关闭的详情，同时保留人工保存门禁", () => {
-    expect(clientSource).toMatch(
-      /<details(?=[^>]*data-testid="agent-run-technical-details")(?![^>]*\bopen(?:=|\s|>))[^>]*>/,
-    );
-    expect(clientSource).toContain("内部分析记录");
-    expect(clientSource).toContain("不代表系统已经完成商业判断");
-    expect(clientSource).toContain("最终需要人工确认");
-    expect(clientSource).toContain("TIMELINE_STEPS.map");
+  it("移除内部分析记录等技术入口，保留待人工核验与人工保存门禁", () => {
+    // 极简收口：普通用户页面不再渲染内部分析记录 / 技术详情入口
+    expect(clientSource).not.toContain("内部分析记录");
+    expect(clientSource).not.toContain("查看技术详情");
+    expect(clientSource).not.toContain("data-testid=\"agent-run-technical-details\"");
+    expect(clientSource).not.toContain("TIMELINE_STEPS.map");
 
     expect(clientSource).toMatch(
       /<details(?=[^>]*data-testid="agent-run-human-verification")(?![^>]*\bopen(?:=|\s|>))[^>]*>/,
