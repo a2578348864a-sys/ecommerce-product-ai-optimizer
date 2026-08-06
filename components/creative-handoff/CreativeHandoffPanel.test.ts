@@ -293,7 +293,7 @@ describe("V2 Visual Reference Preview DTO 安全", () => {
     expect(typeSource).not.toContain("https://");
   });
 
-  it("52. 前端缩略图用安全地址，禁用外链/内联", () => {
+  it("52. 前端缩略图用安全地址，禁用外链/内联，缓存隔离", () => {
     expect(panelSource).toContain("item.thumbnailUrl");
     expect(panelSource).toContain("PrivateThumbnail");
     // 无 base64 dataUrl / 外部 URL / 完整 hash 泄漏
@@ -304,9 +304,29 @@ describe("V2 Visual Reference Preview DTO 安全", () => {
     expect(panelSource).toContain("buildAccessHeaders");
     expect(panelSource).toContain("URL.createObjectURL");
     expect(panelSource).toContain("URL.revokeObjectURL");
+    // 缓存隔离修复：请求 no-store（绝不命中旧缓存）+ token 绑定重请求
+    expect(panelSource).toContain('cache: "no-store"');
+    expect(panelSource).toContain("getAccessToken");
+    expect(panelSource).toContain("tokenSnapshot");
     // 失败时占位而非报错（不中断面板）
     expect(panelSource).toContain("图片不可用");
     expect(panelSource).toContain("VISUAL_REFERENCE_LOAD_FAILED");
+  });
+
+  it("54. UI 不展示任何 contentHash 短摘要（哈希仅服务端绑定）", () => {
+    expect(panelSource).not.toContain("图片指纹");
+    // contentHash 字段仅出现在服务端绑定注释/类型中，不作为用户可见文本渲染
+    const visualSection = panelSource.slice(panelSource.indexOf("视觉参考候选"), panelSource.indexOf("未知／冲突与风险"));
+    expect(visualSection).not.toContain("item.contentHash ?");
+    expect(visualSection).not.toContain("图片指纹");
+  });
+
+  it("55. 身份切换后旧图片不继续展示（token 变化 → revoke + 重新请求）", () => {
+    expect(panelSource).toContain("currentToken !== tokenSnapshot");
+    expect(panelSource).toContain("setTokenSnapshot(currentToken)");
+    expect(panelSource).toContain("URL.revokeObjectURL(objectUrl)");
+    // 旧 objectURL 释放后清空 source（不展示旧图）
+    expect(panelSource).toContain('setSource("")');
   });
 
   it("53. 视觉参考仍然只提交 selectionId（缩略图不改变提交合同）", () => {

@@ -84,7 +84,9 @@ export function extractVisualReferenceCandidates(
       contentHash: image.contentHash,
     }),
     sourceKind: image.provenance,
-    summary: `approved visual reference ${image.contentHash.slice(0, 8)}`,
+    // 缓存隔离修复：summary 为用户可见文本，不包含任何 contentHash 摘要
+    // （哈希仍保留在 selectionId 绑定与 contentHash 字段中，仅服务端/日志使用）
+    summary: "approved visual reference",
     contentHash: image.contentHash,
     approvable: true,
   }];

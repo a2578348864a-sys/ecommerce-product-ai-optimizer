@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, getAccessToken } from "@/lib/client/accessToken";
 import { useCreativeHandoffApi, HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
 import {
   ELIGIBILITY_BLOCK_LABELS,
@@ -18,10 +18,21 @@ import {
  * 图片接口要求鉴权头（x-access-token），<img> 无法携带 → 按既有
  * AiImageDraftCard.PrivateImage 模式：fetch + 鉴权头 → blob → objectURL。
  * 失败时显示占位（不中断面板），绝不向浏览器暴露原始 URL / dataUrl。
+ *
+ * 缓存隔离：accessToken 读取自 sessionStorage 并加入依赖——身份切换（token 变化）
+ * 时强制重新请求（no-store 响应绝不会命中旧缓存）；旧 objectURL 在切换/卸载时
+ * revoke，旧图片绝不继续展示。
  */
 function PrivateThumbnail({ thumbnailUrl, alt }: { thumbnailUrl: string; alt: string }) {
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
+  // 身份绑定：每次渲染读取最新 token；变化时触发重新请求（旧响应绝不跨身份复用）。
+  // render-phase 派生 state —— 身份切换（token 变化）后旧图片被清空并重新鉴权加载。
+  const [tokenSnapshot, setTokenSnapshot] = useState(() => getAccessToken());
+  const currentToken = getAccessToken();
+  if (currentToken !== tokenSnapshot) {
+    setTokenSnapshot(currentToken);
+  }
 
   useEffect(() => {
     let active = true;
@@ -30,7 +41,7 @@ function PrivateThumbnail({ thumbnailUrl, alt }: { thumbnailUrl: string; alt: st
     setSource("");
     fetch(thumbnailUrl, {
       headers: buildAccessHeaders(),
-      cache: "force-cache",
+      cache: "no-store",
     })
       .then((response) => {
         if (!response.ok) throw new Error("VISUAL_REFERENCE_LOAD_FAILED");
@@ -45,10 +56,12 @@ function PrivateThumbnail({ thumbnailUrl, alt }: { thumbnailUrl: string; alt: st
         if (active) setFailed(true);
       });
     return () => {
+      // 卸载 / token 变化 / thumbnailUrl 变化：立即释放旧 objectURL，旧图片不再展示
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setSource("");
     };
-  }, [thumbnailUrl]);
+  }, [thumbnailUrl, tokenSnapshot]);
 
   if (failed) {
     return (
@@ -583,11 +596,11 @@ function PreviewSection({
                       <span className="block text-sm font-medium text-slate-800">
                         {item.summary || "商品图片参考"}
                       </span>
-                      {item.contentHash ? (
-                        <span className="mt-0.5 block text-xs text-slate-400">
-                          图片指纹 {item.contentHash} · {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
-                        </span>
-                      ) : null}
+                      {/* 缓存隔离修复：contentHash 仅作服务端内部绑定（selectionId/日志），
+                          不向用户展示任何哈希摘要；仅保留来源层级标签 */}
+                      <span className="mt-0.5 block text-xs text-slate-400">
+                        {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
+                      </span>
                     </span>
                   </label>
                 </li>

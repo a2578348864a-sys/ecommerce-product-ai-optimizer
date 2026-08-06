@@ -26,7 +26,8 @@ export const runtime = "nodejs";
  *    否则视为未授权（Pre-Create 视觉候选同样只对已转换任务可见）
  *  - 图片校验：快照经 parseProductImageSnapshot 严格验证（sha256 重算 / magic bytes /
  *    ≤2MiB），Route 再次字节级解码并断言 contentHash
- *  - 缓存：private + immutable（内容按 contentHash 寻址不可变，绝不共享缓存跨身份）
+ *  - 缓存隔离：private, no-store（鉴权图片绝不进入任何缓存；同一浏览器身份切换后
+ *    必须真实访问服务端重新鉴权，禁止从缓存恢复旧身份图片）
  *  - 响应只含图片字节流：content-type / content-length / ETag(contentHash 前缀)；
  *    不返回原始 URL、完整 hash、内部路径、dataUrl、base64
  */
@@ -101,7 +102,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     headers: {
       "content-type": image.mimeType,
       "content-length": String(image.bytes.length),
-      "cache-control": "private, max-age=3600, immutable",
+      // 缓存隔离修复：鉴权图片绝不进入任何缓存（无共享缓存泄漏）。
+      // 同一浏览器身份切换后必须真实访问服务端重新鉴权，禁止从缓存恢复旧身份图片。
+      "cache-control": "private, no-store",
       "etag": `"${image.contentHash.slice(0, 24)}"`,
       "x-content-type-options": "nosniff",
       "content-security-policy": "default-src 'none'; img-src 'self'",

@@ -205,7 +205,8 @@ describe("Secure Visual Reference Preview", () => {
     const response = await callGET(OWNER_TASK, ref(OWNER_TASK, "owner", OWNER_CANDIDATE), state.ownerToken);
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
-    expect(response.headers.get("cache-control")).toContain("private");
+    // 缓存隔离：private, no-store（无 immutable / max-age / 任何缓存指令）
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect(Buffer.from(bytes).equals(TINY_PNG)).toBe(true);
