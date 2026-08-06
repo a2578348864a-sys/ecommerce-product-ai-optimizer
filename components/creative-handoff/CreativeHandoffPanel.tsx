@@ -26,13 +26,16 @@ import {
 function PrivateThumbnail({ thumbnailUrl, alt }: { thumbnailUrl: string; alt: string }) {
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
-  // 身份绑定：每次渲染读取最新 token；变化时触发重新请求（旧响应绝不跨身份复用）。
-  // render-phase 派生 state —— 身份切换（token 变化）后旧图片被清空并重新鉴权加载。
+  // P1：身份绑定改用 effect 跟踪 token（不再 render-phase setState）。
+  // token 变化 → 重新请求（no-store 响应绝不命中旧缓存）；旧 objectURL 在切换/卸载时 revoke。
   const [tokenSnapshot, setTokenSnapshot] = useState(() => getAccessToken());
-  const currentToken = getAccessToken();
-  if (currentToken !== tokenSnapshot) {
-    setTokenSnapshot(currentToken);
-  }
+
+  useEffect(() => {
+    const currentToken = getAccessToken();
+    if (currentToken !== tokenSnapshot) {
+      setTokenSnapshot(currentToken);
+    }
+  }, [tokenSnapshot]);
 
   useEffect(() => {
     let active = true;
@@ -153,6 +156,8 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<{ targetMarket?: string; language?: string; tone?: string; imageStyle?: string }>({});
   const mounted = useRef(true);
+  // P1：loadAll 重入保护——effect 依赖稳定后仅挂载/刷新触发一次，绝不重复发起
+  const loadAllRef = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -177,16 +182,25 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
     [],
   );
 
+  const { load: apiLoad } = api;
+
   const loadAll = useCallback(async () => {
-    const res = await api.load();
-    if (!mounted.current) return;
-    if (res.kind === "error") {
-      if (res.error.status === 404) setState({ kind: "not_found" });
-      else setState({ kind: "recoverable_error", message: res.error.message });
-      return;
+    // P1：去重——已在途时不再发起（useCreativeHandoffApi 内部 inFlight 也已兜底）
+    if (loadAllRef.current) return;
+    loadAllRef.current = true;
+    try {
+      const res = await apiLoad();
+      if (!mounted.current) return;
+      if (res.kind === "error") {
+        if (res.error.status === 404) setState({ kind: "not_found" });
+        else setState({ kind: "recoverable_error", message: res.error.message });
+        return;
+      }
+      setState(deriveState(res.preview, res.detail, res.gateReason));
+    } finally {
+      loadAllRef.current = false;
     }
-    setState(deriveState(res.preview, res.detail, res.gateReason));
-  }, [api, deriveState]);
+  }, [apiLoad, deriveState]);
 
   useEffect(() => {
     void loadAll();

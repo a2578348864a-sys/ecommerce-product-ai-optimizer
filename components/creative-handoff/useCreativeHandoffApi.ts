@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import type {
   ApiError,
@@ -24,15 +24,30 @@ export type HandoffLoadResult =
 /**
  * Creative Handoff API client — 仅提交服务端允许的安全字段。
  * 浏览器永不构造事实对象/SourceReference/确认主体。
+ *
+ * P1 修复：load 不再依赖 result（用 ref 持有最新结果），且返回对象经 useMemo
+ * 稳定——避免 CreativeHandoffPanel 的 loadAll effect 因 api 引用每次变化而无限重跑
+ * （实测点击创作交接步骤后 creative-handoff 5 秒内被请求 98 次，页面主线程卡死）。
  */
 export function useCreativeHandoffApi(taskId: string) {
   const [state, setState] = useState<HandoffApiState>("loading");
   const [result, setResult] = useState<HandoffLoadResult | null>(null);
+  const resultRef = useRef<HandoffLoadResult | null>(null);
   const inFlight = useRef(false);
+  const requestSeq = useRef(0);
+
+  const commitResult = useCallback((next: HandoffLoadResult) => {
+    resultRef.current = next;
+    setResult(next);
+  }, []);
 
   const load = useCallback(async (): Promise<HandoffLoadResult> => {
-    if (inFlight.current) return result ?? { kind: "error", error: { status: 0, code: "loading", message: "加载中" } };
+    // 同一时间只允许一次请求；已在途时直接返回当前结果（不重复发请求）
+    if (inFlight.current) {
+      return resultRef.current ?? { kind: "error", error: { status: 0, code: "loading", message: "加载中" } };
+    }
     inFlight.current = true;
+    const seq = ++requestSeq.current;
     setState("loading");
     try {
       const headers = buildAccessHeaders();
@@ -40,34 +55,41 @@ export function useCreativeHandoffApi(taskId: string) {
         fetch(`${BASE}/${encodeURIComponent(taskId)}/creative-handoff?mode=preview`, { headers }),
         fetch(`${BASE}/${encodeURIComponent(taskId)}/creative-handoff`, { headers }),
       ]);
+      // 过期响应丢弃（新一轮请求已开始）
+      if (seq !== requestSeq.current) {
+        return resultRef.current ?? { kind: "error", error: { status: 0, code: "loading", message: "加载中" } };
+      }
       if (previewRes.status === 404 || detailRes.status === 404) {
         const out: HandoffLoadResult = { kind: "error", error: { status: 404, code: "task_not_found", message: "该任务不存在或你无权访问。" } };
-        setResult(out);
+        commitResult(out);
         setState("error");
         return out;
       }
       if (!previewRes.ok || !detailRes.ok) {
         const err = await readError(previewRes.ok ? detailRes : previewRes);
         const out: HandoffLoadResult = { kind: "error", error: err };
-        setResult(out);
+        commitResult(out);
         setState("error");
         return out;
       }
       const previewJson = (await previewRes.json()) as PreviewResponse;
       const detailJson = (await detailRes.json()) as DetailResponse;
       const out: HandoffLoadResult = { kind: "ok", preview: previewJson.preview, detail: detailJson.detail, gateReason: previewJson.gateReason };
-      setResult(out);
+      commitResult(out);
       setState("detail");
       return out;
     } catch {
+      if (seq !== requestSeq.current) {
+        return resultRef.current ?? { kind: "error", error: { status: 0, code: "loading", message: "加载中" } };
+      }
       const out: HandoffLoadResult = { kind: "error", error: { status: 0, code: "network_error", message: "网络异常，请重试。" } };
-      setResult(out);
+      commitResult(out);
       setState("error");
       return out;
     } finally {
       inFlight.current = false;
     }
-  }, [taskId, result]);
+  }, [taskId, commitResult]);
 
   const refresh = useCallback(() => load(), [load]);
 
@@ -152,7 +174,12 @@ export function useCreativeHandoffApi(taskId: string) {
     [taskId],
   );
 
-  return { state, result, load, refresh, create, revoke };
+  return useMemo(
+    () => ({ state, result, load, refresh, create, revoke }),
+    // P1：state/result 变化时必须更新（供 UI 反映），但 load/refresh/create/revoke 引用稳定。
+    // 返回对象引用仅在 state/result 变化时改变；loadAll effect 以 api.load 为依赖（稳定）。
+    [state, result, load, refresh, create, revoke],
+  );
 }
 
 export class HandoffApiRequestError extends Error {
