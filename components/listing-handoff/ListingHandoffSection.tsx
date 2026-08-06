@@ -46,6 +46,8 @@ type GenerateResponse = {
     sourceHandoffRevision: number | null;
     idempotentReplay: boolean;
     humanReviewRequired: boolean;
+    // V2 Listing 稳定落库：AI 输出未通过事实校验时系统生成保守草稿
+    safeFallbackApplied?: boolean;
     draft: ListingDraftSafeSummary | null;
   };
 };
@@ -176,6 +178,9 @@ export function ListingHandoffSection({ taskId }: { taskId: string }) {
       if (mounted.current) {
         if (json.ok && json.data.idempotentReplay) {
           setNotice({ tone: "info", text: "该请求已成功生成过，未重复调用。" });
+        } else if (json.ok && json.data.safeFallbackApplied) {
+          // V2 Listing 稳定落库：AI 输出未通过事实校验 → 系统生成保守草稿（用户可编辑完善）
+          setNotice({ tone: "info", text: "AI输出未通过事实校验，系统已生成保守草稿，请人工完善表达。" });
         } else {
           setNotice({ tone: "info", text: "Listing 草稿已生成，请人工审核。" });
         }

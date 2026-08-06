@@ -10,6 +10,7 @@ import { createMockListingProvider, type MockListingProvider } from "@/lib/listi
 import { createListingProviderByMode } from "@/lib/listingHandoff/realListingProvider";
 import { buildListingPromptFromInput, assertPromptIsSafe } from "@/lib/listingHandoff/listingPrompt";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
+import { buildSafeFallbackListingDraft } from "@/lib/listingHandoff/safeListingFallback";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
@@ -51,6 +52,8 @@ export type ListingGenerateResult = {
   idempotentReplay: boolean;
   listingSaved: boolean;
   draft: ListingDraftSafeSummary | null;
+  /** V2 Listing 稳定落库：AI 输出未通过事实校验时系统生成保守草稿 */
+  safeFallbackApplied: boolean;
   handoffState: { controlState: string; stale: boolean } | null;
 };
 
@@ -294,25 +297,60 @@ export async function generateListingDraftFromHandoff(
         );
       }
 
-      // ── 新草稿：阶段B 的 Provider 输出（确定性 Mock）在此复用；不重复调用 Provider。──
+      // ── 新草稿：阶段B 的 Provider 输出在此复用；不重复调用 Provider。──
+      // 安全降级（V2 Listing 稳定落库）：Provider 已成功响应但输出被 Schema 或
+      // Claim Evidence 门禁拒绝时，不再调用 Provider，改由服务端根据 confirmedFacts
+      // 生成确定性保守草稿（safeFallbackApplied=true）。Claim Evidence 规则零放宽：
+      // 保守草稿本身只含已确认事实与中性文案，必然通过门禁。
+      let safeDraft: { draft: Record<string, unknown>; safeFallbackApplied: boolean } | null = null;
       const schema = validateAiListingPackDraft(rawDraft);
-      if (!schema.ok) {
-        throw new ListingHandoffError("listing_schema_invalid", 422, "生成的草稿未通过结构校验。");
+      if (schema.ok) {
+        // Claim Filter（既有逐字规则 + Handoff prohibitedClaims）
+        const filtered = filterListingClaims(schema.data, {
+          prohibitedClaims: generationInput.prohibitedClaims,
+          customClaimLabel: "Handoff prohibited claim",
+        });
+        // Claim Evidence Mapping（P1-1）：结构化事实证据验证（数值/材质/尺寸/认证/性能/兼容性/AI参考/Unknown/Conflict）
+        // 任一事实性声明无 Handoff 证据 → 不保存 AI 草稿，走安全降级（不覆盖旧草稿、不修改 Handoff）
+        const evidence = verifyListingClaims(filtered.cleaned, generationInput);
+        if (listingClaimsHaveEvidence(evidence)) {
+          // 合法 AI 输出：原样保存
+          safeDraft = { draft: filtered.cleaned as unknown as Record<string, unknown>, safeFallbackApplied: false as const };
+        }
       }
-      // Claim Filter（既有逐字规则 + Handoff prohibitedClaims）
-      const filtered = filterListingClaims(schema.data, {
-        prohibitedClaims: generationInput.prohibitedClaims,
-        customClaimLabel: "Handoff prohibited claim",
-      });
-      // Claim Evidence Mapping（P1-1）：结构化事实证据验证（数值/材质/尺寸/认证/性能/兼容性/AI参考/Unknown/Conflict）
-      // 任一事实性声明无 Handoff 证据 → 拒绝保存（不保存草稿、不覆盖旧草稿、不修改 Handoff）
-      const evidence = verifyListingClaims(filtered.cleaned, generationInput);
-      if (!listingClaimsHaveEvidence(evidence)) {
-        throw new ListingHandoffError(
-          "listing_claims_unsupported",
-          422,
-          `草稿含无证据支持的事实性声明（${evidence.reasonCode ?? "unknown"}），请调整后重新生成。`,
-        );
+      // AI 输出被拒绝（schema 非法 / claims 无证据）→ 确定性保守草稿
+      if (!safeDraft) {
+        const fallback = buildSafeFallbackListingDraft({
+          generationInput,
+          generatedAt: binding.generatedAt,
+          model: provider.model,
+        });
+        if (!fallback) {
+          // confirmedFacts 不足（无任何可引用事实）→ 稳定 422，不伪造内容
+          throw new ListingHandoffError(
+            "listing_claims_unsupported",
+            422,
+            "当前确认事实不足以生成可保存的 Listing 草稿，请补充确认后重试。",
+          );
+        }
+        // 防御性门禁确认：保守草稿也必须通过 Schema 与 Claim Evidence（零放宽）
+        const fallbackSchema = validateAiListingPackDraft(fallback.draft);
+        if (!fallbackSchema.ok) {
+          throw new ListingHandoffError("listing_schema_invalid", 422, "保守草稿未通过结构校验。");
+        }
+        const fallbackFiltered = filterListingClaims(fallbackSchema.data, {
+          prohibitedClaims: generationInput.prohibitedClaims,
+          customClaimLabel: "Handoff prohibited claim",
+        });
+        const fallbackEvidence = verifyListingClaims(fallbackFiltered.cleaned, generationInput);
+        if (!listingClaimsHaveEvidence(fallbackEvidence)) {
+          throw new ListingHandoffError(
+            "listing_claims_unsupported",
+            422,
+            "保守草稿未通过事实校验，请补充确认事实后重试。",
+          );
+        }
+        safeDraft = { draft: fallbackFiltered.cleaned as unknown as Record<string, unknown>, safeFallbackApplied: true };
       }
 
       const status: ListingStatus = computeListingStatus({
@@ -322,7 +360,7 @@ export async function generateListingDraftFromHandoff(
       });
 
       const draftSnapshot = {
-        ...filtered.cleaned,
+        ...safeDraft.draft,
         savedAt: binding.generatedAt,
         savedBy: "owner" as const,
         snapshotType: "ai_listing_pack" as const,
@@ -342,6 +380,10 @@ export async function generateListingDraftFromHandoff(
   // result.resultJson 为已序列化字符串（mutateTaskResultJson 返回 string）
   const savedRaw = typeof result.resultJson === "string" ? JSON.parse(result.resultJson) : result.resultJson;
   const savedDraft = isRecord(savedRaw) ? draftSafeSummary(savedRaw.aiListingPackSnapshot) : null;
+  // 安全降级标记：随响应返回（前端据此显示保守草稿提示；不进入 Browser 隐藏字段）
+  const safeFallbackApplied = isRecord(savedRaw)
+    && isRecord(savedRaw.aiListingPackSnapshot)
+    && savedRaw.aiListingPackSnapshot.safeFallbackApplied === true;
 
   return {
     listingStatus: result.value.listingStatus,
@@ -351,6 +393,7 @@ export async function generateListingDraftFromHandoff(
     idempotentReplay: result.value.idempotentReplay,
     listingSaved: !result.value.idempotentReplay,
     draft: savedDraft,
+    safeFallbackApplied,
     handoffState: { controlState: handoffA.controlState, stale: false },
   };
 }

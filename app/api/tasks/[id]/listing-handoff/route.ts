@@ -256,6 +256,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         sourceHandoffRevision: result.sourceHandoffRevision,
         idempotentReplay: result.idempotentReplay,
         humanReviewRequired: true,
+        // V2 Listing 稳定落库：AI 输出未通过事实校验时系统生成保守草稿（安全降级）
+        safeFallbackApplied: result.safeFallbackApplied === true,
         draft: result.draft,
       },
     });
