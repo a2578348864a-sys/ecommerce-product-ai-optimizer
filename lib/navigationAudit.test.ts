@@ -29,23 +29,21 @@ function extractConstBlock(source: string, constName: string): string {
 describe("WorkspaceSidebar navigation", () => {
   const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");
 
-  it("exposes the six product-level destinations in the primary navigation", () => {
+  it("exposes the four product-level destinations in the primary navigation", () => {
     const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
     const mainLabels = extractNavLabels(mainNavBlock);
     expect(mainLabels).toEqual([
       "工作台",
       "发现商品",
       "商品研究池",
-      "Listing Studio",
-      "Image Studio",
       "研究历史",
     ]);
     expect(mainNavBlock).toMatch(/href:\s*"\/"/);
     expect(mainNavBlock).toMatch(/\/opportunities/);
     expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
-    expect(mainNavBlock).toMatch(/\/listing-studio/);
-    expect(mainNavBlock).toMatch(/\/image-studio/);
     expect(mainNavBlock).toMatch(/\/tasks/);
+    expect(mainNavBlock).not.toMatch(/\/listing-studio/);
+    expect(mainNavBlock).not.toMatch(/\/image-studio/);
     expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
   });
 
@@ -136,22 +134,21 @@ describe("legacy batch public entrance freeze", () => {
 describe("/agent archive page", () => {
   const agentSource = readComponentSource("app/agent/page.tsx");
 
-  it("shows archive message", () => {
-    expect(agentSource).toMatch(/Agent 路线图已归档/);
+  it("shows migration message", () => {
+    expect(agentSource).toMatch(/商品研究已迁移/);
+    expect(agentSource).toMatch(/已停止维护/);
   });
 
-  it("provides a downgraded advanced CTA to /agent/run", () => {
-    expect(agentSource).toMatch(/进入高级临时分析/);
-    expect(agentSource).toMatch(/\/agent\/run/);
+  it("provides CTA to the research pool, not /agent/run", () => {
+    expect(agentSource).toMatch(/前往商品研究池/);
+    expect(agentSource).toMatch(/\/opportunity-candidates/);
+    expect(agentSource).not.toMatch(/\/agent\/run/);
     expect(agentSource).not.toMatch(/\/workflow/);
   });
 
-  it("provides CTA to /opportunities", () => {
-    expect(agentSource).toMatch(/\/opportunities/);
-  });
-
-  it("provides CTA to /tasks", () => {
-    expect(agentSource).toMatch(/\/tasks/);
+  it("provides CTA back to the workspace", () => {
+    expect(agentSource).toMatch(/返回工作台/);
+    expect(agentSource).toMatch(/href="\/"/);
   });
 
   it("does not show old roadmap big cards", () => {
@@ -169,7 +166,7 @@ describe("/agent archive page", () => {
   });
 
   it("metadata title is updated", () => {
-    expect(agentSource).toMatch(/Agent 路线图已归档/);
+    expect(agentSource).toMatch(/商品研究已迁移/);
   });
 
   it("does not contain dangerous promises", () => {
@@ -211,10 +208,10 @@ describe("HomeDashboardClient navigation", () => {
     expect(workflowStepsSection?.[0]).toMatch(/人工确认/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunity-candidates"/);
-    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/listing-studio"/);
-    expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/image-studio"/);
+    // Listing 与图片创作已收口到任务详情（主链唯一入口）
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/tasks"/);
-    expect(homeSource).toMatch(/五步完成一次商品研究/);
+    expect(workflowStepsSection?.[0]).not.toMatch(/href:\s*"\/listing-studio"/);
+    expect(workflowStepsSection?.[0]).not.toMatch(/href:\s*"\/image-studio"/);
     expect(homeSource).toMatch(/当前为人工复核版/);
   });
 
@@ -270,10 +267,10 @@ describe("AgentRunClient main flow links", () => {
 describe("WorkflowBatchClient advanced Alpha positioning", () => {
   const batchSource = readComponentSource("components/cross-border/WorkflowBatchClient.tsx");
 
-  it("marks batch analysis as advanced Alpha and not the current main flow", () => {
-    expect(batchSource).toMatch(/批量分析（高级 \/ Alpha）/);
-    expect(batchSource).toMatch(/非当前主链路/);
-    expect(batchSource).toMatch(/当前主流程仍以单个商品推进为主/);
+  it("marks batch analysis as not the current main flow (Alpha 标签已移除)", () => {
+    expect(batchSource).not.toMatch(/批量分析（高级 \/ Alpha）/);
+    expect(batchSource).not.toMatch(/Alpha/);
+    expect(batchSource).toMatch(/批量分析不是当前主链路入口/);
   });
 });
 

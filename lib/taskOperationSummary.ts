@@ -115,9 +115,9 @@ function deriveListingReadiness(snapshot: ReturnType<typeof extractAgentOutputSn
   if (!snapshot) return "unknown";
   const listing = snapshot.listingSnapshot;
   const hasTitle = Boolean(text(listing.titleDraft));
-  const hasBullets = listing.bulletDrafts.length > 0;
-  const hasKeywords = listing.keywordHints.length > 0;
-  const missingInputs = listing.missingInputs.length > 0;
+  const hasBullets = Array.isArray(listing.bulletDrafts) && listing.bulletDrafts.length > 0;
+  const hasKeywords = Array.isArray(listing.keywordHints) && listing.keywordHints.length > 0;
+  const missingInputs = Array.isArray(listing.missingInputs) && listing.missingInputs.length > 0;
   if (hasTitle && hasBullets && hasKeywords && !missingInputs) return "ready";
   if (hasTitle || hasBullets || hasKeywords || missingInputs) return "partial";
   return "missing";
@@ -190,21 +190,21 @@ export function deriveTaskOperationSummary(input: TaskWorkflowSummaryInput): Tas
 
   const blockingIssues = agentSnapshot
     ? uniqueLimited([
-      ...agentSnapshot.nextActionSnapshot.blockingIssues,
-      ...agentSnapshot.humanReviewSnapshot.reasons,
-      ...agentSnapshot.riskSnapshot.complianceConcerns,
-      ...agentSnapshot.riskSnapshot.logisticsConcerns,
-      ...agentSnapshot.sourcingSnapshot.missingInfo,
-      ...agentSnapshot.listingSnapshot.missingInputs,
+      ...(Array.isArray(agentSnapshot.nextActionSnapshot.blockingIssues) ? agentSnapshot.nextActionSnapshot.blockingIssues : []),
+      ...(Array.isArray(agentSnapshot.humanReviewSnapshot.reasons) ? agentSnapshot.humanReviewSnapshot.reasons : []),
+      ...(Array.isArray(agentSnapshot.riskSnapshot.complianceConcerns) ? agentSnapshot.riskSnapshot.complianceConcerns : []),
+      ...(Array.isArray(agentSnapshot.riskSnapshot.logisticsConcerns) ? agentSnapshot.riskSnapshot.logisticsConcerns : []),
+      ...(Array.isArray(agentSnapshot.sourcingSnapshot.missingInfo) ? agentSnapshot.sourcingSnapshot.missingInfo : []),
+      ...(Array.isArray(agentSnapshot.listingSnapshot.missingInputs) ? agentSnapshot.listingSnapshot.missingInputs : []),
     ], 5)
     : uniqueLimited(riskFlagFocus, 5);
 
   const reviewFocus = agentSnapshot
     ? uniqueLimited([
-      ...agentSnapshot.humanReviewSnapshot.reviewFocus,
-      ...agentSnapshot.riskSnapshot.complianceConcerns,
-      ...agentSnapshot.riskSnapshot.ipConcerns,
-      ...agentSnapshot.riskSnapshot.safetyConcerns,
+      ...(Array.isArray(agentSnapshot.humanReviewSnapshot.reviewFocus) ? agentSnapshot.humanReviewSnapshot.reviewFocus : []),
+      ...(Array.isArray(agentSnapshot.riskSnapshot.complianceConcerns) ? agentSnapshot.riskSnapshot.complianceConcerns : []),
+      ...(Array.isArray(agentSnapshot.riskSnapshot.ipConcerns) ? agentSnapshot.riskSnapshot.ipConcerns : []),
+      ...(Array.isArray(agentSnapshot.riskSnapshot.safetyConcerns) ? agentSnapshot.riskSnapshot.safetyConcerns : []),
       ...riskFlagFocus,
     ], 5)
     : uniqueLimited(riskFlagFocus, 5);

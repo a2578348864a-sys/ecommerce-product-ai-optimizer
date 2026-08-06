@@ -207,7 +207,7 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
 
       {state.imageStatus === "stale" ? (
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="image-stale-notice">
-          该图片草稿基于旧交接版本（来源 Revision {state.sourceHandoffRevision ?? "?"}）。草稿只读保留，请基于最新交接重新生成。
+          该图片草稿基于旧版创作交接。草稿只读保留，请基于最新交接重新生成。
         </div>
       ) : null}
 
@@ -215,7 +215,7 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-700">
-              当前 Handoff Revision：{state.currentHandoffRevision ?? "-"}
+              创作交接版本：{state.currentHandoffRevision ?? "-"}
             </p>
             <p className="mt-0.5 text-sm text-slate-500">
               模式：{modeLabel(state.mode)}
@@ -238,7 +238,7 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
             <span>模式：{modeLabel(state.draft.mode)}</span>
-            <span>来源 Revision：{state.sourceHandoffRevision ?? "-"}</span>
+            <span>基于交接版本：{state.sourceHandoffRevision ?? "-"}</span>
             <span>{formatTime(state.draft.generatedAt)}</span>
             <span>人工审核：必须</span>
           </div>
@@ -249,7 +249,7 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
           ) : null}
           {state.draft.approvedReferenceFingerprint ? (
             <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-3 text-sm leading-6 text-teal-800">
-              基于批准视觉参考生成（参考指纹 {state.draft.approvedReferenceFingerprint}）
+              已基于你批准的视觉参考生成。
             </div>
           ) : null}
         </div>

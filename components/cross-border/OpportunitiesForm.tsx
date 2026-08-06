@@ -1269,7 +1269,7 @@ function OpportunitiesFormContent({
                   <ArrowRight className="size-4" />
                 </Link>
                 <p className="text-xs text-slate-400">
-                  轻选 Agent · Alpha MVP · 受控自动化 + 人工复核
+                  轻选 Agent · 受控自动化 + 人工复核
                 </p>
               </div>
             </div>
@@ -1317,12 +1317,12 @@ function OpportunitiesFormContent({
 
           {/* 主链路引导 */}
           <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-3 text-sm">
-            <p className="font-semibold text-teal-800">📍 主路径：机会雷达 → Agent 主链路 → 人工复核 → 任务中心</p>
+            <p className="font-semibold text-teal-800">📍 主路径：发现商品 → 商品研究池 → 人工复核 → 研究历史</p>
             <p className="mt-1 text-xs text-teal-700">
-              本页用于发现候选商品并标记状态。筛选出感兴趣的商品后，去
-              <Link href="/agent/run" className="mx-0.5 font-semibold underline">Agent 主链路</Link>
-              做 8 步深度分析，保存后进入
-              <Link href="/tasks" className="mx-0.5 font-semibold underline">任务中心</Link>
+              本页用于发现候选商品并标记状态。筛选出感兴趣的商品后，加入
+              <Link href="/opportunity-candidates" className="mx-0.5 font-semibold underline">商品研究池</Link>
+              开始商品研究，人工确认后保存进
+              <Link href="/tasks" className="mx-0.5 font-semibold underline">研究历史</Link>
               跟进。
             </p>
           </div>

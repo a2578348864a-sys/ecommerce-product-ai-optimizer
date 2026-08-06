@@ -915,8 +915,8 @@ export function TaskRecordsList() {
                 <Link href="/opportunities" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
                   发现商品
                 </Link>
-                <Link href="/agent/run" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
-                  商品研究
+                <Link href="/opportunity-candidates" className="linear-button inline-flex h-11 items-center justify-center px-4 text-sm font-semibold">
+                  商品研究池
                 </Link>
                 <Link
                   href="/"

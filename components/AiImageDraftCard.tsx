@@ -107,9 +107,12 @@ function PrivateImage({ taskId, item }: { taskId: string; item: AiImageDraftItem
 export function AiImageDraftCard({
   taskId,
   initialSnapshot = null,
+  readOnly = false,
 }: {
   taskId: string;
   initialSnapshot?: AiImageDraftSnapshot | null;
+  /** 只读模式：仅展示已保存图片草稿，不提供生成入口（生成统一走 ImageHandoffSection） */
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [metadata, setMetadata] = useState<Metadata | null>(null);
@@ -124,6 +127,7 @@ export function AiImageDraftCard({
   const [error, setError] = useState("");
 
   const loadMetadata = useCallback(async () => {
+    if (readOnly) return;
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft`, {
         headers: buildAccessHeaders(),
@@ -137,7 +141,7 @@ export function AiImageDraftCard({
     } catch (metadataError) {
       setError(metadataError instanceof Error ? metadataError.message : "图片草稿状态读取失败。");
     }
-  }, [taskId]);
+  }, [taskId, readOnly]);
 
   useEffect(() => {
     void loadMetadata();
@@ -221,6 +225,8 @@ export function AiImageDraftCard({
 
       {open ? (
         <div className="mt-4 space-y-4" data-testid="ai-image-draft-settings">
+          {!readOnly ? (
+            <>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700">
               图片类型
@@ -292,6 +298,12 @@ export function AiImageDraftCard({
           {metadata && metadata.enabled && metadata.accessMode === "visitor" && metadata.visitorEnabled === false ? <p className="text-sm font-semibold text-amber-700">图片生成暂未对访客开放，本次不会消耗额度。</p> : null}
           {message ? <p className="text-sm font-semibold text-emerald-700">{message}</p> : null}
           {error ? <p className="text-sm font-semibold text-rose-600">{error}</p> : null}
+            </>
+          ) : (
+            <p className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-500">
+              已保存草稿只读展示；生成或重新生成请使用上方「AI 生成图片草稿」操作区。
+            </p>
+          )}
 
           {snapshot?.items.length ? (
             <div>

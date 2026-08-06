@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  FileText,
   History,
-  Image,
   LayoutDashboard,
   Package,
   Search,
@@ -18,8 +16,6 @@ export const workspaceNavItems = [
   { label: "工作台", href: "/", icon: LayoutDashboard },
   { label: "发现商品", href: "/opportunities", icon: Search },
   { label: "商品研究池", href: "/opportunity-candidates", icon: Sparkles },
-  { label: "Listing Studio", href: "/listing-studio", icon: FileText },
-  { label: "Image Studio", href: "/image-studio", icon: Image },
   { label: "研究历史", href: "/tasks", icon: History },
 ] as const;
 
@@ -28,7 +24,6 @@ type SidebarNavItem = (typeof workspaceNavItems)[number];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
-  if (href === "/agent") return pathname === "/agent";
   return pathname === href || pathname.startsWith(href + "/");
 }
 

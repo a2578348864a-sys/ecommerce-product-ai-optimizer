@@ -1,43 +1,49 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 
-import AgentRunPage from "./page";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-describe("/agent/run ProductBatch handoff", () => {
-  it("accepts only an opaque candidateId and ignores forged display context", async () => {
-    const element = await AgentRunPage({
+// R1: /agent/run 不再渲染独立页面，改为安全重定向到商品研究池候选详情页。
+// Next.js redirect() 以抛 NEXT_REDIRECT 终止执行——mock 需模拟该语义。
+const redirectMock = vi.fn((target: string) => {
+  throw Object.assign(new Error(`NEXT_REDIRECT:${target}`), { digest: `NEXT_REDIRECT;replace;${target};307;` });
+});
+vi.mock("next/navigation", () => ({
+  redirect: (target: string) => redirectMock(target),
+}));
+
+const { default: AgentRunPage } = await import("./page");
+
+afterEach(() => {
+  redirectMock.mockClear();
+});
+
+describe("/agent/run migration redirect", () => {
+  it("redirects candidate visits to the candidate research page", async () => {
+    await expect(AgentRunPage({
       searchParams: Promise.resolve({
         source: "opportunity",
         candidateId: "candidate-product-batch-a",
         productName: "Forged product name",
       }),
-    });
+    })).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(element.props.candidateMode).toBe(true);
-    expect(element.props.candidateId).toBe("candidate-product-batch-a");
-    expect(element.props.initialProductName).toBeUndefined();
-    expect(element.props.initialSourceMeta).toBeUndefined();
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(redirectMock).toHaveBeenCalledWith("/opportunity-candidates/candidate-product-batch-a");
   });
 
-  it("does not hydrate any ProductBatch context without candidateId", async () => {
-    const element = await AgentRunPage({
-      searchParams: Promise.resolve({
-        source: "opportunity",
-        productName: "Forged product name",
-      }),
-    });
+  it("redirects no-Candidate visits back to the research pool", async () => {
+    await expect(AgentRunPage({
+      searchParams: Promise.resolve({}),
+    })).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(element.props.candidateMode).toBe(true);
-    expect(element.props.candidateId).toBeUndefined();
-    expect(element.props.initialProductName).toBeUndefined();
-    expect(element.props.initialSourceMeta).toBeUndefined();
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(redirectMock).toHaveBeenCalledWith("/opportunity-candidates");
   });
 
-  it("guides a no-Candidate visit back to the authoritative research pool", () => {
+  it("guides research from the candidate research pool page", () => {
     const source = readFileSync(resolve(process.cwd(), "components/agent/AgentRunClient.tsx"), "utf8");
     expect(source).toContain('href="/opportunity-candidates"');
     expect(source).toContain("先从商品研究池选择商品");
-    expect(source).toContain("旧版手工输入兼容");
   });
 });

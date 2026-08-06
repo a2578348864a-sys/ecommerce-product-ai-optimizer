@@ -23,8 +23,8 @@ function firstParam(value: string | string[] | undefined) {
 }
 
 /**
- * Phase Direction-Recovery.3: /workflow (old 4-step "单品一键分析") redirects to
- * /agent/run (8-step second-gen Agent main flow). All query params are preserved.
+ * R1: /workflow（旧 4 步「单品一键分析」）重定向到商品研究池候选详情页。
+ * 候选模式保留 candidateId；非候选模式回到研究池由用户选择候选。
  */
 export default async function WorkflowPage({
   searchParams,
@@ -52,6 +52,10 @@ export default async function WorkflowPage({
     redirectParams.set("entry", "candidate_to_agent_run");
   }
 
-  const query = redirectParams.toString();
-  redirect(query ? `/agent/run?${query}` : "/agent/run");
+  const candidateId = firstParam(params.candidateId);
+  if (candidateId && redirectParams.get("source") === "opportunity") {
+    redirect(`/opportunity-candidates/${encodeURIComponent(candidateId.trim().slice(0, 80))}`);
+  }
+
+  redirect("/opportunity-candidates");
 }

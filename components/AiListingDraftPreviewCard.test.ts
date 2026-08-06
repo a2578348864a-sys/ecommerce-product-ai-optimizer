@@ -116,8 +116,6 @@ describe("AiListingDraftPreviewCard", () => {
     expect(html).toContain("real AI draft");
     expect(html).not.toContain("mock AI preview");
     expect(html).toContain("已保存到任务记录");
-    // React SSR inserts hydration comments between CJK punctuation and text.
-    expect(html.replace(/<!-- -->/g, "")).toContain("source：real_ai_draft");
   });
 
   it("keeps mock AI preview header for mock_ai_draft source", () => {

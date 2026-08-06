@@ -70,6 +70,8 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
   const api = useCreativeHandoffApi(taskId);
   const [state, setState] = useState<PanelState>({ kind: "loading" });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // V2 Final Integration: 视觉参考批准（只存服务端 selectionId，绝不存图片 URL/对象）
+  const [selectedVisualIds, setSelectedVisualIds] = useState<string[]>([]);
   const [confirmed, setConfirmed] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
@@ -118,10 +120,20 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
 
   const resetSelection = useCallback(() => {
     setSelectedIds([]);
+    setSelectedVisualIds([]);
     setConfirmed(false);
     setRequestId(null);
     setRetryBody(null);
     setNotice(null);
+  }, []);
+
+  const toggleVisualReference = useCallback((selectionId: string) => {
+    setSelectedVisualIds((prev) => {
+      const next = prev.includes(selectionId) ? prev.filter((id) => id !== selectionId) : [...prev, selectionId];
+      setRequestId(null);
+      setRetryBody(null);
+      return next;
+    });
   }, []);
 
   const handleConflict = useCallback(
@@ -155,6 +167,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       action: "create",
       requestId: nextRequestId,
       selectedFactCandidateIds: selectedIds,
+      selectedVisualReferenceCandidateIds: selectedVisualIds,
       expectedStorageVersion: preview.storageVersion,
       expectedResearchRevision: preview.expectedResearchRevision ?? 1,
       expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
@@ -166,6 +179,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       const result = await api.create({
         requestId: nextRequestId,
         selectedFactCandidateIds: selectedIds,
+        selectedVisualReferenceCandidateIds: selectedVisualIds,
         expectedStorageVersion: preview.storageVersion,
         expectedResearchRevision: preview.expectedResearchRevision ?? 1,
         expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
@@ -197,7 +211,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [state, selectedIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting]);
+  }, [state, selectedIds, selectedVisualIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting]);
 
   const retrySameRequest = useCallback(() => {
     if (!retryBody || !requestId) return;
@@ -335,6 +349,8 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
           preview={state.preview}
           selectedIds={selectedIds}
           onToggle={toggleSelection}
+          selectedVisualIds={selectedVisualIds}
+          onToggleVisual={toggleVisualReference}
           prefs={prefs}
           onPrefsChange={setPrefs}
         />
@@ -347,6 +363,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       {(state.kind === "preview" || state.kind === "active" || state.kind === "stale") && state.preview ? (
         <ConfirmationSection
           selectedCount={selectedIds.length}
+          selectedVisualCount={selectedVisualIds.length}
           confirmed={confirmed}
           onConfirmedChange={setConfirmed}
           canCreate={canCreate}
@@ -373,12 +390,16 @@ function PreviewSection({
   preview,
   selectedIds,
   onToggle,
+  selectedVisualIds,
+  onToggleVisual,
   prefs,
   onPrefsChange,
 }: {
   preview: CreativeHandoffPreview;
   selectedIds: string[];
   onToggle: (selectionId: string) => void;
+  selectedVisualIds: string[];
+  onToggleVisual: (selectionId: string) => void;
   prefs: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string };
   onPrefsChange: (prefs: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string }) => void;
 }) {
@@ -387,6 +408,7 @@ function PreviewSection({
   const ais = preview.aiReferences ?? [];
   const issues = preview.issues ?? [];
   const claims = preview.prohibitedClaims ?? [];
+  const visuals = preview.visualReferenceCandidates ?? [];
   const blockingIssues = issues.filter((issue) => issue.risk === "blocking");
 
   return (
@@ -464,6 +486,46 @@ function PreviewSection({
                 <span className="min-w-0 break-words">{item.summary}</span>
               </li>
             ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* 3.5 视觉参考候选（V2 Final Integration：用户勾选批准 → 创建 Handoff 时提交 selectionId） */}
+      {visuals.length > 0 ? (
+        <section className="rounded-xl border border-teal-200 p-3">
+          <h3 className="text-sm font-semibold text-slate-700">
+            视觉参考
+            <span className="ml-2 rounded bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-700">可批准用于真实产品视觉</span>
+            <span className="ml-2 text-xs font-normal text-slate-400">已选 {selectedVisualIds.length} 项</span>
+          </h3>
+          <p className="mt-1 text-xs text-slate-400">
+            勾选后，后续图片生成将以该参考图作为商品外观依据；图片信息仅展示安全摘要，不会向浏览器提供原始图片。
+          </p>
+          <ul className="mt-2 space-y-2">
+            {visuals.map((item) => {
+              const checked = selectedVisualIds.includes(item.selectionId);
+              return (
+                <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
+                  <input
+                    id={`visual-${item.selectionId}`}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleVisual(item.selectionId)}
+                    className="mt-0.5 h-4 w-4 accent-teal-600"
+                  />
+                  <label htmlFor={`visual-${item.selectionId}`} className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-800">
+                      {item.summary || "商品图片参考"}
+                    </span>
+                    {item.contentHash ? (
+                      <span className="mt-0.5 block text-xs text-slate-400">
+                        图片指纹 {item.contentHash} · {item.sourceTier === "candidate_snapshot" ? "来自商品候选快照" : item.sourceTier}
+                      </span>
+                    ) : null}
+                  </label>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
@@ -607,7 +669,7 @@ function DetailSection({ detail, stale }: { detail: CreativeHandoffDetail | null
         </p>
       ) : null}
       <p className="mt-2 text-xs text-slate-400">
-        交接准备已完成。Listing 与图片接入将在后续阶段开放。
+        交接准备已完成。下方区域可继续准备文案与图片草稿。
       </p>
     </div>
   );
@@ -615,6 +677,7 @@ function DetailSection({ detail, stale }: { detail: CreativeHandoffDetail | null
 
 function ConfirmationSection({
   selectedCount,
+  selectedVisualCount,
   confirmed,
   onConfirmedChange,
   canCreate,
@@ -625,6 +688,7 @@ function ConfirmationSection({
   onRetry,
 }: {
   selectedCount: number;
+  selectedVisualCount: number;
   confirmed: boolean;
   onConfirmedChange: (v: boolean) => void;
   canCreate: boolean;
@@ -670,6 +734,7 @@ function ConfirmationSection({
         ) : null}
         {selectedCount < 1 ? <span className="text-xs text-slate-400">请至少选择一项事实</span> : null}
         {selectedCount >= 1 && !confirmed ? <span className="text-xs text-slate-400">请先勾选人工确认</span> : null}
+        {selectedVisualCount > 0 && !confirmed ? <span className="text-xs text-teal-600">已批准 {selectedVisualCount} 项视觉参考，确认后生效</span> : null}
       </div>
     </div>
   );

@@ -18,9 +18,9 @@ export default function NewProductPage() {
           <div className="workspace-header mb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="eyebrow">Qingxuan Workspace</p>
+                <p className="eyebrow">轻选工作台</p>
                 <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">利润试算</h1>
-                <p className="mt-1 text-sm muted-text">辅助工具：只做利润测算，主链路请先去单品分析。</p>
+                <p className="mt-1 text-sm muted-text">辅助工具：只做利润测算，主链路请从商品研究池开始。</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
@@ -30,10 +30,10 @@ export default function NewProductPage() {
                   ← 返回工作台
                 </Link>
                 <Link
-                  href="/workflow"
+                  href="/opportunity-candidates"
                   className="linear-button-primary inline-flex h-10 items-center px-4 text-sm font-semibold"
                 >
-                  去单品分析
+                  前往商品研究池
                 </Link>
               </div>
             </div>
@@ -46,7 +46,7 @@ export default function NewProductPage() {
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">跨境商品利润试算</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 muted-text">
               先用程序公式测算成本、售价、利润和风险提示。当前页面只是辅助试算草稿，不会保存数据、
-              不会调用 AI、不会自动上架；完整选品判断请回到单品分析主链路。
+              不会调用 AI、不会自动上架；完整选品判断请从商品研究池开始。
             </p>
           </div>
           <div className="grid gap-3 px-6 py-4 text-sm sm:grid-cols-3">

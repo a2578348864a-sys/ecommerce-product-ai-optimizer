@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { ViralMockAgent } from "@/components/ViralMockAgent";
+import { LegacyMigratedPage } from "@/components/LegacyMigratedPage";
 
 export const metadata: Metadata = {
-  title: "海外爆款趋势拆解 - 轻选 Agent",
-  description: "服务于跨境电商运营 Agent 工作台 Alpha MVP 的爆款商品与内容趋势拆解能力。AI 辅助判断，关键动作人工确认。",
+  title: "海外爆款趋势拆解已迁移 - 轻选 Agent",
+  description: "爆款拆解能力已并入商品研究主链。",
 };
 
 export default function ViralPage() {
-  return <ViralMockAgent />;
+  return (
+    <LegacyMigratedPage
+      pageName="海外爆款趋势拆解"
+      description="商品趋势判断已并入商品研究流程，在研究结论中一并查看市场机会与竞争分析。"
+    />
+  );
 }

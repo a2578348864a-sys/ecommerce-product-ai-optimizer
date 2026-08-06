@@ -345,14 +345,14 @@ function deriveActions(
 
   if (artifactKeys.has("market_analysis") || artifactKeys.has("listing_draft")) {
     actions.push({
-      label: "打开 Listing Studio",
-      href: `/listing-studio?taskId=${encodedId}`,
+      label: "生成 Listing 草稿",
+      href: `/tasks/${encodedId}`,
     });
   }
   if (artifactKeys.has("listing_draft") || artifactKeys.has("image_plan")) {
     actions.push({
-      label: "打开 Image Studio",
-      href: `/image-studio?taskId=${encodedId}`,
+      label: "生成产品图片",
+      href: `/tasks/${encodedId}`,
     });
   }
   return actions;

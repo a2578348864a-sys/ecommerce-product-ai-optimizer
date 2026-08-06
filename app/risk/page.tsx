@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { RiskCheckForm } from "@/components/cross-border/RiskCheckForm";
+import { LegacyMigratedPage } from "@/components/LegacyMigratedPage";
 
 export const metadata: Metadata = {
-  title: "风险排查 - 轻选 Agent",
-  description: "检查跨境商品的侵权、功效宣称、品类、物流和售后风险。",
+  title: "风险排查已迁移 - 轻选 Agent",
+  description: "风险排查已并入商品研究流程。",
 };
 
 export default function RiskPage() {
-  return <RiskCheckForm />;
+  return (
+    <LegacyMigratedPage
+      pageName="风险排查"
+      description="合规、侵权、物流与售后风险已并入商品研究流程，研究结论中一并呈现并提示人工核验。"
+    />
+  );
 }

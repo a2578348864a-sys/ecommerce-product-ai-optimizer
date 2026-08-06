@@ -194,6 +194,38 @@ describe("deriveTaskWorkflowSummary", () => {
 });
 
 describe("getTaskBatchMeta", () => {
+  it("handles agent output snapshot with missing checklist (legacy record)", () => {
+    const summary = deriveTaskWorkflowSummary({
+      type: "workflow",
+      title: "旧记录无 checklist",
+      materialText: "旧记录",
+      oneLineSummary: "",
+      level: "B",
+      decisionStatus: "pending",
+      result: {
+        productName: "旧记录商品",
+        agentOutputSnapshot: {
+          version: "agent-output-v1",
+          riskSnapshot: { needsManualReview: true, riskLevel: "medium", riskFlags: ["risk1"] },
+          summarySnapshot: { decision: "review", decisionReason: "需要人工确认", sellingPoints: [], concerns: [], confidence: "medium" },
+          nextActionSnapshot: {
+            primaryAction: "manual_review",
+            actionLabel: "人工复核",
+            suggestedOwnerStep: "复核供应商报价",
+            // 早期记录无 checklist 字段 → 应回退不崩溃
+          },
+          listingSnapshot: { titleDraft: "标题", bulletDrafts: [], keywordHints: [], missingInputs: [] },
+          humanReviewSnapshot: { required: true, reasons: [], reviewFocus: [], defaultStatus: "needs_review" },
+          sourcingSnapshot: { missingInfo: [] },
+          warnings: [],
+        },
+      },
+    });
+    expect(summary.productName).toBe("旧记录商品");
+    expect(summary.primaryNextAction).toBe("复核供应商报价");
+    expect(summary.verdictLabel).toBe("需要人工确认");
+  });
+
   it("extracts valid batch metadata", () => {
     expect(getTaskBatchMeta({
       batchMeta: {

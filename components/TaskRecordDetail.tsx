@@ -380,7 +380,7 @@ function WorkflowDecisionSummary({
             )}
           </div>
           {(listingPrepSnapshot.keywordPool.coreWords.length === 0 && listingPrepSnapshot.keywordPool.longTailWords.length === 0) && (
-            <p className="mt-2 text-sm text-slate-400 italic">待补充关键词 — 回到 Agent 主链路重新分析，或人工整理关键词后填入。</p>
+            <p className="mt-2 text-sm text-slate-400 italic">待补充关键词 — 重新发起商品研究补充，或人工整理关键词后填入。</p>
           )}
 
           {/* C. Bullet drafts */}
@@ -433,7 +433,7 @@ function WorkflowDecisionSummary({
               </div>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-slate-400 italic">待补充成本/售价信息 — 回到 Agent 主链路填写采购价和售价后重新保存。</p>
+            <p className="mt-2 text-sm text-slate-400 italic">待补充成本/售价信息 — 重新发起商品研究填写采购价和售价后保存。</p>
           )}
 
           {/* F. Image material needs */}
@@ -475,12 +475,12 @@ function WorkflowDecisionSummary({
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <p className="text-sm font-semibold text-slate-500">Listing 上架准备包</p>
           <p className="mt-1 text-sm leading-6 text-slate-400">
-            该任务暂无 Listing 上架准备包。可回到 Agent 主链路重新分析并保存，或人工整理 Listing 资料。
+            该任务暂无 Listing 上架准备包。可重新发起商品研究并保存，或人工整理 Listing 资料。
           </p>
         </div>
       )}
 
-      {/* AI Listing 包 */}
+      {/* 历史 Listing 包（只读展示，生成走「Listing 草稿」区） */}
       <ListingPackCard
         productName={summary.productName}
         resultJson={result}
@@ -499,9 +499,11 @@ function WorkflowDecisionSummary({
         })()}
       />
 
+      {/* 已保存图片草稿（只读展示；生成统一走上方「AI 生成图片草稿」Handoff 区） */}
       <AiImageDraftCard
         taskId={taskId}
         initialSnapshot={extractAiImageDraftSnapshot(result)}
+        readOnly
       />
 
       {/* ── Section 4: 运营推进与状态 ── */}
@@ -601,12 +603,12 @@ function WorkflowDecisionSummary({
             <AgentOutputSnapshotCard snapshot={agentOutputSnapshot} compact />
           )}
 
-          {/* Agent 主链路复盘 */}
+          {/* 商品研究复盘 */}
           {agentRunSnapshot ? (
             <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4" data-testid="agent-run-review">
-              <h3 className="text-base font-bold text-indigo-900">Agent 主链路复盘</h3>
+              <h3 className="text-base font-bold text-indigo-900">商品研究复盘</h3>
               <p className="mt-0.5 text-sm leading-6 text-indigo-600">
-                来自 Agent 主链路驾驶舱 · 受控自动化 · {agentRunSnapshot.manualConfirmed ? "人工已确认" : "未完整确认"}
+                来自商品研究流程 · 受控自动化 · {agentRunSnapshot.manualConfirmed ? "人工已确认" : "未完整确认"}
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {agentRunSnapshot.finalVerdict && (
@@ -1420,7 +1422,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
               {record.type === "workflow" && isRecordValue(record.result) ? (
                 <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
                   <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                    技术详情：完整分析与原有操作
+                    完整分析与创作记录
                     <span className="ml-2 text-xs font-medium text-slate-400">详细模型输出、生命周期操作和创作包，默认折叠</span>
                   </summary>
                   <WorkflowDecisionSummary
@@ -1562,8 +1564,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
               )}
 
               <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整结果 JSON（调试用）</summary>
-                <p className="mt-1 text-sm text-slate-500">用于复核 AI/mock 返回结构，长内容可以滚动查看。</p>
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整结果 JSON</summary>
+                <p className="mt-1 text-sm text-slate-500">长内容可以滚动查看。</p>
                 <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
                   {resultJson}
                 </pre>

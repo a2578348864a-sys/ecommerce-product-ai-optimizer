@@ -407,8 +407,6 @@ export function AiListingDraftPreviewCard({
       {draft ? (
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-            <span>source：{draft.source}</span>
-            <span>model：{draft.model}</span>
             <span>{formatGeneratedAt(draft.generatedAt)}</span>
             <span>{draftSaved ? "当前草稿已保存到任务记录，刷新后仍可查看。" : "当前为草稿预览，尚未保存到任务记录。刷新页面后需要重新生成。"}</span>
             {savedSnapshot ? <span>已保存版本：{savedSnapshot.version}</span> : null}

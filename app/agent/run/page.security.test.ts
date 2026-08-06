@@ -1,9 +1,24 @@
-import { describe, expect, it } from "vitest";
-import AgentRunPage from "./page";
+import { describe, expect, it, vi, afterEach } from "vitest";
 
-describe("/agent/run Candidate URL contract", () => {
-  it("passes only the opaque candidateId in opportunity mode and ignores forged context", async () => {
-    const element = await AgentRunPage({
+// R1: /agent/run 不再渲染独立页面，改为安全重定向。
+// 安全契约：候选模式只透传 opaque candidateId；非候选模式回到研究池，不落到手工输入。
+// Next.js redirect() 以抛 NEXT_REDIRECT 终止执行——mock 需模拟该语义。
+const redirectMock = vi.fn((target: string) => {
+  throw Object.assign(new Error(`NEXT_REDIRECT:${target}`), { digest: `NEXT_REDIRECT;replace;${target};307;` });
+});
+vi.mock("next/navigation", () => ({
+  redirect: (target: string) => redirectMock(target),
+}));
+
+const { default: AgentRunPage } = await import("./page");
+
+afterEach(() => {
+  redirectMock.mockClear();
+});
+
+describe("/agent/run Candidate URL contract (redirect)", () => {
+  it("redirects to the candidate research page with only the opaque candidateId", async () => {
+    await expect(AgentRunPage({
       searchParams: Promise.resolve({
         source: "opportunity",
         candidateId: "sandbox_candidate_a",
@@ -14,37 +29,27 @@ describe("/agent/run Candidate URL contract", () => {
           productBatchId: "visitor-a-batch",
         }),
       }),
-    });
+    })).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(element.props).toMatchObject({
-      candidateMode: true,
-      candidateId: "sandbox_candidate_a",
-    });
-    expect(element.props.initialProductName).toBeUndefined();
-    expect(element.props.initialSourceMeta).toBeUndefined();
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(redirectMock).toHaveBeenCalledWith("/opportunity-candidates/sandbox_candidate_a");
   });
 
-  it("keeps manual product-name hydration without entering Candidate mode", async () => {
-    const element = await AgentRunPage({
-      searchParams: Promise.resolve({ productName: "Manual Product" }),
-    });
+  it("redirects manual product-name visits back to the research pool", async () => {
+    await expect(AgentRunPage({
+      searchParams: Promise.resolve({}),
+    })).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(element.props).toMatchObject({
-      candidateMode: false,
-      initialProductName: "Manual Product",
-    });
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(redirectMock).toHaveBeenCalledWith("/opportunity-candidates");
   });
 
-  it("keeps malformed opportunity URLs in invalid Candidate mode instead of falling back to manual", async () => {
-    const element = await AgentRunPage({
-      searchParams: Promise.resolve({
-        source: "opportunity",
-        productName: "Forged fallback",
-      }),
-    });
+  it("redirects malformed opportunity URLs to the research pool instead of falling back to manual", async () => {
+    await expect(AgentRunPage({
+      searchParams: Promise.resolve({ source: "opportunity" }),
+    })).rejects.toThrow(/NEXT_REDIRECT/);
 
-    expect(element.props).toMatchObject({ candidateMode: true });
-    expect(element.props.candidateId).toBeUndefined();
-    expect(element.props.initialProductName).toBeUndefined();
+    expect(redirectMock).toHaveBeenCalledTimes(1);
+    expect(redirectMock).toHaveBeenCalledWith("/opportunity-candidates");
   });
 });

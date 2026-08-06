@@ -298,7 +298,7 @@ export function ListingHandoffSection({ taskId }: { taskId: string }) {
         ) : status === "ready" ? (
           <div>
             <p>
-              当前交接 Revision：<strong>{handoffRevision ?? "—"}</strong> · 可生成 Listing 草稿
+              创作交接已就绪 · 可生成 Listing 草稿
             </p>
             <button
               type="button"
@@ -312,7 +312,7 @@ export function ListingHandoffSection({ taskId }: { taskId: string }) {
         ) : status === "active" ? (
           <div>
             <p>
-              当前草稿有效 · 来源交接 Revision <strong>{handoffRevision ?? "—"}</strong> · 生成于 {formatDate(draft?.generatedAt ?? null)}
+              当前草稿有效 · 基于创作交接版本 {handoffRevision ?? "—"} · 生成于 {formatDate(draft?.generatedAt ?? null)}
             </p>
             {renderDraftBody()}
             <button

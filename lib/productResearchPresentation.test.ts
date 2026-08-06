@@ -181,12 +181,12 @@ describe("deriveProductResearchPresentation", () => {
     ]);
     expect(presentation.actions).toEqual(expect.arrayContaining([
       {
-        label: "打开 Listing Studio",
-        href: "/listing-studio?taskId=task%2Fartifacts",
+        label: "生成 Listing 草稿",
+        href: "/tasks/task%2Fartifacts",
       },
       {
-        label: "打开 Image Studio",
-        href: "/image-studio?taskId=task%2Fartifacts",
+        label: "生成产品图片",
+        href: "/tasks/task%2Fartifacts",
       },
     ]));
   });
@@ -259,8 +259,8 @@ describe("deriveProductResearchPresentation", () => {
     expect(presentation.artifacts.map((artifact) => artifact.key)).toContain("listing_draft");
     expect(presentation.actions).toEqual(expect.arrayContaining([
       {
-        label: "打开 Listing Studio",
-        href: "/listing-studio?taskId=task-ai-listing",
+        label: "生成 Listing 草稿",
+        href: "/tasks/task-ai-listing",
       },
     ]));
   });

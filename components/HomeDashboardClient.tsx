@@ -116,16 +116,16 @@ const workflowSteps = [
   },
   {
     label: "Listing 准备",
-    href: "/listing-studio",
-    cta: "打开 Listing Studio",
-    description: "基于已确认的商品事实准备可审核的 Listing 草稿。",
+    href: "/tasks",
+    cta: "在任务详情生成",
+    description: "基于创作交接与已确认事实，在任务详情生成可审核的 Listing 草稿。",
     icon: FileText,
   },
   {
     label: "图片创作",
-    href: "/image-studio",
-    cta: "打开 Image Studio",
-    description: "把商品事实转化为可比较、可复核的图片方案。",
+    href: "/tasks",
+    cta: "在任务详情生成",
+    description: "批准视觉参考后，在任务详情生成可比较、可复核的产品图片。",
     icon: Image,
   },
   {
@@ -320,8 +320,6 @@ export function HomeDashboardClient() {
     "/opportunity-candidates": candidateLoad.status === "ready" && candidateSummary.total > 0
       ? `已有 ${formatNumber(candidateSummary.total)} 个候选`
       : candidateLoad.status === "unavailable" ? "暂不可用" : "等待选择商品",
-    "/listing-studio": recentSingleRun ? "可准备文案草稿" : "等待研究结果",
-    "/image-studio": recentSingleRun ? "可准备图片方案" : "等待商品事实",
     "/tasks": taskSummary?.pendingReview
       ? `${formatNumber(taskSummary.pendingReview)} 项等待确认`
       : "由你完成最终确认",
@@ -338,7 +336,7 @@ export function HomeDashboardClient() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="eyebrow">Qingxuan Agent Alpha</p>
+                <p className="eyebrow">轻选 Agent</p>
                 <h1 className="mt-2 max-w-3xl text-2xl font-semibold text-slate-950 sm:text-3xl">
                   AI 跨境商品研究助手
                 </h1>
@@ -527,8 +525,8 @@ export function HomeDashboardClient() {
                 description={recentSingleRun
                   ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到研究历史" : "尚未保存"}`
                   : "还没有可恢复的商品研究结果。"}
-                href="/agent/run"
-                cta="继续商品研究"
+                href="/opportunity-candidates"
+                cta="前往商品研究池"
                 tone={recentSingleRun?.savedTaskId ? "teal" : "amber"}
               />
             </div>

@@ -74,7 +74,13 @@ export type CreativeHandoffPreview = {
   issues?: HandoffIssue[];
   prohibitedClaims?: ProhibitedClaim[];
   creativePreferences?: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string };
-  visualReferenceCandidates?: { selectionId: string; sourceTier: string; approvedForReference: boolean }[];
+  visualReferenceCandidates?: {
+    selectionId: string;
+    sourceTier: string;
+    approvedForReference: boolean;
+    summary?: string;
+    contentHash?: string;
+  }[];
   blockingCodes?: string[];
   expectedResearchRevision?: number;
   expectedCurrentHandoffRevision?: number;

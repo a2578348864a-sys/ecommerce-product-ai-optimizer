@@ -206,7 +206,7 @@ const TIMELINE_STEPS: TimelineStep[] = [
     key: "sourcing",
     title: "供货可行性",
     description: "复用现有货源判断，关注 MOQ、供应商和新手适配。",
-    detail: "只给运营判断建议，不自动联系供应商。",
+    detail: "只给研究判断建议，不自动联系供应商。",
     icon: PackageCheck,
   },
   {
@@ -239,9 +239,9 @@ const TIMELINE_STEPS: TimelineStep[] = [
   },
   {
     key: "manual",
-    title: "人工确认与任务沉淀",
-    description: "人工确认后保存任务，进入运营跟进。",
-    detail: "当前 Alpha 阶段不会自动执行商业动作。",
+    title: "人工确认与保存",
+    description: "人工确认后保存任务，进入研究历史跟进。",
+    detail: "不会自动执行商业动作。",
     icon: ClipboardCheck,
   },
 ];
@@ -275,8 +275,8 @@ const RESEARCH_STAGES: ResearchStage[] = [
     description: "整理 Listing、关键词和图片需求，等待人工确认。",
     completedContent: "Listing、关键词和图片需求草稿已整理。",
     nextAction: "内容只作为草稿，不会自动保存、发布或上架。",
-    actionLabel: "打开 Listing Studio",
-    actionHref: "/listing-studio",
+    actionLabel: "保存后在任务详情准备",
+    actionHref: "/tasks",
     stepKeys: ["listing", "report", "manual"],
     icon: Sparkles,
   },
@@ -1020,7 +1020,7 @@ export function AgentRunClient({
   }
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="商品研究" returnUrl="/agent/run" />;
+    return <WorkspaceLockedPrompt pageName="商品研究" returnUrl={candidateMode && candidateId ? `/opportunity-candidates/${encodeURIComponent(candidateId)}` : "/opportunity-candidates"} />;
   }
 
   return (
@@ -1089,9 +1089,9 @@ export function AgentRunClient({
             <div className="flex items-start gap-3">
               <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-700" />
               <div>
-                <p className="text-sm font-bold text-amber-900">Alpha 安全口径</p>
+                <p className="text-sm font-bold text-amber-900">人工确认口径</p>
                 <p className="mt-1 text-sm leading-6 text-amber-800">
-                  当前 Alpha 阶段不会自动执行商业动作。不会自动保存任务、不会自动修改任务状态、不会自动采购、不会自动上架。
+                  系统不会自动执行商业动作。不会自动保存任务、不会自动修改任务状态、不会自动采购、不会自动上架。
                   合规 / 侵权 AI / 规则预筛只能做提醒，不能替代商标专利平台规则和当地法规核查。
                 </p>
               </div>
@@ -1476,7 +1476,7 @@ export function AgentRunClient({
               <details className="mt-3 rounded-xl border border-slate-200 bg-white/80 p-3">
                 <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
                   完整 AI 分析 / 过程日志 / JSON
-                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，调试时再展开</span>
+                  <span className="ml-2 text-xs font-medium text-slate-400">默认折叠，可按需展开</span>
                 </summary>
                 <div className="mt-3 space-y-3">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

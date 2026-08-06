@@ -53,8 +53,8 @@ describe("Candidate research pool contract", () => {
     expect(merged[100].id).toBe("candidate-101");
   });
 
-  it("routes unconverted Candidates to Agent and converted Candidates to Task", () => {
-    expect(candidatePrimaryHref(apiItem(1))).toBe("/agent/run?source=opportunity&candidateId=candidate-1");
+  it("routes unconverted Candidates to research and converted Candidates to Task", () => {
+    expect(candidatePrimaryHref(apiItem(1))).toBe("/opportunity-candidates/candidate-1?source=opportunity&candidateId=candidate-1");
     expect(candidatePrimaryHref(apiItem(2, {
       convertedTaskId: "task-002",
       researchAction: "converted",

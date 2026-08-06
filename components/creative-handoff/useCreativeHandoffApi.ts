@@ -75,6 +75,7 @@ export function useCreativeHandoffApi(taskId: string) {
     async (input: {
       requestId: string;
       selectedFactCandidateIds: string[];
+      selectedVisualReferenceCandidateIds?: string[];
       expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
       expectedResearchRevision: number;
       expectedCurrentHandoffRevision: number;
@@ -86,6 +87,11 @@ export function useCreativeHandoffApi(taskId: string) {
         action: "create",
         requestId: input.requestId,
         selectedFactCandidateIds: input.selectedFactCandidateIds,
+        // V2 Final Integration: 视觉参考批准只提交服务端确定的 selectionId；
+        // 浏览器绝不提交图片 URL 或完整 visualReference 对象。
+        ...(input.selectedVisualReferenceCandidateIds && input.selectedVisualReferenceCandidateIds.length > 0
+          ? { selectedVisualReferenceCandidateIds: input.selectedVisualReferenceCandidateIds }
+          : {}),
         expectedStorageVersion: input.expectedStorageVersion,
         expectedResearchRevision: input.expectedResearchRevision,
         expectedCurrentHandoffRevision: input.expectedCurrentHandoffRevision,

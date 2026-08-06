@@ -44,5 +44,6 @@ export function buildCandidateAgentRunHref(input: CandidateAgentRunLinkInput) {
     candidateId,
   });
 
-  return `/agent/run?${params.toString()}`;
+  // R1: 研究入口迁移到商品研究池候选详情页；/agent/run 仅保留重定向
+  return `/opportunity-candidates/${encodeURIComponent(candidateId)}?${params.toString()}`;
 }

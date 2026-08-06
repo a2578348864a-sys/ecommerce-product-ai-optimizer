@@ -287,8 +287,12 @@ export function deriveTaskWorkflowSummary(input: TaskWorkflowSummaryInput): Task
       text(agentOutputSnapshot.rawReportSummary) ||
       text(input.oneLineSummary) ||
       "暂无";
-    const nextActions = agentOutputSnapshot.nextActionSnapshot.checklist.length > 0
+    // 防御：checklist 可能缺失/非数组（历史记录未写入该字段）→ 回退 suggestedOwnerStep
+    const checklist = Array.isArray(agentOutputSnapshot.nextActionSnapshot.checklist)
       ? agentOutputSnapshot.nextActionSnapshot.checklist
+      : [];
+    const nextActions = checklist.length > 0
+      ? checklist
       : [agentOutputSnapshot.nextActionSnapshot.suggestedOwnerStep].filter(Boolean);
     const safeActions = nextActions.length > 0 ? nextActions : DEFAULT_WORKFLOW_ACTIONS;
     const priority = getPriority(input, risk.tone, verdictLabel, agentOutputSnapshot.nextActionSnapshot.primaryAction === "small_batch_test", []);

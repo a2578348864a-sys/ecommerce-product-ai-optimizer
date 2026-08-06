@@ -25,7 +25,7 @@ function marketSnapshot(marketDecision: R22MarketDecisionSnapshot["marketDecisio
 }
 
 describe("buildCandidateAgentRunHref", () => {
-  it("builds an opaque Candidate-only handoff URL for /agent/run", () => {
+  it("builds an opaque Candidate-only handoff URL for the candidate research page", () => {
     const href = buildCandidateAgentRunHref({
       candidateId: "test-candidate",
       name: "桌面手机支架",
@@ -41,7 +41,8 @@ describe("buildCandidateAgentRunHref", () => {
     expect(href).not.toBeNull();
     if (!href) throw new Error("expected authoritative Candidate href");
     const url = new URL(href, "http://localhost:3005");
-    expect(url.pathname).toBe("/agent/run");
+    // R1: 研究入口已迁移到商品研究池候选详情页
+    expect(url.pathname).toBe("/opportunity-candidates/test-candidate");
     expect(url.searchParams.get("source")).toBe("opportunity");
     expect(url.searchParams.get("candidateId")).toBe("test-candidate");
     expect([...url.searchParams.keys()].sort()).toEqual(["candidateId", "source"]);

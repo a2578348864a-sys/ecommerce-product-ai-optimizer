@@ -235,7 +235,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
               <span>密码仅保存在当前会话；关闭网页后需重新输入。</span>
             </div>
             <p className="mt-2 text-xs leading-5 text-slate-400">
-              当前为 Alpha 阶段，AI 结果仅作辅助判断。
+              AI 结果仅作辅助判断，关键动作由人工确认。
             </p>
           </div>
         </section>

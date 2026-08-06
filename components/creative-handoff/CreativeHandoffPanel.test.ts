@@ -78,7 +78,7 @@ describe("Preview 六层分区", () => {
   });
 
   it("14. AI reference 无事实 Checkbox", () => {
-    const aiSection = panelSource.slice(panelSource.indexOf("AI 辅助参考"), panelSource.indexOf("未知／冲突与风险"));
+    const aiSection = panelSource.slice(panelSource.indexOf("AI 辅助参考"), panelSource.indexOf("视觉参考"));
     expect(aiSection).not.toContain('type="checkbox"');
   });
 

@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { MaterialsForm } from "@/components/cross-border/MaterialsForm";
+import { LegacyMigratedPage } from "@/components/LegacyMigratedPage";
 
 export const metadata: Metadata = {
-  title: "素材接收 - 轻选 Agent",
-  description: "粘贴商品链接、截图描述或选品想法，AI 自动提取商品信息。",
+  title: "素材接收已迁移 - 轻选 Agent",
+  description: "素材整理已并入商品研究流程。",
 };
 
 export default function MaterialsPage() {
-  return <MaterialsForm />;
+  return (
+    <LegacyMigratedPage
+      pageName="素材接收"
+      description="商品信息整理已并入商品研究流程，在商品研究中完成理解、市场研究和创作准备。"
+    />
+  );
 }

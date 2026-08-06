@@ -1,26 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  ArrowRight,
-  History,
-  Sparkles,
-  Target,
-} from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
 export const metadata: Metadata = {
-  title: "Agent 路线图已归档 - 轻选 Agent",
-  description: "Agent 能力路线图已归档。/agent/run 当前仅作为未接入新 Evidence 的高级临时分析工具。",
+  title: "商品研究已迁移 - 轻选 Agent",
+  description: "商品研究入口已迁移到商品研究池，从这里开始三阶段商品研究。",
 };
 
-const archiveNotes = [
-  "候选发现 — 已并入 /opportunities 候选池",
-  "Agent 分析 — 已并入 /agent/run 高级临时分析（既有 8 步受控流程）",
-  "风险 / 利润 / Listing 准备包 — 保留在高级临时分析结果中",
-  "人工确认 — 所有 AI 结论必须人工复核后保存",
-  "任务沉淀 — 已并入 /tasks 任务中心与复盘",
-];
-
+/**
+ * R1: 旧 Agent 能力页归档。研究入口统一收敛到商品研究池候选详情页。
+ */
 export default function AgentPage() {
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8">
@@ -30,113 +20,48 @@ export default function AgentPage() {
         <div className="flex min-w-0 flex-col gap-5">
           <header className="workspace-header">
             <div>
-              <p className="eyebrow">已归档</p>
+              <p className="eyebrow">已迁移</p>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                Agent 路线图已归档
+                商品研究已迁移
               </h1>
               <p className="mt-1 text-sm text-slate-500">
-                当前正式产品方向是市场预筛。/agent/run 尚未接入新 Evidence，仅保留为高级临时分析。
+                商品研究现在从商品研究池开始：选择候选商品，依次完成商品理解、市场研究和创作准备。
               </p>
             </div>
             <WorkspaceMobileNav />
           </header>
 
-          {/* ── 归档说明 ── */}
           <section className="surface-card p-5 sm:p-6">
             <div className="flex items-start gap-3">
-              <span className="linear-icon size-10 shrink-0 rounded-xl bg-slate-100 text-slate-500">
+              <span className="linear-icon size-10 shrink-0 rounded-xl bg-teal-50 text-teal-600">
                 <Sparkles className="size-5" />
               </span>
               <div>
                 <p className="text-base font-semibold text-slate-800">
-                  本页是旧版 Agent 能力路线图，已停止维护
+                  旧版 Agent 路线图已停止维护
                 </p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  旧路线图中标注的「规划中」能力不会在当前版本执行，也不会自动下单、自动铺货、自动投流。
-                  所有 AI 结论必须人工复核。以下能力仅说明旧功能去向：
+                  AI 只负责整理与建议，不代替供应商、成本、合规核验，最终决定始终由人工完成。
+                  所有 AI 结论必须人工复核后保存。
                 </p>
               </div>
             </div>
-            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-              {archiveNotes.map((note) => (
-                <li key={note} className="flex items-start gap-2 text-sm leading-6 text-slate-600">
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-teal-400" />
-                  {note}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          {/* ── 跳转 CTA ── */}
-          <section className="surface-card p-5 sm:p-6">
-            <h2 className="text-lg font-semibold text-slate-950">现有入口说明</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              市场预筛仍在分阶段接入。高级临时分析未接入新 Evidence，不代表已完成市场预筛。
-            </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="mt-5 flex flex-wrap gap-2">
               <Link
-                href="/agent/run"
-                className="group rounded-2xl border border-teal-200 bg-teal-50/60 p-4 transition hover:border-teal-300 hover:shadow-md"
+                href="/opportunity-candidates"
+                className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
               >
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-5 text-teal-600" />
-                  <h3 className="text-base font-semibold text-teal-900">高级临时分析</h3>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-teal-700">
-                  8 步受控流程：数据清洗 → 市场机会 → 供货可行性 → 成本利润 → 合规预筛 → Listing 准备 → 最终结论 → 人工确认保存。
-                </p>
-                <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-600 group-hover:text-teal-800">
-                  进入高级临时分析
-                  <ArrowRight className="size-4" />
-                </span>
+                前往商品研究池
+                <ArrowRight className="size-4" />
               </Link>
-
               <Link
-                href="/opportunities"
-                className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-teal-200 hover:shadow-md"
+                href="/"
+                className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
               >
-                <div className="flex items-center gap-2">
-                  <Target className="size-5 text-slate-600" />
-                  <h3 className="text-base font-semibold text-slate-900">查看候选池</h3>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  从公开线索中发现候选商品，放入候选池标记状态，再选择进入 Agent 主链路深挖。
-                </p>
-                <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 group-hover:text-teal-600">
-                  进入候选池
-                  <ArrowRight className="size-4" />
-                </span>
-              </Link>
-
-              <Link
-                href="/tasks"
-                className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-teal-200 hover:shadow-md"
-              >
-                <div className="flex items-center gap-2">
-                  <History className="size-5 text-slate-600" />
-                  <h3 className="text-base font-semibold text-slate-900">查看任务中心</h3>
-                </div>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  所有分析结果归档、人工决策状态标记、历史复盘追踪。
-                </p>
-                <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 group-hover:text-teal-600">
-                  进入任务中心
-                  <ArrowRight className="size-4" />
-                </span>
+                返回工作台
               </Link>
             </div>
           </section>
-
-          {/* ── 返回工作台 ── */}
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="linear-button inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold"
-            >
-              返回工作台
-              <ArrowRight className="size-4" />
-            </Link>
-          </div>
         </div>
       </div>
     </main>
