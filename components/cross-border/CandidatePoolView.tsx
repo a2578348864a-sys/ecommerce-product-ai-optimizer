@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ArrowRight, Loader2, Plus, RefreshCw } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { useSessionDraft, clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
 import {
   candidatePrimaryHref,
   mergeCandidatePages,
@@ -371,6 +372,13 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // 候选池轻量状态草稿：搜索词 / 状态筛选 / 多选（刷新恢复，sessionStorage）
+  const poolDraft = useSessionDraft<{ statusFilter: StatusFilter; query: string; selectedIds: string[] }>({
+    pageKind: "candidate-pool",
+    entityId: "pool",
+    revision: "v1",
+    initial: { statusFilter: "all", query: "", selectedIds: [] },
+  });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [manualOpen, setManualOpen] = useState(manualMode);
@@ -422,6 +430,21 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
   useEffect(() => {
     void load(0, false, statusFilter, query);
   }, [load, statusFilter, query]);
+
+  // 候选池草稿恢复（校验通过才应用，避免默认值覆盖草稿）
+  useEffect(() => {
+    if (poolDraft.draft && poolDraft.restored) {
+      const d = poolDraft.draft;
+      if (d.statusFilter) setStatusFilter(d.statusFilter);
+      if (typeof d.query === "string") setQuery(d.query);
+      if (Array.isArray(d.selectedIds)) setSelectedIds(d.selectedIds);
+    }
+  }, [poolDraft.draft, poolDraft.restored]);
+
+  // 状态变化 → 防抖保存草稿
+  useEffect(() => {
+    poolDraft.save({ statusFilter, query, selectedIds });
+  }, [statusFilter, query, selectedIds, poolDraft]);
 
   function submitManual(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -484,6 +507,8 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
           throw new Error("candidate_delete_failed");
         }
         setSelectedIds((current) => current.filter((selected) => selected !== id));
+        // 候选删除成功 → 清除该候选的研究决策草稿
+        clearSessionDraftsForEntity("research-decision", id);
         await load(0, false, statusFilter, query);
       } catch {
         setMessage("删除未完成，请稍后重试。");
@@ -510,6 +535,8 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
           });
           if (response.ok) {
             deleted += 1;
+            // 候选删除成功 → 清除该候选的研究决策草稿
+            clearSessionDraftsForEntity("research-decision", id);
           } else {
             const payload: unknown = await response.json().catch(() => null);
             const code = payload && typeof payload === "object" && "error" in payload

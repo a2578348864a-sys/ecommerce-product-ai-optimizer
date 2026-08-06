@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildAccessHeaders, getAccessToken } from "@/lib/client/accessToken";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { useCreativeHandoffApi, HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
 import {
   ELIGIBILITY_BLOCK_LABELS,
@@ -229,6 +230,23 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<CreativePrefs>({ ...DEFAULT_PREFS });
+  // 当前向导步骤（草稿持久化；提升自 PreviewSection）
+  const [guideStep, setGuideStep] = useState(1);
+  // 草稿 Revision（初始 null = 尚未从服务端获知；获知后 researchRevision:handoffRevision）
+  const [draftRevision, setDraftRevision] = useState<string | null>(null);
+  // 会话草稿：刷新防丢失（仅 sessionStorage；保存 selectionId 列表 / 偏好 / 步骤 / 确认状态）
+  const handoffDraft = useSessionDraft<{
+    guideStep: number;
+    selectedIds: string[];
+    selectedVisualIds: string[];
+    confirmed: boolean;
+    prefs: CreativePrefs;
+  }>({
+    pageKind: "creative-handoff",
+    entityId: taskId,
+    revision: draftRevision,
+    initial: { guideStep: 1, selectedIds: [], selectedVisualIds: [], confirmed: false, prefs: { ...DEFAULT_PREFS } },
+  });
   const mounted = useRef(true);
   // P1：loadAll 重入保护——effect 依赖稳定后仅挂载/刷新触发一次，绝不重复发起
   const loadAllRef = useRef(false);
@@ -282,11 +300,47 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
           ...(saved.additionalRequirements ? { additionalRequirements: saved.additionalRequirements } : {}),
         }));
       }
+      // 草稿 Revision：researchRevision + currentHandoff revision（变化时旧草稿失效）
+      if (res.kind === "ok" && res.preview) {
+        const rev = `${res.preview.expectedResearchRevision ?? 1}:${res.preview.expectedCurrentHandoffRevision ?? 0}`;
+        if (rev !== draftRevision) setDraftRevision(rev);
+      }
       setState(deriveState(res.preview, res.detail, res.gateReason));
     } finally {
       loadAllRef.current = false;
     }
-  }, [apiLoad, deriveState]);
+  }, [apiLoad, deriveState, draftRevision]);
+
+  // 草稿恢复后应用到表单状态（draft 非 null 即已恢复；依赖 draft 对象引用确保触发）
+  useEffect(() => {
+    if (handoffDraft.draft) {
+      const d = handoffDraft.draft;
+      setGuideStep(d.guideStep >= 1 && d.guideStep <= 4 ? d.guideStep : 1);
+      if (Array.isArray(d.selectedIds)) setSelectedIds(d.selectedIds);
+      if (Array.isArray(d.selectedVisualIds)) setSelectedVisualIds(d.selectedVisualIds);
+      setConfirmed(d.confirmed === true);
+      if (d.prefs && typeof d.prefs === "object") {
+        setPrefs((current) => ({ ...current, ...d.prefs }));
+      }
+    }
+  }, [handoffDraft.draft]);
+
+  // 表单变化 → 防抖保存草稿（300-500ms）
+  useEffect(() => {
+    if (state.kind !== "preview" && state.kind !== "active" && state.kind !== "stale") return;
+    handoffDraft.save({
+      guideStep,
+      selectedIds,
+      selectedVisualIds,
+      confirmed,
+      prefs,
+    });
+  }, [guideStep, selectedIds, selectedVisualIds, confirmed, prefs, state.kind, handoffDraft]);
+
+  // 创建成功 → 清除草稿（不再恢复旧内容）
+  const clearDraftAfterCommit = useCallback(() => {
+    handoffDraft.clear();
+  }, [handoffDraft]);
 
   useEffect(() => {
     void loadAll();
@@ -376,6 +430,8 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       } else {
         setNotice(result.isNewRevision ? `已创建交接（版本 ${result.currentRevision}）。` : `已追加版本 ${result.currentRevision}。`);
       }
+      // 创建成功 → 清除草稿（提交后不恢复旧未提交内容）
+      clearDraftAfterCommit();
       resetSelection();
       await loadAll();
     } catch (err) {
@@ -395,7 +451,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [state, selectedIds, selectedVisualIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting]);
+  }, [state, selectedIds, selectedVisualIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting, clearDraftAfterCommit]);
 
   const retrySameRequest = useCallback(() => {
     if (!retryBody || !requestId) return;
@@ -479,6 +535,26 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
         </p>
       ) : null}
 
+      {/* 会话草稿状态：恢复提示 / 自动保存 / 失效提示 / 清除入口 */}
+      {handoffDraft.restored ? (
+        <p role="status" className="mt-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+          已恢复刷新前的未提交内容
+          <button
+            type="button"
+            onClick={handoffDraft.clear}
+            className="ml-2 rounded border border-teal-300 px-1.5 py-0.5 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+          >
+            清除当前草稿
+          </button>
+        </p>
+      ) : handoffDraft.invalidated ? (
+        <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          任务内容已经更新，为避免使用过期信息，未恢复上次草稿。
+        </p>
+      ) : handoffDraft.saved ? (
+        <p className="mt-3 text-xs text-slate-400">草稿已自动保存</p>
+      ) : null}
+
       {state.kind === "loading" ? (
         <div className="mt-4 space-y-3" aria-busy="true" aria-label="加载中">
           <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
@@ -537,6 +613,8 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
           onToggleVisual={toggleVisualReference}
           prefs={prefs}
           onPrefsChange={setPrefs}
+          guideStep={guideStep}
+          onGuideStepChange={setGuideStep}
         />
       ) : null}
 
@@ -578,6 +656,8 @@ function PreviewSection({
   onToggleVisual,
   prefs,
   onPrefsChange,
+  guideStep,
+  onGuideStepChange,
 }: {
   preview: CreativeHandoffPreview;
   selectedIds: string[];
@@ -586,6 +666,8 @@ function PreviewSection({
   onToggleVisual: (selectionId: string) => void;
   prefs: CreativePrefs;
   onPrefsChange: (prefs: CreativePrefs) => void;
+  guideStep: number;
+  onGuideStepChange: (step: number) => void;
 }) {
   const confirmables = preview.confirmableFactCandidates ?? [];
   const stables = preview.stableSourceFacts ?? [];
@@ -595,8 +677,8 @@ function PreviewSection({
   const visuals = preview.visualReferenceCandidates ?? [];
   const blockingIssues = issues.filter((issue) => issue.risk === "blocking");
 
-  // F：4 步向导（确认事实 → 确认视觉 → 创作偏好 → 创建交接）
-  const [guideStep, setGuideStep] = useState(1);
+  // F：4 步向导（确认事实 → 确认视觉 → 创作偏好 → 创建交接）——step 由父组件持有（草稿持久化）
+  const setGuideStep = onGuideStepChange;
   const stepCount = 4;
   const factsDone = selectedIds.length >= 1;
   const canGoNext = (step: number) => {
@@ -949,7 +1031,7 @@ function PreviewSection({
           {guideStep > 1 ? (
             <button
               type="button"
-              onClick={() => setGuideStep((current) => Math.max(1, current - 1))}
+              onClick={() => setGuideStep(Math.max(1, guideStep - 1))}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
               上一步
@@ -961,7 +1043,7 @@ function PreviewSection({
             <button
               type="button"
               disabled={!canGoNext(guideStep)}
-              onClick={() => setGuideStep((current) => current + 1)}
+              onClick={() => setGuideStep(guideStep + 1)}
               className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               下一步

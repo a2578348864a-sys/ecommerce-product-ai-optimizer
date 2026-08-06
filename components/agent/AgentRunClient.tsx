@@ -23,6 +23,7 @@ import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSide
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import { useAccessPassword } from "@/lib/client/accessPassword";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import {
   buildAccessHeaders,
   getAccessMode,
@@ -490,6 +491,36 @@ export function AgentRunClient({
     useState<ProductResearchDecisionStatus>("needs_information");
   const [manualDecisionReason, setManualDecisionReason] = useState("");
   const [manualDecisionNextAction, setManualDecisionNextAction] = useState("");
+  // 当前展开区域（待人工核验 details，默认折叠；草稿持久化）
+  const [humanVerificationOpen, setHumanVerificationOpen] = useState(false);
+  // 会话草稿：刷新防丢失（研究输入 / 核验勾选 / 决定 / 原因 / 下一步 / 展开区）
+  // Revision：候选模式绑定服务端候选内容指纹（contextHash，候选内容更新时旧草稿失效）；
+  // 手工模式无服务端版本概念，用稳定 "manual-v1"。
+  const decisionDraftRevision = candidateMode
+    ? (sourceMeta?.contextHash ?? null)
+    : "manual-v1";
+  const decisionDraft = useSessionDraft<{
+    productName: string;
+    manualChecked: Record<ManualItemKey, boolean>;
+    manualDecisionStatus: DecisionStatus;
+    productResearchDecisionStatus: ProductResearchDecisionStatus;
+    manualDecisionReason: string;
+    manualDecisionNextAction: string;
+    humanVerificationOpen: boolean;
+  }>({
+    pageKind: "research-decision",
+    entityId: candidateId || candidateMode ? candidateId || "" : initialProductName || "manual",
+    revision: decisionDraftRevision,
+    initial: {
+      productName: productName,
+      manualChecked: { sourcing: false, profit: false, risk: false, listing: false },
+      manualDecisionStatus: "need_info",
+      productResearchDecisionStatus: "needs_information",
+      manualDecisionReason: "",
+      manualDecisionNextAction: "",
+      humanVerificationOpen: false,
+    },
+  });
   const [error, setError] = useState("");
   const [authError, setAuthError] = useState(""); // auth failures should never mark steps as failed
   const [saveError, setSaveError] = useState("");
@@ -498,6 +529,56 @@ export function AgentRunClient({
   const summaryRef = useRef<HTMLDivElement | null>(null);
   const jobRequestIdRef = useRef("");
   const researchDecisionIdRef = useRef("");
+
+  // 会话草稿恢复：在候选上下文就绪、且 agent-run 缓存恢复判定结束后应用
+  // （避免 clearCandidateUi / 缓存恢复覆盖草稿恢复值）。
+  const draftAppliedRef = useRef(false);
+  const [cacheRestoreSettled, setCacheRestoreSettled] = useState(false);
+  useEffect(() => {
+    if (!decisionDraft.draft || !decisionDraft.restored) return;
+    if (candidateMode && candidateContextState !== "candidate_context_ready") return;
+    if (!cacheRestoreSettled) return;
+    if (draftAppliedRef.current) return;
+    draftAppliedRef.current = true;
+    const d = decisionDraft.draft;
+    // 候选模式下商品名以服务端候选上下文为权威，不覆盖草稿中的名称
+    if (!candidateMode && typeof d.productName === "string") setProductName(d.productName);
+    if (d.manualChecked && typeof d.manualChecked === "object") {
+      setManualChecked({
+        sourcing: d.manualChecked.sourcing === true,
+        profit: d.manualChecked.profit === true,
+        risk: d.manualChecked.risk === true,
+        listing: d.manualChecked.listing === true,
+      });
+    }
+    if (d.manualDecisionStatus) setManualDecisionStatus(d.manualDecisionStatus);
+    if (d.productResearchDecisionStatus) setProductResearchDecisionStatus(d.productResearchDecisionStatus);
+    if (typeof d.manualDecisionReason === "string") setManualDecisionReason(d.manualDecisionReason);
+    if (typeof d.manualDecisionNextAction === "string") setManualDecisionNextAction(d.manualDecisionNextAction);
+    if (typeof d.humanVerificationOpen === "boolean") setHumanVerificationOpen(d.humanVerificationOpen);
+  }, [decisionDraft.draft, decisionDraft.restored, candidateMode, candidateContextState, cacheRestoreSettled]);
+
+  // 表单变化 → 防抖保存草稿（300-500ms，不每次按键触发网络请求）
+  useEffect(() => {
+    decisionDraft.save({
+      productName,
+      manualChecked,
+      manualDecisionStatus,
+      productResearchDecisionStatus,
+      manualDecisionReason,
+      manualDecisionNextAction,
+      humanVerificationOpen,
+    });
+  }, [
+    productName,
+    manualChecked,
+    manualDecisionStatus,
+    productResearchDecisionStatus,
+    manualDecisionReason,
+    manualDecisionNextAction,
+    humanVerificationOpen,
+    decisionDraft,
+  ]);
 
   const report = result?.finalReport || null;
   const manualReady = MANUAL_ITEMS.every((item) => manualChecked[item.key]);
@@ -581,6 +662,7 @@ export function AgentRunClient({
     setProductResearchDecisionStatus("needs_information");
     setManualDecisionReason("");
     setManualDecisionNextAction("");
+    setHumanVerificationOpen(false);
     setError("");
     setAuthError("");
     setSaveError("");
@@ -589,6 +671,8 @@ export function AgentRunClient({
     jobRequestIdRef.current = "";
     researchDecisionIdRef.current = "";
     cacheRestoreAttempted.current = false;
+    // 用户主动重新开始 → 清除会话草稿（不恢复旧未提交内容）
+    decisionDraft.clear();
     // Clear agent run cache (scoped to current access mode only)
     try {
       const storage = window.sessionStorage;
@@ -603,7 +687,7 @@ export function AgentRunClient({
       }
       keysToRemove.forEach((k) => storage.removeItem(k));
     } catch { /* ignore */ }
-  }, []);
+  }, [decisionDraft]);
 
   useEffect(() => {
     if (!candidateMode && initialProductName) {
@@ -728,6 +812,7 @@ export function AgentRunClient({
       : loadLatestAgentRunCache(cacheSourceMeta, cacheScope);
     if (!cached) {
       cacheRestoreAttempted.current = true;
+      setCacheRestoreSettled(true);
       return;
     }
 
@@ -760,6 +845,7 @@ export function AgentRunClient({
     setManualDecisionReason(typeof cached.manualDecisionReason === "string" ? cached.manualDecisionReason : "");
     setManualDecisionNextAction(typeof cached.manualDecisionNextAction === "string" ? cached.manualDecisionNextAction : "");
     if (cached.savedTaskId) setSavedTaskId(cached.savedTaskId);
+    setCacheRestoreSettled(true);
   }, [
     isAccessPasswordReady,
     cacheScope,
@@ -999,6 +1085,8 @@ export function AgentRunClient({
       setSavedTaskId(data.data.id);
       setPhase("completed");
       setStepStatuses((current) => ({ ...current, manual: "completed" }));
+      // 人工决定保存成功 → 清除草稿（提交后不恢复旧未提交内容）
+      decisionDraft.clear();
     } catch {
       setSaveError("网络异常，保存任务失败。");
     } finally {
@@ -1185,6 +1273,25 @@ export function AgentRunClient({
                 <Link href="/" className="mt-2 inline-block text-sm font-semibold text-rose-600 underline">返回首页重新登录</Link>
               </div>
             ) : null}
+            {/* 会话草稿状态：恢复提示 / 自动保存 / 失效提示 / 清除入口 */}
+            {decisionDraft.restored ? (
+              <p role="status" className="mt-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
+                已恢复刷新前的未提交内容
+                <button
+                  type="button"
+                  onClick={decisionDraft.clear}
+                  className="ml-2 rounded border border-teal-300 px-1.5 py-0.5 text-xs font-semibold text-teal-700 hover:bg-teal-100"
+                >
+                  清除当前草稿
+                </button>
+              </p>
+            ) : decisionDraft.invalidated ? (
+              <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                任务内容已经更新，为避免使用过期信息，未恢复上次草稿。
+              </p>
+            ) : decisionDraft.saved ? (
+              <p className="mt-3 text-xs text-slate-400">草稿已自动保存</p>
+            ) : null}
             {candidateMode && candidateContextState === "candidate_context_loading" ? (
               <div
                 className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-6 text-sky-700"
@@ -1278,6 +1385,8 @@ export function AgentRunClient({
           <details
             data-testid="agent-run-human-verification"
             className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5"
+            open={humanVerificationOpen}
+            onToggle={(event) => setHumanVerificationOpen((event.target as HTMLDetailsElement).open)}
           >
             <summary className="cursor-pointer list-none select-none">
               <div className="flex flex-wrap items-center justify-between gap-3">

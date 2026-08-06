@@ -42,9 +42,11 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).not.toContain("data-testid=\"agent-run-technical-details\"");
     expect(clientSource).not.toContain("TIMELINE_STEPS.map");
 
+    // 待人工核验默认折叠，但展开状态受控于会话草稿（刷新恢复"当前展开区域"）
     expect(clientSource).toMatch(
-      /<details(?=[^>]*data-testid="agent-run-human-verification")(?![^>]*\bopen(?:=|\s|>))[^>]*>/,
+      /<details(?=[^>]*data-testid="agent-run-human-verification")[^>]*open=\{humanVerificationOpen\}/,
     );
+    expect(clientSource).toContain("const [humanVerificationOpen, setHumanVerificationOpen] = useState(false)");
     expect(clientSource).toContain("待人工核验");
     expect(clientSource).toContain("供货与供应商");
     expect(clientSource).toContain("成本与利润");

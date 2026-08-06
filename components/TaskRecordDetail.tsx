@@ -10,6 +10,7 @@ import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
 import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
 import { RiskReviewChecklistCard } from "@/components/cross-border/RiskReviewChecklistCard";
@@ -1185,6 +1186,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
         setDeleteError(data.ok ? "删除失败，请稍后再试。" : data.error.message);
         return;
       }
+      // 任务删除成功 → 清除该任务的创作交接草稿（不再恢复）
+      clearSessionDraftsForEntity("creative-handoff", record.id);
       router.push("/tasks");
       router.refresh();
     } catch {
