@@ -30,7 +30,13 @@ export type ProductAnalysisStepOptions = {
 /* ── Config ────────────────────────────────────── */
 
 export const PRODUCT_ANALYSIS_AI_TIMEOUT_MS = 45_000;
-const MAX_OUTPUT_TOKENS = 2000;
+// Provider 稳定性修复：deepseek-v4-flash 为推理模型，reasoning tokens 计入 completion_tokens，
+// 风险分析等步骤偶发推理消耗爆炸（实测 reasoning 单步可达 1500，吃满旧预算后 finish_reason=length
+// → 空响应 → empty_response/json_parse_error）。为推理预留安全余量：
+//   sourcing 2000→4000（推理+输出），risk 1500→4000，summary 1200→3000，listing 1500→4000。
+// 实测：4000 预算下 reasoning 峰值 1500 仍有 2.5x 输出余量，连续 2 轮四步 0 fallback。
+const MAX_OUTPUT_TOKENS = 4000;
+const MAX_SUMMARY_TOKENS = 3000;
 const MAX_INPUT_CONTEXT_CHARS = 6_000;
 const EVIDENCE_JSON_SYSTEM_PROMPT = [
   "你只输出严格 JSON object。不要输出 Markdown、解释、代码块或额外文本。",
@@ -328,7 +334,7 @@ export async function runSummaryStep(
   try {
     const result = await callAiJson<unknown>({
       onProviderCallStart: options.onProviderCallStart,
-      maxTokens: 1200,
+      maxTokens: MAX_SUMMARY_TOKENS,
       timeoutMs: PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
       messages: [
         { role: "system", content: EVIDENCE_JSON_SYSTEM_PROMPT },
@@ -412,7 +418,7 @@ export async function runListingStep(
   try {
     const result = await callAiJson<unknown>({
       onProviderCallStart: options.onProviderCallStart,
-      maxTokens: 1500,
+      maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: PRODUCT_ANALYSIS_AI_TIMEOUT_MS,
       messages: [
         { role: "system", content: "你只输出严格 JSON object。不要输出 Markdown、解释、代码块或额外文本。" },
