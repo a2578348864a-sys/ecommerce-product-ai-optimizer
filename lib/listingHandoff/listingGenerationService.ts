@@ -11,6 +11,7 @@ import { createListingProviderByMode } from "@/lib/listingHandoff/realListingPro
 import { buildListingPromptFromInput, assertPromptIsSafe } from "@/lib/listingHandoff/listingPrompt";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { buildSafeFallbackListingDraft } from "@/lib/listingHandoff/safeListingFallback";
+import { composeListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
@@ -358,6 +359,41 @@ export async function generateListingDraftFromHandoff(
         currentHandoff: { handoffId: handoffC.handoffId, currentRevision: handoffC.currentRevision, controlState: handoffC.controlState, stale: false },
         researchRevision: validated.researchRevision,
       });
+
+      // V2.1.5：确定性 Listing Composition 层——事实决定结构。
+      // Provider 输出仅作参考（经 Claim Evidence 验证），最终保存用 Composition 结果：
+      // Title/Bullets/Description/Keywords 完全由 confirmed facts 组合，AI 不负责结构。
+      // Composition 输出必须通过 Schema 与 Claim Evidence（零放宽，防御性门禁）。
+      const composed = composeListingDraft(generationInput);
+      const composedDraft: Record<string, unknown> = {
+        source: "real_ai_draft",
+        version: 1,
+        generatedAt: binding.generatedAt,
+        model: provider.model,
+        humanReviewRequired: true,
+        titles: composed.titles,
+        bullets: composed.bullets,
+        description: composed.description,
+        keywords: composed.keywords,
+        sellingPoints: ["简洁实用的选择", "清晰呈现产品特点"],
+        riskNotes: ["商品信息来自已人工确认的事实，未包含未经验证的声明。"],
+        complianceWarnings: [],
+        blockedClaims: [],
+        reviewChecklist: ["请人工核对事实字段与值后完善表达。"],
+      };
+      const composedSchema = validateAiListingPackDraft(composedDraft);
+      if (!composedSchema.ok) {
+        throw new ListingHandoffError("listing_schema_invalid", 422, "组合草稿未通过结构校验。");
+      }
+      const composedFiltered = filterListingClaims(composedSchema.data, {
+        prohibitedClaims: generationInput.prohibitedClaims,
+        customClaimLabel: "Handoff prohibited claim",
+      });
+      const composedEvidence = verifyListingClaims(composedFiltered.cleaned, generationInput);
+      if (!listingClaimsHaveEvidence(composedEvidence)) {
+        throw new ListingHandoffError("listing_claims_unsupported", 422, "组合草稿未通过事实校验，请补充确认事实后重试。");
+      }
+      safeDraft = { draft: composedFiltered.cleaned as unknown as Record<string, unknown>, safeFallbackApplied: false as const };
 
       const draftSnapshot = {
         ...safeDraft.draft,

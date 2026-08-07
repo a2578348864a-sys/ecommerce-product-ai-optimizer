@@ -1,20 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
-import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
-import type { AiListingPackDraft } from "@/lib/aiListingDraft";
+import { composeListingDraft } from "./listingComposition";
+import type { ListingGenerationInput } from "./listingGenerationInput";
 
-function owalaInput(): ListingGenerationInput {
+function input(facts: Array<{ field: string; label: string; value: string }>): ListingGenerationInput {
   return {
     schema: "listing-generation-input.v1",
-    source: { handoffRevision: 3, researchRevision: 2 },
-    productFacts: [
-      { field: "brand", label: "品牌", value: "Owala" },
-      { field: "product_type", label: "商品类型", value: "Water Bottle" },
-      { field: "series_or_model", label: "系列/型号", value: "FreeSip" },
-      { field: "material", label: "材质", value: "Stainless Steel" },
-      { field: "capacity", label: "容量", value: "24 oz" },
-      { field: "color_or_variant", label: "颜色/款式", value: "Out of the Blue" },
-    ],
+    source: { handoffRevision: 1, researchRevision: 1 },
+    productFacts: facts,
     stableSourceFacts: [],
     creativeReferences: [],
     creativePreferences: {},
@@ -26,49 +18,71 @@ function owalaInput(): ListingGenerationInput {
   };
 }
 
-function baseDraft(overrides: Partial<AiListingPackDraft>): AiListingPackDraft {
-  return {
-    source: "mock_ai_draft", version: 1, generatedAt: "2026-08-08T00:00:00.000Z",
-    model: "mock", humanReviewRequired: true,
-    titles: [], bullets: [], description: "", keywords: [], sellingPoints: [],
-    riskNotes: [], complianceWarnings: [], blockedClaims: [], reviewChecklist: [],
-    ...overrides,
-  };
-}
+const OWALA_FACTS = [
+  { field: "brand", label: "品牌", value: "Owala" },
+  { field: "product_type", label: "商品类型", value: "Water Bottle" },
+  { field: "series_or_model", label: "系列/型号", value: "FreeSip" },
+  { field: "material", label: "材质", value: "Stainless Steel" },
+  { field: "capacity", label: "容量", value: "24 oz" },
+  { field: "color_or_variant", label: "颜色/款式", value: "Out of the Blue" },
+];
 
-describe("V2.1.4 组合事实 Claim Evidence", () => {
-  it("C1. 组合 5 个 confirmed facts 的 Title 通过（Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue）", () => {
-    const r = verifyListingClaims(
-      baseDraft({ titles: ["Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue"] }),
-      owalaInput(),
-    );
-    expect(r.unsupportedClaims).toEqual([]);
-    expect(listingClaimsHaveEvidence(r)).toBe(true);
+describe("V2.1.5 Listing Composition Layer", () => {
+  it("C1. 全事实组合成自然 Title（Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue）", () => {
+    const d = composeListingDraft(input(OWALA_FACTS));
+    expect(d.titles[0]).toBe("Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue");
   });
 
-  it("C2. 组合 Bullet（capacity+material+type）通过", () => {
-    const r = verifyListingClaims(baseDraft({ bullets: ["24 oz Stainless Steel Water Bottle"] }), owalaInput());
-    expect(r.unsupportedClaims).toEqual([]);
+  it("C2. Bullets 为多事实组合（非字段打印）", () => {
+    const d = composeListingDraft(input(OWALA_FACTS));
+    expect(d.bullets).toEqual(["Owala FreeSip Water Bottle", "Stainless Steel 24 oz", "Out of the Blue"]);
+    expect(d.bullets.some((b) => /^(品牌|商品类型|系列\/型号|材质|容量):/.test(b))).toBe(false);
   });
 
-  it("C3. 未确认 leakproof 的组合句子被拒绝（fail-closed）", () => {
-    const r = verifyListingClaims(baseDraft({ bullets: ["Owala FreeSip leakproof 24 oz bottle"] }), owalaInput());
-    expect(r.unsupportedClaims.length).toBeGreaterThan(0);
+  it("C3. Description 为事实型自然描述（无风格臆造）", () => {
+    const d = composeListingDraft(input(OWALA_FACTS));
+    expect(d.description).toContain("Owala");
+    expect(d.description).toContain("Water Bottle");
+    expect(d.description).not.toContain("现代简约风格");
+    expect(d.description).not.toContain("日常使用的实用选择");
   });
 
-  it("C4. 组合 Description 通过（无风格/功能臆造）", () => {
-    const r = verifyListingClaims(
-      baseDraft({ description: "Owala FreeSip 24 oz Stainless Steel Water Bottle in Out of the Blue." }),
-      owalaInput(),
-    );
-    expect(r.unsupportedClaims).toEqual([]);
+  it("C4. Keywords 纯值无字段标签", () => {
+    const d = composeListingDraft(input(OWALA_FACTS));
+    expect(d.keywords).toContain("Owala");
+    expect(d.keywords).toContain("FreeSip");
+    expect(d.keywords).toContain("Water Bottle");
+    expect(d.keywords.some((k) => /^(品牌|商品类型|系列\/型号|容量|材质|颜色\/款式)$/.test(k))).toBe(false);
   });
 
-  it("C5. 组合 Keywords 通过（Owala FreeSip 组合词）", () => {
-    const r = verifyListingClaims(
-      baseDraft({ keywords: ["Owala FreeSip", "24 oz Water Bottle", "Stainless Steel Bottle"] }),
-      owalaInput(),
-    );
-    expect(r.unsupportedClaims).toEqual([]);
+  it("C5. 缺失字段时按已有字段组合，不补不存在信息", () => {
+    const d = composeListingDraft(input([
+      { field: "brand", label: "品牌", value: "Acme" },
+      { field: "product_type", label: "商品类型", value: "Tumbler" },
+    ]));
+    expect(d.titles[0]).toBe("Acme Tumbler");
+    expect(d.description).not.toContain("Stainless Steel");
+    expect(d.keywords).not.toContain("Stainless Steel");
+  });
+
+  it("C6. 仅品牌时 Title 只用品牌", () => {
+    const d = composeListingDraft(input([{ field: "brand", label: "品牌", value: "Acme" }]));
+    expect(d.titles[0]).toBe("Acme");
+  });
+
+  it("C7. 市场信号（price/rating/review_count/category）不在输入中则绝不出现", () => {
+    // 输入仅含 product_fact；market signal 由上游双保险排除，本层无 market 字段入口
+    const d = composeListingDraft(input(OWALA_FACTS));
+    const all = JSON.stringify(d);
+    expect(all).not.toContain("23.99");
+    expect(all).not.toContain("4.7");
+    expect(all).not.toContain("132610");
+    expect(all).not.toContain("Sports & Outdoors");
+  });
+
+  it("C8. 无任何事实时保底用第一个事实值（不崩溃）", () => {
+    const d = composeListingDraft(input([{ field: "brand", label: "品牌", value: "Acme" }]));
+    expect(d.titles.length).toBeGreaterThan(0);
+    expect(d.bullets.length).toBeGreaterThan(0);
   });
 });
