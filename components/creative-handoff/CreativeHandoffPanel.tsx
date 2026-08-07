@@ -131,7 +131,24 @@ const FACT_FIELD_LABELS: Record<string, string> = {
   product_name: "商品名称",
   name: "商品名称",
   marketplace: "目标市场",
+  // V2.1.3：标题识别字段
+  product_type: "商品类型",
+  series_or_model: "系列/型号",
+  material: "材质",
+  capacity: "容量",
+  color_or_variant: "颜色/款式",
+  quantity_or_pack_size: "数量/包装",
 };
+
+/** V2.1.3：从商品标题识别的事实字段（UI 独立分组，标注"来源：商品标题"） */
+const TITLE_DERIVED_FIELDS = new Set([
+  "product_type",
+  "series_or_model",
+  "material",
+  "capacity",
+  "color_or_variant",
+  "quantity_or_pack_size",
+]);
 
 function factFieldLabel(field: string): string {
   const normalized = field.trim();
@@ -762,9 +779,10 @@ function PreviewSection({
               <p className="mt-2 text-sm text-slate-500">当前没有可人工确认的商品事实。</p>
             ) : (
               <>
-                {/* 商品内容事实：可确认用于 Listing 草稿 */}
+                {/* 商品内容事实 A：已有来源事实（品牌等，来自 SellerSprite 快照） */}
                 {(() => {
-                  const productFacts = confirmables.filter((item) => (item.allowedUsageScopes ?? []).includes("listing"));
+                  const productFacts = confirmables.filter((item) =>
+                    (item.allowedUsageScopes ?? []).includes("listing") && !TITLE_DERIVED_FIELDS.has(item.canonicalField));
                   if (productFacts.length === 0) return null;
                   return (
                     <div className="mt-2">
@@ -783,6 +801,35 @@ function PreviewSection({
                               <span className="block text-sm font-medium text-slate-800">{factFieldLabel(item.canonicalField)}</span>
                               <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
                               <span className="mt-0.5 block text-xs text-slate-400">来自候选商品快照，需人工确认</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+                {/* 商品内容事实 B：从商品标题识别，需人工确认（V2.1.3） */}
+                {(() => {
+                  const titleFacts = confirmables.filter((item) =>
+                    (item.allowedUsageScopes ?? []).includes("listing") && TITLE_DERIVED_FIELDS.has(item.canonicalField));
+                  if (titleFacts.length === 0) return null;
+                  return (
+                    <div className="mt-3">
+                      <p className="text-xs font-semibold text-teal-700">从商品标题识别，需人工确认</p>
+                      <ul className="mt-1 space-y-2">
+                        {titleFacts.map((item) => (
+                          <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/40 px-2 py-1.5">
+                            <input
+                              id={`confirm-${item.selectionId}`}
+                              type="checkbox"
+                              checked={selectedIds.includes(item.selectionId)}
+                              onChange={() => onToggle(item.selectionId)}
+                              className="mt-0.5 h-4 w-4 accent-teal-600"
+                            />
+                            <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium text-slate-800">{factFieldLabel(item.canonicalField)}</span>
+                              <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
+                              <span className="mt-0.5 block text-xs text-slate-400">来源：商品标题 · 需人工确认</span>
                             </label>
                           </li>
                         ))}

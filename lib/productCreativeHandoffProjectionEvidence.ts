@@ -3,6 +3,7 @@ import type { ProductCreativeHandoffProjectionEvidence } from "@/lib/productCrea
 import type { ProductResearchRecordV1 } from "@/lib/productResearchRecord";
 import type { CandidateResearchContext } from "@/lib/candidateResearchContext";
 import type { AgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
+import { deriveTitleProductFacts } from "@/lib/titleDerivedProductFacts";
 
 /**
  * Creative Handoff Projection Evidence Adapter（Fix.3）
@@ -190,6 +191,40 @@ export function buildProductCreativeHandoffProjectionEvidence(
         factCategory: mapping.factCategory,
       },
     });
+  }
+
+  // ── V2.1.3：从来源标题提取可人工确认的商品事实候选 ──
+  // 安全原则：标题解析只产生候选（sourceField 标记 product_title 来源，humanConfirmationRequired=true），
+  // 绝不自动写入 confirmedFacts；只有用户确认后才获得 listing usageScope。
+  // sourceKind 复用 candidate_snapshot（title 来自候选快照），sourceField 保留 field 名以便溯源。
+  if (context.title) {
+    const derived = deriveTitleProductFacts({
+      title: context.title,
+      brand: context.brand ?? null,
+      category: context.category ?? null,
+    });
+    for (const fact of derived.facts) {
+      const factId = uuidV4FromSeed(`title-derived:${context.candidateId}:${fact.field}:${fact.value}`, "title-derived-v1");
+      evidence.push({
+        evidenceTier: "source_snapshot",
+        fact: {
+          factId,
+          field: fact.field,
+          label: fact.label,
+          value: fact.value,
+          evidenceTier: "source_snapshot",
+          usageScopes: ["internal"],
+          sourceRef: {
+            sourceKind: "candidate_snapshot",
+            sourceField: `product_title:${fact.field}`,
+            candidateSnapshotFingerprint: sha256(`${context.candidateId}:title:${fact.value}:${context.capturedAt}`),
+            capturedAt: context.capturedAt,
+          },
+          stabilityRule: "human_confirmation_required_for_claim",
+          factCategory: "product_fact",
+        },
+      });
+    }
   }
 
   // ── 第四层：AI 辅助假设／创意参考（agentOutputSnapshot）→ aiCreativeReferences ──
