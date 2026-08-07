@@ -371,4 +371,59 @@ describe("投影接线行为（Preview 语义）", () => {
     expect(confirmed).toHaveLength(0);
     expect(evidence.some((e) => e.evidenceTier === "source_snapshot")).toBe(true);
   });
+
+  // ── V2.1.2：factCategory 分类 ──
+  describe("V2.1.2 factCategory 分类", () => {
+    it("brand 分类为 product_fact（可进 Listing）", () => {
+      const { evidence } = buildProductCreativeHandoffProjectionEvidence(buildInput());
+      const stable = evidence.filter((e) => e.evidenceTier === "source_snapshot");
+      const brand = stable.find((e) => e.evidenceTier === "source_snapshot" && e.fact.field === "brand");
+      expect(brand?.evidenceTier).toBe("source_snapshot");
+      if (brand?.evidenceTier !== "source_snapshot") return;
+      expect(brand.fact.factCategory).toBe("product_fact");
+    });
+
+    it("price_usd 分类为 market_signal（不进 Listing）", () => {
+      const { evidence } = buildProductCreativeHandoffProjectionEvidence(buildInput());
+      const stable = evidence.filter((e) => e.evidenceTier === "source_snapshot");
+      const price = stable.find((e) => e.evidenceTier === "source_snapshot" && e.fact.field === "price_usd");
+      if (price?.evidenceTier !== "source_snapshot") return;
+      expect(price.fact.factCategory).toBe("market_signal");
+    });
+
+    it("rating 分类为 market_signal", () => {
+      const { evidence } = buildProductCreativeHandoffProjectionEvidence(buildInput());
+      const stable = evidence.filter((e) => e.evidenceTier === "source_snapshot");
+      const rating = stable.find((e) => e.evidenceTier === "source_snapshot" && e.fact.field === "rating");
+      if (rating?.evidenceTier !== "source_snapshot") return;
+      expect(rating.fact.factCategory).toBe("market_signal");
+    });
+
+    it("review_count 分类为 market_signal", () => {
+      const { evidence } = buildProductCreativeHandoffProjectionEvidence(buildInput());
+      const stable = evidence.filter((e) => e.evidenceTier === "source_snapshot");
+      const rc = stable.find((e) => e.evidenceTier === "source_snapshot" && e.fact.field === "review_count");
+      if (rc?.evidenceTier !== "source_snapshot") return;
+      expect(rc.fact.factCategory).toBe("market_signal");
+    });
+
+    it("category 分类为 market_signal（市场归类，不直接进入 Listing）", () => {
+      const { evidence } = buildProductCreativeHandoffProjectionEvidence(buildInput());
+      const stable = evidence.filter((e) => e.evidenceTier === "source_snapshot");
+      const category = stable.find((e) => e.evidenceTier === "source_snapshot" && e.fact.field === "category");
+      if (category?.evidenceTier !== "source_snapshot") return;
+      expect(category.fact.factCategory).toBe("market_signal");
+    });
+
+    it("asin/title（identity/routing）无 factCategory（不可确认进 Listing）", () => {
+      const { evidence } = buildProductCreativeHandoffProjectionEvidence(buildInput());
+      const stable = evidence.filter((e) => e.evidenceTier === "source_snapshot");
+      for (const item of stable) {
+        if (item.evidenceTier !== "source_snapshot") continue;
+        if (item.fact.field === "asin" || item.fact.field === "title") {
+          expect(item.fact.factCategory).toBeUndefined();
+        }
+      }
+    });
+  });
 });

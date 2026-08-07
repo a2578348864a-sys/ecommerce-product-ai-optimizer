@@ -83,6 +83,14 @@ export type ProductCreativeHandoffStableSourceFact = {
   usageScopes: ["internal"];
   sourceRef: ProductCreativeHandoffSnapshotSourceReference;
   stabilityRule: "identity_only" | "routing_only" | "human_confirmation_required_for_claim";
+  /**
+   * 商品事实分类（V2.1.2）：
+   * - product_fact：可确认用于 Listing 的商品内容事实（如品牌）；
+   * - market_signal：市场研究数据（价格/评分/评论数/类目），仅 internal，
+   *   不得进入 Listing Title/Bullet/Description/Keywords。
+   * 兼容：旧数据无此字段时按未分类处理（不得确认进 Listing）。
+   */
+  factCategory?: "product_fact" | "market_signal";
 };
 
 export type ProductCreativeHandoffAiReference = {
@@ -532,8 +540,11 @@ function parseConfirmedFact(value: unknown): ProductCreativeHandoffConfirmedFact
 }
 
 function parseStableSourceFact(value: unknown): ProductCreativeHandoffStableSourceFact | null {
+  // factCategory 为 V2.1.2 可选扩展：旧数据可无此键，新数据可携带（product_fact/market_signal）
   if (!isRecord(value) || !hasExactKeys(value, [
     "factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "stabilityRule",
+  ]) && !hasExactKeys(value, [
+    "factId", "field", "label", "value", "evidenceTier", "usageScopes", "sourceRef", "stabilityRule", "factCategory",
   ])) return null;
   if (!isUuid(value.factId)
     || !isNfcTrimmedText(value.field, 120)
@@ -546,6 +557,9 @@ function parseStableSourceFact(value: unknown): ProductCreativeHandoffStableSour
   const scopes = parseUniqueEnumArray(value.usageScopes, ["internal"] as const, 1, 1);
   const sourceRef = parseSnapshotSourceReference(value.sourceRef);
   if (factValue === null || !scopes || !sourceRef) return null;
+  const factCategory = value.factCategory === "product_fact" || value.factCategory === "market_signal"
+    ? value.factCategory
+    : undefined;
   return {
     factId: value.factId.toLowerCase(),
     field: value.field,
@@ -555,6 +569,7 @@ function parseStableSourceFact(value: unknown): ProductCreativeHandoffStableSour
     usageScopes: ["internal"],
     sourceRef,
     stabilityRule: value.stabilityRule,
+    ...(factCategory ? { factCategory } : {}),
   };
 }
 

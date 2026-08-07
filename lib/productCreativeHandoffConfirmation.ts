@@ -97,7 +97,9 @@ export function buildConfirmableCandidates(
       sourceKind,
       capturedAt,
       stabilityRule: stable.stabilityRule,
-      allowedUsageScopes: ["internal", "listing"],
+      // V2.1.2：factCategory 决定确认后的用途范围——
+      // product_fact → internal + listing；market_signal（价格/评分/评论/类目）→ 仅 internal
+      allowedUsageScopes: stable.factCategory === "market_signal" ? ["internal"] : ["internal", "listing"],
     });
   }
   return out;

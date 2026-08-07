@@ -752,7 +752,7 @@ function PreviewSection({
       {/* 步骤 1：确认可用事实 */}
       {guideStep === 1 ? (
         <>
-          {/* 1. 来源数据快照 / 3. 可确认事实 */}
+          {/* 1. 来源数据快照 / 3. 可确认事实（V2.1.2：商品内容事实与市场参考信息分组） */}
           <section className="rounded-xl border border-slate-200 p-3">
             <h3 className="text-sm font-semibold text-slate-700">
               可确认事实
@@ -761,24 +761,67 @@ function PreviewSection({
             {confirmables.length === 0 ? (
               <p className="mt-2 text-sm text-slate-500">当前没有可人工确认的商品事实。</p>
             ) : (
-              <ul className="mt-2 space-y-2">
-                {confirmables.map((item) => (
-                  <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
-                    <input
-                      id={`confirm-${item.selectionId}`}
-                      type="checkbox"
-                      checked={selectedIds.includes(item.selectionId)}
-                      onChange={() => onToggle(item.selectionId)}
-                      className="mt-0.5 h-4 w-4 accent-teal-600"
-                    />
-                    <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-slate-800">{factFieldLabel(item.canonicalField)}</span>
-                      <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
-                      <span className="mt-0.5 block text-xs text-slate-400">来自候选商品快照，需人工确认</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {/* 商品内容事实：可确认用于 Listing 草稿 */}
+                {(() => {
+                  const productFacts = confirmables.filter((item) => (item.allowedUsageScopes ?? []).includes("listing"));
+                  if (productFacts.length === 0) return null;
+                  return (
+                    <div className="mt-2">
+                      <p className="text-xs font-semibold text-teal-700">商品内容事实（用于 Listing 草稿的商品信息）</p>
+                      <ul className="mt-1 space-y-2">
+                        {productFacts.map((item) => (
+                          <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-teal-50/50 px-2 py-1.5">
+                            <input
+                              id={`confirm-${item.selectionId}`}
+                              type="checkbox"
+                              checked={selectedIds.includes(item.selectionId)}
+                              onChange={() => onToggle(item.selectionId)}
+                              className="mt-0.5 h-4 w-4 accent-teal-600"
+                            />
+                            <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium text-slate-800">{factFieldLabel(item.canonicalField)}</span>
+                              <span className="block break-words text-sm text-slate-600">{item.displayValue}</span>
+                              <span className="mt-0.5 block text-xs text-slate-400">来自候选商品快照，需人工确认</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+                {/* 市场参考信息：可确认但仅用于研究，不用于 Listing */}
+                {(() => {
+                  const marketSignals = confirmables.filter((item) => !(item.allowedUsageScopes ?? []).includes("listing"));
+                  if (marketSignals.length === 0) return null;
+                  return (
+                    <div className="mt-3">
+                      <p className="text-xs font-semibold text-slate-500">
+                        市场参考信息（价格、评分、评论数量等）
+                        <span className="ml-1 font-normal">不会进入 Listing 草稿。</span>
+                      </p>
+                      <ul className="mt-1 space-y-2">
+                        {marketSignals.map((item) => (
+                          <li key={item.selectionId} className="flex items-start gap-2 rounded-lg bg-slate-50 px-2 py-1.5">
+                            <input
+                              id={`confirm-${item.selectionId}`}
+                              type="checkbox"
+                              checked={selectedIds.includes(item.selectionId)}
+                              onChange={() => onToggle(item.selectionId)}
+                              className="mt-0.5 h-4 w-4 accent-slate-500"
+                            />
+                            <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
+                              <span className="block text-sm font-medium text-slate-700">{factFieldLabel(item.canonicalField)}</span>
+                              <span className="block break-words text-sm text-slate-500">{item.displayValue}</span>
+                              <span className="mt-0.5 block text-xs text-slate-400">仅用于商品研究，不用于 Listing 草稿。</span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+              </>
             )}
           </section>
 

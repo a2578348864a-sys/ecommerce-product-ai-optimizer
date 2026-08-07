@@ -95,8 +95,12 @@ export function buildListingInputFromCreativeHandoff(
   }
 
   // 已确认事实（明确允许 Listing 用途）
+  // V2.1.2：市场信号字段（价格/评分/评论数/类目）即使被确认也绝不进入 Listing——
+  // 双保险：① usageScopes 含 listing（确认逻辑已按 factCategory 收敛）；② 已知市场字段硬排除。
+  const MARKET_SIGNAL_FIELDS = new Set(["price_usd", "rating", "review_count", "category"]);
   const productFacts = version.confirmedFacts
     .filter((fact) => fact.usageScopes.includes(LISTING_USAGE))
+    .filter((fact) => !MARKET_SIGNAL_FIELDS.has(fact.field))
     .map((fact) => ({ field: fact.field, label: fact.label, value: textOf(fact.value).slice(0, 500) }))
     .filter((fact) => fact.value.length > 0);
 

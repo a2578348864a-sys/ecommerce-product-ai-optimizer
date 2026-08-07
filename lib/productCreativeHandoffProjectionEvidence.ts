@@ -135,11 +135,14 @@ export function buildProductCreativeHandoffProjectionEvidence(
 
   // ── 第一层：来源数据快照（candidateAnalysisContext）→ stable source facts ──
   // 仅允许同一商品实体的确定性字段；全部标记 internal + 需人工确认后才能用于声明。
+  // V2.1.2：增加 factCategory 分类——product_fact 可确认进 Listing；
+  // market_signal（价格/评分/评论数/类目）仅研究用途，永不进入 Listing。
   const stableFieldMapping: Array<{
     field: string;
     label: string;
     value: unknown;
     stabilityRule: "identity_only" | "routing_only" | "human_confirmation_required_for_claim";
+    factCategory?: "product_fact" | "market_signal";
   }> = [];
 
   if (context.asin) {
@@ -149,19 +152,20 @@ export function buildProductCreativeHandoffProjectionEvidence(
     stableFieldMapping.push({ field: "title", label: "商品标题", value: context.title, stabilityRule: "routing_only" });
   }
   if (context.brand) {
-    stableFieldMapping.push({ field: "brand", label: "品牌", value: context.brand, stabilityRule: "human_confirmation_required_for_claim" });
+    stableFieldMapping.push({ field: "brand", label: "品牌", value: context.brand, stabilityRule: "human_confirmation_required_for_claim", factCategory: "product_fact" });
   }
   if (context.category) {
-    stableFieldMapping.push({ field: "category", label: "类目", value: context.category, stabilityRule: "human_confirmation_required_for_claim" });
+    // 类目是市场归类，不是商品内容属性；仅 internal（市场参考）
+    stableFieldMapping.push({ field: "category", label: "类目", value: context.category, stabilityRule: "human_confirmation_required_for_claim", factCategory: "market_signal" });
   }
   if (context.priceUsd !== null && context.priceUsd !== undefined) {
-    stableFieldMapping.push({ field: "price_usd", label: "参考价格 (USD)", value: context.priceUsd, stabilityRule: "human_confirmation_required_for_claim" });
+    stableFieldMapping.push({ field: "price_usd", label: "参考价格 (USD)", value: context.priceUsd, stabilityRule: "human_confirmation_required_for_claim", factCategory: "market_signal" });
   }
   if (context.rating !== null && context.rating !== undefined) {
-    stableFieldMapping.push({ field: "rating", label: "评分", value: context.rating, stabilityRule: "human_confirmation_required_for_claim" });
+    stableFieldMapping.push({ field: "rating", label: "评分", value: context.rating, stabilityRule: "human_confirmation_required_for_claim", factCategory: "market_signal" });
   }
   if (context.reviewCount !== null && context.reviewCount !== undefined) {
-    stableFieldMapping.push({ field: "review_count", label: "评论数", value: context.reviewCount, stabilityRule: "human_confirmation_required_for_claim" });
+    stableFieldMapping.push({ field: "review_count", label: "评论数", value: context.reviewCount, stabilityRule: "human_confirmation_required_for_claim", factCategory: "market_signal" });
   }
 
   for (const mapping of stableFieldMapping) {
@@ -183,6 +187,7 @@ export function buildProductCreativeHandoffProjectionEvidence(
           capturedAt: context.capturedAt,
         },
         stabilityRule: mapping.stabilityRule,
+        factCategory: mapping.factCategory,
       },
     });
   }
