@@ -26,12 +26,10 @@ import {
 } from "@/lib/tasks/decisionStatus";
 import {
   LISTING_PACK_ANCHOR_ID,
-  LISTING_PACK_SHORTCUT_LABEL,
   buildNoListingPackPrompt,
   buildTaskDeleteConfirmationMessage,
   getAiListingPackSnapshot,
   hasAiListingPack,
-  shouldShowListingPackShortcut,
 } from "@/lib/tasks/listingSnapshotUi";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
@@ -56,6 +54,10 @@ import {
   formatResearchMoney,
   formatResearchRate,
 } from "@/lib/productResearchPresentation";
+import {
+  deriveUserProgressSummary,
+  type UserProgressSummary,
+} from "@/lib/userProgressSummary";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
@@ -109,16 +111,24 @@ function sourceLabel(source: string) {
 }
 
 /**
- * 用户进度摘要：从已有 artifacts 派生"还缺什么"（组件层，不新增状态机）。
- * 按创作链路顺序表达缺口：研究结论 → Listing 准备 → 图片需求 → 人工结论。
+ * 用户进度摘要：按真实推进顺序派生"还缺什么 / 下一步"。
+ * 逻辑在 lib/userProgressSummary.ts（可测试），此处仅做适配。
  */
-function missingLabel(artifacts: ReadonlyArray<{ key: string; label: string }>): string {
-  const keys = new Set(artifacts.map((artifact) => artifact.key));
-  if (!keys.has("market_analysis")) return "完成市场研究并保存";
-  if (!keys.has("human_conclusion")) return "完成人工决定";
-  if (!keys.has("listing_draft")) return "进入创作交接生成 Listing";
-  if (!keys.has("image_plan")) return "生成产品图片";
-  return "无（已完成创作准备）";
+function deriveProgressSummary(input: {
+  presentation: {
+    stage: { key: string; label: string };
+    artifacts: ReadonlyArray<{ key: string; label: string }>;
+    actions: ReadonlyArray<{ label: string; href: string }>;
+  };
+  decisionStatus: string;
+  result: unknown;
+}): UserProgressSummary {
+  return deriveUserProgressSummary({
+    stageLabel: input.presentation.stage.label,
+    artifactKeys: input.presentation.artifacts.map((artifact) => artifact.key),
+    decisionStatus: input.decisionStatus,
+    result: input.result,
+  });
 }
 
 function getTitle(item: TaskCenterItem) {
@@ -1121,8 +1131,17 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const hasHandoff = Boolean(record?.result
     && typeof record.result === "object"
     && "creativeHandoff" in record.result);
-  const showListingPackShortcut = record ? shouldShowListingPackShortcut(record.result) : false;
   const showNoListingPackPrompt = record ? !hasAiListingPack(record.result) : false;
+  // 图片卖点方向：优先复用研究保存时的 listingPrepSnapshot.imageMaterialNeeds
+  const imageMaterialNeeds = useMemo(() => {
+    if (!record) return [];
+    try {
+      const prep = extractListingPrepSnapshot(record.result as Record<string, unknown>);
+      return prep ? prep.imageMaterialNeeds : [];
+    } catch {
+      return [];
+    }
+  }, [record]);
   const recordSummary = useMemo(() => {
     if (!record) return null;
     return deriveTaskWorkflowSummary({
@@ -1146,6 +1165,15 @@ export function TaskRecordDetail({ id }: { id: string }) {
       })
       : null
   ), [record]);
+  const progressSummary = useMemo(() => (
+    record && presentation
+      ? deriveProgressSummary({
+        presentation,
+        decisionStatus: record.decisionStatus,
+        result: record.result,
+      })
+      : null
+  ), [record, presentation]);
 
   async function deleteRecord() {
     if (!record || deleting) return;
@@ -1329,14 +1357,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  {showListingPackShortcut ? (
-                    <Link
-                      href={`#${LISTING_PACK_ANCHOR_ID}`}
-                      className="linear-button-soft inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
-                    >
-                      {LISTING_PACK_SHORTCUT_LABEL}
-                    </Link>
-                  ) : null}
                   {presentation?.actions.map((action) => (
                     <Link
                       key={action.href}
@@ -1349,7 +1369,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </div>
               </div>
 
-              {presentation ? (
+              {presentation && progressSummary ? (
                 <>
                   {/* 用户进度摘要：当前状态 / 已完成 / 还缺 / 下一步（组件层派生，不新增状态机） */}
                   <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="user-progress-summary">
@@ -1357,27 +1377,19 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-xl border border-teal-100 bg-white p-3">
                         <p className="text-xs font-bold text-slate-400">当前状态</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{presentation.stage.label}</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{progressSummary.status}</p>
                       </div>
                       <div className="rounded-xl border border-teal-100 bg-white p-3">
                         <p className="text-xs font-bold text-slate-400">已完成</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">
-                          {presentation.artifacts.length
-                            ? presentation.artifacts.map((artifact) => artifact.label).join("、")
-                            : "尚未保存研究结论"}
-                        </p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{progressSummary.completed}</p>
                       </div>
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                         <p className="text-xs font-bold text-amber-700">还缺</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-amber-800">
-                          {missingLabel(presentation.artifacts)}
-                        </p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-amber-800">{progressSummary.missing}</p>
                       </div>
                       <div className="rounded-xl border border-teal-200 bg-white p-3">
                         <p className="text-xs font-bold text-slate-400">下一步</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">
-                          {presentation.actions[0]?.label ?? "查看研究结果"}
-                        </p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{progressSummary.next}</p>
                       </div>
                     </div>
                   </section>
@@ -1470,7 +1482,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     {
                       key: "listing",
                       label: "Listing 草稿",
-                      content: <ListingHandoffSection taskId={record.id} />,
+                      content: <ListingHandoffSection taskId={record.id} imageMaterialNeeds={imageMaterialNeeds} />,
                     },
                     {
                       key: "image",
@@ -1528,21 +1540,19 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </details>
               ) : null}
 
-              {/* AI Listing 草稿包 — 对所有 task 类型展示已保存 snapshot */}
-              {showNoListingPackPrompt ? (
-                <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800">
-                  <p className="font-semibold">{buildNoListingPackPrompt()}</p>
-                </div>
-              ) : null}
-              {aiListingPackSnapshot ? (
-                <section id={LISTING_PACK_ANCHOR_ID} className="scroll-mt-24">
-                  {/* PR2-2 Final-Fix (BLOCKER-1): 旧入口只读化 — 已保存草稿仅展示，生成/保存走「创作交接」区域 */}
-                  <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} readOnly />
-                </section>
-              ) : null}
-
               <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">输入素材和原始链接</summary>
+                <summary className="cursor-pointer font-semibold text-slate-500 select-none">历史 Listing 草稿包与输入素材</summary>
+                {showNoListingPackPrompt ? (
+                  <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800">
+                    <p className="font-semibold">{buildNoListingPackPrompt()}</p>
+                  </div>
+                ) : null}
+                {aiListingPackSnapshot ? (
+                  <section id={LISTING_PACK_ANCHOR_ID} className="scroll-mt-24">
+                    {/* 旧版只读草稿；生成/保存统一走「Listing 草稿」步骤 */}
+                    <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} readOnly />
+                  </section>
+                ) : null}
                 {record.productUrl ? (
                   <p className="mt-3 break-all text-sm text-slate-500">链接：{record.productUrl}</p>
                 ) : null}

@@ -66,7 +66,14 @@ function formatDate(iso: string | null): string {
   return d.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function ListingHandoffSection({ taskId }: { taskId: string }) {
+export function ListingHandoffSection({
+  taskId,
+  imageMaterialNeeds = [],
+}: {
+  taskId: string;
+  /** 图片卖点方向：来自研究保存时的 listingPrepSnapshot.imageMaterialNeeds（无数据则为空数组） */
+  imageMaterialNeeds?: string[];
+}) {
   const [status, setStatus] = useState<ListingStatus | null>(null);
   const [handoffRevision, setHandoffRevision] = useState<number | null>(null);
   const [handoffEffectiveStatus, setHandoffEffectiveStatus] = useState<string | null>(null);
@@ -225,46 +232,153 @@ export function ListingHandoffSection({ taskId }: { taskId: string }) {
     }
   }, [retryBody, requestId, submitting, taskId, load, handleConflict]);
 
+  const copyWithFeedback = (text: string, successText: string) => {
+    if (!text.trim()) {
+      setNotice({ tone: "error", text: "当前没有可复制的内容。" });
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => setNotice({ tone: "info", text: successText }),
+      () => setNotice({ tone: "error", text: "复制失败，请手动选择后复制。" }),
+    );
+  };
+
+  const buildFullListingText = (): string => {
+    if (!draft) return "";
+    const parts: string[] = [];
+    if (draft.titles.length) parts.push(`Title:\n${draft.titles.join("\n")}`);
+    if (draft.bullets.length) {
+      parts.push(`Bullet Points:\n${draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n")}`);
+    }
+    if (draft.description) parts.push(`Product Description:\n${draft.description}`);
+    if (draft.keywords.length) parts.push(`Keywords:\n${draft.keywords.join(", ")}`);
+    if (imageMaterialNeeds.length) {
+      parts.push(`Image Selling Points:\n${imageMaterialNeeds.map((n, i) => `${i + 1}. ${n}`).join("\n")}`);
+    }
+    return parts.join("\n\n");
+  };
+
   const renderDraftBody = () => {
     if (!draft) return null;
     return (
-      <div className="mt-3 space-y-3 break-words rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
-        {draft.titles.length > 0 ? (
-          <div>
-            <p className="font-semibold text-slate-800">标题</p>
-            {draft.titles.map((t, i) => (
-              <p key={`t-${i}`} className="mt-0.5">{t}</p>
-            ))}
-          </div>
-        ) : null}
-        {draft.bullets.length > 0 ? (
-          <div>
-            <p className="font-semibold text-slate-800">卖点</p>
-            <ul className="mt-0.5 list-disc pl-5">
-              {draft.bullets.map((b, i) => (
-                <li key={`b-${i}`} className="mt-0.5">{b}</li>
+      <div className="mt-3 space-y-4 break-words text-sm text-slate-700">
+        {/* 复制工具条 */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => copyWithFeedback(draft.titles.join("\n"), "标题已复制。")}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            复制标题
+          </button>
+          <button
+            type="button"
+            onClick={() => copyWithFeedback(draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n"), "五点描述已复制。")}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            复制五点描述
+          </button>
+          <button
+            type="button"
+            onClick={() => copyWithFeedback(draft.description ?? "", "商品描述已复制。")}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            复制商品描述
+          </button>
+          <button
+            type="button"
+            onClick={() => copyWithFeedback(draft.keywords.join(", "), "关键词已复制。")}
+            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            复制关键词
+          </button>
+          <button
+            type="button"
+            onClick={() => copyWithFeedback(buildFullListingText(), "完整 Listing 已复制。")}
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-teal-600 px-2.5 text-xs font-bold text-white hover:bg-teal-700"
+          >
+            复制完整 Listing
+          </button>
+        </div>
+
+        {/* 1. 标题 Title */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">商品标题 Title</p>
+          {draft.titles.length > 0 ? (
+            <div className="mt-1.5 space-y-1">
+              {draft.titles.map((t, i) => (
+                <p key={`t-${i}`} className="leading-6">{t}</p>
               ))}
-            </ul>
-          </div>
-        ) : null}
-        {draft.description ? (
-          <div>
-            <p className="font-semibold text-slate-800">描述</p>
-            <p className="mt-0.5">{draft.description}</p>
-          </div>
-        ) : null}
-        {draft.keywords.length > 0 ? (
-          <div>
-            <p className="font-semibold text-slate-800">搜索词</p>
-            <p className="mt-0.5">{draft.keywords.join(" · ")}</p>
-          </div>
-        ) : null}
+            </div>
+          ) : (
+            <p className="mt-1.5 text-slate-400">暂未生成标题。</p>
+          )}
+        </div>
+
+        {/* 2. 五点描述 Bullet Points */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">五点描述 Bullet Points</p>
+          {draft.bullets.length > 0 ? (
+            <ol className="mt-1.5 space-y-1">
+              {draft.bullets.map((b, i) => (
+                <li key={`b-${i}`} className="flex gap-1.5 leading-6">
+                  <span className="shrink-0 font-semibold text-teal-600">{i + 1}.</span>
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-1.5 text-slate-400">暂未生成五点描述。</p>
+          )}
+        </div>
+
+        {/* 3. 商品描述 Product Description */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">商品描述 Product Description</p>
+          {draft.description ? (
+            <p className="mt-1.5 leading-6">{draft.description}</p>
+          ) : (
+            <p className="mt-1.5 text-slate-400">暂未生成商品描述。</p>
+          )}
+        </div>
+
+        {/* 4. 搜索关键词 Keywords */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">搜索关键词 Keywords</p>
+          {draft.keywords.length > 0 ? (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {draft.keywords.map((k, i) => (
+                <span key={`k-${i}`} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{k}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1.5 text-slate-400">暂未生成关键词。</p>
+          )}
+        </div>
+
+        {/* 5. 图片卖点方向 Image Selling Points */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">图片卖点方向 Image Selling Points</p>
+          {imageMaterialNeeds.length > 0 ? (
+            <ol className="mt-1.5 space-y-1">
+              {imageMaterialNeeds.map((n, i) => (
+                <li key={`n-${i}`} className="flex gap-1.5 leading-6">
+                  <span className="shrink-0 font-semibold text-teal-600">{i + 1}.</span>
+                  <span>{n}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-1.5 text-slate-400">暂未生成图片卖点建议。</p>
+          )}
+        </div>
+
         {draft.riskNotes.length > 0 ? (
-          <div>
-            <p className="font-semibold text-slate-800">风险提示</p>
-            <ul className="mt-0.5 list-disc pl-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+            <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">风险提示</p>
+            <ul className="mt-1.5 list-disc pl-5">
               {draft.riskNotes.map((r, i) => (
-                <li key={`r-${i}`} className="mt-0.5">{r}</li>
+                <li key={`r-${i}`} className="mt-0.5 leading-6">{r}</li>
               ))}
             </ul>
           </div>
@@ -277,8 +391,8 @@ export function ListingHandoffSection({ taskId }: { taskId: string }) {
     <section className="mt-5 min-w-0 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Listing 草稿">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-bold text-slate-800">Listing 草稿</h2>
-        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-          AI 生成草稿 · 仍需人工审核 · 不得直接发布
+        <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+          当前有效 Listing
         </span>
       </header>
 
@@ -316,8 +430,8 @@ export function ListingHandoffSection({ taskId }: { taskId: string }) {
           </div>
         ) : status === "active" ? (
           <div>
-            <p>
-              当前草稿有效 · 基于创作交接版本 {handoffRevision ?? "—"} · 生成于 {formatDate(draft?.generatedAt ?? null)}
+            <p className="text-sm font-semibold text-slate-700">
+              当前 Listing 草稿有效 · 生成于 {formatDate(draft?.generatedAt ?? null)} · 仍需人工审核，不得直接发布
             </p>
             {renderDraftBody()}
             <button

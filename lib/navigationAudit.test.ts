@@ -316,7 +316,7 @@ describe("TaskRecordDetail operation overview", () => {
     expect(detailSource).toMatch(/DecisionEvidencePanel/);
     expect(detailSource).toMatch(/来源证据/);
     expect(detailSource).toMatch(/Listing 上架准备包/);
-    expect(detailSource).toMatch(/输入素材和原始链接/);
+    expect(detailSource).toMatch(/输入素材/);
     // New IA: TaskDecisionHero with stage/blocker/review info
     expect(detailSource).toMatch(/TaskDecisionHero/);
     expect(heroSource).toMatch(/当前决策与下一步/);

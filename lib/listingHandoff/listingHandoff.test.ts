@@ -585,10 +585,26 @@ describe("UI 状态（第20章 66-75）", () => {
     expect(uiSource).toContain("setRetryBody");
   });
 
-  it("草稿正文展示（标题/卖点/描述/搜索词/风险）", () => {
-    for (const label of ["标题", "卖点", "描述", "搜索词", "风险提示"]) {
+  it("草稿正文展示五项（标题/五点描述/商品描述/关键词/图片卖点方向）", () => {
+    for (const label of ["商品标题", "五点描述", "商品描述", "搜索关键词", "图片卖点方向"]) {
       expect(uiSource).toContain(label);
     }
+  });
+
+  it("复制能力（单项 + 完整 Listing）", () => {
+    expect(uiSource).toContain("复制完整 Listing");
+    expect(uiSource).toContain("复制标题");
+    expect(uiSource).toContain("复制五点描述");
+    expect(uiSource).toContain("复制商品描述");
+    expect(uiSource).toContain("复制关键词");
+    expect(uiSource).toContain("复制失败");
+  });
+
+  it("明确标注当前有效 Listing 且不向用户暴露版本号", () => {
+    expect(uiSource).toContain("当前有效 Listing");
+    expect(uiSource).not.toContain("基于创作交接版本");
+    // 版本号只作为生成合同字段，不作为用户可见文案
+    expect(uiSource).not.toContain("创作交接版本 {");
   });
 
   it("focus-visible 可见焦点", () => {

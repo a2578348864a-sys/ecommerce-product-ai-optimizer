@@ -65,6 +65,95 @@ function modeLabel(mode: "composition_concept" | "product_visual_draft" | null) 
   return "未确定";
 }
 
+/**
+ * 草稿图片预览：通过受保护 task-bound 图片 API（/image-draft/{id}）读取 blob。
+ * - 不暴露 raw URL / storageKey / base64 / 内部路径；
+ * - objectURL 在卸载 / id 变化时 revoke，避免内存泄漏；
+ * - 生成失败时保留已有预览（组件只在 draft.id 变化时重新加载）。
+ */
+function DraftImagePreview({ taskId, draftId }: { taskId: string; draftId: string }) {
+  const [source, setSource] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl = "";
+    setFailed(false);
+    setSource("");
+    fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft/${encodeURIComponent(draftId)}`, {
+      headers: buildAccessHeaders(),
+      cache: "no-store",
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("IMAGE_LOAD_FAILED");
+        return response.blob();
+      })
+      .then((blob) => {
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
+      .catch(() => {
+        if (active) setFailed(true);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setSource("");
+    };
+  }, [taskId, draftId]);
+
+  if (failed) {
+    return (
+      <div className="flex aspect-square w-full max-w-sm items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-center text-xs text-slate-500">
+        图片读取失败，请刷新后重试。
+      </div>
+    );
+  }
+  if (!source) {
+    return (
+      <div className="flex aspect-square w-full max-w-sm animate-pulse items-center justify-center rounded-xl bg-slate-100">
+        <span className="text-xs text-slate-400">图片加载中…</span>
+      </div>
+    );
+  }
+  return (
+    <div className="w-full max-w-sm overflow-hidden rounded-xl border border-slate-200 bg-white">
+      {/* eslint-disable-next-line @next/next/no-img-element -- 受保护 task-bound 图片，blob objectURL，非外部资源 */}
+      <img
+        src={source}
+        alt="产品图片草稿，待人工复核"
+        className="aspect-square w-full object-contain"
+      />
+    </div>
+  );
+}
+
+/** 下载草稿图片（受保护 task-bound API → blob → 本地下载） */
+function downloadDraftImage(taskId: string, draftId: string, fallbackName: string) {
+  void fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft/${encodeURIComponent(draftId)}`, {
+    headers: buildAccessHeaders(),
+    cache: "no-store",
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error("IMAGE_DOWNLOAD_FAILED");
+      return response.blob();
+    })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${fallbackName || "product-image-draft"}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    })
+    .catch(() => {
+      // 下载失败静默：用户可刷新重试
+    });
+}
+
 /** PR2-3: Image 消费 Creative Handoff 最小状态接入 */
 export function ImageHandoffSection({ taskId }: { taskId: string }) {
   const [state, setState] = useState<ImageStateData | null>(null);
@@ -238,10 +327,60 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
             <span>模式：{modeLabel(state.draft.mode)}</span>
-            <span>基于交接版本：{state.sourceHandoffRevision ?? "-"}</span>
             <span>{formatTime(state.draft.generatedAt)}</span>
             <span>人工审核：必须</span>
           </div>
+          {state.draft.id ? (
+            <div className="space-y-3">
+              <DraftImagePreview taskId={taskId} draftId={state.draft.id} />
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const win = window.open("", "_blank");
+                    if (!win) return;
+                    win.document.write("<p>正在加载图片…</p>");
+                    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft/${encodeURIComponent(state.draft!.id!)}`, {
+                      headers: buildAccessHeaders(),
+                      cache: "no-store",
+                    })
+                      .then((response) => {
+                        if (!response.ok) throw new Error("IMAGE_LOAD_FAILED");
+                        return response.blob();
+                      })
+                      .then((blob) => {
+                        const url = URL.createObjectURL(blob);
+                        win.location.href = url;
+                        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                      })
+                      .catch(() => {
+                        win.document.body.innerHTML = "<p>图片加载失败，请刷新后重试。</p>";
+                      });
+                  }}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  查看大图
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadDraftImage(taskId, state.draft!.id!, state.draft?.mode === "composition_concept" ? "composition-concept" : "product-visual-draft")}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  下载
+                </button>
+                {state.canGenerate ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerate()}
+                    disabled={generateDisabled}
+                    className="inline-flex h-9 items-center justify-center rounded-lg bg-cyan-600 px-3 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting ? "正在生成…" : "重新生成"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {state.draft.compositionSummary ? (
             <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-sm leading-6 text-slate-700">
               {state.draft.compositionSummary}
