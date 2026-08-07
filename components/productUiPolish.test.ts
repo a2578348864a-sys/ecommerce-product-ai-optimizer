@@ -64,11 +64,12 @@ describe("Product UI polish v2", () => {
     expect(historySource).toContain("当前阶段");
     expect(historySource).toContain("已生成内容");
     expect(historySource).toContain("下一步");
-    expect(historySource).toContain("技术状态与证据");
+    // Phase1：卡片级技术字段已从用户主流程移除
+    expect(historySource).not.toContain("内部阶段");
     expect(detailSource).toContain("商品研究结果");
     expect(detailSource).toContain("已有产物");
-    // E：任务详情为步骤工作台，技术信息收进折叠区
-    expect(detailSource).toContain("技术信息与原始数据");
+    // E：任务详情为步骤工作台，技术信息不再挂载到用户主流程
+    expect(detailSource).not.toContain("技术信息与原始数据");
     expect(detailSource).toContain("WorkflowStepWorkspace");
   });
 

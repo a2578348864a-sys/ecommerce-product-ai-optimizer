@@ -9,7 +9,6 @@ import {
 } from "@/components/agentNextStepPanelModel";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { TASK_TYPE_FILTER_OPTIONS } from "@/lib/taskConcepts";
-import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
@@ -21,13 +20,11 @@ import {
 import {
   buildBatchDeleteConfirmationMessage,
   buildTaskDeleteConfirmationMessage,
-  formatTaskIdSuffix,
   hasAiListingPack,
   LISTING_PACK_FILTER_PARAM,
   LISTING_PACK_FILTER_LABEL,
 } from "@/lib/tasks/listingSnapshotUi";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
-import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
 import {
   summarizePipeline,
   PIPELINE_STATUS_LABELS,
@@ -48,13 +45,6 @@ const defaultAgentStatus = "";
 const defaultLimit = 10;
 const taskTypes = TASK_TYPE_FILTER_OPTIONS;
 const mainlineTaskTypes = new Set(["workflow", "opportunities"]);
-
-const extendedPlatformLabels: Record<string, string> = {
-  ...platformLabels,
-  tiktok: "TikTok",
-  "1688": "1688",
-  alibaba: "阿里国际站",
-};
 
 type TaskCenterItem = {
   id: string;
@@ -139,14 +129,6 @@ const agentLabelMap: Record<string, string> = {
   summary: "小白结论",
 };
 
-function getTaskTypeLabel(item: TaskCenterItem) {
-  return typeLabelMap[item.type || ""] || "未知任务";
-}
-
-function getAgentTypeLabel(item: TaskCenterItem) {
-  return agentLabelMap[item.type || ""] || "未知任务";
-}
-
 function getTaskStatusLabel() {
   return "已完成";
 }
@@ -207,22 +189,6 @@ function getWorkflowSummary(item: TaskCenterItem) {
   });
 }
 
-function getOperationSummary(item: TaskCenterItem) {
-  const summary = getLegacyListSummary(item.result);
-  if (summary && isRecordValue(summary.operation)) {
-    return summary.operation as ReturnType<typeof deriveTaskOperationSummary>;
-  }
-  return deriveTaskOperationSummary({
-    type: item.type,
-    title: item.title,
-    materialText: item.materialText,
-    oneLineSummary: item.oneLineSummary,
-    level: item.level,
-    decisionStatus: item.decisionStatus,
-    result: item.result,
-  });
-}
-
 function getPresentation(item: TaskCenterItem, productName: string) {
   const summary = getLegacyListSummary(item.result);
   if (summary && isRecordValue(summary.presentation)) {
@@ -242,13 +208,6 @@ function taskHasListingPack(item: TaskCenterItem) {
   return summary && typeof summary.hasListingPack === "boolean"
     ? summary.hasListingPack
     : hasAiListingPack(item.result);
-}
-
-function taskHasCandidateSource(item: TaskCenterItem) {
-  const summary = getLegacyListSummary(item.result);
-  return summary && typeof summary.hasCandidateSource === "boolean"
-    ? summary.hasCandidateSource
-    : getTaskSourceMeta(item.result) !== null;
 }
 
 function listingPackResultForUi(item: TaskCenterItem) {
@@ -829,47 +788,6 @@ export function TaskRecordsList() {
         result: priorityItem.result,
       })
     : null;
-  const operationStats = useMemo(() => {
-    const batchGroups = new Map<string, { total: number; loaded: number; followable: number; cautious: number }>();
-    let needsReview = 0;
-    let followable = 0;
-    let cautious = 0;
-    let decided = 0;
-
-    for (const item of visibleItems) {
-      const summary = getWorkflowSummary(item);
-      const agentState = deriveAgentNextStepPanelState({
-        taskType: item.type,
-        decisionStatus: item.decisionStatus,
-        result: item.result,
-      });
-      if (agentState.agentStatus.key === "needs_review") needsReview += 1;
-      if (summary.priorityTone === "emerald") followable += 1;
-      if (summary.priorityTone === "rose" || summary.riskTone === "rose") cautious += 1;
-      if (item.decisionStatus !== "pending") decided += 1;
-      if (summary.batchMeta) {
-        const current = batchGroups.get(summary.batchMeta.batchId) ?? {
-          total: summary.batchMeta.batchTotal,
-          loaded: 0,
-          followable: 0,
-          cautious: 0,
-        };
-        current.loaded += 1;
-        if (summary.priorityTone === "emerald") current.followable += 1;
-        if (summary.priorityTone === "rose" || summary.riskTone === "rose") current.cautious += 1;
-        batchGroups.set(summary.batchMeta.batchId, current);
-      }
-    }
-
-    return {
-      total: visibleItems.length,
-      needsReview,
-      followable,
-      cautious,
-      decided,
-      batchGroups,
-    };
-  }, [visibleItems]);
 
   const pipelineCounts = useMemo(() => {
     const counts = summarizePipeline([]);
@@ -1221,10 +1139,6 @@ export function TaskRecordsList() {
                     const itemAgentStatus = agentState.agentStatus;
                     const highlighted = item.id === highlightedTaskId;
                     const summary = getWorkflowSummary(item);
-                    const operationSummary = getOperationSummary(item);
-                    const batchMeta = summary.batchMeta;
-                    const hasCandidateSource = taskHasCandidateSource(item);
-                    const batchGroup = batchMeta ? operationStats.batchGroups.get(batchMeta.batchId) : null;
                     const presentation = getPresentation(item, summary.productName);
                     const artifactLabel = presentation.artifacts.length
                       ? presentation.artifacts.map((artifact) => artifact.label).join("、")
@@ -1280,42 +1194,6 @@ export function TaskRecordsList() {
                               </span>
                               <span className="text-xs text-slate-500">所有结论仍需人工确认</span>
                             </div>
-                            <details className="mt-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                              <summary className="cursor-pointer text-xs font-semibold text-slate-500 select-none">
-                                技术状态与证据
-                              </summary>
-                              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                                {[
-                                  ["内部阶段", operationSummary.stageLabel],
-                                  ["AI 状态", operationSummary.decisionLabel],
-                                  ["风险等级", operationSummary.riskLabel],
-                                  ["内部下一步", operationSummary.actionLabel],
-                                  ["Listing 状态", operationSummary.listingReadinessLabel],
-                                  ["记录 ID", formatTaskIdSuffix(item.id)],
-                                ].map(([label, value]) => (
-                                  <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-2">
-                                    <p className="text-[11px] font-bold text-slate-400">{label}</p>
-                                    <p className="mt-1 text-xs font-semibold text-slate-700">{value}</p>
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                                {operationSummary.sourceQualityScore !== undefined ? <span>来源质量 {operationSummary.sourceQualityScore}/100</span> : null}
-                                {operationSummary.confidence ? <span>置信度 {operationSummary.confidence}</span> : null}
-                                <span>阻塞项 {operationSummary.blockingIssues.length}</span>
-                                {operationSummary.fallbackUsed ? <span>历史任务 fallback</span> : null}
-                                <span>{getTaskTypeLabel(item)}</span>
-                                <span>{getAgentTypeLabel(item)}</span>
-                                <span>{extendedPlatformLabels[item.platform] || item.platform}</span>
-                                {hasCandidateSource ? <span>来自候选池</span> : null}
-                              </div>
-                              <p className="mt-2 text-xs leading-5 text-slate-600">{operationSummary.evidenceSummary}</p>
-                              {batchMeta && batchGroup ? (
-                                <p className="mt-2 text-xs leading-5 text-indigo-700">
-                                  清单商品 {batchMeta.batchIndex}/{batchMeta.batchTotal} · 已加载 {batchGroup.loaded}/{batchGroup.total} · 可跟进 {batchGroup.followable} · 谨慎 {batchGroup.cautious}
-                                </p>
-                              ) : null}
-                            </details>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-[300px] lg:justify-end">
                             {/* Checkbox in select mode */}

@@ -4,10 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { AgentNextStepPanel } from "@/components/AgentNextStepPanel";
-import { WorkflowNextStepCard } from "@/components/WorkflowNextStepCard";
-import { ManualReviewChecklist } from "@/components/ManualReviewChecklist";
-import { platformLabels } from "@/lib/types";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
@@ -37,7 +33,6 @@ import {
   hasAiListingPack,
   shouldShowListingPackShortcut,
 } from "@/lib/tasks/listingSnapshotUi";
-import { TASK_TYPE_LABEL_MAP, TASK_AGENT_LABEL_MAP } from "@/lib/taskConcepts";
 import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
 import { deriveTaskOperationSummary } from "@/lib/taskOperationSummary";
 import { buildDecisionCard } from "@/lib/decisionCard";
@@ -69,13 +64,6 @@ import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHand
 import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
 import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
 import { WorkflowStepWorkspace, deriveCurrentStepKey } from "@/components/tasks/WorkflowStepWorkspace";
-
-const extendedPlatformLabels: Record<string, string> = {
-  ...platformLabels,
-  tiktok: "TikTok",
-  "1688": "1688",
-  alibaba: "阿里国际站",
-};
 
 type TaskCenterItem = {
   id: string;
@@ -120,6 +108,19 @@ function sourceLabel(source: string) {
   return source === "ai" ? "AI 深度拆解" : source ? `系统分析 · ${source}` : "系统分析";
 }
 
+/**
+ * 用户进度摘要：从已有 artifacts 派生"还缺什么"（组件层，不新增状态机）。
+ * 按创作链路顺序表达缺口：研究结论 → Listing 准备 → 图片需求 → 人工结论。
+ */
+function missingLabel(artifacts: ReadonlyArray<{ key: string; label: string }>): string {
+  const keys = new Set(artifacts.map((artifact) => artifact.key));
+  if (!keys.has("market_analysis")) return "完成市场研究并保存";
+  if (!keys.has("human_conclusion")) return "完成人工决定";
+  if (!keys.has("listing_draft")) return "进入创作交接生成 Listing";
+  if (!keys.has("image_plan")) return "生成产品图片";
+  return "无（已完成创作准备）";
+}
+
 function getTitle(item: TaskCenterItem) {
   return resolveTaskProductDisplayName({
     resultProductName: isRecordValue(item.result) ? item.result.productName : "",
@@ -127,14 +128,6 @@ function getTitle(item: TaskCenterItem) {
     materialText: item.materialText.trim().slice(0, 20),
     fallback: "未命名记录",
   });
-}
-
-function getTaskTypeLabel(item: TaskCenterItem) {
-  return TASK_TYPE_LABEL_MAP[item.type || ""] || item.type || "未知任务";
-}
-
-function getAgentTypeLabel(item: TaskCenterItem) {
-  return TASK_AGENT_LABEL_MAP[item.type || ""] || "规划任务";
 }
 
 /** Map raw risk level enum to Chinese display label with tone class */
@@ -1118,14 +1111,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
     };
   }, [id, accessPassword, isAccessPasswordReady, refreshKey]);
 
-  const resultJson = useMemo(() => {
-    if (!record) return "";
-    try {
-      return JSON.stringify(record.result, null, 2);
-    } catch {
-      return "结果内容暂时无法格式化。";
-    }
-  }, [record]);
   const aiListingPackSnapshot = useMemo(() => (
     record ? getAiListingPackSnapshot(record.result) : null
   ), [record]);
@@ -1366,6 +1351,37 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
               {presentation ? (
                 <>
+                  {/* 用户进度摘要：当前状态 / 已完成 / 还缺 / 下一步（组件层派生，不新增状态机） */}
+                  <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="user-progress-summary">
+                    <p className="text-sm font-bold text-teal-800">商品研究进度</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-xl border border-teal-100 bg-white p-3">
+                        <p className="text-xs font-bold text-slate-400">当前状态</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">{presentation.stage.label}</p>
+                      </div>
+                      <div className="rounded-xl border border-teal-100 bg-white p-3">
+                        <p className="text-xs font-bold text-slate-400">已完成</p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">
+                          {presentation.artifacts.length
+                            ? presentation.artifacts.map((artifact) => artifact.label).join("、")
+                            : "尚未保存研究结论"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-bold text-amber-700">还缺</p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-amber-800">
+                          {missingLabel(presentation.artifacts)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-teal-200 bg-white p-3">
+                        <p className="text-xs font-bold text-slate-400">下一步</p>
+                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">
+                          {presentation.actions[0]?.label ?? "查看研究结果"}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
                   <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {[
                       ["来源", sourceLabel(record.source)],
@@ -1512,58 +1528,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </details>
               ) : null}
 
-              {/* Phase 4-E.2.1-Fix: Task info collapsed */}
-              <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">技术信息与原始数据</summary>
-                <div className="mt-2 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">记录 ID</p>
-                  <p className="mt-1 break-all text-xs font-bold text-slate-800">{record.id}</p>
-                </div>
-                <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">创建时间</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{formatDate(record.createdAt)}</p>
-                </div>
-                <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">平台</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">
-                    {extendedPlatformLabels[record.platform] || record.platform}
-                  </p>
-                </div>
-                <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">来源</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{sourceLabel(record.source)}</p>
-                </div>
-                <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">任务类型</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{getTaskTypeLabel(record)}</p>
-                </div>
-                <div className="surface-card-soft rounded-[22px] p-4">
-                  <p className="text-xs font-bold text-slate-400">任务类型</p>
-                  <p className="mt-1 text-sm font-bold text-slate-800">{getAgentTypeLabel(record)}</p>
-                </div>
-              </div>
-              </details>
-
-              <details className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">任务状态和后续能力</summary>
-                <AgentNextStepPanel
-                  className="mt-3"
-                  taskType={record.type}
-                  decisionStatus={record.decisionStatus}
-                  result={record.result}
-                />
-              </details>
-
-              {/* Phase UI-C: Keep review capability, but lower default weight. */}
-              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">人工复核清单和详细建议</summary>
-                <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                  <WorkflowNextStepCard taskType={record.type} />
-                  <ManualReviewChecklist />
-                </div>
-              </details>
-
               {/* AI Listing 草稿包 — 对所有 task 类型展示已保存 snapshot */}
               {showNoListingPackPrompt ? (
                 <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800">
@@ -1608,14 +1572,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   </div>
                 </details>
               )}
-
-              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整结果 JSON</summary>
-                <p className="mt-1 text-sm text-slate-500">长内容可以滚动查看。</p>
-                <pre className="mt-3 max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-slate-950 p-4 text-xs leading-6 text-slate-100">
-                  {resultJson}
-                </pre>
-              </details>
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button

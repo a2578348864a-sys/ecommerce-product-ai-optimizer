@@ -21,10 +21,11 @@ describe("product research history presentation", () => {
     expect(source("components/ResearchProductImage.tsx")).toContain('loading="lazy"');
     expect(source("components/ResearchProductImage.tsx")).toContain("onError=");
     expect(source("components/ResearchProductImage.tsx")).toContain("object-contain");
-    expect(list).toContain("技术状态与证据");
+    // Phase1：卡片级技术字段已从用户主流程移除
+    expect(list).not.toContain("内部阶段");
     expect(detail).toContain("商品研究结果");
     expect(detail).toContain("人工核验");
-    expect(detail).toContain("技术信息与原始数据");
+    expect(detail).not.toContain("技术信息与原始数据");
     expect(listPage).toContain("商品研究历史");
     expect(detailPage).toContain("商品研究结果");
   });
