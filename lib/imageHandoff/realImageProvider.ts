@@ -162,8 +162,7 @@ export function createRealImageProvider(): RealImageProvider {
           source: "real_ai_image_draft",
           safetyWarnings: ["Product visual draft based on approved reference; human review required before any use.", "Product consistency must be checked against the approved reference."],
           promptSummary: "Product visual draft derived strictly from the approved visual reference.",
-          promptHash: "real",
-          requestKeyHash: "real",
+          // Hash 合同：无真实 SHA-256 时不写 promptHash/requestKeyHash 字段（不制造假 Hash）
           generationBasis: {
             productName: "product visual draft",
             sellingPoints: [],
@@ -223,8 +222,7 @@ export function createRealImageProvider(): RealImageProvider {
         source: "real_ai_image_draft",
         safetyWarnings: ["Composition concept only; does not represent real product appearance.", "Real AI image draft; human review required before any use."],
         promptSummary: providerInput.prompt.slice(0, 200),
-        promptHash: "real",
-        requestKeyHash: "real",
+        // Hash 合同：无真实 SHA-256 时不写 promptHash/requestKeyHash 字段（不制造假 Hash）
         generationBasis: {
           productName: "composition concept",
           sellingPoints: [],

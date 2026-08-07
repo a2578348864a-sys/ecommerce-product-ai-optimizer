@@ -68,8 +68,7 @@ function buildCompositionDraft(input: ImageGenerationInput): Record<string, unkn
     source: "real_ai_image_draft",
     safetyWarnings: ["Composition concept only; does not represent real product appearance."],
     promptSummary: `构图概念 · ${prefs.targetMarket ?? "通用构图方向"}`,
-    promptHash: "mock",
-    requestKeyHash: "mock",
+    // Hash 合同：无真实 SHA-256 时不写 promptHash/requestKeyHash 字段（不制造假 Hash）
     generationBasis: {
       productName: "composition concept",
       sellingPoints: [],
@@ -101,8 +100,7 @@ function buildVisualDraft(input: ImageGenerationInput): Record<string, unknown> 
     source: "real_ai_image_draft",
     safetyWarnings: ["Product visual draft based on approved reference; human review required before any use."],
     promptSummary: `产品视觉草稿 · ${ref?.summary ?? "approved reference"}`,
-    promptHash: "mock",
-    requestKeyHash: "mock",
+    // Hash 合同：无真实 SHA-256 时不写 promptHash/requestKeyHash 字段（不制造假 Hash）
     generationBasis: {
       productName: "product visual draft",
       sellingPoints: [],
