@@ -21,7 +21,7 @@ describe("versioned product research decision panel", () => {
     expect(panelSource).toContain("decisionEvents");
     expect(panelSource).toContain("researchHashFingerprint");
     expect(panelSource).not.toMatch(/researchHash\s*:/);
-    expect(panelSource).toContain('event.actorMode === "owner" ? "Owner" : "Visitor"');
+    expect(panelSource).toContain('event.actorMode === "owner" ? "管理员" : "访客"');
   });
 
   it("uses the dedicated GET/PATCH contract with stable decision IDs and conflict reload", () => {

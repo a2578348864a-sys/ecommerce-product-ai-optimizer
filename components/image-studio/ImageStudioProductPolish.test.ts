@@ -231,8 +231,10 @@ describe("Image Studio product workbench", () => {
     expect(cssSource.match(/font-size:\s*0\.55rem/g)).toHaveLength(1);
   });
 
-  it("does not claim a current production step when the page has no live step state", () => {
-    expect(pageSource).toContain('aria-label="图片生产流程"');
-    expect(pageSource).not.toContain('aria-current="step"');
+  it("redirects Studio pages to task detail and does not claim a live production step", () => {
+    // R1: Image Studio 已收敛到任务详情；页面只保留安全重定向，不渲染客户端工作台
+    expect(pageSource).toContain("redirect");
+    expect(pageSource).toMatch(/redirect\(`\/tasks\//);
+    expect(pageSource).not.toContain("ImageStudioClient");
   });
 });

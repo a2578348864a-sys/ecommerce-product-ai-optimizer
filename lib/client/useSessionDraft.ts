@@ -97,6 +97,23 @@ export function clearSessionDraftsForSubject(subject: string): void {
   }
 }
 
+/** 清除当前标签页内全部会话草稿（重新登录 = 身份边界，无论新旧主体一律清除） */
+export function clearAllSessionDrafts(): void {
+  const storage = safeStorage();
+  if (!storage) return;
+  try {
+    const prefix = `${SESSION_DRAFT_SCHEMA}:`;
+    const toRemove: string[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (key && key.startsWith(prefix)) toRemove.push(key);
+    }
+    for (const key of toRemove) storage.removeItem(key);
+  } catch {
+    // 存储异常静默降级
+  }
+}
+
 /** 清除指定实体（task/candidate）对应页面类型的草稿（删除任务/候选时使用） */
 export function clearSessionDraftsForEntity(pageKind: string, entityId: string): void {
   const storage = safeStorage();

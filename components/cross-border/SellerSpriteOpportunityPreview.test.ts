@@ -128,7 +128,7 @@ describe("SellerSprite opportunity preview client validation", () => {
 describe("SellerSprite opportunity preview presentation", () => {
   it("does not render upload controls before server-authorized Owner access", () => {
     const html = renderToStaticMarkup(createElement(SellerSpriteOpportunityPreview));
-    expect(html).toContain("正在核验 Owner 权限");
+    expect(html).toContain("正在核验管理员权限");
     expect(html).not.toContain('type="file"');
     expect(html).not.toContain("生成市场预览");
   });

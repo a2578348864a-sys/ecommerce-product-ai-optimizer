@@ -81,6 +81,16 @@ describe("useSessionDraft storage helpers", () => {
     expect(store.has(`${STORE_PREFIX}:owner:research-decision:t1:rev1`)).toBe(true);
     expect(store.has(`${STORE_PREFIX}:owner:creative-handoff:t1:1:0`)).toBe(false);
   });
+
+  it("clearAllSessionDrafts removes every draft across all subjects (relogin boundary)", () => {
+    store.set(`${STORE_PREFIX}:owner:creative-handoff:t1:1:0`, JSON.stringify({ schema: STORE_PREFIX, subject: "owner" }));
+    store.set(`${STORE_PREFIX}:demo-a:research-decision:c1:rev1`, JSON.stringify({ schema: STORE_PREFIX, subject: "demo-a" }));
+    store.set(`${STORE_PREFIX}:demo-b:candidate-pool:pool:v1`, JSON.stringify({ schema: STORE_PREFIX, subject: "demo-b" }));
+
+    draft.clearAllSessionDrafts();
+
+    expect(store.size).toBe(0);
+  });
 });
 
 describe("useSessionDraft hook", () => {

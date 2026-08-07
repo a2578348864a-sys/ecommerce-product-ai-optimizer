@@ -10,7 +10,7 @@ describe("agentRunSave", () => {
 
   it("keeps forbidden saves clear without implying result loss", () => {
     expect(getAgentRunSaveErrorMessage(403, "demo_action_forbidden")).toBe(
-      "当前登录身份无权保存任务。当前分析结果已保留，可切换 Owner 后重试。",
+      "当前登录身份无权保存任务。当前分析结果已保留，可切换管理员后重试。",
     );
   });
 

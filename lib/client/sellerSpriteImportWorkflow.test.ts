@@ -158,9 +158,9 @@ describe("SellerSprite import workflow", () => {
   });
 
   describe("continue-research navigation", () => {
-    it("builds the canonical /agent/run href with the server candidateId only", () => {
+    it("builds the canonical candidate-detail href with the server candidateId only", () => {
       const href = buildCandidateResearchHref("candidate-owner-001");
-      expect(href).toBe("/agent/run?source=opportunity&candidateId=candidate-owner-001");
+      expect(href).toBe("/opportunity-candidates/candidate-owner-001?source=opportunity&candidateId=candidate-owner-001");
     });
 
     it("returns null for a local draft id so no forged navigation happens", () => {
@@ -187,7 +187,7 @@ describe("SellerSprite import workflow", () => {
         warnings: [],
       });
       expect(buildCandidateResearchHref(withId!.created[0].candidateId))
-        .toBe("/agent/run?source=opportunity&candidateId=candidate-server-1");
+        .toBe("/opportunity-candidates/candidate-server-1?source=opportunity&candidateId=candidate-server-1");
     });
   });
 });

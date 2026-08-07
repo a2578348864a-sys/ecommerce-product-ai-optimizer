@@ -29,18 +29,22 @@ describe("product research history presentation", () => {
     expect(detailPage).toContain("商品研究结果");
   });
 
-  it("derives saved artifacts and uses encoded task ids for Studio links", () => {
+  it("derives saved artifacts and routes Studio actions to task detail", () => {
     const list = source("components/TaskRecordsList.tsx");
     const detail = source("components/TaskRecordDetail.tsx");
 
     expect(list).toContain("deriveProductResearchPresentation");
     expect(detail).toContain("deriveProductResearchPresentation");
     expect(detail).toContain("presentation.actions");
+    // Studio 已收敛：生成动作统一指向任务详情（主链唯一入口）
     expect(source("lib/productResearchPresentation.ts")).toContain(
-      "/listing-studio?taskId=${encodedId}",
+      "href: `/tasks/${encodedId}`",
     );
-    expect(source("lib/productResearchPresentation.ts")).toContain(
-      "/image-studio?taskId=${encodedId}",
+    expect(source("lib/productResearchPresentation.ts")).not.toContain(
+      "/listing-studio?taskId=",
+    );
+    expect(source("lib/productResearchPresentation.ts")).not.toContain(
+      "/image-studio?taskId=",
     );
   });
 });

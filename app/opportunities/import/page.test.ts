@@ -16,9 +16,9 @@ describe("advanced opportunities import compatibility entry", () => {
     expect(importPageSource).not.toContain("OpportunitiesForm");
   });
 
-  it("keeps import advanced after the formal route switches to the read-only workbench", () => {
-    expect(opportunitiesPageSource).toContain("<MarketScreeningWorkbench");
-    expect(opportunitiesPageSource).toContain('environment: "production"');
+  it("keeps the formal discovery page on product-batch management (workbench moved to preview)", () => {
+    expect(opportunitiesPageSource).toContain("<ProductBatchManager");
+    expect(opportunitiesPageSource).not.toContain("<MarketScreeningWorkbench");
     expect(opportunitiesPageSource).not.toContain("<OpportunitiesForm");
     expect(opportunitiesPageSource).not.toContain('surface="advanced_import"');
   });

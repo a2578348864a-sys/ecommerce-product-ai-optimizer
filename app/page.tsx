@@ -10,6 +10,7 @@ import {
   type DemoAccessInfo,
 } from "@/lib/client/accessToken";
 import { getSafeLoginRedirect } from "@/lib/client/loginRedirect";
+import { clearAllSessionDrafts } from "@/lib/client/useSessionDraft";
 
 export default function Home() {
   const [ready, setReady] = useState(false);
@@ -65,6 +66,9 @@ export default function Home() {
           }
         : undefined;
 
+      // 重新登录（退出后再登录 / 切换身份）→ 清除全部会话草稿。
+      // 登录是一个身份边界：无论旧草稿属于哪个 subject，都不能被新登录会话恢复。
+      clearAllSessionDrafts();
       saveAccessToken(json.accessToken, json.mode, demoAccess);
       const redirectTarget = getSafeLoginRedirect(window.location.search);
       if (redirectTarget) {

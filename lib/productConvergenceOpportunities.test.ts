@@ -8,15 +8,19 @@ function readSource(path: string) {
 
 describe("发现商品产品层收敛", () => {
   const pageSource = readSource("app/opportunities/page.tsx");
+  const previewPageSource = readSource("app/opportunities/screening-preview/page.tsx");
   const workbenchSource = readSource("components/cross-border/MarketScreeningWorkbench.tsx");
 
   it("使用统一工作台壳并将页面定位为发现商品", () => {
     expect(pageSource).toMatch(/WorkspaceSidebar/);
     expect(pageSource).toMatch(/WorkspaceMobileNav/);
-    expect(pageSource).toMatch(/发现商品 - 轻选 Agent/);
+    // 品牌收敛：轻选 Agent → 轻选工作台
+    expect(pageSource).toMatch(/发现商品 - 轻选工作台/);
     expect(pageSource).not.toMatch(/市场预筛工作台 - 轻选 Agent/);
-    expect(pageSource).toMatch(/旧版候选兼容视图/);
-    expect(pageSource).not.toMatch(/Legacy 冻结候选兼容视图/);
+    // 正式入口为商品批次管理（ProductBatchManager）；市场预筛工作台收敛到只读预览页
+    expect(pageSource).toMatch(/ProductBatchManager/);
+    expect(pageSource).not.toMatch(/MarketScreeningWorkbench/);
+    expect(previewPageSource).toMatch(/MarketScreeningWorkbench/);
   });
 
   it("优先展示候选商品池和逐商品研究动作", () => {
