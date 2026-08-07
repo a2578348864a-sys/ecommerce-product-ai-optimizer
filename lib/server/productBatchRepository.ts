@@ -852,19 +852,21 @@ export function createProductBatchRepository(client: PrismaClient = prisma) {
   ): Promise<{ deleted: boolean }> {
     return database.$transaction(async (transaction) => {
       const batch = await requireOwnedBatch(transaction, batchId);
-      const activeRows = await transaction.$queryRaw<Array<{ ownerSubject: string }>>(Prisma.sql`
-        SELECT "ownerSubject"
-        FROM "ProductDiscoverySelection"
+      // 产品规则：删除当前批次 = 取消当前并删除。
+      // 先删除 selection 绑定（getActiveSelection 返回 null → 前端显示"尚未选择"），
+      // 再解除已进入研究池的候选对该批次 item 的引用，最后删 item 与 batch。
+      await transaction.$executeRaw(Prisma.sql`
+        DELETE FROM "ProductDiscoverySelection"
         WHERE "ownerSubject" = ${PRODUCT_BATCH_OWNER_SUBJECT}
           AND "activeProductBatchId" = ${batchId}
-        LIMIT 1
       `);
-      if (activeRows.length > 0) {
-        repositoryError(
-          "batch_is_active",
-          "Switch away from a ProductBatch before deleting it.",
-        );
-      }
+      await transaction.$executeRaw(Prisma.sql`
+        UPDATE "OpportunityCandidate"
+        SET "originProductBatchItemId" = NULL
+        WHERE "originProductBatchItemId" IN (
+          SELECT "id" FROM "ProductBatchItem" WHERE "batchId" = ${batchId}
+        )
+      `);
       // ProductBatchItem/Selection 对 ProductBatch 为 onDelete: Restrict →
       // 事务内先删条目，再删批次。
       await transaction.$executeRaw(Prisma.sql`

@@ -102,7 +102,8 @@ describe("SellerSpritePreviewResults", () => {
     expect(html).toContain("320");
     expect(html).toContain("月销售额");
     expect(html).toContain("$6,396.80");
-    expect(html).toContain("存在警告");
+    expect(html).toContain("缺少部分数据");
+    expect(html).toContain("缺：排名");
     expect(rowDetails).not.toBeNull();
     expect(rowDetails?.[1]).not.toMatch(/\bopen\b/);
     expect(rowDetails?.[2]).toContain("https://www.amazon.com/dp/B000000002");

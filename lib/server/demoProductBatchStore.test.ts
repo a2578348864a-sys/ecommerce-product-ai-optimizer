@@ -130,6 +130,22 @@ describe("Visitor ProductBatch store contract", () => {
     expect(archived.batchStatus).toBe("archived");
   });
 
+  it("deletes the active current batch and leaves the selection empty, without touching other batches", async () => {
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
+    const ready = await createReady(store);
+    await store.activateBatch(ready.id);
+    expect((await store.getSelection())?.activeProductBatchId).toBe(ready.id);
+
+    const result = await store.deleteBatch(ready.id);
+    expect(result).toEqual({ deleted: true });
+
+    // 批次与条目已删除，selection 变为空
+    expect(await store.getBatch(ready.id)).toBeNull();
+    expect(await store.getBatchItems(ready.id)).toEqual([]);
+    expect(await store.getSelection()).toBeNull();
+    expect(await store.listBatches()).toEqual([]);
+  });
+
   it("deduplicates the same Visitor while keeping different Visitors isolated", async () => {
     const visitorA = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
     const visitorB = createDemoProductBatchStore("demo_bbbbbbbbbbbbbbbb", { root });

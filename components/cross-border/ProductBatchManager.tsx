@@ -363,7 +363,7 @@ export function ProductBatchManagerView({
                     </button>
                     <button
                       type="button"
-                      disabled={busy || active}
+                      disabled={busy}
                       onClick={() => onDeleteBatch?.(batch.id)}
                       className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40"
                     >
@@ -707,7 +707,11 @@ export function ProductBatchManager() {
   const deleteBatch = (batchId: string) => {
     const batch = batches.find((candidate) => candidate.id === batchId);
     const name = batch?.batchName ?? "该批次";
-    if (!window.confirm(`确定删除「${name}」？删除后批次内商品将一并移除，已进入研究池的商品不受影响。`)) {
+    const isActive = selection?.activeProductBatchId === batchId;
+    const confirmText = isActive
+      ? `删除当前批次「${name}」后，该批次商品会从批次列表移除；已经加入商品研究池的商品不会删除。删除后当前批次将变为空。`
+      : `确定删除「${name}」？删除后批次内商品将一并移除，已进入研究池的商品不受影响。`;
+    if (!window.confirm(confirmText)) {
       return;
     }
     void runMutation(async () => {

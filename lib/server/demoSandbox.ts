@@ -245,7 +245,11 @@ function linkCandidateAndCreateTask(
         : "R2.2 市场晋级状态已变化，当前不能创建商业验证任务。",
     );
   }
-  if (normalizeCandidateIdentity(candidate.name) !== normalizeCandidateIdentity(guard.expectedProductName)) {
+  // 保存端 name 比对：与研究运行端（product-analysis 先将 productName
+  // trim+slice(0,120) 再 normalize）保持完全相同的转换顺序，避免
+  // Amazon 长标题保存时被误判为"候选商品在分析后已发生变化"。
+  if (normalizeCandidateIdentity(candidate.name.trim().slice(0, 120))
+    !== normalizeCandidateIdentity(guard.expectedProductName.trim().slice(0, 120))) {
     throw new SandboxCandidateTaskLinkError(
       "candidate_changed_since_analysis",
       "候选商品在分析后已发生变化，请重新分析后再保存。",

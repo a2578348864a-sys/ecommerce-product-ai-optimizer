@@ -244,6 +244,43 @@ describe("ProductBatch repository state and items", () => {
     await expect(repository.setActiveBatch("other-batch"))
       .rejects.toBeInstanceOf(ProductBatchRepositoryError);
   });
+
+  it("deletes the active current batch atomically: clears selection binding, removes items and batch, keeps researched candidates", async () => {
+    const ready = await createReadyBatch();
+    await repository.setActiveBatch(ready.id);
+    // 模拟一个已进入研究池的候选绑定到该批次 item（onDelete: Restrict）
+    const itemId = (await repository.getBatchItemsForOwner(ready.id))[0].id;
+    await client.$executeRawUnsafe(`
+      INSERT INTO "OpportunityCandidate" (
+        "id", "name", "rawInput", "link", "score", "source", "keyword",
+        "riskLevel", "riskLabel", "summaryLabel", "status",
+        "sourceMetaJson", "analysisJson", "convertedTaskId",
+        "originProductBatchItemId"
+      ) VALUES (
+        'cand-researched', 'Researched item', '', NULL, 0, 'SellerSprite', '',
+        '', '', '', 'pending', '{}', '{}', NULL,
+        '${itemId}'
+      )
+    `);
+
+    const result = await repository.deleteBatchForOwner(ready.id);
+    expect(result).toEqual({ deleted: true });
+
+    // 批次与条目已删除
+    expect(await repository.getBatchByIdForOwner(ready.id)).toBeNull();
+    expect(await repository.getBatchItemsForOwner(ready.id)).toEqual([]);
+    // selection 绑定已解除（删除 selection 行 → 返回 null = 尚未选择）
+    expect(await repository.getActiveSelection()).toBeNull();
+    // 已进入研究池的候选保留（originProductBatchItemId 解除引用，候选记录仍在）
+    const candidate = await client.$queryRawUnsafe(`
+      SELECT "id" FROM "OpportunityCandidate" WHERE "id" = 'cand-researched'
+    `);
+    expect(candidate).toHaveLength(1);
+    const candidateRef = await client.$queryRawUnsafe<Array<{ originProductBatchItemId: string | null }>>(`
+      SELECT "originProductBatchItemId" FROM "OpportunityCandidate" WHERE "id" = 'cand-researched'
+    `);
+    expect(candidateRef[0].originProductBatchItemId).toBeNull();
+  });
 });
 
 describe("ProductBatch repository concurrency", () => {

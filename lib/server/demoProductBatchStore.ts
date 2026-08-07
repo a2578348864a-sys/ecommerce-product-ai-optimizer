@@ -638,8 +638,9 @@ export function createDemoProductBatchStore(
       return update((store) => {
         // 存在性检查（不存在即抛 batch_not_found）
         getRequiredBatch(store, batchId);
+        // 产品规则：删除当前批次 = 取消当前并删除（selection 变为空）。
         if (store.selection?.activeProductBatchId === batchId) {
-          fail("batch_is_active", "Switch away from a ProductBatch before deleting it.");
+          store.selection = null;
         }
         store.batches = store.batches.filter((candidate) => candidate.id !== batchId);
         store.items = store.items.filter((item) => item.batchId !== batchId);

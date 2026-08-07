@@ -49,7 +49,16 @@ function storeError(error: unknown) {
       || code === "batch_not_activatable"
       ? 409
       : 500;
-  return errorResponse(status, code, "ProductBatch 状态不允许该操作。");
+  const message = code === "batch_not_found" || code === "batch_item_not_found"
+    ? "批次不存在或已被移除。"
+    : code === "batch_status_transition_forbidden"
+      ? "当前批次状态不支持该操作，请先刷新批次列表后再试。"
+      : code === "batch_not_activatable"
+        ? "只有已完成导入的批次才能设置为当前批次。"
+        : code === "batch_is_active"
+          ? "该批次是当前批次，取消当前状态后才能执行该操作。"
+          : "商品批次操作失败，请稍后重试。";
+  return errorResponse(status, code, message);
 }
 
 export async function GET(request: NextRequest, context: Context) {

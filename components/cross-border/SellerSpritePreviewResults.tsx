@@ -9,7 +9,7 @@ import type {
 
 type PreviewWithImportToken = SellerSpritePreviewResult & { importToken?: string };
 
-/** 预览行状态筛选（B：可导入区 / 警告区 / 异常区视觉分离） */
+/** 预览行状态筛选（三层：可导入 / 数据不完整 / 异常隔离） */
 export type PreviewStatusFilter = "all" | "importable" | "warning" | "rejected";
 
 export type SellerSpritePreviewResultsProps = {
@@ -25,18 +25,23 @@ export type SellerSpritePreviewResultsProps = {
   onToggleRow: (rowHash: string) => void;
 };
 
-/** 行分类：警告 > 缺少可选字段 > 可导入 */
-function classifyRow(row: SellerSpriteAcceptedPreviewRow): "warning" | "partial" | "ok" {
-  if (row.warnings.length > 0) return "warning";
+/**
+ * 三层导入状态：
+ * - "complete"：核心身份字段满足 + 无缺失 → 可导入
+ * - "partial"：核心身份字段满足，但缺值得知道的可选字段 → 数据不完整（仍可导入）
+ * - "warning"：保留给未来真正影响导入的警告；当前业务中 accepted 行只要
+ *   核心身份合法即可导入，缺失可选字段统一归为 partial。
+ */
+function classifyRow(row: SellerSpriteAcceptedPreviewRow): "complete" | "partial" | "warning" {
   if (row.missingFields.length > 0) return "partial";
-  return "ok";
+  return "complete";
 }
 
 function matchFilter(row: SellerSpriteAcceptedPreviewRow, filter: PreviewStatusFilter): boolean {
   if (filter === "all") return true;
   const cls = classifyRow(row);
-  if (filter === "warning") return cls === "warning" || cls === "partial";
-  if (filter === "importable") return cls === "ok" || cls === "partial";
+  if (filter === "warning") return cls === "partial";
+  if (filter === "importable") return cls === "complete" || cls === "partial";
   return false;
 }
 
@@ -68,25 +73,40 @@ function shortCategory(value: string | undefined): string {
   return value.split(/\s*[>›]\s*/u)[0]?.trim() || "类目暂无";
 }
 
+const MISSING_FIELD_LABELS: Record<string, string> = {
+  parentAsin: "父 ASIN",
+  imageUrl: "图片",
+  priceUsd: "价格",
+  rating: "评分",
+  reviewCount: "评论数",
+  brand: "品牌",
+  category: "类目",
+  searchRank: "排名",
+  estimatedMonthlySales: "月销量",
+  estimatedMonthlyRevenueUsd: "月销售额",
+};
+
+function missingFieldReason(fields: readonly string[]): string {
+  if (fields.length === 0) return "";
+  return `缺：${fields.map((field) => MISSING_FIELD_LABELS[field] ?? field).join("、")}`;
+}
+
 function rowStatus(row: SellerSpriteAcceptedPreviewRow): {
   label: string;
   className: string;
+  missingDetail: string;
 } {
-  if (row.warnings.length > 0) {
-    return {
-      label: "存在警告",
-      className: "border-amber-200 bg-amber-50 text-amber-800",
-    };
-  }
   if (row.missingFields.length > 0) {
     return {
-      label: "缺少可选字段",
-      className: "border-slate-200 bg-slate-50 text-slate-700",
+      label: "缺少部分数据",
+      className: "border-amber-200 bg-amber-50 text-amber-800",
+      missingDetail: missingFieldReason(row.missingFields),
     };
   }
   return {
     label: "可导入",
     className: "border-teal-200 bg-teal-50 text-teal-800",
+    missingDetail: "",
   };
 }
 
@@ -108,8 +128,8 @@ function reasonLabel(reason: { code: string; field?: string }): string {
 
 const FILTER_OPTIONS: Array<{ value: PreviewStatusFilter; label: string }> = [
   { value: "all", label: "全部" },
-  { value: "importable", label: "可导入" },
-  { value: "warning", label: "警告" },
+  { value: "importable", label: "数据完整" },
+  { value: "warning", label: "数据不完整" },
 ];
 
 export function SellerSpritePreviewResults({
@@ -213,8 +233,8 @@ export function SellerSpritePreviewResults({
                 }`}
               >
                 {option.label}
-                {option.value === "importable" ? `（${preview.acceptedRows.filter((r) => classifyRow(r) !== "warning").length}）` : ""}
-                {option.value === "warning" ? `（${preview.acceptedRows.filter((r) => classifyRow(r) === "warning").length}）` : ""}
+                {option.value === "importable" ? `（${preview.acceptedRows.filter((r) => classifyRow(r) === "complete").length}）` : ""}
+                {option.value === "warning" ? `（${preview.acceptedRows.filter((r) => classifyRow(r) === "partial").length}）` : ""}
               </button>
             ))}
           </div>
@@ -262,7 +282,7 @@ export function SellerSpritePreviewResults({
       <section className="surface-card overflow-hidden" aria-label="可导入商品">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div className="text-sm text-slate-700">
-            {filter === "all" ? "全部合法商品" : filter === "importable" ? "可导入商品" : "含警告商品"}
+            {filter === "all" ? "全部可导入商品" : filter === "importable" ? "数据完整" : "数据不完整"}
             <span className="ml-1 text-slate-500">（{visibleRows.length}）</span>
           </div>
         </div>
@@ -282,7 +302,7 @@ export function SellerSpritePreviewResults({
                   className={`rounded-2xl border p-4 ${
                     isProcessed
                       ? "border-slate-200 bg-slate-50/70"
-                      : cls === "warning"
+                      : cls === "partial"
                         ? "border-amber-200 bg-amber-50/30"
                         : "border-slate-200 bg-white"
                   }`}
@@ -304,6 +324,11 @@ export function SellerSpritePreviewResults({
                       {status.label}
                     </span>
                   </div>
+                  {status.missingDetail ? (
+                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                      {status.missingDetail}
+                    </p>
+                  ) : null}
                   <div className="mt-3 flex gap-3">
                     {row.facts.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- 外部商品图，浏览器直连 + 路由层 SSRF 校验
@@ -334,7 +359,9 @@ export function SellerSpritePreviewResults({
                           <p className="break-all">Amazon URL：{row.facts.amazonUrl}</p>
                           <p>Parent ASIN：{row.facts.parentAsin ?? "暂无"}</p>
                           <p>完整类目：{row.facts.category ?? "暂无"}</p>
-                          <p>缺失字段：{row.missingFields.length > 0 ? row.missingFields.join("、") : "无"}</p>
+                          <p>缺失字段：{row.missingFields.length > 0
+                            ? row.missingFields.map((field) => MISSING_FIELD_LABELS[field] ?? field).join("、")
+                            : "无"}</p>
                           <p>
                             字段状态：价格 {FIELD_STATUS_LABELS[row.fieldStatus.priceUsd]}；排名 {FIELD_STATUS_LABELS[row.fieldStatus.searchRank]}
                           </p>

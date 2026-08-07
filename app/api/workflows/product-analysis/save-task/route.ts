@@ -69,6 +69,7 @@ import {
   type ProductResearchRecordV1,
   type ProductResearchVerificationV1,
 } from "@/lib/productResearchRecord";
+import { comparableCandidateProductName } from "@/lib/comparableProductName";
 
 export const runtime = "nodejs";
 
@@ -405,10 +406,6 @@ function buildAuthoritativeSourceMeta(
   };
 }
 
-function normalizeComparableProductName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
 function sanitizeCandidateSourceUrl(value: string | null): string | null {
   if (!value) return null;
   try {
@@ -572,7 +569,7 @@ export async function POST(request: NextRequest) {
     if (!candidate) {
       return jsonResponse({ ok: false, error: { code: "candidate_not_found", message: "候选商品不存在或不属于当前访问主体。" } }, 404);
     }
-    if (normalizeComparableProductName(candidate.name) !== normalizeComparableProductName(workflowInput.productName)) {
+    if (comparableCandidateProductName(candidate.name) !== comparableCandidateProductName(workflowInput.productName)) {
       return jsonResponse({ ok: false, error: { code: "candidate_changed_since_analysis", message: "候选商品在分析后已发生变化，请重新分析后再保存。" } }, 409);
     }
     const researchEligibility = await evaluateCandidateResearchEligibility(auth.context, candidate);
@@ -1084,8 +1081,8 @@ export async function POST(request: NextRequest) {
             "候选研究范围在分析后已发生变化，请重新分析后再保存。",
           );
         }
-        if (normalizeComparableProductName(currentCandidate.name)
-          !== normalizeComparableProductName(workflowInput.productName)) {
+        if (comparableCandidateProductName(currentCandidate.name)
+          !== comparableCandidateProductName(workflowInput.productName)) {
           throw new CandidateConversionError(
             "candidate_changed_since_analysis",
             "候选商品在分析后已发生变化，请重新分析后再保存。",
