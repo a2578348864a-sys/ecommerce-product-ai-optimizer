@@ -1,5 +1,6 @@
 import type { ListingCopyResult } from "@/lib/types";
 import { getAccessMode, getDemoAccessInfo } from "@/lib/client/accessToken";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 export type ListingCopyHistorySource = "database" | "local";
 
@@ -140,11 +141,7 @@ export function normalizeCachedListingCopy(value: unknown): ListingCopyResult | 
 }
 
 function makeListingCopyHistoryId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return createBrowserUuid();
 }
 
 function normalizeHistorySavedAt(value: unknown) {

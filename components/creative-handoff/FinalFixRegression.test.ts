@@ -141,6 +141,6 @@ describe("idempotency_conflict（P1-2）", () => {
   });
 
   it("37. 用户重新确认后生成新 requestId", () => {
-    expect(panelSource).toContain("crypto.randomUUID()");
+    expect(panelSource).toContain("createBrowserUuid()");
   });
 });

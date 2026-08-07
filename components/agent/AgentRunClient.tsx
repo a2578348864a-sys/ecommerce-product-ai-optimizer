@@ -60,6 +60,7 @@ import {
   type CandidateResearchContext,
 } from "@/lib/candidateResearchContext";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 type ApiStepKey = "normalize" | "sourcing" | "risk" | "summary" | "listing" | "report";
 type ApiStepStatus = "completed" | "fallback" | "failed";
@@ -927,7 +928,7 @@ export function AgentRunClient({
 
     try {
       if (!jobRequestIdRef.current) {
-        jobRequestIdRef.current = crypto.randomUUID();
+        jobRequestIdRef.current = createBrowserUuid();
       }
       const response = await fetch("/api/workflows/product-analysis", {
         method: "POST",
@@ -1025,7 +1026,7 @@ export function AgentRunClient({
     setSaveError("");
     try {
       if (candidateMode && !researchDecisionIdRef.current) {
-        researchDecisionIdRef.current = crypto.randomUUID();
+        researchDecisionIdRef.current = createBrowserUuid();
       }
       const response = await fetch("/api/workflows/product-analysis/save-task", {
         method: "POST",

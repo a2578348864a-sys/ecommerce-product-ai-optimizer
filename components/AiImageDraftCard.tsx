@@ -12,6 +12,7 @@ import {
   type AiImageDraftType,
 } from "@/lib/aiImageDraft";
 import { buildAccessHeaders, updateDemoAccessInfo } from "@/lib/client/accessToken";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 type VisitorAccess = {
   maxAiCalls: number;
@@ -158,7 +159,7 @@ export function AiImageDraftCard({
     setLoading(true);
     setError("");
     setMessage("");
-    const requestKey = idempotencyKey || crypto.randomUUID();
+    const requestKey = idempotencyKey || createBrowserUuid();
     setIdempotencyKey(requestKey);
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft`, {

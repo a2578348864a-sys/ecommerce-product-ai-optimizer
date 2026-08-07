@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 type ImageStatus =
   | "ready" | "active" | "stale" | "revoked" | "concept_only" | "legacy_unbound" | "invalid";
@@ -191,7 +192,7 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
     if (!state || !state.canGenerate || submitting) return;
     setSubmitting(true);
     setNotice(null);
-    const requestKey = requestId ?? crypto.randomUUID();
+    const requestKey = requestId ?? createBrowserUuid();
     setRequestId(requestKey);
     const body = {
       requestId: requestKey,

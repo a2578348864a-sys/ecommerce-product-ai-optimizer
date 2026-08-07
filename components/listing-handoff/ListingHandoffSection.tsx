@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 type ListingStatus = "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid";
 
@@ -134,7 +135,7 @@ export function ListingHandoffSection({
 
   const generate = useCallback(async () => {
     if (submitting || handoffRevision === null || !canGenerate) return;
-    const nextRequestId = requestId ?? crypto.randomUUID();
+    const nextRequestId = requestId ?? createBrowserUuid();
     let effectiveSv = storageVersion;
     if (!effectiveSv) {
       // storageVersion 直取（首次加载或 409 后）— 从本 Route 自己的 GET 获取，不依赖其他 API

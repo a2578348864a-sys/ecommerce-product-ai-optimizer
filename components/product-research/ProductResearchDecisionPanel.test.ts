@@ -28,7 +28,7 @@ describe("versioned product research decision panel", () => {
     expect(panelSource).toContain("/research-decision`");
     expect(panelSource).toContain('method: "PATCH"');
     expect(panelSource).toContain("expectedRevision: state.record.revision");
-    expect(panelSource).toContain("decisionIdRef.current = crypto.randomUUID()");
+    expect(panelSource).toContain("decisionIdRef.current = createBrowserUuid()");
     expect(panelSource).toContain('data.error.code === "research_record_conflict"');
     expect(panelSource).toContain("await fetchProductResearchDecisionState(input.taskId, fetcher)");
   });

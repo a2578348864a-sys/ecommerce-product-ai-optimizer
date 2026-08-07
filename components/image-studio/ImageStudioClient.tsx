@@ -30,6 +30,7 @@ import {
   type ImageStudioData,
 } from "@/components/image-studio/ImageResultWorkspace";
 import styles from "./ImageStudioPolish.module.css";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 type StudioMode = "mock" | "real";
 
@@ -121,7 +122,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
         ? getOrCreateStudioAttempt(
             realAttemptRef.current,
             JSON.stringify(requestCore),
-            () => crypto.randomUUID(),
+            () => createBrowserUuid(),
           )
         : null;
       if (attempt) realAttemptRef.current = attempt;

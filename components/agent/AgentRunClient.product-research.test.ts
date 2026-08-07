@@ -66,7 +66,7 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).toContain('value: "creative_ready"');
     expect(clientSource).toContain('value: "needs_information"');
     expect(clientSource).toContain('value: "abandoned"');
-    expect(clientSource).toContain("researchDecisionIdRef.current = crypto.randomUUID()");
+    expect(clientSource).toContain("researchDecisionIdRef.current = createBrowserUuid()");
     expect(clientSource).toContain('result.status === "partial_failed" && option.value !== "needs_information"');
     expect(clientSource).toContain('partial_failed 可在未完成四项流程复核时保存为“待补信息”');
     expect(clientSource).toContain("不会自动创建 Listing、图片或发布任务");

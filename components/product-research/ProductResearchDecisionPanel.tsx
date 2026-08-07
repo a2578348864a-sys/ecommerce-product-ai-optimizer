@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { createBrowserUuid } from "@/lib/browserUuid";
 import {
   PRODUCT_RESEARCH_DECISION_OPTIONS,
   getProductResearchDecisionLabel,
@@ -154,7 +155,7 @@ export function ProductResearchDecisionPanel({
 
   async function saveDecision() {
     if (!state?.record || state.readOnly || saving || !formValid) return;
-    if (!decisionIdRef.current) decisionIdRef.current = crypto.randomUUID();
+    if (!decisionIdRef.current) decisionIdRef.current = createBrowserUuid();
     setSaving(true);
     setMessage("");
     setError("");

@@ -44,6 +44,7 @@ import {
   type StudioMode,
 } from "@/components/listing-studio/ListingResultWorkspace";
 import styles from "@/components/listing-studio/ListingStudioPolish.module.css";
+import { createBrowserUuid } from "@/lib/browserUuid";
 
 type StudioData = {
   listingPack: ListingPack;
@@ -218,7 +219,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
         ? getOrCreateStudioAttempt(
             realAttemptRef.current,
             JSON.stringify(requestCore),
-            () => crypto.randomUUID(),
+            () => createBrowserUuid(),
           )
         : null;
       if (attempt) realAttemptRef.current = attempt;

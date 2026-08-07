@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildAccessHeaders, getAccessToken } from "@/lib/client/accessToken";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { createBrowserUuid } from "@/lib/browserUuid";
 import { useCreativeHandoffApi, HandoffApiRequestError } from "@/components/creative-handoff/useCreativeHandoffApi";
 import {
   ELIGIBILITY_BLOCK_LABELS,
@@ -394,7 +395,7 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
     if (submitting) return;
     const preview = state.kind === "preview" || state.kind === "active" || state.kind === "stale" ? state.preview : null;
     if (!preview?.storageVersion || selectedIds.length < 1 || !confirmed) return;
-    const nextRequestId = requestId ?? crypto.randomUUID();
+    const nextRequestId = requestId ?? createBrowserUuid();
     // 提交服务端白名单字段（含 additionalRequirements：真实保存到 Handoff，参与指纹/Revision）
     const serverPrefs = {
       ...(prefs.targetMarket ? { targetMarket: prefs.targetMarket } : {}),
@@ -492,7 +493,7 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
     async (reasonCode: RevokeReasonCode) => {
       const detail = state.kind === "active" || state.kind === "stale" ? state.detail : null;
       if (!detail?.storageVersion || submitting) return;
-      const revokeRequestId = crypto.randomUUID();
+      const revokeRequestId = createBrowserUuid();
       setSubmitting(true);
       try {
         await api.revoke({
