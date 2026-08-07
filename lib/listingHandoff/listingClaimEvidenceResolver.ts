@@ -437,13 +437,27 @@ export function verifyListingClaims(
           continue;
         }
 
-        // 7) 有事实值且无高风险词 → 段中剩余部分须为中性集成员或普通连接词，
-        //    否则拒绝（合法事实 + 未允许文案 = 拒绝）
+        // 7) 有事实值且无高风险词 → 段中剩余部分须为：其他已确认事实值（多事实组合）/
+        //    中性集成员 / 普通连接词，否则拒绝（合法事实 + 未允许文案 = 拒绝）
         if (evidenceEntry) {
           const rest = compactText(segment).replace(compactText(evidenceEntry.normalizedValue), "");
-          const restAllowed = rest.length === 0
-            || NEUTRAL_COPY_ALLOWLIST.some((p) => rest.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号)+$/i.test(rest);
+          // 剩余部分允许：其他 confirmed 事实值（组合事实，含部分重叠如 Bottle ⊆ Water Bottle）、
+          // 中性词、字段词/连接词/介词
+          const otherEvidenceValues = entries
+            .filter((e) => e.normalizedValue && compactText(e.normalizedValue) !== compactText(evidenceEntry.normalizedValue))
+            .map((e) => compactText(e.normalizedValue));
+          let restCleaned = rest;
+          for (const otherValue of otherEvidenceValues) {
+            restCleaned = restCleaned.replace(otherValue, "");
+          }
+          // 部分重叠：剩余部分是某个 evidence 值的前缀/后缀（Bottle ⊆ Water Bottle）
+          if (restCleaned.length > 0) {
+            const overlapHit = otherEvidenceValues.some((v) => v.startsWith(restCleaned) || v.endsWith(restCleaned) || restCleaned.startsWith(v) || restCleaned.endsWith(v));
+            if (overlapHit) restCleaned = "";
+          }
+          const restAllowed = restCleaned.length === 0
+            || NEUTRAL_COPY_ALLOWLIST.some((p) => restCleaned.includes(compactText(p)))
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|in|of|for|with|and|the|a|an)+$/i.test(restCleaned);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;
