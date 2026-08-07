@@ -170,6 +170,19 @@ const listingPackSpec = objectOf({
   generatedAt: scalar,
 });
 
+/**
+ * 创作交接最小安全投影（detail 作用域）。
+ * 仅暴露用于"进度摘要"与"步骤高亮"的存在性信号，白名单字段：
+ *   - currentRevision / controlState：判断 Handoff 已创建、生效中/已撤回
+ *   - createdAt：展示"已创建"时间（浏览器不接触任何 Hash / 指纹 / 内部元数据）
+ * 不投影 versions / confirmedFacts / sourceRef / actor 指纹 / 视觉参考等任何创作内容。
+ */
+const creativeHandoffSpec = objectOf({
+  currentRevision: scalar,
+  controlState: scalar,
+  createdAt: scalar,
+});
+
 const aiListingPackSpec = objectOf({
   source: scalar,
   version: scalar,
@@ -425,6 +438,7 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   listingPackSnapshot: listingPackSpec,
   aiListingPackSnapshot: aiListingPackSpec,
   aiImageDraftSnapshot: aiImageDraftSpec,
+  creativeHandoff: creativeHandoffSpec,
   sourceMeta: sourceMetaSpec,
   sellingPoints: stringList,
   painPoints: stringList,

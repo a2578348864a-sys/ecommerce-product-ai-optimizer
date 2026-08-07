@@ -401,7 +401,8 @@ describe("Task 详情接入", () => {
     // E：CreativeHandoffPanel 作为「创作交接」步骤的内容放入步骤工作台
     expect(detailSource).toContain("WorkflowStepWorkspace");
     expect(detailSource).toContain('label: "创作交接"');
-    expect(detailSource).toContain("<CreativeHandoffPanel taskId={record.id} />");
+    // Release Closeout：创建成功后通过 onCommitted 触发父级重读服务端（进度即时同步）
+    expect(detailSource).toContain("<CreativeHandoffPanel taskId={record.id} onCommitted={() => void refreshRecord()} />");
     expect(detailSource).toContain('record.type === "workflow" ? (');
   });
 });

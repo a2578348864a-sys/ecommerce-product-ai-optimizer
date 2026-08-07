@@ -585,18 +585,36 @@ describe("UI 状态（第20章 66-75）", () => {
     expect(uiSource).toContain("setRetryBody");
   });
 
-  it("草稿正文展示五项（标题/五点描述/商品描述/关键词/图片卖点方向）", () => {
-    for (const label of ["商品标题", "五点描述", "商品描述", "搜索关键词", "图片卖点方向"]) {
+  it("草稿正文为 Listing 文本本体（标题/五点描述/商品描述/关键词），图片创作建议独立展示", () => {
+    for (const label of ["商品标题", "五点描述", "商品描述", "搜索关键词"]) {
       expect(uiSource).toContain(label);
     }
+    // 图片卖点方向不再是 Listing 本体第 5 项；独立「图片创作建议」区域
+    expect(uiSource).toContain("图片创作建议");
+    expect(uiSource).not.toContain("图片卖点方向");
   });
 
-  it("复制能力（单项 + 完整 Listing）", () => {
+  it("图片创作建议独立复制；完整 Listing 不混入图片建议", () => {
+    expect(uiSource).toContain("复制图片创作建议");
+    // 完整 Listing 只含 Title/Bullet Points/Product Description/Keywords
+    expect(uiSource).toContain("复制完整 Listing");
+    expect(uiSource).not.toContain("Image Selling Points");
+    // 完整 Listing 构造器（buildFullListingText）不引用图片创作建议
+    const fullTextStart = uiSource.indexOf("const buildFullListingText");
+    const fullTextEnd = uiSource.indexOf("return parts.join", fullTextStart);
+    const fullTextBody = uiSource.slice(fullTextStart, fullTextEnd);
+    expect(fullTextBody).not.toContain("imageMaterialNeeds");
+    // 无数据占位
+    expect(uiSource).toContain("暂未生成图片创作建议");
+  });
+
+  it("复制能力（单项 + 完整 Listing + 图片创作建议）", () => {
     expect(uiSource).toContain("复制完整 Listing");
     expect(uiSource).toContain("复制标题");
     expect(uiSource).toContain("复制五点描述");
     expect(uiSource).toContain("复制商品描述");
     expect(uiSource).toContain("复制关键词");
+    expect(uiSource).toContain("复制图片创作建议");
     expect(uiSource).toContain("复制失败");
   });
 
@@ -619,5 +637,13 @@ describe("UI 状态（第20章 66-75）", () => {
   it("不触发 Image 或其他生成路径", () => {
     expect(uiSource).not.toContain("image-draft");
     expect(uiSource).not.toContain("imageDraft");
+  });
+
+  it("生成成功回调 onCommitted（进度即时同步）", () => {
+    // 成功生成（含重试成功）后必须通知父级重读服务端真实任务状态
+    expect(uiSource).toContain("onCommitted?: () => void");
+    expect(uiSource).toContain("onCommitted?.()");
+    expect(uiSource).toContain("await load();");
+    expect(uiSource).toContain("onCommitted?.()");
   });
 });

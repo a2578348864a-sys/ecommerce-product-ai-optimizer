@@ -218,7 +218,11 @@ type PanelState =
   | { kind: "revoked"; preview: CreativeHandoffPreview | null; detail: CreativeHandoffDetail }
   | { kind: "conflict"; message: string };
 
-export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
+export function CreativeHandoffPanel({ taskId, onCommitted }: {
+  taskId: string;
+  /** 创建成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新；不维护第二套前端进度） */
+  onCommitted?: () => void;
+}) {
   const api = useCreativeHandoffApi(taskId);
   const [state, setState] = useState<PanelState>({ kind: "loading" });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -434,6 +438,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
       clearDraftAfterCommit();
       resetSelection();
       await loadAll();
+      onCommitted?.();
     } catch (err) {
       if (err instanceof HandoffApiRequestError) {
         if (shouldRefreshAfterCreativeHandoffError(err.error.status, err.error.code)) {
@@ -451,7 +456,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [state, selectedIds, selectedVisualIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting, clearDraftAfterCommit]);
+  }, [state, selectedIds, selectedVisualIds, confirmed, requestId, prefs, api, handleConflict, resetSelection, loadAll, submitting, clearDraftAfterCommit, onCommitted]);
 
   const retrySameRequest = useCallback(() => {
     if (!retryBody || !requestId) return;
@@ -473,6 +478,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
           setNotice("重试成功，未重复创建。");
           resetSelection();
           await loadAll();
+          onCommitted?.();
         } else {
           setNotice("重试仍失败，请稍后再试。");
         }
@@ -480,7 +486,7 @@ export function CreativeHandoffPanel({ taskId }: { taskId: string }) {
         if (mounted.current) setSubmitting(false);
       }
     })();
-  }, [retryBody, requestId, taskId, handleConflict, resetSelection, loadAll]);
+  }, [retryBody, requestId, taskId, handleConflict, resetSelection, loadAll, onCommitted]);
 
   const submitRevoke = useCallback(
     async (reasonCode: RevokeReasonCode) => {

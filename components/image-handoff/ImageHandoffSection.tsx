@@ -155,7 +155,11 @@ function downloadDraftImage(taskId: string, draftId: string, fallbackName: strin
 }
 
 /** PR2-3: Image 消费 Creative Handoff 最小状态接入 */
-export function ImageHandoffSection({ taskId }: { taskId: string }) {
+export function ImageHandoffSection({ taskId, onCommitted }: {
+  taskId: string;
+  /** 图片草稿生成成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新） */
+  onCommitted?: () => void;
+}) {
   const [state, setState] = useState<ImageStateData | null>(null);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -231,6 +235,7 @@ export function ImageHandoffSection({ taskId }: { taskId: string }) {
       setRequestId(null);
       setRetryBody(null);
       void loadState();
+      onCommitted?.();
     } catch {
       setNotice({ tone: "error", text: "网络异常，图片草稿生成失败。" });
     } finally {

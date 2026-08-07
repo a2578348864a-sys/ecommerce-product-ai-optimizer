@@ -256,4 +256,56 @@ describe("product research browser DTO allowlist", () => {
     expect(toResearchHashFingerprint(null)).toBeNull();
     expect(PRODUCT_RESEARCH_HASH_FINGERPRINT_LENGTH).toBe(12);
   });
+
+  it("projects creativeHandoff as an allowlisted minimal signal (detail scope)", () => {
+    const projected = projectTaskResultForBrowser({
+      productName: "Synthetic product",
+      creativeHandoff: {
+        schema: "product-creative-handoff.v1",
+        handoffId: "11111111-1111-4111-8111-111111111111",
+        taskId: "task-internal",
+        candidateId: "candidate-internal",
+        currentRevision: 3,
+        controlState: "active",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        createdBy: { mode: "owner", subjectFingerprint: "a1b2c3d4e5f6a7b8" },
+        versions: [{ revision: 1, handoffFingerprint: "f".repeat(64) }],
+        researchMode: "market_research_only",
+        promotionEligible: false,
+      },
+    }, "detail") as Record<string, any>;
+
+    expect(projected.creativeHandoff).toEqual({
+      currentRevision: 3,
+      controlState: "active",
+      createdAt: "2026-08-05T00:00:00.000Z",
+    });
+    // 不投影任何内部/创作内容（版本、事实、指纹、演员、引用）
+    const serialized = JSON.stringify(projected);
+    expect(serialized).not.toContain("subjectFingerprint");
+    expect(serialized).not.toContain("versions");
+    expect(serialized).not.toContain("handoffFingerprint");
+    expect(serialized).not.toContain("confirmedFacts");
+    expect(serialized).not.toContain("createdBy");
+    expect(serialized).not.toContain("candidateId");
+    expect(serialized).not.toContain("handoffId");
+    expectNoForbiddenFields(projected);
+  });
+
+  it("does not project creativeHandoff in list scope", () => {
+    const projected = projectTaskResultForBrowser({
+      productName: "Synthetic product",
+      creativeHandoff: { currentRevision: 1, controlState: "active", createdAt: "2026-08-05T00:00:00.000Z" },
+    }, "list") as Record<string, any>;
+    expect(projected).not.toHaveProperty("creativeHandoff");
+  });
+
+  it("drops creativeHandoff projections that are not valid handoff envelopes", () => {
+    // 只投影白名单字段；畸形结构不返回幻影字段
+    const projected = projectTaskResultForBrowser({
+      productName: "Synthetic product",
+      creativeHandoff: { broken: true },
+    }, "detail") as Record<string, any>;
+    expect(projected.creativeHandoff).toEqual({});
+  });
 });

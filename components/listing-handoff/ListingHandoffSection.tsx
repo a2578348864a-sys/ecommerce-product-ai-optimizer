@@ -69,10 +69,13 @@ function formatDate(iso: string | null): string {
 export function ListingHandoffSection({
   taskId,
   imageMaterialNeeds = [],
+  onCommitted,
 }: {
   taskId: string;
-  /** 图片卖点方向：来自研究保存时的 listingPrepSnapshot.imageMaterialNeeds（无数据则为空数组） */
+  /** 图片创作建议：来自研究保存时的 listingPrepSnapshot.imageMaterialNeeds（无数据则为空数组） */
   imageMaterialNeeds?: string[];
+  /** Listing 草稿生成成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新） */
+  onCommitted?: () => void;
 }) {
   const [status, setStatus] = useState<ListingStatus | null>(null);
   const [handoffRevision, setHandoffRevision] = useState<number | null>(null);
@@ -195,6 +198,7 @@ export function ListingHandoffSection({
         setRequestId(null);
         setRetryBody(null);
         await load();
+        onCommitted?.();
       }
     } catch {
       if (mounted.current) {
@@ -204,7 +208,7 @@ export function ListingHandoffSection({
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion]);
+  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted]);
 
   const retrySameRequest = useCallback(async () => {
     if (!retryBody || !requestId || submitting) return;
@@ -224,13 +228,14 @@ export function ListingHandoffSection({
         setRequestId(null);
         setRetryBody(null);
         await load();
+        onCommitted?.();
       } else {
         setNotice({ tone: "error", text: "重试仍失败，请稍后再试。" });
       }
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [retryBody, requestId, submitting, taskId, load, handleConflict]);
+  }, [retryBody, requestId, submitting, taskId, load, handleConflict, onCommitted]);
 
   const copyWithFeedback = (text: string, successText: string) => {
     if (!text.trim()) {
@@ -243,6 +248,7 @@ export function ListingHandoffSection({
     );
   };
 
+  /** 完整 Listing = 仅 Listing 文本本体（Title / Bullet Points / Description / Keywords），不含图片创作建议 */
   const buildFullListingText = (): string => {
     if (!draft) return "";
     const parts: string[] = [];
@@ -252,9 +258,6 @@ export function ListingHandoffSection({
     }
     if (draft.description) parts.push(`Product Description:\n${draft.description}`);
     if (draft.keywords.length) parts.push(`Keywords:\n${draft.keywords.join(", ")}`);
-    if (imageMaterialNeeds.length) {
-      parts.push(`Image Selling Points:\n${imageMaterialNeeds.map((n, i) => `${i + 1}. ${n}`).join("\n")}`);
-    }
     return parts.join("\n\n");
   };
 
@@ -356,20 +359,31 @@ export function ListingHandoffSection({
           )}
         </div>
 
-        {/* 5. 图片卖点方向 Image Selling Points */}
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-bold text-teal-700 uppercase tracking-wide">图片卖点方向 Image Selling Points</p>
+        {/* 图片创作建议：独立区域，不属于 Listing 文本本体（Listing 后台字段不包含此内容） */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="image-creation-suggestions">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">图片创作建议</p>
+            {imageMaterialNeeds.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => copyWithFeedback(imageMaterialNeeds.map((n, i) => `${i + 1}. ${n}`).join("\n"), "图片创作建议已复制。")}
+                className="inline-flex h-7 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                复制图片创作建议
+              </button>
+            ) : null}
+          </div>
           {imageMaterialNeeds.length > 0 ? (
             <ol className="mt-1.5 space-y-1">
               {imageMaterialNeeds.map((n, i) => (
-                <li key={`n-${i}`} className="flex gap-1.5 leading-6">
-                  <span className="shrink-0 font-semibold text-teal-600">{i + 1}.</span>
+                <li key={`n-${i}`} className="flex gap-1.5 leading-6 text-slate-600">
+                  <span className="shrink-0 font-semibold text-slate-400">{i + 1}.</span>
                   <span>{n}</span>
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="mt-1.5 text-slate-400">暂未生成图片卖点建议。</p>
+            <p className="mt-1.5 text-slate-400">暂未生成图片创作建议。</p>
           )}
         </div>
 

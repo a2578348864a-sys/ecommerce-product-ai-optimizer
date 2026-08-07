@@ -1059,6 +1059,31 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [decisionMessage, setDecisionMessage] = useState("");
   const [copied, setCopied] = useState(false);
 
+  /**
+   * 轻量刷新：成功写入（Handoff / Listing / Image）后重读服务端真实任务状态。
+   * 保留当前内容直到新数据到达（不整页闪 loading、不卸载子组件、不丢失展开状态），
+   * 以服务端持久化结果为唯一事实源，不维护第二套前端进度状态。
+   * 失败静默：进度摘要保持旧值，不打断用户操作，绝不错误推进。
+   */
+  const refreshRecord = useCallback(async () => {
+    reqIdRef.current += 1;
+    const currentId = reqIdRef.current;
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+        headers: { ...buildAccessHeaders() },
+      });
+      if (currentId !== reqIdRef.current) return;
+      const data = await response.json() as DetailResponse;
+      if (currentId !== reqIdRef.current) return;
+      if (!response.ok || !data.ok || !data.data) return;
+      setRecord(data.data);
+      setLoading(false);
+    } catch {
+      // 刷新失败保持现有内容（进度摘要保留旧值，不打断用户）
+    }
+  }, [id]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -1125,6 +1150,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     record ? getAiListingPackSnapshot(record.result) : null
   ), [record]);
   // E：步骤工作台当前步骤推导（handoff/image 产物存在性）
+  // creativeHandoff 为 DTO 最小投影（currentRevision/controlState/createdAt），仅作存在性信号
   const hasImageDraft = Boolean(record?.result
     && typeof record.result === "object"
     && "aiImageDraftSnapshot" in record.result);
@@ -1477,17 +1503,17 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     {
                       key: "handoff",
                       label: "创作交接",
-                      content: <CreativeHandoffPanel taskId={record.id} />,
+                      content: <CreativeHandoffPanel taskId={record.id} onCommitted={() => void refreshRecord()} />,
                     },
                     {
                       key: "listing",
                       label: "Listing 草稿",
-                      content: <ListingHandoffSection taskId={record.id} imageMaterialNeeds={imageMaterialNeeds} />,
+                      content: <ListingHandoffSection taskId={record.id} imageMaterialNeeds={imageMaterialNeeds} onCommitted={() => void refreshRecord()} />,
                     },
                     {
                       key: "image",
                       label: "产品图片",
-                      content: <ImageHandoffSection taskId={record.id} />,
+                      content: <ImageHandoffSection taskId={record.id} onCommitted={() => void refreshRecord()} />,
                     },
                   ]}
                 />
