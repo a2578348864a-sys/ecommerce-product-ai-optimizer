@@ -116,3 +116,60 @@ describe("输出字段覆盖 — 变形与混合", () => {
     expect(listingClaimsHaveEvidence(r)).toBe(true);
   });
 });
+
+// ═══ V2.1.3：title-derived 字段 Claim Evidence ═══
+
+function titleDerivedInput(): ListingGenerationInput {
+  const base = matrixInput();
+  return {
+    ...base,
+    productFacts: [
+      { field: "brand", label: "品牌", value: "Owala" },
+      { field: "product_type", label: "商品类型", value: "Water Bottle" },
+      { field: "series_or_model", label: "系列/型号", value: "FreeSip" },
+      { field: "material", label: "材质", value: "Stainless Steel" },
+      { field: "capacity", label: "容量", value: "24 oz" },
+      { field: "color_or_variant", label: "颜色/款式", value: "Out of the Blue" },
+    ],
+  };
+}
+
+describe("V2.1.3 title-derived 字段 Claim Evidence", () => {
+  it("T1. 已确认 product_type 的声明有证据", () => {
+    const r = verifyListingClaims(baseDraft({ bullets: ["商品类型: Water Bottle"] }), titleDerivedInput());
+    expect(r.unsupportedClaims).toEqual([]);
+    expect(listingClaimsHaveEvidence(r)).toBe(true);
+  });
+
+  it("T2. 已确认 series_or_model 的声明有证据", () => {
+    const r = verifyListingClaims(baseDraft({ bullets: ["系列/型号: FreeSip"] }), titleDerivedInput());
+    expect(r.unsupportedClaims).toEqual([]);
+    expect(listingClaimsHaveEvidence(r)).toBe(true);
+  });
+
+  it("T3. 已确认 capacity 的声明有证据（24 oz）", () => {
+    const r = verifyListingClaims(baseDraft({ bullets: ["容量: 24 oz"] }), titleDerivedInput());
+    expect(r.unsupportedClaims).toEqual([]);
+    expect(listingClaimsHaveEvidence(r)).toBe(true);
+  });
+
+  it("T4. 已确认 color_or_variant 的声明有证据", () => {
+    const r = verifyListingClaims(baseDraft({ bullets: ["颜色/款式: Out of the Blue"] }), titleDerivedInput());
+    expect(r.unsupportedClaims).toEqual([]);
+    expect(listingClaimsHaveEvidence(r)).toBe(true);
+  });
+
+  it("T5. 未确认的容量声明被拒绝（无 capacity 证据）", () => {
+    const input = titleDerivedInput();
+    input.productFacts = input.productFacts.filter((f) => f.field !== "capacity");
+    const r = verifyListingClaims(baseDraft({ bullets: ["容量: 24 oz"] }), input);
+    expect(r.unsupportedClaims.length).toBeGreaterThan(0);
+  });
+
+  it("T6. 未确认的材质声明仍被拒绝（fail-closed 保持）", () => {
+    const input = titleDerivedInput();
+    input.productFacts = input.productFacts.filter((f) => f.field !== "material");
+    const r = verifyListingClaims(baseDraft({ bullets: ["材质: Stainless Steel"] }), input);
+    expect(r.unsupportedClaims.length).toBeGreaterThan(0);
+  });
+});

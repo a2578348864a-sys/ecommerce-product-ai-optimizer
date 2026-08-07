@@ -72,6 +72,8 @@ type FactType =
   | "performance"
   | "origin"
   | "quantity"
+  | "product_type"
+  | "series_or_model"
   | "other";
 
 type EvidenceEntry = {
@@ -90,14 +92,17 @@ const FIELD_TYPE_PATTERNS: Array<{ type: FactType; pattern: RegExp }> = [
   { type: "brand", pattern: /^(?:brand|品牌)$/i },
   { type: "category", pattern: /^(?:category|类目|分类)$/i },
   { type: "material", pattern: /^(?:material|材质|材料)$/i },
-  { type: "dimension", pattern: /^(?:size|dimension|length|width|height|diameter|thickness|尺寸|长度|宽度|高度|直径)/i },
+  { type: "dimension", pattern: /^(?:size|dimension|length|width|height|diameter|thickness|capacity|容量|尺寸|长度|宽度|高度|直径)/i },
   { type: "weight", pattern: /^(?:weight|重量|净重)/i },
-  { type: "color", pattern: /^(?:color|colour|颜色|色彩)$/i },
+  { type: "color", pattern: /^(?:color|colour|颜色|色彩|color_or_variant)/i },
   { type: "certification", pattern: /^(?:certification|certificate|certified|认证|资质|标准)/i },
   { type: "compatibility", pattern: /^(?:compatib|works with|fit|适配|兼容)/i },
-  { type: "performance", pattern: /^(?:performance|effect|result|power|speed|capacity|性能|效果|功率|速度|容量)/i },
+  { type: "performance", pattern: /^(?:performance|effect|result|power|speed|性能|效果|功率|速度)/i },
   { type: "origin", pattern: /^(?:origin|产地|制造地)/i },
-  { type: "quantity", pattern: /^(?:quantity|count|数量|件数)/i },
+  { type: "quantity", pattern: /^(?:quantity|count|数量|件数|quantity_or_pack_size)/i },
+  // V2.1.3：title-derived 字段分类（有确认事实证据才允许对应声明）
+  { type: "product_type", pattern: /^(?:product_type|商品类型|product type)/i },
+  { type: "series_or_model", pattern: /^(?:series_or_model|系列\/型号|series|model|型号)/i },
 ];
 
 function classifyField(field: string, label: string): FactType {
@@ -438,7 +443,7 @@ export function verifyListingClaims(
           const rest = compactText(segment).replace(compactText(evidenceEntry.normalizedValue), "");
           const restAllowed = rest.length === 0
             || NEUTRAL_COPY_ALLOWLIST.some((p) => rest.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约)+$/i.test(rest);
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号)+$/i.test(rest);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;
