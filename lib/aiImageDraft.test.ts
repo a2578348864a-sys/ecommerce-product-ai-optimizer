@@ -33,6 +33,18 @@ function item(): AiImageDraftItem {
   };
 }
 
+function snapshotBase() {
+  return {
+    version: 1,
+    snapshotType: "ai_image_draft",
+    provider: "openai_compatible_relay",
+    accessMode: "owner" as const,
+    humanReviewRequired: true,
+    disclaimer: AI_IMAGE_DRAFT_DISCLAIMER,
+    updatedAt: "2026-07-10T00:00:00.000Z",
+  };
+}
+
 describe("AI image draft domain", () => {
   it("accepts only the fixed client fields and owner/visitor count rules", () => {
     const valid = { imageType: "lifestyle_scene", count: 1, additionalDirection: "side view", confirmed: true, idempotencyKey: requestKey };
@@ -41,6 +53,41 @@ describe("AI image draft domain", () => {
     expect(validateAiImageGenerateRequest({ ...valid, count: 2 }, "owner").ok).toBe(true);
     expect(validateAiImageGenerateRequest({ ...valid, prompt: "free prompt" }, "owner")).toMatchObject({ ok: false, code: "unsupported_request_field" });
     expect(validateAiImageGenerateRequest({ ...valid, confirmed: false }, "owner")).toMatchObject({ ok: false, code: "real_ai_confirmation_required" });
+  });
+
+  // ── provider hash 合同（promptHash / requestKeyHash）──
+  // 不变量：有效值必为 64-hex 真实 sha256；
+  // 已知占位符 "real"/"mock"（Provider 未提供该字段的显式标记）→ undefined；
+  // 其他任何非 64-hex 值 → item 整体拒绝（fail-closed）。
+  it("normalizes known provider hash placeholders (real/mock) to undefined", () => {
+    for (const placeholder of ["real", "mock"]) {
+      const draft = { ...item(), promptHash: placeholder, requestKeyHash: placeholder };
+      const normalized = normalizeAiImageDraftSnapshot({ ...snapshotBase(), items: [draft] });
+      expect(normalized?.items[0]?.promptHash).toBeUndefined();
+      expect(normalized?.items[0]?.requestKeyHash).toBeUndefined();
+    }
+  });
+
+  it("keeps 64-hex hashes intact (hash invariant preserved)", () => {
+    const normalized = normalizeAiImageDraftSnapshot({ ...snapshotBase(), items: [item()] });
+    expect(normalized?.items[0]?.promptHash).toBe("b".repeat(64));
+    expect(normalized?.items[0]?.requestKeyHash).toBe("c".repeat(64));
+  });
+
+  it("rejects any other non-64-hex value (fail-closed, no unbounded acceptance)", () => {
+    for (const bad of ["not-a-hash", "real2", "REAL", "mock-ish", "x".repeat(64), "real ".repeat(4)]) {
+      const draft = { ...item(), promptHash: bad };
+      expect(normalizeAiImageDraftSnapshot({ ...snapshotBase(), items: [draft] })?.items ?? []).toHaveLength(0);
+      const draft2 = { ...item(), requestKeyHash: bad };
+      expect(normalizeAiImageDraftSnapshot({ ...snapshotBase(), items: [draft2] })?.items ?? []).toHaveLength(0);
+    }
+  });
+
+  it("accepts placeholder-only history items as valid (real Provider PNG readable)", () => {
+    const draft = { ...item(), promptHash: "real", requestKeyHash: "real" };
+    const normalized = normalizeAiImageDraftSnapshot({ ...snapshotBase(), items: [draft] });
+    expect(normalized?.items).toHaveLength(1);
+    expect(normalized?.items[0]?.storageKey).toBe(item().storageKey);
   });
 
   it("rejects unsafe brand, certification, and claim directions", () => {

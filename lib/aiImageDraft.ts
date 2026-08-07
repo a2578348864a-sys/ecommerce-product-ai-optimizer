@@ -43,8 +43,13 @@ export type AiImageDraftItem = {
   source: "real_ai_image_draft";
   safetyWarnings: string[];
   promptSummary?: string;
-  promptHash: string;
-  requestKeyHash: string;
+  /** 生成 prompt 的 64-hex sha256（hash 不变量：有效值必为 64-hex）。
+   * 真实/模拟 Provider 未提供该字段时以 "real"/"mock" 占位符写入；
+   * 读取端将已知占位符规范化为 undefined（视为无该字段），
+   * 其他任何非 64-hex 值视为合同损坏，item 整体拒绝。 */
+  promptHash?: string;
+  /** 幂等请求键的 64-hex sha256（hash 不变量同上；占位符规范化为 undefined）。 */
+  requestKeyHash?: string;
   providerRequestId?: string;
   generationBasis: AiImageGenerationBasis;
 };
@@ -171,6 +176,22 @@ function normalizeGenerationBasis(value: unknown): AiImageGenerationBasis | null
   };
 }
 
+/**
+ * 规范化 provider hash 字段（promptHash / requestKeyHash）。
+ * hash 不变量：有效值必为 64-hex 真实 sha256。
+ * 已知占位符（真实/模拟 Provider 未提供该字段时的显式标记）→ undefined（视为无该字段）；
+ * 其他任何非 64-hex 值 → 返回 null，item 整体拒绝（fail-closed）。
+ */
+const PROVIDER_HASH_PLACEHOLDERS = new Set(["real", "mock"]);
+
+function normalizeProviderHash(value: unknown): string | undefined | null {
+  const cleaned = cleanText(value, 64);
+  if (!cleaned) return undefined;
+  if (/^[0-9a-f]{64}$/i.test(cleaned)) return cleaned.toLowerCase();
+  if (PROVIDER_HASH_PLACEHOLDERS.has(cleaned)) return undefined;
+  return null;
+}
+
 export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | null {
   if (!isRecord(value)) return null;
   const generationBasis = normalizeGenerationBasis(value.generationBasis);
@@ -181,6 +202,8 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
     : value.actualFormat === "png" || value.actualFormat === "jpeg" || value.actualFormat === "webp"
       ? value.actualFormat
       : null;
+  const promptHash = normalizeProviderHash(value.promptHash);
+  const requestKeyHash = normalizeProviderHash(value.requestKeyHash);
   if (
     !UUID_PATTERN.test(cleanText(value.id, 50))
     || !isImageDraftType(value.imageType)
@@ -195,8 +218,8 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
     || !isReviewStatus(value.reviewStatus)
     || !isAccessMode(value.accessMode)
     || value.source !== "real_ai_image_draft"
-    || !/^[0-9a-f]{64}$/i.test(cleanText(value.promptHash, 64))
-    || !/^[0-9a-f]{64}$/i.test(cleanText(value.requestKeyHash, 64))
+    || promptHash === null
+    || requestKeyHash === null
     || !generationBasis
     || requestedFormat === null
     || actualFormat === null
@@ -226,8 +249,8 @@ export function normalizeAiImageDraftItem(value: unknown): AiImageDraftItem | nu
     source: "real_ai_image_draft",
     safetyWarnings: cleanStringArray(value.safetyWarnings, 12, 240),
     promptSummary: promptSummary || undefined,
-    promptHash: cleanText(value.promptHash, 64).toLowerCase(),
-    requestKeyHash: cleanText(value.requestKeyHash, 64).toLowerCase(),
+    promptHash,
+    requestKeyHash,
     providerRequestId: cleanText(value.providerRequestId, 200) || undefined,
     generationBasis,
   };
