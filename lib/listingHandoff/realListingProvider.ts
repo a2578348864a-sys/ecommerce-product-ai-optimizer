@@ -61,7 +61,9 @@ function buildRealListingContext(input: ListingGenerationInput) {
     primaryKeywords: [],
     secondaryKeywords: [],
     competitorKeywords: [],
-    confirmedFacts: input.productFacts.map((f) => `${f.label}: ${f.value}`),
+    // V2.1.4：以纯值形式传事实（不带字段标签），避免强化"品牌: Owala"式模板输出；
+    // 字段标签仍由 label 单独提供，供模型理解字段语义。
+    confirmedFacts: input.productFacts.map((f) => `${f.value}`),
     unverifiedFacts: input.unknowns,
     prohibitedClaims: input.prohibitedClaims,
   };
@@ -71,7 +73,7 @@ function buildRealListingContext(input: ListingGenerationInput) {
     decisionSummary: "Market research only; human review required before any use.",
     riskLevel: "medium",
     category: input.productFacts.find((f) => f.field === "category")?.value || "",
-    sellingPoints: input.productFacts.slice(0, 8).map((f) => `${f.label}: ${f.value}`),
+    sellingPoints: input.productFacts.slice(0, 8).map((f) => `${f.value}`),
     studioPreferences: preferences,
   };
 }
