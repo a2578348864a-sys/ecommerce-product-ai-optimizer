@@ -324,6 +324,15 @@ describe("TaskRecordDetail operation overview", () => {
     // 用户进度摘要（当前状态/已完成/还缺/下一步）
     expect(detailSource).toMatch(/user-progress-summary/);
     expect(detailSource).toMatch(/还缺/);
+    // V2 收口：商品决策报告为聚合主体（AI 判断 / 需人工确认 / 已生成内容 / 下一步）
+    expect(detailSource).toMatch(/product-decision-report/);
+    expect(detailSource).toMatch(/商品决策报告/);
+    expect(detailSource).toMatch(/AI 判断/);
+    expect(detailSource).toMatch(/需要人工确认/);
+    expect(detailSource).toMatch(/已生成内容/);
+    // 五步骤降为状态导航（推进步骤 + 当前停在说明，非页面主体）
+    expect(detailSource).toMatch(/推进步骤/);
+    expect(detailSource).toMatch(/按需展开步骤操作/);
   });
 });
 

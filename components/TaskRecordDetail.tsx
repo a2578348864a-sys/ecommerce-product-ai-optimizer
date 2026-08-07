@@ -1397,6 +1397,78 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
               {presentation && progressSummary ? (
                 <>
+                  {/* 商品决策报告：以用户价值为主体的聚合视图（5 秒内回答：商品怎么样 / 下一步做什么 / 已生成什么） */}
+                  <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="product-decision-report">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-slate-900">商品决策报告</p>
+                      <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+                        {progressSummary.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      {/* AI 判断：是否值得继续 + 风险 */}
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                        <p className="text-xs font-bold text-slate-400">AI 判断</p>
+                        <p className="mt-1 text-sm font-semibold leading-6 text-slate-800">
+                          {presentation.researchConclusions[0]
+                            ? presentation.researchConclusions[0].slice(0, 120)
+                            : "尚未保存可确认的市场研究结论。"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          AI 结论仅供辅助参考，不代表最终采购或上架决定。
+                        </p>
+                      </div>
+
+                      {/* 需要人工确认 */}
+                      <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-3">
+                        <p className="text-xs font-bold text-amber-600">需要人工确认</p>
+                        {presentation.manualChecks.length ? (
+                          <ul className="mt-1 space-y-1">
+                            {presentation.manualChecks.slice(0, 3).map((check) => (
+                              <li key={check.key} className="flex items-start gap-1.5 text-sm leading-5 text-amber-800">
+                                <span className="mt-0.5 shrink-0">○</span>
+                                <span>{check.label}</span>
+                              </li>
+                            ))}
+                            {presentation.manualChecks.length > 3 ? (
+                              <li className="text-xs text-amber-600">还有 {presentation.manualChecks.length - 3} 项待确认</li>
+                            ) : null}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 text-sm leading-5 text-amber-700">供货、利润和合规不会由系统自动判定为真实或通过。</p>
+                        )}
+                      </div>
+
+                      {/* 已生成内容 */}
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                        <p className="text-xs font-bold text-slate-400">已生成内容</p>
+                        {presentation.artifacts.length ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {presentation.artifacts.map((artifact) => (
+                              <span key={artifact.key} className="rounded-full border border-teal-100 bg-white px-2 py-0.5 text-xs font-semibold text-teal-700">
+                                {artifact.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-sm leading-5 text-slate-500">暂无已保存产物。</p>
+                        )}
+                      </div>
+
+                      {/* 下一步 */}
+                      <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3">
+                        <p className="text-xs font-bold text-teal-700">下一步</p>
+                        <p className="mt-1 text-sm font-semibold leading-6 text-teal-800">
+                          {progressSummary.next}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-amber-700">
+                          还缺：{progressSummary.missing}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
                   {/* 用户进度摘要：当前状态 / 已完成 / 还缺 / 下一步（组件层派生，不新增状态机） */}
                   <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="user-progress-summary">
                     <p className="text-sm font-bold text-teal-800">商品研究进度</p>
@@ -1472,13 +1544,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
               ) : null}
 
               {record.type === "workflow" ? (
-                <WorkflowStepWorkspace
-                  currentKey={deriveCurrentStepKey({
-                    hasImage: Boolean(hasImageDraft),
-                    hasListing: Boolean(aiListingPackSnapshot),
-                    hasHandoff: Boolean(hasHandoff),
-                  })}
-                  steps={[
+                <section className="mt-5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">推进步骤</p>
+                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
+                        当前停在「{presentation?.stage.label ?? "待推进"}」。按需展开步骤操作，无需全部展开。
+                      </p>
+                    </div>
+                  </div>
+                  <WorkflowStepWorkspace
+                    currentKey={deriveCurrentStepKey({
+                      hasImage: Boolean(hasImageDraft),
+                      hasListing: Boolean(aiListingPackSnapshot),
+                      hasHandoff: Boolean(hasHandoff),
+                    })}
+                    steps={[
                     {
                       key: "conclusion",
                       label: "研究结论",
@@ -1516,7 +1597,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
                       content: <ImageHandoffSection taskId={record.id} onCommitted={() => void refreshRecord()} />,
                     },
                   ]}
-                />
+                  />
+                </section>
               ) : null}
 
               {record.type === "workflow" && isRecordValue(record.result) ? (

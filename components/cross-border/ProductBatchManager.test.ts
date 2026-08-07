@@ -130,9 +130,9 @@ describe("ProductBatch unified role UI", () => {
     for (const label of [
       "上传报表",
       "上传并预览报表",
-      "批次历史",
+      "历史导入",
       "查看商品",
-      "设置为当前",
+      "设为当前",
       "归档",
     ]) {
       expect(owner).toContain(label);
@@ -179,7 +179,7 @@ describe("ProductBatch unified role UI", () => {
     expect(automatic).not.toContain("已自动识别文件结构");
     expect(automatic).not.toContain("手动选择报表类型");
     // 保留批次商品内部信息折叠（不暴露技术字段名）
-    expect(automatic).toMatch(/<details[^>]*><summary[^>]*>高级信息<\/summary>/);
+    expect(automatic).toMatch(/<details[^>]*><summary[^>]*>报表信息<\/summary>/);
   });
 
   it("removes legacy candidate batch entry while keeping item internals collapsed", () => {
@@ -194,17 +194,17 @@ describe("ProductBatch unified role UI", () => {
     // 旧版候选批次入口已移除；批次商品内部信息仍折叠展示
     expect(html).not.toContain("旧版候选批次");
     expect(html).not.toContain("查看旧版候选");
-    expect(html).toContain("内部研究顺序：priority_1");
+    expect(html).toContain("研究顺序：priority_1");
     expect(html).toContain("ASIN：B000000001");
     expect(html).not.toContain("ProductBatch V1");
     expect(html).not.toContain("切回 Legacy");
-    expect(html).toMatch(/<details[^>]*><summary[^>]*>高级信息<\/summary>/);
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>商品信息<\/summary>/);
     expect(html).not.toMatch(/<details[^>]*open/);
   });
 
   it("shows a clear empty state with upload button when no batch exists", () => {
     const empty = render("owner", { batches: [] });
-    expect(empty).toContain("还没有商品批次");
+    expect(empty).toContain("还没有导入商品");
     expect(empty).toContain("上传并预览报表");
   });
 
@@ -295,7 +295,7 @@ describe("ProductBatch unified role UI", () => {
       busy: false,
       onResearchItem: () => undefined,
     }));
-    expect(html).toContain("登录后管理商品批次");
+    expect(html).toContain("登录后查看和选择商品");
     expect(html).not.toContain("batch-a");
     expect(html).not.toContain("Closet organizer");
   });

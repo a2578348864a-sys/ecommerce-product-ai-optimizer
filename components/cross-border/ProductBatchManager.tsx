@@ -154,18 +154,18 @@ export function ProductBatchManagerView({
   if (state === "loading") {
     return (
       <section className="surface-card mx-auto max-w-7xl p-5" aria-busy="true">
-        <p className="eyebrow">商品批次</p>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-950">正在读取你的商品批次</h1>
+        <p className="eyebrow">发现商品</p>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-950">正在读取你的商品导入记录</h1>
       </section>
     );
   }
   if (state === "unauthenticated") {
     return (
       <section className="surface-card mx-auto max-w-7xl p-5">
-        <p className="eyebrow">商品批次</p>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-950">登录后管理商品批次</h1>
+        <p className="eyebrow">发现商品</p>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-950">登录后查看和选择商品</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          未登录状态不会读取或展示管理员、访客的私有批次数据。
+          未登录状态不会读取或展示管理员、访客的私有商品数据。
         </p>
         <Link
           href="/"
@@ -190,7 +190,7 @@ export function ProductBatchManagerView({
   const importReady = Boolean(effectiveReportType && selectedCategory)
     && importInspectionState !== "loading";
 
-  // 顶部概览派生：当前激活批次名 + 商品数（需批次详情已加载）
+  // 顶部概览派生：最近一次导入名 + 商品数（需批次详情已加载）
   const activeBatch = selection?.activeProductBatchId
     ? batches.find((candidate) => candidate.id === selection.activeProductBatchId)
     : null;
@@ -206,10 +206,10 @@ export function ProductBatchManagerView({
       <section className="workspace-header">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="eyebrow">商品批次</p>
-            <h1 className="section-title mt-1 text-2xl">SellerSprite 商品批次</h1>
+            <p className="eyebrow">发现商品</p>
+            <h1 className="section-title mt-1 text-2xl">发现与选择商品</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              上传 SellerSprite 官方 XLSX，创建批次并由你决定当前查看哪一批商品。
+              上传 SellerSprite 官方 XLSX 导入商品，查看最近一次导入的商品，选择要研究的目标。
               排名只用于安排研究顺序，不是自动选品结论。
             </p>
           </div>
@@ -225,7 +225,7 @@ export function ProductBatchManagerView({
         {accessMode === "visitor" ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
             <p className="font-semibold">访客体验 · 剩余真实 AI 额度 {remainingAiCalls ?? 0}/5</p>
-            <p>批次数据保存在当前身份的独立访客沙盒；导入、解析、研究排序、切换和归档不消耗额度。</p>
+            <p>导入数据保存在当前身份的独立访客沙盒；上传、解析、排序和归档不消耗额度。</p>
           </div>
         ) : null}
         {state === "error" && errorMessage ? (
@@ -235,48 +235,14 @@ export function ProductBatchManagerView({
         ) : null}
       </section>
 
-      {/* 顶部概览：当前批次 / 当前商品数 / 历史批次数 / 主 CTA */}
-      <section className="surface-card p-5" aria-label="运营概览">
-        <div className="grid gap-4 sm:grid-cols-4">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="text-xs font-semibold text-slate-500">当前批次</p>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-900" title={activeBatchName}>
-              {activeBatchName}
-            </p>
-            {activeBatchItemCount !== null ? (
-              <p className="mt-0.5 text-xs text-slate-500">{activeBatchItemCount} 个商品</p>
-            ) : null}
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="text-xs font-semibold text-slate-500">当前商品数</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">
-              {activeBatchItemCount ?? 0}
-            </p>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <p className="text-xs font-semibold text-slate-500">历史批次数</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900">{batches.length}</p>
-          </div>
-          <div className="flex flex-col justify-center gap-2 rounded-xl border border-teal-200 bg-teal-50/60 p-4">
-            <p className="text-xs font-semibold text-teal-700">开始选品</p>
-            <a
-              href="/opportunities/sellersprite-preview"
-              className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
-            >
-              上传并预览报表
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* 上传报表统一入口：指向 sellersprite-preview（不再内嵌上传表单） */}
+      {/* 第一步：上传 SellerSprite XLSX */}
       <section className="surface-card p-5" aria-label="上传报表入口">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="eyebrow">上传报表</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">卖家精灵报表</h2>
+            <p className="eyebrow">第一步 · 导入商品</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">上传 SellerSprite 报表</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              上传 SellerSprite 美国站搜索结果 XLSX，先安全校验，再选择商品加入研究池。
+              上传美国站搜索结果 XLSX。系统先安全校验，再从报表中挑出可研究的商品。
             </p>
           </div>
           <a
@@ -288,26 +254,73 @@ export function ProductBatchManagerView({
         </div>
       </section>
 
-      <section className="surface-card p-5">
+      {/* 第二步：最近一次导入（用户当前关注点） */}
+      <section className="surface-card p-5" aria-label="最近一次导入">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="eyebrow">当前批次</p>
+            <p className="eyebrow">第二步 · 最近一次导入</p>
             <h2 className="mt-1 text-xl font-semibold text-slate-950">
               {selection?.activeProductBatchId
                 ? batches.find((candidate) => candidate.id === selection.activeProductBatchId)
-                  ?.batchName ?? "商品批次"
-                : "尚未选择"}
+                  ?.batchName ?? "尚未导入商品"
+                : "尚未导入商品"}
             </h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              {selection?.activeProductBatchId ? "这是当前查看的商品列表。选择商品即可进入研究。" : "上传报表后，导入的商品会显示在这里。"}
+            </p>
           </div>
+          {selection?.activeProductBatchId && activeBatch ? (
+            <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+              已导入 {activeBatch.acceptedCount ?? 0} 个商品 · {formatDate(activeBatch.importedAt)}
+            </span>
+          ) : null}
         </div>
+        {selection?.activeProductBatchId && activeBatch ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <p className="text-xs font-semibold text-slate-500">导入商品</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{activeBatch.acceptedCount ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <p className="text-xs font-semibold text-slate-500">本次查看</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">
+                {selectedBatch?.id === activeBatch.id ? selectedItems.length : 0}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">已加载商品数</p>
+            </div>
+            <div className="flex flex-col justify-center rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+              <p className="text-xs font-semibold text-amber-700">下一步</p>
+              <p className="mt-1 text-sm font-semibold text-amber-800">查看商品并选择进入研究</p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onViewItems?.(activeBatch.id)}
+                className="linear-button-primary mt-2 inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
+              >
+                查看商品
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
+            <p className="text-sm text-slate-600">还没有导入商品。先上传报表开始选品。</p>
+            <a
+              href="/opportunities/sellersprite-preview"
+              className="linear-button-primary mt-4 inline-flex h-10 items-center justify-center px-5 text-sm font-semibold"
+            >
+              上传并预览报表
+            </a>
+          </div>
+        )}
       </section>
 
+      {/* 历史导入 */}
       <section className="surface-card p-5">
-        <p className="eyebrow">批次历史</p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-950">{batches.length} 个商品批次</h2>
+        <p className="eyebrow">历史导入</p>
+        <h2 className="mt-1 text-xl font-semibold text-slate-950">{batches.length} 次导入</h2>
         {batches.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
-            <p className="text-sm text-slate-600">还没有商品批次。先上传报表开始选品。</p>
+            <p className="text-sm text-slate-600">还没有导入记录。先上传报表开始选品。</p>
             <a
               href="/opportunities/sellersprite-preview"
               className="linear-button-primary mt-4 inline-flex h-10 items-center justify-center px-5 text-sm font-semibold"
@@ -328,7 +341,7 @@ export function ProductBatchManagerView({
                         {batch.acceptedCount ?? 0} 个商品 · {formatDate(batch.importedAt)}
                       </p>
                       <details className="mt-2 text-xs text-slate-500">
-                        <summary className="cursor-pointer font-semibold">高级信息</summary>
+                        <summary className="cursor-pointer font-semibold">报表信息</summary>
                         <p className="mt-1">报表类型：{productBatchReportTypeLabel(batch.reportType)}</p>
                       </details>
                     </div>
@@ -351,7 +364,7 @@ export function ProductBatchManagerView({
                       onClick={() => onActivate?.(batch.id)}
                       className="linear-button-primary h-9 px-3 text-sm font-semibold"
                     >
-                      设置为当前
+                      设为当前
                     </button>
                     <button
                       type="button"
@@ -378,9 +391,12 @@ export function ProductBatchManagerView({
       </section>
 
       {selectedBatch ? (
-        <section className="surface-card p-5">
-          <p className="eyebrow">批次商品</p>
+        <section className="surface-card p-5" aria-label="商品选择">
+          <p className="eyebrow">第三步 · 选择商品</p>
           <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedBatch.batchName}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            选择要研究的商品。只会准备研究对象，不会自动调用 AI，也不会消耗额度。
+          </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {selectedItems.map((item) => {
               const blockedReason = researchBlockedReason({
@@ -401,8 +417,8 @@ export function ProductBatchManagerView({
                       {metricValue(item, "productTitle")}
                     </h3>
                     <details className="mt-2 text-xs text-slate-500">
-                      <summary className="cursor-pointer font-semibold">高级信息</summary>
-                      <p className="mt-1">内部研究顺序：{item.researchPriority}</p>
+                      <summary className="cursor-pointer font-semibold">商品信息</summary>
+                      <p className="mt-1">研究顺序：{item.researchPriority}</p>
                       <p>ASIN：{item.asin ?? "缺失"}</p>
                     </details>
                   </div>
@@ -427,17 +443,13 @@ export function ProductBatchManagerView({
                   onClick={() => onRemoveItem?.(selectedBatch.id, item.id)}
                   className="mt-2 h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40"
                 >
-                  移出当前批次
+                  移出列表
                 </button>
                 {blockedReason ? (
                   <p className="mt-2 text-xs font-semibold leading-5 text-amber-700">
                     {blockedReason}
                   </p>
-                ) : (
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    只会准备研究对象；不会自动调用 AI，也不会消耗额度。
-                  </p>
-                )}
+                ) : null}
               </article>
               );
             })}
@@ -706,11 +718,11 @@ export function ProductBatchManager() {
 
   const deleteBatch = (batchId: string) => {
     const batch = batches.find((candidate) => candidate.id === batchId);
-    const name = batch?.batchName ?? "该批次";
+    const name = batch?.batchName ?? "该次导入";
     const isActive = selection?.activeProductBatchId === batchId;
     const confirmText = isActive
-      ? `删除当前批次「${name}」后，该批次商品会从批次列表移除；已经加入商品研究池的商品不会删除。删除后当前批次将变为空。`
-      : `确定删除「${name}」？删除后批次内商品将一并移除，已进入研究池的商品不受影响。`;
+      ? `删除当前导入「${name}」后，该批商品会从列表移除；已经加入商品研究池的商品不会删除。删除后当前导入将变为空。`
+      : `确定删除「${name}」？删除后这批商品将一并移除，已进入研究池的商品不受影响。`;
     if (!window.confirm(confirmText)) {
       return;
     }
@@ -729,7 +741,7 @@ export function ProductBatchManager() {
   };
 
   const removeItem = (batchId: string, itemId: string) => {
-    if (!window.confirm("确定把该商品移出当前批次？已进入研究池的商品不受影响。")) {
+    if (!window.confirm("确定把该商品移出列表？已进入研究池的商品不受影响。")) {
       return;
     }
     void runMutation(async () => {
