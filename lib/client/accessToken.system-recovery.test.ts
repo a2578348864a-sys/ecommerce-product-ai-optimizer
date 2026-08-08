@@ -80,9 +80,13 @@ describe("buildAccessHeaders", () => {
       id: "demo_test",
       label: "test",
       expiresAt: null,
-      maxAiCalls: 10,
-      usedAiCalls: 0,
-      remainingAiCalls: 10,
+      isActive: true,
+      quotaMetric: "product_journeys_v1",
+      maxProducts: 5,
+      usedProducts: 0,
+      reservedProducts: 0,
+      remainingProducts: 5,
+      migrationStatus: "migrated",
     });
     const headers = buildAccessHeaders();
     expect(headers["x-access-token"]).toBe("tok_demo456");

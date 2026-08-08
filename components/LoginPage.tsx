@@ -189,7 +189,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
             <form onSubmit={handleGuestSubmit} className="mt-4 flex flex-col gap-3">
               <div>
                 <p className="text-sm font-semibold text-slate-900">访客体验</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">24 小时隔离沙盒，新增和修改不会进入正式数据。</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">每个访客码可体验 5 个商品完整流程，新增和修改不会进入正式数据。</p>
               </div>
               <div className="relative">
                 <Eye className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />

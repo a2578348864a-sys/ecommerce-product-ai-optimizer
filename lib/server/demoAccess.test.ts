@@ -120,7 +120,7 @@ describe("store I/O", () => {
     expect(record.usedAiCalls).toBe(0);
     expect(record.isActive).toBe(true);
     // expiresAt is null by default — starts from first login
-    expect(record.expiresAt === null || typeof record.expiresAt === "string").toBe(true);
+    expect(record.expiresAt).toBeNull();
     expect(record.passwordHash).toMatch(/^sha256:/);
     expect(plainPassword).toBeTruthy();
   });
@@ -160,7 +160,7 @@ describe("status checks", () => {
     saveDemoAccessStore(emptyStore());
   });
 
-  it("isDemoAccessExpired detects past expiry", () => {
+  it("ignores a legacy past expiresAt for an active Visitor code", () => {
     const pastAccess = {
       id: "demo_test",
       label: "Expired",
@@ -174,7 +174,8 @@ describe("status checks", () => {
       lastUsedAt: null,
       notes: "",
     };
-    expect(isDemoAccessExpired(pastAccess)).toBe(true);
+    expect(isDemoAccessExpired(pastAccess)).toBe(false);
+    expect(isDemoAccessActive(pastAccess)).toBe(true);
   });
 
   it("isDemoAccessExpired returns false for future expiry", () => {
@@ -194,7 +195,7 @@ describe("status checks", () => {
     expect(isDemoAccessExpired(futureAccess)).toBe(false);
   });
 
-  it("isDemoAccessActive requires both isActive and not expired", () => {
+  it("isDemoAccessActive is controlled only by the administrator active flag", () => {
     const active = {
       id: "demo_test",
       label: "Active",
@@ -209,6 +210,9 @@ describe("status checks", () => {
       notes: "",
     };
     expect(isDemoAccessActive(active)).toBe(true);
+
+    const legacyPastExpiry = { ...active, expiresAt: "2020-01-01T00:00:00.000Z" };
+    expect(isDemoAccessActive(legacyPastExpiry)).toBe(true);
 
     const inactive = { ...active, isActive: false };
     expect(isDemoAccessActive(inactive)).toBe(false);

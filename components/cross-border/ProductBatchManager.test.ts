@@ -87,7 +87,9 @@ function render(
   return renderToStaticMarkup(createElement(ProductBatchManagerView, {
     state: "ready",
     accessMode,
-    remainingAiCalls: accessMode === "visitor" ? 5 : null,
+    maxProducts: accessMode === "visitor" ? 5 : null,
+    usedProducts: accessMode === "visitor" ? 0 : null,
+    remainingProducts: accessMode === "visitor" ? 5 : null,
     batches: (overrides.batches ?? [batch]) as never,
     selection: overrides.selection ?? {
       activeProductBatchId: batch.id,
@@ -149,9 +151,10 @@ describe("ProductBatch unified role UI", () => {
   it("adds only the Visitor quota and isolated sandbox notice", () => {
     const owner = render("owner");
     const visitor = render("visitor");
-    expect(visitor).toContain("剩余真实 AI 额度 5/5");
-    expect(visitor).toContain("独立访客沙盒");
-    expect(owner).not.toContain("独立访客沙盒");
+    expect(visitor).toContain("已使用商品 0 / 5");
+    expect(visitor).toContain("剩余 5 个商品");
+    expect(visitor).not.toContain("AI 额度");
+    expect(owner).not.toContain("已使用商品");
   });
 
   it("offers the same single primary research action for eligible Owner and Visitor items", () => {
@@ -286,7 +289,9 @@ describe("ProductBatch unified role UI", () => {
     const html = renderToStaticMarkup(createElement(ProductBatchManagerView, {
       state: "unauthenticated",
       accessMode: null,
-      remainingAiCalls: null,
+      maxProducts: null,
+      usedProducts: null,
+      remainingProducts: null,
       batches: [],
       selection: null,
       legacyRegistrationId: null,

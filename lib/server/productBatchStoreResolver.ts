@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { AccessContext } from "@/lib/server/accessPassword";
-import { getLatestDemoSnapshot } from "@/lib/server/demoGuard";
+import { getDemoProductJourneySnapshot } from "@/lib/server/demoProductJourneyQuota";
 import { createDemoProductBatchStore } from "@/lib/server/demoProductBatchStore";
 import { createOwnerProductBatchStore } from "@/lib/server/ownerProductBatchStore";
 import type { ProductBatchStore } from "@/lib/productBatchStore";
@@ -24,13 +24,17 @@ export function getProductBatchStore(context: AccessContext): ProductBatchStore 
 
 export function getProductBatchAccessSummary(context: AccessContext): {
   accessMode: "owner" | "visitor";
-  remainingAiCalls: number | null;
+  maxProducts: number | null;
+  usedProducts: number | null;
+  remainingProducts: number | null;
 } {
   if (context.mode === "owner") {
-    return { accessMode: "owner", remainingAiCalls: null };
+    return { accessMode: "owner", maxProducts: null, usedProducts: null, remainingProducts: null };
   }
-  const snapshot = getLatestDemoSnapshot(context);
-  if (!snapshot) {
+  let snapshot;
+  try {
+    snapshot = getDemoProductJourneySnapshot(context.demoAccessId);
+  } catch {
     throw new ProductBatchAccessStateError(
       "visitor_access_state_unavailable",
       "Visitor access state is unavailable.",
@@ -38,6 +42,8 @@ export function getProductBatchAccessSummary(context: AccessContext): {
   }
   return {
     accessMode: "visitor",
-    remainingAiCalls: snapshot.remainingAiCalls,
+    maxProducts: snapshot.maxProducts,
+    usedProducts: snapshot.usedProducts,
+    remainingProducts: snapshot.remainingProducts,
   };
 }

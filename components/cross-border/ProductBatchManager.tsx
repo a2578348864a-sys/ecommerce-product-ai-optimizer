@@ -35,7 +35,9 @@ type ReportType = "search_results" | "category_current";
 interface ProductBatchManagerViewProps {
   state: ViewState;
   accessMode: "owner" | "visitor" | null;
-  remainingAiCalls: number | null;
+  maxProducts: number | null;
+  usedProducts: number | null;
+  remainingProducts: number | null;
   batches: ProductBatchView[];
   selection: ProductBatchSelectionView | null;
   legacyRegistrationId: string | null;
@@ -125,7 +127,9 @@ function researchBlockedReason(input: {
 export function ProductBatchManagerView({
   state,
   accessMode,
-  remainingAiCalls,
+  maxProducts,
+  usedProducts,
+  remainingProducts,
   batches,
   selection,
   legacyRegistrationId,
@@ -224,8 +228,13 @@ export function ProductBatchManagerView({
         </div>
         {accessMode === "visitor" ? (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-            <p className="font-semibold">访客体验 · 剩余真实 AI 额度 {remainingAiCalls ?? 0}/5</p>
-            <p>导入数据保存在当前身份的独立访客沙盒；上传、解析、排序和归档不消耗额度。</p>
+            <p className="font-semibold">
+              访客体验
+              {maxProducts !== null && usedProducts !== null && remainingProducts !== null
+                ? ` · 已使用商品 ${usedProducts} / ${maxProducts} · 剩余 ${remainingProducts} 个商品`
+                : ""}
+            </p>
+            <p>上传、解析、排序和归档不占用商品体验名额；首次开始一个新的商品研究链时才占用名额。</p>
           </div>
         ) : null}
         {state === "error" && errorMessage ? (
@@ -462,7 +471,9 @@ export function ProductBatchManagerView({
 
 interface ListPayload {
   accessMode: "owner" | "visitor";
-  remainingAiCalls: number | null;
+  maxProducts: number | null;
+  usedProducts: number | null;
+  remainingProducts: number | null;
   batches: ProductBatchView[];
   selection: ProductBatchSelectionView | null;
   legacyRegistrationId: string | null;
@@ -483,7 +494,9 @@ function responseError(value: unknown): string {
 export function ProductBatchManager() {
   const [state, setState] = useState<ViewState>("loading");
   const [accessMode, setAccessMode] = useState<"owner" | "visitor" | null>(null);
-  const [remainingAiCalls, setRemainingAiCalls] = useState<number | null>(null);
+  const [maxProducts, setMaxProducts] = useState<number | null>(null);
+  const [usedProducts, setUsedProducts] = useState<number | null>(null);
+  const [remainingProducts, setRemainingProducts] = useState<number | null>(null);
   const [batches, setBatches] = useState<ProductBatchView[]>([]);
   const [selection, setSelection] = useState<ProductBatchSelectionView | null>(null);
   const [legacyRegistrationId, setLegacyRegistrationId] = useState<string | null>(null);
@@ -500,11 +513,20 @@ export function ProductBatchManager() {
   const [selectedCategory, setSelectedCategory] = useState("");
   const inspectionSequence = useRef(0);
 
-  const applyAccess = (data: Pick<ListPayload, "accessMode" | "remainingAiCalls">) => {
+  const applyAccess = (data: Pick<ListPayload, "accessMode" | "maxProducts" | "usedProducts" | "remainingProducts">) => {
     setAccessMode(data.accessMode);
-    setRemainingAiCalls(data.remainingAiCalls);
-    if (data.accessMode === "visitor" && data.remainingAiCalls !== null) {
-      updateDemoAccessInfo({ remainingAiCalls: data.remainingAiCalls });
+    setMaxProducts(data.maxProducts);
+    setUsedProducts(data.usedProducts);
+    setRemainingProducts(data.remainingProducts);
+    if (data.accessMode === "visitor"
+      && data.maxProducts !== null
+      && data.usedProducts !== null
+      && data.remainingProducts !== null) {
+      updateDemoAccessInfo({
+        maxProducts: data.maxProducts,
+        usedProducts: data.usedProducts,
+        remainingProducts: data.remainingProducts,
+      });
     }
   };
 
@@ -639,7 +661,9 @@ export function ProductBatchManager() {
         data?: {
           batch: ProductBatchView;
           accessMode: "owner" | "visitor";
-          remainingAiCalls: number | null;
+          maxProducts: number | null;
+          usedProducts: number | null;
+          remainingProducts: number | null;
         };
       };
       if (!response.ok || !body.data) {
@@ -763,7 +787,9 @@ export function ProductBatchManager() {
     <ProductBatchManagerView
       state={state}
       accessMode={accessMode}
-      remainingAiCalls={remainingAiCalls}
+      maxProducts={maxProducts}
+      usedProducts={usedProducts}
+      remainingProducts={remainingProducts}
       batches={batches}
       selection={selection}
       legacyRegistrationId={legacyRegistrationId}

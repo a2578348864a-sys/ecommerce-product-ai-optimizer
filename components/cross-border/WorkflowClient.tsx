@@ -77,10 +77,13 @@ type ApiWorkflowResult = {
     id: string;
     label: string;
     expiresAt: string | null;
-    maxAiCalls: number;
-    usedAiCalls: number;
-    remainingAiCalls: number;
     isActive: boolean;
+    quotaMetric: "product_journeys_v1";
+    maxProducts: number;
+    usedProducts: number;
+    reservedProducts: number;
+    remainingProducts: number;
+    migrationStatus: "migrated";
   };
 };
 
@@ -578,13 +581,10 @@ export function WorkflowClient({
       setProgressExpanded(false);
       setResult(wf);
 
-      // Demo-Login.1-E: Update Banner after AI calls
+      // V2.1.7: Update the Visitor product-journey banner.
       if (wf.demoAccess) {
-        import("@/lib/client/accessToken").then(({ updateDemoAccessInfo }) => {
-          updateDemoAccessInfo({
-            remainingAiCalls: wf.demoAccess!.remainingAiCalls,
-            usedAiCalls: wf.demoAccess!.usedAiCalls,
-          });
+        import("@/lib/client/accessToken").then(({ updateDemoAccessSnapshot }) => {
+          updateDemoAccessSnapshot(wf.demoAccess!);
         });
       }
 

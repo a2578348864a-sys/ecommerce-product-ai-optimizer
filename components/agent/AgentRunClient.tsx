@@ -123,7 +123,7 @@ type ApiErrorResponse = {
 type ApiIdempotentReplay = {
   ok: true;
   idempotentReplay: true;
-  aiJob: { status: "committed" | "refunded" };
+  productJourney: { status: "committed" };
   demoAccess?: DemoAccessInfo;
 };
 
@@ -962,9 +962,7 @@ export function AgentRunClient({
       if ("idempotentReplay" in data) {
         setPhase("idle");
         setStepStatuses(INITIAL_STATUSES);
-        setError(data.aiJob.status === "committed"
-          ? "该次商品研究作业已结算且不会重复扣费；请从研究历史恢复已保存结果，或重新开始一次新研究。"
-          : "该次商品研究未启动 Provider，额度未扣减；请重新开始。");
+        setError("该商品已占用体验名额，不会重复扣减；请从研究历史或当前页面缓存继续已有流程。");
         jobRequestIdRef.current = "";
         return;
       }

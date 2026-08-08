@@ -17,7 +17,7 @@ import {
   createDemoAccess,
   saveDemoAccessStore,
   loadDemoAccessStore,
-  activateDemoAccessOnFirstLogin,
+  clearDemoAccessLegacyExpiry,
   type DemoAccessStore,
 } from "@/lib/server/demoAccess";
 import {
@@ -113,7 +113,7 @@ describe("ensureDemoAiQuota", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("expired demo fails", () => {
+  it("legacy expiry does not disable an active Visitor", () => {
     const store = loadDemoAccessStore();
     store.accesses.push({
       id: "demo_expired",
@@ -131,8 +131,7 @@ describe("ensureDemoAiQuota", () => {
     saveDemoAccessStore(store);
     const ctx = makeDemoCtx("demo_expired");
     const result = ensureDemoAiQuota(ctx, 1);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("demo_access_expired");
+    expect(result).toEqual({ ok: true });
   });
 
   it("inactive demo fails", () => {
@@ -310,7 +309,8 @@ describe("Demo AI job quota v1", () => {
     expect(settled.ok).toBe(true);
     if (!settled.ok) return;
     expect(settled.snapshot).toMatchObject({
-      quotaMetric: "ai_jobs_v1",
+      quotaMetric: "product_journeys_v1",
+      legacyAiQuotaMetric: "ai_jobs_v1",
       usedAiJobs: 1,
       remainingAiJobs: 4,
       usedAiCalls: 1,
@@ -492,18 +492,16 @@ describe("Guest-Access.1 permission model", () => {
     expect(consumeDemoAiCalls(ownerCtx, 1)).toBeNull();
   });
 
-  it("Guest 24h activation only triggers on first login", () => {
+  it("clears a legacy expiry instead of activating a 24h code lifetime", () => {
     const { record } = createDemoAccess({ label: "Fresh", hours: 24, maxAiCalls: 5 });
     // Before first login: expiresAt is null
     expect(record.expiresAt).toBeNull();
-    // First login activates
-    const activated = activateDemoAccessOnFirstLogin(record.id, 24);
-    expect(activated).not.toBeNull();
-    expect(activated!.expiresAt).not.toBeNull();
-    // expiresAt is ~24h from now
-    const expires = new Date(activated!.expiresAt!);
-    const expected = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    expect(Math.abs(expires.getTime() - expected.getTime())).toBeLessThan(5000);
+    const store = loadDemoAccessStore();
+    store.accesses[0].expiresAt = "2020-01-01T00:00:00.000Z";
+    saveDemoAccessStore(store);
+
+    const cleared = clearDemoAccessLegacyExpiry(record.id);
+    expect(cleared?.expiresAt).toBeNull();
   });
 
   it("Guest non-AI API calls do not consume quota", () => {

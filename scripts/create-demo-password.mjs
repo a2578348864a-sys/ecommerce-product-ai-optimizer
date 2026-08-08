@@ -2,8 +2,8 @@
  * Phase Demo-Login.1-B — Create Demo Password Script
  *
  * Usage:
- *   node scripts/create-demo-password.mjs --label "杭州某公司一面" --hours 24 --max-ai-calls 5
- *   npm run demo:create -- --label "杭州某公司一面" --hours 24 --max-ai-calls 5
+ *   node scripts/create-demo-password.mjs --label "Visitor acceptance"
+ *   npm run demo:create -- --label "Visitor acceptance"
  *
  * Generates a random demo password, hashes it, stores in data/demo-access.json.
  * Prints the plain password ONCE to stdout. Does NOT write passwords to any file.
@@ -29,26 +29,9 @@ function getArg(name) {
 }
 
 const label = getArg("label");
-const hoursStr = getArg("hours");
-const maxAiCallsStr = getArg("max-ai-calls");
-
-if (!label || !hoursStr || !maxAiCallsStr) {
-  console.error("Usage: node scripts/create-demo-password.mjs --label <label> --hours <hours> --max-ai-calls <n>");
-  console.error("  --label          Label for this demo access (e.g. '杭州某公司一面')");
-  console.error("  --hours          Validity in hours (e.g. 24)");
-  console.error("  --max-ai-calls   Max AI calls (e.g. 5)");
-  process.exit(1);
-}
-
-const hours = parseInt(hoursStr, 10);
-const maxAiCalls = parseInt(maxAiCallsStr, 10);
-
-if (isNaN(hours) || hours < 1 || hours > 720) {
-  console.error("Error: --hours must be 1-720");
-  process.exit(1);
-}
-if (isNaN(maxAiCalls) || maxAiCalls < 1 || maxAiCalls > 100) {
-  console.error("Error: --max-ai-calls must be 1-100");
+if (!label) {
+  console.error("Usage: node scripts/create-demo-password.mjs --label <label>");
+  console.error("  --label   Label for this Visitor access code");
   process.exit(1);
 }
 
@@ -111,8 +94,8 @@ const record = {
   label,
   passwordHash,
   salt,
-  expiresAt: null, // starts from first login
-  maxAiCalls,
+  expiresAt: null,
+  maxAiCalls: 0,
   usedAiCalls: 0,
   isActive: true,
   createdAt: now.toISOString(),
@@ -128,8 +111,8 @@ saveStore(store);
 
 console.log("Demo access created.");
 console.log(`  Label:      ${label}`);
-console.log(`  有效期：    首次登录后 ${hours} 小时`);
-console.log(`  MaxAiCalls: ${maxAiCalls}`);
+console.log("  Visitor code: no time-based expiry; administrator can disable it");
+console.log("  Product journeys: 5");
 console.log(`  Password:   ${plainPassword}`);
 console.log("");
 console.log("Password 只显示一次，请复制保存。不会写入任何文件。");

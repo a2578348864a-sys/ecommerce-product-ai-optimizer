@@ -33,13 +33,38 @@ export interface DemoAccessRecord {
   label: string;
   passwordHash: string;
   salt: string;
-  expiresAt: string | null; // ISO 8601 — null means not yet activated (first login starts timer)
+  /** Legacy compatibility field. V2.1.7 keeps Visitor codes non-expiring and persists null. */
+  expiresAt: string | null;
   maxAiCalls: number;
   usedAiCalls: number;
   isActive: boolean;
   createdAt: string;
   lastUsedAt: string | null;
   notes: string;
+  /**
+   * V2.1.7 Visitor product-journey quota.
+   *
+   * This is intentionally separate from the legacy AI-job ledger below. A
+   * product journey is bound to one stable candidate/manual-product identity
+   * and is never incremented by Listing/Image Provider calls.
+   */
+  productJourneyReservations?: Record<string, {
+    identity: string;
+    requestId: string;
+    status: "reserved" | "committed" | "released";
+    createdAt: string;
+    updatedAt: string;
+    leaseExpiresAt: string;
+    committedAt?: string;
+    releasedAt?: string;
+    source: "current" | "legacy_sandbox";
+  }>;
+  productJourneyMigration?: {
+    version: "sandbox-product-journeys-v1";
+    migratedAt: string;
+    sourceTaskCount: number;
+    sourceCandidateCount: number;
+  };
   aiImageQuotaReservations?: Record<string, {
     count: number;
     status: "reserved" | "committed" | "refunded";
@@ -67,10 +92,12 @@ export interface DemoAccessStore {
 
 export interface CreateDemoAccessInput {
   label: string;
-  hours: number;
-  maxAiCalls: number;
+  /** @deprecated Visitor codes no longer have a time-based lifetime. */
+  hours?: number;
+  /** @deprecated Legacy standalone Provider-cost ledger; not a product quota. */
+  maxAiCalls?: number;
   notes?: string;
-  /** If true, expiry starts from creation. If false (default), starts from first login. */
+  /** @deprecated Visitor codes no longer expire by time; retained for script compatibility. */
   startFromCreation?: boolean;
 }
 
@@ -176,10 +203,8 @@ export function createDemoAccess(input: CreateDemoAccessInput): CreateDemoAccess
   const salt = generateSalt();
   const passwordHash = hashPassword(plainPassword, salt);
   const now = new Date();
-  // Expiry starts from first login by default; set `startFromCreation: true` for creation-time expiry
-  const expiresAt = input.startFromCreation
-    ? new Date(now.getTime() + input.hours * 60 * 60 * 1000).toISOString()
-    : null;
+  // V2.1.7: Visitor-code lifetime is no longer time based. Login tokens remain short lived.
+  const expiresAt = null;
 
   const record: DemoAccessRecord = {
     id: generateDemoId(),
@@ -187,7 +212,7 @@ export function createDemoAccess(input: CreateDemoAccessInput): CreateDemoAccess
     passwordHash,
     salt,
     expiresAt,
-    maxAiCalls: input.maxAiCalls,
+    maxAiCalls: input.maxAiCalls ?? 0,
     usedAiCalls: 0,
     isActive: true,
     createdAt: now.toISOString(),
@@ -219,32 +244,33 @@ export function findDemoAccessByPassword(password: string): DemoAccessRecord | n
 // ── Status checks ───────────────────────────────
 
 export function isDemoAccessExpired(access: DemoAccessRecord): boolean {
-  // null = not yet activated (first login not happened yet)
-  if (!access.expiresAt) return false;
-  return new Date(access.expiresAt) < new Date();
+  void access;
+  return false;
 }
 
 export function isDemoAccessActive(access: DemoAccessRecord): boolean {
-  // null expiresAt = not yet activated, still active
-  return access.isActive && !isDemoAccessExpired(access);
+  return access.isActive;
 }
 
 /**
- * Activate a demo access on first login.
- * Sets expiresAt to now + hours, starting the 24h window from the first login time.
+ * Clear the legacy Visitor-code expiry during login/migration.
  */
-export function activateDemoAccessOnFirstLogin(id: string, hours: number): DemoAccessRecord | null {
+export function clearDemoAccessLegacyExpiry(id: string): DemoAccessRecord | null {
   const store = loadDemoAccessStore();
   const idx = store.accesses.findIndex((a) => a.id === id);
   if (idx === -1) return null;
 
   const access = store.accesses[idx];
-  // Only activate if not yet activated
-  if (!access.expiresAt) {
-    access.expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  if (access.expiresAt !== null) {
+    access.expiresAt = null;
     saveDemoAccessStore(store);
   }
   return access;
+}
+
+/** @deprecated Use clearDemoAccessLegacyExpiry; retained for older scripts/tests. */
+export function activateDemoAccessOnFirstLogin(id: string, _hours: number): DemoAccessRecord | null {
+  return clearDemoAccessLegacyExpiry(id);
 }
 
 export function getRemainingAiCalls(access: DemoAccessRecord): number {

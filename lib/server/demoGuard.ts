@@ -31,6 +31,10 @@ import {
 } from "@/lib/server/demoAccess";
 import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
+import {
+  buildDemoProductJourneySnapshot,
+  type DemoProductJourneySnapshot,
+} from "@/lib/server/demoProductJourneyQuota";
 
 // ── Types ───────────────────────────────────────
 
@@ -38,15 +42,11 @@ export type GuardResult =
   | { ok: true; context: AccessContext }
   | { ok: false; status: number; code: string; message: string };
 
-export interface DemoAccessSnapshot {
-  id: string;
-  label: string;
-  expiresAt: string | null;
+export interface DemoAccessSnapshot extends DemoProductJourneySnapshot {
   maxAiCalls: number;
   usedAiCalls: number;
   remainingAiCalls: number;
-  isActive: boolean;
-  quotaMetric: "ai_jobs_v1";
+  legacyAiQuotaMetric: "ai_jobs_v1";
   maxAiJobs: number;
   usedAiJobs: number;
   remainingAiJobs: number;
@@ -133,14 +133,11 @@ export function demoInactiveResponse() {
 export function buildDemoAccessSnapshot(record: DemoAccessRecord): DemoAccessSnapshot {
   const remainingAiJobs = getRemainingAiCalls(record);
   return {
-    id: record.id,
-    label: record.label,
-    expiresAt: record.expiresAt,
+    ...buildDemoProductJourneySnapshot(record),
     maxAiCalls: record.maxAiCalls,
     usedAiCalls: record.usedAiCalls,
     remainingAiCalls: remainingAiJobs,
-    isActive: record.isActive,
-    quotaMetric: "ai_jobs_v1",
+    legacyAiQuotaMetric: "ai_jobs_v1",
     maxAiJobs: record.maxAiCalls,
     usedAiJobs: record.usedAiCalls,
     remainingAiJobs,

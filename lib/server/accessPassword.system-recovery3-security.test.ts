@@ -198,10 +198,10 @@ describe("Security Gate — Fallback Demo Context", () => {
   });
 
   // ═══════════════════════════════════════════════════
-  // 5. Security: expired record — fail-closed (Auth-Hardening.1)
+  // 5. Legacy expiry compatibility — active Visitor remains valid
   // ═══════════════════════════════════════════════════
 
-  describe("AI quota security — expired record", () => {
+  describe("Visitor access — legacy expired record", () => {
     beforeEach(() => {
       // Set expiresAt to past
       const store = loadDemoAccessStore();
@@ -212,16 +212,20 @@ describe("Security Gate — Fallback Demo Context", () => {
       saveDemoAccessStore(store);
     });
 
-    it("fail-closed: getAccessContext returns null when expired", () => {
+    it("keeps the active Visitor authenticated", () => {
       const ctx = getDemoCtx();
-      // Auth-Hardening.1: expired → fail closed at auth layer
-      expect(ctx).toBeNull();
+      expect(ctx).not.toBeNull();
+      expect(ctx?.mode).toBe("demo");
+      if (ctx?.mode === "demo") {
+        expect(ctx.isActive).toBe(true);
+        expect(ctx.isExpired).toBe(false);
+      }
     });
 
-    it("ensureDemoAiQuota is unreachable via expired demo (context is null)", () => {
-      // Expired demos are blocked at getAccessContext — never reach ensureDemoAiQuota
+    it("does not reinterpret the legacy field as a session or code expiry", () => {
       const ctx = getDemoCtx();
-      expect(ctx).toBeNull();
+      expect(ctx).not.toBeNull();
+      expect(ctx?.mode).toBe("demo");
     });
   });
 

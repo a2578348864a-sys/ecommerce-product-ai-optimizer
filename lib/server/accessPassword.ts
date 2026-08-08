@@ -63,8 +63,6 @@ export function getAccessContext(
       if (!demoAccess) return null;
       // Fail closed — demo is inactive/disabled
       if (!demoAccess.isActive) return null;
-      // Fail closed — demo is expired
-      if (demoAccess.expiresAt && new Date(demoAccess.expiresAt) < new Date()) return null;
       return {
         mode: "demo",
         token: session.token,

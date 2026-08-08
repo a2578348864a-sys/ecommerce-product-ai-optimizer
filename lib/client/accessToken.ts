@@ -18,10 +18,17 @@ export interface DemoAccessInfo {
   id: string;
   label: string;
   expiresAt: string | null;
-  maxAiCalls: number;
-  usedAiCalls: number;
-  remainingAiCalls: number;
-  quotaMetric?: "ai_jobs_v1";
+  isActive: boolean;
+  quotaMetric: "product_journeys_v1";
+  maxProducts: number;
+  usedProducts: number;
+  reservedProducts: number;
+  remainingProducts: number;
+  migrationStatus: "migrated";
+  /** Legacy-only fields retained for older isolated Studio responses. */
+  maxAiCalls?: number;
+  usedAiCalls?: number;
+  remainingAiCalls?: number;
   maxAiJobs?: number;
   usedAiJobs?: number;
   remainingAiJobs?: number;
@@ -106,7 +113,7 @@ export function getDemoAccessInfo(): DemoAccessInfo | null {
 }
 
 /**
- * Update demo access info in sessionStorage (after AI calls update remaining quota).
+ * Update Visitor access info in sessionStorage from a server-authoritative snapshot.
  */
 export function updateDemoAccessInfo(update: Partial<DemoAccessInfo>): void {
   const current = getDemoAccessInfo();
@@ -120,7 +127,8 @@ export function updateDemoAccessInfo(update: Partial<DemoAccessInfo>): void {
 
 /**
  * Apply a server-authoritative Visitor quota snapshot and notify current-page consumers.
- * AI usage is monotonic within one login session so late responses cannot restore spent jobs.
+ * Committed product usage is monotonic. Reserved capacity may be restored after
+ * an explicit release, so it is taken from the latest authoritative response.
  */
 export function updateDemoAccessSnapshot(snapshot: DemoAccessInfo): void {
   const current = getDemoAccessInfo();
@@ -128,22 +136,21 @@ export function updateDemoAccessSnapshot(snapshot: DemoAccessInfo): void {
   const storage = getStorage();
   if (!storage) return;
   try {
-    const usedAiCalls = Math.max(current.usedAiCalls, snapshot.usedAiCalls);
-    const remainingAiCalls = Math.min(current.remainingAiCalls, snapshot.remainingAiCalls);
+    const usedProducts = Math.max(current.usedProducts, snapshot.usedProducts);
+    const reservedProducts = snapshot.usedProducts < current.usedProducts
+      ? current.reservedProducts
+      : snapshot.reservedProducts;
+    const remainingProducts = Math.max(
+      0,
+      snapshot.maxProducts - Math.min(snapshot.maxProducts, usedProducts + reservedProducts),
+    );
     const merged: DemoAccessInfo = {
       ...current,
       ...snapshot,
-      usedAiCalls,
-      remainingAiCalls,
-      ...(snapshot.quotaMetric === "ai_jobs_v1" ? {
-        quotaMetric: "ai_jobs_v1",
-        maxAiJobs: snapshot.maxAiJobs ?? snapshot.maxAiCalls,
-        usedAiJobs: Math.max(current.usedAiJobs ?? current.usedAiCalls, snapshot.usedAiJobs ?? usedAiCalls),
-        remainingAiJobs: Math.min(
-          current.remainingAiJobs ?? current.remainingAiCalls,
-          snapshot.remainingAiJobs ?? remainingAiCalls,
-        ),
-      } : {}),
+      quotaMetric: "product_journeys_v1",
+      usedProducts,
+      reservedProducts,
+      remainingProducts,
     };
     storage.setItem(DEMO_ACCESS_KEY, JSON.stringify(merged));
     window.dispatchEvent(new CustomEvent<DemoAccessInfo>(DEMO_ACCESS_UPDATED_EVENT, {

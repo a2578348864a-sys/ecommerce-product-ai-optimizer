@@ -15,9 +15,9 @@ import { buildAccessHeaders, updateDemoAccessInfo } from "@/lib/client/accessTok
 import { createBrowserUuid } from "@/lib/browserUuid";
 
 type VisitorAccess = {
-  maxAiCalls: number;
-  usedAiCalls: number;
-  remainingAiCalls: number;
+  maxProducts?: number;
+  usedProducts?: number;
+  remainingProducts?: number;
 };
 
 type Metadata = {
@@ -193,9 +193,6 @@ export function AiImageDraftCard({
     }
   }
 
-  const remaining = metadata?.visitorAccess?.remainingAiCalls;
-  const exhausted = metadata?.accessMode === "visitor" && typeof remaining === "number" && remaining <= 0;
-
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4" data-testid="ai-image-draft-card">
       <div className="flex items-start gap-3">
@@ -278,7 +275,7 @@ export function AiImageDraftCard({
           {metadata?.accessMode === "visitor" ? (
             <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3 text-sm leading-6 text-cyan-900">
               <p className="font-bold">访客体验模式</p>
-              <p>你正在使用临时访问权限，文本和图片真实 AI 功能共享有限体验次数。</p>
+              <p>当前图片属于已占位商品的完整体验链，不会额外占用商品名额。</p>
             </div>
           ) : null}
 
@@ -286,14 +283,13 @@ export function AiImageDraftCard({
             <button
               type="button"
               onClick={() => void handleGenerate()}
-              disabled={!metadata?.enabled || (metadata?.accessMode === "visitor" && metadata?.visitorEnabled === false) || !confirmed || loading || exhausted}
+              disabled={!metadata?.enabled || (metadata?.accessMode === "visitor" && metadata?.visitorEnabled === false) || !confirmed || loading}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-cyan-700 px-4 text-sm font-bold text-white hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-50"
               data-testid="ai-image-draft-generate"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
               {loading ? "正在生成并保存..." : "生成图片草稿"}
             </button>
-            {metadata?.accessMode === "visitor" && typeof remaining === "number" ? <span className="text-xs font-semibold text-slate-500">共享真实 AI 体验剩余 {remaining} 次</span> : null}
           </div>
           {metadata && !metadata.enabled ? <p className="text-sm font-semibold text-amber-700">当前未开启真实图片生成，本次不会消耗额度。</p> : null}
           {metadata && metadata.enabled && metadata.accessMode === "visitor" && metadata.visitorEnabled === false ? <p className="text-sm font-semibold text-amber-700">图片生成暂未对访客开放，本次不会消耗额度。</p> : null}

@@ -331,7 +331,7 @@ describe("getAccessContext — Guest fail-closed (Auth-Hardening.1)", () => {
     expect(ctx).toBeNull();
   });
 
-  it("returns null when demo access is expired (fail-closed on expired)", () => {
+  it("keeps an active Visitor valid when legacy data contains a past expiresAt", () => {
     // Set the demo to expired (1 hour ago)
     const store = loadDemoAccessStore();
     const access = store.accesses.find((a) => a.id === failDemoAccessId);
@@ -340,10 +340,15 @@ describe("getAccessContext — Guest fail-closed (Auth-Hardening.1)", () => {
 
     const req = buildRequest({ "x-access-token": failDemoToken });
     const ctx = getAccessContext(req);
-    expect(ctx).toBeNull();
+    expect(ctx).not.toBeNull();
+    expect(ctx?.mode).toBe("demo");
+    if (ctx?.mode === "demo") {
+      expect(ctx.isActive).toBe(true);
+      expect(ctx.isExpired).toBe(false);
+    }
   });
 
-  it("returns context for active, non-expired demo (normal path unaffected)", () => {
+  it("returns context for an active Visitor (normal path unaffected)", () => {
     const req = buildRequest({ "x-access-token": failDemoToken });
     const ctx = getAccessContext(req);
     expect(ctx).not.toBeNull();

@@ -134,6 +134,14 @@ export function readDemoSandboxStore(): DemoSandboxStore {
   return readStore(false);
 }
 
+/**
+ * Quota migration must fail closed when an existing sandbox file is corrupt;
+ * silently treating corrupt history as an empty store would grant fresh slots.
+ */
+export function readDemoSandboxStoreStrict(): DemoSandboxStore {
+  return readStore(true);
+}
+
 export function mutateDemoSandboxStore<T>(
   action: (store: DemoSandboxStore) => StoreMutation<T> | Promise<StoreMutation<T>>,
 ): Promise<T> {

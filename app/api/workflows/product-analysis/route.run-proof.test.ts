@@ -22,22 +22,24 @@ const mocks = vi.hoisted(() => ({
   runRiskStep: vi.fn(),
   runSummaryStep: vi.fn(),
   runListingStep: vi.fn(),
-  reserveDemoAiCalls: vi.fn(),
-  settleDemoAiCalls: vi.fn(),
-  reserveDemoAiJob: vi.fn(),
-  markDemoAiJobProviderCallStarted: vi.fn(),
-  settleDemoAiJob: vi.fn(),
+  reserveDemoProductJourney: vi.fn(),
+  commitDemoProductJourney: vi.fn(),
+  releaseDemoProductJourney: vi.fn(),
   productBatchGetBatch: vi.fn(),
   productBatchGetItems: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: () => ({ ok: true, context: authState.context }),
-  reserveDemoAiCalls: mocks.reserveDemoAiCalls,
-  settleDemoAiCalls: mocks.settleDemoAiCalls,
-  reserveDemoAiJob: mocks.reserveDemoAiJob,
-  markDemoAiJobProviderCallStarted: mocks.markDemoAiJobProviderCallStarted,
-  settleDemoAiJob: mocks.settleDemoAiJob,
+}));
+
+vi.mock("@/lib/server/demoProductJourneyQuota", () => ({
+  buildProductJourneyIdentity: ({ candidateId, productName }: { candidateId?: string; productName: string }) => (
+    candidateId ? `candidate:${candidateId}` : `manual:${productName.toLowerCase()}`
+  ),
+  reserveDemoProductJourney: mocks.reserveDemoProductJourney,
+  commitDemoProductJourney: mocks.commitDemoProductJourney,
+  releaseDemoProductJourney: mocks.releaseDemoProductJourney,
 }));
 
 vi.mock("@/lib/server/db", () => ({
@@ -366,30 +368,35 @@ beforeEach(() => {
     suggestedEntryLevel: "intermediate",
     nextSteps: [],
   }));
-  mocks.reserveDemoAiCalls.mockReturnValue({
+  const productSnapshot = {
+    id: "visitor-proof",
+    label: "Visitor proof",
+    expiresAt: null,
+    isActive: true,
+    quotaMetric: "product_journeys_v1",
+    maxProducts: 5,
+    usedProducts: 1,
+    reservedProducts: 0,
+    remainingProducts: 4,
+    migrationStatus: "migrated",
+  };
+  mocks.reserveDemoProductJourney.mockReturnValue({
     ok: true,
-    reservation: { reservationId: "text-test", plannedCount: 1 },
-  });
-  mocks.settleDemoAiCalls.mockReturnValue({ ok: true, snapshot: null });
-  mocks.reserveDemoAiJob.mockReturnValue({
-    ok: true,
-    reservation: {
-      reservationId: "job-test",
-      jobType: "product_research",
-      jobRequestId: "99999999-9999-4999-8999-999999999999",
-      quotaMetric: "ai_jobs_v1",
-      providerCallsPlanned: 1,
-      duplicate: false,
-      status: "reserved",
-    },
-    snapshot: null,
-  });
-  mocks.markDemoAiJobProviderCallStarted.mockReturnValue({ ok: true });
-  mocks.settleDemoAiJob.mockReturnValue({
-    ok: true,
-    snapshot: null,
-    status: "refunded",
     duplicate: false,
+    status: "reserved",
+    snapshot: { ...productSnapshot, usedProducts: 0, reservedProducts: 1 },
+  });
+  mocks.commitDemoProductJourney.mockReturnValue({
+    ok: true,
+    duplicate: false,
+    status: "committed",
+    snapshot: productSnapshot,
+  });
+  mocks.releaseDemoProductJourney.mockReturnValue({
+    ok: true,
+    duplicate: false,
+    status: "released",
+    snapshot: { ...productSnapshot, usedProducts: 0, remainingProducts: 5 },
   });
 });
 
@@ -868,7 +875,7 @@ describe("product-analysis trusted run creation", () => {
 
     expect(result.status).toBe(404);
     expect(result.body.error.code).toBe("candidate_not_found");
-    expect(mocks.reserveDemoAiJob).not.toHaveBeenCalled();
+    expect(mocks.reserveDemoProductJourney).not.toHaveBeenCalled();
     expect(mocks.runSourcingStep).not.toHaveBeenCalled();
   });
 

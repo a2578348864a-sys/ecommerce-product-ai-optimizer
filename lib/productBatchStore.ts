@@ -125,7 +125,9 @@ export interface ProductBatchStore {
 
 export interface ProductBatchListResponse {
   accessMode: "owner" | "visitor";
-  remainingAiCalls: number | null;
+  maxProducts: number | null;
+  usedProducts: number | null;
+  remainingProducts: number | null;
   batches: ProductBatchView[];
   selection: ProductBatchSelectionView | null;
   legacyRegistrationId: string | null;
@@ -136,7 +138,9 @@ export function productBatchResponseShape(
 ): ProductBatchListResponse {
   return {
     accessMode: input.accessMode,
-    remainingAiCalls: input.remainingAiCalls,
+    maxProducts: input.maxProducts,
+    usedProducts: input.usedProducts,
+    remainingProducts: input.remainingProducts,
     batches: input.batches,
     selection: input.selection,
     legacyRegistrationId: input.legacyRegistrationId,

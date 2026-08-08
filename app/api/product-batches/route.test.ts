@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
     mode: "owner" as "owner" | "demo",
     token: "token",
     demoAccessId: "demo_aaaaaaaaaaaaaaaa",
-    remainingAiCalls: 5,
   },
   store: {
     listBatches: vi.fn(),
@@ -82,11 +81,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.context.mode = "owner";
   mocks.context.demoAccessId = "demo_aaaaaaaaaaaaaaaa";
-  mocks.context.remainingAiCalls = 5;
   mocks.getProductBatchStore.mockReturnValue(mocks.store);
   mocks.getProductBatchAccessSummary.mockReturnValue({
     accessMode: "owner",
-    remainingAiCalls: null,
+    maxProducts: null,
+    usedProducts: null,
+    remainingProducts: null,
   });
   mocks.store.listBatches.mockResolvedValue([]);
   mocks.store.getSelection.mockResolvedValue(null);
@@ -117,14 +117,18 @@ describe("unified ProductBatch API", () => {
     mocks.context.mode = mode;
     mocks.getProductBatchAccessSummary.mockReturnValue({
       accessMode,
-      remainingAiCalls: remaining,
+      maxProducts: remaining === null ? null : 5,
+      usedProducts: remaining === null ? null : 0,
+      remainingProducts: remaining,
     });
     const response = await GET(request("/api/product-batches"));
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(Object.keys(body.data)).toEqual([
       "accessMode",
-      "remainingAiCalls",
+      "maxProducts",
+      "usedProducts",
+      "remainingProducts",
       "batches",
       "selection",
       "legacyRegistrationId",

@@ -25,14 +25,18 @@ describe("ProductBatch centralized dual-role capability matrix", () => {
   it("uses one response shape without exposing a storage subject", () => {
     const response = productBatchResponseShape({
       accessMode: "visitor",
-      remainingAiCalls: 5,
+      maxProducts: 5,
+      usedProducts: 0,
+      remainingProducts: 5,
       batches: [],
       selection: null,
       legacyRegistrationId: "production-registration-20260717-01",
     });
     expect(Object.keys(response)).toEqual([
       "accessMode",
-      "remainingAiCalls",
+      "maxProducts",
+      "usedProducts",
+      "remainingProducts",
       "batches",
       "selection",
       "legacyRegistrationId",

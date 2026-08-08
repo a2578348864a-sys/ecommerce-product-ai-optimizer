@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import {
   requireAuthenticated,
-  reserveDemoAiJob,
-  markDemoAiJobProviderCallStarted,
-  settleDemoAiJob,
-  type DemoAccessSnapshot,
-  type DemoAiJobQuotaReservation,
 } from "@/lib/server/demoGuard";
+import {
+  buildProductJourneyIdentity,
+  commitDemoProductJourney,
+  releaseDemoProductJourney,
+  reserveDemoProductJourney,
+  type DemoProductJourneySnapshot,
+} from "@/lib/server/demoProductJourneyQuota";
 import {
   getAuthoritativeCandidate,
   type AuthoritativeCandidate,
@@ -102,21 +104,16 @@ type WorkflowResult = {
     providerCallsStarted: number;
     providerCallsCompleted: number;
     providerCallsFailed: number;
-    quotaMetric: "ai_jobs_v1";
+    quotaMetric: "product_journeys_v1";
   };
   warnings: string[];
   r22CommercialValidation?: R22CommercialRunSnapshot;
   researchMode?: "market_research_only";
   promotionEligible?: false;
-  aiJob?: {
-    jobType: "product_research";
-    jobRequestId: string;
-    status: "committed" | "refunded";
-    quotaMetric: "ai_jobs_v1";
-    providerCallsPlanned: number;
-    providerCallsStarted: number;
-    providerCallsCompleted: number;
-    providerCallsFailed: number;
+  productJourney?: {
+    identity: string;
+    status: "committed" | "released";
+    quotaMetric: "product_journeys_v1";
   };
 };
 
@@ -242,7 +239,7 @@ export async function POST(request: NextRequest) {
     );
   }
   const accessCtx = authResult.context;
-  let demoScreen: DemoAccessSnapshot | null = null;
+  let demoScreen: DemoProductJourneySnapshot | null = null;
 
   // Reject batch before string normalization
   if (Array.isArray(body.productName) || (body.products && Array.isArray(body.products))) {
@@ -373,52 +370,56 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  let quotaReservation: DemoAiJobQuotaReservation | null = null;
+  const productJourneyIdentity = buildProductJourneyIdentity({ candidateId, productName });
+  let productJourneyReserved = false;
   if (accessCtx.mode === "demo" && plannedAiCalls > 0) {
-    const quota = reserveDemoAiJob(accessCtx, {
-      jobType: "product_research",
+    const journey = reserveDemoProductJourney(
+      accessCtx.demoAccessId,
+      productJourneyIdentity,
       jobRequestId,
-      providerCallsPlanned: plannedAiCalls,
-      leaseMs: plannedAiCalls * PRODUCT_ANALYSIS_AI_TIMEOUT_MS + 60_000,
-    });
-    if (!quota.ok) {
+      { leaseMs: plannedAiCalls * PRODUCT_ANALYSIS_AI_TIMEOUT_MS + 60_000 },
+    );
+    if (!journey.ok) {
+      const status = journey.code === "visitor_product_quota_exhausted"
+        || journey.code === "visitor_access_inactive"
+        || journey.code === "visitor_access_not_found"
+        ? 403
+        : journey.code === "product_journey_in_progress"
+          ? 409
+          : 500;
       return NextResponse.json(
         {
           ok: false,
-          error: { code: quota.code, message: quota.message },
-          ...(quota.snapshot ? { demoAccess: quota.snapshot } : {}),
+          error: { code: journey.code, message: journey.message },
+          ...(journey.snapshot ? { demoAccess: journey.snapshot } : {}),
         },
-        { status: quota.status },
+        { status },
       );
     }
-    quotaReservation = quota.reservation;
-    if (quotaReservation?.duplicate) {
-      if (quotaReservation.status === "reserved") {
+    demoScreen = journey.snapshot;
+    if (journey.duplicate) {
+      if (journey.status === "reserved") {
         return NextResponse.json({
           ok: false,
           error: {
-            code: "ai_job_in_progress",
-            message: "同一商品研究作业正在执行，请勿重复提交。",
+            code: "product_journey_in_progress",
+            message: "该商品研究链正在建立，请勿重复提交。",
           },
-          ...(quota.snapshot ? { demoAccess: quota.snapshot } : {}),
+          demoAccess: journey.snapshot,
         }, { status: 409 });
       }
       return NextResponse.json({
         ok: true,
         idempotentReplay: true,
-        aiJob: {
-          jobType: quotaReservation.jobType,
-          jobRequestId: quotaReservation.jobRequestId,
-          status: quotaReservation.status,
-          providerCallsPlanned: quotaReservation.providerCallsPlanned,
-          providerCallsStarted: quotaReservation.providerCallsStarted ?? 0,
-          providerCallsCompleted: quotaReservation.providerCallsCompleted ?? 0,
-          providerCallsFailed: quotaReservation.providerCallsFailed ?? 0,
-          quotaMetric: quotaReservation.quotaMetric,
+        productJourney: {
+          identity: productJourneyIdentity,
+          status: "committed" as const,
+          quotaMetric: "product_journeys_v1" as const,
         },
-        ...(quota.snapshot ? { demoAccess: quota.snapshot } : {}),
+        demoAccess: journey.snapshot,
       }, { status: 200 });
     }
+    productJourneyReserved = true;
   }
 
   const workflowId = makeWorkflowId();
@@ -434,30 +435,28 @@ export async function POST(request: NextRequest) {
   let providerCallStartedCount = 0;
   let providerCallsCompleted = 0;
   const persistProviderCallStart = async () => {
-    const nextStartedCount = providerCallStartedCount + 1;
-    const marked = markDemoAiJobProviderCallStarted(accessCtx, quotaReservation, nextStartedCount);
-    if (!marked.ok) throw new Error(marked.code);
-    providerCallStartedCount = nextStartedCount;
+    providerCallStartedCount += 1;
   };
 
   const settleUnexpectedFailure = (error: unknown) => {
-    if (accessCtx.mode === "demo" && quotaReservation) {
-      const settlement = settleDemoAiJob(accessCtx, quotaReservation, {
-        providerCallsStarted: providerCallStartedCount,
-        providerCallsCompleted,
-        providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
-      });
-      if (!settlement.ok) {
+    if (accessCtx.mode === "demo" && productJourneyReserved) {
+      const released = releaseDemoProductJourney(
+        accessCtx.demoAccessId,
+        productJourneyIdentity,
+        jobRequestId,
+      );
+      if (!released.ok) {
         return NextResponse.json(
           {
             ok: false,
-            error: { code: settlement.code, message: settlement.message },
-            ...(settlement.snapshot ? { demoAccess: settlement.snapshot } : {}),
+            error: { code: released.code, message: released.message },
+            ...(released.snapshot ? { demoAccess: released.snapshot } : {}),
           },
-          { status: settlement.status },
+          { status: 500 },
         );
       }
-      demoScreen = settlement.snapshot;
+      demoScreen = released.snapshot;
+      productJourneyReserved = false;
     }
     return NextResponse.json(
       {
@@ -587,25 +586,6 @@ export async function POST(request: NextRequest) {
     steps.push(stepResult("listing", "上架文案/关键词", "fallback", "已跳过（options.runListing=false）"));
   }
 
-  if (accessCtx.mode === "demo" && quotaReservation) {
-    const settlement = settleDemoAiJob(accessCtx, quotaReservation, {
-      providerCallsStarted: providerCallStartedCount,
-      providerCallsCompleted,
-      providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
-    });
-    if (!settlement.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: { code: settlement.code, message: settlement.message },
-          ...(settlement.snapshot ? { demoAccess: settlement.snapshot } : {}),
-        },
-        { status: settlement.status },
-      );
-    }
-    demoScreen = settlement.snapshot;
-  }
-
   // Step 5: Final Report
   const reportStartedAt = new Date().toISOString();
   const finalReport = buildFinalReport(sourcingResult, riskResult, summaryResult, {
@@ -622,6 +602,10 @@ export async function POST(request: NextRequest) {
     overallStatus = "partial_failed";
     warnings.push(`${fallbackSteps} 个步骤使用了兜底结果。`);
   }
+
+  const productJourneyStatus: "committed" | "released" | null = accessCtx.mode === "demo"
+    ? overallStatus === "failed" ? "released" : "committed"
+    : null;
 
   const result: WorkflowResult = {
     ok: true,
@@ -644,7 +628,7 @@ export async function POST(request: NextRequest) {
       providerCallsStarted: providerCallStartedCount,
       providerCallsCompleted,
       providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
-      quotaMetric: "ai_jobs_v1",
+      quotaMetric: "product_journeys_v1",
     },
     warnings,
     ...(r22CommercialValidation ? { r22CommercialValidation } : {}),
@@ -652,24 +636,20 @@ export async function POST(request: NextRequest) {
       researchMode: "market_research_only" as const,
       promotionEligible: false as const,
     } : {}),
-    ...(quotaReservation ? {
-      aiJob: {
-        jobType: "product_research" as const,
-        jobRequestId: quotaReservation.jobRequestId,
-        status: (providerCallStartedCount > 0 ? "committed" : "refunded") as "committed" | "refunded",
-        quotaMetric: "ai_jobs_v1" as const,
-        providerCallsPlanned: plannedAiCalls,
-        providerCallsStarted: providerCallStartedCount,
-        providerCallsCompleted,
-        providerCallsFailed: providerCallStartedCount - providerCallsCompleted,
+    ...(productJourneyStatus ? {
+      productJourney: {
+        identity: productJourneyIdentity,
+        status: productJourneyStatus,
+        quotaMetric: "product_journeys_v1" as const,
       },
     } : {}),
     // Demo-Login.1-E: include latest demo snapshot for Banner update
     ...(demoScreen ? { demoAccess: demoScreen } : {}),
   };
 
+  let runProof: string;
   try {
-    const runProof = createWorkflowRunProof({
+    runProof = createWorkflowRunProof({
       runId: workflowId,
       subject: buildWorkflowRunSubject(accessCtx),
       candidateId,
@@ -677,8 +657,18 @@ export async function POST(request: NextRequest) {
       resultHash: createWorkflowResultHash(result),
       status: overallStatus,
     });
-    return NextResponse.json({ ...result, runProof }, { status: 200 });
   } catch {
+    if (accessCtx.mode === "demo" && productJourneyReserved) {
+      const released = releaseDemoProductJourney(
+        accessCtx.demoAccessId,
+        productJourneyIdentity,
+        jobRequestId,
+      );
+      if (released.ok) {
+        demoScreen = released.snapshot;
+        productJourneyReserved = false;
+      }
+    }
     return NextResponse.json(
       {
         ok: false,
@@ -688,4 +678,28 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  if (accessCtx.mode === "demo" && productJourneyReserved) {
+    const settled = overallStatus === "failed"
+      ? releaseDemoProductJourney(accessCtx.demoAccessId, productJourneyIdentity, jobRequestId)
+      : commitDemoProductJourney(accessCtx.demoAccessId, productJourneyIdentity, jobRequestId);
+    if (!settled.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: { code: settled.code, message: settled.message },
+          ...(settled.snapshot ? { demoAccess: settled.snapshot } : {}),
+        },
+        { status: 500 },
+      );
+    }
+    demoScreen = settled.snapshot;
+    productJourneyReserved = false;
+  }
+
+  return NextResponse.json({
+    ...result,
+    ...(demoScreen ? { demoAccess: demoScreen } : {}),
+    runProof,
+  }, { status: 200 });
 }

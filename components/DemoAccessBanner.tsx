@@ -9,23 +9,14 @@ import {
   type DemoAccessInfo,
 } from "@/lib/client/accessToken";
 
-function formatExpiry(isoString: string | null): string {
-  if (!isoString) return "";
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    return new Intl.DateTimeFormat("zh-CN", {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(d);
-  } catch {
-    return isoString;
-  }
-}
-
 const BODY_PADDING_CLASS = "demo-banner-visible";
+
+export function formatDemoAccessBannerContent(demo: DemoAccessInfo): string {
+  if (demo.remainingProducts <= 0) {
+    return "访客体验 · 5个商品体验名额已全部使用，已有研究记录仍可查看。";
+  }
+  return `访客体验 · 已使用商品 ${demo.usedProducts} / ${demo.maxProducts} · 剩余 ${demo.remainingProducts} 个商品 · 每个商品可体验商品研究、人工决策、Listing和产品图片完整流程。`;
+}
 
 export function DemoAccessBanner() {
   const [mode, setMode] = useState<string | null>(null);
@@ -56,19 +47,10 @@ export function DemoAccessBanner() {
   // Nothing to show until hydrated, or if not demo mode
   if (!hydrated || mode !== "demo" || !demo) return null;
 
-  const isExpired = demo.expiresAt ? new Date(demo.expiresAt) < new Date() : false;
-  const isQuotaExhausted = demo.remainingAiCalls <= 0;
-
-  let content: string;
-  if (isExpired) {
-    content = "临时访问已过期，请联系管理员获取新的访问码";
-  } else if (isQuotaExhausted) {
-    content = "访客体验 · 真实 AI 操作次数已用完 · 正式数据只读";
-  } else {
-    content = `访客体验 · 正式数据只读 · 新增/修改仅保存到访客沙盒 · 真实 AI 操作次数 ${demo.remainingAiCalls}/${demo.maxAiCalls}${demo.expiresAt ? ` · 有效期至 ${formatExpiry(demo.expiresAt)}` : ""}`;
-  }
-
-  const tone = isExpired ? "border-rose-200 bg-rose-50/90 text-rose-700" : "border-amber-200 bg-amber-50/90 text-amber-700";
+  const content = formatDemoAccessBannerContent(demo);
+  const tone = demo.remainingProducts <= 0
+    ? "border-rose-200 bg-rose-50/90 text-rose-700"
+    : "border-amber-200 bg-amber-50/90 text-amber-700";
 
   return (
     <div

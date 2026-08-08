@@ -120,7 +120,10 @@ export function createWorkflowInputHash(input: WorkflowRunInput): string {
 
 export function createWorkflowResultHash(workflowResult: unknown): string {
   if (!isRecord(workflowResult)) return sha256(workflowResult);
-  const { runProof: _runProof, ...unsignedResult } = workflowResult;
+  // Access/quota snapshots are response metadata, not research evidence. They
+  // may change during the final reserve -> commit/release transition and must
+  // not invalidate an otherwise identical signed research result.
+  const { runProof: _runProof, demoAccess: _demoAccess, ...unsignedResult } = workflowResult;
   return sha256(unsignedResult);
 }
 

@@ -6,9 +6,16 @@
       "label": "示例：杭州某公司一面",
       "passwordHash": "sha256:REPLACE_WITH_REAL_HASH",
       "salt": "REPLACE_WITH_REAL_SALT",
-      "expiresAt": "2026-06-27T00:00:00.000Z",
-      "maxAiCalls": 5,
+      "expiresAt": null,
+      "maxAiCalls": 0,
       "usedAiCalls": 0,
+      "productJourneyReservations": {},
+      "productJourneyMigration": {
+        "version": "sandbox-product-journeys-v1",
+        "migratedAt": "2026-08-08T00:00:00.000Z",
+        "sourceTaskCount": 0,
+        "sourceCandidateCount": 0
+      },
       "isActive": false,
       "createdAt": "2026-06-26T00:00:00.000Z",
       "lastUsedAt": null,

@@ -10,9 +10,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessPassword } from "@/lib/server/accessPassword";
-import { findDemoAccessByPassword, isDemoAccessActive, getRemainingAiCalls, activateDemoAccessOnFirstLogin } from "@/lib/server/demoAccess";
+import { clearDemoAccessLegacyExpiry, findDemoAccessByPassword } from "@/lib/server/demoAccess";
 import { createOwnerSession, createDemoSession } from "@/lib/server/accessSession";
 import { generateSignedToken } from "@/lib/server/signedToken";
+import { getDemoProductJourneySnapshot } from "@/lib/server/demoProductJourneyQuota";
 
 export async function POST(request: NextRequest) {
   // Parse body
@@ -65,21 +66,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Activate on first login: start 24h timer from now
-    if (!demoAccess.expiresAt) {
-      const activated = activateDemoAccessOnFirstLogin(demoAccess.id, 24);
-      if (activated) demoAccess = activated;
-    }
-
-    // Check expiry (only relevant after activation)
-    if (demoAccess.expiresAt && new Date(demoAccess.expiresAt) < new Date()) {
+    // V2.1.7: Visitor codes no longer expire by time. Clear the legacy field
+    // while keeping the signed login token's independent 12-hour TTL.
+    const migrated = clearDemoAccessLegacyExpiry(demoAccess.id);
+    if (!migrated) {
       return NextResponse.json(
-        { ok: false, error: { code: "demo_access_expired", message: "该演示访问已超过 24 小时有效期。" } },
-        { status: 403 }
+        { ok: false, error: { code: "server_error", message: "访客访问状态暂不可用，请稍后重试。" } },
+        { status: 500 }
+      );
+    }
+    demoAccess = migrated;
+
+    let productJourneySnapshot;
+    try {
+      productJourneySnapshot = getDemoProductJourneySnapshot(demoAccess.id);
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: { code: "server_error", message: "访客商品名额状态暂不可用，请稍后重试。" } },
+        { status: 500 }
       );
     }
 
-    // Allow login even with 0 remaining AI calls — frontend shows 0, API will block actual AI calls later
+    // Quota exhaustion never invalidates the identity: existing product history
+    // remains readable while new product creation is blocked at its own boundary.
     let signedToken: string;
     try {
       signedToken = generateSignedToken("demo", demoAccess.id);
@@ -94,14 +103,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       mode: "demo",
       accessToken: signedToken,
-      demoAccess: {
-        id: demoAccess.id,
-        label: demoAccess.label,
-        expiresAt: demoAccess.expiresAt,
-        maxAiCalls: demoAccess.maxAiCalls,
-        usedAiCalls: demoAccess.usedAiCalls,
-        remainingAiCalls: getRemainingAiCalls(demoAccess),
-      },
+      demoAccess: productJourneySnapshot,
     });
   }
 

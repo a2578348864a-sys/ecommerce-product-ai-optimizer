@@ -17,6 +17,19 @@ const storage = {
   clear: () => values.clear(),
 };
 
+const INITIAL = {
+  id: "visitor-a",
+  label: "Visitor A",
+  expiresAt: null,
+  isActive: true,
+  quotaMetric: "product_journeys_v1" as const,
+  maxProducts: 5,
+  usedProducts: 0,
+  reservedProducts: 0,
+  remainingProducts: 5,
+  migrationStatus: "migrated" as const,
+};
+
 beforeEach(() => {
   values.clear();
   dispatchEvent.mockClear();
@@ -30,84 +43,68 @@ beforeEach(() => {
 });
 
 describe("updateDemoAccessSnapshot", () => {
-  it("persists the latest AI-job quota and notifies same-page consumers immediately", () => {
-    saveAccessToken("test-token", "demo", {
-      id: "visitor-a",
-      label: "Visitor A",
-      expiresAt: null,
-      maxAiCalls: 5,
-      usedAiCalls: 0,
-      remainingAiCalls: 5,
-    });
+  it("persists the latest product-journey quota and notifies same-page consumers immediately", () => {
+    saveAccessToken("test-token", "demo", INITIAL);
 
     updateDemoAccessSnapshot({
-      id: "visitor-a",
-      label: "Visitor A",
-      expiresAt: null,
-      maxAiCalls: 5,
-      usedAiCalls: 1,
-      remainingAiCalls: 4,
-      quotaMetric: "ai_jobs_v1",
-      maxAiJobs: 5,
-      usedAiJobs: 1,
-      remainingAiJobs: 4,
+      ...INITIAL,
+      usedProducts: 1,
+      remainingProducts: 4,
     });
 
     expect(getDemoAccessInfo()).toMatchObject({
-      usedAiCalls: 1,
-      remainingAiCalls: 4,
-      quotaMetric: "ai_jobs_v1",
+      usedProducts: 1,
+      remainingProducts: 4,
+      quotaMetric: "product_journeys_v1",
     });
     expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
       type: "qx:demo-access-updated",
     }));
   });
 
-  it("does not roll quota backward when a stale error response arrives later", () => {
+  it("does not roll committed usage backward when a stale response arrives later", () => {
     saveAccessToken("test-token", "demo", {
-      id: "visitor-a",
-      label: "Visitor A",
-      expiresAt: null,
-      maxAiCalls: 5,
-      usedAiCalls: 1,
-      remainingAiCalls: 4,
+      ...INITIAL,
+      usedProducts: 1,
+      remainingProducts: 4,
     });
 
-    updateDemoAccessSnapshot({
-      id: "visitor-a",
-      label: "Visitor A",
-      expiresAt: null,
-      maxAiCalls: 5,
-      usedAiCalls: 0,
-      remainingAiCalls: 5,
-    });
+    updateDemoAccessSnapshot(INITIAL);
 
     expect(getDemoAccessInfo()).toMatchObject({
-      usedAiCalls: 1,
-      remainingAiCalls: 4,
+      usedProducts: 1,
+      remainingProducts: 4,
+    });
+  });
+
+  it("allows a released in-flight reservation to restore remaining capacity", () => {
+    saveAccessToken("test-token", "demo", {
+      ...INITIAL,
+      reservedProducts: 1,
+      remainingProducts: 4,
+    });
+
+    updateDemoAccessSnapshot(INITIAL);
+
+    expect(getDemoAccessInfo()).toMatchObject({
+      usedProducts: 0,
+      reservedProducts: 0,
+      remainingProducts: 5,
     });
   });
 
   it("rejects a snapshot for a different Visitor identity", () => {
-    saveAccessToken("test-token", "demo", {
-      id: "visitor-a",
-      label: "Visitor A",
-      expiresAt: null,
-      maxAiCalls: 5,
-      usedAiCalls: 0,
-      remainingAiCalls: 5,
-    });
+    saveAccessToken("test-token", "demo", INITIAL);
 
     updateDemoAccessSnapshot({
+      ...INITIAL,
       id: "visitor-b",
       label: "Visitor B",
-      expiresAt: null,
-      maxAiCalls: 5,
-      usedAiCalls: 1,
-      remainingAiCalls: 4,
+      usedProducts: 1,
+      remainingProducts: 4,
     });
 
     expect(getDemoAccessInfo()?.id).toBe("visitor-a");
-    expect(getDemoAccessInfo()?.remainingAiCalls).toBe(5);
+    expect(getDemoAccessInfo()?.remainingProducts).toBe(5);
   });
 });

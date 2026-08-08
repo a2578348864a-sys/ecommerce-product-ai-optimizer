@@ -41,9 +41,7 @@ export default function Home() {
         const code = json?.error?.code;
         const message = json?.error?.message || "验证失败，请稍后重试。";
 
-        if (code === "demo_access_expired") {
-          setLoginError("该演示访问已超过 24 小时有效期，请联系项目作者获取新的演示密码。");
-        } else if (code === "demo_access_inactive") {
+        if (code === "demo_access_inactive") {
           setLoginError("该演示访问已被停用。");
         } else if (res.status === 401 || res.status === 403) {
           setLoginError(message);
@@ -60,9 +58,13 @@ export default function Home() {
             id: json.demoAccess.id,
             label: json.demoAccess.label,
             expiresAt: json.demoAccess.expiresAt,
-            maxAiCalls: json.demoAccess.maxAiCalls,
-            usedAiCalls: json.demoAccess.usedAiCalls,
-            remainingAiCalls: json.demoAccess.remainingAiCalls,
+            isActive: json.demoAccess.isActive,
+            quotaMetric: "product_journeys_v1",
+            maxProducts: json.demoAccess.maxProducts,
+            usedProducts: json.demoAccess.usedProducts,
+            reservedProducts: json.demoAccess.reservedProducts,
+            remainingProducts: json.demoAccess.remainingProducts,
+            migrationStatus: "migrated",
           }
         : undefined;
 
