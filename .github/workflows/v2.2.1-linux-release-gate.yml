@@ -1,0 +1,125 @@
+name: V2.2.1 Linux Release Gate
+
+on:
+  push:
+    branches:
+      - codex/v2.2.1-linux-release-gate
+    paths:
+      - .github/workflows/v2.2.1-linux-release-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout immutable product commit
+        uses: actions/checkout@v4
+        with:
+          ref: c1ff415cf28af6c923286da5e9e44d72cfee3929
+          persist-credentials: false
+
+      - name: Confirm product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "c1ff415cf28af6c923286da5e9e44d72cfee3929"
+          test -z "$(git status --porcelain)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+
+      - name: Confirm Linux x64 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (process.platform !== "linux" || process.arch !== "x64" || major < 20 || (major === 20 && minor < 9)) process.exit(1); console.log(JSON.stringify({node: process.versions.node, platform: process.platform, arch: process.arch}))'
+
+      - name: Install frozen dependencies
+        run: npm ci
+
+      - name: Production dependency audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --json > production-audit.json
+          node -e 'const report=require("./production-audit.json"); const counts=report.metadata?.vulnerabilities ?? {}; console.log(JSON.stringify(counts)); if ((counts.critical ?? 0) !== 0 || (counts.high ?? 0) !== 0) process.exit(1)'
+          rm production-audit.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Hotfix targeted tests
+        run: >-
+          npx vitest run
+          components/cross-border/ProductBatchManager.test.ts
+          components/listing-studio/ListingStudioProductPolish.test.ts
+          components/image-studio/ImageStudioProductPolish.test.ts
+          components/phase2StudioNavigation.test.ts
+          components/studio/TaskStudioPreparation.test.ts
+          lib/client/studioProgress.test.ts
+          lib/client/studioImageRequest.test.ts
+          lib/client/studioTaskPrefill.test.ts
+          lib/studioImageInput.phase2.test.ts
+          lib/studioListingInput.phase2.test.ts
+          'app/api/tasks/[id]/creative-handoff/route.security.test.ts'
+          'app/api/tasks/[id]/image-handoff/route.phase2.test.ts'
+
+      - name: Webpack production build
+        run: npm run build
+        env:
+          DATABASE_URL: file:./dev.db
+          ACCESS_PASSWORD: ci-test-password
+          AI_PROVIDER: deepseek
+          DEEPSEEK_API_KEY: sk-placeholder
+          DEEPSEEK_BASE_URL: https://api.deepseek.com
+          DEEPSEEK_MODEL: deepseek-chat
+
+      - name: Verify build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .next/BUILD_ID
+          node -e 'const p=require("./node_modules/next/package.json"); if (p.version !== "16.3.0") process.exit(1); console.log(`next=${p.version}`)'
+
+      - name: Package immutable Linux artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="next-v2.2.1-c1ff415-linux-x64.tar.gz"
+          tar -czf "$artifact" .next
+          if tar -tzf "$artifact" | grep -Ev '^\.next(/|$)' | grep -q .; then
+            echo "Artifact contains an unexpected path" >&2
+            exit 1
+          fi
+          sha256="$(sha256sum "$artifact" | awk '{print $1}')"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sharp_version="$(npm ls sharp --json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const tree=JSON.parse(input); const version=tree.dependencies?.sharp?.version; if (!version) process.exit(1); process.stdout.write(version); })')"
+          node -e 'const fs=require("node:fs"); const manifest={version:"2.2.1",commit:"c1ff415cf28af6c923286da5e9e44d72cfee3929",next:"16.3.0",node:process.versions.node,sharp:process.argv[4],platform:`${process.platform}-${process.arch}`,builtAt:process.argv[1],buildId:fs.readFileSync(".next/BUILD_ID","utf8").trim(),artifact:process.argv[2],artifactSha256:process.argv[3],serverBuildAllowed:false}; fs.writeFileSync("release-manifest.json",JSON.stringify(manifest,null,2)+"\n")' "$built_at" "$artifact" "$sha256" "$sharp_version"
+          test "$(node -p 'require("./release-manifest.json").commit')" = "c1ff415cf28af6c923286da5e9e44d72cfee3929"
+          test "$(node -p 'require("./release-manifest.json").platform')" = "linux-x64"
+          test "$(node -p 'require("./release-manifest.json").artifactSha256')" = "$sha256"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          node -e 'const m=require("./release-manifest.json"); console.log(JSON.stringify(m,null,2))'
+
+      - name: Upload verified Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingxuan-v2.2.1-linux-x64-c1ff415
+          path: |
+            ${{ steps.package.outputs.artifact }}
+            release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
