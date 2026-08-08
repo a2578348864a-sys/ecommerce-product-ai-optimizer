@@ -53,11 +53,22 @@ const item: ProductBatchItemView = {
       price: { status: "resolved", normalized: 29.99 },
       rating: { status: "resolved", normalized: 4.5 },
       reviews: { status: "resolved", normalized: 120 },
+      estimatedMonthlySales: { status: "resolved", normalized: 25957 },
     },
   }),
   occurrenceProjectionJson: '{"occurrences":[]}',
   familyProjectionJson: '{"family":null}',
-  rankingJson: '{"scoreRank":1,"researchPriority":"priority_1"}',
+  rankingJson: JSON.stringify({
+    scoreRank: 1,
+    researchPriority: "priority_1",
+    evidenceStatus: "sufficient_for_comparison",
+    positiveReasons: [
+      "price_within_brief_range",
+      "organic_visibility_observed",
+    ],
+    counterSignals: ["multiple_variations_context_only_no_score"],
+    missingSignals: ["reviews"],
+  }),
   provisionalDisposition: "provisional_score_only",
   researchPriority: "priority_1",
   evidenceStatus: "sufficient_for_comparison",
@@ -81,6 +92,7 @@ function render(
     categoryStatus?: "detected" | "mixed_requires_confirmation" | "unknown";
     selectedCategory?: string;
     batches?: unknown[];
+    errorMessage?: string | null;
   } = {},
 ) {
   const selectedBatch = overrides.selectedBatch ?? batch;
@@ -100,6 +112,7 @@ function render(
     selectedBatch,
     selectedItems: [overrides.selectedItem ?? item],
     busy: false,
+    errorMessage: overrides.errorMessage,
     manualReportTypeRequired: overrides.manualReportTypeRequired,
     importInspectionState: overrides.importInspectionState ?? "ready",
     importInspection: {
@@ -131,7 +144,7 @@ describe("ProductBatch unified role UI", () => {
     const visitor = render("visitor");
     for (const label of [
       "上传报表",
-      "上传并预览报表",
+      "导入并查看优先级",
       "历史导入",
       "查看商品",
       "设为当前",
@@ -140,8 +153,7 @@ describe("ProductBatch unified role UI", () => {
       expect(owner).toContain(label);
       expect(visitor).toContain(label);
     }
-    // 已移除内嵌上传表单与旧版候选入口
-    expect(owner).not.toContain("导入新批次");
+    expect(owner).toContain('name="file"');
     expect(owner).not.toContain("查看旧版候选");
     expect(owner).not.toContain("旧版候选批次");
     expect(visitor).not.toContain("仅 Owner");
@@ -157,35 +169,70 @@ describe("ProductBatch unified role UI", () => {
     expect(owner).not.toContain("已使用商品");
   });
 
-  it("offers the same single primary research action for eligible Owner and Visitor items", () => {
+  it("offers the same single add-to-research action for eligible Owner and Visitor items", () => {
     const owner = render("owner");
     const html = render("visitor");
     expect(html).toContain("Closet organizer");
-    expect(html).toContain("研究此商品");
-    expect(owner).toContain("研究此商品");
-    expect(html.match(/研究此商品/g)).toHaveLength(1);
+    expect(html).toContain("加入研究");
+    expect(owner).toContain("加入研究");
+    expect(html.match(/加入研究/g)).toHaveLength(1);
     expect(html).not.toContain("/agent/run");
   });
 
-  it("replaces the inline upload form with a single upload entry to sellersprite-preview", () => {
+  it("restores the existing inline inspect/import form as the only new import entry", () => {
     const automatic = render("owner");
     const fallback = render("owner", {
       manualReportTypeRequired: true,
       importInspectionState: "manual",
     });
 
-    // 内嵌上传表单已移除，统一入口指向 sellersprite-preview
     expect(automatic).toContain("上传报表");
-    expect(automatic).toContain("上传并预览报表");
-    expect(automatic).toMatch(/href="\/opportunities\/sellersprite-preview"/);
-    expect(automatic).not.toContain("导入新批次");
-    expect(automatic).not.toContain("已自动识别文件结构");
-    expect(automatic).not.toContain("手动选择报表类型");
+    expect(automatic).toContain('name="file"');
+    expect(automatic).toContain('accept=".xlsx"');
+    expect(automatic).toContain('name="reportType"');
+    expect(automatic).toContain('name="query"');
+    expect(automatic).toContain('name="category"');
+    expect(automatic).toContain('name="priceMin"');
+    expect(automatic).toContain('name="priceMax"');
+    expect(automatic).toContain("已识别为搜索结果报表");
+    expect(automatic).toContain("导入并查看优先级");
+    expect(automatic).not.toMatch(/href="\/opportunities\/sellersprite-preview"/);
+    expect(fallback).toContain("手动选择报表类型");
     // 保留批次商品内部信息折叠（不暴露技术字段名）
     expect(automatic).toMatch(/<details[^>]*><summary[^>]*>报表信息<\/summary>/);
   });
 
-  it("removes legacy candidate batch entry while keeping item internals collapsed", () => {
+  it("shows XLSX inspection errors next to the import form", () => {
+    const html = render("owner", {
+      importInspectionState: "error",
+      manualReportTypeRequired: true,
+      errorMessage: "SellerSprite XLSX 文件结构无法识别",
+    });
+
+    expect(html).toContain("SellerSprite XLSX 文件结构无法识别");
+  });
+
+  it("shows the intelligent research priority with evidence and third-party estimate boundaries", () => {
+    const html = render("owner");
+
+    expect(html).toContain("智能研究优先级");
+    expect(html).toContain("优先研究");
+    expect(html).toContain("证据较完整，可用于批次内比较");
+    expect(html).toContain("第三方估算月销量");
+    expect(html).toContain("25,957");
+    expect(html).toContain("有利信号");
+    expect(html).toContain("价格在本次研究范围内");
+    expect(html).toContain("观察到自然搜索曝光");
+    expect(html).toContain("反向信号");
+    expect(html).toContain("变体较多，仅作背景信息，未计分");
+    expect(html).toContain("缺失信号");
+    expect(html).toContain("评论数");
+    for (const forbidden of ["AI推荐购买", "爆款", "赚钱概率"]) {
+      expect(html).not.toContain(forbidden);
+    }
+  });
+
+  it("removes the legacy candidate entry while keeping ranking evidence explainable", () => {
     const html = render("owner", {
       selection: {
         activeProductBatchId: null,
@@ -194,21 +241,22 @@ describe("ProductBatch unified role UI", () => {
       },
     });
 
-    // 旧版候选批次入口已移除；批次商品内部信息仍折叠展示
+    // 旧版候选批次入口已移除；新的排序依据可展开查看
     expect(html).not.toContain("旧版候选批次");
     expect(html).not.toContain("查看旧版候选");
-    expect(html).toContain("研究顺序：priority_1");
+    expect(html).toContain("智能研究优先级");
+    expect(html).toContain("优先研究");
     expect(html).toContain("ASIN：B000000001");
     expect(html).not.toContain("ProductBatch V1");
     expect(html).not.toContain("切回 Legacy");
-    expect(html).toMatch(/<details[^>]*><summary[^>]*>商品信息<\/summary>/);
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>查看排序依据<\/summary>/);
     expect(html).not.toMatch(/<details[^>]*open/);
   });
 
   it("shows a clear empty state with upload button when no batch exists", () => {
     const empty = render("owner", { batches: [] });
     expect(empty).toContain("还没有导入商品");
-    expect(empty).toContain("上传并预览报表");
+    expect(empty).toContain("使用上方上传区导入 SellerSprite XLSX");
   });
 
   it("shows a validated cached product image and keeps a safe placeholder otherwise", () => {
@@ -280,9 +328,9 @@ describe("ProductBatch unified role UI", () => {
     expect(inactive).toContain("请先把该批次设置为当前批次");
     expect(blockedQuality).toContain("批次数据质量尚未通过");
     expect(forgedPromotion).toContain("商品来源状态异常");
-    expect(inactive).toMatch(/<button[^>]*disabled[^>]*>研究此商品<\/button>/);
-    expect(blockedQuality).toMatch(/<button[^>]*disabled[^>]*>研究此商品<\/button>/);
-    expect(forgedPromotion).toMatch(/<button[^>]*disabled[^>]*>研究此商品<\/button>/);
+    expect(inactive).toMatch(/<button[^>]*disabled[^>]*>加入研究<\/button>/);
+    expect(blockedQuality).toMatch(/<button[^>]*disabled[^>]*>加入研究<\/button>/);
+    expect(forgedPromotion).toMatch(/<button[^>]*disabled[^>]*>加入研究<\/button>/);
   });
 
   it("does not expose private batch data in the unauthenticated state", () => {

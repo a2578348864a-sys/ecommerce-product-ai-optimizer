@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   txFindUnique: vi.fn(),
   txCreate: vi.fn(),
+  createSandbox: vi.fn(),
   getSelection: vi.fn(),
   getBatch: vi.fn(),
   getBatchItems: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock("@/lib/server/productBatchStoreResolver", () => ({
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({
-  createOrReuseSandboxProductBatchCandidate: vi.fn(),
+  createOrReuseSandboxProductBatchCandidate: mocks.createSandbox,
   SandboxProductBatchCandidateError: class SandboxProductBatchCandidateError extends Error {
     constructor(public readonly code: string, message: string) {
       super(message);
@@ -148,6 +149,24 @@ beforeEach(() => {
   });
   mocks.getBatch.mockResolvedValue(batch());
   mocks.getBatchItems.mockResolvedValue([item()]);
+  mocks.createSandbox.mockImplementation(async (_accessId: string, input: {
+    name: string;
+    status: string;
+    sourceMetaJson: string;
+    analysisJson: string;
+    originProductBatchItemId: string;
+  }) => ({
+    created: true,
+    candidate: {
+      id: "visitor-candidate-a",
+      name: input.name,
+      status: input.status,
+      sourceMetaJson: input.sourceMetaJson,
+      analysisJson: input.analysisJson,
+      convertedTaskId: null,
+      originProductBatchItemId: input.originProductBatchItemId,
+    },
+  }));
 });
 
 describe("Owner ProductBatchItem to Candidate conversion", () => {
@@ -164,7 +183,7 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
 
     expect(first.candidateId).toBe(repeated.candidateId);
     expect(first.destinationUrl).toBe(
-      `/agent/run?source=opportunity&candidateId=${encodeURIComponent(first.candidateId)}`,
+      `/opportunity-candidates/${encodeURIComponent(first.candidateId)}`,
     );
     expect(first.destinationUrl).not.toContain("sourceMeta");
     expect(first.destinationUrl).not.toContain("Closet");
@@ -192,6 +211,35 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
 
     expect(sameAsinDifferentBatch.candidateId).not.toBe(first.candidateId);
     expect(records.size).toBe(2);
+  });
+
+  it("uses the isolated Visitor Candidate store and stops before Agent execution", async () => {
+    const result = await convertProductBatchItemToCandidate(
+      {
+        mode: "demo",
+        token: "demo",
+        demoAccessId: "visitor-a",
+        isActive: true,
+        isExpired: false,
+        remainingAiCalls: 1,
+      },
+      "item-a",
+    );
+
+    expect(mocks.createSandbox).toHaveBeenCalledWith(
+      "visitor-a",
+      expect.objectContaining({
+        status: "worth_analyzing",
+        originProductBatchItemId: "item-a",
+      }),
+    );
+    expect(result).toMatchObject({
+      candidateId: "visitor-candidate-a",
+      created: true,
+      destination: "research",
+      destinationUrl: "/opportunity-candidates/visitor-candidate-a",
+    });
+    expect(result.destinationUrl).not.toContain("/agent/run");
   });
 
   it("returns existing history instead of creating a duplicate Candidate or Task", async () => {

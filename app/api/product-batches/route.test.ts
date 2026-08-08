@@ -139,14 +139,58 @@ describe("unified ProductBatch API", () => {
   it("lets Visitor import through the same route without accepting identity selectors", async () => {
     mocks.context.mode = "demo";
     const response = await POST(formRequest());
+    const body = await response.json();
     expect(response.status).toBe(201);
     expect(mocks.importSellerSpriteProductBatch).toHaveBeenCalledOnce();
     expect(mocks.getProductBatchStore).toHaveBeenCalledWith(mocks.context);
+    expect(mocks.store.activateBatch).toHaveBeenCalledWith("batch-a");
+    expect(body.data.selection.activeProductBatchId).toBe("batch-a");
 
     for (const field of ["demoAccessId", "ownerSubject", "storageMode", "accessMode"]) {
       const rejected = await POST(formRequest({ [field]: "owner" }));
       expect(rejected.status).toBe(400);
     }
+  });
+
+  it.each(["owner", "demo"] as const)(
+    "makes an imported or reused ready batch active for %s",
+    async (mode) => {
+      mocks.context.mode = mode;
+      mocks.importSellerSpriteProductBatch.mockResolvedValueOnce({
+        created: false,
+        batch: { id: "batch-ready", batchStatus: "ready" },
+      });
+      mocks.store.activateBatch.mockResolvedValueOnce({
+        activeProductBatchId: "batch-ready",
+        activeLegacyRegistrationId: null,
+        updatedAt: "2026-08-08T00:00:00.000Z",
+      });
+
+      const response = await POST(formRequest());
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(mocks.store.activateBatch).toHaveBeenCalledWith("batch-ready");
+      expect(body.data.selection).toEqual({
+        activeProductBatchId: "batch-ready",
+        activeLegacyRegistrationId: null,
+        updatedAt: "2026-08-08T00:00:00.000Z",
+      });
+    },
+  );
+
+  it("does not silently reactivate an archived deduplicated batch", async () => {
+    mocks.importSellerSpriteProductBatch.mockResolvedValueOnce({
+      created: false,
+      batch: { id: "batch-archived", batchStatus: "archived" },
+    });
+
+    const response = await POST(formRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe("product_batch_archived");
+    expect(mocks.store.activateBatch).not.toHaveBeenCalled();
   });
   mocks.inspectSellerSpriteProductBatch.mockReturnValue({
     reportType: "category_current",

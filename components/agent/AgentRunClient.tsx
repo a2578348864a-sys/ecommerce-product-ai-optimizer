@@ -938,6 +938,7 @@ export function AgentRunClient({
           source: sourceMeta ? "opportunity" : "manual",
           candidateId: sourceMeta?.candidateId || undefined,
           jobRequestId: jobRequestIdRef.current,
+          options: { runListing: false },
           accessPassword: currentAccessCredential,
           accessToken: accessHeaders["x-access-token"] || undefined,
         }),

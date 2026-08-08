@@ -1,4 +1,5 @@
 import type { ProductBatchReportType } from "@/lib/productBatchContract";
+import type { ProductBatchItemView } from "@/lib/productBatchStore";
 import type { SellerSpriteDetectedReportType } from "@/lib/upstream/sellersprite/reportType";
 
 export const AMAZON_US_TOP_LEVEL_CATEGORIES = [
@@ -151,4 +152,151 @@ export function productBatchReportTypeLabel(reportType: ProductBatchReportType):
   return reportType === "search_results"
     ? "搜索结果报表"
     : "类目商品报表";
+}
+
+export type ProductBatchItemPresentation = {
+  title: string;
+  asin: string | null;
+  price: string;
+  rating: string;
+  reviews: string;
+  estimatedMonthlySales: string;
+  researchPriority: string;
+  evidenceStatus: string;
+  positiveReasons: string[];
+  counterSignals: string[];
+  missingSignals: string[];
+};
+
+const RESEARCH_PRIORITY_LABELS: Readonly<Record<string, string>> = {
+  priority_1: "优先研究",
+  priority_2: "次优先研究",
+  priority_3: "后续研究",
+  unranked_insufficient_evidence: "暂不排序（证据不足）",
+};
+
+const EVIDENCE_STATUS_LABELS: Readonly<Record<string, string>> = {
+  sufficient_for_comparison: "证据较完整，可用于批次内比较",
+  limited_evidence: "证据有限，需要补充核验",
+  insufficient_evidence: "证据不足，暂不参与排序",
+};
+
+const MARKET_SIGNAL_LABELS: Readonly<Record<string, string>> = {
+  price_within_brief_range: "价格在本次研究范围内",
+  price_outside_brief_range: "价格不在本次研究范围内",
+  estimated_monthly_sales_at_or_above_report_midpoint:
+    "SellerSprite 估算月销量不低于本报告中位数",
+  estimated_monthly_sales_below_report_midpoint:
+    "SellerSprite 估算月销量低于本报告中位数",
+  rating_quality_supported: "评分与评论证据相对充分",
+  rating_quality_limited: "评分与评论证据相对有限",
+  sales_review_efficiency_at_or_above_neutral: "估算销量与评论数的相对关系不低于中性水平",
+  sales_review_efficiency_below_neutral: "估算销量与评论数的相对关系低于中性水平",
+  organic_visibility_observed: "观察到自然搜索曝光",
+  sponsored_only_visibility: "只观察到广告曝光",
+  organic_and_sponsored_coverage: "同时观察到自然与广告曝光",
+  organic_visibility_zero_with_sponsored_evidence: "有广告曝光证据，但未观察到自然曝光",
+  multiple_variations_context_only_no_score: "变体较多，仅作背景信息，未计分",
+  core_estimated_monthly_sales_conflicting: "核心估算月销量数据存在冲突",
+  core_estimated_monthly_sales_missing: "缺少核心估算月销量数据",
+  core_search_placement_missing: "缺少核心搜索位置数据",
+  root_category_bsr_comparable: "根类目 BSR 可在本报告内比较",
+  subcategory_bsr_not_comparable: "子类目 BSR 暂不可比较",
+  subcategory_bsr_comparable_within_exact_group: "子类目 BSR 可在相同分组内比较",
+  core_root_category_bsr_conflicting: "核心根类目 BSR 数据存在冲突",
+  core_root_category_bsr_missing: "缺少核心根类目 BSR 数据",
+};
+
+const MISSING_SIGNAL_LABELS: Readonly<Record<string, string>> = {
+  productTitle: "商品标题",
+  brand: "品牌",
+  price: "价格",
+  priceFit: "价格范围匹配信息",
+  rating: "评分",
+  reviews: "评论数",
+  estimatedMonthlySales: "SellerSprite 估算月销量",
+  searchPlacement: "搜索位置",
+  rootCategoryBsr: "根类目 BSR",
+  subCategory: "子类目",
+  subCategoryBsr: "子类目 BSR",
+};
+
+function parseObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function boundedText(value: unknown, limit = 500): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text && text.length <= limit ? text : null;
+}
+
+function resolvedMetric(
+  product: Record<string, unknown> | null,
+  field: string,
+): string | number | null {
+  const metrics = product?.providerMetrics;
+  if (typeof metrics !== "object" || metrics === null || Array.isArray(metrics)) return null;
+  const metric = (metrics as Record<string, unknown>)[field];
+  if (typeof metric !== "object" || metric === null || Array.isArray(metric)) return null;
+  const record = metric as Record<string, unknown>;
+  if (record.status !== "resolved") return null;
+  const normalized = record.normalized;
+  if (typeof normalized === "number") return Number.isFinite(normalized) ? normalized : null;
+  return boundedText(normalized);
+}
+
+function metricText(
+  product: Record<string, unknown> | null,
+  field: string,
+  missing: string,
+  grouped = false,
+): string {
+  const value = resolvedMetric(product, field);
+  if (value === null) return missing;
+  return typeof value === "number" && grouped
+    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
+    : String(value);
+}
+
+function signalList(
+  ranking: Record<string, unknown> | null,
+  field: "positiveReasons" | "counterSignals" | "missingSignals",
+): string[] {
+  const value = ranking?.[field];
+  if (!Array.isArray(value)) return [];
+  const labels = field === "missingSignals" ? MISSING_SIGNAL_LABELS : MARKET_SIGNAL_LABELS;
+  return value
+    .slice(0, 24)
+    .flatMap((entry) => {
+      const code = boundedText(entry, 120);
+      return code ? [labels[code] ?? code] : [];
+    });
+}
+
+export function readProductBatchItemPresentation(
+  item: ProductBatchItemView,
+): ProductBatchItemPresentation {
+  const product = parseObject(item.normalizedProductJson);
+  const ranking = parseObject(item.rankingJson);
+  return {
+    title: boundedText(resolvedMetric(product, "productTitle")) ?? "商品标题缺失",
+    asin: boundedText(item.asin, 32),
+    price: metricText(product, "price", "待确认"),
+    rating: metricText(product, "rating", "缺失"),
+    reviews: metricText(product, "reviews", "缺失", true),
+    estimatedMonthlySales: metricText(product, "estimatedMonthlySales", "缺失", true),
+    researchPriority: RESEARCH_PRIORITY_LABELS[item.researchPriority] ?? "研究顺序待确认",
+    evidenceStatus: EVIDENCE_STATUS_LABELS[item.evidenceStatus] ?? "证据状态待确认",
+    positiveReasons: signalList(ranking, "positiveReasons"),
+    counterSignals: signalList(ranking, "counterSignals"),
+    missingSignals: signalList(ranking, "missingSignals"),
+  };
 }

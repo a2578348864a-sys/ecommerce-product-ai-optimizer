@@ -166,15 +166,11 @@ function conversionResult(
       sourceMeta,
     };
   }
-  const search = new URLSearchParams({
-    source: "opportunity",
-    candidateId: candidate.id,
-  });
   return {
     candidateId: candidate.id,
     created,
     destination: "research",
-    destinationUrl: `/agent/run?${search.toString()}`,
+    destinationUrl: `/opportunity-candidates/${encodeURIComponent(candidate.id)}`,
     sourceMeta,
   };
 }

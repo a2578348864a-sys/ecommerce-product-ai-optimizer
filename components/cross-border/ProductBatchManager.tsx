@@ -19,6 +19,7 @@ import { ResearchProductImage } from "@/components/ResearchProductImage";
 import {
   AMAZON_US_TOP_LEVEL_CATEGORIES,
   productBatchReportTypeLabel,
+  readProductBatchItemPresentation,
   type ProductBatchImportInspection,
 } from "@/lib/productBatchPresentation";
 import { readProductBatchItemImageSnapshot } from "@/lib/productBatchImagePresentation";
@@ -82,25 +83,6 @@ function batchStatus(value: ProductBatchView["batchStatus"]): string {
   if (value === "ready") return "可使用";
   if (value === "blocked") return "已阻断";
   return "已归档";
-}
-
-function metricValue(
-  item: ProductBatchItemView,
-  field: "productTitle" | "price" | "rating" | "reviews",
-): string {
-  try {
-    const product = JSON.parse(item.normalizedProductJson) as {
-      providerMetrics?: Record<string, { status?: string; normalized?: unknown }>;
-    };
-    const metric = product.providerMetrics?.[field];
-    if (metric?.status !== "resolved") return field === "price" ? "待确认" : "缺失";
-    if (typeof metric.normalized === "string" || typeof metric.normalized === "number") {
-      return String(metric.normalized);
-    }
-  } catch {
-    // A corrupt item should remain visibly unavailable, never be guessed.
-  }
-  return field === "price" ? "待确认" : "缺失";
 }
 
 function researchBlockedReason(input: {
@@ -194,15 +176,8 @@ export function ProductBatchManagerView({
   const importReady = Boolean(effectiveReportType && selectedCategory)
     && importInspectionState !== "loading";
 
-  // 顶部概览派生：最近一次导入名 + 商品数（需批次详情已加载）
   const activeBatch = selection?.activeProductBatchId
     ? batches.find((candidate) => candidate.id === selection.activeProductBatchId)
-    : null;
-  const activeBatchName = selection?.activeProductBatchId
-    ? (activeBatch?.batchName ?? "已选择（加载中）")
-    : "尚未选择";
-  const activeBatchItemCount = selectedBatch?.id === activeBatch?.id
-    ? selectedItems.length
     : null;
 
   return (
@@ -246,21 +221,141 @@ export function ProductBatchManagerView({
 
       {/* 第一步：上传 SellerSprite XLSX */}
       <section className="surface-card p-5" aria-label="上传报表入口">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="eyebrow">第一步 · 导入商品</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">上传 SellerSprite 报表</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              上传美国站搜索结果 XLSX。系统先安全校验，再从报表中挑出可研究的商品。
+        <div>
+          <p className="eyebrow">第一步 · 导入商品</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-950">上传 SellerSprite 报表</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            支持 SellerSprite Amazon 美国站 XLSX，最大 10 MiB。系统先检查文件结构，
+            再建立 ProductBatch 商品候选池并计算研究优先级。
+          </p>
+        </div>
+        <form className="mt-4 grid gap-4" onSubmit={onImport}>
+          <label className="grid gap-2 text-sm font-semibold text-slate-700" htmlFor="product-batch-file">
+            SellerSprite XLSX
+            <input
+              id="product-batch-file"
+              name="file"
+              type="file"
+              accept=".xlsx"
+              required
+              disabled={busy}
+              onChange={onImportFileChange}
+              className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:font-semibold file:text-teal-700"
+            />
+          </label>
+
+          {importInspectionState === "loading" ? (
+            <p role="status" className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
+              正在安全解析文件并识别报表类型…
+            </p>
+          ) : null}
+          {importInspectionState === "error" && errorMessage ? (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+              {errorMessage}
+            </p>
+          ) : null}
+          {detectedReportType ? (
+            <p className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
+              已识别为{productBatchReportTypeLabel(detectedReportType)}。请确认类目、查询词和价格范围。
+            </p>
+          ) : null}
+
+          {showManualReportType ? (
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              手动选择报表类型
+              <select
+                name="reportType"
+                value={selectedReportType}
+                required
+                disabled={busy}
+                onChange={(event) => onReportTypeChange?.(event.currentTarget.value as ReportType)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
+              >
+                <option value="">请选择</option>
+                <option value="search_results">搜索结果报表</option>
+                <option value="category_current">类目商品报表</option>
+              </select>
+            </label>
+          ) : effectiveReportType ? (
+            <input type="hidden" name="reportType" value={effectiveReportType} />
+          ) : null}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              Amazon 美国站一级类目
+              <select
+                name="category"
+                value={selectedCategory}
+                required
+                disabled={busy}
+                onChange={(event) => onCategoryChange?.(event.currentTarget.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
+              >
+                <option value="">请选择类目</option>
+                {AMAZON_US_TOP_LEVEL_CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>{category.label}</option>
+                ))}
+              </select>
+              {categoryNeedsConfirmation ? (
+                <span className="font-normal text-amber-700">文件包含多个类目，请人工确认本次研究类目。</span>
+              ) : null}
+            </label>
+            {effectiveReportType === "search_results" ? (
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                查询词
+                <input
+                  name="query"
+                  type="text"
+                  required
+                  maxLength={200}
+                  disabled={busy}
+                  placeholder="例如：water bottle"
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
+                />
+              </label>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              最低价格（美元）
+              <input
+                name="priceMin"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                disabled={busy}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-semibold text-slate-700">
+              最高价格（美元）
+              <input
+                name="priceMax"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                disabled={busy}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={busy || !importReady}
+              className="linear-button-primary h-11 px-5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? "正在导入…" : "导入并查看优先级"}
+            </button>
+            <p className="text-xs leading-5 text-slate-500">
+              导入不会创建研究 Task，也不会自动调用 Agent、生成 Listing 或图片。
             </p>
           </div>
-          <a
-            href="/opportunities/sellersprite-preview"
-            className="linear-button-primary inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
-          >
-            上传并预览报表
-          </a>
-        </div>
+        </form>
       </section>
 
       {/* 第二步：最近一次导入（用户当前关注点） */}
@@ -312,13 +407,9 @@ export function ProductBatchManagerView({
           </div>
         ) : (
           <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
-            <p className="text-sm text-slate-600">还没有导入商品。先上传报表开始选品。</p>
-            <a
-              href="/opportunities/sellersprite-preview"
-              className="linear-button-primary mt-4 inline-flex h-10 items-center justify-center px-5 text-sm font-semibold"
-            >
-              上传并预览报表
-            </a>
+            <p className="text-sm text-slate-600">
+              还没有导入商品。使用上方上传区导入 SellerSprite XLSX。
+            </p>
           </div>
         )}
       </section>
@@ -329,13 +420,9 @@ export function ProductBatchManagerView({
         <h2 className="mt-1 text-xl font-semibold text-slate-950">{batches.length} 次导入</h2>
         {batches.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
-            <p className="text-sm text-slate-600">还没有导入记录。先上传报表开始选品。</p>
-            <a
-              href="/opportunities/sellersprite-preview"
-              className="linear-button-primary mt-4 inline-flex h-10 items-center justify-center px-5 text-sm font-semibold"
-            >
-              上传并预览报表
-            </a>
+            <p className="text-sm text-slate-600">
+              还没有导入记录。使用上方上传区导入 SellerSprite XLSX。
+            </p>
           </div>
         ) : (
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -413,30 +500,67 @@ export function ProductBatchManagerView({
                 selectedBatch,
                 selection,
               });
+              const presentation = readProductBatchItemPresentation(item);
               const productImage = readProductBatchItemImageSnapshot(item.imageSnapshotJson);
               return (
               <article key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="flex items-start gap-3">
                   <ResearchProductImage
                     image={productImage}
-                    alt={metricValue(item, "productTitle")}
+                    alt={presentation.title}
                   />
                   <div className="min-w-0 flex-1">
                     <h3 className="line-clamp-3 font-semibold leading-6 text-slate-950">
-                      {metricValue(item, "productTitle")}
+                      {presentation.title}
                     </h3>
-                    <details className="mt-2 text-xs text-slate-500">
-                      <summary className="cursor-pointer font-semibold">商品信息</summary>
-                      <p className="mt-1">研究顺序：{item.researchPriority}</p>
-                      <p>ASIN：{item.asin ?? "缺失"}</p>
-                    </details>
+                    <p className="mt-1 text-xs text-slate-500">ASIN：{presentation.asin ?? "缺失"}</p>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                  <p className="rounded-lg bg-slate-50 p-2">价格<br /><b>{metricValue(item, "price")}</b></p>
-                  <p className="rounded-lg bg-slate-50 p-2">评分<br /><b>{metricValue(item, "rating")}</b></p>
-                  <p className="rounded-lg bg-slate-50 p-2">评论<br /><b>{metricValue(item, "reviews")}</b></p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
+                  <p className="rounded-lg bg-slate-50 p-2">价格<br /><b>{presentation.price}</b></p>
+                  <p className="rounded-lg bg-slate-50 p-2">评分<br /><b>{presentation.rating}</b></p>
+                  <p className="rounded-lg bg-slate-50 p-2">评论数<br /><b>{presentation.reviews}</b></p>
+                  <p className="rounded-lg bg-amber-50 p-2 text-amber-900">
+                    第三方估算月销量<br /><b>{presentation.estimatedMonthlySales}</b>
+                  </p>
                 </div>
+                <div className="mt-3 rounded-xl border border-teal-100 bg-teal-50/60 p-3">
+                  <p className="text-xs font-semibold text-teal-800">智能研究优先级</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-950">{presentation.researchPriority}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{presentation.evidenceStatus}</p>
+                </div>
+                <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-xs text-slate-600">
+                  <summary className="cursor-pointer font-semibold text-slate-800">查看排序依据</summary>
+                  <div className="mt-3 grid gap-3">
+                    <div>
+                      <p className="font-semibold text-teal-700">有利信号</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {(presentation.positiveReasons.length > 0
+                          ? presentation.positiveReasons
+                          : ["暂无可展示的有利信号"]
+                        ).map((reason) => <li key={reason}>{reason}</li>)}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-amber-700">反向信号</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {(presentation.counterSignals.length > 0
+                          ? presentation.counterSignals
+                          : ["暂无已识别的反向信号"]
+                        ).map((reason) => <li key={reason}>{reason}</li>)}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-700">缺失信号</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-4">
+                        {(presentation.missingSignals.length > 0
+                          ? presentation.missingSignals
+                          : ["暂无已识别的缺失信号"]
+                        ).map((reason) => <li key={reason}>{reason}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                </details>
                 <button
                   type="button"
                   data-testid={`product-batch-research-${item.id}`}
@@ -444,7 +568,7 @@ export function ProductBatchManagerView({
                   onClick={() => onResearchItem?.(item.id)}
                   className="linear-button-primary mt-4 h-10 w-full px-4 text-sm font-semibold disabled:opacity-50"
                 >
-                  研究此商品
+                  加入研究
                 </button>
                 <button
                   type="button"

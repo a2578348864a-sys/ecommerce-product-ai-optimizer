@@ -267,12 +267,28 @@ export async function POST(request: NextRequest) {
       priceMin,
       priceMax,
     });
+    if (result.batch.batchStatus === "archived") {
+      return errorResponse(
+        409,
+        "product_batch_archived",
+        "相同文件和研究条件对应的批次已归档，请调整研究条件后重新导入。",
+      );
+    }
+    if (result.batch.batchStatus !== "ready") {
+      return errorResponse(
+        409,
+        "product_batch_not_ready",
+        "导入批次尚未就绪，不能设为当前批次。",
+      );
+    }
+    const selection = await store.activateBatch(result.batch.id);
     const access = getProductBatchAccessSummary(auth.context);
     return NextResponse.json({
       ok: true,
       data: {
         ...access,
         batch: result.batch,
+        selection,
         created: result.created,
       },
     }, { status: result.created ? 201 : 200 });

@@ -78,6 +78,10 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).toContain('setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" })');
   });
 
+  it("Phase 1 商品研究请求显式关闭 Listing 步骤", () => {
+    expect(clientSource).toContain("options: { runListing: false }");
+  });
+
   it("即使 API 供货步骤成功，也只显示需人工确认而不是绿色已完成", () => {
     expect(clientSource).not.toContain(
       'sourcing: apiStatusToTimeline(getApiStep(workflowResult, "sourcing")?.status)',
