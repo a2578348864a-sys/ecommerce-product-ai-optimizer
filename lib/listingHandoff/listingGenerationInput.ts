@@ -33,6 +33,34 @@ export type ListingGenerationInput = {
   promotionEligible: false;
 };
 
+export const LISTING_COMPOSER_VERSION = "listing-composer-v1" as const;
+export const LISTING_GENERATION_POLICY_VERSION = "listing-generation-policy-v1" as const;
+
+export type ListingGenerationVersions = {
+  composerVersion: string;
+  generationPolicyVersion: string;
+};
+
+/**
+ * Listing 幂等语义不仅由事实输入决定，也由 Composer 与生成策略版本决定。
+ * 这样规则升级后不会误命中旧版本草稿。
+ */
+export function computeListingGenerationFingerprint(
+  input: ListingGenerationInput,
+  versions: ListingGenerationVersions = {
+    composerVersion: LISTING_COMPOSER_VERSION,
+    generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION,
+  },
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      composerVersion: versions.composerVersion,
+      generationPolicyVersion: versions.generationPolicyVersion,
+      input,
+    }), "utf8")
+    .digest("hex");
+}
+
 export type ListingHandoffGateResult =
   | { ok: true; input: ListingGenerationInput; generationInputFingerprint: string; handoffRevision: number; researchRevision: number }
   | { ok: false; code: string; message: string };
@@ -154,9 +182,7 @@ export function buildListingInputFromCreativeHandoff(
     promotionEligible: false,
   };
 
-  const generationInputFingerprint = createHash("sha256")
-    .update(JSON.stringify(input), "utf8")
-    .digest("hex");
+  const generationInputFingerprint = computeListingGenerationFingerprint(input);
 
   return { ok: true, input, generationInputFingerprint, handoffRevision: handoff.currentRevision, researchRevision };
 }

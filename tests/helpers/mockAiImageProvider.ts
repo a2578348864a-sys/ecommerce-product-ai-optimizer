@@ -37,7 +37,7 @@ export function createMockAiImageProvider(
     if (scenario === "rate_limited") throw new AiImageProviderError("rate_limited", "图片服务繁忙，请稍后重试。", true);
     if (scenario === "server_error") throw new AiImageProviderError("provider_unavailable", "图片服务暂时不可用。", true);
     if (scenario === "timeout") throw new AiImageProviderError("timeout", "图片生成超时。", true);
-    if (scenario === "network_error") throw new AiImageProviderError("provider_error", "图片生成服务调用失败。", false);
+    if (scenario === "network_error") throw new AiImageProviderError("network_error", "图片服务网络连接失败。", true);
     if (scenario === "content_blocked") throw new AiImageProviderError("content_blocked", "图片请求未通过内容安全检查。", false);
     if (scenario === "empty") throw new AiImageProviderError("empty_response", "图片服务没有返回有效图片。", true);
     // url_only: return a URL on a non-whitelisted domain → caught by URL validator

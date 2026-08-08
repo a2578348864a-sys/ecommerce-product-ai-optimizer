@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  LISTING_COMPOSER_VERSION,
+  LISTING_GENERATION_POLICY_VERSION,
+} from "@/lib/listingHandoff/listingGenerationInput";
 
 /**
  * PR2-2: Listing Handoff Binding 内部合同（resultJson.listingHandoffBinding）
@@ -18,6 +22,9 @@ export type ListingHandoffBindingV1 = {
   generationInputFingerprint: string;
   generatedAt: string;
   model: string;
+  /** 新绑定始终写入；旧绑定解析时允许缺失以保持历史兼容。 */
+  composerVersion?: string;
+  generationPolicyVersion?: string;
   generationSource: "creative_handoff";
   humanReviewRequired: true;
   requestIdHash: string; // sha256（幂等，不返回浏览器）
@@ -67,6 +74,8 @@ export function buildListingHandoffBinding(input: {
     generationInputFingerprint: input.generationInputFingerprint,
     generatedAt: input.generatedAt,
     model: input.model,
+    composerVersion: LISTING_COMPOSER_VERSION,
+    generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION,
     generationSource: "creative_handoff",
     humanReviewRequired: true,
     requestIdHash: sha(input.requestId),

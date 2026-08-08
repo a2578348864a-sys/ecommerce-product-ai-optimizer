@@ -12,11 +12,38 @@ import { buildImagePromptFromInput, assertImagePromptIsSafe } from "@/lib/imageH
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
 import { extractAiImageDraftSnapshot, type AiImageDraftSnapshot } from "@/lib/aiImageDraft";
+import { AiImageProviderError } from "@/lib/server/openaiImageClient";
 
 export class ImageHandoffError extends Error {
   constructor(public readonly code: string, public readonly status: number, message: string) {
     super(message);
     this.name = "ImageHandoffError";
+  }
+}
+
+/** 将 Provider 故障收敛为稳定且不会泄漏上游原文的公开错误合同。 */
+export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffError {
+  if (!(error instanceof AiImageProviderError)) {
+    return new ImageHandoffError("provider_unavailable", 502, "图片生成服务调用失败，请稍后重试。");
+  }
+
+  switch (error.code) {
+    case "provider_auth_failed":
+      return new ImageHandoffError("provider_auth_failed", 502, "图片生成服务认证失败，请检查服务端配置。");
+    case "provider_quota":
+      return new ImageHandoffError("provider_quota", 503, "图片生成服务额度不足，请补充额度后重试。");
+    case "timeout":
+      return new ImageHandoffError("provider_timeout", 504, "图片生成服务响应超时，请稍后重试。");
+    case "provider_unavailable":
+    case "rate_limited":
+    case "empty_response":
+    case "configuration_error":
+    case "provider_error":
+      return new ImageHandoffError("provider_unavailable", 503, "图片生成服务暂时不可用，请稍后重试。");
+    case "network_error":
+      return new ImageHandoffError("network_error", 502, "图片生成服务网络连接失败，请稍后重试。");
+    default:
+      return new ImageHandoffError("image_provider_failed", 422, "图片生成请求未能完成，请检查输入后重试。");
   }
 }
 
@@ -237,10 +264,8 @@ export async function generateImageDraftFromHandoff(
           : options.providerOptions,
       );
     } catch (providerError) {
-      // 真实 Provider 失败：映射为稳定业务错误（不返回 500；不自动重试）
-      // 配置缺失/能力不可用/Provider 拒绝 → 422 image_provider_failed（如实暴露原因摘要）
-      const message = String(providerError instanceof Error ? providerError.message : providerError).slice(0, 200);
-      throw new ImageHandoffError("image_provider_failed", 422, message);
+      // 不自动重试；保留认证/额度/超时/可用性/网络的真实类别，同时隐藏上游原文。
+      throw mapImageHandoffProviderFailure(providerError);
     }
   }
   const rawDraft = !idempotentPrefetchHit && isRecord(providerResult) ? providerResult : null;

@@ -195,6 +195,25 @@ describe("POST /api/tasks/[id]/image-handoff", () => {
     });
     expect(res.status).toBe(409);
   });
+
+  it.each([
+    ["provider_auth_failed", 502],
+    ["provider_quota", 503],
+    ["provider_timeout", 504],
+    ["provider_unavailable", 503],
+    ["network_error", 502],
+  ])("13b. Provider 精确错误传播：%s → %i", async (code, status) => {
+    mocks.generateImageDraftFromHandoff.mockRejectedValue(
+      new MockedImageHandoffError(code, status, "sanitized"),
+    );
+    const res = await callPOST("task-1", {
+      requestId: "r", expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2, mode: "composition_concept", confirmed: true,
+    });
+    const body = await res.json();
+    expect(res.status).toBe(status);
+    expect(body.error.code).toBe(code);
+  });
 });
 
 describe("GET /api/tasks/[id]/image-handoff", () => {

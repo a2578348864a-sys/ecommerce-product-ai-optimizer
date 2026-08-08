@@ -3,10 +3,9 @@
 vi.hoisted(() => {
   const { join } = require("node:path");
   const { tmpdir } = require("node:os");
-  const { mkdirSync, rmSync } = require("node:fs");
-  const dir = join(tmpdir(), "pr22-concurrency");
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
+  const { mkdtempSync } = require("node:fs");
+  const dir = mkdtempSync(join(tmpdir(), "pr22-concurrency-"));
+  process.env.PR22_TEST_ROOT = dir;
   process.env.DATABASE_URL = `file:${join(dir, "pr22.db").replaceAll("\\", "/")}`;
   process.env.DEMO_SANDBOX_STORE_PATH = join(dir, "sandbox.json");
   process.env.DEMO_ACCESS_STORE_PATH = join(dir, "demo-access.json");
@@ -37,6 +36,7 @@ import { parseListingHandoffBinding } from "@/lib/listingHandoff/listingBinding"
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { getSandboxTask } from "@/lib/server/demoSandbox";
+import { getDemoAccessById } from "@/lib/server/demoAccess";
 
 const NOW = "2026-08-05T00:00:00.000Z";
 const OWNER_FP = "a1b2c3d4e5f6a7b8";
@@ -135,23 +135,27 @@ async function listingInputFor(taskId: string, ctx: never, requestId: string) {
 }
 
 let root = "";
-let databasePath = "";
 let client: PrismaClient | undefined;
 
 beforeEach(async () => {
   await (globalThis as { prisma?: { $disconnect(): Promise<void> } }).prisma?.$disconnect();
-  root = join(tmpdir(), "pr22-concurrency");
+  root = process.env.PR22_TEST_ROOT!;
   rmSync(root, { recursive: true, force: true });
   mkdirSync(root, { recursive: true });
-  databasePath = join(root, "pr22.db");
   const schemaPath = join(root, "schema.prisma");
   copyFileSync(join(process.cwd(), "prisma", "schema.prisma"), schemaPath);
   execFileSync(process.execPath, [join(process.cwd(), "node_modules", "prisma", "build", "index.js"), "db", "push", "--skip-generate", "--schema", schemaPath], {
     cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: `file:${databasePath.replaceAll("\\", "/")}` },
+    // Prisma CLI 在 Windows 下对绝对 SQLite URL 不稳定；相对 URL 按 schema 目录解析。
+    env: {
+      ...process.env,
+      DATABASE_URL: "file:./pr22.db",
+      DEBUG: "prisma:*",
+      RUST_LOG: "info",
+    },
     stdio: "pipe",
   });
-  client = new PrismaClient({ datasources: { db: { url: `file:${databasePath.replaceAll("\\", "/")}` } } });
+  client = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL! } } });
   await client.viralAnalysisRecord.create({
     data: {
       id: "task-pr22",
@@ -210,6 +214,22 @@ beforeEach(async () => {
     }],
     candidates: [],
   }, null, 2), "utf8");
+  writeFileSync(join(root, "demo-access.json"), JSON.stringify({
+    version: 1,
+    accesses: [{
+      id: "demo-access-a",
+      label: "Listing contract visitor",
+      passwordHash: `sha256:${"0".repeat(64)}`,
+      salt: "0".repeat(32),
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      maxAiCalls: 10,
+      usedAiCalls: 0,
+      isActive: true,
+      createdAt: NOW,
+      lastUsedAt: null,
+      notes: "isolated test fixture",
+    }],
+  }, null, 2), "utf8");
 }, 120000);
 
 afterEach(async () => {
@@ -227,11 +247,17 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(result.listingStatus).toBe("active");
     expect(result.listingSaved).toBe(true);
     expect(result.draft).not.toBeNull();
-    expect(provider.callCount).toBe(1);
+    expect(provider.callCount).toBe(0);
 
     const row = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr22" } });
     const parsed = JSON.parse(row!.resultJson);
     expect(parsed.aiListingPackSnapshot).toBeDefined();
+    expect(parsed.aiListingPackSnapshot).toMatchObject({
+      source: "deterministic_composition_v1",
+      composerVersion: "listing-composer-v1",
+      polishApplied: false,
+      polishModel: null,
+    });
     expect(parseListingHandoffBinding(parsed.listingHandoffBinding)).not.toBeNull();
     // Creative Handoff 保留（逐字节）
     expect(parseProductCreativeHandoff(parsed.creativeHandoff)).not.toBeNull();
@@ -239,7 +265,24 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(parsed.unknownNamespace).toEqual({ keep: true });
   });
 
-  it("O2. 同 requestId 幂等重放 → Provider 只调用 1 次, 不增加版本", async () => {
+  it("O1b. Provider 即使会失败也不阻断基础 Composition 保存", async () => {
+    await createHandoff("task-pr22", ownerContext, REQ);
+    const provider = createMockListingProvider();
+    const generateSpy = vi.spyOn(provider, "generate").mockRejectedValue(new Error("provider unavailable"));
+    const input = await listingInputFor("task-pr22", ownerContext as never, REQ2);
+
+    const result = await generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider });
+
+    expect(result.listingSaved).toBe(true);
+    expect(result.draft).toMatchObject({
+      source: "deterministic_composition_v1",
+      polishApplied: false,
+      polishModel: null,
+    });
+    expect(generateSpy).not.toHaveBeenCalled();
+  });
+
+  it("O2. 同 requestId 幂等重放 → Provider 零调用, 不增加版本", async () => {
     await createHandoff("task-pr22", ownerContext, REQ);
     const provider = createMockListingProvider();
     const input = await listingInputFor("task-pr22", ownerContext as never, REQ2);
@@ -248,7 +291,7 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
 
     const replay = await generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider });
     expect(replay.idempotentReplay).toBe(true);
-    expect(provider.callCount).toBe(1);
+    expect(provider.callCount).toBe(0);
 
     const row = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr22" } });
     const parsed = JSON.parse(row!.resultJson);
@@ -256,12 +299,12 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(parsed.aiListingPackSnapshot.generatedAt).toBe(first.draft?.generatedAt);
   });
 
-  it("O3. Provider 延迟期间 Handoff 更新 → 409, 新结果不保存, 旧草稿不覆盖", async () => {
+  it("O3. Composition 保存窗口内 Handoff 更新 → 409, 新结果不保存, 旧草稿不覆盖", async () => {
     await createHandoff("task-pr22", ownerContext, REQ);
     const provider = createMockListingProvider();
     const input = await listingInputFor("task-pr22", ownerContext as never, REQ2);
 
-    // 阶段B 延迟期间创建新 Revision
+    // 测试延迟窗口内创建新 Revision
     const genPromise = generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider, providerOptions: { delayMs: 300 } });
     await new Promise((r) => setTimeout(r, 50));
     const preview2 = await generateCreativeHandoffPreview("task-pr22", ownerContext as never);
@@ -287,7 +330,7 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(parseProductCreativeHandoff(parsed.creativeHandoff)!.currentRevision).toBe(2);
   });
 
-  it("O4. Provider 延迟期间 Handoff 撤回 → 409, 不保存", async () => {
+  it("O4. Composition 保存窗口内 Handoff 撤回 → 409, 不保存", async () => {
     await createHandoff("task-pr22", ownerContext, REQ);
     const provider = createMockListingProvider();
     const input = await listingInputFor("task-pr22", ownerContext as never, REQ2);
@@ -312,7 +355,7 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     const staleInput = { ...input, expectedStorageVersion: { resultJsonHash: "0".repeat(64), updatedAt: NOW } };
     await expect(generateListingDraftFromHandoff("task-pr22", ownerContext as never, staleInput, { provider }))
       .rejects.toMatchObject({ code: "task_result_conflict", status: 409 });
-    expect(provider.callCount).toBe(1); // 阶段B 已调用（锁外），但保存被 CAS 拒绝
+    expect(provider.callCount).toBe(0); // 基础 Composition 不调用 Provider，保存仍被 CAS 拒绝
     const row = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr22" } });
     expect(JSON.parse(row!.resultJson).listingHandoffBinding).toBeUndefined();
   });
@@ -341,7 +384,7 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     await createHandoff("task-pr22", ownerContext, REQ);
     const provider = createMockListingProvider();
     const input = await listingInputFor("task-pr22", ownerContext as never, REQ2); // 先取旧 sv
-    // 阶段B 延迟期间，另一 writer（模拟 Decision）通过真实 CAS 通道提交
+    // Composition 保存窗口内，另一 writer（模拟 Decision）通过真实 CAS 通道提交
     const genPromise2 = generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider, providerOptions: { delayMs: 300 } });
     await new Promise((r) => setTimeout(r, 50));
     // PR2-2 Final-Fix (P1-2): 走公开 test-support 适配器（架构批准的唯一测试入口），不直接 import owner.internal
@@ -367,8 +410,12 @@ describe("PR2-2 Visitor 真实 Store 锁并发（第21章）", () => {
     await createHandoff("sandbox-task-a", ctx, REQ);
     const provider = createMockListingProvider();
     const input = await listingInputFor("sandbox-task-a", ctx as never, REQ2);
+    const before = getDemoAccessById("demo-access-a")!;
     const result = await generateListingDraftFromHandoff("sandbox-task-a", ctx as never, input, { provider });
+    const after = getDemoAccessById("demo-access-a")!;
     expect(result.listingStatus).toBe("active");
+    expect(provider.callCount).toBe(0);
+    expect(after.usedAiCalls).toBe(before.usedAiCalls);
     const task = getSandboxTask("demo-access-a", "sandbox-task-a")!;
     const parsed = JSON.parse(task.resultJson);
     expect(parseListingHandoffBinding(parsed.listingHandoffBinding)).not.toBeNull();

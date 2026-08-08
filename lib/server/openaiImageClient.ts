@@ -54,7 +54,10 @@ export class AiImageProviderError extends Error {
     public readonly code:
       | "timeout"
       | "rate_limited"
+      | "provider_auth_failed"
+      | "provider_quota"
       | "provider_unavailable"
+      | "network_error"
       | "content_blocked"
       | "invalid_request"
       | "empty_response"
@@ -185,17 +188,41 @@ export function mapProviderError(error: unknown, providerResultReceived = false)
       ? String((error as { code?: unknown }).code || "")
       : "";
   const name = error instanceof Error ? error.name : "";
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message || "")
+      : "";
+  const nestedError = typeof error === "object" && error !== null && "error" in error
+    && typeof (error as { error?: unknown }).error === "object"
+    && (error as { error?: unknown }).error !== null
+    ? (error as { error: Record<string, unknown> }).error
+    : null;
+  const classificationText = [
+    code,
+    message,
+    nestedError ? String(nestedError.code || "") : "",
+    nestedError ? String(nestedError.message || "") : "",
+  ].join(" ").toLowerCase();
   if (code === "moderation_blocked" || code === "image_generation_user_error") {
     return new AiImageProviderError("content_blocked", "图片请求未通过内容安全检查。", false);
   }
+  if (/(?:insufficient[_ -]?(?:balance|quota|credit)|quota|balance|billing|credit)/i.test(classificationText)) {
+    return new AiImageProviderError("provider_quota", "图片服务额度不足，请补充额度后重试。", false);
+  }
   if (status === 401 || status === 403) {
-    return new AiImageProviderError("provider_error", "图片中转站鉴权失败，请检查 API Key 配置。", false);
+    return new AiImageProviderError("provider_auth_failed", "图片中转站鉴权失败，请检查 API Key 配置。", false);
   }
   if (status === 429) return new AiImageProviderError("rate_limited", "图片服务繁忙，请稍后重试。", true);
   if (status >= 500) return new AiImageProviderError("provider_unavailable", "图片服务暂时不可用。", true);
   if (status >= 400) return new AiImageProviderError("invalid_request", "图片请求不符合服务要求。", false);
   if (name === "APIConnectionTimeoutError" || code === "ETIMEDOUT" || code === "ABORT_ERR") {
     return new AiImageProviderError("timeout", "图片生成超时。", true);
+  }
+  if (name === "APIConnectionError"
+    || ["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(code)
+    || /(?:fetch failed|network error|socket hang up|connection refused)/i.test(message)) {
+    return new AiImageProviderError("network_error", "图片服务网络连接失败。", true);
   }
   return new AiImageProviderError("provider_error", "图片生成服务调用失败。", false);
 }

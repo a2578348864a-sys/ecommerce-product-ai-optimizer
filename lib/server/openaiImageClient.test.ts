@@ -277,13 +277,13 @@ describe("OpenAI image client error mapping", () => {
     delete process.env.OPENAI_IMAGE_TIMEOUT_MS;
   });
 
-  it("maps 401 to provider_error with a Chinese message that does not leak the base URL", async () => {
+  it("maps 401 to provider_auth_failed with a Chinese message that does not leak the base URL", async () => {
     state.generate.mockRejectedValue({ status: 401, message: "raw upstream detail" });
     try {
       await generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" });
       expect.fail("should have thrown");
     } catch (e) {
-      expect((e as AiImageProviderError).code).toBe("provider_error");
+      expect((e as AiImageProviderError).code).toBe("provider_auth_failed");
       expect((e as AiImageProviderError).retryable).toBe(false);
       expect((e as AiImageProviderError).message).toMatch(/[一-鿿]/);
       expect((e as AiImageProviderError).message).not.toContain("65535");
@@ -291,11 +291,18 @@ describe("OpenAI image client error mapping", () => {
     }
   });
 
-  it("maps 403 to provider_error", async () => {
+  it("maps a balance rejection before generic 403 authentication classification", async () => {
+    state.generate.mockRejectedValue({ status: 403, code: "INSUFFICIENT_BALANCE", message: "Insufficient account balance" });
+    await expect(
+      generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
+    ).rejects.toMatchObject({ code: "provider_quota", retryable: false });
+  });
+
+  it("maps generic 403 to provider_auth_failed", async () => {
     state.generate.mockRejectedValue({ status: 403 });
     await expect(
       generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
-    ).rejects.toMatchObject({ code: "provider_error", retryable: false });
+    ).rejects.toMatchObject({ code: "provider_auth_failed", retryable: false });
   });
 
   it("maps 429 to rate_limited (retryable but not auto-retried)", async () => {
@@ -330,11 +337,11 @@ describe("OpenAI image client error mapping", () => {
     ).rejects.toMatchObject({ code: "timeout", retryable: true });
   });
 
-  it("maps network errors to provider_error", async () => {
+  it("maps actual network errors to network_error", async () => {
     state.generate.mockRejectedValue(new Error("fetch failed"));
     await expect(
       generateOpenAiImage({ imageType: "white_background_concept", count: 1, prompt: "safe" }),
-    ).rejects.toMatchObject({ code: "provider_error", retryable: false });
+    ).rejects.toMatchObject({ code: "network_error", retryable: true });
   });
 
   it("maps ETIMEDOUT to timeout", async () => {

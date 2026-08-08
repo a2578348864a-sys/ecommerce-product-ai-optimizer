@@ -141,7 +141,7 @@ describe("AI image draft service", () => {
     ["rate_limited", "image_provider_rate_limited"],
     ["server_error", "image_provider_unavailable"],
     ["timeout", "image_provider_timeout"],
-    ["network_error", "image_provider_error"],
+    ["network_error", "network_error"],
     ["empty", "image_response_invalid"],
   ] as const)("calls the provider once for %s and charges one AI job", async (scenario, expectedCode) => {
     const { record } = createDemoAccess({ label: "Visitor", hours: 24, maxAiCalls: 5 });

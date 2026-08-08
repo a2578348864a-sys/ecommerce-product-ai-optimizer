@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { composeListingDraft } from "./listingComposition";
+import { validateAiListingPackDraft } from "../aiListingDraft";
+import {
+  buildDeterministicListingPackDraft,
+  composeListingDraft,
+} from "./listingComposition";
+import {
+  LISTING_COMPOSER_VERSION,
+  LISTING_GENERATION_POLICY_VERSION,
+} from "./listingGenerationInput";
 import type { ListingGenerationInput } from "./listingGenerationInput";
 
 function input(facts: Array<{ field: string; label: string; value: string }>): ListingGenerationInput {
@@ -28,6 +36,23 @@ const OWALA_FACTS = [
 ];
 
 describe("V2.1.5 Listing Composition Layer", () => {
+  it("V2.1.6 基础草稿使用真实 Composition 来源元数据且通过 Schema", () => {
+    const draft = buildDeterministicListingPackDraft(
+      input(OWALA_FACTS),
+      "2026-08-08T08:00:00.000Z",
+    );
+
+    expect(draft).toMatchObject({
+      source: "deterministic_composition_v1",
+      composerVersion: LISTING_COMPOSER_VERSION,
+      generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION,
+      polishApplied: false,
+      polishModel: null,
+    });
+    expect(draft.source).not.toBe("real_ai_draft");
+    expect(validateAiListingPackDraft(draft).ok).toBe(true);
+  });
+
   it("C1. 全事实组合成自然 Title（Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue）", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
     expect(d.titles[0]).toBe("Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue");

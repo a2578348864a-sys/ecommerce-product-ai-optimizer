@@ -49,6 +49,9 @@ export type AiImageServiceErrorCode =
   | "visitor_ai_quota_exceeded"
   | "image_provider_timeout"
   | "image_provider_rate_limited"
+  | "provider_auth_failed"
+  | "provider_quota"
+  | "network_error"
   | "image_provider_unavailable"
   | "image_content_blocked"
   | "image_provider_error"
@@ -111,7 +114,10 @@ function providerFailure(error: unknown): {
     const mapped: Record<AiImageProviderError["code"], AiImageServiceErrorCode> = {
       timeout: "image_provider_timeout",
       rate_limited: "image_provider_rate_limited",
+      provider_auth_failed: "provider_auth_failed",
+      provider_quota: "provider_quota",
       provider_unavailable: "image_provider_unavailable",
+      network_error: "network_error",
       content_blocked: "image_content_blocked",
       invalid_request: "image_provider_error",
       empty_response: "image_response_invalid",

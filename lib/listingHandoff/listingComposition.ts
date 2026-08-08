@@ -11,7 +11,12 @@
  * 5. 禁止字段标签（品牌: / 商品类型:）作为内容；禁止泛化占位（日常使用的实用选择）。
  */
 
-import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import type { AiListingPackDraft } from "@/lib/aiListingDraft";
+import {
+  LISTING_COMPOSER_VERSION,
+  LISTING_GENERATION_POLICY_VERSION,
+  type ListingGenerationInput,
+} from "@/lib/listingHandoff/listingGenerationInput";
 
 export type ComposedListingDraft = {
   titles: string[];
@@ -140,5 +145,36 @@ export function composeListingDraft(input: ListingGenerationInput): ComposedList
     bullets: composeBullets(input),
     description: composeDescription(input),
     keywords: composeKeywords(input),
+  };
+}
+
+/**
+ * V2.1.6 Listing 生产基础能力：只根据已确认事实构造完整、可校验、可保存的草稿。
+ * AI 润色尚未启用，因此来源与 polish 元数据必须明确保持为纯 Composition。
+ */
+export function buildDeterministicListingPackDraft(
+  input: ListingGenerationInput,
+  generatedAt: string,
+): AiListingPackDraft {
+  const composed = composeListingDraft(input);
+  return {
+    source: "deterministic_composition_v1",
+    version: 1,
+    generatedAt,
+    model: LISTING_COMPOSER_VERSION,
+    composerVersion: LISTING_COMPOSER_VERSION,
+    generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION,
+    polishApplied: false,
+    polishModel: null,
+    humanReviewRequired: true,
+    titles: composed.titles,
+    bullets: composed.bullets,
+    description: composed.description,
+    keywords: composed.keywords,
+    sellingPoints: composed.bullets.slice(0, 6),
+    riskNotes: ["商品信息来自已人工确认的事实，未包含未经验证的声明。"],
+    complianceWarnings: [],
+    blockedClaims: [],
+    reviewChecklist: ["请人工核对事实字段与值后完善表达。"],
   };
 }

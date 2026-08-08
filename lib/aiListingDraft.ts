@@ -1,13 +1,21 @@
 import { containsListingBannedClaim, filterListingClaims } from "@/lib/listingClaimFilter";
 import type { StudioListingPreferences } from "@/lib/studioListingInput";
 
-export type AiListingDraftSource = "mock_ai_draft" | "real_ai_draft";
+export type AiListingDraftSource =
+  | "mock_ai_draft"
+  | "real_ai_draft"
+  | "deterministic_composition_v1"
+  | "deterministic_composition_with_polish";
 
 export type AiListingPackDraft = {
   source: AiListingDraftSource;
   version: number;
   generatedAt: string;
   model: string;
+  composerVersion?: string;
+  generationPolicyVersion?: string;
+  polishApplied?: boolean;
+  polishModel?: string | null;
   humanReviewRequired: true;
   titles: string[];
   bullets: string[];
@@ -53,7 +61,10 @@ function fail(message: string): AiListingDraftValidationResult {
 }
 
 function isAiListingDraftSource(value: unknown): value is AiListingDraftSource {
-  return value === "mock_ai_draft" || value === "real_ai_draft";
+  return value === "mock_ai_draft"
+    || value === "real_ai_draft"
+    || value === "deterministic_composition_v1"
+    || value === "deterministic_composition_with_polish";
 }
 
 function checkArray(name: keyof AiListingPackDraft, value: unknown, min: number, max?: number): string[] | null {
@@ -78,11 +89,26 @@ function visibleDraftText(draft: Pick<AiListingPackDraft, "titles" | "bullets" |
 
 export function validateAiListingPackDraft(input: unknown): AiListingDraftValidationResult {
   if (!isRecord(input)) return fail("AI Listing draft must be an object.");
-  if (!isAiListingDraftSource(input.source)) return fail("AI Listing draft source must be mock_ai_draft or real_ai_draft.");
+  if (!isAiListingDraftSource(input.source)) return fail("AI Listing draft source is invalid.");
   const model = text(input.model);
   if (!model) return fail("AI Listing draft model must not be empty.");
   if (input.source === "mock_ai_draft" && model !== "mock") return fail("Mock AI Listing draft model must be mock.");
   if (input.source === "real_ai_draft" && model === "mock") return fail("Real AI Listing draft model must not be mock.");
+  const deterministicSource = input.source === "deterministic_composition_v1"
+    || input.source === "deterministic_composition_with_polish";
+  const composerVersion = deterministicSource ? text(input.composerVersion) : "";
+  const generationPolicyVersion = deterministicSource ? text(input.generationPolicyVersion) : "";
+  if (deterministicSource && !composerVersion) return fail("Deterministic Listing draft composerVersion must not be empty.");
+  if (deterministicSource && !generationPolicyVersion) return fail("Deterministic Listing draft generationPolicyVersion must not be empty.");
+  if (input.source === "deterministic_composition_v1") {
+    if (input.polishApplied !== false) return fail("Base deterministic Listing draft must not claim AI polish.");
+    if (input.polishModel !== null) return fail("Base deterministic Listing draft polishModel must be null.");
+  }
+  if (input.source === "deterministic_composition_with_polish") {
+    if (input.polishApplied !== true || !text(input.polishModel)) {
+      return fail("Polished deterministic Listing draft must identify its polish model.");
+    }
+  }
   if (input.humanReviewRequired !== true) return fail("AI Listing draft must require human review.");
 
   const version = typeof input.version === "number" && Number.isInteger(input.version) && input.version > 0
@@ -118,6 +144,12 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
     version,
     generatedAt,
     model,
+    ...(deterministicSource ? {
+      composerVersion,
+      generationPolicyVersion,
+      polishApplied: input.polishApplied as boolean,
+      polishModel: input.polishModel as string | null,
+    } : {}),
     humanReviewRequired: true,
     titles,
     bullets,

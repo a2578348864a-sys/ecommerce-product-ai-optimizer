@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
+import {
+  buildListingInputFromCreativeHandoff,
+  computeListingGenerationFingerprint,
+  LISTING_COMPOSER_VERSION,
+  LISTING_GENERATION_POLICY_VERSION,
+} from "@/lib/listingHandoff/listingGenerationInput";
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { createMockListingProvider, assertMockInputIsSafe, buildMockAiListingDraftFromInput } from "@/lib/listingHandoff/mockListingProvider";
 import { buildListingPromptFromInput, assertPromptIsSafe } from "@/lib/listingHandoff/listingPrompt";
@@ -383,6 +388,23 @@ describe("Binding（第20章 36-43）", () => {
     expect(b.generationInputFingerprint).toBe("e".repeat(64));
   });
 
+  it("39b. Composer 与生成策略版本进入 fingerprint，版本变化必然失配", () => {
+    const built = buildListingInputFromCreativeHandoff(buildHandoff() as never, 1);
+    if (!built.ok) throw new Error("input build failed");
+
+    expect(built.generationInputFingerprint).toBe(
+      computeListingGenerationFingerprint(built.input),
+    );
+    expect(computeListingGenerationFingerprint(built.input, {
+      composerVersion: `${LISTING_COMPOSER_VERSION}-next`,
+      generationPolicyVersion: LISTING_GENERATION_POLICY_VERSION,
+    })).not.toBe(built.generationInputFingerprint);
+    expect(computeListingGenerationFingerprint(built.input, {
+      composerVersion: LISTING_COMPOSER_VERSION,
+      generationPolicyVersion: `${LISTING_GENERATION_POLICY_VERSION}-next`,
+    })).not.toBe(built.generationInputFingerprint);
+  });
+
   it("40. Handoff 更新后 stale", () => {
     const b = makeBinding();
     const s = computeListingStatus({ binding: b, currentHandoff: { handoffId: "11111111-1111-4111-8111-111111111111", currentRevision: 2, controlState: "active", stale: false }, researchRevision: 1 });
@@ -513,8 +535,8 @@ describe("Mock Provider（第22章）", () => {
 
 // ─── Service 锁内双重验证 ─────────────────────────────────
 
-describe("Service 锁内双重验证", () => {
-  it("保存前重新验证 Handoff（快照内解析，无数据库读）", () => {
+describe("Service Composition 门禁与锁内双重验证", () => {
+  it("Composition 先通过 Schema/Claim Evidence，再在锁内复验 Handoff", () => {
     expect(serviceSource).toContain("revalidateHandoffFromSnapshot");
     expect(serviceSource).toContain("parseProductCreativeHandoff");
     // 锁内 mutate 回调必须基于快照解析，不得重读数据库（Gate 调用只在阶段A锁外）
@@ -524,8 +546,9 @@ describe("Service 锁内双重验证", () => {
     expect(mutateBody).not.toContain("checkCreativeHandoffGate");
     expect(mutateBody).not.toContain("prisma");
     expect(mutateBody).toContain("revalidateHandoffFromSnapshot(current, input.expectedHandoffRevision)");
-    expect(mutateBody).toContain("validateAiListingPackDraft");
-    expect(mutateBody).toContain("filterListingClaims");
+    expect(serviceSource.indexOf("buildDeterministicListingPackDraft")).toBeLessThan(mutateStart);
+    expect(serviceSource.indexOf("validateAiListingPackDraft(deterministicDraft)")).toBeLessThan(mutateStart);
+    expect(serviceSource.indexOf("verifyListingClaims(deterministicFiltered.cleaned")).toBeLessThan(mutateStart);
   });
 
   it("Revision 变化拒绝", () => {
@@ -546,16 +569,18 @@ describe("Service 锁内双重验证", () => {
     expect(serviceSource).toContain("filterListingClaims");
   });
 
-  it("Prompt 五分区构造器复用 + 安全断言", () => {
-    expect(serviceSource).toContain("buildListingPromptFromInput");
-    expect(serviceSource).toContain("assertPromptIsSafe");
+  it("基础生成不再构造 Provider Prompt", () => {
+    expect(serviceSource).not.toContain("buildListingPromptFromInput");
+    expect(serviceSource).not.toContain("assertPromptIsSafe");
+    expect(serviceSource).toContain("buildDeterministicListingPackDraft");
   });
 
-  it("Provider 调用在锁外（mutate 回调内无 provider.generate）", () => {
-    const mutateStart = serviceSource.indexOf("async mutate(current)");
+  it("基础生成全链路无 provider.generate", () => {
+    const mutateStart = serviceSource.indexOf("async mutate(current, snapshot)");
     const mutateEnd = serviceSource.indexOf("});", mutateStart);
     const mutateBody = serviceSource.slice(mutateStart, mutateEnd);
     expect(mutateBody).not.toContain("provider.generate");
+    expect(serviceSource).not.toContain("provider.generate(");
   });
 });
 
