@@ -135,15 +135,13 @@ describe("Studio task prefill", () => {
     })?.productName).toBe("Legacy desk stand");
   });
 
-  it("redirects Studio pages to task detail (Studio 已收敛到任务详情)", () => {
+  it("keeps independent Studio pages and carries an optional verified taskId", () => {
     const listingPage = readFileSync(resolve(process.cwd(), "app/listing-studio/page.tsx"), "utf8");
     const imagePage = readFileSync(resolve(process.cwd(), "app/image-studio/page.tsx"), "utf8");
 
-    // 独立 Studio 页面不再渲染客户端，而是重定向到任务详情（主链唯一入口）
-    expect(listingPage).toContain("redirect");
-    expect(listingPage).toMatch(/redirect\(`\/tasks\//);
-    expect(imagePage).toContain("redirect");
-    expect(listingPage).not.toMatch(/<ListingStudioClient/);
-    expect(imagePage).not.toMatch(/<ImageStudioClient/);
+    expect(listingPage).not.toContain("redirect(");
+    expect(imagePage).not.toContain("redirect(");
+    expect(listingPage).toMatch(/<ListingStudioClient taskId=\{taskId\}/);
+    expect(imagePage).toMatch(/<ImageStudioClient taskId=\{taskId\}/);
   });
 });

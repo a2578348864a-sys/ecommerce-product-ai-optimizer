@@ -31,14 +31,6 @@ export default async function ImageStudioPage({ searchParams }: ImageStudioPageP
                     : "上传并批准参考图，或生成只表示构图与场景方向的概念候选。"}
                 </p>
               </div>
-              <ol className={`${styles.flow} studio-flow`} aria-label="图片生产流程">
-                {["资料确认", "图片策略", "生成候选", "人工选择"].map((label, index) => (
-                  <li key={label} aria-current={index === 0 ? "step" : undefined}>
-                    <span className={styles.flowNumber}>{String(index + 1).padStart(2, "0")}</span>
-                    <span className={styles.flowLabel}>{label}</span>
-                  </li>
-                ))}
-              </ol>
             </div>
             <WorkspaceMobileNav />
           </header>

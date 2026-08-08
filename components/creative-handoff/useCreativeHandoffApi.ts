@@ -101,7 +101,15 @@ export function useCreativeHandoffApi(taskId: string) {
       expectedStorageVersion: { resultJsonHash: string; updatedAt: string };
       expectedResearchRevision: number;
       expectedCurrentHandoffRevision: number;
-      creativePreferences?: { targetMarket?: string; language?: string; tone?: string; imageStyle?: string; additionalRequirements?: string };
+      creativePreferences?: {
+        targetMarket?: string;
+        language?: string;
+        tone?: string;
+        imageStyle?: string;
+        backgroundPreference?: string;
+        compositionPreference?: string;
+        additionalRequirements?: string;
+      };
       onConflict?: (error: ApiError) => void;
     }): Promise<CreateResponse> => {
       const headers = buildAccessHeaders();

@@ -4,6 +4,8 @@ import {
   EMPTY_IMAGE_INTENT,
   EMPTY_PROMPT_IMAGE_INTENT,
   STUDIO_IMAGE_PROMPT_TEMPLATES,
+  STUDIO_IMAGE_SCENE_GROUPS,
+  createImageSceneSelection,
   type ImageFormIntent,
   type PromptImageFormIntent,
 } from "@/lib/client/studioImageRequest";
@@ -14,9 +16,9 @@ describe("buildStudioImageRequestCore", () => {
       creationMode: "guided",
       imageType: "lifestyle_scene",
       visualStyle: "home",
+      ...createImageSceneSelection("home_lifestyle", "  Warm morning light. "),
       count: 2,
       aspectRatio: "portrait_4_5",
-      compositionRequirements: "  Place the product near a window. ",
       prohibitedElements: " Logo, watermark ",
     };
 
@@ -36,7 +38,7 @@ describe("buildStudioImageRequestCore", () => {
       visualStyle: "home",
       count: 2,
       aspectRatio: "portrait_4_5",
-      compositionRequirements: "Place the product near a window.",
+      compositionRequirements: "Believable home-living context. Natural in-use composition with clear product scale. Warm morning light.",
       prohibitedElements: "Logo, watermark",
       mode: "mock",
     });
@@ -98,9 +100,9 @@ describe("buildStudioImageRequestCore", () => {
       creationMode: "guided",
       imageType: "product_main",
       visualStyle: "minimal",
+      ...createImageSceneSelection("white_studio"),
       count: 1,
       aspectRatio: "square_1_1",
-      compositionRequirements: "",
       prohibitedElements: "",
     });
     expect(EMPTY_PROMPT_IMAGE_INTENT).toEqual({
@@ -110,6 +112,52 @@ describe("buildStudioImageRequestCore", () => {
       count: 1,
       aspectRatio: "square_1_1",
     });
+  });
+
+  it("offers the bounded grouped ecommerce scene presets and maps them into the existing request contract", () => {
+    expect(STUDIO_IMAGE_SCENE_GROUPS.map((group) => group.label)).toEqual([
+      "电商基础",
+      "生活方式",
+      "其他",
+    ]);
+    expect(STUDIO_IMAGE_SCENE_GROUPS.flatMap((group) => group.presets.map((preset) => preset.label))).toEqual([
+      "白底主图 / 棚拍",
+      "卖点信息图",
+      "尺寸规格图",
+      "产品细节特写",
+      "包装 / 套装展示",
+      "使用步骤图",
+      "家居生活",
+      "办公 / 通勤",
+      "户外 / 旅行",
+      "运动 / 健身",
+      "对比展示",
+      "自定义场景",
+    ]);
+
+    const selection = createImageSceneSelection("outdoor_travel", "Keep room for a short headline.");
+    expect(selection).toMatchObject({
+      scenePreset: "outdoor_travel",
+      sceneIntent: "outdoor_travel_context",
+      customInstruction: "Keep room for a short headline.",
+    });
+    const request = buildStudioImageRequestCore({
+      productName: "Travel bottle",
+      description: "Blue insulated bottle",
+      intent: {
+        ...EMPTY_IMAGE_INTENT,
+        ...selection,
+        imageType: "lifestyle_scene",
+        visualStyle: "outdoor",
+      },
+      mode: "mock",
+    });
+    expect(request).not.toHaveProperty("scenePreset");
+    expect(request).not.toHaveProperty("sceneIntent");
+    expect(request).not.toHaveProperty("customInstruction");
+    const guidedRequest = request as { compositionRequirements: string };
+    expect(guidedRequest.compositionRequirements).toContain("outdoor or travel context");
+    expect(guidedRequest.compositionRequirements).toContain("Keep room for a short headline.");
   });
 
   it("exposes four controlled prompt templates without generation side effects", () => {

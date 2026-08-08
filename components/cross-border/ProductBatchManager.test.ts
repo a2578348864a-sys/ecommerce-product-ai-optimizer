@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { ProductBatchItemView, ProductBatchView } from "@/lib/productBatchStore";
@@ -93,6 +94,7 @@ function render(
     selectedCategory?: string;
     batches?: unknown[];
     errorMessage?: string | null;
+    selectedFileName?: string;
   } = {},
 ) {
   const selectedBatch = overrides.selectedBatch ?? batch;
@@ -113,6 +115,7 @@ function render(
     selectedItems: [overrides.selectedItem ?? item],
     busy: false,
     errorMessage: overrides.errorMessage,
+    selectedFileName: overrides.selectedFileName,
     manualReportTypeRequired: overrides.manualReportTypeRequired,
     importInspectionState: overrides.importInspectionState ?? "ready",
     importInspection: {
@@ -189,6 +192,10 @@ describe("ProductBatch unified role UI", () => {
     expect(automatic).toContain("上传报表");
     expect(automatic).toContain('name="file"');
     expect(automatic).toContain('accept=".xlsx"');
+    expect(automatic).toContain('class="sr-only"');
+    expect(automatic).toContain('for="product-batch-file"');
+    expect(automatic).toContain("选择文件");
+    expect(automatic).toContain("尚未选择文件");
     expect(automatic).toContain('name="reportType"');
     expect(automatic).toContain('name="query"');
     expect(automatic).toContain('name="category"');
@@ -200,6 +207,22 @@ describe("ProductBatch unified role UI", () => {
     expect(fallback).toContain("手动选择报表类型");
     // 保留批次商品内部信息折叠（不暴露技术字段名）
     expect(automatic).toMatch(/<details[^>]*><summary[^>]*>报表信息<\/summary>/);
+  });
+
+  it("shows the selected XLSX name beside the stable accessible file trigger", () => {
+    const html = render("owner", { selectedFileName: "seller-sprite.xlsx" });
+    expect(html).toContain("已选择：seller-sprite.xlsx");
+    expect(html).toContain('aria-label="选择 SellerSprite XLSX 文件"');
+  });
+
+  it("keeps the inspected file state when the native chooser is cancelled", () => {
+    const source = readFileSync(new URL("./ProductBatchManager.tsx", import.meta.url), "utf8");
+    const handler = source.slice(
+      source.indexOf("const handleImportFileChange"),
+      source.indexOf("const handleImport =", source.indexOf("const handleImportFileChange")),
+    );
+    expect(handler.indexOf("if (!file) return;")).toBeGreaterThan(-1);
+    expect(handler.indexOf("if (!file) return;")).toBeLessThan(handler.indexOf("setImportInspection(null);"));
   });
 
   it("shows XLSX inspection errors next to the import form", () => {

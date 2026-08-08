@@ -33,17 +33,6 @@ export default async function ListingStudioPage({ searchParams }: ListingStudioP
                     : "输入并确认商品资料，生成可审核、可优化的 Listing 草稿。"}
                 </p>
               </div>
-              <ol
-                className={`listing-stage-chip ${styles.workflowRail}`}
-                aria-label="Listing 工作流程：资料确认、Listing 生成、质量审核、优化输出"
-              >
-                {["资料确认", "Listing 生成", "质量审核", "优化输出"].map((label, index) => (
-                  <li key={label} className={styles.workflowStep}>
-                    <span className={styles.workflowNumber}>{String(index + 1).padStart(2, "0")}</span>
-                    <span className={styles.workflowLabel}>{label}</span>
-                  </li>
-                ))}
-              </ol>
             </div>
             <WorkspaceMobileNav />
           </header>

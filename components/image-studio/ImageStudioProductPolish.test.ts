@@ -130,10 +130,18 @@ describe("Image Studio product workbench", () => {
       expect(html).toContain(label);
     }
     for (const option of [
-      "商品主图",
-      "场景图",
-      "卖点展示图",
-      "广告素材",
+      "白底主图 / 棚拍",
+      "卖点信息图",
+      "尺寸规格图",
+      "产品细节特写",
+      "包装 / 套装展示",
+      "使用步骤图",
+      "家居生活",
+      "办公 / 通勤",
+      "户外 / 旅行",
+      "运动 / 健身",
+      "对比展示",
+      "自定义场景",
       "极简",
       "高端",
       "科技",
@@ -231,10 +239,9 @@ describe("Image Studio product workbench", () => {
     expect(cssSource.match(/font-size:\s*0\.55rem/g)).toHaveLength(1);
   });
 
-  it("redirects Studio pages to task detail and does not claim a live production step", () => {
-    // R1: Image Studio 已收敛到任务详情；页面只保留安全重定向，不渲染客户端工作台
-    expect(pageSource).toContain("redirect");
-    expect(pageSource).toMatch(/redirect\(`\/tasks\//);
-    expect(pageSource).not.toContain("ImageStudioClient");
+  it("keeps the independent Image Studio page and delegates real progress to the client", () => {
+    expect(pageSource).not.toContain("redirect(");
+    expect(pageSource).toContain("ImageStudioClient");
+    expect(pageSource).not.toContain('aria-current={index === 0 ? "step" : undefined}');
   });
 });

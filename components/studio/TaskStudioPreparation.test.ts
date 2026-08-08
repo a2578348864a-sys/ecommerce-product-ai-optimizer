@@ -45,4 +45,23 @@ describe("buildPreparationFactOptions", () => {
     expect(buildPreparationPreferences({})).toBeUndefined();
     expect(buildPreparationPreferences({ targetMarket: " US ", tone: "" })).toEqual({ targetMarket: "US" });
   });
+
+  it("把 Task 场景选择映射到既有的安全创作偏好字段", () => {
+    expect(buildPreparationPreferences(
+      { targetMarket: "US", tone: "professional" },
+      {
+        imageStyle: "outdoor",
+        backgroundPreference: "Believable outdoor or travel context.",
+        compositionPreference: "Natural in-use composition.",
+        additionalRequirements: "Keep room for a headline.",
+      },
+    )).toEqual({
+      targetMarket: "US",
+      tone: "professional",
+      imageStyle: "outdoor",
+      backgroundPreference: "Believable outdoor or travel context.",
+      compositionPreference: "Natural in-use composition.",
+      additionalRequirements: "Keep room for a headline.",
+    });
+  });
 });

@@ -48,6 +48,8 @@ import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
+import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
+import { deriveListingStudioProgress } from "@/lib/client/studioProgress";
 
 type StudioData = {
   listingPack: ListingPack;
@@ -138,19 +140,47 @@ const EMPTY_MANUAL_LISTING_DRAFT: ManualListingDraft = {
 };
 
 export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
+  const [progressInput, setProgressInput] = useState({
+    briefReady: false,
+    isGenerating: false,
+    hasResult: false,
+  });
+  const handleTaskReady = useCallback((briefReady: boolean) => {
+    setProgressInput((current) => ({ ...current, briefReady }));
+  }, []);
+  const handleTaskProgress = useCallback((state: { isGenerating: boolean; hasResult: boolean }) => {
+    setProgressInput((current) => ({ ...current, ...state }));
+  }, []);
+  const handleManualProgress = useCallback((state: {
+    briefReady: boolean;
+    isGenerating: boolean;
+    hasResult: boolean;
+  }) => setProgressInput(state), []);
+  const progressRail = (
+    <StudioProgressRail
+      label="Listing 制作进度"
+      steps={deriveListingStudioProgress(progressInput)}
+    />
+  );
+
   if (taskId) {
     return (
-      <TaskStudioPreparation taskId={taskId} kind="listing">
-        <div className="surface-card p-4" data-testid="listing-studio-task-mode">
-          <ListingHandoffSection taskId={taskId} />
-        </div>
-      </TaskStudioPreparation>
+      <>
+        {progressRail}
+        <TaskStudioPreparation taskId={taskId} kind="listing" onReadyChange={handleTaskReady}>
+          <div className="surface-card p-4" data-testid="listing-studio-task-mode">
+            <ListingHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} />
+          </div>
+        </TaskStudioPreparation>
+      </>
     );
   }
-  return <ManualListingStudioClient />;
+  return <>{progressRail}<ManualListingStudioClient onProgressChange={handleManualProgress} /></>;
 }
 
-function ManualListingStudioClient() {
+function ManualListingStudioClient({ onProgressChange }: {
+  onProgressChange: (state: { briefReady: boolean; isGenerating: boolean; hasResult: boolean }) => void;
+}) {
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -234,6 +264,14 @@ function ManualListingStudioClient() {
     && productName.trim().length > 0
     && factsConfirmed
     && (mode === "mock" || realConfirmed);
+
+  useEffect(() => {
+    onProgressChange({
+      briefReady: canGenerate,
+      isGenerating: loading,
+      hasResult: result !== null,
+    });
+  }, [canGenerate, loading, onProgressChange, result]);
 
   const handleGenerate = useCallback(async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();

@@ -67,6 +67,7 @@ import {
   deriveHistoricalArtifactSummary,
   deriveResearchHistoryStatus,
 } from "@/lib/taskResearchHistoryPresentation";
+import { StudioNavigationLink } from "@/components/studio/StudioNavigationLink";
 
 type TaskCenterItem = {
   id: string;
@@ -1554,18 +1555,18 @@ export function TaskRecordDetail({ id }: { id: string }) {
                          <p className="mt-1 text-xs font-semibold text-cyan-800">创作资料：{creativeMaterialStatus?.label ?? "需要重新确认"}</p>
                        </div>
                        <div className="flex flex-wrap gap-2">
-                         <Link
+                         <StudioNavigationLink
                            href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
+                           label="在 Listing Studio 中使用"
+                           pendingLabel="正在打开 Listing Studio…"
                            className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
-                         >
-                           在 Listing Studio 中使用
-                         </Link>
-                         <Link
+                         />
+                         <StudioNavigationLink
                            href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
+                           label="在 Image Studio 中使用"
+                           pendingLabel="正在打开 Image Studio…"
                            className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
-                         >
-                           在 Image Studio 中使用
-                         </Link>
+                         />
                        </div>
                      </div>
                      <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>

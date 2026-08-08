@@ -21,6 +21,8 @@ import {
   EMPTY_IMAGE_INTENT,
   EMPTY_PROMPT_IMAGE_INTENT,
   STUDIO_IMAGE_PROMPT_TEMPLATES,
+  createImageSceneSelection,
+  resolveImageScenePreset,
   type ImageFormIntent,
   type PromptImageFormIntent,
 } from "@/lib/client/studioImageRequest";
@@ -34,15 +36,11 @@ import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
 import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
+import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
+import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
+import { deriveImageStudioProgress } from "@/lib/client/studioProgress";
 
 type StudioMode = "mock" | "real";
-
-const IMAGE_TYPE_OPTIONS = [
-  { value: "product_main", label: "商品主图", description: "清晰主体与干净背景" },
-  { value: "lifestyle_scene", label: "场景图", description: "展示使用环境与氛围" },
-  { value: "selling_point_display", label: "卖点展示图", description: "预留信息标注层级" },
-  { value: "ad_creative", label: "广告素材", description: "强调视觉节奏与留白" },
-] as const;
 
 function apiErrorCode(json: unknown): string | null {
   return studioApiErrorCode(json);
@@ -73,19 +71,60 @@ const EMPTY_MANUAL_IMAGE_DRAFT: ManualImageDraft = {
 };
 
 export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
+  const [progressInput, setProgressInput] = useState({
+    briefReady: false,
+    strategyReady: false,
+    isGenerating: false,
+    candidateCount: 0,
+    selectedImageId: null as string | null,
+  });
+  const handleTaskReady = useCallback((briefReady: boolean) => {
+    setProgressInput((current) => ({ ...current, briefReady }));
+  }, []);
+  const handleTaskProgress = useCallback((state: {
+    strategyReady: boolean;
+    isGenerating: boolean;
+    candidateCount: number;
+    selectedImageId: string | null;
+  }) => setProgressInput((current) => ({ ...current, ...state })), []);
+  const handleManualProgress = useCallback((state: {
+    briefReady: boolean;
+    strategyReady: boolean;
+    isGenerating: boolean;
+    candidateCount: number;
+    selectedImageId: string | null;
+  }) => setProgressInput(state), []);
+  const progressRail = (
+    <StudioProgressRail
+      label="图片制作进度"
+      steps={deriveImageStudioProgress(progressInput)}
+    />
+  );
+
   if (taskId) {
     return (
-      <TaskStudioPreparation taskId={taskId} kind="image">
-        <div className="surface-card p-4" data-testid="image-studio-task-mode">
-          <ImageHandoffSection taskId={taskId} />
-        </div>
-      </TaskStudioPreparation>
+      <>
+        {progressRail}
+        <TaskStudioPreparation taskId={taskId} kind="image" onReadyChange={handleTaskReady}>
+          <div className="surface-card p-4" data-testid="image-studio-task-mode">
+            <ImageHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} />
+          </div>
+        </TaskStudioPreparation>
+      </>
     );
   }
-  return <ManualImageStudioClient />;
+  return <>{progressRail}<ManualImageStudioClient onProgressChange={handleManualProgress} /></>;
 }
 
-function ManualImageStudioClient() {
+function ManualImageStudioClient({ onProgressChange }: {
+  onProgressChange: (state: {
+    briefReady: boolean;
+    strategyReady: boolean;
+    isGenerating: boolean;
+    candidateCount: number;
+    selectedImageId: string | null;
+  }) => void;
+}) {
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
   const [creationMode, setCreationMode] = useState<"guided" | "prompt">("guided");
@@ -146,6 +185,16 @@ function ManualImageStudioClient() {
     && (!referenceImageDataUrl || referenceImageApproved)
     && (mode === "mock" || realConfirmed);
 
+  useEffect(() => {
+    onProgressChange({
+      briefReady: canGenerate,
+      strategyReady: Boolean(intent.scenePreset),
+      isGenerating: loading,
+      candidateCount: result?.images.length ?? 0,
+      selectedImageId: selectedIndices[0] === undefined ? null : String(selectedIndices[0]),
+    });
+  }, [canGenerate, intent.scenePreset, loading, onProgressChange, result, selectedIndices]);
+
   const updateIntent = useCallback(<Key extends keyof ImageFormIntent>(
     key: Key,
     value: ImageFormIntent[Key],
@@ -160,6 +209,18 @@ function ManualImageStudioClient() {
     value: PromptImageFormIntent[Key],
   ) => {
     setPromptIntent((current) => ({ ...current, [key]: value }));
+    setFactsConfirmed(false);
+    realAttemptRef.current = null;
+  }, []);
+
+  const selectScenePreset = useCallback((scenePreset: ImageFormIntent["scenePreset"]) => {
+    const preset = resolveImageScenePreset(scenePreset);
+    setIntent((current) => ({
+      ...current,
+      ...createImageSceneSelection(scenePreset, current.customInstruction),
+      imageType: preset.imageType,
+      visualStyle: preset.visualStyle,
+    }));
     setFactsConfirmed(false);
     realAttemptRef.current = null;
   }, []);
@@ -348,28 +409,7 @@ function ManualImageStudioClient() {
             <h3 id="image-strategy-section">02 图片策略</h3>
             <span>决定素材用途与视觉语气</span>
           </div>
-          <fieldset>
-            <legend className={styles.fieldLabel}>图片类型</legend>
-            <div className={styles.strategyGrid}>
-              {IMAGE_TYPE_OPTIONS.map((option) => (
-                <label
-                  key={option.value}
-                  className={styles.strategyOption}
-                  data-selected={intent.imageType === option.value}
-                >
-                  <input
-                    type="radio"
-                    name="imageType"
-                    value={option.value}
-                    checked={intent.imageType === option.value}
-                    onChange={() => updateIntent("imageType", option.value)}
-                  />
-                  <strong>{option.label}</strong>
-                  <span>{option.description}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <ImageScenePresetPicker value={intent.scenePreset} onChange={selectScenePreset} />
           <div className={styles.field}>
             <label htmlFor="image-visual-style">视觉风格</label>
             <select
@@ -499,16 +539,16 @@ function ManualImageStudioClient() {
           </div>
           <div className={styles.inlineGrid}>
             <div className={styles.field}>
-              <label htmlFor="image-composition">构图要求</label>
+              <label htmlFor="image-composition">自定义要求</label>
               <textarea
                 id="image-composition"
-                name="compositionRequirements"
+                name="customInstruction"
                 maxLength={240}
                 className={styles.control}
                 rows={3}
-                placeholder="例如：主体居中，右侧保留文案区域"
-                value={intent.compositionRequirements}
-                onChange={(event) => updateIntent("compositionRequirements", event.target.value)}
+                placeholder="例如：右侧保留文案区域，使用温暖早晨光线"
+                value={intent.customInstruction}
+                onChange={(event) => updateIntent("customInstruction", event.target.value)}
               />
             </div>
             <div className={styles.field}>

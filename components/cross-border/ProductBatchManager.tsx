@@ -51,6 +51,7 @@ interface ProductBatchManagerViewProps {
   importInspection?: ProductBatchImportInspection | null;
   selectedReportType?: ReportType | "";
   selectedCategory?: string;
+  selectedFileName?: string;
   onImport?: (event: FormEvent<HTMLFormElement>) => void;
   onImportFileChange?: (event: ChangeEvent<HTMLInputElement>) => void;
   onReportTypeChange?: (reportType: ReportType) => void;
@@ -124,6 +125,7 @@ export function ProductBatchManagerView({
   importInspection = null,
   selectedReportType = "",
   selectedCategory = "",
+  selectedFileName = "",
   onImport,
   onImportFileChange,
   onReportTypeChange,
@@ -173,7 +175,7 @@ export function ProductBatchManagerView({
     || importInspectionState === "error";
   const categoryNeedsConfirmation = importInspection?.categoryDetection.status
     === "mixed_requires_confirmation";
-  const importReady = Boolean(effectiveReportType && selectedCategory)
+  const importReady = Boolean(selectedFileName && effectiveReportType && selectedCategory)
     && importInspectionState !== "loading";
 
   const activeBatch = selection?.activeProductBatchId
@@ -230,19 +232,38 @@ export function ProductBatchManagerView({
           </p>
         </div>
         <form className="mt-4 grid gap-4" onSubmit={onImport}>
-          <label className="grid gap-2 text-sm font-semibold text-slate-700" htmlFor="product-batch-file">
-            SellerSprite XLSX
+          <div className="grid gap-2 text-sm font-semibold text-slate-700">
+            <span>SellerSprite XLSX</span>
             <input
               id="product-batch-file"
               name="file"
               type="file"
               accept=".xlsx"
-              required
               disabled={busy}
+              aria-label="选择 SellerSprite XLSX 文件"
+              aria-describedby="product-batch-file-status"
+              onClick={(event) => {
+                // 允许用户重新选择同一文件；真正导入使用已保留在组件状态中的 File。
+                event.currentTarget.value = "";
+              }}
               onChange={onImportFileChange}
-              className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:font-semibold file:text-teal-700"
+              className="sr-only"
             />
-          </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <label
+                htmlFor="product-batch-file"
+                aria-disabled={busy}
+                className={`inline-flex h-11 items-center justify-center rounded-xl border border-teal-200 bg-teal-50 px-4 font-semibold text-teal-700 ${
+                  busy ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-teal-100"
+                }`}
+              >
+                选择文件
+              </label>
+              <span id="product-batch-file-status" className="min-w-0 break-all font-normal text-slate-600" aria-live="polite">
+                {selectedFileName ? `已选择：${selectedFileName}` : "尚未选择文件"}
+              </span>
+            </div>
+          </div>
 
           {importInspectionState === "loading" ? (
             <p role="status" className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
@@ -635,6 +656,7 @@ export function ProductBatchManager() {
     useState<ProductBatchImportInspection | null>(null);
   const [selectedReportType, setSelectedReportType] = useState<ReportType | "">("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const inspectionSequence = useRef(0);
 
   const applyAccess = (data: Pick<ListPayload, "accessMode" | "maxProducts" | "usedProducts" | "remainingProducts">) => {
@@ -705,6 +727,8 @@ export function ProductBatchManager() {
 
   const handleImportFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0] ?? null;
+    // 取消原生文件选择时保留上一次已经 inspect 的文件与筛选状态。
+    if (!file) return;
     const sequence = inspectionSequence.current + 1;
     inspectionSequence.current = sequence;
     setImportInspection(null);
@@ -712,10 +736,7 @@ export function ProductBatchManager() {
     setSelectedCategory("");
     setManualReportTypeRequired(false);
     setErrorMessage(null);
-    if (!file) {
-      setImportInspectionState("idle");
-      return;
-    }
+    setSelectedFile(file);
     setImportInspectionState("loading");
     void (async () => {
       const formData = new FormData();
@@ -771,7 +792,12 @@ export function ProductBatchManager() {
 
   const handleImport = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!selectedFile) {
+      setErrorMessage("请先选择 SellerSprite XLSX 文件。");
+      return;
+    }
     const formData = new FormData(event.currentTarget);
+    formData.set("file", selectedFile);
     formData.set("operation", "import");
     if (formData.get("reportType") === "category_current") formData.delete("query");
     void runMutation(async () => {
@@ -926,6 +952,7 @@ export function ProductBatchManager() {
       importInspection={importInspection}
       selectedReportType={selectedReportType}
       selectedCategory={selectedCategory}
+      selectedFileName={selectedFile?.name ?? ""}
       onImport={handleImport}
       onImportFileChange={handleImportFileChange}
       onReportTypeChange={setSelectedReportType}

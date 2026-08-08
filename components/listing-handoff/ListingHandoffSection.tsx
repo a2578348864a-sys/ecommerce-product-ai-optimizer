@@ -71,12 +71,14 @@ export function ListingHandoffSection({
   taskId,
   imageMaterialNeeds = [],
   onCommitted,
+  onProgressChange,
 }: {
   taskId: string;
   /** 图片创作建议：来自研究保存时的 listingPrepSnapshot.imageMaterialNeeds（无数据则为空数组） */
   imageMaterialNeeds?: string[];
   /** Listing 草稿生成成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新） */
   onCommitted?: () => void;
+  onProgressChange?: (state: { isGenerating: boolean; hasResult: boolean }) => void;
 }) {
   const [status, setStatus] = useState<ListingStatus | null>(null);
   const [handoffRevision, setHandoffRevision] = useState<number | null>(null);
@@ -125,6 +127,13 @@ export function ListingHandoffSection({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    onProgressChange?.({
+      isGenerating: submitting,
+      hasResult: status === "active" && draft !== null,
+    });
+  }, [draft, onProgressChange, status, submitting]);
 
   const handleConflict = useCallback(() => {
     setRequestId(null);

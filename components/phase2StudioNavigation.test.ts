@@ -43,6 +43,9 @@ describe("Phase 2 Studio entry points", () => {
     expect(detail).not.toContain("ListingHandoffSection");
     expect(detail).not.toContain("ImageHandoffSection");
     expect(detail).toContain("创作工具");
+    expect(detail).toContain("StudioNavigationLink");
+    expect(detail).toContain("正在打开 Image Studio…");
+    expect(detail).toContain("正在打开 Listing Studio…");
   });
 
   it("delays the session-restored notice until after hydration", () => {

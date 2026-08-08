@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import {
@@ -11,6 +11,13 @@ import type {
   ApiError,
   CreativeHandoffPreview,
 } from "@/components/creative-handoff/types";
+import {
+  createImageSceneSelection,
+  resolveImageScenePreset,
+  type ImageScenePreset,
+} from "@/lib/client/studioImageRequest";
+import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
 
 type PreparationKind = "listing" | "image";
 
@@ -40,10 +47,17 @@ type PreparationPreferences = NonNullable<CreativeHandoffPreview["creativePrefer
 
 export function buildPreparationPreferences(
   input: CreativeHandoffPreview["creativePreferences"],
+  imageScene?: {
+    imageStyle: string;
+    backgroundPreference: string;
+    compositionPreference: string;
+    additionalRequirements: string;
+  },
 ): PreparationPreferences | undefined {
   const safe: PreparationPreferences = {};
-  for (const key of ["targetMarket", "language", "tone", "imageStyle", "additionalRequirements"] as const) {
-    const value = input?.[key]?.trim();
+  for (const key of ["targetMarket", "language", "tone", "imageStyle", "backgroundPreference", "compositionPreference", "additionalRequirements"] as const) {
+    const sceneValue = (imageScene as Partial<Record<typeof key, string>> | undefined)?.[key];
+    const value = sceneValue?.trim() || input?.[key]?.trim();
     if (value) safe[key] = value;
   }
   return Object.keys(safe).length > 0 ? safe : undefined;
@@ -67,10 +81,12 @@ export function TaskStudioPreparation({
   taskId,
   kind,
   children,
+  onReadyChange,
 }: {
   taskId: string;
   kind: PreparationKind;
   children: ReactNode;
+  onReadyChange?: (ready: boolean) => void;
 }) {
   const api = useCreativeHandoffApi(taskId);
   const loadPreparation = api.load;
@@ -79,6 +95,8 @@ export function TaskStudioPreparation({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
+  const [sceneSelection, setSceneSelection] = useState(() => createImageSceneSelection("white_studio"));
+  const restoredSceneRef = useRef(false);
 
   useEffect(() => {
     void loadPreparation();
@@ -88,6 +106,28 @@ export function TaskStudioPreparation({
   const preview = successful?.preview ?? null;
   const detail = successful?.detail ?? null;
   const isActive = detail?.effectiveStatus === "active" && detail.controlState === "active";
+  const sceneDraft = useSessionDraft({
+    pageKind: "image-studio-task-scene",
+    entityId: taskId,
+    revision: kind === "image" && preview?.expectedResearchRevision
+      ? String(preview.expectedResearchRevision)
+      : null,
+    initial: createImageSceneSelection("white_studio"),
+  });
+
+  useEffect(() => {
+    if (kind !== "image" || !sceneDraft.draft || restoredSceneRef.current) return;
+    restoredSceneRef.current = true;
+    setSceneSelection(sceneDraft.draft);
+  }, [kind, sceneDraft.draft]);
+
+  useEffect(() => {
+    if (kind === "image") sceneDraft.save(sceneSelection);
+  }, [kind, sceneDraft, sceneSelection]);
+
+  useEffect(() => {
+    onReadyChange?.(isActive);
+  }, [isActive, onReadyChange]);
   const factOptions = useMemo(
     () => buildPreparationFactOptions(preview),
     [preview],
@@ -157,6 +197,7 @@ export function TaskStudioPreparation({
     setSubmitting(true);
     setNotice("");
     try {
+      const scene = resolveImageScenePreset(sceneSelection.scenePreset);
       await api.create({
         requestId: createBrowserUuid(),
         selectedFactCandidateIds: selectedFacts,
@@ -166,9 +207,18 @@ export function TaskStudioPreparation({
         expectedStorageVersion: preview.storageVersion!,
         expectedResearchRevision: preview.expectedResearchRevision!,
         expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision!,
-        creativePreferences: buildPreparationPreferences(preview.creativePreferences),
+        creativePreferences: buildPreparationPreferences(
+          preview.creativePreferences,
+          kind === "image" ? {
+            imageStyle: scene.visualStyle,
+            backgroundPreference: scene.background,
+            compositionPreference: scene.composition,
+            additionalRequirements: sceneSelection.customInstruction,
+          } : undefined,
+        ),
       });
       setConfirmed(false);
+      if (kind === "image") sceneDraft.clear();
       await api.refresh();
     } catch (error) {
       setNotice(error instanceof HandoffApiRequestError
@@ -255,6 +305,38 @@ export function TaskStudioPreparation({
             ))}
           </div>
         </fieldset>
+      ) : null}
+
+      {kind === "image" ? (
+        <div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/30 p-4" data-testid="task-image-scene-selection">
+          <p className="mb-3 text-sm font-bold text-slate-900">图片场景</p>
+          <ImageScenePresetPicker
+            value={sceneSelection.scenePreset}
+            name="taskScenePreset"
+            onChange={(scenePreset: ImageScenePreset) => {
+              setSceneSelection((current) => createImageSceneSelection(scenePreset, current.customInstruction));
+              setConfirmed(false);
+            }}
+          />
+          <label className="mt-4 grid gap-2 text-sm font-semibold text-slate-700" htmlFor="task-image-custom-instruction">
+            自定义要求
+            <textarea
+              id="task-image-custom-instruction"
+              maxLength={200}
+              rows={3}
+              value={sceneSelection.customInstruction}
+              onChange={(event) => {
+                setSceneSelection(createImageSceneSelection(sceneSelection.scenePreset, event.currentTarget.value));
+                setConfirmed(false);
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-normal"
+              placeholder="例如：右侧保留文案区域，使用温暖早晨光线"
+            />
+          </label>
+          {sceneDraft.restored ? (
+            <p className="mt-2 text-xs font-semibold text-cyan-800">已恢复刷新前未提交的场景选择。</p>
+          ) : null}
+        </div>
       ) : null}
 
       {preview?.creativePreferences ? (

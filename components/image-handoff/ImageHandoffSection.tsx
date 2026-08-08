@@ -161,10 +161,16 @@ function downloadDraftImage(taskId: string, draftId: string, fallbackName: strin
 }
 
 /** PR2-3: Image 消费 Creative Handoff 最小状态接入 */
-export function ImageHandoffSection({ taskId, onCommitted }: {
+export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   taskId: string;
   /** 图片草稿生成成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新） */
   onCommitted?: () => void;
+  onProgressChange?: (state: {
+    strategyReady: boolean;
+    isGenerating: boolean;
+    candidateCount: number;
+    selectedImageId: string | null;
+  }) => void;
 }) {
   const router = useRouter();
   const [state, setState] = useState<ImageStateData | null>(null);
@@ -194,6 +200,15 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
   useEffect(() => {
     void loadState();
   }, [loadState]);
+
+  useEffect(() => {
+    onProgressChange?.({
+      strategyReady: Boolean(state?.mode),
+      isGenerating: submitting,
+      candidateCount: state?.candidates.length ?? 0,
+      selectedImageId: state?.selectedImageId ?? null,
+    });
+  }, [onProgressChange, state, submitting]);
 
   async function handleGenerate() {
     if (!state || !state.canGenerate || submitting) return;
