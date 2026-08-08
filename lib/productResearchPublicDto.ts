@@ -151,7 +151,7 @@ const agentOutputSnapshotSpec = objectOf({
 
 const listingKeywordSpec = objectOf({ keyword: scalar, intent: scalar });
 const listingRiskTermSpec = objectOf({ term: scalar, reason: scalar, saferAlternative: scalar });
-const listingPackSpec = objectOf({
+const listingPackContentFields: Readonly<Record<string, ProjectionSpec>> = {
   titleDrafts: stringList,
   bulletPoints: stringList,
   coreKeywords: arrayOf(listingKeywordSpec),
@@ -168,6 +168,18 @@ const listingPackSpec = objectOf({
   disclaimer: scalar,
   source: scalar,
   generatedAt: scalar,
+};
+
+const listingPackSpec = objectOf({
+  ...listingPackContentFields,
+  version: scalar,
+  savedAt: scalar,
+  pack: objectOf(listingPackContentFields),
+  safety: objectOf({
+    unverifiedClaimsSanitized: scalar,
+    requiresHumanReview: scalar,
+    autoListing: scalar,
+  }),
 });
 
 /**
@@ -438,6 +450,12 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   listingPackSnapshot: listingPackSpec,
   aiListingPackSnapshot: aiListingPackSpec,
   aiImageDraftSnapshot: aiImageDraftSpec,
+  imageStudioSelection: objectOf({
+    version: scalar,
+    selectedImageId: scalar,
+    sourceHandoffRevision: scalar,
+    selectedAt: scalar,
+  }),
   creativeHandoff: creativeHandoffSpec,
   sourceMeta: sourceMetaSpec,
   sellingPoints: stringList,
@@ -474,6 +492,11 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   product: productSpec,
   normalizedProduct: productSpec,
   normalized: productSpec,
+  candidateAnalysisContext: objectOf({
+    sourceLabel: scalar,
+    asin: scalar,
+    productUrl: scalar,
+  }),
   category: scalar,
   titleSuggestions: stringList,
   videoOpenings: stringList,
@@ -578,6 +601,15 @@ function projectLegacyListSummary(value: JsonRecord, context: TaskListProjection
     decisionStatus,
     result: value,
   });
+  const imageDraft = isRecord(value.aiImageDraftSnapshot) ? value.aiImageDraftSnapshot : null;
+  const imageItems = imageDraft && Array.isArray(imageDraft.items)
+    ? imageDraft.items.filter(isRecord)
+    : [];
+  const artifactSummary = {
+    hasListing: hasAiListingPack(value) || isRecord(value.listingPackSnapshot),
+    hasImages: imageItems.length > 0,
+    imageCount: imageItems.length,
+  };
 
   return {
     workflow: {
@@ -616,6 +648,7 @@ function projectLegacyListSummary(value: JsonRecord, context: TaskListProjection
     },
     pipelineStatus: derivePipelineStatus(summaryInput),
     hasListingPack: hasAiListingPack(value),
+    artifactSummary,
     hasCandidateSource: getTaskSourceMeta(value) !== null,
     details: {
       sellingPoints: boundedStrings(value.sellingPoints),

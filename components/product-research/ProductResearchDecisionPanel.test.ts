@@ -11,7 +11,7 @@ const panelSource = readFileSync(
 const detailSource = readFileSync(resolve(process.cwd(), "components/TaskRecordDetail.tsx"), "utf8");
 
 describe("versioned product research decision panel", () => {
-  it("uses the shared three-state contract and exposes only a short research fingerprint", () => {
+  it("uses the shared three-state contract without exposing the internal research fingerprint", () => {
     expect(PRODUCT_RESEARCH_DECISION_OPTIONS.map((option) => option.label)).toEqual([
       "进入创作准备",
       "待补信息",
@@ -20,6 +20,7 @@ describe("versioned product research decision panel", () => {
     expect(panelSource).toContain("PRODUCT_RESEARCH_DECISION_OPTIONS");
     expect(panelSource).toContain("decisionEvents");
     expect(panelSource).toContain("researchHashFingerprint");
+    expect(panelSource).not.toContain("研究指纹");
     expect(panelSource).not.toMatch(/researchHash\s*:/);
     expect(panelSource).toContain('event.actorMode === "owner" ? "管理员" : "访客"');
   });
@@ -41,6 +42,8 @@ describe("versioned product research decision panel", () => {
 
   it("does not auto-trigger Listing or Image work", () => {
     expect(panelSource).toContain("Listing / Image");
+    expect(panelSource).toContain("独立创作工具");
+    expect(panelSource).not.toContain("PR-3");
     expect(panelSource).not.toContain("/api/tasks/${encodeURIComponent(taskId)}/listing-pack");
     expect(panelSource).not.toContain("/api/tasks/${encodeURIComponent(taskId)}/image-draft");
   });

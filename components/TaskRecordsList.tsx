@@ -24,13 +24,7 @@ import {
   LISTING_PACK_FILTER_PARAM,
   LISTING_PACK_FILTER_LABEL,
 } from "@/lib/tasks/listingSnapshotUi";
-import { deriveTaskWorkflowSummary, getTaskSourceMeta, toneClass } from "@/lib/taskWorkflowSummary";
-import {
-  summarizePipeline,
-  PIPELINE_STATUS_LABELS,
-  PIPELINE_BOARD_CARDS,
-  type PipelineStatus,
-} from "@/lib/productPipeline";
+import { deriveTaskWorkflowSummary } from "@/lib/taskWorkflowSummary";
 import { deriveProductResearchPresentation } from "@/lib/productResearchPresentation";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
@@ -38,6 +32,10 @@ import {
   getProductResearchDecisionLabel,
   isProductResearchDecisionStatus,
 } from "@/lib/productResearchDecisionContract";
+import {
+  deriveHistoricalArtifactSummary,
+  deriveResearchHistoryStatus,
+} from "@/lib/taskResearchHistoryPresentation";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -301,16 +299,6 @@ function getReviewDisplay(item: TaskCenterItem, agentState: ReturnType<typeof de
   return agentState.reviewState.allReviewed
     ? `已复核 ${agentState.reviewState.reviewedCount}/${agentState.reviewState.totalReviewSteps}`
     : `待复核 ${agentState.reviewState.reviewedCount}/${agentState.reviewState.totalReviewSteps}`;
-}
-
-function getNextActionDisplay(item: TaskCenterItem, agentState: ReturnType<typeof deriveAgentNextStepPanelState>) {
-  if (item.decisionStatus === "rejected") return "暂缓";
-  if (item.decisionStatus === "need_info") return "补资料";
-  if (agentState.agentStatus.key === "needs_review") return "人工复核";
-  if (agentState.agentStatus.key === "can_continue") return "可人工推进";
-  if (agentState.agentStatus.key === "needs_decision") return "人工决策";
-  if (item.type === "opportunities") return "继续判断机会";
-  return "查看结果";
 }
 
 function getPriorityScore(item: TaskCenterItem, highlightedTaskId: string, hasActiveFilters: boolean) {
@@ -778,34 +766,6 @@ export function TaskRecordsList() {
     if (priorityDiff !== 0) return priorityDiff;
     return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
   }), [hasActiveFilters, highlightedTaskId, visibleItems]);
-  const priorityItem = !loading && !error ? displayItems[0] : null;
-  const prioritySummary = priorityItem ? getWorkflowSummary(priorityItem) : null;
-  const priorityAgentState = priorityItem
-    ? (getLegacyListSummary(priorityItem.result)?.agent as ReturnType<typeof deriveAgentNextStepPanelState>
-      | undefined) ?? deriveAgentNextStepPanelState({
-        taskType: priorityItem.type,
-        decisionStatus: priorityItem.decisionStatus,
-        result: priorityItem.result,
-      })
-    : null;
-
-  const pipelineCounts = useMemo(() => {
-    const counts = summarizePipeline([]);
-    for (const item of visibleItems) {
-      const summary = getLegacyListSummary(item.result);
-      const status = summary && typeof summary.pipelineStatus === "string"
-        && Object.prototype.hasOwnProperty.call(counts, summary.pipelineStatus)
-        ? summary.pipelineStatus as PipelineStatus
-        : null;
-      if (status) counts[status] += 1;
-      else {
-        const fallback = summarizePipeline([{ decisionStatus: item.decisionStatus, level: item.level, result: item.result }]);
-        for (const key of Object.keys(counts) as PipelineStatus[]) counts[key] += fallback[key];
-      }
-    }
-    return counts;
-  }, [visibleItems]);
-
   const isListingPackEmpty = !loading && !error && visibleItems.length === 0 && hasListingPackFilter && items.length > 0;
   const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters && !isListingPackEmpty;
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
@@ -826,7 +786,7 @@ export function TaskRecordsList() {
                 <p className="eyebrow">Research History</p>
                 <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">研究历史</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  按商品查看已经完成的研究、创作准备和人工结论。AI 结果用于辅助研究，最终决定始终由你确认。
+                  按商品查看已保存的研究结论、风险、证据缺口和人工决定。创作成果只作为历史记录展示。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -851,81 +811,13 @@ export function TaskRecordsList() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold text-teal-700">已保存的商品研究</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">从哪里继续研究？</h2>
-                <p className="muted-text mt-1 text-sm">优先展示商品、当前阶段、已有产物和下一步；内部执行状态默认收起。</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">研究记录与人工决定</h2>
+                <p className="muted-text mt-1 text-sm">优先展示商品、来源、研究状态、当前决定、风险和简要结论。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {page ? `${page.total} 条研究记录` : `${items.length} 条研究记录`}
               </span>
             </div>
-
-            <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-              <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                技术状态与证据
-                <span className="ml-2 text-xs font-medium text-slate-400">内部流水线、风险统计和优先处理建议，默认折叠</span>
-              </summary>
-
-              {/* Pipeline board */}
-              <PipelineBoard counts={pipelineCounts} />
-
-              {priorityItem && prioritySummary && priorityAgentState ? (
-              <div className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-teal-700">建议优先处理</p>
-                    <h3 className="mt-1 line-clamp-2 text-xl font-semibold tracking-tight text-slate-950">
-                      {prioritySummary.productName}
-                    </h3>
-                    <p className="mt-2 line-clamp-2 text-sm font-semibold leading-6 text-slate-700">
-                      {prioritySummary.verdictLabel}
-                    </p>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      {[
-                        ["优先级", prioritySummary.priorityLabel],
-                        ["风险", prioritySummary.riskLabel],
-                        ["人工状态", getDecisionStatusOption(priorityItem.decisionStatus).shortLabel],
-                        ["下一步", prioritySummary.primaryNextAction || getNextActionDisplay(priorityItem, priorityAgentState)],
-                      ].map(([label, value]) => (
-                        <div key={label} className="rounded-xl border border-white/80 bg-white/85 p-3">
-                          <p className="text-xs font-bold text-slate-400">{label}</p>
-                          <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-800">{value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[260px] lg:justify-end">
-                    <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(prioritySummary.priorityTone)}>
-                      {prioritySummary.priorityLabel}
-                    </span>
-                    <span className={"rounded-full border px-3 py-1 text-sm font-semibold " + toneClass(prioritySummary.riskTone)}>
-                      {prioritySummary.riskLabel}
-                    </span>
-                    <Link
-                      href={`/tasks/${priorityItem.id}`}
-                      className="linear-button-primary inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
-                    >
-                      查看详情
-                    </Link>
-                  </div>
-                </div>
-              </div>
-              ) : null}
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ["待复核", pipelineCounts.needs_review, "AI 分析已完成，等待人工确认"],
-                ["可推进", pipelineCounts.ready_to_advance + pipelineCounts.ready_for_listing + pipelineCounts.listing_ready, "复核通过，可继续下一步"],
-                ["高风险", pipelineCounts.high_risk, "需人工确认是否继续"],
-                ["已放弃/已完成", pipelineCounts.abandoned + pipelineCounts.completed, "不再推进或已结束"],
-              ].map(([label, value, hint]) => (
-                <div key={label as string} className="rounded-2xl border border-slate-200 bg-white/85 p-3">
-                  <p className="text-xs font-bold text-slate-400">{label}</p>
-                  <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{value as number}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{hint}</p>
-                </div>
-              ))}
-              </div>
-            </details>
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
@@ -1054,7 +946,7 @@ export function TaskRecordsList() {
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
                 <p className="text-lg font-semibold text-slate-950">还没有商品研究记录</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  从「发现商品」选择候选，或完成一次商品研究并保存结果后，这里会按商品保留研究阶段、产物和下一步。
+                  从「发现商品」选择候选，完成商品研究并保存结果后，这里会按商品保留研究结论和人工决定。
                 </p>
                 <Link
                   href="/"
@@ -1140,10 +1032,20 @@ export function TaskRecordsList() {
                     const highlighted = item.id === highlightedTaskId;
                     const summary = getWorkflowSummary(item);
                     const presentation = getPresentation(item, summary.productName);
-                    const artifactLabel = presentation.artifacts.length
-                      ? presentation.artifacts.map((artifact) => artifact.label).join("、")
-                      : "暂无已保存产物";
-                    const presentationAction = presentation.actions[0];
+                    const researchStatus = deriveResearchHistoryStatus({
+                      result: item.result,
+                      decisionStatus: item.decisionStatus,
+                      oneLineSummary: item.oneLineSummary,
+                    });
+                    const artifacts = deriveHistoricalArtifactSummary(item.result);
+                    const versionedDecision = getVersionedDecisionSummary(item.result);
+                    const decisionLabel = versionedDecision
+                      ? getProductResearchDecisionLabel(versionedDecision.status)
+                      : getDecisionStatusOption(item.decisionStatus).shortLabel;
+                    const artifactLabel = [
+                      artifacts.hasListing ? "Listing 有" : "Listing 无",
+                      artifacts.hasImages ? `图片 ${artifacts.imageCount} 张` : "图片无",
+                    ].join(" · ");
                     return (
                       <article
                         key={item.id}
@@ -1162,7 +1064,7 @@ export function TaskRecordsList() {
                                     {sourceLabel(item.source)}
                                   </span>
                                   <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
-                                    {presentation.stage.label}
+                                    {researchStatus.label}
                                   </span>
                                   {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
                                   <span>最后更新 {formatDate(item.updatedAt || item.createdAt)}</span>
@@ -1178,9 +1080,9 @@ export function TaskRecordsList() {
                             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                               {[
                                 ["来源", sourceLabel(item.source)],
-                                ["当前阶段", presentation.stage.label],
-                                ["已生成内容", artifactLabel],
-                                ["最后更新", formatDate(item.updatedAt || item.createdAt)],
+                                ["研究状态", researchStatus.label],
+                                ["当前决定", decisionLabel],
+                                ["风险", summary.riskLabel],
                               ].map(([label, value]) => (
                                 <div key={label} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                                   <p className="text-xs font-bold text-slate-400">{label}</p>
@@ -1190,9 +1092,9 @@ export function TaskRecordsList() {
                             </div>
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
-                                下一步：{presentationAction?.label || "查看研究详情"}
+                                历史成果：{artifactLabel}
                               </span>
-                              <span className="text-xs text-slate-500">所有结论仍需人工确认</span>
+                              <span className="text-xs text-slate-500">研究时间：{formatDate(item.createdAt)}</span>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap items-center gap-2 lg:max-w-[300px] lg:justify-end">
@@ -1207,16 +1109,8 @@ export function TaskRecordsList() {
                               />
                             ) : null}
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
-                              {presentation.stage.label}
+                              {researchStatus.label}
                             </span>
-                            {presentation.artifacts.slice(0, 2).map((artifact) => (
-                              <span
-                                key={artifact.key}
-                                className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
-                              >
-                                {artifact.label}
-                              </span>
-                            ))}
                             {/* Primary actions */}
                             <Link
                               href={`/tasks/${item.id}`}
@@ -1224,14 +1118,6 @@ export function TaskRecordsList() {
                             >
                               查看研究结果
                             </Link>
-                            {presentationAction ? (
-                              <Link
-                                href={presentationAction.href}
-                                className="linear-button inline-flex h-8 items-center px-3 text-xs font-semibold"
-                              >
-                                {presentationAction.label}
-                              </Link>
-                            ) : null}
                             <button
                               type="button"
                               onClick={() => setOpenId(open ? "" : item.id)}
@@ -1279,17 +1165,11 @@ export function TaskRecordsList() {
                         {open ? (
                           <div className="mt-4 grid gap-3 md:grid-cols-2">
                             <div className="rounded-2xl border border-teal-200 bg-teal-50/70 p-4 md:col-span-2">
-                              <p className="text-sm font-bold text-slate-950">下一步动作</p>
-                              <div className="mt-3 grid gap-2 md:grid-cols-2">
-                                {summary.nextActions.slice(0, 4).map((action) => (
-                                  <div key={action} className="rounded-xl border border-white/80 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
-                                    {action}
-                                  </div>
-                                ))}
-                              </div>
-                              <p className="mt-3 text-xs leading-5 text-teal-700">
-                                {summary.reason} AI 结果只用于辅助判断，采购、上架、投广告等真实动作必须人工确认。
+                              <p className="text-sm font-bold text-slate-950">研究摘要</p>
+                              <p className="mt-2 text-sm leading-6 text-slate-700">
+                                {presentation.researchConclusions[0] || summary.verdictLabel}
                               </p>
+                              <p className="mt-3 text-xs leading-5 text-teal-700">AI 结果只用于辅助判断，采购、上架、投广告等真实动作必须人工确认。</p>
                             </div>
                             <TaskDecisionControl
                               taskId={item.id}
@@ -1298,14 +1178,6 @@ export function TaskRecordsList() {
                               updating={updatingDecisionId === item.id}
                               onLegacyDecisionChange={(next) => void updateDecisionStatus(item, next)}
                             />
-                            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2">
-                              <p className="text-sm font-bold text-slate-950">执行步骤预留</p>
-                              <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                                {["已保存", "等待人工复核", "后续可重试", "后续可串联"].map((step) => (
-                                  <span key={step} className="linear-pill px-2 py-1 text-xs text-slate-500">{step}</span>
-                                ))}
-                              </div>
-                            </div>
                             <DetailList title="核心卖点" items={getStringArray(item.result, "sellingPoints")} />
                             <DetailList title="用户痛点" items={getStringArray(item.result, "painPoints")} />
                             <DetailList title="开头钩子" items={getStringArray(item.result, "hooks")} />
@@ -1342,27 +1214,5 @@ export function TaskRecordsList() {
         </div>
       </div>
     </main>
-  );
-}
-
-/** Pipeline board showing task distribution by advancement status */
-function PipelineBoard({ counts }: { counts: Record<PipelineStatus, number> }) {
-  const cards = PIPELINE_BOARD_CARDS.filter(
-    (c) => counts[c.status] > 0 || c.status === "needs_review" || c.status === "high_risk"
-  );
-  if (cards.length === 0) return null;
-  return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {cards.map((card) => (
-        <div key={card.status} className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xl">{card.icon}</span>
-            <span className="text-2xl font-bold text-slate-800">{counts[card.status]}</span>
-          </div>
-          <p className="mt-2 text-sm font-semibold text-slate-700">{PIPELINE_STATUS_LABELS[card.status]}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{card.description}</p>
-        </div>
-      ))}
-    </div>
   );
 }

@@ -228,9 +228,6 @@ export function ProductResearchDecisionPanel({
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-teal-800">版本 {state.record.revision}</span>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">
-            研究指纹 {record.researchHashFingerprint ?? "不可用"}
-          </span>
         </div>
       </div>
 
@@ -297,7 +294,7 @@ export function ProductResearchDecisionPanel({
             {saving ? "保存中…" : "保存新决定"}
           </button>
           <p className="text-xs leading-5 text-slate-500">
-            已保存正式决定；尚未生成结构化创作交接卡。Listing / Image 自动交接将在 PR-3 完成，当前不会自动生成 Listing、图片或发布任务。
+            Listing / Image 是独立创作工具；保存决定不会自动生成 Listing、图片或发布任务。
           </p>
         </div>
         {message ? <p className="mt-2 text-xs font-semibold text-teal-700">{message}</p> : null}

@@ -395,14 +395,12 @@ describe("F 创作交接 4 步向导", () => {
   });
 });
 
-describe("Task 详情接入", () => {
-  it("接入位置：创作交接步骤内，仅 workflow 类型（E 步骤工作台）", () => {
-    expect(detailSource).toContain('import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel"');
-    // E：CreativeHandoffPanel 作为「创作交接」步骤的内容放入步骤工作台
-    expect(detailSource).toContain("WorkflowStepWorkspace");
-    expect(detailSource).toContain('label: "创作交接"');
-    // Release Closeout：创建成功后通过 onCommitted 触发父级重读服务端（进度即时同步）
-    expect(detailSource).toContain("<CreativeHandoffPanel taskId={record.id} onCommitted={() => void refreshRecord()} />");
-    expect(detailSource).toContain('record.type === "workflow" ? (');
+describe("Task 详情边界", () => {
+  it("不再嵌入创作交接编辑器，仅保留 Studio 入口和资料状态", () => {
+    expect(detailSource).not.toContain('import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel"');
+    expect(detailSource).not.toContain("WorkflowStepWorkspace");
+    expect(detailSource).toContain("创作资料：");
+    expect(detailSource).toContain("/listing-studio?taskId=");
+    expect(detailSource).toContain("/image-studio?taskId=");
   });
 });

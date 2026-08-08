@@ -35,13 +35,14 @@ describe("Phase 2 Studio entry points", () => {
     expect(sidebar).toContain("mobileNavItems");
   });
 
-  it("connects Task detail to both independent Studio pages without deleting the legacy five-step workspace", () => {
+  it("connects Task detail to both independent Studio pages after retiring the legacy five-step workspace", () => {
     const detail = source("components/TaskRecordDetail.tsx");
     expect(detail).toContain("`/listing-studio?taskId=${encodeURIComponent(record.id)}`");
     expect(detail).toContain("`/image-studio?taskId=${encodeURIComponent(record.id)}`");
-    expect(detail).toContain("CreativeHandoffPanel");
-    expect(detail).toContain("ListingHandoffSection");
-    expect(detail).toContain("ImageHandoffSection");
+    expect(detail).not.toContain("CreativeHandoffPanel");
+    expect(detail).not.toContain("ListingHandoffSection");
+    expect(detail).not.toContain("ImageHandoffSection");
+    expect(detail).toContain("创作工具");
   });
 
   it("delays the session-restored notice until after hydration", () => {

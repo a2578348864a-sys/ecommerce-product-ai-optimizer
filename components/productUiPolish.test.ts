@@ -61,16 +61,17 @@ describe("Product UI polish v2", () => {
 
   it("keeps history product-facing and titles details as a research result", () => {
     expect(historySource).toContain("商品");
-    expect(historySource).toContain("当前阶段");
-    expect(historySource).toContain("已生成内容");
-    expect(historySource).toContain("下一步");
+    expect(historySource).toContain("研究状态");
+    expect(historySource).toContain("当前决定");
+    expect(historySource).toContain("历史成果");
     // Phase1：卡片级技术字段已从用户主流程移除
     expect(historySource).not.toContain("内部阶段");
-    expect(detailSource).toContain("商品研究结果");
-    expect(detailSource).toContain("已有产物");
-    // E：任务详情为步骤工作台，技术信息不再挂载到用户主流程
+    expect(detailSource).toContain("商品研究记录");
+    expect(detailSource).toContain("研究结论");
+    expect(detailSource).toContain("历史成果");
+    // Phase 3：任务详情是研究记录，不再挂载五步推进工作台
     expect(detailSource).not.toContain("技术信息与原始数据");
-    expect(detailSource).toContain("WorkflowStepWorkspace");
+    expect(detailSource).not.toContain("WorkflowStepWorkspace");
   });
 
   it("uses the converged product positioning in page metadata", () => {

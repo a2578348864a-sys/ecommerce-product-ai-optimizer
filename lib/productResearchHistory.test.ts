@@ -14,8 +14,8 @@ describe("product research history presentation", () => {
     const detailPage = source("app/tasks/[id]/page.tsx");
 
     expect(list).toContain("研究历史");
-    expect(list).toContain("最后更新");
-    expect(list).toContain("已生成内容");
+    expect(list).toContain("研究时间");
+    expect(list).toContain("历史成果");
     expect(list).toContain("ResearchProductImage");
     expect(detail).toContain("ResearchProductImage");
     expect(source("components/ResearchProductImage.tsx")).toContain('loading="lazy"');
@@ -23,11 +23,11 @@ describe("product research history presentation", () => {
     expect(source("components/ResearchProductImage.tsx")).toContain("object-contain");
     // Phase1：卡片级技术字段已从用户主流程移除
     expect(list).not.toContain("内部阶段");
-    expect(detail).toContain("商品研究结果");
-    expect(detail).toContain("人工核验");
+    expect(detail).toContain("商品研究记录");
+    expect(detail).toContain("人工决定");
     expect(detail).not.toContain("技术信息与原始数据");
     expect(listPage).toContain("商品研究历史");
-    expect(detailPage).toContain("商品研究结果");
+    expect(detailPage).toContain("商品研究记录");
   });
 
   it("derives saved artifacts and routes Studio actions to task detail", () => {
@@ -36,8 +36,10 @@ describe("product research history presentation", () => {
 
     expect(list).toContain("deriveProductResearchPresentation");
     expect(detail).toContain("deriveProductResearchPresentation");
-    expect(detail).toContain("presentation.actions");
-    // Studio 已收敛：生成动作统一指向任务详情（主链唯一入口）
+    expect(detail).toContain("deriveHistoricalArtifactSummary");
+    expect(detail).toContain("`/listing-studio?taskId=${encodeURIComponent(record.id)}`");
+    expect(detail).toContain("`/image-studio?taskId=${encodeURIComponent(record.id)}`");
+    // 旧派生器继续兼容历史数据，但 Task 详情使用 Phase 2 独立 Studio 入口。
     expect(source("lib/productResearchPresentation.ts")).toContain(
       "href: `/tasks/${encodedId}`",
     );

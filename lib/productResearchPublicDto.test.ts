@@ -163,7 +163,7 @@ describe("product research browser DTO allowlist", () => {
   });
 
   it("keeps list projections bounded to summaries instead of detail snapshots", () => {
-    const projected = projectTaskResultForBrowser(internalResult(), "list");
+    const projected = projectTaskResultForBrowser(internalResult(), "list") as Record<string, any>;
     const serialized = JSON.stringify(projected);
 
     expect(projected).not.toHaveProperty("finalReport");
@@ -173,6 +173,11 @@ describe("product research browser DTO allowlist", () => {
     expect(projected).not.toHaveProperty("aiListingPackSnapshot");
     expect(projected).not.toHaveProperty("aiImageDraftSnapshot");
     expect(projected).not.toHaveProperty("sourceMeta");
+    expect(projected.legacyListSummary.artifactSummary).toEqual({
+      hasListing: false,
+      hasImages: false,
+      imageCount: 0,
+    });
     expect(Buffer.byteLength(serialized, "utf8")).toBeLessThanOrEqual(8 * 1024);
   });
 
@@ -298,6 +303,86 @@ describe("product research browser DTO allowlist", () => {
       creativeHandoff: { currentRevision: 1, controlState: "active", createdAt: "2026-08-05T00:00:00.000Z" },
     }, "list") as Record<string, any>;
     expect(projected).not.toHaveProperty("creativeHandoff");
+  });
+
+  it("projects only the selected image identity for detail history and keeps it out of lists", () => {
+    const internalSelection = {
+      version: 1,
+      selectedImageId: "image-2",
+      sourceHandoffRevision: 3,
+      selectedAt: "2026-08-09T02:00:00.000Z",
+      privatePrompt: "must-not-leak",
+      providerMetadata: { requestId: "private-request" },
+    };
+
+    expect(projectTaskResultForBrowser({ imageStudioSelection: internalSelection }, "detail")).toEqual({
+      imageStudioSelection: {
+        version: 1,
+        selectedImageId: "image-2",
+        sourceHandoffRevision: 3,
+        selectedAt: "2026-08-09T02:00:00.000Z",
+      },
+    });
+    expect(projectTaskResultForBrowser({ imageStudioSelection: internalSelection }, "list"))
+      .not.toHaveProperty("imageStudioSelection");
+  });
+
+  it("keeps a legacy Listing pack readable in detail without leaking private snapshot fields", () => {
+    const pack = {
+      source: "rule_based",
+      generatedAt: "2026-08-01T00:00:00.000Z",
+      titleDrafts: ["Safe historical title"],
+      bulletPoints: ["Safe historical bullet"],
+      coreKeywords: [{ keyword: "safe", intent: "core" }],
+      longTailKeywords: [],
+      scenarioKeywords: [],
+      audienceKeywords: [],
+      featureKeywords: [],
+      sellingPoints: [],
+      targetAudience: [],
+      imageRequirements: [],
+      priceSuggestion: "人工确认",
+      riskTerms: [],
+      prePublishChecklist: ["人工复核"],
+      disclaimer: "历史草稿，仅供人工复核。",
+    };
+    const projected = projectTaskResultForBrowser({
+      listingPackSnapshot: {
+        version: 1,
+        source: "rule_based",
+        savedAt: "2026-08-01T01:00:00.000Z",
+        pack,
+        safety: { unverifiedClaimsSanitized: true, requiresHumanReview: true, autoListing: false },
+        binding: { fingerprint: fullHash },
+        actorRef: "owner:v1",
+      },
+    }, "detail") as Record<string, any>;
+
+    expect(projected.listingPackSnapshot.pack.titleDrafts).toEqual(["Safe historical title"]);
+    expect(projected.listingPackSnapshot.savedAt).toBe("2026-08-01T01:00:00.000Z");
+    expect(projected.listingPackSnapshot).not.toHaveProperty("binding");
+    expect(projected.listingPackSnapshot).not.toHaveProperty("actorRef");
+    expectNoForbiddenFields(projected);
+  });
+
+  it("projects only safe product identity fields from candidate analysis context", () => {
+    const projected = projectTaskResultForBrowser({
+      candidateAnalysisContext: {
+        sourceLabel: "SellerSprite",
+        asin: "B0SAFE0001",
+        productUrl: "https://example.com/product",
+        contextHash: fullHash,
+        candidateId: "private-candidate-id",
+        reportPayload: { private: true },
+      },
+    }, "detail") as Record<string, any>;
+
+    expect(projected.candidateAnalysisContext).toEqual({
+      sourceLabel: "SellerSprite",
+      asin: "B0SAFE0001",
+      productUrl: "https://example.com/product",
+    });
+    expectNoForbiddenFields(projected);
   });
 
   it("drops creativeHandoff projections that are not valid handoff envelopes", () => {

@@ -62,10 +62,11 @@ import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
-import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel";
-import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
-import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
-import { WorkflowStepWorkspace, deriveCurrentStepKey } from "@/components/tasks/WorkflowStepWorkspace";
+import {
+  deriveCreativeMaterialStatus,
+  deriveHistoricalArtifactSummary,
+  deriveResearchHistoryStatus,
+} from "@/lib/taskResearchHistoryPresentation";
 
 type TaskCenterItem = {
   id: string;
@@ -192,6 +193,69 @@ function ResultList({ title, items }: { title: string; items: string[] }) {
       </ul>
     </section>
   );
+}
+
+function uniqueStrings(values: ReadonlyArray<string | null | undefined>, limit = 8) {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const text = value?.trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    output.push(text);
+    if (output.length >= limit) break;
+  }
+  return output;
+}
+
+function safePublicHttpUrl(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function getProductIdentity(result: unknown) {
+  if (!isRecordValue(result)) return { asin: null, productUrl: null };
+  const candidates = [result.product, result.normalizedProduct, result.normalized, result.candidateAnalysisContext]
+    .filter(isRecordValue);
+  const asin = candidates
+    .map((candidate) => typeof candidate.asin === "string" ? candidate.asin.trim() : "")
+    .find(Boolean) || null;
+  const productUrl = candidates
+    .map((candidate) => typeof candidate.productUrl === "string" ? candidate.productUrl.trim() : "")
+    .find(Boolean) || null;
+  return { asin, productUrl };
+}
+
+function getResearchEvidenceSections(result: unknown) {
+  const agent = extractAgentOutputSnapshotFromTask(result);
+  const evidence = extractDecisionEvidenceSnapshot(result);
+  const marketSignals = uniqueStrings([
+    agent?.sourcingSnapshot.supplierConclusion,
+    ...(agent?.sourcingSnapshot.sourceSignals ?? []),
+    ...(agent?.sourcingSnapshot.priceSignals ?? []),
+    ...(agent?.sourcingSnapshot.availabilitySignals ?? []),
+  ]);
+  const risks = uniqueStrings([
+    agent?.riskSnapshot.riskReason,
+    ...(agent?.riskSnapshot.riskFlags ?? []),
+    ...(agent?.riskSnapshot.complianceConcerns ?? []),
+    ...(agent?.riskSnapshot.ipConcerns ?? []),
+    ...(agent?.riskSnapshot.logisticsConcerns ?? []),
+    ...(agent?.riskSnapshot.safetyConcerns ?? []),
+    ...getStringArray(result, "risks"),
+  ]);
+  const evidenceGaps = uniqueStrings([
+    ...(agent?.sourcingSnapshot.missingInfo ?? []),
+    ...(agent?.listingSnapshot.missingInputs ?? []),
+    ...(evidence?.missingData.map((item) => item.summary) ?? []),
+  ]);
+  const conflicts = uniqueStrings(evidence?.conflicts.map((item) => item.summary) ?? []);
+  return { marketSignals, risks, evidenceGaps, conflicts };
 }
 
 function WorkflowDecisionSummary({
@@ -1149,25 +1213,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const aiListingPackSnapshot = useMemo(() => (
     record ? getAiListingPackSnapshot(record.result) : null
   ), [record]);
-  // E：步骤工作台当前步骤推导（handoff/image 产物存在性）
-  // creativeHandoff 为 DTO 最小投影（currentRevision/controlState/createdAt），仅作存在性信号
-  const hasImageDraft = Boolean(record?.result
-    && typeof record.result === "object"
-    && "aiImageDraftSnapshot" in record.result);
-  const hasHandoff = Boolean(record?.result
-    && typeof record.result === "object"
-    && "creativeHandoff" in record.result);
-  const showNoListingPackPrompt = record ? !hasAiListingPack(record.result) : false;
-  // 图片卖点方向：优先复用研究保存时的 listingPrepSnapshot.imageMaterialNeeds
-  const imageMaterialNeeds = useMemo(() => {
-    if (!record) return [];
-    try {
-      const prep = extractListingPrepSnapshot(record.result as Record<string, unknown>);
-      return prep ? prep.imageMaterialNeeds : [];
-    } catch {
-      return [];
-    }
-  }, [record]);
   const recordSummary = useMemo(() => {
     if (!record) return null;
     return deriveTaskWorkflowSummary({
@@ -1191,15 +1236,43 @@ export function TaskRecordDetail({ id }: { id: string }) {
       })
       : null
   ), [record]);
-  const progressSummary = useMemo(() => (
-    record && presentation
-      ? deriveProgressSummary({
-        presentation,
-        decisionStatus: record.decisionStatus,
+  const researchHistoryStatus = useMemo(() => (
+    record
+      ? deriveResearchHistoryStatus({
         result: record.result,
+        decisionStatus: record.decisionStatus,
+        oneLineSummary: record.oneLineSummary,
       })
       : null
-  ), [record, presentation]);
+  ), [record]);
+  const creativeMaterialStatus = useMemo(() => (
+    record ? deriveCreativeMaterialStatus(record.result) : null
+  ), [record]);
+  const historicalArtifacts = useMemo(() => (
+    record ? deriveHistoricalArtifactSummary(record.result) : null
+  ), [record]);
+  const researchEvidenceSections = useMemo(() => (
+    record ? getResearchEvidenceSections(record.result) : null
+  ), [record]);
+  const productIdentity = useMemo(() => (
+    record ? getProductIdentity(record.result) : { asin: null, productUrl: null }
+  ), [record]);
+  const publicProductUrl = useMemo(() => (
+    safePublicHttpUrl(record?.productUrl) ?? safePublicHttpUrl(productIdentity.productUrl)
+  ), [record?.productUrl, productIdentity.productUrl]);
+  const imageDraftSnapshot = useMemo(() => (
+    record ? extractAiImageDraftSnapshot(record.result) : null
+  ), [record]);
+  const legacyListingPackSnapshot = useMemo(() => {
+    if (!record || !isRecordValue(record.result)) return null;
+    const snapshot = record.result.listingPackSnapshot;
+    if (!isRecordValue(snapshot) || !isRecordValue(snapshot.pack)) return null;
+    return {
+      savedAt: typeof snapshot.savedAt === "string" ? snapshot.savedAt : undefined,
+      source: typeof snapshot.source === "string" ? snapshot.source : undefined,
+      pack: snapshot.pack as unknown as ListingPack,
+    };
+  }, [record]);
 
   async function deleteRecord() {
     if (!record || deleting) return;
@@ -1305,14 +1378,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
                   <Link href="/tasks" className="hover:text-teal-600">研究历史</Link>
                   <span>/</span>
-                  <span className="text-slate-600">商品研究结果</span>
+                  <span className="text-slate-600">商品研究记录</span>
                   {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-                  商品研究结果
+                  商品研究记录
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  {record ? `${getTitle(record)} · ` : ""}先看当前阶段、已有产物和下一步，再核对尚未验证的信息。
+                  {record ? `${getTitle(record)} · ` : ""}查看研究结论、风险、待确认信息和人工决定；创作工具按需单独使用。
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -1338,7 +1411,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
           {loading ? (
             <section className="surface-card p-6 text-sm text-teal-800">
-              正在读取任务详情…
+              正在读取研究记录…
             </section>
           ) : error ? (
             <section className="surface-card p-6">
@@ -1349,22 +1422,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
             </section>
           ) : record ? (
             <section className="surface-card p-5 sm:p-6">
-              {presentation ? (
-                <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-summary">
-                  <p className="text-sm font-bold text-teal-700">当前研究阶段</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-sm font-bold text-teal-700">
-                      {presentation.stage.label}
-                    </span>
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-600">
-                      下一步：{presentation.actions[0]?.label || "人工查看研究结果"}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                    这里只按已保存的真实内容判断进度；内部任务显示 completed，不等于商品研究已经完成。
-                  </p>
-                </div>
-              ) : null}
+               {researchHistoryStatus ? (
+                 <div className="mb-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-summary">
+                   <p className="text-sm font-bold text-teal-700">研究状态</p>
+                   <div className="mt-3 flex flex-wrap items-center gap-3">
+                     <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-sm font-bold text-teal-700">
+                       {researchHistoryStatus.label}
+                     </span>
+                     <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-bold text-slate-600">
+                       人工决定：{researchHistoryStatus.humanDecisionExists ? "已记录" : "待确认"}
+                     </span>
+                   </div>
+                   <p className="mt-3 text-sm leading-6 text-slate-600">
+                     研究是否完成只取决于研究记录和人工决定；Listing 与图片是可选的后续创作，不改变研究状态。
+                   </p>
+                 </div>
+               ) : null}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-4">
                   <ResearchProductImage
@@ -1373,276 +1446,179 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     size="detail"
                   />
                   <div className="min-w-0">
-                  <p className="text-sm font-bold text-teal-700">商品概览</p>
+                   <p className="text-sm font-bold text-teal-700">商品身份与来源</p>
                   <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight text-slate-950">
                     {getTitle(record)}
                   </h2>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">
-                    {presentation?.researchConclusions[0] || record.oneLineSummary}
-                  </p>
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  {presentation?.actions.map((action) => (
-                    <Link
-                      key={action.href}
-                      href={action.href}
-                      className="linear-button inline-flex h-9 items-center justify-center px-4 text-sm font-semibold"
-                    >
-                      {action.label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
+                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-600">
+                     <span>来源：{sourceLabel(record.source)}</span>
+                     <span>研究时间：{formatDate(record.createdAt)}</span>
+                     {productIdentity.asin ? <span>ASIN：{productIdentity.asin}</span> : null}
+                   </div>
+                   {publicProductUrl ? (
+                     <a href={publicProductUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex break-all text-sm font-semibold text-teal-700 hover:text-teal-900">
+                       查看商品来源链接
+                     </a>
+                   ) : null}
+                   </div>
+                 </div>
+               </div>
 
-              {presentation && progressSummary ? (
-                <>
-                  {/* 商品决策报告：以用户价值为主体的聚合视图（5 秒内回答：商品怎么样 / 下一步做什么 / 已生成什么） */}
-                  <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="product-decision-report">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-slate-900">商品决策报告</p>
-                      <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
-                        {progressSummary.status}
-                      </span>
-                    </div>
+               {presentation && researchEvidenceSections ? (
+                 <>
+                   {/* 研究结论与证据缺口：创作产物不参与研究完成语义 */}
+                   <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="product-decision-report">
+                     <div className="flex flex-wrap items-center justify-between gap-2">
+                       <p className="text-sm font-bold text-slate-900">研究结论</p>
+                       <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+                         {recordSummary?.riskLabel || "风险待确认"}
+                       </span>
+                     </div>
 
-                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                      {/* AI 判断：是否值得继续 + 风险 */}
-                      <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                        <p className="text-xs font-bold text-slate-400">AI 判断</p>
-                        <p className="mt-1 text-sm font-semibold leading-6 text-slate-800">
-                          {presentation.researchConclusions[0]
-                            ? presentation.researchConclusions[0].slice(0, 120)
-                            : "尚未保存可确认的市场研究结论。"}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">
-                          AI 结论仅供辅助参考，不代表最终采购或上架决定。
-                        </p>
-                      </div>
+                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                       <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                         <p className="text-xs font-bold text-slate-400">AI 总结</p>
+                         {presentation.researchConclusions.length ? (
+                           <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700">
+                             {presentation.researchConclusions.map((conclusion) => <li key={conclusion}>- {conclusion}</li>)}
+                           </ul>
+                         ) : <p className="mt-2 text-sm leading-6 text-slate-600">尚未保存可确认的研究总结。</p>}
+                       </div>
 
-                      {/* 需要人工确认 */}
-                      <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-3">
-                        <p className="text-xs font-bold text-amber-600">需要人工确认</p>
-                        {presentation.manualChecks.length ? (
-                          <ul className="mt-1 space-y-1">
-                            {presentation.manualChecks.slice(0, 3).map((check) => (
-                              <li key={check.key} className="flex items-start gap-1.5 text-sm leading-5 text-amber-800">
-                                <span className="mt-0.5 shrink-0">○</span>
-                                <span>{check.label}</span>
-                              </li>
-                            ))}
-                            {presentation.manualChecks.length > 3 ? (
-                              <li className="text-xs text-amber-600">还有 {presentation.manualChecks.length - 3} 项待确认</li>
-                            ) : null}
-                          </ul>
-                        ) : (
-                          <p className="mt-1 text-sm leading-5 text-amber-700">供货、利润和合规不会由系统自动判定为真实或通过。</p>
-                        )}
-                      </div>
+                       <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3">
+                         <p className="text-xs font-bold text-teal-700">市场研究结果</p>
+                         {researchEvidenceSections.marketSignals.length ? (
+                           <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700">
+                             {researchEvidenceSections.marketSignals.map((item) => <li key={item}>- {item}</li>)}
+                           </ul>
+                         ) : <p className="mt-2 text-sm leading-6 text-slate-600">当前记录没有结构化市场信号，需结合来源材料人工核对。</p>}
+                       </div>
 
-                      {/* 已生成内容 */}
-                      <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                        <p className="text-xs font-bold text-slate-400">已生成内容</p>
-                        {presentation.artifacts.length ? (
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {presentation.artifacts.map((artifact) => (
-                              <span key={artifact.key} className="rounded-full border border-teal-100 bg-white px-2 py-0.5 text-xs font-semibold text-teal-700">
-                                {artifact.label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="mt-1 text-sm leading-5 text-slate-500">暂无已保存产物。</p>
-                        )}
-                      </div>
+                       <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
+                         <p className="text-xs font-bold text-rose-700">风险</p>
+                         {researchEvidenceSections.risks.length ? (
+                           <ul className="mt-2 space-y-1 text-sm leading-6 text-rose-800">
+                             {researchEvidenceSections.risks.map((item) => <li key={item}>- {item}</li>)}
+                           </ul>
+                         ) : <p className="mt-2 text-sm leading-6 text-rose-700">当前没有结构化风险结论，合规、侵权和供应链风险仍需人工确认。</p>}
+                       </div>
 
-                      {/* 下一步 */}
-                      <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3">
-                        <p className="text-xs font-bold text-teal-700">下一步</p>
-                        <p className="mt-1 text-sm font-semibold leading-6 text-teal-800">
-                          {progressSummary.next}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-amber-700">
-                          还缺：{progressSummary.missing}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
+                       <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-3">
+                         <p className="text-xs font-bold text-amber-700">证据缺口与待确认信息</p>
+                         {researchEvidenceSections.evidenceGaps.length || researchEvidenceSections.conflicts.length ? (
+                           <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-800">
+                             {[...researchEvidenceSections.evidenceGaps, ...researchEvidenceSections.conflicts].map((item) => <li key={item}>- {item}</li>)}
+                           </ul>
+                         ) : <p className="mt-2 text-sm leading-6 text-amber-700">没有记录到结构化冲突；供货、利润和合规仍需以真实材料复核。</p>}
+                       </div>
+                     </div>
+                     <p className="mt-3 text-xs leading-5 text-slate-500">AI 结论仅供辅助研究，不代表采购、盈利、合规或上架成立。</p>
+                   </section>
 
-                  {/* 用户进度摘要：当前状态 / 已完成 / 还缺 / 下一步（组件层派生，不新增状态机） */}
-                  <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="user-progress-summary">
-                    <p className="text-sm font-bold text-teal-800">商品研究进度</p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-xl border border-teal-100 bg-white p-3">
-                        <p className="text-xs font-bold text-slate-400">当前状态</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-800">{progressSummary.status}</p>
-                      </div>
-                      <div className="rounded-xl border border-teal-100 bg-white p-3">
-                        <p className="text-xs font-bold text-slate-400">已完成</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{progressSummary.completed}</p>
-                      </div>
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-bold text-amber-700">还缺</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-amber-800">{progressSummary.missing}</p>
-                      </div>
-                      <div className="rounded-xl border border-teal-200 bg-white p-3">
-                        <p className="text-xs font-bold text-slate-400">下一步</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{progressSummary.next}</p>
-                      </div>
-                    </div>
-                  </section>
+                 </>
+               ) : null}
 
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {[
-                      ["来源", sourceLabel(record.source)],
-                      ["当前阶段", presentation.stage.label],
-                      ["已有产物", presentation.artifacts.length
-                        ? presentation.artifacts.map((artifact) => artifact.label).join("、")
-                        : "暂无已保存产物"],
-                      ["最后更新", formatDate(record.updatedAt || record.createdAt)],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-2xl border border-slate-200 bg-white p-3">
-                        <p className="text-xs font-bold text-slate-400">{label}</p>
-                        <p className="mt-1 text-sm font-semibold leading-5 text-slate-800">{value}</p>
-                      </div>
-                    ))}
-                  </div>
+               {record.type === "workflow" ? (
+                 <>
+                   <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
+                     <h2 className="text-base font-bold text-slate-950">人工决定</h2>
+                     <p className="mt-1 text-sm leading-6 text-slate-500">查看当前决定、原因、下一步和决定历史；更新决定不会改写原始研究结论。</p>
+                     <ProductResearchDecisionPanel
+                       taskId={record.id}
+                       onUpdated={() => setRefreshKey((current) => current + 1)}
+                     />
+                     {!hasVersionedProductResearchRecord(record.result) ? (
+                       <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="legacy-decision-control">
+                         <p className="text-sm font-bold text-slate-800">旧版人工决定</p>
+                         <p className="mt-1 text-xs leading-5 text-slate-500">旧记录继续使用兼容状态，不补造新版决定或历史。</p>
+                         <select
+                           value={record.decisionStatus}
+                           onChange={(event) => void updateDecisionStatus(event.target.value as DecisionStatus)}
+                           disabled={updatingDecision}
+                           className="input-soft mt-3 h-11 w-full max-w-xs px-4 text-sm font-semibold text-slate-700 outline-none disabled:opacity-60"
+                         >
+                           {decisionStatusOptions.filter((option) => option.value).map((option) => (
+                             <option key={option.value} value={option.value}>{option.shortLabel}</option>
+                           ))}
+                         </select>
+                         {decisionMessage ? <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p> : null}
+                       </div>
+                     ) : null}
+                   </section>
 
-                  <section className="mt-5 rounded-2xl border border-teal-100 bg-teal-50/50 p-4">
-                    <p className="text-sm font-bold text-teal-800">研究结论</p>
-                    {presentation.researchConclusions.length ? (
-                      <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
-                        {presentation.researchConclusions.map((conclusion) => (
-                          <li key={conclusion}>- {conclusion}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-2 text-sm leading-6 text-slate-600">尚未保存可确认的市场研究结论。</p>
-                    )}
-                  </section>
+                   <section className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4" data-testid="task-studio-links">
+                     <div className="flex flex-wrap items-start justify-between gap-3">
+                       <div>
+                         <h2 className="text-base font-bold text-slate-950">创作工具</h2>
+                         <p className="mt-1 text-sm leading-6 text-slate-600">Listing 与图片是独立工具，不是研究记录的必做步骤。</p>
+                         <p className="mt-1 text-xs font-semibold text-cyan-800">创作资料：{creativeMaterialStatus?.label ?? "需要重新确认"}</p>
+                       </div>
+                       <div className="flex flex-wrap gap-2">
+                         <Link
+                           href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
+                           className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
+                         >
+                           在 Listing Studio 中使用
+                         </Link>
+                         <Link
+                           href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
+                           className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
+                         >
+                           在 Image Studio 中使用
+                         </Link>
+                       </div>
+                     </div>
+                     <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>
+                   </section>
+                 </>
+               ) : null}
 
-                  <section className="mt-5">
-                    <div>
-                      <p className="text-sm font-bold text-slate-950">人工核验</p>
-                      <p className="mt-1 text-sm text-slate-500">供货、利润和合规都不会由系统自动判定为真实或通过。</p>
-                    </div>
-                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                      {presentation.manualChecks.map((check) => (
-                        <article key={check.key} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-bold text-slate-900">{check.label}</p>
-                            <span className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-xs font-semibold text-amber-700">
-                              {check.statusLabel}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-sm leading-6 text-slate-600">{check.message}</p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-                </>
-              ) : null}
+               {record.type === "workflow" && isRecordValue(record.result) ? (
+                 <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="historical-artifacts">
+                   <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
+                     历史成果
+                     <span className="ml-2 text-xs font-medium text-slate-400">过去生成的 Listing、图片、已选图片和历史创作资料，默认折叠</span>
+                   </summary>
+                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                     {[
+                       ["Listing 草稿", historicalArtifacts?.hasListing ? "有" : "无"],
+                       ["图片草稿", historicalArtifacts?.hasImages ? `${historicalArtifacts.imageCount} 张` : "无"],
+                       ["已选图片", historicalArtifacts?.selectedImageId ? "有" : "无"],
+                       ["创作资料", creativeMaterialStatus?.label ?? "需要重新确认"],
+                     ].map(([label, value]) => (
+                       <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                         <p className="text-xs font-bold text-slate-400">{label}</p>
+                         <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
+                       </div>
+                     ))}
+                   </div>
 
-              {record.type === "workflow" ? (
-                <section className="mt-5">
-                  <div className="mb-4 flex flex-wrap gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4" data-testid="task-studio-links">
-                    <div className="min-w-full">
-                      <p className="text-sm font-bold text-slate-900">使用研究资料继续创作</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-600">
-                        Studio 会在生成时重新核验本研究记录；页面预填内容不作为权威事实。
-                      </p>
-                    </div>
-                    <Link
-                      href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
-                      className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
-                    >
-                      在 Listing Studio 中使用
-                    </Link>
-                    <Link
-                      href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
-                      className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
-                    >
-                      在 Image Studio 中使用
-                    </Link>
-                  </div>
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">推进步骤</p>
-                      <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                        当前停在「{presentation?.stage.label ?? "待推进"}」。按需展开步骤操作，无需全部展开。
-                      </p>
-                    </div>
-                  </div>
-                  <WorkflowStepWorkspace
-                    currentKey={deriveCurrentStepKey({
-                      hasImage: Boolean(hasImageDraft),
-                      hasListing: Boolean(aiListingPackSnapshot),
-                      hasHandoff: Boolean(hasHandoff),
-                    })}
-                    steps={[
-                    {
-                      key: "conclusion",
-                      label: "研究结论",
-                      content: (
-                        <div className="space-y-4">
-                          <ProductResearchDecisionPanel
-                            taskId={record.id}
-                            onUpdated={() => setRefreshKey((current) => current + 1)}
-                          />
-                        </div>
-                      ),
-                    },
-                    {
-                      key: "confirmation",
-                      label: "人工确认",
-                      content: (
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                          研究决定已记录。创作交接前请确认事实与视觉参考；详见下方「创作交接」步骤。
-                        </div>
-                      ),
-                    },
-                    {
-                      key: "handoff",
-                      label: "创作交接",
-                      content: <CreativeHandoffPanel taskId={record.id} onCommitted={() => void refreshRecord()} />,
-                    },
-                    {
-                      key: "listing",
-                      label: "Listing 草稿",
-                      content: <ListingHandoffSection taskId={record.id} imageMaterialNeeds={imageMaterialNeeds} onCommitted={() => void refreshRecord()} />,
-                    },
-                    {
-                      key: "image",
-                      label: "产品图片",
-                      content: <ImageHandoffSection taskId={record.id} onCommitted={() => void refreshRecord()} />,
-                    },
-                  ]}
-                  />
-                </section>
-              ) : null}
+                   {aiListingPackSnapshot ? (
+                     <section className="mt-4">
+                       <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} readOnly />
+                     </section>
+                   ) : null}
+                   {legacyListingPackSnapshot ? (
+                     <ListingPackCard
+                       productName={getTitle(record)}
+                       existingSnapshot={legacyListingPackSnapshot}
+                       readOnly
+                     />
+                   ) : null}
+                   {imageDraftSnapshot ? (
+                     <AiImageDraftCard taskId={record.id} initialSnapshot={imageDraftSnapshot} readOnly />
+                   ) : null}
 
-              {record.type === "workflow" && isRecordValue(record.result) ? (
-                <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-                  <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
-                    完整分析与创作记录
-                    <span className="ml-2 text-xs font-medium text-slate-400">详细模型输出、生命周期操作和创作包，默认折叠</span>
-                  </summary>
-                  <WorkflowDecisionSummary
-                    result={record.result}
-                    fallbackTitle={getTitle(record)}
-                    decisionStatus={record.decisionStatus}
-                    updatingDecision={updatingDecision}
-                    decisionMessage={decisionMessage}
-                    taskId={record.id}
-                    onDecisionChange={(nextDecisionStatus) => void updateDecisionStatus(nextDecisionStatus)}
-                    onLifecycleUpdated={() => setRefreshKey((k) => k + 1)}
-                  />
-                </details>
-              ) : null}
+                   <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                     <summary className="cursor-pointer text-sm font-semibold text-slate-700">Legacy 与完整过程记录</summary>
+                     <WorkflowResultSection result={record.result} />
+                   </details>
+                 </details>
+               ) : null}
 
               {record.type !== "workflow" && recordSummary ? (
                 <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-                  <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">历史格式的完整分析</summary>
+                   <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">历史成果与完整分析</summary>
                   <section className="mt-3 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
                   <p className="text-xs font-bold text-teal-700">历史决策摘要</p>
                   <h3 className="mt-2 break-words text-xl font-semibold tracking-tight text-slate-950">
@@ -1663,53 +1639,16 @@ export function TaskRecordDetail({ id }: { id: string }) {
                         <p className="mt-1 line-clamp-2 text-sm font-bold leading-5 text-slate-800">{value}</p>
                       </div>
                     ))}
-                  </div>
-                  </section>
-                </details>
-              ) : null}
-
-              <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                <summary className="cursor-pointer font-semibold text-slate-500 select-none">历史 Listing 草稿包与输入素材</summary>
-                {showNoListingPackPrompt ? (
-                  <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-800">
-                    <p className="font-semibold">{buildNoListingPackPrompt()}</p>
-                  </div>
-                ) : null}
-                {aiListingPackSnapshot ? (
-                  <section id={LISTING_PACK_ANCHOR_ID} className="scroll-mt-24">
-                    {/* 旧版只读草稿；生成/保存统一走「Listing 草稿」步骤 */}
-                    <AiListingDraftPreviewCard taskId={id} initialSavedSnapshot={aiListingPackSnapshot as AiListingPackSnapshot} readOnly />
-                  </section>
-                ) : null}
-                {record.productUrl ? (
-                  <p className="mt-3 break-all text-sm text-slate-500">链接：{record.productUrl}</p>
-                ) : null}
-                <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
-                  {record.materialText}
-                </p>
-              </details>
-
-              {/* Workflow-specific result rendering */}
-              {record.type === "workflow" && typeof record.result === "object" && record.result !== null && !Array.isArray(record.result) ? (
-                <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                  <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整分析、复制报告和过程记录</summary>
-                  <WorkflowResultSection result={record.result as Record<string, unknown>} />
-                </details>
-              ) : (
-                <details className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-xs">
-                  <summary className="cursor-pointer font-semibold text-slate-500 select-none">完整结果拆解</summary>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <ResultList title="核心卖点" items={getStringArray(record.result, "sellingPoints")} />
-                  <ResultList title="用户痛点" items={getStringArray(record.result, "painPoints")} />
-                  <ResultList title="开头钩子" items={getStringArray(record.result, "hooks")} />
-                  <ResultList title="标题建议" items={getStringArray(record.result, "titleSuggestions")} />
-                  <ResultList title="短视频开头" items={getStringArray(record.result, "videoOpenings")} />
-                  <ResultList title="评论区话题" items={getStringArray(record.result, "commentTriggers")} />
-                  <ResultList title="转化优化" items={getStringArray(record.result, "conversionSuggestions")} />
-                  <ResultList title="风险提醒" items={getStringArray(record.result, "risks")} />
-                  </div>
-                </details>
-              )}
+                   </div>
+                   </section>
+                   <div className="mt-3 grid gap-3 md:grid-cols-2">
+                     <ResultList title="核心卖点" items={getStringArray(record.result, "sellingPoints")} />
+                     <ResultList title="用户痛点" items={getStringArray(record.result, "painPoints")} />
+                     <ResultList title="风险提醒" items={getStringArray(record.result, "risks")} />
+                   </div>
+                   <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">{record.materialText}</p>
+                 </details>
+               ) : null}
 
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { TaskRecordDetail } from "@/components/TaskRecordDetail";
 
 export const metadata: Metadata = {
-  title: "商品研究结果 - 轻选工作台",
-  description: "查看单个商品的当前研究阶段、已有产物、人工核验项和下一步动作。",
+  title: "商品研究记录 - 轻选工作台",
+  description: "查看单个商品的研究结论、风险、证据缺口、人工决定和历史成果。",
 };
 
 type TaskDetailPageProps = {

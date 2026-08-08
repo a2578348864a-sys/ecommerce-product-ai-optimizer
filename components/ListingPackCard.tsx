@@ -19,6 +19,7 @@ export function ListingPackCard({
   taskId,
   existingSnapshot,
   onGenerated,
+  readOnly = false,
 }: {
   productName?: string | null;
   resultJson?: unknown;
@@ -28,6 +29,7 @@ export function ListingPackCard({
   taskId?: string;
   existingSnapshot?: SnapshotInfo | null;
   onGenerated?: (pack: ListingPack) => void;
+  readOnly?: boolean;
 }) {
   const [pack, setPack] = useState<ListingPack | null>(existingSnapshot?.pack || null);
   const [generating, setGenerating] = useState(false);
@@ -130,6 +132,8 @@ export function ListingPackCard({
     );
   }
 
+  if (readOnly && !pack) return null;
+
   return (
     <section className="mt-4 rounded-2xl border border-indigo-200 bg-white p-4" data-testid="listing-pack">
       <div className="flex items-start justify-between gap-3">
@@ -177,13 +181,15 @@ export function ListingPackCard({
 
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-2">
-            {taskId && !savedAt && (
+            {taskId && !savedAt && !readOnly && (
               <button onClick={handleSave} disabled={saving} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition" data-testid="listing-pack-save">
                 {saving ? "保存中…" : "保存草稿"}
               </button>
             )}
             <button onClick={handleCopy} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition" data-testid="listing-pack-copy">{copied ? "已复制" : "复制 Markdown"}</button>
-            <button onClick={handleGenerate} disabled={generating} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{savedAt ? "重新生成并覆盖" : "重新生成"}</button>
+            {!readOnly ? (
+              <button onClick={handleGenerate} disabled={generating} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">{savedAt ? "重新生成并覆盖" : "重新生成"}</button>
+            ) : null}
           </div>
           <p className="text-xs text-slate-400">{pack.disclaimer}</p>
         </div>
