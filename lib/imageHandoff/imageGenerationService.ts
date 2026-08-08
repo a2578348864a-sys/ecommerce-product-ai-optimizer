@@ -11,7 +11,7 @@ import { createImageProviderByMode, realImageProviderEnabled } from "@/lib/image
 import { buildImagePromptFromInput, assertImagePromptIsSafe } from "@/lib/imageHandoff/imagePrompt";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
-import { extractAiImageDraftSnapshot, type AiImageDraftSnapshot } from "@/lib/aiImageDraft";
+import { AI_IMAGE_DRAFT_DISCLAIMER, extractAiImageDraftSnapshot, type AiImageDraftSnapshot } from "@/lib/aiImageDraft";
 import { AiImageProviderError } from "@/lib/server/openaiImageClient";
 
 export class ImageHandoffError extends Error {
@@ -158,6 +158,28 @@ export type ImageGenerationOptions = {
   provider?: MockImageProvider;
   providerOptions?: Parameters<MockImageProvider["generate"]>[1];
 };
+
+export function buildImageHandoffDraftSnapshot(input: {
+  existingSnapshot: AiImageDraftSnapshot | null;
+  rawDraft: Record<string, unknown>;
+  itemId: string;
+  accessMode: "owner" | "visitor";
+  updatedAt: string;
+}): AiImageDraftSnapshot {
+  return {
+    version: 1,
+    snapshotType: "ai_image_draft",
+    provider: "openai_compatible_relay",
+    accessMode: input.accessMode,
+    humanReviewRequired: true,
+    disclaimer: AI_IMAGE_DRAFT_DISCLAIMER,
+    items: [
+      ...(input.existingSnapshot?.items ?? []),
+      { ...input.rawDraft, id: input.itemId },
+    ].slice(-50),
+    updatedAt: input.updatedAt,
+  } as unknown as AiImageDraftSnapshot;
+}
 
 /**
  * PR2-3: 从 active Handoff 生成 Image Draft 并保存 Binding。
@@ -339,15 +361,14 @@ export async function generateImageDraftFromHandoff(
       }
 
       // ── 原子保存 aiImageDraftSnapshot + imageHandoffBinding ──
-      const draftSnapshot = {
-        ...(existingSnapshot ? { ...(existingSnapshot as unknown as Record<string, unknown>) } : {}),
-        items: [
-          ...(existingSnapshot?.items ?? []),
-          { ...(rawDraft as Record<string, unknown>), id: itemSummary.id ?? "mock-image-draft" },
-        ].slice(-50),
+      const accessMode = context.mode === "demo" ? "visitor" : "owner";
+      const draftSnapshot = buildImageHandoffDraftSnapshot({
+        existingSnapshot,
+        rawDraft: rawDraft as Record<string, unknown>,
+        itemId: itemSummary.id ?? "mock-image-draft",
+        accessMode,
         updatedAt: binding.generatedAt,
-        accessMode: context.mode === "demo" ? "visitor" : "owner",
-      } as unknown as AiImageDraftSnapshot;
+      });
 
       const status: ImageStatus = computeImageStatus({
         binding,

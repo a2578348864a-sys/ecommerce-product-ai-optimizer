@@ -164,6 +164,31 @@ describe("AI image draft domain", () => {
     expect(longSummary?.items[0].promptSummary).toHaveLength(500);
   });
 
+  it("reads only the exact legacy Image Handoff partial snapshot and keeps item validation fail-closed", () => {
+    const valid = mergeAiImageDraftSnapshot({
+      resultJson: {},
+      accessMode: "owner",
+      items: [item()],
+      updatedAt: "2026-07-10T00:00:00.000Z",
+    }).snapshot;
+    const legacyHandoffSnapshot = {
+      accessMode: valid.accessMode,
+      updatedAt: valid.updatedAt,
+      items: valid.items,
+    };
+
+    expect(extractAiImageDraftSnapshot({ aiImageDraftSnapshot: legacyHandoffSnapshot })?.items).toHaveLength(1);
+    expect(extractAiImageDraftSnapshot({
+      aiImageDraftSnapshot: { ...legacyHandoffSnapshot, unexpected: true },
+    })).toBeNull();
+    expect(extractAiImageDraftSnapshot({
+      aiImageDraftSnapshot: {
+        ...legacyHandoffSnapshot,
+        items: [{ ...item(), storageKey: "../private.png" }],
+      },
+    })).toBeNull();
+  });
+
   it("rejects invalid keys, oversized directions, and unsupported image types", () => {
     const base = { imageType: "white_background_concept", count: 1, confirmed: true, idempotencyKey: requestKey };
     expect(validateAiImageGenerateRequest({ ...base, idempotencyKey: "not-a-uuid" }, "owner")).toMatchObject({ ok: false, code: "invalid_idempotency_key" });

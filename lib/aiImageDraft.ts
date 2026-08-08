@@ -288,13 +288,45 @@ export function normalizeAiImageDraftSnapshot(value: unknown): AiImageDraftSnaps
   };
 }
 
+/**
+ * Compatibility for the exact partial snapshot emitted by the Image Handoff writer before
+ * the v2.1.6 hotfix. The adapter is intentionally narrower than the public snapshot schema:
+ * only the three historical top-level fields are accepted and every item must still pass the
+ * current fail-closed item validator. Unknown fields or a single invalid item reject the whole
+ * legacy snapshot.
+ */
+function normalizeLegacyImageHandoffSnapshot(value: unknown): AiImageDraftSnapshot | null {
+  if (!isRecord(value)) return null;
+  const keys = Object.keys(value).sort();
+  if (keys.length !== 3 || keys[0] !== "accessMode" || keys[1] !== "items" || keys[2] !== "updatedAt") {
+    return null;
+  }
+  if (!isAccessMode(value.accessMode) || !validDate(value.updatedAt) || !Array.isArray(value.items)) {
+    return null;
+  }
+  if (value.items.length < 1 || value.items.length > AI_IMAGE_DRAFT_MAX_ITEMS) return null;
+  const items = value.items.map(normalizeAiImageDraftItem);
+  if (items.some((item) => item === null || item.accessMode !== value.accessMode)) return null;
+  return {
+    version: 1,
+    snapshotType: "ai_image_draft",
+    provider: "openai_compatible_relay",
+    accessMode: value.accessMode,
+    humanReviewRequired: true,
+    disclaimer: AI_IMAGE_DRAFT_DISCLAIMER,
+    updatedAt: value.updatedAt,
+    items: items as AiImageDraftItem[],
+  };
+}
+
 export function parseAiImageTaskResult(value: unknown): Record<string, unknown> {
   return parseRecord(value) || {};
 }
 
 export function extractAiImageDraftSnapshot(value: unknown): AiImageDraftSnapshot | null {
   const result = parseAiImageTaskResult(value);
-  return normalizeAiImageDraftSnapshot(result.aiImageDraftSnapshot);
+  return normalizeAiImageDraftSnapshot(result.aiImageDraftSnapshot)
+    ?? normalizeLegacyImageHandoffSnapshot(result.aiImageDraftSnapshot);
 }
 
 export function mergeAiImageDraftSnapshot(input: {
