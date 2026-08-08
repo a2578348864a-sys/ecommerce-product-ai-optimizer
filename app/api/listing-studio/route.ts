@@ -100,13 +100,43 @@ export async function POST(request: NextRequest) {
   }
 
   if (!input.confirmRealAi) {
-    return json({ ok: false, error: { code: "real_ai_confirmation_required", message: "Real AI generation requires explicit confirmation." } }, 400);
+    return json({ ok: false, error: { code: "real_ai_confirmation_required", message: "调用真实 AI 前需要再次确认。" } }, 400);
   }
 
-  // V2 Final Integration（规格十四节）: 真实 Listing 生成已迁移到任务详情页的 Creative Handoff 链。
-  // 此独立 Studio 的 real 模式绕过 Handoff Gate / Claim Evidence / Binding，一律返回已迁移错误。
+  if (!isRealAiListingEnabled()) {
+    return json({ ok: false, error: { code: "real_ai_disabled", message: "真实 AI Listing 服务暂未开启。" } }, 403);
+  }
+
+  if (auth.context.mode === "demo" && !isRealAiVisitorListingEnabled()) {
+    return json({
+      ok: false,
+      error: { code: "visitor_listing_generation_disabled", message: "Listing 真实 AI 暂未对访客开放。" },
+    }, 403);
+  }
+
+  const idempotencyKey = input.idempotencyKey;
+  if (!UUID_PATTERN.test(idempotencyKey)) {
+    return json({ ok: false, error: { code: "invalid_idempotency_key", message: "真实 AI 请求标识无效，请重新发起。" } }, 400);
+  }
+
+  const generated = await generateRealStudioListing({
+    accessContext: auth.context,
+    context,
+    idempotencyKey,
+  });
+  if (!generated.ok) return json({ ok: false, error: generated.error }, generated.status);
+
   return json({
-    ok: false,
-    error: { code: "listing_studio_real_migrated", message: "真实 Listing 生成已迁移到任务详情页的创作交接流程，请在任务内生成。" },
-  }, 422);
+    ok: true,
+    data: {
+      listingPack: generated.data,
+      meta: {
+        mode: "real",
+        saved: false,
+        duplicate: generated.duplicate,
+        input: input.preferences,
+      },
+    },
+    ...(generated.demoAccess ? { demoAccess: generated.demoAccess } : {}),
+  });
 }

@@ -1545,6 +1545,26 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
               {record.type === "workflow" ? (
                 <section className="mt-5">
+                  <div className="mb-4 flex flex-wrap gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4" data-testid="task-studio-links">
+                    <div className="min-w-full">
+                      <p className="text-sm font-bold text-slate-900">使用研究资料继续创作</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">
+                        Studio 会在生成时重新核验本研究记录；页面预填内容不作为权威事实。
+                      </p>
+                    </div>
+                    <Link
+                      href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
+                    >
+                      在 Listing Studio 中使用
+                    </Link>
+                    <Link
+                      href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
+                      className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
+                    >
+                      在 Image Studio 中使用
+                    </Link>
+                  </div>
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
                       <p className="text-sm font-bold text-slate-900">推进步骤</p>

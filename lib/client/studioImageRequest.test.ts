@@ -26,6 +26,9 @@ describe("buildStudioImageRequestCore", () => {
       intent,
       mode: "mock",
     })).toEqual({
+      briefVersion: "studio-creative-brief.v1",
+      factsConfirmed: true,
+      humanReviewRequired: true,
       creationMode: "guided",
       productName: "Foldable Laptop Stand",
       description: "Silver aluminum body.",
@@ -56,6 +59,9 @@ describe("buildStudioImageRequestCore", () => {
     });
 
     expect(request).toEqual({
+      briefVersion: "studio-creative-brief.v1",
+      factsConfirmed: true,
+      humanReviewRequired: true,
       creationMode: "prompt",
       productName: "Ceramic mug",
       description: "Matte green glaze.",
@@ -69,6 +75,22 @@ describe("buildStudioImageRequestCore", () => {
     expect(request).not.toHaveProperty("visualStyle");
     expect(request).not.toHaveProperty("compositionRequirements");
     expect(request).not.toHaveProperty("prohibitedElements");
+  });
+
+  it("carries an explicitly approved reference image only when supplied", () => {
+    const request = buildStudioImageRequestCore({
+      productName: "Bottle",
+      description: "Blue bottle",
+      intent: EMPTY_IMAGE_INTENT,
+      mode: "mock",
+      referenceImageDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      referenceImageApproved: true,
+    });
+
+    expect(request).toMatchObject({
+      referenceImageApproved: true,
+      referenceImageDataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    });
   });
 
   it("starts in the safe guided Mock product-main strategy", () => {

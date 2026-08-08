@@ -23,9 +23,14 @@ export type StudioListingPreferences = {
   confirmedFacts: string[];
   unverifiedFacts: string[];
   prohibitedClaims: string[];
+  additionalRequirements?: string;
 };
 
 export type StudioListingInput = {
+  briefVersion: "studio-creative-brief.v1";
+  factsConfirmed: true;
+  humanReviewRequired: true;
+  additionalRequirements: string;
   productName: string;
   description: string;
   category: string;
@@ -41,13 +46,19 @@ type StudioListingInputErrorCode =
   | "invalid_studio_input"
   | "invalid_mode"
   | "missing_product_name"
-  | "unsupported_request_field";
+  | "unsupported_request_field"
+  | "invalid_studio_brief"
+  | "studio_brief_confirmation_required";
 
 export type StudioListingInputResult =
   | { ok: true; data: StudioListingInput }
   | { ok: false; error: { code: StudioListingInputErrorCode; message: string } };
 
 export const STUDIO_LISTING_ALLOWED_FIELDS = new Set([
+  "briefVersion",
+  "factsConfirmed",
+  "humanReviewRequired",
+  "additionalRequirements",
   "productName",
   "description",
   "category",
@@ -163,6 +174,16 @@ export function parseStudioListingInput(value: unknown): StudioListingInputResul
     return fail("unsupported_request_field", "Request contains an unsupported field.");
   }
 
+  if (value.briefVersion !== "studio-creative-brief.v1" || value.humanReviewRequired !== true) {
+    return fail("invalid_studio_brief", "创作资料合同无效，请刷新页面后重新确认。");
+  }
+  if (value.factsConfirmed !== true) {
+    return fail(
+      "studio_brief_confirmation_required",
+      "请确认商品事实由你提供或确认，生成结果仅作为待人工复核的草稿。",
+    );
+  }
+
   if (value.mode !== undefined && value.mode !== "mock" && value.mode !== "real") {
     return fail("invalid_mode", "Generation mode is invalid.");
   }
@@ -178,6 +199,7 @@ export function parseStudioListingInput(value: unknown): StudioListingInputResul
   const coreFunction = readText(value, "coreFunction", 600);
   const targetAudience = readText(value, "targetAudience", 400);
   const problemSolved = readText(value, "problemSolved", 600);
+  const additionalRequirements = readText(value, "additionalRequirements", 1_000);
   const targetMarket = readEnum(value, "targetMarket", STUDIO_TARGET_MARKETS, "US");
   const outputLanguage = readEnum(value, "outputLanguage", STUDIO_OUTPUT_LANGUAGES, "en");
   const tone = readEnum(value, "tone", STUDIO_LISTING_TONES, "professional");
@@ -237,6 +259,7 @@ export function parseStudioListingInput(value: unknown): StudioListingInputResul
     confirmedFacts,
     unverifiedFacts,
     prohibitedClaims,
+    additionalRequirements,
   ];
   const invalid = fields.find((field) => !field.ok);
   if (invalid && !invalid.ok) return fail("invalid_studio_input", invalid.message);
@@ -261,6 +284,7 @@ export function parseStudioListingInput(value: unknown): StudioListingInputResul
     || !confirmedFacts.ok
     || !unverifiedFacts.ok
     || !prohibitedClaims.ok
+    || !additionalRequirements.ok
   ) {
     return fail("invalid_studio_input", "Request body contains invalid Studio input.");
   }
@@ -268,6 +292,10 @@ export function parseStudioListingInput(value: unknown): StudioListingInputResul
   return {
     ok: true,
     data: {
+      briefVersion: "studio-creative-brief.v1",
+      factsConfirmed: true,
+      humanReviewRequired: true,
+      additionalRequirements: additionalRequirements.value,
       productName: productName.value,
       description: description.value,
       category: category.value,
@@ -291,6 +319,7 @@ export function parseStudioListingInput(value: unknown): StudioListingInputResul
         confirmedFacts: confirmedFacts.value,
         unverifiedFacts: unverifiedFacts.value,
         prohibitedClaims: prohibitedClaims.value,
+        additionalRequirements: additionalRequirements.value,
       },
     },
   };

@@ -20,6 +20,7 @@ describe("buildStudioListingRequestCore", () => {
       confirmedFacts: "Aluminum frame; Folds to 18 mm",
       unverifiedFacts: "Supports 20 kg",
       prohibitedClaims: "medical grade, guaranteed ranking",
+      additionalRequirements: "Keep every bullet concise.",
       listingObjective: "seo",
       copyStyle: "brand",
     };
@@ -31,6 +32,9 @@ describe("buildStudioListingRequestCore", () => {
       intent,
       mode: "mock",
     })).toEqual({
+      briefVersion: "studio-creative-brief.v1",
+      factsConfirmed: true,
+      humanReviewRequired: true,
       productName: "Foldable Laptop Stand",
       description: "Aluminum desk stand.",
       category: "Home Office",
@@ -48,6 +52,7 @@ describe("buildStudioListingRequestCore", () => {
       confirmedFacts: ["Aluminum frame", "Folds to 18 mm"],
       unverifiedFacts: ["Supports 20 kg"],
       prohibitedClaims: ["medical grade", "guaranteed ranking"],
+      additionalRequirements: "Keep every bullet concise.",
       listingObjective: "seo",
     });
   });

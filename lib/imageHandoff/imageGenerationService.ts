@@ -52,6 +52,7 @@ export type ImageGenerateInput = {
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
   expectedHandoffRevision: number;
   mode: ImageVisualMode;
+  count?: 1 | 2;
   approvedVisualReferenceSelectionIds?: string[];
   confirmed: true;
 };
@@ -62,6 +63,7 @@ export type ImageDraftSafeSummary = {
   compositionSummary: string | null;
   approvedReferenceFingerprint: string | null;
   generatedAt: string | null;
+  sourceHandoffRevision: number | null;
   humanReviewRequired: boolean;
 };
 
@@ -73,6 +75,7 @@ export type ImageGenerateResult = {
   idempotentReplay: boolean;
   imageSaved: boolean;
   draft: ImageDraftSafeSummary | null;
+  candidates: ImageDraftSafeSummary[];
   handoffState: { controlState: string; stale: boolean } | null;
 };
 
@@ -115,8 +118,21 @@ export function imageDraftSafeSummary(value: unknown): ImageDraftSafeSummary | n
     compositionSummary: safeString(value.compositionSummary),
     approvedReferenceFingerprint: typeof value.approvedReferenceFingerprint === "string" ? value.approvedReferenceFingerprint.slice(0, 16) : null,
     generatedAt: safeString(value.createdAt),
+    sourceHandoffRevision: typeof value.sourceHandoffRevision === "number"
+      && Number.isSafeInteger(value.sourceHandoffRevision)
+      ? value.sourceHandoffRevision
+      : null,
     humanReviewRequired: true,
   };
+}
+
+export function imageDraftSafeSummaries(value: unknown, currentHandoffRevision: number | null) {
+  if (!isRecord(value) || !Array.isArray(value.items) || currentHandoffRevision === null) return [];
+  return value.items
+    .map((item) => imageDraftSafeSummary(item))
+    .filter((item): item is ImageDraftSafeSummary => (
+      item !== null && item.sourceHandoffRevision === currentHandoffRevision
+    ));
 }
 
 /** 锁内快照语义：基于 CAS 快照重新验证 Handoff（无数据库读） */
@@ -161,8 +177,12 @@ export type ImageGenerationOptions = {
 
 export function buildImageHandoffDraftSnapshot(input: {
   existingSnapshot: AiImageDraftSnapshot | null;
-  rawDraft: Record<string, unknown>;
-  itemId: string;
+  rawDrafts?: Record<string, unknown>[];
+  /** 兼容既有单候选调用；Phase 2 新链使用 rawDrafts。 */
+  rawDraft?: Record<string, unknown>;
+  sourceHandoffRevision?: number;
+  /** 兼容既有测试/调用；新候选沿用 Provider item id。 */
+  itemId?: string;
   accessMode: "owner" | "visitor";
   updatedAt: string;
 }): AiImageDraftSnapshot {
@@ -175,7 +195,13 @@ export function buildImageHandoffDraftSnapshot(input: {
     disclaimer: AI_IMAGE_DRAFT_DISCLAIMER,
     items: [
       ...(input.existingSnapshot?.items ?? []),
-      { ...input.rawDraft, id: input.itemId },
+      ...(input.rawDrafts ?? (input.rawDraft ? [{ ...input.rawDraft, ...(input.itemId ? { id: input.itemId } : {}) }] : []))
+        .map((draft) => ({
+          ...draft,
+          ...(input.sourceHandoffRevision === undefined
+            ? {}
+            : { sourceHandoffRevision: input.sourceHandoffRevision }),
+        })),
     ].slice(-50),
     updatedAt: input.updatedAt,
   } as unknown as AiImageDraftSnapshot;
@@ -195,6 +221,7 @@ export async function generateImageDraftFromHandoff(
   options: ImageGenerationOptions = {},
 ): Promise<ImageGenerateResult> {
   const provider = options.provider ?? defaultImageProvider();
+  const requestedCount = input.count === 2 ? 2 : 1;
 
   // ── 阶段A：生成前快照（锁外验证）──
   const gateA = await checkCreativeHandoffGate(taskId, context);
@@ -250,6 +277,13 @@ export async function generateImageDraftFromHandoff(
     throw new ImageHandoffError(selectionCheck.code, 422, selectionCheck.message);
   }
   const selectedVisualReferences = selectionCheck.selected;
+  const generationRequestFingerprint = sha256([
+    buildResult.generationInputFingerprint,
+    `count:${requestedCount}`,
+    selectedVisualReferences.length > 0
+      ? `visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`
+      : "visual-selection:none",
+  ].join(":"));
 
   // ── 幂等预检（阶段A，Provider 调用之前）──
   let idempotentPrefetchHit = false;
@@ -257,7 +291,7 @@ export async function generateImageDraftFromHandoff(
   if (existingBindingRawA !== undefined) {
     const existingA = parseImageHandoffBinding(existingBindingRawA);
     if (existingA && existingA.requestIdHash === sha256(input.requestId)) {
-      if (existingA.generationInputFingerprint === buildResult.generationInputFingerprint) {
+      if (existingA.generationInputFingerprint === generationRequestFingerprint) {
         idempotentPrefetchHit = true;
       } else {
         throw new ImageHandoffError("image_idempotency_conflict", 409, "相同请求标识内容不一致。");
@@ -273,25 +307,36 @@ export async function generateImageDraftFromHandoff(
   let providerResult: unknown = null;
   if (!idempotentPrefetchHit) {
     // V2 Final Integration: 真实 Provider 需持久化图片资产（accessMode/taskId 由服务传入；Mock 忽略 persist）
-    const realPersist = realImageProviderEnabled() ? {
+    const assetPersist = (options.provider === undefined || realImageProviderEnabled()) ? {
       accessMode: context.mode === "demo" ? ("visitor" as const) : ("owner" as const),
       visitorAccessId: (context as unknown as { demoAccessId?: string }).demoAccessId,
       taskId,
     } : undefined;
     try {
-      providerResult = await provider.generate(
-        generationInput,
-        realPersist
-          ? { ...(options.providerOptions ?? {}), persist: realPersist } as never
-          : options.providerOptions,
-      );
+      const generatedCandidates: unknown[] = [];
+      for (let index = 0; index < requestedCount; index += 1) {
+        generatedCandidates.push(await provider.generate(
+          generationInput,
+          {
+            ...(options.providerOptions ?? {}),
+            count: 1,
+            tag: `candidate-${index + 1}`,
+            ...(assetPersist ? { persist: assetPersist } : {}),
+          } as never,
+        ));
+      }
+      providerResult = requestedCount === 1 ? generatedCandidates[0] : generatedCandidates;
     } catch (providerError) {
       // 不自动重试；保留认证/额度/超时/可用性/网络的真实类别，同时隐藏上游原文。
       throw mapImageHandoffProviderFailure(providerError);
     }
   }
-  const rawDraft = !idempotentPrefetchHit && isRecord(providerResult) ? providerResult : null;
-  if (!idempotentPrefetchHit && !rawDraft) {
+  const rawDrafts = !idempotentPrefetchHit
+    ? (Array.isArray(providerResult)
+        ? providerResult.filter(isRecord)
+        : isRecord(providerResult) ? [providerResult] : [])
+    : [];
+  if (!idempotentPrefetchHit && rawDrafts.length !== requestedCount) {
     throw new ImageHandoffError("image_schema_invalid", 422, "生成的图片草稿未通过结构校验。");
   }
 
@@ -301,9 +346,7 @@ export async function generateImageDraftFromHandoff(
     sourceHandoffRevision: handoffA.currentRevision,
     sourceHandoffFingerprint: handoffA.versions[handoffA.versions.length - 1].handoffFingerprint,
     sourceResearchRevision: researchRevision,
-    generationInputFingerprint: selectedVisualReferences.length > 0
-      ? sha256(`${buildResult.generationInputFingerprint}:visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`)
-      : buildResult.generationInputFingerprint,
+    generationInputFingerprint: generationRequestFingerprint,
     visualReferenceFingerprint: selectedVisualReferences[0]?.referenceFingerprint ?? null,
     mode: generationInput.mode,
     generatedAt: new Date().toISOString(),
@@ -347,16 +390,16 @@ export async function generateImageDraftFromHandoff(
       // ── 新草稿：输出合同验证 ──
       // 1) 结构合法（复用现有 image-draft 合同 normalize）
       const existingSnapshot = extractAiImageDraftSnapshot(current);
-      const itemSummary = imageDraftSafeSummary(rawDraft);
-      if (!itemSummary) {
+      const itemSummaries = rawDrafts.map((draft) => imageDraftSafeSummary(draft));
+      if (itemSummaries.some((summary) => summary === null)) {
         throw new ImageHandoffError("image_schema_invalid", 422, "生成的图片草稿未通过结构校验。");
       }
       // 2) composition_concept 不得包含产品外观断言
-      if (generationInput.mode === "composition_concept" && /(?:real product photo|exact colour and material|真实商品|实拍|产品主图已完成)/i.test(JSON.stringify(rawDraft))) {
+      if (generationInput.mode === "composition_concept" && /(?:real product photo|exact colour and material|真实商品|实拍|产品主图已完成)/i.test(JSON.stringify(rawDrafts))) {
         throw new ImageHandoffError("image_schema_invalid", 422, "构图概念草稿不得包含真实商品外观断言。");
       }
       // 3) product_visual_draft 必须有批准参考指纹
-      if (generationInput.mode === "product_visual_draft" && !itemSummary.approvedReferenceFingerprint) {
+      if (generationInput.mode === "product_visual_draft" && itemSummaries.some((summary) => !summary?.approvedReferenceFingerprint)) {
         throw new ImageHandoffError("image_schema_invalid", 422, "产品视觉草稿必须基于已批准视觉参考。");
       }
 
@@ -364,8 +407,8 @@ export async function generateImageDraftFromHandoff(
       const accessMode = context.mode === "demo" ? "visitor" : "owner";
       const draftSnapshot = buildImageHandoffDraftSnapshot({
         existingSnapshot,
-        rawDraft: rawDraft as Record<string, unknown>,
-        itemId: itemSummary.id ?? "mock-image-draft",
+        rawDrafts,
+        sourceHandoffRevision: handoffC.currentRevision,
         accessMode,
         updatedAt: binding.generatedAt,
       });
@@ -391,7 +434,10 @@ export async function generateImageDraftFromHandoff(
   });
 
   const savedRaw = typeof result.resultJson === "string" ? JSON.parse(result.resultJson) : result.resultJson;
-  const savedDraft = isRecord(savedRaw) ? imageDraftSafeSummary((savedRaw as Record<string, unknown>).aiImageDraftSnapshot) : null;
+  const candidates = isRecord(savedRaw)
+    ? imageDraftSafeSummaries((savedRaw as Record<string, unknown>).aiImageDraftSnapshot, handoffA.currentRevision)
+    : [];
+  const savedDraft = candidates[candidates.length - 1] ?? null;
 
   return {
     imageStatus: result.value.imageStatus,
@@ -400,6 +446,7 @@ export async function generateImageDraftFromHandoff(
     idempotentReplay: result.value.idempotentReplay,
     imageSaved: !result.value.idempotentReplay,
     draft: savedDraft,
+    candidates,
     handoffState: { controlState: handoffA.controlState, stale: false },
   };
 }

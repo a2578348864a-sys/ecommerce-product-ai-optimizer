@@ -18,6 +18,7 @@ export type AiImageEditInput = {
   /** 批准参考图 dataUrl（data:image/png;base64,...） */
   imageDataUrl: string;
   prompt: string;
+  count: 1 | 2;
 };
 
 export type AiImageEditOutput = {
@@ -60,7 +61,7 @@ export async function generateOpenAiImageEdit(input: AiImageEditInput): Promise<
       model,
       image: new File([bytes], `reference.${ext}`, { type: mime }),
       prompt: input.prompt,
-      n: 1,
+      n: input.count,
       size: "1536x1024",
       quality: "high",
       output_format: "webp",
@@ -90,7 +91,7 @@ export async function generateOpenAiImageEdit(input: AiImageEditInput): Promise<
       }
       // else: 非法 item 静默跳过（由下方 count 检查兜底）
     }
-    if (images.length === 0) {
+    if (images.length !== input.count) {
       throw new AiImageProviderError("image_provider_incompatible_response", "图片中转站返回了无法识别的响应格式。", false);
     }
     return { model, provider: "openai_compatible_relay", images };

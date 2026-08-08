@@ -3,14 +3,19 @@ import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import type { AccessContext } from "@/lib/server/accessPassword";
-import { generateImageDraftFromHandoff, ImageHandoffError, imageDraftSafeSummary } from "@/lib/imageHandoff/imageGenerationService";
+import { generateImageDraftFromHandoff, ImageHandoffError, imageDraftSafeSummaries } from "@/lib/imageHandoff/imageGenerationService";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { computeImageStatus, parseImageHandoffBinding, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
-import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
+import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
+import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 
 const ALLOWED_GENERATE_FIELDS = new Set([
   "requestId", "expectedStorageVersion", "expectedHandoffRevision", "mode",
   "approvedVisualReferenceSelectionIds", "confirmed",
+  "count",
+]);
+const ALLOWED_SELECT_FIELDS = new Set([
+  "selectedImageId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed",
 ]);
 const FORBIDDEN_KEYS = new Set([
   "creativeHandoff", "creativeHandoffRequestLedger", "imageHandoffBinding", "aiImageDraftSnapshot",
@@ -60,6 +65,13 @@ function parseStorageVersion(value: unknown): { resultJsonHash: string; updatedA
   return { resultJsonHash: value.resultJsonHash, updatedAt: parsed.toISOString() };
 }
 
+function parseCurrentSelection(value: unknown, currentHandoffRevision: number | null) {
+  if (!isRecord(value) || currentHandoffRevision === null) return null;
+  if (typeof value.selectedImageId !== "string" || !value.selectedImageId) return null;
+  if (value.sourceHandoffRevision !== currentHandoffRevision) return null;
+  return value.selectedImageId;
+}
+
 type AuthResult = { ctx: AccessContext | null; error: NextResponse | null };
 
 function getAuth(req: NextRequest, id: string, bodyRecord: Record<string, unknown>): AuthResult {
@@ -103,6 +115,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           staleReasonCode: null,
           humanReviewRequired: true,
           draft: null,
+          candidates: [],
+          selectedImageId: null,
           approvedVisualReferenceSummary: [],
           storageVersion: null,
           expectedHandoffRevision: null,
@@ -117,12 +131,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     let binding = null;
     let draft = null;
+    let candidates = [] as ReturnType<typeof imageDraftSafeSummaries>;
     let imageStatus: ImageStatus = "ready";
 
     if (gate.imageDraftRaw !== undefined) {
-      const snap = isRecord(gate.imageDraftRaw) ? (gate.imageDraftRaw as Record<string, unknown>).items : null;
-      const lastItem = Array.isArray(snap) && snap.length > 0 ? snap[snap.length - 1] : null;
-      draft = lastItem ? imageDraftSafeSummary(lastItem) : null;
+      candidates = imageDraftSafeSummaries(gate.imageDraftRaw, handoff?.currentRevision ?? null);
+      draft = candidates[candidates.length - 1] ?? null;
     }
 
     if (bindingRaw !== undefined) {
@@ -189,6 +203,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         staleReasonCode: imageStatus === "stale" ? "handoff_revision_changed" : null,
         humanReviewRequired: true,
         draft,
+        candidates,
+        selectedImageId: parseCurrentSelection(
+          gate.imageStudioSelectionRaw,
+          handoff?.currentRevision ?? null,
+        ),
         approvedVisualReferenceSummary,
         storageVersion,
         expectedHandoffRevision: handoff?.currentRevision ?? null,
@@ -234,6 +253,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return errorResponse(400, "invalid_image_mode", "视觉模式无效。");
   }
   if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请确认后提交。");
+  const count = body.count === 2 ? 2 : body.count === undefined || body.count === 1 ? 1 : null;
+  if (!count) return errorResponse(400, "invalid_image_count", "图片候选数量必须为 1 或 2。");
   const approvedVisualReferenceSelectionIds = body.approvedVisualReferenceSelectionIds;
   if (approvedVisualReferenceSelectionIds !== undefined) {
     if (!Array.isArray(approvedVisualReferenceSelectionIds)
@@ -251,6 +272,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       expectedStorageVersion,
       expectedHandoffRevision,
       mode,
+      count,
       approvedVisualReferenceSelectionIds,
       confirmed: true,
     });
@@ -263,7 +285,92 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         idempotentReplay: result.idempotentReplay,
         humanReviewRequired: true,
         draft: result.draft,
+        candidates: result.candidates,
       },
+    });
+  } catch (err) {
+    if (err instanceof ImageHandoffError) return errorResponse(err.status, err.code, err.message);
+    if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
+    throw err;
+  }
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse(400, "invalid_json", "请求格式无效。");
+  }
+  if (!isRecord(body)) return errorResponse(400, "invalid_json", "请求格式无效。");
+  const forbidden = containsForbiddenKey(body);
+  if (forbidden) return errorResponse(400, "forbidden_field", `禁止字段: ${forbidden}`);
+  for (const key of Object.keys(body)) {
+    if (!ALLOWED_SELECT_FIELDS.has(key)) return errorResponse(400, "unknown_field", `未知字段: ${key}`);
+  }
+  if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请选择并确认一张候选图。");
+  const selectedImageId = body.selectedImageId;
+  if (typeof selectedImageId !== "string" || !selectedImageId.trim() || selectedImageId.length > 200) {
+    return errorResponse(400, "invalid_image_selection", "图片选择无效。");
+  }
+  const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
+  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+  const expectedHandoffRevision = body.expectedHandoffRevision;
+  if (typeof expectedHandoffRevision !== "number" || !Number.isSafeInteger(expectedHandoffRevision) || expectedHandoffRevision < 1) {
+    return errorResponse(400, "invalid_handoff_revision", "创作资料版本无效。");
+  }
+
+  const { ctx, error } = getAuth(req, id, body);
+  if (error) return error;
+  try {
+    const gate = await checkCreativeHandoffGate(id, ctx!);
+    const handoff = gate.currentHandoff;
+    if (!handoff || handoff.controlState !== "active") {
+      return errorResponse(422, "handoff_required", "当前研究记录尚未准备好可用的创作资料。");
+    }
+    if (handoff.currentRevision !== expectedHandoffRevision) {
+      return errorResponse(409, "handoff_revision_conflict", "创作资料已经更新，请刷新后重新选择。");
+    }
+    const currentCandidates = imageDraftSafeSummaries(gate.imageDraftRaw, handoff.currentRevision);
+    if (!currentCandidates.some((candidate) => candidate.id === selectedImageId)) {
+      return errorResponse(409, "image_selection_stale", "该候选图不属于当前创作资料版本，请重新生成后选择。");
+    }
+
+    const selectedAt = new Date().toISOString();
+    await mutateTaskResultJson({
+      context: ctx!,
+      taskId: id,
+      writer: "ai-image",
+      expectedStorageVersion,
+      mutate(current) {
+        const currentHandoff = parseProductCreativeHandoff(current.creativeHandoff);
+        if (!currentHandoff || currentHandoff.controlState !== "active"
+          || currentHandoff.currentRevision !== expectedHandoffRevision) {
+          throw new ImageHandoffError("handoff_revision_conflict", 409, "创作资料已经更新，请刷新后重新选择。");
+        }
+        const candidates = imageDraftSafeSummaries(current.aiImageDraftSnapshot, expectedHandoffRevision);
+        if (!candidates.some((candidate) => candidate.id === selectedImageId)) {
+          throw new ImageHandoffError("image_selection_stale", 409, "该候选图不属于当前创作资料版本，请重新生成后选择。");
+        }
+        return {
+          result: {
+            ...current,
+            imageStudioSelection: {
+              version: 1,
+              selectedImageId,
+              sourceHandoffRevision: expectedHandoffRevision,
+              selectedAt,
+            },
+          },
+          value: null,
+        };
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      data: { selectedImageId, sourceHandoffRevision: expectedHandoffRevision, selectedAt },
     });
   } catch (err) {
     if (err instanceof ImageHandoffError) return errorResponse(err.status, err.code, err.message);

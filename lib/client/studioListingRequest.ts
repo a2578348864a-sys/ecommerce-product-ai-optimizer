@@ -18,6 +18,7 @@ export type ListingFormIntent = {
   confirmedFacts: string;
   unverifiedFacts: string;
   prohibitedClaims: string;
+  additionalRequirements?: string;
   listingObjective: StudioListingObjective;
   copyStyle: StudioListingTone;
 };
@@ -35,6 +36,7 @@ export const EMPTY_LISTING_INTENT: ListingFormIntent = {
   confirmedFacts: "",
   unverifiedFacts: "",
   prohibitedClaims: "",
+  additionalRequirements: "",
   listingObjective: "balanced",
   copyStyle: "professional",
 };
@@ -60,6 +62,9 @@ export function buildStudioListingRequestCore(input: {
   mode: "mock" | "real";
 }) {
   return {
+    briefVersion: "studio-creative-brief.v1" as const,
+    factsConfirmed: true as const,
+    humanReviewRequired: true as const,
     productName: input.productName.trim(),
     description: input.description.trim(),
     category: input.category.trim(),
@@ -77,6 +82,7 @@ export function buildStudioListingRequestCore(input: {
     confirmedFacts: splitTerms(input.intent.confirmedFacts),
     unverifiedFacts: splitTerms(input.intent.unverifiedFacts),
     prohibitedClaims: splitTerms(input.intent.prohibitedClaims),
+    additionalRequirements: (input.intent.additionalRequirements ?? "").trim(),
     listingObjective: input.intent.listingObjective,
   };
 }

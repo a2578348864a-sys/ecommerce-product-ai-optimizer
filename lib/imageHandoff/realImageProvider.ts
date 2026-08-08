@@ -123,6 +123,7 @@ export function createRealImageProvider(): RealImageProvider {
         const output = await generateOpenAiImageEdit({
           imageDataUrl: input.referenceImageDataUrl,
           prompt: buildProductVisualPrompt(input),
+          count: 1,
         });
         const first = output.images[0];
         if (!first?.base64) {

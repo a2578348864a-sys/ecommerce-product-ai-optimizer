@@ -75,6 +75,7 @@ export type StudioImageQualityCheck = {
 type StudioImageResultMetaBase = {
   mode: StudioImageMode;
   duplicate: boolean;
+  visualAuthority?: "composition_concept" | "product_visual_draft";
   qualityCheck: StudioImageQualityCheck;
 };
 
@@ -93,6 +94,12 @@ export type StudioImageResultMeta =
     });
 
 type StudioImageExecutionInput = {
+  briefVersion?: "studio-creative-brief.v1";
+  factsConfirmed?: true;
+  humanReviewRequired?: true;
+  visualAuthority?: "composition_concept" | "product_visual_draft";
+  referenceImageDataUrl?: string;
+  referenceImageApproved?: boolean;
   mode: StudioImageMode;
   confirmRealAi: boolean;
   idempotencyKey: string;
@@ -112,7 +119,11 @@ type StudioImageInputErrorCode =
   | "invalid_visual_style"
   | "invalid_aspect_ratio"
   | "invalid_image_count"
-  | "unsupported_request_field";
+  | "unsupported_request_field"
+  | "invalid_studio_brief"
+  | "studio_brief_confirmation_required"
+  | "invalid_reference_image"
+  | "reference_image_confirmation_required";
 
 export type StudioImageInputResult =
   | { ok: true; data: StudioImageInput }
@@ -125,6 +136,11 @@ const LEGACY_IMAGE_TYPES: Record<string, StudioImageType> = {
 };
 
 export const STUDIO_IMAGE_ALLOWED_FIELDS = new Set([
+  "briefVersion",
+  "factsConfirmed",
+  "humanReviewRequired",
+  "referenceImageDataUrl",
+  "referenceImageApproved",
   "creationMode",
   "productName",
   "description",
@@ -212,12 +228,39 @@ function containsUnsafeCreativeInstruction(value: string) {
   return UNSAFE_CREATIVE_PROMPT_PATTERNS.some((pattern) => pattern.test(value));
 }
 
+function readReferenceImage(input: Record<string, unknown>) {
+  const value = input.referenceImageDataUrl;
+  if (value === undefined || value === "") return { ok: true as const, value: undefined };
+  if (typeof value !== "string" || value.length > 14_000_000) return { ok: false as const };
+  if (!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/u.test(value)) {
+    return { ok: false as const };
+  }
+  return { ok: true as const, value };
+}
+
 export function parseStudioImageInput(value: unknown): StudioImageInputResult {
   if (!isRecord(value)) {
     return fail("invalid_studio_image_input", "Request body must be a JSON object.");
   }
   if (Object.keys(value).some((key) => !STUDIO_IMAGE_ALLOWED_FIELDS.has(key))) {
     return fail("unsupported_request_field", "Request contains an unsupported field.");
+  }
+  if (value.briefVersion !== "studio-creative-brief.v1" || value.humanReviewRequired !== true) {
+    return fail("invalid_studio_brief", "创作资料合同无效，请刷新页面后重新确认。");
+  }
+  if (value.factsConfirmed !== true) {
+    return fail(
+      "studio_brief_confirmation_required",
+      "请确认商品资料由你提供或确认，生成结果仅作为待人工复核的草稿。",
+    );
+  }
+  if (value.referenceImageApproved !== undefined && typeof value.referenceImageApproved !== "boolean") {
+    return fail("invalid_reference_image", "参考图确认状态无效。");
+  }
+  const referenceImage = readReferenceImage(value);
+  if (!referenceImage.ok) return fail("invalid_reference_image", "参考图格式无效，请上传 PNG、JPEG 或 WebP 图片。");
+  if (referenceImage.value && value.referenceImageApproved !== true) {
+    return fail("reference_image_confirmation_required", "请确认你有权使用该参考图，并批准其用于本次商品视觉草稿。");
   }
   const creationMode = readEnum(
     value,
@@ -277,6 +320,12 @@ export function parseStudioImageInput(value: unknown): StudioImageInputResult {
   }
 
   const execution: StudioImageExecutionInput = {
+    briefVersion: "studio-creative-brief.v1",
+    factsConfirmed: true,
+    humanReviewRequired: true,
+    visualAuthority: referenceImage.value ? "product_visual_draft" : "composition_concept",
+    ...(referenceImage.value ? { referenceImageDataUrl: referenceImage.value } : {}),
+    referenceImageApproved: referenceImage.value ? true : value.referenceImageApproved === true,
     mode: value.mode === "real" ? "real" : "mock",
     confirmRealAi: value.confirmRealAi === true,
     idempotencyKey: idempotencyKey.value,

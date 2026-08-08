@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { createBrowserUuid } from "@/lib/browserUuid";
+import { useRouter } from "next/navigation";
 
 type ImageStatus =
   | "ready" | "active" | "stale" | "revoked" | "concept_only" | "legacy_unbound" | "invalid";
@@ -13,6 +14,7 @@ type ImageDraftSafeSummary = {
   compositionSummary: string | null;
   approvedReferenceFingerprint: string | null;
   generatedAt: string | null;
+  sourceHandoffRevision: number | null;
   humanReviewRequired: boolean;
 };
 
@@ -25,6 +27,8 @@ type ImageStateData = {
   staleReasonCode: string | null;
   humanReviewRequired: boolean;
   draft: ImageDraftSafeSummary | null;
+  candidates: ImageDraftSafeSummary[];
+  selectedImageId: string | null;
   approvedVisualReferenceSummary: Array<{ referenceFingerprint: string; summary: string; selectionId?: string }>;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   expectedHandoffRevision: number | null;
@@ -38,6 +42,7 @@ type ImageGenerateResult = {
   idempotentReplay: boolean;
   humanReviewRequired: boolean;
   draft: ImageDraftSafeSummary | null;
+  candidates: ImageDraftSafeSummary[];
 };
 
 function formatTime(value: string | null) {
@@ -53,8 +58,8 @@ function statusBadge(status: ImageStatus | null) {
     active: "当前草稿有效",
     concept_only: "构图概念草稿",
     stale: "基于旧交接版本",
-    revoked: "创作交接已撤回",
-    legacy_unbound: "历史草稿未绑定交接",
+    revoked: "创作资料已撤回",
+    legacy_unbound: "历史草稿未绑定资料",
     invalid: "状态异常",
   };
   return status ? labels[status] ?? status : "未生成";
@@ -161,10 +166,12 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
   /** 图片草稿生成成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新） */
   onCommitted?: () => void;
 }) {
+  const router = useRouter();
   const [state, setState] = useState<ImageStateData | null>(null);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [candidateCount, setCandidateCount] = useState<1 | 2>(2);
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
 
   const loadState = useCallback(async () => {
@@ -199,6 +206,7 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
       expectedStorageVersion: state.storageVersion,
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
+      count: candidateCount,
       // Final Capability: product_visual_draft 提交服务端批准参考的 selectionId（首个批准参考）
       ...(state.mode === "product_visual_draft" && state.approvedVisualReferenceSummary?.[0]
         ? { approvedVisualReferenceSelectionIds: [(state.approvedVisualReferenceSummary[0] as { selectionId?: string }).selectionId].filter(Boolean) }
@@ -230,15 +238,48 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
         imageStatus: data.imageStatus,
         sourceHandoffRevision: data.sourceHandoffRevision,
         draft: data.draft,
+        candidates: data.candidates,
+        selectedImageId: null,
         canGenerate: false,
       } : current);
       setNotice({ tone: "info", text: data.idempotentReplay ? "已恢复同一请求的已保存结果。" : "图片草稿已生成，需人工复核后使用。" });
       setRequestId(null);
       setRetryBody(null);
-      void loadState();
+      await loadState();
       onCommitted?.();
     } catch {
       setNotice({ tone: "error", text: "网络异常，图片草稿生成失败。" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSelect(selectedImageId: string) {
+    if (!state?.storageVersion || !state.expectedHandoffRevision || submitting) return;
+    setSubmitting(true);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-handoff`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
+        body: JSON.stringify({
+          selectedImageId,
+          expectedStorageVersion: state.storageVersion,
+          expectedHandoffRevision: state.expectedHandoffRevision,
+          confirmed: true,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setNotice({ tone: "error", text: json.error?.message ?? "图片选择保存失败，请刷新后重试。" });
+        return;
+      }
+      setState((current) => current ? { ...current, selectedImageId } : current);
+      setNotice({ tone: "info", text: "已保存当前选择；仍需人工复核后使用。" });
+      await loadState();
+      onCommitted?.();
+    } catch {
+      setNotice({ tone: "error", text: "网络异常，图片选择未保存。" });
     } finally {
       setSubmitting(false);
     }
@@ -284,25 +325,47 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
       {isComposition ? (
         <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-sm leading-6 text-sky-800" data-testid="image-composition-notice">
           当前仅生成构图概念，不代表真实商品外观。
+          {state.approvedVisualReferenceSummary.length === 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800"
+                onClick={() => router.push(`/tasks/${encodeURIComponent(taskId)}#creative-materials`)}
+              >
+                补充参考图
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800"
+                onClick={() => {
+                  if (window.confirm("切换到独立创作后，不再使用当前研究记录作为权威资料，并需要重新确认手动输入。是否继续？")) {
+                    router.push("/image-studio");
+                  }
+                }}
+              >
+                转为独立创作
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {/* 无 Handoff / legacy */}
       {state.imageStatus === "legacy_unbound" ? (
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-          历史图片草稿未绑定可信创作交接。草稿只读保留，请基于当前交接重新生成。
+          历史图片草稿未绑定已确认的创作资料。草稿只读保留，请基于当前资料重新生成。
         </div>
       ) : null}
 
       {state.imageStatus === "revoked" ? (
         <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm leading-6 text-rose-800" data-testid="image-revoked-notice">
-          对应创作交接已撤回。生成按钮已禁用，历史草稿保留。
+          对应创作资料已撤回。生成按钮已禁用，历史草稿保留。
         </div>
       ) : null}
 
       {state.imageStatus === "stale" ? (
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="image-stale-notice">
-          该图片草稿基于旧版创作交接。草稿只读保留，请基于最新交接重新生成。
+          该图片草稿基于旧版创作资料。草稿只读保留，请基于最新资料重新生成。
         </div>
       ) : null}
 
@@ -310,7 +373,7 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-700">
-              创作交接版本：{state.currentHandoffRevision ?? "-"}
+              创作资料已确认
             </p>
             <p className="mt-0.5 text-sm text-slate-500">
               模式：{modeLabel(state.mode)}
@@ -326,19 +389,45 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
           >
             {submitting ? "正在生成..." : isComposition ? "生成构图概念" : "生成产品视觉草稿"}
           </button>
+          <label className="text-sm font-semibold text-slate-700">
+            候选数量
+            <select
+              className="ml-2 rounded-lg border border-slate-200 bg-white px-2 py-2"
+              value={candidateCount}
+              onChange={(event) => setCandidateCount(event.target.value === "1" ? 1 : 2)}
+              disabled={submitting}
+            >
+              <option value={1}>1 张</option>
+              <option value={2}>2 张</option>
+            </select>
+          </label>
         </div>
       ) : null}
 
-      {state.draft ? (
-        <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-            <span>模式：{modeLabel(state.draft.mode)}</span>
-            <span>{formatTime(state.draft.generatedAt)}</span>
-            <span>人工审核：必须</span>
-          </div>
-          {state.draft.id ? (
-            <div className="space-y-3">
-              <DraftImagePreview taskId={taskId} draftId={state.draft.id} />
+      {state.candidates.length > 0 ? (
+        <div className="mt-4 grid gap-4 lg:grid-cols-2" data-testid="task-image-candidates">
+          {state.candidates.map((candidate, index) => candidate.id ? (
+            <article
+              key={candidate.id}
+              className={`space-y-3 rounded-2xl border p-3 ${
+                state.selectedImageId === candidate.id
+                  ? "border-teal-400 bg-teal-50/40"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+                <span>候选图 {index + 1} · {modeLabel(candidate.mode)}</span>
+                <span>{formatTime(candidate.generatedAt)}</span>
+              </div>
+              <DraftImagePreview taskId={taskId} draftId={candidate.id} />
+              {candidate.compositionSummary ? (
+                <p className="rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+                  {candidate.compositionSummary}
+                </p>
+              ) : null}
+              {candidate.approvedReferenceFingerprint ? (
+                <p className="text-sm font-semibold text-teal-700">已基于你批准的视觉参考生成。</p>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -346,22 +435,16 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
                     const win = window.open("", "_blank");
                     if (!win) return;
                     win.document.write("<p>正在加载图片…</p>");
-                    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft/${encodeURIComponent(state.draft!.id!)}`, {
-                      headers: buildAccessHeaders(),
-                      cache: "no-store",
-                    })
-                      .then((response) => {
-                        if (!response.ok) throw new Error("IMAGE_LOAD_FAILED");
-                        return response.blob();
-                      })
-                      .then((blob) => {
-                        const url = URL.createObjectURL(blob);
-                        win.location.href = url;
-                        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-                      })
-                      .catch(() => {
-                        win.document.body.innerHTML = "<p>图片加载失败，请刷新后重试。</p>";
-                      });
+                    void fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-draft/${encodeURIComponent(candidate.id!)}`, {
+                      headers: buildAccessHeaders(), cache: "no-store",
+                    }).then((response) => {
+                      if (!response.ok) throw new Error("IMAGE_LOAD_FAILED");
+                      return response.blob();
+                    }).then((blob) => {
+                      const url = URL.createObjectURL(blob);
+                      win.location.href = url;
+                      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                    }).catch(() => { win.document.body.innerHTML = "<p>图片加载失败，请刷新后重试。</p>"; });
                   }}
                   className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
@@ -369,34 +452,22 @@ export function ImageHandoffSection({ taskId, onCommitted }: {
                 </button>
                 <button
                   type="button"
-                  onClick={() => downloadDraftImage(taskId, state.draft!.id!, state.draft?.mode === "composition_concept" ? "composition-concept" : "product-visual-draft")}
+                  onClick={() => downloadDraftImage(taskId, candidate.id!, candidate.mode === "composition_concept" ? `composition-${index + 1}` : `product-visual-${index + 1}`)}
                   className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   下载
                 </button>
-                {state.canGenerate ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerate()}
-                    disabled={generateDisabled}
-                    className="inline-flex h-9 items-center justify-center rounded-lg bg-cyan-600 px-3 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submitting ? "正在生成…" : "重新生成"}
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void handleSelect(candidate.id!)}
+                  disabled={submitting || state.selectedImageId === candidate.id}
+                  className="inline-flex h-9 items-center justify-center rounded-lg bg-teal-600 px-3 text-sm font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {state.selectedImageId === candidate.id ? "已选择" : "选择此图"}
+                </button>
               </div>
-            </div>
-          ) : null}
-          {state.draft.compositionSummary ? (
-            <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-sm leading-6 text-slate-700">
-              {state.draft.compositionSummary}
-            </div>
-          ) : null}
-          {state.draft.approvedReferenceFingerprint ? (
-            <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-3 text-sm leading-6 text-teal-800">
-              已基于你批准的视觉参考生成。
-            </div>
-          ) : null}
+            </article>
+          ) : null)}
         </div>
       ) : null}
 

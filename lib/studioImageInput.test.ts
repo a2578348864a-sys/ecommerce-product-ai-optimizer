@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
-  parseStudioImageInput,
+  parseStudioImageInput as parseStudioImageInputRaw,
   STUDIO_IMAGE_ASPECT_RATIOS,
   STUDIO_IMAGE_CREATION_MODES,
   STUDIO_IMAGE_TYPES,
   STUDIO_IMAGE_VISUAL_STYLES,
 } from "@/lib/studioImageInput";
+
+function parseStudioImageInput(value: unknown) {
+  return parseStudioImageInputRaw(
+    value && typeof value === "object" && !Array.isArray(value)
+      ? {
+          briefVersion: "studio-creative-brief.v1",
+          factsConfirmed: true,
+          humanReviewRequired: true,
+          ...value,
+        }
+      : value,
+  );
+}
 
 describe("parseStudioImageInput", () => {
   it("accepts and normalizes the complete task-independent Image Studio context", () => {
@@ -24,6 +37,11 @@ describe("parseStudioImageInput", () => {
     expect(parsed).toEqual({
       ok: true,
       data: {
+        briefVersion: "studio-creative-brief.v1",
+        factsConfirmed: true,
+        humanReviewRequired: true,
+        visualAuthority: "composition_concept",
+        referenceImageApproved: false,
         creationMode: "guided",
         productName: "Foldable Laptop Stand",
         description: "Silver aluminum desk stand.",
@@ -47,6 +65,11 @@ describe("parseStudioImageInput", () => {
     expect(parsed).toMatchObject({
       ok: true,
       data: {
+        briefVersion: "studio-creative-brief.v1",
+        factsConfirmed: true,
+        humanReviewRequired: true,
+        visualAuthority: "composition_concept",
+        referenceImageApproved: false,
         creationMode: "guided",
         imageType: "product_main",
         visualStyle: "minimal",
@@ -89,6 +112,11 @@ describe("parseStudioImageInput", () => {
     })).toEqual({
       ok: true,
       data: {
+        briefVersion: "studio-creative-brief.v1",
+        factsConfirmed: true,
+        humanReviewRequired: true,
+        visualAuthority: "composition_concept",
+        referenceImageApproved: false,
         creationMode: "prompt",
         productName: "",
         description: "",

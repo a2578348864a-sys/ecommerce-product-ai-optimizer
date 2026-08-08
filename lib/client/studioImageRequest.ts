@@ -72,14 +72,25 @@ export function buildStudioImageRequestCore(input: {
   description: string;
   intent: StudioImageFormIntent;
   mode: StudioImageMode;
+  referenceImageDataUrl?: string;
+  referenceImageApproved?: boolean;
 }) {
   const common = {
+    briefVersion: "studio-creative-brief.v1" as const,
+    factsConfirmed: true as const,
+    humanReviewRequired: true as const,
     creationMode: input.intent.creationMode,
     productName: input.productName.trim(),
     description: input.description.trim(),
     count: input.intent.count,
     aspectRatio: input.intent.aspectRatio,
     mode: input.mode,
+    ...(input.referenceImageDataUrl
+      ? {
+          referenceImageDataUrl: input.referenceImageDataUrl,
+          referenceImageApproved: input.referenceImageApproved === true,
+        }
+      : {}),
   };
   if (input.intent.creationMode === "prompt") {
     return {

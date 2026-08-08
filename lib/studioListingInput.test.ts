@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { parseStudioListingInput } from "@/lib/studioListingInput";
+import { parseStudioListingInput as parseStudioListingInputRaw } from "@/lib/studioListingInput";
+
+function parseStudioListingInput(value: unknown) {
+  return parseStudioListingInputRaw(
+    value && typeof value === "object" && !Array.isArray(value)
+      ? {
+          briefVersion: "studio-creative-brief.v1",
+          factsConfirmed: true,
+          humanReviewRequired: true,
+          ...value,
+        }
+      : value,
+  );
+}
 
 describe("parseStudioListingInput", () => {
   it("normalizes the complete standalone Studio contract", () => {
@@ -29,6 +42,10 @@ describe("parseStudioListingInput", () => {
     expect(result).toEqual({
       ok: true,
       data: {
+        briefVersion: "studio-creative-brief.v1",
+        factsConfirmed: true,
+        humanReviewRequired: true,
+        additionalRequirements: "",
         productName: "Foldable Laptop Stand",
         description: "Aluminum stand for desk use.",
         category: "Home Office",
@@ -51,6 +68,7 @@ describe("parseStudioListingInput", () => {
           confirmedFacts: ["Aluminum frame", "Folds to 18 mm"],
           unverifiedFacts: ["Supports 20 kg"],
           prohibitedClaims: ["medical grade", "guaranteed ranking"],
+          additionalRequirements: "",
           listingObjective: "seo",
         },
       },

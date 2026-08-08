@@ -15,6 +15,10 @@ import {
   generateMockStudioImage,
   generateRealStudioImage,
 } from "@/lib/server/studioImageGenerator";
+import {
+  StudioReferenceImageError,
+  validateStudioReferenceImageDataUrl,
+} from "@/lib/server/studioReferenceImage";
 
 export const runtime = "nodejs";
 
@@ -57,6 +61,15 @@ export async function POST(request: NextRequest) {
   const studioInput = parsed.data;
   const realMode = studioInput.mode === "real";
 
+  try {
+    await validateStudioReferenceImageDataUrl(studioInput.referenceImageDataUrl);
+  } catch (error) {
+    if (error instanceof StudioReferenceImageError) {
+      return json({ ok: false, error: { code: error.code, message: error.message } }, error.status);
+    }
+    return json({ ok: false, error: { code: "invalid_reference_image", message: "参考图校验失败，请重新上传。" } }, 400);
+  }
+
   if (!realMode) {
     const mock = generateMockStudioImage(studioInput);
     if (!mock.ok) return json({ ok: false, error: mock.error }, mock.status);
@@ -70,10 +83,35 @@ export async function POST(request: NextRequest) {
     }, 400);
   }
 
-  // V2 Final Integration（规格十四节）: 真实图片生成已迁移到任务详情页的 Creative Handoff 链。
-  // 此独立 Studio 的 real 模式绕过 Handoff Gate / Visual Gate / Binding，一律返回已迁移错误。
-  return json({
-    ok: false,
-    error: { code: "image_studio_real_migrated", message: "真实图片生成已迁移到任务详情页的创作交接流程，请在任务内生成。" },
-  }, 422);
+  if (!isRealAiImageEnabled()) {
+    return json({ ok: false, error: { code: "real_ai_disabled", message: "真实 AI 图片生成暂未开启。" } }, 403);
+  }
+  if (auth.context.mode === "demo" && !isRealAiVisitorImageEnabled()) {
+    return json({
+      ok: false,
+      error: { code: "visitor_image_generation_disabled", message: "图片生成暂未对访客开放。" },
+    }, 403);
+  }
+
+  const validated = validateAiImageGenerateRequest({
+    imageType: toTaskImageTypeForContext(studioInput),
+    count: studioInput.count,
+    additionalDirection: studioInput.creationMode === "guided"
+      ? studioInput.legacyAdditionalDirection || studioInput.compositionRequirements || undefined
+      : undefined,
+    confirmed: studioInput.confirmRealAi,
+    idempotencyKey: studioInput.idempotencyKey,
+  }, auth.context.mode === "owner" ? "owner" : "visitor");
+  if (!validated.ok) {
+    return json({ ok: false, error: { code: validated.code, message: validated.message } }, 400);
+  }
+
+  const result = await generateRealStudioImage({
+    accessContext: auth.context,
+    studio: studioInput,
+    request: validated.data,
+  });
+  if (!result.ok) return json({ ok: false, error: result.error }, result.status);
+
+  return json({ ok: true, data: { images: result.images, meta: result.meta } });
 }

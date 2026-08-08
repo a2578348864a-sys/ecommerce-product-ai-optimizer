@@ -24,13 +24,16 @@ import {
   type ImageFormIntent,
   type PromptImageFormIntent,
 } from "@/lib/client/studioImageRequest";
-import { useStudioTaskPrefill } from "@/hooks/useStudioTaskPrefill";
 import {
   ImageResultWorkspace,
   type ImageStudioData,
 } from "@/components/image-studio/ImageResultWorkspace";
 import styles from "./ImageStudioPolish.module.css";
 import { createBrowserUuid } from "@/lib/browserUuid";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
+import { ImageHandoffSection } from "@/components/image-handoff/ImageHandoffSection";
+import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
 
 type StudioMode = "mock" | "real";
 
@@ -42,23 +45,47 @@ const IMAGE_TYPE_OPTIONS = [
 ] as const;
 
 function apiErrorCode(json: unknown): string | null {
-  if (!json || typeof json !== "object" || !("error" in json)) return null;
-  const error = (json as Record<string, unknown>).error;
-  if (!error || typeof error !== "object" || !("code" in error)) return null;
-  return String((error as Record<string, unknown>).code);
+  return studioApiErrorCode(json);
 }
 
 function errorMessage(json: unknown, fallback: string): string {
-  if (json && typeof json === "object" && "error" in json) {
-    const error = (json as Record<string, unknown>).error;
-    if (error && typeof error === "object" && "message" in error) {
-      return String((error as Record<string, unknown>).message);
-    }
-  }
-  return fallback;
+  return studioErrorMessage(json, fallback);
 }
 
+type ManualImageDraft = {
+  productName: string;
+  description: string;
+  creationMode: "guided" | "prompt";
+  intent: ImageFormIntent;
+  promptIntent: PromptImageFormIntent;
+  selectedIndices: number[];
+  factsConfirmed: boolean;
+};
+
+const EMPTY_MANUAL_IMAGE_DRAFT: ManualImageDraft = {
+  productName: "",
+  description: "",
+  creationMode: "guided",
+  intent: EMPTY_IMAGE_INTENT,
+  promptIntent: EMPTY_PROMPT_IMAGE_INTENT,
+  selectedIndices: [],
+  factsConfirmed: false,
+};
+
 export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
+  if (taskId) {
+    return (
+      <TaskStudioPreparation taskId={taskId} kind="image">
+        <div className="surface-card p-4" data-testid="image-studio-task-mode">
+          <ImageHandoffSection taskId={taskId} />
+        </div>
+      </TaskStudioPreparation>
+    );
+  }
+  return <ManualImageStudioClient />;
+}
+
+function ManualImageStudioClient() {
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
   const [creationMode, setCreationMode] = useState<"guided" | "prompt">("guided");
@@ -66,20 +93,48 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
   const [promptIntent, setPromptIntent] = useState<PromptImageFormIntent>(EMPTY_PROMPT_IMAGE_INTENT);
   const [mode, setMode] = useState<StudioMode>("mock");
   const [realConfirmed, setRealConfirmed] = useState(false);
+  const [factsConfirmed, setFactsConfirmed] = useState(false);
+  const [referenceImageDataUrl, setReferenceImageDataUrl] = useState("");
+  const [referenceImageName, setReferenceImageName] = useState("");
+  const [referenceImageApproved, setReferenceImageApproved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImageStudioData | null>(null);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [error, setError] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
   const realAttemptRef = useRef<StudioAttempt | null>(null);
-  const taskPrefill = useStudioTaskPrefill(taskId);
+  const restoredDraftRef = useRef(false);
+  const sessionDraft = useSessionDraft<ManualImageDraft>({
+    pageKind: "image-studio-manual",
+    entityId: "manual",
+    revision: "studio-creative-brief.v1",
+    initial: EMPTY_MANUAL_IMAGE_DRAFT,
+  });
 
   useEffect(() => setAuthenticated(isAuthenticated()), []);
   useEffect(() => {
-    if (taskPrefill.status !== "ready") return;
-    setProductName((current) => current || taskPrefill.data.productName);
-    setDescription((current) => current || taskPrefill.data.description);
-  }, [taskPrefill]);
+    if (!sessionDraft.draft || restoredDraftRef.current) return;
+    restoredDraftRef.current = true;
+    setProductName(sessionDraft.draft.productName);
+    setDescription(sessionDraft.draft.description);
+    setCreationMode(sessionDraft.draft.creationMode);
+    setIntent({ ...EMPTY_IMAGE_INTENT, ...sessionDraft.draft.intent });
+    setPromptIntent({ ...EMPTY_PROMPT_IMAGE_INTENT, ...sessionDraft.draft.promptIntent });
+    setSelectedIndices(sessionDraft.draft.selectedIndices ?? []);
+    setFactsConfirmed(sessionDraft.draft.factsConfirmed === true);
+  }, [sessionDraft.draft]);
+
+  useEffect(() => {
+    sessionDraft.save({
+      productName,
+      description,
+      creationMode,
+      intent,
+      promptIntent,
+      selectedIndices,
+      factsConfirmed,
+    });
+  }, [productName, description, creationMode, intent, promptIntent, selectedIndices, factsConfirmed, sessionDraft]);
 
   const activeIntent = creationMode === "guided" ? intent : promptIntent;
   const hasRequiredCreativeInput = creationMode === "guided"
@@ -87,6 +142,8 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     : promptIntent.creativePrompt.trim().length > 0;
   const canGenerate = authenticated
     && hasRequiredCreativeInput
+    && factsConfirmed
+    && (!referenceImageDataUrl || referenceImageApproved)
     && (mode === "mock" || realConfirmed);
 
   const updateIntent = useCallback(<Key extends keyof ImageFormIntent>(
@@ -94,6 +151,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     value: ImageFormIntent[Key],
   ) => {
     setIntent((current) => ({ ...current, [key]: value }));
+    setFactsConfirmed(false);
     realAttemptRef.current = null;
   }, []);
 
@@ -102,6 +160,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     value: PromptImageFormIntent[Key],
   ) => {
     setPromptIntent((current) => ({ ...current, [key]: value }));
+    setFactsConfirmed(false);
     realAttemptRef.current = null;
   }, []);
 
@@ -117,6 +176,9 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
         description,
         intent: activeIntent,
         mode,
+        ...(referenceImageDataUrl
+          ? { referenceImageDataUrl, referenceImageApproved }
+          : {}),
       });
       const attempt = mode === "real"
         ? getOrCreateStudioAttempt(
@@ -150,7 +212,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     } finally {
       setLoading(false);
     }
-  }, [activeIntent, canGenerate, loading, productName, description, mode]);
+  }, [activeIntent, canGenerate, loading, productName, description, mode, referenceImageDataUrl, referenceImageApproved]);
 
   const handleReset = useCallback(() => {
     setProductName("");
@@ -160,11 +222,16 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     setPromptIntent(EMPTY_PROMPT_IMAGE_INTENT);
     setMode("mock");
     setRealConfirmed(false);
+    setFactsConfirmed(false);
+    setReferenceImageDataUrl("");
+    setReferenceImageName("");
+    setReferenceImageApproved(false);
     setResult(null);
     setSelectedIndices([]);
     setError("");
     realAttemptRef.current = null;
-  }, []);
+    sessionDraft.clear();
+  }, [sessionDraft]);
 
   const handleClearResult = useCallback(() => {
     setResult(null);
@@ -201,18 +268,6 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
           </button>
         </div>
 
-        {taskPrefill.status === "loading" ? (
-          <p className={styles.prefillNotice} data-testid="studio-task-prefill-status">正在读取任务信息…</p>
-        ) : taskPrefill.status === "ready" ? (
-          <p className={styles.prefillNotice} data-testid="studio-task-prefill-status">
-            已从任务 {taskPrefill.data.taskId} 带入商品信息；Image Studio 仍可脱离 Task 独立使用。
-          </p>
-        ) : taskPrefill.status === "unavailable" ? (
-          <p className={styles.prefillNotice} data-testid="studio-task-prefill-status">
-            未能读取关联任务，仍可直接填写商品信息并生成。
-          </p>
-        ) : null}
-
         <fieldset className={styles.modeFieldset} data-testid="image-creation-mode">
           <legend>创作方式</legend>
           <div className={styles.modeGrid}>
@@ -228,6 +283,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
                   checked={creationMode === option.value}
                   onChange={() => {
                     setCreationMode(option.value);
+                    setFactsConfirmed(false);
                     realAttemptRef.current = null;
                     setError("");
                   }}
@@ -261,6 +317,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
               value={productName}
               onChange={(event) => {
                 setProductName(event.target.value);
+                setFactsConfirmed(false);
                 realAttemptRef.current = null;
               }}
             />
@@ -278,6 +335,7 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
               value={description}
               onChange={(event) => {
                 setDescription(event.target.value);
+                setFactsConfirmed(false);
                 realAttemptRef.current = null;
               }}
             />
@@ -470,6 +528,93 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
         </section>
         ) : null}
 
+        <section className={styles.formSection} aria-labelledby="image-reference-section">
+          <div className={styles.formSectionHeader}>
+            <h3 id="image-reference-section">商品参考图</h3>
+            <span>可选，不保存到会话草稿</span>
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="image-reference-file">上传 PNG、JPEG 或 WebP（最大 10MB）</label>
+            <input
+              id="image-reference-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className={styles.control}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                setReferenceImageApproved(false);
+                setFactsConfirmed(false);
+                realAttemptRef.current = null;
+                if (!file) {
+                  setReferenceImageDataUrl("");
+                  setReferenceImageName("");
+                  return;
+                }
+                if (!(["image/png", "image/jpeg", "image/webp"].includes(file.type)) || file.size > 10 * 1024 * 1024) {
+                  setReferenceImageDataUrl("");
+                  setReferenceImageName("");
+                  setError("参考图需为 10MB 以内的 PNG、JPEG 或 WebP 图片。");
+                  event.currentTarget.value = "";
+                  return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => {
+                  if (typeof reader.result !== "string") {
+                    setError("参考图读取失败，请重新上传。");
+                    return;
+                  }
+                  setReferenceImageDataUrl(reader.result);
+                  setReferenceImageName(file.name);
+                  setError("");
+                };
+                reader.onerror = () => setError("参考图读取失败，请重新上传。");
+                reader.readAsDataURL(file);
+              }}
+            />
+          </div>
+          {referenceImageDataUrl ? (
+            <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="manual-image-reference-preview">
+              {/* eslint-disable-next-line @next/next/no-img-element -- 本地 FileReader data URL，不访问外部资源 */}
+              <img src={referenceImageDataUrl} alt="待批准的商品参考图" className="max-h-64 w-full rounded-lg object-contain" />
+              <p className="text-sm text-slate-600">{referenceImageName}</p>
+              <label className={styles.warning}>
+                <input
+                  type="checkbox"
+                  checked={referenceImageApproved}
+                  onChange={(event) => setReferenceImageApproved(event.target.checked)}
+                />
+                <span>我有权使用这张图片，并批准它只用于本次商品视觉草稿；生成结果仍需人工核对商品外观。</span>
+              </label>
+              <button
+                type="button"
+                className={`${styles.toolbarButton} ${styles.dangerAction}`}
+                onClick={() => {
+                  setReferenceImageDataUrl("");
+                  setReferenceImageName("");
+                  setReferenceImageApproved(false);
+                  setFactsConfirmed(false);
+                  realAttemptRef.current = null;
+                }}
+              >
+                移除参考图
+              </button>
+            </div>
+          ) : (
+            <div className={styles.prefillNotice} data-testid="manual-image-composition-only">
+              未上传并批准商品参考图时，只生成构图、场景和创意概念，不代表真实商品外观。
+            </div>
+          )}
+        </section>
+
+        <label className={styles.warning}>
+          <input
+            type="checkbox"
+            checked={factsConfirmed}
+            onChange={(event) => setFactsConfirmed(event.target.checked)}
+          />
+          <span>我确认商品资料由我提供或核实，未确认内容不会被当作商品事实；所有图片均需人工复核后使用。</span>
+        </label>
+
         <fieldset className={styles.modeFieldset}>
           <legend>生成模式</legend>
           <div className={styles.modeGrid}>
@@ -595,11 +740,20 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
               </div>
             </div>
           ) : result ? (
-            <ImageResultWorkspace
-              result={result}
-              selectedIndices={selectedIndices}
-              onToggleSelected={handleToggleSelected}
-            />
+            <div className="space-y-3">
+              <div className={styles.prefillNotice} data-testid="manual-image-authority-notice">
+                {result.meta.visualAuthority === "product_visual_draft"
+                  ? result.meta.mode === "mock"
+                    ? "Mock 仅验证参考图批准与多候选流程，未依据参考图还原商品外观。"
+                    : "本批候选图基于你上传并批准的商品参考图，仍需逐张人工核对商品外观。"
+                  : "本批候选图仅为构图、场景和创意概念，不代表真实商品外观。"}
+              </div>
+              <ImageResultWorkspace
+                result={result}
+                selectedIndices={selectedIndices}
+                onToggleSelected={handleToggleSelected}
+              />
+            </div>
           ) : (
             <div className={styles.emptyState}>
               <div className={styles.emptyContent}>

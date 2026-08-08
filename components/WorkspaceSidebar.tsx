@@ -3,24 +3,48 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  FileText,
   History,
+  Images,
   LayoutDashboard,
   Package,
   Search,
   Sparkles,
+  type LucideIcon,
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 
-export const workspaceNavItems = [
-  { label: "工作台", href: "/", icon: LayoutDashboard },
-  { label: "发现商品", href: "/opportunities", icon: Search },
-  { label: "商品研究池", href: "/opportunity-candidates", icon: Sparkles },
-  { label: "研究历史", href: "/tasks", icon: History },
+type SidebarNavItem = { label: string; href: string; icon: LucideIcon };
+
+export const workspaceNavGroups: ReadonlyArray<{
+  label: string;
+  items: ReadonlyArray<SidebarNavItem>;
+}> = [
+  {
+    label: "工作台",
+    items: [{ label: "工作台", href: "/", icon: LayoutDashboard }],
+  },
+  {
+    label: "商品研究",
+    items: [
+      { label: "发现商品", href: "/opportunities", icon: Search },
+      { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
+      { label: "研究历史", href: "/tasks", icon: History },
+    ],
+  },
+  {
+    label: "创作工具",
+    items: [
+      { label: "Listing Studio", href: "/listing-studio", icon: FileText },
+      { label: "Image Studio", href: "/image-studio", icon: Images },
+    ],
+  },
 ] as const;
 
+export const workspaceNavItems: ReadonlyArray<SidebarNavItem> = workspaceNavGroups.flatMap((group) => group.items);
+
 const mobileNavItems = workspaceNavItems;
-type SidebarNavItem = (typeof workspaceNavItems)[number];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -103,9 +127,13 @@ export function WorkspaceSidebar() {
         </div>
 
         <nav className="surface-card p-2" aria-label="工作台导航">
-          <p className="px-2 pb-1 text-xs font-semibold text-teal-700">主链路</p>
-          {workspaceNavItems.map((item) => (
-            <NavLink key={item.href} item={item} pathname={pathname} />
+          {workspaceNavGroups.map((group, index) => (
+            <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
+              <p className="px-2 pb-1 text-xs font-semibold text-teal-700">{group.label}</p>
+              {group.items.map((item) => (
+                <NavLink key={item.href} item={item} pathname={pathname} />
+              ))}
+            </section>
           ))}
         </nav>
       </div>

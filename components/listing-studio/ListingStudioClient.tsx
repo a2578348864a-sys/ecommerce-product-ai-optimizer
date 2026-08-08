@@ -24,7 +24,6 @@ import {
   shouldRetainStudioAttempt,
   type StudioAttempt,
 } from "@/lib/client/studioIdempotency";
-import { useStudioTaskPrefill } from "@/hooks/useStudioTaskPrefill";
 import {
   buildStudioListingRequestCore,
   EMPTY_LISTING_INTENT,
@@ -45,6 +44,10 @@ import {
 } from "@/components/listing-studio/ListingResultWorkspace";
 import styles from "@/components/listing-studio/ListingStudioPolish.module.css";
 import { createBrowserUuid } from "@/lib/browserUuid";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { TaskStudioPreparation } from "@/components/studio/TaskStudioPreparation";
+import { ListingHandoffSection } from "@/components/listing-handoff/ListingHandoffSection";
+import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
 
 type StudioData = {
   listingPack: ListingPack;
@@ -74,20 +77,11 @@ const LISTING_OBJECTIVES: Array<{
 ];
 
 function apiErrorCode(json: unknown): string | null {
-  if (!json || typeof json !== "object" || !("error" in json)) return null;
-  const error = (json as Record<string, unknown>).error;
-  if (!error || typeof error !== "object" || !("code" in error)) return null;
-  return String((error as Record<string, unknown>).code);
+  return studioApiErrorCode(json);
 }
 
 function errorMessage(json: unknown, fallback: string): string {
-  if (json && typeof json === "object" && "error" in json) {
-    const error = (json as Record<string, unknown>).error;
-    if (error && typeof error === "object" && "message" in error) {
-      return String((error as Record<string, unknown>).message);
-    }
-  }
-  return fallback;
+  return studioErrorMessage(json, fallback);
 }
 
 function SectionHeading({
@@ -127,41 +121,80 @@ function FieldLabel({
   );
 }
 
+type ManualListingDraft = {
+  productName: string;
+  description: string;
+  category: string;
+  intent: ListingFormIntent;
+  factsConfirmed: boolean;
+};
+
+const EMPTY_MANUAL_LISTING_DRAFT: ManualListingDraft = {
+  productName: "",
+  description: "",
+  category: "",
+  intent: EMPTY_LISTING_INTENT,
+  factsConfirmed: false,
+};
+
 export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
+  if (taskId) {
+    return (
+      <TaskStudioPreparation taskId={taskId} kind="listing">
+        <div className="surface-card p-4" data-testid="listing-studio-task-mode">
+          <ListingHandoffSection taskId={taskId} />
+        </div>
+      </TaskStudioPreparation>
+    );
+  }
+  return <ManualListingStudioClient />;
+}
+
+function ManualListingStudioClient() {
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [intent, setIntent] = useState<ListingFormIntent>(EMPTY_LISTING_INTENT);
   const [mode, setMode] = useState<StudioMode>("mock");
   const [realConfirmed, setRealConfirmed] = useState(false);
+  const [factsConfirmed, setFactsConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<StudioData | null>(null);
   const [error, setError] = useState("");
   const [copiedSection, setCopiedSection] = useState<CopySection | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
+  const [studioMounted, setStudioMounted] = useState(false);
   const productNameRef = useRef<HTMLInputElement>(null);
   const realAttemptRef = useRef<StudioAttempt | null>(null);
-  const taskPrefill = useStudioTaskPrefill(taskId);
+  const restoredDraftRef = useRef(false);
+  const sessionDraft = useSessionDraft<ManualListingDraft>({
+    pageKind: "listing-studio-manual",
+    entityId: "manual",
+    revision: "studio-creative-brief.v1",
+    initial: EMPTY_MANUAL_LISTING_DRAFT,
+  });
 
-  useEffect(() => setAuthenticated(isAuthenticated()), []);
   useEffect(() => {
-    if (taskPrefill.status !== "ready") return;
-    setProductName((current) => current || taskPrefill.data.productName);
-    setDescription((current) => current || taskPrefill.data.description);
-    setCategory((current) => current || taskPrefill.data.category);
-    setIntent((current) => ({
-      ...current,
-      targetMarket: taskPrefill.data.targetMarket || current.targetMarket,
-      differentiators: current.differentiators || taskPrefill.data.sellingPoints,
-      confirmedFacts: current.confirmedFacts || taskPrefill.data.confirmedFacts,
-      unverifiedFacts: current.unverifiedFacts || taskPrefill.data.unverifiedFacts,
-      primaryKeyword: current.primaryKeyword || taskPrefill.data.primaryKeyword,
-      secondaryKeywords: current.secondaryKeywords || taskPrefill.data.secondaryKeywords,
-    }));
-  }, [taskPrefill]);
+    setStudioMounted(true);
+    setAuthenticated(isAuthenticated());
+  }, []);
+  useEffect(() => {
+    if (!sessionDraft.draft || restoredDraftRef.current) return;
+    restoredDraftRef.current = true;
+    setProductName(sessionDraft.draft.productName);
+    setDescription(sessionDraft.draft.description);
+    setCategory(sessionDraft.draft.category);
+    setIntent({ ...EMPTY_LISTING_INTENT, ...sessionDraft.draft.intent });
+    setFactsConfirmed(sessionDraft.draft.factsConfirmed === true);
+  }, [sessionDraft.draft]);
+
+  useEffect(() => {
+    sessionDraft.save({ productName, description, category, intent, factsConfirmed });
+  }, [productName, description, category, intent, factsConfirmed, sessionDraft]);
 
   const updateIntent = useCallback((field: keyof ListingFormIntent, value: string) => {
     setIntent((current) => ({ ...current, [field]: value } as ListingFormIntent));
+    setFactsConfirmed(false);
   }, []);
 
   const requestPreview = buildStudioListingRequestCore({
@@ -186,6 +219,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     confirmedFacts: requestPreview.confirmedFacts,
     unverifiedFacts: requestPreview.unverifiedFacts,
     prohibitedClaims: requestPreview.prohibitedClaims,
+    additionalRequirements: requestPreview.additionalRequirements,
   };
   const readiness = buildListingGenerationReadiness({
     productName: requestPreview.productName,
@@ -198,6 +232,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
 
   const canGenerate = authenticated
     && productName.trim().length > 0
+    && factsConfirmed
     && (mode === "mock" || realConfirmed);
 
   const handleGenerate = useCallback(async (event?: FormEvent<HTMLFormElement>) => {
@@ -326,11 +361,13 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     setIntent({ ...EMPTY_LISTING_INTENT });
     setMode("mock");
     setRealConfirmed(false);
+    setFactsConfirmed(false);
     setResult(null);
     setError("");
     setCopiedSection(null);
     realAttemptRef.current = null;
-  }, []);
+    sessionDraft.clear();
+  }, [sessionDraft]);
 
   const returnToEdit = useCallback(() => {
     productNameRef.current?.focus({ preventScroll: true });
@@ -351,7 +388,8 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     || intent.competitorKeywords
     || intent.confirmedFacts
     || intent.unverifiedFacts
-    || intent.prohibitedClaims,
+    || intent.prohibitedClaims
+    || intent.additionalRequirements,
   );
 
   return (
@@ -370,17 +408,13 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
         </div>
 
         <div className={styles.formBody}>
-          {taskPrefill.status === "loading" ? (
-            <p className={`studio-login-notice ${styles.formNotice}`} data-testid="studio-task-prefill-status">
-              正在读取任务信息…
+          {studioMounted && sessionDraft.restored ? (
+            <p className={`studio-login-notice ${styles.formNotice}`} data-testid="listing-session-restored">
+              已恢复本次登录身份在此标签页中的未提交草稿。
             </p>
-          ) : taskPrefill.status === "ready" ? (
-            <p className={`studio-login-notice ${styles.formNotice}`} data-testid="studio-task-prefill-status">
-              已从任务 {taskPrefill.data.taskId} 带入商品信息；你仍可独立修改 Studio 输入。
-            </p>
-          ) : taskPrefill.status === "unavailable" ? (
-            <p className={`studio-login-notice ${styles.formNotice}`} data-testid="studio-task-prefill-status">
-              未能读取关联任务，Studio 仍可独立填写和使用。
+          ) : studioMounted && sessionDraft.invalidated ? (
+            <p className={`studio-login-notice ${styles.formNotice}`}>
+              旧版草稿已失效，请重新确认商品资料。
             </p>
           ) : null}
 
@@ -405,7 +439,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
                   className={`studio-control ${styles.control}`}
                   placeholder="例如：Foldable Laptop Stand…"
                   value={productName}
-                  onChange={(event) => setProductName(event.target.value)}
+                  onChange={(event) => { setProductName(event.target.value); setFactsConfirmed(false); }}
                 />
               </div>
               <div className={styles.field}>
@@ -418,7 +452,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
                   className={`studio-control ${styles.control}`}
                   placeholder="例如：Home Office…"
                   value={category}
-                  onChange={(event) => setCategory(event.target.value)}
+                  onChange={(event) => { setCategory(event.target.value); setFactsConfirmed(false); }}
                 />
               </div>
               <div className={styles.field}>
@@ -447,7 +481,7 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
                   rows={3}
                   placeholder="简要描述材质、规格、用途和需要确认的信息…"
                   value={description}
-                  onChange={(event) => setDescription(event.target.value)}
+                  onChange={(event) => { setDescription(event.target.value); setFactsConfirmed(false); }}
                 />
               </div>
               <div className={styles.field}>
@@ -711,11 +745,43 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
             </div>
           </section>
 
+          <section className={styles.sectionGroup} aria-labelledby="listing-extra-heading">
+            <div id="listing-extra-heading">
+              <SectionHeading
+                index="07"
+                title="额外创作要求"
+                description="补充长度、结构或表达要求；不得用来覆盖事实与禁止声明。"
+              />
+            </div>
+            <div className={styles.field}>
+              <FieldLabel htmlFor="listing-additional-requirements" optional>额外要求</FieldLabel>
+              <textarea
+                id="listing-additional-requirements"
+                name="additionalRequirements"
+                maxLength={1000}
+                rows={3}
+                className={`studio-control ${styles.control}`}
+                placeholder="例如：每条 Bullet 控制在 180 字符以内，避免夸张语气…"
+                value={intent.additionalRequirements}
+                onChange={(event) => updateIntent("additionalRequirements", event.target.value)}
+              />
+            </div>
+          </section>
+
+          <label className="studio-warning listing-real-warning" data-testid="listing-facts-confirmation">
+            <input
+              type="checkbox"
+              checked={factsConfirmed}
+              onChange={(event) => setFactsConfirmed(event.target.checked)}
+            />
+            <span>以上商品事实由我提供或确认，仅用于生成草稿，最终仍需人工复核。</span>
+          </label>
+
           <section className={`${styles.sectionGroup} ${styles.modeSection}`}>
             <fieldset className={`listing-mode-fieldset ${styles.modeFieldset}`}>
               <legend className="sr-only">生成模式</legend>
               <SectionHeading
-                index="07"
+                index="08"
                 title="生成模式"
                 description="默认使用 Mock 验收，不调用 Provider。"
               />

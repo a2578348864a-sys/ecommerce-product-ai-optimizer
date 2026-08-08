@@ -1,22 +1,50 @@
-import { redirect } from "next/navigation";
+import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { ImageStudioClient } from "@/components/image-studio/ImageStudioClient";
+import styles from "@/components/image-studio/ImageStudioPolish.module.css";
 
-/**
- * R1: Image Studio 已收敛。独立生成流程不再作为用户入口；
- * 产品图片草稿统一在任务详情「AI 生成图片草稿」区生成（基于创作交接与批准的视觉参考）。
- * 旧 URL 带 taskId 时重定向到对应任务详情，否则回到研究历史。
- * 独立 /api/image-studio 后端能力保留，但不再有页面入口。
- */
 type ImageStudioPageProps = {
   searchParams?: Promise<{ taskId?: string | string[] }>;
 };
 
 export default async function ImageStudioPage({ searchParams }: ImageStudioPageProps) {
   const params = await searchParams;
-  const taskId = Array.isArray(params?.taskId) ? params.taskId[0] : params?.taskId;
-  const normalized = taskId?.trim().slice(0, 120);
+  const taskIdValue = Array.isArray(params?.taskId) ? params.taskId[0] : params?.taskId;
+  const taskId = taskIdValue?.trim().slice(0, 200) || "";
+  const sourceLabel = taskId ? "来自研究记录" : "独立创作";
 
-  if (normalized) {
-    redirect(`/tasks/${encodeURIComponent(normalized)}`);
-  }
-  redirect("/tasks");
+  return (
+    <main className={`app-shell image-studio-page ${styles.page}`}>
+      <div className={`${styles.frame} workspace-page workspace-layout`}>
+        <WorkspaceSidebar />
+        <div className={`image-studio-main min-w-0 ${styles.main}`}>
+          <header className={`${styles.header} workspace-header page-header`}>
+            <div className={styles.headerRow}>
+              <div className={styles.titleBlock}>
+                <p className={styles.headerEyebrow}>AI Visual Workspace</p>
+                <div className={styles.titleMeta}>
+                  <h1>Image Studio</h1>
+                  <span className={styles.safeBadge}>{sourceLabel}</span>
+                </div>
+                <p className={styles.headerDescription}>
+                  {taskId
+                    ? "基于服务端核验的研究资料和已批准视觉参考生成候选草稿。"
+                    : "上传并批准参考图，或生成只表示构图与场景方向的概念候选。"}
+                </p>
+              </div>
+              <ol className={`${styles.flow} studio-flow`} aria-label="图片生产流程">
+                {["资料确认", "图片策略", "生成候选", "人工选择"].map((label, index) => (
+                  <li key={label} aria-current={index === 0 ? "step" : undefined}>
+                    <span className={styles.flowNumber}>{String(index + 1).padStart(2, "0")}</span>
+                    <span className={styles.flowLabel}>{label}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+            <WorkspaceMobileNav />
+          </header>
+          <ImageStudioClient taskId={taskId} />
+        </div>
+      </div>
+    </main>
+  );
 }

@@ -98,7 +98,15 @@ function request(body: unknown) {
 
 async function post(body: unknown) {
   const { POST } = await import("@/app/api/listing-studio/route");
-  return POST(request(body));
+  const withBrief = body && typeof body === "object" && !Array.isArray(body)
+    ? {
+        briefVersion: "studio-creative-brief.v1",
+        factsConfirmed: true,
+        humanReviewRequired: true,
+        ...body,
+      }
+    : body;
+  return POST(request(withBrief));
 }
 
 describe("POST /api/listing-studio", () => {
@@ -172,6 +180,7 @@ describe("POST /api/listing-studio", () => {
       confirmedFacts: ["Frame weight is 520 g"],
       unverifiedFacts: ["Supports 20 kg"],
       prohibitedClaims: ["Military grade"],
+      additionalRequirements: "",
       listingObjective: "seo",
     });
     const body = await response.json();
@@ -199,6 +208,7 @@ describe("POST /api/listing-studio", () => {
       confirmedFacts: ["Frame weight is 520 g"],
       unverifiedFacts: ["Supports 20 kg"],
       prohibitedClaims: ["Military grade"],
+      additionalRequirements: "",
       listingObjective: "seo",
     });
     expect(visibleCopy).toContain("Six height positions");
@@ -225,260 +235,6 @@ describe("POST /api/listing-studio", () => {
 
     expect(response.status).toBe(400);
     expect(body.error.code).toBe("real_ai_confirmation_required");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode returns migrated error (real listing generation moved to Handoff chain)", async () => {
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: Visitor real mode also returns migrated error", async () => {
-    mocks.listingEnabled = true;
-    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: VISITOR_CONTEXT });
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.reserveDemoAiCalls).not.toHaveBeenCalled();
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (rejects a real request when the Visitor quota reservation fails)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (reserves, records Provider start, and settles one Visitor call on success)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (passes the same complete Studio context to the fake Real generator)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (refunds the reservation when the Provider never starts)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (keeps a started Provider call charged when it later fails)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (replays a completed result without calling the Provider or reserving quota twice)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (recovers a stored result when the durable ledger commit was interrupted)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (replays a validated paid result even when a post-persist failure marked the ledger non-refundable)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (fails closed on a corrupt stored result without a second Provider call)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (closes a stale result-less request without calling the Provider again)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (rejects one idempotency key reused with different semantics)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (includes Studio preferences in the idempotency semantics)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (rejects a concurrent real request in the same authenticated scope)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (propagates schema validation failures without returning Provider output)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
     expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
   });
 
@@ -546,35 +302,4 @@ describe("POST /api/listing-studio", () => {
     expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
   });
 
-  it("V2-FI: real mode migrated (rejects malformed idempotency keys before quota reservation)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
-
-  it("V2-FI: real mode migrated (never creates or updates Task, Candidate, or Listing history records)", async () => {
-    mocks.listingEnabled = true;
-    mocks.visitorListingEnabled = true;
-
-    const response = await post({
-      productName: "Desk stand",
-      mode: "real",
-      confirmRealAi: true,
-      idempotencyKey: randomUUID(),
-    });
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("listing_studio_real_migrated");
-    expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
-  });
 });

@@ -164,6 +164,8 @@ export type CreativeHandoffGateResult = {
   imageHandoffBindingRaw?: unknown;
   /** PR2-3: 当前存储的 Image Draft 摘要原始值（只读） */
   imageDraftRaw?: unknown;
+  /** Phase 2: 当前 Image Studio 人工选择（只读；不含图片二进制） */
+  imageStudioSelectionRaw?: unknown;
   /** V2 Final Integration: 生产视觉参考候选（从 candidateAnalysisContext.productImage 解析，安全摘要） */
   visualReferenceCandidates?: Array<{
     selectionId: string;
@@ -463,6 +465,7 @@ export async function checkCreativeHandoffGate(
       listingDraftRaw: resultJson.aiListingPackSnapshot,
       imageHandoffBindingRaw: resultJson.imageHandoffBinding,
       imageDraftRaw: resultJson.aiImageDraftSnapshot,
+      imageStudioSelectionRaw: resultJson.imageStudioSelection,
       // V2 Final Integration: 降级分支也暴露生产视觉候选（从 researchContext2.productImage 解析）
       visualReferenceCandidates: researchContext2
         ? extractVisualReferenceCandidates(
@@ -548,7 +551,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl };
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl };
 }
 
 // ─── Preview ──────────────────────────────────────────────

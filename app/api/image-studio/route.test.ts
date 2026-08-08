@@ -100,7 +100,15 @@ function request(body: unknown) {
 
 async function post(body: unknown) {
   const { POST } = await import("@/app/api/image-studio/route");
-  return POST(request(body));
+  const contractBody = body && typeof body === "object" && !Array.isArray(body)
+    ? {
+        briefVersion: "studio-creative-brief.v1",
+        factsConfirmed: true,
+        humanReviewRequired: true,
+        ...body,
+      }
+    : body;
+  return POST(request(contractBody));
 }
 
 function realBody(overrides: Record<string, unknown> = {}) {
@@ -230,111 +238,6 @@ describe("POST /api/image-studio", () => {
     expect(providerCalls).toBe(0);
   });
 
-  it("V2-FI: real mode migrated (rejects confirmed Real mode while the global image gate is disabled)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (blocks Visitor image generation while the Visitor image gate is disabled)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (enforces the existing Visitor one-image limit)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (rejects a real request when Visitor quota reservation fails)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (reserves and commits Visitor quota around one successful Stub Provider call)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (fails closed and reuses the same request when Visitor quota commit cannot be confirmed)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (does not call the Provider when the provider-called ledger boundary cannot be persisted)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (charges one Visitor AI job after the Stub Provider starts and then fails)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (does not refund after a Provider result fails image validation and removes partial files)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (replays one completed idempotent request without a second Provider call or quota reserve)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (rejects one image idempotency key reused with different product context)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (includes the Studio visual strategy in the Real idempotency context)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (rejects a concurrent request in the same authenticated Studio scope)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (fails closed on a corrupt manifest path and never reads outside the result store)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (opportunistically removes only expired Studio image files and preserves siblings)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
   it("returns invalid_json for malformed JSON", async () => {
     const { POST } = await import("@/app/api/image-studio/route");
     const response = await POST(new NextRequest("http://localhost/api/image-studio", {
@@ -370,20 +273,6 @@ describe("POST /api/image-studio", () => {
     expect(invalidCount.status).toBe(400);
     expect((await invalidCount.json()).error.code).toBe("invalid_image_count");
     expect(providerCalls).toBe(0);
-  });
-
-  it("V2-FI: real mode migrated (reuses the existing unsafe-direction validator)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
-
-  it("V2-FI: real mode migrated (never creates or updates Task, Candidate, or Visitor sandbox records)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
   });
 
   it("generates a deterministic Prompt Mock without provider or business writes", async () => {
@@ -428,11 +317,5 @@ describe("POST /api/image-studio", () => {
     expect(providerCalls).toBe(0);
   });
 
-  it("V2-FI: real mode migrated (uses the server-authoritative Prompt context with the fake provider and returns summary only)", async () => {
-    const response = await post(realBody());
-
-    expect(response.status).toBe(422);
-    expect((await response.json()).error.code).toBe("image_studio_real_migrated");
-  });
 
 });

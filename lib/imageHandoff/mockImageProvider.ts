@@ -23,6 +23,12 @@ export type MockImageProviderOptions = {
   forceProviderError?: boolean;
   /** product_visual_draft 模式但无批准参考（合同越权） */
   forceMissingReference?: boolean;
+  count?: 1 | 2;
+  persist?: {
+    accessMode: "owner" | "visitor";
+    visitorAccessId?: string;
+    taskId: string;
+  };
   tag?: string;
 };
 
@@ -155,14 +161,59 @@ export function createMockImageProvider() {
       if (options.forceInvalidSchema) {
         return { broken: true };
       }
-      if (options.forceMissingReference && input.mode === "product_visual_draft") {
-        return { ...buildVisualDraft(input), approvedReferenceFingerprint: undefined };
+      const count = options.count === 2 ? 2 : 1;
+      const drafts: Record<string, unknown>[] = [];
+      for (let index = 0; index < count; index += 1) {
+        const baseDraft = input.mode === "product_visual_draft"
+          ? buildVisualDraft(input)
+          : buildCompositionDraft(input);
+        let draft: Record<string, unknown> = {
+          ...baseDraft,
+          id: `${String(baseDraft.id)}-${options.tag ?? "candidate"}-${index + 1}`,
+          compositionSummary: `${String(baseDraft.compositionSummary)} Candidate ${index + 1}.`,
+        };
+        if (options.forceMissingReference && input.mode === "product_visual_draft") {
+          draft = { ...draft, approvedReferenceFingerprint: undefined };
+        }
+        if (options.forceProductAssertion && input.mode === "composition_concept") {
+          draft = { ...draft, compositionSummary: "Real product photo with exact colour and material as photographed." };
+        }
+        if (options.persist) {
+          const [{ default: sharp }, { storeAiImage }] = await Promise.all([
+            import("sharp"),
+            import("@/lib/server/aiImageDraftStorage"),
+          ]);
+          const bytes = await sharp({
+            create: {
+              width: 640,
+              height: 640,
+              channels: 4,
+              background: index === 0
+                ? { r: 226, g: 243, b: 236, alpha: 1 }
+                : { r: 231, g: 238, b: 248, alpha: 1 },
+            },
+          }).png().toBuffer();
+          const stored = await storeAiImage({
+            accessMode: options.persist.accessMode,
+            visitorAccessId: options.persist.visitorAccessId,
+            taskId: options.persist.taskId,
+            bytes,
+          });
+          draft = {
+            ...draft,
+            id: stored.id,
+            storageKey: stored.storageKey,
+            mimeType: stored.mimeType,
+            width: stored.width,
+            height: stored.height,
+            fileSizeBytes: stored.fileSizeBytes,
+            sha256: stored.sha256,
+            accessMode: options.persist.accessMode,
+          };
+        }
+        drafts.push(draft);
       }
-      const draft = input.mode === "product_visual_draft" ? buildVisualDraft(input) : buildCompositionDraft(input);
-      if (options.forceProductAssertion && input.mode === "composition_concept") {
-        return { ...draft, compositionSummary: "Real product photo with exact colour and material as photographed." };
-      }
-      return draft;
+      return count === 1 ? drafts[0] : drafts;
     },
   };
 }

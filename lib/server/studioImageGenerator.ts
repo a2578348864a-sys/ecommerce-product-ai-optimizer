@@ -15,6 +15,7 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { readAiImage } from "@/lib/server/aiImageDraftStorage";
 import type { LoadedAiImageTask } from "@/lib/server/aiImageTaskAccess";
+import type { AiImageProvider } from "@/lib/server/openaiImageClient";
 import {
   loadStudioImageSnapshot,
   saveStudioImageSnapshot,
@@ -244,6 +245,7 @@ function generatePromptMockStudioImage(input: StudioPromptInput): StudioImageRes
     images,
     meta: {
       mode: "mock",
+      visualAuthority: input.visualAuthority ?? "composition_concept",
       creationMode: "prompt",
       duplicate: false,
       input: context,
@@ -305,6 +307,7 @@ export function generateMockStudioImage(input: StudioImageInput): StudioImageRes
     images,
     meta: {
       mode: "mock",
+      visualAuthority: input.visualAuthority ?? "composition_concept",
       creationMode: "guided",
       duplicate: false,
       input: context.creationMode === "guided" ? context : input,
@@ -415,10 +418,28 @@ export async function generateRealStudioImage(input: {
     taskImageType: input.request.imageType,
     additionalDirection: input.request.additionalDirection || "",
   })).digest("hex");
+  const referenceProvider: AiImageProvider | undefined = input.studio.referenceImageDataUrl
+    ? async (providerInput) => {
+        const { generateOpenAiImageEdit } = await import("@/lib/server/openaiImageEditClient");
+        const output = await generateOpenAiImageEdit({
+          imageDataUrl: input.studio.referenceImageDataUrl!,
+          prompt: providerInput.prompt,
+          count: providerInput.count,
+        });
+        providerInput.onResultReceived?.(output.images.length);
+        return {
+          model: output.model,
+          provider: output.provider,
+          images: output.images,
+          requestedFormat: "webp",
+        };
+      }
+    : undefined;
   const generated = await generateAiImageDraft({
     loadedTask,
     request: input.request,
     requestContextHash,
+    ...(referenceProvider ? { provider: referenceProvider } : {}),
   });
   if (!generated.ok) {
     return {
@@ -439,6 +460,7 @@ export async function generateRealStudioImage(input: {
       images,
       meta: input.studio.creationMode === "prompt" ? {
         mode: "real",
+        visualAuthority: input.studio.visualAuthority ?? "composition_concept",
         creationMode: "prompt",
         duplicate: generated.data.duplicate,
         input: publicPromptContext(input.studio),
@@ -454,6 +476,7 @@ export async function generateRealStudioImage(input: {
         },
       } : {
         mode: "real",
+        visualAuthority: input.studio.visualAuthority ?? "composition_concept",
         creationMode: "guided",
         duplicate: generated.data.duplicate,
         input: studioContext.creationMode === "guided" ? studioContext : input.studio,
