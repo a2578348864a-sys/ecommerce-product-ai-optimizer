@@ -1,0 +1,251 @@
+name: V2.2.3 Linux Release Gate
+
+on:
+  push:
+    branches:
+      - codex/v2.2.3-linux-release-gate
+    paths:
+      - .github/workflows/v2.2.3-linux-release-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout immutable product commit
+        uses: actions/checkout@v4
+        with:
+          ref: 0777951ad2c6209877f44caa40387205ae7bef9a
+          persist-credentials: false
+
+      - name: Confirm product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "0777951ad2c6209877f44caa40387205ae7bef9a"
+          test -z "$(git status --porcelain)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+
+      - name: Confirm Linux x64 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (process.platform !== "linux" || process.arch !== "x64" || major < 20 || (major === 20 && minor < 9)) process.exit(1); console.log(JSON.stringify({node: process.versions.node, platform: process.platform, arch: process.arch}))'
+
+      - name: Install frozen dependencies
+        run: npm ci
+
+      - name: Production dependency audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --json > production-audit.json
+          node -e 'const report=require("./production-audit.json"); const counts=report.metadata?.vulnerabilities ?? {}; console.log(JSON.stringify(counts)); if ((counts.critical ?? 0) !== 0 || (counts.high ?? 0) !== 0) process.exit(1)'
+          rm production-audit.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: V2.2.3 targeted tests
+        run: >-
+          npx vitest run
+          lib/server/aiClient.test.ts
+          lib/server/aiListingGenerator.test.ts
+          app/api/listing-studio/route.test.ts
+          app/api/listing-studio/route.phase2.test.ts
+          lib/aiListingDraft.test.ts
+          lib/listingClaimFilter.test.ts
+          lib/server/studioListingResultStore.test.ts
+          lib/server/productBatchImportService.test.ts
+          components/WorkspaceSidebar.current-product.test.ts
+          deploy/nginx.product-analysis-timeout.test.ts
+
+      - name: Sharp Linux PNG runtime smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ls sharp --json > sharp-tree.json
+          node <<'NODE'
+          const fs = require("node:fs");
+          const sharp = require("sharp");
+          const tree = JSON.parse(fs.readFileSync("sharp-tree.json", "utf8"));
+          const installedVersion = tree.dependencies?.sharp?.version;
+          if (installedVersion !== "0.35.3") throw new Error(`Unexpected sharp version: ${installedVersion ?? "missing"}`);
+          if (process.platform !== "linux" || process.arch !== "x64") throw new Error("Unexpected runner platform");
+          if (!sharp.versions?.vips) throw new Error("libvips version unavailable");
+          (async () => {
+            const encoded = await sharp({
+              create: {
+                width: 2,
+                height: 2,
+                channels: 4,
+                background: { r: 24, g: 96, b: 168, alpha: 1 },
+              },
+            }).png().toBuffer();
+            const metadata = await sharp(encoded).metadata();
+            if (metadata.format !== "png" || metadata.width !== 2 || metadata.height !== 2) {
+              throw new Error("PNG decode or metadata mismatch");
+            }
+            console.log(JSON.stringify({ sharp: installedVersion, platform: process.platform, arch: process.arch, vips: sharp.versions.vips, png: "pass" }));
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : "Sharp PNG smoke failed");
+            process.exit(1);
+          });
+          NODE
+          rm sharp-tree.json
+
+      - name: Install isolated Nginx runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          nginx -v
+
+      - name: Nginx exact-route long request gate
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/v2.2.3-nginx-gate"
+          conf="$root/nginx.conf"
+          mkdir -p "$root/logs"
+
+          cat > "$root/mock-upstream.cjs" <<'NODE'
+          const http = require("node:http");
+          const server = http.createServer((request, response) => {
+            if (request.url !== "/api/workflows/product-analysis") {
+              response.writeHead(404, { "content-type": "application/json" });
+              response.end(JSON.stringify({ ok: false }));
+              return;
+            }
+            setTimeout(() => {
+              response.writeHead(200, { "content-type": "application/json" });
+              response.end(JSON.stringify({ ok: true, delayedSeconds: 65 }));
+            }, 65_000);
+          });
+          server.listen(4811, "127.0.0.1");
+          NODE
+
+          cat > "$conf" <<EOF
+          worker_processes 1;
+          pid $root/nginx.pid;
+          error_log $root/logs/error.log notice;
+          events { worker_connections 64; }
+          http {
+            access_log $root/logs/access.log;
+            server {
+              listen 127.0.0.1:4810;
+              server_name localhost;
+
+              location = /api/workflows/product-analysis {
+                proxy_pass http://127.0.0.1:4811;
+                proxy_http_version 1.1;
+                proxy_set_header Host \$host;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
+                proxy_read_timeout 210s;
+              }
+
+              location / {
+                proxy_pass http://127.0.0.1:4811;
+                proxy_read_timeout 2s;
+              }
+            }
+          }
+          EOF
+
+          nginx -t -p "$root/" -c "$conf"
+          node "$root/mock-upstream.cjs" > "$root/logs/mock.log" 2>&1 &
+          mock_pid=$!
+          nginx -p "$root/" -c "$conf"
+          cleanup() {
+            nginx -p "$root/" -c "$conf" -s quit >/dev/null 2>&1 || true
+            kill "$mock_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 30); do
+            if curl --silent --fail --max-time 1 http://127.0.0.1:4811/not-ready >/dev/null 2>&1; then break; fi
+            sleep 0.2
+          done
+
+          started_at=$(date +%s)
+          status=$(curl --silent --show-error --max-time 90 --output "$root/response.json" --write-out '%{http_code}' http://127.0.0.1:4810/api/workflows/product-analysis)
+          finished_at=$(date +%s)
+          elapsed=$((finished_at - started_at))
+
+          test "$status" = "200"
+          test "$elapsed" -ge 60
+          test "$elapsed" -lt 90
+          node -e 'const fs=require("node:fs"); const body=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (body.ok !== true || body.delayedSeconds !== 65) process.exit(1)' "$root/response.json"
+          if grep -q ' 504 ' "$root/logs/access.log"; then
+            echo "Unexpected 504 from exact product-analysis route" >&2
+            exit 1
+          fi
+          echo "NGINX_CONFIG_TEST=PASS"
+          echo "NGINX_LONG_REQUEST_GATE=PASS elapsed=${elapsed}s status=${status}"
+
+      - name: Webpack production build
+        run: npm run build
+        env:
+          DATABASE_URL: file:./dev.db
+          ACCESS_PASSWORD: ci-test-password
+          AI_PROVIDER: deepseek
+          DEEPSEEK_API_KEY: ci-placeholder
+          DEEPSEEK_BASE_URL: https://api.deepseek.com
+          DEEPSEEK_MODEL: deepseek-chat
+
+      - name: Verify build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .next/BUILD_ID
+          node -e 'const p=require("./node_modules/next/package.json"); if (p.version !== "16.3.0") process.exit(1); console.log(`next=${p.version}`)'
+
+      - name: Package immutable Linux artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="next-v2.2.3-0777951-linux-x64.tar.gz"
+          tar -czf "$artifact" .next
+          if tar -tzf "$artifact" | grep -Ev '^\.next(/|$)' | grep -q .; then
+            echo "Artifact contains an unexpected path" >&2
+            exit 1
+          fi
+          sha256="$(sha256sum "$artifact" | awk '{print $1}')"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sharp_version="$(npm ls sharp --json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const tree=JSON.parse(input); const version=tree.dependencies?.sharp?.version; if (!version) process.exit(1); process.stdout.write(version); })')"
+          node -e 'const fs=require("node:fs"); const manifest={version:"2.2.3",commit:"0777951ad2c6209877f44caa40387205ae7bef9a",next:"16.3.0",node:process.versions.node,sharp:process.argv[4],platform:`${process.platform}-${process.arch}`,builtAt:process.argv[1],buildId:fs.readFileSync(".next/BUILD_ID","utf8").trim(),artifact:process.argv[2],artifactSha256:process.argv[3],serverBuildAllowed:false}; fs.writeFileSync("release-manifest.json",JSON.stringify(manifest,null,2)+"\n")' "$built_at" "$artifact" "$sha256" "$sharp_version"
+          test "$(node -p 'require("./release-manifest.json").commit')" = "0777951ad2c6209877f44caa40387205ae7bef9a"
+          test "$(node -p 'require("./release-manifest.json").platform')" = "linux-x64"
+          test "$(node -p 'require("./release-manifest.json").sharp')" = "0.35.3"
+          test "$(node -p 'require("./release-manifest.json").artifactSha256')" = "$sha256"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          node -e 'const m=require("./release-manifest.json"); console.log(JSON.stringify(m,null,2))'
+
+      - name: Upload verified Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingxuan-v2.2.3-linux-x64-0777951
+          path: |
+            ${{ steps.package.outputs.artifact }}
+            release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
