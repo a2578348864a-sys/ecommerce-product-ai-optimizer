@@ -203,33 +203,144 @@ describe("generateRealAiListingDraft", () => {
   });
 
   it("maps AI timeout errors without returning a draft", async () => {
-    mocks.callAiJson.mockResolvedValue({ ok: false, error: { code: "timeout", message: "timeout" } });
+    mocks.callAiJson.mockResolvedValue({
+      ok: false,
+      error: { code: "timeout", message: "timeout" },
+      diagnostics: {
+        providerHttpStatusClass: "timeout",
+        finishReason: null,
+        responseCharLength: 0,
+        jsonParseStage: "not_started",
+        elapsedMs: 45000,
+      },
+    });
+    const onDiagnostic = vi.fn();
 
-    const result = await generateRealAiListingDraft(context);
+    const result = await generateRealAiListingDraft(context, { onDiagnostic });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("Expected timeout error.");
     expect(result.error.code).toBe("ai_timeout");
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      classification: "timeout",
+      providerHttpStatusClass: "timeout",
+      jsonParseStage: "not_started",
+      schemaStage: "not_started",
+    }));
+  });
+
+  it("classifies an empty successful Provider response separately from malformed JSON", async () => {
+    mocks.callAiJson.mockResolvedValue({
+      ok: false,
+      error: { code: "empty_response", message: "empty" },
+      diagnostics: {
+        providerHttpStatusClass: "success",
+        finishReason: "stop",
+        responseCharLength: 0,
+        jsonParseStage: "not_started",
+        elapsedMs: 900,
+      },
+    });
+    const onDiagnostic = vi.fn();
+
+    const result = await generateRealAiListingDraft(context, { onDiagnostic });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("Expected empty response error.");
+    expect(result.error.code).toBe("ai_json_parse_failed");
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      classification: "provider_response_invalid",
+      responseCharLength: 0,
+      jsonParseStage: "not_started",
+    }));
   });
 
   it("maps AI JSON parse errors without returning a draft", async () => {
-    mocks.callAiJson.mockResolvedValue({ ok: false, error: { code: "json_parse_error", message: "bad json" } });
+    mocks.callAiJson.mockResolvedValue({
+      ok: false,
+      error: { code: "json_parse_error", message: "bad json" },
+      diagnostics: {
+        providerHttpStatusClass: "success",
+        finishReason: "length",
+        responseCharLength: 5999,
+        jsonParseStage: "failed",
+        elapsedMs: 45000,
+      },
+    });
+    const onDiagnostic = vi.fn();
 
-    const result = await generateRealAiListingDraft(context);
+    const result = await generateRealAiListingDraft(context, { onDiagnostic });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("Expected JSON parse error.");
     expect(result.error.code).toBe("ai_json_parse_failed");
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      classification: "json_parse_failed",
+      providerHttpStatusClass: "success",
+      finishReason: "length",
+      responseCharLength: 5999,
+      jsonParseStage: "failed",
+      schemaStage: "not_started",
+      claimSafetyStage: "not_started",
+    }));
   });
 
   it("maps incomplete provider output to schema invalid", async () => {
-    mocks.callAiJson.mockResolvedValue({ ok: true, data: { source: "real_ai_draft", titleCandidates: [] } });
+    mocks.callAiJson.mockResolvedValue({
+      ok: true,
+      data: { source: "real_ai_draft", titleCandidates: [] },
+      diagnostics: {
+        providerHttpStatusClass: "success",
+        finishReason: "stop",
+        responseCharLength: 120,
+        jsonParseStage: "passed",
+        elapsedMs: 1200,
+      },
+    });
+    const onDiagnostic = vi.fn();
 
-    const result = await generateRealAiListingDraft(context);
+    const result = await generateRealAiListingDraft(context, { onDiagnostic });
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("Expected schema error.");
     expect(result.error.code).toBe("ai_schema_invalid");
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      classification: "schema_validation_failed",
+      jsonParseStage: "passed",
+      schemaStage: "failed",
+      claimSafetyStage: "passed",
+    }));
+  });
+
+  it("reports successful JSON, claim-safety, and schema stages without input or output content", async () => {
+    mocks.callAiJson.mockResolvedValue({
+      ok: true,
+      data: providerPayload({ model: "deepseek-chat" }),
+      diagnostics: {
+        providerHttpStatusClass: "success",
+        finishReason: "stop",
+        responseCharLength: 860,
+        jsonParseStage: "passed",
+        elapsedMs: 1800,
+      },
+    });
+    const onDiagnostic = vi.fn();
+
+    const result = await generateRealAiListingDraft(context, { onDiagnostic });
+
+    expect(result.ok).toBe(true);
+    expect(onDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
+      classification: "success",
+      providerHttpStatusClass: "success",
+      finishReason: "stop",
+      responseCharLength: 860,
+      jsonParseStage: "passed",
+      schemaStage: "passed",
+      claimSafetyStage: "passed",
+    }));
+    const serialized = JSON.stringify(onDiagnostic.mock.calls);
+    expect(serialized).not.toContain(context.productName);
+    expect(serialized).not.toContain(context.decisionSummary);
   });
 
   it("maps provider errors without returning a draft", async () => {

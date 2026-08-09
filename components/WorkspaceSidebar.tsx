@@ -51,6 +51,16 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
+function currentProductLabel(productName: string) {
+  try {
+    const url = new URL(productName);
+    if (url.protocol === "http:" || url.protocol === "https:") return "已选择商品链接";
+  } catch {
+    // Ordinary product titles are not URLs and should remain visible.
+  }
+  return productName;
+}
+
 function NavLink({
   item,
   pathname,
@@ -91,6 +101,8 @@ function NavLink({
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
   const [sharedProduct] = useSharedProduct();
+  const productLabel = currentProductLabel(sharedProduct.productName);
+  const productMeta = sharedProduct.category ? `品类：${sharedProduct.category}` : "商品资料已载入";
 
   return (
     <>
@@ -101,13 +113,10 @@ export function WorkspaceSidebar() {
           <div className="surface-card rounded-2xl border-teal-200 bg-teal-50/60 p-3">
             <div className="flex items-center gap-2">
               <Package className="size-4 shrink-0 text-teal-600" />
-              <p className="text-xs font-semibold text-teal-600">当前选品</p>
+              <p className="text-xs font-semibold text-teal-600">当前研究商品</p>
             </div>
-            <p className="mt-1 truncate text-sm font-bold text-teal-900">{sharedProduct.productName}</p>
-            <p className="mt-0.5 text-xs text-teal-600">
-              {sharedProduct.targetPlatform}
-              {sharedProduct.category ? ` / ${sharedProduct.category}` : ""}
-            </p>
+            <p className="mt-1 truncate text-sm font-bold text-teal-900">{productLabel}</p>
+            <p className="mt-0.5 text-xs text-teal-600">{productMeta}</p>
           </div>
         ) : null}
 

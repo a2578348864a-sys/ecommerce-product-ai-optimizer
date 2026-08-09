@@ -217,6 +217,42 @@ describe("shared SellerSprite ProductBatch import", () => {
       .not.toContain("m.media-amazon.com");
   });
 
+  it("persists only products inside the inclusive price filter", async () => {
+    const rows = SELLERSPRITE_SANITIZED_ROWS.map((row, index) => ({
+      ...row,
+      "价格($)": index === 0 ? "$20.00" : "$25.00",
+    }));
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
+    const upperBoundResult = await importSellerSpriteProductBatch({
+      ...input(store),
+      bytes: new Uint8Array(createSellerSpritePreviewTestWorkbook({ rows })),
+      priceMin: 10,
+      priceMax: 20,
+    });
+
+    const upperBoundItems = await store.getBatchItems(upperBoundResult.batch.id);
+
+    expect(upperBoundItems.map((item) => item.asin))
+      .toEqual([SELLERSPRITE_SANITIZED_ROWS[0].ASIN]);
+    expect(upperBoundResult.batch.priceMinCents).toBe(1_000);
+    expect(upperBoundResult.batch.priceMaxCents).toBe(2_000);
+    expect(upperBoundResult.batch.acceptedCount).toBe(1);
+
+    const lowerBoundResult = await importSellerSpriteProductBatch({
+      ...input(store),
+      bytes: new Uint8Array(createSellerSpritePreviewTestWorkbook({ rows })),
+      priceMin: 20.01,
+      priceMax: 30,
+    });
+    const lowerBoundItems = await store.getBatchItems(lowerBoundResult.batch.id);
+
+    expect(lowerBoundItems.map((item) => item.asin))
+      .toEqual([SELLERSPRITE_SANITIZED_ROWS[1].ASIN]);
+    expect(lowerBoundResult.batch.priceMinCents).toBe(2_001);
+    expect(lowerBoundResult.batch.priceMaxCents).toBe(3_000);
+    expect(lowerBoundResult.batch.acceptedCount).toBe(1);
+  });
+
   it("produces the same Snapshot v3 and Ranking v2 for separate role stores", async () => {
     const ownerLike = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
     const visitor = createDemoProductBatchStore("demo_bbbbbbbbbbbbbbbb", { root });

@@ -53,13 +53,15 @@ describe("safeParseJsonFromAiText", () => {
     }
   });
 
-  it("AI 返回不可解析文本时返回 json_parse_error，不泄露完整长文本", () => {
-    const result = safeParseJsonFromAiText("不是 JSON ".repeat(200));
+  it("AI 返回不可解析文本时返回 json_parse_error，不泄露 Provider 正文", () => {
+    const sensitiveProviderText = "PRIVATE_PROVIDER_BODY_NOT_FOR_LOGS ".repeat(20);
+    const result = safeParseJsonFromAiText(sensitiveProviderText);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("json_parse_error");
       expect(result.error.detail?.length).toBeLessThanOrEqual(240);
+      expect(result.error.detail).not.toContain("PRIVATE_PROVIDER_BODY_NOT_FOR_LOGS");
     }
   });
 });
@@ -136,13 +138,39 @@ describe("providerCallStarted", () => {
   });
 
   it("preserves the started marker when JSON parsing fails", async () => {
-    openAiMocks.create.mockResolvedValueOnce({ choices: [{ message: { content: "not-json" } }] });
+    openAiMocks.create.mockResolvedValueOnce({
+      choices: [{ finish_reason: "length", message: { content: "not-json" } }],
+    });
 
     const result = await callAiJson({ messages: [{ role: "user", content: "test" }] });
 
     expect(result.ok).toBe(false);
     expect(result.providerCallStarted).toBe(true);
-    if (!result.ok) expect(result.error.code).toBe("json_parse_error");
+    if (!result.ok) {
+      expect(result.error.code).toBe("json_parse_error");
+      expect(result.diagnostics).toMatchObject({
+        providerHttpStatusClass: "success",
+        finishReason: "length",
+        responseCharLength: 8,
+        jsonParseStage: "failed",
+      });
+      expect(result.diagnostics?.elapsedMs).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("records only the Provider HTTP status class when the SDK returns an error", async () => {
+    openAiMocks.create.mockRejectedValueOnce(Object.assign(new Error("secret upstream body"), { status: 429 }));
+
+    const result = await callAiJson({ messages: [{ role: "user", content: "test" }] });
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toMatchObject({
+      providerHttpStatusClass: "rate_limited",
+      finishReason: null,
+      responseCharLength: 0,
+      jsonParseStage: "not_started",
+    });
+    expect(JSON.stringify(result.diagnostics)).not.toContain("secret upstream body");
   });
 
   it("does not mark or invoke the SDK when configuration fails first", async () => {

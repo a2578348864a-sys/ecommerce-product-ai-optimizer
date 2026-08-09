@@ -3,7 +3,7 @@ import "server-only";
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
-import { callAiJson } from "@/lib/server/aiClient";
+import { callAiJson, type AiCallDiagnostics, type AiProviderHttpStatusClass } from "@/lib/server/aiClient";
 import type { StudioListingPreferences } from "@/lib/studioListingInput";
 
 export type RealAiListingContext = {
@@ -19,6 +19,7 @@ export type RealAiListingContext = {
 export type RealAiListingClientInput = {
   context: RealAiListingContext;
   onProviderCallStart?: () => void | Promise<void>;
+  onAiCallDiagnostics?: (diagnostics: AiCallDiagnostics) => void;
 };
 
 export type RealAiListingClient = (input: RealAiListingClientInput) => Promise<unknown>;
@@ -32,6 +33,22 @@ export type RealAiListingErrorCode =
 export type RealAiListingGenerateResult =
   | { ok: true; data: AiListingPackDraft }
   | { ok: false; error: { code: RealAiListingErrorCode; message: string } };
+
+export type RealAiListingDiagnostic = {
+  classification:
+    | "success"
+    | "provider_response_invalid"
+    | "json_parse_failed"
+    | "schema_validation_failed"
+    | "timeout";
+  providerHttpStatusClass: AiProviderHttpStatusClass;
+  finishReason: string | null;
+  responseCharLength: number;
+  jsonParseStage: "not_started" | "passed" | "failed";
+  schemaStage: "not_started" | "passed" | "failed";
+  claimSafetyStage: "not_started" | "passed";
+  totalElapsedMs: number;
+};
 
 let injectedClientForTests: RealAiListingClient | null = null;
 const LISTING_OUTPUT_TOKEN_BUDGET = 6000;
@@ -168,7 +185,7 @@ function mapAiClientErrorCode(code: string): RealAiListingErrorCode {
   return "ai_provider_error";
 }
 
-async function callDefaultRealAiListingClient({ context, onProviderCallStart }: RealAiListingClientInput) {
+async function callDefaultRealAiListingClient({ context, onProviderCallStart, onAiCallDiagnostics }: RealAiListingClientInput) {
   const result = await callAiJson<unknown>({
     messages: [
       {
@@ -184,6 +201,7 @@ async function callDefaultRealAiListingClient({ context, onProviderCallStart }: 
     maxTokens: LISTING_OUTPUT_TOKEN_BUDGET,
     onProviderCallStart,
   });
+  if (result.diagnostics) onAiCallDiagnostics?.(result.diagnostics);
 
   if (!result.ok) {
     const code = mapAiClientErrorCode(result.error.code);
@@ -191,6 +209,29 @@ async function callDefaultRealAiListingClient({ context, onProviderCallStart }: 
   }
 
   return result.data;
+}
+
+function emitListingDiagnostic(
+  callback: ((diagnostics: RealAiListingDiagnostic) => void) | undefined,
+  input: Omit<RealAiListingDiagnostic, "totalElapsedMs">,
+  startedAt: number,
+) {
+  if (!callback) return;
+  try {
+    callback({ ...input, totalElapsedMs: Date.now() - startedAt });
+  } catch {
+    // Diagnostics must never change Listing generation behavior.
+  }
+}
+
+function diagnosticBase(input: AiCallDiagnostics | null) {
+  return input || {
+    providerHttpStatusClass: "unknown" as const,
+    finishReason: null,
+    responseCharLength: 0,
+    jsonParseStage: "not_started" as const,
+    elapsedMs: 0,
+  };
 }
 
 function parseClientPayload(value: unknown) {
@@ -307,23 +348,58 @@ function normalizeRealAiDraft(rawInput: Record<string, unknown>, context: RealAi
 
 export async function generateRealAiListingDraft(
   context: RealAiListingContext,
-  options: { onProviderCallStart?: () => void | Promise<void> } = {},
+  options: {
+    onProviderCallStart?: () => void | Promise<void>;
+    onDiagnostic?: (diagnostics: RealAiListingDiagnostic) => void;
+  } = {},
 ): Promise<RealAiListingGenerateResult> {
   const client = injectedClientForTests || callDefaultRealAiListingClient;
+  const startedAt = Date.now();
+  let aiCallDiagnostics: AiCallDiagnostics | null = null;
 
   let payload: unknown;
   try {
-    payload = await client({ context, onProviderCallStart: options.onProviderCallStart });
+    payload = await client({
+      context,
+      onProviderCallStart: options.onProviderCallStart,
+      onAiCallDiagnostics: (diagnostics) => { aiCallDiagnostics = diagnostics; },
+    });
   } catch (error) {
-    return isTimeoutError(error)
+    const base = diagnosticBase(aiCallDiagnostics);
+    const timedOut = isTimeoutError(error);
+    const jsonFailed = isRecord(error) && text(error.code) === "ai_json_parse_failed";
+    emitListingDiagnostic(options.onDiagnostic, {
+      classification: timedOut
+        ? "timeout"
+        : jsonFailed && base.jsonParseStage === "failed"
+          ? "json_parse_failed"
+          : "provider_response_invalid",
+      providerHttpStatusClass: base.providerHttpStatusClass,
+      finishReason: base.finishReason,
+      responseCharLength: base.responseCharLength,
+      jsonParseStage: base.jsonParseStage,
+      schemaStage: "not_started",
+      claimSafetyStage: "not_started",
+    }, startedAt);
+    return timedOut
       ? fail("ai_timeout", "AI Listing generation timed out.")
-      : isRecord(error) && text(error.code) === "ai_json_parse_failed"
+      : jsonFailed
         ? fail("ai_json_parse_failed", "AI Listing response was not valid JSON.")
         : fail("ai_provider_error", "AI Listing provider returned an error.");
   }
 
   const raw = parseClientPayload(payload);
   if (!raw) {
+    const base = diagnosticBase(aiCallDiagnostics);
+    emitListingDiagnostic(options.onDiagnostic, {
+      classification: "json_parse_failed",
+      providerHttpStatusClass: base.providerHttpStatusClass,
+      finishReason: base.finishReason,
+      responseCharLength: base.responseCharLength,
+      jsonParseStage: "failed",
+      schemaStage: "not_started",
+      claimSafetyStage: "not_started",
+    }, startedAt);
     return fail("ai_json_parse_failed", "AI Listing response was not valid JSON.");
   }
 
@@ -339,8 +415,28 @@ export async function generateRealAiListingDraft(
   });
   const validation = validateAiListingPackDraft(filtered.cleaned);
   if (!validation.ok) {
+    const base = diagnosticBase(aiCallDiagnostics);
+    emitListingDiagnostic(options.onDiagnostic, {
+      classification: "schema_validation_failed",
+      providerHttpStatusClass: base.providerHttpStatusClass,
+      finishReason: base.finishReason,
+      responseCharLength: base.responseCharLength,
+      jsonParseStage: base.jsonParseStage === "not_started" ? "passed" : base.jsonParseStage,
+      schemaStage: "failed",
+      claimSafetyStage: "passed",
+    }, startedAt);
     return fail("ai_schema_invalid", `AI Listing response failed schema validation: ${validation.error.message}`);
   }
 
+  const base = diagnosticBase(aiCallDiagnostics);
+  emitListingDiagnostic(options.onDiagnostic, {
+    classification: "success",
+    providerHttpStatusClass: base.providerHttpStatusClass,
+    finishReason: base.finishReason,
+    responseCharLength: base.responseCharLength,
+    jsonParseStage: base.jsonParseStage === "not_started" ? "passed" : base.jsonParseStage,
+    schemaStage: "passed",
+    claimSafetyStage: "passed",
+  }, startedAt);
   return { ok: true, data: validation.data };
 }

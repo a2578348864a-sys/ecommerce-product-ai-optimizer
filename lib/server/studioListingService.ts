@@ -6,6 +6,7 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 import {
   generateRealAiListingDraft,
   type RealAiListingContext,
+  type RealAiListingDiagnostic,
 } from "@/lib/server/aiListingGenerator";
 import {
   beginAiImageRequest,
@@ -54,6 +55,24 @@ function providerErrorStatus(code: string) {
   return ["ai_timeout", "ai_json_parse_failed", "ai_schema_invalid", "ai_provider_error"].includes(code)
     ? 502
     : 500;
+}
+
+function logStudioListingDiagnostic(input: {
+  diagnostic: RealAiListingDiagnostic;
+  saved: boolean;
+  totalElapsedMs: number;
+}) {
+  console.info("STUDIO_LISTING_DIAGNOSTIC", JSON.stringify({
+    classification: input.diagnostic.classification,
+    providerHttpStatusClass: input.diagnostic.providerHttpStatusClass,
+    finishReason: input.diagnostic.finishReason,
+    responseCharLength: input.diagnostic.responseCharLength,
+    jsonParseStage: input.diagnostic.jsonParseStage,
+    schemaStage: input.diagnostic.schemaStage,
+    claimSafetyStage: input.diagnostic.claimSafetyStage,
+    totalElapsedMs: input.totalElapsedMs,
+    saved: input.saved,
+  }));
 }
 
 function identityFor(context: AccessContext, idempotencyKey: string) {
@@ -163,6 +182,7 @@ export async function generateRealStudioListing(input: {
   context: RealAiListingContext;
   idempotencyKey: string;
 }): Promise<StudioListingResult> {
+  const startedAt = Date.now();
   const identity = identityFor(input.accessContext, input.idempotencyKey);
   const lockKey = `${identity.accessMode}:${identity.accessScope}:${OPERATION}`;
   if (inFlightScopes.has(lockKey)) {
@@ -176,6 +196,7 @@ export async function generateRealStudioListing(input: {
   let reservation: DemoAiQuotaReservation | null = null;
   let providerStarted = 0;
   let boundaryFailure: StudioListingFailure | null = null;
+  let listingDiagnostic: RealAiListingDiagnostic | null = null;
 
   try {
     let ledger;
@@ -231,6 +252,7 @@ export async function generateRealStudioListing(input: {
         }
         providerStarted = 1;
       },
+      onDiagnostic: (diagnostic) => { listingDiagnostic = diagnostic; },
     });
 
     const providerBoundaryFailure = boundaryFailure as StudioListingFailure | null;
@@ -291,6 +313,13 @@ export async function generateRealStudioListing(input: {
       } catch {
         return failure(500, "studio_ledger_failed", "AI 请求账本结算失败。");
       }
+      if (listingDiagnostic) {
+        logStudioListingDiagnostic({
+          diagnostic: listingDiagnostic,
+          saved: false,
+          totalElapsedMs: Date.now() - startedAt,
+        });
+      }
       return failure(providerErrorStatus(generated.error.code), generated.error.code, generated.error.message);
     }
 
@@ -344,6 +373,13 @@ export async function generateRealStudioListing(input: {
       });
     } catch {
       return failure(500, "studio_ledger_failed", "Listing 结果已安全保存，但请求账本提交失败；请使用同一请求重试。");
+    }
+    if (listingDiagnostic) {
+      logStudioListingDiagnostic({
+        diagnostic: listingDiagnostic,
+        saved: true,
+        totalElapsedMs: Date.now() - startedAt,
+      });
     }
     return { ok: true, data: generated.data, demoAccess: settled.snapshot, duplicate: false };
   } finally {

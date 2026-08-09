@@ -349,12 +349,13 @@ async function buildItems(input: {
   const products = new Map(input.snapshot.products.map((product) => [product.asin, product]));
   const shadow = new Map(input.shadow.products.map((product) => [product.asin, product]));
   const items: ProductBatchItemInput[] = [];
-  for (const [ordinal, ranked] of input.ranking.products.entries()) {
+  for (const ranked of input.ranking.products) {
     const product = products.get(ranked.asin);
     const shadowProduct = shadow.get(ranked.asin);
     if (!product || !shadowProduct) {
       fail("projection_integrity_failed", "SellerSprite projections disagree by ASIN.");
     }
+    if (shadowProduct.briefPriceBandResult.status !== "within") continue;
     const family = input.snapshot.families.find(
       (candidate) => candidate.observedProductAsins.includes(ranked.asin),
     ) ?? null;
@@ -373,7 +374,7 @@ async function buildItems(input: {
     const productKey = `amazon:US:${ranked.asin}`;
     items.push({
       productKey,
-      ordinal,
+      ordinal: items.length,
       asin: ranked.asin,
       parentAsin: ranked.parentAsin,
       itemIdentityHash: sellerSpriteStableHash({
@@ -469,6 +470,12 @@ export async function importSellerSpriteProductBatch(
   }
   const shadow = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
   const ranking = rankSellerSpriteMarketSignals({ snapshot, brief });
+  const priceEligibleProductCount = shadow.products.filter(
+    (product) => product.briefPriceBandResult.status === "within",
+  ).length;
+  if (priceEligibleProductCount === 0) {
+    fail("no_accepted_rows", "No SellerSprite products are inside the selected price range.");
+  }
   const manifest = {
     schemaVersion: "sellersprite-local-preview-manifest.v3",
     reportSchemaVersion: shadow.schemaVersion,
@@ -496,7 +503,7 @@ export async function importSellerSpriteProductBatch(
   const quality = {
     schemaVersion: "product-batch-quality-summary.v1",
     status: snapshot.rejectedRows === 0 ? "passed" : "passed_with_quarantine",
-    acceptedProductCount: ranking.products.length,
+    acceptedProductCount: priceEligibleProductCount,
     quarantinedRowCount: snapshot.rejectedRows,
     warningCounts: snapshot.warningCounts,
     missingSignals: snapshot.missingSignals,

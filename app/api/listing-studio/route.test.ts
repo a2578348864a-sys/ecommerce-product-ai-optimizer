@@ -238,6 +238,79 @@ describe("POST /api/listing-studio", () => {
     expect(mocks.generateRealAiListingDraft).not.toHaveBeenCalled();
   });
 
+  it("logs only safe real Listing diagnostics after Claim Evidence checks and durable save", async () => {
+    mocks.listingEnabled = true;
+    mocks.generateRealAiListingDraft.mockImplementationOnce(async (_context, options) => {
+      await options?.onProviderCallStart?.();
+      options?.onDiagnostic?.({
+        classification: "success",
+        providerHttpStatusClass: "success",
+        finishReason: "stop",
+        responseCharLength: 720,
+        jsonParseStage: "passed",
+        schemaStage: "passed",
+        claimSafetyStage: "passed",
+        totalElapsedMs: 2000,
+      });
+      return { ok: true, data: VALID_REAL_PACK };
+    });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    const response = await post({
+      productName: "Sensitive product name",
+      description: "Sensitive complete product material",
+      confirmedFacts: ["Sensitive confirmed fact"],
+      mode: "real",
+      confirmRealAi: true,
+      idempotencyKey: randomUUID(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(info).toHaveBeenCalledWith("STUDIO_LISTING_DIAGNOSTIC", expect.any(String));
+    const diagnosticLog = info.mock.calls.map((call) => call.join(" ")).join("\n");
+    info.mockRestore();
+    expect(diagnosticLog).toContain('"classification":"success"');
+    expect(diagnosticLog).toContain('"saved":true');
+    expect(diagnosticLog).not.toContain("Sensitive product name");
+    expect(diagnosticLog).not.toContain("Sensitive complete product material");
+    expect(diagnosticLog).not.toContain("Sensitive confirmed fact");
+  });
+
+  it("logs a stable safe classification for a malformed Provider JSON response", async () => {
+    mocks.listingEnabled = true;
+    mocks.generateRealAiListingDraft.mockImplementationOnce(async (_context, options) => {
+      await options?.onProviderCallStart?.();
+      options?.onDiagnostic?.({
+        classification: "json_parse_failed",
+        providerHttpStatusClass: "success",
+        finishReason: "length",
+        responseCharLength: 6000,
+        jsonParseStage: "failed",
+        schemaStage: "not_started",
+        claimSafetyStage: "not_started",
+        totalElapsedMs: 45000,
+      });
+      return { ok: false, error: { code: "ai_json_parse_failed", message: "safe public error" } };
+    });
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+
+    const response = await post({
+      productName: "Private provider response must not appear",
+      confirmedFacts: ["Private product fact"],
+      mode: "real",
+      confirmRealAi: true,
+      idempotencyKey: randomUUID(),
+    });
+    const diagnosticLog = info.mock.calls.map((call) => call.join(" ")).join("\n");
+    info.mockRestore();
+
+    expect(response.status).toBe(502);
+    expect(diagnosticLog).toContain('"classification":"json_parse_failed"');
+    expect(diagnosticLog).toContain('"saved":false');
+    expect(diagnosticLog).not.toContain("Private provider response must not appear");
+    expect(diagnosticLog).not.toContain("Private product fact");
+  });
+
   it("filters unsupported claims from Mock output and requires human review", async () => {
     const response = await post({
       productName: "Desk stand",

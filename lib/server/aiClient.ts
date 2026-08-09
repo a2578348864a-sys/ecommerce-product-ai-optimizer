@@ -43,9 +43,27 @@ export type AiClientError = {
   detail?: string;
 };
 
+export type AiProviderHttpStatusClass =
+  | "not_started"
+  | "success"
+  | "client_error"
+  | "rate_limited"
+  | "server_error"
+  | "timeout"
+  | "network_error"
+  | "unknown";
+
+export type AiCallDiagnostics = {
+  providerHttpStatusClass: AiProviderHttpStatusClass;
+  finishReason: string | null;
+  responseCharLength: number;
+  jsonParseStage: "not_started" | "passed" | "failed";
+  elapsedMs: number;
+};
+
 export type AiResult<T> =
-  | { ok: true; data: T; providerCallStarted?: boolean }
-  | { ok: false; error: AiClientError; providerCallStarted?: boolean };
+  | { ok: true; data: T; providerCallStarted?: boolean; diagnostics?: AiCallDiagnostics }
+  | { ok: false; error: AiClientError; providerCallStarted?: boolean; diagnostics?: AiCallDiagnostics };
 
 export type AiConfig = {
   provider: AiProvider;
@@ -471,8 +489,24 @@ function makeChatParams(config: AiConfig, params: CallAiTextParams): ChatComplet
   };
 }
 
+function normalizeFinishReason(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized && /^[a-z0-9_.-]{1,64}$/.test(normalized) ? normalized : "other";
+}
+
+function providerHttpStatusClass(error: AiClientError): AiProviderHttpStatusClass {
+  if (error.code === "timeout") return "timeout";
+  if (error.code === "network_error") return "network_error";
+  if (error.status === 429 || error.code === "rate_limited") return "rate_limited";
+  if (typeof error.status === "number" && error.status >= 500) return "server_error";
+  if (typeof error.status === "number" && error.status >= 400) return "client_error";
+  return "unknown";
+}
+
 /** Call an OpenAI-compatible chat completion endpoint and return text content. */
 export async function callAiText(params: CallAiTextParams): Promise<AiResult<string>> {
+  const startedAt = Date.now();
   const configResult = getAiConfig();
   if (!configResult.ok) {
     return { ...configResult, providerCallStarted: false };
@@ -493,6 +527,13 @@ export async function callAiText(params: CallAiTextParams): Promise<AiResult<str
     );
     const content = response.choices[0]?.message?.content;
     const text = typeof content === "string" ? content.trim() : "";
+    const diagnostics: AiCallDiagnostics = {
+      providerHttpStatusClass: "success",
+      finishReason: normalizeFinishReason(response.choices[0]?.finish_reason),
+      responseCharLength: typeof content === "string" ? content.length : 0,
+      jsonParseStage: "not_started",
+      elapsedMs: Date.now() - startedAt,
+    };
 
     if (!text) {
       return { ...fail({
@@ -500,12 +541,23 @@ export async function callAiText(params: CallAiTextParams): Promise<AiResult<str
         message: "AI returned empty text.",
         provider: configResult.data.provider,
         model: params.model || configResult.data.model,
-      }), providerCallStarted: true };
+      }), providerCallStarted: true, diagnostics };
     }
 
-    return { ...ok(text), providerCallStarted: true };
+    return { ...ok(text), providerCallStarted: true, diagnostics };
   } catch (error) {
-    return { ...fail(classifyAiError(error, configResult.data)), providerCallStarted: true };
+    const classified = classifyAiError(error, configResult.data);
+    return {
+      ...fail(classified),
+      providerCallStarted: true,
+      diagnostics: {
+        providerHttpStatusClass: providerHttpStatusClass(classified),
+        finishReason: null,
+        responseCharLength: 0,
+        jsonParseStage: "not_started",
+        elapsedMs: Date.now() - startedAt,
+      },
+    };
   }
 }
 
@@ -561,7 +613,7 @@ export function safeParseJsonFromAiText<T = unknown>(text: string): AiResult<T> 
   return fail({
     code: "json_parse_error",
     message: "Failed to parse JSON from AI text.",
-    detail: text.slice(0, 240),
+    detail: `response_length=${text.length}`,
   });
 }
 
@@ -569,6 +621,7 @@ export function safeParseJsonFromAiText<T = unknown>(text: string): AiResult<T> 
 export async function callAiJson<T>(params: Omit<CallAiTextParams, "responseFormat"> & {
   responseFormat?: ChatCompletionCreateParamsNonStreaming["response_format"];
 }): Promise<AiResult<T>> {
+  const startedAt = Date.now();
   const textResult = await callAiText({
     ...params,
     responseFormat: params.responseFormat || { type: "json_object" },
@@ -578,8 +631,20 @@ export async function callAiJson<T>(params: Omit<CallAiTextParams, "responseForm
     return textResult;
   }
 
+  const parsed = safeParseJsonFromAiText<T>(textResult.data);
   return {
-    ...safeParseJsonFromAiText<T>(textResult.data),
+    ...parsed,
     providerCallStarted: textResult.providerCallStarted === true,
+    diagnostics: {
+      ...(textResult.diagnostics || {
+        providerHttpStatusClass: "unknown" as const,
+        finishReason: null,
+        responseCharLength: textResult.data.length,
+        jsonParseStage: "not_started" as const,
+        elapsedMs: 0,
+      }),
+      jsonParseStage: parsed.ok ? "passed" : "failed",
+      elapsedMs: Date.now() - startedAt,
+    },
   };
 }

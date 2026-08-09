@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import { buildAiListingPackSaveResult, parseTaskResultJson } from "@/lib/aiListingSnapshot";
-import { generateRealAiListingDraft, type RealAiListingContext } from "@/lib/server/aiListingGenerator";
+import {
+  generateRealAiListingDraft,
+  type RealAiListingContext,
+  type RealAiListingDiagnostic,
+} from "@/lib/server/aiListingGenerator";
 import { getAiConfig } from "@/lib/server/aiClient";
 
 const confirmed = process.env.RUN_REAL_AI_LISTING_SMOKE === "1"
@@ -174,13 +178,17 @@ describe.skipIf(!confirmed)("real AI Listing smoke test", () => {
       existingResultJson = built.parsedResultJson;
     }
 
-    const result = await generateRealAiListingDraft(taskContext);
+    let diagnostic: RealAiListingDiagnostic | null = null;
+    const result = await generateRealAiListingDraft(taskContext, {
+      onDiagnostic: (value) => { diagnostic = value; },
+    });
 
     if (!result.ok) {
       if (prisma) await prisma.$disconnect();
       console.info("REAL_AI_LISTING_SMOKE_SUMMARY", JSON.stringify({
         ok: false,
         errorCode: result.error.code,
+        diagnostic,
       }));
       throw new Error(`Real AI Listing smoke failed: ${result.error.code}`);
     }
@@ -226,6 +234,7 @@ describe.skipIf(!confirmed)("real AI Listing smoke test", () => {
         reviewWarningCount: built.snapshot.complianceWarnings.length,
         blockedClaimCount: built.snapshot.blockedClaims.length,
         reviewChecklistCount: built.snapshot.reviewChecklist.length,
+        diagnostic,
       }));
       return;
     }
@@ -243,6 +252,7 @@ describe.skipIf(!confirmed)("real AI Listing smoke test", () => {
       reviewWarningCount: result.data.complianceWarnings.length,
       blockedClaimCount: result.data.blockedClaims.length,
       reviewChecklistCount: result.data.reviewChecklist.length,
+      diagnostic,
     }));
   });
 });

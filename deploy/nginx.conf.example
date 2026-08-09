@@ -15,6 +15,18 @@ server {
     listen 80;
     server_name your-domain.com;
 
+    # Product research can make three sequential Provider calls (45s each).
+    # Keep this route above the 180s application contract without widening the whole site timeout.
+    location = /api/workflows/product-analysis {
+        proxy_pass http://127.0.0.1:3005;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 210s;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:3005;
         proxy_http_version 1.1;
@@ -34,6 +46,16 @@ server {
 #
 #     ssl_certificate /etc/nginx/ssl/your-domain.com.pem;
 #     ssl_certificate_key /etc/nginx/ssl/your-domain.com.key;
+#
+#     location = /api/workflows/product-analysis {
+#         proxy_pass http://127.0.0.1:3005;
+#         proxy_http_version 1.1;
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_read_timeout 210s;
+#     }
 #
 #     location / {
 #         proxy_pass http://127.0.0.1:3005;
