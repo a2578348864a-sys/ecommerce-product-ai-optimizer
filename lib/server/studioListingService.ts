@@ -64,8 +64,13 @@ function logStudioListingDiagnostic(input: {
 }) {
   console.info("STUDIO_LISTING_DIAGNOSTIC", JSON.stringify({
     classification: input.diagnostic.classification,
+    model: input.diagnostic.model,
+    thinkingMode: input.diagnostic.thinkingMode,
+    maxTokens: input.diagnostic.maxTokens,
     providerHttpStatusClass: input.diagnostic.providerHttpStatusClass,
     finishReason: input.diagnostic.finishReason,
+    completionTokens: input.diagnostic.completionTokens,
+    reasoningTokens: input.diagnostic.reasoningTokens,
     responseCharLength: input.diagnostic.responseCharLength,
     jsonParseStage: input.diagnostic.jsonParseStage,
     schemaStage: input.diagnostic.schemaStage,

@@ -158,6 +158,41 @@ describe("providerCallStarted", () => {
     }
   });
 
+  it("sends the DeepSeek thinking toggle with JSON output and records only safe token diagnostics", async () => {
+    vi.stubEnv("AI_PROVIDER", "deepseek");
+    openAiMocks.create.mockResolvedValueOnce({
+      model: "deepseek-v4-flash",
+      choices: [{ finish_reason: "stop", message: { content: '{"ok":true}' } }],
+      usage: {
+        completion_tokens: 42,
+        completion_tokens_details: { reasoning_tokens: 0 },
+      },
+    });
+
+    const result = await callAiJson<{ ok: boolean }>({
+      messages: [{ role: "user", content: "return JSON" }],
+      maxTokens: 6000,
+      thinkingMode: "disabled",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(openAiMocks.create).toHaveBeenCalledTimes(1);
+    expect(openAiMocks.create.mock.calls[0][0]).toMatchObject({
+      max_tokens: 6000,
+      response_format: { type: "json_object" },
+      thinking: { type: "disabled" },
+    });
+    expect(result.diagnostics).toMatchObject({
+      model: "deepseek-v4-flash",
+      thinkingMode: "disabled",
+      maxTokens: 6000,
+      finishReason: "stop",
+      completionTokens: 42,
+      reasoningTokens: 0,
+      responseCharLength: 11,
+    });
+  });
+
   it("records only the Provider HTTP status class when the SDK returns an error", async () => {
     openAiMocks.create.mockRejectedValueOnce(Object.assign(new Error("secret upstream body"), { status: 429 }));
 

@@ -90,6 +90,7 @@ describe("generateRealAiListingDraft", () => {
 
     expect(mocks.callAiJson).toHaveBeenCalledWith(expect.objectContaining({
       maxTokens: 6000,
+      thinkingMode: "disabled",
     }));
   });
 

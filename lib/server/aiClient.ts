@@ -53,9 +53,16 @@ export type AiProviderHttpStatusClass =
   | "network_error"
   | "unknown";
 
+export type AiThinkingMode = "enabled" | "disabled";
+
 export type AiCallDiagnostics = {
+  model: string;
+  thinkingMode: AiThinkingMode | "default";
+  maxTokens: number | null;
   providerHttpStatusClass: AiProviderHttpStatusClass;
   finishReason: string | null;
+  completionTokens: number | null;
+  reasoningTokens: number | null;
   responseCharLength: number;
   jsonParseStage: "not_started" | "passed" | "failed";
   elapsedMs: number;
@@ -81,6 +88,8 @@ export type CallAiTextParams = {
   temperature?: number;
   responseFormat?: ChatCompletionCreateParamsNonStreaming["response_format"];
   maxTokens?: number;
+  /** DeepSeek request-level thinking toggle; omitted for other providers. */
+  thinkingMode?: AiThinkingMode;
   model?: string;
   timeoutMs?: number;
 };
@@ -479,14 +488,22 @@ function classifyAiError(error: unknown, config?: AiConfig): AiClientError {
   };
 }
 
+type DeepSeekChatParams = ChatCompletionCreateParamsNonStreaming & {
+  thinking?: { type: AiThinkingMode };
+};
+
 function makeChatParams(config: AiConfig, params: CallAiTextParams): ChatCompletionCreateParamsNonStreaming {
-  return {
+  const body: DeepSeekChatParams = {
     model: params.model || config.model,
     messages: params.messages,
     temperature: params.temperature,
     response_format: params.responseFormat,
     max_tokens: params.maxTokens,
   };
+  if (config.provider === "deepseek" && params.thinkingMode) {
+    body.thinking = { type: params.thinkingMode };
+  }
+  return body;
 }
 
 function normalizeFinishReason(value: unknown) {
@@ -502,6 +519,43 @@ function providerHttpStatusClass(error: AiClientError): AiProviderHttpStatusClas
   if (typeof error.status === "number" && error.status >= 500) return "server_error";
   if (typeof error.status === "number" && error.status >= 400) return "client_error";
   return "unknown";
+}
+
+function safeTokenCount(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : null;
+}
+
+function safeModelName(value: unknown, fallback: string) {
+  const safeFallback = /^[a-zA-Z0-9._:/-]{1,128}$/.test(fallback) ? fallback : "unknown";
+  if (typeof value !== "string") return safeFallback;
+  const normalized = value.trim();
+  return normalized && /^[a-zA-Z0-9._:/-]{1,128}$/.test(normalized) ? normalized : safeFallback;
+}
+
+function safeUsageDiagnostics(usage: unknown) {
+  if (!usage || typeof usage !== "object") {
+    return { completionTokens: null, reasoningTokens: null };
+  }
+  const record = usage as Record<string, unknown>;
+  const details = record.completion_tokens_details && typeof record.completion_tokens_details === "object"
+    ? record.completion_tokens_details as Record<string, unknown>
+    : null;
+  return {
+    completionTokens: safeTokenCount(record.completion_tokens),
+    reasoningTokens: safeTokenCount(details?.reasoning_tokens ?? record.reasoning_tokens),
+  };
+}
+
+function baseDiagnostics(config: AiConfig, params: CallAiTextParams) {
+  return {
+    model: safeModelName(params.model || config.model, "unknown"),
+    thinkingMode: config.provider === "deepseek" && params.thinkingMode
+      ? params.thinkingMode
+      : "default" as const,
+    maxTokens: safeTokenCount(params.maxTokens),
+  };
 }
 
 /** Call an OpenAI-compatible chat completion endpoint and return text content. */
@@ -527,9 +581,13 @@ export async function callAiText(params: CallAiTextParams): Promise<AiResult<str
     );
     const content = response.choices[0]?.message?.content;
     const text = typeof content === "string" ? content.trim() : "";
+    const usage = safeUsageDiagnostics(response.usage);
     const diagnostics: AiCallDiagnostics = {
+      ...baseDiagnostics(configResult.data, params),
+      model: safeModelName(response.model, params.model || configResult.data.model),
       providerHttpStatusClass: "success",
       finishReason: normalizeFinishReason(response.choices[0]?.finish_reason),
+      ...usage,
       responseCharLength: typeof content === "string" ? content.length : 0,
       jsonParseStage: "not_started",
       elapsedMs: Date.now() - startedAt,
@@ -551,8 +609,11 @@ export async function callAiText(params: CallAiTextParams): Promise<AiResult<str
       ...fail(classified),
       providerCallStarted: true,
       diagnostics: {
+        ...baseDiagnostics(configResult.data, params),
         providerHttpStatusClass: providerHttpStatusClass(classified),
         finishReason: null,
+        completionTokens: null,
+        reasoningTokens: null,
         responseCharLength: 0,
         jsonParseStage: "not_started",
         elapsedMs: Date.now() - startedAt,
@@ -637,8 +698,13 @@ export async function callAiJson<T>(params: Omit<CallAiTextParams, "responseForm
     providerCallStarted: textResult.providerCallStarted === true,
     diagnostics: {
       ...(textResult.diagnostics || {
+        model: params.model || "unknown",
+        thinkingMode: params.thinkingMode || "default",
+        maxTokens: safeTokenCount(params.maxTokens),
         providerHttpStatusClass: "unknown" as const,
         finishReason: null,
+        completionTokens: null,
+        reasoningTokens: null,
         responseCharLength: textResult.data.length,
         jsonParseStage: "not_started" as const,
         elapsedMs: 0,

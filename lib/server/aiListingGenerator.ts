@@ -41,8 +41,13 @@ export type RealAiListingDiagnostic = {
     | "json_parse_failed"
     | "schema_validation_failed"
     | "timeout";
+  model: string;
+  thinkingMode: "enabled" | "disabled" | "default";
+  maxTokens: number | null;
   providerHttpStatusClass: AiProviderHttpStatusClass;
   finishReason: string | null;
+  completionTokens: number | null;
+  reasoningTokens: number | null;
   responseCharLength: number;
   jsonParseStage: "not_started" | "passed" | "failed";
   schemaStage: "not_started" | "passed" | "failed";
@@ -199,6 +204,7 @@ async function callDefaultRealAiListingClient({ context, onProviderCallStart, on
     ],
     temperature: 0.2,
     maxTokens: LISTING_OUTPUT_TOKEN_BUDGET,
+    thinkingMode: "disabled",
     onProviderCallStart,
   });
   if (result.diagnostics) onAiCallDiagnostics?.(result.diagnostics);
@@ -226,11 +232,30 @@ function emitListingDiagnostic(
 
 function diagnosticBase(input: AiCallDiagnostics | null) {
   return input || {
+    model: "unknown",
+    thinkingMode: "default" as const,
+    maxTokens: LISTING_OUTPUT_TOKEN_BUDGET,
     providerHttpStatusClass: "unknown" as const,
     finishReason: null,
+    completionTokens: null,
+    reasoningTokens: null,
     responseCharLength: 0,
     jsonParseStage: "not_started" as const,
     elapsedMs: 0,
+  };
+}
+
+function providerDiagnosticFields(base: ReturnType<typeof diagnosticBase>) {
+  return {
+    model: base.model,
+    thinkingMode: base.thinkingMode,
+    maxTokens: base.maxTokens,
+    providerHttpStatusClass: base.providerHttpStatusClass,
+    finishReason: base.finishReason,
+    completionTokens: base.completionTokens,
+    reasoningTokens: base.reasoningTokens,
+    responseCharLength: base.responseCharLength,
+    jsonParseStage: base.jsonParseStage,
   };
 }
 
@@ -369,15 +394,12 @@ export async function generateRealAiListingDraft(
     const timedOut = isTimeoutError(error);
     const jsonFailed = isRecord(error) && text(error.code) === "ai_json_parse_failed";
     emitListingDiagnostic(options.onDiagnostic, {
+      ...providerDiagnosticFields(base),
       classification: timedOut
         ? "timeout"
         : jsonFailed && base.jsonParseStage === "failed"
           ? "json_parse_failed"
           : "provider_response_invalid",
-      providerHttpStatusClass: base.providerHttpStatusClass,
-      finishReason: base.finishReason,
-      responseCharLength: base.responseCharLength,
-      jsonParseStage: base.jsonParseStage,
       schemaStage: "not_started",
       claimSafetyStage: "not_started",
     }, startedAt);
@@ -392,10 +414,8 @@ export async function generateRealAiListingDraft(
   if (!raw) {
     const base = diagnosticBase(aiCallDiagnostics);
     emitListingDiagnostic(options.onDiagnostic, {
+      ...providerDiagnosticFields(base),
       classification: "json_parse_failed",
-      providerHttpStatusClass: base.providerHttpStatusClass,
-      finishReason: base.finishReason,
-      responseCharLength: base.responseCharLength,
       jsonParseStage: "failed",
       schemaStage: "not_started",
       claimSafetyStage: "not_started",
@@ -417,10 +437,8 @@ export async function generateRealAiListingDraft(
   if (!validation.ok) {
     const base = diagnosticBase(aiCallDiagnostics);
     emitListingDiagnostic(options.onDiagnostic, {
+      ...providerDiagnosticFields(base),
       classification: "schema_validation_failed",
-      providerHttpStatusClass: base.providerHttpStatusClass,
-      finishReason: base.finishReason,
-      responseCharLength: base.responseCharLength,
       jsonParseStage: base.jsonParseStage === "not_started" ? "passed" : base.jsonParseStage,
       schemaStage: "failed",
       claimSafetyStage: "passed",
@@ -430,10 +448,8 @@ export async function generateRealAiListingDraft(
 
   const base = diagnosticBase(aiCallDiagnostics);
   emitListingDiagnostic(options.onDiagnostic, {
+    ...providerDiagnosticFields(base),
     classification: "success",
-    providerHttpStatusClass: base.providerHttpStatusClass,
-    finishReason: base.finishReason,
-    responseCharLength: base.responseCharLength,
     jsonParseStage: base.jsonParseStage === "not_started" ? "passed" : base.jsonParseStage,
     schemaStage: "passed",
     claimSafetyStage: "passed",

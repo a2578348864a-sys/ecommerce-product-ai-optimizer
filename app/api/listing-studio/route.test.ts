@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -244,8 +244,13 @@ describe("POST /api/listing-studio", () => {
       await options?.onProviderCallStart?.();
       options?.onDiagnostic?.({
         classification: "success",
+        model: "deepseek-v4-flash",
+        thinkingMode: "disabled",
+        maxTokens: 6000,
         providerHttpStatusClass: "success",
         finishReason: "stop",
+        completionTokens: 720,
+        reasoningTokens: 0,
         responseCharLength: 720,
         jsonParseStage: "passed",
         schemaStage: "passed",
@@ -270,22 +275,32 @@ describe("POST /api/listing-studio", () => {
     const diagnosticLog = info.mock.calls.map((call) => call.join(" ")).join("\n");
     info.mockRestore();
     expect(diagnosticLog).toContain('"classification":"success"');
+    expect(diagnosticLog).toContain('"model":"deepseek-v4-flash"');
+    expect(diagnosticLog).toContain('"thinkingMode":"disabled"');
+    expect(diagnosticLog).toContain('"maxTokens":6000');
+    expect(diagnosticLog).toContain('"completionTokens":720');
+    expect(diagnosticLog).toContain('"reasoningTokens":0');
     expect(diagnosticLog).toContain('"saved":true');
     expect(diagnosticLog).not.toContain("Sensitive product name");
     expect(diagnosticLog).not.toContain("Sensitive complete product material");
     expect(diagnosticLog).not.toContain("Sensitive confirmed fact");
   });
 
-  it("logs a stable safe classification for a malformed Provider JSON response", async () => {
+  it("fails closed without saving or retrying when the Provider exhausts the budget before content", async () => {
     mocks.listingEnabled = true;
     mocks.generateRealAiListingDraft.mockImplementationOnce(async (_context, options) => {
       await options?.onProviderCallStart?.();
       options?.onDiagnostic?.({
-        classification: "json_parse_failed",
+        classification: "provider_response_invalid",
+        model: "deepseek-v4-flash",
+        thinkingMode: "disabled",
+        maxTokens: 6000,
         providerHttpStatusClass: "success",
         finishReason: "length",
-        responseCharLength: 6000,
-        jsonParseStage: "failed",
+        completionTokens: 6000,
+        reasoningTokens: 6000,
+        responseCharLength: 0,
+        jsonParseStage: "not_started",
         schemaStage: "not_started",
         claimSafetyStage: "not_started",
         totalElapsedMs: 45000,
@@ -305,10 +320,14 @@ describe("POST /api/listing-studio", () => {
     info.mockRestore();
 
     expect(response.status).toBe(502);
-    expect(diagnosticLog).toContain('"classification":"json_parse_failed"');
+    expect(mocks.generateRealAiListingDraft).toHaveBeenCalledTimes(1);
+    expect(diagnosticLog).toContain('"classification":"provider_response_invalid"');
+    expect(diagnosticLog).toContain('"finishReason":"length"');
+    expect(diagnosticLog).toContain('"responseCharLength":0');
     expect(diagnosticLog).toContain('"saved":false');
     expect(diagnosticLog).not.toContain("Private provider response must not appear");
     expect(diagnosticLog).not.toContain("Private product fact");
+    expect(existsSync(process.env.STUDIO_LISTING_RESULT_STORE_ROOT!)).toBe(false);
   });
 
   it("filters unsupported claims from Mock output and requires human review", async () => {
