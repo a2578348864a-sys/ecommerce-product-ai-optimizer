@@ -12,10 +12,9 @@ import {
 const BODY_PADDING_CLASS = "demo-banner-visible";
 
 export function formatDemoAccessBannerContent(demo: DemoAccessInfo): string {
-  if (demo.remainingProducts <= 0) {
-    return "访客体验 · 5个商品体验名额已全部使用，已有研究记录仍可查看。";
-  }
-  return `访客体验 · 已使用商品 ${demo.usedProducts} / ${demo.maxProducts} · 剩余 ${demo.remainingProducts} 个商品 · 每个商品可体验商品研究、人工决策、Listing和产品图片完整流程。`;
+  const listingRemaining = demo.standaloneListingRemaining ?? 3;
+  const imageRemaining = demo.standaloneImageUnitsRemaining ?? 3;
+  return `访客体验 · 商品研究 ${demo.usedProducts}/${demo.maxProducts} · 独立 Listing 剩余 ${listingRemaining} 次 · 独立生图 剩余 ${imageRemaining} 张${demo.remainingProducts <= 0 ? " · 已有研究记录仍可查看" : ""}`;
 }
 
 export function DemoAccessBanner() {
@@ -58,9 +57,17 @@ export function DemoAccessBanner() {
       role="status"
       aria-label="访客体验模式提示"
     >
-      <div className="mx-auto flex max-w-[1540px] items-center justify-center gap-2 text-center text-xs leading-5 sm:text-sm">
+      <div className="mx-auto flex max-w-[1540px] flex-wrap items-center justify-center gap-x-2 text-center text-xs leading-5 sm:text-sm">
         <Eye className="size-3.5 shrink-0 sm:size-4" />
         <span>{content}</span>
+        <details className="group">
+          <summary className="cursor-pointer list-none underline decoration-dotted underline-offset-2">
+            额度说明
+          </summary>
+          <span className="block px-2 pb-1 text-[11px] leading-4 sm:inline sm:text-xs">
+            研究记录进入的 Listing / Image 不占独立工具额度。
+          </span>
+        </details>
       </div>
     </div>
   );

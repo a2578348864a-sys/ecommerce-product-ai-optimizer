@@ -16,7 +16,7 @@ import {
 const ALLOWED_GENERATE_FIELDS = new Set([
   "requestId", "expectedStorageVersion", "expectedHandoffRevision", "mode",
   "approvedVisualReferenceSelectionIds", "confirmed",
-  "count", "scenePreset", "userCreativeDescription",
+  "count", "primaryImagePurpose", "lifestyleScene", "customImagePurpose", "userCreativeDescription",
 ]);
 const ALLOWED_SELECT_FIELDS = new Set([
   "selectedImageId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed",
@@ -272,12 +272,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const creativeDirection = parseTaskImageCreativeDirection({
-    scenePreset: body.scenePreset ?? "white_studio",
+    primaryImagePurpose: body.primaryImagePurpose ?? "white_studio",
+    lifestyleScene: body.lifestyleScene ?? "none",
+    customImagePurpose: body.customImagePurpose ?? "",
     userCreativeDescription: body.userCreativeDescription ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
   });
   if (!creativeDirection.ok) {
     const messages = {
-      invalid_scene_preset: "场景选择无效。",
+      invalid_primary_image_purpose: "图片主用途无效。",
+      invalid_lifestyle_scene: "生活场景选择无效。",
+      white_background_scene_conflict: "白底主图不使用生活场景，请改选其他主用途。",
+      custom_image_purpose_required: "请填写自定义图片用途。",
       invalid_creative_description: "创作描述格式无效，且不得超过 1200 个字符。",
       unsafe_creative_description: "创作描述包含不安全指令，请删除后重试。",
     } as const;

@@ -50,6 +50,11 @@ describe("AI image draft domain", () => {
     const valid = { imageType: "lifestyle_scene", count: 1, additionalDirection: "side view", confirmed: true, idempotencyKey: requestKey };
     expect(validateAiImageGenerateRequest(valid, "visitor").ok).toBe(true);
     expect(validateAiImageGenerateRequest({ ...valid, count: 2 }, "visitor")).toMatchObject({ ok: false, code: "visitor_image_count_limited" });
+    expect(validateAiImageGenerateRequest(
+      { ...valid, count: 2 },
+      "visitor",
+      { allowVisitorBatch: true },
+    ).ok).toBe(true);
     expect(validateAiImageGenerateRequest({ ...valid, count: 2 }, "owner").ok).toBe(true);
     expect(validateAiImageGenerateRequest({ ...valid, prompt: "free prompt" }, "owner")).toMatchObject({ ok: false, code: "unsupported_request_field" });
     expect(validateAiImageGenerateRequest({ ...valid, confirmed: false }, "owner")).toMatchObject({ ok: false, code: "real_ai_confirmation_required" });

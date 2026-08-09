@@ -123,6 +123,62 @@ describe("AI image draft service", () => {
     expect(duplicate.data.snapshot.items).toHaveLength(1);
   });
 
+  it("charges standalone Visitor images by units without touching product or legacy AI quota", async () => {
+    const { record } = createDemoAccess({ label: "Standalone Visitor" });
+    const loadedTask = visitorTask(record.id, "studio-image");
+    const generateRequest = request(2);
+    let calls = 0;
+    const provider = createMockAiImageProvider("success", () => { calls += 1; });
+
+    const first = await generateAiImageDraft({
+      loadedTask,
+      request: generateRequest,
+      provider,
+      visitorQuotaScope: "standalone",
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      data: {
+        duplicate: false,
+        visitorAccess: {
+          usedProducts: 0,
+          standaloneImageUnitsUsed: 2,
+          standaloneImageUnitsRemaining: 1,
+        },
+      },
+    });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)).toMatchObject({
+      usedAiCalls: 0,
+      standaloneImageUnitsUsed: 2,
+    });
+
+    const duplicate = await generateAiImageDraft({
+      loadedTask,
+      request: generateRequest,
+      provider,
+      visitorQuotaScope: "standalone",
+    });
+    expect(duplicate).toMatchObject({ ok: true, data: { duplicate: true } });
+    expect(calls).toBe(1);
+    expect(getDemoAccessById(record.id)?.standaloneImageUnitsUsed).toBe(2);
+
+    const rejected = await generateAiImageDraft({
+      loadedTask,
+      request: request(2),
+      provider,
+      visitorQuotaScope: "standalone",
+    });
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: "demo_standalone_image_quota_exceeded",
+        message: "该访客码的独立生图体验额度已用完。",
+      },
+    });
+    expect(calls).toBe(1);
+  });
+
   it("rejects reuse of one idempotency key with different request semantics", async () => {
     const loadedTask = ownerTask();
     const generateRequest = request();

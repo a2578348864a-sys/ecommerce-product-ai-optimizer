@@ -12,16 +12,24 @@ const snapshot = {
   reservedProducts: 0,
   remainingProducts: 3,
   migrationStatus: "migrated" as const,
+  standaloneListingLimit: 3,
+  standaloneListingUsed: 0,
+  standaloneListingReserved: 0,
+  standaloneListingRemaining: 3,
+  standaloneImageUnitLimit: 3,
+  standaloneImageUnitsUsed: 0,
+  standaloneImageUnitsReserved: 0,
+  standaloneImageUnitsRemaining: 3,
 };
 
 describe("DemoAccessBanner product-journey copy", () => {
-  it("shows used and remaining products without AI-call or 24h wording", () => {
+  it("shows concise research and standalone Studio quotas without AI-call or 24h wording", () => {
     const content = formatDemoAccessBannerContent(snapshot);
 
     expect(content).toContain("访客体验");
-    expect(content).toContain("已使用商品 2 / 5");
-    expect(content).toContain("剩余 3 个商品");
-    expect(content).toContain("每个商品可体验商品研究、人工决策、Listing和产品图片完整流程。");
+    expect(content).toContain("商品研究 2/5");
+    expect(content).toContain("独立 Listing 剩余 3 次");
+    expect(content).toContain("独立生图 剩余 3 张");
     expect(content).not.toMatch(/AI调用|真实 AI 操作次数|24 小时|有效期/);
   });
 
@@ -30,6 +38,6 @@ describe("DemoAccessBanner product-journey copy", () => {
       ...snapshot,
       usedProducts: 5,
       remainingProducts: 0,
-    })).toContain("5个商品体验名额已全部使用，已有研究记录仍可查看。");
+    })).toContain("商品研究 5/5");
   });
 });

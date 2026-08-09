@@ -1,4 +1,11 @@
 import type { AiImageDraftType } from "@/lib/aiImageDraft";
+import {
+  isStudioImageLifestyleScene,
+  isStudioImagePrimaryPurpose,
+  resolveStudioImageCreativeIntent,
+  type StudioImageLifestyleScene,
+  type StudioImagePrimaryPurpose,
+} from "@/lib/studioImageCreativeIntent";
 
 export const STUDIO_IMAGE_CREATION_MODES = ["guided", "prompt"] as const;
 
@@ -42,6 +49,9 @@ type StudioImageBaseContext = {
 
 export type StudioImageGuidedContext = StudioImageBaseContext & {
   creationMode: "guided";
+  primaryImagePurpose?: StudioImagePrimaryPurpose;
+  lifestyleScene?: StudioImageLifestyleScene;
+  customImagePurpose?: string;
   imageType: StudioImageType;
   visualStyle: StudioImageVisualStyle;
   compositionRequirements: string;
@@ -148,6 +158,9 @@ export const STUDIO_IMAGE_ALLOWED_FIELDS = new Set([
   "avoidElements",
   "imageType",
   "visualStyle",
+  "primaryImagePurpose",
+  "lifestyleScene",
+  "customImagePurpose",
   "aspectRatio",
   "count",
   "compositionRequirements",
@@ -357,6 +370,9 @@ export function parseStudioImageInput(value: unknown): StudioImageInputResult {
       || value.compositionRequirements !== undefined
       || value.prohibitedElements !== undefined
       || value.additionalDirection !== undefined
+      || value.primaryImagePurpose !== undefined
+      || value.lifestyleScene !== undefined
+      || value.customImagePurpose !== undefined
     ) {
       return fail(
         "invalid_studio_image_input",
@@ -387,17 +403,68 @@ export function parseStudioImageInput(value: unknown): StudioImageInputResult {
 
   const composition = readText(value, "compositionRequirements", 240);
   const prohibited = readText(value, "prohibitedElements", 240);
-  const imageType = readImageType(value);
-  const visualStyle = readEnum(value, "visualStyle", STUDIO_IMAGE_VISUAL_STYLES, "minimal");
-  const invalidGuidedText = [composition, prohibited].find((field) => !field.ok);
+  const customImagePurpose = readText(value, "customImagePurpose", 160);
+  const hasCreativeIntent = value.primaryImagePurpose !== undefined
+    || value.lifestyleScene !== undefined
+    || value.customImagePurpose !== undefined;
+  const invalidGuidedText = [composition, prohibited, customImagePurpose].find((field) => !field.ok);
   if (invalidGuidedText && !invalidGuidedText.ok) {
     return fail("invalid_studio_image_input", invalidGuidedText.message);
   }
-  if (!imageType.ok) return fail("invalid_image_type", "Please choose a supported image type.");
-  if (!visualStyle.ok) return fail("invalid_visual_style", "Please choose a supported visual style.");
-  if (!composition.ok || !prohibited.ok) {
+  if (!composition.ok || !prohibited.ok || !customImagePurpose.ok) {
     return fail("invalid_studio_image_input", "Request contains invalid Image Studio input.");
   }
+
+  if (hasCreativeIntent) {
+    if (!isStudioImagePrimaryPurpose(value.primaryImagePurpose)) {
+      return fail("invalid_image_type", "请选择一个图片主用途。");
+    }
+    if (!isStudioImageLifestyleScene(value.lifestyleScene)) {
+      return fail("invalid_studio_image_input", "请选择支持的生活场景。");
+    }
+    if (value.primaryImagePurpose === "white_studio" && value.lifestyleScene !== "none") {
+      return fail("invalid_studio_image_input", "白底主图不使用生活场景，请改选其他主用途。");
+    }
+    if (value.primaryImagePurpose === "custom" && !customImagePurpose.value) {
+      return fail("invalid_studio_image_input", "请填写自定义图片用途。");
+    }
+    if (containsUnsafeCreativeInstruction(customImagePurpose.value)) {
+      return fail("unsafe_creative_prompt", "自定义图片用途包含不支持的指令内容。");
+    }
+    if (
+      value.imageType !== undefined
+      || value.visualStyle !== undefined
+      || value.compositionRequirements !== undefined
+      || value.additionalDirection !== undefined
+    ) {
+      return fail("invalid_studio_image_input", "图片用途字段不能与内部构图字段同时提交。");
+    }
+    const creativeIntent = resolveStudioImageCreativeIntent({
+      primaryImagePurpose: value.primaryImagePurpose,
+      lifestyleScene: value.lifestyleScene,
+      customImagePurpose: customImagePurpose.value,
+    });
+    return {
+      ok: true,
+      data: {
+        creationMode: "guided",
+        ...common,
+        primaryImagePurpose: creativeIntent.primaryImagePurpose,
+        lifestyleScene: creativeIntent.lifestyleScene,
+        customImagePurpose: creativeIntent.customImagePurpose,
+        imageType: creativeIntent.imageType,
+        visualStyle: creativeIntent.visualStyle,
+        compositionRequirements: `${creativeIntent.background} ${creativeIntent.composition}`.trim(),
+        prohibitedElements: prohibited.value,
+        ...execution,
+      },
+    };
+  }
+
+  const imageType = readImageType(value);
+  const visualStyle = readEnum(value, "visualStyle", STUDIO_IMAGE_VISUAL_STYLES, "minimal");
+  if (!imageType.ok) return fail("invalid_image_type", "Please choose a supported image type.");
+  if (!visualStyle.ok) return fail("invalid_visual_style", "Please choose a supported visual style.");
 
   return {
     ok: true,
@@ -431,6 +498,9 @@ export function toStudioImageContext(input: StudioImageInput): StudioImageContex
   return {
     creationMode: "guided",
     ...common,
+    ...(input.primaryImagePurpose ? { primaryImagePurpose: input.primaryImagePurpose } : {}),
+    ...(input.lifestyleScene ? { lifestyleScene: input.lifestyleScene } : {}),
+    ...(input.customImagePurpose !== undefined ? { customImagePurpose: input.customImagePurpose } : {}),
     imageType: input.imageType,
     visualStyle: input.visualStyle,
     compositionRequirements: input.compositionRequirements,

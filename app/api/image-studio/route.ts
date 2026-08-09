@@ -29,6 +29,7 @@ type ApiResponse =
         images: Array<{ base64: string; width?: number; height?: number }>;
         meta: StudioImageResultMeta;
       };
+      demoAccess?: import("@/lib/server/demoGuard").DemoAccessSnapshot;
     }
   | { ok: false; error: { code: string; message: string } };
 
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
       : undefined,
     confirmed: studioInput.confirmRealAi,
     idempotencyKey: studioInput.idempotencyKey,
-  }, auth.context.mode === "owner" ? "owner" : "visitor");
+  }, auth.context.mode === "owner" ? "owner" : "visitor", { allowVisitorBatch: true });
   if (!validated.ok) {
     return json({ ok: false, error: { code: validated.code, message: validated.message } }, 400);
   }
@@ -113,5 +114,9 @@ export async function POST(request: NextRequest) {
   });
   if (!result.ok) return json({ ok: false, error: result.error }, result.status);
 
-  return json({ ok: true, data: { images: result.images, meta: result.meta } });
+  return json({
+    ok: true,
+    data: { images: result.images, meta: result.meta },
+    ...(result.demoAccess ? { demoAccess: result.demoAccess } : {}),
+  });
 }

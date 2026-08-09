@@ -7,11 +7,9 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   requireAuthenticated: vi.fn(),
-  ensureDemoAiQuota: vi.fn(),
-  consumeDemoAiCalls: vi.fn(),
-  reserveDemoAiCalls: vi.fn(),
-  markDemoAiProviderCallStarted: vi.fn(),
-  settleDemoAiCalls: vi.fn(),
+  reserveVisitorStandaloneStudioQuota: vi.fn(),
+  markVisitorStandaloneStudioProviderStarted: vi.fn(),
+  releaseVisitorStandaloneStudioQuota: vi.fn(),
   getLatestDemoSnapshot: vi.fn(),
   generateRealAiListingDraft: vi.fn(),
   listingEnabled: false,
@@ -24,11 +22,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
-  ensureDemoAiQuota: mocks.ensureDemoAiQuota,
-  consumeDemoAiCalls: mocks.consumeDemoAiCalls,
-  reserveDemoAiCalls: mocks.reserveDemoAiCalls,
-  markDemoAiProviderCallStarted: mocks.markDemoAiProviderCallStarted,
-  settleDemoAiCalls: mocks.settleDemoAiCalls,
+  reserveVisitorStandaloneStudioQuota: mocks.reserveVisitorStandaloneStudioQuota,
+  markVisitorStandaloneStudioProviderStarted: mocks.markVisitorStandaloneStudioProviderStarted,
+  releaseVisitorStandaloneStudioQuota: mocks.releaseVisitorStandaloneStudioQuota,
   getLatestDemoSnapshot: mocks.getLatestDemoSnapshot,
 }));
 
@@ -121,14 +117,19 @@ describe("POST /api/listing-studio", () => {
       ok: true,
       context: OWNER_CONTEXT,
     });
-    mocks.ensureDemoAiQuota.mockReturnValue({ ok: true });
-    mocks.consumeDemoAiCalls.mockReturnValue(null);
-    mocks.reserveDemoAiCalls.mockImplementation((context) => ({
+    mocks.reserveVisitorStandaloneStudioQuota.mockImplementation((context, input) => ({
       ok: true,
-      reservation: context.mode === "demo" ? { reservationId: "text-reservation", plannedCount: 1 } : null,
+      reservation: context.mode === "demo"
+        ? { ...input, duplicate: false, status: "reserved" }
+        : null,
+      snapshot: null,
     }));
-    mocks.markDemoAiProviderCallStarted.mockReturnValue({ ok: true });
-    mocks.settleDemoAiCalls.mockReturnValue({ ok: true, snapshot: null });
+    mocks.markVisitorStandaloneStudioProviderStarted.mockReturnValue({
+      ok: true, reservation: null, snapshot: null, duplicate: false,
+    });
+    mocks.releaseVisitorStandaloneStudioQuota.mockReturnValue({
+      ok: true, reservation: null, snapshot: null, duplicate: false,
+    });
     mocks.getLatestDemoSnapshot.mockReturnValue(null);
     mocks.generateRealAiListingDraft.mockImplementation(async (_context, options) => {
       await options?.onProviderCallStart?.();
@@ -284,6 +285,28 @@ describe("POST /api/listing-studio", () => {
     expect(diagnosticLog).not.toContain("Sensitive product name");
     expect(diagnosticLog).not.toContain("Sensitive complete product material");
     expect(diagnosticLog).not.toContain("Sensitive confirmed fact");
+  });
+
+  it("uses the standalone Listing quota only for a real Visitor Provider call", async () => {
+    mocks.listingEnabled = true;
+    mocks.visitorListingEnabled = true;
+    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: VISITOR_CONTEXT });
+
+    const response = await post({
+      productName: "Visitor desk stand",
+      confirmedFacts: ["Aluminum frame"],
+      mode: "real",
+      confirmRealAi: true,
+      idempotencyKey: randomUUID(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.reserveVisitorStandaloneStudioQuota).toHaveBeenCalledWith(
+      VISITOR_CONTEXT,
+      expect.objectContaining({ kind: "listing", units: 1 }),
+    );
+    expect(mocks.markVisitorStandaloneStudioProviderStarted).toHaveBeenCalledTimes(1);
+    expect(mocks.releaseVisitorStandaloneStudioQuota).not.toHaveBeenCalled();
   });
 
   it("fails closed without saving or retrying when the Provider exhausts the budget before content", async () => {

@@ -3,9 +3,9 @@ import {
   buildStudioImageRequestCore,
   EMPTY_IMAGE_INTENT,
   EMPTY_PROMPT_IMAGE_INTENT,
+  STUDIO_IMAGE_LIFESTYLE_SCENES,
+  STUDIO_IMAGE_PRIMARY_PURPOSES,
   STUDIO_IMAGE_PROMPT_TEMPLATES,
-  STUDIO_IMAGE_SCENE_GROUPS,
-  createImageSceneSelection,
   type ImageFormIntent,
   type PromptImageFormIntent,
 } from "@/lib/client/studioImageRequest";
@@ -14,9 +14,9 @@ describe("buildStudioImageRequestCore", () => {
   it("wires every visible guided image strategy field into the API request", () => {
     const intent: ImageFormIntent = {
       creationMode: "guided",
-      imageType: "lifestyle_scene",
-      visualStyle: "home",
-      ...createImageSceneSelection("home_lifestyle", "  Warm morning light. "),
+      primaryImagePurpose: "detail_closeup",
+      lifestyleScene: "office_commute",
+      customImagePurpose: "",
       count: 2,
       aspectRatio: "portrait_4_5",
       prohibitedElements: " Logo, watermark ",
@@ -34,11 +34,11 @@ describe("buildStudioImageRequestCore", () => {
       creationMode: "guided",
       productName: "Foldable Laptop Stand",
       description: "Silver aluminum body.",
-      imageType: "lifestyle_scene",
-      visualStyle: "home",
+      primaryImagePurpose: "detail_closeup",
+      lifestyleScene: "office_commute",
+      customImagePurpose: "",
       count: 2,
       aspectRatio: "portrait_4_5",
-      compositionRequirements: "Believable home-living context. Natural in-use composition with clear product scale. Warm morning light.",
       prohibitedElements: "Logo, watermark",
       mode: "mock",
     });
@@ -98,9 +98,9 @@ describe("buildStudioImageRequestCore", () => {
   it("starts in the safe guided Mock product-main strategy", () => {
     expect(EMPTY_IMAGE_INTENT).toEqual({
       creationMode: "guided",
-      imageType: "product_main",
-      visualStyle: "minimal",
-      ...createImageSceneSelection("white_studio"),
+      primaryImagePurpose: "white_studio",
+      lifestyleScene: "none",
+      customImagePurpose: "",
       count: 1,
       aspectRatio: "square_1_1",
       prohibitedElements: "",
@@ -114,50 +114,74 @@ describe("buildStudioImageRequestCore", () => {
     });
   });
 
-  it("offers the bounded grouped ecommerce scene presets and maps them into the existing request contract", () => {
-    expect(STUDIO_IMAGE_SCENE_GROUPS.map((group) => group.label)).toEqual([
-      "电商基础",
-      "生活方式",
-      "其他",
-    ]);
-    expect(STUDIO_IMAGE_SCENE_GROUPS.flatMap((group) => group.presets.map((preset) => preset.label))).toEqual([
-      "白底主图 / 棚拍",
+  it("separates exactly one primary purpose from at most one optional lifestyle scene", () => {
+    expect(STUDIO_IMAGE_PRIMARY_PURPOSES.map((purpose) => purpose.label)).toEqual([
+      "白底主图/棚拍",
       "卖点信息图",
       "尺寸规格图",
       "产品细节特写",
-      "包装 / 套装展示",
+      "包装/套装展示",
       "使用步骤图",
-      "家居生活",
-      "办公 / 通勤",
-      "户外 / 旅行",
-      "运动 / 健身",
       "对比展示",
-      "自定义场景",
+      "自定义",
+    ]);
+    expect(STUDIO_IMAGE_LIFESTYLE_SCENES.map((scene) => scene.label)).toEqual([
+      "不指定",
+      "家居生活",
+      "办公/通勤",
+      "户外/旅行",
+      "运动/健身",
     ]);
 
-    const selection = createImageSceneSelection("outdoor_travel", "Keep room for a short headline.");
-    expect(selection).toMatchObject({
-      scenePreset: "outdoor_travel",
-      sceneIntent: "outdoor_travel_context",
-      customInstruction: "Keep room for a short headline.",
-    });
     const request = buildStudioImageRequestCore({
       productName: "Travel bottle",
       description: "Blue insulated bottle",
       intent: {
         ...EMPTY_IMAGE_INTENT,
-        ...selection,
-        imageType: "lifestyle_scene",
-        visualStyle: "outdoor",
+        primaryImagePurpose: "detail_closeup",
+        lifestyleScene: "outdoor_travel",
       },
       mode: "mock",
     });
-    expect(request).not.toHaveProperty("scenePreset");
-    expect(request).not.toHaveProperty("sceneIntent");
-    expect(request).not.toHaveProperty("customInstruction");
-    const guidedRequest = request as { compositionRequirements: string };
-    expect(guidedRequest.compositionRequirements).toContain("outdoor or travel context");
-    expect(guidedRequest.compositionRequirements).toContain("Keep room for a short headline.");
+    expect(request).toMatchObject({
+      primaryImagePurpose: "detail_closeup",
+      lifestyleScene: "outdoor_travel",
+      customImagePurpose: "",
+    });
+    expect(request).not.toHaveProperty("imageType");
+    expect(request).not.toHaveProperty("compositionRequirements");
+  });
+
+  it("keeps white-background purpose scene-free and carries custom purpose explicitly", () => {
+    expect(buildStudioImageRequestCore({
+      productName: "Bottle",
+      description: "Blue bottle",
+      intent: {
+        ...EMPTY_IMAGE_INTENT,
+        primaryImagePurpose: "white_studio",
+        lifestyleScene: "outdoor_travel",
+      },
+      mode: "mock",
+    })).toMatchObject({
+      primaryImagePurpose: "white_studio",
+      lifestyleScene: "none",
+    });
+
+    expect(buildStudioImageRequestCore({
+      productName: "Bottle",
+      description: "Blue bottle",
+      intent: {
+        ...EMPTY_IMAGE_INTENT,
+        primaryImagePurpose: "custom",
+        lifestyleScene: "home_lifestyle",
+        customImagePurpose: "节日礼赠展示",
+      },
+      mode: "mock",
+    })).toMatchObject({
+      primaryImagePurpose: "custom",
+      lifestyleScene: "home_lifestyle",
+      customImagePurpose: "节日礼赠展示",
+    });
   });
 
   it("exposes four controlled prompt templates without generation side effects", () => {

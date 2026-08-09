@@ -8,6 +8,8 @@ const STUDIO_ERROR_MESSAGES: Record<string, string> = {
   visitor_image_generation_disabled: "图片真实 AI 暂未对访客开放。",
   visitor_ai_quota_exceeded: "本次真实 AI 体验额度已用完。",
   visitor_listing_quota_exceeded: "本次 Listing 真实 AI 体验额度已用完。",
+  demo_standalone_listing_quota_exceeded: "该访客码的独立 Listing 体验额度已用完。",
+  demo_standalone_image_quota_exceeded: "该访客码的独立生图体验额度已用完。",
   provider_auth_failed: "AI 服务认证失败，请联系管理员检查服务配置。",
   configuration_error: "AI 服务配置异常，请联系管理员检查服务配置。",
   provider_config_invalid: "AI 服务配置异常，请联系管理员检查服务配置。",

@@ -10,7 +10,12 @@ import {
   Trash2,
   WandSparkles,
 } from "lucide-react";
-import { buildAccessHeaders, isAuthenticated } from "@/lib/client/accessToken";
+import {
+  buildAccessHeaders,
+  isAuthenticated,
+  updateDemoAccessSnapshot,
+  type DemoAccessInfo,
+} from "@/lib/client/accessToken";
 import {
   getOrCreateStudioAttempt,
   shouldRetainStudioAttempt,
@@ -21,8 +26,6 @@ import {
   EMPTY_IMAGE_INTENT,
   EMPTY_PROMPT_IMAGE_INTENT,
   STUDIO_IMAGE_PROMPT_TEMPLATES,
-  createImageSceneSelection,
-  resolveImageScenePreset,
   type ImageFormIntent,
   type PromptImageFormIntent,
 } from "@/lib/client/studioImageRequest";
@@ -179,6 +182,7 @@ function ManualImageStudioClient({ onProgressChange }: {
   const activeIntent = creationMode === "guided" ? intent : promptIntent;
   const hasRequiredCreativeInput = creationMode === "guided"
     ? productName.trim().length > 0
+      && (intent.primaryImagePurpose !== "custom" || intent.customImagePurpose.trim().length > 0)
     : promptIntent.creativePrompt.trim().length > 0;
   const canGenerate = authenticated
     && hasRequiredCreativeInput
@@ -189,12 +193,12 @@ function ManualImageStudioClient({ onProgressChange }: {
   useEffect(() => {
     onProgressChange({
       briefReady: canGenerate,
-      strategyReady: Boolean(intent.scenePreset),
+      strategyReady: Boolean(intent.primaryImagePurpose),
       isGenerating: loading,
       candidateCount: result?.images.length ?? 0,
       selectedImageId: selectedIndices[0] === undefined ? null : String(selectedIndices[0]),
     });
-  }, [canGenerate, intent.scenePreset, loading, onProgressChange, result, selectedIndices]);
+  }, [canGenerate, intent.primaryImagePurpose, loading, onProgressChange, result, selectedIndices]);
 
   const updateIntent = useCallback(<Key extends keyof ImageFormIntent>(
     key: Key,
@@ -214,14 +218,11 @@ function ManualImageStudioClient({ onProgressChange }: {
     realAttemptRef.current = null;
   }, []);
 
-  const selectScenePreset = useCallback((scenePreset: ImageFormIntent["scenePreset"]) => {
-    const preset = resolveImageScenePreset(scenePreset);
-    setIntent((current) => ({
-      ...current,
-      ...createImageSceneSelection(scenePreset, current.customInstruction),
-      imageType: preset.imageType,
-      visualStyle: preset.visualStyle,
-    }));
+  const selectCreativeIntent = useCallback((creativeIntent: Pick<
+    ImageFormIntent,
+    "primaryImagePurpose" | "lifestyleScene" | "customImagePurpose"
+  >) => {
+    setIntent((current) => ({ ...current, ...creativeIntent }));
     setFactsConfirmed(false);
     realAttemptRef.current = null;
   }, []);
@@ -271,6 +272,9 @@ function ManualImageStudioClient({ onProgressChange }: {
         return;
       }
       if (mode === "real") realAttemptRef.current = null;
+      if ("demoAccess" in json && json.demoAccess) {
+        updateDemoAccessSnapshot(json.demoAccess as DemoAccessInfo);
+      }
       setResult((json as { data: ImageStudioData }).data);
     } catch {
       setError("网络异常，请稍后重试。");
@@ -414,27 +418,7 @@ function ManualImageStudioClient({ onProgressChange }: {
             <h3 id="image-strategy-section">02 图片策略</h3>
             <span>决定素材用途与视觉语气</span>
           </div>
-          <ImageScenePresetPicker value={intent.scenePreset} onChange={selectScenePreset} />
-          <div className={styles.field}>
-            <label htmlFor="image-visual-style">视觉风格</label>
-            <select
-              id="image-visual-style"
-              name="visualStyle"
-              className={styles.control}
-              value={intent.visualStyle}
-              onChange={(event) => updateIntent(
-                "visualStyle",
-                event.target.value as ImageFormIntent["visualStyle"],
-              )}
-            >
-              <option value="minimal">极简</option>
-              <option value="premium">高端</option>
-              <option value="tech">科技</option>
-              <option value="home">家居</option>
-              <option value="outdoor">户外</option>
-              <option value="brand_ad">品牌广告</option>
-            </select>
-          </div>
+          <ImageScenePresetPicker value={intent} onChange={selectCreativeIntent} />
         </section>
         ) : (
           <section className={styles.formSection} aria-labelledby="image-prompt-section">
@@ -513,7 +497,7 @@ function ManualImageStudioClient({ onProgressChange }: {
                 <option value={1}>1 张</option>
                 <option value={2}>2 张</option>
               </select>
-              <p className={styles.fieldHint}>Visitor Real 模式仍限制为 1 张。</p>
+              <p className={styles.fieldHint}>访客独立生图按实际张数扣减额度；Mock 不扣额度。</p>
             </div>
             <div className={styles.field}>
               <label htmlFor="image-aspect-ratio">宽高比例</label>
@@ -543,19 +527,6 @@ function ManualImageStudioClient({ onProgressChange }: {
             <span>作为独立 Image 上下文</span>
           </div>
           <div className={styles.inlineGrid}>
-            <div className={styles.field}>
-              <label htmlFor="image-composition">自定义要求</label>
-              <textarea
-                id="image-composition"
-                name="customInstruction"
-                maxLength={240}
-                className={styles.control}
-                rows={3}
-                placeholder="例如：右侧保留文案区域，使用温暖早晨光线"
-                value={intent.customInstruction}
-                onChange={(event) => updateIntent("customInstruction", event.target.value)}
-              />
-            </div>
             <div className={styles.field}>
               <label htmlFor="image-prohibited-elements">禁止元素</label>
               <textarea

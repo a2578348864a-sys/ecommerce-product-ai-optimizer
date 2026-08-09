@@ -25,6 +25,14 @@ export interface DemoAccessInfo {
   reservedProducts: number;
   remainingProducts: number;
   migrationStatus: "migrated";
+  standaloneListingLimit?: number;
+  standaloneListingUsed?: number;
+  standaloneListingReserved?: number;
+  standaloneListingRemaining?: number;
+  standaloneImageUnitLimit?: number;
+  standaloneImageUnitsUsed?: number;
+  standaloneImageUnitsReserved?: number;
+  standaloneImageUnitsRemaining?: number;
   /** Legacy-only fields retained for older isolated Studio responses. */
   maxAiCalls?: number;
   usedAiCalls?: number;

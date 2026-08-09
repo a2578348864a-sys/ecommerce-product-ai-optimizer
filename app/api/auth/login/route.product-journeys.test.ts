@@ -71,6 +71,12 @@ describe("Visitor login after product-journey quota migration", () => {
         maxProducts: 5,
         usedProducts: 0,
         remainingProducts: 5,
+        standaloneListingLimit: 3,
+        standaloneListingUsed: 0,
+        standaloneListingRemaining: 3,
+        standaloneImageUnitLimit: 3,
+        standaloneImageUnitsUsed: 0,
+        standaloneImageUnitsRemaining: 3,
       },
     });
     const verified = verifySignedToken(body.accessToken);

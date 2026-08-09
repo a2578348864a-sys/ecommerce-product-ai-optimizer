@@ -17,10 +17,10 @@ import {
 } from "@/lib/server/aiImageDraftLedger";
 import {
   getLatestDemoSnapshot,
-  markDemoAiProviderCallStarted,
-  reserveDemoAiCalls,
-  settleDemoAiCalls,
-  type DemoAiQuotaReservation,
+  markVisitorStandaloneStudioProviderStarted,
+  releaseVisitorStandaloneStudioQuota,
+  reserveVisitorStandaloneStudioQuota,
+  type VisitorStandaloneStudioQuotaReservation,
   type DemoAccessSnapshot,
 } from "@/lib/server/demoGuard";
 import {
@@ -198,7 +198,7 @@ export async function generateRealStudioListing(input: {
   const requestFingerprint = contextFingerprint(input.context);
   const idempotencyScopeHash = buildAiCallIdempotencyScopeHash(identity);
   const requestHash = buildAiCallRequestHash({ ...identity, requestFingerprint });
-  let reservation: DemoAiQuotaReservation | null = null;
+  let reservation: VisitorStandaloneStudioQuotaReservation | null = null;
   let providerStarted = 0;
   let boundaryFailure: StudioListingFailure | null = null;
   let listingDiagnostic: RealAiListingDiagnostic | null = null;
@@ -226,7 +226,11 @@ export async function generateRealStudioListing(input: {
       });
     }
 
-    const reserved = reserveDemoAiCalls(input.accessContext, 1);
+    const reserved = reserveVisitorStandaloneStudioQuota(input.accessContext, {
+      kind: "listing",
+      requestId: requestHash,
+      units: 1,
+    });
     if (!reserved.ok) {
       try {
         updateLedger({ requestHash, status: "refunded", errorCode: reserved.code });
@@ -250,7 +254,7 @@ export async function generateRealStudioListing(input: {
           boundaryFailure = failure(500, "studio_ledger_failed", "AI 请求账本写入失败，本次没有调用真实 AI。");
           throw new Error("STUDIO_LISTING_LEDGER_FAILED");
         }
-        const marked = markDemoAiProviderCallStarted(input.accessContext, reservation, 1);
+        const marked = markVisitorStandaloneStudioProviderStarted(input.accessContext, reservation);
         if (!marked.ok) {
           boundaryFailure = failure(marked.status, marked.code, marked.message);
           throw new Error("STUDIO_LISTING_PROVIDER_BOUNDARY_FAILED");
@@ -262,7 +266,7 @@ export async function generateRealStudioListing(input: {
 
     const providerBoundaryFailure = boundaryFailure as StudioListingFailure | null;
     if (providerBoundaryFailure) {
-      const settled = settleDemoAiCalls(input.accessContext, reservation, providerStarted);
+      const settled = releaseVisitorStandaloneStudioQuota(input.accessContext, reservation);
       if (!settled.ok) {
         try {
           updateLedger({
@@ -292,7 +296,7 @@ export async function generateRealStudioListing(input: {
     }
 
     if (!generated.ok) {
-      const settled = settleDemoAiCalls(input.accessContext, reservation, providerStarted);
+      const settled = releaseVisitorStandaloneStudioQuota(input.accessContext, reservation);
       if (!settled.ok) {
         try {
           updateLedger({
@@ -329,7 +333,7 @@ export async function generateRealStudioListing(input: {
     }
 
     if (providerStarted !== 1) {
-      const settled = settleDemoAiCalls(input.accessContext, reservation, 0);
+      const settled = releaseVisitorStandaloneStudioQuota(input.accessContext, reservation);
       if (!settled.ok) return failure(settled.status, settled.code, settled.message);
       try {
         updateLedger({ requestHash, status: "refunded", errorCode: "provider_start_boundary_missing" });
@@ -347,7 +351,7 @@ export async function generateRealStudioListing(input: {
         data: generated.data,
       });
     } catch {
-      const settled = settleDemoAiCalls(input.accessContext, reservation, 1);
+      const settled = releaseVisitorStandaloneStudioQuota(input.accessContext, reservation);
       try {
         updateLedger({
           requestHash,
@@ -363,11 +367,7 @@ export async function generateRealStudioListing(input: {
       return failure(500, "studio_result_store_failed", "Listing 结果安全存储失败；不会再次自动调用真实 AI。");
     }
 
-    const settled = settleDemoAiCalls(input.accessContext, reservation, 1);
-    if (!settled.ok) {
-      // The result is durable. Keep the ledger recoverable so the same key can replay it.
-      return failure(settled.status, settled.code, settled.message);
-    }
+    const demoAccess = getLatestDemoSnapshot(input.accessContext);
 
     try {
       updateLedger({
@@ -386,7 +386,7 @@ export async function generateRealStudioListing(input: {
         totalElapsedMs: Date.now() - startedAt,
       });
     }
-    return { ok: true, data: generated.data, demoAccess: settled.snapshot, duplicate: false };
+    return { ok: true, data: generated.data, demoAccess, duplicate: false };
   } finally {
     inFlightScopes.delete(lockKey);
   }

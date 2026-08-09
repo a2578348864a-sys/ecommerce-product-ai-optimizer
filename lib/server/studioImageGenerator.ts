@@ -12,6 +12,7 @@ import {
   type StudioImageVisualStyle,
 } from "@/lib/studioImageInput";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import type { DemoAccessSnapshot } from "@/lib/server/demoGuard";
 import { generateAiImageDraft } from "@/lib/server/aiImageDraftService";
 import { readAiImage } from "@/lib/server/aiImageDraftStorage";
 import type { LoadedAiImageTask } from "@/lib/server/aiImageTaskAccess";
@@ -26,6 +27,7 @@ export type StudioImageResult =
       ok: true;
       images: Array<{ base64: string; width?: number; height?: number }>;
       meta: StudioImageResultMeta;
+      demoAccess: DemoAccessSnapshot | null;
     }
   | { ok: false; error: { code: string; message: string }; status: number };
 
@@ -243,6 +245,7 @@ function generatePromptMockStudioImage(input: StudioPromptInput): StudioImageRes
   return {
     ok: true,
     images,
+    demoAccess: null,
     meta: {
       mode: "mock",
       visualAuthority: input.visualAuthority ?? "composition_concept",
@@ -305,6 +308,7 @@ export function generateMockStudioImage(input: StudioImageInput): StudioImageRes
   return {
     ok: true,
     images,
+    demoAccess: null,
     meta: {
       mode: "mock",
       visualAuthority: input.visualAuthority ?? "composition_concept",
@@ -324,7 +328,12 @@ export function generateMockStudioImage(input: StudioImageInput): StudioImageRes
 }
 
 function serviceErrorStatus(code: string) {
-  if (["real_ai_disabled", "visitor_ai_quota_exceeded", "visitor_image_generation_disabled"].includes(code)) return 403;
+  if ([
+    "real_ai_disabled",
+    "visitor_ai_quota_exceeded",
+    "demo_standalone_image_quota_exceeded",
+    "visitor_image_generation_disabled",
+  ].includes(code)) return 403;
   if (["image_request_in_progress", "image_request_already_failed", "image_request_conflict"].includes(code)) return 409;
   if (code === "image_provider_rate_limited") return 429;
   if (["image_provider_timeout", "image_provider_unavailable", "image_provider_error", "image_response_invalid"].includes(code)) return 502;
@@ -439,6 +448,7 @@ export async function generateRealStudioImage(input: {
     loadedTask,
     request: input.request,
     requestContextHash,
+    visitorQuotaScope: "standalone",
     ...(referenceProvider ? { provider: referenceProvider } : {}),
   });
   if (!generated.ok) {
@@ -458,6 +468,7 @@ export async function generateRealStudioImage(input: {
     return {
       ok: true,
       images,
+      demoAccess: generated.data.visitorAccess,
       meta: input.studio.creationMode === "prompt" ? {
         mode: "real",
         visualAuthority: input.studio.visualAuthority ?? "composition_concept",

@@ -18,7 +18,12 @@ import {
   Trash2,
   WandSparkles,
 } from "lucide-react";
-import { buildAccessHeaders, isAuthenticated } from "@/lib/client/accessToken";
+import {
+  buildAccessHeaders,
+  isAuthenticated,
+  updateDemoAccessSnapshot,
+  type DemoAccessInfo,
+} from "@/lib/client/accessToken";
 import {
   getOrCreateStudioAttempt,
   shouldRetainStudioAttempt,
@@ -325,6 +330,9 @@ function ManualListingStudioClient({ onProgressChange }: {
         return;
       }
       if (mode === "real") realAttemptRef.current = null;
+      if ("demoAccess" in json && json.demoAccess) {
+        updateDemoAccessSnapshot(json.demoAccess as DemoAccessInfo);
+      }
       setResult((json as { data: StudioData }).data);
     } catch {
       setError("网络异常，请稍后重试。");

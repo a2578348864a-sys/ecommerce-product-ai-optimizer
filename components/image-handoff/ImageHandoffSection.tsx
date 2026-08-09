@@ -9,12 +9,13 @@ import {
   buildTaskImageCreativeDescription,
   type TaskImageCreativeDescriptionContext,
 } from "@/lib/imageCreativeDescription";
-import {
-  STUDIO_IMAGE_SCENE_GROUPS,
-  type ImageScenePreset,
-} from "@/lib/client/studioImageRequest";
 import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
 import { studioErrorMessage } from "@/lib/client/studioErrorMessage";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import {
+  DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  type StudioImageCreativeIntent,
+} from "@/lib/studioImageCreativeIntent";
 
 type ImageStatus =
   | "ready" | "active" | "stale" | "revoked" | "concept_only" | "legacy_unbound" | "invalid";
@@ -55,6 +56,17 @@ type ImageGenerateResult = {
   humanReviewRequired: boolean;
   draft: ImageDraftSafeSummary | null;
   candidates: ImageDraftSafeSummary[];
+};
+
+type TaskImageCreativeDraft = StudioImageCreativeIntent & {
+  userCreativeDescription: string;
+  descriptionDirty: boolean;
+};
+
+const EMPTY_TASK_IMAGE_CREATIVE_DRAFT: TaskImageCreativeDraft = {
+  ...DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  userCreativeDescription: "",
+  descriptionDirty: false,
 };
 
 function formatTime(value: string | null) {
@@ -191,9 +203,42 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   const [submitting, setSubmitting] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [candidateCount, setCandidateCount] = useState<1 | 2>(2);
-  const [scenePreset, setScenePreset] = useState<ImageScenePreset>("white_studio");
+  const [creativeIntent, setCreativeIntent] = useState<StudioImageCreativeIntent>(
+    DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  );
   const [userCreativeDescription, setUserCreativeDescription] = useState("");
+  const [descriptionDirty, setDescriptionDirty] = useState(false);
   const seededDescriptionKeyRef = useRef("");
+  const restoredDraftRef = useRef(false);
+  const sessionDraft = useSessionDraft<TaskImageCreativeDraft>({
+    pageKind: "image-studio-task",
+    entityId: taskId,
+    revision: state?.expectedHandoffRevision == null
+      ? null
+      : String(state.expectedHandoffRevision),
+    initial: EMPTY_TASK_IMAGE_CREATIVE_DRAFT,
+  });
+
+  useEffect(() => {
+    if (!sessionDraft.draft || restoredDraftRef.current) return;
+    restoredDraftRef.current = true;
+    setCreativeIntent({
+      primaryImagePurpose: sessionDraft.draft.primaryImagePurpose,
+      lifestyleScene: sessionDraft.draft.lifestyleScene,
+      customImagePurpose: sessionDraft.draft.customImagePurpose,
+    });
+    setUserCreativeDescription(sessionDraft.draft.userCreativeDescription);
+    setDescriptionDirty(sessionDraft.draft.descriptionDirty === true);
+  }, [sessionDraft.draft]);
+
+  useEffect(() => {
+    if (state?.expectedHandoffRevision == null) return;
+    sessionDraft.save({
+      ...creativeIntent,
+      userCreativeDescription,
+      descriptionDirty,
+    });
+  }, [creativeIntent, descriptionDirty, sessionDraft, state?.expectedHandoffRevision, userCreativeDescription]);
 
   const loadState = useCallback(async () => {
     try {
@@ -217,16 +262,21 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       const nextState = json.data as ImageStateData;
       setState(nextState);
       if (nextState.creativeDescriptionContext) {
+        const suggestedIntent = nextState.creativeDescriptionContext.suggestedCreativeIntent
+          ?? DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT;
         const seedKey = JSON.stringify({
           revision: nextState.expectedHandoffRevision,
           context: nextState.creativeDescriptionContext,
         });
         if (seededDescriptionKeyRef.current !== seedKey) {
           seededDescriptionKeyRef.current = seedKey;
-          setScenePreset("white_studio");
+          setCreativeIntent(suggestedIntent);
+          setDescriptionDirty(false);
           setUserCreativeDescription(buildTaskImageCreativeDescription(
             nextState.creativeDescriptionContext,
-            "white_studio",
+            suggestedIntent.primaryImagePurpose,
+            suggestedIntent.lifestyleScene,
+            suggestedIntent.customImagePurpose,
           ));
         }
       }
@@ -261,7 +311,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
       count: candidateCount,
-      scenePreset,
+      ...creativeIntent,
       userCreativeDescription,
       // Final Capability: product_visual_draft 提交服务端批准参考的 selectionId（首个批准参考）
       ...(state.mode === "product_visual_draft" && state.approvedVisualReferenceSummary?.[0]
@@ -355,7 +405,11 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   }
 
   const isComposition = state.mode === "composition_concept";
-  const generateDisabled = !state.canGenerate || submitting || state.imageStatus === "revoked" || state.imageStatus === "invalid";
+  const generateDisabled = !state.canGenerate
+    || submitting
+    || state.imageStatus === "revoked"
+    || state.imageStatus === "invalid"
+    || (creativeIntent.primaryImagePurpose === "custom" && !creativeIntent.customImagePurpose.trim());
 
   return (
     <section className="mt-4 rounded-2xl border border-cyan-200 bg-white p-4" data-testid="image-handoff-section">
@@ -457,21 +511,26 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               value={userCreativeDescription}
               maxLength={1200}
               rows={5}
-              onChange={(event) => setUserCreativeDescription(event.target.value)}
+              onChange={(event) => {
+                setUserCreativeDescription(event.target.value);
+                setDescriptionDirty(true);
+              }}
               disabled={submitting}
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 disabled:opacity-60"
             />
           </div>
-          <div data-scene-groups={STUDIO_IMAGE_SCENE_GROUPS.length}>
+          <div>
             <ImageScenePresetPicker
-              name="scenePreset"
-              value={scenePreset}
-              onChange={(nextScenePreset) => {
-                setScenePreset(nextScenePreset);
-                if (state.creativeDescriptionContext) {
+              name="task-image-creative-intent"
+              value={creativeIntent}
+              onChange={(nextCreativeIntent) => {
+                setCreativeIntent(nextCreativeIntent);
+                if (state.creativeDescriptionContext && !descriptionDirty) {
                   setUserCreativeDescription(buildTaskImageCreativeDescription(
                     state.creativeDescriptionContext,
-                    nextScenePreset,
+                    nextCreativeIntent.primaryImagePurpose,
+                    nextCreativeIntent.lifestyleScene,
+                    nextCreativeIntent.customImagePurpose,
                   ));
                 }
               }}

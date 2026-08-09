@@ -28,6 +28,11 @@ import {
   DEMO_IMAGE_AI_RESERVATION_LEASE_MS,
   type DemoAiJobType,
   type DemoAccessRecord,
+  type DemoStandaloneStudioKind,
+  getDemoStandaloneStudioQuotaUsage,
+  markDemoStandaloneStudioProviderStarted,
+  releaseDemoStandaloneStudioQuota,
+  reserveDemoStandaloneStudioQuota,
 } from "@/lib/server/demoAccess";
 import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
@@ -50,6 +55,14 @@ export interface DemoAccessSnapshot extends DemoProductJourneySnapshot {
   maxAiJobs: number;
   usedAiJobs: number;
   remainingAiJobs: number;
+  standaloneListingLimit: number;
+  standaloneListingUsed: number;
+  standaloneListingReserved: number;
+  standaloneListingRemaining: number;
+  standaloneImageUnitLimit: number;
+  standaloneImageUnitsUsed: number;
+  standaloneImageUnitsReserved: number;
+  standaloneImageUnitsRemaining: number;
 }
 
 export type DemoAiQuotaReservation = {
@@ -68,6 +81,14 @@ export type DemoAiJobQuotaReservation = {
   providerCallsStarted?: number;
   providerCallsCompleted?: number;
   providerCallsFailed?: number;
+};
+
+export type VisitorStandaloneStudioQuotaReservation = {
+  kind: DemoStandaloneStudioKind;
+  requestId: string;
+  units: number;
+  duplicate: boolean;
+  status: "reserved" | "committed" | "released";
 };
 
 // ── Error helpers ───────────────────────────────
@@ -132,6 +153,8 @@ export function demoInactiveResponse() {
 
 export function buildDemoAccessSnapshot(record: DemoAccessRecord): DemoAccessSnapshot {
   const remainingAiJobs = getRemainingAiCalls(record);
+  const listing = getDemoStandaloneStudioQuotaUsage(record, "listing");
+  const image = getDemoStandaloneStudioQuotaUsage(record, "image");
   return {
     ...buildDemoProductJourneySnapshot(record),
     maxAiCalls: record.maxAiCalls,
@@ -141,6 +164,14 @@ export function buildDemoAccessSnapshot(record: DemoAccessRecord): DemoAccessSna
     maxAiJobs: record.maxAiCalls,
     usedAiJobs: record.usedAiCalls,
     remainingAiJobs,
+    standaloneListingLimit: listing.limit,
+    standaloneListingUsed: listing.used,
+    standaloneListingReserved: listing.reserved,
+    standaloneListingRemaining: listing.remaining,
+    standaloneImageUnitLimit: image.limit,
+    standaloneImageUnitsUsed: image.used,
+    standaloneImageUnitsReserved: image.reserved,
+    standaloneImageUnitsRemaining: image.remaining,
   };
 }
 
@@ -586,6 +617,175 @@ export function getLatestDemoSnapshot(ctx: AccessContext): DemoAccessSnapshot | 
   const access = recoverExpiredDemoAiReservations(demoCtx.demoAccessId);
   if (!access) return null;
   return buildDemoAccessSnapshot(access);
+}
+
+type VisitorStandaloneStudioQuotaError = {
+  ok: false;
+  status: number;
+  code:
+    | "demo_standalone_listing_quota_exceeded"
+    | "demo_standalone_image_quota_exceeded"
+    | "demo_access_not_found"
+    | "demo_access_inactive"
+    | "demo_standalone_quota_conflict"
+    | "demo_standalone_quota_store_busy";
+  message: string;
+  snapshot?: DemoAccessSnapshot | null;
+};
+
+type VisitorStandaloneStudioQuotaSuccess = {
+  ok: true;
+  reservation: VisitorStandaloneStudioQuotaReservation | null;
+  snapshot: DemoAccessSnapshot | null;
+};
+
+function standaloneQuotaError(
+  kind: DemoStandaloneStudioKind,
+  code: string,
+  snapshot?: DemoAccessSnapshot | null,
+): VisitorStandaloneStudioQuotaError {
+  if (code === "quota_exceeded") {
+    return kind === "listing"
+      ? {
+          ok: false,
+          status: 403,
+          code: "demo_standalone_listing_quota_exceeded",
+          message: "该访客码的独立 Listing 体验额度已用完。",
+          snapshot,
+        }
+      : {
+          ok: false,
+          status: 403,
+          code: "demo_standalone_image_quota_exceeded",
+          message: "该访客码的独立生图体验额度已用完。",
+          snapshot,
+        };
+  }
+  if (code === "access_not_found") {
+    return { ok: false, status: 403, code: "demo_access_not_found", message: "访客码不存在。", snapshot };
+  }
+  if (code === "access_inactive") {
+    return { ok: false, status: 403, code: "demo_access_inactive", message: "该访客码已停用。", snapshot };
+  }
+  return {
+    ok: false,
+    status: 409,
+    code: "demo_standalone_quota_conflict",
+    message: "访客体验额度状态冲突，请稍后重试。",
+    snapshot,
+  };
+}
+
+export function reserveVisitorStandaloneStudioQuota(
+  ctx: AccessContext,
+  input: { kind: DemoStandaloneStudioKind; requestId: string; units: number },
+): VisitorStandaloneStudioQuotaSuccess | VisitorStandaloneStudioQuotaError {
+  if (ctx.mode === "owner") return { ok: true, reservation: null, snapshot: null };
+  try {
+    const result = reserveDemoStandaloneStudioQuota(
+      ctx.demoAccessId,
+      input.kind,
+      input.requestId,
+      input.units,
+    );
+    if (!result.ok) return standaloneQuotaError(input.kind, result.code, getLatestDemoSnapshot(ctx));
+    return {
+      ok: true,
+      reservation: {
+        ...input,
+        duplicate: result.duplicate,
+        status: result.status,
+      },
+      snapshot: buildDemoAccessSnapshot(result.record),
+    };
+  } catch (error) {
+    console.error("Visitor standalone quota reservation failed", {
+      kind: input.kind,
+      demoAccessId: ctx.demoAccessId,
+      code: error instanceof Error ? error.message : "unknown",
+    });
+    return {
+      ok: false,
+      status: 503,
+      code: "demo_standalone_quota_store_busy",
+      message: "访客体验额度暂时不可用，请稍后重试。",
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
+}
+
+export function markVisitorStandaloneStudioProviderStarted(
+  ctx: AccessContext,
+  reservation: VisitorStandaloneStudioQuotaReservation | null,
+): (VisitorStandaloneStudioQuotaSuccess & { duplicate: boolean }) | VisitorStandaloneStudioQuotaError {
+  if (ctx.mode === "owner" || !reservation) {
+    return { ok: true, reservation: null, snapshot: null, duplicate: false };
+  }
+  try {
+    const result = markDemoStandaloneStudioProviderStarted(
+      ctx.demoAccessId,
+      reservation.kind,
+      reservation.requestId,
+      reservation.units,
+    );
+    if (!result.ok) return standaloneQuotaError(reservation.kind, result.code, getLatestDemoSnapshot(ctx));
+    return {
+      ok: true,
+      reservation: { ...reservation, duplicate: result.duplicate, status: result.status },
+      snapshot: buildDemoAccessSnapshot(result.record),
+      duplicate: result.duplicate,
+    };
+  } catch (error) {
+    console.error("Visitor standalone quota Provider boundary failed", {
+      kind: reservation.kind,
+      demoAccessId: ctx.demoAccessId,
+      code: error instanceof Error ? error.message : "unknown",
+    });
+    return {
+      ok: false,
+      status: 503,
+      code: "demo_standalone_quota_store_busy",
+      message: "访客体验额度暂时不可用，请稍后重试。",
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
+}
+
+export function releaseVisitorStandaloneStudioQuota(
+  ctx: AccessContext,
+  reservation: VisitorStandaloneStudioQuotaReservation | null,
+): (VisitorStandaloneStudioQuotaSuccess & { duplicate: boolean }) | VisitorStandaloneStudioQuotaError {
+  if (ctx.mode === "owner" || !reservation) {
+    return { ok: true, reservation: null, snapshot: null, duplicate: false };
+  }
+  try {
+    const result = releaseDemoStandaloneStudioQuota(
+      ctx.demoAccessId,
+      reservation.kind,
+      reservation.requestId,
+      reservation.units,
+    );
+    if (!result.ok) return standaloneQuotaError(reservation.kind, result.code, getLatestDemoSnapshot(ctx));
+    return {
+      ok: true,
+      reservation: { ...reservation, duplicate: result.duplicate, status: result.status },
+      snapshot: buildDemoAccessSnapshot(result.record),
+      duplicate: result.duplicate,
+    };
+  } catch (error) {
+    console.error("Visitor standalone quota release failed", {
+      kind: reservation.kind,
+      demoAccessId: ctx.demoAccessId,
+      code: error instanceof Error ? error.message : "unknown",
+    });
+    return {
+      ok: false,
+      status: 503,
+      code: "demo_standalone_quota_store_busy",
+      message: "访客体验额度暂时不可用，请稍后重试。",
+      snapshot: getLatestDemoSnapshot(ctx),
+    };
+  }
 }
 
 export type VisitorImageQuotaResult =

@@ -14,7 +14,17 @@
 
 import "server-only";
 import { randomBytes, createHash } from "crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync } from "fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { resolve } from "path";
 
 export const DEMO_TEXT_AI_RESERVATION_LEASE_MS = 5 * 60 * 1000;
@@ -25,6 +35,9 @@ export const DEMO_AI_JOB_TYPES = [
   "image_generation",
 ] as const;
 export type DemoAiJobType = typeof DEMO_AI_JOB_TYPES[number];
+export const DEMO_STANDALONE_LISTING_LIMIT = 3;
+export const DEMO_STANDALONE_IMAGE_UNIT_LIMIT = 3;
+export type DemoStandaloneStudioKind = "listing" | "image";
 
 // ── Types ───────────────────────────────────────
 
@@ -65,6 +78,20 @@ export interface DemoAccessRecord {
     sourceTaskCount: number;
     sourceCandidateCount: number;
   };
+  /** V2.2.6 standalone Studio quota, independent from product research journeys. */
+  standaloneListingUsed?: number;
+  standaloneImageUnitsUsed?: number;
+  standaloneStudioQuotaReservations?: Record<string, {
+    kind: DemoStandaloneStudioKind;
+    requestId: string;
+    units: number;
+    status: "reserved" | "committed" | "released";
+    createdAt: string;
+    updatedAt: string;
+    leaseExpiresAt?: string;
+    providerStartedAt?: string;
+    releasedAt?: string;
+  }>;
   aiImageQuotaReservations?: Record<string, {
     count: number;
     status: "reserved" | "committed" | "refunded";
@@ -192,6 +219,48 @@ export function saveDemoAccessStore(store: DemoAccessStore): void {
     }
   } finally {
     if (existsSync(tempPath)) unlinkSync(tempPath);
+  }
+}
+
+const DEMO_STORE_LOCK_MAX_ATTEMPTS = 100;
+const DEMO_STORE_LOCK_RETRY_MS = 10;
+const DEMO_STORE_STALE_LOCK_MS = 2 * 60 * 1000;
+
+function waitSynchronously(milliseconds: number) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function withDemoAccessStoreTransaction<T>(operation: (store: DemoAccessStore) => T): T {
+  ensureDataDir();
+  const lockPath = `${getStorePath()}.lock`;
+  let lockFd: number | null = null;
+  for (let attempt = 0; attempt < DEMO_STORE_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      lockFd = openSync(lockPath, "wx");
+      break;
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "";
+      if (code !== "EEXIST") throw error;
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > DEMO_STORE_STALE_LOCK_MS) {
+          unlinkSync(lockPath);
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      waitSynchronously(DEMO_STORE_LOCK_RETRY_MS);
+    }
+  }
+  if (lockFd === null) throw new Error("demo_access_store_busy");
+  try {
+    const store = loadDemoAccessStore();
+    const result = operation(store);
+    saveDemoAccessStore(store);
+    return result;
+  } finally {
+    closeSync(lockFd);
+    try { unlinkSync(lockPath); } catch { /* another process can remove only a stale lock */ }
   }
 }
 
@@ -558,4 +627,181 @@ export function updateDemoLastUsed(id: string): void {
   if (idx === -1) return;
   store.accesses[idx].lastUsedAt = new Date().toISOString();
   saveDemoAccessStore(store);
+}
+
+export type DemoStandaloneStudioQuotaResult =
+  | {
+      ok: true;
+      record: DemoAccessRecord;
+      duplicate: boolean;
+      status: "reserved" | "committed" | "released";
+    }
+  | {
+      ok: false;
+      code:
+        | "access_not_found"
+        | "access_inactive"
+        | "quota_exceeded"
+        | "reservation_not_found"
+        | "reservation_conflict"
+        | "invalid_units";
+    };
+
+function standaloneReservationKey(kind: DemoStandaloneStudioKind, requestId: string) {
+  return `${kind}:${requestId}`;
+}
+
+export function getDemoStandaloneStudioQuotaUsage(
+  access: DemoAccessRecord,
+  kind: DemoStandaloneStudioKind,
+  nowMs = Date.now(),
+) {
+  const used = kind === "listing"
+    ? Math.max(0, access.standaloneListingUsed ?? 0)
+    : Math.max(0, access.standaloneImageUnitsUsed ?? 0);
+  const reserved = Object.values(access.standaloneStudioQuotaReservations || {})
+    .filter((reservation) => reservation.kind === kind
+      && reservation.status === "reserved"
+      && (!reservation.leaseExpiresAt || Date.parse(reservation.leaseExpiresAt) > nowMs))
+    .reduce((total, reservation) => total + reservation.units, 0);
+  const limit = kind === "listing"
+    ? DEMO_STANDALONE_LISTING_LIMIT
+    : DEMO_STANDALONE_IMAGE_UNIT_LIMIT;
+  return {
+    limit,
+    used,
+    reserved,
+    remaining: Math.max(0, limit - used - reserved),
+  };
+}
+
+/**
+ * Atomically holds standalone Studio capacity. The committed counter is not
+ * incremented until the external Provider boundary is durably recorded.
+ */
+export function reserveDemoStandaloneStudioQuota(
+  id: string,
+  kind: DemoStandaloneStudioKind,
+  requestId: string,
+  units: number,
+  nowMs = Date.now(),
+): DemoStandaloneStudioQuotaResult {
+  if (!requestId.trim() || !Number.isInteger(units) || units <= 0) {
+    return { ok: false, code: "invalid_units" };
+  }
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    if (!access) return { ok: false, code: "access_not_found" } as const;
+    if (!access.isActive) return { ok: false, code: "access_inactive" } as const;
+
+    const key = standaloneReservationKey(kind, requestId);
+    const reservations = access.standaloneStudioQuotaReservations || {};
+    const existing = reservations[key];
+    if (existing && (existing.kind !== kind || existing.requestId !== requestId || existing.units !== units)) {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
+    if (existing?.status === "reserved"
+      && existing.leaseExpiresAt
+      && Date.parse(existing.leaseExpiresAt) <= nowMs) {
+      existing.status = "released";
+      existing.releasedAt = new Date(nowMs).toISOString();
+      existing.updatedAt = existing.releasedAt;
+    }
+    if (existing?.status === "reserved" || existing?.status === "committed") {
+      return {
+        ok: true,
+        record: access,
+        duplicate: true,
+        status: existing.status,
+      } as const;
+    }
+
+    const usage = getDemoStandaloneStudioQuotaUsage(access, kind, nowMs);
+    if (usage.remaining < units) return { ok: false, code: "quota_exceeded" } as const;
+
+    const now = new Date(nowMs).toISOString();
+    access.standaloneStudioQuotaReservations = {
+      ...reservations,
+      [key]: {
+        kind,
+        requestId,
+        units,
+        status: "reserved",
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        leaseExpiresAt: new Date(nowMs + DEMO_TEXT_AI_RESERVATION_LEASE_MS).toISOString(),
+      },
+    };
+    access.lastUsedAt = now;
+    return { ok: true, record: access, duplicate: false, status: "reserved" } as const;
+  });
+}
+
+/** Persist the cost boundary before invoking the external Provider. */
+export function markDemoStandaloneStudioProviderStarted(
+  id: string,
+  kind: DemoStandaloneStudioKind,
+  requestId: string,
+  units: number,
+  nowMs = Date.now(),
+): DemoStandaloneStudioQuotaResult {
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    if (!access) return { ok: false, code: "access_not_found" } as const;
+    const reservation = access.standaloneStudioQuotaReservations?.[
+      standaloneReservationKey(kind, requestId)
+    ];
+    if (!reservation) return { ok: false, code: "reservation_not_found" } as const;
+    if (reservation.kind !== kind || reservation.requestId !== requestId || reservation.units !== units) {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
+    if (reservation.status === "committed") {
+      return { ok: true, record: access, duplicate: true, status: "committed" } as const;
+    }
+    if (reservation.status !== "reserved") {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
+
+    const now = new Date(nowMs).toISOString();
+    reservation.status = "committed";
+    reservation.providerStartedAt = now;
+    reservation.updatedAt = now;
+    if (kind === "listing") {
+      access.standaloneListingUsed = Math.max(0, access.standaloneListingUsed ?? 0) + units;
+    } else {
+      access.standaloneImageUnitsUsed = Math.max(0, access.standaloneImageUnitsUsed ?? 0) + units;
+    }
+    access.lastUsedAt = now;
+    return { ok: true, record: access, duplicate: false, status: "committed" } as const;
+  });
+}
+
+/** Release only a pre-Provider hold. A committed cost is intentionally never refunded. */
+export function releaseDemoStandaloneStudioQuota(
+  id: string,
+  kind: DemoStandaloneStudioKind,
+  requestId: string,
+  units: number,
+  nowMs = Date.now(),
+): DemoStandaloneStudioQuotaResult {
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    if (!access) return { ok: false, code: "access_not_found" } as const;
+    const reservation = access.standaloneStudioQuotaReservations?.[
+      standaloneReservationKey(kind, requestId)
+    ];
+    if (!reservation) return { ok: false, code: "reservation_not_found" } as const;
+    if (reservation.kind !== kind || reservation.requestId !== requestId || reservation.units !== units) {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
+    if (reservation.status === "committed" || reservation.status === "released") {
+      return { ok: true, record: access, duplicate: true, status: reservation.status } as const;
+    }
+
+    const now = new Date(nowMs).toISOString();
+    reservation.status = "released";
+    reservation.releasedAt = now;
+    reservation.updatedAt = now;
+    return { ok: true, record: access, duplicate: false, status: "released" } as const;
+  });
 }

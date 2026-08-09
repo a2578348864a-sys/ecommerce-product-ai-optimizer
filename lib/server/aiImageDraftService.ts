@@ -29,6 +29,9 @@ import {
   reserveVisitorImageAiCalls,
   markVisitorImageAiProviderStarted,
   refundVisitorImageAiCalls,
+  markVisitorStandaloneStudioProviderStarted,
+  releaseVisitorStandaloneStudioQuota,
+  reserveVisitorStandaloneStudioQuota,
   type DemoAccessSnapshot,
 } from "@/lib/server/demoGuard";
 import {
@@ -188,9 +191,21 @@ function updateLedgerStrict(input: Parameters<typeof updateAiImageRequest>[0]): 
 function tryCommitVisitorQuota(
   task: LoadedAiImageTask,
   requestHash: string,
+  count: number,
+  quotaScope: "legacy" | "standalone",
 ): { ok: true; snapshot: DemoAccessSnapshot | null } | { ok: false } {
   if (task.accessMode !== "visitor") return { ok: true, snapshot: null };
   try {
+    if (quotaScope === "standalone") {
+      const committed = markVisitorStandaloneStudioProviderStarted(task.accessContext, {
+        kind: "image",
+        requestId: requestHash,
+        units: count,
+        duplicate: false,
+        status: "reserved",
+      });
+      return committed.ok ? { ok: true, snapshot: committed.snapshot } : { ok: false };
+    }
     const snapshot = commitVisitorImageAiCalls(task.accessContext, requestHash);
     return snapshot ? { ok: true, snapshot } : { ok: false };
   } catch {
@@ -206,8 +221,23 @@ function quotaCommitFailure(): AiImageServiceResult {
   );
 }
 
-function safeRefundVisitorQuota(task: LoadedAiImageTask, requestHash: string): DemoAccessSnapshot | null {
+function safeRefundVisitorQuota(
+  task: LoadedAiImageTask,
+  requestHash: string,
+  count: number,
+  quotaScope: "legacy" | "standalone",
+): DemoAccessSnapshot | null {
   try {
+    if (quotaScope === "standalone") {
+      const released = releaseVisitorStandaloneStudioQuota(task.accessContext, {
+        kind: "image",
+        requestId: requestHash,
+        units: count,
+        duplicate: false,
+        status: "reserved",
+      });
+      return released.ok ? released.snapshot : null;
+    }
     return refundVisitorImageAiCalls(task.accessContext, requestHash);
   } catch {
     return null;
@@ -220,6 +250,7 @@ export async function generateAiImageDraft(input: {
   requestContextHash?: string;
   provider?: AiImageProvider;
   now?: string;
+  visitorQuotaScope?: "legacy" | "standalone";
 }): Promise<AiImageServiceResult> {
   if (!isRealAiImageEnabled()) return fail("real_ai_disabled", "真实 AI 图片生成暂未开启，本次没有消耗额度。", false);
   const basis = buildAiImageGenerationBasis(input.loadedTask.task);
@@ -246,6 +277,7 @@ export async function generateAiImageDraft(input: {
 
   let storedKeys: string[] = [];
   let quotaReserved = false;
+  const quotaScope = input.visitorQuotaScope ?? "legacy";
   try {
     let ledger;
     try {
@@ -266,7 +298,7 @@ export async function generateAiImageDraft(input: {
       if (ledger.entry.status === "committed") {
         const duplicate = duplicateResult(input.loadedTask, requestHash, ledger.entry.itemIds);
         if (duplicate.ok && input.loadedTask.accessMode === "visitor") {
-          const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+          const committed = tryCommitVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
           if (!committed.ok) return quotaCommitFailure();
           duplicate.data.visitorAccess = committed.snapshot;
         }
@@ -277,7 +309,7 @@ export async function generateAiImageDraft(input: {
         if (recovered.ok) {
           let visitorAccess: DemoAccessSnapshot | null = null;
           if (input.loadedTask.accessMode === "visitor") {
-            const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+            const committed = tryCommitVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
             if (!committed.ok) return quotaCommitFailure();
             visitorAccess = committed.snapshot;
           }
@@ -303,10 +335,10 @@ export async function generateAiImageDraft(input: {
             || ["provider_result_received", "asset_ingested", "provider_succeeded", "stored"].includes(ledger.entry.status);
           if (input.loadedTask.accessMode === "visitor") {
             if (costConsumed) {
-              const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+              const committed = tryCommitVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
               if (!committed.ok) return quotaCommitFailure();
             }
-            else safeRefundVisitorQuota(input.loadedTask, requestHash);
+            else safeRefundVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
           }
           try {
             updateLedgerStrict({
@@ -327,13 +359,19 @@ export async function generateAiImageDraft(input: {
         return fail("image_request_in_progress", "同一请求正在处理中，请勿重复提交。", true);
       }
       if (input.loadedTask.accessMode === "visitor" && ledger.entry.providerCostConsumed === true) {
-        const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+        const committed = tryCommitVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
         if (!committed.ok) return quotaCommitFailure();
       }
       return fail("image_request_already_failed", "同一请求已失败，请修改后使用新的请求标识。", false);
     }
 
-    const reservation = reserveVisitorImageAiCalls(input.loadedTask.accessContext, requestHash, input.request.count);
+    const reservation = quotaScope === "standalone"
+      ? reserveVisitorStandaloneStudioQuota(input.loadedTask.accessContext, {
+          kind: "image",
+          requestId: requestHash,
+          units: input.request.count,
+        })
+      : reserveVisitorImageAiCalls(input.loadedTask.accessContext, requestHash, input.request.count);
     if (!reservation.ok) {
       safeUpdateLedger({ requestHash, status: "refunded", errorCode: reservation.code, now: input.now });
       return fail(reservation.code, reservation.message, false);
@@ -348,15 +386,20 @@ export async function generateAiImageDraft(input: {
         now: input.now,
       });
     } catch {
-      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
       return fail("image_ledger_failed", "图片请求账本无法记录 Provider 调用边界，本次没有调用 AI。", false);
     }
-    const providerStartAudit = markVisitorImageAiProviderStarted(
-      input.loadedTask.accessContext,
-      requestHash,
-    );
+    const providerStartAudit = quotaScope === "standalone"
+      ? markVisitorStandaloneStudioProviderStarted(input.loadedTask.accessContext, {
+          kind: "image",
+          requestId: requestHash,
+          units: input.request.count,
+          duplicate: false,
+          status: "reserved",
+        })
+      : markVisitorImageAiProviderStarted(input.loadedTask.accessContext, requestHash);
     if (!providerStartAudit.ok) {
-      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash);
+      if (quotaReserved) safeRefundVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
       safeUpdateLedger({
         requestHash,
         status: "refunded",
@@ -383,7 +426,7 @@ export async function generateAiImageDraft(input: {
     let resultLedgerBoundaryFailed = false;
     const commitReservedVisitorQuota = () => {
       if (!quotaReserved) return true;
-      const committed = tryCommitVisitorQuota(input.loadedTask, requestHash);
+      const committed = tryCommitVisitorQuota(input.loadedTask, requestHash, input.request.count, quotaScope);
       if (!committed.ok) return false;
       visitorAccess = committed.snapshot;
       return true;

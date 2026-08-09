@@ -13,7 +13,7 @@ import { getAccessPassword } from "@/lib/server/accessPassword";
 import { clearDemoAccessLegacyExpiry, findDemoAccessByPassword } from "@/lib/server/demoAccess";
 import { createOwnerSession, createDemoSession } from "@/lib/server/accessSession";
 import { generateSignedToken } from "@/lib/server/signedToken";
-import { getDemoProductJourneySnapshot } from "@/lib/server/demoProductJourneyQuota";
+import { buildDemoAccessSnapshot } from "@/lib/server/demoGuard";
 
 export async function POST(request: NextRequest) {
   // Parse body
@@ -77,9 +77,9 @@ export async function POST(request: NextRequest) {
     }
     demoAccess = migrated;
 
-    let productJourneySnapshot;
+    let demoAccessSnapshot;
     try {
-      productJourneySnapshot = getDemoProductJourneySnapshot(demoAccess.id);
+      demoAccessSnapshot = buildDemoAccessSnapshot(demoAccess);
     } catch {
       return NextResponse.json(
         { ok: false, error: { code: "server_error", message: "访客商品名额状态暂不可用，请稍后重试。" } },
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       mode: "demo",
       accessToken: signedToken,
-      demoAccess: productJourneySnapshot,
+      demoAccess: demoAccessSnapshot,
     });
   }
 

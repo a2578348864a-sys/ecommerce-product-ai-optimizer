@@ -81,6 +81,49 @@ describe("parseStudioImageInput", () => {
     });
   });
 
+  it("maps the public purpose and optional scene to safe internal Provider fields", () => {
+    expect(parseStudioImageInput({
+      productName: "Travel bottle",
+      description: "Blue insulated bottle",
+      primaryImagePurpose: "detail_closeup",
+      lifestyleScene: "outdoor_travel",
+      customImagePurpose: "",
+      prohibitedElements: "Logo",
+    })).toMatchObject({
+      ok: true,
+      data: {
+        primaryImagePurpose: "detail_closeup",
+        lifestyleScene: "outdoor_travel",
+        customImagePurpose: "",
+        imageType: "selling_point_display",
+        visualStyle: "outdoor",
+        compositionRequirements: expect.stringContaining("outdoor or travel"),
+      },
+    });
+  });
+
+  it("rejects conflicting or incomplete public image intent instead of trusting client internals", () => {
+    expect(parseStudioImageInput({
+      productName: "Bottle",
+      primaryImagePurpose: "white_studio",
+      lifestyleScene: "home_lifestyle",
+      customImagePurpose: "",
+    })).toMatchObject({ ok: false, error: { code: "invalid_studio_image_input" } });
+    expect(parseStudioImageInput({
+      productName: "Bottle",
+      primaryImagePurpose: "custom",
+      lifestyleScene: "none",
+      customImagePurpose: "",
+    })).toMatchObject({ ok: false, error: { code: "invalid_studio_image_input" } });
+    expect(parseStudioImageInput({
+      productName: "Bottle",
+      primaryImagePurpose: "detail_closeup",
+      lifestyleScene: "none",
+      customImagePurpose: "",
+      imageType: "product_main",
+    })).toMatchObject({ ok: false, error: { code: "invalid_studio_image_input" } });
+  });
+
   it("keeps legacy Image Studio type values compatible without widening the Task contract", () => {
     expect(parseStudioImageInput({
       productName: "Desk stand",

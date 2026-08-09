@@ -6,7 +6,10 @@ import { mutateTaskResultJson, TaskResultJsonMutationError, type TaskResultJsonS
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { buildImageInputFromCreativeHandoff, validateApprovedVisualSelection, type ImageGenerationInput, type ImageVisualMode } from "@/lib/imageHandoff/imageGenerationInput";
 import { applyTaskImageCreativeDirection } from "@/lib/imageCreativeDescription";
-import type { ImageScenePreset } from "@/lib/client/studioImageRequest";
+import type {
+  StudioImageLifestyleScene,
+  StudioImagePrimaryPurpose,
+} from "@/lib/studioImageCreativeIntent";
 import { buildImageHandoffBinding, parseImageHandoffBinding, computeImageStatus, type ImageHandoffBindingV1, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
 import { createImageProviderByMode, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
@@ -63,7 +66,9 @@ export type ImageGenerateInput = {
   mode: ImageVisualMode;
   count?: 1 | 2;
   approvedVisualReferenceSelectionIds?: string[];
-  scenePreset?: ImageScenePreset;
+  primaryImagePurpose?: StudioImagePrimaryPurpose;
+  lifestyleScene?: StudioImageLifestyleScene;
+  customImagePurpose?: string;
   userCreativeDescription?: string;
   confirmed: true;
 };
@@ -264,7 +269,9 @@ export async function generateImageDraftFromHandoff(
     throw new ImageHandoffError(buildResult.code, 422, buildResult.message);
   }
   const creativeDirection = {
-    scenePreset: input.scenePreset ?? "white_studio",
+    primaryImagePurpose: input.primaryImagePurpose ?? "white_studio",
+    lifestyleScene: input.lifestyleScene ?? "none",
+    customImagePurpose: input.customImagePurpose ?? "",
     userCreativeDescription: input.userCreativeDescription
       ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
   };

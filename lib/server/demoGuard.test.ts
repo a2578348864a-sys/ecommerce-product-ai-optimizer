@@ -37,6 +37,9 @@ import {
   commitVisitorImageAiCalls,
   settleDemoAiCalls,
   getLatestDemoSnapshot,
+  markVisitorStandaloneStudioProviderStarted,
+  releaseVisitorStandaloneStudioQuota,
+  reserveVisitorStandaloneStudioQuota,
   type GuardResult,
 } from "@/lib/server/demoGuard";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -76,6 +79,178 @@ describe("buildDemoAccessSnapshot", () => {
     expect(snap.usedAiCalls).toBe(0);
     expect(snap.maxAiCalls).toBe(5);
     expect(snap.isActive).toBe(true);
+  });
+});
+
+describe("Visitor standalone Studio quota", () => {
+  beforeEach(() => saveDemoAccessStore(emptyStore()));
+  afterEach(() => saveDemoAccessStore(emptyStore()));
+
+  it("defaults legacy Visitor records to three Listing calls and three image units", () => {
+    const { record } = createDemoAccess({ label: "Legacy" });
+    expect(buildDemoAccessSnapshot(record)).toMatchObject({
+      standaloneListingLimit: 3,
+      standaloneListingUsed: 0,
+      standaloneListingReserved: 0,
+      standaloneListingRemaining: 3,
+      standaloneImageUnitLimit: 3,
+      standaloneImageUnitsUsed: 0,
+      standaloneImageUnitsReserved: 0,
+      standaloneImageUnitsRemaining: 3,
+    });
+  });
+
+  it("charges Listing once only when its Provider boundary starts", () => {
+    const { record } = createDemoAccess({ label: "Listing" });
+    const ctx = makeDemoCtx(record.id);
+    const input = { kind: "listing" as const, requestId: "listing-1", units: 1 };
+    const reserved = reserveVisitorStandaloneStudioQuota(ctx, input);
+    expect(reserved).toMatchObject({
+      ok: true,
+      reservation: { ...input, duplicate: false, status: "reserved" },
+      snapshot: { standaloneListingRemaining: 2, standaloneListingUsed: 0 },
+    });
+    if (!reserved.ok || !reserved.reservation) return;
+
+    expect(markVisitorStandaloneStudioProviderStarted(ctx, reserved.reservation)).toMatchObject({
+      ok: true,
+      duplicate: false,
+      snapshot: { standaloneListingRemaining: 2, standaloneListingUsed: 1 },
+    });
+    expect(markVisitorStandaloneStudioProviderStarted(ctx, reserved.reservation)).toMatchObject({
+      ok: true,
+      duplicate: true,
+      snapshot: { standaloneListingUsed: 1 },
+    });
+    expect(reserveVisitorStandaloneStudioQuota(ctx, input)).toMatchObject({
+      ok: true,
+      reservation: { duplicate: true, status: "committed" },
+      snapshot: { standaloneListingUsed: 1 },
+    });
+  });
+
+  it("releases pre-Provider failure but keeps post-start failures charged", () => {
+    const { record } = createDemoAccess({ label: "Boundary" });
+    const ctx = makeDemoCtx(record.id);
+    const first = reserveVisitorStandaloneStudioQuota(ctx, {
+      kind: "listing",
+      requestId: "before-provider",
+      units: 1,
+    });
+    if (!first.ok || !first.reservation) return;
+    expect(releaseVisitorStandaloneStudioQuota(ctx, first.reservation)).toMatchObject({
+      ok: true,
+      snapshot: { standaloneListingUsed: 0, standaloneListingRemaining: 3 },
+    });
+
+    const second = reserveVisitorStandaloneStudioQuota(ctx, {
+      kind: "listing",
+      requestId: "after-provider",
+      units: 1,
+    });
+    if (!second.ok || !second.reservation) return;
+    markVisitorStandaloneStudioProviderStarted(ctx, second.reservation);
+    expect(releaseVisitorStandaloneStudioQuota(ctx, second.reservation)).toMatchObject({
+      ok: true,
+      duplicate: true,
+      snapshot: { standaloneListingUsed: 1, standaloneListingRemaining: 2 },
+    });
+  });
+
+  it("charges image requests by actual requested units and rejects over-capacity", () => {
+    const { record } = createDemoAccess({ label: "Images" });
+    const ctx = makeDemoCtx(record.id);
+    const two = reserveVisitorStandaloneStudioQuota(ctx, {
+      kind: "image",
+      requestId: "image-two",
+      units: 2,
+    });
+    if (!two.ok || !two.reservation) return;
+    expect(markVisitorStandaloneStudioProviderStarted(ctx, two.reservation)).toMatchObject({
+      ok: true,
+      snapshot: { standaloneImageUnitsUsed: 2, standaloneImageUnitsRemaining: 1 },
+    });
+    expect(reserveVisitorStandaloneStudioQuota(ctx, {
+      kind: "image",
+      requestId: "image-over",
+      units: 2,
+    })).toMatchObject({
+      ok: false,
+      code: "demo_standalone_image_quota_exceeded",
+      message: "该访客码的独立生图体验额度已用完。",
+    });
+    const one = reserveVisitorStandaloneStudioQuota(ctx, {
+      kind: "image",
+      requestId: "image-one",
+      units: 1,
+    });
+    if (!one.ok || !one.reservation) return;
+    markVisitorStandaloneStudioProviderStarted(ctx, one.reservation);
+    expect(getLatestDemoSnapshot(ctx)).toMatchObject({
+      standaloneImageUnitsUsed: 3,
+      standaloneImageUnitsRemaining: 0,
+    });
+  });
+
+  it("allows only three distinct standalone Listings and rejects the fourth", () => {
+    const { record } = createDemoAccess({ label: "Three listings" });
+    const ctx = makeDemoCtx(record.id);
+    for (let index = 1; index <= 3; index += 1) {
+      const reserved = reserveVisitorStandaloneStudioQuota(ctx, {
+        kind: "listing",
+        requestId: `listing-${index}`,
+        units: 1,
+      });
+      expect(reserved.ok).toBe(true);
+      if (!reserved.ok || !reserved.reservation) return;
+      markVisitorStandaloneStudioProviderStarted(ctx, reserved.reservation);
+    }
+    expect(reserveVisitorStandaloneStudioQuota(ctx, {
+      kind: "listing",
+      requestId: "listing-4",
+      units: 1,
+    })).toMatchObject({
+      ok: false,
+      code: "demo_standalone_listing_quota_exceeded",
+      message: "该访客码的独立 Listing 体验额度已用完。",
+    });
+  });
+
+  it("keeps Owner unlimited and isolates Visitors", () => {
+    const owner = makeOwnerCtx();
+    const { record: visitorA } = createDemoAccess({ label: "A" });
+    const { record: visitorB } = createDemoAccess({ label: "B" });
+    expect(reserveVisitorStandaloneStudioQuota(owner, {
+      kind: "image",
+      requestId: "owner-image",
+      units: 100,
+    })).toEqual({ ok: true, reservation: null, snapshot: null });
+
+    const a = makeDemoCtx(visitorA.id);
+    const reserved = reserveVisitorStandaloneStudioQuota(a, {
+      kind: "listing",
+      requestId: "a-listing",
+      units: 1,
+    });
+    if (!reserved.ok || !reserved.reservation) return;
+    markVisitorStandaloneStudioProviderStarted(a, reserved.reservation);
+    expect(getLatestDemoSnapshot(a)?.standaloneListingUsed).toBe(1);
+    expect(getLatestDemoSnapshot(makeDemoCtx(visitorB.id))?.standaloneListingUsed).toBe(0);
+  });
+
+  it("serializes competing reservations so available units cannot be overspent", async () => {
+    const { record } = createDemoAccess({ label: "Concurrent" });
+    const ctx = makeDemoCtx(record.id);
+    const attempts = await Promise.all([
+      Promise.resolve().then(() => reserveVisitorStandaloneStudioQuota(ctx, {
+        kind: "image", requestId: "concurrent-a", units: 2,
+      })),
+      Promise.resolve().then(() => reserveVisitorStandaloneStudioQuota(ctx, {
+        kind: "image", requestId: "concurrent-b", units: 2,
+      })),
+    ]);
+    expect(attempts.filter((result) => result.ok)).toHaveLength(1);
+    expect(getLatestDemoSnapshot(ctx)?.standaloneImageUnitsReserved).toBe(2);
   });
 });
 

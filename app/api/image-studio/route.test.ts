@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   markVisitorImageAiProviderStarted: vi.fn(),
   commitVisitorImageAiCalls: vi.fn(),
   refundVisitorImageAiCalls: vi.fn(),
+  reserveVisitorStandaloneStudioQuota: vi.fn(),
+  markVisitorStandaloneStudioProviderStarted: vi.fn(),
+  releaseVisitorStandaloneStudioQuota: vi.fn(),
   imageEnabled: false,
   visitorImageEnabled: false,
   taskCreate: vi.fn(),
@@ -30,6 +33,9 @@ vi.mock("@/lib/server/demoGuard", () => ({
   markVisitorImageAiProviderStarted: mocks.markVisitorImageAiProviderStarted,
   commitVisitorImageAiCalls: mocks.commitVisitorImageAiCalls,
   refundVisitorImageAiCalls: mocks.refundVisitorImageAiCalls,
+  reserveVisitorStandaloneStudioQuota: mocks.reserveVisitorStandaloneStudioQuota,
+  markVisitorStandaloneStudioProviderStarted: mocks.markVisitorStandaloneStudioProviderStarted,
+  releaseVisitorStandaloneStudioQuota: mocks.releaseVisitorStandaloneStudioQuota,
 }));
 
 vi.mock("@/lib/server/realAiImageGate", () => ({
@@ -159,6 +165,19 @@ describe("POST /api/image-studio", () => {
     mocks.markVisitorImageAiProviderStarted.mockReturnValue({ ok: true });
     mocks.commitVisitorImageAiCalls.mockReturnValue({ remainingAiCalls: 1 });
     mocks.refundVisitorImageAiCalls.mockReturnValue(null);
+    mocks.reserveVisitorStandaloneStudioQuota.mockImplementation((context, input) => ({
+      ok: true,
+      reservation: context.mode === "demo"
+        ? { ...input, duplicate: false, status: "reserved" }
+        : null,
+      snapshot: null,
+    }));
+    mocks.markVisitorStandaloneStudioProviderStarted.mockReturnValue({
+      ok: true, reservation: null, snapshot: null, duplicate: false,
+    });
+    mocks.releaseVisitorStandaloneStudioQuota.mockReturnValue({
+      ok: true, reservation: null, snapshot: null, duplicate: false,
+    });
     setAiImageProviderForTests(successfulProvider());
   });
 
@@ -191,6 +210,7 @@ describe("POST /api/image-studio", () => {
       count: 1,
     });
     expect(providerCalls).toBe(0);
+    expect(mocks.reserveVisitorStandaloneStudioQuota).not.toHaveBeenCalled();
   });
 
   it("uses the complete Image Studio strategy in Mock without creating business records", async () => {
@@ -315,6 +335,38 @@ describe("POST /api/image-studio", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error.code).toBe("real_ai_confirmation_required");
     expect(providerCalls).toBe(0);
+  });
+
+  it("allows two standalone Visitor images and reserves two image units", async () => {
+    mocks.imageEnabled = true;
+    mocks.visitorImageEnabled = true;
+    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: VISITOR_CONTEXT });
+
+    const response = await post({
+      creationMode: "guided",
+      productName: "Travel bottle",
+      description: "Blue bottle",
+      primaryImagePurpose: "detail_closeup",
+      lifestyleScene: "outdoor_travel",
+      customImagePurpose: "",
+      prohibitedElements: "Logo and watermark",
+      aspectRatio: "square_1_1",
+      count: 2,
+      mode: "real",
+      confirmRealAi: true,
+      idempotencyKey: randomUUID(),
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.images).toHaveLength(2);
+    expect(providerCalls).toBe(1);
+    expect(mocks.reserveVisitorStandaloneStudioQuota).toHaveBeenCalledWith(
+      VISITOR_CONTEXT,
+      expect.objectContaining({ kind: "image", units: 2 }),
+    );
+    expect(mocks.markVisitorStandaloneStudioProviderStarted).toHaveBeenCalled();
+    expect(mocks.reserveVisitorImageAiCalls).not.toHaveBeenCalled();
   });
 
 

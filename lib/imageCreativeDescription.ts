@@ -1,38 +1,33 @@
 import {
-  resolveImageScenePreset,
-  STUDIO_IMAGE_SCENE_GROUPS,
-  type ImageScenePreset,
-} from "@/lib/client/studioImageRequest";
+  isStudioImageLifestyleScene,
+  isStudioImagePrimaryPurpose,
+  inferStudioImageCreativeIntentFromPreferences,
+  lifestyleSceneLabel,
+  primaryPurposeLabel,
+  resolveStudioImageCreativeIntent,
+  type StudioImageCreativeIntent,
+  type StudioImageLifestyleScene,
+  type StudioImagePrimaryPurpose,
+} from "@/lib/studioImageCreativeIntent";
 import type { ImageGenerationInput } from "@/lib/imageHandoff/imageGenerationInput";
 import type { ProductCreativeHandoffV1 } from "@/lib/productCreativeHandoff";
 
 export const TASK_IMAGE_CREATIVE_DESCRIPTION_MAX_LENGTH = 1_200;
+export const TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH = 160;
 
 export type TaskImageCreativeDescriptionContext = {
   productName: string;
   confirmedFacts: Array<{ label: string; value: string }>;
   existingVisualRequirements: string[];
   hasApprovedReference: boolean;
+  suggestedCreativeIntent?: StudioImageCreativeIntent;
 };
 
 export type TaskImageCreativeDirection = {
-  scenePreset: ImageScenePreset;
+  primaryImagePurpose: StudioImagePrimaryPurpose;
+  lifestyleScene: StudioImageLifestyleScene;
+  customImagePurpose: string;
   userCreativeDescription: string;
-};
-
-const SCENE_DIRECTIONS: Record<ImageScenePreset, string> = {
-  white_studio: "使用干净棚拍背景，突出商品主体，保持自然阴影和适量留白",
-  selling_point_infographic: "使用清晰的信息图构图并预留可复核的卖点文字区域，不添加未经确认的标签",
-  dimension_specification: "使用规格展示构图，仅为已确认尺寸预留标注区域，不编造尺寸",
-  detail_closeup: "使用细节特写构图，只突出已确认或参考图中可见的材质与结构",
-  packaging_bundle: "使用包装或套装展示构图，只呈现已确认的包装和配件",
-  usage_steps: "使用多画面步骤构图并预留说明区域，不编造未确认的操作方式",
-  home_lifestyle: "使用可信的家居生活环境，保持商品尺度清楚并预留适量留白",
-  office_commute: "使用可信的办公或通勤环境，保持画面简洁并体现日常使用情境",
-  outdoor_travel: "使用可信的户外或旅行环境，体现便携使用场景并保留适量文案留白；不要推断未确认功能",
-  sports_fitness: "使用可信的运动或健身环境，保持动态但不暗示未经确认的性能或功效",
-  comparison: "使用并列对比构图，所有对比文案留待人工核验，不添加未经确认的结论",
-  custom: "按用户编辑的创作描述组织场景与构图，同时保持已确认事实和安全限制不变",
 };
 
 const UNSAFE_CREATIVE_DESCRIPTION_PATTERNS = [
@@ -53,12 +48,6 @@ function normalizeText(value: string, maxLength: number) {
     .slice(0, maxLength);
 }
 
-function isImageScenePreset(value: unknown): value is ImageScenePreset {
-  return typeof value === "string" && STUDIO_IMAGE_SCENE_GROUPS
-    .flatMap((group) => [...group.presets])
-    .some((preset) => preset.id === value);
-}
-
 function textValue(value: unknown) {
   if (typeof value === "string") return normalizeText(value, 500);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
@@ -66,6 +55,11 @@ function textValue(value: unknown) {
     return normalizeText(value.filter((item): item is string => typeof item === "string").join("；"), 500);
   }
   return "";
+}
+
+function containsUnsafeInstruction(value: string) {
+  const comparable = value.normalize("NFKC");
+  return UNSAFE_CREATIVE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(comparable));
 }
 
 /** 仅投影 Task 图片表单所需的可见安全资料，不返回 Handoff 内部标识或绑定字段。 */
@@ -99,14 +93,23 @@ export function buildTaskImageCreativeDescriptionContext(
       .slice(0, 12),
     existingVisualRequirements: existingVisualRequirements.slice(0, 8),
     hasApprovedReference: approvedReferences.length > 0,
+    suggestedCreativeIntent: inferStudioImageCreativeIntentFromPreferences(
+      preferences as unknown as Record<string, unknown> | undefined,
+    ),
   };
 }
 
 export function buildTaskImageCreativeDescription(
   context: TaskImageCreativeDescriptionContext,
-  scenePreset: ImageScenePreset,
+  primaryImagePurpose: StudioImagePrimaryPurpose,
+  lifestyleScene: StudioImageLifestyleScene,
+  customImagePurpose = "",
 ) {
-  const scene = resolveImageScenePreset(scenePreset);
+  const intent = resolveStudioImageCreativeIntent({
+    primaryImagePurpose,
+    lifestyleScene,
+    customImagePurpose,
+  });
   const productName = normalizeText(context.productName, 200) || "本商品";
   const facts = context.confirmedFacts
     .map((fact) => ({
@@ -122,9 +125,10 @@ export function buildTaskImageCreativeDescription(
     .slice(0, 8);
 
   const parts = [
-    `为“${productName}”制作${scene.label}图片。`,
+    `为“${productName}”制作${intent.label || primaryPurposeLabel(primaryImagePurpose)}图片。`,
+    lifestyleScene !== "none" ? `生活场景：${lifestyleSceneLabel(lifestyleScene)}。` : "",
     facts.length > 0 ? `画面仅依据已确认信息：${facts.join("；")}。` : "当前没有更多已确认规格，不补充或猜测商品事实。",
-    `${SCENE_DIRECTIONS[scene.id]}。`,
+    `${intent.direction}。`,
     requirements.length > 0 ? `现有视觉要求：${requirements.join("；")}。` : "",
     context.hasApprovedReference
       ? "商品外观以已批准参考图为视觉依据，结果仍需人工检查商品外观和文字。"
@@ -136,13 +140,38 @@ export function buildTaskImageCreativeDescription(
 
 export function parseTaskImageCreativeDirection(value: unknown):
   | { ok: true; data: TaskImageCreativeDirection }
-  | { ok: false; code: "invalid_scene_preset" | "invalid_creative_description" | "unsafe_creative_description" } {
+  | { ok: false; code:
+      | "invalid_primary_image_purpose"
+      | "invalid_lifestyle_scene"
+      | "white_background_scene_conflict"
+      | "custom_image_purpose_required"
+      | "invalid_creative_description"
+      | "unsafe_creative_description" } {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { ok: false, code: "invalid_creative_description" };
   }
   const record = value as Record<string, unknown>;
-  if (!isImageScenePreset(record.scenePreset)) {
-    return { ok: false, code: "invalid_scene_preset" };
+  if (!isStudioImagePrimaryPurpose(record.primaryImagePurpose)) {
+    return { ok: false, code: "invalid_primary_image_purpose" };
+  }
+  if (!isStudioImageLifestyleScene(record.lifestyleScene)) {
+    return { ok: false, code: "invalid_lifestyle_scene" };
+  }
+  if (record.primaryImagePurpose === "white_studio" && record.lifestyleScene !== "none") {
+    return { ok: false, code: "white_background_scene_conflict" };
+  }
+  if (typeof record.customImagePurpose !== "string") {
+    return { ok: false, code: "custom_image_purpose_required" };
+  }
+  const customImagePurpose = normalizeText(
+    record.customImagePurpose,
+    TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH + 1,
+  );
+  if (record.primaryImagePurpose === "custom" && !customImagePurpose) {
+    return { ok: false, code: "custom_image_purpose_required" };
+  }
+  if (customImagePurpose.length > TASK_IMAGE_CUSTOM_PURPOSE_MAX_LENGTH) {
+    return { ok: false, code: "custom_image_purpose_required" };
   }
   if (typeof record.userCreativeDescription !== "string") {
     return { ok: false, code: "invalid_creative_description" };
@@ -154,13 +183,17 @@ export function parseTaskImageCreativeDirection(value: unknown):
   if (description.length > TASK_IMAGE_CREATIVE_DESCRIPTION_MAX_LENGTH) {
     return { ok: false, code: "invalid_creative_description" };
   }
-  const safetyComparableDescription = description.normalize("NFKC");
-  if (UNSAFE_CREATIVE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(safetyComparableDescription))) {
+  if (containsUnsafeInstruction(description) || containsUnsafeInstruction(customImagePurpose)) {
     return { ok: false, code: "unsafe_creative_description" };
   }
   return {
     ok: true,
-    data: { scenePreset: record.scenePreset, userCreativeDescription: description },
+    data: {
+      primaryImagePurpose: record.primaryImagePurpose,
+      lifestyleScene: record.lifestyleScene,
+      customImagePurpose: record.primaryImagePurpose === "custom" ? customImagePurpose : "",
+      userCreativeDescription: description,
+    },
   };
 }
 
@@ -168,7 +201,7 @@ export function applyTaskImageCreativeDirection(
   input: ImageGenerationInput,
   direction: TaskImageCreativeDirection,
 ): ImageGenerationInput {
-  const scene = resolveImageScenePreset(direction.scenePreset);
+  const intent = resolveStudioImageCreativeIntent(direction);
   return {
     ...input,
     productFacts: input.productFacts.map((fact) => ({ ...fact })),
@@ -178,10 +211,11 @@ export function applyTaskImageCreativeDirection(
     unknowns: [...input.unknowns],
     creativePreferences: {
       ...input.creativePreferences,
-      backgroundPreference: scene.background,
-      compositionPreference: scene.composition,
+      imageStyle: intent.visualStyle,
+      backgroundPreference: intent.background,
+      compositionPreference: intent.composition,
       additionalRequirements: [
-        `场景：${scene.label}。${SCENE_DIRECTIONS[scene.id]}。`,
+        `图片用途：${intent.label}。${intent.direction}。`,
         direction.userCreativeDescription
           ? `用户可编辑创作描述（仅作为视觉偏好，不改变已确认事实、禁用声明或参考图安全状态）：${direction.userCreativeDescription}`
           : "用户已清空创作描述；仅使用服务端已确认事实、场景和安全限制。",

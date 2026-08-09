@@ -356,7 +356,11 @@ export function mergeAiImageDraftSnapshot(input: {
   return { result: { ...result, aiImageDraftSnapshot: snapshot }, snapshot };
 }
 
-export function validateAiImageGenerateRequest(value: unknown, accessMode: AiImageAccessMode): ValidationResult<AiImageGenerateRequest> {
+export function validateAiImageGenerateRequest(
+  value: unknown,
+  accessMode: AiImageAccessMode,
+  options: { allowVisitorBatch?: boolean } = {},
+): ValidationResult<AiImageGenerateRequest> {
   if (!isRecord(value)) return { ok: false, code: "invalid_request", message: "请求格式无效。" };
   const allowedKeys = new Set(["imageType", "count", "additionalDirection", "confirmed", "idempotencyKey"]);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
@@ -368,7 +372,7 @@ export function validateAiImageGenerateRequest(value: unknown, accessMode: AiIma
   if (!Number.isInteger(value.count) || (value.count !== 1 && value.count !== 2)) {
     return { ok: false, code: "invalid_image_count", message: "生成数量无效。" };
   }
-  if (accessMode === "visitor" && value.count !== 1) {
+  if (accessMode === "visitor" && value.count !== 1 && options.allowVisitorBatch !== true) {
     return { ok: false, code: "visitor_image_count_limited", message: "访客模式每次只能生成 1 张图片。" };
   }
   if (value.confirmed !== true) {

@@ -11,13 +11,12 @@ import type {
   ApiError,
   CreativeHandoffPreview,
 } from "@/components/creative-handoff/types";
-import {
-  createImageSceneSelection,
-  resolveImageScenePreset,
-  type ImageScenePreset,
-} from "@/lib/client/studioImageRequest";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import {
+  DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  resolveStudioImageCreativeIntent,
+} from "@/lib/studioImageCreativeIntent";
 
 type PreparationKind = "listing" | "image";
 
@@ -95,7 +94,7 @@ export function TaskStudioPreparation({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
-  const [sceneSelection, setSceneSelection] = useState(() => createImageSceneSelection("white_studio"));
+  const [sceneSelection, setSceneSelection] = useState(DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT);
   const restoredSceneRef = useRef(false);
 
   useEffect(() => {
@@ -112,7 +111,7 @@ export function TaskStudioPreparation({
     revision: kind === "image" && preview?.expectedResearchRevision
       ? String(preview.expectedResearchRevision)
       : null,
-    initial: createImageSceneSelection("white_studio"),
+    initial: DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
   });
 
   useEffect(() => {
@@ -197,7 +196,7 @@ export function TaskStudioPreparation({
     setSubmitting(true);
     setNotice("");
     try {
-      const scene = resolveImageScenePreset(sceneSelection.scenePreset);
+      const scene = resolveStudioImageCreativeIntent(sceneSelection);
       await api.create({
         requestId: createBrowserUuid(),
         selectedFactCandidateIds: selectedFacts,
@@ -213,7 +212,7 @@ export function TaskStudioPreparation({
             imageStyle: scene.visualStyle,
             backgroundPreference: scene.background,
             compositionPreference: scene.composition,
-            additionalRequirements: sceneSelection.customInstruction,
+            additionalRequirements: `图片用途：${scene.label}。${scene.direction}。`,
           } : undefined,
         ),
       });
@@ -309,30 +308,15 @@ export function TaskStudioPreparation({
 
       {kind === "image" ? (
         <div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/30 p-4" data-testid="task-image-scene-selection">
-          <p className="mb-3 text-sm font-bold text-slate-900">图片场景</p>
+          <p className="mb-3 text-sm font-bold text-slate-900">图片用途与场景</p>
           <ImageScenePresetPicker
-            value={sceneSelection.scenePreset}
-            name="taskScenePreset"
-            onChange={(scenePreset: ImageScenePreset) => {
-              setSceneSelection((current) => createImageSceneSelection(scenePreset, current.customInstruction));
+            value={sceneSelection}
+            name="task-image-preparation"
+            onChange={(nextSelection) => {
+              setSceneSelection(nextSelection);
               setConfirmed(false);
             }}
           />
-          <label className="mt-4 grid gap-2 text-sm font-semibold text-slate-700" htmlFor="task-image-custom-instruction">
-            自定义要求
-            <textarea
-              id="task-image-custom-instruction"
-              maxLength={200}
-              rows={3}
-              value={sceneSelection.customInstruction}
-              onChange={(event) => {
-                setSceneSelection(createImageSceneSelection(sceneSelection.scenePreset, event.currentTarget.value));
-                setConfirmed(false);
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-normal"
-              placeholder="例如：右侧保留文案区域，使用温暖早晨光线"
-            />
-          </label>
           {sceneDraft.restored ? (
             <p className="mt-2 text-xs font-semibold text-cyan-800">已恢复刷新前未提交的场景选择。</p>
           ) : null}

@@ -5,7 +5,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Eye,
-  Image,
   Loader2,
   Lock,
   Search,
@@ -25,12 +24,12 @@ type LoginTab = "owner" | "guest";
 const OWNER_PLACEHOLDER = "输入管理员密码";
 const GUEST_PLACEHOLDER = "输入访客码";
 
-const productJourney = [
-  { number: "01", label: "发现商品", description: "上传报表，筛选候选", icon: Search },
-  { number: "02", label: "商品研究", description: "整理信息，评估风险", icon: Sparkles },
-  { number: "03", label: "人工决策", description: "确认继续、暂缓或放弃", icon: CheckCircle2 },
-  { number: "04", label: "创作交接", description: "确认事实与视觉参考", icon: ShieldCheck },
-  { number: "05", label: "内容草稿", description: "生成 Listing 与产品图片", icon: Image },
+export const LOGIN_PRODUCT_JOURNEY = [
+  { number: "01", label: "发现商品", description: "上传 SellerSprite，筛选候选商品", icon: Search },
+  { number: "02", label: "研究优先级", description: "结合市场信号安排研究顺序", icon: Sparkles },
+  { number: "03", label: "AI 商品研究", description: "整理信息、风险与证据缺口", icon: Sparkles },
+  { number: "04", label: "人工决策", description: "决定继续、待补或放弃", icon: CheckCircle2 },
+  { number: "05", label: "按需创作", description: "进入 Listing Studio / Image Studio", icon: ShieldCheck },
 ] as const;
 
 export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
@@ -89,7 +88,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
           </p>
 
           <ol className="login-product-journey" data-testid="login-product-journey" aria-label="商品研究流程">
-            {productJourney.map((step, index) => {
+            {LOGIN_PRODUCT_JOURNEY.map((step, index) => {
               const Icon = step.icon;
               return (
                 <li key={step.number} className="login-journey-step">
@@ -102,7 +101,7 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
                     </p>
                     <p className="mt-1 text-xs leading-5 text-slate-500">{step.description}</p>
                   </div>
-                  {index < productJourney.length - 1 ? <span className="login-journey-line" aria-hidden="true" /> : null}
+                  {index < LOGIN_PRODUCT_JOURNEY.length - 1 ? <span className="login-journey-line" aria-hidden="true" /> : null}
                 </li>
               );
             })}

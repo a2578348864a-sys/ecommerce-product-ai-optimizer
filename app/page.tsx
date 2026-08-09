@@ -65,6 +65,14 @@ export default function Home() {
             reservedProducts: json.demoAccess.reservedProducts,
             remainingProducts: json.demoAccess.remainingProducts,
             migrationStatus: "migrated",
+            standaloneListingLimit: json.demoAccess.standaloneListingLimit,
+            standaloneListingUsed: json.demoAccess.standaloneListingUsed,
+            standaloneListingReserved: json.demoAccess.standaloneListingReserved,
+            standaloneListingRemaining: json.demoAccess.standaloneListingRemaining,
+            standaloneImageUnitLimit: json.demoAccess.standaloneImageUnitLimit,
+            standaloneImageUnitsUsed: json.demoAccess.standaloneImageUnitsUsed,
+            standaloneImageUnitsReserved: json.demoAccess.standaloneImageUnitsReserved,
+            standaloneImageUnitsRemaining: json.demoAccess.standaloneImageUnitsRemaining,
           }
         : undefined;
 

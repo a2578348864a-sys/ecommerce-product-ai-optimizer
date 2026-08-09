@@ -27,6 +27,8 @@ import {
   incrementDemoAiCalls,
   markDemoAiCallProviderStarted,
   reserveDemoAiImageCalls,
+  reserveDemoStandaloneStudioQuota,
+  getDemoStandaloneStudioQuotaUsage,
   recoverExpiredDemoAiReservations,
   loadDemoAccessStore,
   saveDemoAccessStore,
@@ -34,6 +36,41 @@ import {
   generateDemoId,
   type DemoAccessStore,
 } from "@/lib/server/demoAccess";
+
+describe("standalone Studio reservation lease", () => {
+  beforeEach(() => saveDemoAccessStore(emptyStore()));
+  afterEach(() => saveDemoAccessStore(emptyStore()));
+
+  it("recovers a pre-Provider reservation after its lease without charging usage", () => {
+    const { record } = createDemoAccess({ label: "Lease" });
+    const first = reserveDemoStandaloneStudioQuota(record.id, "image", "first", 3, 1_000);
+    expect(first).toMatchObject({ ok: true, status: "reserved" });
+    expect(getDemoStandaloneStudioQuotaUsage(getDemoAccessById(record.id)!, "image", 2_000))
+      .toMatchObject({ used: 0, reserved: 3, remaining: 0 });
+
+    const recovered = reserveDemoStandaloneStudioQuota(
+      record.id,
+      "image",
+      "second",
+      3,
+      1_000 + 5 * 60 * 1_000 + 1,
+    );
+    expect(recovered).toMatchObject({ ok: true, status: "reserved" });
+    const stored = getDemoAccessById(record.id);
+    expect(stored?.standaloneImageUnitsUsed ?? 0).toBe(0);
+    expect(stored).toMatchObject({
+      standaloneStudioQuotaReservations: {
+        "image:first": { status: "reserved" },
+        "image:second": { status: "reserved" },
+      },
+    });
+    expect(getDemoStandaloneStudioQuotaUsage(
+      getDemoAccessById(record.id)!,
+      "image",
+      1_000 + 5 * 60 * 1_000 + 1,
+    )).toMatchObject({ used: 0, reserved: 3, remaining: 0 });
+  });
+});
 
 // ── Helpers ─────────────────────────────────────
 
