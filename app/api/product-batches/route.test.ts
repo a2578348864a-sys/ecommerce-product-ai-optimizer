@@ -214,6 +214,53 @@ describe("unified ProductBatch API", () => {
     );
   });
 
+  it.each([
+    ["no bounds", null, null, null, null],
+    ["minimum only", "20", null, 20, null],
+    ["maximum only", null, "50", null, 50],
+    ["decimal closed range", "20.01", "50", 20.01, 50],
+  ] as const)("passes the user supplied %s price filter to the import service", async (
+    _label,
+    priceMin,
+    priceMax,
+    expectedMin,
+    expectedMax,
+  ) => {
+    const response = await POST(formRequest({ priceMin, priceMax }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.importSellerSpriteProductBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priceMin: expectedMin,
+        priceMax: expectedMax,
+      }),
+    );
+  });
+
+  it("rejects an inverted price range with a Chinese product message", async () => {
+    const response = await POST(formRequest({ priceMin: "50", priceMax: "20" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatchObject({
+      code: "brief_validation_failed",
+      message: "最低价格不能高于最高价格。",
+    });
+    expect(mocks.importSellerSpriteProductBatch).not.toHaveBeenCalled();
+  });
+
+  it("rejects USD price bounds with more than two decimal places", async () => {
+    const response = await POST(formRequest({ priceMin: "20.001", priceMax: null }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toMatchObject({
+      code: "brief_validation_failed",
+      message: "价格必须是大于等于 0、最多两位小数的美元金额。",
+    });
+    expect(mocks.importSellerSpriteProductBatch).not.toHaveBeenCalled();
+  });
+
   it("inspects the selected workbook before requiring import brief fields and does not open a Store", async () => {
     const response = await POST(formRequest({
       operation: "inspect",

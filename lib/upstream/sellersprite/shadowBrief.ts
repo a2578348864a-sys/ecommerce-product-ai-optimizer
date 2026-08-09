@@ -8,8 +8,8 @@ interface SellerSpriteShadowSelectionBriefInputCommon {
   market: string;
   currency: string;
   category: string | null;
-  priceMin: number;
-  priceMax: number;
+  priceMin: number | null;
+  priceMax: number | null;
   requiredSignals: ReadonlyArray<string>;
   optionalSignals: ReadonlyArray<string>;
   createdAt: string;
@@ -33,8 +33,8 @@ interface SellerSpriteShadowSelectionBriefCommon {
   market: "US";
   currency: "USD";
   category: string;
-  priceMin: number;
-  priceMax: number;
+  priceMin: number | null;
+  priceMax: number | null;
   requiredSignals: ReadonlyArray<string>;
   optionalSignals: ReadonlyArray<string>;
   createdAt: string;
@@ -114,14 +114,14 @@ export function normalizeAndValidateSellerSpriteShadowBrief(
   if (typeof categoryValue !== "string" || categoryValue.trim() === "") {
     throw new Error("SELLERSPRITE_BRIEF_CATEGORY_INVALID");
   }
+  const validPriceBound = (value: unknown): value is number | null => (
+    value === null
+    || (typeof value === "number" && Number.isFinite(value) && value >= 0)
+  );
   if (
-    typeof priceMin !== "number"
-    || typeof priceMax !== "number"
-    || !Number.isFinite(priceMin)
-    || !Number.isFinite(priceMax)
-    || priceMin < 0
-    || priceMax < 0
-    || priceMin > priceMax
+    !validPriceBound(priceMin)
+    || !validPriceBound(priceMax)
+    || (priceMin !== null && priceMax !== null && priceMin > priceMax)
   ) {
     throw new Error("SELLERSPRITE_BRIEF_PRICE_RANGE_INVALID");
   }

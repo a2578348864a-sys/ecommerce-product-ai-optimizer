@@ -345,7 +345,6 @@ export function ProductBatchManagerView({
                 type="number"
                 min="0"
                 step="0.01"
-                required
                 disabled={busy}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
               />
@@ -357,7 +356,6 @@ export function ProductBatchManagerView({
                 type="number"
                 min="0"
                 step="0.01"
-                required
                 disabled={busy}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
               />

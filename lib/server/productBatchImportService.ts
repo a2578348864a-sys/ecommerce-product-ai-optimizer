@@ -52,8 +52,8 @@ export interface SellerSpriteProductBatchImportInput {
   reportType: SellerSpriteReportType | null;
   query: string | null;
   category: string;
-  priceMin: number;
-  priceMax: number;
+  priceMin: number | null;
+  priceMax: number | null;
   now?: Date;
   fetchMainImage?: (url: string) => Promise<ProductBatchFetchedImage>;
 }
@@ -139,6 +139,10 @@ function toCents(value: number, field: string): number {
     fail("brief_validation_failed", `${field} is too large.`);
   }
   return cents;
+}
+
+function toOptionalCents(value: number | null, field: string): number | null {
+  return value === null ? null : toCents(value, field);
 }
 
 const PRODUCT_IMAGE_HEADERS = [
@@ -345,6 +349,7 @@ async function buildItems(input: {
   embeddedImages: XlsxEmbeddedImageParseResult;
   capturedAt: string;
   fetchMainImage: (url: string) => Promise<ProductBatchFetchedImage>;
+  priceFilterActive: boolean;
 }): Promise<ProductBatchItemInput[]> {
   const products = new Map(input.snapshot.products.map((product) => [product.asin, product]));
   const shadow = new Map(input.shadow.products.map((product) => [product.asin, product]));
@@ -355,7 +360,10 @@ async function buildItems(input: {
     if (!product || !shadowProduct) {
       fail("projection_integrity_failed", "SellerSprite projections disagree by ASIN.");
     }
-    if (shadowProduct.briefPriceBandResult.status !== "within") continue;
+    if (
+      input.priceFilterActive
+      && shadowProduct.briefPriceBandResult.status !== "within"
+    ) continue;
     const family = input.snapshot.families.find(
       (candidate) => candidate.observedProductAsins.includes(ranked.asin),
     ) ?? null;
@@ -470,9 +478,12 @@ export async function importSellerSpriteProductBatch(
   }
   const shadow = buildSellerSpriteBriefBoundShadowReport(snapshot, brief);
   const ranking = rankSellerSpriteMarketSignals({ snapshot, brief });
-  const priceEligibleProductCount = shadow.products.filter(
-    (product) => product.briefPriceBandResult.status === "within",
-  ).length;
+  const priceFilterActive = input.priceMin !== null || input.priceMax !== null;
+  const priceEligibleProductCount = priceFilterActive
+    ? shadow.products.filter(
+        (product) => product.briefPriceBandResult.status === "within",
+      ).length
+    : shadow.products.length;
   if (priceEligibleProductCount === 0) {
     fail("no_accepted_rows", "No SellerSprite products are inside the selected price range.");
   }
@@ -517,8 +528,8 @@ export async function importSellerSpriteProductBatch(
     reportType,
     query: brief.query,
     category: brief.category,
-    priceMinCents: toCents(brief.priceMin, "priceMin"),
-    priceMaxCents: toCents(brief.priceMax, "priceMax"),
+    priceMinCents: toOptionalCents(input.priceMin, "priceMin"),
+    priceMaxCents: toOptionalCents(input.priceMax, "priceMax"),
     briefHash: brief.briefHash,
     sourceFileName: input.sourceFileName,
     sourceFileSha256: snapshot.sourceFileSha256,
@@ -542,6 +553,7 @@ export async function importSellerSpriteProductBatch(
       embeddedImages,
       capturedAt,
       fetchMainImage: input.fetchMainImage ?? fetchSellerSpriteMainImage,
+      priceFilterActive,
     });
     await input.store.saveBatchItems(processing.id, items);
     const batch = await input.store.markReady(processing.id, {

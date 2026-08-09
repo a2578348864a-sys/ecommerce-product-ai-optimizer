@@ -351,7 +351,9 @@ function commonComponents(
 
   let priceFit: number | null = null;
   if (price.value !== null) {
-    priceFit = price.value >= brief.priceMin && price.value <= brief.priceMax ? 1 : 0;
+    const insideLowerBound = brief.priceMin === null || price.value >= brief.priceMin;
+    const insideUpperBound = brief.priceMax === null || price.value <= brief.priceMax;
+    priceFit = insideLowerBound && insideUpperBound ? 1 : 0;
     (priceFit === 1 ? positiveReasons : counterSignals).push(
       priceFit === 1 ? "price_within_brief_range" : "price_outside_brief_range",
     );

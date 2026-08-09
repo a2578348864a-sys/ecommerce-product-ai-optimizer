@@ -518,6 +518,11 @@ export function buildSellerSpriteOpportunityPreviewViewModel(input: {
   if (report.brief.category.trim() === "") {
     throw new Error("SELLERSPRITE_PREVIEW_CATEGORY_REQUIRED");
   }
+  if (report.brief.priceMin === null || report.brief.priceMax === null) {
+    throw new Error("SELLERSPRITE_PREVIEW_PRICE_RANGE_REQUIRED");
+  }
+  const priceMin = report.brief.priceMin;
+  const priceMax = report.brief.priceMax;
 
   const reportByAsin = new Map(report.products.map((product) => [product.asin, product]));
   const products = snapshot.products.map((product): SellerSpritePreviewProduct => {
@@ -586,8 +591,8 @@ export function buildSellerSpriteOpportunityPreviewViewModel(input: {
     currency: "USD",
     query: report.brief.query,
     category: report.brief.category,
-    priceMin: report.brief.priceMin,
-    priceMax: report.brief.priceMax,
+    priceMin,
+    priceMax,
     sheetName: snapshot.sheetName,
     headerColumnCount: input.headerColumnCount,
     totalRows: snapshot.totalRows,

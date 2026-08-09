@@ -475,6 +475,11 @@ function buildReport(
   ranking: SellerSpriteLocalPreviewRanking,
 ): SellerSpriteLocalPreviewReport {
   const shadowProducts = new Map(shadow.products.map((product) => [product.asin, product]));
+  if (shadow.brief.priceMin === null || shadow.brief.priceMax === null) {
+    previewError("brief_price_range_required", SELLERSPRITE_PREVIEW_EXIT_CODES.internalError);
+  }
+  const priceMin = shadow.brief.priceMin;
+  const priceMax = shadow.brief.priceMax;
   const products = snapshot.products.map((product): SellerSpriteLocalPreviewProduct => {
     const compatibility = shadowProducts.get(product.asin);
     if (!compatibility) {
@@ -482,7 +487,11 @@ function buildReport(
     }
     return {
       ...product,
-      briefPriceBandResult: compatibility.briefPriceBandResult,
+      briefPriceBandResult: {
+        ...compatibility.briefPriceBandResult,
+        priceMin,
+        priceMax,
+      },
       provisionalDisposition: compatibility.provisionalDisposition,
       promotionEligible: false,
     };
@@ -506,8 +515,8 @@ function buildReport(
     currency: "USD",
     query: shadow.brief.query,
     category: shadow.brief.category ?? "",
-    priceMin: shadow.brief.priceMin,
-    priceMax: shadow.brief.priceMax,
+    priceMin,
+    priceMax,
     source: "SellerSprite",
     sourceType: "provider_metric",
     metricNature: {

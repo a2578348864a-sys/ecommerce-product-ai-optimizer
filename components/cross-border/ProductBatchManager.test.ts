@@ -201,6 +201,8 @@ describe("ProductBatch unified role UI", () => {
     expect(automatic).toContain('name="category"');
     expect(automatic).toContain('name="priceMin"');
     expect(automatic).toContain('name="priceMax"');
+    expect(automatic).not.toMatch(/<input[^>]*name="priceMin"[^>]*required/);
+    expect(automatic).not.toMatch(/<input[^>]*name="priceMax"[^>]*required/);
     expect(automatic).toContain("已识别为搜索结果报表");
     expect(automatic).toContain("导入并查看优先级");
     expect(automatic).not.toMatch(/href="\/opportunities\/sellersprite-preview"/);

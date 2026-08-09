@@ -84,12 +84,20 @@ function textField(formData: FormData, name: string): string | null {
     : null;
 }
 
-function moneyField(value: string | null): number | null {
-  if (value === null || !/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) {
-    return null;
-  }
+function moneyField(
+  formData: FormData,
+  name: string,
+): { ok: true; value: number | null } | { ok: false } {
+  const values = formData.getAll(name);
+  if (values.length === 0) return { ok: true, value: null };
+  if (values.length !== 1 || typeof values[0] !== "string") return { ok: false };
+  const value = values[0].trim();
+  if (value === "") return { ok: true, value: null };
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value)) return { ok: false };
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  return Number.isFinite(parsed) && parsed >= 0
+    ? { ok: true, value: parsed }
+    : { ok: false };
 }
 
 function safeFileName(value: string): string | null {
@@ -242,16 +250,29 @@ export async function POST(request: NextRequest) {
   }
   const query = reportType === "category_current" ? null : textField(formData, "query");
   const category = textField(formData, "category");
-  const priceMin = moneyField(textField(formData, "priceMin"));
-  const priceMax = moneyField(textField(formData, "priceMax"));
+  const priceMinField = moneyField(formData, "priceMin");
+  const priceMaxField = moneyField(formData, "priceMax");
+  if (!priceMinField.ok || !priceMaxField.ok) {
+    return errorResponse(
+      400,
+      "brief_validation_failed",
+      "价格必须是大于等于 0、最多两位小数的美元金额。",
+    );
+  }
+  const priceMin = priceMinField.value;
+  const priceMax = priceMaxField.value;
+  if (priceMin !== null && priceMax !== null && priceMin > priceMax) {
+    return errorResponse(
+      400,
+      "brief_validation_failed",
+      "最低价格不能高于最高价格。",
+    );
+  }
   if (
     (reportType === "search_results" && (!query || query.length > 200))
     || !category
     || category.length > 200
     || !isAmazonUsTopLevelCategory(category)
-    || priceMin === null
-    || priceMax === null
-    || priceMin > priceMax
   ) {
     return errorResponse(400, "brief_validation_failed", "筛选条件无效。");
   }

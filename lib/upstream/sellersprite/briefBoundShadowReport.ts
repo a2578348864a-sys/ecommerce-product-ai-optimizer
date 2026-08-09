@@ -54,8 +54,8 @@ export interface SellerSpriteBriefBoundShadowProduct {
     status: "within" | "outside" | "missing" | "conflict";
     price: number | null;
     currency: "USD";
-    priceMin: number;
-    priceMax: number;
+    priceMin: number | null;
+    priceMax: number | null;
   };
   provisionalNumericScore: number | null;
   provisionalDisposition: SellerSpriteProvisionalDisposition;
@@ -144,6 +144,14 @@ function signalMissing(product: SellerSpriteProductObservation, signal: string):
   return true;
 }
 
+function priceMatchesBrief(
+  price: number,
+  brief: SellerSpriteShadowSelectionBrief,
+): boolean {
+  return (brief.priceMin === null || price >= brief.priceMin)
+    && (brief.priceMax === null || price <= brief.priceMax);
+}
+
 function scoreSources(
   product: SellerSpriteProductObservation,
   brief: SellerSpriteShadowSelectionBrief,
@@ -168,7 +176,7 @@ function scoreSources(
       normalizedValue: price,
       provisionalPoints: price === null
         ? null
-        : price >= brief.priceMin && price <= brief.priceMax
+        : priceMatchesBrief(price, brief)
           ? 25
           : 0,
       appearanceIdentities,
@@ -240,7 +248,7 @@ function buildProduct(
     ? "conflict" as const
     : price === null
       ? "missing" as const
-      : price >= brief.priceMin && price <= brief.priceMax
+      : priceMatchesBrief(price, brief)
         ? "within" as const
         : "outside" as const;
   const evidence = product.occurrences.flatMap((occurrence) => occurrence.providerEvidence);

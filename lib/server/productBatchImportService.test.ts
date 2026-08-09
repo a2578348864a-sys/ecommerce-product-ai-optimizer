@@ -253,6 +253,135 @@ describe("shared SellerSprite ProductBatch import", () => {
     expect(lowerBoundResult.batch.acceptedCount).toBe(1);
   });
 
+  it.each([
+    {
+      label: "10 through 20",
+      priceMin: 10,
+      priceMax: 20,
+      expectedAsins: ["B0TST00001", "B0TST00002"],
+      expectedMinCents: 1_000,
+      expectedMaxCents: 2_000,
+    },
+    {
+      label: "20.01 through 30",
+      priceMin: 20.01,
+      priceMax: 30,
+      expectedAsins: ["B0TST00003", "B0TST00004"],
+      expectedMinCents: 2_001,
+      expectedMaxCents: 3_000,
+    },
+    {
+      label: "50 through 100",
+      priceMin: 50,
+      priceMax: 100,
+      expectedAsins: ["B0TST00005", "B0TST00006"],
+      expectedMinCents: 5_000,
+      expectedMaxCents: 10_000,
+    },
+    {
+      label: "minimum 50 only",
+      priceMin: 50,
+      priceMax: null,
+      expectedAsins: ["B0TST00005", "B0TST00006"],
+      expectedMinCents: 5_000,
+      expectedMaxCents: null,
+    },
+    {
+      label: "maximum 20 only",
+      priceMin: null,
+      priceMax: 20,
+      expectedAsins: ["B0TST00001", "B0TST00002"],
+      expectedMinCents: null,
+      expectedMaxCents: 2_000,
+    },
+    {
+      label: "no price filter",
+      priceMin: null,
+      priceMax: null,
+      expectedAsins: [
+        "B0TST00001",
+        "B0TST00002",
+        "B0TST00003",
+        "B0TST00004",
+        "B0TST00005",
+        "B0TST00006",
+        "B0TST00007",
+        "B0TST00008",
+      ],
+      expectedMinCents: null,
+      expectedMaxCents: null,
+    },
+  ])("applies the user supplied $label range to ProductBatchItem persistence", async ({
+    label,
+    priceMin,
+    priceMax,
+    expectedAsins,
+    expectedMinCents,
+    expectedMaxCents,
+  }) => {
+    const pricedRows = [10, 20, 20.01, 30, 50, 100].map((price, index) => ({
+      ...SELLERSPRITE_SANITIZED_ROWS[index % SELLERSPRITE_SANITIZED_ROWS.length],
+      "#": String(index + 1),
+      ASIN: `B0TST0000${index + 1}`,
+      SKU: `PRICE-${index + 1}`,
+      搜索排名: `自然位：第1页第${index + 1}位`,
+      商品标题: `Dynamic price product ${index + 1}`,
+      商品详情页链接: `https://www.amazon.com/dp/B0TST0000${index + 1}`,
+      父ASIN: "",
+      "价格($)": `$${price.toFixed(2)}`,
+    }));
+    const missingPrice = {
+      ...SELLERSPRITE_SANITIZED_ROWS[0],
+      "#": "7",
+      ASIN: "B0TST00007",
+      SKU: "PRICE-7",
+      搜索排名: "自然位：第1页第7位",
+      商品标题: "Missing price product",
+      商品详情页链接: "https://www.amazon.com/dp/B0TST00007",
+      父ASIN: "",
+      "价格($)": "",
+    };
+    const conflictingPriceRows = ["$25.00", "$35.00"].map((price, index) => ({
+      ...SELLERSPRITE_SANITIZED_ROWS[1],
+      "#": String(index + 8),
+      ASIN: "B0TST00008",
+      SKU: `PRICE-CONFLICT-${index + 1}`,
+      搜索排名: `自然位：第1页第${index + 8}位`,
+      商品标题: "Conflicting price product",
+      商品详情页链接: "https://www.amazon.com/dp/B0TST00008",
+      父ASIN: "",
+      "价格($)": price,
+    }));
+    const store = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", {
+      root: join(root, label.replaceAll(" ", "-")),
+    });
+
+    const result = await importSellerSpriteProductBatch({
+      ...input(store),
+      bytes: new Uint8Array(createSellerSpritePreviewTestWorkbook({
+        rows: [...pricedRows, missingPrice, ...conflictingPriceRows],
+      })),
+      priceMin,
+      priceMax,
+    });
+    const items = await store.getBatchItems(result.batch.id);
+
+    expect(items.map((item) => item.asin).sort()).toEqual([...expectedAsins].sort());
+    expect(result.batch.priceMinCents).toBe(expectedMinCents);
+    expect(result.batch.priceMaxCents).toBe(expectedMaxCents);
+    expect(result.batch.acceptedCount).toBe(expectedAsins.length);
+    if (priceMin === null && priceMax === null) {
+      const missingProduct = JSON.parse(
+        items.find((item) => item.asin === "B0TST00007")!.normalizedProductJson,
+      );
+      const conflictingProduct = JSON.parse(
+        items.find((item) => item.asin === "B0TST00008")!.normalizedProductJson,
+      );
+      expect(missingProduct.providerMetrics.price.status).toBe("missing");
+      expect(conflictingProduct.providerMetrics.price.status).toBe("conflict");
+    }
+  });
+
   it("produces the same Snapshot v3 and Ranking v2 for separate role stores", async () => {
     const ownerLike = createDemoProductBatchStore("demo_aaaaaaaaaaaaaaaa", { root });
     const visitor = createDemoProductBatchStore("demo_bbbbbbbbbbbbbbbb", { root });
