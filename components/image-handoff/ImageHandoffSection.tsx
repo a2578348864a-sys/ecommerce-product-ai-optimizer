@@ -1,9 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { useRouter } from "next/navigation";
+import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
+import {
+  buildTaskImageCreativeDescription,
+  type TaskImageCreativeDescriptionContext,
+} from "@/lib/imageCreativeDescription";
+import {
+  STUDIO_IMAGE_SCENE_GROUPS,
+  type ImageScenePreset,
+} from "@/lib/client/studioImageRequest";
+import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
+import { studioErrorMessage } from "@/lib/client/studioErrorMessage";
 
 type ImageStatus =
   | "ready" | "active" | "stale" | "revoked" | "concept_only" | "legacy_unbound" | "invalid";
@@ -33,6 +44,7 @@ type ImageStateData = {
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   expectedHandoffRevision: number | null;
   allowedModes: Array<"composition_concept" | "product_visual_draft">;
+  creativeDescriptionContext: TaskImageCreativeDescriptionContext | null;
 };
 
 type ImageGenerateResult = {
@@ -174,26 +186,53 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
 }) {
   const router = useRouter();
   const [state, setState] = useState<ImageStateData | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [candidateCount, setCandidateCount] = useState<1 | 2>(2);
-  const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
+  const [scenePreset, setScenePreset] = useState<ImageScenePreset>("white_studio");
+  const [userCreativeDescription, setUserCreativeDescription] = useState("");
+  const seededDescriptionKeyRef = useRef("");
 
   const loadState = useCallback(async () => {
     try {
+      setLoadError("");
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-handoff`, {
         headers: buildAccessHeaders(),
         cache: "no-store",
       });
-      const json = await res.json();
-      if (!res.ok || !json.ok) {
+      const parsed = await readJsonApiResponse(res);
+      if (!parsed.ok) {
         setState(null);
+        setLoadError(studioErrorMessage({ error: parsed.error }, "图片创作资料暂时无法加载，请稍后重试。"));
         return;
       }
-      setState(json.data as ImageStateData);
+      const json = parsed.payload as { ok?: boolean; data?: ImageStateData; error?: { code?: string } };
+      if (!res.ok || !json.ok) {
+        setState(null);
+        setLoadError(studioErrorMessage(json, "图片创作资料暂时无法加载，请稍后重试。"));
+        return;
+      }
+      const nextState = json.data as ImageStateData;
+      setState(nextState);
+      if (nextState.creativeDescriptionContext) {
+        const seedKey = JSON.stringify({
+          revision: nextState.expectedHandoffRevision,
+          context: nextState.creativeDescriptionContext,
+        });
+        if (seededDescriptionKeyRef.current !== seedKey) {
+          seededDescriptionKeyRef.current = seedKey;
+          setScenePreset("white_studio");
+          setUserCreativeDescription(buildTaskImageCreativeDescription(
+            nextState.creativeDescriptionContext,
+            "white_studio",
+          ));
+        }
+      }
     } catch {
       setState(null);
+      setLoadError("网络异常，图片创作资料暂时无法加载。");
     }
   }, [taskId]);
 
@@ -222,28 +261,31 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       expectedHandoffRevision: state.expectedHandoffRevision,
       mode: state.mode,
       count: candidateCount,
+      scenePreset,
+      userCreativeDescription,
       // Final Capability: product_visual_draft 提交服务端批准参考的 selectionId（首个批准参考）
       ...(state.mode === "product_visual_draft" && state.approvedVisualReferenceSummary?.[0]
         ? { approvedVisualReferenceSelectionIds: [(state.approvedVisualReferenceSummary[0] as { selectionId?: string }).selectionId].filter(Boolean) }
         : {}),
       confirmed: true,
     };
-    setRetryBody(body);
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/image-handoff`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const parsed = await readJsonApiResponse(res);
+      const json = parsed.ok
+        ? parsed.payload as { ok?: boolean; data?: ImageGenerateResult; error?: { code?: string } }
+        : { ok: false, error: parsed.error };
       if (!res.ok || !json.ok) {
         if (json.error?.code === "image_idempotency_conflict" || json.error?.code === "handoff_stale"
           || json.error?.code === "handoff_revision_conflict" || json.error?.code === "task_result_conflict") {
           setRequestId(null);
-          setRetryBody(null);
           setNotice({ tone: "error", text: "交接或视觉参考已更新，请重新生成。" });
         } else {
-          setNotice({ tone: "error", text: json.error?.message ?? "图片草稿生成失败。" });
+          setNotice({ tone: "error", text: studioErrorMessage(json, "图片生成失败，请稍后重试。") });
         }
         return;
       }
@@ -259,7 +301,6 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       } : current);
       setNotice({ tone: "info", text: data.idempotentReplay ? "已恢复同一请求的已保存结果。" : "图片草稿已生成，需人工复核后使用。" });
       setRequestId(null);
-      setRetryBody(null);
       await loadState();
       onCommitted?.();
     } catch {
@@ -284,9 +325,12 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
           confirmed: true,
         }),
       });
-      const json = await res.json();
+      const parsed = await readJsonApiResponse(res);
+      const json = parsed.ok
+        ? parsed.payload as { ok?: boolean; error?: { code?: string } }
+        : { ok: false, error: parsed.error };
       if (!res.ok || !json.ok) {
-        setNotice({ tone: "error", text: json.error?.message ?? "图片选择保存失败，请刷新后重试。" });
+        setNotice({ tone: "error", text: studioErrorMessage(json, "图片选择保存失败，请刷新后重试。") });
         return;
       }
       setState((current) => current ? { ...current, selectedImageId } : current);
@@ -303,7 +347,9 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   if (!state) {
     return (
       <section className="mt-4 rounded-2xl border border-cyan-200 bg-white p-4" data-testid="image-handoff-section">
-        <p className="text-sm font-semibold text-slate-500">图片草稿状态加载中...</p>
+        <p className={`text-sm font-semibold ${loadError ? "text-rose-600" : "text-slate-500"}`}>
+          {loadError || "图片草稿状态加载中..."}
+        </p>
       </section>
     );
   }
@@ -337,10 +383,14 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
         系统不会自动上架，也不会承诺收益或销量表现。
       </div>
 
-      {isComposition ? (
-        <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-sm leading-6 text-sky-800" data-testid="image-composition-notice">
-          当前仅生成构图概念，不代表真实商品外观。
-          {state.approvedVisualReferenceSummary.length === 0 ? (
+      <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3 text-sm leading-6 text-sky-800" data-testid="image-composition-notice">
+        <p className="font-bold">{isComposition ? "概念创作模式" : "参考图创作模式"}</p>
+        <p className="mt-1">
+          {isComposition
+            ? "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"
+            : "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"}
+        </p>
+        {isComposition && state.approvedVisualReferenceSummary.length === 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -361,9 +411,8 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                 转为独立创作
               </button>
             </div>
-          ) : null}
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {/* 无 Handoff / legacy */}
       {state.imageStatus === "legacy_unbound" ? (
@@ -385,7 +434,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
       ) : null}
 
       {state.canGenerate ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-700">
               创作资料已确认
@@ -395,6 +444,40 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               {isComposition ? "（不生成真实商品外观）" : "（基于批准视觉参考）"}
             </p>
           </div>
+          <div>
+            <label htmlFor="task-image-creative-description" className="text-sm font-bold text-slate-800">
+              创作描述
+            </label>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              系统已根据本次研究资料整理了一版图片创作描述，你可以修改后再生成。
+            </p>
+            <textarea
+              id="task-image-creative-description"
+              name="userCreativeDescription"
+              value={userCreativeDescription}
+              maxLength={1200}
+              rows={5}
+              onChange={(event) => setUserCreativeDescription(event.target.value)}
+              disabled={submitting}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 disabled:opacity-60"
+            />
+          </div>
+          <div data-scene-groups={STUDIO_IMAGE_SCENE_GROUPS.length}>
+            <ImageScenePresetPicker
+              name="scenePreset"
+              value={scenePreset}
+              onChange={(nextScenePreset) => {
+                setScenePreset(nextScenePreset);
+                if (state.creativeDescriptionContext) {
+                  setUserCreativeDescription(buildTaskImageCreativeDescription(
+                    state.creativeDescriptionContext,
+                    nextScenePreset,
+                  ));
+                }
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => void handleGenerate()}
@@ -402,7 +485,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
             className="inline-flex h-10 items-center justify-center rounded-xl bg-cyan-600 px-4 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
             data-testid="image-handoff-generate"
           >
-            {submitting ? "正在生成..." : isComposition ? "生成构图概念" : "生成产品视觉草稿"}
+            {submitting ? "正在生成图片..." : "生成图片"}
           </button>
           <label className="text-sm font-semibold text-slate-700">
             候选数量
@@ -416,6 +499,7 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
               <option value={2}>2 张</option>
             </select>
           </label>
+          </div>
         </div>
       ) : null}
 

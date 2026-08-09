@@ -77,6 +77,14 @@ export function validateProviderConfig(env, options = {}) {
     else if (!PROVIDER_MODES.has(mode)) issues.push({ code: "invalid_config", field });
   }
 
+  if (text(env.LISTING_PROVIDER_MODE) === "real" && text(env.OPENAI_LISTING_ENABLED).toLowerCase() !== "true") {
+    issues.push({ code: "disabled_gate", field: "OPENAI_LISTING_ENABLED" });
+  }
+
+  if (text(env.IMAGE_PROVIDER_MODE) === "real" && text(env.OPENAI_IMAGE_GENERATION_ENABLED).toLowerCase() !== "true") {
+    issues.push({ code: "disabled_gate", field: "OPENAI_IMAGE_GENERATION_ENABLED" });
+  }
+
   if (text(env.IMAGE_PROVIDER_MODE) === "real") {
     addRequired(issues, env, "OPENAI_API_KEY", true);
     const hasBaseUrl = addRequired(issues, env, "OPENAI_IMAGE_BASE_URL");
@@ -106,13 +114,17 @@ export function validateProviderConfig(env, options = {}) {
     issues,
     summary: {
       aiProvider: { present: aiProvider.length > 0, valid: AI_PROVIDERS.has(aiProvider) },
+      researchProviderConfigured: (aiProvider === "deepseek" && text(env.DEEPSEEK_API_KEY).length > 0)
+        || (aiProvider === "openai" && text(env.OPENAI_API_KEY).length > 0),
       listingProviderMode: {
         present: text(env.LISTING_PROVIDER_MODE).length > 0,
         valid: PROVIDER_MODES.has(text(env.LISTING_PROVIDER_MODE)),
+        value: text(env.LISTING_PROVIDER_MODE),
       },
       imageProviderMode: {
         present: text(env.IMAGE_PROVIDER_MODE).length > 0,
         valid: PROVIDER_MODES.has(text(env.IMAGE_PROVIDER_MODE)),
+        value: text(env.IMAGE_PROVIDER_MODE),
       },
       imageBaseUrl: {
         present: text(env.OPENAI_IMAGE_BASE_URL).length > 0,
@@ -120,20 +132,52 @@ export function validateProviderConfig(env, options = {}) {
       },
       imageModelPresent: text(env.OPENAI_IMAGE_MODEL).length > 0,
       imageResultHostsPresent: text(env.OPENAI_IMAGE_RESULT_HOSTS).length > 0,
+      listingGateEnabled: text(env.OPENAI_LISTING_ENABLED).toLowerCase() === "true",
+      imageGateEnabled: text(env.OPENAI_IMAGE_GENERATION_ENABLED).toLowerCase() === "true",
       storage: { present: storageRoot.length > 0, readableWritable: storageAccessible },
       secrets,
     },
   };
 }
 
+export function formatProviderPreflightSummary(result, options = {}) {
+  const summary = result?.summary ?? {};
+  const researchConfigured = summary.aiProvider?.valid === true
+    && summary.researchProviderConfigured === true;
+  const listingMode = summary.listingProviderMode?.present
+    ? text(options.listingProviderMode || summary.listingProviderMode?.value)
+    : "missing";
+  const imageMode = summary.imageProviderMode?.present
+    ? text(options.imageProviderMode || summary.imageProviderMode?.value)
+    : "missing";
+  const listingConfigured = summary.listingProviderMode?.valid === true
+    && (listingMode !== "real" || summary.listingGateEnabled === true)
+    && researchConfigured;
+  const imageConfigured = summary.imageProviderMode?.valid === true
+    && (imageMode !== "real" || summary.imageGateEnabled === true)
+    && (imageMode !== "real" || summary.secrets?.OPENAI_API_KEY?.present === true)
+    && (imageMode !== "real" || summary.imageBaseUrl?.valid === true)
+    && summary.imageModelPresent === true
+    && summary.imageResultHostsPresent === true
+    && summary.storage?.readableWritable === true;
+
+  return [
+    `RESEARCH_PROVIDER: ${researchConfigured ? "configured" : "missing"}`,
+    `LISTING_PROVIDER: ${listingConfigured ? "configured" : "missing"} mode=${listingMode || "missing"}`,
+    `IMAGE_PROVIDER: ${imageConfigured ? "configured" : "missing"} mode=${imageMode || "missing"}`,
+    `IMAGE_BASE_HOST: ${summary.imageBaseUrl?.valid === true ? "allowed" : "rejected"}`,
+    `PM2_RUNTIME: ${options.runtimeConfigLoaded === true ? "config_loaded" : "mismatch"}`,
+  ].join("\n");
+}
+
 export function runProviderPreflight() {
   nextEnv.loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
   const result = validateProviderConfig(process.env);
-  const output = {
-    status: result.ok ? "ok" : "failed",
-    ...result,
-  };
-  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
+  process.stdout.write(`${formatProviderPreflightSummary(result, {
+    runtimeConfigLoaded: true,
+    listingProviderMode: process.env.LISTING_PROVIDER_MODE,
+    imageProviderMode: process.env.IMAGE_PROVIDER_MODE,
+  })}\n`);
   return result.ok ? 0 : 1;
 }
 

@@ -5,6 +5,8 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 import { mutateTaskResultJson, TaskResultJsonMutationError, type TaskResultJsonStorageVersionHash } from "@/lib/server/taskResultJsonMutation";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { buildImageInputFromCreativeHandoff, validateApprovedVisualSelection, type ImageGenerationInput, type ImageVisualMode } from "@/lib/imageHandoff/imageGenerationInput";
+import { applyTaskImageCreativeDirection } from "@/lib/imageCreativeDescription";
+import type { ImageScenePreset } from "@/lib/client/studioImageRequest";
 import { buildImageHandoffBinding, parseImageHandoffBinding, computeImageStatus, type ImageHandoffBindingV1, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
 import { createImageProviderByMode, realImageProviderEnabled } from "@/lib/imageHandoff/realImageProvider";
@@ -23,6 +25,12 @@ export class ImageHandoffError extends Error {
 
 /** 将 Provider 故障收敛为稳定且不会泄漏上游原文的公开错误合同。 */
 export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffError {
+  if (error instanceof Error && error.message.startsWith("real_image_persist_failed:")) {
+    return new ImageHandoffError("image_storage_failed", 500, "图片保存或校验失败，请稍后重试。");
+  }
+  if (error instanceof Error && error.message.startsWith("real_image_provider_empty:")) {
+    return new ImageHandoffError("image_response_invalid", 502, "图片服务返回的结果无效，请重新生成。");
+  }
   if (!(error instanceof AiImageProviderError)) {
     return new ImageHandoffError("provider_unavailable", 502, "图片生成服务调用失败，请稍后重试。");
   }
@@ -37,9 +45,10 @@ export function mapImageHandoffProviderFailure(error: unknown): ImageHandoffErro
     case "provider_unavailable":
     case "rate_limited":
     case "empty_response":
-    case "configuration_error":
     case "provider_error":
       return new ImageHandoffError("provider_unavailable", 503, "图片生成服务暂时不可用，请稍后重试。");
+    case "configuration_error":
+      return new ImageHandoffError("provider_config_invalid", 503, "图片生成服务配置异常，请联系管理员检查配置。");
     case "network_error":
       return new ImageHandoffError("network_error", 502, "图片生成服务网络连接失败，请稍后重试。");
     default:
@@ -54,6 +63,8 @@ export type ImageGenerateInput = {
   mode: ImageVisualMode;
   count?: 1 | 2;
   approvedVisualReferenceSelectionIds?: string[];
+  scenePreset?: ImageScenePreset;
+  userCreativeDescription?: string;
   confirmed: true;
 };
 
@@ -252,7 +263,12 @@ export async function generateImageDraftFromHandoff(
   if (!buildResult.ok) {
     throw new ImageHandoffError(buildResult.code, 422, buildResult.message);
   }
-  const generationInput = buildResult.input;
+  const creativeDirection = {
+    scenePreset: input.scenePreset ?? "white_studio",
+    userCreativeDescription: input.userCreativeDescription
+      ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
+  };
+  const generationInput = applyTaskImageCreativeDirection(buildResult.input, creativeDirection);
   // Final Capability: product_visual_draft 真实参考图输入（从 gate 解析的批准参考图片；仅服务端）
   if (input.mode === "product_visual_draft" && gateA.approvedReferenceImageDataUrl) {
     generationInput.referenceImageDataUrl = gateA.approvedReferenceImageDataUrl;
@@ -279,6 +295,7 @@ export async function generateImageDraftFromHandoff(
   const selectedVisualReferences = selectionCheck.selected;
   const generationRequestFingerprint = sha256([
     buildResult.generationInputFingerprint,
+    `creative-direction:${sha256(JSON.stringify(creativeDirection))}`,
     `count:${requestedCount}`,
     selectedVisualReferences.length > 0
       ? `visual-selection:${selectedVisualReferences.map((r) => r.selectionId).sort().join(",")}`

@@ -50,6 +50,7 @@ import { ListingHandoffSection } from "@/components/listing-handoff/ListingHando
 import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioErrorMessage";
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveListingStudioProgress } from "@/lib/client/studioProgress";
+import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
 
 type StudioData = {
   listingPack: ListingPack;
@@ -305,7 +306,10 @@ function ManualListingStudioClient({ onProgressChange }: {
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify(requestBody),
       });
-      const json: unknown = await response.json().catch(() => null);
+      const parsedResponse = await readJsonApiResponse(response);
+      const json: unknown = parsedResponse.ok
+        ? parsedResponse.payload
+        : { error: parsedResponse.error };
       if (
         !response.ok
         || !json

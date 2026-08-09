@@ -82,6 +82,12 @@ describe("商品研究三阶段主视图", () => {
     expect(clientSource).toContain("options: { runListing: false }");
   });
 
+  it("商品研究使用安全 JSON 边界且不显示原始解析异常", () => {
+    expect(clientSource).toContain("readJsonApiResponse(response)");
+    expect(clientSource).toContain("商品研究服务暂时异常，请稍后重试。");
+    expect(clientSource).not.toContain("runError instanceof Error ? runError.message");
+  });
+
   it("即使 API 供货步骤成功，也只显示需人工确认而不是绿色已完成", () => {
     expect(clientSource).not.toContain(
       'sourcing: apiStatusToTimeline(getApiStep(workflowResult, "sourcing")?.status)',

@@ -39,6 +39,7 @@ import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioError
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveImageStudioProgress } from "@/lib/client/studioProgress";
+import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
 
 type StudioMode = "mock" | "real";
 
@@ -258,7 +259,10 @@ function ManualImageStudioClient({ onProgressChange }: {
         headers: { "Content-Type": "application/json", ...buildAccessHeaders() },
         body: JSON.stringify(requestBody),
       });
-      const json: unknown = await response.json().catch(() => null);
+      const parsedResponse = await readJsonApiResponse(response);
+      const json: unknown = parsedResponse.ok
+        ? parsedResponse.payload
+        : { error: parsedResponse.error };
       if (!response.ok || !json || typeof json !== "object" || !("ok" in json) || json.ok !== true || !("data" in json)) {
         if (mode === "real" && !shouldRetainStudioAttempt(apiErrorCode(json))) {
           realAttemptRef.current = null;
@@ -384,7 +388,7 @@ function ManualImageStudioClient({ onProgressChange }: {
             />
           </div>
           <div className={styles.field}>
-            <label htmlFor="image-description">商品描述</label>
+            <label htmlFor="image-description">创作描述</label>
             <textarea
               id="image-description"
               name="description"
@@ -392,7 +396,7 @@ function ManualImageStudioClient({ onProgressChange }: {
               maxLength={1000}
               className={styles.control}
               rows={3}
-              placeholder="描述外观、颜色、材质和已确认功能；不要填写未核实参数"
+              placeholder="描述已确认的商品信息，以及希望呈现的场景、构图和留白；不要填写未核实参数"
               value={description}
               onChange={(event) => {
                 setDescription(event.target.value);
@@ -400,6 +404,7 @@ function ManualImageStudioClient({ onProgressChange }: {
                 realAttemptRef.current = null;
               }}
             />
+            <p className={styles.fieldHint}>独立创作没有 Task 研究事实，只使用你明确填写并确认的信息。</p>
           </div>
         </section>
 
@@ -640,10 +645,16 @@ function ManualImageStudioClient({ onProgressChange }: {
               </button>
             </div>
           ) : (
-            <div className={styles.prefillNotice} data-testid="manual-image-composition-only">
-              未上传并批准商品参考图时，只生成构图、场景和创意概念，不代表真实商品外观。
-            </div>
+            null
           )}
+          <div className={styles.prefillNotice} data-testid="manual-image-authority-mode">
+            <strong>{referenceImageDataUrl && referenceImageApproved ? "参考图创作模式" : "概念创作模式"}</strong>
+            <p>
+              {referenceImageDataUrl && referenceImageApproved
+                ? "将参考已批准商品图片进行视觉创作，结果仍需人工检查商品外观和文字。"
+                : "当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。"}
+            </p>
+          </div>
         </section>
 
         <label className={styles.warning}>
@@ -702,12 +713,12 @@ function ManualImageStudioClient({ onProgressChange }: {
           {loading ? (
             <>
               <LoaderCircle aria-hidden="true" className="animate-spin" />
-              正在生成图片方案
+              正在生成图片
             </>
           ) : (
             <>
               <Sparkles aria-hidden="true" />
-              {mode === "mock" ? "生成 Mock 图片方案" : "确认并调用真实图片 AI"}
+              生成图片
             </>
           )}
         </button>

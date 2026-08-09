@@ -8,11 +8,15 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import { computeImageStatus, parseImageHandoffBinding, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
+import {
+  buildTaskImageCreativeDescriptionContext,
+  parseTaskImageCreativeDirection,
+} from "@/lib/imageCreativeDescription";
 
 const ALLOWED_GENERATE_FIELDS = new Set([
   "requestId", "expectedStorageVersion", "expectedHandoffRevision", "mode",
   "approvedVisualReferenceSelectionIds", "confirmed",
-  "count",
+  "count", "scenePreset", "userCreativeDescription",
 ]);
 const ALLOWED_SELECT_FIELDS = new Set([
   "selectedImageId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed",
@@ -121,6 +125,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           storageVersion: null,
           expectedHandoffRevision: null,
           allowedModes: [],
+          creativeDescriptionContext: null,
         },
       });
     }
@@ -212,6 +217,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         storageVersion,
         expectedHandoffRevision: handoff?.currentRevision ?? null,
         allowedModes: mode ? [mode] : [],
+        creativeDescriptionContext: handoff
+          ? buildTaskImageCreativeDescriptionContext(handoff)
+          : null,
       },
     });
   } catch (err) {
@@ -263,6 +271,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  const creativeDirection = parseTaskImageCreativeDirection({
+    scenePreset: body.scenePreset ?? "white_studio",
+    userCreativeDescription: body.userCreativeDescription ?? "基于已确认商品资料制作清晰、可人工复核的商品图片。",
+  });
+  if (!creativeDirection.ok) {
+    const messages = {
+      invalid_scene_preset: "场景选择无效。",
+      invalid_creative_description: "创作描述格式无效，且不得超过 1200 个字符。",
+      unsafe_creative_description: "创作描述包含不安全指令，请删除后重试。",
+    } as const;
+    return errorResponse(400, creativeDirection.code, messages[creativeDirection.code]);
+  }
+
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
 
@@ -274,6 +295,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       mode,
       count,
       approvedVisualReferenceSelectionIds,
+      ...creativeDirection.data,
       confirmed: true,
     });
     return NextResponse.json({

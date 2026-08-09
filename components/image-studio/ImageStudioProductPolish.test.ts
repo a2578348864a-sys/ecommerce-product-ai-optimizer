@@ -119,7 +119,7 @@ describe("Image Studio product workbench", () => {
     }
     for (const label of [
       "商品名称",
-      "商品描述",
+      "创作描述",
       "图片类型",
       "视觉风格",
       "图片数量",
@@ -156,6 +156,10 @@ describe("Image Studio product workbench", () => {
     expect(html).toContain("Mock 预览");
     expect(html).toContain("本地确定性预览，不调用 Provider");
     expect(html).toContain("图片工作区");
+    expect(html).toContain("独立创作没有 Task 研究事实，只使用你明确填写并确认的信息。");
+    expect(html).toContain("概念创作模式");
+    expect(html).toContain("当前没有已确认商品参考图。生成结果用于构图、场景和视觉方向参考，不代表真实商品外观。");
+    expect(html).toContain("生成图片");
   });
 
   it("renders selectable image cards and a truthful local quality-check workspace", () => {

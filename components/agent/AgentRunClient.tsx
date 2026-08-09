@@ -38,6 +38,7 @@ import type { RiskPrecheckInput, RiskReviewSnapshot } from "@/lib/riskReview";
 import { buildAgentRunSnapshot, buildListingPrepSnapshot } from "@/lib/agentRunSnapshot";
 import { buildDecisionCard } from "@/lib/decisionCard";
 import { DecisionCard as DecisionCardUI } from "@/components/DecisionCard";
+import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
 import {
   clearAgentRunCandidateCaches,
   saveAgentRunCache,
@@ -943,10 +944,27 @@ export function AgentRunClient({
           accessToken: accessHeaders["x-access-token"] || undefined,
         }),
       });
-      const data = await response.json() as ApiWorkflowResult | ApiErrorResponse | ApiIdempotentReplay;
+      const parsedResponse = await readJsonApiResponse(response);
+      if (!parsedResponse.ok) {
+        setPhase("failed");
+        setError("商品研究服务暂时异常，请稍后重试。");
+        setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" });
+        jobRequestIdRef.current = "";
+        return;
+      }
+      if (!parsedResponse.payload || typeof parsedResponse.payload !== "object" || !("ok" in parsedResponse.payload)) {
+        setPhase("failed");
+        setError("商品研究服务暂时异常，请稍后重试。");
+        setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" });
+        jobRequestIdRef.current = "";
+        return;
+      }
+      const data = parsedResponse.payload as ApiWorkflowResult | ApiErrorResponse | ApiIdempotentReplay;
       if (data.demoAccess) updateDemoAccessSnapshot(data.demoAccess);
       if (!response.ok || !data.ok) {
-        const message = data.ok ? "主链路分析失败，请稍后重试。" : data.error?.message || "主链路分析失败，请稍后重试。";
+        const message = response.status >= 500
+          ? "商品研究服务暂时异常，请稍后重试。"
+          : data.ok ? "商品研究服务暂时异常，请稍后重试。" : data.error?.message || "商品研究服务暂时异常，请稍后重试。";
         // Auth errors (401/403) should NOT pollute business run state
         if (response.status === 401 || response.status === 403) {
           setAuthError(message);
@@ -987,9 +1005,9 @@ export function AgentRunClient({
         setError(workflowResult.warnings.join("；"));
       }
       jobRequestIdRef.current = "";
-    } catch (runError) {
+    } catch {
       setPhase("failed");
-      setError(runError instanceof Error ? runError.message : "网络异常，请稍后重试。");
+      setError("网络异常，请稍后重试。");
       setStepStatuses({ ...INITIAL_STATUSES, normalize: "failed" });
     }
   }
