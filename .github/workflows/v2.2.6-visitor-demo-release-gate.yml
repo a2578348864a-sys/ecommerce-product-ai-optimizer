@@ -1,0 +1,154 @@
+name: V2.2.6 Visitor Demo Linux Release Gate
+
+on:
+  push:
+    branches:
+      - codex/v2.2.6-linux-release-gate
+    paths:
+      - .github/workflows/v2.2.6-visitor-demo-release-gate.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visitor-demo-release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout immutable product commit
+        uses: actions/checkout@v4
+        with:
+          ref: 477e706152e8aa9a71d9d886e59aa747c541b8bd
+          persist-credentials: false
+
+      - name: Confirm product source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "477e706152e8aa9a71d9d886e59aa747c541b8bd"
+          test -z "$(git status --porcelain)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+
+      - name: Confirm Linux x64 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (process.platform !== "linux" || process.arch !== "x64" || major < 20 || (major === 20 && minor < 9)) process.exit(1); console.log(JSON.stringify({node: process.versions.node, platform: process.platform, arch: process.arch}))'
+
+      - name: Install frozen dependencies
+        run: npm ci
+
+      - name: Production dependency audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --omit=dev --json > production-audit.json
+          node -e 'const report=require("./production-audit.json"); const counts=report.metadata?.vulnerabilities ?? {}; console.log(JSON.stringify(counts)); if ((counts.critical ?? 0) !== 0 || (counts.high ?? 0) !== 0) process.exit(1)'
+          rm production-audit.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Visitor Demo quota and Image intent tests
+        run: >-
+          npx vitest run
+          app/api/auth/login/route.product-journeys.test.ts
+          app/api/image-studio/route.test.ts
+          app/api/image-studio/route.phase2.test.ts
+          app/api/listing-studio/route.test.ts
+          app/api/listing-studio/route.phase2.test.ts
+          app/api/tasks/[id]/handoff.product-journey-quota.test.ts
+          app/api/tasks/[id]/image-handoff/route.test.ts
+          app/api/tasks/[id]/image-handoff/route.phase2.test.ts
+          app/api/workflows/product-analysis/route.quota.test.ts
+          components/DemoAccessBanner.product-journeys.test.ts
+          components/LoginPage.visitor-demo.test.ts
+          components/image-handoff/ImageHandoffReliability.test.ts
+          components/image-studio/ImageStudioProductPolish.test.ts
+          lib/aiImageDraft.test.ts
+          lib/client/studioImageRequest.test.ts
+          lib/imageCreativeDescription.test.ts
+          lib/imageHandoff/imageGenerationService.phase2.test.ts
+          lib/server/aiImageDraftService.test.ts
+          lib/server/demoAccess.test.ts
+          lib/server/demoGuard.test.ts
+          lib/server/demoProductJourneyQuota.test.ts
+          lib/studioImageInput.test.ts
+
+      - name: Sharp Linux PNG runtime smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          sharp_version="$(npm ls sharp --json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const tree=JSON.parse(input); const version=tree.dependencies?.sharp?.version; if (!version) process.exit(1); process.stdout.write(version); })')"
+          test "$sharp_version" = "0.35.3"
+          node <<'NODE'
+          const sharp = require("sharp");
+          (async () => {
+            if (process.platform !== "linux" || process.arch !== "x64") throw new Error("wrong_runtime");
+            if (!sharp.versions?.vips) throw new Error("missing_libvips");
+            const png = await sharp({ create: { width: 2, height: 2, channels: 4, background: { r: 8, g: 16, b: 24, alpha: 1 } } }).png().toBuffer();
+            const metadata = await sharp(png).metadata();
+            if (metadata.format !== "png" || metadata.width !== 2 || metadata.height !== 2) throw new Error("png_decode_metadata_failed");
+            console.log(JSON.stringify({ sharp: "0.35.3", platform: process.platform, arch: process.arch, vips: sharp.versions.vips, png: "pass" }));
+          })().catch((error) => { console.error(error.message); process.exit(1); });
+          NODE
+
+      - name: Webpack production build
+        run: npm run build
+        env:
+          DATABASE_URL: file:./dev.db
+          ACCESS_PASSWORD: ci-test-password
+          AI_PROVIDER: deepseek
+          DEEPSEEK_API_KEY: ci-placeholder
+          DEEPSEEK_BASE_URL: https://api.deepseek.com
+          DEEPSEEK_MODEL: deepseek-v4-flash
+
+      - name: Verify build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .next/BUILD_ID
+          node -e 'const p=require("./node_modules/next/package.json"); if (p.version !== "16.3.0") process.exit(1); console.log(`next=${p.version}`)'
+
+      - name: Package immutable Linux artifact
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="next-v2.2.6-477e706-linux-x64.tar.gz"
+          tar -czf "$artifact" .next
+          if tar -tzf "$artifact" | grep -Ev '^\.next(/|$)' | grep -q .; then
+            echo "Artifact contains an unexpected path" >&2
+            exit 1
+          fi
+          sha256="$(sha256sum "$artifact" | awk '{print $1}')"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sharp_version="$(npm ls sharp --json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const tree=JSON.parse(input); const version=tree.dependencies?.sharp?.version; if (!version) process.exit(1); process.stdout.write(version); })')"
+          node -e 'const fs=require("node:fs"); const manifest={version:"2.2.6",commit:"477e706152e8aa9a71d9d886e59aa747c541b8bd",next:"16.3.0",node:process.versions.node,sharp:process.argv[4],platform:`${process.platform}-${process.arch}`,builtAt:process.argv[1],buildId:fs.readFileSync(".next/BUILD_ID","utf8").trim(),artifact:process.argv[2],artifactSha256:process.argv[3],serverBuildAllowed:false}; fs.writeFileSync("release-manifest.json",JSON.stringify(manifest,null,2)+"\n")' "$built_at" "$artifact" "$sha256" "$sharp_version"
+          test "$(node -p 'require("./release-manifest.json").commit')" = "477e706152e8aa9a71d9d886e59aa747c541b8bd"
+          test "$(node -p 'require("./release-manifest.json").platform')" = "linux-x64"
+          test "$(node -p 'require("./release-manifest.json").sharp')" = "0.35.3"
+          test "$(node -p 'require("./release-manifest.json").artifactSha256')" = "$sha256"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          node -e 'const m=require("./release-manifest.json"); console.log(JSON.stringify(m,null,2))'
+
+      - name: Upload verified Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingxuan-v2.2.6-linux-x64-477e706
+          path: |
+            ${{ steps.package.outputs.artifact }}
+            release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
