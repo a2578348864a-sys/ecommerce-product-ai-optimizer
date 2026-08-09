@@ -74,7 +74,6 @@ jobs:
           components/DemoAccessBanner.product-journeys.test.ts
           components/LoginPage.visitor-demo.test.ts
           components/image-handoff/ImageHandoffReliability.test.ts
-          components/image-studio/ImageStudioProductPolish.test.ts
           lib/aiImageDraft.test.ts
           lib/client/studioImageRequest.test.ts
           lib/imageCreativeDescription.test.ts
@@ -83,6 +82,7 @@ jobs:
           lib/server/demoAccess.test.ts
           lib/server/demoGuard.test.ts
           lib/server/demoProductJourneyQuota.test.ts
+          lib/server/studioImageGenerator.test.ts
           lib/studioImageInput.test.ts
 
       - name: Sharp Linux PNG runtime smoke
