@@ -473,6 +473,11 @@ export async function POST(
       // 不再是意外 500；前端可读 code 提示研究状态不允许创建。
       return errorResponse(422, "invalid_handoff_candidate", "当前研究状态不允许创建创作交接。");
     }
+    if (err instanceof ProductCreativeHandoffError && err.code === "handoff_revoked") {
+      // 撤回后的创作资料是终态，不允许继续追加新版本（服务端分类保持不变，
+      // 仅对外返回用户可理解的产品语言，不再暴露内部英文 message）。
+      return errorResponse(409, "handoff_revoked", "该创作资料已撤回，无法继续编辑。如需重新整理商品资料，请创建新的创作资料。");
+    }
     throw err;
   }
 }
