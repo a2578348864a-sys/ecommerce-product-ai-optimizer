@@ -11,7 +11,13 @@ import {
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus, isHandoffListedDraftShape, type ListingHandoffBindingV1, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import type { MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
-import { buildDeterministicListingPackDraft } from "@/lib/listingHandoff/listingComposition";
+import { buildDeterministicListingPackDraft, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
+import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
+import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
+import { parseListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import { deriveUsedKeywordIds } from "@/lib/listingHandoff/listingKeywordProvenance";
+import { filterBackendSearchTerms } from "@/lib/listingHandoff/listingBackendTermSafety";
+import { validateListingQuality } from "@/lib/listingHandoff/listingQualityValidator";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
@@ -42,6 +48,15 @@ export type ListingDraftSafeSummary = {
   bullets: string[];
   description: string | null;
   keywords: string[];
+  backendSearchTerms?: string[];
+  /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
+  backendTermWarnings?: string[];
+  draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
+  qualityIssues?: string[];
+  providerAttempted?: boolean;
+  providerSucceeded?: boolean;
+  fallbackApplied?: boolean;
+  fallbackReason?: string | null;
   sellingPoints: string[];
   riskNotes: string[];
   reviewChecklist: string[];
@@ -114,6 +129,22 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     bullets: safeStringArray(value.bullets).slice(0, 5),
     description: safeString(value.description),
     keywords: safeStringArray(value.keywords).slice(0, 12),
+    backendSearchTerms: Array.isArray(value.backendSearchTerms)
+      ? value.backendSearchTerms.filter((item): item is string => typeof item === "string").slice(0, 50)
+      : undefined,
+    backendTermWarnings: Array.isArray(value.backendTermWarnings)
+      ? value.backendTermWarnings.filter((item): item is string => typeof item === "string").slice(0, 10)
+      : undefined,
+    draftKind: value.draftKind === "ai_optimized_listing" || value.draftKind === "structured_listing_draft" || value.draftKind === "safe_fact_draft"
+      ? value.draftKind
+      : undefined,
+    qualityIssues: Array.isArray(value.qualityIssues)
+      ? value.qualityIssues.filter((item): item is string => typeof item === "string").slice(0, 10)
+      : undefined,
+    providerAttempted: value.providerAttempted === true,
+    providerSucceeded: value.providerSucceeded === true,
+    fallbackApplied: value.fallbackApplied === true,
+    fallbackReason: typeof value.fallbackReason === "string" && value.fallbackReason ? value.fallbackReason : null,
     sellingPoints: safeStringArray(value.sellingPoints).slice(0, 6),
     riskNotes: safeStringArray(value.riskNotes),
     reviewChecklist: safeStringArray(value.reviewChecklist),
@@ -202,6 +233,7 @@ export async function generateListingDraftFromHandoff(
 
   // ── 阶段B：Composition first（锁外，不持锁，不调用 Provider）──
   const generatedAt = new Date().toISOString();
+
   const deterministicDraft = buildDeterministicListingPackDraft(generationInput, generatedAt);
   const deterministicSchema = validateAiListingPackDraft(deterministicDraft);
   if (!deterministicSchema.ok) {
@@ -304,8 +336,165 @@ export async function generateListingDraftFromHandoff(
         researchRevision: validated.researchRevision,
       });
 
+      // Quality.1（锁内）：读 keyword brief → readiness → plan → 决定草稿类型
+      const keywordBrief = parseListingKeywordBrief(current.listingKeywordBrief);
+      const readiness = buildListingReadiness({
+        confirmedFacts: handoffC.versions[handoffC.versions.length - 1].confirmedFacts,
+        listingEligibleFacts: generationInput.productFacts.length,
+        hasBlockingIssue: false,
+        keywordBrief,
+      });
+      const plan = buildListingPlan(generationInput, keywordBrief);
+      const copyReady = readiness.copyReady && plan.planQuality === "optimized";
+      const keywordReady = readiness.keywordReady;
+      let finalDraft: Record<string, unknown>;
+      let draftKind: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft" = "safe_fact_draft";
+      let qualityIssues: string[] = [];
+      let providerAttempted = false;
+      let providerSucceeded = false;
+      let fallbackApplied = false;
+      let fallbackReason: string | null = null;
+
+      if (copyReady) {
+        // Quality.2：copyReady + keywordReady → 允许真实 AI（AI SEO 优化模式）
+        if (keywordReady) {
+          providerAttempted = true;
+          const { generateTaskLinkedAiListing } = await import("@/lib/server/taskLinkedAiListing");
+          const aiInput = {
+            facts: generationInput.productFacts.map((f) => ({
+              factId: f.field,
+              field: f.field,
+              label: f.label,
+              value: f.value,
+            })),
+            plan,
+            keywordBrief,
+            prohibitedClaims: generationInput.prohibitedClaims,
+          };
+          const aiResult = await generateTaskLinkedAiListing(aiInput);
+          if (aiResult.ok) {
+            // R1.6：backend term fact safety（过滤后 provenance 基于安全 terms）
+            const backendSafety = filterBackendSearchTerms({
+              backendSearchTerms: aiResult.data.backendSearchTerms,
+              keywordBrief,
+              confirmedFacts: generationInput.productFacts.map((f) => ({
+                field: f.field,
+                value: f.value,
+                usageScopes: ["listing"],
+              })),
+            });
+            const safeBackendTerms = backendSafety.terms;
+            // AI 成功：映射到 draft + 服务器派生 keyword provenance + Claim Evidence + Quality
+            const aiDraft = {
+              ...safeDraft,
+              titles: [aiResult.data.title],
+              bullets: aiResult.data.bullets,
+              description: aiResult.data.description,
+              keywords: [
+                ...(plan.primaryKeyword ? [plan.primaryKeyword] : []),
+                ...(keywordBrief?.supportingKeywords ?? []),
+              ],
+              ...(safeBackendTerms.length > 0
+                ? { backendSearchTerms: safeBackendTerms }
+                : {}),
+              model: "real-ai-provider",
+              source: "real_ai_draft",
+              riskNotes: ["AI 优化草稿基于已确认事实生成；所有表述需人工复核。"],
+              reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
+              usedFactIds: aiResult.data.usedFactIds,
+              usedKeywordIds: deriveUsedKeywordIds({
+                title: aiResult.data.title,
+                bullets: aiResult.data.bullets,
+                description: aiResult.data.description,
+                backendSearchTerms: safeBackendTerms,
+                keywordBrief,
+              }),
+              ...(backendSafety.warnings.length > 0
+                ? { backendTermWarnings: backendSafety.warnings }
+                : {}),
+            };
+            const aiSchema = validateAiListingPackDraft(aiDraft);
+            const aiFiltered = aiSchema.ok ? filterListingClaims(aiSchema.data, {
+              prohibitedClaims: generationInput.prohibitedClaims,
+              customClaimLabel: "Handoff prohibited claim",
+            }) : null;
+            const aiQuality = aiFiltered
+              ? validateListingQuality({
+                  titles: aiFiltered.cleaned.titles,
+                  bullets: aiFiltered.cleaned.bullets,
+                  description: aiFiltered.cleaned.description,
+                  backendSearchTerms: safeBackendTerms,
+                  planQuality: "optimized",
+                })
+              : null;
+            if (aiSchema.ok && aiFiltered && aiQuality?.ok) {
+              // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
+              finalDraft = {
+                ...aiFiltered.cleaned,
+                draftKind,
+                usedKeywordIds: aiDraft.usedKeywordIds,
+                ...(backendSafety.warnings.length > 0 ? { backendTermWarnings: backendSafety.warnings } : {}),
+              };
+              providerSucceeded = true;
+              draftKind = "ai_optimized_listing";
+            } else {
+              // AI 输出未通过 Schema/Claim/Quality → 不保存为 optimized
+              fallbackApplied = true;
+              fallbackReason = aiQuality && !aiQuality.ok
+                ? aiQuality.issues.map((i) => i.message).join("；")
+                : aiSchema.ok ? "AI 输出未通过 Claim Evidence/质量校验" : "AI 输出 schema 无效";
+              finalDraft = { ...safeDraft };
+              qualityIssues = fallbackReason ? [fallbackReason] : [];
+            }
+          } else {
+            // Provider 失败 → fallback
+            fallbackApplied = true;
+            fallbackReason = aiResult.error.message;
+            finalDraft = { ...safeDraft };
+            qualityIssues = [fallbackReason];
+          }
+        } else {
+          // copyReady 但无 keyword brief → 结构化草稿（deterministic，未做 SEO 优化）
+          draftKind = "structured_listing_draft";
+          const optimized = composeOptimizedListingDraft(generationInput, plan, keywordBrief);
+          const optimizedDraft = {
+            ...safeDraft,
+            titles: optimized.titles,
+            bullets: optimized.bullets,
+            description: optimized.description,
+            keywords: optimized.keywords,
+            ...(optimized.backendSearchTerms.length > 0 ? { backendSearchTerms: optimized.backendSearchTerms } : {}),
+            riskNotes: ["结构化草稿基于已确认事实生成；未进行搜索词优化。"],
+            reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
+          };
+          const quality = validateListingQuality({
+            titles: optimized.titles,
+            bullets: optimized.bullets,
+            description: optimized.description,
+            backendSearchTerms: optimized.backendSearchTerms,
+            planQuality: "optimized",
+          });
+          if (quality.ok) {
+            finalDraft = optimizedDraft;
+          } else {
+            finalDraft = { ...safeDraft };
+            draftKind = "safe_fact_draft";
+            qualityIssues = quality.issues.map((i) => i.message);
+          }
+        }
+      } else {
+        finalDraft = { ...safeDraft };
+        qualityIssues = readiness.missingForQuality;
+      }
+
       const draftSnapshot = {
-        ...safeDraft,
+        ...finalDraft,
+        draftKind,
+        providerAttempted,
+        providerSucceeded,
+        fallbackApplied,
+        fallbackReason,
+        qualityIssues: qualityIssues.slice(0, 10),
         savedAt: binding.generatedAt,
         savedBy: "owner" as const,
         snapshotType: "ai_listing_pack" as const,

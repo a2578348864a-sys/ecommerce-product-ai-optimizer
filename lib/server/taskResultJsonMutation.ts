@@ -24,7 +24,8 @@ export type TaskResultJsonWriter =
   | "listing-pack"
   | "ai-listing"
   | "ai-image"
-  | "creative-handoff";
+  | "creative-handoff"
+  | "keyword-brief";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord"],
@@ -34,6 +35,7 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "ai-listing": ["aiListingPackSnapshot", "listingHandoffBinding"],
   "ai-image": ["aiImageDraftSnapshot", "imageHandoffBinding", "imageStudioSelection"],
   "creative-handoff": ["creativeHandoff", "creativeHandoffRequestLedger"],
+  "keyword-brief": ["listingKeywordBrief"],
 };
 
 export type TaskResultJsonStorageVersion = {

@@ -178,3 +178,147 @@ export function buildDeterministicListingPackDraft(
     reviewChecklist: ["请人工核对事实字段与值后完善表达。"],
   };
 }
+
+/**
+ * Quality.1：Plan-driven 组合（optimized 模式）。
+ *
+ * 与基础组合的区别：
+ * - 使用 Listing Plan 的 bulletPlans（每条绑定 factId + shopperAngle）
+ * - Bullet 表达为 "功能/事实 → 买方价值" 结构，不再只是属性词拼接
+ * - Description 为完整句子（用途 + 关键功能 + 场景），不复制 Title
+ * - Keywords 用 Keyword Brief（primary/supporting/backend），不从 facts 机械拆词
+ *
+ * 仍只使用已确认事实；禁止引入未确认 benefit/功能/性能。
+ */
+
+import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
+import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+
+export type OptimizedListingDraft = {
+  titles: string[];
+  bullets: string[];
+  description: string;
+  keywords: string[];
+  backendSearchTerms: string[];
+};
+
+function valueOf(input: ListingGenerationInput, field: string): string | null {
+  const fact = input.productFacts.find((f) => f.field === field);
+  return fact && fact.value.trim() ? fact.value.trim() : null;
+}
+
+/** 从 plan 的 featureFactIds（= fields）解析实际值 */
+function planFactValues(input: ListingGenerationInput, factIds: string[]): string[] {
+  const out: string[] = [];
+  for (const id of factIds) {
+    const v = valueOf(input, id);
+    if (v) out.push(v);
+  }
+  return out;
+}
+
+/**
+ * 组合 optimized Title：
+ * primaryKeyword（合理时前置或纳入）或 Brand + Type 开头，
+ * 后跟 1-3 关键属性；长度目标 60-100。
+ */
+function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan): string {
+  const identity = ["brand", "series_or_model", "product_type"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
+  const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
+  let lead = identity.join(" ");
+  // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置
+  if (plan.primaryKeyword) {
+    const keyword = plan.primaryKeyword;
+    const keywordTokens = keyword.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const leadTokens = lead.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const alreadyCovered = keywordTokens.every((w) => leadTokens.includes(w));
+    if (!alreadyCovered && lead.length + keyword.length <= 110) {
+      lead = lead ? `${lead} ${keyword}` : keyword;
+    } else if (lead.length === 0) {
+      lead = keyword;
+    }
+  }
+  const rest = specs.slice(0, 3).join(" ");
+  const title = [lead, rest].filter(Boolean).join(" ");
+  // 若超硬限，截断到 200
+  return title.length > 200 ? title.slice(0, 197).trimEnd() + "..." : title;
+}
+
+/**
+ * 组合 optimized Bullets：每条 = 事实值 + 买方价值角度。
+ * 例如 fact="insulation" value="Double-wall insulation" → "Double-wall insulation，适合日常通勤保温。"
+ * 所有表达只基于已确认事实值；shopperAngle 是评估性 framing（可接受），非虚构性能。
+ */
+function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
+  const bullets: string[] = [];
+  for (const bp of plan.bulletPlans) {
+    const values = planFactValues(input, bp.featureFactIds);
+    if (values.length === 0) continue;
+    const feature = values.join(" · ");
+    bullets.push(`${feature}，${bp.shopperAngle}。`);
+  }
+  return bullets.slice(0, 5);
+}
+
+/**
+ * 组合 optimized Description：2-4 个完整句子。
+ * 句1：产品身份（品牌+类型+系列）用途。
+ * 句2：关键功能事实。
+ * 句3：使用场景/买方价值（评估性，非虚构性能）。
+ */
+function composeOptimizedDescription(input: ListingGenerationInput, plan: ListingPlan): string {
+  const identity = ["brand", "series_or_model", "product_type"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
+  const functional = plan.bulletPlans
+    .flatMap((bp) => planFactValues(input, bp.featureFactIds))
+    .filter((v, i, arr) => arr.indexOf(v) === i);
+  const specs = ["capacity", "material", "color_or_variant"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
+
+  const sentences: string[] = [];
+  const identityText = identity.join(" ") || "商品";
+  sentences.push(`${identityText}，适合日常使用。`);
+  if (functional.length > 0) sentences.push(`关键特性包括${functional.slice(0, 3).join("、")}。`);
+  if (specs.length > 0) sentences.push(`规格：${specs.slice(0, 4).join("、")}。`);
+  if (plan.primaryKeyword) sentences.push(`适合搜索“${plan.primaryKeyword}”的用户。`);
+  return sentences.slice(0, 4).join("");
+}
+
+/**
+ * Keywords：使用 Keyword Brief（visible 词 + backend terms），
+ * 不再从 confirmedFacts 机械拆词。
+ */
+function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingKeywordBrief | null): {
+  keywords: string[];
+  backendSearchTerms: string[];
+} {
+  if (!brief) {
+    // 无 brief：退回基础组合（但标记 keywordReady=false 由调用方处理）
+    const values = new Set<string>();
+    for (const f of input.productFacts) values.add(f.value);
+    return { keywords: Array.from(values).slice(0, 12), backendSearchTerms: [] };
+  }
+  const keywords: string[] = [];
+  if (brief.primaryKeyword) keywords.push(brief.primaryKeyword);
+  for (const s of brief.supportingKeywords) {
+    if (!keywords.includes(s)) keywords.push(s);
+  }
+  // 补充身份词（品牌/类型组合），但去重
+  const brand = valueOf(input, "brand");
+  const type = valueOf(input, "product_type");
+  if (brand && type && !keywords.includes(`${brand} ${type}`)) keywords.push(`${brand} ${type}`);
+  return {
+    keywords: keywords.slice(0, 12),
+    backendSearchTerms: brief.backendSearchTerms,
+  };
+}
+
+export function composeOptimizedListingDraft(
+  input: ListingGenerationInput,
+  plan: ListingPlan,
+  brief: ListingKeywordBrief | null,
+): OptimizedListingDraft {
+  const title = composeOptimizedTitle(input, plan);
+  const bullets = composeOptimizedBullets(input, plan);
+  const description = composeOptimizedDescription(input, plan);
+  const { keywords, backendSearchTerms } = composeOptimizedKeywords(input, brief);
+  return { titles: [title], bullets, description, keywords, backendSearchTerms };
+}

@@ -25,6 +25,13 @@ const MANUAL_FIELD_LABELS: Record<string, string> = {
   capacity: "容量",
   color_or_variant: "颜色/款式",
   quantity_or_pack_size: "数量/包装",
+  functional_feature: "功能特性",
+  usage: "使用场景",
+  care: "清洁保养",
+  construction: "构造/做工",
+  included_components: "随附组件",
+  operation: "操作方式",
+  compatibility: "兼容性",
   other: "其他确定商品事实",
 };
 

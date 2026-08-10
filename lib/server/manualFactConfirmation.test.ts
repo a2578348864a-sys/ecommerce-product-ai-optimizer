@@ -136,3 +136,43 @@ describe("other 字段边界", () => {
     expect(out.confirmedFacts[0].field).toBe("other");
   });
 });
+
+describe("Quality.1 功能字段边界", () => {
+  it("功能字段（functional_feature/construction/care）是独立 field，可同时确认", () => {
+    const out = confirmManualProductFacts({
+      facts: [
+        { field: "functional_feature", value: "straw lid with push-open mechanism" },
+        { field: "construction", value: "double-wall vacuum insulation" },
+        { field: "care", value: "dishwasher-safe removable parts" },
+      ],
+      actor,
+      confirmedAt: CONFIRMED_AT,
+      confirmationReference: REF,
+      candidateId: "candidate-1",
+    });
+    expect(out.rejected).toHaveLength(0);
+    expect(out.confirmedFacts).toHaveLength(3);
+    const fields = out.confirmedFacts.map((f) => f.field);
+    expect(new Set(fields).size).toBe(3);
+    for (const f of out.confirmedFacts) {
+      expect(f.evidenceTier).toBe("human_confirmed");
+      expect(f.usageScopes).toEqual(["internal", "listing"]);
+    }
+  });
+
+  it("other 字段允许多值（功能/其他事实），按值去重", () => {
+    const out = confirmManualProductFacts({
+      facts: [
+        { field: "other", value: "含替换吸管" },
+        { field: "other", value: "含收纳袋" },
+        { field: "other", value: "含替换吸管" },
+      ],
+      actor,
+      confirmedAt: CONFIRMED_AT,
+      confirmationReference: REF,
+      candidateId: "candidate-1",
+    });
+    expect(out.confirmedFacts).toHaveLength(2);
+    expect(out.rejected.some((r) => r.code === "duplicate_value")).toBe(true);
+  });
+});

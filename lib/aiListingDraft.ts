@@ -21,6 +21,10 @@ export type AiListingPackDraft = {
   bullets: string[];
   description: string;
   keywords: string[];
+  /** Quality.1：Amazon Backend Search Terms（≤250 bytes，去重） */
+  backendSearchTerms?: string[];
+  /** Quality.1：草稿类型（optimized_listing / safe_fact_draft），UI 据此区分展示 */
+  draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
   sellingPoints: string[];
   riskNotes: string[];
   complianceWarnings: string[];
@@ -139,6 +143,20 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
   const description = text(input.description);
   if (!description) return fail("AI Listing draft description must not be empty.");
 
+  // Quality.1：backendSearchTerms（可选）≤250 bytes；draftKind 合法
+  const backendSearchTerms = Array.isArray(input.backendSearchTerms)
+    ? input.backendSearchTerms.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 50)
+    : undefined;
+  if (backendSearchTerms && Buffer.byteLength(backendSearchTerms.join(" "), "utf8") > 250) {
+    return fail("AI Listing draft backendSearchTerms must fit within 250 bytes.");
+  }
+  const draftKind = input.draftKind === undefined
+    ? undefined
+    : (input.draftKind === "ai_optimized_listing" || input.draftKind === "structured_listing_draft" || input.draftKind === "safe_fact_draft")
+      ? input.draftKind
+      : null;
+  if (draftKind === null) return fail("AI Listing draft draftKind is invalid.");
+
   const draft: AiListingPackDraft = {
     source: input.source,
     version,
@@ -155,6 +173,8 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
     bullets,
     description,
     keywords,
+    ...(backendSearchTerms ? { backendSearchTerms } : {}),
+    ...(draftKind ? { draftKind } : {}),
     sellingPoints,
     riskNotes,
     complianceWarnings,

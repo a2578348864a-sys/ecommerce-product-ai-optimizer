@@ -14,6 +14,15 @@ type ListingDraftSafeSummary = {
   bullets: string[];
   description: string | null;
   keywords: string[];
+  backendSearchTerms?: string[];
+  /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
+  backendTermWarnings?: string[];
+  draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
+  qualityIssues?: string[];
+  providerAttempted?: boolean;
+  providerSucceeded?: boolean;
+  fallbackApplied?: boolean;
+  fallbackReason?: string | null;
   sellingPoints: string[];
   riskNotes: string[];
   reviewChecklist: string[];
@@ -37,6 +46,14 @@ type ListingStateResponse = {
     factSummary: { confirmedFacts: number; listingEligibleFacts: number; prohibitedClaims: number };
     draft: ListingDraftSafeSummary | null;
     history: { sourceHandoffRevision: number; sourceResearchRevision: number; generatedAt: string; humanReviewRequired: boolean }[];
+    readiness?: {
+      claimSafe: boolean;
+      copyReady: boolean;
+      keywordReady: boolean;
+      missingForQuality: string[];
+      counts: { identity: number; specification: number; functional: number; listingEligible: number };
+    } | null;
+    keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null;
   };
 };
 
@@ -99,6 +116,7 @@ export function ListingHandoffSection({
     listingEligibleFacts: 0,
     prohibitedClaims: 0,
   });
+  const [readiness, setReadiness] = useState<ListingStateResponse["data"]["readiness"]>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -126,6 +144,7 @@ export function ListingHandoffSection({
         setDraft(json.data.draft);
         setCanGenerate(json.data.canGenerate);
         setFactSummary(json.data.factSummary);
+        setReadiness(json.data.readiness ?? null);
       }
     } catch {
       if (mounted.current) setNotice({ tone: "error", text: "网络异常，请重试。" });
@@ -459,6 +478,26 @@ export function ListingHandoffSection({
         ) : null}
         {status === null ? (
           <p aria-busy="true">加载中…</p>
+        ) : (
+          <div className="mt-1 flex flex-wrap gap-2 text-xs font-semibold" data-testid="listing-readiness-badges">
+            <span className={`rounded-full px-2.5 py-1 ${readiness?.claimSafe ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+              Claim Safety：{readiness?.claimSafe ? "通过" : "未通过"}
+            </span>
+            <span className={`rounded-full px-2.5 py-1 ${readiness?.copyReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+              优化 Listing：{readiness?.copyReady ? "可生成" : "暂不可生成"}
+            </span>
+            <span className={`rounded-full px-2.5 py-1 ${readiness?.keywordReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
+              关键词资料：{readiness?.keywordReady ? "已满足" : "未提供"}
+            </span>
+            {readiness && !readiness.copyReady && readiness.missingForQuality.length > 0 ? (
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800" title={readiness.missingForQuality.join("；")}>
+                待补：{readiness.missingForQuality.slice(0, 2).join("；")}{readiness.missingForQuality.length > 2 ? "…" : ""}
+              </span>
+            ) : null}
+          </div>
+        )}
+        {status === null ? (
+          <p aria-busy="true">加载中…</p>
         ) : status === "legacy_unbound" ? (
           <div className="rounded-lg bg-slate-50 px-3 py-2">
             <p className="font-semibold text-slate-800">历史草稿未绑定可信创作交接</p>
@@ -483,8 +522,30 @@ export function ListingHandoffSection({
         ) : status === "active" ? (
           <div>
             <p className="text-sm font-semibold text-slate-700">
-              当前 Listing 草稿有效 · 生成于 {formatDate(draft?.generatedAt ?? null)} · 仍需人工审核，不得直接发布
+              {draft?.draftKind === "ai_optimized_listing"
+                ? "AI 优化 Listing 草稿 · AI 辅助生成 · 需要人工审核"
+                : draft?.draftKind === "structured_listing_draft"
+                  ? "结构化 Listing 草稿"
+                  : draft?.draftKind === "safe_fact_draft"
+                    ? "基础事实草稿"
+                    : "当前 Listing 草稿"}
+              {" · "}生成于 {formatDate(draft?.generatedAt ?? null)} · 仍需人工审核，不得直接发布
             </p>
+            {draft?.draftKind === "safe_fact_draft" && draft.qualityIssues && draft.qualityIssues.length > 0 ? (
+              <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="safe-fact-draft-issues">
+                当前为基础事实草稿：{draft.qualityIssues.slice(0, 3).join("；")}
+              </p>
+            ) : null}
+            {draft?.providerAttempted === true && draft.providerSucceeded === false ? (
+              <p className="mt-1 rounded-lg bg-slate-100 px-3 py-2 text-slate-600" data-testid="ai-fallback-notice">
+                已尝试 AI 生成但未成功，已降级为安全草稿：{draft.fallbackReason ?? "Provider 未返回有效结果"}
+              </p>
+            ) : null}
+            {draft?.backendTermWarnings && draft.backendTermWarnings.length > 0 ? (
+              <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="backend-term-warnings">
+                {draft.backendTermWarnings.length} 个搜索词因缺少商品事实依据未采用
+              </p>
+            ) : null}
             {renderDraftBody()}
             <button
               type="button"

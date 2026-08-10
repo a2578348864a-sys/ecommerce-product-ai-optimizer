@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -8,8 +9,17 @@ import { computeListingStatus, parseListingHandoffBinding, type ListingStatus } 
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
+import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 
-const ALLOWED_GENERATE_FIELDS = new Set(["requestId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed"]);
+const ALLOWED_GENERATE_FIELDS = new Set([
+  "action",
+  "requestId",
+  "expectedStorageVersion",
+  "expectedHandoffRevision",
+  "confirmed",
+  "keywordBrief",
+]);
 const FORBIDDEN_KEYS = new Set([
   "creativeHandoff", "creativeHandoffRequestLedger", "listingHandoffBinding", "aiListingPackSnapshot",
   "candidateId", "handoffId", "revision", "fingerprint", "requestKeyHash", "requestFingerprint",
@@ -54,6 +64,15 @@ function parseStorageVersion(value: unknown): { resultJsonHash: string; updatedA
   const parsed = new Date(value.updatedAt);
   if (Number.isNaN(parsed.getTime())) return null;
   return { resultJsonHash: value.resultJsonHash, updatedAt: parsed.toISOString() };
+}
+
+function snapshotVersionMatchesRoute(
+  snapshot: { resultJson: string; updatedAt: Date | string },
+  expected: { resultJsonHash: string; updatedAt: string },
+): boolean {
+  const actual = snapshot.updatedAt instanceof Date ? snapshot.updatedAt.toISOString() : new Date(snapshot.updatedAt).toISOString();
+  if (actual !== new Date(expected.updatedAt).toISOString()) return false;
+  return createHash("sha256").update(snapshot.resultJson, "utf8").digest("hex") === expected.resultJsonHash;
 }
 
 type AuthResult = { ctx: AccessContext | null; error: NextResponse | null };
@@ -190,6 +209,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       && handoffEffectiveStatus?.status === "active"
       && factSummary.listingEligibleFacts > 0;
 
+    // Quality.1：readiness（claimSafe / copyReady / keywordReady / missingForQuality）
+    const { buildListingReadiness } = await import("@/lib/listingHandoff/listingReadiness");
+    const { parseListingKeywordBrief } = await import("@/lib/listingHandoff/listingKeywordBrief");
+    const keywordBrief = parseListingKeywordBrief(gate.keywordBriefRaw);
+    const readiness = handoff
+      ? buildListingReadiness({
+          confirmedFacts: handoff.versions[handoff.versions.length - 1].confirmedFacts,
+          listingEligibleFacts: factSummary.listingEligibleFacts,
+          hasBlockingIssue: listingStatus === "revoked" || listingStatus === "invalid",
+          keywordBrief,
+        })
+      : null;
+
     return NextResponse.json({
       ok: true,
       data: {
@@ -206,6 +238,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         factSummary,
         draft,
         history,
+        readiness: readiness
+          ? {
+              claimSafe: readiness.claimSafe,
+              copyReady: readiness.copyReady,
+              keywordReady: readiness.keywordReady,
+              missingForQuality: readiness.missingForQuality,
+              counts: readiness.counts,
+            }
+          : null,
+        keywordBriefSummary: keywordBrief
+          ? { primaryKeyword: keywordBrief.primaryKeyword, source: keywordBrief.source, backendTermsCount: keywordBrief.backendSearchTerms.length }
+          : null,
       },
     });
   } catch (err) {
@@ -227,6 +271,48 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const forbidden = containsForbiddenKey(body);
   if (forbidden) return errorResponse(400, "forbidden_field", `禁止字段: ${forbidden}`);
+
+  // Quality.1：保存 Keyword Brief（action=save_keyword_brief）
+  if (body.action === "save_keyword_brief") {
+    for (const key of Object.keys(body)) {
+      if (!ALLOWED_GENERATE_FIELDS.has(key)) return errorResponse(400, "unknown_field", `未知字段: ${key}`);
+    }
+    if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请确认关键词资料后提交。");
+    const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
+    if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+    const briefInput = body.keywordBrief;
+    if (!isRecord(briefInput)) return errorResponse(400, "invalid_keyword_brief", "关键词资料无效。");
+    const briefResult = buildListingKeywordBrief({
+      primaryKeyword: briefInput.primaryKeyword as string,
+      supportingKeywords: Array.isArray(briefInput.supportingKeywords) ? briefInput.supportingKeywords as string[] : [],
+      backendSearchTerms: Array.isArray(briefInput.backendSearchTerms) ? briefInput.backendSearchTerms as string[] : [],
+      source: (briefInput.source as "manual" | "synthetic" | "sellersprite" | "amazon_search_query" | "ad_search_term_report" | "unknown") ?? "manual",
+      capturedAt: new Date().toISOString(),
+    });
+    if (!briefResult.ok) return errorResponse(400, "invalid_keyword_brief", briefResult.message);
+    const { ctx, error } = getAuth(req, id, body);
+    if (error) return error;
+    try {
+      await mutateTaskResultJson({
+        context: ctx!,
+        taskId: id,
+        writer: "keyword-brief",
+        async mutate(current, snapshot) {
+          if (!snapshotVersionMatchesRoute(snapshot, expectedStorageVersion)) {
+            throw new TaskResultJsonMutationError("task_result_conflict", 409, "任务已在其他页面更新，请刷新后重试。");
+          }
+          return {
+            result: { ...current, listingKeywordBrief: briefResult.brief as unknown as Record<string, unknown> },
+            value: { saved: true },
+          };
+        },
+      });
+      return NextResponse.json({ ok: true, data: { saved: true } });
+    } catch (err) {
+      if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
+      throw err;
+    }
+  }
 
   for (const key of Object.keys(body)) {
     if (!ALLOWED_GENERATE_FIELDS.has(key)) return errorResponse(400, "unknown_field", `未知字段: ${key}`);

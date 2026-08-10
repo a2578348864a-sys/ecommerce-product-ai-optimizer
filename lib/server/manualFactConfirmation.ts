@@ -24,6 +24,13 @@ export const MANUAL_FACT_FIELDS = Object.freeze({
   capacity: "容量",
   color_or_variant: "颜色/款式",
   quantity_or_pack_size: "数量/包装",
+  functional_feature: "功能特性",
+  usage: "使用场景",
+  care: "清洁保养",
+  construction: "构造/做工",
+  included_components: "随附组件",
+  operation: "操作方式",
+  compatibility: "兼容性",
   other: "其他确定商品事实",
 } as const);
 
@@ -84,6 +91,7 @@ export function confirmManualProductFacts(input: ManualFactConfirmationInput): M
   }
 
   const seenFields = new Set<string>();
+  const seenOtherValues = new Set<string>();
   const confirmedFacts: ProductCreativeHandoffConfirmedFact[] = [];
   const rejected: ManualFactConfirmationOutput["rejected"] = [];
 
@@ -92,7 +100,9 @@ export function confirmManualProductFacts(input: ManualFactConfirmationInput): M
       rejected.push({ field: String((fact as { field?: unknown })?.field ?? "unknown"), code: "invalid_field" });
       continue;
     }
-    if (seenFields.has(fact.field)) {
+    // Quality.1：other 字段承载多个功能/其他事实（factId 按值派生，天然区分）；
+    // 非 other 字段仍按字段去重。
+    if (fact.field !== "other" && seenFields.has(fact.field)) {
       rejected.push({ field: fact.field, code: "duplicate_field" });
       continue;
     }
@@ -102,6 +112,11 @@ export function confirmManualProductFacts(input: ManualFactConfirmationInput): M
       rejected.push({ field: fact.field, code: "empty_value" });
       continue;
     }
+    if (fact.field === "other" && seenOtherValues.has(value)) {
+      rejected.push({ field: fact.field, code: "duplicate_value" });
+      continue;
+    }
+    if (fact.field === "other") seenOtherValues.add(value);
     const field = fact.field;
     const factId = uuidV4FromSeed(
       `manual-confirmed:${input.candidateId}:${field}:${value}:${input.confirmedAt}`,

@@ -157,16 +157,24 @@ function parseManualConfirmedFacts(value: unknown): ManualFactInput[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length < 1 || value.length > 32) return null;
   const seen = new Set<string>();
+  const seenOtherValues = new Set<string>();
   const out: ManualFactInput[] = [];
   for (const item of value) {
     if (!isRecord(item)) return null;
     if (Object.keys(item).length !== 2) return null;
     const { field, value: rawValue } = item as { field?: unknown; value?: unknown };
     if (!isManualFactField(field)) return null;
-    if (seen.has(field)) return null;
-    seen.add(field);
+    // Quality.1：other 允许重复（多个功能/其他事实）；非 other 字段去重
+    if (field !== "other") {
+      if (seen.has(field)) return null;
+      seen.add(field);
+    }
     const normalized = normalizeManualFactValue(rawValue);
     if (!normalized) return null;
+    if (field === "other") {
+      if (seenOtherValues.has(normalized)) return null;
+      seenOtherValues.add(normalized);
+    }
     out.push({ field, value: normalized });
   }
   return out;
