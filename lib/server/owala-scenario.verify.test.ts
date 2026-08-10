@@ -53,6 +53,188 @@ function seedTask(taskId: string, resultJson: string) {
   writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [{ id: taskId, demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue", platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low", oneLineSummary: "o", resultJson, productLifecycle: "i", createdAt: NOW, updatedAt: NOW }], candidates: [] }), "utf8");
 }
 
+/**
+ * 生产真实 Owala 结构：verified_product_batch integrity，
+ * 标题位于 facts.productFacts.productTitle（researchContextAdapter 修复的目标场景）。
+ */
+function researchDocBatch(candidateId = "candidate-owala-batch") {
+  const verification = createProductResearchVerification({
+    schema: PRODUCT_RESEARCH_HASH_SCHEMA, candidateId, runId: "run-owala-batch",
+    contextHash: "a".repeat(64), inputHash: "b".repeat(64), resultHash: "c".repeat(64),
+    workflowStatus: "completed",
+    reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true, reviewedCount: 4, totalReviewSteps: 4, allReviewed: true },
+  });
+  const researchRecord = createInitialProductResearchRecord({
+    candidateId: verification.candidateId, runId: verification.runId, contextHash: verification.contextHash,
+    researchHash: buildProductResearchHash({ ...verification, schema: PRODUCT_RESEARCH_HASH_SCHEMA }),
+    workflowStatus: verification.workflowStatus, reviewState: verification.reviewState,
+    actor: { mode: "visitor", actorRef: `visitor:${"f".repeat(16)}` }, now: NOW,
+    decision: { decisionId: "11111111-1111-4111-8111-111111111111", status: "creative_ready", reason: "ok", nextAction: null },
+  });
+  const facts = {
+    capturedAt: NOW,
+    originKind: "seller_sprite_product_batch",
+    productBatchId: "6ecf22d2-f507-4aa1-9978-22ff51d52e57",
+    productBatchItemId: "e0e05375-822d-4182-970b-b8f0e94fcdd5",
+    productName: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)",
+    marketplace: "US",
+    asin: "B0FH1ZXTN1",
+    reportType: "category_current",
+    query: null,
+    category: "Sports & Outdoors",
+    researchPriority: "priority_2",
+    evidenceStatus: "sufficient_for_comparison",
+    provisionalDisposition: "insufficient_hard_gate_evidence",
+    evidenceHash: "e".repeat(64),
+    itemHash: "f".repeat(64),
+    sellerSpriteDisclaimerVersion: "sellersprite-v1-frozen.2026-07-27",
+    productFacts: {
+      productTitle: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)",
+      brand: "Owala",
+      price: 29.99,
+      rating: 4.6,
+      reviews: 2948,
+      estimatedMonthlySales: 13358,
+      estimatedMonthlyRevenue: 400606,
+      rootCategory: "Sports & Outdoors",
+      rootCategoryBsr: 34,
+      subCategory: "Water Bottles",
+      subCategoryBsr: 8,
+      variationCount: 18,
+    },
+  };
+  return JSON.stringify({
+    type: "workflow",
+    researchRecord,
+    researchVerification: verification,
+    candidateAnalysisContext: {
+      version: "candidate-analysis-context-v1",
+      integrity: "verified_product_batch",
+      facts,
+      assessment: { researchMode: "market_research_only", promotionEligible: false },
+    },
+    agentOutputSnapshot: null,
+  });
+}
+
+describe("Owala verified_product_batch projection closure", () => {
+  it("生产真实结构（title 在 facts.productFacts.productTitle）产生 listing 候选", async () => {
+    const taskId = "sandbox-owala-batch-task";
+    seedTask(taskId, researchDocBatch());
+    const { gate } = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const candidate = gate.candidate;
+    expect(candidate).toBeTruthy();
+    const confirmables = buildConfirmableCandidates(candidate!.stableSourceFacts);
+    const listingEligible = confirmables.filter((c) => c.allowedUsageScopes.includes("listing"));
+    const byField = Object.fromEntries(confirmables.map((c) => [c.field, String(c.value)]));
+    // 标题派生候选必须存在（品牌/类型/系列/材质/容量/颜色）
+    expect(listingEligible.length).toBeGreaterThanOrEqual(4);
+    expect(byField["brand"]).toBe("Owala");
+    expect(byField["product_type"]?.toLowerCase()).toContain("water bottle");
+    expect(byField["material"]?.toLowerCase()).toContain("stainless steel");
+    expect(byField["capacity"]?.toLowerCase()).toContain("24 oz");
+    expect(byField["color_or_variant"]?.toLowerCase()).toContain("blue");
+    // market_signal 绝不进入 listing 候选
+    expect(listingEligible.some((c) => ["category", "price_usd", "rating", "review_count"].includes(c.field))).toBe(false);
+  });
+});
+
+/** 无标题可提取字段的合法 Task（零候选场景）：标题只有无意义词，title-derived 候选为空 */
+function researchDocNoTitleFacts(candidateId = "candidate-zero-candidate") {
+  const verification = createProductResearchVerification({
+    schema: PRODUCT_RESEARCH_HASH_SCHEMA, candidateId, runId: "run-zero",
+    contextHash: "a".repeat(64), inputHash: "b".repeat(64), resultHash: "c".repeat(64),
+    workflowStatus: "completed",
+    reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true, reviewedCount: 4, totalReviewSteps: 4, allReviewed: true },
+  });
+  const researchRecord = createInitialProductResearchRecord({
+    candidateId: verification.candidateId, runId: verification.runId, contextHash: verification.contextHash,
+    researchHash: buildProductResearchHash({ ...verification, schema: PRODUCT_RESEARCH_HASH_SCHEMA }),
+    workflowStatus: verification.workflowStatus, reviewState: verification.reviewState,
+    actor: { mode: "visitor", actorRef: `visitor:${"f".repeat(16)}` }, now: NOW,
+    decision: { decisionId: "11111111-1111-4111-8111-111111111111", status: "creative_ready", reason: "ok", nextAction: null },
+  });
+  const context = { candidateId, productName: "神秘商品 XYZ", sourceType: "seller_sprite_market_research", sourceLabel: "SellerSprite", marketplace: "US", asin: "B0ZERO0001", productUrl: "https://e.com/p", title: "Best Premium Quality Item For Everyone Everywhere", brand: null, category: "Other", priceUsd: 9.99, rating: 3.5, reviewCount: 12, disclaimer: "third_party_estimate_point_in_time", reportType: "SellerSprite Search Results", query: "xyz", evidenceStatus: "ok", researchPriority: "high", promotionEligible: false, capturedAt: NOW, contextHash: "a".repeat(64) };
+  const agentOutput = { version: "agent-output-v1", generatedAt: NOW, sourcingSnapshot: { supplierConclusion: "S", sourceSignals: [], priceSignals: [], availabilitySignals: [], assumptions: [], missingInfo: [], confidence: "medium" }, riskSnapshot: { riskLevel: "low", riskFlags: [], complianceConcerns: [], ipConcerns: [], logisticsConcerns: [], safetyConcerns: [], riskReason: "ok", needsManualReview: false }, summarySnapshot: { decision: "recommended", decisionReason: "G", targetUser: "c", sellingPoints: ["L"], concerns: [], confidence: "medium" }, listingSnapshot: { titleDraft: "T", bulletDrafts: ["E"], keywordHints: [], imageIdeas: [], complianceNotes: [], missingInputs: [] }, nextActionSnapshot: { primaryAction: "prepare_listing", actionLabel: "l", checklist: [], blockingIssues: [], suggestedOwnerStep: "x" }, humanReviewSnapshot: { required: false, reasons: [], reviewFocus: [], defaultStatus: "not_required" }, fallbackUsed: false, warnings: [] };
+  return JSON.stringify({ type: "workflow", researchRecord, researchVerification: verification, candidateAnalysisContext: context, agentOutputSnapshot: agentOutput });
+}
+
+describe("零候选手工兜底 closure", () => {
+  it("无标题派生候选 → 手工确认事实 → 新 revision → listingEligibleFacts > 0", async () => {
+    const taskId = "sandbox-zero-task";
+    seedTask(taskId, researchDocNoTitleFacts());
+
+    // Step 1: 预览 —— confirmable listing 候选应为 0（标题无可提取字段）
+    const first = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const candidate = first.gate.candidate;
+    expect(candidate).toBeTruthy();
+    const confirmables = buildConfirmableCandidates(candidate!.stableSourceFacts);
+    const listingEligible = confirmables.filter((c) => c.allowedUsageScopes.includes("listing"));
+    expect(listingEligible.length).toBe(0);
+
+    // Step 2: 仅手工事实创建 handoff（无 selectionId）
+    const preview = first.preview!;
+    const sv = preview.storageVersion!;
+    const manual = [{ field: "brand" as const, value: "XYZ" }, { field: "material" as const, value: "Aluminum" }];
+    const result = await createOrAppendCreativeHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440000",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: manual,
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [],
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    });
+    expect(result.isNewRevision).toBe(true);
+
+    // Step 3: 重新预览 —— listingEligibleFacts > 0，confirmedFacts 含手工事实
+    const second = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const handoff = second.gate.currentHandoff!;
+    const factSummary = summarizeListingHandoffFacts(handoff);
+    expect(factSummary.listingEligibleFacts).toBeGreaterThan(0);
+    expect(factSummary.confirmedFacts).toBeGreaterThanOrEqual(2);
+    const v = handoff.versions[handoff.versions.length - 1];
+    const manualFact = v.confirmedFacts.find((f) => f.field === "brand")!;
+    expect(manualFact.value).toBe("XYZ");
+    expect(manualFact.evidenceTier).toBe("human_confirmed");
+    expect(manualFact.usageScopes).toContain("listing");
+    expect(manualFact.sourceRef.sourceKind).toBe("user_confirmation");
+    // prohibitedClaims 保留
+    expect(factSummary.prohibitedClaims).toBeGreaterThan(0);
+  });
+
+  it("非法手工字段（market_signal）被拒绝，不写入", async () => {
+    const taskId = "sandbox-zero-task-2";
+    seedTask(taskId, researchDocNoTitleFacts());
+    const first = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const preview = first.preview!;
+    const sv = preview.storageVersion!;
+    await expect(createOrAppendCreativeHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440001",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: [{ field: "category" as never, value: "Sports" }],
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [],
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    })).rejects.toMatchObject({ code: "invalid_manual_fact" });
+  });
+});
+
 describe("Owala listing-eligible dead-end closure", () => {
   it("0 eligible → 确认标题派生候选 → 新 revision → listingEligibleFacts > 0", async () => {
     const taskId = "sandbox-owala-task";
@@ -121,5 +303,195 @@ describe("Owala listing-eligible dead-end closure", () => {
     for (const c of confirmables.filter((x) => ["category", "price_usd", "rating", "review_count"].includes(x.field))) {
       expect(c.allowedUsageScopes).toEqual(["internal"]);
     }
+  });
+});
+
+describe("manualConfirmedFacts idempotency boundary", () => {
+  it("1A. 同 requestId 同 manualConfirmedFacts → replay，不新增 revision", async () => {
+    const taskId = "sandbox-idem-same";
+    seedTask(taskId, researchDocNoTitleFacts());
+    const first = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const preview = first.preview!;
+    const sv = preview.storageVersion!;
+    const manual = [{ field: "brand" as const, value: "XYZ" }];
+    const fingerprint = buildRequestFingerprint({
+      action: "create",
+      selectedFactIds: [],
+      expectedStorageVersion: sv,
+      expectedResearchRevision: preview.expectedResearchRevision,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      confirmed: true,
+    });
+    const input = {
+      requestId: "550e8400-e29b-41d4-a716-446655440100",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: manual,
+      requestFingerprint: fingerprint,
+    };
+    const firstResult = await createOrAppendCreativeHandoff(taskId, visitorContext(), input);
+    expect(firstResult.isNewRevision).toBe(true);
+    // 第二次：同 requestId + 同内容 → replay
+    const secondResult = await createOrAppendCreativeHandoff(taskId, visitorContext(), input);
+    expect(secondResult.idempotentReplay).toBe(true);
+    expect(secondResult.isNewRevision).toBe(false);
+    const after = await generateCreativeHandoffPreview(taskId, visitorContext());
+    expect(after.gate.currentHandoff!.versions.length).toBe(1);
+    expect(after.gate.currentHandoff!.currentRevision).toBe(1);
+  });
+
+  it("1B. 同 requestId 不同 manualConfirmedFacts → conflict/fail-closed，不得静默返回第一次结果", async () => {
+    const taskId = "sandbox-idem-diff";
+    seedTask(taskId, researchDocNoTitleFacts());
+    const first = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const preview = first.preview!;
+    const sv = preview.storageVersion!;
+    const buildInput = (requestId: string, facts: Array<{ field: "brand"; value: string }>) => ({
+      requestId,
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: facts,
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [],
+        manualConfirmedFacts: facts,
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    });
+    const firstResult = await createOrAppendCreativeHandoff(taskId, visitorContext(), buildInput("550e8400-e29b-41d4-a716-446655440101", [{ field: "brand", value: "AAA" }]));
+    expect(firstResult.isNewRevision).toBe(true);
+    // 第二次：同 requestId + 不同 manualConfirmedFacts → 不同 fingerprint → conflict
+    await expect(createOrAppendCreativeHandoff(taskId, visitorContext(), buildInput("550e8400-e29b-41d4-a716-446655440101", [{ field: "brand", value: "BBB" }])))
+      .rejects.toMatchObject({ code: "idempotency_conflict" });
+    // 第一次结果未被覆盖：confirmedFacts 保持 AAA
+    const after = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const v = after.gate.currentHandoff!.versions[after.gate.currentHandoff!.versions.length - 1];
+    expect(v.confirmedFacts.find((f) => f.field === "brand")?.value).toBe("AAA");
+    expect(after.gate.currentHandoff!.versions.length).toBe(1);
+  });
+});
+
+describe("manualConfirmedFacts prohibitedClaims boundary", () => {
+  it("prohibitedClaims 优先级不被手工补充绕过：禁止词值被生成过滤器拦截且原 prohibitedClaims 不丢失", async () => {
+    const taskId = "sandbox-prohibited";
+    seedTask(taskId, researchDocNoTitleFacts());
+    const first = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const preview = first.preview!;
+    const sv = preview.storageVersion!;
+    // 手工确认一个含内置禁止词的事实（"best seller guaranteed" 命中 LISTING_CLAIM_RULES）
+    const manual = [{ field: "other" as const, value: "best seller guaranteed" }];
+    const result = await createOrAppendCreativeHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440200",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: manual,
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [],
+        manualConfirmedFacts: manual,
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    });
+    expect(result.isNewRevision).toBe(true);
+    const after = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const handoff = after.gate.currentHandoff!;
+    const v = handoff.versions[handoff.versions.length - 1];
+    // 手工事实写入 confirmedFacts（服务端不预判语义），但 prohibitedClaims 保留
+    expect(v.confirmedFacts.some((f) => f.value === "best seller guaranteed")).toBe(true);
+    expect(v.prohibitedClaims.length).toBeGreaterThan(0);
+    // 生成输入：prohibitedClaims 进入禁止约束
+    const { filterListingClaims } = await import("@/lib/listingClaimFilter");
+    const rawDraft = {
+      titles: ["Best seller guaranteed Water Bottle"],
+      bullets: ["best seller guaranteed quality"],
+      description: "",
+      keywords: ["best seller"],
+      sellingPoints: [],
+      riskNotes: [],
+      reviewChecklist: [],
+      blockedClaims: [],
+      complianceWarnings: [],
+      version: 1,
+      source: "mock",
+      generatedAt: null,
+      humanReviewRequired: true,
+    };
+    const { cleaned, blockedClaims } = filterListingClaims(rawDraft as never, {
+      prohibitedClaims: v.prohibitedClaims.map((c) => c.summary),
+    });
+    // 内置规则（Best seller guaranteed）拦截，草稿不含该词
+    expect(blockedClaims.length).toBeGreaterThan(0);
+    expect(JSON.stringify({ titles: cleaned.titles, bullets: cleaned.bullets })).not.toContain("best seller guaranteed");
+  });
+});
+
+describe("manualConfirmedFacts visitor isolation", () => {
+  it("Visitor B POST manualConfirmedFacts 到 Visitor A Task → 拒绝，A 的 handoff 不变", async () => {
+    const taskId = "sandbox-isolation-a";
+    seedTask(taskId, researchDocNoTitleFacts());
+    const visitorA = visitorContext();
+
+    // Visitor A 先创建死路 handoff（仅 category）
+    const first = await generateCreativeHandoffPreview(taskId, visitorA);
+    const preview = first.preview!;
+    const sv = preview.storageVersion!;
+    const catSel = (preview.confirmableFactCandidates ?? []).find((c) => c.canonicalField === "category")!;
+    await createOrAppendCreativeHandoff(taskId, visitorA, {
+      requestId: "550e8400-e29b-41d4-a716-446655440300",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [catSel.selectionId],
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [catSel.selectionId],
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    });
+    const before = await generateCreativeHandoffPreview(taskId, visitorA);
+    const beforeRev = before.gate.currentHandoff!.currentRevision;
+    const beforeConfirmed = before.gate.currentHandoff!.versions[before.gate.currentHandoff!.versions.length - 1].confirmedFacts.length;
+
+    // Visitor B 尝试对 A 的 Task POST manualConfirmedFacts
+    const visitorB = { mode: "demo" as const, token: "tok-b", demoAccessId: "demo-visitor-b", isActive: true, isExpired: false, remainingAiCalls: 10 };
+    const manual = [{ field: "brand" as const, value: "HackerBrand" }];
+    await expect(createOrAppendCreativeHandoff(taskId, visitorB, {
+      requestId: "550e8400-e29b-41d4-a716-446655440301",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: beforeRev,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: manual,
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [],
+        manualConfirmedFacts: manual,
+        expectedStorageVersion: sv,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: beforeRev,
+        confirmed: true,
+      }),
+    })).rejects.toMatchObject({ code: "not_found" });
+
+    // A 的 handoff revision 和 confirmedFacts 不变
+    const after = await generateCreativeHandoffPreview(taskId, visitorA);
+    expect(after.gate.currentHandoff!.currentRevision).toBe(beforeRev);
+    expect(after.gate.currentHandoff!.versions[after.gate.currentHandoff!.versions.length - 1].confirmedFacts.length).toBe(beforeConfirmed);
+    expect(after.gate.currentHandoff!.versions[after.gate.currentHandoff!.versions.length - 1].confirmedFacts.some((f) => f.value === "HackerBrand")).toBe(false);
   });
 });

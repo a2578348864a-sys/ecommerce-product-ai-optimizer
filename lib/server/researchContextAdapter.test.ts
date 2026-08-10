@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   adaptResearchContextForHandoff,
 } from "@/lib/server/researchContextAdapter";
-import { buildProductResearchHash, PRODUCT_RESEARCH_HASH_SCHEMA } from "@/lib/productResearchRecord";
+import {
+  buildProductResearchHash,
+  createInitialProductResearchRecord,
+  createProductResearchVerification,
+  PRODUCT_RESEARCH_HASH_SCHEMA,
+} from "@/lib/productResearchRecord";
 
 /** 构造与真实 save-task 完全同构的 resultJson（V1 context + researchRecord + sourceMeta） */
 function buildRealSavedTaskFixture(overrides: {
@@ -232,5 +237,100 @@ describe("adaptResearchContextForHandoff", () => {
     const reparsed = parseCandidateResearchContext(result.context);
     expect(reparsed).not.toBeNull();
     expect(reparsed?.candidateId).toBe(result.context.candidateId);
+  });
+});
+
+describe("adaptResearchContextForHandoff — verified_product_batch", () => {
+  const NOW = "2026-08-09T19:43:44.103Z";
+  const candidateId = "sandbox_candidate_owala_0001";
+  const contextHash = "a".repeat(64);
+
+  function buildProductBatchFixture(overrides: { productFacts?: Record<string, unknown> } = {}) {
+    const hasProductFactsOverride = Object.prototype.hasOwnProperty.call(overrides, "productFacts");
+    const verification = createProductResearchVerification({
+      schema: PRODUCT_RESEARCH_HASH_SCHEMA, candidateId, runId: "run-owala",
+      contextHash, inputHash: "b".repeat(64), resultHash: "c".repeat(64),
+      workflowStatus: "completed",
+      reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true, reviewedCount: 4, totalReviewSteps: 4, allReviewed: true },
+    });
+    const researchRecord = createInitialProductResearchRecord({
+      candidateId, runId: "run-owala", contextHash,
+      researchHash: buildProductResearchHash({ ...verification, schema: PRODUCT_RESEARCH_HASH_SCHEMA }),
+      workflowStatus: "completed", reviewState: verification.reviewState,
+      actor: { mode: "visitor", actorRef: `visitor:${"f".repeat(16)}` }, now: NOW,
+      decision: { decisionId: "11111111-1111-4111-8111-111111111111", status: "creative_ready", reason: "ok", nextAction: null },
+    });
+    const facts = {
+      capturedAt: NOW,
+      originKind: "seller_sprite_product_batch",
+      productBatchId: "6ecf22d2-f507-4aa1-9978-22ff51d52e57",
+      productBatchItemId: "e0e05375-822d-4182-970b-b8f0e94fcdd5",
+      productName: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)",
+      marketplace: "US",
+      asin: "B0FH1ZXTN1",
+      reportType: "category_current",
+      query: null,
+      category: "Sports & Outdoors",
+      researchPriority: "priority_2",
+      evidenceStatus: "sufficient_for_comparison",
+      provisionalDisposition: "insufficient_hard_gate_evidence",
+      evidenceHash: "e".repeat(64),
+      itemHash: "f".repeat(64),
+      sellerSpriteDisclaimerVersion: "sellersprite-v1-frozen.2026-07-27",
+      productFacts: hasProductFactsOverride ? overrides.productFacts : {
+        productTitle: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)",
+        brand: "Owala",
+        price: 29.99,
+        rating: 4.6,
+        reviews: 2948,
+        estimatedMonthlySales: 13358,
+        estimatedMonthlyRevenue: 400606,
+        rootCategory: "Sports & Outdoors",
+        rootCategoryBsr: 34,
+        subCategory: "Water Bottles",
+        subCategoryBsr: 8,
+        variationCount: 18,
+      },
+    };
+    return {
+      productName: "Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)",
+      status: "completed",
+      candidateAnalysisContext: {
+        version: "candidate-analysis-context-v1",
+        integrity: "verified_product_batch",
+        facts,
+        assessment: { researchMode: "market_research_only", promotionEligible: false },
+      },
+      researchRecord,
+    };
+  }
+
+  it("映射 productFacts.productTitle/brand 到标准研究上下文（标题派生候选输入）", () => {
+    const result = adaptResearchContextForHandoff(buildProductBatchFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.context.title).toBe("Owala FreeSip Stainless Steel Water Bottle 24 oz Blue (Blue Jay)");
+    expect(result.context.brand).toBe("Owala");
+    expect(result.context.category).toBe("Sports & Outdoors");
+  });
+
+  it("market_signal 字段（price/rating/reviews/销量）映射为数值但保持独立字段", () => {
+    const result = adaptResearchContextForHandoff(buildProductBatchFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.context.priceUsd).toBe(29.99);
+    expect(result.context.rating).toBe(4.6);
+    expect(result.context.reviewCount).toBe(2948);
+    expect(result.context.estimatedMonthlySales).toBe(13358);
+    expect(result.context.estimatedMonthlyRevenueUsd).toBe(400606);
+  });
+
+  it("productFacts 缺失时 title/brand 为 undefined/null 但不 fail-closed（fail-safe）", () => {
+    const result = adaptResearchContextForHandoff(buildProductBatchFixture({ productFacts: undefined }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.context.title).toBeUndefined();
+    expect(result.context.brand).toBeNull();
+    expect(result.context.category).toBe("Sports & Outdoors");
   });
 });

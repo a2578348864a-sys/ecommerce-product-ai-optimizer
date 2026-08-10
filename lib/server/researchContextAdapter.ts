@@ -181,6 +181,10 @@ export function adaptResearchContextForHandoff(
       || (reportType !== "search_results" && reportType !== "category_current")) {
       return { ok: false, reason: "product_batch_facts_incomplete" };
     }
+    // ProductBatch 商品事实（facts.productFacts 嵌套对象）映射到标准研究上下文：
+    // title/brand 用于标题派生候选（listing product_fact）；价格/评分/评论/销量为
+    // market_signal，绝不升级为 Listing 事实（projection 侧按 factCategory 收敛）。
+    const productFacts = isRecord(facts.productFacts) ? facts.productFacts : null;
     const context: CandidateResearchContext = {
       candidateId,
       productName,
@@ -193,7 +197,31 @@ export function adaptResearchContextForHandoff(
       asin: nullableBounded(facts.asin, 20),
       reportType,
       query: nullableBounded(facts.query, 240),
-      category: nullableBounded(facts.category, 240),
+      title: productFacts
+        ? (nullableBounded(productFacts.productTitle, 240) ?? undefined)
+        : undefined,
+      brand: productFacts
+        ? nullableBounded(productFacts.brand, 160)
+        : null,
+      category: nullableBounded(
+        productFacts ? productFacts.rootCategory : null,
+        240,
+      ) || nullableBounded(facts.category, 240) || null,
+      priceUsd: productFacts && typeof productFacts.price === "number"
+        ? productFacts.price
+        : null,
+      rating: productFacts && typeof productFacts.rating === "number"
+        ? productFacts.rating
+        : null,
+      reviewCount: productFacts && typeof productFacts.reviews === "number"
+        ? productFacts.reviews
+        : null,
+      estimatedMonthlySales: productFacts && typeof productFacts.estimatedMonthlySales === "number"
+        ? productFacts.estimatedMonthlySales
+        : null,
+      estimatedMonthlyRevenueUsd: productFacts && typeof productFacts.estimatedMonthlyRevenue === "number"
+        ? productFacts.estimatedMonthlyRevenue
+        : null,
       evidenceStatus: bounded(facts.evidenceStatus, 120) || "sellersprite_product_batch",
       researchPriority: bounded(facts.researchPriority, 120) || "人工研究",
       promotionEligible: false,

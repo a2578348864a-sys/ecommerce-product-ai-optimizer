@@ -14,6 +14,11 @@ import {
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
 import type { ProductCreativeHandoffCandidate } from "@/lib/productCreativeHandoff";
 import { ProductCreativeHandoffError } from "@/lib/productCreativeHandoff";
+import {
+  isManualFactField,
+  normalizeManualFactValue,
+  type ManualFactInput,
+} from "@/lib/server/manualFactConfirmation";
 
 // ─── 常量 ────────────────────────────────────────────────
 
@@ -40,6 +45,7 @@ const CREATE_TOP_LEVEL_FIELDS = new Set([
   "expectedStorageVersion",
   "selectedFactCandidateIds",
   "selectedVisualReferenceCandidateIds",
+  "manualConfirmedFacts",
   "confirmed",
   "creativePreferences",
 ]);
@@ -121,7 +127,7 @@ function parseStorageVersion(value: unknown): { resultJsonHash: string; updatedA
 }
 
 function parseSelectionIds(value: unknown): string[] | null {
-  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_SELECTION_ITEMS) return null;
+  if (!Array.isArray(value) || value.length > MAX_SELECTION_ITEMS) return null;
   const out: string[] = [];
   for (const item of value) {
     if (typeof item !== "string" || item.length === 0 || item.length > MAX_SELECTION_ITEM_LENGTH) return null;
@@ -144,6 +150,26 @@ function parseCreativePreferences(value: unknown): Record<string, unknown> | nul
   const bytes = Buffer.byteLength(JSON.stringify(value), "utf8");
   if (bytes > MAX_CREATIVE_PREFERENCES_BYTES) return null;
   return { ...value };
+}
+
+/** 零候选兜底：解析手工确认事实（受控字段白名单；value 限长；重复 field 拒绝） */
+function parseManualConfirmedFacts(value: unknown): ManualFactInput[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > 32) return null;
+  const seen = new Set<string>();
+  const out: ManualFactInput[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) return null;
+    if (Object.keys(item).length !== 2) return null;
+    const { field, value: rawValue } = item as { field?: unknown; value?: unknown };
+    if (!isManualFactField(field)) return null;
+    if (seen.has(field)) return null;
+    seen.add(field);
+    const normalized = normalizeManualFactValue(rawValue);
+    if (!normalized) return null;
+    out.push({ field, value: normalized });
+  }
+  return out;
 }
 
 function parseRequestId(value: unknown): string | null {
@@ -373,9 +399,13 @@ export async function POST(
     }
 
     // Fix.4: 浏览器只提交 confirmable selectionIds；候选匹配/确认转换在锁内由服务端完成。
-    // 预检：确认候选存在（与 Persistence 锁内校验一致，此处仅提前拒绝）
-    if (selectedFactCandidateIds.length < 1) {
-      return errorResponse(400, "no_facts_selected", "请至少选择一项可用的商品事实。");
+    // 预检：候选或手工事实至少一项（与 Persistence 锁内校验一致，此处仅提前拒绝）
+    const manualConfirmedFacts = parseManualConfirmedFacts(body.manualConfirmedFacts);
+    if (manualConfirmedFacts === null) {
+      return errorResponse(400, "invalid_manual_fact", "手工商品事实无效。");
+    }
+    if (selectedFactCandidateIds.length < 1 && manualConfirmedFacts.length < 1) {
+      return errorResponse(400, "no_facts_selected", "请至少选择一项或填写一项可用的商品事实。");
     }
 
     // V2 Final Integration: 视觉参考候选选择（用户勾选「批准作为产品视觉参考」；未提供=空=不批准）
@@ -390,6 +420,7 @@ export async function POST(
       action: "create",
       selectedFactIds: selectedFactCandidateIds,
       selectedVisualReferenceIds: selectedVisualReferenceIds,
+      ...(manualConfirmedFacts.length > 0 ? { manualConfirmedFacts } : {}),
       creativePreferences,
       expectedStorageVersion,
       expectedResearchRevision,
@@ -404,6 +435,7 @@ export async function POST(
       expectedStorageVersion,
       selectedFactCandidateIds,
       selectedVisualReferenceCandidateIds: selectedVisualReferenceIds,
+      ...(manualConfirmedFacts.length > 0 ? { manualConfirmedFacts } : {}),
       ...(creativePreferences && Object.keys(creativePreferences).length > 0
         ? { creativePreferences: creativePreferences as Record<string, string> }
         : {}),

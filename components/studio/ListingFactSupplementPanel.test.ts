@@ -47,10 +47,10 @@ describe("ListingFactSupplementPanel", () => {
     // market_signal 候选（category / price_usd）不进入可勾选列表
     expect(html).not.toContain("Sports & Outdoors");
     expect(html).not.toContain("29.99");
-    expect(html).toContain("我已核实以上勾选的信息，可用于 Listing 草稿。");
+    expect(html).toContain("我已核实以上勾选/填写的信息，可用于 Listing 草稿。");
   });
 
-  it("无候选时显示来源补充提示", () => {
+  it("无候选时显示手工补充输入（不必全部填写）", () => {
     const html = renderToStaticMarkup(createElement(ListingFactSupplementPanel, {
       taskId: "sandbox-task-2",
       preview: previewWith([]),
@@ -59,7 +59,12 @@ describe("ListingFactSupplementPanel", () => {
       onCommitted: undefined,
     }));
 
-    expect(html).toContain("当前来源资料中没有可核实的商品事实候选");
-    expect(html).toContain("返回研究记录补充来源信息后再试");
+    expect(html).toContain("当前来源资料没有可直接核实的商品事实候选");
+    expect(html).toContain("不必全部填写");
+    // 手工输入字段（品牌/类型/系列/材质/容量/颜色/包装/其他）
+    for (const label of ["品牌", "商品类型", "系列/型号", "材质", "容量", "颜色/款式", "数量/包装", "其他确定商品事实"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain("我已核实以上勾选/填写的信息，可用于 Listing 草稿。");
   });
 });

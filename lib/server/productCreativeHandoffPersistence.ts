@@ -33,6 +33,10 @@ import {
   confirmSelectedProductFacts,
   type ConfirmableFactCandidate,
 } from "@/lib/productCreativeHandoffConfirmation";
+import {
+  confirmManualProductFacts,
+  type ManualFactInput,
+} from "@/lib/server/manualFactConfirmation";
 
 export class CreativeHandoffPersistenceError extends Error {
   constructor(
@@ -52,6 +56,8 @@ export type CreateHandoffInput = {
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
   /** 浏览器提交的 confirmable selectionIds（服务端锁内重新投影后匹配） */
   selectedFactCandidateIds: string[];
+  /** 零候选兜底：用户手工确认的商品事实（受控字段白名单，服务端构造 confirmedFact） */
+  manualConfirmedFacts?: ManualFactInput[];
   /** V2 Final Integration: 浏览器提交的视觉参考候选 selectionIds（用户勾选「批准作为产品视觉参考」） */
   selectedVisualReferenceCandidateIds?: string[];
   /** 用户提交的创作偏好（含 additionalRequirements；仅影响表达/视觉风格，不作为商品事实） */
@@ -279,8 +285,10 @@ export async function createOrAppendCreativeHandoff(
       if (resolvedKeys.length !== input.selectedFactCandidateIds.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "选择项与最新研究状态不匹配，请刷新后重试。");
       }
-      if (resolvedKeys.length < 1) {
-        throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项可用的商品事实。");
+      // 零候选兜底：无候选 selectionId 时允许仅手工事实；两者都不提供才拒绝
+      const manualFacts = input.manualConfirmedFacts ?? [];
+      if (resolvedKeys.length < 1 && manualFacts.length < 1) {
+        throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项或填写一项可用的商品事实。");
       }
       const conversion = confirmSelectedProductFacts({
         stableSourceFacts: gateCandidate.stableSourceFacts,
@@ -294,10 +302,29 @@ export async function createOrAppendCreativeHandoff(
       if (conversion.confirmedFacts.length !== resolvedKeys.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "部分选择项不可确认。");
       }
-      // 跨层排他后的最终候选
+      // 手工事实确认（受控字段白名单；与候选确认同一 revision/CAS 原子写入）
+      let manualConfirmed: Array<ReturnType<typeof confirmManualProductFacts>["confirmedFacts"][number]> = [];
+      if (manualFacts.length > 0) {
+        const manualResult = confirmManualProductFacts({
+          facts: manualFacts,
+          actor,
+          confirmedAt: now,
+          confirmationReference: buildConfirmationReference(requestKeyHash, now),
+          candidateId: gateCandidate.sourceResearch.candidateId,
+        });
+        if (manualResult.rejected.length > 0) {
+          throw new CreativeHandoffPersistenceError(
+            "invalid_manual_fact",
+            400,
+            `手工事实无效: ${manualResult.rejected.map((r) => `${r.field}:${r.code}`).join(",")}`,
+          );
+        }
+        manualConfirmed = manualResult.confirmedFacts;
+      }
+      // 跨层排他后的最终候选（候选确认 + 手工确认合并）
       const finalCandidate: ProductCreativeHandoffCandidate = {
         ...gateCandidate,
-        confirmedFacts: conversion.confirmedFacts,
+        confirmedFacts: [...conversion.confirmedFacts, ...manualConfirmed],
         stableSourceFacts: conversion.remainingStableSourceFacts,
       };
 
