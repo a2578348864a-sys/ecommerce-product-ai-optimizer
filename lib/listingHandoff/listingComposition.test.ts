@@ -68,8 +68,12 @@ describe("V2.1.5 Listing Composition Layer", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
     expect(d.description).toContain("Owala");
     expect(d.description).toContain("Water Bottle");
+    // v2.2.14：身份句使用 Claim Evidence 允许的中性短语（适合日常使用的实用选择），
+    // 非风格臆造；仍禁止臆造风格词。
+    expect(d.description).toContain("适合日常使用的实用选择");
     expect(d.description).not.toContain("现代简约风格");
-    expect(d.description).not.toContain("日常使用的实用选择");
+    // Description 不再只是 Title 复述
+    expect(d.description).not.toBe(`${d.titles[0]}。`);
   });
 
   it("C4. Keywords 纯值无字段标签", () => {

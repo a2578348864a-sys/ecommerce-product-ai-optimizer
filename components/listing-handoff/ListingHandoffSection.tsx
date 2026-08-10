@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { createBrowserUuid } from "@/lib/browserUuid";
+import { copyPlainText } from "@/lib/client/copyPlainText";
 
 type ListingStatus = "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid";
 
@@ -117,6 +118,9 @@ export function ListingHandoffSection({
     prohibitedClaims: 0,
   });
   const [readiness, setReadiness] = useState<ListingStateResponse["data"]["readiness"]>(null);
+  /** v2.2.14：每个复制按钮独立的短暂反馈（"已复制 ✓" / "复制失败"） */
+  const [copiedButton, setCopiedButton] = useState<string | null>(null);
+  const [copyFailedButton, setCopyFailedButton] = useState<string | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -233,9 +237,18 @@ export function ListingHandoffSection({
           setNotice({ tone: "info", text: "该请求已成功生成过，未重复调用。" });
         } else if (json.ok && json.data.safeFallbackApplied) {
           // V2 Listing 稳定落库：AI 输出未通过事实校验 → 系统生成保守草稿（用户可编辑完善）
-          setNotice({ tone: "info", text: "AI输出未通过事实校验，系统已生成保守草稿，请人工完善表达。" });
+          setNotice({ tone: "info", text: "AI 优化未通过质量检查，已保留安全基础草稿。" });
+        } else if (json.ok) {
+          const kind = json.data.draft?.draftKind;
+          if (kind === "ai_optimized_listing") {
+            setNotice({ tone: "info", text: "AI 优化草稿已生成，请人工审核。" });
+          } else if (kind === "structured_listing_draft") {
+            setNotice({ tone: "info", text: "结构化草稿已生成，未进行 AI 优化。" });
+          } else {
+            setNotice({ tone: "info", text: "Listing 草稿已生成，请人工审核。" });
+          }
         } else {
-          setNotice({ tone: "info", text: "Listing 草稿已生成，请人工审核。" });
+          setNotice({ tone: "error", text: "生成失败，请稍后重试。" });
         }
         setStatus(json.ok ? json.data.listingStatus : status);
         setRequestId(null);
@@ -280,15 +293,22 @@ export function ListingHandoffSection({
     }
   }, [retryBody, requestId, submitting, taskId, load, handleConflict, onCommitted]);
 
-  const copyWithFeedback = (text: string, successText: string) => {
+  /** v2.2.14：复制（HTTP 兼容 helper）+ 每个按钮独立短暂反馈 */
+  const copyWithFeedback = async (text: string, buttonKey: string, successText: string) => {
     if (!text.trim()) {
-      setNotice({ tone: "error", text: "当前没有可复制的内容。" });
+      setCopyFailedButton(buttonKey);
+      window.setTimeout(() => setCopyFailedButton((cur) => cur === buttonKey ? null : cur), 1800);
       return;
     }
-    navigator.clipboard.writeText(text).then(
-      () => setNotice({ tone: "info", text: successText }),
-      () => setNotice({ tone: "error", text: "复制失败，请手动选择后复制。" }),
-    );
+    const ok = await copyPlainText(text);
+    if (ok) {
+      setCopiedButton(buttonKey);
+      window.setTimeout(() => setCopiedButton((cur) => cur === buttonKey ? null : cur), 1800);
+    } else {
+      setCopyFailedButton(buttonKey);
+      window.setTimeout(() => setCopyFailedButton((cur) => cur === buttonKey ? null : cur), 1800);
+    }
+    void successText;
   };
 
   /** 完整 Listing = 仅 Listing 文本本体（Title / Bullet Points / Description / Keywords），不含图片创作建议 */
@@ -306,45 +326,34 @@ export function ListingHandoffSection({
 
   const renderDraftBody = () => {
     if (!draft) return null;
+    /** v2.2.14：复制按钮（独立"已复制 ✓"/"复制失败"反馈，约 1.8 秒恢复） */
+    const copyButton = (key: string, label: string, text: string, isPrimary = false) => {
+      const showCopied = copiedButton === key;
+      const showFailed = copyFailedButton === key;
+      const btnLabel = showCopied ? "已复制 ✓" : showFailed ? "复制失败" : label;
+      const cls = isPrimary
+        ? "inline-flex h-8 items-center justify-center rounded-lg bg-teal-600 px-2.5 text-xs font-bold text-white hover:bg-teal-700"
+        : `inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-semibold ${showFailed ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`;
+      return (
+        <button
+          type="button"
+          onClick={() => void copyWithFeedback(text, key, label)}
+          className={cls}
+          aria-live="polite"
+        >
+          {btnLabel}
+        </button>
+      );
+    };
     return (
       <div className="mt-3 space-y-4 break-words text-sm text-slate-700">
         {/* 复制工具条 */}
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => copyWithFeedback(draft.titles.join("\n"), "标题已复制。")}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            复制标题
-          </button>
-          <button
-            type="button"
-            onClick={() => copyWithFeedback(draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n"), "五点描述已复制。")}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            复制五点描述
-          </button>
-          <button
-            type="button"
-            onClick={() => copyWithFeedback(draft.description ?? "", "商品描述已复制。")}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            复制商品描述
-          </button>
-          <button
-            type="button"
-            onClick={() => copyWithFeedback(draft.keywords.join(", "), "关键词已复制。")}
-            className="inline-flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            复制关键词
-          </button>
-          <button
-            type="button"
-            onClick={() => copyWithFeedback(buildFullListingText(), "完整 Listing 已复制。")}
-            className="inline-flex h-8 items-center justify-center rounded-lg bg-teal-600 px-2.5 text-xs font-bold text-white hover:bg-teal-700"
-          >
-            复制完整 Listing
-          </button>
+          {copyButton("title", "复制标题", draft.titles.join("\n"))}
+          {copyButton("bullets", "复制五点描述", draft.bullets.map((b, i) => `${i + 1}. ${b}`).join("\n"))}
+          {copyButton("description", "复制商品描述", draft.description ?? "")}
+          {copyButton("keywords", "复制关键词", draft.keywords.join(", "))}
+          {copyButton("full", "复制完整 Listing", buildFullListingText(), true)}
         </div>
 
         {/* 1. 标题 Title */}
@@ -409,10 +418,10 @@ export function ListingHandoffSection({
             {imageMaterialNeeds.length > 0 ? (
               <button
                 type="button"
-                onClick={() => copyWithFeedback(imageMaterialNeeds.map((n, i) => `${i + 1}. ${n}`).join("\n"), "图片创作建议已复制。")}
+                onClick={() => void copyWithFeedback(imageMaterialNeeds.map((n, i) => `${i + 1}. ${n}`).join("\n"), "image-needs", "图片创作建议已复制。")}
                 className="inline-flex h-7 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
               >
-                复制图片创作建议
+                {copiedButton === "image-needs" ? "已复制 ✓" : "复制图片创作建议"}
               </button>
             ) : null}
           </div>
@@ -487,7 +496,7 @@ export function ListingHandoffSection({
               优化 Listing：{readiness?.copyReady ? "可生成" : "暂不可生成"}
             </span>
             <span className={`rounded-full px-2.5 py-1 ${readiness?.keywordReady ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>
-              关键词资料：{readiness?.keywordReady ? "已满足" : "未提供"}
+              关键词资料：{readiness?.keywordReady ? "已满足" : "未提供（当前可生成文案，不进行关键词优化）"}
             </span>
             {readiness && !readiness.copyReady && readiness.missingForQuality.length > 0 ? (
               <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800" title={readiness.missingForQuality.join("；")}>
@@ -521,24 +530,39 @@ export function ListingHandoffSection({
           </div>
         ) : status === "active" ? (
           <div>
-            <p className="text-sm font-semibold text-slate-700">
-              {draft?.draftKind === "ai_optimized_listing"
-                ? "AI 优化 Listing 草稿 · AI 辅助生成 · 需要人工审核"
-                : draft?.draftKind === "structured_listing_draft"
-                  ? "结构化 Listing 草稿"
-                  : draft?.draftKind === "safe_fact_draft"
-                    ? "基础事实草稿"
-                    : "当前 Listing 草稿"}
-              {" · "}生成于 {formatDate(draft?.generatedAt ?? null)} · 仍需人工审核，不得直接发布
-            </p>
-            {draft?.draftKind === "safe_fact_draft" && draft.qualityIssues && draft.qualityIssues.length > 0 ? (
+            {/* v2.2.14：区分"当前草稿类型"与"生成能力"，不再把能力与结果混在一起 */}
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                {draft?.draftKind === "ai_optimized_listing"
+                  ? "当前草稿：AI 优化草稿"
+                  : draft?.draftKind === "structured_listing_draft"
+                    ? "当前草稿：结构化草稿"
+                    : draft?.draftKind === "safe_fact_draft"
+                      ? "当前草稿：基础草稿"
+                      : "当前草稿：已有草稿"}
+              </span>
+              <span className="text-xs font-normal text-slate-500">
+                生成于 {formatDate(draft?.generatedAt ?? null)} · 仍需人工审核，不得直接发布
+              </span>
+            </div>
+            {draft?.draftKind === "safe_fact_draft" && readiness?.copyReady ? (
+              <p className="mt-1 rounded-lg bg-teal-50 px-3 py-2 text-teal-800" data-testid="copy-ready-ai-available">
+                商品资料已满足 AI 优化条件，可点击“生成 AI 优化草稿”。
+              </p>
+            ) : null}
+            {draft?.draftKind === "safe_fact_draft" && readiness && !readiness.copyReady ? (
               <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="safe-fact-draft-issues">
-                当前为基础事实草稿：{draft.qualityIssues.slice(0, 3).join("；")}
+                当前为基础草稿：{draft.qualityIssues?.slice(0, 3).join("；") ?? "事实资料尚不足以生成优化草稿"}
+              </p>
+            ) : null}
+            {draft?.draftKind === "structured_listing_draft" && draft.qualityIssues && draft.qualityIssues.length > 0 ? (
+              <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="structured-advisory-issues">
+                当前为结构化草稿，还有 {draft.qualityIssues.length} 项建议可完善。
               </p>
             ) : null}
             {draft?.providerAttempted === true && draft.providerSucceeded === false ? (
               <p className="mt-1 rounded-lg bg-slate-100 px-3 py-2 text-slate-600" data-testid="ai-fallback-notice">
-                已尝试 AI 生成但未成功，已降级为安全草稿：{draft.fallbackReason ?? "Provider 未返回有效结果"}
+                已尝试 AI 生成但未成功，已保留安全基础草稿：{draft.fallbackReason ?? "Provider 未返回有效结果"}
               </p>
             ) : null}
             {draft?.backendTermWarnings && draft.backendTermWarnings.length > 0 ? (
@@ -547,14 +571,20 @@ export function ListingHandoffSection({
               </p>
             ) : null}
             {renderDraftBody()}
-            <button
-              type="button"
-              disabled={!canGenerate || submitting}
-              onClick={() => void generate()}
-              className={BTN_SECONDARY_CLASS}
-            >
-              {submitting ? "生成中…" : "生成新版本草稿"}
-            </button>
+            <div className="mt-3">
+              <button
+                type="button"
+                disabled={!canGenerate || submitting}
+                onClick={() => void generate()}
+                className={BTN_SECONDARY_CLASS}
+                data-testid="regenerate-listing-draft"
+              >
+                {submitting ? "生成中…" : draft?.draftKind === "ai_optimized_listing" ? "重新生成草稿" : "生成 AI 优化草稿"}
+              </button>
+              <p className="mt-1.5 text-xs text-slate-500">
+                重新生成将替换当前草稿，不影响已确认的商品资料。
+              </p>
+            </div>
           </div>
         ) : status === "stale" ? (
           <div className="rounded-lg bg-amber-50 px-3 py-2">
@@ -569,7 +599,7 @@ export function ListingHandoffSection({
               onClick={() => void generate()}
               className={BTN_CLASS}
             >
-              {submitting ? "生成中…" : "基于最新资料生成新版本"}
+              {submitting ? "生成中…" : "基于最新资料重新生成"}
             </button>
           </div>
         ) : status === "revoked" ? (

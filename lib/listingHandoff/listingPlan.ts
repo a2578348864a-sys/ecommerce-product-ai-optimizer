@@ -83,6 +83,32 @@ const FUNCTIONAL_ANGLE_HINTS: Record<string, string> = {
   included_components: "随附组件",
 };
 
+/**
+ * v2.2.14：按"不同信息价值"规划 Bullet，避免 functional 少时只有 1-2 条。
+ * 优先级：functional 各条独立 → 规格按独立信息组（material+capacity 组合、color、quantity 各一组）。
+ * 绝不重复同一事实、不换词凑数、不创造不存在的功能；安全事实只够 2 条时只生成 2 条。
+ */
+const FUNCTIONAL_PRIORITY_ORDER = [
+  "functional_feature",
+  "operation",
+  "drinking_mechanism",
+  "insulation",
+  "lid_behavior",
+  "usage",
+  "care",
+  "cleaning",
+  "construction",
+  "compatibility",
+  "included_components",
+] as const;
+
+/** 规格按独立信息价值分组：材质+容量（选择依据）、颜色（变体）、数量（包装）。 */
+const SPEC_BULLET_GROUPS: Array<{ fields: readonly string[]; shopperAngle: string }> = [
+  { fields: ["material", "capacity"], shopperAngle: "关键材质与容量选择依据" },
+  { fields: ["color_or_variant"], shopperAngle: "颜色与款式选择" },
+  { fields: ["quantity_or_pack_size"], shopperAngle: "数量与包装规格" },
+];
+
 /** 生成 Listing Plan：有 functional facts → optimized；否则 safe_fact_draft */
 export function buildListingPlan(
   input: ListingGenerationInput,
@@ -107,26 +133,33 @@ export function buildListingPlan(
   }
   const titlePlan = titleParts.length > 0 ? [titleParts.join(" ")] : [];
 
-  // bulletPlans：functional 优先（每条绑 functional factId + 关键规格），否则基础事实
+  // bulletPlans：v2.2.14 按信息价值分组。
+  // functional 各条独立（按优先顺序）；规格按独立信息组补充（material+capacity、color、quantity）。
+  // 目标 3-5 条；安全事实不够时不凑数。
   const bulletPlans: ListingBulletPlan[] = [];
-  if (functional.length > 0) {
-    for (const f of functional.slice(0, 4)) {
-      bulletPlans.push({
-        featureFactIds: [f.factId],
-        shopperAngle: FUNCTIONAL_ANGLE_HINTS[f.field] ?? "实际使用价值",
-        keywordIds: supportingKeywords.slice(0, 1),
-      });
-    }
-    // 若还有规格可补充，附加一条规格组合（绑 spec factId）
-    if (specification.length > 0 && bulletPlans.length < 5) {
-      bulletPlans.push({
-        featureFactIds: specification.slice(0, 2).map((f) => f.factId),
-        shopperAngle: "关键规格与选择依据",
-        keywordIds: [],
-      });
-    }
-  } else {
-    // 无 functional：只生成基础事实计划（safe_fact_draft）
+  const functionalOrdered = FUNCTIONAL_PRIORITY_ORDER
+    .map((field) => functional.find((f) => f.field === field))
+    .filter((f): f is PlanFact => f !== undefined);
+  for (const f of functionalOrdered.slice(0, 4)) {
+    bulletPlans.push({
+      featureFactIds: [f.factId],
+      shopperAngle: FUNCTIONAL_ANGLE_HINTS[f.field] ?? "实际使用价值",
+      keywordIds: supportingKeywords.slice(0, 1),
+    });
+  }
+  // 规格按独立信息组补充（已有事实才生成；不合并所有规格为一条）
+  for (const group of SPEC_BULLET_GROUPS) {
+    if (bulletPlans.length >= 5) break;
+    const present = group.fields.filter((field) => specification.some((f) => f.field === field));
+    if (present.length === 0) continue;
+    bulletPlans.push({
+      featureFactIds: present.map((field) => specification.find((f) => f.field === field)!.factId),
+      shopperAngle: group.shopperAngle,
+      keywordIds: [],
+    });
+  }
+  // 无 functional 且规格组不足时：基础事实计划（safe_fact_draft）
+  if (bulletPlans.length === 0) {
     for (const f of facts.slice(0, 5)) {
       bulletPlans.push({
         featureFactIds: [f.factId],

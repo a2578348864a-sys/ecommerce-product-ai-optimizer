@@ -6,9 +6,15 @@
  *   - BLOCKING：非空、<=75 chars（Amazon US non-media 硬限，2026-07-27 起）、禁止字符、重复词/stuffing
  *   - ADVISORY：Amazon Ads 建议约 60 chars（titleLengthAdvisory，不阻断）
  * - BULLETS：3-5（资料足够时）、非空、非属性碎片、不与 Title 高度重复、bullet 间不高度重复、禁价格/促销/配送
- * - DESCRIPTION：非空、非 Title 复述、非 Bullet 拼接、相似度不超高
+ *   - v2.2.14：数量不足（<3）是内容丰富度建议（advisory），不是安全阻断——
+ *     2 条真实合规的优化 Bullet 优于 3 条属性碎片，不得因数量不足退回 safe_fact_draft。
+ * - DESCRIPTION：非空、非 Title 复述、非 Bullet 拼接、相似度不超高；过短为 advisory
  * - BACKEND SEARCH TERMS：<=250 bytes、去重、不重复 Title 大量词、无明显无效标点
  * - SAFETY：继续由外部 Claim Evidence 负责（本层不重复）
+ *
+ * 分界原则：安全问题 ≠ 内容丰富度问题。
+ * BLOCKING = Schema/Claim/合规/结构/标题硬限/重复/碎片；
+ * ADVISORY = 数量、长度、完整度等质量建议。
  *
  * 结果结构：blockingIssues（阻止 ai_optimized_listing）/ advisories（仅提示）。
  * 只有 blockingIssues.length > 0 才 ok=false。
@@ -83,11 +89,21 @@ export function validateListingQuality(input: QualityCheckInput): QualityValidat
 
   // ── BULLETS ──
   const bullets = input.bullets.map((b) => b.trim()).filter(Boolean);
-  if (input.planQuality === "optimized" && (bullets.length < BULLET_MIN || bullets.length > BULLET_MAX)) {
-    blockingIssues.push({ target: "bullets", code: "count", message: `优化 Listing 需要 ${BULLET_MIN}-${BULLET_MAX} 条（当前 ${bullets.length}）。` });
+  if (bullets.length === 0) {
+    // 空 Bullet 列表是结构错误 → blocking（安全策略保持）
+    blockingIssues.push({ target: "bullets", code: "empty", message: "缺少五点描述。" });
+  } else if (input.planQuality === "optimized" && bullets.length < BULLET_MIN) {
+    // v2.2.14：1-2 条真实、合规的优化 Bullet 是内容丰富度建议，不是安全阻断；
+    // 不得导致整个 structured draft 退回 safe_fact_draft。
+    advisories.push({ target: "bullets", code: "count", message: `优化 Listing 建议 ${BULLET_MIN}-${BULLET_MAX} 条（当前 ${bullets.length}）。` });
+  } else if (input.planQuality === "optimized" && bullets.length > BULLET_MAX) {
+    blockingIssues.push({ target: "bullets", code: "count", message: `优化 Listing 最多 ${BULLET_MAX} 条（当前 ${bullets.length}）。` });
   }
   bullets.forEach((b, i) => {
-    if (wordCount(b) < BULLET_MIN_WORDS) {
+    // v2.2.14：优化路径 Bullet 是"事实，买方价值角度。"结构（中文角度含完整短语），
+    // 单值 Bullet（如颜色）按空格词数会误判碎片；含该结构即非碎片。
+    const hasShopperAngle = input.planQuality === "optimized" && /，[^，。]{3,}。$/.test(b);
+    if (!hasShopperAngle && wordCount(b) < BULLET_MIN_WORDS) {
       blockingIssues.push({ target: "bullets", code: "fragment", message: `Bullet ${i + 1} 只是属性碎片（少于 ${BULLET_MIN_WORDS} 个词）。` });
     }
     if (PRICE_PROMO_DELIVERY.test(b)) blockingIssues.push({ target: "bullets", code: "price_promo", message: `Bullet ${i + 1} 含价格/促销/配送内容。` });
@@ -112,7 +128,7 @@ export function validateListingQuality(input: QualityCheckInput): QualityValidat
       const joined = bullets.join(" ");
       if (overlapRatio(joined, desc) > 0.85) blockingIssues.push({ target: "description", code: "bullet_concat", message: "描述只是 Bullet 拼接。" });
     }
-    if (wordCount(desc) < 8 && input.planQuality === "optimized") blockingIssues.push({ target: "description", code: "too_short", message: "优化描述需要完整句子。" });
+    if (wordCount(desc) < 8 && input.planQuality === "optimized") advisories.push({ target: "description", code: "too_short", message: "优化描述建议使用完整句子。" });
   }
 
   // ── BACKEND SEARCH TERMS ──

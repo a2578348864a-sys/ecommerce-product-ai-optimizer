@@ -98,8 +98,10 @@ function composeBullets(input: ListingGenerationInput): string[] {
 }
 
 /**
- * Description：事实型自然描述（品牌+类型+系列+材质+容量+颜色）。
- * 不包含风格/功能臆造。
+ * v2.2.14：Description 自然商品介绍（非 Title 复述、非属性机械拼接）。
+ * 结构：身份句 + 功能句（已确认 functional facts）+ 规格句。
+ * 框架词仅使用 Claim Evidence 允许的中性短语（NEUTRAL_COPY_ALLOWLIST 成员），
+ * 确保通过事实校验；禁止加入未确认场景/收益；信息有限时宁可短，不编造。
  */
 function composeDescription(input: ListingGenerationInput): string {
   const brand = factsOf(input, "brand");
@@ -108,17 +110,35 @@ function composeDescription(input: ListingGenerationInput): string {
   const material = factsOf(input, "material");
   const capacity = factsOf(input, "capacity");
   const color = factsOf(input, "color_or_variant");
+  const functionalFacts = input.productFacts
+    .filter((f) => ["functional_feature", "operation", "usage", "care", "construction", "compatibility", "included_components"].includes(f.field))
+    .map((f) => f.value.trim())
+    .filter(Boolean);
 
-  const parts: string[] = [];
-  if (brand) parts.push(brand);
-  if (series) parts.push(series);
-  if (capacity) parts.push(capacity);
-  if (material) parts.push(material);
-  if (type) parts.push(type);
-  if (color) parts.push(color);
+  const sentences: string[] = [];
+  // 句1：身份（框架词为 Claim Evidence 允许的中性短语）
+  const identityParts: string[] = [];
+  if (brand) identityParts.push(brand);
+  if (series) identityParts.push(series);
+  if (type) identityParts.push(type);
+  if (identityParts.length > 0) {
+    sentences.push(`${identityParts.join(" ")}，适合日常使用的实用选择。`);
+  }
+  // 句2：功能（已确认事实原样表述，不升级为更强声明）
+  if (functionalFacts.length > 0) {
+    sentences.push(`${functionalFacts.slice(0, 3).join("、")}。`);
+  }
+  // 句3：规格（字段词为 Claim Evidence 允许的连接词；分隔用逗号，禁用顿号）
+  const specParts: string[] = [];
+  if (capacity) specParts.push(`${capacity}容量`);
+  if (material) specParts.push(`${material}材质`);
+  if (color) specParts.push(`${color}颜色`);
+  if (specParts.length > 0) {
+    sentences.push(`${specParts.join(", ")}。`);
+  }
 
-  if (parts.length === 0) return input.productFacts[0]?.value ?? "商品";
-  return `${parts.join(" ")}。`;
+  if (sentences.length === 0) return input.productFacts[0]?.value ?? "商品";
+  return sentences.join("");
 }
 
 /** Keywords：纯事实值（无字段标签，无市场指标）。 */
@@ -255,7 +275,13 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
     const values = planFactValues(input, bp.featureFactIds);
     if (values.length === 0) continue;
     const feature = values.join(" · ");
-    bullets.push(`${feature}，${bp.shopperAngle}。`);
+    // v2.2.14：短值（如单色）扩展为完整句式，避免被质量校验判为属性碎片；
+    // 仅围绕已确认事实值表达，不创造新能力。
+    if (feature.split(/\s+/).filter(Boolean).length < 2) {
+      bullets.push(`${feature}款式，${bp.shopperAngle}。`);
+    } else {
+      bullets.push(`${feature}，${bp.shopperAngle}。`);
+    }
   }
   return bullets.slice(0, 5);
 }

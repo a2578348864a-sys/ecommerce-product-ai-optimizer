@@ -437,6 +437,23 @@ export function verifyListingClaims(
           continue;
         }
 
+        // 6.5) v2.2.14：内容类事实完整复述 → 直接允许。
+        // 功能/使用/保养/构造等长文本事实值可能内含其他事实词（如 "silicone straw"），
+        // 导致 segmentContainsEvidenceValue 优先匹配到短值 evidence 而误判 rest。
+        // 段 normalize 后与某个内容类 entry 的完整值相等时，即证据原样复述，无新增声明。
+        {
+          const normalizedSegment = normalizeUnitSpacing(normalizeText(segment));
+          const exactContentEntry = entries.find((e) =>
+            ["other", "performance"].includes(e.factType)
+            && e.normalizedValue.length >= 20
+            && normalizedSegment === e.normalizedValue,
+          );
+          if (exactContentEntry) {
+            supportedClaims.push(segment);
+            continue;
+          }
+        }
+
         // 7) 有事实值且无高风险词 → 段中剩余部分须为：其他已确认事实值（多事实组合）/
         //    中性集成员 / 普通连接词，否则拒绝（合法事实 + 未允许文案 = 拒绝）
         if (evidenceEntry) {
