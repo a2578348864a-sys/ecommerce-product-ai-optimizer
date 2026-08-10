@@ -1,6 +1,6 @@
 # 阿里云轻量服务器部署说明
 
-> **本文档说明初始部署、Nginx 配置和 PM2 设置。标准日常部署流程以 [docs/PRODUCTION_RUNBOOK.md](docs/PRODUCTION_RUNBOOK.md) 为准。**
+> **本文档说明初始部署、Nginx 配置和 PM2 设置。标准日常部署流程以 [PRODUCTION_RUNBOOK.md](PRODUCTION_RUNBOOK.md) 为准。**
 >
 > **当前生产部署状态**
 > - 服务器 IP：`112.124.54.81`

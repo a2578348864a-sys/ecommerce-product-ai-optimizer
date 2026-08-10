@@ -1,316 +1,117 @@
-# 轻选 Agent — 跨境电商运营 Agent 工作台 Alpha MVP
+# 轻选工作台
 
-轻选 Agent 是一个面向跨境电商新手和小团队的跨境电商运营全流程 Agent 工作台。它不是单点选品工具，而是希望把商品机会发现、选品判断、货源可行性、合规风险、Listing 生成、任务沉淀和下一步执行逐步串成受控自动化电商工作流。
+AI 跨境商品研究与创作工作台。
 
-当前版本处于 Alpha MVP / Pre-commercial 阶段，已完成单品一键分析、机会候选池、风险判断、报告生成、人工复核和任务沉淀闭环。AI 给建议、生成资料、提示风险，关键动作人工确认。当前不会自动采购、上架、投广告或操作第三方平台。
+面向跨境电商卖家，提供从商品数据导入、AI 研究、事实确认到 Listing 与图片创作的一条龙工作流。关键决策始终由人工确认。
 
-**长期目标**：逐步走向受控自动化，覆盖从机会发现、选品判断、货源可行性、合规风险、Listing 生成、任务沉淀到执行复盘的完整链路。关键商业动作始终保留人工授权门控。
+## Features
 
-**当前阶段**：Alpha MVP / 受控自动化 / 人工复核。不是成熟商用系统，不是全自动无人值守。
+- **SellerSprite 商品数据导入** — 上传 SellerSprite XLSX，自动解析商品资料、市场信号与卖点，生成可确认的商品事实候选
+- **AI 商品研究** — 对单个商品执行来源、风险、总结与 Listing 维度的研究分析
+- **商品事实确认** — 人工确认哪些研究事实可用于创作，未确认内容不进入权威创作输入
+- **AI Listing 生成** — 基于已确认事实生成 Listing 草稿，附质量校验与降级兜底
+- **AI 图片创作** — 基于共享商品事实与已批准视觉参考生成图片草稿
+- **Human-in-the-loop 工作流** — 研究决定、事实确认、Listing 与图片复核均由人工完成
+- **数据隔离与安全机制** — 访客沙箱隔离、外部图片安全下载、市场信号与创作事实隔离
 
-## 当前状态
+## Overview
 
-- **项目阶段**：Phase 2-O。Alpha 主链路已收口：首页工作台 → 机会候选池 → 单品分析 → 保存任务 → 任务中心运营跟进台。
-- **当前定位**：跨境电商运营 Agent 工作台 Alpha MVP / Pre-commercial 版本。可发小范围 Alpha，关键动作人工确认，当前不会自动采购、上架、投广告或操作第三方平台。
-- **生产部署与运维规范**：见 [docs/PRODUCTION_RUNBOOK.md](docs/PRODUCTION_RUNBOOK.md)。
-- **Alpha 状态详情**：见 [docs/alpha-mvp-status.md](docs/alpha-mvp-status.md)。
+跨境商品研究依赖大量分散数据（报表、市场信号、产品资料），人工整理耗时且容易出错。轻选工作台把「数据整理 → 事实确认 → AI 辅助生成」组织成一条可控流程：机器处理数据与草稿，人在关键节点做决定。
 
-## 当前主链路
+系统不会自动采购、上架或投放广告。
 
-```text
-首页工作台（/）
-→ 机会候选池（/opportunities）— 发现候选品、标记状态
-→ 单品分析（/workflow）— 一键 AI 深挖一个商品
-→ 保存到任务中心
-→ 任务中心运营跟进台（/tasks）— 复核、决策、跟进
+## Workflow
+
+```mermaid
+flowchart LR
+    A[SellerSprite XLSX 导入] --> B[商品研究]
+    B --> C[事实确认]
+    C --> D[Listing Studio]
+    C --> E[Image Studio]
 ```
 
-辅助入口：批量分析（/workflow/batch，最多 3 个商品对比）、Agent 路线图页（/agent，能力规划说明）。
+- **SellerSprite 导入**：解析 XLSX，提取商品资料与市场信号
+- **商品研究**：AI 生成来源 / 风险 / 总结 / Listing 四层分析
+- **事实确认**：人工勾选可进入创作的已确认事实
+- **Listing Studio**：基于确认事实生成 Listing 草稿
+- **Image Studio**：基于共享事实与批准参考图生成图片草稿
 
-## 当前能力
+## Architecture
 
-## V1.5 机会雷达定位
+- **Frontend** — Next.js 应用，工作台 / Listing Studio / Image Studio 等页面
+- **Backend** — Next.js API Routes，业务逻辑与 AI 编排
+- **Database** — Prisma + SQLite，存储候选、研究记录与创作产物
+- **AI Provider** — 可插拔：文本（Listing/研究）与图片（创作）独立配置，支持 Mock 模式
+- **Storage** — 本地文件存储，承载图片草稿与导入数据
 
-```text
-批量导入候选商品
-→ 逐个生成机会评估
-→ 输出分数、推荐等级、风险等级和新手适合度
-→ 生成候选排序参考
-→ 人工复核后再决定是否继续找货、测款或放弃
+## Tech Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Prisma 5 + SQLite
+- OpenAI-compatible AI Provider（可替换）
+
+## Screenshots
+
+> 截图占位：可在 `docs/screenshots/` 下放置主要页面截图。
+
+## Installation
+
+### 环境要求
+
+- Node.js ≥ 20.9
+- npm
+
+### 安装
+
+```bash
+npm install
+npx prisma generate
+npx prisma db push
 ```
 
-机会雷达用于候选商品初筛和排序参考，不是最终采购建议。高风险品类需要优先看合规、认证、侵权、售后、物流和平台规则风险，不能只看分数。
+### 启动
 
-当前 Alpha MVP 优先稳定和安全，不做批量抓取，不做搬运，不做自动发布。
-
-## 项目用途
-
-适合用来分析低风险百货类方向，例如：
-
-- 家居收纳
-- 厨房小工具
-- 清洁用品
-- 桌面办公
-- 宿舍用品
-- 宠物用品，但不包括宠物食品和宠物药品
-- 车载小件，但不包括汽车安全件
-- 低价、低售后、低资质风险的百货类小件
-
-系统会根据你提供的证据判断：
-
-- 是否推荐继续跟品
-- 风险有多高
-- 可以去哪里找货
-- 怎么做差异化
-- 下一步要人工核实什么
-
-## 本地启动方式
-
-在项目目录执行：
-
-```powershell
-npm.cmd install
-npm.cmd run dev -- -p 3005
+```bash
+npm run dev
 ```
 
-打开：
+打开 http://localhost:3000 进入登录页。
 
-```text
-http://localhost:3005
-```
+## Configuration
 
-构建检查：
+复制 `.env.example` 为 `.env.local` 并填写：
 
-```powershell
-npm.cmd run lint
-npm.cmd run build
-```
+| 变量 | 说明 |
+| --- | --- |
+| `ACCESS_PASSWORD` | 登录访问密码 |
+| `AI_PROVIDER` | 文本 AI Provider（`deepseek` 等） |
+| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
+| `LISTING_PROVIDER_MODE` / `IMAGE_PROVIDER_MODE` | `mock` 或 `real`（默认 mock，不调用真实付费 API） |
+| `OPENAI_API_KEY` / `OPENAI_IMAGE_MODEL` | 图片 Provider 配置（使用真实图片生成时） |
+| `DATABASE_URL` | SQLite 数据库路径 |
 
-## 服务器部署说明
+更多说明见 [docs/guides/configuration.md](docs/guides/configuration.md)。
 
-阿里云轻量服务器初始部署与配置请看 [DEPLOY.md](DEPLOY.md)。
+## Documentation
 
-**日常部署规范**请看 [docs/PRODUCTION_RUNBOOK.md](docs/PRODUCTION_RUNBOOK.md)。标准流程：本地阶段开发 → 本地验证 → 本地 commit → 阶段收口统一 push → 服务器 `git pull --ff-only` → `npm ci` → `npm run build` → `pm2 restart`。
+- [快速开始](docs/getting-started/installation.md)
+- [工作流说明](docs/guides/workflow.md)
+- [架构总览](docs/architecture/overview.md)
+- [AI 工作流](docs/architecture/ai-workflow.md)
+- [数据模型](docs/architecture/data-model.md)
+- [参与贡献](docs/development/contributing.md)
 
-## 访问密码说明
+## Roadmap
 
-项目继续使用环境变量里的访问密码，避免别人随便消耗你的 API 额度。
+- 真实入行数据接入与 V3 业务迭代（计划中）
+- 历史功能需求归档见 [docs/archive](docs/archive/)
 
-本地 `.env.local` 示例：
+## License
 
-```env
-AI_PROVIDER=deepseek
-DEEPSEEK_API_KEY=你的 DeepSeek API Key
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
-ACCESS_PASSWORD=你的访问密码
-```
+MIT License。详见 [LICENSE](LICENSE)。
 
-也可以使用 OpenAI：
+## Contributing
 
-```env
-AI_PROVIDER=openai
-OPENAI_API_KEY=你的 OpenAI API Key
-OPENAI_MODEL=你的模型名
-ACCESS_PASSWORD=你的访问密码
-```
-
-不要把 `.env.local` 提交到 Git。
-
-## 图片 / 链接 / 文字输入说明
-
-页面支持三种素材一起输入：
-
-- 图片：商品图、榜单截图、平台截图
-- 链接：白名单平台链接
-- 文字：你手动复制的商品信息、榜单信息、备注
-
-图片限制：
-
-- 一次最多 10 张
-- 单张最多 8MB
-- 支持 png、jpg、jpeg、webp
-
-链接白名单（海外平台优先）：
-
-- `amazon.com`
-- `tiktok.com`
-- `etsy.com`
-- `shopify.com`
-- `ebay.com`
-- `1688.com`
-- `alibaba.com`
-
-不支持的链接会被阻止，不会打开。国内平台链接仅供辅助参考。
-
-## 证据卡片说明
-
-点击“识别证据”后，系统会先生成证据卡片。
-
-证据卡片会显示：
-
-- 素材来源
-- 素材类型
-- 识别平台
-- 商品名
-- 价格
-- 销量 / 评价 / 排名
-- 店铺 / 品牌
-- 缺失字段
-- 风险备注
-- 置信度提示
-
-## 如何修改证据卡片
-
-证据卡片是可以手动编辑的。
-
-如果图片识别不到商品名、价格或销量，你可以自己把截图里的信息补进去。
-
-这样做的好处是：后面的完整分析不会因为前面识别错了而全错。
-
-## 如何生成完整分析
-
-1. 打开 `http://localhost:3005`
-2. 输入访问密码
-3. 上传图片、粘贴链接或粘贴商品文字
-4. 点击“识别证据”
-5. 检查证据卡片
-6. 如有错误，手动修改
-7. 点击“开始完整分析”
-
-报告会输出：
-
-- Agent 总结
-- 推荐做 / 谨慎做 / 不建议做
-- 风险红黄绿灯
-- 证据卡片
-- 候选商品
-- 找货关键词
-- 同类扩展方向
-- 下一步行动
-
-## 如何导出 Markdown / Word
-
-生成报告后，右上角有：
-
-- 复制报告
-- 导出 Markdown
-- 导出 Word
-
-导出的报告底部会自动加入免责声明。
-
-## 如何保存本地选品档案
-
-生成报告后点击“保存本地档案”。
-
-保存位置：
-
-```text
-.local/radar-research/
-```
-
-会同时保存：
-
-- Markdown 报告
-- JSON 原始结构
-
-`.local/` 已加入 `.gitignore`，不要提交到 Git。
-
-## 平台辅助读取说明
-
-第一版只预留平台状态结构，不做真实自动读取。
-
-原因：
-
-- 普通账号能看到的数据有限
-- 很多页面需要登录或权限
-- 页面经常变化
-- 自动化容易遇到验证码、滑块、风控
-- 第一版目标是先把“证据确认 → 分析报告”的主流程跑稳
-
-V1 推荐做法是：你人工打开平台，看商品页、榜单或搜索结果，再把可见信息粘贴回来分析。
-
-本地预留接口：
-
-- `/api/radar/analyze-materials`：把图片文件信息和手动文字整理成证据卡片，不强依赖视觉模型。
-- `/api/radar/analyze-links`：对白名单链接做平台识别、基础清洗和安全拦截。
-- `/api/radar/search`：返回平台读取状态，V1 不做真实平台抓取。
-- `/api/radar/save`：保存或读取 `.local/radar-research/` 下的本地选品档案。
-
-这些接口只允许本地 `localhost` 使用，不做线上自动查询。
-
-## 为什么当前保留人工复核和合规边界
-
-当前不做无人值守抓取和外部平台自动执行，原因是：
-
-- 账号风控
-- 验证码和滑块
-- 平台规则风险
-- 页面结构变化导致读取失败
-- 数据不稳定
-- 容易误解为搬运或批量采集工具
-
-当前先把”用户提供信息 + 证据卡片 + AI 判断 + 人工复核 + 任务沉淀”的受控自动化主流程跑稳。跨境电商运营全流程 Agent 工作台是产品定位，人工复核是安全、合规、成本和可信度门控。
-
-## 低 token / 省钱模式说明
-
-页面默认开启低 token / 省钱模式。
-
-意思是：
-
-- 先用前端低成本整理证据
-- AI 只吃结构化后的证据卡片
-- 不把无关内容都塞给模型
-- 尽量减少重复分析
-
-## 禁止事项
-
-本工具不能用于：
-
-- 批量爬取平台数据
-- 绕过登录、验证码、风控
-- 搬运商品图片、标题、详情页
-- 自动发布商品
-- 自动下单
-- 自动评论、私信、点赞、收藏
-- 多账号批量操作
-- 抓取评论区个人信息
-- 抓取用户隐私数据
-- 复制品牌、IP、明星、影视、动漫、游戏周边内容
-- 虚假宣传
-- 刷单刷评
-
-## 安全提醒
-
-- 不要提交 `.env.local`
-- 不要提交 `.local/`
-- 不要提交浏览器登录态
-- 不要提交平台缓存数据
-- 不要把真实 API Key 写进 README、前端页面或聊天记录
-- 高风险类目要人工复核资质、侵权、供货、售后和物流风险
-
-## 常见问题
-
-### 没有自动读取平台，还能用吗？
-
-能。第一版就是以手动粘贴、上传截图和证据卡片为主。
-
-### 为什么图片上传后还要我补信息？
-
-当前模型配置不一定支持图片识别。第一版先保证图片上传和预览可用，如果模型不能直接识图，就让你手动补充截图里的商品名、价格、销量或评价。
-
-### 为什么报告说样本不足？
-
-说明你提供的信息太少，或者缺少价格、热度、榜单、评价等证据。补充 3-10 条商品信息会更稳。
-
-### 可以直接照搬别人商品吗？
-
-不建议。这个工具只帮你拆趋势和风险，图片、标题、详情页都要自己拍摄、供应商授权或重新设计。
-
-### 报告能保证赚钱吗？
-
-不能。报告只是辅助判断，不构成经营、投资或法律建议。
-
-## 免责声明
-
-本报告仅基于用户提供信息和本地浏览器可见页面内容生成，不构成经营、投资或法律建议。平台数据可能变化，最终选品需人工复核资质、侵权、价格、供货、售后、物流和平台规则风险。
+请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [docs/development/contributing.md](docs/development/contributing.md)。

@@ -1,0 +1,58 @@
+# 安装
+
+## 环境要求
+
+- Node.js ≥ 20.9
+- npm
+- SQLite（Prisma 驱动，通常无需单独安装）
+
+## 安装
+
+```bash
+npm install
+```
+
+初始化数据库并生成 Prisma Client：
+
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+## 配置
+
+复制环境变量模板：
+
+```bash
+cp .env.example .env.local
+```
+
+编辑 `.env.local`，至少设置 `ACCESS_PASSWORD`（登录密码）。默认 AI Provider 为 Mock 模式，无需 API Key 即可运行。详见 [configuration.md](../guides/configuration.md)。
+
+## 启动开发服务器
+
+```bash
+npm run dev
+```
+
+浏览器打开 http://localhost:3000。
+
+## 验证安装
+
+```bash
+npm run check:provider-config
+```
+
+该命令检查 Provider 配置是否就绪（不暴露密钥值）。
+
+## 常用脚本
+
+| 命令 | 说明 |
+| --- | --- |
+| `npm run dev` | 启动开发服务器 |
+| `npm run build` | 生产构建 |
+| `npm run start` | 启动生产服务器 |
+| `npm run test` | 运行测试（Vitest） |
+| `npm run lint` | ESLint 检查 |
+| `npm run db:generate` | 重新生成 Prisma Client |
+| `npm run demo:create` | 创建访客体验密码 |
