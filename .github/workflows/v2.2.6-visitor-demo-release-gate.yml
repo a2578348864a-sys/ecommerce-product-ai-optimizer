@@ -20,14 +20,14 @@ jobs:
       - name: Checkout immutable product commit
         uses: actions/checkout@v4
         with:
-          ref: 2a64464d48da889b6b4aa60768c4326383a97160
+          ref: b6ebda868d8942dc98f6bb812da639a1859a8303
           persist-credentials: false
 
       - name: Confirm product source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "2a64464d48da889b6b4aa60768c4326383a97160"
+          test "$(git rev-parse HEAD)" = "b6ebda868d8942dc98f6bb812da639a1859a8303"
           test -z "$(git status --porcelain)"
 
       - name: Set up Node.js
@@ -143,7 +143,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          artifact="next-v2.2.6-2a64464-linux-x64.tar.gz"
+          artifact="next-v2.2.6-b6ebda8-linux-x64.tar.gz"
           tar -czf "$artifact" .next
           if tar -tzf "$artifact" | grep -Ev '^\.next(/|$)' | grep -q .; then
             echo "Artifact contains an unexpected path" >&2
@@ -152,8 +152,8 @@ jobs:
           sha256="$(sha256sum "$artifact" | awk '{print $1}')"
           built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           sharp_version="$(npm ls sharp --json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const tree=JSON.parse(input); const version=tree.dependencies?.sharp?.version; if (!version) process.exit(1); process.stdout.write(version); })')"
-          node -e 'const fs=require("node:fs"); const manifest={version:"2.2.6",commit:"2a64464d48da889b6b4aa60768c4326383a97160",next:"16.3.0",node:process.versions.node,sharp:process.argv[4],platform:`${process.platform}-${process.arch}`,builtAt:process.argv[1],buildId:fs.readFileSync(".next/BUILD_ID","utf8").trim(),artifact:process.argv[2],artifactSha256:process.argv[3],serverBuildAllowed:false}; fs.writeFileSync("release-manifest.json",JSON.stringify(manifest,null,2)+"\n")' "$built_at" "$artifact" "$sha256" "$sharp_version"
-          test "$(node -p 'require("./release-manifest.json").commit')" = "2a64464d48da889b6b4aa60768c4326383a97160"
+          node -e 'const fs=require("node:fs"); const manifest={version:"2.2.6",commit:"b6ebda868d8942dc98f6bb812da639a1859a8303",next:"16.3.0",node:process.versions.node,sharp:process.argv[4],platform:`${process.platform}-${process.arch}`,builtAt:process.argv[1],buildId:fs.readFileSync(".next/BUILD_ID","utf8").trim(),artifact:process.argv[2],artifactSha256:process.argv[3],serverBuildAllowed:false}; fs.writeFileSync("release-manifest.json",JSON.stringify(manifest,null,2)+"\n")' "$built_at" "$artifact" "$sha256" "$sharp_version"
+          test "$(node -p 'require("./release-manifest.json").commit')" = "b6ebda868d8942dc98f6bb812da639a1859a8303"
           test "$(node -p 'require("./release-manifest.json").platform')" = "linux-x64"
           test "$(node -p 'require("./release-manifest.json").sharp')" = "0.35.3"
           test "$(node -p 'require("./release-manifest.json").artifactSha256')" = "$sha256"
@@ -164,7 +164,7 @@ jobs:
       - name: Upload verified Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: qingxuan-v2.2.6-linux-x64-2a64464
+          name: qingxuan-v2.2.6-linux-x64-b6ebda8
           path: |
             ${{ steps.package.outputs.artifact }}
             release-manifest.json
