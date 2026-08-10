@@ -52,8 +52,41 @@ function nullableBounded(value: unknown, maxLength: number): string | null {
   return text || null;
 }
 
+/**
+ * Multi-line 原文（详细参数/卖点）规范化：保留换行分隔（投影函数按 \n 拆句）。
+ * 若与 bounded 一样把换行压成空格，长卖点会合并成单句超长而被候选提取过滤丢弃。
+ */
+function boundedMultiline(value: unknown, maxLength: number): string {
+  if (typeof value !== "string") return "";
+  return value
+    .normalize("NFC")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, maxLength);
+}
+
 function sha256(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+}
+
+/**
+ * 从任务 sourceMeta.productBatchListingFacts 提取原始商品资料列（productBatch 路径）。
+ * 仅返回非空字段；完全缺失时返回 undefined（保持向后兼容，不影响旧任务）。
+ */
+function sellerSpriteRawFromListingFacts(
+  sourceMeta: unknown,
+): CandidateResearchContext["sellerSpriteSourceRaw"] | undefined {
+  if (!isRecord(sourceMeta) || !isRecord(sourceMeta.productBatchListingFacts)) return undefined;
+  const listingFacts = sourceMeta.productBatchListingFacts;
+  const detailAttributes = boundedMultiline(listingFacts.productDetails, 4000);
+  const sellingPoints = boundedMultiline(listingFacts.productBulletPoints, 8000);
+  if (!detailAttributes && !sellingPoints) return undefined;
+  return {
+    ...(detailAttributes ? { detailAttributes } : {}),
+    ...(sellingPoints ? { sellingPoints } : {}),
+  };
 }
 
 /**
@@ -235,6 +268,13 @@ export function adaptResearchContextForHandoff(
       sellerSpriteDisclaimerVersion: bounded(facts.sellerSpriteDisclaimerVersion, 120),
       capturedAt,
       contextHash,
+      // SellerSprite Source Fact Projection：从 save-task 已持久化的 productBatchListingFacts
+      // （sourceMeta 顶层，按 ASIN 从 normalizedSnapshotJson.extraRaw 捞取的原始列）构造
+      // 与 verified_seller_sprite 等价的 sellerSpriteSourceRaw 输入，复用同一投影/确认链。
+      // 仅作只读输入，不参与 hash；缺失时向后兼容（无此来源的旧任务不受影响）。
+      ...(sellerSpriteRawFromListingFacts(resultJson.sourceMeta) ? {
+        sellerSpriteSourceRaw: sellerSpriteRawFromListingFacts(resultJson.sourceMeta)!,
+      } : {}),
       ...(productImage ? { productImage } : {}),
     };
     return { ok: true, context };
