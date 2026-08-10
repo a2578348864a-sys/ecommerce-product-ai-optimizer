@@ -11,6 +11,7 @@ vi.mock("node:dns/promises", () => ({
 }));
 
 import {
+  AI_IMAGE_DOWNLOAD_TIMEOUT_MS,
   downloadImageFromUrl,
   createPinnedHttpsRequestOptions,
   getImageResultHostWhitelist,
@@ -736,6 +737,45 @@ describe("downloadImageFromUrl", () => {
     await expect(
       downloadImageFromUrl("https://image.65535.space/redirect", WHITELIST, redirectToHttp),
     ).rejects.toThrowError(ImageUrlFetchError);
+  });
+
+  it("rejects a redirect whose target DNS resolves to a private IP (redirect SSRF)", async () => {
+    mockDns.lookup
+      .mockResolvedValueOnce([{ address: "104.26.15.58", family: 4 }])
+      .mockResolvedValueOnce([{ address: "10.0.0.5", family: 4 }]);
+    const request: PinnedRequest = async (_url, address) => {
+      if (address.address === "104.26.15.58") {
+        return new Response(null, { status: 302, headers: new Headers({ location: "https://image.65535.space/private.png" }) });
+      }
+      throw new Error("must not be reached");
+    };
+    await expect(
+      downloadImageFromUrl("https://image.65535.space/redirect", WHITELIST, request),
+    ).rejects.toThrowError(ImageUrlFetchError);
+    expect(mockDns.lookup).toHaveBeenCalledTimes(2);
+    // 第二次解析（redirect 目标）命中私网 → DNS 拒绝（不允许连接到私网地址）
+    const secondCall = mockDns.lookup.mock.calls[1]?.[0];
+    expect(secondCall).toBe("image.65535.space");
+  });
+
+  it("rejects a stalled download via timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      mockDns.lookup.mockResolvedValue([{ address: "104.26.15.58", family: 4 }]);
+      const neverResponding: PinnedRequest = async (_url, _address, signal) => {
+        return new Promise<Response>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+        });
+      };
+      const promise = downloadImageFromUrl("https://image.65535.space/stall.png", WHITELIST, neverResponding);
+      // 预先附加 catch，避免假定时器推进时产生 unhandled rejection
+      const guarded = promise.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(AI_IMAGE_DOWNLOAD_TIMEOUT_MS + 1000);
+      await expect(promise).rejects.toMatchObject({ code: "image_provider_result_timeout" });
+      await guarded;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("validates Content-Type against actual magic bytes", async () => {

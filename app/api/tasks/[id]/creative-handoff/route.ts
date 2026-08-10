@@ -412,16 +412,18 @@ export async function POST(
     if (manualConfirmedFacts === null) {
       return errorResponse(400, "invalid_manual_fact", "手工商品事实无效。");
     }
-    if (selectedFactCandidateIds.length < 1 && manualConfirmedFacts.length < 1) {
-      return errorResponse(400, "no_facts_selected", "请至少选择一项或填写一项可用的商品事实。");
-    }
-
     // V2 Final Integration: 视觉参考候选选择（用户勾选「批准作为产品视觉参考」；未提供=空=不批准）
     const selectedVisualReferenceIds = body.selectedVisualReferenceCandidateIds === undefined
       ? []
       : parseSelectionIds(body.selectedVisualReferenceCandidateIds);
     if (selectedVisualReferenceIds === null) {
       return errorResponse(400, "invalid_visual_reference_selection", "视觉参考选择无效。");
+    }
+
+    // 纯视觉参考批准（无新事实）合法 — 与 Persistence 锁内 visualApprovalOnly 分支一致
+    // （继承当前 Handoff 的 confirmedFacts；若尚无 Handoff 则无事实可继承 → 拒绝）
+    if (selectedFactCandidateIds.length < 1 && manualConfirmedFacts.length < 1 && selectedVisualReferenceIds.length < 1) {
+      return errorResponse(400, "no_facts_selected", "请至少选择一项或填写一项可用的商品事实。");
     }
 
     const requestFingerprint = buildRequestFingerprint({

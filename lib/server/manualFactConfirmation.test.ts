@@ -26,7 +26,7 @@ describe("confirmManualProductFacts", () => {
     const brand = out.confirmedFacts.find((f) => f.field === "brand")!;
     expect(brand.value).toBe("Owala");
     expect(brand.evidenceTier).toBe("human_confirmed");
-    expect(brand.usageScopes).toEqual(["internal", "listing"]);
+    expect(brand.usageScopes).toEqual(["internal", "listing", "image"]);
     expect(brand.sourceRef.sourceKind).toBe("user_confirmation");
     expect(brand.confirmedBy).toEqual(actor);
     expect(brand.factId).toBeTruthy();
@@ -112,7 +112,7 @@ describe("other 字段边界", () => {
     const fact = out.confirmedFacts[0];
     expect(fact.field).toBe("other");
     expect(fact.evidenceTier).toBe("human_confirmed");
-    expect(fact.usageScopes).toEqual(["internal", "listing"]);
+    expect(fact.usageScopes).toEqual(["internal", "listing", "image"]);
     expect(fact.sourceRef.sourceKind).toBe("user_confirmation");
     // 不是 market_signal 分类：白名单外字段（category/price）仍拒绝
     expect(isManualFactField("category")).toBe(false);
@@ -156,7 +156,7 @@ describe("Quality.1 功能字段边界", () => {
     expect(new Set(fields).size).toBe(3);
     for (const f of out.confirmedFacts) {
       expect(f.evidenceTier).toBe("human_confirmed");
-      expect(f.usageScopes).toEqual(["internal", "listing"]);
+      expect(f.usageScopes).toEqual(["internal", "listing", "image"]);
     }
   });
 

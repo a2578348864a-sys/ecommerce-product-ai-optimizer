@@ -30,6 +30,9 @@ const OPTIONAL_COLUMNS = {
   searchRank: "搜索排名",
   estimatedMonthlySales: "月销量",
   estimatedMonthlyRevenueUsd: "月销售额($)",
+  sku: "SKU",
+  detailAttributes: "详细参数",
+  sellingPoints: "产品卖点",
 } as const;
 
 const ALL_COLUMNS = { ...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS };
@@ -84,6 +87,10 @@ type PreviewFacts = {
   reviewCount?: number;
   brand?: string;
   category?: string;
+  /** SellerSprite Source Fact Projection 原始列 */
+  sku?: string;
+  detailAttributes?: string;
+  sellingPoints?: string;
 };
 
 type PreviewEstimates = {
@@ -325,6 +332,12 @@ function buildRow(
   statuses.brand = fieldStatus("brand", brand.cell);
   const category = readText(values, indexes.get("category"), "category", reasons);
   statuses.category = fieldStatus("category", category.cell);
+  const sku = readText(values, indexes.get("sku"), "sku", reasons);
+  statuses.sku = fieldStatus("sku", sku.cell);
+  const detailAttributes = readText(values, indexes.get("detailAttributes"), "detailAttributes", reasons);
+  statuses.detailAttributes = fieldStatus("detailAttributes", detailAttributes.cell);
+  const sellingPoints = readText(values, indexes.get("sellingPoints"), "sellingPoints", reasons);
+  statuses.sellingPoints = fieldStatus("sellingPoints", sellingPoints.cell);
   const searchRank = ((): { value: number | undefined; cell: CellValue } => {
     const searchRankCell = cellValue(values, indexes.get("searchRank"));
     if (searchRankCell.kind === "value") {
@@ -368,6 +381,9 @@ function buildRow(
   if (reviewCount.value !== undefined) facts.reviewCount = reviewCount.value;
   if (brand.value) facts.brand = brand.value;
   if (category.value) facts.category = category.value;
+  if (sku.value) facts.sku = sku.value;
+  if (detailAttributes.value) facts.detailAttributes = detailAttributes.value;
+  if (sellingPoints.value) facts.sellingPoints = sellingPoints.value;
   const estimates: PreviewEstimates = {};
   if (searchRank.value !== undefined) estimates.searchRank = searchRank.value;
   if (estimatedMonthlySales.value !== undefined) estimates.estimatedMonthlySales = estimatedMonthlySales.value;
@@ -386,6 +402,9 @@ function buildRow(
     searchRank: searchRank.cell,
     estimatedMonthlySales: estimatedMonthlySales.cell,
     estimatedMonthlyRevenueUsd: estimatedMonthlyRevenueUsd.cell,
+    sku: sku.cell,
+    detailAttributes: detailAttributes.cell,
+    sellingPoints: sellingPoints.cell,
   };
   for (const [field, cell] of Object.entries(optionalCells) as Array<[keyof typeof OPTIONAL_COLUMNS, CellValue]>) {
     recordOptionalFieldState(field, cell, missingFields, warnings);

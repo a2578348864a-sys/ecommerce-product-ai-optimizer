@@ -23,15 +23,9 @@ import {
   ProductResearchImageConflictError,
   mergeCandidateProductImageSnapshot,
   readCandidateProductImageSnapshot,
-  type ProductResearchImageSnapshot,
 } from "@/lib/productResearchImage";
 import { buildCandidateEvidenceReview } from "@/lib/server/candidateEvidenceReview";
 import { stableHash } from "@/lib/upstream/pipeline";
-import {
-  buildSellerSpriteProductImageSnapshot,
-  fetchSellerSpriteProductImage,
-} from "@/lib/server/sellerSpriteProductImage";
-import { writeCandidateAnalysisImageSnapshot } from "@/lib/server/candidateProductImageAsset";
 
 /* ── Types ─────────────────────────────────────── */
 
@@ -899,25 +893,6 @@ export async function importOwnerSellerSpriteCandidates(input: {
   importedAt: string;
 }): Promise<SellerSpriteImportSummary> {
   return withOwnerSellerSpriteImportLock(async () => {
-    // P1-1: 图片下载必须在事务外完成（网络 I/O 不能占用事务 5s 超时窗口）。
-    // 失败降级为 null（不写快照、不中断导入）。
-    const imagesByRow = new Map<string, ProductResearchImageSnapshot>();
-    for (const row of input.rows) {
-      try {
-        const fetched = await fetchSellerSpriteProductImage(row.imageUrl);
-        if (fetched) {
-          const snapshot = buildSellerSpriteProductImageSnapshot({
-            fetched,
-            asin: row.asin,
-            capturedAt: input.importedAt,
-          });
-          imagesByRow.set(row.rowHash, snapshot);
-        }
-      } catch {
-        // 下载 / 构造失败 → 降级为无图片候选，不阻断导入
-      }
-    }
-
     return prisma.$transaction(async (tx) => {
       const all = await tx.opportunityCandidate.findMany();
       const byKey = new Map<string, (typeof all)[number]>();
@@ -937,16 +912,8 @@ export async function importOwnerSellerSpriteCandidates(input: {
         const existing = byKey.get(key);
         if (!existing) {
           const sourceMetaJson = buildSellerSpriteCandidateSourceMeta(row, input.sourceFileSha256, input.importedAt);
-          // P1-1: 商品主图资产化（analysisJson.productImageSnapshot，事务外已下载）
-          let analysisJson = "{}";
-          const image = imagesByRow.get(row.rowHash);
-          if (image) {
-            try {
-              analysisJson = writeCandidateAnalysisImageSnapshot(analysisJson, image).analysisJson;
-            } catch {
-              analysisJson = "{}";
-            }
-          }
+          // 商品主图不在导入时下载：URL 仅作为 external_visual_reference_candidate，
+          // 用户点击「使用此图作为商品参考图」后服务器才受控获取（visual-reference-import route）。
           const record = await tx.opportunityCandidate.create({
             data: {
               name: row.title,
@@ -960,7 +927,7 @@ export async function importOwnerSellerSpriteCandidates(input: {
               summaryLabel: "",
               status: "pending",
               sourceMetaJson,
-              analysisJson,
+              analysisJson: "{}",
               convertedTaskId: null,
               lastActionAt: new Date(),
             },

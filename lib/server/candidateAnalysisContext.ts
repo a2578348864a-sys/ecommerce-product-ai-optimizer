@@ -91,6 +91,10 @@ export type CandidateAnalysisContextV1 =
         estimatedMonthlySales: number | null;
         estimatedMonthlyRevenueUsd: number | null;
         disclaimer: "third_party_estimate_point_in_time";
+        /** SellerSprite Source Fact Projection 原始列（可选，向后兼容旧数据） */
+        detailAttributes?: string | null;
+        sku?: string | null;
+        sellingPoints?: string | null;
       };
       assessment: {
         researchMode: "market_research_only";
@@ -196,6 +200,9 @@ export function buildCandidateAnalysisContext(
         estimatedMonthlySales: sellerSpriteMeta.estimates.estimatedMonthlySales,
         estimatedMonthlyRevenueUsd: sellerSpriteMeta.estimates.estimatedMonthlyRevenueUsd,
         disclaimer: "third_party_estimate_point_in_time",
+        ...(sellerSpriteMeta.sourceRaw?.detailAttributes ? { detailAttributes: sellerSpriteMeta.sourceRaw.detailAttributes } : {}),
+        ...(sellerSpriteMeta.sourceRaw?.sku ? { sku: sellerSpriteMeta.sourceRaw.sku } : {}),
+        ...(sellerSpriteMeta.sourceRaw?.sellingPoints ? { sellingPoints: sellerSpriteMeta.sourceRaw.sellingPoints } : {}),
       },
       assessment: {
         researchMode: "market_research_only",

@@ -38,11 +38,6 @@ import {
   type SellerSpriteImportRow,
   type SellerSpriteImportSummary,
 } from "@/lib/server/sellerSpriteImportContract";
-import {
-  buildSellerSpriteProductImageSnapshot,
-  fetchSellerSpriteProductImage,
-} from "@/lib/server/sellerSpriteProductImage";
-import { writeCandidateAnalysisImageSnapshot } from "@/lib/server/candidateProductImageAsset";
 import { assertGenericTaskResultAllowed } from "@/lib/server/taskResultNamespacePolicy";
 import {
   mutateDemoSandboxStore,
@@ -853,23 +848,8 @@ export function importSellerSpriteCandidatesForVisitor(
       const existing = byKey.get(key);
       if (!existing) {
         const sourceMetaJson = buildSellerSpriteCandidateSourceMeta(row, input.sourceFileSha256, input.importedAt);
-        // P1-1: 商品主图资产化（安全下载 → analysisJson.productImageSnapshot）。
-        // 失败降级：不写快照、不中断导入（视觉参考按 composition 路径处理）。
-        let analysisJson = "{}";
-        try {
-          const fetched = await fetchSellerSpriteProductImage(row.imageUrl);
-          if (fetched) {
-            const snapshot = buildSellerSpriteProductImageSnapshot({
-              fetched,
-              asin: row.asin,
-              capturedAt: input.importedAt,
-            });
-            const written = writeCandidateAnalysisImageSnapshot(analysisJson, snapshot);
-            analysisJson = written.analysisJson;
-          }
-        } catch {
-          analysisJson = "{}";
-        }
+        // 商品主图不在导入时下载：URL 仅作为 external_visual_reference_candidate，
+        // 用户点击「使用此图作为商品参考图」后服务器才受控获取（visual-reference-import route）。
         const candidate: SandboxCandidate = {
           id: generateSandboxCandidateId(),
           demoAccessId,
@@ -884,7 +864,7 @@ export function importSellerSpriteCandidatesForVisitor(
           summaryLabel: "",
           status: "pending",
           sourceMetaJson,
-          analysisJson,
+          analysisJson: "{}",
           createdAt: input.importedAt,
           convertedTaskId: null,
           originProductBatchItemId: null,

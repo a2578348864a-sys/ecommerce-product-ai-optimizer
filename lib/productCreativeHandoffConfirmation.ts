@@ -98,8 +98,9 @@ export function buildConfirmableCandidates(
       capturedAt,
       stabilityRule: stable.stabilityRule,
       // V2.1.2：factCategory 决定确认后的用途范围——
-      // product_fact → internal + listing；market_signal（价格/评分/评论/类目）→ 仅 internal
-      allowedUsageScopes: stable.factCategory === "market_signal" ? ["internal"] : ["internal", "listing"],
+      // product_fact → internal + listing + image（共享商品事实，Listing 与 Image 共同消费）；
+      // market_signal（价格/评分/评论/类目）→ 仅 internal
+      allowedUsageScopes: stable.factCategory === "market_signal" ? ["internal"] : ["internal", "listing", "image"],
     });
   }
   return out;
@@ -110,7 +111,7 @@ export function buildConfirmableCandidates(
  */
 export function confirmSelectedProductFacts(input: ConfirmationInput): ConfirmationOutput {
   const { stableSourceFacts, confirmableCandidates, selectedKeys, actor, confirmedAt, confirmationReference, candidateId } = input;
-  const allowedScopes = input.allowedUsageScopes ?? (["internal", "listing"] as const);
+  const allowedScopes = input.allowedUsageScopes ?? (["internal", "listing", "image"] as const);
 
   // 1) 校验输入不变量
   if (!Array.isArray(selectedKeys) || new Set(selectedKeys).size !== selectedKeys.length) {
@@ -128,6 +129,8 @@ export function confirmSelectedProductFacts(input: ConfirmationInput): Confirmat
 
   // 2) 建立查找表
   const candidateByKey = new Map(confirmableCandidates.map((c) => [c.selectionKey, c]));
+  // 同 field 多候选：按 factId 精确匹配 stable 事实（不因 field 覆盖导致 value_mismatch 误判）
+  const stableByKey = new Map(stableSourceFacts.map((f) => [f.factId, f]));
   const stableByField = new Map(stableSourceFacts.map((f) => [canonicalField(f.field), f]));
 
   // 3) 校验每个选择
@@ -144,7 +147,7 @@ export function confirmSelectedProductFacts(input: ConfirmationInput): Confirmat
       continue;
     }
     const field = canonicalField(confirmable.field);
-    const stableSameField = stableByField.get(field);
+    const stableSameField = stableByKey.get(confirmable.selectionKey) ?? stableByField.get(field);
     if (!stableSameField) {
       rejected.push({ selectionKey: key, code: "field_not_in_stable" });
       continue;

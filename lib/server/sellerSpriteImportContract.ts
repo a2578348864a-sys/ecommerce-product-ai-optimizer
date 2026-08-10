@@ -46,6 +46,12 @@ export type SellerSpriteImportRow = {
   searchRank: number | null;
   estimatedMonthlySales: number | null;
   estimatedMonthlyRevenueUsd: number | null;
+  /** SellerSprite Source Fact Projection：详细参数（Key: Value | ...）原始文本 */
+  detailAttributesRaw?: string | null;
+  /** SellerSprite Source Fact Projection：SKU（Color: X | Size: Y）原始文本 */
+  skuRaw?: string | null;
+  /** SellerSprite Source Fact Projection：产品卖点原文（内容候选提取源） */
+  sellingPointsRaw?: string | null;
 };
 
 export type SellerSpriteSelectedRowSource = {
@@ -62,6 +68,9 @@ export type SellerSpriteSelectedRowSource = {
     reviewCount?: number;
     brand?: string;
     category?: string;
+    sku?: string;
+    detailAttributes?: string;
+    sellingPoints?: string;
   };
   estimates: {
     searchRank?: number;
@@ -130,6 +139,9 @@ export function sellerSpriteImportRowFromPreview(row: SellerSpriteSelectedRowSou
     searchRank: finiteOrNull(row.estimates.searchRank),
     estimatedMonthlySales: finiteOrNull(row.estimates.estimatedMonthlySales),
     estimatedMonthlyRevenueUsd: finiteOrNull(row.estimates.estimatedMonthlyRevenueUsd),
+    detailAttributesRaw: row.facts.detailAttributes ?? null,
+    skuRaw: row.facts.sku ?? null,
+    sellingPointsRaw: row.facts.sellingPoints ?? null,
   };
 }
 
@@ -160,6 +172,12 @@ export type SellerSpriteCandidateSourceMeta = {
     reviewCount: number | null;
     brand: string | null;
     category: string | null;
+  };
+  /** SellerSprite Source Fact Projection：原始商品资料列（可选，向后兼容） */
+  sourceRaw?: {
+    detailAttributes?: string | null;
+    sku?: string | null;
+    sellingPoints?: string | null;
   };
   estimates: {
     searchRank: number | null;
@@ -200,6 +218,13 @@ export function buildSellerSpriteCandidateSourceMeta(
       brand: row.brand,
       category: row.category,
     },
+    ...(row.detailAttributesRaw || row.skuRaw || row.sellingPointsRaw ? {
+      sourceRaw: {
+        ...(row.detailAttributesRaw ? { detailAttributes: row.detailAttributesRaw } : {}),
+        ...(row.skuRaw ? { sku: row.skuRaw } : {}),
+        ...(row.sellingPointsRaw ? { sellingPoints: row.sellingPointsRaw } : {}),
+      },
+    } : {}),
     estimates: {
       searchRank: row.searchRank,
       estimatedMonthlySales: row.estimatedMonthlySales,

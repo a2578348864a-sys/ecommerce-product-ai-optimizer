@@ -4,6 +4,7 @@ import type { ProductResearchRecordV1 } from "@/lib/productResearchRecord";
 import type { CandidateResearchContext } from "@/lib/candidateResearchContext";
 import type { AgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
 import { deriveTitleProductFacts } from "@/lib/titleDerivedProductFacts";
+import { projectSellerSpriteFactCandidates } from "@/lib/server/sellerSpriteFactProjection";
 
 /**
  * Creative Handoff Projection Evidence Adapter（Fix.3）
@@ -218,6 +219,43 @@ export function buildProductCreativeHandoffProjectionEvidence(
             sourceKind: "candidate_snapshot",
             sourceField: `product_title:${fact.field}`,
             candidateSnapshotFingerprint: sha256(`${context.candidateId}:title:${fact.value}:${context.capturedAt}`),
+            capturedAt: context.capturedAt,
+          },
+          stabilityRule: "human_confirmation_required_for_claim",
+          factCategory: "product_fact",
+        },
+      });
+    }
+  }
+
+  // ── SellerSprite Source Fact Projection：详细参数/SKU/卖点 → 候选 ──
+  // 安全原则：只产生候选（sourceField 标记 sellersprite 来源，humanConfirmationRequired=true）；
+  // 用户核实后才进入 confirmedFacts。结构字段 deterministic 解析，内容候选为 mock 提取。
+  if (context.sellerSpriteSourceRaw) {
+    const projected = projectSellerSpriteFactCandidates({
+      detailAttributesRaw: context.sellerSpriteSourceRaw.detailAttributes,
+      skuRaw: context.sellerSpriteSourceRaw.sku,
+      sellingPointsRaw: context.sellerSpriteSourceRaw.sellingPoints,
+    });
+    const allCandidates = [...projected.structured, ...projected.content];
+    for (const candidate of allCandidates) {
+      const factId = uuidV4FromSeed(
+        `sellersprite-projected:${context.candidateId}:${candidate.field}:${candidate.value}`,
+        "sellersprite-projected-v1",
+      );
+      evidence.push({
+        evidenceTier: "source_snapshot",
+        fact: {
+          factId,
+          field: candidate.field,
+          label: candidate.label,
+          value: candidate.value,
+          evidenceTier: "source_snapshot",
+          usageScopes: ["internal"],
+          sourceRef: {
+            sourceKind: "candidate_snapshot",
+            sourceField: `sellersprite:${candidate.sourceField}`,
+            candidateSnapshotFingerprint: sha256(`${context.candidateId}:sellersprite:${candidate.field}:${candidate.value}:${context.capturedAt}`),
             capturedAt: context.capturedAt,
           },
           stabilityRule: "human_confirmation_required_for_claim",

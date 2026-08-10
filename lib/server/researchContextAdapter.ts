@@ -167,6 +167,13 @@ export function adaptResearchContextForHandoff(
       promotionEligible: false,
       capturedAt,
       contextHash,
+      ...(facts.detailAttributes || facts.sku || facts.sellingPoints ? {
+        sellerSpriteSourceRaw: {
+          ...(facts.detailAttributes ? { detailAttributes: bounded(facts.detailAttributes, 4000) } : {}),
+          ...(facts.sku ? { sku: bounded(facts.sku, 2000) } : {}),
+          ...(facts.sellingPoints ? { sellingPoints: bounded(facts.sellingPoints, 8000) } : {}),
+        },
+      } : {}),
       ...(productImage ? { productImage } : {}),
     };
     return { ok: true, context };

@@ -121,6 +121,12 @@ export type CreativeHandoffPreview = {
     /** V2 Visual Preview: 安全缩略图地址（同源 API；仅当候选人已绑定本任务时非空） */
     thumbnailUrl?: string;
   }[];
+  /** SellerSprite 外部主图 URL 候选（未下载；用户点击「使用此图」后服务器受控获取） */
+  externalUrlCandidate?: {
+    asin: string;
+    present: boolean;
+    alreadyImported: boolean;
+  };
   blockingCodes?: string[];
   expectedResearchRevision?: number;
   expectedCurrentHandoffRevision?: number;
@@ -180,6 +186,12 @@ export type CreativeHandoffGateResult = {
   }>;
   /** Final Capability: 批准参考的原始图片（dataUrl base64；仅服务端使用，供真实参考图 Provider 输入；Browser DTO 绝不包含） */
   approvedReferenceImageDataUrl?: string | null;
+  /** SellerSprite 外部主图 URL 候选（未下载；用户点击「使用此图」后由服务器受控获取） */
+  externalUrlCandidate?: {
+    asin: string;
+    present: boolean;
+    alreadyImported: boolean;
+  };
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -332,6 +344,18 @@ export async function checkCreativeHandoffGate(
     ? adaptResearchContextForHandoff(resultJson)
     : null;
   const researchContext = adaptedContext?.ok === true ? adaptedContext.context : null;
+  // SellerSprite 外部主图 URL 候选：URL 存在于候选快照（未下载）时展示，
+  // 用户点击「使用此图作为商品参考图」后由 visual-reference-import route 受控获取。
+  const externalUrlCandidate = (() => {
+    const asin = researchContext?.asin && /^[A-Z0-9]{10}$/.test(researchContext.asin)
+      ? researchContext.asin
+      : null;
+    if (!asin) return undefined;
+    const url = researchContext?.imageUrl;
+    if (!url || !url.trim()) return { asin, present: false, alreadyImported: false };
+    const alreadyImported = Boolean(researchContext?.productImage);
+    return { asin, present: true, alreadyImported };
+  })();
   const agentOutput = extractAgentOutputSnapshotFromTask(resultJson);
   if (researchContext) {
     const projectionInput = buildProductCreativeHandoffProjectionEvidence({
@@ -480,6 +504,7 @@ export async function checkCreativeHandoffGate(
             record.revision,
           )
         : [],
+      externalUrlCandidate,
       // Final Capability: 降级分支同样提供批准参考图（供真实参考图 Provider 输入）
       approvedReferenceImageDataUrl: (() => {
         const ref = currentHandoffHere?.versions?.[currentHandoffHere.versions.length - 1]?.visualReferences?.[0];
@@ -556,7 +581,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, keywordBriefRaw: resultJson.listingKeywordBrief };
+  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief };
 }
 
 // ─── Preview ──────────────────────────────────────────────
@@ -634,6 +659,7 @@ export async function generateCreativeHandoffPreview(
         // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
         thumbnailUrl: `/api/tasks/${encodeURIComponent(taskId)}/visual-reference-preview?ref=${encodeURIComponent(v.selectionId)}`,
       })),
+      externalUrlCandidate: gate.externalUrlCandidate,
       // 创作偏好恢复（degraded 分支同样读取当前 Handoff 最新版本；仅影响表达/视觉风格）
       creativePreferences: prefsFromHandoff(gate.currentHandoff, gate.candidate),
     };
@@ -708,6 +734,7 @@ export async function generateCreativeHandoffPreview(
       // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
       thumbnailUrl: `/api/tasks/${encodeURIComponent(taskId)}/visual-reference-preview?ref=${encodeURIComponent(v.selectionId)}`,
     })),
+    externalUrlCandidate: gate.externalUrlCandidate,
     expectedResearchRevision: gate.candidate.sourceResearch.researchRevision,
     expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,
     storageVersion: gate.storageVersion,

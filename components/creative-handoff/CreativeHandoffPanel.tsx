@@ -408,6 +408,25 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
     });
   }, []);
 
+  // 同 canonical field 单选：选择某候选时取消同 field 的其它已选项（防止后端 field 唯一性冲突 422）
+  const toggleSelectionByField = useCallback((selectionId: string, field: string) => {
+    setSelectedIds((prev) => {
+      const candidates = state.kind === "preview" || state.kind === "active" || state.kind === "stale"
+        ? state.preview.confirmableFactCandidates ?? []
+        : [];
+      const others = candidates
+        .filter((c) => c.canonicalField === field && c.selectionId !== selectionId)
+        .map((c) => c.selectionId);
+      const withoutOthers = prev.filter((id) => !others.includes(id));
+      const next = withoutOthers.includes(selectionId)
+        ? withoutOthers.filter((id) => id !== selectionId)
+        : [...withoutOthers, selectionId];
+      setRequestId(null);
+      setRetryBody(null);
+      return next;
+    });
+  }, [state]);
+
   const submitCreate = useCallback(async () => {
     if (submitting) return;
     const preview = state.kind === "preview" || state.kind === "active" || state.kind === "stale" ? state.preview : null;
@@ -632,7 +651,7 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
         <PreviewSection
           preview={state.preview}
           selectedIds={selectedIds}
-          onToggle={toggleSelection}
+          onToggle={toggleSelectionByField}
           selectedVisualIds={selectedVisualIds}
           onToggleVisual={toggleVisualReference}
           prefs={prefs}
@@ -685,7 +704,7 @@ function PreviewSection({
 }: {
   preview: CreativeHandoffPreview;
   selectedIds: string[];
-  onToggle: (selectionId: string) => void;
+  onToggle: (selectionId: string, field: string) => void;
   selectedVisualIds: string[];
   onToggleVisual: (selectionId: string) => void;
   prefs: CreativePrefs;
@@ -794,7 +813,7 @@ function PreviewSection({
                               id={`confirm-${item.selectionId}`}
                               type="checkbox"
                               checked={selectedIds.includes(item.selectionId)}
-                              onChange={() => onToggle(item.selectionId)}
+                              onChange={() => onToggle(item.selectionId, item.canonicalField)}
                               className="mt-0.5 h-4 w-4 accent-teal-600"
                             />
                             <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
@@ -823,7 +842,7 @@ function PreviewSection({
                               id={`confirm-${item.selectionId}`}
                               type="checkbox"
                               checked={selectedIds.includes(item.selectionId)}
-                              onChange={() => onToggle(item.selectionId)}
+                              onChange={() => onToggle(item.selectionId, item.canonicalField)}
                               className="mt-0.5 h-4 w-4 accent-teal-600"
                             />
                             <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">
@@ -854,7 +873,7 @@ function PreviewSection({
                               id={`confirm-${item.selectionId}`}
                               type="checkbox"
                               checked={selectedIds.includes(item.selectionId)}
-                              onChange={() => onToggle(item.selectionId)}
+                              onChange={() => onToggle(item.selectionId, item.canonicalField)}
                               className="mt-0.5 h-4 w-4 accent-slate-500"
                             />
                             <label htmlFor={`confirm-${item.selectionId}`} className="min-w-0 flex-1">

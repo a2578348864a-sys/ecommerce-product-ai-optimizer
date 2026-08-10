@@ -91,6 +91,12 @@ export type CreativeHandoffPreview = {
     /** V2 Visual Preview: 安全缩略图地址（同源 API；仅当候选人已绑定本任务时非空） */
     thumbnailUrl?: string;
   }[];
+  /** SellerSprite 外部主图 URL 候选（未下载；用户点击「使用此图」后服务器受控获取） */
+  externalUrlCandidate?: {
+    asin: string;
+    present: boolean;
+    alreadyImported: boolean;
+  };
   blockingCodes?: string[];
   expectedResearchRevision?: number;
   expectedCurrentHandoffRevision?: number;

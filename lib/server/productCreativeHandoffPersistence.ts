@@ -285,9 +285,10 @@ export async function createOrAppendCreativeHandoff(
       if (resolvedKeys.length !== input.selectedFactCandidateIds.length) {
         throw new CreativeHandoffPersistenceError("invalid_selection", 400, "选择项与最新研究状态不匹配，请刷新后重试。");
       }
-      // 零候选兜底：无候选 selectionId 时允许仅手工事实；两者都不提供才拒绝
+      // 零候选兜底：无候选 selectionId 时允许仅手工事实；两者都不提供且无视觉参考批准才拒绝
       const manualFacts = input.manualConfirmedFacts ?? [];
-      if (resolvedKeys.length < 1 && manualFacts.length < 1) {
+      const visualApprovalOnly = (input.selectedVisualReferenceCandidateIds ?? []).length > 0;
+      if (resolvedKeys.length < 1 && manualFacts.length < 1 && !visualApprovalOnly) {
         throw new CreativeHandoffPersistenceError("no_facts_selected", 400, "请至少选择一项或填写一项可用的商品事实。");
       }
       const conversion = confirmSelectedProductFacts({
@@ -321,11 +322,26 @@ export async function createOrAppendCreativeHandoff(
         }
         manualConfirmed = manualResult.confirmedFacts;
       }
-      // 跨层排他后的最终候选（候选确认 + 手工确认合并）
+      // 跨层排他后的最终候选（候选确认 + 手工确认合并；手工确认的 field 同样从 stable 移除，
+      // 满足 parseCandidate P1-3 跨层排他：confirmed 与 stable 不得共享 field）
+      const manualConfirmedFields = new Set(manualConfirmed.map((f) => f.field));
+      // 纯视觉参考批准 append（无新事实确认）时：继承当前 handoff 最新版本 confirmedFacts，
+      // 否则 confirmedFacts 为空 → parseCandidate（≥1）失败
+      const existingConfirmedFacts = currentHandoff && currentHandoff.versions.length > 0
+        ? currentHandoff.versions[currentHandoff.versions.length - 1].confirmedFacts
+        : [];
+      const hasNewConfirmed = conversion.confirmedFacts.length > 0 || manualConfirmed.length > 0;
+      const effectiveConfirmed = hasNewConfirmed
+        ? [...conversion.confirmedFacts, ...manualConfirmed]
+        : existingConfirmedFacts;
+      // 跨层排他：无论新确认或继承，stable 必须剔除 confirmed 已占用的 field
+      const confirmedFieldSet = new Set(effectiveConfirmed.map((f) => f.field));
       const finalCandidate: ProductCreativeHandoffCandidate = {
         ...gateCandidate,
-        confirmedFacts: [...conversion.confirmedFacts, ...manualConfirmed],
-        stableSourceFacts: conversion.remainingStableSourceFacts,
+        confirmedFacts: effectiveConfirmed,
+        stableSourceFacts: conversion.remainingStableSourceFacts
+          .filter((f) => !manualConfirmedFields.has(f.field))
+          .filter((f) => !confirmedFieldSet.has(f.field)),
       };
 
       // ── V2 Final Integration: 视觉参考批准（锁内重新解析候选 → 校验 → 写入 visualReferences）──

@@ -128,7 +128,8 @@ export function confirmManualProductFacts(input: ManualFactConfirmationInput): M
       label: MANUAL_FACT_FIELDS[field],
       value,
       evidenceTier: "human_confirmed",
-      usageScopes: ["internal", "listing"],
+      // 共享商品事实：Listing 与 Image 共同消费（market_signal 不走本入口）
+      usageScopes: ["internal", "listing", "image"],
       sourceRef: {
         sourceKind: "user_confirmation",
         sourceField: field,

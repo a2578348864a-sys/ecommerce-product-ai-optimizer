@@ -32,6 +32,12 @@ export type CandidateResearchContext = {
   capturedAt: string;
   contextHash: string;
   productImage?: ResearchProductImageDisplay;
+  /** SellerSprite Source Fact Projection：原始商品资料列（可选，向后兼容） */
+  sellerSpriteSourceRaw?: {
+    detailAttributes?: string | null;
+    sku?: string | null;
+    sellingPoints?: string | null;
+  };
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

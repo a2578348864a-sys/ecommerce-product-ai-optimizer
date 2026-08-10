@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { createBrowserUuid } from "@/lib/browserUuid";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import {
   HandoffApiRequestError,
   useCreativeHandoffApi,
-} from "@/components/creative-handoff/useCreativeHandoffApi";
-import type {
+} from "@/components/creative-handoff/useCreativeHandoffApi";import type {
   ApiError,
   CreativeHandoffPreview,
 } from "@/components/creative-handoff/types";
@@ -34,13 +34,37 @@ const FACT_LABELS: Record<string, string> = {
 
 export function buildPreparationFactOptions(preview: CreativeHandoffPreview | null) {
   const projected = preview?.candidateFactOptions ?? [];
-  if (projected.length > 0) return projected;
+  if (projected.length > 0) return projected.map((option) => ({
+    selectionId: option.selectionId,
+    field: option.field,
+    label: FACT_LABELS[option.field] ?? option.field,
+    valueSummary: option.valueSummary,
+    listingEligible: true,
+  }));
   return (preview?.confirmableFactCandidates ?? []).map((candidate) => ({
     selectionId: candidate.selectionId,
     field: candidate.canonicalField,
     label: FACT_LABELS[candidate.canonicalField] ?? candidate.canonicalField,
     valueSummary: candidate.displayValue,
+    listingEligible: (candidate.allowedUsageScopes ?? []).includes("listing"),
   }));
+}
+
+/**
+ * 默认选中集：仅可进入创作的商品事实（排除 market_signal：allowedUsageScopes 不含 listing），
+ * 且同 canonical field 只取首个候选（用户可在 UI 内切换选择不同来源候选）。
+ * 返回选中 selectionId 列表。
+ */
+export function defaultPreparationSelection(options: Array<{ selectionId: string; field: string; listingEligible?: boolean }>): string[] {
+  const seenFields = new Set<string>();
+  const selected: string[] = [];
+  for (const option of options) {
+    if (option.listingEligible === false) continue;
+    if (seenFields.has(option.field)) continue;
+    seenFields.add(option.field);
+    selected.push(option.selectionId);
+  }
+  return selected;
 }
 
 type PreparationPreferences = NonNullable<CreativeHandoffPreview["creativePreferences"]>;
@@ -139,12 +163,43 @@ export function TaskStudioPreparation({
     () => preview?.visualReferenceCandidates ?? [],
     [preview?.visualReferenceCandidates],
   );
+  const externalUrlCandidate = preview?.externalUrlCandidate;
+  const [importingVisual, setImportingVisual] = useState(false);
+  const [visualImportError, setVisualImportError] = useState("");
+
+  async function importSellerSpriteVisual() {
+    if (!preview || !externalUrlCandidate || importingVisual) return;
+    setImportingVisual(true);
+    setVisualImportError("");
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/visual-reference-import`, {
+        method: "POST",
+        headers: buildAccessHeaders(),
+        body: JSON.stringify({
+          expectedStorageVersion: preview.storageVersion,
+          asin: externalUrlCandidate.asin,
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+        setVisualImportError(body?.error?.message || "商品参考图无法安全导入，可手动上传参考图。");
+        return;
+      }
+      await api.refresh();
+    } catch {
+      setVisualImportError("商品参考图无法安全导入，可手动上传参考图。");
+    } finally {
+      setImportingVisual(false);
+    }
+  }
 
   useEffect(() => {
     if (!preview) return;
     setSelectedFacts((current) => current.length > 0
       ? current.filter((id) => factOptions.some((option) => option.selectionId === id))
-      : factOptions.map((option) => option.selectionId));
+      : // 默认仅选可进入创作的商品事实（排除 market_signal），且同 canonical field 只取首个候选，
+        // 避免同 field 多候选全选导致后端 field 唯一性冲突（422）
+        defaultPreparationSelection(factOptions));
   }, [preview, factOptions]);
 
   if (api.state === "loading" && !api.result) {
@@ -299,9 +354,19 @@ export function TaskStudioPreparation({
                 <input
                   type="checkbox"
                   checked={selectedFacts.includes(option.selectionId)}
-                  onChange={(event) => setSelectedFacts((current) => event.target.checked
-                    ? [...new Set([...current, option.selectionId])]
-                    : current.filter((id) => id !== option.selectionId))}
+                  onChange={(event) => {
+                    const field = option.field;
+                    setSelectedFacts((current) => {
+                      // 同 canonical field 单选：选择时取消同 field 其它候选（防后端 field 唯一性冲突 422）
+                      const sameFieldIds = factOptions
+                        .filter((o) => o.field === field && o.selectionId !== option.selectionId)
+                        .map((o) => o.selectionId);
+                      const withoutSameField = current.filter((id) => !sameFieldIds.includes(id));
+                      return event.target.checked
+                        ? [...new Set([...withoutSameField, option.selectionId])]
+                        : withoutSameField.filter((id) => id !== option.selectionId);
+                    });
+                  }}
                 />
                 <span><strong>{option.label}</strong>：{option.valueSummary}</span>
               </label>
@@ -351,6 +416,30 @@ export function TaskStudioPreparation({
             ))}
           </div>
         </fieldset>
+      ) : null}
+
+      {kind === "image" && externalUrlCandidate?.present ? (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4" data-testid="task-sellersprite-visual-candidate">
+          <p className="text-sm font-bold text-slate-900">来自 SellerSprite 的商品参考图</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {externalUrlCandidate.alreadyImported
+              ? "商品主图已安全导入，可在上方「商品参考图」中勾选使用。"
+              : "商品主图仅以外部链接保存，未自动下载。点击下方按钮后，服务器才会受控获取这一张图片。"}
+          </p>
+          {externalUrlCandidate.alreadyImported ? null : (
+            <button
+              type="button"
+              disabled={importingVisual}
+              onClick={() => void importSellerSpriteVisual()}
+              className="mt-3 inline-flex h-9 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {importingVisual ? "正在获取…" : "使用此图作为商品参考图"}
+            </button>
+          )}
+          {visualImportError ? (
+            <p className="mt-2 text-sm font-semibold text-amber-800" role="alert">{visualImportError}</p>
+          ) : null}
+        </div>
       ) : null}
 
       {kind === "image" ? (

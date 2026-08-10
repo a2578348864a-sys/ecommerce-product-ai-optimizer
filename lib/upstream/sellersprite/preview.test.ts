@@ -20,6 +20,9 @@ const headers = [
   "搜索排名",
   "月销量",
   "月销售额($)",
+  "SKU",
+  "详细参数",
+  "产品卖点",
 ];
 
 const validRow: Array<string | null> = [
@@ -36,6 +39,9 @@ const validRow: Array<string | null> = [
   "12",
   "321",
   "$4567.89",
+  "Color: Red | Size: Small",
+  "Brand: Example Brand | Material: Steel",
+  "Dishwasher safe parts and stainless construction",
 ];
 
 const safeWorksheetHyperlinkRelationships = [
@@ -104,6 +110,9 @@ describe("SellerSprite Amazon US Search Results preview precheck", () => {
         reviewCount: 123,
         brand: "Example Brand",
         category: "Home & Kitchen > Test",
+        sku: "Color: Red | Size: Small",
+        detailAttributes: "Brand: Example Brand | Material: Steel",
+        sellingPoints: "Dishwasher safe parts and stainless construction",
       },
       estimates: {
         searchRank: 12,
