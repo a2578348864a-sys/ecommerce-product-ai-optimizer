@@ -7,6 +7,7 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import { computeListingStatus, parseListingHandoffBinding, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
+import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
 
 const ALLOWED_GENERATE_FIELDS = new Set(["requestId", "expectedStorageVersion", "expectedHandoffRevision", "confirmed"]);
 const FORBIDDEN_KEYS = new Set([
@@ -101,11 +102,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           staleReasonCode: null,
           humanReviewRequired: true,
           researchRevision: null,
+          factSummary: { confirmedFacts: 0, listingEligibleFacts: 0, prohibitedClaims: 0 },
           history: [],
         },
       });
     }
     const handoff = gate.currentHandoff;
+    const factSummary = summarizeListingHandoffFacts(handoff);
     const researchRevision = gate.candidate?.sourceResearch.researchRevision ?? null;
     const bindingRaw = gate.listingHandoffBindingRaw;
 
@@ -184,7 +187,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const canGenerate = handoff?.controlState === "active"
       && listingStatus !== "revoked"
       && listingStatus !== "invalid"
-      && handoffEffectiveStatus?.status === "active";
+      && handoffEffectiveStatus?.status === "active"
+      && factSummary.listingEligibleFacts > 0;
 
     return NextResponse.json({
       ok: true,
@@ -199,6 +203,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         humanReviewRequired: true,
         researchRevision,
         storageVersion,
+        factSummary,
         draft,
         history,
       },

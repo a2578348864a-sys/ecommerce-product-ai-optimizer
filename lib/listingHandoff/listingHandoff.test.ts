@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildListingInputFromCreativeHandoff,
+  summarizeListingHandoffFacts,
   computeListingGenerationFingerprint,
   LISTING_COMPOSER_VERSION,
   LISTING_GENERATION_POLICY_VERSION,
@@ -151,6 +152,35 @@ describe("Gate（第20章 1-10）", () => {
     const h = buildHandoff({ researchMode: "full" });
     const r = buildListingInputFromCreativeHandoff(h as never, 1);
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("Task Listing 事实数量投影", () => {
+  it("区分全部确认事实、可用于 Listing 的事实和禁止声明", () => {
+    const handoff = buildHandoff();
+    handoff.versions[0].confirmedFacts.push(
+      { ...handoff.versions[0].confirmedFacts[0], factId: "00000000-0000-4000-8000-000000000011", field: "rating", label: "评分", value: "4.8", usageScopes: ["listing", "internal"] },
+      { ...handoff.versions[0].confirmedFacts[0], factId: "00000000-0000-4000-8000-000000000012", field: "internal_note", label: "内部备注", value: "仅内部", usageScopes: ["internal"] },
+    );
+
+    expect(summarizeListingHandoffFacts(handoff as never)).toEqual({
+      confirmedFacts: 3,
+      listingEligibleFacts: 1,
+      prohibitedClaims: 1,
+    });
+  });
+
+  it("确认事实只有市场信号或非 Listing 用途时，可用于 Listing 为 0", () => {
+    const handoff = buildHandoff();
+    handoff.versions[0].confirmedFacts = [
+      { ...handoff.versions[0].confirmedFacts[0], field: "price_usd", label: "价格", value: "19.99", usageScopes: ["listing"] },
+      { ...handoff.versions[0].confirmedFacts[0], factId: "00000000-0000-4000-8000-000000000013", field: "visual_note", label: "视觉备注", value: "蓝色", usageScopes: ["image"] },
+    ];
+
+    expect(summarizeListingHandoffFacts(handoff as never)).toMatchObject({
+      confirmedFacts: 2,
+      listingEligibleFacts: 0,
+    });
   });
 });
 
@@ -591,6 +621,22 @@ describe("UI 状态（第20章 66-75）", () => {
     for (const text of ["请先完成创作交接并进行人工确认", "生成 Listing 草稿", "该草稿基于旧交接版本", "对应创作交接已撤回", "历史草稿未绑定可信创作交接", "不得直接发布", "基于最新交接重新生成"]) {
       expect(uiSource).toContain(text);
     }
+  });
+
+  it("事实不足时直接展示计数、禁用原因和两个安全出口", () => {
+    const preparationSource = readFileSync(resolve(process.cwd(), "components/studio/TaskStudioPreparation.tsx"), "utf8");
+    for (const text of [
+      "已确认事实：",
+      "可用于 Listing：",
+      "禁止声明：",
+      "当前研究记录缺少可用于 Listing 的商品事实，请先补充并确认商品资料。",
+      "回研究记录补充事实",
+      "转为独立创作",
+      'href="/listing-studio"',
+    ]) {
+      expect(`${preparationSource}\n${uiSource}`).toContain(text);
+    }
+    expect(uiSource).toContain("disabled={!canGenerate || submitting}");
   });
 
   it("无发布/上传按钮（仅安全提示文案）", () => {

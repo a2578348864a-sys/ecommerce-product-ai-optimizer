@@ -477,6 +477,20 @@ textarea.control {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
 }
 
+.strategyOption[data-disabled="true"] {
+  border-color: color-mix(in srgb, var(--color-rule) 78%, transparent);
+  background: color-mix(in srgb, var(--panel-soft) 72%, white);
+  color: var(--color-muted);
+  cursor: not-allowed;
+  opacity: 0.48;
+  transform: none;
+}
+
+.strategyOption[data-disabled="true"]:hover {
+  border-color: color-mix(in srgb, var(--color-rule) 78%, transparent);
+  transform: none;
+}
+
 .strategyOption input {
   position: absolute;
   width: 1px;

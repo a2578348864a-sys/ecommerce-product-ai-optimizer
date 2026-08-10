@@ -109,6 +109,8 @@ describe("CandidatePoolView", () => {
     expect(html).toContain("/tasks/task-101");
     expect(html).toContain("查看研究结果");
     expect(html).toContain("尚无正式决定");
+    expect(html).toContain("移出研究池");
+    expect(html).not.toContain(">删除</button>");
   });
 
   it("renders only the safe decision summary for a converted Candidate", () => {

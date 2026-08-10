@@ -66,6 +66,7 @@ export type ListingHandoffGateResult =
   | { ok: false; code: string; message: string };
 
 const LISTING_USAGE = "listing";
+const MARKET_SIGNAL_FIELDS = new Set(["price_usd", "rating", "review_count", "category"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -76,6 +77,39 @@ function textOf(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean).join("; ");
   return "";
+}
+
+function isListingEligibleFact(
+  fact: ProductCreativeHandoffV1["versions"][number]["confirmedFacts"][number],
+): boolean {
+  return fact.usageScopes.includes(LISTING_USAGE)
+    && !MARKET_SIGNAL_FIELDS.has(fact.field)
+    && textOf(fact.value).length > 0;
+}
+
+export type ListingHandoffFactSummary = {
+  confirmedFacts: number;
+  listingEligibleFacts: number;
+  prohibitedClaims: number;
+};
+
+/**
+ * Browser-safe counts only. Values and internal provenance never leave the server.
+ * The eligibility predicate is shared with generation so the button cannot drift
+ * from the Claim Evidence input contract.
+ */
+export function summarizeListingHandoffFacts(
+  handoff: ProductCreativeHandoffV1 | null | undefined,
+): ListingHandoffFactSummary {
+  const version = handoff?.versions?.[handoff.versions.length - 1];
+  if (!version) {
+    return { confirmedFacts: 0, listingEligibleFacts: 0, prohibitedClaims: 0 };
+  }
+  return {
+    confirmedFacts: version.confirmedFacts.length,
+    listingEligibleFacts: version.confirmedFacts.filter(isListingEligibleFact).length,
+    prohibitedClaims: version.prohibitedClaims.length,
+  };
 }
 
 /**
@@ -125,10 +159,8 @@ export function buildListingInputFromCreativeHandoff(
   // 已确认事实（明确允许 Listing 用途）
   // V2.1.2：市场信号字段（价格/评分/评论数/类目）即使被确认也绝不进入 Listing——
   // 双保险：① usageScopes 含 listing（确认逻辑已按 factCategory 收敛）；② 已知市场字段硬排除。
-  const MARKET_SIGNAL_FIELDS = new Set(["price_usd", "rating", "review_count", "category"]);
   const productFacts = version.confirmedFacts
-    .filter((fact) => fact.usageScopes.includes(LISTING_USAGE))
-    .filter((fact) => !MARKET_SIGNAL_FIELDS.has(fact.field))
+    .filter(isListingEligibleFact)
     .map((fact) => ({ field: fact.field, label: fact.label, value: textOf(fact.value).slice(0, 500) }))
     .filter((fact) => fact.value.length > 0);
 

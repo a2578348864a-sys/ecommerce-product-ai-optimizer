@@ -118,6 +118,7 @@ export async function GET(request: NextRequest) {
       const normalizedLimit = Math.min(Math.max(1, limit), 100);
       const normalizedOffset = Math.max(0, offset);
       const sandboxItems = listSandboxCandidates(ctx.demoAccessId)
+        .filter((candidate) => status || candidate.status !== "rejected" || !candidate.convertedTaskId)
         .filter((candidate) => !isValidCandidateStatus(status) || candidate.status === status)
         .filter((candidate) => !normalizedQuery || candidate.name.toLowerCase().includes(normalizedQuery))
         .sort((a, b) => sort === "score" ? b.score - a.score : 0);
@@ -136,7 +137,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const result = await listCandidates({ status, q, sort, limit, offset });
+    const result = await listCandidates({
+      status,
+      q,
+      sort,
+      limit,
+      offset,
+      hideRemovedFromPool: !status,
+    });
     return json({
       ok: true,
       items: await projectCandidateItems(ctx, result.items),

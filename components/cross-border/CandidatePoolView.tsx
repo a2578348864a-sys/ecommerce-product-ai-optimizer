@@ -48,7 +48,7 @@ export type CandidatePoolViewProps = {
 };
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
-  { value: "all", label: "全部" },
+  { value: "all", label: "研究池" },
   { value: "pending", label: "待查看" },
   { value: "worth_analyzing", label: "待研究" },
   { value: "analyzed", label: "研究中" },
@@ -182,7 +182,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
               disabled={props.busy || props.selectedIds.length === 0}
               className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
             >
-              删除所选
+              删除/移出所选
             </button>
           </div>
         </div>
@@ -296,7 +296,7 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                       onClick={() => props.onDeleteItem(item.id)}
                       className="h-9 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-40"
                     >
-                      删除
+                      {converted ? "移出研究池" : "删除"}
                     </button>
                   </div>
                 </div>
@@ -481,18 +481,27 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
     })();
   }
 
-  /** 单个删除（确认弹窗；已转任务候选服务端会拒绝） */
+  /** 未转任务真正删除；已转任务只退出研究池，保留 Task 与研究历史。 */
   function deleteItem(id: string) {
     const item = items.find((candidate) => candidate.id === id);
     const label = item?.name ?? "该商品";
-    if (!window.confirm(`确定从研究池删除「${label}」？已转任务的候选无法删除。`)) return;
+    const linkedTask = Boolean(item?.convertedTaskId);
+    const confirmation = linkedTask
+      ? `确定将「${label}」移出研究池？关联 Task 和研究历史会继续保留。`
+      : `确定从研究池删除「${label}」？`;
+    if (!window.confirm(confirmation)) return;
     setBusy(true);
     setMessage("");
     void (async () => {
       try {
         const response = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
-          method: "DELETE",
-          headers: buildAccessHeaders(),
+          method: linkedTask ? "PATCH" : "DELETE",
+          headers: linkedTask
+            ? { "Content-Type": "application/json", ...buildAccessHeaders() }
+            : buildAccessHeaders(),
+          ...(linkedTask
+            ? { body: JSON.stringify({ action: "remove_from_research_pool" }) }
+            : {}),
         });
         const payload: unknown = await response.json().catch(() => null);
         if (!response.ok) {
@@ -500,62 +509,71 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
             && payload.error && typeof payload.error === "object" && "code" in payload.error
             ? String(payload.error.code)
             : "";
-          if (code === "linked_task") {
-            setMessage("该候选已转任务，不能删除。请先处理关联任务。");
+          if (code === "candidate_has_linked_task") {
+            setMessage("该商品已形成研究历史，请使用“移出研究池”。");
             return;
           }
-          throw new Error("candidate_delete_failed");
+          setMessage(linkedTask
+            ? "移出研究池未完成，请刷新后重试。"
+            : "删除未完成，请检查登录状态后重试。");
+          return;
         }
         setSelectedIds((current) => current.filter((selected) => selected !== id));
-        // 候选删除成功 → 清除该候选的研究决策草稿
-        clearSessionDraftsForEntity("research-decision", id);
+        if (!linkedTask) {
+          // 候选真正删除成功 → 清除该候选的研究决策草稿
+          clearSessionDraftsForEntity("research-decision", id);
+        }
         await load(0, false, statusFilter, query);
+        if (linkedTask) setMessage("已移出研究池，研究历史仍保留。");
       } catch {
-        setMessage("删除未完成，请稍后重试。");
+        setMessage(linkedTask
+          ? "移出研究池未完成，请检查网络后重试。"
+          : "删除未完成，请检查网络后重试。");
       } finally {
         setBusy(false);
       }
     })();
   }
 
-  /** 批量删除（确认弹窗；已转任务候选服务端拒绝，逐条跳过并汇总） */
+  /** 批量处理：未转任务删除；已转任务移出研究池并保留历史。 */
   function deleteSelected() {
     if (selectedIds.length === 0) return;
-    if (!window.confirm(`确定删除已选 ${selectedIds.length} 项？已转任务的候选不会被删除。`)) return;
+    if (!window.confirm(`确定处理已选 ${selectedIds.length} 项？已转任务商品只会移出研究池，研究历史仍保留。`)) return;
     setBusy(true);
     setMessage("");
     void (async () => {
-      let skipped = 0;
+      let removed = 0;
       let deleted = 0;
       for (const id of selectedIds) {
+        const linkedTask = Boolean(items.find((item) => item.id === id)?.convertedTaskId);
         try {
           const response = await fetch(`/api/opportunity-candidates/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-            headers: buildAccessHeaders(),
+            method: linkedTask ? "PATCH" : "DELETE",
+            headers: linkedTask
+              ? { "Content-Type": "application/json", ...buildAccessHeaders() }
+              : buildAccessHeaders(),
+            ...(linkedTask
+              ? { body: JSON.stringify({ action: "remove_from_research_pool" }) }
+              : {}),
           });
           if (response.ok) {
-            deleted += 1;
-            // 候选删除成功 → 清除该候选的研究决策草稿
-            clearSessionDraftsForEntity("research-decision", id);
-          } else {
-            const payload: unknown = await response.json().catch(() => null);
-            const code = payload && typeof payload === "object" && "error" in payload
-              && payload.error && typeof payload.error === "object" && "code" in payload.error
-              ? String(payload.error.code)
-              : "";
-            if (code === "linked_task") skipped += 1;
+            if (linkedTask) removed += 1;
+            else {
+              deleted += 1;
+              clearSessionDraftsForEntity("research-decision", id);
+            }
           }
         } catch {
           // 单条失败不中断批量，继续下一条
         }
       }
       setSelectedIds([]);
-      setMessage(
-        deleted > 0
-          ? `已删除 ${deleted} 项${skipped > 0 ? `，${skipped} 项因已转任务跳过。` : "。"}`
-          : skipped > 0 ? "所选均为已转任务，未删除。" : "没有可删除的候选。",
-      );
+      const results = [
+        deleted > 0 ? `已删除 ${deleted} 项` : "",
+        removed > 0 ? `已移出研究池 ${removed} 项，研究历史仍保留` : "",
+      ].filter(Boolean);
       await load(0, false, statusFilter, query);
+      setMessage(results.length > 0 ? `${results.join("；")}。` : "没有可处理的候选，请刷新后重试。");
     })();
   }
 

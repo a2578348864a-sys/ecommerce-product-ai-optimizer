@@ -164,6 +164,12 @@ export function TaskStudioPreparation({
   }
 
   if (isActive) {
+    const listingFactSummary = detail.listingFactSummary ?? {
+      confirmedFacts: detail.confirmedFacts?.length ?? 0,
+      listingEligibleFacts: detail.confirmedFacts?.filter((fact) => fact.usageScopes.includes("listing")).length ?? 0,
+      prohibitedClaims: detail.prohibitedClaims?.length ?? 0,
+    };
+    const listingFactsMissing = kind === "listing" && listingFactSummary.listingEligibleFacts === 0;
     return (
       <div data-testid="task-studio-authoritative-mode">
         <section className="surface-card mb-4 border-teal-200 bg-teal-50/50 p-4">
@@ -172,11 +178,38 @@ export function TaskStudioPreparation({
             生成时服务器会再次读取研究记录、核对最新版本与当前身份；浏览器预填内容不作为权威事实。
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-            <span className="rounded-full bg-white px-2.5 py-1">已确认事实 {detail.confirmedFacts?.length ?? 0} 项</span>
-            <span className="rounded-full bg-white px-2.5 py-1">禁止声明 {detail.prohibitedClaims?.length ?? 0} 项</span>
+            <span className="rounded-full bg-white px-2.5 py-1">已确认事实：{listingFactSummary.confirmedFacts}</span>
+            {kind === "listing" ? (
+              <span className="rounded-full bg-white px-2.5 py-1">可用于 Listing：{listingFactSummary.listingEligibleFacts}</span>
+            ) : null}
+            <span className="rounded-full bg-white px-2.5 py-1">禁止声明：{listingFactSummary.prohibitedClaims}</span>
             <span className="rounded-full bg-white px-2.5 py-1">最终人工复核：必须</span>
           </div>
         </section>
+        {listingFactsMissing ? (
+          <section className="surface-card mb-4 border-amber-200 bg-amber-50/70 p-4" data-testid="task-listing-facts-missing">
+            <p className="text-sm font-bold text-amber-900">
+              当前研究记录缺少可用于 Listing 的商品事实，请先补充并确认商品资料。
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={`/tasks/${encodeURIComponent(taskId)}`}
+                className="inline-flex h-10 items-center rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900"
+              >
+                回研究记录补充事实
+              </Link>
+              <Link
+                href="/listing-studio"
+                className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"
+              >
+                转为独立创作
+              </Link>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              转为独立创作后将解除本页的 Task 权威绑定，并按独立 Listing 的人工输入与确认流程重新开始。
+            </p>
+          </section>
+        ) : null}
         {children}
       </div>
     );

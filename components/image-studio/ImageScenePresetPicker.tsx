@@ -66,6 +66,7 @@ export function ImageScenePresetPicker({
               key={scene.id}
               className={styles.strategyOption}
               data-selected={value.lifestyleScene === scene.id}
+              data-disabled={sceneDisabled}
               aria-disabled={sceneDisabled}
             >
               <input
@@ -81,7 +82,10 @@ export function ImageScenePresetPicker({
         </div>
         <p className={styles.fieldHint}>
           {sceneDisabled
-            ? "白底主图不使用生活场景，已自动设为“不指定”。"
+            ? <>
+                白底主图要求干净背景，因此不使用生活方式场景。<br />
+                切换到其他图片用途后即可选择。
+              </>
             : "生活场景是可选补充，不会替代图片主用途。"}
         </p>
       </fieldset>

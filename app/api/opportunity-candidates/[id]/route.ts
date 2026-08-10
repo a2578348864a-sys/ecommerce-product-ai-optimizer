@@ -9,11 +9,13 @@ import {
   getSandboxCandidate,
   updateSandboxCandidate,
   deleteSandboxCandidate,
+  removeSandboxCandidateFromResearchPool,
   sandboxCandidateToListItem,
 } from "@/lib/server/demoSandbox";
 import {
   isValidCandidateStatus,
   deleteCandidate,
+  removeCandidateFromResearchPool,
   updateCandidate,
   type CandidateUpdate,
 } from "@/lib/server/opportunityCandidateService";
@@ -83,6 +85,16 @@ function candidateDeleteResponse(
   return json({ ok: true, data: { id } });
 }
 
+function candidatePoolRemovalResponse(
+  result: "removed" | "not_found",
+  id: string,
+) {
+  if (result === "not_found") {
+    return json({ ok: false, error: { code: "not_found", message: "未找到该候选。" } }, 404);
+  }
+  return json({ ok: true, data: { id } });
+}
+
 /* ── PATCH ────────────────────────────────────── */
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
@@ -100,11 +112,20 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return json({ ok: false, error: { code: "invalid_body", message: "请求体必须是 JSON object。" } }, 400);
   }
 
+  const removeFromPool = body.action === "remove_from_research_pool";
+  if (removeFromPool && Object.keys(body).some((key) => key !== "action")) {
+    return json({ ok: false, error: { code: "invalid_payload", message: "移出研究池请求包含无关字段。" } }, 400);
+  }
+
   // Demo-Sandbox.1-C: allow sandbox candidate PATCH for demo
   if (isSandboxCandidateId(id)) {
     const auth = requireAuthenticated(request, body);
     if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
     if (auth.context.mode === "demo") {
+      if (removeFromPool) {
+        const result = await removeSandboxCandidateFromResearchPool(auth.context.demoAccessId, id);
+        return candidatePoolRemovalResponse(result, id);
+      }
       const taskLinkResponse = candidateTaskLinkLockedResponse(body);
       if (taskLinkResponse) return taskLinkResponse;
       const update: Record<string, unknown> = {};
@@ -133,6 +154,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
   const auth = requireOwnerOnly(request, body);
   if (!auth.ok) return NextResponse.json({ ok: false, error: { code: auth.code, message: auth.message } }, { status: auth.status });
+
+  if (removeFromPool) {
+    const result = await removeCandidateFromResearchPool(id);
+    return candidatePoolRemovalResponse(result, id);
+  }
 
   const taskLinkResponse = candidateTaskLinkLockedResponse(body);
   if (taskLinkResponse) return taskLinkResponse;

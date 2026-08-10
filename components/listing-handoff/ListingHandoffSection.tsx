@@ -34,6 +34,7 @@ type ListingStateResponse = {
     humanReviewRequired: boolean;
     researchRevision: number | null;
     storageVersion: { resultJsonHash: string; updatedAt: string } | null;
+    factSummary: { confirmedFacts: number; listingEligibleFacts: number; prohibitedClaims: number };
     draft: ListingDraftSafeSummary | null;
     history: { sourceHandoffRevision: number; sourceResearchRevision: number; generatedAt: string; humanReviewRequired: boolean }[];
   };
@@ -90,7 +91,11 @@ export function ListingHandoffSection({
   const [submitting, setSubmitting] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
-  const [confirmedFactCount, setConfirmedFactCount] = useState<number | null>(null);
+  const [factSummary, setFactSummary] = useState({
+    confirmedFacts: 0,
+    listingEligibleFacts: 0,
+    prohibitedClaims: 0,
+  });
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -117,7 +122,7 @@ export function ListingHandoffSection({
         setStorageVersion(json.data.storageVersion);
         setDraft(json.data.draft);
         setCanGenerate(json.data.canGenerate);
-        setConfirmedFactCount(null);
+        setFactSummary(json.data.factSummary);
       }
     } catch {
       if (mounted.current) setNotice({ tone: "error", text: "网络异常，请重试。" });
@@ -431,17 +436,31 @@ export function ListingHandoffSection({
       ) : null}
 
       <div className="mt-3 space-y-2 text-sm text-slate-600">
+        {status !== null ? (
+          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600" data-testid="task-listing-fact-counts">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">已确认事实：{factSummary.confirmedFacts}</span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">可用于 Listing：{factSummary.listingEligibleFacts}</span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">禁止声明：{factSummary.prohibitedClaims}</span>
+          </div>
+        ) : null}
+        {status !== null && factSummary.listingEligibleFacts === 0 ? (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+            当前研究记录缺少可用于 Listing 的商品事实，请先补充并确认商品资料。
+          </p>
+        ) : null}
         {status === null ? (
           <p aria-busy="true">加载中…</p>
         ) : status === "legacy_unbound" ? (
           <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="font-semibold text-slate-800">历史草稿未绑定已确认的创作资料</p>
-            <p className="mt-1">该草稿只读展示，不能作为当前有效草稿。请先确认本次创作资料。</p>
+            <p className="font-semibold text-slate-800">历史草稿未绑定可信创作交接</p>
+            <p className="mt-1">该草稿只读展示，不能作为当前有效草稿。请先完成创作交接并进行人工确认。</p>
           </div>
         ) : status === "ready" ? (
           <div>
             <p>
-              创作资料已确认 · 可生成 Listing 草稿
+              {factSummary.listingEligibleFacts > 0
+                ? "创作资料已确认 · 可生成 Listing 草稿"
+                : "创作资料已确认 · 但缺少可用于 Listing 的商品事实"}
             </p>
             <button
               type="button"
@@ -469,7 +488,7 @@ export function ListingHandoffSection({
           </div>
         ) : status === "stale" ? (
           <div className="rounded-lg bg-amber-50 px-3 py-2">
-            <p className="font-semibold text-amber-800">该草稿基于旧版创作资料</p>
+            <p className="font-semibold text-amber-800">该草稿基于旧交接版本</p>
             <p className="mt-1 text-amber-700">
               当前草稿只读，不能作为当前有效草稿。请基于最新资料重新生成。
             </p>
@@ -480,12 +499,12 @@ export function ListingHandoffSection({
               onClick={() => void generate()}
               className={BTN_CLASS}
             >
-              {submitting ? "生成中…" : "基于最新资料重新生成"}
+              {submitting ? "生成中…" : "基于最新交接重新生成"}
             </button>
           </div>
         ) : status === "revoked" ? (
           <div className="rounded-lg bg-red-50 px-3 py-2">
-            <p className="font-semibold text-red-800">对应创作资料已撤回</p>
+            <p className="font-semibold text-red-800">对应创作交接已撤回</p>
             <p className="mt-1 text-red-700">草稿历史可查看，生成功能已禁用。</p>
             {renderDraftBody()}
           </div>

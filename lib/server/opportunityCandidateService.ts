@@ -38,6 +38,7 @@ import { writeCandidateAnalysisImageSnapshot } from "@/lib/server/candidateProdu
 export type CandidateStatus = "pending" | "worth_analyzing" | "analyzed" | "paused" | "rejected";
 
 export type CandidateDeleteResult = "deleted" | "not_found" | "linked_task";
+export type CandidatePoolRemovalResult = "removed" | "not_found";
 
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   "pending",
@@ -394,6 +395,7 @@ export async function listCandidates(params: {
   sort?: string;
   limit?: number;
   offset?: number;
+  hideRemovedFromPool?: boolean;
 }): Promise<CandidateListResult> {
   const limit = Math.min(Math.max(1, params.limit ?? 50), 100);
   const offset = Math.max(0, params.offset ?? 0);
@@ -403,6 +405,9 @@ export async function listCandidates(params: {
   const where: Prisma.OpportunityCandidateWhereInput = {
     ...(status ? { status } : {}),
     ...(q ? { name: { contains: q } } : {}),
+    ...(params.hideRemovedFromPool && !status
+      ? { NOT: { status: "rejected", convertedTaskId: { not: null } } }
+      : {}),
   };
 
   const orderBy: Prisma.OpportunityCandidateOrderByWithRelationInput =
@@ -842,6 +847,18 @@ export async function deleteCandidate(id: string): Promise<CandidateDeleteResult
     select: { id: true },
   });
   return remaining ? "linked_task" : "not_found";
+}
+
+export async function removeCandidateFromResearchPool(
+  id: string,
+): Promise<CandidatePoolRemovalResult> {
+  // 无条件归档：单条原子 update 命中即落库 status=rejected。
+  // 不加 convertedTaskId 条件，避免 update 未命中后再读取导致"返回成功但未写入"的竞态。
+  const removed = await prisma.opportunityCandidate.updateMany({
+    where: { id },
+    data: { status: "rejected", lastActionAt: new Date() },
+  });
+  return removed.count === 1 ? "removed" : "not_found";
 }
 
 export async function importLocalCandidates(

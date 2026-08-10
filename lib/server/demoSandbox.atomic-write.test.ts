@@ -51,6 +51,7 @@ import {
   createSandboxTaskAndLinkCandidate,
   deleteSandboxCandidate,
   loadDemoSandboxStore,
+  removeSandboxCandidateFromResearchPool,
 } from "@/lib/server/demoSandbox";
 import { replaceDemoSandboxStoreForTest } from "@/lib/server/demoSandbox.testSupport";
 import {
@@ -245,5 +246,59 @@ describe("demo Sandbox Candidate delete lifecycle", () => {
     expect(await deleteSandboxCandidate("visitor-a", "sandbox_candidate_a")).toBe("deleted");
     expect(fileSystem.writeFileSync).toHaveBeenCalledOnce();
     expect(JSON.parse(fileSystem.files.get(STORE_PATH)!)).toMatchObject({ candidates: [] });
+  });
+});
+
+describe("demo Sandbox Candidate remove-from-pool", () => {
+  it("archives an unlinked Candidate to status=rejected without deleting it", async () => {
+    fileSystem.files.set(STORE_PATH, JSON.stringify({
+      version: 1,
+      tasks: [],
+      candidates: [candidate()],
+    }));
+
+    expect(await removeSandboxCandidateFromResearchPool("visitor-a", "sandbox_candidate_a")).toBe("removed");
+    expect(fileSystem.writeFileSync).toHaveBeenCalledOnce();
+    expect(JSON.parse(fileSystem.files.get(STORE_PATH)!)).toMatchObject({
+      candidates: [{ id: "sandbox_candidate_a", status: "rejected" }],
+    });
+  });
+
+  it("archives a Task-linked Candidate and keeps convertedTaskId intact", async () => {
+    fileSystem.files.set(STORE_PATH, JSON.stringify({
+      version: 1,
+      tasks: [],
+      candidates: [candidate({ convertedTaskId: "sandbox_task_linked" })],
+    }));
+
+    expect(await removeSandboxCandidateFromResearchPool("visitor-a", "sandbox_candidate_a")).toBe("removed");
+    expect(JSON.parse(fileSystem.files.get(STORE_PATH)!)).toMatchObject({
+      candidates: [{ id: "sandbox_candidate_a", status: "rejected", convertedTaskId: "sandbox_task_linked" }],
+    });
+  });
+
+  it("is idempotent: an already-rejected Candidate reports removed without a write", async () => {
+    const originalJson = JSON.stringify({
+      version: 1,
+      tasks: [],
+      candidates: [candidate({ convertedTaskId: "sandbox_task_linked", status: "rejected" })],
+    });
+    fileSystem.files.set(STORE_PATH, originalJson);
+
+    expect(await removeSandboxCandidateFromResearchPool("visitor-a", "sandbox_candidate_a")).toBe("removed");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
+    expect(fileSystem.files.get(STORE_PATH)).toBe(originalJson);
+  });
+
+  it("returns not_found when Visitor A targets Visitor B Candidate", async () => {
+    const originalJson = JSON.stringify({
+      version: 1,
+      tasks: [],
+      candidates: [candidate({ demoAccessId: "visitor-b" })],
+    });
+    fileSystem.files.set(STORE_PATH, originalJson);
+
+    expect(await removeSandboxCandidateFromResearchPool("visitor-a", "sandbox_candidate_a")).toBe("not_found");
+    expect(fileSystem.writeFileSync).not.toHaveBeenCalled();
   });
 });

@@ -803,6 +803,24 @@ export function deleteSandboxCandidate(
   });
 }
 
+export function removeSandboxCandidateFromResearchPool(
+  demoAccessId: string,
+  candidateId: string,
+): Promise<"removed" | "not_found"> {
+  return mutateDemoSandboxStore((store) => {
+    const candidate = store.candidates.find(
+      (item) => item.id === candidateId && item.demoAccessId === demoAccessId,
+    );
+    if (!candidate) return { value: "not_found" as const, changed: false };
+    if (candidate.status === "rejected") {
+      return { value: "removed" as const, changed: false };
+    }
+    candidate.status = "rejected";
+    candidate.lastActionAt = new Date().toISOString();
+    return { value: "removed" as const, changed: true };
+  });
+}
+
 // ── SellerSprite Candidate Authority (Visitor path) ─────────────────────────
 // Runs entirely inside the physical Store mutation lock: strict re-read → scan
 // identity → decide created/skipped/conflict → mutate → atomic save once.

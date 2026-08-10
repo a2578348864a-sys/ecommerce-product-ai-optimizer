@@ -29,6 +29,7 @@ import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import {
   parseProductCreativeHandoff,
 } from "@/lib/productCreativeHandoff";
+import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
 import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/creativeHandoffRequestLedger";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import type {
@@ -137,6 +138,7 @@ export type CreativeHandoffDetail = {
   humanReviewRequired: boolean;
   sourceResearchRevision?: number;
   confirmedFacts?: { field: string; label: string; usageScopes: string[] }[];
+  listingFactSummary?: { confirmedFacts: number; listingEligibleFacts: number; prohibitedClaims: number };
   prohibitedClaims?: { category: string; summary: string; appliesTo: string[] }[];
   versions?: { revision: number; createdAt: string; confirmedFactFields: string[] }[];
   createdAt?: string;
@@ -758,6 +760,7 @@ export async function getCreativeHandoffDetail(
       label: f.label,
       usageScopes: [...f.usageScopes],
     })) || [],
+    listingFactSummary: summarizeListingHandoffFacts(handoff),
     prohibitedClaims: handoff.versions[handoff.versions.length - 1]?.prohibitedClaims?.map((c) => ({
       category: c.category,
       summary: c.summary.slice(0, 200),

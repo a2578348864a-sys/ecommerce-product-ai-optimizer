@@ -119,6 +119,7 @@ export type CreativeHandoffDetail = {
   humanReviewRequired: boolean;
   sourceResearchRevision?: number;
   confirmedFacts?: HandoffDetailConfirmedFact[];
+  listingFactSummary?: { confirmedFacts: number; listingEligibleFacts: number; prohibitedClaims: number };
   prohibitedClaims?: { category: string; summary: string; appliesTo: string[] }[];
   versions?: HandoffDetailVersion[];
   createdAt?: string;
