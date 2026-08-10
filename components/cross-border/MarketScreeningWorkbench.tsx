@@ -171,7 +171,7 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
 
       <details className="surface-card order-3 p-5" data-region="advanced-evidence">
         <summary className="cursor-pointer text-base font-semibold text-slate-700">
-          高级证据详情 <span className="text-sm font-normal text-slate-400">· Manifest、来源健康、门禁与内部阶段</span>
+          高级证据详情 <span className="text-sm font-normal text-slate-400">· 数据来源、来源健康度与可用性</span>
         </summary>
         <div className="mt-4 space-y-4">
       <BriefRegion brief={view.brief} />
@@ -179,13 +179,13 @@ function ReadyWorkbench({ view, partial }: { view: MarketScreeningWorkbenchView;
 
       <section className="surface-card p-5" data-region="evidence-quality">
         <p className="eyebrow">Evidence / Quality Gate</p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-950">证据完整度与门禁</h2>
+        <h2 className="mt-1 text-xl font-semibold text-slate-950">资料完整度检查</h2>
         <div className="mt-4"><HealthSummary health={view.batchHealth} /></div>
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600">
-          Quality Gate 通过 {view.gateSummary.qualityPassedCount} · 最小证据包通过 {view.gateSummary.minimumEvidencePassedCount}
+          质量检查通过 {view.gateSummary.qualityPassedCount} · 最小证据包通过 {view.gateSummary.minimumEvidencePassedCount}
           · 证据不足 {view.gateSummary.insufficientCount}
           <span className="ml-2 text-slate-400">
-            {view.gateSummary.reasonCodes.length > 0 ? view.gateSummary.reasonCodes.join(" · ") : "无门禁错误码"}
+            {view.gateSummary.reasonCodes.length > 0 ? view.gateSummary.reasonCodes.join(" · ") : "无检查错误码"}
           </span>
         </div>
       </section>

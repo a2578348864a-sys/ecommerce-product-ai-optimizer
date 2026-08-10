@@ -171,7 +171,7 @@ export function ListingHandoffSection({
   const handleConflict = useCallback(() => {
     setRequestId(null);
     setRetryBody(null);
-    setNotice({ tone: "error", text: "交接内容已经更新，请重新生成。" });
+    setNotice({ tone: "error", text: "创作资料已经更新，请生成新版本。" });
     void load();
   }, [load]);
 
@@ -500,8 +500,8 @@ export function ListingHandoffSection({
           <p aria-busy="true">加载中…</p>
         ) : status === "legacy_unbound" ? (
           <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="font-semibold text-slate-800">历史草稿未绑定可信创作交接</p>
-            <p className="mt-1">该草稿只读展示，不能作为当前有效草稿。请先完成创作交接并进行人工确认。</p>
+            <p className="font-semibold text-slate-800">历史草稿缺少有效创作资料</p>
+            <p className="mt-1">该草稿只读展示，不能作为当前有效草稿。请先确认创作资料并进行人工复核。</p>
           </div>
         ) : status === "ready" ? (
           <div>
@@ -553,14 +553,14 @@ export function ListingHandoffSection({
               onClick={() => void generate()}
               className={BTN_SECONDARY_CLASS}
             >
-              {submitting ? "生成中…" : "重新生成草稿"}
+              {submitting ? "生成中…" : "生成新版本草稿"}
             </button>
           </div>
         ) : status === "stale" ? (
           <div className="rounded-lg bg-amber-50 px-3 py-2">
-            <p className="font-semibold text-amber-800">该草稿基于旧交接版本</p>
+            <p className="font-semibold text-amber-800">该草稿基于旧创作资料</p>
             <p className="mt-1 text-amber-700">
-              当前草稿只读，不能作为当前有效草稿。请基于最新资料重新生成。
+              当前草稿只读，不能作为当前有效草稿。请基于最新资料生成新版本。
             </p>
             {renderDraftBody()}
             <button
@@ -569,12 +569,12 @@ export function ListingHandoffSection({
               onClick={() => void generate()}
               className={BTN_CLASS}
             >
-              {submitting ? "生成中…" : "基于最新交接重新生成"}
+              {submitting ? "生成中…" : "基于最新资料生成新版本"}
             </button>
           </div>
         ) : status === "revoked" ? (
           <div className="rounded-lg bg-red-50 px-3 py-2">
-            <p className="font-semibold text-red-800">对应创作交接已撤回</p>
+            <p className="font-semibold text-red-800">创作资料已撤回</p>
             <p className="mt-1 text-red-700">草稿历史可查看，生成功能已禁用。</p>
             {renderDraftBody()}
           </div>

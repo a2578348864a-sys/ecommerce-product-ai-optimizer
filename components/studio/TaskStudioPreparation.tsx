@@ -28,6 +28,9 @@ const FACT_LABELS: Record<string, string> = {
   rating: "评分",
   review_count: "评论数",
   product_type: "商品类型",
+  series_or_model: "系列/型号",
+  capacity: "容量",
+  quantity_or_pack_size: "数量/包装",
   color_or_variant: "颜色/款式",
   material: "材质",
 };

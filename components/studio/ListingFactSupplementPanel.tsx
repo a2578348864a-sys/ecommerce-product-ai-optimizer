@@ -107,7 +107,7 @@ export function ListingFactSupplementPanel({
       setConfirmed(false);
       await refresh();
       onCommitted?.();
-      setNotice({ tone: "info", text: "商品事实已确认并写入创作交接，可生成 Listing 草稿。" });
+      setNotice({ tone: "info", text: "商品事实已确认，可生成 Listing 草稿。" });
       void result;
     } catch (error) {
       setNotice({
@@ -144,7 +144,7 @@ export function ListingFactSupplementPanel({
         <>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             以下候选来自商品标题 / 来源资料，<strong className="text-slate-800">需人工核实</strong>后才可用于 Listing 草稿。
-            勾选后确认，系统会写入新的创作交接版本。
+            勾选后确认，系统会保存新的创作资料版本。
           </p>
           <fieldset className="mt-3">
             <legend className="text-xs font-bold uppercase tracking-wide text-slate-500">待核实商品事实</legend>
@@ -174,7 +174,7 @@ export function ListingFactSupplementPanel({
         <>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             当前来源资料没有可直接核实的商品事实候选。请填写以下你已核实确定的商品信息
-            （<strong className="text-slate-800">不必全部填写</strong>），填写项将写入创作交接并可用于 Listing 草稿。
+            （<strong className="text-slate-800">不必全部填写</strong>），填写项将保存为创作资料并可用于 Listing 草稿。
           </p>
           <div className="mt-3 grid gap-2 md:grid-cols-2" data-testid="listing-fact-manual-inputs">
             {MANUAL_FIELD_OPTIONS.map(({ field, label }) => (
@@ -211,7 +211,7 @@ export function ListingFactSupplementPanel({
           onClick={() => void submit()}
           className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-5 text-sm font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {submitting ? "正在保存…" : "确认并写入创作交接"}
+          {submitting ? "正在保存…" : "确认并保存创作资料"}
         </button>
       </div>
     </section>
@@ -223,7 +223,7 @@ function friendlySupplementError(error: { status: number; code: string; message:
     return "研究资料已更新，请刷新后重新勾选。";
   }
   if (["handoff_stale", "research_revision_conflict", "handoff_revision_conflict"].includes(error.code)) {
-    return "创作交接已更新，请刷新后重新勾选。";
+    return "创作资料已更新，请刷新后重新勾选。";
   }
   if (["invalid_selection", "no_facts_selected", "usage_scope_denied", "invalid_manual_fact"].includes(error.code)) {
     return "所选事实已不可确认，请刷新后重新填写。";

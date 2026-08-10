@@ -561,12 +561,12 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
     !submitting;
 
   const createButtonLabel =
-    state.kind === "active" || state.kind === "stale" ? "创建新版本" : "创建创作交接";
+    state.kind === "active" || state.kind === "stale" ? "确认新版本" : "确认创作资料";
 
   return (
-    <section className="mt-5 rounded-2xl border border-teal-200 bg-white p-4" aria-label="创作交接">
+    <section className="mt-5 rounded-2xl border border-teal-200 bg-white p-4" aria-label="创作资料确认">
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-bold text-slate-800">创作交接</h2>
+        <h2 className="text-base font-bold text-slate-800">创作资料确认</h2>
         <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700">
           仅用于市场研究和内容草稿准备 · 仍需人工审核 · 不得直接发布
         </span>
@@ -608,7 +608,7 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
 
       {state.kind === "legacy" ? (
         <p className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600">
-          该记录没有可信商品研究合同，暂不支持创建创作交接。
+          该记录缺少可信的商品研究资料，暂不支持进入创作。
           <br />
           请从商品研究池重新创建正式研究。
         </p>
@@ -617,7 +617,7 @@ export function CreativeHandoffPanel({ taskId, onCommitted }: {
       {state.kind === "gate_blocked" ? (
         <div className="mt-4 rounded-lg bg-amber-50 px-3 py-3">
           <p className="text-sm font-semibold text-amber-800">{state.label}</p>
-          <p className="mt-1 text-xs text-amber-700">暂不能创建创作交接，请先完成研究决定或处理阻塞项。</p>
+          <p className="mt-1 text-xs text-amber-700">暂不能进入创作，请先完成研究决定或处理阻塞项。</p>
         </div>
       ) : null}
 
@@ -728,14 +728,14 @@ function PreviewSection({
     if (step === 1) return factsDone;
     return true; // 步骤 2/3 均可跳过（视觉参考/创作偏好非必填）
   };
-  const stepLabels = ["确认可用事实", "确认视觉参考", "填写创作偏好", "创建交接"] as const;
-  // 创建后会开放什么（供步骤 4 展示）
+  const stepLabels = ["确认可用事实", "确认视觉参考", "填写创作偏好", "确认资料"] as const;
+  // 确认后会开放什么（供步骤 4 展示）
   const opensAfterCreate = "Listing 草稿 · 产品图片";
 
   return (
     <div className="mt-4 space-y-4">
       {/* F：步骤指示条 */}
-      <nav className="flex flex-wrap items-center gap-1.5" aria-label="创作交接步骤">
+      <nav className="flex flex-wrap items-center gap-1.5" aria-label="创作资料确认步骤">
         {stepLabels.map((label, index) => {
           const step = index + 1;
           const active = guideStep === step;
@@ -770,13 +770,13 @@ function PreviewSection({
       ) : null}
       {guideStep === 4 ? (
         <p className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-          创建后将开放：{opensAfterCreate}。确认后即可开始准备文案与图片草稿。
+          确认后将开放：{opensAfterCreate}。确认后即可开始准备文案与图片草稿。
         </p>
       ) : null}
 
       {blockingIssues.length > 0 ? (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-3">
-          <p className="text-sm font-semibold text-red-800">存在阻塞问题，暂不能创建创作交接。</p>
+          <p className="text-sm font-semibold text-red-800">存在阻塞问题，暂不能进入创作。</p>
           {blockingIssues.map((issue) => (
             <p key={issue.selectionId} className="mt-1 text-xs text-red-700">
               {issue.field}：{issue.summary}
@@ -1034,7 +1034,7 @@ function PreviewSection({
       {guideStep === 3 ? (
         <section className="rounded-xl border border-slate-200 p-3">
           <h3 className="text-sm font-semibold text-slate-700">创作偏好</h3>
-          <p className="mt-1 text-xs text-slate-400">选择偏好，随创作交接保存，供 Listing / 图片草稿参考。</p>
+          <p className="mt-1 text-xs text-slate-400">选择偏好，随创作资料保存，供 Listing / 图片草稿参考。</p>
           <div className="mt-3 space-y-4">
             <div>
               <p className="text-xs font-semibold text-slate-600">目标市场</p>
@@ -1170,8 +1170,8 @@ function PreviewSection({
           ) : null}
           {guideStep === stepCount ? (
             <div className="rounded-xl border border-teal-200 bg-teal-50/70 p-3 text-sm leading-6 text-teal-900">
-              <p className="font-semibold">准备就绪，可创建创作交接</p>
-              <p className="mt-1">创建后将开放：{opensAfterCreate}。请回到下方「创建创作交接」区域，勾选人工确认后提交。</p>
+              <p className="font-semibold">准备就绪，可确认创作资料</p>
+              <p className="mt-1">确认后将开放：{opensAfterCreate}。请回到下方「确认创作资料」区域，勾选人工确认后提交。</p>
               <p className="mt-1 text-xs text-teal-700">
                 {factsDone ? "已确认可用事实 ✓" : ""} · {selectedVisualIds.length > 0 ? `已批准 ${selectedVisualIds.length} 项视觉参考 ✓` : "未选择视觉参考（可选）"}
               </p>
@@ -1188,7 +1188,7 @@ function DetailSection({ detail, stale }: { detail: CreativeHandoffDetail | null
   return (
     <div className="mt-4 rounded-xl border border-slate-200 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold text-slate-700">当前交接</h3>
+        <h3 className="text-sm font-semibold text-slate-700">当前创作资料</h3>
         {detail.controlState === "revoked" ? (
           <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">已撤回</span>
         ) : stale ? (
@@ -1196,7 +1196,7 @@ function DetailSection({ detail, stale }: { detail: CreativeHandoffDetail | null
         ) : (
           <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-semibold text-teal-700">生效中</span>
         )}
-        <span className="text-xs text-slate-400">Revision {detail.currentRevision}</span>
+        <span className="text-xs text-slate-400">第 {detail.currentRevision} 版</span>
       </div>
       <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
         <div>
@@ -1332,8 +1332,8 @@ function RevokeSection({
 
   return (
     <div className="mt-4 rounded-xl border border-red-100 p-3">
-      <h3 className="text-sm font-semibold text-slate-700">撤回交接</h3>
-      <p className="mt-1 text-xs text-slate-500">撤回后，当前交接不能再用于新的内容生成。历史版本仍会保留。</p>
+      <h3 className="text-sm font-semibold text-slate-700">撤回创作资料</h3>
+      <p className="mt-1 text-xs text-slate-500">撤回后，当前创作资料不能再用于新的内容生成。历史版本仍会保留。</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <label className="text-xs text-slate-600">撤回原因</label>
         <select
@@ -1353,12 +1353,12 @@ function RevokeSection({
           disabled={submitting}
           className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
         >
-          撤回交接
+          撤回创作资料
         </button>
       </div>
       {confirmOpen ? (
         <div role="dialog" aria-modal="true" aria-label="确认撤回" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
-          <p className="text-sm text-red-800">确认撤回当前创作交接？历史版本仍会保留。</p>
+          <p className="text-sm text-red-800">确认重新确认当前创作资料？历史版本仍会保留。</p>
           <label className="mt-2 flex items-start gap-2">
             <input
               type="checkbox"

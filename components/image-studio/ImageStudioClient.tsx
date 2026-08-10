@@ -723,10 +723,10 @@ function ManualImageStudioClient({ onProgressChange }: {
               className={styles.toolbarButton}
               onClick={() => void handleGenerate()}
               disabled={!result || !canGenerate || loading}
-              title={result ? "使用当前输入重新生成" : "生成首批结果后可重新生成"}
+              title={result ? "基于当前输入生成新版本" : "生成首批结果后可生成新版本"}
             >
               <RefreshCw aria-hidden="true" />
-              重新生成
+              生成新版本
             </button>
             <button
               type="button"

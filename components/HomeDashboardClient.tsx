@@ -116,16 +116,16 @@ const workflowSteps = [
   },
   {
     label: "人工决策",
-    href: "/opportunity-candidates",
-    cta: "查看研究池",
-    description: "确认继续、暂缓或放弃。",
+    href: "/tasks",
+    cta: "打开研究历史",
+    description: "在任务详情确认继续、暂缓或放弃。",
     icon: ClipboardCheck,
   },
   {
-    label: "创作交接",
+    label: "创作资料",
     href: "/tasks",
     cta: "在任务详情确认",
-    description: "确认事实与视觉参考，完成创作交接。",
+    description: "确认事实与视觉参考，准备创作资料。",
     icon: FileText,
   },
   {

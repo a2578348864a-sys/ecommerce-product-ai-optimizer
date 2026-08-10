@@ -16,13 +16,13 @@ describe("CreativeHandoffPanel 状态机", () => {
   });
 
   it("2. Legacy 状态显示安全文案且无创建按钮", () => {
-    expect(panelSource).toContain("该记录没有可信商品研究合同，暂不支持创建创作交接");
+    expect(panelSource).toContain("该记录缺少可信的商品研究资料，暂不支持进入创作");
     expect(panelSource).toContain("请从商品研究池重新创建正式研究");
   });
 
   it("3. Gate blocked 显示阻断原因，不显示创建按钮", () => {
     expect(panelSource).toContain("gate_blocked");
-    expect(panelSource).toContain("暂不能创建创作交接，请先完成研究决定或处理阻塞项");
+    expect(panelSource).toContain("暂不能进入创作，请先完成研究决定或处理阻塞项");
   });
 
   it("4. Preview 状态存在", () => {
@@ -94,7 +94,7 @@ describe("Preview 分区", () => {
 
   it("16. blocking issue 时不能提交", () => {
     expect(panelSource).toContain("blockingIssues.length > 0");
-    expect(panelSource).toContain("存在阻塞问题，暂不能创建创作交接");
+    expect(panelSource).toContain("存在阻塞问题，暂不能进入创作");
   });
 
   it("17. 默认不选择（初始 selectedIds 空数组）", () => {
@@ -161,12 +161,12 @@ describe("请求合同", () => {
 });
 
 describe("Revision", () => {
-  it("31. 第一版文案：创建创作交接", () => {
-    expect(panelSource).toContain("创建创作交接");
+  it("31. 第一版文案：确认创作资料", () => {
+    expect(panelSource).toContain("确认创作资料");
   });
 
-  it("32. 新 Revision 文案：创建新版本", () => {
-    expect(panelSource).toContain("创建新版本");
+  it("32. 新 Revision 文案：确认新版本", () => {
+    expect(panelSource).toContain("确认新版本");
   });
 
   it("33. 新 Revision 前重新 Preview（409 后 loadAll）", () => {
@@ -232,7 +232,7 @@ describe("Revoke", () => {
   });
 
   it("44. 撤回影响文案", () => {
-    expect(panelSource).toContain("撤回后，当前交接不能再用于新的内容生成。历史版本仍会保留");
+    expect(panelSource).toContain("撤回后，当前创作资料不能再用于新的内容生成。历史版本仍会保留");
   });
 
   it("45. 历史仍显示", () => {
@@ -358,9 +358,9 @@ describe("F 创作交接 4 步向导", () => {
   });
 
   it("58. 步骤 4 明确创建后开放什么", () => {
-    expect(panelSource).toContain("创建后将开放：");
+    expect(panelSource).toContain("确认后将开放：");
     expect(panelSource).toContain("Listing 草稿 · 产品图片");
-    expect(panelSource).toContain("准备就绪，可创建创作交接");
+    expect(panelSource).toContain("准备就绪，可确认创作资料");
   });
 
   it("59. 视觉参考无技术字段（无 hash/指纹/内部命名）", () => {

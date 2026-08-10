@@ -344,7 +344,7 @@ function WorkflowDecisionSummary({
       <TaskDecisionHero
         verdictLabel={summary.verdictLabel}
         reason={hasVersionedDecision
-          ? "这是初始分析与流程复核快照；当前正式决定、原因和下一步以上方版本化面板为准。"
+          ? "这是初始分析与流程复核快照；当前正式决定、原因和下一步以研究决定面板为准。"
           : summary.reason}
         riskLabel={summary.riskLabel}
         riskTone={summary.riskTone}
@@ -628,8 +628,8 @@ function WorkflowDecisionSummary({
             <p className="text-xs font-bold text-slate-400">人工决策</p>
             {hasVersionedDecision ? (
               <div className="mt-2 rounded-lg border border-teal-200 bg-white px-3 py-2">
-                <p className="text-sm font-semibold text-teal-800">版本化研究决定请在上方专用面板更新。</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">这里的旧状态仅作兼容展示，不再作为正式研究决定入口。</p>
+                <p className="text-sm font-semibold text-teal-800">研究决定已记录，请在上方专用面板更新。</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">旧版状态仅保留查看，请使用上方的正式研究决定面板。</p>
               </div>
             ) : (
               <>
@@ -664,7 +664,7 @@ function WorkflowDecisionSummary({
       <details className="rounded-2xl border border-slate-200 bg-white p-4">
         <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
           过程与原始记录
-          <span className="ml-2 text-xs font-medium text-slate-400">研究过程、完整分析、成本利润明细、JSON，默认折叠</span>
+          <span className="ml-2 text-xs font-medium text-slate-400">研究过程、完整分析、成本利润明细，默认折叠</span>
         </summary>
 
         <div className="mt-4 space-y-4">
