@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
 
 const fileSystem = vi.hoisted(() => {
   const files = new Map<string, string>();
@@ -59,9 +60,11 @@ import {
   createCandidateAnalysisBindingHash,
 } from "@/lib/server/candidateAnalysisContext";
 
-const STORE_PATH = "C:\\candidate-sandbox-test\\sandbox.json";
+// 平台无关的测试 Store 路径：必须与 demoSandboxStore.internal 的 resolve()
+// 结果一致，否则 Linux CI 上 mock fs 的 key 与 getStorePath 不匹配。
+const STORE_PATH = resolve("candidate-sandbox-test", "sandbox.json");
 const BACKUP_PATH = `${STORE_PATH}.backup`;
-const NEIGHBOR_PATH = "C:\\candidate-sandbox-test\\do-not-touch.txt";
+const NEIGHBOR_PATH = resolve("candidate-sandbox-test", "do-not-touch.txt");
 const ORIGINAL = JSON.stringify({ version: 1, tasks: [], candidates: [{ id: "original" }] });
 
 function candidate(overrides: Record<string, unknown> = {}) {
