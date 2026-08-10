@@ -73,6 +73,7 @@ export function ListingHandoffSection({
   imageMaterialNeeds = [],
   onCommitted,
   onProgressChange,
+  refreshSignal = 0,
 }: {
   taskId: string;
   /** 图片创作建议：来自研究保存时的 listingPrepSnapshot.imageMaterialNeeds（无数据则为空数组） */
@@ -80,6 +81,8 @@ export function ListingHandoffSection({
   /** Listing 草稿生成成功后通知父级（父级重读服务端真实任务状态，进度摘要随之刷新） */
   onCommitted?: () => void;
   onProgressChange?: (state: { isGenerating: boolean; hasResult: boolean }) => void;
+  /** 外部触发重新加载（如事实补充成功后），变化即重读服务端最新状态 */
+  refreshSignal?: number;
 }) {
   const [status, setStatus] = useState<ListingStatus | null>(null);
   const [handoffRevision, setHandoffRevision] = useState<number | null>(null);
@@ -132,6 +135,12 @@ export function ListingHandoffSection({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 外部刷新信号（事实补充成功等）→ 重读服务端最新状态，解除旧提示/按钮状态
+  useEffect(() => {
+    if (refreshSignal > 0) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
 
   useEffect(() => {
     onProgressChange?.({

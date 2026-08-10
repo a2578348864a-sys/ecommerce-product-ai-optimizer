@@ -12,6 +12,7 @@ import type {
   CreativeHandoffPreview,
 } from "@/components/creative-handoff/types";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
+import { ListingFactSupplementPanel } from "@/components/studio/ListingFactSupplementPanel";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import {
   DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
@@ -81,11 +82,14 @@ export function TaskStudioPreparation({
   kind,
   children,
   onReadyChange,
+  onCommitted,
 }: {
   taskId: string;
   kind: PreparationKind;
   children: ReactNode;
   onReadyChange?: (ready: boolean) => void;
+  /** 创作资料确认成功（含原地事实补充）后通知父级刷新下游状态 */
+  onCommitted?: () => void;
 }) {
   const api = useCreativeHandoffApi(taskId);
   const loadPreparation = api.load;
@@ -189,14 +193,24 @@ export function TaskStudioPreparation({
         {listingFactsMissing ? (
           <section className="surface-card mb-4 border-amber-200 bg-amber-50/70 p-4" data-testid="task-listing-facts-missing">
             <p className="text-sm font-bold text-amber-900">
-              当前研究记录缺少可用于 Listing 的商品事实，请先补充并确认商品资料。
+              当前研究记录缺少可用于 Listing 的商品事实。
             </p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              可直接在下方确认来源资料中的商品事实候选，或返回研究记录查看来源。
+            </p>
+            <ListingFactSupplementPanel
+              taskId={taskId}
+              preview={preview}
+              create={api.create}
+              refresh={api.refresh}
+              onCommitted={onCommitted}
+            />
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href={`/tasks/${encodeURIComponent(taskId)}`}
-                className="inline-flex h-10 items-center rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900"
+                className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"
               >
-                回研究记录补充事实
+                返回研究记录查看来源
               </Link>
               <Link
                 href="/listing-studio"

@@ -151,8 +151,13 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     isGenerating: false,
     hasResult: false,
   });
+  const [refreshKey, setRefreshKey] = useState(0);
   const handleTaskReady = useCallback((briefReady: boolean) => {
     setProgressInput((current) => ({ ...current, briefReady }));
+  }, []);
+  const handleTaskCommitted = useCallback(() => {
+    // 创作资料确认成功（含原地事实补充）→ 通知 ListingHandoffSection 重读服务端状态
+    setRefreshKey((current) => current + 1);
   }, []);
   const handleTaskProgress = useCallback((state: { isGenerating: boolean; hasResult: boolean }) => {
     setProgressInput((current) => ({ ...current, ...state }));
@@ -173,9 +178,9 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     return (
       <>
         {progressRail}
-        <TaskStudioPreparation taskId={taskId} kind="listing" onReadyChange={handleTaskReady}>
+        <TaskStudioPreparation taskId={taskId} kind="listing" onReadyChange={handleTaskReady} onCommitted={handleTaskCommitted}>
           <div className="surface-card p-4" data-testid="listing-studio-task-mode">
-            <ListingHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} />
+            <ListingHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} refreshSignal={refreshKey} />
           </div>
         </TaskStudioPreparation>
       </>

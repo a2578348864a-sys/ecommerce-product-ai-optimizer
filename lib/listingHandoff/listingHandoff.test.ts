@@ -623,18 +623,22 @@ describe("UI 状态（第20章 66-75）", () => {
     }
   });
 
-  it("事实不足时直接展示计数、禁用原因和两个安全出口", () => {
+  it("事实不足时直接展示计数、禁用原因和原地补充确认入口", () => {
     const preparationSource = readFileSync(resolve(process.cwd(), "components/studio/TaskStudioPreparation.tsx"), "utf8");
+    const supplementSource = readFileSync(resolve(process.cwd(), "components/studio/ListingFactSupplementPanel.tsx"), "utf8");
+    const combined = `${preparationSource}\n${supplementSource}\n${uiSource}`;
     for (const text of [
       "已确认事实：",
       "可用于 Listing：",
       "禁止声明：",
-      "当前研究记录缺少可用于 Listing 的商品事实，请先补充并确认商品资料。",
-      "回研究记录补充事实",
+      "当前研究记录缺少可用于 Listing 的商品事实。",
+      "补充并确认商品事实",
+      "来自商品标题/来源资料，需人工核实",
+      "返回研究记录查看来源",
       "转为独立创作",
       'href="/listing-studio"',
     ]) {
-      expect(`${preparationSource}\n${uiSource}`).toContain(text);
+      expect(combined).toContain(text);
     }
     expect(uiSource).toContain("disabled={!canGenerate || submitting}");
   });
