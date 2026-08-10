@@ -4,7 +4,7 @@ import { getAuthoritativeCandidate } from "@/lib/server/candidateAuthority";
 import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 import { getProductResearchRecord } from "@/lib/productResearchRecord";
-import { readCandidateProductImageSnapshotDual } from "@/lib/productResearchImage";
+import { readCandidateProductImageSnapshotDual, parseProductImageSnapshot } from "@/lib/productResearchImage";
 import { decodeVisualReferenceImage } from "@/lib/visualReferenceImage";
 import { buildVisualSelectionId } from "@/lib/server/visualReferenceCandidates";
 
@@ -46,6 +46,10 @@ function parseRequestedVisualRef(value: string | null): { selectionId: string } 
   return { selectionId: trimmed };
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const params = await context.params;
   const taskId = typeof params.id === "string" ? params.id.trim().slice(0, 128) : "";
@@ -76,10 +80,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   // ── 图片读取：双层快照 → 字节级校验（contentHash 断言）──
-  const snapshot = readCandidateProductImageSnapshotDual(
+  // 候选层（sourceMetaJson/analysisJson，历史 product-batch 路径）→ task 层
+  // （sourceMeta.candidateSnapshot.productImageSnapshot，SellerSprite 用户导入路径）
+  let snapshot = readCandidateProductImageSnapshotDual(
     candidate.sourceMetaJson,
     candidate.analysisJson,
   );
+  if (!snapshot && task.resultJson) {
+    const parsed = parseRecord(task.resultJson);
+    const sourceMeta = isRecord(parsed.sourceMeta) ? parsed.sourceMeta : null;
+    const candidateSnapshot = sourceMeta && isRecord(sourceMeta.candidateSnapshot)
+      ? sourceMeta.candidateSnapshot
+      : null;
+    if (candidateSnapshot && candidateSnapshot.productImageSnapshot !== undefined) {
+      snapshot = parseProductImageSnapshot(candidateSnapshot.productImageSnapshot);
+    }
+  }
   const image = decodeVisualReferenceImage(snapshot, snapshot?.contentHash);
   if (!image) return jsonError("task_not_found", "图片不存在或无权访问。", 404);
 
@@ -117,15 +133,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
  * 任务归属读取（Owner=DB / Visitor=Sandbox）+ 研究候选绑定提取。
  * 返回 null 表示任务不存在或无权访问（统一 404）。
  */
-async function loadOwnedTask(taskId: string, context: { mode: "owner" | "demo"; demoAccessId?: string }) {
-  const sandboxLike = isSandboxTaskId(taskId) || taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
+async function loadOwnedTask(taskId: string, context: { mode: "owner" | "demo"; demoAccessId?: string }) {  const sandboxLike = isSandboxTaskId(taskId) || taskId.startsWith("demo-") || taskId.startsWith("sandbox-");
   if (sandboxLike) {
     if (context.mode !== "demo" || !context.demoAccessId) return null;
     const sandbox = getSandboxTask(context.demoAccessId, taskId);
     if (!sandbox) return null;
     const record = getProductResearchRecord(parseRecord(sandbox.resultJson));
     if (!record) return null;
-    return { candidateId: record.candidateId || null, researchRevision: record.revision };
+    return { candidateId: record.candidateId || null, researchRevision: record.revision, resultJson: sandbox.resultJson };
   }
 
   if (context.mode !== "owner") return null;
@@ -133,7 +148,7 @@ async function loadOwnedTask(taskId: string, context: { mode: "owner" | "demo"; 
   if (!db) return null;
   const record = getProductResearchRecord(parseRecord(db.resultJson));
   if (!record) return null;
-  return { candidateId: record.candidateId || null, researchRevision: record.revision };
+  return { candidateId: record.candidateId || null, researchRevision: record.revision, resultJson: db.resultJson };
 }
 
 function parseRecord(raw: string | null | undefined) {

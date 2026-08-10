@@ -295,4 +295,45 @@ describe("Secure Visual Reference Preview", () => {
     // 恢复
     state.candidates[OWNER_CANDIDATE].convertedTaskId = OWNER_TASK;
   });
+
+  it("task 层快照（SellerSprite 用户导入路径）可读：候选层无快照时回退 task resultJson.sourceMeta", async () => {
+    // 候选层无快照（analysisJson={}），快照在 task resultJson.sourceMeta.candidateSnapshot.productImageSnapshot
+    state.tasks[OWNER_TASK] = { userId: "owner:v1", resultJson: (() => {
+      const rj = JSON.parse(makeResultJson(OWNER_CANDIDATE));
+      rj.sourceMeta = {
+        source: "opportunity",
+        candidateId: OWNER_CANDIDATE,
+        candidateSnapshot: {
+          version: 1,
+          id: OWNER_CANDIDATE,
+          name: "Test Product",
+          status: "worth_analyzing",
+          capturedAt: "2026-08-06T00:00:00.000Z",
+          productImageSnapshot: {
+            version: "product-batch-product-image.v1",
+            source: "sellersprite_product_batch",
+            status: "available",
+            productKey: "amazon:US:B0TEST0001",
+            candidateIdentityHash: sha256("sellersprite-candidate-identity:v1:amazon:US:B0TEST0001"),
+            mimeType: "image/png",
+            bytes: TINY_PNG.length,
+            contentHash: TINY_PNG_SHA256,
+            dataUrl: `data:image/png;base64,${TINY_PNG.toString("base64")}`,
+            capturedAt: "2026-08-06T00:00:00.000Z",
+          },
+        },
+      };
+      return JSON.stringify(rj);
+    })() };
+    state.candidates[OWNER_CANDIDATE] = {
+      sourceMetaJson: makeCandidate(),
+      analysisJson: "{}",
+      convertedTaskId: OWNER_TASK,
+    };
+    const response = await callGET(OWNER_TASK, ref(OWNER_TASK, "owner", OWNER_CANDIDATE), state.ownerToken);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(Buffer.from(bytes).equals(TINY_PNG)).toBe(true);
+  });
 });
