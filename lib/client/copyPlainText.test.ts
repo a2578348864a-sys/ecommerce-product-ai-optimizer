@@ -50,9 +50,21 @@ describe("v2.2.14 copyPlainText HTTP 兼容", () => {
   });
 
   it("HTTP/no clipboard → textarea fallback 成功", async () => {
-    const { execCommand } = mockDom({ secureContext: false, clipboard: null, execResult: true });
-    expect(await copyPlainText("fallback text")).toBe(true);
+    const listing = [
+      "Title: YETI Rambler Jr. 12 oz Kids Bottle",
+      "",
+      "Bullet Points:",
+      "  • 12 oz capacity",
+      "  • Stainless steel body",
+      "",
+      "Description: Includes straw cap",
+      "",
+      "Search Terms: kids bottle, straw cap",
+    ].join("\n");
+    const { execCommand, textarea } = mockDom({ secureContext: false, clipboard: null, execResult: true });
+    expect(await copyPlainText(listing)).toBe(true);
     expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(textarea.value).toBe(listing);
   });
 
   it("clipboard 拒绝 → fallback 成功", async () => {

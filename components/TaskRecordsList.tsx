@@ -325,15 +325,16 @@ function updateBrowserQuery(type: string, q: string, decisionStatus: string, age
   window.history.pushState(null, "", query ? `/tasks?${query}` : "/tasks");
 }
 
-function DetailList({ title, items }: { title: string; items: string[] }) {
+export function TaskDetailList({ title, items }: { title: string; items: string[] }) {
   if (!items.length) return null;
+  const uniqueItems = Array.from(new Set(items));
 
   return (
     <div className="surface-card-soft rounded-[22px] p-4">
       <p className="text-sm font-bold text-slate-950">{title}</p>
       <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600">
-        {items.map((item) => (
-          <li key={item}>- {item}</li>
+        {uniqueItems.map((item) => (
+          <li key={`${title}:${item}`}>- {item}</li>
         ))}
       </ul>
     </div>
@@ -1178,10 +1179,10 @@ export function TaskRecordsList() {
                               updating={updatingDecisionId === item.id}
                               onLegacyDecisionChange={(next) => void updateDecisionStatus(item, next)}
                             />
-                            <DetailList title="核心卖点" items={getStringArray(item.result, "sellingPoints")} />
-                            <DetailList title="用户痛点" items={getStringArray(item.result, "painPoints")} />
-                            <DetailList title="开头钩子" items={getStringArray(item.result, "hooks")} />
-                            <DetailList title="风险提醒" items={getStringArray(item.result, "risks")} />
+                            <TaskDetailList title="核心卖点" items={getStringArray(item.result, "sellingPoints")} />
+                            <TaskDetailList title="用户痛点" items={getStringArray(item.result, "painPoints")} />
+                            <TaskDetailList title="开头钩子" items={getStringArray(item.result, "hooks")} />
+                            <TaskDetailList title="风险提醒" items={getStringArray(item.result, "risks")} />
                             <div className="rounded-2xl border border-white/80 bg-slate-50 p-4 md:col-span-2">
                               <p className="text-sm font-bold text-slate-950">素材摘要</p>
                               <p className="mt-2 line-clamp-4 text-sm leading-6 text-slate-600">{item.materialText}</p>

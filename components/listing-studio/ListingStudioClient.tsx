@@ -56,6 +56,7 @@ import { studioApiErrorCode, studioErrorMessage } from "@/lib/client/studioError
 import { StudioProgressRail } from "@/components/studio/StudioProgressRail";
 import { deriveListingStudioProgress } from "@/lib/client/studioProgress";
 import { readJsonApiResponse } from "@/lib/client/safeApiResponse";
+import { copyPlainText } from "@/lib/client/copyPlainText";
 
 type StudioData = {
   listingPack: ListingPack;
@@ -357,7 +358,8 @@ function ManualListingStudioClient({ onProgressChange }: {
   const copyText = useCallback(async (text: string, section: CopySection) => {
     if (!text.trim()) return;
     try {
-      await navigator.clipboard.writeText(text);
+      const copied = await copyPlainText(text);
+      if (!copied) throw new Error("copy_unavailable");
       setCopiedSection(section);
       window.setTimeout(() => {
         setCopiedSection((current) => current === section ? null : current);

@@ -99,8 +99,9 @@ function StatCard({
   );
 }
 
-const workflowSteps = [
+export const homeWorkflowSteps = [
   {
+    id: "discover-products",
     label: "发现商品",
     href: "/opportunities",
     cta: "去发现商品",
@@ -108,13 +109,15 @@ const workflowSteps = [
     icon: Search,
   },
   {
+    id: "research-products",
     label: "商品研究",
     href: "/opportunity-candidates",
-    cta: "打开商品研究池",
+    cta: "打开待研究商品",
     description: "整理信息，评估风险，恢复或开始研究。",
     icon: Sparkles,
   },
   {
+    id: "make-research-decision",
     label: "人工决策",
     href: "/tasks",
     cta: "打开研究历史",
@@ -122,6 +125,7 @@ const workflowSteps = [
     icon: ClipboardCheck,
   },
   {
+    id: "prepare-creative-materials",
     label: "创作资料",
     href: "/tasks",
     cta: "在任务详情确认",
@@ -129,6 +133,7 @@ const workflowSteps = [
     icon: FileText,
   },
   {
+    id: "review-content-drafts",
     label: "内容草稿",
     href: "/tasks",
     cta: "在任务详情生成",
@@ -151,7 +156,7 @@ export function HomeDashboardClient() {
     status: "loading",
     items: [],
     total: 0,
-    message: "正在读取商品研究池。",
+    message: "正在读取待研究商品。",
   });
   const [recentSingleRun, setRecentSingleRun] = useState(() => parseRecentSingleRun(null));
   const [taskLoad, setTaskLoad] = useState<TaskLoadState>({
@@ -233,7 +238,7 @@ export function HomeDashboardClient() {
     if (!isAccessPasswordReady) return;
 
     if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setCandidateLoad({ status: "unavailable", items: [], total: 0, message: "商品研究池暂不可用。" });
+      setCandidateLoad({ status: "unavailable", items: [], total: 0, message: "待研究商品暂不可用。" });
       setTaskLoad({ status: "unavailable", summary: null, message: taskFallbackMessage });
       return;
     }
@@ -272,7 +277,7 @@ export function HomeDashboardClient() {
     }
 
     async function loadCandidates() {
-      setCandidateLoad({ status: "loading", items: [], total: 0, message: "正在读取商品研究池。" });
+      setCandidateLoad({ status: "loading", items: [], total: 0, message: "正在读取待研究商品。" });
       try {
         const response = await fetch("/api/opportunity-candidates?limit=100&offset=0", {
           method: "GET",
@@ -290,11 +295,11 @@ export function HomeDashboardClient() {
           status: "ready",
           items: payload.items.map((item) => serverCandidateToPoolItem(item as Record<string, unknown>)),
           total: payload.total as number,
-          message: "已读取服务端商品研究池。",
+          message: "已读取待研究商品。",
         });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setCandidateLoad({ status: "unavailable", items: [], total: 0, message: "商品研究池暂不可用。" });
+        setCandidateLoad({ status: "unavailable", items: [], total: 0, message: "待研究商品暂不可用。" });
       }
     }
 
@@ -309,13 +314,18 @@ export function HomeDashboardClient() {
     total: candidateLoad.status === "ready" ? candidateLoad.total : 0,
   }), [candidateLoad]);
   const taskSummary = taskLoad.summary;
+  const workspaceConnectionStatus = candidateLoad.status === "ready" && taskLoad.status === "ready"
+    ? "数据已同步"
+    : candidateLoad.status === "loading" || taskLoad.status === "loading" || apiProbeStatus === "checking"
+      ? "数据同步中…"
+      : "部分数据待恢复";
   const recommendation = useMemo(() => getRecommendedNextAction({
     candidatePool: candidateSummary,
     tasks: taskSummary,
     recentSingleRun,
   }), [candidateSummary, taskSummary, recentSingleRun]);
 
-  const workflowStateByHref: Record<(typeof workflowSteps)[number]["href"], string> = {
+  const workflowStateByHref: Record<(typeof homeWorkflowSteps)[number]["href"], string> = {
     "/opportunities": "导入或手工选择商品",
     "/opportunity-candidates": candidateLoad.status === "ready" && candidateSummary.total > 0
       ? `已有 ${formatNumber(candidateSummary.total)} 个候选`
@@ -370,11 +380,11 @@ export function HomeDashboardClient() {
             </div>
 
             <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {workflowSteps.map((step, index) => {
+              {homeWorkflowSteps.map((step, index) => {
                 const Icon = step.icon;
                 const isRecommended = recommendation.href === step.href;
                 return (
-                  <li key={step.href} className="min-w-0">
+                  <li key={step.id} className="min-w-0">
                     <Link
                       href={step.href}
                       aria-current={isRecommended ? "step" : undefined}
@@ -488,11 +498,11 @@ export function HomeDashboardClient() {
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-700">
                   <div className="size-1.5 rounded-full bg-emerald-400" />
-                  API{apiProbeStatus === "ok" ? " 已通过" : apiProbeStatus === "checking" ? " 检测中…" : " 待确认"}
+                  {workspaceConnectionStatus}
                 </div>
               </div>
-              {apiProbeStatus === "fail" && (
-                <p className="mt-2 text-xs text-amber-700">API 鉴权未确认，受保护接口可能返回 401。</p>
+              {(candidateLoad.status === "unavailable" || taskLoad.status === "unavailable") && (
+                <p className="mt-2 text-xs text-amber-700">部分工作台数据暂不可用，请刷新页面或稍后重试。</p>
               )}
             </section>
           ) : null}
@@ -500,13 +510,13 @@ export function HomeDashboardClient() {
           <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
             <div className="grid min-w-0 gap-4 md:grid-cols-3">
               <StatCard
-                title="商品研究池"
+                title="待研究商品"
                 value={candidateLoad.status === "ready" ? formatNumber(candidateSummary.total) : "暂不可用"}
                 description={candidateLoad.status === "ready"
-                  ? "数量来自当前身份的服务端 Candidate。"
+                  ? "当前身份下等待继续研究的商品数量。"
                   : candidateLoad.message}
                 href="/opportunity-candidates"
-                cta="查看商品研究池"
+                cta="查看待研究商品"
                 tone={candidateLoad.status === "ready" ? "teal" : "slate"}
               />
               <StatCard
@@ -526,7 +536,7 @@ export function HomeDashboardClient() {
                   ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到研究历史" : "尚未保存"}`
                   : "还没有可恢复的商品研究结果。"}
                 href="/opportunity-candidates"
-                cta="前往商品研究池"
+                cta="前往待研究商品"
                 tone={recentSingleRun?.savedTaskId ? "teal" : "amber"}
               />
             </div>
