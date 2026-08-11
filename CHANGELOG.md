@@ -1,6 +1,41 @@
 # Changelog
 
-本项目按语义化版本管理。版本标记见 Git tags。
+本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。
+
+## [2.2.16-r3] - 2026-08-12
+
+### 修复
+- **Claim Gate 关闭**：AI 成功路径补齐对最终保存对象的正式 Claim Evidence，消除绕过风险
+- 标题组合不再并入无确认事实证据的 keyword，避免标题超长与未确认声明
+- Listing 结构化降级链路的 keywords 按 Claim Evidence 过滤
+
+### 新增
+- 补充商品事实（Human Supplied Facts）：人工可补充事实并进入创作，与 Listing Brief 隔离
+
+## [2.2.15] - 2026-08-11
+
+### 变更
+- 候选品池 / 发现商品体验与文案收口
+
+## [2.2.14] - 2026-08-11
+
+### 变更
+- Listing 生成反馈与质量改进
+
+## [2.2.13] - 2026-08-11
+
+### 修复
+- Creative Handoff 撤销时展示友好提示
+
+## [2.2.12] - 2026-08-11
+
+### 新增
+- SellerSprite ProductBatch Listing 事实进入 Creative Handoff
+
+## [2.2.11] - 2026-08-11
+
+### 变更
+- 商品体验文案与入口收口
 
 ## [2.2.10] - 2026-08-11
 
