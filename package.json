@@ -1,6 +1,6 @@
 {
   "name": "ecommerce-product-ai-optimizer",
-  "version": "2.1.7",
+  "version": "2.2.16",
   "private": true,
   "engines": {
     "node": ">=20.9.0"

@@ -9,6 +9,11 @@ out
 .env.*.local
 .local/
 .playwright-mcp/
+# Local Playwright CLI session state and release staging
+.playwright-cli/
+.release-*/
+# Local smoke / audit / debug output
+output/
 # Browser profiles and private local states
 .alpha-browser-profile/
 **/.alpha-browser-profile/
