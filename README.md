@@ -1,8 +1,12 @@
 # 轻选工作台
 
-AI 跨境商品研究与创作工作台。
+AI 跨境商品研究与创作工作台：从 SellerSprite 数据导入、AI 商品研究、事实确认到 Listing 与图片创作的一条龙工作流。关键决策始终由人工确认。
 
-面向跨境电商卖家，提供从商品数据导入、AI 研究、事实确认到 Listing 与图片创作的一条龙工作流。关键决策始终由人工确认。
+## Overview
+
+跨境商品研究依赖大量分散数据（报表、市场信号、产品资料），人工整理耗时且容易出错。轻选工作台把「数据整理 → 事实确认 → AI 辅助生成」组织成一条可控流程：机器处理数据与草稿，人在关键节点做决定。
+
+系统是辅助研究工具，**不会**自动采购、上架或投放广告。
 
 ## Features
 
@@ -14,13 +18,7 @@ AI 跨境商品研究与创作工作台。
 - **Human-in-the-loop 工作流** — 研究决定、事实确认、Listing 与图片复核均由人工完成
 - **数据隔离与安全机制** — 访客沙箱隔离、外部图片安全下载、市场信号与创作事实隔离
 
-## Overview
-
-跨境商品研究依赖大量分散数据（报表、市场信号、产品资料），人工整理耗时且容易出错。轻选工作台把「数据整理 → 事实确认 → AI 辅助生成」组织成一条可控流程：机器处理数据与草稿，人在关键节点做决定。
-
-系统不会自动采购、上架或投放广告。
-
-## Workflow
+## How It Works
 
 ```mermaid
 flowchart LR
@@ -52,11 +50,7 @@ flowchart LR
 - Prisma 5 + SQLite
 - OpenAI-compatible AI Provider（可替换）
 
-## Screenshots
-
-> 截图占位：可在 `docs/screenshots/` 下放置主要页面截图。
-
-## Installation
+## Getting Started
 
 ### 环境要求
 
@@ -79,39 +73,64 @@ npm run dev
 
 打开 http://localhost:3000 进入登录页。
 
-## Configuration
+详细步骤见 [快速开始](docs/getting-started/installation.md)。
 
-复制 `.env.example` 为 `.env.local` 并填写：
+## Environment Variables
 
-| 变量 | 说明 |
+复制 `.env.example` 为 `.env.local` 并填写。完整说明见 [配置说明](docs/guides/configuration.md)。
+
+| 变量 | 作用 |
 | --- | --- |
-| `ACCESS_PASSWORD` | 登录访问密码 |
+| `ACCESS_PASSWORD` | 登录访问密码（必填） |
+| `PROOF_SIGNING_SECRET` | 会话令牌签发用独立随机密钥 |
 | `AI_PROVIDER` | 文本 AI Provider（`deepseek` 等） |
-| `DEEPSEEK_API_KEY` | DeepSeek API 密钥 |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | DeepSeek Provider 配置 |
 | `LISTING_PROVIDER_MODE` / `IMAGE_PROVIDER_MODE` | `mock` 或 `real`（默认 mock，不调用真实付费 API） |
-| `OPENAI_API_KEY` / `OPENAI_IMAGE_MODEL` | 图片 Provider 配置（使用真实图片生成时） |
+| `OPENAI_API_KEY` / `OPENAI_IMAGE_BASE_URL` / `OPENAI_IMAGE_MODEL` | 图片 Provider 配置 |
+| `OPENAI_IMAGE_RESULT_HOSTS` | 图片下载结果域名白名单 |
 | `DATABASE_URL` | SQLite 数据库路径 |
+| `AI_IMAGE_DRAFT_STORAGE_ROOT` | 图片草稿存储目录 |
 
-更多说明见 [docs/guides/configuration.md](docs/guides/configuration.md)。
+> 真实密钥值只存在于 `.env.local`，**绝不提交到版本库**。
+
+## Testing
+
+```bash
+npm test          # Vitest 单元/集成测试
+npm run lint      # ESLint
+npx tsc --noEmit  # 类型检查
+npm run build     # 生产构建
+npm run check     # lint + test + build
+```
+
+测试不调用真实 AI Provider（默认 Mock），不访问生产数据库。
+
+## Project Structure
+
+| 目录 | 说明 |
+| --- | --- |
+| `app/` | Next.js 页面与 API Routes |
+| `components/` | React 组件 |
+| `lib/` | 业务逻辑、服务端门禁与数据层 |
+| `prisma/` | Prisma Schema 与数据库 |
+| `hooks/` | React Hooks |
+| `scripts/` | 本地运行、验证与工具脚本 |
+| `tools/` | 上游数据工具（SellerSprite、Amazon 采集等） |
+| `tests/` | 测试辅助 |
+| `docs/` | 项目文档 |
 
 ## Documentation
 
+- [文档索引](docs/README.md)
 - [快速开始](docs/getting-started/installation.md)
-- [工作流说明](docs/guides/workflow.md)
 - [架构总览](docs/architecture/overview.md)
-- [AI 工作流](docs/architecture/ai-workflow.md)
-- [数据模型](docs/architecture/data-model.md)
-- [参与贡献](docs/development/contributing.md)
+- [认证与配额契约](docs/architecture/auth-and-quota-contract.md)
+- [部署手册](docs/deployment/production-runbook.md)
 
-## Roadmap
+## Security
 
-- 真实入行数据接入与 V3 业务迭代（计划中）
-- 历史功能需求归档见 [docs/archive](docs/archive/)
+本项目涉及 AI Provider 密钥、访问认证、文件上传与用户数据隔离。请阅读 [SECURITY.md](SECURITY.md) 了解安全边界与报告方式。
 
 ## License
 
 MIT License。详见 [LICENSE](LICENSE)。
-
-## Contributing
-
-请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [docs/development/contributing.md](docs/development/contributing.md)。

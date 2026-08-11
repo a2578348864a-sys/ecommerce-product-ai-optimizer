@@ -185,6 +185,6 @@ curl -I http://112.124.54.81/
 
 ## 8. 参考资料
 
-- 项目部署说明：[DEPLOY.md](../DEPLOY.md) — 初始部署、Nginx、PM2 配置说明
+- 项目部署说明：[initial-deploy.md](initial-deploy.md) — 初始部署、Nginx、PM2 配置说明
 - 项目总览：`../00_项目总览.md` — 产品定位、当前阶段、开发与部署节奏
 - Codex 任务控制台：`../00_Codex任务控制台.md` — 当前禁止项、部署与发布规则

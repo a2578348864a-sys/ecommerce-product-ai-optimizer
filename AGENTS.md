@@ -47,8 +47,8 @@
 - 无效、缺失、停用、过期或主体不匹配的访问必须 fail-closed。
 - 保存、修改、删除、导入和 Candidate → Task 等写操作必须保持当前主体与人工确认边界。
 - 真实 AI、真实外部来源和付费 Provider 必须经过服务端开关、当前授权和相关安全门禁。
-- Visitor AI 调用必须继续经过服务端配额控制；预留、结算、并发、恢复和专项状态码规则按需读取 `docs/AUTH_AND_QUOTA_CONTRACT.md`。
-- Route 的 HTTP 状态、业务错误码和响应体属于各 Route 的既有外部契约；不得为了“统一风格”批量改写，变更前按需读取 `docs/AUTH_AND_QUOTA_CONTRACT.md` 并核对对应 Route 和测试。
+- Visitor AI 调用必须继续经过服务端配额控制；预留、结算、并发、恢复和专项状态码规则按需读取 `docs/architecture/auth-and-quota-contract.md`。
+- Route 的 HTTP 状态、业务错误码和响应体属于各 Route 的既有外部契约；不得为了“统一风格”批量改写，变更前按需读取 `docs/architecture/auth-and-quota-contract.md` 并核对对应 Route 和测试。
 - `data/demo-access.json`、`data/demo-sandbox.json` 和 `prisma/dev.db` 是受保护运行数据，不得手工编辑、打印、提交或复制到测试夹具。
 - 允许读取不含真实秘密的 `data/*.example.json` 以核对字段契约。
 - 不为了寻找密钥而批量扫描 `.env*`、凭据目录或配置内容。
@@ -68,8 +68,8 @@
 - 真实 AI 门禁：
   - `lib/server/realAiListingGate.ts`
   - `lib/server/realAiImageGate.ts`
-- 认证与配额专项契约：`docs/AUTH_AND_QUOTA_CONTRACT.md`
-- 部署流程：`docs/PRODUCTION_RUNBOOK.md`
+- 认证与配额专项契约：`docs/architecture/auth-and-quota-contract.md`
+- 部署流程：`docs/deployment/production-runbook.md`
 
 实现现状以当前 Route、Guard、Schema、存储代码和相关测试为准。目标变化以用户当前明确要求或仓库内已批准专项契约为准；实现与目标不一致时报告缺口，不静默改变业务语义。
 
@@ -126,7 +126,7 @@ npm run check
 - 生产部署或生产配置修改
 - Git add、Commit、Push、分支切换或合并
 
-部署任务还必须按需读取 `docs/PRODUCTION_RUNBOOK.md`。
+部署任务还必须按需读取 `docs/deployment/production-runbook.md`。
 
 <!-- BEGIN:nextjs-agent-rules -->
 
