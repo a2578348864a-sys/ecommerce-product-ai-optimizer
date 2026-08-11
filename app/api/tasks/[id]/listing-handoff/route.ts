@@ -10,6 +10,7 @@ import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
 import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import { buildListingBrief } from "@/lib/listingHandoff/listingBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 
 const ALLOWED_GENERATE_FIELDS = new Set([
@@ -19,12 +20,19 @@ const ALLOWED_GENERATE_FIELDS = new Set([
   "expectedHandoffRevision",
   "confirmed",
   "keywordBrief",
+  "listingBrief",
+]);
+const ALLOWED_KEYWORD_BRIEF_FIELDS = new Set([
+  "action",
+  "expectedStorageVersion",
+  "confirmed",
+  "keywordBrief",
 ]);
 const FORBIDDEN_KEYS = new Set([
   "creativeHandoff", "creativeHandoffRequestLedger", "listingHandoffBinding", "aiListingPackSnapshot",
   "candidateId", "handoffId", "revision", "fingerprint", "requestKeyHash", "requestFingerprint",
   "resultJson", "writerKind", "ownedNamespaces", "createdBy", "confirmedBy", "approvedBy",
-  "fact", "facts", "prompt", "provider", "model", "listingTitle", "bullets", "__proto__", "constructor", "prototype",
+  "fact", "facts", "confirmedFacts", "prompt", "provider", "model", "listingTitle", "bullets", "__proto__", "constructor", "prototype",
 ]);
 
 function errorResponse(status: number, code: string, message: string) {
@@ -275,7 +283,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Quality.1：保存 Keyword Brief（action=save_keyword_brief）
   if (body.action === "save_keyword_brief") {
     for (const key of Object.keys(body)) {
-      if (!ALLOWED_GENERATE_FIELDS.has(key)) return errorResponse(400, "unknown_field", `未知字段: ${key}`);
+      if (!ALLOWED_KEYWORD_BRIEF_FIELDS.has(key)) return errorResponse(400, "unknown_field", `未知字段: ${key}`);
     }
     if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请确认关键词资料后提交。");
     const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
@@ -330,6 +338,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请确认后提交。");
 
+  const listingBriefResult = buildListingBrief(body.listingBrief);
+  if (!listingBriefResult.ok) {
+    return errorResponse(400, listingBriefResult.code, listingBriefResult.message);
+  }
+
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
 
@@ -338,6 +351,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       requestId,
       expectedStorageVersion,
       expectedHandoffRevision,
+      listingBrief: listingBriefResult.brief,
     });
     return NextResponse.json({
       ok: true,

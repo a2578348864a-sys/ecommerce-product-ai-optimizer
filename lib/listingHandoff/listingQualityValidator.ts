@@ -102,7 +102,10 @@ export function validateListingQuality(input: QualityCheckInput): QualityValidat
   bullets.forEach((b, i) => {
     // v2.2.14：优化路径 Bullet 是"事实，买方价值角度。"结构（中文角度含完整短语），
     // 单值 Bullet（如颜色）按空格词数会误判碎片；含该结构即非碎片。
-    const hasShopperAngle = input.planQuality === "optimized" && /，[^，。]{3,}。$/.test(b);
+    // Claim Filter 会做 NFKC 归一化，将全角逗号转换为半角逗号。
+    // 两种标点在这里都表示“确认事实 + 冻结中性表达”的同一结构；
+    // 仍要求至少 3 个字符的完整后半句和明确句末，避免属性碎片绕过校验。
+    const hasShopperAngle = input.planQuality === "optimized" && /[，,][^，,。.]{3,}[。.\s]*$/.test(b);
     if (!hasShopperAngle && wordCount(b) < BULLET_MIN_WORDS) {
       blockingIssues.push({ target: "bullets", code: "fragment", message: `Bullet ${i + 1} 只是属性碎片（少于 ${BULLET_MIN_WORDS} 个词）。` });
     }

@@ -143,7 +143,13 @@ export type CreativeHandoffDetail = {
   canCreateNewRevision: boolean;
   humanReviewRequired: boolean;
   sourceResearchRevision?: number;
-  confirmedFacts?: { field: string; label: string; usageScopes: string[] }[];
+  confirmedFacts?: {
+    field: string;
+    label: string;
+    value: string;
+    usageScopes: string[];
+    sourceKind: "candidate_snapshot" | "seller_sprite_snapshot" | "research_result" | "user_confirmation";
+  }[];
   listingFactSummary?: { confirmedFacts: number; listingEligibleFacts: number; prohibitedClaims: number };
   prohibitedClaims?: { category: string; summary: string; appliesTo: string[] }[];
   versions?: { revision: number; createdAt: string; confirmedFactFields: string[] }[];
@@ -788,7 +794,9 @@ export async function getCreativeHandoffDetail(
     confirmedFacts: handoff.versions[handoff.versions.length - 1]?.confirmedFacts?.map((f) => ({
       field: f.field,
       label: f.label,
+      value: String(f.value),
       usageScopes: [...f.usageScopes],
+      sourceKind: f.sourceRef.sourceKind,
     })) || [],
     listingFactSummary: summarizeListingHandoffFacts(handoff),
     prohibitedClaims: handoff.versions[handoff.versions.length - 1]?.prohibitedClaims?.map((c) => ({

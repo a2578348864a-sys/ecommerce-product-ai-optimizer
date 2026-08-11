@@ -306,6 +306,91 @@ describe("Owala listing-eligible dead-end closure", () => {
   });
 });
 
+describe("R3 human supplied facts closure", () => {
+  it("已有系统确认事实时仍可补充 dimensions/weight，并保留既有事实与 human_confirmed provenance", async () => {
+    const taskId = "sandbox-r3-human-append";
+    seedTask(taskId, researchDoc());
+    const first = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const productType = first.preview!.confirmableFactCandidates!.find((candidate) => candidate.canonicalField === "product_type")!;
+    const createFirst = {
+      requestId: "550e8400-e29b-41d4-a716-446655440701",
+      expectedResearchRevision: first.preview!.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: first.preview!.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: first.preview!.storageVersion!,
+      selectedFactCandidateIds: [productType.selectionId],
+      manualConfirmedFacts: [{ field: "dimensions", value: "10 × 3 in" } as const],
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [productType.selectionId],
+        manualConfirmedFacts: [{ field: "dimensions", value: "10 × 3 in" } as const],
+        expectedStorageVersion: first.preview!.storageVersion!,
+        expectedResearchRevision: first.preview!.expectedResearchRevision,
+        expectedCurrentHandoffRevision: first.preview!.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    };
+    await createOrAppendCreativeHandoff(taskId, visitorContext(), createFirst);
+
+    const second = await generateCreativeHandoffPreview(taskId, visitorContext());
+    expect(second.gate.currentHandoff!.versions.at(-1)!.confirmedFacts.map((fact) => fact.field)).toEqual(
+      expect.arrayContaining(["product_type", "dimensions"]),
+    );
+
+    await createOrAppendCreativeHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440702",
+      expectedResearchRevision: second.preview!.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: second.preview!.expectedCurrentHandoffRevision!,
+      expectedStorageVersion: second.preview!.storageVersion!,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: [{ field: "weight", value: "12 oz" } as const],
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [],
+        manualConfirmedFacts: [{ field: "weight", value: "12 oz" } as const],
+        expectedStorageVersion: second.preview!.storageVersion!,
+        expectedResearchRevision: second.preview!.expectedResearchRevision,
+        expectedCurrentHandoffRevision: second.preview!.expectedCurrentHandoffRevision,
+        confirmed: true,
+      }),
+    });
+
+    const final = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const facts = final.gate.currentHandoff!.versions.at(-1)!.confirmedFacts;
+    expect(facts.map((fact) => fact.field)).toEqual(expect.arrayContaining(["product_type", "dimensions", "weight"]));
+    for (const field of ["dimensions", "weight"]) {
+      const fact = facts.find((item) => item.field === field)!;
+      expect(fact.evidenceTier).toBe("human_confirmed");
+      expect(fact.sourceRef.sourceKind).toBe("user_confirmation");
+      expect(fact.usageScopes).toContain("listing");
+    }
+  });
+
+  it("候选与手填同 canonical field 同次确认 → fail-closed，不允许双确认", async () => {
+    const taskId = "sandbox-r3-human-conflict";
+    seedTask(taskId, researchDoc());
+    const previewResult = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const preview = previewResult.preview!;
+    const productType = preview.confirmableFactCandidates!.find((candidate) => candidate.canonicalField === "product_type")!;
+    await expect(createOrAppendCreativeHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440703",
+      expectedResearchRevision: preview.expectedResearchRevision!,
+      expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+      expectedStorageVersion: preview.storageVersion!,
+      selectedFactCandidateIds: [productType.selectionId],
+      manualConfirmedFacts: [{ field: "product_type", value: "Different Bottle" }],
+      requestFingerprint: buildRequestFingerprint({
+        action: "create",
+        selectedFactIds: [productType.selectionId],
+        manualConfirmedFacts: [{ field: "product_type", value: "Different Bottle" }],
+        expectedStorageVersion: preview.storageVersion!,
+        expectedResearchRevision: preview.expectedResearchRevision,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision ?? 0,
+        confirmed: true,
+      }),
+    })).rejects.toMatchObject({ code: "confirmed_fact_conflict", status: 409 });
+  });
+});
+
 describe("manualConfirmedFacts idempotency boundary", () => {
   it("1A. 同 requestId 同 manualConfirmedFacts → replay，不新增 revision", async () => {
     const taskId = "sandbox-idem-same";

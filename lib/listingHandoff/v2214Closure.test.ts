@@ -16,10 +16,12 @@ vi.hoisted(() => {
 });
 
 import { buildListingInputFromCreativeHandoff } from "@/lib/listingHandoff/listingGenerationInput";
+import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { validateListingQuality } from "@/lib/listingHandoff/listingQualityValidator";
+import { listingClaimsHaveEvidence, verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { generateListingDraftFromHandoff } from "@/lib/listingHandoff/listingGenerationService";
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { createOrAppendCreativeHandoff } from "@/lib/server/productCreativeHandoffPersistence";
@@ -31,7 +33,7 @@ import {
   PRODUCT_RESEARCH_HASH_SCHEMA,
 } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
-import { setTaskLinkedAiListingClientForTests } from "@/lib/server/taskLinkedAiListing";
+import { setTaskLinkedAiListingClientForTests, type TaskLinkedAiListingClient } from "@/lib/server/taskLinkedAiListing";
 
 const NOW = "2026-08-11T14:00:00.000Z";
 const DEMO = "demo-v2214";
@@ -180,6 +182,7 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       calls += 1;
       // 无 brief：prompt 必须含 KEYWORD_OPTIMIZATION = DISABLED
       expect(input.keywordBrief).toBeNull();
+      expect(input.listingBrief).toBeNull();
       return {
         title: "BrüMate Rise 18oz Silicone Water Bottle with Covered Straw",
         bullets: [
@@ -238,9 +241,141 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       expect(result.draft?.providerAttempted).toBe(true);
       expect(result.draft?.providerSucceeded).toBe(true);
       // AI 自造 backend terms 被服务端丢弃
-      expect(result.draft?.backendSearchTerms).toBeUndefined();
+      expect(result.draft?.keywords).toEqual([]);
+      expect(result.draft?.backendSearchTerms).toEqual([]);
       // keywordReady 保持 false（无 brief）
       expect(result.draft?.riskNotes?.join(" ")).toContain("未进行关键词优化");
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  });
+});
+
+describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
+  it("passes marketing guidance separately, keeps keyword optional, and saves an AI-quality draft", async () => {
+    const taskId = "sandbox_task_v2216_listing_brief";
+    seedTask(taskId, buildBruteMateResultJson());
+    await confirmBruteMateHandoff(taskId);
+    const listingBrief = {
+      schema: "listing-creation-brief.v1" as const,
+      coreSellingPoint: "强调带盖 SoftSip 吸管的日常饮用体验",
+      targetAudience: "通勤与日常随身携带的人群",
+      useScenario: "通勤、旅行和办公室补水",
+      differentiation: "突出舒适饮用和日常节奏",
+      contentEmphasis: "功能与使用价值结合表达",
+    };
+    const capturedInputs: Parameters<TaskLinkedAiListingClient>[0][] = [];
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      capturedInputs.push(input);
+      return {
+        title: "BrüMate Rise 18oz Silicone Water Bottle with Covered Straw",
+        bullets: [
+          "Leakproof SoftSip straw keeps every sip easy, comfortable for daily hydration.",
+          "Silicone construction and 18oz capacity, practical size for on-the-go use.",
+          "red color option, matches your style preference.",
+        ],
+        description: "BrüMate Rise 18oz water bottle pairs a covered SoftSip straw with silicone construction for everyday hydration. The leakproof design suits commuting and travel. Available in red.",
+        backendSearchTerms: [],
+        usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
+        humanReviewRequired: true,
+      };
+    });
+    try {
+      const preview = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655440716",
+        expectedStorageVersion: preview.gate.storageVersion!,
+        expectedHandoffRevision: 1,
+        listingBrief,
+      });
+
+      expect(capturedInputs).toHaveLength(1);
+      const captured = capturedInputs[0]!;
+      expect(captured.listingBrief).toEqual(listingBrief);
+      expect(captured.keywordBrief).toBeNull();
+      expect(captured.facts.map((fact) => fact.value)).not.toContain(listingBrief.coreSellingPoint);
+      expect(result.listingSaved).toBe(true);
+      expect(result.draft?.draftKind).toBe("ai_optimized_listing");
+      expect(result.draft?.titles[0]).not.toBe("Brand: BrüMate");
+      expect(result.draft?.bullets.some((bullet) => /SoftSip/i.test(bullet) && /comfortable|practical/i.test(bullet))).toBe(true);
+      expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
+  });
+
+  it("R1.8 timeout fallback keeps marketing guidance isolated, passes Claim and Quality, and clears all SEO terms without a keyword brief", async () => {
+    const taskId = "sandbox_task_v2216_r18_timeout";
+    seedTask(taskId, buildBruteMateResultJson());
+    await confirmBruteMateHandoff(taskId);
+    const listingBrief = {
+      schema: "listing-creation-brief.v1" as const,
+      coreSellingPoint: "轻便易携带，适合日常携带",
+      targetAudience: "旅行用户、通勤用户、户外用户",
+      useScenario: "旅行、办公室、日常饮水",
+      differentiation: "柔软材质设计，更方便携带和收纳",
+      contentEmphasis: "便携性、使用体验、日常场景",
+    };
+    let captured: Parameters<TaskLinkedAiListingClient>[0] | null = null;
+    setTaskLinkedAiListingClientForTests(async (input) => {
+      captured = input;
+      throw { code: "ai_timeout", message: "timed out" };
+    });
+    try {
+      const preview = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655440718",
+        expectedStorageVersion: preview.gate.storageVersion!,
+        expectedHandoffRevision: preview.gate.currentHandoff!.currentRevision,
+        listingBrief,
+      });
+
+      const capturedInput = captured as Parameters<TaskLinkedAiListingClient>[0] | null;
+      expect(capturedInput?.listingBrief).toEqual(listingBrief);
+      expect(capturedInput?.facts.map((fact) => fact.value)).not.toContain(listingBrief.coreSellingPoint);
+      expect(result.listingSaved).toBe(true);
+      expect(result.draft?.providerAttempted).toBe(true);
+      expect(result.draft?.providerSucceeded).toBe(false);
+      expect(result.draft?.fallbackApplied).toBe(true);
+      expect(result.draft?.draftKind).toBe("structured_listing_draft");
+      expect(result.draft?.keywords).toEqual([]);
+      expect(result.draft?.backendSearchTerms).toEqual([]);
+      expect(result.draft?.bullets).not.toContain("red");
+      expect(result.draft?.bullets).not.toContain("18oz");
+      expect(result.draft?.bullets).not.toContain("Silicone");
+      expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
+
+      const handoff = preview.gate.currentHandoff!;
+      const version = handoff.versions[handoff.versions.length - 1]!;
+      const input = buildListingInputFromCreativeHandoff(handoff, version.sourceResearch.researchRevision);
+      expect(input.ok).toBe(true);
+      if (!input.ok || !result.draft) return;
+      const savedDraft: AiListingPackDraft = {
+        source: "deterministic_composition_v1",
+        version: 1,
+        generatedAt: NOW,
+        model: "deterministic-composition",
+        humanReviewRequired: true,
+        titles: result.draft.titles,
+        bullets: result.draft.bullets,
+        description: result.draft.description ?? "",
+        keywords: result.draft.keywords,
+        sellingPoints: result.draft.sellingPoints,
+        riskNotes: result.draft.riskNotes,
+        complianceWarnings: [],
+        blockedClaims: [],
+        reviewChecklist: [],
+      };
+      const evidence = verifyListingClaims(savedDraft, input.input);
+      expect(listingClaimsHaveEvidence(evidence), JSON.stringify(evidence.unsupportedClaims)).toBe(true);
+      const quality = validateListingQuality({
+        titles: result.draft.titles,
+        bullets: result.draft.bullets,
+        description: result.draft.description ?? "",
+        backendSearchTerms: result.draft.backendSearchTerms ?? [],
+        planQuality: "optimized",
+      });
+      expect(quality.ok).toBe(true);
     } finally {
       setTaskLinkedAiListingClientForTests(null);
     }

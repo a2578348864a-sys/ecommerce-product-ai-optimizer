@@ -222,6 +222,47 @@ describe("Claim Evidence Mapping — 文案调整", () => {
   });
 });
 
+describe("R3 confirmed facts 自然组合", () => {
+  const brumateInput = baseInput({
+    productFacts: [
+      { field: "brand", label: "品牌", value: "BrüMate" },
+      { field: "series_or_model", label: "系列/型号", value: "Rise" },
+      { field: "product_type", label: "商品类型", value: "Water Bottle" },
+      { field: "capacity", label: "容量", value: "18oz" },
+      { field: "material", label: "材质", value: "Silicone" },
+      { field: "color_or_variant", label: "颜色/款式", value: "Red" },
+      {
+        field: "functional_feature",
+        label: "功能特性",
+        value: "Leakproof SoftSip silicone straw with covered cap",
+      },
+    ],
+  });
+
+  it("多个 confirmed facts 与事实原文短语自然组合 → PASS", () => {
+    const result = verifyListingClaims(baseDraft({
+      titles: ["BrüMate Rise Water Bottle 18oz with SoftSip Silicone Straw, Red"],
+    }), brumateInput);
+    expect(result.unsupportedClaims).toEqual([]);
+  });
+
+  it("事实组合后追加未确认兼容性 → FAIL", () => {
+    const result = verifyListingClaims(baseDraft({
+      titles: ["BrüMate Rise Water Bottle 18oz with SoftSip Silicone Straw, Red"],
+      bullets: ["Fits most cup holders"],
+    }), brumateInput);
+    expect(result.unsupportedClaims.some((claim) => claim.reason === "unsupported_compatibility_claim")).toBe(true);
+  });
+
+  it("事实组合后追加未确认性能 → FAIL", () => {
+    const result = verifyListingClaims(baseDraft({
+      titles: ["BrüMate Rise Water Bottle 18oz with SoftSip Silicone Straw, Red"],
+      bullets: ["Easy to squeeze with a spill-resistant drinking experience"],
+    }), brumateInput);
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+  });
+});
+
 /** 纯函数性质 */
 describe("Claim Evidence Mapping — 纯函数性质", () => {
   it("PF1. 同输入同输出（确定性）", () => {

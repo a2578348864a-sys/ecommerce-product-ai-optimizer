@@ -12,6 +12,7 @@ import {
   parseProductCreativeHandoff,
   type ProductCreativeHandoffV1,
   type ProductCreativeHandoffCandidate,
+  type ProductCreativeHandoffConfirmedFact,
 } from "@/lib/productCreativeHandoff";
 import {
   appendRequestLedgerEntry,
@@ -139,6 +140,48 @@ function resolveConfirmSelectionIds(
 function buildConfirmationReference(requestKeyHash: string, confirmedAt: string): string {
   const digest = createHash("sha256").update(`confirmation-ref:v1:${requestKeyHash}:${confirmedAt}`, "utf8").digest("hex");
   return `confirm:${digest.slice(0, 32)}`;
+}
+
+function normalizedFactValue(value: string | number | boolean | string[]): string {
+  return String(value).normalize("NFC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+
+/**
+ * 已确认事实是追加式事实账本：新版本继承旧事实，只允许补充尚未占用的 canonical field。
+ * 同一 field 的来源候选与人工输入不得同时成为真值；同值重放不新增，不同值 fail-closed。
+ */
+export function mergeConfirmedProductFacts(input: {
+  existing: ProductCreativeHandoffConfirmedFact[];
+  selected: ProductCreativeHandoffConfirmedFact[];
+  manual: ProductCreativeHandoffConfirmedFact[];
+}): ProductCreativeHandoffConfirmedFact[] {
+  const selectedFields = new Set(input.selected.map((fact) => fact.field));
+  const crossSourceConflict = input.manual.find((fact) => selectedFields.has(fact.field));
+  if (crossSourceConflict) {
+    throw new CreativeHandoffPersistenceError(
+      "confirmed_fact_conflict",
+      409,
+      "同一商品事实存在来源候选与人工填写两个值，请选择一个后再确认。",
+    );
+  }
+
+  const merged = [...input.existing];
+  const byField = new Map(merged.map((fact) => [fact.field, fact]));
+  for (const fact of [...input.selected, ...input.manual]) {
+    const existing = byField.get(fact.field);
+    if (!existing) {
+      merged.push(fact);
+      byField.set(fact.field, fact);
+      continue;
+    }
+    if (normalizedFactValue(existing.value) === normalizedFactValue(fact.value)) continue;
+    throw new CreativeHandoffPersistenceError(
+      "confirmed_fact_conflict",
+      409,
+      `“${existing.label}”已有确认值，请保留一个真实值后再提交。`,
+    );
+  }
+  return merged;
 }
 
 function readLedgerRaw(result: Readonly<Record<string, unknown>>): unknown {
@@ -330,10 +373,11 @@ export async function createOrAppendCreativeHandoff(
       const existingConfirmedFacts = currentHandoff && currentHandoff.versions.length > 0
         ? currentHandoff.versions[currentHandoff.versions.length - 1].confirmedFacts
         : [];
-      const hasNewConfirmed = conversion.confirmedFacts.length > 0 || manualConfirmed.length > 0;
-      const effectiveConfirmed = hasNewConfirmed
-        ? [...conversion.confirmedFacts, ...manualConfirmed]
-        : existingConfirmedFacts;
+      const effectiveConfirmed = mergeConfirmedProductFacts({
+        existing: existingConfirmedFacts,
+        selected: conversion.confirmedFacts,
+        manual: manualConfirmed,
+      });
       // 跨层排他：无论新确认或继承，stable 必须剔除 confirmed 已占用的 field
       const confirmedFieldSet = new Set(effectiveConfirmed.map((f) => f.field));
       const finalCandidate: ProductCreativeHandoffCandidate = {

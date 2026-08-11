@@ -6,8 +6,11 @@ import { mutateTaskResultJson, TaskResultJsonMutationError, type TaskResultJsonS
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import {
   buildListingInputFromCreativeHandoff,
+  computeListingGenerationFingerprint,
   LISTING_COMPOSER_VERSION,
 } from "@/lib/listingHandoff/listingGenerationInput";
+import { withListingBrief, type ListingBrief } from "@/lib/listingHandoff/listingBrief";
+import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus, isHandoffListedDraftShape, type ListingHandoffBindingV1, type ListingStatus } from "@/lib/listingHandoff/listingBinding";
 import type { MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
@@ -34,6 +37,8 @@ export type ListingGenerateInput = {
   requestId: string;
   expectedStorageVersion: TaskResultJsonStorageVersionHash;
   expectedHandoffRevision: number;
+  /** Request-scoped marketing direction; never persisted as a Creative Handoff fact. */
+  listingBrief?: ListingBrief | null;
 };
 
 export type ListingDraftSafeSummary = {
@@ -51,6 +56,8 @@ export type ListingDraftSafeSummary = {
   backendSearchTerms?: string[];
   /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
   backendTermWarnings?: string[];
+  /** Draft-level audit metadata, not per-claim citations. */
+  usedFactIds?: string[];
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
   qualityIssues?: string[];
   providerAttempted?: boolean;
@@ -114,6 +121,26 @@ function safeInt(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) ? value : null;
 }
 
+/** Keyword Brief 是 SEO 输入，不是事实来源；最终草稿中的每个 keyword 仍须能通过正式 Claim Evidence。 */
+function filterKeywordsByClaimEvidence(keywords: string[], generationInput: ListingGenerationInput): string[] {
+  return keywords.filter((keyword) => listingClaimsHaveEvidence(verifyListingClaims({
+    source: "deterministic_composition_v1",
+    version: 1,
+    generatedAt: "1970-01-01T00:00:00.000Z",
+    model: "claim-evidence-keyword-filter",
+    humanReviewRequired: true,
+    titles: [],
+    bullets: [],
+    description: "",
+    keywords: [keyword],
+    sellingPoints: [],
+    riskNotes: [],
+    complianceWarnings: [],
+    blockedClaims: [],
+    reviewChecklist: [],
+  }, generationInput)));
+}
+
 /** 从草稿提取安全摘要（不含事实原始对象/内部引用） */
 export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
@@ -134,6 +161,9 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
       : undefined,
     backendTermWarnings: Array.isArray(value.backendTermWarnings)
       ? value.backendTermWarnings.filter((item): item is string => typeof item === "string").slice(0, 10)
+      : undefined,
+    usedFactIds: Array.isArray(value.usedFactIds)
+      ? value.usedFactIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 50)
       : undefined,
     draftKind: value.draftKind === "ai_optimized_listing" || value.draftKind === "structured_listing_draft" || value.draftKind === "safe_fact_draft"
       ? value.draftKind
@@ -229,7 +259,8 @@ export async function generateListingDraftFromHandoff(
   if (!buildResult.ok) {
     throw new ListingHandoffError(buildResult.code, 422, buildResult.message);
   }
-  const generationInput = buildResult.input;
+  const generationInput = withListingBrief(buildResult.input, input.listingBrief);
+  const generationInputFingerprint = computeListingGenerationFingerprint(generationInput);
 
   // ── 阶段B：Composition first（锁外，不持锁，不调用 Provider）──
   const generatedAt = new Date().toISOString();
@@ -257,7 +288,7 @@ export async function generateListingDraftFromHandoff(
   if (existingBindingRawA !== undefined) {
     const existingA = parseListingHandoffBinding(existingBindingRawA);
     if (existingA && existingA.requestIdHash === sha256(input.requestId)) {
-      if (existingA.generationInputFingerprint === buildResult.generationInputFingerprint) {
+      if (existingA.generationInputFingerprint === generationInputFingerprint) {
         idempotentPrefetchHit = true;
       } else {
         throw new ListingHandoffError("listing_idempotency_conflict", 409, "相同请求标识内容不一致。");
@@ -275,7 +306,7 @@ export async function generateListingDraftFromHandoff(
     sourceHandoffRevision: handoffA.currentRevision,
     sourceHandoffFingerprint: handoffA.versions[handoffA.versions.length - 1].handoffFingerprint,
     sourceResearchRevision: researchRevision,
-    generationInputFingerprint: buildResult.generationInputFingerprint,
+    generationInputFingerprint,
     generatedAt,
     model: LISTING_COMPOSER_VERSION,
     requestId: input.requestId,
@@ -338,6 +369,9 @@ export async function generateListingDraftFromHandoff(
 
       // Quality.1（锁内）：读 keyword brief → readiness → plan → 决定草稿类型
       const keywordBrief = parseListingKeywordBrief(current.listingKeywordBrief);
+      const withoutKeywordOptimization = (draft: Record<string, unknown>): Record<string, unknown> => keywordBrief
+        ? draft
+        : { ...draft, keywords: [], backendSearchTerms: [] };
       const readiness = buildListingReadiness({
         confirmedFacts: handoffC.versions[handoffC.versions.length - 1].confirmedFacts,
         listingEligibleFacts: generationInput.productFacts.length,
@@ -347,13 +381,78 @@ export async function generateListingDraftFromHandoff(
       const plan = buildListingPlan(generationInput, keywordBrief);
       const copyReady = readiness.copyReady && plan.planQuality === "optimized";
       const keywordReady = readiness.keywordReady;
-      let finalDraft: Record<string, unknown>;
+      let finalDraft: Record<string, unknown> = safeDraft;
       let draftKind: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft" = "safe_fact_draft";
       let qualityIssues: string[] = [];
       let providerAttempted = false;
       let providerSucceeded = false;
       let fallbackApplied = false;
       let fallbackReason: string | null = null;
+      let fallbackReasonCode: "listing_claims_unsupported" | "provider_failed" | "listing_output_invalid" | null = null;
+
+      const applyStructuredFallback = (publicReason: string, reasonCode: typeof fallbackReasonCode, issue: string) => {
+        const optimized = composeOptimizedListingDraft(generationInput, plan, keywordBrief);
+        // R3：structured fallback 与 AI 成功路径同规则——keywords 必须通过正式 Claim Evidence；
+        // 无证据的 brief 词（如 primaryKeyword "insulated water bottle"）不得进入最终草稿。
+        const optimizedKeywords = filterKeywordsByClaimEvidence(optimized.keywords, generationInput);
+        // composeOptimizedTitle 只把 primaryKeyword 并入标题；primaryKeyword 无证据时标题
+        // 回退为不并入 keyword 的组合（避免无证据词进标题且超长）。
+        const primaryKeyword = keywordBrief ? plan.primaryKeyword : null;
+        const primaryHasEvidence = !primaryKeyword
+          || filterKeywordsByClaimEvidence([primaryKeyword], generationInput).length === 1;
+        const optimizedTitles = primaryHasEvidence
+          ? optimized.titles
+          : composeOptimizedListingDraft(generationInput, plan, null).titles;
+        const optimizedDraft = {
+          ...safeDraft,
+          titles: optimizedTitles,
+          bullets: optimized.bullets,
+          description: optimized.description,
+          keywords: optimizedKeywords,
+          backendSearchTerms: optimized.backendSearchTerms,
+          riskNotes: ["结构化草稿基于已确认事实生成；所有表述仍需人工复核。"],
+          reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
+        };
+        const optimizedSchema = validateAiListingPackDraft(optimizedDraft);
+        const optimizedFiltered = optimizedSchema.ok
+          ? filterListingClaims(optimizedSchema.data, {
+              prohibitedClaims: generationInput.prohibitedClaims,
+              customClaimLabel: "Handoff prohibited claim",
+            })
+          : null;
+        const optimizedEvidence = optimizedFiltered
+          ? verifyListingClaims(optimizedFiltered.cleaned, generationInput)
+          : null;
+        const optimizedQuality = optimizedFiltered
+          ? validateListingQuality({
+              titles: optimizedFiltered.cleaned.titles,
+              bullets: optimizedFiltered.cleaned.bullets,
+              description: optimizedFiltered.cleaned.description,
+              backendSearchTerms: optimized.backendSearchTerms,
+              planQuality: "optimized",
+            })
+          : null;
+
+        fallbackApplied = true;
+        fallbackReason = publicReason;
+        fallbackReasonCode = reasonCode;
+        if (optimizedSchema.ok && optimizedFiltered && optimizedEvidence && optimizedQuality
+          && listingClaimsHaveEvidence(optimizedEvidence) && optimizedQuality.ok) {
+          draftKind = "structured_listing_draft";
+          finalDraft = withoutKeywordOptimization({ ...optimizedFiltered.cleaned });
+          qualityIssues = [issue];
+          return;
+        }
+
+        draftKind = "safe_fact_draft";
+        finalDraft = withoutKeywordOptimization({ ...safeDraft });
+        qualityIssues = [
+          issue,
+          ...(!optimizedSchema.ok ? ["结构化回退未通过 schema 校验"] : []),
+          ...(optimizedEvidence && !listingClaimsHaveEvidence(optimizedEvidence) ? ["结构化回退未通过 Claim Evidence"] : []),
+          ...(optimizedQuality?.issues.map((item) => item.message) ?? []),
+        ];
+      };
 
       if (copyReady) {
         // Quality.2（v2.2.14）：copyReady=true 即允许真实 AI 正文优化；
@@ -369,6 +468,7 @@ export async function generateListingDraftFromHandoff(
           })),
           plan,
           keywordBrief,
+          listingBrief: generationInput.listingBrief ?? null,
           prohibitedClaims: generationInput.prohibitedClaims,
         };
         const aiResult = await generateTaskLinkedAiListing(aiInput);
@@ -392,20 +492,15 @@ export async function generateListingDraftFromHandoff(
             ...(plan.primaryKeyword ? [plan.primaryKeyword] : []),
             ...(keywordBrief?.supportingKeywords ?? []),
           ].filter(Boolean);
-          // v2.2.14：无 Keyword Brief 时 keywords 回退到已确认事实值（保证 schema 非空，
-          // 且不引入 AI 自造关键词）
-          const fallbackKeywords = aiKeywords.length > 0
-            ? aiKeywords
-            : generationInput.productFacts.map((f) => f.value).filter(Boolean).slice(0, 12);
+          // 无 Keyword Brief 时正文可继续生成，但不能从 confirmed facts 自动制造 SEO 关键词。
+          const fallbackKeywords = filterKeywordsByClaimEvidence(aiKeywords, generationInput);
           const aiDraft = {
             ...safeDraft,
             titles: [aiResult.data.title],
             bullets: aiResult.data.bullets,
             description: aiResult.data.description,
             keywords: fallbackKeywords,
-            ...(safeBackendTerms.length > 0
-              ? { backendSearchTerms: safeBackendTerms }
-              : {}),
+            backendSearchTerms: safeBackendTerms,
             model: "real-ai-provider",
             source: "real_ai_draft",
             riskNotes: keywordBrief
@@ -429,7 +524,10 @@ export async function generateListingDraftFromHandoff(
             prohibitedClaims: generationInput.prohibitedClaims,
             customClaimLabel: "Handoff prohibited claim",
           }) : null;
-          const aiQuality = aiFiltered
+          const aiEvidence = aiFiltered
+            ? verifyListingClaims(aiFiltered.cleaned, generationInput)
+            : null;
+          const aiQuality = aiFiltered && aiEvidence && listingClaimsHaveEvidence(aiEvidence)
             ? validateListingQuality({
                 titles: aiFiltered.cleaned.titles,
                 bullets: aiFiltered.cleaned.bullets,
@@ -438,59 +536,40 @@ export async function generateListingDraftFromHandoff(
                 planQuality: "optimized",
               })
             : null;
-          if (aiSchema.ok && aiFiltered && aiQuality?.ok) {
+          if (aiSchema.ok && aiFiltered && aiEvidence && listingClaimsHaveEvidence(aiEvidence) && aiQuality?.ok) {
             // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
+            draftKind = "ai_optimized_listing";
             finalDraft = {
               ...aiFiltered.cleaned,
               draftKind,
+              usedFactIds: aiResult.data.usedFactIds,
               usedKeywordIds: aiDraft.usedKeywordIds,
               ...(aiDraft.backendTermWarnings ? { backendTermWarnings: aiDraft.backendTermWarnings } : {}),
             };
             providerSucceeded = true;
-            draftKind = "ai_optimized_listing";
           } else {
-            // AI 输出未通过 Schema/Claim/Quality → 不保存为 optimized
-            fallbackApplied = true;
-            fallbackReason = aiQuality && !aiQuality.ok
-              ? aiQuality.issues.map((i) => i.message).join("；")
-              : aiSchema.ok ? "AI 输出未通过 Claim Evidence/质量校验" : "AI 输出 schema 无效";
-            finalDraft = { ...safeDraft };
-            qualityIssues = fallbackReason ? [fallbackReason] : [];
+            const claimFailed = Boolean(aiEvidence && !listingClaimsHaveEvidence(aiEvidence));
+            applyStructuredFallback(
+              claimFailed
+                ? "AI 文案包含未经确认的信息，已保留安全草稿。"
+                : "AI 文案未通过结构或质量校验，已保留安全草稿。",
+              claimFailed ? "listing_claims_unsupported" : "listing_output_invalid",
+              claimFailed ? "AI 最终草稿未通过 Claim Evidence" : "AI 最终草稿未通过 Schema/Quality",
+            );
           }
         } else {
-          // Provider 失败 → 结构化草稿回退（deterministic，未做 SEO 优化）
-          draftKind = "structured_listing_draft";
-          const optimized = composeOptimizedListingDraft(generationInput, plan, keywordBrief);
-          const optimizedDraft = {
-            ...safeDraft,
-            titles: optimized.titles,
-            bullets: optimized.bullets,
-            description: optimized.description,
-            keywords: optimized.keywords,
-            ...(optimized.backendSearchTerms.length > 0 ? { backendSearchTerms: optimized.backendSearchTerms } : {}),
-            riskNotes: ["结构化草稿基于已确认事实生成；未进行搜索词优化。"],
-            reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
-          };
-          const quality = validateListingQuality({
-            titles: optimized.titles,
-            bullets: optimized.bullets,
-            description: optimized.description,
-            backendSearchTerms: optimized.backendSearchTerms,
-            planQuality: "optimized",
-          });
-          if (quality.ok) {
-            finalDraft = optimizedDraft;
-            fallbackApplied = true;
-            fallbackReason = aiResult.error.message;
-            qualityIssues = [aiResult.error.message];
-          } else {
-            finalDraft = { ...safeDraft };
-            draftKind = "safe_fact_draft";
-            qualityIssues = quality.issues.map((i) => i.message);
-          }
+          // ai_schema_invalid = AI 输出不合规（含未知字段），不是 Provider 服务故障；
+          // 保留 schema 拒绝的具体原因，避免把"输出不合规"误报为"服务不可用"。
+          applyStructuredFallback(
+            aiResult.error.code === "ai_schema_invalid"
+              ? "AI 文案未通过结构校验，已保留安全草稿。"
+              : "AI 服务暂时不可用，已保留安全草稿。",
+            aiResult.error.code === "ai_schema_invalid" ? "listing_output_invalid" : "provider_failed",
+            aiResult.error.message,
+          );
         }
       } else {
-        finalDraft = { ...safeDraft };
+        finalDraft = withoutKeywordOptimization({ ...safeDraft });
         qualityIssues = readiness.missingForQuality;
       }
 
@@ -501,6 +580,7 @@ export async function generateListingDraftFromHandoff(
         providerSucceeded,
         fallbackApplied,
         fallbackReason,
+        ...(fallbackReasonCode ? { fallbackReasonCode } : {}),
         qualityIssues: qualityIssues.slice(0, 10),
         savedAt: binding.generatedAt,
         savedBy: "owner" as const,
@@ -529,7 +609,7 @@ export async function generateListingDraftFromHandoff(
     idempotentReplay: result.value.idempotentReplay,
     listingSaved: !result.value.idempotentReplay,
     draft: savedDraft,
-    safeFallbackApplied: false,
+    safeFallbackApplied: savedDraft?.fallbackApplied === true,
     handoffState: { controlState: handoffA.controlState, stale: false },
   };
 }

@@ -107,6 +107,50 @@ describe("existing Visitor product downstream quota contract", () => {
     expect(mocks.releaseDemoProductJourney).not.toHaveBeenCalled();
   });
 
+  it("forwards a valid listing brief separately and rejects unsupported claims before generation", async () => {
+    mocks.generateListingDraftFromHandoff.mockResolvedValue({
+      listingStatus: "generated",
+      currentHandoffRevision: 2,
+      sourceHandoffRevision: 2,
+      idempotentReplay: false,
+      safeFallbackApplied: false,
+      draft: { title: "Safe listing" },
+    });
+    const { POST } = await import("@/app/api/tasks/[id]/listing-handoff/route");
+    const accepted = await POST(visitorRequest(`/api/tasks/${taskId}/listing-handoff`, {
+      requestId,
+      expectedStorageVersion,
+      expectedHandoffRevision: 2,
+      confirmed: true,
+      listingBrief: {
+        coreSellingPoint: "Covered straw for everyday carrying",
+        targetAudience: "commuters",
+      },
+    }) as never, { params: Promise.resolve({ id: taskId }) });
+
+    expect(accepted.status).toBe(200);
+    expect(mocks.generateListingDraftFromHandoff).toHaveBeenCalledWith(taskId, expect.anything(), expect.objectContaining({
+      listingBrief: {
+        schema: "listing-creation-brief.v1",
+        coreSellingPoint: "Covered straw for everyday carrying",
+        targetAudience: "commuters",
+      },
+    }));
+
+    vi.clearAllMocks();
+    const rejected = await POST(visitorRequest(`/api/tasks/${taskId}/listing-handoff`, {
+      requestId,
+      expectedStorageVersion,
+      expectedHandoffRevision: 2,
+      confirmed: true,
+      listingBrief: { coreSellingPoint: "The best guaranteed bottle" },
+    }) as never, { params: Promise.resolve({ id: taskId }) });
+
+    expect(rejected.status).toBe(400);
+    await expect(rejected.json()).resolves.toMatchObject({ error: { code: "listing_brief_unsupported_claim" } });
+    expect(mocks.generateListingDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
   it("allows Image for an existing product without reserving another product slot", async () => {
     mocks.generateImageDraftFromHandoff.mockResolvedValue({
       imageStatus: "generated",

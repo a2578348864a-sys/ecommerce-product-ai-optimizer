@@ -24,6 +24,7 @@ import { callAiJson, type AiCallDiagnostics } from "@/lib/server/aiClient";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
 
 export type TaskLinkedAiListingErrorCode =
   | "ai_timeout"
@@ -49,6 +50,7 @@ export type TaskLinkedAiListingClient = (input: {
   facts: Array<{ factId: string; field: string; label: string; value: string }>;
   plan: ListingPlan;
   keywordBrief: ListingKeywordBrief | null;
+  listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
 }) => Promise<unknown>;
 
@@ -80,6 +82,7 @@ function buildTaskLinkedAiPrompt(input: {
   facts: Array<{ factId: string; field: string; label: string; value: string }>;
   plan: ListingPlan;
   keywordBrief: ListingKeywordBrief | null;
+  listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
 }): string {
   const allowedFactIds = new Set(input.facts.map((f) => f.factId));
@@ -98,6 +101,7 @@ function buildTaskLinkedAiPrompt(input: {
     "",
     "RULES:",
     "- Only confirmed facts may be stated as product facts. Every attribute value must be one of the exact confirmed values.",
+    "- LISTING_CREATION_BRIEF is optional marketing guidance, not a confirmed product fact. Use it only for emphasis, ordering, audience framing and tone; never turn it into a product attribute, certification, performance, safety or guarantee claim.",
     "- Each bullet MUST be based on at least one factId from the provided facts and express Feature → shopper relevance.",
     "- Produce 3 to 5 bullets. Do not just repeat the title or print field labels (do not write 'Brand: Owala').",
     "- Title: clear, readable, no keyword stuffing, no unconfirmed attributes.",
@@ -134,6 +138,9 @@ function buildTaskLinkedAiPrompt(input: {
       backendSearchTerms: input.keywordBrief?.backendSearchTerms ?? [],
     }),
     "LISTING_PLAN_END",
+    "LISTING_CREATION_BRIEF_START",
+    JSON.stringify(input.listingBrief),
+    "LISTING_CREATION_BRIEF_END",
     "PROHIBITED_CLAIMS_START",
     JSON.stringify(input.prohibitedClaims),
     "PROHIBITED_CLAIMS_END",
@@ -144,6 +151,7 @@ async function callDefaultTaskLinkedAiClient(input: {
   facts: Array<{ factId: string; field: string; label: string; value: string }>;
   plan: ListingPlan;
   keywordBrief: ListingKeywordBrief | null;
+  listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
 }): Promise<unknown> {
   const result = await callAiJson<unknown>({
@@ -214,6 +222,7 @@ export async function generateTaskLinkedAiListing(input: {
   facts: Array<{ factId: string; field: string; label: string; value: string }>;
   plan: ListingPlan;
   keywordBrief: ListingKeywordBrief | null;
+  listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
 }): Promise<TaskLinkedAiListingResult> {
   const client = injectedTaskLinkedClient || callDefaultTaskLinkedAiClient;

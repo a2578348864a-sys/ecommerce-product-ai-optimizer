@@ -246,13 +246,17 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
   const identity = ["brand", "series_or_model", "product_type"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
   const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
   let lead = identity.join(" ");
-  // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置
+  // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置。
+  // R3：无确认事实证据的 keyword（如 "insulated water bottle" 中 insulated）不得并入标题——
+  // 否则标题超长且含未确认声明，structured fallback 会因此整体降级。
   if (plan.primaryKeyword) {
     const keyword = plan.primaryKeyword;
     const keywordTokens = keyword.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
     const leadTokens = lead.toLocaleLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const factValues = input.productFacts.map((f) => f.value.toLocaleLowerCase()).join(" ");
+    const keywordCoveredByFacts = keywordTokens.length > 0 && keywordTokens.every((w) => factValues.includes(w));
     const alreadyCovered = keywordTokens.every((w) => leadTokens.includes(w));
-    if (!alreadyCovered && lead.length + keyword.length <= 110) {
+    if (keywordCoveredByFacts && !alreadyCovered && lead.length + keyword.length <= 110) {
       lead = lead ? `${lead} ${keyword}` : keyword;
     } else if (lead.length === 0) {
       lead = keyword;
@@ -274,14 +278,10 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
   for (const bp of plan.bulletPlans) {
     const values = planFactValues(input, bp.featureFactIds);
     if (values.length === 0) continue;
-    const feature = values.join(" · ");
-    // v2.2.14：短值（如单色）扩展为完整句式，避免被质量校验判为属性碎片；
-    // 仅围绕已确认事实值表达，不创造新能力。
-    if (feature.split(/\s+/).filter(Boolean).length < 2) {
-      bullets.push(`${feature}款式，${bp.shopperAngle}。`);
-    } else {
-      bullets.push(`${feature}，${bp.shopperAngle}。`);
-    }
+    // 受 Claim Evidence 约束的 fallback 只能使用确认事实和冻结的中性表达。
+    // 不把 plan 的 shopperAngle 当作商品事实，也不把单一规格留成属性碎片。
+    const feature = values.join("，");
+    bullets.push(`${feature}，适合日常使用的实用选择。`);
   }
   return bullets.slice(0, 5);
 }
@@ -292,20 +292,20 @@ function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPla
  * 句2：关键功能事实。
  * 句3：使用场景/买方价值（评估性，非虚构性能）。
  */
-function composeOptimizedDescription(input: ListingGenerationInput, plan: ListingPlan): string {
+function composeOptimizedDescription(input: ListingGenerationInput): string {
   const identity = ["brand", "series_or_model", "product_type"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
-  const functional = plan.bulletPlans
-    .flatMap((bp) => planFactValues(input, bp.featureFactIds))
+  const functional = input.productFacts
+    .filter((fact) => ["functional_feature", "operation", "drinking_mechanism", "insulation", "lid_behavior", "usage", "care", "cleaning", "construction", "compatibility", "included_components"].includes(fact.field))
+    .map((fact) => fact.value.trim())
     .filter((v, i, arr) => arr.indexOf(v) === i);
   const specs = ["capacity", "material", "color_or_variant"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
 
   const sentences: string[] = [];
   const identityText = identity.join(" ") || "商品";
-  sentences.push(`${identityText}，适合日常使用。`);
-  if (functional.length > 0) sentences.push(`关键特性包括${functional.slice(0, 3).join("、")}。`);
-  if (specs.length > 0) sentences.push(`规格：${specs.slice(0, 4).join("、")}。`);
-  if (plan.primaryKeyword) sentences.push(`适合搜索“${plan.primaryKeyword}”的用户。`);
-  return sentences.slice(0, 4).join("");
+  sentences.push(`${identityText}，适合日常使用的实用选择。`);
+  if (functional.length > 0) sentences.push(...functional.slice(0, 3));
+  if (specs.length > 0) sentences.push(specs.slice(0, 4).join("，"));
+  return sentences.slice(0, 4).map((sentence) => `${sentence}。`).join("");
 }
 
 /**
@@ -317,10 +317,8 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
   backendSearchTerms: string[];
 } {
   if (!brief) {
-    // 无 brief：退回基础组合（但标记 keywordReady=false 由调用方处理）
-    const values = new Set<string>();
-    for (const f of input.productFacts) values.add(f.value);
-    return { keywords: Array.from(values).slice(0, 12), backendSearchTerms: [] };
+    // 无 Keyword Brief：正文可以由确认事实生成，但 SEO 词必须保持为空，不能从 facts 自动拆词。
+    return { keywords: [], backendSearchTerms: [] };
   }
   const keywords: string[] = [];
   if (brief.primaryKeyword) keywords.push(brief.primaryKeyword);
@@ -344,7 +342,7 @@ export function composeOptimizedListingDraft(
 ): OptimizedListingDraft {
   const title = composeOptimizedTitle(input, plan);
   const bullets = composeOptimizedBullets(input, plan);
-  const description = composeOptimizedDescription(input, plan);
+  const description = composeOptimizedDescription(input);
   const { keywords, backendSearchTerms } = composeOptimizedKeywords(input, brief);
   return { titles: [title], bullets, description, keywords, backendSearchTerms };
 }

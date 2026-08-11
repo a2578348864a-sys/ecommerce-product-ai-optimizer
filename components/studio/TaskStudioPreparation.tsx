@@ -248,13 +248,15 @@ export function TaskStudioPreparation({
             <span className="rounded-full bg-white px-2.5 py-1">最终人工复核：必须</span>
           </div>
         </section>
-        {listingFactsMissing ? (
+        {kind === "listing" ? (
           <section className="surface-card mb-4 border-amber-200 bg-amber-50/70 p-4" data-testid="task-listing-facts-missing">
             <p className="text-sm font-bold text-amber-900">
-              当前研究记录缺少可用于 Listing 的商品事实。
+              {listingFactsMissing
+                ? "当前研究记录缺少可用于 Listing 的商品事实。"
+                : "你可以继续补充已经核实的商品事实。"}
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              可直接在下方确认来源资料中的商品事实候选，或返回研究记录查看来源。
+              系统已有事实不会阻止你继续补充尺寸、重量、使用、兼容性等真实信息。
             </p>
             <ListingFactSupplementPanel
               taskId={taskId}
@@ -262,6 +264,7 @@ export function TaskStudioPreparation({
               create={api.create}
               refresh={api.refresh}
               onCommitted={onCommitted}
+              existingFacts={detail.confirmedFacts ?? []}
             />
             <div className="mt-3 flex flex-wrap gap-2">
               <Link

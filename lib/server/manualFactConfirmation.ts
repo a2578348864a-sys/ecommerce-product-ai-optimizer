@@ -22,6 +22,8 @@ export const MANUAL_FACT_FIELDS = Object.freeze({
   series_or_model: "系列/型号",
   material: "材质",
   capacity: "容量",
+  dimensions: "商品尺寸",
+  weight: "商品重量",
   color_or_variant: "颜色/款式",
   quantity_or_pack_size: "数量/包装",
   functional_feature: "功能特性",

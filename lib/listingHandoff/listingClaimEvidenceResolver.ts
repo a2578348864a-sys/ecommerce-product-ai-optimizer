@@ -137,6 +137,11 @@ function normalizeUnitSpacing(value: string): string {
   return value.replace(/(\d)\s+(cm|mm|m|kg|g|ml|l|w|v|hz|ah|mah|inch|寸)/gi, "$1$2");
 }
 
+/** 正则字面转义（剥离循环用词边界正则匹配证据原文） */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ─── 冻结中性文案允许集（第九节 B）──────────────────────────
 
 const NEUTRAL_COPY_ALLOWLIST = Object.freeze([
@@ -180,8 +185,8 @@ const HIGH_RISK_CATEGORY_PATTERNS: Array<{ category: ClaimReasonCode; pattern: R
   { category: "unsupported_material_claim", pattern: /(?:复合材料|环保(?:型|材料)?|航空级|工程级|医用级|食品级|军用级|工业级|高品质|reinforced|环保材质|混合材质|材质升级)/i },
   { category: "unsupported_dimension_claim", pattern: /(?:加大型|加长|超大|超小|超轻|超重|轻量化|compact\s*size|extra\s*long|lightweight|更大|更小|更轻|加宽|加高)/i },
   { category: "unsupported_certification_claim", pattern: /(?:认证|certified|approved|compliant|符合.*标准|标准认证|品质认证|安全认证|meets\s*industry\s*standards)/i },
-  { category: "unsupported_compatibility_claim", pattern: /(?:兼容|适配|适用于|通用|所有型号|works\s*with|compatible\s*with|广泛适配|universally\s*compatible|适配主流)/i },
-  { category: "unsupported_performance_claim", pattern: /(?:高强度|超耐用|经久耐用|持久耐用|防摔|防水|防尘|防刮|抗冲击|heavy\s*duty|enhanced\s*durability|superior\s*performance|更耐用|耐用|经久使用|更快|更强|更持久|提升|性能)/i },
+  { category: "unsupported_compatibility_claim", pattern: /(?:兼容|适配|适用于|通用|所有型号|workswith|compatiblewith|广泛适配|universallycompatible|适配主流|fits?(?:most)?cupholders?|cupholdercompatible)/i },
+  { category: "unsupported_performance_claim", pattern: /(?:高强度|超耐用|经久耐用|持久耐用|防摔|防水|防尘|防刮|抗冲击|heavyduty|enhanceddurability|superiorperformance|更耐用|耐用|经久使用|更快|更强|更持久|提升|性能|easytosqueeze|spill-?resistant|comfortablegrip)/i },
   { category: "unsupported_origin_claim", pattern: /(?:制造|made\s*in|原装进口|imported\s*quality|locally\s*made|美国制造|德国制造|日本制造|中国制造|进口)/i },
   { category: "unsupported_effect_claim", pattern: /(?:百分百有效|guaranteed\s*effective|绝对有效|健康效果|治疗效果|保护效果|安全保证|100\s*percent\s*effective|guaranteed\s*results)/i },
   { category: "unsupported_absolute_claim", pattern: /(?:永久|永不|绝不|不会损坏|100%|guaranteed|never\s*fails|绝对可靠|绝对安全|always)/i },
@@ -235,6 +240,28 @@ function segmentContainsEvidenceValue(segment: string, entries: EvidenceEntry[])
     if (normalized.includes(entry.normalizedValue)) return entry;
   }
   return null;
+}
+
+/**
+ * 从已确认的长文本事实中提取“原文连续短语”，只用于多事实自然组合。
+ * 这里不做同义词、营销词或语义推断；输出必须逐字来自 confirmed evidence。
+ */
+function confirmedContentFragments(entries: EvidenceEntry[]): string[] {
+  const fragments = new Set<string>();
+  for (const entry of entries) {
+    if (!["other", "performance"].includes(entry.factType) || entry.normalizedValue.length < 20) continue;
+    const tokens = entry.normalizedValue.match(/[\p{L}\p{N}]+/gu) ?? [];
+    const maxWindow = Math.min(tokens.length, 6);
+    // 窗口含 1（单 token 原文词）："covered SoftSip straw" 等原文短语的词序
+    // 可能与窗口切片不一致，须允许逐字单词剥离；仍只来自 confirmed evidence。
+    for (let size = 1; size <= maxWindow; size += 1) {
+      for (let start = 0; start + size <= tokens.length; start += 1) {
+        const fragment = normalizeText(tokens.slice(start, start + size).join(" "));
+        if (compactText(fragment).length >= (size === 1 ? 5 : 8)) fragments.add(fragment);
+      }
+    }
+  }
+  return [...fragments].sort((a, b) => b.length - a.length);
 }
 
 /** 段中的事实值数量（含重复）——用于检测"合法事实 + 非法修饰混合" */
@@ -457,7 +484,44 @@ export function verifyListingClaims(
         // 7) 有事实值且无高风险词 → 段中剩余部分须为：其他已确认事实值（多事实组合）/
         //    中性集成员 / 普通连接词，否则拒绝（合法事实 + 未允许文案 = 拒绝）
         if (evidenceEntry) {
-          const rest = compactText(segment).replace(compactText(evidenceEntry.normalizedValue), "");
+          // 在空格归一文本上剥离，避免词边界歧义（compact 后无空格会破坏词边界）；
+          // 单位空格（20 cm）先归一，使剥离值与证据值一致。
+          let rest = normalizeUnitSpacing(normalizeText(segment));
+          const contentEntries = entries.filter((entry) => ["other", "performance"].includes(entry.factType) && entry.normalizedValue.length >= 20);
+          // 先剥离完整长事实，再处理其中的逐字连续短语，最后剥离短字段事实。
+          // 这样既不会拆碎完整长事实，也不会先删掉 material 后破坏 "SoftSip Silicone Straw" 之类原文短语。
+          for (const exactValue of contentEntries
+            .map((entry) => entry.normalizedValue)
+            .filter(Boolean)
+            .sort((a, b) => b.length - a.length)) {
+            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
+          }
+          // 保护 allow 词后再剥离 fragments：单 token 片段（如长事实中的 every）不得拆坏
+          // allow 词（every ⊆ everyday）。剥离完成后还原。
+          const protectedWords: string[] = [];
+          rest = rest.replace(
+            /\b(everyday|hydration|practical|construction|available|preference|capacity|matches|on-the-go)\b/gi,
+            (match) => {
+              protectedWords.push(match);
+              return ` __P${protectedWords.length - 1}__ `;
+            },
+          );
+          // 该步骤不允许同义改写或 Brief 派生词。
+          // 词边界替换：防止单 token 片段（如 every）拆坏 allow 词（如 everyday）。
+          for (const fragment of confirmedContentFragments(entries)) {
+            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(fragment)}(?![\\p{L}\\p{N}])`, "gi"), "");
+          }
+          protectedWords.forEach((word, i) => {
+            rest = rest.replaceAll(`__P${i}__`, word);
+          });
+          for (const exactValue of entries
+            .filter((entry) => !contentEntries.includes(entry))
+            .map((entry) => entry.normalizedValue)
+            .filter(Boolean)
+            .sort((a, b) => b.length - a.length)) {
+            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
+          }
+          rest = compactText(rest);
           // 剩余部分允许：其他 confirmed 事实值（组合事实，含部分重叠如 Bottle ⊆ Water Bottle）、
           // 中性词、字段词/连接词/介词
           const otherEvidenceValues = entries
@@ -474,7 +538,7 @@ export function verifyListingClaims(
           }
           const restAllowed = restCleaned.length === 0
             || NEUTRAL_COPY_ALLOWLIST.some((p) => restCleaned.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|in|of|for|with|and|the|a|an)+$/i.test(restCleaned);
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an)+$/i.test(restCleaned);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;

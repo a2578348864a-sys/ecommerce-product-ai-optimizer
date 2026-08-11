@@ -106,7 +106,9 @@ export type CreativeHandoffPreview = {
 export type HandoffDetailConfirmedFact = {
   field: string;
   label: string;
+  value: string;
   usageScopes: string[];
+  sourceKind: "candidate_snapshot" | "seller_sprite_snapshot" | "research_result" | "user_confirmation";
 };
 
 export type HandoffDetailVersion = {

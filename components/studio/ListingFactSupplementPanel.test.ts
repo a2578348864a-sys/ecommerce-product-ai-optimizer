@@ -37,9 +37,15 @@ describe("ListingFactSupplementPanel", () => {
       create: async () => ({}),
       refresh: async () => ({}),
       onCommitted: undefined,
+      existingFacts: [
+        { field: "brand", label: "品牌", value: "Owala", usageScopes: ["listing"], sourceKind: "candidate_snapshot" },
+        { field: "capacity", label: "容量", value: "24 oz", usageScopes: ["listing"], sourceKind: "candidate_snapshot" },
+      ],
     }));
 
-    expect(html).toContain("补充并确认商品事实");
+    expect(html).toContain("商品事实");
+    expect(html).toContain("补充商品事实");
+    expect(html).toContain("这里填写的是你已经核实过的商品真实信息");
     expect(html).toContain("来自商品标题/来源资料，需人工核实");
     expect(html).toContain("Water Bottle");
     expect(html).toContain("Stainless Steel");
@@ -47,7 +53,11 @@ describe("ListingFactSupplementPanel", () => {
     // market_signal 候选（category / price_usd）不进入可勾选列表
     expect(html).not.toContain("Sports & Outdoors");
     expect(html).not.toContain("29.99");
-    expect(html).toContain("我已核实以上勾选/填写的信息，可用于 Listing 草稿。");
+    expect(html).toContain("我已核对，这是商品真实信息");
+    // 有来源候选时，人工填写仍与候选并存，而不是二选一。
+    expect(html).toContain("人工填写已核实事实");
+    expect(html).toContain("可补充商品尺寸");
+    expect(html).toContain("可补充商品重量");
   });
 
   it("无候选时显示手工补充输入（不必全部填写）", () => {
@@ -57,6 +67,7 @@ describe("ListingFactSupplementPanel", () => {
       create: async () => ({}),
       refresh: async () => ({}),
       onCommitted: undefined,
+      existingFacts: [],
     }));
 
     expect(html).toContain("当前来源资料没有可直接核实的商品事实候选");
@@ -65,6 +76,6 @@ describe("ListingFactSupplementPanel", () => {
     for (const label of ["品牌", "商品类型", "系列/型号", "材质", "容量", "颜色/款式", "数量/包装", "其他确定商品事实"]) {
       expect(html).toContain(label);
     }
-    expect(html).toContain("我已核实以上勾选/填写的信息，可用于 Listing 草稿。");
+    expect(html).toContain("我已核对，这是商品真实信息");
   });
 });

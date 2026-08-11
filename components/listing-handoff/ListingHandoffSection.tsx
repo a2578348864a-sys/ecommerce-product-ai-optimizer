@@ -74,6 +74,22 @@ type GenerateResponse = {
 
 type ApiError = { status: number; code: string; message: string };
 
+type ListingBriefForm = {
+  coreSellingPoint: string;
+  targetAudience: string;
+  useScenario: string;
+  differentiation: string;
+  contentEmphasis: string;
+};
+
+const EMPTY_LISTING_BRIEF: ListingBriefForm = {
+  coreSellingPoint: "",
+  targetAudience: "",
+  useScenario: "",
+  differentiation: "",
+  contentEmphasis: "",
+};
+
 const BTN_CLASS =
   "mt-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:focus-visible:ring-0";
 const BTN_SECONDARY_CLASS =
@@ -112,6 +128,7 @@ export function ListingHandoffSection({
   const [submitting, setSubmitting] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
+  const [listingBrief, setListingBrief] = useState<ListingBriefForm>(EMPTY_LISTING_BRIEF);
   const [factSummary, setFactSummary] = useState({
     confirmedFacts: 0,
     listingEligibleFacts: 0,
@@ -179,6 +196,13 @@ export function ListingHandoffSection({
     void load();
   }, [load]);
 
+  const updateListingBrief = useCallback((field: keyof ListingBriefForm, value: string) => {
+    setListingBrief((current) => ({ ...current, [field]: value }));
+    // The idempotency key binds all generation semantics, including this brief.
+    setRequestId(null);
+    setRetryBody(null);
+  }, []);
+
   const generate = useCallback(async () => {
     if (submitting || handoffRevision === null || !canGenerate) return;
     const nextRequestId = requestId ?? createBrowserUuid();
@@ -202,11 +226,13 @@ export function ListingHandoffSection({
       setNotice({ tone: "error", text: "无法获取最新存储版本，请刷新后重试。" });
       return;
     }
+    const hasListingBrief = Object.values(listingBrief).some((value) => value.trim().length > 0);
     const body = {
       requestId: nextRequestId,
       expectedStorageVersion: effectiveSv,
       expectedHandoffRevision: handoffRevision,
       confirmed: true,
+      ...(hasListingBrief ? { listingBrief } : {}),
     };
     setSubmitting(true);
     try {
@@ -264,7 +290,7 @@ export function ListingHandoffSection({
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted]);
+  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, listingBrief]);
 
   const retrySameRequest = useCallback(async () => {
     if (!retryBody || !requestId || submitting) return;
@@ -505,6 +531,35 @@ export function ListingHandoffSection({
             ) : null}
           </div>
         )}
+        {status !== null && status !== "legacy_unbound" ? (
+          <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="listing-creation-brief">
+            <legend className="px-1 text-sm font-bold text-slate-800">商品创作补充（可选）</legend>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              用于帮助AI理解营销方向，不代表已验证商品事实。不会写入已确认事实，也不会放宽 Claim Safety。
+            </p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {([
+                ["coreSellingPoint", "核心卖点", "例如：希望重点表达带盖吸管的日常使用体验", 300],
+                ["targetAudience", "目标用户", "例如：通勤和日常随身携带的人群", 200],
+                ["useScenario", "使用场景", "例如：通勤、旅行、办公室补水", 200],
+                ["differentiation", "差异化优势", "例如：希望突出与同类水杯不同的表达方向", 300],
+                ["contentEmphasis", "内容强调方向", "例如：优先强调舒适饮用和日常节奏", 300],
+              ] as const).map(([field, label, placeholder, maxLength]) => (
+                <label key={field} className="grid gap-1 text-xs font-semibold text-slate-700">
+                  {label}
+                  <textarea
+                    value={listingBrief[field]}
+                    onChange={(event) => updateListingBrief(field, event.target.value)}
+                    placeholder={placeholder}
+                    maxLength={maxLength}
+                    rows={2}
+                    className="min-h-16 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm font-normal text-slate-800 outline-none placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
         {status === null ? (
           <p aria-busy="true">加载中…</p>
         ) : status === "legacy_unbound" ? (

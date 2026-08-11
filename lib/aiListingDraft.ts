@@ -25,6 +25,8 @@ export type AiListingPackDraft = {
   backendSearchTerms?: string[];
   /** Quality.1：草稿类型（optimized_listing / safe_fact_draft），UI 据此区分展示 */
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
+  /** Optional draft-level audit trail; validated server-side before persistence. */
+  usedFactIds?: string[];
   sellingPoints: string[];
   riskNotes: string[];
   complianceWarnings: string[];
@@ -127,8 +129,9 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
   if (!titles) return fail("AI Listing draft titles must contain 1-3 items.");
   const bullets = checkArray("bullets", input.bullets, 1, 5);
   if (!bullets) return fail("AI Listing draft bullets must contain 1-5 items.");
-  const keywords = checkArray("keywords", input.keywords, 1, 12);
-  if (!keywords) return fail("AI Listing draft keywords must contain 1-12 items.");
+  // 无 Keyword Brief 时正文仍可生成，但不得凭确认事实自动制造 SEO 关键词。
+  const keywords = checkArray("keywords", input.keywords, 0, 12);
+  if (!keywords) return fail("AI Listing draft keywords must be an array with at most 12 items.");
   const sellingPoints = checkArray("sellingPoints", input.sellingPoints, 1, 6);
   if (!sellingPoints) return fail("AI Listing draft sellingPoints must contain 1-6 items.");
   const riskNotes = checkArray("riskNotes", input.riskNotes, 1);
@@ -156,6 +159,12 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
       ? input.draftKind
       : null;
   if (draftKind === null) return fail("AI Listing draft draftKind is invalid.");
+  const usedFactIds = input.usedFactIds === undefined
+    ? undefined
+    : checkArray("usedFactIds", input.usedFactIds, 0, 50);
+  if (input.usedFactIds !== undefined && !usedFactIds) {
+    return fail("AI Listing draft usedFactIds must be an array with at most 50 items.");
+  }
 
   const draft: AiListingPackDraft = {
     source: input.source,
@@ -175,6 +184,7 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
     keywords,
     ...(backendSearchTerms ? { backendSearchTerms } : {}),
     ...(draftKind ? { draftKind } : {}),
+    ...(usedFactIds ? { usedFactIds } : {}),
     sellingPoints,
     riskNotes,
     complianceWarnings,

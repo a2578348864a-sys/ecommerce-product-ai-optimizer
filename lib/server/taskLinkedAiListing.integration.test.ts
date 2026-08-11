@@ -138,14 +138,14 @@ async function saveBrief(taskId: string) {
 
 function validAiClient(): TaskLinkedAiListingClient {
   return async () => ({
-    title: "Owala FreeSip Insulated Water Bottle 24 oz Stainless Steel, Blue",
+    title: "Owala FreeSip Water Bottle 24 oz Stainless Steel, Blue",
     bullets: [
-      "Push-open straw lid makes one-handed drinking easy, ideal for everyday carry.",
-      "Double-wall vacuum insulation keeps drinks at temperature for commutes and outings.",
-      "Dishwasher-safe removable parts make cleaning simple and convenient.",
-      "24 oz stainless steel construction suits home, office and travel use.",
+      "straw lid with push-open mechanism",
+      "double-wall vacuum insulation",
+      "dishwasher-safe removable parts",
+      "Owala FreeSip Water Bottle, 24 oz Stainless Steel, Blue",
     ],
-    description: "The Owala FreeSip insulated water bottle combines a push-open straw lid with double-wall vacuum insulation for everyday hydration. The 24 oz stainless steel body and dishwasher-safe parts make it a practical choice for home, office and travel.",
+    description: "Owala FreeSip Water Bottle. straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts。24 oz Stainless Steel, Blue。",
     backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
     usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
     humanReviewRequired: true,
@@ -190,6 +190,7 @@ describe("Quality.2 Task-linked AI integration", () => {
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     expect(result.draft?.providerAttempted).toBe(true);
     expect(result.draft?.providerSucceeded).toBe(true);
+    expect(result.draft?.usedFactIds).toEqual(["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"]);
     expect(result.draft?.bullets.length).toBeGreaterThanOrEqual(3);
     expect((result.draft?.description ?? "").length).toBeGreaterThan(30);
     // F5 幂等：同 requestId 不再调 Provider
@@ -259,6 +260,39 @@ describe("Quality.2 Task-linked AI integration", () => {
     });
     expect(result.draft?.draftKind).toBe("safe_fact_draft");
     expect(result.draft?.fallbackApplied).toBe(true);
+  });
+
+  it("R3：R1.9 真实输出 Schema/Quality 通过但 Claim 失败时，保存 structured fallback", async () => {
+    const taskId = "sandbox-q2-r19-claim-gate";
+    await setupHandoff(taskId, true);
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "Owala FreeSip Water Bottle 24 oz Stainless Steel, Blue",
+      bullets: [
+        "Push-open straw lid makes one-handed drinking easy for everyday carry.",
+        "Double-wall vacuum insulation keeps drinks at temperature for commutes and outings.",
+        "Dishwasher-safe removable parts make cleaning simple and convenient.",
+        "24 oz stainless steel construction fits most cup holders.",
+      ],
+      description: "The Owala FreeSip bottle offers a spill-resistant drinking experience and is easy to carry and store.",
+      backendSearchTerms: [],
+      usedFactIds: ["brand", "product_type", "capacity", "material", "functional_feature", "construction", "care"],
+      humanReviewRequired: true,
+    }));
+
+    const p = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
+      requestId: "550e8400-e29b-41d4-a716-446655440899",
+      expectedStorageVersion: p.gate.storageVersion!,
+      expectedHandoffRevision: p.gate.currentHandoff!.currentRevision,
+    });
+
+    expect(result.draft?.draftKind).toBe("structured_listing_draft");
+    expect(result.draft?.providerAttempted).toBe(true);
+    expect(result.draft?.providerSucceeded).toBe(false);
+    expect(result.draft?.fallbackApplied).toBe(true);
+    expect(result.draft?.fallbackReason).toBe("AI 文案包含未经确认的信息，已保留安全草稿。");
+    expect(result.draft?.titles.join(" ")).not.toContain("fits most cup holders");
+    expect(result.draft?.bullets.join(" ")).not.toContain("spill-resistant");
   });
 });
 

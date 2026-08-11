@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ProductCreativeHandoffV1 } from "@/lib/productCreativeHandoff";
+import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
 
 /**
  * PR2-2: 从当前有效 Creative Handoff 构造安全 Listing 生成输入。
@@ -31,6 +32,8 @@ export type ListingGenerationInput = {
   humanReviewRequired: true;
   researchMode: "market_research_only";
   promotionEligible: false;
+  /** Request-scoped marketing direction. Never part of confirmed product facts. */
+  listingBrief?: ListingBrief;
 };
 
 export const LISTING_COMPOSER_VERSION = "listing-composer-v1" as const;

@@ -97,6 +97,26 @@ describe("confirmManualProductFacts", () => {
     expect(isManualFactField("price_usd")).toBe(false);
     expect(isManualFactField("resultJson")).toBe(false);
   });
+
+  it("R3 支持尺寸与重量，并保持 human_confirmed 来源合同", () => {
+    const out = confirmManualProductFacts({
+      facts: [
+        { field: "dimensions" as never, value: "10 × 3 in" },
+        { field: "weight" as never, value: "12 oz" },
+      ],
+      actor,
+      confirmedAt: CONFIRMED_AT,
+      confirmationReference: REF,
+      candidateId: "candidate-1",
+    });
+    expect(out.rejected).toEqual([]);
+    expect(out.confirmedFacts.map((fact) => fact.field)).toEqual(["dimensions", "weight"]);
+    for (const fact of out.confirmedFacts) {
+      expect(fact.evidenceTier).toBe("human_confirmed");
+      expect(fact.sourceRef.sourceKind).toBe("user_confirmation");
+      expect(fact.usageScopes).toContain("listing");
+    }
+  });
 });
 
 describe("other 字段边界", () => {
