@@ -127,11 +127,13 @@ function assertIsolatedRuntimePaths({
   demoAccessStorePath,
   smokeParentRoot,
 }) {
-  if (!isAbsolute(databasePath)) throw new Error("local_database_path_absolute_required");
-  if (!isAbsolute(demoAccessStorePath)) throw new Error("local_demo_access_store_path_absolute_required");
+  // UNC 前缀先于 isAbsolute 检查：UNC 路径在任何平台都是网络路径，必须拒绝
+  // （Linux 的 isAbsolute("\\\\server\\share") 为 false，会先抛绝对路径错误）
   if (databasePath.startsWith("\\\\") || demoAccessStorePath.startsWith("\\\\")) {
     throw new Error("local_isolated_network_path_forbidden");
   }
+  if (!isAbsolute(databasePath)) throw new Error("local_database_path_absolute_required");
+  if (!isAbsolute(demoAccessStorePath)) throw new Error("local_demo_access_store_path_absolute_required");
   if (![".db", ".sqlite"].includes(extname(databasePath).toLowerCase())) {
     throw new Error("local_database_extension_invalid");
   }

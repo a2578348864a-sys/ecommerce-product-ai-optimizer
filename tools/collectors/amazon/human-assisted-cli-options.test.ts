@@ -25,6 +25,7 @@ describe("human-assisted CLI options", () => {
   });
 
   it("parses the authorized five-sample run without changing the output directory", () => {
+    const cwd = resolve(process.cwd(), "evidence-root");
     const options = parseHumanAssistedCliArguments([
       "node",
       "human-assisted-cli.mjs",
@@ -32,10 +33,10 @@ describe("human-assisted CLI options", () => {
       "evidence\\run.json",
       "--max-samples",
       "5",
-    ], "C:\\safe");
+    ], cwd);
 
     expect(options).toEqual({
-      outputFile: "C:\\safe\\evidence\\run.json",
+      outputFile: resolve(cwd, "evidence", "run.json"),
       maxSamples: 5,
     });
   });
