@@ -33,7 +33,7 @@ describe("V2.1.2 确认逻辑：factCategory 决定 usageScopes", () => {
     const brand = stableFact({ field: "brand", label: "品牌", value: "Owala", factCategory: "product_fact" });
     const candidates = buildConfirmableCandidates([brand]);
     expect(candidates).toHaveLength(1);
-    expect(candidates[0].allowedUsageScopes).toEqual(["internal", "listing"]);
+    expect(candidates[0].allowedUsageScopes).toEqual(["internal", "listing", "image"]);
 
     const result = confirmSelectedProductFacts({
       stableSourceFacts: [brand],
@@ -80,8 +80,8 @@ describe("V2.1.2 确认逻辑：factCategory 决定 usageScopes", () => {
     const legacy = stableFact({ field: "brand", label: "品牌", value: "Owala", factCategory: undefined });
     const candidates = buildConfirmableCandidates([legacy]);
     expect(candidates).toHaveLength(1);
-    // 旧数据无分类 → 默认 internal + listing（兼容既有确认流程），但 Listing 输入层仍有硬排除
-    expect(candidates[0].allowedUsageScopes).toEqual(["internal", "listing"]);
+    // 旧数据无分类 → 默认 internal + listing + image（兼容既有确认流程），但 Listing 输入层仍有硬排除
+    expect(candidates[0].allowedUsageScopes).toEqual(["internal", "listing", "image"]);
   });
 });
 

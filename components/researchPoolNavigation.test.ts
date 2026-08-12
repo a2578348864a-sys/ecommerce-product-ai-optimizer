@@ -9,7 +9,7 @@ function source(path: string) {
 describe("research-pool navigation convergence", () => {
   it("routes the sidebar Product Research entry to the persistent pool", () => {
     const sidebar = source("components/WorkspaceSidebar.tsx");
-    expect(sidebar).toContain('{ label: "商品研究池", href: "/opportunity-candidates"');
+    expect(sidebar).toContain('{ label: "待研究商品", href: "/opportunity-candidates"');
   });
 
   it("loads the home Candidate count from the authenticated server API", () => {

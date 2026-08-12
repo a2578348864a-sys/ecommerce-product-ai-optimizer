@@ -53,6 +53,14 @@ vi.mock("@/lib/server/opportunityCandidateService", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/projectMaterialsRoot", () => ({
+  resolveProjectMaterialsRoot: () => ({
+    status: "ready" as const,
+    projectMaterialsRoot: "C:/test/materials-root",
+    source: "runtime_config" as const,
+  }),
+}));
+
 vi.mock("@/lib/server/db", () => ({
   prisma: {
     $transaction: mocks.transaction,
@@ -376,7 +384,7 @@ describe("POST /api/opportunity-candidates/from-market-screening", () => {
     expect(body.ok).toBe(true);
     expect(body.item).toMatchObject({ id: "candidate-existing", name: PRODUCT_NAME });
     const url = new URL(body.href, "http://localhost:3000");
-    expect(url.pathname).toBe("/agent/run");
+    expect(url.pathname).toBe("/opportunity-candidates/candidate-existing");
     expect(url.searchParams.get("source")).toBe("opportunity");
     expect(url.searchParams.get("candidateId")).toBe("candidate-existing");
     expect([...url.searchParams.keys()].sort()).toEqual(["candidateId", "source"]);

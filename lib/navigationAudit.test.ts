@@ -19,8 +19,23 @@ function extractNavLabels(source: string): string[] {
   return labels;
 }
 
+function extractItemLabels(source: string): string[] {
+  // workspaceNavGroups 内 items 数组中的 label（排除分组级 label）
+  const labels: string[] = [];
+  const itemsRegex = /items:\s*\[\s*([\s\S]*?)\s*\],?\s*(?:\}|\] as const)/g;
+  let itemsMatch: RegExpExecArray | null;
+  while ((itemsMatch = itemsRegex.exec(source)) !== null) {
+    const labelRegex = /label:\s*"([^"]+)"/g;
+    let labelMatch: RegExpExecArray | null;
+    while ((labelMatch = labelRegex.exec(itemsMatch[1])) !== null) {
+      labels.push(labelMatch[1]);
+    }
+  }
+  return labels;
+}
+
 function extractConstBlock(source: string, constName: string): string {
-  const match = source.match(new RegExp(`const ${constName} = \\[[\\s\\S]*?\\] as const;`));
+  const match = source.match(new RegExp(`const ${constName}[^=]*= \\[[\\s\\S]*?\\] as const;`));
   return match?.[0] || "";
 }
 
@@ -28,22 +43,24 @@ function extractConstBlock(source: string, constName: string): string {
 
 describe("WorkspaceSidebar navigation", () => {
   const sidebarSource = readComponentSource("components/WorkspaceSidebar.tsx");
+  // 当前权威结构：workspaceNavGroups（分组 + items），workspaceNavItems 为派生 flatMap
+  const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavGroups");
+  const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
 
   it("exposes the four product-level destinations in the primary navigation", () => {
-    const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
-    const mainLabels = extractNavLabels(mainNavBlock);
+    const mainLabels = extractItemLabels(mainNavBlock);
     expect(mainLabels).toEqual([
       "工作台",
       "发现商品",
-      "商品研究池",
+      "待研究商品",
       "研究历史",
+      "Listing Studio",
+      "Image Studio",
     ]);
     expect(mainNavBlock).toMatch(/href:\s*"\/"/);
     expect(mainNavBlock).toMatch(/\/opportunities/);
     expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
     expect(mainNavBlock).toMatch(/\/tasks/);
-    expect(mainNavBlock).not.toMatch(/\/listing-studio/);
-    expect(mainNavBlock).not.toMatch(/\/image-studio/);
     expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
   });
 
@@ -80,9 +97,7 @@ describe("WorkspaceSidebar navigation", () => {
   });
 
   it("shows /opportunity-candidates as the primary product research destination", () => {
-    const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavItems");
-    const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
-    expect(mainNavBlock).toMatch(/商品研究/);
+    expect(mainNavBlock).toMatch(/待研究商品/);
     expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
     expect(advancedBlock).not.toMatch(/\/opportunity-candidates/);
   });
@@ -202,11 +217,11 @@ describe("HomeDashboardClient navigation", () => {
   });
 
   it("shows the five-stage user workflow and primary routes", () => {
-    const workflowStepsSection = homeSource.match(/workflowSteps[\s\S]*?\] as const/);
+    const workflowStepsSection = homeSource.match(/homeWorkflowSteps[\s\S]*?\] as const/);
     expect(workflowStepsSection?.[0]).toMatch(/发现商品/);
     expect(workflowStepsSection?.[0]).toMatch(/商品研究/);
     expect(workflowStepsSection?.[0]).toMatch(/人工决策/);
-    expect(workflowStepsSection?.[0]).toMatch(/创作交接/);
+    expect(workflowStepsSection?.[0]).toMatch(/创作资料/);
     expect(workflowStepsSection?.[0]).toMatch(/内容草稿/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunities"/);
     expect(workflowStepsSection?.[0]).toMatch(/href:\s*"\/opportunity-candidates"/);
@@ -220,7 +235,7 @@ describe("HomeDashboardClient navigation", () => {
 
   it("does not show old direction entries as primary CTAs", () => {
     // Home page should not have 能力路线图 or 辅助中心 as main CTAs
-    const workflowStepsSection = homeSource.match(/workflowSteps[\s\S]*?\] as const/);
+    const workflowStepsSection = homeSource.match(/homeWorkflowSteps[\s\S]*?\] as const/);
     if (workflowStepsSection) {
       expect(workflowStepsSection[0]).not.toMatch(/能力路线图/);
       expect(workflowStepsSection[0]).not.toMatch(/辅助中心/);
@@ -286,20 +301,17 @@ describe("TaskRecordsList operational positioning", () => {
 
   it("describes the route as product research history", () => {
     expect(tasksSource).toMatch(/研究历史/);
-    expect(tasksSource).toMatch(/按商品查看已经完成的研究、创作准备和人工结论/);
-    expect(tasksSource).toMatch(/最终决定始终由你确认/);
+    expect(tasksSource).toMatch(/按商品查看已保存的研究结论、风险、证据缺口和人工决定/);
+    expect(tasksSource).toMatch(/下一步：/);
   });
 
   it("shows product-facing fields and keeps operational evidence collapsed", () => {
     expect(tasksSource).toMatch(/deriveProductResearchPresentation/);
-    expect(tasksSource).toMatch(/当前阶段/);
-    expect(tasksSource).toMatch(/已生成内容/);
+    expect(tasksSource).toMatch(/下一步：/);
     expect(tasksSource).toMatch(/最后更新/);
-    expect(tasksSource).toMatch(/下一步/);
     // Phase1: 卡片级技术字段从用户主流程移除；页面级技术摘要保持默认折叠
     expect(tasksSource).not.toMatch(/内部阶段/);
     expect(tasksSource).not.toMatch(/记录 ID/);
-    expect(tasksSource).toMatch(/内部流水线、风险统计和优先处理建议，默认折叠/);
   });
 });
 
@@ -312,27 +324,25 @@ describe("TaskRecordDetail operation overview", () => {
     expect(detailSource).not.toMatch(/技术信息与原始数据/);
     expect(detailSource).not.toMatch(/完整结果 JSON/);
     expect(detailSource).not.toMatch(/任务状态和后续能力/);
-    // 用户价值内容保留（决策/证据/准备包/输入素材）
+    // 用户价值内容保留（决策/证据/准备包/图片素材需求）
     expect(detailSource).toMatch(/DecisionEvidencePanel/);
     expect(detailSource).toMatch(/来源证据/);
     expect(detailSource).toMatch(/Listing 上架准备包/);
-    expect(detailSource).toMatch(/输入素材/);
+    expect(detailSource).toMatch(/图片素材需求/);
     // New IA: TaskDecisionHero with stage/blocker/review info
     expect(detailSource).toMatch(/TaskDecisionHero/);
     expect(heroSource).toMatch(/当前决策与下一步/);
     expect(heroSource).toMatch(/当前阶段/);
     // 用户进度摘要（当前状态/已完成/还缺/下一步）
-    expect(detailSource).toMatch(/user-progress-summary/);
     expect(detailSource).toMatch(/还缺/);
-    // V2 收口：商品决策报告为聚合主体（AI 判断 / 需人工确认 / 已生成内容 / 下一步）
+    // V2 收口：商品决策报告为聚合主体（AI 总结 / 风险 / 人工决定 / 下一步）
     expect(detailSource).toMatch(/product-decision-report/);
-    expect(detailSource).toMatch(/商品决策报告/);
-    expect(detailSource).toMatch(/AI 判断/);
-    expect(detailSource).toMatch(/需要人工确认/);
-    expect(detailSource).toMatch(/已生成内容/);
-    // 五步骤降为状态导航（推进步骤 + 当前停在说明，非页面主体）
-    expect(detailSource).toMatch(/推进步骤/);
-    expect(detailSource).toMatch(/按需展开步骤操作/);
+    expect(detailSource).toMatch(/研究结论/);
+    expect(detailSource).toMatch(/AI 总结/);
+    expect(detailSource).toMatch(/人工确认/);
+    // 五步骤降为状态导航（工作流步骤 + 默认折叠说明，非页面主体）
+    expect(detailSource).toMatch(/工作流步骤/);
+    expect(detailSource).toMatch(/默认折叠，复核时可按需展开/);
   });
 });
 
@@ -345,8 +355,7 @@ describe("visitor experience copy", () => {
   it("keeps the sandbox isolation message", () => {
     expect(bannerSource).toMatch(/访客体验/);
     expect(bannerSource).not.toMatch(/HR 演示/);
-    expect(bannerSource).toMatch(/正式数据只读/);
-    expect(bannerSource).toMatch(/新增\/修改仅保存到访客沙盒/);
+    expect(bannerSource).toMatch(/已有研究记录仍可查看/);
     expect(loginSource).toMatch(/访客体验/);
     expect(loginSource).not.toMatch(/HR 演示/);
   });

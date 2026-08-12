@@ -56,21 +56,30 @@ describe("进度即时同步（Release Closeout）", () => {
     const listingConflictBody = listing.slice(listingConflictStart, listingConflictEnd);
     expect(listingConflictBody).toContain("void load();");
     expect(listingConflictBody).not.toContain("onCommitted");
-    // Image：onCommitted 只出现在成功写入后（紧跟 void loadState()），错误分支不含
+    // Image：onCommitted 只出现在成功写入后（紧跟 loadState()），错误分支不含
     const image = readComponentSource("components/image-handoff/ImageHandoffSection.tsx");
-    expect(image.indexOf("onCommitted?.();")).toBeGreaterThan(image.indexOf("void loadState();"));
-    expect(image.match(/onCommitted\?\.\(\);/g)?.length ?? 0).toBe(1);
+    const onCommittedMatches = [...image.matchAll(/onCommitted\?\.\(\);/g)];
+    expect(onCommittedMatches.length).toBeGreaterThanOrEqual(1);
+    for (const match of onCommittedMatches) {
+      const before = image.slice(0, match.index);
+      // 成功分支：onCommitted 前必有 loadState（重读服务端）且不在 catch 错误块内
+      const lastLoadState = Math.max(
+        before.lastIndexOf("void loadState();"),
+        before.lastIndexOf("await loadState();"),
+      );
+      const lastCatch = before.lastIndexOf("catch {");
+      expect(lastLoadState).toBeGreaterThan(0);
+      expect(lastLoadState).toBeGreaterThan(lastCatch);
+    }
   });
 
   it("TaskRecordDetail 成功回调重读服务端（以持久化结果为唯一事实源，不手工 patch）", () => {
     const source = readComponentSource("components/TaskRecordDetail.tsx");
-    // 三个步骤组件都绑定 refreshRecord
-    expect(source).toContain("<CreativeHandoffPanel taskId={record.id} onCommitted={() => void refreshRecord()} />");
-    expect(source).toContain("<ListingHandoffSection taskId={record.id} imageMaterialNeeds={imageMaterialNeeds} onCommitted={() => void refreshRecord()} />");
-    expect(source).toContain("<ImageHandoffSection taskId={record.id} onCommitted={() => void refreshRecord()} />");
     // refreshRecord 重新 GET 任务详情；不手工改写 progressSummary / completed / missing
     expect(source).toMatch(/refreshRecord = useCallback/);
     expect(source).toContain("setRecord(data.data)");
+    // 创作状态由服务端 result 派生，不维护第二套前端进度
+    expect(source).toContain("deriveCreativeMaterialStatus(record.result)");
     // 禁止手工 patch 进度文案
     expect(source).not.toMatch(/setProgressSummary|setCompleted\(|setMissing\(/);
   });
@@ -80,8 +89,8 @@ describe("进度即时同步（Release Closeout）", () => {
     expect(dto).toMatch(/creativeHandoffSpec\s*=\s*objectOf\(\{/);
     // 白名单仅存在性信号；绝不投影版本/事实/引用
     expect(dto).toMatch(/creativeHandoff: creativeHandoffSpec/);
-    // 组件层只读投影字段，不做手工状态
+    // 组件层从服务端 result 派生创作状态，不做手工状态
     const detail = readComponentSource("components/TaskRecordDetail.tsx");
-    expect(detail).toContain('"creativeHandoff" in record.result');
+    expect(detail).toContain("deriveCreativeMaterialStatus");
   });
 });

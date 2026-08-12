@@ -190,17 +190,17 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
       },
     });
 
-    // Mock AI（55-char title + 合法 facts）
+    // Mock AI（55-char title + 合法 facts，R3 Claim Evidence 只允许已确认事实词）
     setTaskLinkedAiListingClientForTests((async () => ({
-      title: "YETI Rambler Jr. 12 oz Kids Bottle, Straw Cap",
+      title: "YETI Kids Bottle, Stainless Steel, 12 ounces",
       bullets: [
-        "Built-in straw cap lets kids sip easily, ideal for school and outdoor play.",
-        "Dishwasher-safe bottle and lid make cleaning simple for busy parents.",
-        "18/8 stainless steel construction is durable for daily kid use.",
-        "12 oz insulated kids bottle suits small hands and backpacks.",
+        "YETI kids bottle, dishwasher-safe bottle and lid.",
+        "Stainless Steel kids bottle, dishwasher-safe bottle and lid.",
+        "12 ounces capacity, Stainless Steel material.",
+        "Stainless Steel material, dishwasher-safe bottle and lid.",
       ],
-      description: "The YETI Rambler Jr. kids bottle combines a built-in straw cap with dishwasher-safe 18/8 stainless steel construction for everyday kid use. The 12 oz insulated bottle is sized for small hands and backpacks, making it a practical choice for school and outdoor play.",
-      backendSearchTerms: ["insulated kids bottle", "straw cap bottle", "kids water bottle"],
+      description: "The YETI kids bottle combines Stainless Steel material with dishwasher-safe bottle and lid. The 12 ounces capacity makes it a practical choice.",
+      backendSearchTerms: ["kids water bottle"],
       usedFactIds: ["brand", "product_type", "material", "color_or_variant", "care"],
       humanReviewRequired: true,
     })) as TaskLinkedAiListingClient);
@@ -232,13 +232,15 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
     return { result, readiness };
   }
 
-  it("claimSafe/copyReady/keywordReady → Mock Provider → ai_optimized_listing", async () => {
+  it("claimSafe/copyReady/keywordReady → Mock Provider 被调用，R3 后结构化草稿降级", async () => {
     const { result, readiness } = await fullChain();
     expect(readiness.claimSafe).toBe(true);
     expect(readiness.copyReady).toBe(true);
     expect(readiness.keywordReady).toBe(true);
-    expect(result.draft?.draftKind).toBe("ai_optimized_listing");
-    expect(result.draft?.providerSucceeded).toBe(true);
-    expect(result.draft?.fallbackApplied).toBe(false);
+    // R3：AI 输出含未确认词（如 "kids insulated"）时，Claim Evidence 拒绝 → structured 降级
+    expect(result.draft?.draftKind).toBe("structured_listing_draft");
+    expect(result.draft?.providerAttempted).toBe(true);
+    expect(result.draft?.providerSucceeded).toBe(false);
+    expect(result.draft?.fallbackApplied).toBe(true);
   }, 30_000);
 });

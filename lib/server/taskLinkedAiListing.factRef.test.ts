@@ -135,14 +135,14 @@ async function saveBrief(taskId: string) {
 }
 
 const GENERIC_AI_OUTPUT = {
-  title: "Owala FreeSip Insulated Water Bottle 24 oz Stainless Steel, Blue",
+  title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
   bullets: [
-    "Push-open straw lid makes one-handed drinking easy, ideal for everyday carry.",
-    "Double-wall vacuum insulation keeps drinks at temperature for commutes and outings.",
-    "Dishwasher-safe removable parts make cleaning simple and convenient.",
-    "24 oz stainless steel construction suits home, office and travel use.",
+    "Straw lid with push-open mechanism，适合日常使用的实用选择。",
+    "Stainless Steel 24 oz，适合日常使用的实用选择。",
+    "Double-wall vacuum insulation，适合日常使用的实用选择。",
+    "Dishwasher-safe removable parts，适合日常使用的实用选择。",
   ],
-  description: "The Owala FreeSip insulated water bottle combines a push-open straw lid with double-wall vacuum insulation for everyday hydration. The 24 oz stainless steel body and dishwasher-safe parts make it a practical choice for home, office and travel.",
+  description: "Owala FreeSip water bottle，straw lid with push-open mechanism 和 double-wall vacuum insulation，dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
   backendSearchTerms: ["vacuum flask"],
   humanReviewRequired: true,
 };

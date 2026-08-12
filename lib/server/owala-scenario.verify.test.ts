@@ -747,8 +747,10 @@ describe("Quality.1 CASE B: functional facts + keyword brief → optimized", () 
     });
     expect(result.listingSaved).toBe(true);
     // Quality.2：brief 存在但无 AI client（Provider 不可用）→ providerAttempted + fallback
+    // R3：structured fallback 优先（Claim Evidence 通过则 structured_listing_draft，否则 safe_fact_draft）
     expect(result.draft?.providerAttempted).toBe(true);
     expect(result.draft?.providerSucceeded).toBe(false);
-    expect(result.draft?.draftKind).toBe("safe_fact_draft");
+    expect(result.draft?.fallbackApplied).toBe(true);
+    expect(result.draft?.draftKind).toBe("structured_listing_draft");
   });
 });

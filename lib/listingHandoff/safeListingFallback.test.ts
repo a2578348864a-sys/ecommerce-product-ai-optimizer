@@ -143,19 +143,21 @@ describe("safeListingFallback（安全降级草稿）", () => {
 });
 
 describe("listingGenerationService 安全降级接入", () => {
-  it("7. 服务代码含安全降级分支（AI 被拒 → buildSafeFallbackListingDraft）", () => {
-    expect(serviceSource).toContain("buildSafeFallbackListingDraft");
-    expect(serviceSource).toContain("safeFallbackApplied");
+  it("7. 服务代码含安全降级分支（AI 被拒 → applyStructuredFallback）", () => {
+    expect(serviceSource).toContain("applyStructuredFallback");
+    expect(serviceSource).toContain("fallbackApplied");
+    expect(serviceSource).toContain("safe_fact_draft");
     // 合法 AI 输出路径保留（原样保存）
-    expect(serviceSource).toContain("原样保存");
+    expect(serviceSource).toContain("ai_optimized_listing");
   });
 
   it("8. Provider 失败不降级（throw real_listing_provider_failed 保持）", () => {
     // realListingProvider 在 Provider 失败时抛错（不返回空 draft）
     const providerSource = readFileSync(resolve(process.cwd(), "lib/listingHandoff/realListingProvider.ts"), "utf8");
     expect(providerSource).toContain("real_listing_provider_failed");
-    // 服务层对 rawDraft 为空仍抛 listing_schema_invalid（不调用降级）
-    expect(serviceSource).toContain("if (!idempotentPrefetchHit && !rawDraft)");
+    // 服务层对 AI 输出不合规走 fallback（Provider 服务故障与输出不合规区分）
+    expect(serviceSource).toContain("ai_schema_invalid");
+    expect(serviceSource).toContain("provider_failed");
   });
 
   it("9. Route 返回 safeFallbackApplied（前端提示依据）", () => {
@@ -163,7 +165,7 @@ describe("listingGenerationService 安全降级接入", () => {
   });
 
   it("10. UI 仅一条保守草稿提示，不含内部/Claim 详情", () => {
-    expect(uiSource).toContain("AI输出未通过事实校验，系统已生成保守草稿，请人工完善表达。");
+    expect(uiSource).toContain("AI 优化未通过质量检查，已保留安全基础草稿。");
     // 不显示内部错误、Claim 详情、模型字段或调试信息
     expect(uiSource).not.toContain("unclassified_factual_claim");
     expect(uiSource).not.toContain("reasonCode");

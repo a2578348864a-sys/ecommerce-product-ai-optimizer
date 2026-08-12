@@ -49,6 +49,8 @@ describe("getAccessPassword", () => {
   });
 
   it("两个环境变量都未设置时返回空字符串", () => {
+    vi.stubEnv("ACCESS_PASSWORD", "");
+    vi.stubEnv("APP_ACCESS_PASSWORD", "");
     expect(accessPassword.getAccessPassword()).toBe("");
   });
 });

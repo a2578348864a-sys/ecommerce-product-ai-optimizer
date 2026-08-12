@@ -618,7 +618,7 @@ describe("Service Composition 门禁与锁内双重验证", () => {
 
 describe("UI 状态（第20章 66-75）", () => {
   it("各状态文案", () => {
-    for (const text of ["请先完成创作交接并进行人工确认", "生成 Listing 草稿", "该草稿基于旧交接版本", "对应创作交接已撤回", "历史草稿未绑定可信创作交接", "不得直接发布", "基于最新交接重新生成"]) {
+    for (const text of ["请先补充并确认商品资料", "生成 AI 优化草稿", "基于最新资料重新生成", "创作资料已撤回", "当前草稿只读", "不得直接发布", "重新生成将替换当前草稿"]) {
       expect(uiSource).toContain(text);
     }
   });
@@ -631,9 +631,9 @@ describe("UI 状态（第20章 66-75）", () => {
       "已确认事实：",
       "可用于 Listing：",
       "禁止声明：",
-      "当前研究记录缺少可用于 Listing 的商品事实。",
-      "补充并确认商品事实",
-      "来自商品标题/来源资料，需人工核实",
+      "当前研究记录缺少可用于 Listing 的商品事实",
+      "补充并确认商品资料",
+      "人工补充并确认",
       "返回研究记录查看来源",
       "转为独立创作",
       'href="/listing-studio"',
@@ -651,10 +651,10 @@ describe("UI 状态（第20章 66-75）", () => {
   });
 
   it("409 冲突恢复", () => {
-    expect(uiSource).toContain("交接内容已经更新，请重新生成");
+    expect(uiSource).toContain("handleConflict()");
+    expect(uiSource).toContain("handoff_stale");
     expect(uiSource).toContain("void load()");
   });
-
   it("网络重试复用 requestId", () => {
     expect(uiSource).toContain("重试同一请求");
     expect(uiSource).toContain("setRetryBody");

@@ -7,26 +7,42 @@ function readSource(path: string) {
 }
 
 function arrayBlock(source: string, name: string) {
-  return source.match(new RegExp(`(?:export\\s+)?const\\s+${name}\\s*=\\s*\\[[\\s\\S]*?\\]\\s+as\\s+const;`))?.[0] ?? "";
+  return source.match(new RegExp(`(?:export\\s+)?const\\s+${name}[^=]*=\\s*\\[[\\s\\S]*?\\]\\s+as\\s+const;`))?.[0] ?? "";
 }
 
 function labeledRoutes(block: string) {
-  return [...block.matchAll(/\{\s*label:\s*"([^"]+)",\s*href:\s*"([^"]+)"/g)]
+  return [...block.matchAll(/label:\s*"([^"]+)",\s*href:\s*"([^"]+)"/g)]
     .map((match) => ({ label: match[1], href: match[2] }));
+}
+
+function itemRoutes(block: string) {
+  // workspaceNavGroups 内 items 数组（可能为 ReadonlyArray<SidebarNavItem> 类型标注）
+  const itemsRegex = /items:\s*(?:ReadonlyArray<[^>]+>)?\s*\[\s*([\s\S]*?)\s*\],?\s*(?:\}|\] as const)/g;
+  const out: Array<{ label: string; href: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = itemsRegex.exec(block)) !== null) {
+    for (const mm of m[1].matchAll(/label:\s*"([^"]+)",\s*href:\s*"([^"]+)"/g)) {
+      out.push({ label: mm[1], href: mm[2] });
+    }
+  }
+  return out;
 }
 
 describe("Product Architecture Convergence shell", () => {
   const sidebarSource = readSource("components/WorkspaceSidebar.tsx");
   const homeSource = readSource("components/HomeDashboardClient.tsx");
 
-  it("freezes the four-step primary navigation on the research mainline", () => {
-    const primary = labeledRoutes(arrayBlock(sidebarSource, "workspaceNavItems"));
+  it("freezes the primary navigation on the research mainline", () => {
+    // 当前权威结构：workspaceNavGroups（分组 + items），含研究主链与创作工具
+    const primary = itemRoutes(arrayBlock(sidebarSource, "workspaceNavGroups"));
 
     expect(primary).toEqual([
       { label: "工作台", href: "/" },
       { label: "发现商品", href: "/opportunities" },
-      { label: "商品研究池", href: "/opportunity-candidates" },
+      { label: "待研究商品", href: "/opportunity-candidates" },
       { label: "研究历史", href: "/tasks" },
+      { label: "Listing Studio", href: "/listing-studio" },
+      { label: "Image Studio", href: "/image-studio" },
     ]);
   });
 
@@ -36,8 +52,6 @@ describe("Product Architecture Convergence shell", () => {
     expect(advanced).toEqual([]);
     expect(sidebarSource).toMatch(/const mobileNavItems = workspaceNavItems;/);
     expect(sidebarSource).not.toContain("/workflow/batch");
-    expect(sidebarSource).not.toContain("/listing-studio");
-    expect(sidebarSource).not.toContain("/image-studio");
     expect(sidebarSource).not.toContain("高级 / Alpha");
     expect(sidebarSource).not.toContain("高级临时分析");
   });
@@ -51,19 +65,20 @@ describe("Product Architecture Convergence shell", () => {
   });
 
   it("shows five workflow entrances from discovery to content draft", () => {
-    const journey = arrayBlock(homeSource, "workflowSteps");
+    const journey = arrayBlock(homeSource, "homeWorkflowSteps");
 
     expect(labeledRoutes(journey)).toEqual([
       { label: "发现商品", href: "/opportunities" },
       { label: "商品研究", href: "/opportunity-candidates" },
-      { label: "人工决策", href: "/opportunity-candidates" },
-      { label: "创作交接", href: "/tasks" },
+      { label: "人工决策", href: "/tasks" },
+      { label: "创作资料", href: "/tasks" },
       { label: "内容草稿", href: "/tasks" },
     ]);
 
     for (const cta of [
       "去发现商品",
-      "打开商品研究池",
+      "打开待研究商品",
+      "打开研究历史",
       "在任务详情确认",
       "在任务详情生成",
     ]) {

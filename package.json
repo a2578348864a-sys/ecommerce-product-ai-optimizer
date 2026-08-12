@@ -30,7 +30,8 @@
     "db:predeploy": "node scripts/db/protect-sqlite-db.mjs predeploy",
     "db:postdeploy": "node scripts/db/protect-sqlite-db.mjs postdeploy",
     "check": "npm run lint && npm run test && npm run build",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:project-materials": "node scripts/run-project-materials-tests.mjs"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

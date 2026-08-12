@@ -24,6 +24,7 @@ function importers(fragment: string) {
 describe("task and Visitor Store internal mutation boundaries", () => {
   it("keeps the Visitor Store I/O owner behind the two approved adapters", () => {
     expect(importers("@/lib/server/demoSandboxStore.internal")).toEqual([
+      "lib/server/demoProductJourneyQuota.ts",
       "lib/server/demoSandbox.ts",
       "lib/server/demoSandboxTaskMutation.internal.ts",
     ]);
