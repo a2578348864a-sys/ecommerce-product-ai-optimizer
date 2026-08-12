@@ -19,6 +19,8 @@ vi.hoisted(() => {
   process.env.DEEPSEEK_MODEL = "deepseek-chat";
 });
 
+import { beforeAll, afterAll } from "vitest";
+import { setEnglishRendererForTests } from "@/lib/listingHandoff/listingEnglishRendering";
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
 import { createOrAppendCreativeHandoff } from "@/lib/server/productCreativeHandoffPersistence";
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
@@ -29,6 +31,29 @@ import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirma
 import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
 
+beforeAll(() => {
+  setEnglishRendererForTests(async (fact) => {
+    const HAS_CJK = /[一-鿿]/;
+    if (!HAS_CJK.test(fact.sourceValue)) return fact.sourceValue;
+    const out = fact.sourceValue
+      .replace(/宽口设计/g, "wide-mouth design")
+      .replace(/便于清洁和加冰/g, "easy cleaning and adding ice")
+      .replace(/双层隔热不锈钢结构/g, "double-wall insulated stainless steel construction")
+      .replace(/按键打开上盖/g, "push-button lid opens")
+      .replace(/内置吸管直立吸饮/g, "built-in straw upright sipping")
+      .replace(/提环/g, "carry loop")
+      .replace(/吸嘴/g, "spout")
+      .replace(/内置吸管/g, "built-in straw")
+      .replace(/按钮式上盖/g, "push-button lid")
+      .replace(/可兼作锁扣/g, "doubles as a lock")
+      .replace(/[。；、]/g, ". ")
+      .replace(/；/g, "; ");
+    return out.trim();
+  });
+});
+afterAll(() => {
+  setEnglishRendererForTests(null);
+});
 const NOW = "2026-08-09T19:43:44.103Z";
 const DEMO = "demo-quality2";
 
@@ -138,14 +163,13 @@ async function saveBrief(taskId: string) {
 
 function validAiClient(): TaskLinkedAiListingClient {
   return async () => ({
-    title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
+    title: "Owala Water Bottle",
     bullets: [
-      "Straw lid with push-open mechanism。",
-      "Double-wall vacuum insulation。",
-      "Dishwasher-safe removable parts。",
-      "Stainless Steel 24 oz Water Bottle。",
+      "Straw lid with push-open mechanism.",
+      "Double-wall vacuum insulation.",
+      "Dishwasher-safe removable parts.",
     ],
-    description: "Owala FreeSip Water Bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+    description: "Stainless Steel 24 oz Water Bottle, Blue.",
     backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
     usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
     humanReviewRequired: true,
@@ -267,12 +291,12 @@ describe("Quality.2 Task-linked AI integration", () => {
     const taskId = "sandbox-q2-r19-claim-gate";
     await setupHandoff(taskId, true);
     setTaskLinkedAiListingClientForTests(async () => ({
-      title: "Owala FreeSip Water Bottle 24 oz Stainless Steel, Blue",
+      title: "Owala Water Bottle",
       bullets: [
-        "Straw lid with push-open mechanism。",
-        "Double-wall vacuum insulation。",
-        "Dishwasher-safe removable parts。",
-        "Stainless Steel 24 oz。",
+        "Straw lid with push-open mechanism.",
+        "Double-wall vacuum insulation.",
+        "Dishwasher-safe removable parts.",
+        "Stainless Steel 24 oz.",
       ],
       description: "The Owala FreeSip bottle offers a spill-resistant drinking experience and is easy to carry and store.",
       backendSearchTerms: [],
@@ -337,7 +361,7 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("对抗6：Bullet 只是属性碎片 → Quality Validator 阻断", async () => {
     const result = await generateWithAi("sandbox-q2-adv-frag", async () => ({
-      title: "Owala FreeSip 24 oz Stainless Steel Water Bottle",
+      title: "Owala Water Bottle",
       bullets: ["Owala FreeSip Water Bottle", "Stainless Steel 24 oz", "Blue"],
       description: "The Owala FreeSip bottle for daily use.",
       backendSearchTerms: ["vacuum flask"],
@@ -350,9 +374,9 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("对抗7：Description 复制 Title → Quality Validator 阻断", async () => {
     const result = await generateWithAi("sandbox-q2-adv-desc", async () => ({
-      title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
+      title: "Owala Water Bottle",
       bullets: ["Push-open straw lid makes drinking easy for daily use.", "Double-wall insulation keeps drinks at temperature for commutes.", "Dishwasher-safe parts make cleaning simple and convenient."],
-      description: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
+      description: "Owala Water Bottle",
       backendSearchTerms: ["vacuum flask"],
       usedFactIds: ["brand", "product_type"],
       humanReviewRequired: true,
@@ -390,14 +414,14 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("R1.2 回归：AI 不返回 usedKeywordIds → Schema PASS + 服务器派生 provenance", async () => {
     const result = await generateWithAi("sandbox-q2-r1-2-regress", async () => ({
-      title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
+      title: "Owala Water Bottle",
       bullets: [
-        "Straw lid with push-open mechanism。",
-        "Double-wall vacuum insulation。",
-        "Dishwasher-safe removable parts。",
-        "Stainless Steel 24 oz。",
+        "Straw lid with push-open mechanism.",
+        "Double-wall vacuum insulation.",
+        "Dishwasher-safe removable parts.",
+        "Stainless Steel 24 oz.",
       ],
-      description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+      description: "Stainless Steel 24 oz Water Bottle, Blue.",
       backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
       usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
       humanReviewRequired: true,
@@ -408,14 +432,14 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("R1.4 回归：AI 返回 55 字符 Title → PASS（无 fallback，advisory 不阻断）", async () => {
     const result = await generateWithAi("sandbox-q2-r1-4-regress", async () => ({
-      title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
+      title: "Owala Water Bottle",
       bullets: [
-        "Straw lid with push-open mechanism。",
-        "Double-wall vacuum insulation。",
-        "Dishwasher-safe removable parts。",
-        "Stainless Steel 24 oz。",
+        "Straw lid with push-open mechanism.",
+        "Double-wall vacuum insulation.",
+        "Dishwasher-safe removable parts.",
+        "Stainless Steel 24 oz.",
       ],
-      description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+      description: "Stainless Steel 24 oz Water Bottle, Blue.",
       backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
       usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
       humanReviewRequired: true,
@@ -428,14 +452,14 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("R1.6 回归：无 leakproof fact → 'leakproof tumbler' 被安全过滤，其余保留，仍 ai_optimized_listing", async () => {
     const result = await generateWithAi("sandbox-q2-r1-6-regress", async () => ({
-      title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
+      title: "Owala Water Bottle",
       bullets: [
-        "Straw lid with push-open mechanism。",
-        "Double-wall vacuum insulation。",
-        "Dishwasher-safe removable parts。",
-        "Stainless Steel 24 oz。",
+        "Straw lid with push-open mechanism.",
+        "Double-wall vacuum insulation.",
+        "Dishwasher-safe removable parts.",
+        "Stainless Steel 24 oz.",
       ],
-      description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+      description: "Stainless Steel 24 oz Water Bottle, Blue.",
       backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
       usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
       humanReviewRequired: true,
@@ -459,14 +483,14 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("R1.6：provenance 基于安全过滤后 backend terms（无漏网 id）", async () => {
     const result = await generateWithAi("sandbox-q2-r1-6-prov", async () => ({
-      title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
+      title: "Owala Water Bottle",
       bullets: [
-        "Straw lid with push-open mechanism。",
-        "Double-wall vacuum insulation。",
-        "Dishwasher-safe removable parts。",
-        "Stainless Steel 24 oz。",
+        "Straw lid with push-open mechanism.",
+        "Double-wall vacuum insulation.",
+        "Dishwasher-safe removable parts.",
+        "Stainless Steel 24 oz.",
       ],
-      description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+      description: "Stainless Steel 24 oz Water Bottle, Blue.",
       backendSearchTerms: ["vacuum flask", "carry water bottle"],
       usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
       humanReviewRequired: true,
@@ -483,14 +507,14 @@ describe("Quality.2 adversarial AI outputs", () => {
 
   it("R1.6-Final：AI 返回 Brief 外 backend term → 被硬阻断（Brief Authority）", async () => {
     const result = await generateWithAi("sandbox-q2-r1-6f-brief", async () => ({
-      title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
+      title: "Owala Water Bottle",
       bullets: [
-        "Straw lid with push-open mechanism。",
-        "Double-wall vacuum insulation。",
-        "Dishwasher-safe removable parts。",
-        "Stainless Steel 24 oz。",
+        "Straw lid with push-open mechanism.",
+        "Double-wall vacuum insulation.",
+        "Dishwasher-safe removable parts.",
+        "Stainless Steel 24 oz.",
       ],
-      description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+      description: "Stainless Steel 24 oz Water Bottle, Blue.",
       backendSearchTerms: ["vacuum flask", "sports hydration bottle"],
       usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
       humanReviewRequired: true,

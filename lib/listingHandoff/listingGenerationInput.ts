@@ -34,6 +34,11 @@ export type ListingGenerationInput = {
   promotionEligible: false;
   /** Request-scoped marketing direction. Never part of confirmed product facts. */
   listingBrief?: ListingBrief;
+  /**
+   * R3.2 English rendering pack：中文 confirmed facts 的语义等价英文渲染（factRef 溯源）。
+   * 原始 facts 永不修改；渲染仅供用户可见 Listing 字段使用。
+   */
+  englishRenderings?: import("@/lib/listingHandoff/listingEnglishRendering").EnglishRenderingPack;
 };
 
 export const LISTING_COMPOSER_VERSION = "listing-composer-v1" as const;

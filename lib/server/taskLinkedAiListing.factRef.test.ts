@@ -1,5 +1,6 @@
-import { vi } from "vitest";
+import { vi, beforeAll, afterAll } from "vitest";
 import { setTaskLinkedAiListingClientForTests, type TaskLinkedAiListingClient } from "@/lib/server/taskLinkedAiListing";
+import { setEnglishRendererForTests } from "@/lib/listingHandoff/listingEnglishRendering";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -135,18 +136,43 @@ async function saveBrief(taskId: string) {
 }
 
 const GENERIC_AI_OUTPUT = {
-  title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
+  title: "Owala Water Bottle",
   bullets: [
-    "Straw lid with push-open mechanism。",
-    "Stainless Steel 24 oz。",
-    "Double-wall vacuum insulation。",
-    "Dishwasher-safe removable parts。",
+    "Straw lid with push-open mechanism.",
+    "Double-wall vacuum insulation.",
+    "Dishwasher-safe removable parts.",
   ],
-  description: "Straw lid with push-open mechanism. Double-wall vacuum insulation. Stainless Steel 24 oz. Blue.",
+  description: "Stainless Steel 24 oz Water Bottle, Blue.",
   backendSearchTerms: ["vacuum flask"],
   humanReviewRequired: true,
 };
 
+
+
+beforeAll(() => {
+  // R3.2：测试环境无真实 AI key；mock rendering 对中文事实返回英文占位（保留数字/单位）
+  setEnglishRendererForTests(async (fact) => {
+    const HAS_CJK = /[一-鿿]/;
+    if (!HAS_CJK.test(fact.sourceValue)) return fact.sourceValue;
+    const out = fact.sourceValue
+      .replace(/宽口设计/g, "wide-mouth design")
+      .replace(/便于清洁和加冰/g, "easy cleaning and adding ice")
+      .replace(/双层隔热不锈钢结构/g, "double-wall insulated stainless steel construction")
+      .replace(/按键打开上盖/g, "push-button lid opens")
+      .replace(/内置吸管直立吸饮/g, "built-in straw upright sipping")
+      .replace(/提环/g, "carry loop")
+      .replace(/吸嘴/g, "spout")
+      .replace(/内置吸管/g, "built-in straw")
+      .replace(/按钮式上盖/g, "push-button lid")
+      .replace(/可兼作锁扣/g, "doubles as a lock")
+      .replace(/[。；、]/g, ". ")
+      .replace(/；/g, "; ");
+    return out.trim();
+  });
+});
+afterAll(() => {
+  setEnglishRendererForTests(null);
+});
 describe("R1.2 Fact Reference 预防性测试（模拟真实 LLM 行为，不调用 Provider）", () => {
   async function generateWithAi(taskId: string, client: TaskLinkedAiListingClient) {
     await setupHandoff(taskId);

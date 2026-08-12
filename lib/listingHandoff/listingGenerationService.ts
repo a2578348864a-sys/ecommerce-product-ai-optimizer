@@ -259,7 +259,26 @@ export async function generateListingDraftFromHandoff(
   if (!buildResult.ok) {
     throw new ListingHandoffError(buildResult.code, 422, buildResult.message);
   }
-  const generationInput = withListingBrief(buildResult.input, input.listingBrief);
+  const generationInputBase = withListingBrief(buildResult.input, input.listingBrief);
+
+  // R3.2 English rendering：中文 confirmed facts 转英文（factRef 溯源），不跳过、不丢事实。
+  // fail-closed：任一 fact 无法安全英文化 → 拒绝生成（不得静默删除事实）。
+  const { buildEnglishRenderingPack } = await import("@/lib/listingHandoff/listingEnglishRendering");
+  const renderingResult = await buildEnglishRenderingPack({
+    facts: buildResult.input.productFacts.map((f) => ({
+      factId: f.field,
+      field: f.field,
+      sourceValue: f.value,
+    })),
+  });
+  if (!renderingResult.ok) {
+    throw new ListingHandoffError("listing_english_rendering_failed", 422, `事实英文化失败：${renderingResult.message}`);
+  }
+  const generationInput: ListingGenerationInput = {
+    ...generationInputBase,
+    englishRenderings: renderingResult.pack,
+  };
+
   const generationInputFingerprint = computeListingGenerationFingerprint(generationInput);
 
   // ── 阶段B：Composition first（锁外，不持锁，不调用 Provider）──

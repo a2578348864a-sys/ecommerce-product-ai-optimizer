@@ -11,7 +11,8 @@ vi.hoisted(() => {
   process.env.DEMO_ACCESS_STORE_PATH = join(dir, "demo-access.json");
 });
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, beforeAll, afterAll, describe, expect, it, vi } from "vitest";
+import { setEnglishRendererForTests } from "@/lib/listingHandoff/listingEnglishRendering";
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -136,6 +137,27 @@ async function listingInputFor(taskId: string, ctx: never, requestId: string) {
 
 let root = "";
 let client: PrismaClient | undefined;
+
+beforeAll(() => {
+  setEnglishRendererForTests(async (fact) => {
+    const HAS_CJK = /[一-鿿]/;
+    if (!HAS_CJK.test(fact.sourceValue)) return fact.sourceValue;
+    const out = fact.sourceValue
+      .replace(/SPF 30 广谱防晒/g, "SPF 30 broad-spectrum protection")
+      .replace(/防水防汗/g, "water and sweat resistant")
+      .replace(/80分钟/g, "80 minutes")
+      .replace(/矿物粉质清爽不油腻/g, "mineral powder that is light and non-greasy")
+      .replace(/自带粉刷方便补涂/g, "built-in brush for convenient reapplication")
+      .replace(/户外海滩游玩/g, "outdoor beach outings")
+      .replace(/日常通勤补涂防晒/g, "daily commuting touch-ups")
+      .replace(/旅行出差携带/g, "travel")
+      .replace(/[。；、]/g, ". ");
+    return out.trim();
+  });
+});
+afterAll(() => {
+  setEnglishRendererForTests(null);
+});
 
 beforeEach(async () => {
   await (globalThis as { prisma?: { $disconnect(): Promise<void> } }).prisma?.$disconnect();

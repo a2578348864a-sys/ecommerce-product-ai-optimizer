@@ -310,9 +310,9 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(result.draft?.draftKind).toBe("structured_listing_draft");
       expect(result.draft?.keywords).toEqual([]);
       expect(result.draft?.backendSearchTerms).toEqual([]);
-      // R3.1：red/18oz/Silicone 是已确认事实值，structured fallback 直出（不再移除）。
-      // brief 隔离已由 capturedInput.facts 断言覆盖（brief 词不进入 facts）。
-      expect(result.draft?.bullets).toContain("red。");
+      // R3.1：英文渲染后无中文句号；brief 隔离已由 capturedInput.facts 断言覆盖。
+      // R3.2：bullets 为功能事实英文渲染（每条独立），规格事实进 description。
+      expect(result.draft?.bullets.length).toBeGreaterThanOrEqual(1);
       expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
 
       const handoff = preview.gate.currentHandoff!;

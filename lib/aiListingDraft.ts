@@ -147,15 +147,17 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
   if (!description) return fail("AI Listing draft description must not be empty.");
 
   // English-only 合同：最终有效草稿（deterministic / real AI）用户可见字段
-  // （title/bullets/description/keywords）不得残留中文字符。发现中文 → 不标记为有效草稿。
+  // （title/bullets/description/keywords）不得含中文字符或中文标点（。，；：、！？）。
+  // 发现中文 → 不标记为有效草稿。
   // mock_ai_draft 为测试替身，不执行此校验。
   if (input.source !== "mock_ai_draft") {
     const HAS_CJK = /[一-鿿㐀-䶿]/;
+    const HAS_CJK_PUNCT = /[。，；：、！？]/;
     const cjkFields: string[] = [];
-    for (const t of titles) if (HAS_CJK.test(t)) cjkFields.push("title");
-    for (const b of bullets) if (HAS_CJK.test(b)) cjkFields.push("bullet");
-    if (HAS_CJK.test(description)) cjkFields.push("description");
-    for (const k of keywords) if (HAS_CJK.test(k)) cjkFields.push("keyword");
+    for (const t of titles) if (HAS_CJK.test(t) || HAS_CJK_PUNCT.test(t)) cjkFields.push("title");
+    for (const b of bullets) if (HAS_CJK.test(b) || HAS_CJK_PUNCT.test(b)) cjkFields.push("bullet");
+    if (HAS_CJK.test(description) || HAS_CJK_PUNCT.test(description)) cjkFields.push("description");
+    for (const k of keywords) if (HAS_CJK.test(k) || HAS_CJK_PUNCT.test(k)) cjkFields.push("keyword");
     if (cjkFields.length > 0) {
       return fail(`AI Listing draft contains non-English characters in user-visible fields: ${[...new Set(cjkFields)].join(",")}`);
     }
