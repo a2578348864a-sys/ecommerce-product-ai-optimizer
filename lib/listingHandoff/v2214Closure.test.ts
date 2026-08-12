@@ -199,37 +199,6 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
     try {
       const p2 = await generateCreativeHandoffPreview(taskId, visitorContext());
       const sv2 = p2.gate.storageVersion!;
-      // 阶段B 诊断：真实 pipeline 的 deterministic draft claim 验证
-      {
-        const { buildDeterministicListingPackDraft } = await import("@/lib/listingHandoff/listingComposition");
-        const { verifyListingClaims, listingClaimsHaveEvidence } = await import("@/lib/listingHandoff/listingClaimEvidenceResolver");
-        const { writeFileSync } = await import("node:fs");
-        const { buildListingInputFromCreativeHandoff } = await import("@/lib/listingHandoff/listingGenerationInput");
-        const pDbg = await generateCreativeHandoffPreview(taskId, visitorContext());
-        const hDbg = pDbg.gate.currentHandoff!;
-        const vDbg = hDbg.versions[hDbg.versions.length - 1];
-        const bDbg = buildListingInputFromCreativeHandoff(hDbg, vDbg.sourceResearch.researchRevision);
-        if (bDbg.ok) {
-          const draftDbg = buildDeterministicListingPackDraft(bDbg.input, NOW);
-          const evDbg = verifyListingClaims(draftDbg, bDbg.input);
-          const { buildListingClaimEvidenceIndex } = await import("@/lib/listingHandoff/listingClaimEvidenceResolver");
-          const idxDbg = buildListingClaimEvidenceIndex(bDbg.input);
-          const funcValDbg = bDbg.input.productFacts.find(f => f.field === "functional_feature")?.value ?? "";
-          const segDbg = draftDbg.description.split(/[.;。\n]+/)[1]?.trim() ?? "";
-          const compact = (x: string) => x.normalize("NFC").replace(/\s+/g, "").toLocaleLowerCase();
-          const restDbg = compact(segDbg).replace(compact(idxDbg.find(e => e.canonicalField === "functional_feature")?.normalizedValue ?? ""), "");
-          writeFileSync("C:/Users/a2578/AppData/Local/Temp/claims6.json", JSON.stringify({
-            has: listingClaimsHaveEvidence(evDbg),
-            unsupported: (evDbg as any).unsupportedClaims?.slice(0, 10),
-            segLen: segDbg.length,
-            idxLen: (idxDbg.find(e => e.canonicalField === "functional_feature")?.normalizedValue ?? "").length,
-            restAfterReplace: restDbg.slice(0, 100),
-            segFirst80: segDbg.slice(0, 80),
-            idxFirst80: (idxDbg.find(e => e.canonicalField === "functional_feature")?.normalizedValue ?? "").slice(0, 80),
-            desc: draftDbg.description,
-          }, null, 1));
-        }
-      }
       const result = await generateListingDraftFromHandoff(taskId, visitorContext(), {
         requestId: "550e8400-e29b-41d4-a716-446655440701",
         expectedStorageVersion: sv2,

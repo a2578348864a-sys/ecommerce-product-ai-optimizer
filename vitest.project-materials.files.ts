@@ -1,6 +1,8 @@
-// 依赖外部项目材料（../06_测试与验证/ 或 resolveProjectMaterialsRoot）的测试，
-// 默认 npm test 排除。独立运行：npm run test:project-materials（需本机项目材料根）。
+// 依赖外部项目材料（../06_测试与验证/、本机 Downloads 真实 XLSX、
+// resolveProjectMaterialsRoot）的测试，默认 npm test 排除。
+// 独立运行：npm run test:project-materials（需本机项目材料根与真实文件）。
 export const PROJECT_MATERIALS_TEST_FILES = [
+  "lib/server/realXlsxClosure.test.ts",
   "lib/marketScreeningBatchLoader.test.ts",
   "lib/marketScreeningBatchManifest.test.ts",
   "lib/marketScreeningBatchReadiness.test.ts",

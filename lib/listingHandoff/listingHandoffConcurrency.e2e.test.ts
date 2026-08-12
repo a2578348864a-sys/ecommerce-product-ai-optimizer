@@ -265,6 +265,39 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(parsed.unknownNamespace).toEqual({ keep: true });
   });
 
+  it("O1c. P1 回归：functional_feature 完整复述事实不触发 listing_claims_unsupported", async () => {
+    // 真实失败场景（Hawaiian Tropic 防晒刷）：functional_feature 含"防水"高风险词，
+    // 确定性组合原样写入 description。修复前阶段B抛 422 listing_claims_unsupported。
+    await createHandoff("task-pr22", ownerContext, REQ);
+    const preview = await generateCreativeHandoffPreview("task-pr22", ownerContext as never);
+    const sv = preview.gate.storageVersion!;
+    await createOrAppendCreativeHandoff("task-pr22", ownerContext as never, {
+      requestId: "550e8400-e29b-41d4-a716-446655440010",
+      expectedResearchRevision: 1,
+      expectedCurrentHandoffRevision: 1,
+      expectedStorageVersion: sv,
+      selectedFactCandidateIds: [],
+      manualConfirmedFacts: [
+        { field: "functional_feature", value: "SPF 30 广谱防晒，防水防汗（80分钟），矿物粉质清爽不油腻，自带粉刷方便补涂。" },
+        { field: "usage", value: "户外海滩游玩、日常通勤补涂防晒、旅行出差携带。" },
+      ],
+      requestFingerprint: `sha256:${"c".repeat(64)}`,
+    });
+
+    const provider = createMockListingProvider();
+    const input = await listingInputFor("task-pr22", ownerContext as never, REQ2);
+    const result = await generateListingDraftFromHandoff("task-pr22", ownerContext as never, input, { provider });
+    expect(result.listingStatus).toBe("active");
+    expect(result.listingSaved).toBe(true);
+    expect(result.draft).not.toBeNull();
+    // 草稿必须保留合法事实（SPF 30 / 防水防汗 / 自带粉刷）
+    const description = result.draft!.description ?? "";
+    expect(description).toContain("SPF 30");
+    expect(description).toContain("防水防汗");
+    expect(description).toContain("自带粉刷");
+    expect(provider.callCount).toBe(0);
+  });
+
   it("O1b. Provider 即使会失败也不阻断基础 Composition 保存", async () => {
     await createHandoff("task-pr22", ownerContext, REQ);
     const provider = createMockListingProvider();

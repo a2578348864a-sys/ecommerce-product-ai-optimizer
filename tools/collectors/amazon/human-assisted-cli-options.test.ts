@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolve } from "node:path";
 import {
   buildHumanAssistedRuntimeCommand,
   parseHumanAssistedCliArguments,
@@ -40,10 +41,12 @@ describe("human-assisted CLI options", () => {
   });
 
   it("launches the runtime through Node instead of spawning a Windows cmd shim", () => {
-    expect(buildHumanAssistedRuntimeCommand("C:\\safe", "C:\\node\\node.exe")).toEqual({
-      executable: "C:\\node\\node.exe",
+    const cwd = resolve(process.cwd(), "safe-runtime");
+    const nodeExe = resolve(process.cwd(), "node.exe");
+    expect(buildHumanAssistedRuntimeCommand(cwd, nodeExe)).toEqual({
+      executable: nodeExe,
       args: [
-        "C:\\safe\\node_modules\\vitest\\vitest.mjs",
+        resolve(cwd, "node_modules/vitest/vitest.mjs"),
         "run",
         "tools/collectors/amazon/human-assisted.runtime.test.ts",
       ],

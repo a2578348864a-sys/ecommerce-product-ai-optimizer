@@ -123,6 +123,9 @@ function normalizeText(value: string): string {
     .replace(/[。]/g, ".")
     .replace(/[；]/g, ";")
     .replace(/[：]/g, ":")
+    // 全角括号 → 半角：filterListingClaims 的 NFKC 归一化会转换括号，
+    // 证据值与段必须使用同一形式才能匹配（R3 回归：防水防汗（80分钟）vs 防水防汗(80分钟)）
+    .replace(/[（）]/g, (match) => (match === "（" ? "(" : ")"))
     .replace(/\s*([.,;:!?])/g, "$1")
     .toLocaleLowerCase();
 }
@@ -430,6 +433,27 @@ export function verifyListingClaims(
         //    唯一例外：段含**同类别**事实值且修饰词为字段词/连接词（保守组合），
         //    如 certification=CE 时 "CE 认证"（值+字段词）允许，但 "环保ABS"（ABS 事实 +
         //    环保修饰）拒绝。
+        //
+        //    P1 修复（先于 6 的 6.5 完整复述放行）：已确认长文本事实被原样复述时，
+        //    值内可能含高风险词（如 "防水" 属于 unsupported_performance_claim 词表），
+        //    若先执行 high-risk 拒绝会把合法复述误杀为 unsupported_*_claim。
+        //    完整值逐字相等即证据原样复述、无新增声明，因此放到高风险拒绝之前。
+        {
+          // 尾部标点剥离后比较：splitSegments 会把句尾的 。；！ 当作分隔符吞掉，
+          // 事实值（如 "...补涂。"）切段后 normalize 与证据值差一个尾部 "."，
+          // 必须剥掉双方尾部标点才能判定"逐字复述"，否则完整复述永远命中不了。
+          const normalizedSegment = normalizeUnitSpacing(normalizeText(segment)).replace(/[.,;:!?]+$/g, "");
+          const exactContentEntry = entries.find((e) =>
+            ["other", "performance"].includes(e.factType)
+            && e.normalizedValue.length >= 20
+            && normalizedSegment === e.normalizedValue.replace(/[.,;:!?]+$/g, ""),
+          );
+          if (exactContentEntry) {
+            supportedClaims.push(segment);
+            continue;
+          }
+        }
+
         if (highRisk.length > 0) {
           const reasonType = (rc: ClaimReasonCode): FactType | null => {
             switch (rc) {
@@ -462,23 +486,6 @@ export function verifyListingClaims(
           }
           unsupportedClaims.push({ text: segment, reason: highRisk[0] });
           continue;
-        }
-
-        // 6.5) v2.2.14：内容类事实完整复述 → 直接允许。
-        // 功能/使用/保养/构造等长文本事实值可能内含其他事实词（如 "silicone straw"），
-        // 导致 segmentContainsEvidenceValue 优先匹配到短值 evidence 而误判 rest。
-        // 段 normalize 后与某个内容类 entry 的完整值相等时，即证据原样复述，无新增声明。
-        {
-          const normalizedSegment = normalizeUnitSpacing(normalizeText(segment));
-          const exactContentEntry = entries.find((e) =>
-            ["other", "performance"].includes(e.factType)
-            && e.normalizedValue.length >= 20
-            && normalizedSegment === e.normalizedValue,
-          );
-          if (exactContentEntry) {
-            supportedClaims.push(segment);
-            continue;
-          }
         }
 
         // 7) 有事实值且无高风险词 → 段中剩余部分须为：其他已确认事实值（多事实组合）/

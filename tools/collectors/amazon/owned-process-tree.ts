@@ -27,6 +27,16 @@ function forceTerminateProcessTreeById(processId: number): void {
   });
 }
 
+function forceTerminatePosixProcessTree(processId: number): void {
+  // 先杀子进程再杀 root，避免子进程孤儿化
+  spawnSync("pkill", ["-P", String(processId)], { stdio: "ignore" });
+  try {
+    process.kill(processId, "SIGKILL");
+  } catch (error) {
+    if (!hasErrorCode(error, "ESRCH")) throw error;
+  }
+}
+
 export async function waitForOwnedProcessExit(ownedProcess: ChildProcess, timeoutMs: number): Promise<boolean> {
   if (ownedProcess.exitCode !== null || ownedProcess.signalCode !== null) return true;
   return await Promise.race([
@@ -41,7 +51,7 @@ export function forceTerminateOwnedProcessTree(ownedProcess: ChildProcess): void
     forceTerminateProcessTreeById(ownedProcess.pid);
     return;
   }
-  ownedProcess.kill("SIGKILL");
+  forceTerminatePosixProcessTree(ownedProcess.pid);
 }
 
 export function isRecordedProcessAlive(processId: number): boolean {

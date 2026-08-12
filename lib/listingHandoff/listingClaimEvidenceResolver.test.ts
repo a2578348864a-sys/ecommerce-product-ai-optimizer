@@ -301,3 +301,70 @@ describe("Claim Evidence Mapping — Prohibited Claims", () => {
     expect(result.unsupportedClaims[0].reason).toContain("prohibited_claim");
   });
 });
+
+/** P1 回归：已确认长文本事实完整原样复述，不得被高风险关键词误杀 */
+describe("Claim Evidence Mapping — P1 完整复述放行顺序", () => {
+  const SUNSCREEN_FACT = "SPF 30 广谱防晒，防水防汗（80分钟），矿物粉质清爽不油腻，自带粉刷方便补涂。";
+  const sunscreenInput = (): ListingGenerationInput => baseInput({
+    productFacts: [
+      { field: "functional_feature", label: "功能特性", value: SUNSCREEN_FACT },
+    ],
+  });
+
+  it("P1-1. 本次真实失败回归：functional_feature 完整复述 → supported", () => {
+    const draft = baseDraft({ description: `${SUNSCREEN_FACT}` });
+    const result = verifyListingClaims(draft, sunscreenInput());
+    expect(result.unsupportedClaims).toEqual([]);
+    expect(result.supportedClaims.length).toBeGreaterThan(0);
+    expect(listingClaimsHaveEvidence(result)).toBe(true);
+  });
+
+  it("P1-2. 非法强化（100%防水）仍必须拦截", () => {
+    const draft = baseDraft({ bullets: ["100%防水"] });
+    const result = verifyListingClaims(draft, sunscreenInput());
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+    // 0b 绝对化 fail-closed 先拦截（100% → unsupported_absolute_claim）；
+    // 即使绕过绝对化，6 步也会以 unsupported_performance_claim 拦截。两者都是拒绝。
+    expect(["unsupported_absolute_claim", "unsupported_performance_claim"]).toContain(result.unsupportedClaims[0].reason);
+    expect(listingClaimsHaveEvidence(result)).toBe(false);
+  });
+
+  it("P1-3. 非法强化（全天候绝对防水）仍必须拦截", () => {
+    const draft = baseDraft({ bullets: ["全天候绝对防水"] });
+    const result = verifyListingClaims(draft, sunscreenInput());
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+    expect(listingClaimsHaveEvidence(result)).toBe(false);
+  });
+
+  it("P1-4. 部分拼接/扩写（防水防汗长达全天）不得误放", () => {
+    const input = baseInput({ productFacts: [{ field: "functional_feature", label: "功能特性", value: "防水防汗（80分钟）" }] });
+    const draft = baseDraft({ bullets: ["防水防汗长达全天"] });
+    const result = verifyListingClaims(draft, input);
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+    expect(listingClaimsHaveEvidence(result)).toBe(false);
+  });
+
+  it("P1-5. Listing Brief 不构成 Evidence：brief 词附着事实词（非完整复述）→ FAIL", () => {
+    // "适合夏日户外"是 brief 营销方向；附着到事实词"防水防汗（80分钟）"后整段
+    // 不再等于完整证据值 → 必须拒绝，brief 不得为事实背书。
+    const draft = baseDraft({
+      bullets: ["防水防汗（80分钟）适合夏日户外"],
+    });
+    const result = verifyListingClaims(draft, sunscreenInput());
+    expect(result.unsupportedClaims.length).toBeGreaterThan(0);
+    expect(listingClaimsHaveEvidence(result)).toBe(false);
+  });
+
+  it("P1-6. brief 词不得扩展完整复述：事实复述 + 追加 brief 强化 → 整段 FAIL", () => {
+    // 完整事实复述通过（supported），但一旦追加 brief 强化词"高效防晒"，
+    // 整段不再等于证据值 → 6 步 pureModifier 拒绝，brief 不能获得事实权限。
+    const draft = baseDraft({
+      description: SUNSCREEN_FACT,
+      bullets: [`${SUNSCREEN_FACT.replace(/。$/, "，高效防晒。")}`],
+    });
+    const result = verifyListingClaims(draft, sunscreenInput());
+    const exactBullet = result.unsupportedClaims.find((c) => c.text.includes("高效防晒"));
+    expect(exactBullet).toBeDefined();
+    expect(listingClaimsHaveEvidence(result)).toBe(false);
+  });
+});

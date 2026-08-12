@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -188,12 +189,15 @@ describe("amazon collector isolated browser control", () => {
     }
   });
   it("resolves the first existing supported system browser without consulting a user profile", () => {
+    // 平台中立路径（Windows 与 Linux 均为绝对路径）
+    const firstPath = resolve(process.cwd(), "synthetic-first.exe");
+    const secondPath = resolve(process.cwd(), "synthetic-second.exe");
     const candidates: BrowserExecutableCandidate[] = [
-      { browser: "chrome", locationType: "system", executablePath: "C:\\synthetic\\first.exe" },
-      { browser: "edge", locationType: "system", executablePath: "C:\\synthetic\\second.exe" },
+      { browser: "chrome", locationType: "system", executablePath: firstPath },
+      { browser: "edge", locationType: "system", executablePath: secondPath },
     ];
 
-    expect(resolveSystemBrowser(candidates, (path) => path === "C:\\synthetic\\second.exe")).toEqual(candidates[1]);
+    expect(resolveSystemBrowser(candidates, (path) => path === secondPath)).toEqual(candidates[1]);
   });
 
   it("creates and removes a new isolated profile only inside the supplied safe temp root", async () => {

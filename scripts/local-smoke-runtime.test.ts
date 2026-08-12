@@ -296,35 +296,35 @@ describe("local isolated Smoke Runtime", () => {
         DATABASE_URL: "file:./real.db",
       },
       ownerPassword: "synthetic-owner",
-      databasePath: "C:\\safe\\dev.db",
-      demoAccessStorePath: "C:\\safe\\demo-access.json",
-      demoSandboxStorePath: "C:\\safe\\demo-sandbox.json",
+      databasePath: join(TEST_ROOT, "dev.db"),
+      demoAccessStorePath: join(TEST_ROOT, "demo-access.json"),
+      demoSandboxStorePath: join(TEST_ROOT, "demo-sandbox.json"),
     });
     expect(env).toMatchObject({
       PATH: "safe-path",
       SYSTEMROOT: "safe-system",
       ACCESS_PASSWORD: "synthetic-owner",
-      DEMO_ACCESS_STORE_PATH: "C:\\safe\\demo-access.json",
-      DEMO_SANDBOX_STORE_PATH: "C:\\safe\\demo-sandbox.json",
+      DEMO_ACCESS_STORE_PATH: join(TEST_ROOT, "demo-access.json"),
+      DEMO_SANDBOX_STORE_PATH: join(TEST_ROOT, "demo-sandbox.json"),
     });
     expect(env.OPENAI_API_KEY).toBeUndefined();
     expect(env.APP_ACCESS_PASSWORD).toBeUndefined();
 
     const spec = runtime.buildSmokeServeLaunchSpec({
-      runtimeRoot: "C:\\safe\\runtime",
-      worktreeRoot: "C:\\safe\\worktree",
+      runtimeRoot: join(TEST_ROOT, "runtime"),
+      worktreeRoot: join(TEST_ROOT, "worktree"),
       port: "3115",
       launchId: "launch-public-id",
       env,
     });
     expect(spec.args.join(" ")).not.toContain("synthetic-owner");
     const marker = runtime.buildSmokeMarker({
-      runtimeRoot: "C:\\safe\\runtime",
-      worktreeRoot: "C:\\safe\\worktree",
+      runtimeRoot: join(TEST_ROOT, "runtime"),
+      worktreeRoot: join(TEST_ROOT, "worktree"),
       port: "3115",
-      databasePath: "C:\\safe\\runtime\\dev.db",
-      demoAccessStorePath: "C:\\safe\\runtime\\demo-access.json",
-      demoSandboxStorePath: "C:\\safe\\runtime\\demo-sandbox.json",
+      databasePath: join(TEST_ROOT, "runtime", "dev.db"),
+      demoAccessStorePath: join(TEST_ROOT, "runtime", "demo-access.json"),
+      demoSandboxStorePath: join(TEST_ROOT, "runtime", "demo-sandbox.json"),
       launchId: "launch-public-id",
       createdAt: "2026-07-30T00:00:00.000Z",
     });
@@ -336,13 +336,13 @@ describe("local isolated Smoke Runtime", () => {
       status: "smoke_runtime_started",
       ownerPassword: ownerSentinel,
       visitorPassword: visitorASentinel,
-      runtimeRoot: "C:\\safe\\runtime",
+      runtimeRoot: join(TEST_ROOT, "runtime"),
       port: 3115,
       ownedPid: 4242,
       listenerPid: 4343,
-      databasePath: "C:\\safe\\runtime\\dev.db",
-      demoAccessStorePath: "C:\\safe\\runtime\\demo-access.json",
-      demoSandboxStorePath: "C:\\safe\\runtime\\demo-sandbox.json",
+      databasePath: join(TEST_ROOT, "runtime", "dev.db"),
+      demoAccessStorePath: join(TEST_ROOT, "runtime", "demo-access.json"),
+      demoSandboxStorePath: join(TEST_ROOT, "runtime", "demo-sandbox.json"),
       createdAt: "2026-07-30T00:00:00.000Z",
     });
     expect(cliOutput).not.toContain(ownerSentinel);
@@ -350,13 +350,13 @@ describe("local isolated Smoke Runtime", () => {
     expect(cliOutput).not.toContain(visitorBSentinel);
     expect(JSON.parse(cliOutput)).toEqual({
       status: "smoke_runtime_started",
-      runtimeRoot: "C:\\safe\\runtime",
+      runtimeRoot: join(TEST_ROOT, "runtime"),
       port: 3115,
       ownedPid: 4242,
       listenerPid: 4343,
-      databasePath: "C:\\safe\\runtime\\dev.db",
-      demoAccessStorePath: "C:\\safe\\runtime\\demo-access.json",
-      demoSandboxStorePath: "C:\\safe\\runtime\\demo-sandbox.json",
+      databasePath: join(TEST_ROOT, "runtime", "dev.db"),
+      demoAccessStorePath: join(TEST_ROOT, "runtime", "demo-access.json"),
+      demoSandboxStorePath: join(TEST_ROOT, "runtime", "demo-sandbox.json"),
       createdAt: "2026-07-30T00:00:00.000Z",
     });
   });
@@ -472,19 +472,21 @@ describe("local isolated Smoke Runtime", () => {
 
   it("uses only migrate deploy with the worktree-local locked Prisma CLI", async () => {
     const runtime = await loadRuntime();
+    const worktreeRoot = join(TEST_ROOT, "worktree");
+    const databasePath = join(TEST_ROOT, "runtime", "dev.db");
     const spec = runtime.buildPrismaMigrationSpec({
-      worktreeRoot: "C:\\safe\\worktree",
-      databasePath: "C:\\safe\\runtime\\dev.db",
+      worktreeRoot,
+      databasePath,
       baseEnv: { SYSTEMROOT: "safe-system" },
       platform: "win32",
     });
     expect(spec.command).toBe(process.execPath);
     expect(spec.args).toEqual([
-      "C:\\safe\\worktree\\node_modules\\prisma\\build\\index.js",
+      join(worktreeRoot, "node_modules", "prisma", "build", "index.js"),
       "migrate",
       "deploy",
     ]);
-    expect(spec.env.DATABASE_URL).toBe("file:C:/safe/runtime/dev.db");
+    expect(spec.env.DATABASE_URL).toBe(`file:${databasePath.replaceAll("\\", "/")}`);
     expect(spec.args.join(" ")).not.toMatch(/migrate dev|db push|db seed|seed/i);
   });
 
@@ -492,8 +494,8 @@ describe("local isolated Smoke Runtime", () => {
     const runtime = await loadRuntime();
     const marker = {
       schemaVersion: "qingxuan-local-smoke-runtime.v1",
-      runtimeRoot: "C:\\safe\\runtime",
-      worktreeRoot: "C:\\safe\\worktree",
+      runtimeRoot: join(TEST_ROOT, "runtime"),
+      worktreeRoot: join(TEST_ROOT, "worktree"),
       port: 3115,
       launchId: "launch-public-id",
       ownedPid: 4242,
@@ -502,7 +504,7 @@ describe("local isolated Smoke Runtime", () => {
     const valid = {
       pid: 4242,
       parentPid: 1,
-      commandLine: "\"node.exe\" \"C:\\safe\\worktree\\scripts\\local-smoke-runtime.mjs\" serve --runtime-root \"C:\\safe\\runtime\" --port 3115 --launch-id launch-public-id",
+      commandLine: `"node.exe" "${join(TEST_ROOT, "worktree", "scripts", "local-smoke-runtime.mjs")}" serve --runtime-root "${join(TEST_ROOT, "runtime")}" --port 3115 --launch-id launch-public-id`,
     };
     expect(runtime.validateOwnedRuntimeProcess(marker, valid)).toBe(true);
     expect(() => runtime.validateOwnedRuntimeProcess(marker, {
