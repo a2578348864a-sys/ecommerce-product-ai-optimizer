@@ -19,38 +19,67 @@ import "server-only";
 
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
 
-/** 冻结中性文案允许集（与 Claim Evidence 的 NEUTRAL_COPY_ALLOWLIST 同源语义） */
+/** 冻结中性文案允许集（与 Claim Evidence 的 NEUTRAL_COPY_ALLOWLIST 同源语义；English-only） */
 const NEUTRAL_ALLOWLIST = Object.freeze([
-  "日常使用的实用选择",
-  "简洁实用的选择",
-  "清晰呈现产品特点",
-  "现代简约风格",
-  "简洁现代的设计",
-  "值得信赖的优质之选",
-  "轻松融入日常使用",
-  "适合日常使用的实用选择",
-  "实用之选",
-  "设计简约大方",
-  "一款实用的产品",
-  "适用于日常场景",
-  "为生活增添便利",
-  "简单好用的选择",
-  "满足日常需求",
+  "A practical everyday choice",
+  "A simple and practical choice",
+  "Clear product highlights",
+  "Modern minimal design",
+  "Clean and simple design",
+  "A trusted quality choice",
+  "Fits easily into daily use",
+  "A practical everyday choice for daily use",
+  "A practical pick",
+  "Simple and elegant design",
+  "A practical product",
+  "Suitable for everyday scenarios",
+  "Adds convenience to daily life",
+  "A simple, easy-to-use choice",
+  "Meets everyday needs",
 ]);
+
+/** 字段标签的英文映射（仅用于 bullet 前缀，不含额外声明） */
+const FIELD_LABEL_EN: Record<string, string> = {
+  品牌: "Brand",
+  商品类型: "Product Type",
+  系列: "Series",
+  型号: "Model",
+  材质: "Material",
+  容量: "Capacity",
+  颜色: "Color",
+  "颜色/变体": "Color/Variant",
+  数量: "Quantity",
+  包装: "Packaging",
+  功能特性: "Feature",
+  功能特点: "Feature",
+  使用场景: "Usage",
+  清洁保养: "Care",
+  结构与做工: "Construction",
+  兼容性: "Compatibility",
+  随附组件: "Included Components",
+  操作: "Operation",
+  其他: "Other",
+  尺寸: "Dimensions",
+  长度: "Length",
+  宽度: "Width",
+  高度: "Height",
+  直径: "Diameter",
+  重量: "Weight",
+  净重: "Net Weight",
+};
 
 function neutralCopy(seed: number): string {
   return NEUTRAL_ALLOWLIST[seed % NEUTRAL_ALLOWLIST.length];
 }
 
-function factLine(label: string, value: string): string {
-  return `${label}: ${value}`;
+/** label → 英文（已知字段映射，否则保留原 label 并透传） */
+function enLabel(label: string): string {
+  const normalized = label.normalize("NFC").trim();
+  return FIELD_LABEL_EN[normalized] ?? normalized;
 }
 
-/** 从 label 派生安全字段词（仅用于 bullet 前缀，不含额外声明） */
-function fieldTerm(label: string): string {
-  const normalized = label.normalize("NFC").trim();
-  if (!normalized) return "商品";
-  return normalized;
+function factLine(label: string, value: string): string {
+  return `${label}: ${value}`;
 }
 
 /**
@@ -68,20 +97,20 @@ export function buildSafeFallbackListingDraft(input: {
   const facts = input.generationInput.productFacts;
   if (!facts.length) return null;
 
-  // Bullet：每条只表达一个事实（字段: 值）；数量 1-5（Schema 下限 1）
+  // Bullet：每条只表达一个事实（英文标签: 值）；数量 1-5（Schema 下限 1）
   const bullets = facts
     .slice(0, 5)
-    .map((fact) => factLine(fact.label || fact.field, fact.value));
+    .map((fact) => factLine(enLabel(fact.label || fact.field), fact.value));
 
   // Title：商品名（来自第一个事实字段词 + 中性后缀，无主观卖点）
   const firstFact = facts[0];
-  const field = fieldTerm(firstFact.label || firstFact.field);
+  const field = enLabel(firstFact.label || firstFact.field);
   const title = `${field} ${neutralCopy(0)}`;
   const titles = [title];
 
   // Keywords：仅事实字段词与值词（可安全检索，无声明）
   const keywords = facts
-    .flatMap((fact) => [fact.label, fact.value])
+    .flatMap((fact) => [enLabel(fact.label), fact.value])
     .map((word) => word.normalize("NFC").trim().slice(0, 40))
     .filter((word) => word.length > 0)
     .slice(0, 12);
@@ -90,11 +119,11 @@ export function buildSafeFallbackListingDraft(input: {
   // sellingPoints：仅中性文案（1-6 条，无事实性声明）
   const sellingPoints = [neutralCopy(1), neutralCopy(2)];
 
-  // riskNotes / reviewChecklist：中性安全提示（不含内部信息）
-  const riskNotes = ["商品信息来自已人工确认的事实，未包含未经验证的声明。"];
-  const reviewChecklist = ["请人工核对事实字段与值后完善表达。"];
+  // riskNotes / reviewChecklist：中性安全提示（不含内部信息；English-only）
+  const riskNotes = ["Listing facts come from human-confirmed product facts; nothing unverified is stated."];
+  const reviewChecklist = ["Please review facts, wording and search terms before finalizing."];
 
-  const description = `${field}。${neutralCopy(3)}`;
+  const description = `${field}. ${neutralCopy(3)}.`;
 
   const draft: Record<string, unknown> = {
     source: "real_ai_draft" as const,

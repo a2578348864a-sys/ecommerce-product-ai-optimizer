@@ -68,9 +68,9 @@ describe("V2.1.5 Listing Composition Layer", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
     expect(d.description).toContain("Owala");
     expect(d.description).toContain("Water Bottle");
-    // v2.2.14：身份句使用 Claim Evidence 允许的中性短语（适合日常使用的实用选择），
-    // 非风格臆造；仍禁止臆造风格词。
-    expect(d.description).toContain("适合日常使用的实用选择");
+    // R3.1：English-only 合同——description 不含模板填充语，且用户可见字段无中文。
+    expect(d.description).not.toContain("适合日常使用的实用选择");
+    expect(/[一-鿿]/.test(d.description)).toBe(false);
     expect(d.description).not.toContain("现代简约风格");
     // Description 不再只是 Title 复述
     expect(d.description).not.toBe(`${d.titles[0]}。`);

@@ -111,11 +111,13 @@ describe("safeListingFallback（安全降级草稿）", () => {
     const bullets = draft.bullets as string[];
     expect(bullets.length).toBeGreaterThanOrEqual(1);
     for (const b of bullets) {
-      // 每条必须包含 字段: 值 形态（来自 confirmedFacts）
-      const hasFact = input.productFacts.some((f) => b.includes(f.label) && b.includes(f.value));
+      // 每条必须包含 字段: 值 形态（来自 confirmedFacts；label 已英文化，比对值）
+      const hasFact = input.productFacts.some((f) => b.includes(f.value));
       expect(hasFact).toBe(true);
       // 不得含无证据修饰词
       expect(b).not.toMatch(/性能|认证|材质等级|超强|顶级|最优|100%|300%|航空级|医用级/);
+      // English-only：用户可见字段无中文
+      expect(/[一-鿿]/.test(b)).toBe(false);
     }
   });
 

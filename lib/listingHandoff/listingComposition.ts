@@ -81,27 +81,40 @@ function composeTitle(input: ListingGenerationInput): string {
  * 组2: Stainless Steel 24 oz（材质+容量）
  * 组3: Out of the Blue（颜色）
  * 组4（可选）: 组合词（如 brand + product_type）
+ * English-only：跳过含中文字符的事实值。
  */
 function composeBullets(input: ListingGenerationInput): string[] {
   const bullets: string[] = [];
   for (const group of BULLET_GROUPS) {
-    if (!hasAnyFact(input, group.fields)) continue;
-    const composed = joinFacts(input, group.fields, group.join);
+    const values = englishOnlyFacts(input, group.fields);
+    if (values.length === 0) continue;
+    const composed = values.join(group.join);
     if (composed) bullets.push(composed);
   }
-  // 补充：若少于 1 条（理论上不可能），保底用第一个事实值
+  // 补充：若少于 1 条（理论上不可能），保底用第一个英文事实值
   if (bullets.length === 0 && input.productFacts.length > 0) {
-    bullets.push(input.productFacts[0].value);
+    const firstEnglish = input.productFacts.find((f) => !HAS_CJK.test(f.value));
+    if (firstEnglish) bullets.push(firstEnglish.value.trim());
   }
   // 上限 5 条
   return bullets.slice(0, 5);
 }
 
+/** 中文字符检测：最终用户可见 Listing 字段不得含中文（Amazon US English-only 合同） */
+const HAS_CJK = /[一-鿿㐀-䶿]/;
+
+/** 仅保留无中文字符的已确认事实值（英文/数字/符号安全） */
+function englishOnlyFacts(input: ListingGenerationInput, fields: readonly string[]): string[] {
+  return fields
+    .map((f) => factsOf(input, f))
+    .filter((v): v is string => v !== null && !HAS_CJK.test(v));
+}
+
 /**
- * v2.2.14：Description 自然商品介绍（非 Title 复述、非属性机械拼接）。
- * 结构：身份句 + 功能句（已确认 functional facts）+ 规格句。
- * 框架词仅使用 Claim Evidence 允许的中性短语（NEUTRAL_COPY_ALLOWLIST 成员），
- * 确保通过事实校验；禁止加入未确认场景/收益；信息有限时宁可短，不编造。
+ * 组合 Description（English-only）：
+ * 结构：身份句 + 功能句（仅英文已确认 functional facts）+ 规格句。
+ * 中文 functional facts 不进入用户可见字段（宁缺毋滥，不翻译、不改变事实源）。
+ * 不包含模板填充语（"适合日常使用的实用选择" 等无事实价值句子）。
  */
 function composeDescription(input: ListingGenerationInput): string {
   const brand = factsOf(input, "brand");
@@ -110,29 +123,26 @@ function composeDescription(input: ListingGenerationInput): string {
   const material = factsOf(input, "material");
   const capacity = factsOf(input, "capacity");
   const color = factsOf(input, "color_or_variant");
-  const functionalFacts = input.productFacts
-    .filter((f) => ["functional_feature", "operation", "usage", "care", "construction", "compatibility", "included_components"].includes(f.field))
-    .map((f) => f.value.trim())
-    .filter(Boolean);
+  const functionalFacts = englishOnlyFacts(input, ["functional_feature", "operation", "usage", "care", "construction", "compatibility", "included_components"]);
 
   const sentences: string[] = [];
-  // 句1：身份（框架词为 Claim Evidence 允许的中性短语）
+  // 句1：身份（英文）
   const identityParts: string[] = [];
   if (brand) identityParts.push(brand);
   if (series) identityParts.push(series);
   if (type) identityParts.push(type);
   if (identityParts.length > 0) {
-    sentences.push(`${identityParts.join(" ")}，适合日常使用的实用选择。`);
+    sentences.push(`${identityParts.join(" ")}。`);
   }
-  // 句2：功能（已确认事实原样表述，不升级为更强声明）
+  // 句2：功能（仅英文已确认事实原样表述，不升级为更强声明）
   if (functionalFacts.length > 0) {
     sentences.push(`${functionalFacts.slice(0, 3).join("、")}。`);
   }
-  // 句3：规格（字段词为 Claim Evidence 允许的连接词；分隔用逗号，禁用顿号）
+  // 句3：规格（英文标签；字段词为 Claim Evidence 允许的连接词；分隔用逗号，禁用顿号）
   const specParts: string[] = [];
-  if (capacity) specParts.push(`${capacity}容量`);
-  if (material) specParts.push(`${material}材质`);
-  if (color) specParts.push(`${color}颜色`);
+  if (capacity) specParts.push(`Capacity: ${capacity}`);
+  if (material) specParts.push(`Material: ${material}`);
+  if (color) specParts.push(`Color: ${color}`);
   if (specParts.length > 0) {
     sentences.push(`${specParts.join(", ")}。`);
   }
@@ -270,39 +280,37 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
 
 /**
  * 组合 optimized Bullets：每条 = 事实值 + 买方价值角度。
- * 例如 fact="insulation" value="Double-wall insulation" → "Double-wall insulation，适合日常通勤保温。"
+ * English-only：跳过含中文字符的事实值；不添加模板填充语。
  * 所有表达只基于已确认事实值；shopperAngle 是评估性 framing（可接受），非虚构性能。
  */
 function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
   const bullets: string[] = [];
   for (const bp of plan.bulletPlans) {
-    const values = planFactValues(input, bp.featureFactIds);
+    const values = planFactValues(input, bp.featureFactIds).filter((v) => !HAS_CJK.test(v));
     if (values.length === 0) continue;
     // 受 Claim Evidence 约束的 fallback 只能使用确认事实和冻结的中性表达。
-    // 不把 plan 的 shopperAngle 当作商品事实，也不把单一规格留成属性碎片。
     const feature = values.join("，");
-    bullets.push(`${feature}，适合日常使用的实用选择。`);
+    bullets.push(`${feature}。`);
   }
   return bullets.slice(0, 5);
 }
 
 /**
  * 组合 optimized Description：2-4 个完整句子。
- * 句1：产品身份（品牌+类型+系列）用途。
- * 句2：关键功能事实。
- * 句3：使用场景/买方价值（评估性，非虚构性能）。
+ * English-only：跳过含中文字符的功能事实；不添加模板填充语。
  */
 function composeOptimizedDescription(input: ListingGenerationInput): string {
   const identity = ["brand", "series_or_model", "product_type"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
   const functional = input.productFacts
     .filter((fact) => ["functional_feature", "operation", "drinking_mechanism", "insulation", "lid_behavior", "usage", "care", "cleaning", "construction", "compatibility", "included_components"].includes(fact.field))
     .map((fact) => fact.value.trim())
+    .filter((v) => !HAS_CJK.test(v))
     .filter((v, i, arr) => arr.indexOf(v) === i);
   const specs = ["capacity", "material", "color_or_variant"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
 
   const sentences: string[] = [];
   const identityText = identity.join(" ") || "商品";
-  sentences.push(`${identityText}，适合日常使用的实用选择。`);
+  sentences.push(`${identityText}。`);
   if (functional.length > 0) sentences.push(...functional.slice(0, 3));
   if (specs.length > 0) sentences.push(specs.slice(0, 4).join("，"));
   return sentences.slice(0, 4).map((sentence) => `${sentence}。`).join("");

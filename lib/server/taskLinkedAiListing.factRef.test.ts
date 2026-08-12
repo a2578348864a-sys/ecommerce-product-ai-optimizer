@@ -137,12 +137,12 @@ async function saveBrief(taskId: string) {
 const GENERIC_AI_OUTPUT = {
   title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
   bullets: [
-    "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-    "Stainless Steel 24 oz，适合日常使用的实用选择。",
-    "Double-wall vacuum insulation，适合日常使用的实用选择。",
-    "Dishwasher-safe removable parts，适合日常使用的实用选择。",
+    "Straw lid with push-open mechanism。",
+    "Stainless Steel 24 oz。",
+    "Double-wall vacuum insulation。",
+    "Dishwasher-safe removable parts。",
   ],
-  description: "Owala FreeSip water bottle，straw lid with push-open mechanism 和 double-wall vacuum insulation，dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
+  description: "Straw lid with push-open mechanism. Double-wall vacuum insulation. Stainless Steel 24 oz. Blue.",
   backendSearchTerms: ["vacuum flask"],
   humanReviewRequired: true,
 };

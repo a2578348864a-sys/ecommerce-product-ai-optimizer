@@ -146,6 +146,21 @@ export function validateAiListingPackDraft(input: unknown): AiListingDraftValida
   const description = text(input.description);
   if (!description) return fail("AI Listing draft description must not be empty.");
 
+  // English-only 合同：最终有效草稿（deterministic / real AI）用户可见字段
+  // （title/bullets/description/keywords）不得残留中文字符。发现中文 → 不标记为有效草稿。
+  // mock_ai_draft 为测试替身，不执行此校验。
+  if (input.source !== "mock_ai_draft") {
+    const HAS_CJK = /[一-鿿㐀-䶿]/;
+    const cjkFields: string[] = [];
+    for (const t of titles) if (HAS_CJK.test(t)) cjkFields.push("title");
+    for (const b of bullets) if (HAS_CJK.test(b)) cjkFields.push("bullet");
+    if (HAS_CJK.test(description)) cjkFields.push("description");
+    for (const k of keywords) if (HAS_CJK.test(k)) cjkFields.push("keyword");
+    if (cjkFields.length > 0) {
+      return fail(`AI Listing draft contains non-English characters in user-visible fields: ${[...new Set(cjkFields)].join(",")}`);
+    }
+  }
+
   // Quality.1：backendSearchTerms（可选）≤250 bytes；draftKind 合法
   const backendSearchTerms = Array.isArray(input.backendSearchTerms)
     ? input.backendSearchTerms.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 50)

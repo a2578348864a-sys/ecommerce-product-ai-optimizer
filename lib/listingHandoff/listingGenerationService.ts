@@ -430,6 +430,9 @@ export async function generateListingDraftFromHandoff(
               description: optimizedFiltered.cleaned.description,
               backendSearchTerms: optimized.backendSearchTerms,
               planQuality: "optimized",
+              // R3.1：结构化 fallback 的 bullet 全部来自已确认事实值（可能短于 3 词，
+              // 如 "red"），无模板填充语后不应按 AI 碎片规则拦截。
+              allowFactOnlyBullets: true,
             })
           : null;
 

@@ -49,6 +49,8 @@ export type QualityCheckInput = {
   description: string;
   backendSearchTerms: string[];
   planQuality: "optimized" | "safe_fact_draft";
+  /** R3.1：结构化 fallback 的 bullet 全部来自已确认事实值（可短于 3 词），跳过 AI 碎片规则 */
+  allowFactOnlyBullets?: boolean;
 };
 
 function wordCount(text: string): number {
@@ -100,13 +102,11 @@ export function validateListingQuality(input: QualityCheckInput): QualityValidat
     blockingIssues.push({ target: "bullets", code: "count", message: `优化 Listing 最多 ${BULLET_MAX} 条（当前 ${bullets.length}）。` });
   }
   bullets.forEach((b, i) => {
-    // v2.2.14：优化路径 Bullet 是"事实，买方价值角度。"结构（中文角度含完整短语），
-    // 单值 Bullet（如颜色）按空格词数会误判碎片；含该结构即非碎片。
-    // Claim Filter 会做 NFKC 归一化，将全角逗号转换为半角逗号。
-    // 两种标点在这里都表示“确认事实 + 冻结中性表达”的同一结构；
-    // 仍要求至少 3 个字符的完整后半句和明确句末，避免属性碎片绕过校验。
+    // R3.1：模板填充语已删除，bullet 为纯事实句（可能短于 3 词）。
+    // 碎片判定：无逗号后半句结构且词数不足 → 碎片；含逗号后半句（≥3 字符）即非碎片。
+    // allowFactOnlyBullets（结构化 fallback）：bullet 全部来自已确认事实值，跳过碎片规则。
     const hasShopperAngle = input.planQuality === "optimized" && /[，,][^，,。.]{3,}[。.\s]*$/.test(b);
-    if (!hasShopperAngle && wordCount(b) < BULLET_MIN_WORDS) {
+    if (!input.allowFactOnlyBullets && !hasShopperAngle && wordCount(b) < BULLET_MIN_WORDS) {
       blockingIssues.push({ target: "bullets", code: "fragment", message: `Bullet ${i + 1} 只是属性碎片（少于 ${BULLET_MIN_WORDS} 个词）。` });
     }
     if (PRICE_PROMO_DELIVERY.test(b)) blockingIssues.push({ target: "bullets", code: "price_promo", message: `Bullet ${i + 1} 含价格/促销/配送内容。` });

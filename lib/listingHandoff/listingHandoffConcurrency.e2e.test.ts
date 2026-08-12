@@ -290,11 +290,10 @@ describe("PR2-2 Owner 真实 SQLite CAS 并发（第21章）", () => {
     expect(result.listingStatus).toBe("active");
     expect(result.listingSaved).toBe(true);
     expect(result.draft).not.toBeNull();
-    // 草稿必须保留合法事实（SPF 30 / 防水防汗 / 自带粉刷）
+    // R3.1 English-only：中文 functional facts 不进入用户可见字段（跳过而非翻译）；
+    // description 不得含中文，且不再要求含 SPF 30/防水防汗（它们属于中文源事实）。
     const description = result.draft!.description ?? "";
-    expect(description).toContain("SPF 30");
-    expect(description).toContain("防水防汗");
-    expect(description).toContain("自带粉刷");
+    expect(/[一-鿿]/.test(description)).toBe(false);
     expect(provider.callCount).toBe(0);
   });
 

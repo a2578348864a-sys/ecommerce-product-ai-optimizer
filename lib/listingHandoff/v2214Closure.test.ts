@@ -164,6 +164,7 @@ describe("v2.2.14 BrüMate Golden Case", () => {
     const q = validateListingQuality({
       titles: optimized.titles, bullets: optimized.bullets, description: optimized.description,
       backendSearchTerms: optimized.backendSearchTerms, planQuality: "optimized",
+      allowFactOnlyBullets: true,
     });
     expect(q.ok).toBe(true);
     expect(q.blockingIssues).toEqual([]);
@@ -309,9 +310,9 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(result.draft?.draftKind).toBe("structured_listing_draft");
       expect(result.draft?.keywords).toEqual([]);
       expect(result.draft?.backendSearchTerms).toEqual([]);
-      expect(result.draft?.bullets).not.toContain("red");
-      expect(result.draft?.bullets).not.toContain("18oz");
-      expect(result.draft?.bullets).not.toContain("Silicone");
+      // R3.1：red/18oz/Silicone 是已确认事实值，structured fallback 直出（不再移除）。
+      // brief 隔离已由 capturedInput.facts 断言覆盖（brief 词不进入 facts）。
+      expect(result.draft?.bullets).toContain("red。");
       expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
 
       const handoff = preview.gate.currentHandoff!;
@@ -343,6 +344,8 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
         description: result.draft.description ?? "",
         backendSearchTerms: result.draft.backendSearchTerms ?? [],
         planQuality: "optimized",
+        // R3.1：structured fallback 的 bullet 全部来自已确认事实值（可短于 3 词）
+        allowFactOnlyBullets: true,
       });
       expect(quality.ok).toBe(true);
     } finally {

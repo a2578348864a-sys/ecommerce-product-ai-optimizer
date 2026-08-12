@@ -140,10 +140,10 @@ function validAiClient(): TaskLinkedAiListingClient {
   return async () => ({
     title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
     bullets: [
-      "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-      "Double-wall vacuum insulation，适合日常使用的实用选择。",
-      "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-      "Stainless Steel 24 oz Water Bottle，适合日常使用的实用选择。",
+      "Straw lid with push-open mechanism。",
+      "Double-wall vacuum insulation。",
+      "Dishwasher-safe removable parts。",
+      "Stainless Steel 24 oz Water Bottle。",
     ],
     description: "Owala FreeSip Water Bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
     backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
@@ -269,10 +269,10 @@ describe("Quality.2 Task-linked AI integration", () => {
     setTaskLinkedAiListingClientForTests(async () => ({
       title: "Owala FreeSip Water Bottle 24 oz Stainless Steel, Blue",
       bullets: [
-        "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-        "Double-wall vacuum insulation，适合日常使用的实用选择。",
-        "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-        "Stainless Steel 24 oz，适合日常使用的实用选择。",
+        "Straw lid with push-open mechanism。",
+        "Double-wall vacuum insulation。",
+        "Dishwasher-safe removable parts。",
+        "Stainless Steel 24 oz。",
       ],
       description: "The Owala FreeSip bottle offers a spill-resistant drinking experience and is easy to carry and store.",
       backendSearchTerms: [],
@@ -392,10 +392,10 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-2-regress", async () => ({
       title: "Owala FreeSip Stainless Steel 24 oz Water Bottle, Blue",
       bullets: [
-        "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-        "Double-wall vacuum insulation，适合日常使用的实用选择。",
-        "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-        "Stainless Steel 24 oz，适合日常使用的实用选择。",
+        "Straw lid with push-open mechanism。",
+        "Double-wall vacuum insulation。",
+        "Dishwasher-safe removable parts。",
+        "Stainless Steel 24 oz。",
       ],
       description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
       backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
@@ -410,10 +410,10 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-4-regress", async () => ({
       title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-        "Double-wall vacuum insulation，适合日常使用的实用选择。",
-        "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-        "Stainless Steel 24 oz，适合日常使用的实用选择。",
+        "Straw lid with push-open mechanism。",
+        "Double-wall vacuum insulation。",
+        "Dishwasher-safe removable parts。",
+        "Stainless Steel 24 oz。",
       ],
       description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
       backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
@@ -430,10 +430,10 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-6-regress", async () => ({
       title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-        "Double-wall vacuum insulation，适合日常使用的实用选择。",
-        "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-        "Stainless Steel 24 oz，适合日常使用的实用选择。",
+        "Straw lid with push-open mechanism。",
+        "Double-wall vacuum insulation。",
+        "Dishwasher-safe removable parts。",
+        "Stainless Steel 24 oz。",
       ],
       description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
       backendSearchTerms: ["vacuum flask", "leakproof tumbler", "carry water bottle"],
@@ -461,10 +461,10 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-6-prov", async () => ({
       title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-        "Double-wall vacuum insulation，适合日常使用的实用选择。",
-        "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-        "Stainless Steel 24 oz，适合日常使用的实用选择。",
+        "Straw lid with push-open mechanism。",
+        "Double-wall vacuum insulation。",
+        "Dishwasher-safe removable parts。",
+        "Stainless Steel 24 oz。",
       ],
       description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
       backendSearchTerms: ["vacuum flask", "carry water bottle"],
@@ -485,10 +485,10 @@ describe("Quality.2 adversarial AI outputs", () => {
     const result = await generateWithAi("sandbox-q2-r1-6f-brief", async () => ({
       title: "Owala FreeSip 24 oz Stainless Steel Water Bottle, Blue",
       bullets: [
-        "Straw lid with push-open mechanism，适合日常使用的实用选择。",
-        "Double-wall vacuum insulation，适合日常使用的实用选择。",
-        "Dishwasher-safe removable parts，适合日常使用的实用选择。",
-        "Stainless Steel 24 oz，适合日常使用的实用选择。",
+        "Straw lid with push-open mechanism。",
+        "Double-wall vacuum insulation。",
+        "Dishwasher-safe removable parts。",
+        "Stainless Steel 24 oz。",
       ],
       description: "Owala FreeSip water bottle，straw lid with push-open mechanism、double-wall vacuum insulation、dishwasher-safe removable parts，Stainless Steel 24 oz，Blue。",
       backendSearchTerms: ["vacuum flask", "sports hydration bottle"],
