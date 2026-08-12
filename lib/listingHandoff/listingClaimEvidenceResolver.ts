@@ -145,6 +145,16 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * 剥离证据值前的尾部标点归一：源 fact 句尾标点（。、. 等）经 normalizeText 保留在
+ * evidence 值中，但组合草稿经 splitSegments 切分后该标点被吞掉，导致完整值剥离不匹配
+ * （如 evidence="宽口设计,便于清洁和加冰." vs segment="...宽口设计,便于清洁和加冰"）。
+ * 剥离时同时尝试"带尾部标点"与"去尾部标点"两种形态。
+ */
+function stripTrailingPunct(value: string): string {
+  return value.replace(/[.,;:!?、]+$/g, "");
+}
+
 // ─── 冻结中性文案允许集（第九节 B）──────────────────────────
 
 const NEUTRAL_COPY_ALLOWLIST = Object.freeze([
@@ -497,11 +507,16 @@ export function verifyListingClaims(
           const contentEntries = entries.filter((entry) => ["other", "performance"].includes(entry.factType) && entry.normalizedValue.length >= 20);
           // 先剥离完整长事实，再处理其中的逐字连续短语，最后剥离短字段事实。
           // 这样既不会拆碎完整长事实，也不会先删掉 material 后破坏 "SoftSip Silicone Straw" 之类原文短语。
+          // 每个值同时尝试"带尾部标点"与"去尾部标点"两种形态（splitSegments 会吞掉句尾标点）。
           for (const exactValue of contentEntries
             .map((entry) => entry.normalizedValue)
             .filter(Boolean)
             .sort((a, b) => b.length - a.length)) {
             rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            const stripped = stripTrailingPunct(exactValue);
+            if (stripped !== exactValue) {
+              rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            }
           }
           // 保护 allow 词后再剥离 fragments：单 token 片段（如长事实中的 every）不得拆坏
           // allow 词（every ⊆ everyday）。剥离完成后还原。
@@ -527,6 +542,10 @@ export function verifyListingClaims(
             .filter(Boolean)
             .sort((a, b) => b.length - a.length)) {
             rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            const stripped = stripTrailingPunct(exactValue);
+            if (stripped !== exactValue) {
+              rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            }
           }
           rest = compactText(rest);
           // 剩余部分允许：其他 confirmed 事实值（组合事实，含部分重叠如 Bottle ⊆ Water Bottle）、
