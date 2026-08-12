@@ -60,7 +60,7 @@ describe("V2.1.5 Listing Composition Layer", () => {
 
   it("C2. Bullets 为多事实组合（非字段打印）", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
-    expect(d.bullets).toEqual(["Owala FreeSip Water Bottle", "Stainless Steel 24 oz", "Out of the Blue"]);
+    expect(d.bullets).toEqual(["Owala FreeSip Water Bottle.", "Stainless Steel 24 oz.", "Out of the Blue."]);
     expect(d.bullets.some((b) => /^(品牌|商品类型|系列\/型号|材质|容量):/.test(b))).toBe(false);
   });
 
