@@ -27,58 +27,53 @@
 
 ### 生产部署（只在阶段收口后）
 
+> **部署方式：本地构建 + artifact 上传**。服务器 RAM（1.6GB）不足以执行 `next build`，一律在本地完成构建，将产物 artifact 上传后解压、重启。
+
 | 步骤 | 命令 | 说明 |
 |------|------|------|
-| 1. SSH 到服务器 | Workbench 网页终端 | 进入生产环境 |
-| 2. 备份当前状态 | `cp -r /www/alibaba-ai-assistant /www/server-backups/before-xxx/` | 备份代码和数据库 |
-| 3. 拉取最新代码 | `git pull --ff-only origin main` | **首选部署方式** |
-| 4. 安装依赖 | `npm ci` | 锁定版本安装 |
-| 5. 构建 | `npm run build` | Next.js 生产构建 |
-| 6. 重启服务 | `pm2 restart alibaba-ai-assistant` | 平滑重启 |
-| 7. 确认 PM2 状态 | `pm2 status` | 确认 online |
-| 8. 健康检查 | `curl -s http://127.0.0.1:3005/api/health` | 确认 200 |
-| 9. 页面验收 | 关键页面本机 + 公网 200 | 确认功能可用 |
+| 1. 本地构建 | `npm run build` | Next.js 生产构建（本机，Windows） |
+| 2. 本地打包 | `node scripts/package-release.mjs` | 打包 `.next` 为自包含 artifact（自动包含 hashed external modules，见下）并做完整性检查 |
+| 3. 上传 | `scp <artifact> root@112.124.54.81:/tmp/` | 上传 artifact 到服务器 |
+| 4. 服务器解压 | 解压并替换 `.next`（备份旧版） | 见下方完整命令 |
+| 5. 重启服务 | `pm2 restart alibaba-ai-assistant` | 平滑重启 |
+| 6. 确认 PM2 状态 | `pm2 status` | 确认 online |
+| 7. 健康检查 | `curl -s http://127.0.0.1:3005/api/health` | 确认 200 |
+| 8. 页面验收 | 关键页面本机 + 公网 200 | 确认功能可用 |
 
----
+#### 完整命令（生产部署）
 
-## 2. 生产标准部署命令（完整流程）
+本地（Windows PowerShell / Git Bash）：
 
-在阿里云 Workbench 网页终端中执行：
+```bash
+npm run build
+node scripts/package-release.mjs
+# 输出：release/next-v2.2.16-<short-sha>-linux-x64.tar.gz（自包含，含 hashed external modules）
+scp release/next-v2.2.16-<short-sha>-linux-x64.tar.gz root@112.124.54.81:/tmp/
+```
+
+服务器：
 
 ```bash
 cd /www/alibaba-ai-assistant
-pwd
-git branch --show-current
-git status -sb
-git log --oneline -3
-
-# 备份
-mkdir -p /www/server-backups/before-$(date +%Y%m%d-%H%M%S)
-cp -r . /www/server-backups/before-$(date +%Y%m%d-%H%M%S)/
-
-# 拉取
-git pull --ff-only origin main
-git log --oneline -3
-git status -sb
-
-# 构建
-npm ci
-npm run build
-
-# 重启
+# 备份当前构建
+cp -r .next .next.bak-$(date +%Y%m%d-%H%M%S)
+# 解压新构建（tar 包内含顶层 .next/）
+rm -rf .next && tar -xzf /tmp/next-v2.2.16-<short-sha>-linux-x64.tar.gz
+# 部署完整性检查：hashed external modules 必须存在
+test -d node_modules/@prisma/client-$(grep -oE 'client-[a-f0-9]+' .next/server/chunks/*.js 2>/dev/null | head -1 | cut -d- -f2-) \
+  && echo "external modules OK" || echo "external modules MISSING — 使用包内 node_modules 补齐"
+# 重启与验收
 pm2 restart alibaba-ai-assistant
 pm2 status
-
-# 验收
 curl -s http://127.0.0.1:3005/api/health
 curl -s http://112.124.54.81/api/health
-curl -I http://127.0.0.1:3005/
 ```
+
+> ⚠️ **hashed external modules**：Next.js turbopack 会把 `@prisma/client-*`、`sharp-*` 等外部模块生成到 `.next/node_modules/`（symlink 指向真实 `node_modules`）。普通 tar 打包会丢失这些 symlink。`scripts/package-release.mjs` 会用 `--dereference` 跟随 symlink 打包，使 artifact 自包含；服务器解压后需将包内 `node_modules/` 内容合并到项目 `node_modules/`（或由脚本在服务器端自动校验）。**禁止依赖人工补目录。**
 
 说明：
 
 - 如果 `git status -sb` 显示工作区不干净，先停止部署并排查，不要强行覆盖。
-- 如果 `git pull --ff-only` 失败（工作区有 modified/untracked），先排查原因：是否未 push？是否有残留文件？按第 5 节应急规则处理。
 - 本项目部署时不要打印 `.env.local` 内容。
 - 本次没有 schema/migration 变化时，默认不执行数据库迁移。
 - 如果未来确实有 Prisma schema 或 migration 变化，再按当次部署要求执行 `npx prisma generate` 和 `npx prisma migrate deploy`。
@@ -113,19 +108,19 @@ curl -I http://127.0.0.1:3005/
 > SCP / 手动上传是应急方案，不是日常部署方式。
 
 ### 触发条件（必须同时满足）
-1. `git pull --ff-only origin main` 因网络/GitHub/服务器 Git 状态异常而不可用
-2. 已经尝试过 `git fetch` + `git reset --hard origin/main` 仍失败
-3. 确认不是本地代码未 push 导致的问题
+1. `node scripts/package-release.mjs` 生成的 artifact 无法上传（网络故障）
+2. 已经尝试过重新打包与重试上传仍失败
+3. 确认不是本地未 push 导致的问题
 
 ### 执行要求
 - ✅ 只允许精确 SCP 具体文件（如 `components/XXX.tsx`、`app/YYY/page.tsx`），**禁止 SCP 整个项目文件夹**
 - ✅ 部署前必须先备份服务器当前文件到 `/www/server-backups/`
 - ✅ 必须在执行记录中写明：
-  - 为什么不用 git pull（具体原因）
+  - 为什么不用 artifact 部署（具体原因）
   - SCP 上传了哪些文件（精确清单，含 SHA256）
   - 服务器当前 Git HEAD 和 `git status -sb`
-  - 后续 Git 对齐方案（什么时候、怎么把服务器 Git 状态对齐到 origin/main）
-- ❌ 禁止 SCP `node_modules`、`.next`、`.env`、`.env.local`、数据库文件
+  - 后续对齐方案（什么时候、怎么把服务器状态对齐到 origin/main）
+- ❌ 禁止 SCP `node_modules`、`.env`、`.env.local`、数据库文件
 - ❌ 禁止 SCP 后不记录、不对齐
 
 ---
@@ -186,5 +181,4 @@ curl -I http://112.124.54.81/
 ## 8. 参考资料
 
 - 项目部署说明：[initial-deploy.md](initial-deploy.md) — 初始部署、Nginx、PM2 配置说明
-- 项目总览：`../00_项目总览.md` — 产品定位、当前阶段、开发与部署节奏
-- Codex 任务控制台：`../00_Codex任务控制台.md` — 当前禁止项、部署与发布规则
+- 项目总览：根目录 [README.md](../../README.md) — 产品定位、当前阶段、冻结基线

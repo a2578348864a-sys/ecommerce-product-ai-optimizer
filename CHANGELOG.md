@@ -2,6 +2,17 @@
 
 本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。
 
+## [2.2.16] - 2026-08-12
+
+### 变更
+- **English-only Listing 合同（R3.1）**：最终用户可见 Listing 字段（Title/Bullets/Description/Keywords）强制自然英文，语言 Gate 拒绝中文与中文标点
+- **中文事实英文渲染（R3.2）**：中文/混合语言 confirmed facts 经受控 English Rendering 转语义等价英文，保留 factRef 溯源；数字/单位 Integrity Gate；无法安全英文化时 fail-closed（拒绝生成，不静默丢事实）
+- **Claim Evidence 校验覆盖渲染值**：`:rendering` 证据条目整体剥离、`approx.` 缩写句点保护，规格句（Capacity/Material/Dimensions/Weight）通过校验
+- **组合输出质量**：功能事实独立成句、无逗号碎片、无双句号、无模板填充
+
+### 已知限制
+- AI optimized 草稿仍为 best-effort：被 Claim Evidence / 质量门拒绝时自动保留 safe structured fallback
+
 ## [2.2.16-r3] - 2026-08-12
 
 ### 修复

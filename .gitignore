@@ -12,6 +12,9 @@ out
 # Local Playwright CLI session state and release staging
 .playwright-cli/
 .release-*/
+release/
+# Test temp artifacts
+.tmp/
 # Local smoke / audit / debug output
 output/
 # Browser profiles and private local states
