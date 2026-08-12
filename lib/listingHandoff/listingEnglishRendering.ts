@@ -38,6 +38,13 @@ export type RenderingResult =
 
 const HAS_CJK = /[一-鿿㐀-䶿]/;
 
+/** 自由文本字段：可能含多子句粘连，需 AI 补句点；规格短语字段不做 run-on 检测 */
+const RUN_ON_FIELDS = new Set([
+  "functional_feature", "operation", "usage", "care", "construction",
+  "compatibility", "included_components", "other",
+  "drinking_mechanism", "insulation", "lid_behavior", "cleaning",
+]);
+
 // ─── 确定性 Literal 渲染（无需 AI 的字段/单位映射）──────────
 
 const LITERAL_RENDER: Record<string, (value: string) => string | null> = {
@@ -153,7 +160,8 @@ function factsFingerprint(facts: RenderInput["facts"]): string {
 
 /**
  * 构建英文渲染 Pack。
- * - 已英文（无 CJK）→ 原样保留（不调 AI，不改变事实源）；
+ * - 已英文（无 CJK）且无粘连子句 → 原样保留（不调 AI，不改变事实源）；
+ * - 已英文但含粘连子句（小写→大写边界且无句点）→ AI 仅补句点分隔，不改词；
  * - 中文/混合 → 先尝试确定性 literal 渲染（dimensions/weight），否则 AI 受控翻译；
  * - 每条渲染过 Integrity Gate；任一失败 → fail-closed（整包失败，调用方不得继续）。
  */
@@ -173,14 +181,19 @@ export async function buildEnglishRenderingPack(
 
     let english: string | null = null;
 
-    // 1) 已英文 → 原样
-    if (!HAS_CJK.test(source)) {
+    // run-on 检测只用于自由文本字段（规格短语如 "18oz Water Bottle" 的
+    // 数字+大写边界不是粘连子句，不能误判）。
+    const runOn = !HAS_CJK.test(source)
+      && RUN_ON_FIELDS.has(fact.field)
+      && /[a-z0-9] [A-Z]/.test(source.replace(/\. /g, ""));
+    // 已英文且无粘连子句（"…lock Double-wall…"）→ 原样保留
+    if (!HAS_CJK.test(source) && !runOn) {
       english = source;
     } else {
-      // 2) 确定性 literal（dimensions/weight 单位映射）
+      // 确定性 literal（dimensions/weight 单位映射）
       const literal = LITERAL_RENDER[fact.field];
-      if (literal) english = literal(source);
-      // 3) AI 受控翻译
+      if (literal && !runOn) english = literal(source);
+      // AI 受控翻译/补标点
       if (english === null) {
         const renderer = injectedRenderer || callRenderAi;
         english = await renderer({ factId: fact.factId, field: fact.field, sourceValue: source });
