@@ -524,7 +524,11 @@ export function verifyListingClaims(
           // 在空格归一文本上剥离，避免词边界歧义（compact 后无空格会破坏词边界）；
           // 单位空格（20 cm）先归一，使剥离值与证据值一致。
           let rest = normalizeUnitSpacing(normalizeText(segment));
-          const contentEntries = entries.filter((entry) => ["other", "performance"].includes(entry.factType) && entry.normalizedValue.length >= 20);
+          // contentEntries：长事实 + 英文渲染值（:rendering）——两者都需在 fragments 前
+          // 完整剥离，避免 fragments 先拆坏完整值（如 "3.24\"W x 10.68\"H (approx..."）。
+          const contentEntries = entries.filter((entry) =>
+            (["other", "performance"].includes(entry.factType) || entry.sourceFactId.endsWith(":rendering"))
+            && entry.normalizedValue.length >= 20);
           // 先剥离完整长事实，再处理其中的逐字连续短语，最后剥离短字段事实。
           // 这样既不会拆碎完整长事实，也不会先删掉 material 后破坏 "SoftSip Silicone Straw" 之类原文短语。
           // 每个值同时尝试"带尾部标点"与"去尾部标点"两种形态（splitSegments 会吞掉句尾标点）。
@@ -584,7 +588,7 @@ export function verifyListingClaims(
           }
           const restAllowed = restCleaned.length === 0
             || NEUTRAL_COPY_ALLOWLIST.some((p) => restCleaned.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an|approx|x|width|height|w|h|wide|mouth|easy|cleaning|adding|ice|insulated|built|straw|spout|push|button|lid|carry|loop|opens|sip|upright|tilt|drink|doubles|lock|keeps|cold|hours|bottle|cup|holders|oversized|specialty|fits|standard|may|only|fit)+$/i.test(restCleaned);
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|dimensions|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an|approx|x|width|height|w|h|wide|mouth|easy|cleaning|adding|ice|insulated|built|straw|spout|push|button|lid|carry|loop|opens|sip|upright|tilt|drink|doubles|lock|keeps|cold|hours|bottle|water|cup|holders|oversized|specialty|fits|standard|may|only|fit|wider|designed|larger|containers|base|this|these|those|per|than|for|up|to|into|with|without|when|after|before|over|under|between|about)+$/i.test(restCleaned);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;
