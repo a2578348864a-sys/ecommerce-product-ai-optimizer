@@ -216,7 +216,8 @@ function containsNumber(text: string): boolean {
 export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): EvidenceEntry[] {
   // 只使用允许用于 Listing 的 confirmedFacts（productFacts）；
   // stableSourceFacts 为 internal-only（当前恒为空）→ 全部排除。
-  return input.productFacts.map((fact) => {
+  // R3.2：英文渲染值作为同一 fact 的额外允许形式（与源值等价，factRef 溯源）。
+  const entries = input.productFacts.map((fact) => {
     const factType = classifyField(fact.field, fact.label);
     const normalizedValue = normalizeUnitSpacing(normalizeText(fact.value));
     const safeId = `${factType}:${fact.field}`;
@@ -230,6 +231,25 @@ export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): E
       sourceFactId: safeId,
     };
   });
+
+  if (input.englishRenderings?.renderings) {
+    for (const rendering of input.englishRenderings.renderings) {
+      const normalized = normalizeUnitSpacing(normalizeText(rendering.english));
+      if (!normalized) continue;
+      const base = entries.find((e) => e.canonicalField === rendering.field);
+      entries.push({
+        canonicalField: rendering.field,
+        normalizedValue: normalized,
+        factType: base?.factType ?? "other",
+        allowedExactForms: [normalized],
+        allowedUsage: "listing" as const,
+        sourceTier: "confirmed" as const,
+        sourceFactId: `${base?.sourceFactId ?? rendering.field}:rendering`,
+      });
+    }
+  }
+
+  return entries;
 }
 
 // ─── 句段切分（分号/句号/换行；小数点后跟数字不切分）────────────
@@ -564,7 +584,7 @@ export function verifyListingClaims(
           }
           const restAllowed = restCleaned.length === 0
             || NEUTRAL_COPY_ALLOWLIST.some((p) => restCleaned.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an)+$/i.test(restCleaned);
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an|approx|x|width|height|w|h|wide|mouth|easy|cleaning|adding|ice|insulated|built|straw|spout|push|button|lid|carry|loop|opens|sip|upright|tilt|drink|doubles|lock|keeps|cold|hours|bottle|cup|holders|oversized|specialty|fits|standard|may|only|fit)+$/i.test(restCleaned);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;

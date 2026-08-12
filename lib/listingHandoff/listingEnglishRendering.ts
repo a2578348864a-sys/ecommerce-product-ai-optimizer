@@ -90,8 +90,8 @@ function buildRenderPrompt(fact: { factId: string; field: string; sourceValue: s
     "Rules:",
     "- Translate faithfully. Keep all numbers and units exactly as in the source.",
     "- Do not add, strengthen, or infer product attributes, benefits, performance, certification, or audience.",
-    "- Output ONLY the translated English sentence. No explanations, no JSON wrapper.",
     "- If the source is already English, return it as-is.",
+    "- Return strict JSON only: {\"translated\": \"the English translation\"}",
     "",
     `FACT: ${fact.sourceValue}`,
   ].join("\n");
