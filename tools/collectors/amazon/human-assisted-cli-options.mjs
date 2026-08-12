@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 
 export function parseHumanAssistedCliArguments(argv, cwd = process.cwd()) {
   const outputFlag = argv.indexOf("--output");
@@ -14,7 +14,7 @@ export function parseHumanAssistedCliArguments(argv, cwd = process.cwd()) {
     throw new Error("HUMAN_ASSISTED_MAX_SAMPLES_INVALID");
   }
   return {
-    outputFile: resolve(cwd, argv[outputFlag + 1]),
+    outputFile: resolve(cwd, argv[outputFlag + 1].replaceAll("\\", sep)),
     maxSamples,
   };
 }
