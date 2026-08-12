@@ -127,6 +127,14 @@ npm run check     # lint + test + build
 - [认证与配额契约](docs/architecture/auth-and-quota-contract.md)
 - [部署手册](docs/deployment/production-runbook.md)
 
+## V2 Freeze
+
+V2 生产主线已正式冻结。
+
+- **Main**: `main` = 生产基线，冻结；业务开发不再进行，仅 P0（数据破坏/凭据泄漏/认证失效/安全事故）与 P1（核心主链路不可用：登录、导入、候选保存、Listing/Image 生成、生产站访问）允许重新开启。
+- **Listing Studio**: 基础生成、confirmed facts 事实边界、Claim Gate、安全 fallback、生产生成链路均可用。AI optimized 草稿为 best-effort：多语言自由改写与 Claim Evidence 的语义映射尚未进入 V2；AI 可能使用 listingBrief 中未确认的营销表达；被质量门拒绝时自动保留 safe structured fallback。以上为已知限制（KNOWN_LIMITATION），不视为 blocker。
+- **Experiment**: `experiment/listing-evidence-expression-v1`（commit `466e8c0`）为冻结实验分支，不进入 V2 基线、不部署生产。目的：未来研究 Confirmed Fact → 受控目标语言表达 → AI Listing → Claim Validation 时复用。
+
 ## Security
 
 本项目涉及 AI Provider 密钥、访问认证、文件上传与用户数据隔离。请阅读 [SECURITY.md](SECURITY.md) 了解安全边界与报告方式。
