@@ -25,6 +25,7 @@ import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { getProductResearchRecord, getProductResearchVerification, verifyProductResearchHash } from "@/lib/productResearchRecord";
+import { buildEvidenceExpressionPack } from "@/lib/listingHandoff/listingEvidenceExpression";
 
 export class ListingHandoffError extends Error {
   constructor(public readonly code: string, public readonly status: number, message: string) {
@@ -259,22 +260,42 @@ export async function generateListingDraftFromHandoff(
   if (!buildResult.ok) {
     throw new ListingHandoffError(buildResult.code, 422, buildResult.message);
   }
-  const generationInput = withListingBrief(buildResult.input, input.listingBrief);
+  const generationInputBase = withListingBrief(buildResult.input, input.listingBrief);
+
+  // Expression Pack（锁外构建，仅当 copyReady 才会真正用于 AI 优化路径）：
+  // 目标语言 = creativePreferences.language（默认 en）。pack 内容进入 fingerprint。
+  // fail-closed：builder 失败时不阻断基础生成，只标记 pack 缺失（validator 退回旧行为）。
+  const targetLanguage = (buildResult.input.creativePreferences.language || "en").slice(0, 8);
+  const packResult = await buildEvidenceExpressionPack({
+    facts: buildResult.input.productFacts.map((f) => ({
+      factId: f.field,
+      field: f.field,
+      label: f.label,
+      sourceValue: f.value,
+    })),
+    targetLanguage,
+  });
+  const generationInput: ListingGenerationInput = packResult.ok
+    ? { ...generationInputBase, evidenceExpressions: packResult.pack }
+    : generationInputBase;
+
+
   const generationInputFingerprint = computeListingGenerationFingerprint(generationInput);
 
   // ── 阶段B：Composition first（锁外，不持锁，不调用 Provider）──
+  // 确定性组合草稿是中文事实拼接，用无 pack 的 input 校验（pack 只用于 AI 优化路径）。
   const generatedAt = new Date().toISOString();
 
-  const deterministicDraft = buildDeterministicListingPackDraft(generationInput, generatedAt);
+  const deterministicDraft = buildDeterministicListingPackDraft(generationInputBase, generatedAt);
   const deterministicSchema = validateAiListingPackDraft(deterministicDraft);
   if (!deterministicSchema.ok) {
     throw new ListingHandoffError("listing_schema_invalid", 422, "组合草稿未通过结构校验。");
   }
   const deterministicFiltered = filterListingClaims(deterministicSchema.data, {
-    prohibitedClaims: generationInput.prohibitedClaims,
+    prohibitedClaims: generationInputBase.prohibitedClaims,
     customClaimLabel: "Handoff prohibited claim",
   });
-  const deterministicEvidence = verifyListingClaims(deterministicFiltered.cleaned, generationInput);
+  const deterministicEvidence = verifyListingClaims(deterministicFiltered.cleaned, generationInputBase);
   if (!listingClaimsHaveEvidence(deterministicEvidence)) {
     throw new ListingHandoffError("listing_claims_unsupported", 422, "组合草稿未通过事实校验，请补充确认事实后重试。");
   }
@@ -470,6 +491,7 @@ export async function generateListingDraftFromHandoff(
           keywordBrief,
           listingBrief: generationInput.listingBrief ?? null,
           prohibitedClaims: generationInput.prohibitedClaims,
+          evidenceExpressions: generationInput.evidenceExpressions ?? null,
         };
         const aiResult = await generateTaskLinkedAiListing(aiInput);
         if (aiResult.ok) {

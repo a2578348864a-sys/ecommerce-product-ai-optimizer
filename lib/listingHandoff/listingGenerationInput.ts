@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ProductCreativeHandoffV1 } from "@/lib/productCreativeHandoff";
+import type { EvidenceExpressionPack } from "@/lib/listingHandoff/listingEvidenceExpression";
 import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
 
 /**
@@ -34,6 +35,12 @@ export type ListingGenerationInput = {
   promotionEligible: false;
   /** Request-scoped marketing direction. Never part of confirmed product facts. */
   listingBrief?: ListingBrief;
+  /**
+   * Evidence Expression Pack（v1）：confirmed facts 的目标语言受控表达。
+   * 由 Expression Builder 生成（不见 listingBrief），经确定性 Integrity Gate。
+   * 无 pack 时 validator 退化为"中文原样复述"旧行为。
+   */
+  evidenceExpressions?: EvidenceExpressionPack;
 };
 
 export const LISTING_COMPOSER_VERSION = "listing-composer-v1" as const;

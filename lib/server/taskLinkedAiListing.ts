@@ -25,6 +25,7 @@ import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerat
 import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
+import type { EvidenceExpressionPack } from "@/lib/listingHandoff/listingEvidenceExpression";
 
 export type TaskLinkedAiListingErrorCode =
   | "ai_timeout"
@@ -52,6 +53,7 @@ export type TaskLinkedAiListingClient = (input: {
   keywordBrief: ListingKeywordBrief | null;
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
+  evidenceExpressions?: EvidenceExpressionPack | null;
 }) => Promise<unknown>;
 
 let injectedTaskLinkedClient: TaskLinkedAiListingClient | null = null;
@@ -84,6 +86,7 @@ function buildTaskLinkedAiPrompt(input: {
   keywordBrief: ListingKeywordBrief | null;
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
+  evidenceExpressions?: EvidenceExpressionPack | null;
 }): string {
   const allowedFactIds = new Set(input.facts.map((f) => f.factId));
   const keywordOptimizationEnabled = input.keywordBrief !== null;
@@ -100,8 +103,8 @@ function buildTaskLinkedAiPrompt(input: {
       : "No keyword brief is available. Generate ONLY Title, Bullets and Description. backendSearchTerms MUST be an empty array.",
     "",
     "RULES:",
-    "- Only confirmed facts may be stated as product facts. Every attribute value must be one of the exact confirmed values.",
-    "- LISTING_CREATION_BRIEF is optional marketing guidance, not a confirmed product fact. Use it only for emphasis, ordering, audience framing and tone; never turn it into a product attribute, certification, performance, safety or guarantee claim.",
+    "- Every factual product statement must be directly supported by APPROVED_FACT_EXPRESSIONS. APPROVED_FACT_EXPRESSIONS is the ONLY source of factual product attributes, values and numbers.",
+    "- LISTING_CREATION_BRIEF is NOT evidence. It controls only emphasis, ordering, audience framing, tone, structure and style. Never turn any brief word into a product attribute, convenience, performance, certification, safety, audience or guarantee claim.",
     "- Each bullet MUST be based on at least one factId from the provided facts and express Feature → shopper relevance.",
     "- Produce 3 to 5 bullets. Do not just repeat the title or print field labels (do not write 'Brand: Owala').",
     "- Title: clear, readable, no keyword stuffing, no unconfirmed attributes.",
@@ -112,6 +115,7 @@ function buildTaskLinkedAiPrompt(input: {
     "- humanReviewRequired must be true.",
     "- Do not fabricate certifications, sales volume, medical/health effects, FDA, CE, UL, LFGB, BPA-free, food grade, eco-friendly, child-safe, profit, ranking, or guaranteed outcome claims.",
     "- Do not use absolute promises such as 100% guaranteed, guaranteed profit, best seller guaranteed, or equivalent Chinese claims.",
+    "- Do not add convenience claims (portable, mess-free, anywhere, on-the-go, fits in a purse/pocket, easy) unless present in APPROVED_FACT_EXPRESSIONS.",
     "- Do not include price, promotion, shipping or company marketing content.",
     "- prohibitedClaims must not appear anywhere in the output.",
     "",
@@ -128,6 +132,13 @@ function buildTaskLinkedAiPrompt(input: {
     "CONFIRMED_FACTS_START",
     JSON.stringify(input.facts.map((f) => ({ factId: f.factId, field: f.field, label: f.label, value: f.value }))),
     "CONFIRMED_FACTS_END",
+    "APPROVED_FACT_EXPRESSIONS_START",
+    JSON.stringify(input.evidenceExpressions?.expressions?.map((e) => ({
+      factId: e.factId,
+      field: e.field,
+      approvedExpressions: e.approvedExpressions,
+    })) ?? []),
+    "APPROVED_FACT_EXPRESSIONS_END",
     "LISTING_PLAN_START",
     JSON.stringify({
       primaryKeyword: input.plan.primaryKeyword,
@@ -153,6 +164,7 @@ async function callDefaultTaskLinkedAiClient(input: {
   keywordBrief: ListingKeywordBrief | null;
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
+  evidenceExpressions?: EvidenceExpressionPack | null;
 }): Promise<unknown> {
   const result = await callAiJson<unknown>({
     messages: [
@@ -224,6 +236,7 @@ export async function generateTaskLinkedAiListing(input: {
   keywordBrief: ListingKeywordBrief | null;
   listingBrief: ListingBrief | null;
   prohibitedClaims: string[];
+  evidenceExpressions?: EvidenceExpressionPack | null;
 }): Promise<TaskLinkedAiListingResult> {
   const client = injectedTaskLinkedClient || callDefaultTaskLinkedAiClient;
   let raw: unknown;

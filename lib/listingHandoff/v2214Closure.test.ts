@@ -34,6 +34,7 @@ import {
 } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { setTaskLinkedAiListingClientForTests, type TaskLinkedAiListingClient } from "@/lib/server/taskLinkedAiListing";
+import { setExpressionBuilderForTests } from "@/lib/listingHandoff/listingEvidenceExpression";
 
 const NOW = "2026-08-11T14:00:00.000Z";
 const DEMO = "demo-v2214";
@@ -41,6 +42,23 @@ const CANDIDATE = "candidate-v2214-brumate";
 
 function visitorContext() {
   return { mode: "demo" as const, token: "tok", demoAccessId: DEMO, isActive: true, isExpired: false, remainingAiCalls: 10 };
+}
+
+/** Mock Expression Builder：把每条 confirmed fact 转成英文 literal 表达（测试注入，不调真实 AI） */
+function injectMockExpressionBuilder() {
+  setExpressionBuilderForTests(async (fact) => {
+    const en: Record<string, string> = {
+      brand: fact.sourceValue,
+      series_or_model: "Rise",
+      product_type: "Silicone Water Bottle with Covered Straw",
+      material: "silicone construction",
+      capacity: "18 oz",
+      color_or_variant: "red",
+      functional_feature: "leakproof SoftSip straw for easy everyday hydration",
+      usage: "commuting and travel",
+    };
+    return [en[fact.field] ?? fact.sourceValue].filter(Boolean);
+  });
 }
 
 /** BrüMate fixture（v2.2.14 Golden Case）：confirmedFacts 与生产任务一致 */
@@ -90,7 +108,7 @@ function buildBruteMateResultJson() {
       productBatchListingFacts: {
         version: "product-batch-listing-facts.v1", marketplace: "US", asin: "B0GZYLV89B", category: "Sports & Outdoors",
         productTitle: "BrüMate Rise 18oz Water Bottle with Covered Silicone Straw", brand: "BrüMate",
-        productDetails: "Brand: BrüMate | Material: Silicone | Bottle Type: Water Bottle | Color: red | Capacity: 18 fluid ounces",
+        productDetails: "品牌: BrüMate | 材质: 硅胶 | 商品类型: 水杯 | 颜色: 红色 | 容量: 18盎司",
         productBulletPoints: "LEAKPROOF DESIGN WITH COVERED, SOFTSIP STRAW: Our leakproof, SoftSip silicone straw makes every sip feel like a luxury",
       },
     },
@@ -177,6 +195,7 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
     const taskId = "sandbox_task_v2214_nokeyword";
     seedTask(taskId, buildBruteMateResultJson());
     await confirmBruteMateHandoff(taskId);
+    injectMockExpressionBuilder();
     let calls = 0;
     setTaskLinkedAiListingClientForTests(async (input) => {
       calls += 1;
@@ -186,9 +205,9 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       return {
         title: "BrüMate Rise 18oz Silicone Water Bottle with Covered Straw",
         bullets: [
-          "Leakproof SoftSip straw keeps every sip easy, comfortable for daily hydration.",
-          "Silicone construction and 18oz capacity, practical size for on-the-go use.",
-          "red color option, matches your style preference.",
+          "Leakproof SoftSip straw for easy everyday hydration.",
+          "Silicone construction and 18oz capacity.",
+          "red color option.",
         ],
         description: "BrüMate Rise 18oz water bottle pairs a covered SoftSip straw with silicone construction for everyday hydration. The leakproof design suits commuting and travel. Available in red.",
         backendSearchTerms: ["self-invented keyword"], // AI 不得自造关键词，服务端必须丢弃
@@ -216,6 +235,7 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       expect(result.draft?.riskNotes?.join(" ")).toContain("未进行关键词优化");
     } finally {
       setTaskLinkedAiListingClientForTests(null);
+      setExpressionBuilderForTests(null);
     }
   });
 });
@@ -233,15 +253,16 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       differentiation: "突出舒适饮用和日常节奏",
       contentEmphasis: "功能与使用价值结合表达",
     };
+    injectMockExpressionBuilder();
     const capturedInputs: Parameters<TaskLinkedAiListingClient>[0][] = [];
     setTaskLinkedAiListingClientForTests(async (input) => {
       capturedInputs.push(input);
       return {
         title: "BrüMate Rise 18oz Silicone Water Bottle with Covered Straw",
         bullets: [
-          "Leakproof SoftSip straw keeps every sip easy, comfortable for daily hydration.",
-          "Silicone construction and 18oz capacity, practical size for on-the-go use.",
-          "red color option, matches your style preference.",
+          "Leakproof SoftSip straw for easy everyday hydration.",
+          "Silicone construction and 18oz capacity.",
+          "red color option.",
         ],
         description: "BrüMate Rise 18oz water bottle pairs a covered SoftSip straw with silicone construction for everyday hydration. The leakproof design suits commuting and travel. Available in red.",
         backendSearchTerms: [],
@@ -266,10 +287,11 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(result.listingSaved).toBe(true);
       expect(result.draft?.draftKind).toBe("ai_optimized_listing");
       expect(result.draft?.titles[0]).not.toBe("Brand: BrüMate");
-      expect(result.draft?.bullets.some((bullet) => /SoftSip/i.test(bullet) && /comfortable|practical/i.test(bullet))).toBe(true);
+      expect(result.draft?.bullets.some((bullet) => /SoftSip/i.test(bullet) && /everyday hydration/i.test(bullet))).toBe(true);
       expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
     } finally {
       setTaskLinkedAiListingClientForTests(null);
+      setExpressionBuilderForTests(null);
     }
   });
 
@@ -285,6 +307,7 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       differentiation: "柔软材质设计，更方便携带和收纳",
       contentEmphasis: "便携性、使用体验、日常场景",
     };
+    injectMockExpressionBuilder();
     let captured: Parameters<TaskLinkedAiListingClient>[0] | null = null;
     setTaskLinkedAiListingClientForTests(async (input) => {
       captured = input;
@@ -347,6 +370,7 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(quality.ok).toBe(true);
     } finally {
       setTaskLinkedAiListingClientForTests(null);
+      setExpressionBuilderForTests(null);
     }
   });
 });

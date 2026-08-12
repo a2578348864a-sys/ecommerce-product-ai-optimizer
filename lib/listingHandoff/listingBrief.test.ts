@@ -105,7 +105,7 @@ describe("v2.2.16 Listing Brief safety boundary", () => {
     });
     expect(prompt).toContain("LISTING_CREATION_BRIEF_START");
     expect(prompt).toContain("Emphasize the covered straw for everyday routines");
-    expect(prompt).toContain("not a confirmed product fact");
+    expect(prompt).toContain("is NOT evidence");
     expect(prompt).toContain("CONFIRMED_FACTS_START");
     expect(prompt.split("CONFIRMED_FACTS_START")[1]?.split("CONFIRMED_FACTS_END")[0]).not.toContain("Emphasize the covered straw");
   });

@@ -1,5 +1,6 @@
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import type { EvidenceExpressionPack } from "@/lib/listingHandoff/listingEvidenceExpression";
 
 /**
  * PR2-2 Claim Final-Fix: 结构化事实正向放行（conservative positive allow）。
@@ -130,6 +131,28 @@ function normalizeText(value: string): string {
     .toLocaleLowerCase();
 }
 
+/**
+ * 轻量英文词形折叠（仅用于 approved expression 的 token 级 fragment 剥离）：
+ * resistant↔resistance↔resists、convenient↔convenience 等词形变化。
+ * 只折叠明确的形态后缀，不触碰语义；中文原样不受影响。
+ * 不用于数字/单位匹配（数字校验仍走精确路径）。
+ */
+function foldEnglishMorphology(token: string): string {
+  if (!/^[a-z]+$/.test(token)) return token;
+  return token
+    .replace(/ances$/i, "ant")
+    .replace(/ance$/i, "ant")
+    .replace(/ants$/i, "ant")
+    .replace(/ents$/i, "ent")
+    .replace(/ions$/i, "ion")
+    .replace(/ing$/i, "")
+    .replace(/ers$/i, "er")
+    .replace(/ied$/i, "y")
+    .replace(/ies$/i, "y")
+    .replace(/es$/i, "")
+    .replace(/s$/i, "");
+}
+
 /** 紧凑归一化（去全部空白，用于高风险词/中性集模式匹配；不用于事实值匹配） */
 function compactText(value: string): string {
   return value.normalize("NFC").replace(/\s+/g, "").toLocaleLowerCase();
@@ -137,12 +160,66 @@ function compactText(value: string): string {
 
 /** 单位空格归一化：20cm ↔ 20 cm（仅此一种单位空格变体） */
 function normalizeUnitSpacing(value: string): string {
-  return value.replace(/(\d)\s+(cm|mm|m|kg|g|ml|l|w|v|hz|ah|mah|inch|寸)/gi, "$1$2");
+  return value
+    .replace(/(\d)\s+(cm|mm|m|kg|g|ml|l|w|v|hz|ah|mah|inch|寸|oz|ounce)/gi, "$1$2")
+    .replace(/(\d)(cm|mm|m|kg|g|ml|l|w|v|hz|ah|mah|inch|寸|oz|ounce)/gi, "$1 $2");
 }
 
 /** 正则字面转义（剥离循环用词边界正则匹配证据原文） */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const BOUNDARY_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * 词边界安全的原文剥离。
+ * 不用 lookbehind/lookahead：Node 24 的 V8 对 `(?<![\p{L}\p{N}])` 存在
+ * Unicode 属性转义失效 bug（"covered" 中的 "red" 会被误匹配）。
+ * 手动检查边界字符：前/后一个字符都不是字母数字才剥离。
+ * 兼容中英文（中文无 `\b` 词边界，必须用字符类）。
+ * 中英混排（值+中文标签，如 "18oz容量"）：标签词（容量/材质/颜色/尺寸等）
+ * 视为值的可剥离后缀，允许剥离后紧邻中文标签。
+ * 英文词形变化（resistant↔resistance↔resists）：foldEnglishMorphology 折叠后
+ * 逐 token 比对，允许合法形态变化（不新增事实）。
+ */
+function stripWordBoundary(source: string, value: string): string {
+  const labelSuffix = /(?:容量|材质|颜色|尺寸|长度|宽度|高度|直径|重量|数量|包装|品牌|类目|类型|型号|系列|款)/;
+  const escaped = escapeRegExp(value);
+  const re = new RegExp(escaped, "gi");
+  let result = "";
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(source)) !== null) {
+    const before = source[match.index - 1] ?? "";
+    const after = source[match.index + match[0].length] ?? "";
+    const afterIsLabel = labelSuffix.test(source.slice(match.index + match[0].length, match.index + match[0].length + 2));
+    if ((!BOUNDARY_CHAR.test(before) && (!BOUNDARY_CHAR.test(after) || afterIsLabel)) || (!BOUNDARY_CHAR.test(before) && after === "")) {
+      result += source.slice(lastIndex, match.index) + " ";
+      lastIndex = match.index + match[0].length;
+    }
+  }
+  result += source.slice(lastIndex);
+
+  // 词形变化剥离：value 是英文短语时，逐 token 折叠匹配后剥离（resistant→resistance 等）。
+  // 跳过含连字符的复合词 token（push-open/double-wall）：折叠会拆坏复合词边界。
+  // 基于基本分支已剥离的 result（而非原始 source），避免重复处理已剥离内容。
+  if (/^[a-z\s-]+$/i.test(value.trim()) && value.trim().length > 3) {
+    const foldedTokens = new Set(value.trim().split(/\s+/).map((t) => foldEnglishMorphology(t.replace(/[^a-z]/gi, ""))).filter((t) => !t.includes("-")));
+    if (foldedTokens.size > 0) {
+      const sourceTokens = result.split(/\s+/);
+      for (let i = 0; i < sourceTokens.length; i += 1) {
+        const raw = sourceTokens[i].replace(/[^a-z]/gi, "");
+        if (raw.includes("-")) continue;
+        const folded = foldEnglishMorphology(raw);
+        if (foldedTokens.has(folded) && folded.length >= 3) {
+          sourceTokens[i] = "";
+        }
+      }
+      result = sourceTokens.filter((t) => t !== "").join(" ");
+    }
+  }
+  return result;
 }
 
 // ─── 冻结中性文案允许集（第九节 B）──────────────────────────
@@ -195,6 +272,34 @@ const HIGH_RISK_CATEGORY_PATTERNS: Array<{ category: ClaimReasonCode; pattern: R
   { category: "unsupported_absolute_claim", pattern: /(?:永久|永不|绝不|不会损坏|100%|guaranteed|never\s*fails|绝对可靠|绝对安全|always)/i },
 ];
 
+/**
+ * 营销属性词（英文）：表达商品属性/便利性/效果，但无 approved expression 支撑时
+ * 不得作为 neutral 放行（Expression Contract 第14节）。
+ * 检测时机：pack 存在时，段剥离全部 approved expressions 后剩余部分命中 → 拒绝。
+ */
+const MARKETING_ATTRIBUTE_PATTERNS: RegExp[] = [
+  /\bportable\b/i,
+  /\bmess[\s-]*free\b|\bmess\s*of\s*lotions\b|\bno\s*need\s*to\s*use\s*your\s*hands\b/i,
+  /\banywhere\b/i,
+  /\bon\s*the\s*go\b/i,
+  /\bperfect\b/i,
+  /\bideal\b/i,
+  /\beasy\b|\beasily\b/i,
+  /\bbest\b/i,
+  /\bpremium\b/i,
+  /\breliable\b/i,
+  /\bmakeup\b/i,
+  /\bpocket\b/i,
+  /\bpurse\b/i,
+  /\bwaterproof\b/i,
+  /\ball\s*day\b/i,
+  /\bthroughout\s*the\s*day\b/i,
+  /\bconvenient\b/i,
+  /\bcomfortable\b/i,
+  /\blong\s*lasting\b|\blong\s*laster\b/i,
+  /\bany\s*time\b/i,
+];
+
 // ─── 数字检测 ──────────────────────────────────────────────
 
 function containsNumber(text: string): boolean {
@@ -206,7 +311,7 @@ function containsNumber(text: string): boolean {
 export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): EvidenceEntry[] {
   // 只使用允许用于 Listing 的 confirmedFacts（productFacts）；
   // stableSourceFacts 为 internal-only（当前恒为空）→ 全部排除。
-  return input.productFacts.map((fact) => {
+  const entries = input.productFacts.map((fact) => {
     const factType = classifyField(fact.field, fact.label);
     const normalizedValue = normalizeUnitSpacing(normalizeText(fact.value));
     const safeId = `${factType}:${fact.field}`;
@@ -220,6 +325,29 @@ export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): E
       sourceFactId: safeId,
     };
   });
+
+  // Evidence Expression Pack：approved expressions 作为同一 fact 的额外允许形式。
+  // 仅影响匹配，不改变 factType 分类（classifyField 不被修改）。
+  if (input.evidenceExpressions?.expressions) {
+    for (const expr of input.evidenceExpressions.expressions) {
+      for (const approved of expr.approvedExpressions) {
+        const normalized = normalizeUnitSpacing(normalizeText(approved));
+        if (!normalized) continue;
+        const base = entries.find((e) => e.canonicalField === expr.field);
+        entries.push({
+          canonicalField: expr.field,
+          normalizedValue: normalized,
+          factType: base?.factType ?? "other",
+          allowedExactForms: [normalized],
+          allowedUsage: "listing" as const,
+          sourceTier: "confirmed" as const,
+          sourceFactId: `${base?.sourceFactId ?? expr.field}:expr`,
+        });
+      }
+    }
+  }
+
+  return entries;
 }
 
 // ─── 句段切分（分号/句号/换行；小数点后跟数字不切分）────────────
@@ -248,19 +376,25 @@ function segmentContainsEvidenceValue(segment: string, entries: EvidenceEntry[])
 /**
  * 从已确认的长文本事实中提取“原文连续短语”，只用于多事实自然组合。
  * 这里不做同义词、营销词或语义推断；输出必须逐字来自 confirmed evidence。
+ * Approved expressions（:expr）是受控表达，token 窗口门槛放宽
+ * （如 "spf 30"、"0.15 oz" 等短片段必须能剥离）。
  */
 function confirmedContentFragments(entries: EvidenceEntry[]): string[] {
   const fragments = new Set<string>();
   for (const entry of entries) {
-    if (!["other", "performance"].includes(entry.factType) || entry.normalizedValue.length < 20) continue;
+    if (entry.normalizedValue.length < 20) continue;
+    const isExpr = entry.sourceFactId.endsWith(":expr");
     const tokens = entry.normalizedValue.match(/[\p{L}\p{N}]+/gu) ?? [];
     const maxWindow = Math.min(tokens.length, 6);
     // 窗口含 1（单 token 原文词）："covered SoftSip straw" 等原文短语的词序
     // 可能与窗口切片不一致，须允许逐字单词剥离；仍只来自 confirmed evidence。
+    // expr 来源门槛放宽：approved expression 内的短 token（spf/30/oz）也须可剥离。
     for (let size = 1; size <= maxWindow; size += 1) {
       for (let start = 0; start + size <= tokens.length; start += 1) {
         const fragment = normalizeText(tokens.slice(start, start + size).join(" "));
-        if (compactText(fragment).length >= (size === 1 ? 5 : 8)) fragments.add(fragment);
+        if (compactText(fragment).length >= (isExpr ? (size === 1 ? 3 : 4) : (size === 1 ? 5 : 8))) {
+          fragments.add(fragment);
+        }
       }
     }
   }
@@ -494,14 +628,24 @@ export function verifyListingClaims(
           // 在空格归一文本上剥离，避免词边界歧义（compact 后无空格会破坏词边界）；
           // 单位空格（20 cm）先归一，使剥离值与证据值一致。
           let rest = normalizeUnitSpacing(normalizeText(segment));
-          const contentEntries = entries.filter((entry) => ["other", "performance"].includes(entry.factType) && entry.normalizedValue.length >= 20);
-          // 先剥离完整长事实，再处理其中的逐字连续短语，最后剥离短字段事实。
-          // 这样既不会拆碎完整长事实，也不会先删掉 material 后破坏 "SoftSip Silicone Straw" 之类原文短语。
+          // 长文本事实（含 product_type 等非 other/performance 类）：先整体剥离，
+          // 避免被后续单 token fragment 拆碎（如 "silicone water bottle with covered straw"）。
+          const contentEntries = entries.filter((entry) => entry.normalizedValue.length >= 20);
+          // 先剥离完整长事实，再剥离短字段事实（含 approved expressions），
+          // 最后处理其中的逐字连续短语。顺序保证：完整短语（如 "mineral sunscreen brush"）
+          // 不被后续单 token fragment（如 "brush"）先拆碎。
           for (const exactValue of contentEntries
             .map((entry) => entry.normalizedValue)
             .filter(Boolean)
             .sort((a, b) => b.length - a.length)) {
-            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            rest = stripWordBoundary(rest, exactValue);
+          }
+          for (const exactValue of entries
+            .filter((entry) => !contentEntries.includes(entry))
+            .map((entry) => entry.normalizedValue)
+            .filter(Boolean)
+            .sort((a, b) => b.length - a.length)) {
+            rest = stripWordBoundary(rest, exactValue);
           }
           // 保护 allow 词后再剥离 fragments：单 token 片段（如长事实中的 every）不得拆坏
           // allow 词（every ⊆ everyday）。剥离完成后还原。
@@ -516,18 +660,11 @@ export function verifyListingClaims(
           // 该步骤不允许同义改写或 Brief 派生词。
           // 词边界替换：防止单 token 片段（如 every）拆坏 allow 词（如 everyday）。
           for (const fragment of confirmedContentFragments(entries)) {
-            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(fragment)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            rest = stripWordBoundary(rest, fragment);
           }
           protectedWords.forEach((word, i) => {
             rest = rest.replaceAll(`__P${i}__`, word);
           });
-          for (const exactValue of entries
-            .filter((entry) => !contentEntries.includes(entry))
-            .map((entry) => entry.normalizedValue)
-            .filter(Boolean)
-            .sort((a, b) => b.length - a.length)) {
-            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
-          }
           rest = compactText(rest);
           // 剩余部分允许：其他 confirmed 事实值（组合事实，含部分重叠如 Bottle ⊆ Water Bottle）、
           // 中性词、字段词/连接词/介词
@@ -545,7 +682,7 @@ export function verifyListingClaims(
           }
           const restAllowed = restCleaned.length === 0
             || NEUTRAL_COPY_ALLOWLIST.some((p) => restCleaned.includes(compactText(p)))
-            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an)+$/i.test(restCleaned);
+            || /^(?:材质|材料|为|是|尺寸|长度|重量|颜色|品牌|类目|款|外壳|设计|价格|参考价格|评分|评论数|商品名|product|madeof|brand|category|material|color|weight|length|size|price|rating|reviewcount|usd|参考|(?:usd)|,|、|:|;|\(|\)|\.|-|的|与|和|及|产品|类别|净重|约|商品类型|类型|系列|型号|容量|数量|包装|颜色\/款式|系列\/型号|option|pairs|available|construction|capacity|practical|on-the-go|everyday|hydration|matches|your|style|preference|use|in|of|for|with|and|the|a|an|this|that|its|their|design|suits|feels|keeps|makes|comes|features|including|during|any|time|day|days|delivers|offers|provides|is|are|be|been|being|has|have|had|while|when|where|which|who|whose|can|could|will|would|should|may|might|do|does|did|from|by|to|at|on|as|or|but|so|not|no|yet|nor|only|just|also|even|more|most|less|few|many|much|some|such|both|each|either|neither|other|another)+$/i.test(restCleaned);
           if (!restAllowed) {
             unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
             continue;
@@ -570,7 +707,16 @@ export function verifyListingClaims(
           continue;
         }
 
-        // 9) 无任何事实性信号 → 纯文案中性表达 → 允许
+        // 9) 无任何事实性信号 → 纯文案中性表达 → 允许。
+        //    Expression Pack 存在时：营销属性词（portable/mess-free/anywhere 等）
+        //    无 approved expression 支撑不得作为 neutral 放行。
+        if (input.evidenceExpressions?.expressions?.length) {
+          const hasMarketingAttribute = MARKETING_ATTRIBUTE_PATTERNS.some((p) => p.test(segment));
+          if (hasMarketingAttribute) {
+            unsupportedClaims.push({ text: segment, reason: "unclassified_factual_claim" });
+            continue;
+          }
+        }
         neutralPhrases.push(segment);
       }
     }
