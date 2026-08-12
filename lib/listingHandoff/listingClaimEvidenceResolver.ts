@@ -255,11 +255,16 @@ export function buildListingClaimEvidenceIndex(input: ListingGenerationInput): E
 // ─── 句段切分（分号/句号/换行；小数点后跟数字不切分）────────────
 
 function splitSegments(text: string): string[] {
-  // 先保护小数点（. 后跟数字 → 占位符），再按分隔符切分，最后还原
-  const protectedText = text.replace(/(\d)\.(\d)/g, "$1__DEC__$2");
+  // 先保护小数点（. 后跟数字 → 占位符），再按分隔符切分，最后还原。
+  // 缩写句点（approx. / 单位缩写后接空格或结束）不属于句分隔符：切分后段内的
+  // "approx. 8.23 x 27.13 cm" 必须整体保留，否则渲染值剥离永远无法命中
+  // （R3.2：dimensions 渲染 "3.24\"W x 10.68\"H (approx. 8.23 x 27.13 cm)"）。
+  const protectedText = text
+    .replace(/(\d)\.(\d)/g, "$1__DEC__$2")
+    .replace(/\b(approx)\.(?!\s*[0-9]+\s*x)/gi, "$1__DOT__");
   return protectedText
     .split(/[.;;。\n]+/)
-    .map((s) => s.trim().replace(/__DEC__/g, "."))
+    .map((s) => s.trim().replace(/__DEC__/g, ".").replace(/__DOT__/g, "."))
     .filter(Boolean);
 }
 

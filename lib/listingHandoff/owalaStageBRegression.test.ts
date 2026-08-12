@@ -87,4 +87,23 @@ describe("Owala stage-B claim validation regression", () => {
     const v = verifyListingClaims(makeDraft("100% waterproof"), OWALA_INPUT);
     expect(listingClaimsHaveEvidence(v)).toBe(false);
   });
+
+  it("OW-5: 维度/重量渲染值含缩写句点（approx.）可整体剥离 → PASS", () => {
+    const input: ListingGenerationInput = {
+      ...OWALA_INPUT,
+      englishRenderings: {
+        schema: "listing-english-rendering.v1",
+        renderings: [
+          { factId: "dimensions", field: "dimensions", sourceValue: "3.24\"W × 10.68\"H（约 8.23 × 27.13 cm）", english: "3.24\"W x 10.68\"H (approx. 8.23 x 27.13 cm)" },
+          { factId: "weight", field: "weight", sourceValue: "13.6 oz（约 385.55 g）", english: "13.6 oz (approx. 385.55 g)" },
+        ],
+        generatedAt: "2026-08-12T00:00:00.000Z",
+        source: "literal",
+      },
+    };
+    const description = "Capacity: 24 oz, Material: Stainless Steel, Color: Very, Very Dark, Dimensions: 3.24\"W x 10.68\"H (approx. 8.23 x 27.13 cm), Weight: 13.6 oz (approx. 385.55 g)";
+    const v = verifyListingClaims(makeDraft(description), input);
+    expect(v.unsupportedClaims).toEqual([]);
+    expect(listingClaimsHaveEvidence(v)).toBe(true);
+  });
 });
