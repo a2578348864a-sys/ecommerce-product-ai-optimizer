@@ -91,6 +91,7 @@ function buildRenderPrompt(fact: { factId: string; field: string; sourceValue: s
     "- Translate faithfully. Keep all numbers and units exactly as in the source.",
     "- Do not add, strengthen, or infer product attributes, benefits, performance, certification, or audience.",
     "- If the source is already English, return it as-is.",
+    "- If the source is already English but contains multiple independent statements without proper punctuation, separate them with periods.",
     "- Return strict JSON only: {\"translated\": \"the English translation\"}",
     "",
     `FACT: ${fact.sourceValue}`,
