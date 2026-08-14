@@ -165,8 +165,10 @@ export function ProductBatchManagerView({
     );
   }
 
+  // 批次导入只支持商品报表（PS/CC）；关键词报表（reverse_asin / keyword_mining）
+  // 走关键词管线（Phase 3/4），此处收窄类型并忽略。
   const detectedReportType = importInspection?.reportTypeDetected
-    && importInspection.reportType !== "unknown"
+    && (importInspection.reportType === "search_results" || importInspection.reportType === "category_current")
     ? importInspection.reportType
     : null;
   const effectiveReportType = detectedReportType ?? selectedReportType;
@@ -754,6 +756,12 @@ export function ProductBatchManager() {
         if (!response.ok || !body.data) throw new Error(responseError(body));
         setImportInspection(body.data);
         if (!body.data.reportTypeDetected || body.data.reportType === "unknown") {
+          setImportInspectionState("manual");
+          setManualReportTypeRequired(true);
+          return;
+        }
+        if (body.data.reportType !== "search_results" && body.data.reportType !== "category_current") {
+          // 关键词报表走关键词管线（Phase 3/4），批次导入要求人工选择商品报表类型
           setImportInspectionState("manual");
           setManualReportTypeRequired(true);
           return;
