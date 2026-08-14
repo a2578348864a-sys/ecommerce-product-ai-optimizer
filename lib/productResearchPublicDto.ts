@@ -28,10 +28,16 @@ export type TaskListProjectionContext = {
 };
 type ProjectionSpec =
   | { readonly kind: "scalar" }
+  | { readonly kind: "fingerprint" }
   | { readonly kind: "array"; readonly item: ProjectionSpec }
   | { readonly kind: "object"; readonly fields: Readonly<Record<string, ProjectionSpec>> };
 
 const scalar = { kind: "scalar" } as const satisfies ProjectionSpec;
+/**
+ * 64-hex 指纹字段的最小安全投影：仅输出前 12 位（与 researchHashFingerprint 惯例一致），
+ * 用于"可追溯信号"，完整哈希永不出现在浏览器投影中。
+ */
+const fingerprint = { kind: "fingerprint" } as const satisfies ProjectionSpec;
 const arrayOf = (item: ProjectionSpec): ProjectionSpec => ({ kind: "array", item });
 const objectOf = (fields: Readonly<Record<string, ProjectionSpec>>): ProjectionSpec => ({ kind: "object", fields });
 const stringList = arrayOf(scalar);
@@ -45,6 +51,68 @@ const evidenceSnapshotSpec = objectOf({
   riskFlags: stringList,
   decision: scalar,
   decisionReason: scalar,
+});
+
+/**
+ * SellerSprite 批次候选的最小安全投影（不含 imageSnapshot 的 base64 图片字节）。
+ * 仅暴露 Evidence Workbench 展示"商品概览 / 报告来源"所需的可追溯字段：
+ * productFacts 各指标、asin、reportType、capturedAt、evidenceHash、marketplace。
+ */
+const productBatchSnapshotSpec = objectOf({
+  version: scalar,
+  originKind: scalar,
+  productBatchId: scalar,
+  productBatchItemId: scalar,
+  productKey: scalar,
+  productName: scalar,
+  marketplace: scalar,
+  asin: scalar,
+  parentAsin: scalar,
+  reportType: scalar,
+  query: scalar,
+  category: scalar,
+  manifestHash: fingerprint,
+  snapshotHash: fingerprint,
+  itemIdentityHash: fingerprint,
+  itemHash: fingerprint,
+  evidenceHash: fingerprint,
+  researchPriority: scalar,
+  provisionalDisposition: scalar,
+  evidenceStatus: scalar,
+  promotionEligible: scalar,
+  sellerSpriteDisclaimerVersion: scalar,
+  capturedAt: scalar,
+  productFacts: objectOf({
+    productTitle: scalar,
+    brand: scalar,
+    price: scalar,
+    rating: scalar,
+    reviews: scalar,
+    estimatedMonthlySales: scalar,
+    estimatedMonthlyRevenue: scalar,
+    rootCategory: scalar,
+    rootCategoryBsr: scalar,
+    subCategory: scalar,
+    subCategoryBsr: scalar,
+    variationCount: scalar,
+  }),
+});
+
+const candidateSnapshotSpec = objectOf({
+  version: scalar,
+  id: scalar,
+  name: scalar,
+  rawInput: scalar,
+  status: scalar,
+  source: scalar,
+  score: scalar,
+  link: scalar,
+  keyword: scalar,
+  riskLevel: scalar,
+  riskLabel: scalar,
+  summaryLabel: scalar,
+  capturedAt: scalar,
+  identityHash: fingerprint,
 });
 
 const sourceMetaSpec = objectOf({
@@ -62,6 +130,8 @@ const sourceMetaSpec = objectOf({
   originalName: scalar,
   analyzedName: scalar,
   evidenceSnapshot: evidenceSnapshotSpec,
+  productBatchSnapshot: productBatchSnapshotSpec,
+  candidateSnapshot: candidateSnapshotSpec,
 });
 
 const reviewStateSpec = objectOf({
@@ -519,6 +589,9 @@ function projectBySpec(value: unknown, spec: ProjectionSpec, depth = 0): unknown
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number" && Number.isFinite(value)) return value;
     return undefined;
+  }
+  if (spec.kind === "fingerprint") {
+    return researchHashFingerprint(value);
   }
   if (spec.kind === "array") {
     if (!Array.isArray(value)) return undefined;

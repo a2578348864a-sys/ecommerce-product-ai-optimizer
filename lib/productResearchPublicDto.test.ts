@@ -393,4 +393,124 @@ describe("product research browser DTO allowlist", () => {
     }, "detail") as Record<string, any>;
     expect(projected.creativeHandoff).toEqual({});
   });
+
+  it("projects SellerSprite productBatchSnapshot and candidateSnapshot for the Evidence Workbench", () => {
+    const sourceMeta = {
+      source: "opportunity",
+      from: "opportunity",
+      entry: "candidate_to_agent_run",
+      opportunityTitle: "Cutting Board",
+      candidateId: "private-candidate-id",
+      productBatchSnapshot: {
+        version: "product-batch-candidate-source.v1",
+        originKind: "seller_sprite_product_batch",
+        productBatchId: "batch-1",
+        productBatchItemId: "item-1",
+        asin: "B0SAFE0001",
+        parentAsin: "B0SAFE0002",
+        reportType: "category_current",
+        marketplace: "US",
+        capturedAt: "2026-08-14T19:36:45.421Z",
+        evidenceHash: fullHash,
+        productFacts: {
+          productTitle: "Cutting Board",
+          brand: "SafeBrand",
+          price: 48.95,
+          rating: 4.2,
+          reviews: 4958,
+          estimatedMonthlySales: 3107,
+          estimatedMonthlyRevenue: 152088,
+          rootCategory: "Kitchen & Dining",
+          rootCategoryBsr: 2541,
+          subCategory: "Cutting Boards",
+          subCategoryBsr: 23,
+          variationCount: 6,
+        },
+        imageSnapshot: {
+          status: "cached",
+          mimeType: "image/jpeg",
+          sizeBytes: 4,
+          base64: "AAAA",
+          sha256: fullHash,
+        },
+      },
+      candidateSnapshot: {
+        version: 1,
+        id: "candidate-internal",
+        name: "Cutting Board",
+        status: "pending",
+        source: "SellerSprite",
+        score: 87,
+        link: null,
+        keyword: "",
+        riskLevel: "",
+        riskLabel: "",
+        summaryLabel: "Cutting Board",
+        capturedAt: "2026-08-14T19:36:45.421Z",
+        identityHash: fullHash,
+        productBatchImageSnapshot: { status: "not_cached" },
+      },
+    };
+
+    const projected = projectTaskResultForBrowser({ sourceMeta }, "detail") as Record<string, any>;
+
+    expect(projected.sourceMeta.productBatchSnapshot).toEqual({
+      version: "product-batch-candidate-source.v1",
+      originKind: "seller_sprite_product_batch",
+      productBatchId: "batch-1",
+      productBatchItemId: "item-1",
+      asin: "B0SAFE0001",
+      parentAsin: "B0SAFE0002",
+      reportType: "category_current",
+      marketplace: "US",
+      capturedAt: "2026-08-14T19:36:45.421Z",
+      evidenceHash: "a".repeat(12),
+      productFacts: {
+        productTitle: "Cutting Board",
+        brand: "SafeBrand",
+        price: 48.95,
+        rating: 4.2,
+        reviews: 4958,
+        estimatedMonthlySales: 3107,
+        estimatedMonthlyRevenue: 152088,
+        rootCategory: "Kitchen & Dining",
+        rootCategoryBsr: 2541,
+        subCategory: "Cutting Boards",
+        subCategoryBsr: 23,
+        variationCount: 6,
+      },
+    });
+    expect(projected.sourceMeta.candidateSnapshot).toEqual({
+      version: 1,
+      id: "candidate-internal",
+      name: "Cutting Board",
+      status: "pending",
+      source: "SellerSprite",
+      score: 87,
+      link: null,
+      keyword: "",
+      riskLevel: "",
+      riskLabel: "",
+      summaryLabel: "Cutting Board",
+      capturedAt: "2026-08-14T19:36:45.421Z",
+      identityHash: "a".repeat(12),
+    });
+    // 图片字节（base64）与内部绑定字段不得外泄
+    const serialized = JSON.stringify(projected);
+    expect(serialized).not.toContain("AAAA");
+    expect(serialized).not.toContain("candidateId");
+    expect(serialized).not.toContain("productBatchImageSnapshot");
+    expectNoForbiddenFields(projected);
+  });
+
+  it("keeps productBatchSnapshot out of list scope projections", () => {
+    const projected = projectTaskResultForBrowser({
+      sourceMeta: {
+        source: "opportunity",
+        productBatchSnapshot: { asin: "B0SAFE0001" },
+      },
+    }, "list") as Record<string, any>;
+    expect(projected).not.toHaveProperty("sourceMeta");
+    expect(projected).not.toHaveProperty("productBatchSnapshot");
+  });
 });
