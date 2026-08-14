@@ -15,6 +15,7 @@ import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } f
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
+import { EvidenceWorkbench } from "@/components/evidence/EvidenceWorkbench";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
@@ -375,6 +376,9 @@ function WorkflowDecisionSummary({
         ) : null}
         <DecisionEvidencePanel evidence={decisionEvidence} compact />
       </div>
+
+      {/* ── Phase 2: Evidence Workbench（商品证据工作台） ── */}
+      <EvidenceWorkbench taskId={taskId} result={result} />
 
       {/* ── Section 3: 接下来可以使用什么 — Listing ── */}
       {hasListingPrep && (
