@@ -16,6 +16,10 @@ import {
   KeywordReportEvidenceSection,
   type KeywordEvidenceView,
 } from "@/components/evidence/KeywordReportEvidenceSection";
+import {
+  AiEvidenceSummarySection,
+  type AiEvidenceSummaryView,
+} from "@/components/evidence/AiEvidenceSummarySection";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -337,6 +341,26 @@ export function EvidenceWorkbench({
   const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
   const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
+  const [aiSummary, setAiSummary] = useState<AiEvidenceSummaryView | null>(null);
+  const [aiSummaryStorageVersion, setAiSummaryStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
+
+  async function loadAiSummary() {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/ai-evidence-summary`, {
+        headers: buildFetchHeaders(),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { summary: AiEvidenceSummaryView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: false };
+      if (res.ok && json.ok) {
+        setAiSummary(json.data.summary);
+        setAiSummaryStorageVersion(json.data.storageVersion);
+      }
+    } catch {
+      // fail-soft
+    }
+  }
+
   async function loadKeywordEvidence() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/keyword-evidence`, {
@@ -356,6 +380,7 @@ export function EvidenceWorkbench({
 
   useEffect(() => {
     void loadKeywordEvidence();
+    void loadAiSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
@@ -586,6 +611,20 @@ export function EvidenceWorkbench({
         <p className="mt-2 text-sm text-slate-500">
           Core 阶段货源证据未收集（采购价 / MOQ / 物流均 unknown）。
         </p>
+      </section>
+
+      {/* ── AI 证据总结（Phase 5） ── */}
+      <section data-testid="workbench-ai-summary" className="rounded-2xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-bold text-slate-900">AI 证据总结</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          AI 只解释已有 Evidence，不创造事实；fact/risk/conflict 必须带证据引用。
+        </p>
+        <AiEvidenceSummarySection
+          taskId={taskId}
+          summary={aiSummary}
+          storageVersion={aiSummaryStorageVersion}
+          onChanged={loadAiSummary}
+        />
       </section>
 
       {/* ── Missing ── */}
