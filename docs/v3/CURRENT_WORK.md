@@ -13,7 +13,7 @@
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: bc50f92（验收排障修复，见下）
+- main HEAD: 8f07915（验收排障修复，见下）
 - origin/main: 76e2c96（main 领先，**push 等待用户明确授权**）
 - main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
 
@@ -29,6 +29,7 @@
 | f3c6668 | 商品概览显示"暂无商品概览数据" | GET /api/tasks/[id] 的 sourceMeta 白名单投影缺 productBatchSnapshot / candidateSnapshot（数据本身完好） | sourceMetaSpec 补充两个嵌套投影；hash 字段按惯例输出 12 位指纹；imageSnapshot base64 不外泄 |
 | 0d14d3e | 竞品/关键词/AI 总结接口浏览器 401 | evidence 三个组件 buildFetchHeaders 读错 key（qx:access-token）且发 Authorization: Bearer，而认证契约是 x-access-token | 统一改用 buildAccessHeaders()（x-access-token + x-access-password）；API 实测 200 |
 | bc50f92 | 关键词保存"解析结果结构无效"；AI 总结门禁未通过（gateResult=fail、列表全空） | ① 关键词前端回传丢 schema 字段；② AI 总结 prompt 未给出输出 schema，deepseek 猜成 field/label/value 结构而校验器只读 text | ① 前端回传完整 report envelope；② prompt 显式输出 schema + 校验器 value→text 兜底；实测 gateResult=pass（17 条：3 facts/1 risk/7 missing/4 nextSteps） |
+| 8f07915 | AI 总结偶发"生成失败"（502） | deepseek-v4-flash 偶发返回不可解析 JSON（实测 response_length=1929 json_parse_error，同样 prompt 下次成功） | json_parse_error 重试一次 + maxTokens 4000→8000 防截断；实测 gateResult=pass（4 facts/3 risks/7 missing/3 nextSteps） |
 
 > 说明：任务 `cmstdm6px…` 的第 6 步"partial_failed only allows needs_information"非 bug——该任务是排障早期旧构建（AI 货源 token 预算偏小 → reasoning 吃满 → json_parse_error → fallback → partial_failed）生成。当前构建已修 token 预算（4000），实测 sourcing 返回合法 JSON（finish_reason=stop）。**验收需重新一键分析生成 completed 任务**再走第 4–9 步。
 
