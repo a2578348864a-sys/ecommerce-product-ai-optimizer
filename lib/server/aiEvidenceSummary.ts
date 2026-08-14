@@ -434,19 +434,42 @@ export async function generateAiEvidenceSummary(input: {
 
   const startedAt = new Date().toISOString();
   const runId = randomUUID();
-  const aiResult = await callAiJson<Record<string, unknown>>({
+
+  // deepseek 推理模型偶发返回不可解析 JSON（随机性），对 json_parse_error 重试一次。
+  const callSummary = () => callAiJson<Record<string, unknown>>({
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: buildUserPrompt(promptInput) },
     ],
     temperature: 0.2,
-    maxTokens: 4000,
+    maxTokens: 8000,
     thinkingMode: "disabled",
   });
+  let aiResult = await callSummary();
+  if (!aiResult.ok && aiResult.error.code === "json_parse_error") {
+    // eslint-disable-next-line no-console
+    console.error("[ai-evidence-summary] json_parse_error, retrying once", {
+      detail: aiResult.error.detail,
+      finishReason: aiResult.diagnostics?.finishReason,
+      completionTokens: aiResult.diagnostics?.completionTokens,
+      reasoningTokens: aiResult.diagnostics?.reasoningTokens,
+    });
+    aiResult = await callSummary();
+  }
   const finishedAt = new Date().toISOString();
   const model = aiResult.diagnostics?.model ?? "unknown";
 
   if (!aiResult.ok) {
+    // eslint-disable-next-line no-console
+    console.error("[ai-evidence-summary] provider failed", {
+      code: aiResult.error.code,
+      detail: aiResult.error.detail,
+      message: aiResult.error.message,
+      finishReason: aiResult.diagnostics?.finishReason,
+      completionTokens: aiResult.diagnostics?.completionTokens,
+      reasoningTokens: aiResult.diagnostics?.reasoningTokens,
+      responseCharLength: aiResult.diagnostics?.responseCharLength,
+    });
     throw new AiEvidenceSummaryError(
       aiResult.error.code === "timeout" ? "ai_timeout" : "ai_provider_error",
       502,
