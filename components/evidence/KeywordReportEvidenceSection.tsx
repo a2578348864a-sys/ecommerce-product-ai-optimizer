@@ -7,6 +7,7 @@
  */
 import { useState } from "react";
 import { Loader2, Upload } from "lucide-react";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { ratioToPercent } from "@/lib/upstream/sellersprite/keywordReports";
 
 export type KeywordReportRowView = {
@@ -72,10 +73,7 @@ function displayColumns(reportType: "reverse_asin" | "keyword_mining"): Array<{ 
 }
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
-  const headers = new Headers(extra);
-  const token = typeof window !== "undefined" ? window.sessionStorage.getItem("qx:access-token") : null;
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return headers;
+  return new Headers({ ...buildAccessHeaders(), ...extra });
 }
 
 export function KeywordReportEvidenceSection({

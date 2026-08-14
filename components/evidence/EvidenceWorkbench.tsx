@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 import {
   KeywordReportEvidenceSection,
@@ -233,10 +234,7 @@ type CompetitorApiResponse =
   | { ok: false; error?: { code?: string; message?: string } };
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
-  const headers = new Headers(extra);
-  const token = typeof window !== "undefined" ? window.sessionStorage.getItem("qx:access-token") : null;
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return headers;
+  return new Headers({ ...buildAccessHeaders(), ...extra });
 }
 
 /* ── 展示组件 ──────────────────────────────────────────── */

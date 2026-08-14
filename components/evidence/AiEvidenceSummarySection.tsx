@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
 
 export type AiSummaryItemView = {
   id: string;
@@ -42,10 +43,7 @@ export type AiEvidenceSummaryView = {
 };
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
-  const headers = new Headers(extra);
-  const token = typeof window !== "undefined" ? window.sessionStorage.getItem("qx:access-token") : null;
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return headers;
+  return new Headers({ ...buildAccessHeaders(), ...extra });
 }
 
 const CATEGORY_LABELS: Array<{ key: keyof AiEvidenceSummaryView["summary"]; label: string; tone: string }> = [
