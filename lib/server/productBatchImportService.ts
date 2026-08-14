@@ -431,7 +431,9 @@ export async function importSellerSpriteProductBatch(
     fail("report_type_required", "SellerSprite report type could not be detected.");
   }
   workbookFailure(precheck);
-  const reportType = precheck.reportType as SellerSpriteReportType;
+  // precheck 只放行 PS/CC（关键词报表被 unsupported_report_type 拒绝，见 precheck structuralErrors）；
+  // 类型收窄到批次支持的报告类型，运行时由 precheck 保护。
+  const reportType = precheck.reportType as "search_results" | "category_current";
   const snapshot = buildSellerSpriteMarketSnapshot(precheck);
   let embeddedImages: XlsxEmbeddedImageParseResult;
   try {

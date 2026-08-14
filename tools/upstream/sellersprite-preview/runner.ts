@@ -103,7 +103,9 @@ export type SellerSpritePreviewParsedArgs =
   | { kind: "help" }
   | {
     kind: "run";
-    reportType?: SellerSpriteReportType;
+    // CLI 只支持商品报表（search_results / category_current）；
+    // 关键词报表（reverse_asin / keyword_mining）由关键词管线处理（Phase 3/4）。
+    reportType?: "search_results" | "category_current";
     input: string;
     query: string | null;
     category: string;
