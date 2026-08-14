@@ -13,13 +13,23 @@
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: （最终验证提交后填写）
+- main HEAD: f3c6668（验收排障修复，见下）
 - origin/main: 76e2c96（main 领先，**push 等待用户明确授权**）
-- main clean: 是
+- main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
 
 ## 最终报告
 
 `docs/v3/V3_CORE_FINAL_REPORT.md`（24_FINAL_REPORT_TEMPLATE 填写）
+
+## 人工验收排障记录（验收准备阶段，不改变 V3_CORE=DONE 语义）
+
+| 提交 | 问题 | 根因 | 修复 |
+|---|---|---|---|
+| fb41af9 + 7a50f56 | 任务详情仍显示老界面 | Evidence Workbench 挂载在旧组件 WorkflowDecisionSummary（不生效） | 改挂到主组件 TaskRecordDetail（研究结论后、人工决定前），playwright 验证 7 区块渲染 |
+| f3c6668 | 商品概览显示"暂无商品概览数据" | GET /api/tasks/[id] 的 sourceMeta 白名单投影缺 productBatchSnapshot / candidateSnapshot（数据本身完好） | sourceMetaSpec 补充两个嵌套投影；hash 字段按惯例输出 12 位指纹；imageSnapshot base64 不外泄 |
+
+- 排障过程产物：`PROOF_SIGNING_SECRET` 已补入 `.env.local`（研究失败 `run_proof_unavailable` 根因，未提交）；候选/任务数据只读诊断，未写 DB。
+- 验收前服务：由 `npm run start:local` 启动（计划任务指向旧 runtime-package，guard 校验固定 buildId 无法拉起新构建——历史遗留，最终报告说明）。
 
 ## 正式风险登记（decisions.md §7 终态）
 
@@ -44,10 +54,11 @@
 ## 最终验证（V3_CORE = DONE 门禁）
 
 - lint / tsc / build：PASS
-- tests：4516 passed / 0 failed（main 串行全量）
+- tests：4518 passed / 0 failed（main 串行全量，含 DTO 投影新增 2 测）
 - 9 步 Core Smoke：自动化矩阵 PASS + 人工页面步骤文档化（validation.md §3，需访问密码执行）
-- 3005：计划任务 registered/Ready 全程未触碰
+- 3005：计划任务 registered/Ready 全程未触碰（验收服务由 start:local 提供）
 - 公网部署：NO；force push：NO；DB 写：NO；样本入库：NO
+- 人工验收就绪：任务详情 Evidence Workbench 7 区块渲染，商品概览 11 项真实证据（ASIN/价格/评分/评论/BSR/估算月销/月销额）经 playwright 实测出现
 
 ## 下一步（等待用户授权，三项之一）
 
