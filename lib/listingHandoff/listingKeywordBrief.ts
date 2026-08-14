@@ -24,6 +24,21 @@ export type ListingKeywordSource =
   | "synthetic"
   | "unknown";
 
+export type ListingKeywordProvenance = {
+  /** 报告类型（适用时）：search_results / category_current / reverse_asin / keyword_mining */
+  reportType?: string;
+  /** 市场（如 amazon.com / US） */
+  marketplace?: string;
+  /** 数据期（如 2026-07）；与 capturedAt（采集时刻）语义不同，不得混淆 */
+  month?: string;
+  /** 证据引用（如 evidenceHash / sourceFileSha256 前缀） */
+  evidenceRef?: string;
+  /** 报告哈希（如 sourceFileSha256 / reportHash） */
+  reportHash?: string;
+  /** 关联 ASIN（适用时） */
+  asin?: string;
+};
+
 export type ListingKeywordBrief = {
   schema: "listing-keyword-brief.v1";
   primaryKeyword: string;
@@ -31,7 +46,7 @@ export type ListingKeywordBrief = {
   backendSearchTerms: string[];
   source: ListingKeywordSource;
   capturedAt: string;
-};
+} & ListingKeywordProvenance;
 
 export type ListingKeywordBriefResult =
   | { ok: true; brief: ListingKeywordBrief }
@@ -81,7 +96,7 @@ export function normalizeBackendSearchTerms(terms: unknown, maxBytes = 250): { t
   return { terms: result, bytes };
 }
 
-/** 解析/规范化存储的 Keyword Brief（从 resultJson 命名空间） */
+/** 解析/规范化存储的 Keyword Brief（从 resultJson 命名空间）；追溯字段缺失时兼容旧数据（undefined） */
 export function parseListingKeywordBrief(value: unknown): ListingKeywordBrief | null {
   if (!isRecord(value) || value.schema !== "listing-keyword-brief.v1") return null;
   const primaryKeyword = cleanTerm(value.primaryKeyword, MAX_PRIMARY_LENGTH);
@@ -98,6 +113,11 @@ export function parseListingKeywordBrief(value: unknown): ListingKeywordBrief | 
     ? value.capturedAt
     : "";
   if (!capturedAt) return null;
+  const provenance: ListingKeywordProvenance = {};
+  for (const field of ["reportType", "marketplace", "month", "evidenceRef", "reportHash", "asin"] as const) {
+    const raw = value[field];
+    if (typeof raw === "string" && raw.trim()) provenance[field] = raw.trim().slice(0, 256);
+  }
   return {
     schema: "listing-keyword-brief.v1",
     primaryKeyword,
@@ -105,12 +125,13 @@ export function parseListingKeywordBrief(value: unknown): ListingKeywordBrief | 
     backendSearchTerms,
     source,
     capturedAt,
+    ...provenance,
   };
 }
 
 /**
  * 构造 Keyword Brief（服务端或测试 fixture）。
- * primaryKeyword 必填；supporting/backend 可选。
+ * primaryKeyword 必填；supporting/backend/追溯字段可选。
  */
 export function buildListingKeywordBrief(input: {
   primaryKeyword: string;
@@ -118,7 +139,7 @@ export function buildListingKeywordBrief(input: {
   backendSearchTerms?: string[];
   source?: ListingKeywordSource;
   capturedAt: string;
-}): ListingKeywordBriefResult {
+} & ListingKeywordProvenance): ListingKeywordBriefResult {
   const primaryKeyword = cleanTerm(input.primaryKeyword, MAX_PRIMARY_LENGTH);
   if (!primaryKeyword) return { ok: false, code: "primary_keyword_required", message: "缺少主搜索词。" };
   if (!input.capturedAt || Number.isNaN(Date.parse(input.capturedAt))) {
@@ -130,6 +151,11 @@ export function buildListingKeywordBrief(input: {
     .slice(0, MAX_SUPPORTING_ITEMS);
   const { terms: backendSearchTerms } = normalizeBackendSearchTerms(input.backendSearchTerms ?? []);
   const source = input.source ?? "unknown";
+  const provenance: ListingKeywordProvenance = {};
+  for (const field of ["reportType", "marketplace", "month", "evidenceRef", "reportHash", "asin"] as const) {
+    const raw = input[field];
+    if (typeof raw === "string" && raw.trim()) provenance[field] = raw.trim().slice(0, 256);
+  }
   return {
     ok: true,
     brief: {
@@ -139,6 +165,7 @@ export function buildListingKeywordBrief(input: {
       backendSearchTerms,
       source,
       capturedAt: new Date(input.capturedAt).toISOString(),
+      ...provenance,
     },
   };
 }

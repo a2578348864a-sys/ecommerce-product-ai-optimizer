@@ -296,6 +296,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       backendSearchTerms: Array.isArray(briefInput.backendSearchTerms) ? briefInput.backendSearchTerms as string[] : [],
       source: (briefInput.source as "manual" | "synthetic" | "sellersprite" | "amazon_search_query" | "ad_search_term_report" | "unknown") ?? "manual",
       capturedAt: new Date().toISOString(),
+      // Phase 3/4：05 合同可追溯字段（旧客户端不传则缺失；非字符串由 build 忽略）
+      reportType: briefInput.reportType as string | undefined,
+      marketplace: briefInput.marketplace as string | undefined,
+      month: briefInput.month as string | undefined,
+      evidenceRef: briefInput.evidenceRef as string | undefined,
+      reportHash: briefInput.reportHash as string | undefined,
+      asin: briefInput.asin as string | undefined,
     });
     if (!briefResult.ok) return errorResponse(400, "invalid_keyword_brief", briefResult.message);
     const { ctx, error } = getAuth(req, id, body);
