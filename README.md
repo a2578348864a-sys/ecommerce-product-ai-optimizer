@@ -67,11 +67,16 @@ npx prisma db push
 
 ### 启动
 
+带 SQLite 门禁的本地入口（推荐，端口 3005）：
+
 ```bash
-npm run dev
+npm run check:local   # 先验证本机端口与 SQLite 数据库就绪（不启动服务）
+npm run dev:local     # 启动开发服务器（带数据库门禁）
 ```
 
-打开 http://localhost:3000 进入登录页。
+浏览器打开 http://localhost:3005 进入登录页。
+
+如只需纯开发服务器（无数据库门禁）可执行 `npm run dev`（http://localhost:3000）。
 
 详细步骤见 [快速开始](docs/getting-started/installation.md)。
 
@@ -86,6 +91,8 @@ npm run dev
 | `AI_PROVIDER` | 文本 AI Provider（`deepseek` 等） |
 | `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | DeepSeek Provider 配置 |
 | `LISTING_PROVIDER_MODE` / `IMAGE_PROVIDER_MODE` | `mock` 或 `real`（默认 mock，不调用真实付费 API） |
+| `OPENAI_LISTING_ENABLED` | Listing AI 门禁（realAiListingGate 读取；与 `LISTING_PROVIDER_MODE=real` 同时为真才放行真实调用） |
+| `OPENAI_LISTING_VISITOR_ENABLED` | 访客是否允许真实 Listing AI（默认 false） |
 | `OPENAI_API_KEY` / `OPENAI_IMAGE_BASE_URL` / `OPENAI_IMAGE_MODEL` | 图片 Provider 配置 |
 | `OPENAI_IMAGE_RESULT_HOSTS` | 图片下载结果域名白名单 |
 | `DATABASE_URL` | SQLite 数据库路径 |

@@ -31,11 +31,16 @@ cp .env.example .env.local
 
 ## 启动开发服务器
 
+带 SQLite 门禁的本地入口（推荐，端口 3005）：
+
 ```bash
-npm run dev
+npm run check:local   # 验证本机端口与 SQLite 数据库就绪（不启动服务）
+npm run dev:local     # 启动开发服务器（带数据库门禁）
 ```
 
-浏览器打开 http://localhost:3000。
+浏览器打开 http://localhost:3005 进入登录页。
+
+纯开发服务器（无数据库门禁）可执行 `npm run dev`（http://localhost:3000）；生产模式本地入口用 `npm run start:local`（同样带门禁）。
 
 ## 验证安装
 
@@ -49,7 +54,11 @@ npm run check:provider-config
 
 | 命令 | 说明 |
 | --- | --- |
-| `npm run dev` | 启动开发服务器 |
+| `npm run dev:local` | 启动开发服务器（带 SQLite 门禁，端口 3005） |
+| `npm run start:local` | 启动生产模式（带 SQLite 门禁，端口 3005） |
+| `npm run check:local` | 验证本机端口与 SQLite 就绪（不启动服务） |
+| `npm run autostart:local` | 注册登录自启动计划任务（3005） |
+| `npm run dev` | 纯开发服务器（无数据库门禁，端口 3000） |
 | `npm run build` | 生产构建 |
 | `npm run start` | 启动生产服务器 |
 | `npm run test` | 运行测试（Vitest） |
