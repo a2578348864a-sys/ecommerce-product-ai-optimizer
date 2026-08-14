@@ -129,7 +129,14 @@ export function KeywordReportEvidenceSection({
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           action: "save",
-          report: preview,
+          report: {
+            schema: "sellersprite-keyword-report.v1",
+            reportType: preview.reportType,
+            capturedAt: preview.capturedAt,
+            dataPeriod: null,
+            headerColumnCount: previewMeta?.headerColumnCount ?? 0,
+            rows: preview.rows,
+          },
           expectedStorageVersion: storageVersion,
         }),
       });

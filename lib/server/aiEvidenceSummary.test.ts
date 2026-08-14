@@ -237,6 +237,27 @@ describe("AI evidence summary (Phase 5)", () => {
     expect(result.unverified).toHaveLength(1);
   });
 
+  it("accepts value/label-shaped facts (deepseek guesses field/value instead of text)", () => {
+    const allowedRefs = new Set(["ev:e1", "ev:e2"]);
+    const result = validateAiSummaryOutput({
+      facts: [
+        { field: "price", label: "价格", value: 48.95, evidenceRefs: ["ev:e1"] },
+        { field: "rating", label: "评分", value: "4.2", evidenceRefs: ["ev:e2"] },
+      ],
+      estimates: [],
+      signals: [],
+      risks: [{ text: "评分偏低", evidenceRefs: ["ev:e2"] }],
+      conflicts: [],
+      missing: [{ text: "缺采购价", evidenceRefs: [] }],
+      nextSteps: [{ text: "补供应商", evidenceRefs: [] }],
+      noviceExplanation: { whatWeKnow: "", whatWeDontKnow: "", biggestRisk: "", why: "", nextToResearch: "" },
+    }, allowedRefs);
+    expect(result.ok).toBe(true);
+    expect(result.summary.facts).toHaveLength(2);
+    expect(result.summary.facts[0].text).toContain("48.95");
+    expect(result.unverified).toHaveLength(0);
+  });
+
   it("generates, saves and traces a run with mocked provider", async () => {
     vi.mocked(callAiJson).mockResolvedValue({
       ok: true,

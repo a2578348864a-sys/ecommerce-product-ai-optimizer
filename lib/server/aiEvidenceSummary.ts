@@ -208,6 +208,19 @@ const SYSTEM_PROMPT = [
   "- Items without evidence go to missing or nextSteps with empty evidenceRefs.",
   "- Numbers must match the evidence exactly (ratios are 0-1 values; supplyDemandRatio is a ratio, not a percentage).",
   "- Output strict JSON only, no markdown.",
+  "OUTPUT SCHEMA (strict JSON, every list item uses ONLY the two keys \"text\" and \"evidenceRefs\"):",
+  "{",
+  "  \"facts\": [{\"text\": string, \"evidenceRefs\": string[]}],",
+  "  \"estimates\": [{\"text\": string, \"evidenceRefs\": string[]}],",
+  "  \"signals\": [{\"text\": string, \"evidenceRefs\": string[]}],",
+  "  \"risks\": [{\"text\": string, \"evidenceRefs\": string[]}],",
+  "  \"conflicts\": [{\"text\": string, \"evidenceRefs\": string[]}],",
+  "  \"missing\": [{\"text\": string, \"evidenceRefs\": []}],",
+  "  \"nextSteps\": [{\"text\": string, \"evidenceRefs\": []}],",
+  "  \"noviceExplanation\": {\"whatWeKnow\": string, \"whatWeDontKnow\": string, \"biggestRisk\": string, \"why\": string, \"nextToResearch\": string}",
+  "}",
+  "- facts/estimates/signals/risks/conflicts MUST each carry at least one valid evidenceRef from the evidence list; missing/nextSteps MUST use empty evidenceRefs.",
+  "- Do NOT add keys like \"field\", \"label\", \"value\", \"status\", \"summary\" to list items — only \"text\" and \"evidenceRefs\".",
 ].join("\n");
 
 function buildUserPrompt(input: ReturnType<typeof buildAiSummaryEvidenceInput>): string {
@@ -268,7 +281,19 @@ export function validateAiSummaryOutput(
     const unverified: AiSummaryItem[] = [];
     for (const item of Array.isArray(listRaw) ? listRaw : []) {
       if (!isRecord(item)) continue;
-      const text = asString(item.text);
+      // 兼容旧/猜测 schema：facts 等条目若缺少 text 但携带 value/summary/label，回退为可读文本。
+      const valueText = item.value === null || item.value === undefined
+        ? ""
+        : typeof item.value === "object"
+          ? (isRecord(item.value) && (item.value.normalized !== undefined || item.value.value !== undefined)
+            ? String(item.value.normalized ?? item.value.value).trim()
+            : "")
+          : String(item.value).trim();
+      const label = asString(item.label);
+      const text = (asString(item.text)
+        || asString(item.summary)
+        || (label && valueText ? `${label} ${valueText}` : valueText || label)
+        || "").slice(0, 400);
       if (!text) continue;
       const refs = Array.isArray(item.evidenceRefs)
         ? item.evidenceRefs.filter((ref): ref is string => typeof ref === "string" && allowedRefs.has(ref))
