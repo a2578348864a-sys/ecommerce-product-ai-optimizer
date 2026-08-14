@@ -153,3 +153,4 @@
 | 11 | product-research-record 不含事实字段（仅决策账本+hash），证据事实在 candidateAnalysisContext/decisionEvidence——Phase 2 证据读取模型需明确边界 | productResearchRecord.ts:65-76；candidateAnalysisContext.ts:38-107 | Phase 2 |
 | 12 | SellerSprite metricNature 身份字段默认 unknown（fields.ts:32-51），Phase 2 需确认读取模型使用方式 | fields.ts:32-51 | Phase 2 |
 | 13 | research-decision PATCH 只接受三值（提交旧四态 400）；旧四态仅兼容列读取 | research-decision/route.ts:88-97 | 文档化（已裁定） |
+| 14 | studioListingService 缺专项单测（幂等/配额/账本恢复）；Studio 无保存草稿能力（TTL 1h 临时文件） | 无 studioListingService.test.ts；studioListingResultStore.ts:12 | Phase 2 |

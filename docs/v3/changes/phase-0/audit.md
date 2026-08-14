@@ -144,9 +144,13 @@
 
 ### Studio
 
-- Listing Studio：`/api/listing-studio`（standalone，复用 aiListingGenerator，real gate `isRealAiListingEnabled`/`isRealAiVisitorListingEnabled`，证据：app/api/listing-studio/route.ts:7-9）；`studioListingService`（Visitor 配额在 service 内 `reserveVisitorStandaloneStudioQuota`，studioListingService.ts:19-25）；**输出 meta.saved=false 不落业务库**，仅写临时 `studioListingResultStore`（无查询入口）。
-- Image Studio：`/api/image-studio`（standalone，studioImageGenerator，real gate `isRealAiImageEnabled`，env `OPENAI_IMAGE_GENERATION_ENABLED`/`OPENAI_IMAGE_VISITOR_ENABLED`，lib/server/realAiImageGate.ts:6-13）；`studioImageResultStore` 同前（落库无查询入口）。
-- 旧 listing 链：`/api/products/listing-copy`（旧文案生成，仅 ProductProfitForm 调用，**无 real AI gate**）+ ListingCopyHistory（owner-only 历史）；`listing-pack/ai-generate` real 拒绝（route:198-201）。
+- Listing Studio：`/api/listing-studio`（standalone，复用 aiListingGenerator，real gate `isRealAiListingEnabled`/`isRealAiVisitorListingEnabled`，证据：app/api/listing-studio/route.ts:7-9）；`studioListingService`（Visitor 配额在 service 内 `reserveVisitorStandaloneStudioQuota`，studioListingService.ts:19-25）；**输出 meta.saved=false 不落业务库**，仅写临时 `studioListingResultStore`。
+- Image Studio：`/api/image-studio`（standalone，studioImageGenerator，real gate `isRealAiImageEnabled`，env `OPENAI_IMAGE_GENERATION_ENABLED`/`OPENAI_IMAGE_VISITOR_ENABLED`，lib/server/realAiImageGate.ts:6-13）；`studioImageResultStore` 同前。
+- **Studio 结果存储（临时、TTL 1h、不落业务库）**：`studioListingResultStore.ts:12`（`STUDIO_LISTING_RESULT_TTL_MS=1h`，root `data/studio-listing-results`，可 `STUDIO_LISTING_RESULT_STORE_ROOT` 覆盖）；`studioImageResultStore.ts:18,183`（root `data/studio-image-results`，owner.json/visitor-{sha256}.json）。结论：Studio「保存草稿」能力缺失，真实结果仅临时文件用于幂等重放。
+- **Image 真实 Provider 安全白名单**：`openaiImageClient.ts:13,25-26`（base URL 主机精确白名单 `api.65535.space`，模型白名单 `gpt-image-2`，key 存在性校验 :268-269，错误映射 mapProviderError :171-228）；`openaiImageEditClient.ts:39-106`（参考图 images.edit，复用同 key/base/model）；`studioReferenceImage.ts:18-43`（仅 Image Studio 使用，magic bytes/尺寸/像素/单帧校验）。
+- **历史双轨并存不互通**：Prisma `ListingCopyHistory` + `listingCopyHistoryApi`（旧链，owner-only）vs `studioListingResultStore`/`studioImageResultStore`（Studio，临时文件 TTL 1h）。
+- 旧 listing 链：`/api/products/listing-copy`（route.ts:369-382 直接 `callAiJson` 真实调用，:346 requireAuthenticated，仅 demoGuard 配额，**无 real AI gate、无 mock/real 开关**；仅 ProductProfitForm 调用）+ ListingCopyHistory（owner-only 历史，listingCopyHistoryStore.ts:9-15 白名单/敏感键过滤）；`listing-pack/ai-generate` real 拒绝（route:198-201）；`listingSnapshotAudit` 写 `logs/listing-snapshot-save.audit.log`（唯一生产调用方 = listing-pack/ai-save）。
+- **测试缺口**：`studioListingService.test.ts` 不存在（幂等/配额/账本恢复复杂逻辑缺专项单测；phase2 测试仅覆盖 route/input 层）。
 
 ### SellerSprite
 
@@ -185,6 +189,8 @@
 9. **SellerSprite metricNature：身份字段默认 unknown**（fields.ts:32-51：asin/sku/brand/productTitle/productUrl/parentAsin/seller/rootCategory/subCategory=unknown），仅指标字段为 snapshot/estimate——与 05 合同「能证明同实体才算证据」铁律方向一致，Phase 2 需确认读取模型如何使用这些 unknown 身份字段。
 10. **listing-keyword-brief 仅 source+capturedAt**（source 枚举 6 值，listingKeywordBrief.ts:19-34），无 evidenceRef/reportHash/month/data period（05 合同未完整落地）。
 11. **manualFactConfirmation 注释与实现不一致**（注释「8 个字段」，实际 17 项，:19-37）——小文档漂移，随代码维护修正。
+12. **studioListingService 缺专项单测**（幂等/配额/账本恢复逻辑无 studioListingService.test.ts；phase2 测试仅覆盖 route/input 层）——工程缺口，Phase 2 补测。
+13. **Studio 无「保存草稿」能力**（真实结果仅临时文件 TTL 1h，用于幂等重放）；历史双轨（Prisma ListingCopyHistory vs studio resultStore）不互通。
 
 ## 盘点疑点汇总（供 decisions 裁定）
 
