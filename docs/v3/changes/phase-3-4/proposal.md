@@ -45,11 +45,13 @@
 - 存储：resultJson versioned namespace（`keywordMiningEvidence`，writer `keyword-mining-evidence`）
 - 消费：Workbench「关键词 Evidence」扩展（Seed 维度）
 
-### 3.3 Keyword Brief 可追溯增强（正式风险 #6）
+### 3.3 Keyword Brief 可追溯增强（正式风险 #6）——**已完成（2026-08 本轮）**
 
 - 人工确认后才能进入 Keyword Brief（现有流程已具备：listing-handoff save_keyword_brief）
-- 可追溯字段补齐设计：`evidenceRef / reportHash / reportType / marketplace / month / capturedAt / asin（适用）`
-- 落点：listing-keyword-brief.v1 增量字段（向后兼容：旧数据缺字段 → unknown，不伪造）
+- 可追溯字段已落地：`reportType / marketplace / month（数据期）/ evidenceRef / reportHash / asin`（可选，旧数据缺失 → undefined，读取侧按 unknown，不伪造）
+- capturedAt（采集时刻）与 month（数据期）语义分离，测试断言不混淆
+- 落点：listing-keyword-brief.v1 增量字段（向后兼容）；route 白名单安全（非字符串忽略）；Workbench 关键词区展示
+- 状态：风险 #6 **部分关闭**（可追溯字段已实现；Reverse ASIN/Keyword Mining 报告类型的真实数据仍待样本）
 
 ## 4. 风险清单（样本验证前登记）
 

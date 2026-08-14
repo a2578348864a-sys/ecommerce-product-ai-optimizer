@@ -60,7 +60,7 @@ Phase 3/4（Reverse ASIN / Keyword Mining 关键词 Evidence）：**无真实 XL
 | 3 | Reverse ASIN / Keyword Mining 无实现 | Phase 3/4 | MA/Phase 3-4 | 进行中（无样本准备路径） |
 | 4 | category_current 候选源快照硬编码 Search Results（lib/server 禁改） | Phase 2/6 | MA/Phase 2 close | Phase 2 评估：未触及（lib/server 边界），顺延 Phase 6 |
 | 5 | 旧 listing-copy 链真实 AI 无证据门禁 | Phase 6 | MA/Phase 6 | 未动 |
-| 6 | listing-keyword-brief 可追溯字段不完整（05 合同） | Phase 3/4 | MA/Phase 3-4 | 待 Phase 3/4 增强（含 Keyword Brief 可追溯：evidenceRef/reportHash/month） |
+| 6 | listing-keyword-brief 可追溯字段不完整（05 合同） | Phase 3/4 | MA/Phase 3-4 | **已实现**（reportType/marketplace/month/evidenceRef/reportHash/asin 可选字段 + Workbench 展示 + 4 测试）；真实报告数据待样本；**部分关闭** |
 | 7 | studio resultStore 无查询入口 | Phase 6 | MA/Phase 6 | Phase 2 评估：顺延 Phase 6 |
 | 8 | listing-copy-history owner-only | 产品决策 | PU/任何 Phase | 未动 |
 | 9 | 外部抓取出口 2 处无页面调用方 | Phase 6 | MA/Phase 6 | 未动 |
