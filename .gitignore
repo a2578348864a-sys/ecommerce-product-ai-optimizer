@@ -38,6 +38,9 @@ prisma/dev.db
 prisma/dev.db-journal
 prisma/*.db
 prisma/*.db-journal
+# Local dated DB snapshots (e.g. dev.db.empty-tasks.20260806); pattern requires a
+# dot suffix so the live prisma/dev.db is never masked.
+prisma/dev.db.*
 
 .vercel
 
