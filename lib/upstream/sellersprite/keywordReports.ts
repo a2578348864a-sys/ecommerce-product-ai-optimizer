@@ -20,6 +20,8 @@
 import type { KeywordReportType } from "./reportType";
 import { detectKeywordReportType } from "./reportType";
 
+export type { KeywordReportType } from "./reportType";
+
 export const KEYWORD_REPORT_SCHEMA = "sellersprite-keyword-report.v1" as const;
 
 export type KeywordReportMetricNature = "snapshot" | "estimate" | "derived" | "unknown";
