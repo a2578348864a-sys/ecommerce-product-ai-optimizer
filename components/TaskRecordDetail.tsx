@@ -1523,6 +1523,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
                  </>
                ) : null}
 
+               {/* Phase 2: Evidence Workbench（商品证据工作台）——研究结论之后、人工决定之前 */}
+               {isRecordValue(record.result) ? (
+                 <EvidenceWorkbench taskId={record.id} result={record.result} />
+               ) : null}
+
                {record.type === "workflow" ? (
                  <>
                    <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
