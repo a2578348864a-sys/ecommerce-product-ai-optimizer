@@ -13,7 +13,7 @@
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: f3c6668（验收排障修复，见下）
+- main HEAD: 0d14d3e（验收排障修复，见下）
 - origin/main: 76e2c96（main 领先，**push 等待用户明确授权**）
 - main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
 
@@ -27,6 +27,7 @@
 |---|---|---|---|
 | fb41af9 + 7a50f56 | 任务详情仍显示老界面 | Evidence Workbench 挂载在旧组件 WorkflowDecisionSummary（不生效） | 改挂到主组件 TaskRecordDetail（研究结论后、人工决定前），playwright 验证 7 区块渲染 |
 | f3c6668 | 商品概览显示"暂无商品概览数据" | GET /api/tasks/[id] 的 sourceMeta 白名单投影缺 productBatchSnapshot / candidateSnapshot（数据本身完好） | sourceMetaSpec 补充两个嵌套投影；hash 字段按惯例输出 12 位指纹；imageSnapshot base64 不外泄 |
+| 0d14d3e | 竞品/关键词/AI 总结接口浏览器 401 | evidence 三个组件 buildFetchHeaders 读错 key（qx:access-token）且发 Authorization: Bearer，而认证契约是 x-access-token | 统一改用 buildAccessHeaders()（x-access-token + x-access-password）；API 实测 200 |
 
 - 排障过程产物：`PROOF_SIGNING_SECRET` 已补入 `.env.local`（研究失败 `run_proof_unavailable` 根因，未提交）；候选/任务数据只读诊断，未写 DB。
 - 验收前服务：由 `npm run start:local` 启动（计划任务指向旧 runtime-package，guard 校验固定 buildId 无法拉起新构建——历史遗留，最终报告说明）。
