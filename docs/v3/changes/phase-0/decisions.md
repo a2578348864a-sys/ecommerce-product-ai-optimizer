@@ -129,6 +129,7 @@
 ### Phase 2 边界（Evidence Read Model + Workbench UI）
 
 - 只动：研究记录/证据读取模型（productResearchRecord/candidateAnalysisContext/resultJson 命名空间读取侧）、`/opportunity-candidates/[candidateId]` 研究页与任务详情展示。
+- **开工必读**：`change-package-seeds/phase2-phase5-novice-comprehension/README.md`（新手可理解性约束，权威层级等同 30 增强；写入 Phase 2 Change Package 后实施，验收含 Novice Comprehension Gate）。
 - 禁止触碰：`lib/upstream/sellersprite/**` 解析链（与 Phase 1 无重叠）。
 - 重叠风险点：`app/api/workflows/product-analysis/save-task/route.ts`（写 researchRecord）——Phase 2 如需扩展写入需与 Phase 1 串行确认；两阶段默认不并行修改该文件。
 

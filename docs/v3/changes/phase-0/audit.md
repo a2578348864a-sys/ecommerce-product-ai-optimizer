@@ -86,27 +86,40 @@
 
 ### 状态套数总览（主 Agent 已核验 + 子 Agent 0B 复核）
 
+Prisma 层无 enum，全部为字符串字段（schema.prisma：OpportunityCandidate.status 默认 "pending" :65、ViralAnalysisRecord.decisionStatus 默认 "pending" :37、ProductBatch.dataQualityStatus/batchStatus :101-102、ProductBatchItem 三态 :134-136）。代码层共 ~13 套状态：
+
 | 状态套名 | 业务对象 | 取值集合 | 读写方（代表） | 证据 |
 |---|---|---|---|---|
 | 人工决定四态（V3 权威） | 任务/研究决定兼容层 | pending / continue / need_info / rejected | 读：tasks 列表、homeDashboard、presentation；写：research-decision → researchRecord | lib/tasks/decisionStatus.ts:1-66；lib/server/productResearchRecordStore.ts:300-312 |
 | 研究决定三值 | product-research-record.v1 | creative_ready / needs_information / abandoned | 写：research-decision PATCH；读：研究页/任务详情 | lib/productResearchDecisionContract.ts:1-36 |
 | 候选池队列状态 | OpportunityCandidate（池） | pending / worth_analyzing / analyzed / paused / rejected | 写：candidateSourceSave/池操作；读：CandidatePoolPanel | lib/opportunityCandidatePool.ts:22；lib/server/candidateSourceSave.ts:41 |
+| 旧任务状态（legacy 死代码） | task.status（历史记录） | draft / queued / running / waiting / completed / failed / cancelled | 仅定义无业务读写；normalizeTaskRecord 默认 "completed" | lib/taskConcepts.ts:47-55；lib/tasks/normalizeTaskRecord.ts:186 |
 | 产品生命周期 | resultJson.productLifecycle | new_candidate / analysis_ready / analyzed / watching / ready_to_test / abandoned | 写：lifecycle PATCH；读：任务详情/演示 | lib/workflowLifecycle.ts:10-66 |
-| 旧 viral 决定扩展值 | ViralAnalysisRecord / 旧任务 | watchlist / archived（旧数据） | 只读兼容（agentRunTimeline） | lib/agentRunTimeline.ts:22-23 |
-| R22 市场决定 | r22-market-decision-v1 | advance/watch/reject 语义快照 | 写：旧市场决定；读：候选 DTO | lib/r22DecisionModel.ts:119-133 |
-| 批次状态 | ProductBatch.batchStatus | processing / ready / blocked / archived | 写：productBatchStore；读：批次管理 | lib/productBatchContract.ts:3,63-64 |
-| 预筛决定 | ProductBatchItem | promoted / rejected / insufficient_evidence | 写：stage1Scoring；读：预筛工作台 | lib/upstream/contracts.ts:238 |
-| AI 建议 level | 候选质量/证据决定 | recommended / cautious / not_recommended / rejected | 写：candidateEvidence/candidateQuality；读：来源导入 | lib/candidateEvidence.ts:1-18 |
+| R22 市场决定 | 候选 r22MarketDecisionSnapshot | market_shortlisted / market_watch / market_reject / insufficient_market_data | 写：候选保存/投影；读：DecisionDesk、canCandidateEnterAgent | lib/r22DecisionModel.ts:1-5 |
+| 批次状态 | ProductBatch.batchStatus | processing / ready / blocked / archived | 写：productBatchImportService；读：批次管理 | lib/productBatchContract.ts:3,63-64 |
+| 批次数据质量 | ProductBatch.dataQualityStatus | pending / passed / passed_with_quarantine / blocked | 同批次链 | lib/productBatchContract.ts:4-8 |
+| 批次明细三态 | ProductBatchItem | provisionalDisposition(4 值)/researchPriority(4 值)/evidenceStatus(3 值) | 写：marketSignalRanking→importService；读：screening preview | lib/productBatchContract.ts:14-27 |
+| 风险级别 | riskLevel/RiskSnapshot | green / yellow / red（快照内 low/medium/high/unknown） | 写：product-analysis；读：save-task 映射 score、UI | lib/agentOutputSnapshot.ts:25；app/api/workflows/product-analysis/route.ts:78 |
+| 结论决定 | summarySnapshot.decision | recommended / cautious / not_recommended / unknown | 写：product-analysis；读：任务详情 | lib/agentOutputSnapshot.ts:36 |
+| 工作流运行态 | workflow run | completed / partial_failed / failed（partial_failed→need_info 映射） | 写：product-analysis；读：save-task 校验 | app/api/workflows/product-analysis/route.ts:92,597-604 |
+| 预筛决定 | ProductBatchItem / stage1 | promoted / rejected / insufficient_evidence（+recommendationTier） | 写：stage1Scoring；读：离线产物/预筛 | lib/upstream/contracts.ts:238；stage1Scoring.ts:74-80 |
 | 图片草稿复核 | AiImageDraft | needs_human_review / approved / rejected | 写：image-draft 流程；读：图片草稿面板 | lib/aiImageDraft.ts:16 |
+
+另有旧 V1 UI 死代码类型：ProductStatus（draft/analyzed/copy_generated/pending_confirm/exported/discarded，lib/types.ts:522-528）、MaterialStatus、FinalDecision（recommend/caution/reject）、EvidenceStatus（confirmed/unverified/estimated/needs_review/missing/conflicting，lib/decisionEvidence.ts:23-29）、R21 commercialClassification（lib/r22DecisionModel.ts:60）——只读兼容，不进入 V3。
 
 ### score 盘点
 
 | 对象 | 字段 | 谁写 | 谁读 | 排序 | UI | 证据 |
 |---|---|---|---|---|---|---|
-| OpportunityCandidate | score(Int 0-100) | source-import(radarScore.final)/from-market-screening/save-task(opportunityScore)/import-local/PATCH [id] | 池列表 sort=score desc | 是 | 是 | lib/server/opportunityCandidateService.ts:408-409,466,590；app/api/workflows/product-analysis/save-task/route.ts:274,390 |
-| ViralAnalysisRecord/task | score(Int) | 任务创建/更新（workflowScoreFromRiskLevel 等） | tasks 列表/详情/聚合 | 否 | 是 | app/api/tasks/route.ts:200；app/api/tasks/aggregate/route.ts:46 |
-| ProductBatchItem | researchPriority + rankingJson + provisionalDisposition + evidenceStatus | stage1Scoring（确定性、证据驱动） | 批次/预筛展示 | 是（冻结公式） | 是 | lib/upstream/stage1Scoring.ts:60-90；lib/upstream/sellersprite/marketSignalRanking.ts |
-| 旧机会雷达 | radarScore 0-100 权重 | /api/opportunities pipeline | 无页面 | 否 | 否 | lib/server/radarScore.ts:9-16 |
+| OpportunityCandidate | score(Int 0-100) | signed 保存=ruleAssessment 规则分（candidateSourceSave.ts:180,466）、legacy=raw.score（:243,590,740）、SellerSprite 导入=0（:922）、from-market-screening=0、[id] PATCH 可改（:133,176） | 池列表 sort=score desc（opportunityCandidateService.ts:407-410）；getDefaultCandidateStatus 用 score+risk 定初始状态（opportunityCandidatePool.ts:225-231）；save-task 读 score 入 sourceMeta（save-task route:365,390） | 是 | 是 | 见各列；**0 值歧义**：0 既可能是真 0 分也可能是无分，代码用 scoreAvailable 消歧（opportunityCandidatePool.ts:98-102,249） |
+| 机会雷达规则分 | radarScore ScoreResult 0-100 | /api/opportunities/crawl → scoreCandidates（纯规则无 AI） | 旧表单展示 | 是（finalScore desc） | 是（旧链） | lib/server/radarScore.ts:8-14,147-160 |
+| ViralAnalysisRecord/task | score(Int) | save-task：workflowScoreFromRiskLevel（green=85/red=25/其它=55，save-task route:123-127,698）；旧 agent 链 clamp | tasks 列表/详情/聚合 | 否 | 是 | app/api/tasks/route.ts:168 |
+| ProductBatchItem | researchPriority + rankingJson + provisionalDisposition + evidenceStatus | marketSignalRanking（signalScore 排序，:892-895；conditionalSignalScore 标 diagnostic_only_not_used_for_ranking，sellerSpriteOpportunityPreview.ts:134） | 批次/预筛展示 | 是（冻结公式） | 是 | lib/upstream/sellersprite/marketSignalRanking.ts:843-895 |
+| 离线 stage1 | totalScore + componentScores | rankStage1Candidates（确定性） | 离线产物（tools/upstream） | 是（totalScore desc） | **否**（PUBLIC_FORBIDDEN 显式隐藏） | lib/upstream/stage1Scoring.ts:101,125；stage15-source-native-batch.ts:28 |
+| 旧 products 利润分析 | AiAnalysisResult.score | /api/products/ai-analysis（clampScore，**上限 69**） | ProductProfitForm | 否 | 是 | app/api/products/ai-analysis/route.ts:219,249 |
+| 候选证据质量 | qualityScore | candidateEvidence 计算 | evidenceSnapshot | 否 | 否（内部） | lib/candidateEvidence.ts:103 |
+| R22 决策 | stage1Score | r22 决策输入 | 晋级阈值（reject<50, shortlist>=70） | 否 | 否（间接） | lib/r22DecisionModel.ts:178-185 |
+| 旧 V1 雷达 | CandidateProduct.finalScore 等 | /api/generate | 旧页面 | 是（旧雷达） | 是（旧页面） | lib/types.ts:299-306；app/api/generate/route.ts:296 |
 
 ### 旧链现状
 

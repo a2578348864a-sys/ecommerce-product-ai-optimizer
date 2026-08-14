@@ -59,4 +59,12 @@
 - 双重审查、规格对账、三视角终审完成；
 - 产物：`docs/v3/changes/phase-0/`（proposal.md、audit.md、decisions.md、acceptance.md、learnings.md）。
 
+## 6. 新增产品约束登记（用户 Phase 0 期间新增，仅登记不实施）
+
+- **文件位置**：`轻选工作台_V3_唯一权威最终执行包_FINAL/change-package-seeds/phase2-phase5-novice-comprehension/README.md`（材料根，不在 Git 仓库内）。
+- **内容**：Phase 2 / Phase 5 新手可理解性约束（Novice Comprehension Constraint）——Evidence→可理解解释层、首屏信息层级（简明结论→为什么→原始 Evidence）、AI Summary 新手解释层输出与禁止项、Novice Comprehension Gate 验收门禁。
+- **权威层级**：等同 `30_GITHUB_DERIVED_PHASE_ENHANCEMENTS.md`（低于 v2.2 FINAL 权威合同）；Phase 2 / Phase 5 主 Agent 开工时必须读取并写入对应 Change Package。
+- **术语对接**：recommendation 沿用 Phase 5 现有「下一步」词汇，不新增决策类型、不新增决策状态、不建评分系统。
+- 本 Phase 0 未实施该约束；V3 总纲权威文件（00–29、README.md、manifest.json）未改动。
+
 按执行包要求，本轮到此停止：不进入 Phase 1，不修改业务代码，不部署公网。最终资产去留与迁移裁定报告已提交（见最终汇报）。等待用户独立审查通过后，再授权 Phase 1–6。
