@@ -123,6 +123,7 @@
 ### Phase 1 边界（Product Search 识别稳定化）
 
 - 只动：`lib/upstream/sellersprite/**`（reportType/precheck/fields/xlsx/preview/canonical/projections）、`tools/upstream/sellersprite-preview/**`、`lib/upstream/contracts.ts`、相关测试与 Golden Dataset fixture（30 增强）。
+- **必须澄清**：`xlsx.ts` 与 `previewXlsx.ts` 两套解析器的角色与是否统一（audit 疑点 #14）；category_current 候选源快照硬编码（sellerSpriteImportContract.ts:156，遗留风险 #4）。
 - 禁止触碰：`app/api/**`、`lib/server/**`（除 fixture 相关）、prisma、页面。
 
 ### Phase 2 边界（Evidence Read Model + Workbench UI）

@@ -156,10 +156,13 @@
 
 - reportType：`search_results`（Product Search）、`category_current`（Category Current）两种；`unknown` 兜底（lib/upstream/sellersprite/reportType.ts:6-7）；判定依据 searchRank 列 vs root/subCategory(+Bsr) 列（:22-59）。
 - 字段合同：fields.ts 键清单（asin…subCategoryBsr，:1-20）；必填 asin/productTitle/productUrl（:59-63）；**metricNature 映射**（:32-51）：searchRank/price/rating/reviews/variationCount/BSR=snapshot、estimatedMonthlySales/Revenue=estimate、**身份字段（asin/sku/brand/productTitle/productUrl/parentAsin/seller/rootCategory/subCategory）=unknown**。
-- 解析链：precheck → xlsx/previewXlsx → canonical/fields → projections → marketSnapshot（sellersprite-market-snapshot.v3，marketSnapshot.ts:32，含 sourceFileSha256/metricNatureCoverage，productionEffect/productionDatabaseWritten=false 硬编码 :672-673）→ marketSignalRanking（sellersprite-market-signal-ranking.v2，runner.ts:216）；dualReportTypes 测试覆盖表头重叠歧义。
+- 解析链：precheck → xlsx/previewXlsx → canonical/fields → projections → marketSnapshot（sellersprite-market-snapshot.v3，marketSnapshot.ts:32，含 sourceFileSha256/sourceBoundSnapshotHash/normalizedBusinessHash/metricNatureCoverage，productionEffect/productionDatabaseWritten=false 硬编码 :672-673、结构声明 :137-138）→ marketSignalRanking（sellersprite-market-signal-ranking.v2，rankingHash :167，runner.ts:216）；dualReportTypes 测试覆盖表头重叠歧义。
+- **reportHash 归属澄清**：marketSnapshot（v3）**无 reportHash 字段**；reportHash 在 `briefBoundShadowReport.ts:79,366,382`（shadow report 合同），`sellerSpriteOpportunityPreview.ts:177,579` 的 reportHash 是 preview 视图投影，`productBatchImportService.ts:497` 另有使用。
+- **双解析器并存**：`xlsx.ts` 与 `previewXlsx.ts` 两套 XLSX 解析器并存（规则可能不一致）——Phase 1 需明确二者角色与是否统一。
+- 导入链门禁（精确）：preview（`sellersprite-preview/route.ts`：8MB+64KB multipart 上限、same-origin、requireAuthenticated、6 次/分限流 → 429、签发 5 分钟 HMAC token，token 验签失败 400）；import（`sellersprite-import/route.ts`：8MB+128KB、token 验签+摘要对账、confirmed==="true"、选中行 ≤20、重复 ASIN 拒绝、Owner→Prisma / Visitor→sandbox）；source-import（32KB、≤5 URL、crawlUrls 经 ssrfGuard + robots 检查）。限流计数器与 HMAC 密钥为进程内存（非持久化，重启失效）。
 - 导入链：`/api/product-batches`（V3 批次主入口）与旧 `/api/opportunities/sellersprite-import`（停止新入口）；`/api/opportunities/sellersprite-preview` 只读预览 + token（sellerSpritePreviewImportToken/Origin/RateLimit）。
 - CLI：`sellersprite:preview` → tools/upstream/sellersprite-preview.ts（authoritative=false、promotionEligible=false、manifestRegistered=false、productionEffect=false、rankingSchemaVersion 等安全旗标，runner.ts:129-234）。
-- 样本：仓库内仅脱敏 fixture（lib/upstream/sellersprite/fixtures、tools/upstream/fixtures、sanitized 样本 category-current.sanitized.v1.ts / search-export.sanitized.v1.ts）；真实 XLSX 不入 Git（manifest real_samples_must_not_be_committed=true，真实样本位于 Git 根外材料目录）。
+- 样本：仓库内仅脱敏 fixture（lib/upstream/sellersprite/fixtures/category-current.sanitized.v1.ts、search-export.sanitized.v1.ts、previewTestFixtures.ts；lib/upstream/fixtures/amazon-us-closet-organizer.v1.json；tools/upstream/fixtures）；**仓库内 glob `**/*.xlsx` 0 命中**，真实 XLSX 不入 Git（manifest real_samples_must_not_be_committed=true，真实样本位于 Git 根外材料目录）；注意 `lib/server/realXlsxClosure.test.ts:35` 硬编码开发者本机路径（`C:/Users/a2578/Downloads/...`），跨机不可复现。
 - 缺口：Reverse ASIN、Keyword Mining 无实现（grep 无匹配）。
 
 ### real AI gates
@@ -191,6 +194,8 @@
 11. **manualFactConfirmation 注释与实现不一致**（注释「8 个字段」，实际 17 项，:19-37）——小文档漂移，随代码维护修正。
 12. **studioListingService 缺专项单测**（幂等/配额/账本恢复逻辑无 studioListingService.test.ts；phase2 测试仅覆盖 route/input 层）——工程缺口，Phase 2 补测。
 13. **Studio 无「保存草稿」能力**（真实结果仅临时文件 TTL 1h，用于幂等重放）；历史双轨（Prisma ListingCopyHistory vs studio resultStore）不互通。
+14. **两套 XLSX 解析器并存**（xlsx.ts vs previewXlsx.ts，规则可能不一致）——Phase 1 需明确角色/统一。
+15. **realXlsxClosure.test.ts 依赖本机路径**（:35 硬编码 Downloads 路径），跨机不可复现；限流计数器/HMAC 密钥为进程内存（非持久化）。
 
 ## 盘点疑点汇总（供 decisions 裁定）
 
