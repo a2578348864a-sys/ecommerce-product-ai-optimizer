@@ -63,6 +63,43 @@ function hasSafeMultipartContentLength(request: Request): boolean {
   return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_MULTIPART_BYTES;
 }
 
+/**
+ * Stream the multipart body under a hard byte cap so a spoofed (small)
+ * content-length cannot force unbounded in-memory buffering. On overflow the
+ * reader is cancelled and no further bytes are consumed; the caller replies 413.
+ * Returns { ok: false } also when the body stream is unavailable or the read fails.
+ */
+async function readBoundedMultipartBody(
+  request: Request,
+): Promise<{ ok: true; buffer: Uint8Array<ArrayBuffer> } | { ok: false }> {
+  const reader = request.body?.getReader();
+  if (!reader) return { ok: false };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_MULTIPART_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { ok: false };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false };
+  }
+  const buffer: Uint8Array<ArrayBuffer> = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { ok: true, buffer };
+}
+
 export async function POST(request: NextRequest): Promise<Response> {
   if (!hasSellerSpritePreviewSameOrigin(request)) {
     return error(403, "same_origin_required", "请求来源无效。");
@@ -80,9 +117,15 @@ export async function POST(request: NextRequest): Promise<Response> {
   if (!reservation.ok) return error(429, "preview_rate_limited", "预览请求过于频繁，请稍后重试。");
 
   try {
+    const boundedBody = await readBoundedMultipartBody(request);
+    if (!boundedBody.ok) {
+      return error(413, "upload_too_large", "上传内容大小无效或超出限制。");
+    }
     let form: FormData;
     try {
-      form = await request.formData();
+      form = await new Response(new Blob([boundedBody.buffer]), {
+        headers: { "content-type": request.headers.get("content-type") ?? "" },
+      }).formData();
     } catch {
       return error(400, "invalid_multipart", "无法读取上传文件。");
     }

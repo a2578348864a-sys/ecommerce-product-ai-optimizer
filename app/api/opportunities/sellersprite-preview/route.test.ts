@@ -5,6 +5,7 @@ import {
   createSellerSpritePreviewWorkbook,
   createSellerSpritePreviewWorkbookWithSheets,
 } from "@/lib/upstream/sellersprite/previewTestFixtures";
+import { DEFAULT_SELLERSPRITE_PREVIEW_XLSX_LIMITS } from "@/lib/upstream/sellersprite/previewXlsx";
 
 const auth = vi.hoisted(() => vi.fn());
 
@@ -198,6 +199,62 @@ describe("POST /api/opportunities/sellersprite-preview", () => {
     expect((await POST(requestFor(source, { contentLength: null }))).status).toBe(413);
     expect((await POST(requestFor(source, { contentLength: source.length + 9 * 1024 * 1024 }))).status).toBe(413);
     expect((await POST(requestFor(source, { extraEntries: { second: "not-a-file" } }))).status).toBe(400);
+  });
+
+  it("enforces a real bounded body size regardless of the declared content-length", async () => {
+    authenticated("owner");
+    const maxMultipart = DEFAULT_SELLERSPRITE_PREVIEW_XLSX_LIMITS.maxSourceBytes + 64 * 1024;
+    const oversizedTotal = maxMultipart * 2;
+
+    const oversizedRequest = (declared: number | null): NextRequest => {
+      let emitted = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const chunkSize = 64 * 1024;
+          const remaining = oversizedTotal - emitted;
+          if (remaining <= 0) {
+            controller.close();
+            return;
+          }
+          const chunk = new Uint8Array(Math.min(chunkSize, remaining));
+          emitted += chunk.byteLength;
+          controller.enqueue(chunk);
+        },
+      });
+      const requestHeaders = new Headers({ "x-client-role": "owner" });
+      requestHeaders.set("host", new URL(expectedOrigin).host);
+      requestHeaders.set("origin", expectedOrigin);
+      requestHeaders.set("referer", sameOriginReferer);
+      requestHeaders.set("content-type", "multipart/form-data; boundary=spoofed-boundary");
+      if (declared !== null) requestHeaders.set("content-length", String(declared));
+      return new NextRequest(`${expectedOrigin}/api/opportunities/sellersprite-preview`, {
+        method: "POST",
+        headers: requestHeaders,
+        body: stream as unknown as BodyInit,
+      });
+    };
+
+    // ① 假小 Content-Length + 超大真实 body → 流式上限触发 413（不整包缓冲）
+    expect((await POST(oversizedRequest(maxMultipart))).status).toBe(413);
+    // ② 无 Content-Length + 超大真实 body → 前置大小检查 413（不读 body）
+    expect((await POST(oversizedRequest(null))).status).toBe(413);
+    // ③ 正常合法 XLSX → 有界流式路径下行为不变
+    expect((await POST(requestFor())).status).toBe(200);
+    // ④ multipart 结构非法 → 原错误合同不变
+    const malformedHeaders = new Headers({
+      "x-client-role": "owner",
+      host: new URL(expectedOrigin).host,
+      origin: expectedOrigin,
+      referer: sameOriginReferer,
+      "content-type": "multipart/form-data; boundary=abc",
+      "content-length": "19",
+    });
+    const malformed = new NextRequest(`${expectedOrigin}/api/opportunities/sellersprite-preview`, {
+      method: "POST",
+      headers: malformedHeaders,
+      body: new TextEncoder().encode("not-a-multipart-body"),
+    });
+    expect((await POST(malformed)).status).toBe(400);
   });
 
   it("returns the same safe unsupported-XLSX reason to Owner and Visitor without leaking parser input", async () => {
