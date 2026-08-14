@@ -47,6 +47,8 @@ describe("source-native terminal artifact closure", () => {
     expect(() => generateStage15SourceNativeResult({ preparationDirectory: "relative", outputRoot: "relative", createdAt: "not-a-time", roleAttestations: { screeningOperatorDistinctFromOutcomeAssessors: false, outcomeAssessorsDistinctFromEachOther: false }, operatorResultPath: "a", outcomeAssessorAResultPath: "b", outcomeAssessorBResultPath: "c" })).toThrow("SOURCE_NATIVE_RESULT_PATH_INVALID");
   });
 
+  // 重型用例：生成 20 项 frozen preparation + 角色模板 + 结果闭合；单独跑约 4.9s，
+  // 并行负载下会超过 vitest 默认 5s，显式放宽（时长敏感，非逻辑失败）。
   it("replays the frozen preparation, consumes exact role templates, and creates a sibling execution without overwriting preparation", () => {
     const root = mkdtempSync(join(tmpdir(), "stage15-source-native-result-")); try {
       const preparation = generateStage15SourceNativePreparation({ batch: sourceNativeBatch(promoted()), outputRoot: root, createdAt: "2026-07-17T12:00:00.000Z" });
@@ -60,7 +62,7 @@ describe("source-native terminal artifact closure", () => {
       expect(readFileSync(join(first.directory, "source-native-screening-operator-result.v1.json"), "utf8")).toBe(readFileSync(paths[0], "utf8"));
       expect(generateStage15SourceNativeResult(input).write.unchanged.length).toBeGreaterThan(0);
     } finally { rmSync(root, { recursive: true, force: true }); }
-  });
+  }, 20000);
 
   it("preserves each valid human-result Buffer verbatim and records its raw SHA-256", () => {
     const root = mkdtempSync(join(tmpdir(), "stage15-source-native-result-")); try {
