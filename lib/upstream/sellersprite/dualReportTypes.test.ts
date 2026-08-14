@@ -7,6 +7,12 @@ import {
   SELLERSPRITE_SANITIZED_ROWS,
   SELLERSPRITE_SEARCH_EXPORT_HEADERS,
 } from "./fixtures/search-export.sanitized.v1";
+import {
+  GOLDEN_CC_CURRENT_ROWS,
+  GOLDEN_CURRENT_FORMAT_HEADERS,
+  GOLDEN_PS_NO_SEARCH_RANK_ROWS,
+  goldenRowToValues,
+} from "./golden/golden-fixtures";
 import { normalizeSellerSpriteField } from "./fields";
 import { buildSellerSpriteMarketSnapshot } from "./marketSnapshot";
 import { precheckSellerSpriteXlsx } from "./precheck";
@@ -39,9 +45,10 @@ describe("SellerSprite dual report type contract", () => {
     ])).toMatchObject({ reportType: "unknown" });
   });
 
-  it("detects Category Current only from the complete category signature", () => {
+  it("detects Category Current only with the row-level BSR band signature (headers alone fail closed)", () => {
+    // 仅表头（PS/CC 表头相同，无「搜索排名」列）无法证明类型 → fail-closed（requires_row_signal）
     expect(detectSellerSpriteReportType(SELLERSPRITE_CATEGORY_CURRENT_HEADERS)).toMatchObject({
-      reportType: "category_current",
+      reportType: "unknown",
       evidence: {
         hasSearchRankColumn: false,
         hasRootCategoryColumn: true,
@@ -49,7 +56,18 @@ describe("SellerSprite dual report type contract", () => {
         hasSubCategoryColumn: true,
         hasSubCategoryBsrColumn: true,
       },
+      reasonCode: "requires_row_signal",
     });
+    // 行级信号（真实 BSR 榜值域 [1..10]）→ category_current
+    expect(detectSellerSpriteReportType(
+      SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+      GOLDEN_CC_CURRENT_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
+    )).toMatchObject({ reportType: "category_current" });
+    // 无搜索排名 + 大 BSR 值域（新格式 Product Search 模式）→ 不静默判 CC，fail-closed
+    expect(detectSellerSpriteReportType(
+      SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+      GOLDEN_PS_NO_SEARCH_RANK_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
+    )).toMatchObject({ reportType: "unknown", reasonCode: "ambiguous_ps_without_search_rank" });
     expect(detectSellerSpriteReportType([
       "ASIN",
       "商品标题",

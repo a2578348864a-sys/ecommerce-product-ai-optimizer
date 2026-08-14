@@ -17,9 +17,9 @@ import {
 } from "@/lib/server/productBatchImportService";
 import { SELLERSPRITE_SANITIZED_ROWS } from "@/lib/upstream/sellersprite/fixtures/search-export.sanitized.v1";
 import {
-  SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
-  SELLERSPRITE_CATEGORY_CURRENT_ROWS,
-} from "@/lib/upstream/sellersprite/fixtures/category-current.sanitized.v1";
+  GOLDEN_CC_CURRENT_ROWS,
+  GOLDEN_CURRENT_FORMAT_HEADERS,
+} from "@/lib/upstream/sellersprite/golden/golden-fixtures";
 import { createSellerSpritePreviewTestWorkbook } from "@/tools/upstream/sellersprite-preview/test-fixtures";
 
 let root: string;
@@ -51,8 +51,8 @@ describe("shared SellerSprite ProductBatch import", () => {
   it("inspects report type and category before persistence without inventing a query", () => {
     const categoryCurrent = inspectSellerSpriteProductBatch(
       new Uint8Array(createSellerSpritePreviewTestWorkbook({
-        headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
-        rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS.map((row) => ({
+        headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
+        rows: GOLDEN_CC_CURRENT_ROWS.map((row) => ({
           ...row,
           大类目: "Kitchen & Dining",
         })),

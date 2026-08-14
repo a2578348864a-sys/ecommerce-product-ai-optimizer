@@ -18,6 +18,7 @@ import {
   type SellerSpriteDetectedReportType,
   type SellerSpriteReportType,
   type SellerSpriteReportTypeDetectionEvidence,
+  type SellerSpriteReportTypeReasonCode,
 } from "./reportType";
 import {
   parseXlsxWorkbook,
@@ -126,6 +127,7 @@ export interface SellerSpritePrecheckResult {
   capturedAtSemantics: "caller_supplied_ingestion_context";
   reportType: SellerSpriteDetectedReportType;
   reportTypeDetectionEvidence: SellerSpriteReportTypeDetectionEvidence;
+  detectionReasonCode?: SellerSpriteReportTypeReasonCode;
   expectedReportType: SellerSpriteReportType | null;
   reportTypeMatched: boolean;
   sheetName: string | null;
@@ -613,13 +615,33 @@ export function precheckSellerSpriteXlsx(
   result.headerColumnCount = candidate.header.values.length;
   result.totalRows = dataRows.length;
   result.fieldMapping = candidate.mapping.fieldMapping;
-  const detection = detectSellerSpriteReportType(candidate.header.values);
-  result.reportType = detection.reportType;
+  const dataRowsValues = dataRows.map((row) => row.values);
+  const detection = detectSellerSpriteReportType(candidate.header.values, dataRowsValues);
+  const explicitExpected = options.expectedReportType;
+  // 结构合法性：必需身份齐全、无歧义列、且至少存在一个报告签名
+  // （missing_required_identity / ambiguous_headers / missing_report_signature 为结构不合法；
+  //   requires_row_signal / ambiguous_ps_without_search_rank 仅为「自动判定证据不足」，
+  //   人工显式选择可覆盖——这是 10_PHASE1_TASK「仍歧义 → fail-closed / 人工选择」的落地）
+  const detectionSucceeded = detection.reasonCode === undefined;
+  const structuralOk = detectionSucceeded
+    || detection.reasonCode === "requires_row_signal"
+    || detection.reasonCode === "ambiguous_ps_without_search_rank";
+  // matched 规则：
+  // - 显式选择：自动判定成功且一致 → true；自动判定成功但不一致 → false（强证据冲突，报 report_type_mismatch）；
+  //   自动判定证据不足（requires_row_signal / ambiguous_ps_without_search_rank）→ true（人工选择覆盖）；
+  //   结构非法 → false。
+  // - 自动判定：detect 成功 → true，否则 false（fail-closed）。
+  const reportTypeMatched = explicitExpected !== undefined
+    ? (detectionSucceeded ? detection.reportType === explicitExpected : structuralOk)
+    : detectionSucceeded;
+  result.reportType = reportTypeMatched
+    ? (explicitExpected ?? detection.reportType)
+    : detection.reportType;
   result.reportTypeDetectionEvidence = detection.evidence;
-  result.expectedReportType = options.expectedReportType
+  result.detectionReasonCode = detection.reasonCode;
+  result.expectedReportType = explicitExpected
     ?? (detection.reportType === "unknown" ? null : detection.reportType);
-  result.reportTypeMatched = detection.reportType !== "unknown"
-    && result.expectedReportType === detection.reportType;
+  result.reportTypeMatched = reportTypeMatched;
   result.auxiliaryEvidence = {
     brands: parseAggregateEvidence(
       workbook.sheets,
@@ -644,21 +666,22 @@ export function precheckSellerSpriteXlsx(
   const duplicateHeaders = [...headerCounts.entries()]
     .filter(([, count]) => count > 1)
     .map(([header]) => header);
+  const explicitMismatch = explicitExpected !== undefined
+    && detectionSucceeded
+    && detection.reportType !== explicitExpected;
   const structuralErrors: SellerSpritePrecheckError[] = [
-    ...(detection.reportType === "unknown" ? [{
-      code: "unsupported_report_type",
-      message: "SellerSprite report type is not supported by the offline precheck",
+    ...(explicitMismatch ? [{
+      code: "report_type_mismatch",
+      message: `Expected ${explicitExpected} but detected ${detection.reportType}`,
       severity: "error" as const,
     }] : []),
-    ...(detection.reportType !== "unknown"
-      && options.expectedReportType !== undefined
-      && options.expectedReportType !== detection.reportType
-      ? [{
-          code: "report_type_mismatch",
-          message: `Expected ${options.expectedReportType} but detected ${detection.reportType}`,
-          severity: "error" as const,
-        }]
-      : []),
+    ...(!result.reportTypeMatched && !explicitMismatch ? [{
+      code: "unsupported_report_type",
+      message: explicitExpected !== undefined
+        ? `Selected report type ${explicitExpected} does not match the workbook structure`
+        : `SellerSprite report type could not be detected automatically (${detection.reasonCode ?? "unknown"}) and no explicit report type was provided`,
+      severity: "error" as const,
+    }] : []),
     ...candidate.mapping.ambiguousFields.map((field) => ({
       code: "ambiguous_column",
       message: `Multiple columns map to ${field}`,
@@ -705,7 +728,7 @@ export function precheckSellerSpriteXlsx(
       candidate.mapping.fieldIndexes,
       options.capturedAt,
       result.ingestedAt,
-      detection.reportType as SellerSpriteReportType,
+      result.reportType as SellerSpriteReportType,
       rowErrors,
     );
     const asin = record.asin.normalized;
