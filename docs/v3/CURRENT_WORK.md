@@ -13,7 +13,7 @@
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: 0d14d3e（验收排障修复，见下）
+- main HEAD: bc50f92（验收排障修复，见下）
 - origin/main: 76e2c96（main 领先，**push 等待用户明确授权**）
 - main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
 
@@ -28,6 +28,9 @@
 | fb41af9 + 7a50f56 | 任务详情仍显示老界面 | Evidence Workbench 挂载在旧组件 WorkflowDecisionSummary（不生效） | 改挂到主组件 TaskRecordDetail（研究结论后、人工决定前），playwright 验证 7 区块渲染 |
 | f3c6668 | 商品概览显示"暂无商品概览数据" | GET /api/tasks/[id] 的 sourceMeta 白名单投影缺 productBatchSnapshot / candidateSnapshot（数据本身完好） | sourceMetaSpec 补充两个嵌套投影；hash 字段按惯例输出 12 位指纹；imageSnapshot base64 不外泄 |
 | 0d14d3e | 竞品/关键词/AI 总结接口浏览器 401 | evidence 三个组件 buildFetchHeaders 读错 key（qx:access-token）且发 Authorization: Bearer，而认证契约是 x-access-token | 统一改用 buildAccessHeaders()（x-access-token + x-access-password）；API 实测 200 |
+| bc50f92 | 关键词保存"解析结果结构无效"；AI 总结门禁未通过（gateResult=fail、列表全空） | ① 关键词前端回传丢 schema 字段；② AI 总结 prompt 未给出输出 schema，deepseek 猜成 field/label/value 结构而校验器只读 text | ① 前端回传完整 report envelope；② prompt 显式输出 schema + 校验器 value→text 兜底；实测 gateResult=pass（17 条：3 facts/1 risk/7 missing/4 nextSteps） |
+
+> 说明：任务 `cmstdm6px…` 的第 6 步"partial_failed only allows needs_information"非 bug——该任务是排障早期旧构建（AI 货源 token 预算偏小 → reasoning 吃满 → json_parse_error → fallback → partial_failed）生成。当前构建已修 token 预算（4000），实测 sourcing 返回合法 JSON（finish_reason=stop）。**验收需重新一键分析生成 completed 任务**再走第 4–9 步。
 
 - 排障过程产物：`PROOF_SIGNING_SECRET` 已补入 `.env.local`（研究失败 `run_proof_unavailable` 根因，未提交）；候选/任务数据只读诊断，未写 DB。
 - 验收前服务：由 `npm run start:local` 启动（计划任务指向旧 runtime-package，guard 校验固定 buildId 无法拉起新构建——历史遗留，最终报告说明）。
@@ -55,7 +58,7 @@
 ## 最终验证（V3_CORE = DONE 门禁）
 
 - lint / tsc / build：PASS
-- tests：4518 passed / 0 failed（main 串行全量，含 DTO 投影新增 2 测）
+- tests：4519 passed / 0 failed（main 串行全量，含 DTO 投影与 AI 总结新增测试）
 - 9 步 Core Smoke：自动化矩阵 PASS + 人工页面步骤文档化（validation.md §3，需访问密码执行）
 - 3005：计划任务 registered/Ready 全程未触碰（验收服务由 start:local 提供）
 - 公网部署：NO；force push：NO；DB 写：NO；样本入库：NO
