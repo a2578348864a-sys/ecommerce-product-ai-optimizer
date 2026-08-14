@@ -12,6 +12,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
+import {
+  KeywordReportEvidenceSection,
+  type KeywordEvidenceView,
+} from "@/components/evidence/KeywordReportEvidenceSection";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -330,6 +334,31 @@ export function EvidenceWorkbench({
   const [competitorError, setCompetitorError] = useState("");
   const [competitorBusy, setCompetitorBusy] = useState(false);
 
+  const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
+  const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
+
+  async function loadKeywordEvidence() {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/keyword-evidence`, {
+        headers: buildFetchHeaders(),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { evidence: KeywordEvidenceView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: false };
+      if (res.ok && json.ok) {
+        setKeywordReportEvidence(json.data.evidence);
+        setKeywordReportStorageVersion(json.data.storageVersion);
+      }
+    } catch {
+      // 读取失败保持空状态（fail-soft）
+    }
+  }
+
+  useEffect(() => {
+    void loadKeywordEvidence();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
   async function loadCompetitors() {
     setCompetitorLoading(true);
     setCompetitorError("");
@@ -543,6 +572,12 @@ export function EvidenceWorkbench({
         ) : (
           <p className="mt-2 text-sm text-slate-500">关键词 Brief 未生成（人工确认后可进入）。</p>
         )}
+        <KeywordReportEvidenceSection
+          taskId={taskId}
+          evidence={keywordReportEvidence}
+          storageVersion={keywordReportStorageVersion}
+          onChanged={loadKeywordEvidence}
+        />
       </section>
 
       {/* ── 货源 Evidence ── */}

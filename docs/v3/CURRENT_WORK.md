@@ -1,88 +1,66 @@
-# CURRENT_WORK — 轻选工作台 V3 执行状态
+# CURRENT_WORK 鈥?杞婚€夊伐浣滃彴 V3 鎵ц鐘舵€?
+> 涓?Agent 缁存姢鐨勫敮涓€鏉冨▉鐘舵€佹枃妗ｏ紙鎵ц鍖?23_CURRENT_WORK_TEMPLATE.md锛夈€傛潈濞侀『搴忥細褰撳墠浠撳簱鐪熷疄浠ｇ爜/AGENTS.md/Git 鐘舵€?> v2.2 FINAL 鍚堝悓 > 30 澧炲己 > Change Package銆?
+## 褰撳墠鐗堟湰
 
-> 主 Agent 维护的唯一权威状态文档（执行包 23_CURRENT_WORK_TEMPLATE.md）。权威顺序：当前仓库真实代码/AGENTS.md/Git 状态 > v2.2 FINAL 合同 > 30 增强 > Change Package。
+- V3 Core: Phase 0 = PASS锛圕loseout锛夛紱Phase 1 = PASS锛汸hase 2 = PASS锛?*Phase 3 = 杩涜涓?*
+- V3.x: 鏈巿鏉冿紙v3x_auto_start=false锛岀‖绾︽潫锛?- Current Wave: Wave 2锛圥hase 3 鈥?Reverse ASIN / Keyword Mining锛屾棤鐪熷疄鏍锋湰鍑嗗璺緞锛?- Current Phase: Phase 5
+- Status: AUTO_ADVANCE锛坅uto_with_integration_gates锛?
+## 鏉冨▉鍩虹嚎
 
-## 当前版本
+- repo_root: `D:\Workspace\projects\project-001-璺ㄥ鐢靛晢AI宸ュ叿\鐢靛晢宸ュ叿`
+- main HEAD: 490f24a锛圥hase 2 闆嗘垚鍚庯級
+- origin/main: 76e2c96锛坢ain 棰嗗厛 18 涓彁浜わ紝鏈?push鈥斺€攑ush 绛夊緟鐢ㄦ埛鏄庣‘鎺堟潈锛?- main clean: 鏄紙闄ゆ湭鎻愪氦鐨?phase-2 鏀跺彛鏂囨。锛岃涓嬶級
 
-- V3 Core: Phase 0 = PASS（Closeout）；Phase 1 = PASS；Phase 2 = PASS；**Phase 3 = 进行中**
-- V3.x: 未授权（v3x_auto_start=false，硬约束）
-- Current Wave: Wave 2（Phase 3 — Reverse ASIN / Keyword Mining，无真实样本准备路径）
-- Current Phase: Phase 3
-- Status: AUTO_ADVANCE（auto_with_integration_gates）
-
-## 权威基线
-
-- repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: 490f24a（Phase 2 集成后）
-- origin/main: 76e2c96（main 领先 18 个提交，未 push——push 等待用户明确授权）
-- main clean: 是（除未提交的 phase-2 收口文档，见下）
-
-## 活跃 Agent
+## 娲昏穬 Agent
 
 | Agent | Role | Worktree | Branch | Task | Status | Commit |
 |---|---|---|---|---|---|---|
-| 主 Agent | 集成/调度 | main | main | Phase 3/4 准备 | 进行中 | 490f24a |
+| 涓?Agent | 闆嗘垚/璋冨害 | main | main | Phase 3/4 鍑嗗 | 杩涜涓?| 490f24a |
 
-## 当前目标
+## 褰撳墠鐩爣
 
-Phase 3/4（Reverse ASIN / Keyword Mining 关键词 Evidence）：**无真实 XLSX 样本**（材料根确认仅 Products + BSR），按 12_PHASE3_4_TASK.md 走「无真实样本」允许路径：官方字段研究 / Adapter 设计 / 风险清单 / 测试计划；**禁止**猜表头、猜单位、宣称合同完成。Gate 中「真实 XLSX 正确 / 5 行值级核对」待样本到位后补齐。
-
-## 已完成
-
+Phase 3/4锛圧everse ASIN / Keyword Mining 鍏抽敭璇?Evidence锛夛細**鏃犵湡瀹?XLSX 鏍锋湰**锛堟潗鏂欐牴纭浠?Products + BSR锛夛紝鎸?12_PHASE3_4_TASK.md 璧般€屾棤鐪熷疄鏍锋湰銆嶅厑璁歌矾寰勶細瀹樻柟瀛楁鐮旂┒ / Adapter 璁捐 / 椋庨櫓娓呭崟 / 娴嬭瘯璁″垝锛?*绂佹**鐚滆〃澶淬€佺寽鍗曚綅銆佸绉板悎鍚屽畬鎴愩€侴ate 涓€岀湡瀹?XLSX 姝ｇ‘ / 5 琛屽€肩骇鏍稿銆嶅緟鏍锋湰鍒颁綅鍚庤ˉ榻愩€?
+## 宸插畬鎴?
 - Phase 0 = PASS + Closeout
-- **Phase 1 = PASS**（三层报告判定 + Golden Replay + 真实样本验证）
-- **Phase 2 = PASS**（Evidence Workbench：六大区域 + Novice Comprehension 分层 + 竞品 Evidence 合同实现 + provenance 展示；main 4497 测试/tsc/lint/build 全绿；风险 #12/#15 关闭、#11 澄清）
-  - 产出：docs/v3/changes/phase-2/{evidence-read-model,competitor-evidence-contract,proposal,tasks,validation,learnings}.md
+- **Phase 1 = PASS**锛堜笁灞傛姤鍛婂垽瀹?+ Golden Replay + 鐪熷疄鏍锋湰楠岃瘉锛?- **Phase 2 = PASS**锛圗vidence Workbench锛氬叚澶у尯鍩?+ Novice Comprehension 鍒嗗眰 + 绔炲搧 Evidence 鍚堝悓瀹炵幇 + provenance 灞曠ず锛沵ain 4497 娴嬭瘯/tsc/lint/build 鍏ㄧ豢锛涢闄?#12/#15 鍏抽棴銆?11 婢勬竻锛?  - 浜у嚭锛歞ocs/v3/changes/phase-2/{evidence-read-model,competitor-evidence-contract,proposal,tasks,validation,learnings}.md
 
-## 待集成
+## 寰呴泦鎴?
+- Phase 2 鏀跺彛鏂囨。锛坴alidation/learnings 鏈彁浜わ紝鏈疆鎻愪氦锛?
+## 闃诲
 
-- Phase 2 收口文档（validation/learnings 未提交，本轮提交）
-
-## 阻塞
-
-- **Phase 3/4 真实样本缺失**：材料根无 Reverse ASIN / Keyword Mining XLSX；任务书明确无样本时禁止猜合同。准备路径可推进，Gate 完整 PASS 需用户提供样本（或明确接受降级结论）。
-
-## 样本状态
-
-- Product Search: 有（真实 + golden fixture）
-- Category Current: 有（真实 + golden fixture）
-- Reverse ASIN: **无（阻塞 Phase 3 完整 Gate）**
-- Keyword Mining: **无（阻塞 Phase 4 完整 Gate）**
-- Browser Evidence: 未授权（V3.1）
-- VOC / 1688: 未授权（V3.4/V3.5）
-
-## 正式风险登记（来源 decisions.md §7，Phase PASS 不得遗失）
-
-| # | 风险 | Phase | owner/阶段 | 状态 |
+- **Phase 3/4 鐪熷疄鏍锋湰缂哄け**锛氭潗鏂欐牴鏃?Reverse ASIN / Keyword Mining XLSX锛涗换鍔′功鏄庣‘鏃犳牱鏈椂绂佹鐚滃悎鍚屻€傚噯澶囪矾寰勫彲鎺ㄨ繘锛孏ate 瀹屾暣 PASS 闇€鐢ㄦ埛鎻愪緵鏍锋湰锛堟垨鏄庣‘鎺ュ彈闄嶇骇缁撹锛夈€?
+## 鏍锋湰鐘舵€?
+- Product Search: 鏈夛紙鐪熷疄 + golden fixture锛?- Category Current: 鏈夛紙鐪熷疄 + golden fixture锛?- Reverse ASIN: **鏃狅紙闃诲 Phase 3 瀹屾暣 Gate锛?*
+- Keyword Mining: **鏃狅紙闃诲 Phase 4 瀹屾暣 Gate锛?*
+- Browser Evidence: 鏈巿鏉冿紙V3.1锛?- VOC / 1688: 鏈巿鏉冿紙V3.4/V3.5锛?
+## 姝ｅ紡椋庨櫓鐧昏锛堟潵婧?decisions.md 搂7锛孭hase PASS 涓嶅緱閬楀け锛?
+| # | 椋庨櫓 | Phase | owner/闃舵 | 鐘舵€?|
 |---|---|---|---|---|
-| 1 | 任务级 AI Listing 不受 OPENAI_LISTING_ENABLED 开关控制 | Phase 6 | MA/Phase 6 gate | 未动 |
-| 2 | 旧 AI 入口（/api/generate、/api/agents/*5）真实调用消耗配额 | Phase 6 | MA/Phase 6 | 未动 |
-| 3 | Reverse ASIN / Keyword Mining 无实现 | Phase 3/4 | MA/Phase 3-4 | 进行中（无样本准备路径） |
-| 4 | category_current 候选源快照硬编码 Search Results（lib/server 禁改） | Phase 2/6 | MA/Phase 2 close | Phase 2 评估：未触及（lib/server 边界），顺延 Phase 6 |
-| 5 | 旧 listing-copy 链真实 AI 无证据门禁 | Phase 6 | MA/Phase 6 | 未动 |
-| 6 | listing-keyword-brief 可追溯字段不完整（05 合同） | Phase 3/4 | MA/Phase 3-4 | **已实现**（reportType/marketplace/month/evidenceRef/reportHash/asin 可选字段 + Workbench 展示 + 4 测试）；真实报告数据待样本；**部分关闭** |
-| 7 | studio resultStore 无查询入口 | Phase 6 | MA/Phase 6 | Phase 2 评估：顺延 Phase 6 |
-| 8 | listing-copy-history owner-only | 产品决策 | PU/任何 Phase | 未动 |
-| 9 | 外部抓取出口 2 处无页面调用方 | Phase 6 | MA/Phase 6 | 未动 |
-| 10 | 真实 XLSX 不入 Git 约束持续有效 | 持续 | MA/每 Phase | Phase 1/2 已遵守 |
-| 11 | research-record 不含事实字段 | Phase 2 | MA/Phase 2 | **已澄清**（读取模型边界明确，见 evidence-read-model §0）；风险关闭 |
-| 12 | metricNature 身份字段 unknown 使用方式 | Phase 2 | MA/Phase 2 | **已落地**（UI 角标映射）；风险关闭 |
-| 13 | research-decision PATCH 只接受三值 | 已裁定文档化 | MA/已关闭 | 已关闭 |
-| 14 | studioListingService 缺测试；Studio 无保存草稿 | Phase 6 | MA/Phase 6 | Phase 2 评估：顺延 Phase 6 |
-| 15 | score 排序/展示可能被新手误解为推荐分 | Phase 2 | MA/Phase 2 gate | **已落地**（Workbench 标注参考信号）；风险关闭 |
+| 1 | 浠诲姟绾?AI Listing 涓嶅彈 OPENAI_LISTING_ENABLED 寮€鍏虫帶鍒?| Phase 6 | MA/Phase 6 gate | 鏈姩 |
+| 2 | 鏃?AI 鍏ュ彛锛?api/generate銆?api/agents/*5锛夌湡瀹炶皟鐢ㄦ秷鑰楅厤棰?| Phase 6 | MA/Phase 6 | 鏈姩 |
+| 3 | Reverse ASIN / Keyword Mining 鏃犲疄鐜?| Phase 3/4 | MA/Phase 3-4 | 杩涜涓紙鏃犳牱鏈噯澶囪矾寰勶級 |
+| 4 | category_current 鍊欓€夋簮蹇収纭紪鐮?Search Results锛坙ib/server 绂佹敼锛?| Phase 2/6 | MA/Phase 2 close | Phase 2 璇勪及锛氭湭瑙﹀強锛坙ib/server 杈圭晫锛夛紝椤哄欢 Phase 6 |
+| 5 | 鏃?listing-copy 閾剧湡瀹?AI 鏃犺瘉鎹棬绂?| Phase 6 | MA/Phase 6 | 鏈姩 |
+| 6 | listing-keyword-brief 鍙拷婧瓧娈典笉瀹屾暣锛?5 鍚堝悓锛?| Phase 3/4 | MA/Phase 3-4 | **宸插疄鐜?*锛坮eportType/marketplace/month/evidenceRef/reportHash/asin 鍙€夊瓧娈?+ Workbench 灞曠ず + 4 娴嬭瘯锛夛紱鐪熷疄鎶ュ憡鏁版嵁寰呮牱鏈紱**閮ㄥ垎鍏抽棴** |
+| 7 | studio resultStore 鏃犳煡璇㈠叆鍙?| Phase 6 | MA/Phase 6 | Phase 2 璇勪及锛氶『寤?Phase 6 |
+| 8 | listing-copy-history owner-only | 浜у搧鍐崇瓥 | PU/浠讳綍 Phase | 鏈姩 |
+| 9 | 澶栭儴鎶撳彇鍑哄彛 2 澶勬棤椤甸潰璋冪敤鏂?| Phase 6 | MA/Phase 6 | 鏈姩 |
+| 10 | 鐪熷疄 XLSX 涓嶅叆 Git 绾︽潫鎸佺画鏈夋晥 | 鎸佺画 | MA/姣?Phase | Phase 1/2 宸查伒瀹?|
+| 11 | research-record 涓嶅惈浜嬪疄瀛楁 | Phase 2 | MA/Phase 2 | **宸叉緞娓?*锛堣鍙栨ā鍨嬭竟鐣屾槑纭紝瑙?evidence-read-model 搂0锛夛紱椋庨櫓鍏抽棴 |
+| 12 | metricNature 韬唤瀛楁 unknown 浣跨敤鏂瑰紡 | Phase 2 | MA/Phase 2 | **宸茶惤鍦?*锛圲I 瑙掓爣鏄犲皠锛夛紱椋庨櫓鍏抽棴 |
+| 13 | research-decision PATCH 鍙帴鍙椾笁鍊?| 宸茶瀹氭枃妗ｅ寲 | MA/宸插叧闂?| 宸插叧闂?|
+| 14 | studioListingService 缂烘祴璇曪紱Studio 鏃犱繚瀛樿崏绋?| Phase 6 | MA/Phase 6 | Phase 2 璇勪及锛氶『寤?Phase 6 |
+| 15 | score 鎺掑簭/灞曠ず鍙兘琚柊鎵嬭瑙ｄ负鎺ㄨ崘鍒?| Phase 2 | MA/Phase 2 gate | **宸茶惤鍦?*锛圵orkbench 鏍囨敞鍙傝€冧俊鍙凤級锛涢闄╁叧闂?|
 
-Observation：AgentStatusKey 派生态、主链两分支、注释漂移×2、双解析器（角色已澄清保留）、本机路径测试、配额语义待产品确认、candidateEvidenceReview 边界——详见 decisions.md §7.1。
-
-## Gate（Phase 2 门禁记录）
-
+Observation锛欰gentStatusKey 娲剧敓鎬併€佷富閾句袱鍒嗘敮銆佹敞閲婃紓绉幻?銆佸弻瑙ｆ瀽鍣紙瑙掕壊宸叉緞娓呬繚鐣欙級銆佹湰鏈鸿矾寰勬祴璇曘€侀厤棰濊涔夊緟浜у搧纭銆乧andidateEvidenceReview 杈圭晫鈥斺€旇瑙?decisions.md 搂7.1銆?
+## Gate锛圥hase 2 闂ㄧ璁板綍锛?
 - spec compliance: PASS / code quality: PASS / spec reconciliation: PASS
-- lint: PASS / tsc: PASS / test: **4497 passed / 0 failed**（串行全量）/ build: PASS
-- local smoke: 3005 计划任务 registered/Ready 未触碰；Phase 2 无新服务入口（新 API 属既有 tasks 路由族）
-- push: 等待用户明确授权（main 领先 origin/main 18 个提交）
+- lint: PASS / tsc: PASS / test: **4497 passed / 0 failed**锛堜覆琛屽叏閲忥級/ build: PASS
+- local smoke: 3005 璁″垝浠诲姟 registered/Ready 鏈Е纰帮紱Phase 2 鏃犳柊鏈嶅姟鍏ュ彛锛堟柊 API 灞炴棦鏈?tasks 璺敱鏃忥級
+- push: 绛夊緟鐢ㄦ埛鏄庣‘鎺堟潈锛坢ain 棰嗗厛 origin/main 18 涓彁浜わ級
 
-## 下一步
-
-1. 提交 Phase 2 收口文档（validation/learnings）→ PHASE_2 = PASS 正式声明
-2. Phase 3/4 Change Package：无样本准备路径（官方字段研究、Adapter 设计、风险清单、测试计划、Keyword Brief 可追溯设计）
-3. 向用户报告样本缺口，征集 Reverse ASIN / Keyword Mining 真实 XLSX
-4. 样本到位后：实现 + 5 行值级核对 + Gate 全绿 → PHASE_3/4 = PASS
+## 涓嬩竴姝?
+1. 鎻愪氦 Phase 2 鏀跺彛鏂囨。锛坴alidation/learnings锛夆啋 PHASE_2 = PASS 姝ｅ紡澹版槑
+2. Phase 3/4 Change Package锛氭棤鏍锋湰鍑嗗璺緞锛堝畼鏂瑰瓧娈电爺绌躲€丄dapter 璁捐銆侀闄╂竻鍗曘€佹祴璇曡鍒掋€並eyword Brief 鍙拷婧璁★級
+3. 鍚戠敤鎴锋姤鍛婃牱鏈己鍙ｏ紝寰侀泦 Reverse ASIN / Keyword Mining 鐪熷疄 XLSX
+4. 鏍锋湰鍒颁綅鍚庯細瀹炵幇 + 5 琛屽€肩骇鏍稿 + Gate 鍏ㄧ豢 鈫?PHASE_3/4 = PASS

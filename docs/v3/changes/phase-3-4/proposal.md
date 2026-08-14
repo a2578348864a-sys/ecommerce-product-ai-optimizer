@@ -75,16 +75,16 @@
 - 来源可追溯断言（source/asin/marketplace/month/dataPeriod/capturedAt 齐全）
 - 全量验证（lint/tsc/test/build）
 
-## 6. Gate 现状
+## 6. Gate 现状（真实样本到位后更新）
 
 | Gate | 状态 |
 |---|---|
-| 真实 XLSX 正确 | **BLOCKED_ON_REAL_SAMPLE**（无样本） |
-| 错报告拒绝 | 待实现 |
-| 5 行值级核对 | **BLOCKED_ON_REAL_SAMPLE** |
-| 比例/单位/空值正确 | 待实现（设计已防） |
-| 不串商品 | 待实现（人工绑定门禁设计） |
-| 来源可追溯 | 设计已含（字段清单） |
-| 全量验证 | 待实现 |
+| 真实 XLSX 正确 | **PASS**（RA 10 行 + KM 10 行真实样本全解析） |
+| 错报告拒绝 | **PASS**（关键词解析拒绝 PS/CC 表头；商品管线拒绝关键词报表） |
+| 5 行值级核对 | **PASS**（RA 5 行 + KM 5 行人工核对，见 validation.md 附录 A） |
+| 比例/单位/空值正确 | **PASS**（0–1 原值+展示 ×100；需供比不 ×100；0/null 区分；空列 missing；重复表头） |
+| 不串商品 | **PASS**（关键词维度行绑定 + 人工确认门禁；跨报表竞品交叉一致） |
+| 来源可追溯 | **PASS**（capturedAt 保存；dataPeriod=null 如实；Keyword Brief 追溯字段） |
+| 全量验证 | **PASS**（main 4510 测试 0 失败；tsc/lint/build 全绿） |
 
-结论：`PHASE_3/4 = BLOCKED_ON_REAL_SAMPLE`（准备完成，Gate 完整达成待样本）；样本到位后按测试计划补齐并转 PASS。
+结论：`PHASE_3 = PASS`、`PHASE_4 = PASS`（正式声明见 validation.md §6；收口提交后确认）
