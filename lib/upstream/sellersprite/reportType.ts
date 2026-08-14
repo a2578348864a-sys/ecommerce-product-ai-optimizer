@@ -4,7 +4,7 @@ import {
   REQUIRED_SELLERSPRITE_FIELDS,
 } from "./fields";
 
-export type SellerSpriteReportType = "search_results" | "category_current";
+export type SellerSpriteReportType = "search_results" | "category_current" | "reverse_asin" | "keyword_mining";
 export type SellerSpriteDetectedReportType = SellerSpriteReportType | "unknown";
 
 export interface SellerSpriteReportTypeDetectionEvidence {
@@ -49,6 +49,32 @@ export interface SellerSpriteReportTypeDetection {
 const CATEGORY_CURRENT_BSR_MAX = 10;
 
 /**
+ * 关键词报表（Reverse ASIN / Keyword Mining）表头签名（真实样本验证：
+ * ReverseASIN 32 列含「流量词/自然排名/流量占比」；KeywordMining 21 列含
+ * 「关键词/相关度/ABA月排名」；两者与 PS/CC 商品报表表头互斥）。
+ */
+const REVERSE_ASIN_HEADER_SIGNATURE = ["流量词", "自然排名", "流量占比"] as const;
+const KEYWORD_MINING_HEADER_SIGNATURE = ["关键词", "相关度", "ABA月排名"] as const;
+
+export type KeywordReportType = "reverse_asin" | "keyword_mining";
+
+function hasAllHeaders(
+  headers: ReadonlyArray<string | null>,
+  signature: ReadonlyArray<string>,
+): boolean {
+  const normalized = new Set(headers.map((header) => header?.trim() ?? ""));
+  return signature.every((header) => normalized.has(header));
+}
+
+export function detectKeywordReportType(
+  headers: ReadonlyArray<string | null>,
+): KeywordReportType | null {
+  if (hasAllHeaders(headers, REVERSE_ASIN_HEADER_SIGNATURE)) return "reverse_asin";
+  if (hasAllHeaders(headers, KEYWORD_MINING_HEADER_SIGNATURE)) return "keyword_mining";
+  return null;
+}
+
+/**
  * 从行数据提取大类 BSR 有效值（与 fields 规范一致：千分位、多值取首个）。
  */
 function collectRootCategoryBsrValues(
@@ -84,6 +110,25 @@ export function detectSellerSpriteReportType(
   headers: ReadonlyArray<string | null>,
   rows?: ReadonlyArray<ReadonlyArray<string | null>>,
 ): SellerSpriteReportTypeDetection {
+  // 关键词报表（Reverse ASIN / Keyword Mining）优先：表头签名与商品报表互斥，
+  // 识别即返回（关键词报表由关键词管线处理，不走 precheck 商品管线）。
+  const keywordType = detectKeywordReportType(headers);
+  if (keywordType !== null) {
+    const mapping = mapSellerSpriteHeaders(headers);
+    const has = (field: keyof typeof mapping.fieldIndexes) => (
+      mapping.fieldIndexes[field] !== undefined
+    );
+    return {
+      reportType: keywordType,
+      evidence: {
+        hasSearchRankColumn: has("searchRank"),
+        hasRootCategoryColumn: has("rootCategory"),
+        hasRootCategoryBsrColumn: has("rootCategoryBsr"),
+        hasSubCategoryColumn: has("subCategory"),
+        hasSubCategoryBsrColumn: has("subCategoryBsr"),
+      },
+    };
+  }
   const mapping = mapSellerSpriteHeaders(headers);
   const has = (field: keyof typeof mapping.fieldIndexes) => (
     mapping.fieldIndexes[field] !== undefined
