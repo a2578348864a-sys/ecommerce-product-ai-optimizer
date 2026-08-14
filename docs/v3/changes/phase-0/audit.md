@@ -93,7 +93,7 @@ Prisma 层无 enum，全部为字符串字段（schema.prisma：OpportunityCandi
 | 人工决定四态（V3 权威） | 任务/研究决定兼容层 | pending / continue / need_info / rejected | 读：tasks 列表、homeDashboard、presentation；写：research-decision → researchRecord | lib/tasks/decisionStatus.ts:1-66；lib/server/productResearchRecordStore.ts:300-312 |
 | 研究决定三值 | product-research-record.v1 | creative_ready / needs_information / abandoned | 写：research-decision PATCH；读：研究页/任务详情 | lib/productResearchDecisionContract.ts:1-36 |
 | 候选池队列状态 | OpportunityCandidate（池） | pending / worth_analyzing / analyzed / paused / rejected | 写：candidateSourceSave/池操作；读：CandidatePoolPanel | lib/opportunityCandidatePool.ts:22；lib/server/candidateSourceSave.ts:41 |
-| 旧任务状态（legacy 死代码） | task.status（历史记录） | draft / queued / running / waiting / completed / failed / cancelled | 仅定义无业务读写；normalizeTaskRecord 默认 "completed" | lib/taskConcepts.ts:47-55；lib/tasks/normalizeTaskRecord.ts:186 |
+| 旧任务状态（legacy 死代码） | task.status（历史记录） | draft / queued / running / waiting / completed / failed / cancelled | 仅 UI 注册表（taskStatusOptions）无业务读写、**未落库**（ViralAnalysisRecord 无 status 列）；normalizeTaskRecord 默认 "completed" | lib/taskConcepts.ts:47-55；lib/tasks/normalizeTaskRecord.ts:186；schema.prisma:32-52 |
 | 产品生命周期 | resultJson.productLifecycle | new_candidate / analysis_ready / analyzed / watching / ready_to_test / abandoned | 写：lifecycle PATCH；读：任务详情/演示 | lib/workflowLifecycle.ts:10-66 |
 | R22 市场决定 | 候选 r22MarketDecisionSnapshot | market_shortlisted / market_watch / market_reject / insufficient_market_data | 写：候选保存/投影；读：DecisionDesk、canCandidateEnterAgent | lib/r22DecisionModel.ts:1-5 |
 | 批次状态 | ProductBatch.batchStatus | processing / ready / blocked / archived | 写：productBatchImportService；读：批次管理 | lib/productBatchContract.ts:3,63-64 |
@@ -200,7 +200,7 @@ Prisma 层无 enum，全部为字符串字段（schema.prisma：OpportunityCandi
 4. **旧 listing-copy 链仍活跃且无 gate**：`ProductProfitForm.tsx:650` 调用 `/api/products/listing-copy`（真实 AI、无证据门禁、无站内入口）。
 5. **listing-keyword-brief 可追溯字段不完整**：05 合同要求（source/reportType/marketplace/data period/capturedAt/ASIN/evidenceRef）未完整落地（lib/listingHandoff/listingKeywordBrief.ts:27-35 现为 source 简版）。
 6. **AgentStatusKey 七态是派生展示态**（components/agentNextStepPanelModel.ts:15-22：needs_review/needs_decision/can_continue/needs_info/rejected/missing_review_state/non_agent），由 DecisionStatus+reviewState 派生，不落库；`/api/tasks` 无 status 列。
-7. **主链两分支**：`/opportunities`（ProductBatchManager）= 实时 XLSX 批次链（product-batches API）；旧 opportunities 表单链（OpportunitiesForm）= 死代码，仅经 `sellersprite-preview/import` 与 source-import 保留能力入口。
+7. **主链两分支**：`/opportunities`（ProductBatchManager）= 实时 XLSX 批次链（product-batches API → ProductBatch→Item→candidates→from-market-screening）；旧 opportunities 表单链（OpportunitiesForm、OpportunitiesConvergenceView、MarketScreeningWorkbench、SellerSpritePreviewPanel）= 死代码（无页面 import）；两链经 `activeLegacyRegistrationId`（ACTIVE_PRODUCTION_MARKET_SCREENING_REGISTRATION_ID，product-batches/route.ts:166）桥接「冻结生产注册批次」。
 8. **外部抓取出口 3 处**（0A）：`opportunities/crawl`、`source-import`、`tasks/[id]/visual-reference-import`；前两者无页面调用方。
 9. **SellerSprite metricNature：身份字段默认 unknown**（fields.ts:32-51：asin/sku/brand/productTitle/productUrl/parentAsin/seller/rootCategory/subCategory=unknown），仅指标字段为 snapshot/estimate——与 05 合同「能证明同实体才算证据」铁律方向一致，Phase 2 需确认读取模型如何使用这些 unknown 身份字段。
 10. **listing-keyword-brief 仅 source+capturedAt**（source 枚举 6 值，listingKeywordBrief.ts:19-34），无 evidenceRef/reportHash/month/data period（05 合同未完整落地）。
