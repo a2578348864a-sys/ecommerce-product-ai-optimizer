@@ -144,10 +144,28 @@ export function extractKeywordBrief(result: unknown): {
   supportingKeywords: string[];
   backendSearchTerms: string[];
   source: string;
+  reportType?: string;
+  marketplace?: string;
+  month?: string;
+  evidenceRef?: string;
+  reportHash?: string;
+  asin?: string;
 } | null {
   if (!isRecord(result)) return null;
   const brief = isRecord(result.listingKeywordBrief) ? result.listingKeywordBrief : null;
   if (!brief) return null;
+  const provenance: {
+    reportType?: string;
+    marketplace?: string;
+    month?: string;
+    evidenceRef?: string;
+    reportHash?: string;
+    asin?: string;
+  } = {};
+  for (const field of ["reportType", "marketplace", "month", "evidenceRef", "reportHash", "asin"] as const) {
+    const value = brief[field];
+    if (typeof value === "string" && value.trim()) provenance[field] = value.trim();
+  }
   return {
     primaryKeyword: text(brief.primaryKeyword),
     supportingKeywords: Array.isArray(brief.supportingKeywords)
@@ -157,6 +175,7 @@ export function extractKeywordBrief(result: unknown): {
       ? brief.backendSearchTerms.filter((v): v is string => typeof v === "string")
       : [],
     source: text(brief.source),
+    ...provenance,
   };
 }
 
@@ -507,7 +526,19 @@ export function EvidenceWorkbench({
             {keywordBrief.backendSearchTerms.length > 0 && (
               <p><span className="text-slate-500">后台搜索词：</span>{keywordBrief.backendSearchTerms.join("、")}</p>
             )}
-            <p className="text-xs text-slate-500">来源：{keywordBrief.source || "unknown"}</p>
+            <p className="text-xs text-slate-500">
+              来源：{keywordBrief.source || "unknown"}
+              {keywordBrief.reportType ? ` · 报告：${keywordBrief.reportType}` : ""}
+              {keywordBrief.marketplace ? ` · 市场：${keywordBrief.marketplace}` : ""}
+              {keywordBrief.month ? ` · 数据期：${keywordBrief.month}` : ""}
+              {keywordBrief.asin ? ` · ASIN：${keywordBrief.asin}` : ""}
+            </p>
+            {(keywordBrief.evidenceRef || keywordBrief.reportHash) && (
+              <p className="text-xs text-slate-400">
+                追溯：{keywordBrief.evidenceRef ? `evidenceRef ${keywordBrief.evidenceRef.slice(0, 16)}…` : ""}
+                {keywordBrief.reportHash ? ` · reportHash ${keywordBrief.reportHash.slice(0, 16)}…` : ""}
+              </p>
+            )}
           </div>
         ) : (
           <p className="mt-2 text-sm text-slate-500">关键词 Brief 未生成（人工确认后可进入）。</p>
