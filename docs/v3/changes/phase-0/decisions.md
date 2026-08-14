@@ -61,15 +61,24 @@
 
 ### 2.1 权威状态
 
-- **V3 人工决定四态（唯一权威）**：`pending / continue / need_info / rejected`，权威定义在 `lib/tasks/decisionStatus.ts`（含文案与 normalize 函数）。所有 UI 文案、筛选、汇总以此为准。
+- **V3 人工决定四态（唯一权威，展示/兼容层语义）**：`pending / continue / need_info / rejected`，权威定义在 `lib/tasks/decisionStatus.ts`（含文案与 normalize 函数）。所有 UI 文案、筛选、汇总以此为准。
 
-### 2.2 研究决定三值 → 四态映射（保留，显式映射）
+### 2.1a 决策语义钉死（Phase 0 Closeout 裁定，用户独立审查确认）
+
+- **V3 四态是产品/兼容展示层的唯一权威语义，不是 research-decision API 的直接写入枚举**。
+- 研究决定写入**继续使用现有三值合同** `creative_ready / needs_information / abandoned`（lib/productResearchDecisionContract.ts:1-4），通过既有映射 `productResearchDecisionToCompatibilityStatus`（lib/productResearchRecord.ts:560-566）投影为 `continue / need_info / rejected`。
+- `pending` 为**尚未形成研究决定的默认兼容状态**（无三值映射来源；lib/tasks/decisionStatus.ts:5 默认值）。
+- **禁止**为统一四态而重构现有 research-decision 写合同（API 契约、三值枚举、乐观锁均保持不变）；任何 Phase 不得把四态改为 API 直接写入枚举。
+- 违反该裁定的改动视为规格做偏，门禁不通过。
+
+### 2.2 研究决定三值 → 四态映射（保留，显式映射；写入合同不变）
 
 - `creative_ready`（进入创作准备）→ `continue`
 - `needs_information`（待补信息）→ `need_info`
 - `abandoned`（放弃研究）→ `rejected`
+- `pending`：无三值映射来源，仅作为「尚未形成研究决定」的默认兼容状态（默认值，非写入结果）。
 - 映射函数已存在：`productResearchDecisionToCompatibilityStatus`（lib/productResearchRecord.ts:560）。
-- 裁定：研究层保留三值记录（含 reason/nextAction/actor/revision），兼容层统一为四态；禁止 UI 直接展示第三套未映射状态。
+- 裁定：研究层保留三值记录（含 reason/nextAction/actor/revision），兼容层统一为四态；禁止 UI 直接展示第三套未映射状态；**禁止重构写合同**（见 §2.1a）。
 
 ### 2.3 候选池队列状态（显式区分，不并入四态）
 
@@ -106,6 +115,11 @@
 | 是否停止新写 | 否（导入链继续写入以保证列表可用），但 V3 研究链不读取 score 做决定 |
 | 新增证据驱动评分 | `ProductBatchItem` 的 stage1 确定性排名（rankingJson、researchPriority、provisionalDisposition、evidenceStatus）是证据驱动、可追溯，V3 保留为预筛层，不替代人工决定 |
 
+### 3.1 Phase 2 score 展示风险（Closeout 登记，正式风险 #15）
+
+- 现状：`OpportunityCandidate.score` 虽不参与 V3 Research Decision，但仍用于候选池排序与 UI 展示（opportunityCandidateService.ts:407-410；DecisionDesk/OpportunitiesForm），可能被新手误解为「商品推荐分」。
+- 裁定：**Closeout 不删除、不迁移 score**；Phase 2 Novice Comprehension Change Package 必须裁定其展示方式：**不得作为首屏权威决策信号**；若保留展示，必须明确标注为「参考/旧兼容排序信号」，不代表「值得卖」或最终建议。
+
 ## 4. 旧链去留裁定
 
 - 新主链（V3 形状）已成立：`发现商品(批次导入) → 研究池 → 候选研究(三阶段+研究记录+四态决定) → 研究历史 → 创作交接 → Listing/Image Studio`。
@@ -120,11 +134,12 @@
 
 ## 6. Phase 1/2 冲突范围（Gate 6）
 
-### Phase 1 边界（Product Search 识别稳定化）
+### Phase 1 边界（Product Search 识别稳定化）——Closeout 修正版
 
 - 只动：`lib/upstream/sellersprite/**`（reportType/precheck/fields/xlsx/preview/canonical/projections）、`tools/upstream/sellersprite-preview/**`、`lib/upstream/contracts.ts`、相关测试与 Golden Dataset fixture（30 增强）。
-- **必须澄清**：`xlsx.ts` 与 `previewXlsx.ts` 两套解析器的角色与是否统一（audit 疑点 #14）；category_current 候选源快照硬编码（sellerSpriteImportContract.ts:156，遗留风险 #4）。
-- 禁止触碰：`app/api/**`、`lib/server/**`（除 fixture 相关）、prisma、页面。
+- **lib/server/** 默认禁止修改**；唯一例外：与 SellerSprite Preview 识别闭环直接相关的 `lib/server/sellerSpritePreview*`，且只有 Phase 1 Change Package 显式列入 allowlist、证明必要时才允许修改（当前无此需求，保持禁止）。
+- **必须澄清**：`xlsx.ts` 与 `previewXlsx.ts` 两套解析器的角色与是否统一（audit 疑点 #14）；category_current 候选源快照硬编码（sellerSpriteImportContract.ts:156，正式风险 #4）——该文件属 `lib/server/**` 且不在 sellerSpritePreview* 例外内，**Phase 1 不修**，处理时机顺延为「Phase 1 结束评估 → Phase 2/6」。
+- 禁止触碰：`app/api/**`、`prisma/**`、页面、`package.json`/共享文件（如需新增 npm script 由集成树处理）。
 
 ### Phase 2 边界（Evidence Read Model + Workbench UI）
 
@@ -138,21 +153,50 @@
 - 旧 AI 入口（/api/generate、/api/agents/*）不在 Phase 1/2 范围；Phase 6 收口时处理，Phase 1/2 不得为它们扩展。
 - `sellersprite-preview` 链（token/同源/限流）若 Phase 1 需要改造 preview 服务，属于 Phase 1 范围（涉及 `lib/server/sellerSpritePreview*`）——在 Phase 1 proposal 中显式列出。
 
-## 7. 遗留风险清单（Phase 0 不修，登记在案）
+## 7. 遗留风险清单（正式风险来源；Closeout 统一版）
 
-| # | 风险 | 证据 | 处理时机 |
-|---|---|---|---|
-| 1 | 任务级 AI Listing 不受 OPENAI_LISTING_ENABLED 开关控制 | listingGenerationService.ts:483-496；taskLinkedAiListing.ts:157 | Phase 2/6 统一裁定 |
-| 2 | 旧 AI 入口（/api/generate、/api/agents/*5）仍真实调用并消耗配额，无页面调用方 | 0A API 清单；孤儿组件 | Phase 6 收口 |
-| 3 | Reverse ASIN / Keyword Mining 无实现（V3 三报告冻结未满足） | reportType.ts:6-7 | Phase 3/4 |
-| 4 | category_current 候选源快照硬编码 Search Results | sellerSpriteImportContract.ts:156 | Phase 1 |
-| 5 | 旧 listing-copy 链真实 AI 无证据门禁 | ProductProfitForm.tsx:650 | Phase 6 |
-| 6 | listing-keyword-brief 可追溯字段不完整（05 合同） | listingKeywordBrief.ts:27-35 | Phase 2/3 |
-| 7 | studioImageResultStore/studioListingResultStore 无查询入口 | 0A 疑点 6 | Phase 2 |
-| 8 | listing-copy-history owner-only（Visitor 无历史） | 0A 疑点 5 | 产品决策 |
-| 9 | 外部抓取出口 2 处无页面调用方（crawl/source-import） | 0A | Phase 6 |
-| 10 | 真实 XLSX 不入 Git 约束持续有效；仓库仅脱敏 fixture | manifest real_samples_must_not_be_committed | 持续 |
-| 11 | product-research-record 不含事实字段（仅决策账本+hash），证据事实在 candidateAnalysisContext/decisionEvidence——Phase 2 证据读取模型需明确边界 | productResearchRecord.ts:65-76；candidateAnalysisContext.ts:38-107 | Phase 2 |
-| 12 | SellerSprite metricNature 身份字段默认 unknown（fields.ts:32-51），Phase 2 需确认读取模型使用方式 | fields.ts:32-51 | Phase 2 |
-| 13 | research-decision PATCH 只接受三值（提交旧四态 400）；旧四态仅兼容列读取 | research-decision/route.ts:88-97 | 文档化（已裁定） |
-| 14 | studioListingService 缺专项单测（幂等/配额/账本恢复）；Studio 无保存草稿能力（TTL 1h 临时文件） | 无 studioListingService.test.ts；studioListingResultStore.ts:12 | Phase 2 |
+> **正式风险唯一来源**：本表。后续 Phase 的 CURRENT_WORK 必须完整承载本表（含 Phase、owner、处理阶段），Phase PASS 不得导致风险遗失。
+> 列：`# | 风险 | 证据 | 处理时机(Phase) | owner/处理阶段`。owner 默认为主 Agent（MA），涉及产品决策的为「产品确认」（PU）。
+
+| # | 风险 | 证据 | 处理时机 | owner/阶段 |
+|---|---|---|---|---|
+| 1 | 任务级 AI Listing 不受 OPENAI_LISTING_ENABLED 开关控制 | listingGenerationService.ts:483-496；taskLinkedAiListing.ts:157 | Phase 2/6 统一裁定 | MA/Phase 2 gate |
+| 2 | 旧 AI 入口（/api/generate、/api/agents/*5）仍真实调用并消耗配额，无页面调用方 | 0A API 清单；孤儿组件 | Phase 6 收口 | MA/Phase 6 |
+| 3 | Reverse ASIN / Keyword Mining 无实现（V3 三报告冻结未满足） | reportType.ts:6-7 | Phase 3/4 | MA/Phase 3-4 |
+| 4 | category_current 候选源快照硬编码 Search Results（lib/server，Phase 1 禁改） | sellerSpriteImportContract.ts:156 | Phase 1 评估 → Phase 2/6 | MA/Phase 1 close |
+| 5 | 旧 listing-copy 链真实 AI 无证据门禁 | ProductProfitForm.tsx:650 | Phase 6 | MA/Phase 6 |
+| 6 | listing-keyword-brief 可追溯字段不完整（05 合同） | listingKeywordBrief.ts:27-35 | Phase 2/3 | MA/Phase 2-3 |
+| 7 | studioImageResultStore/studioListingResultStore 无查询入口 | 0A 疑点 6 | Phase 2 | MA/Phase 2 |
+| 8 | listing-copy-history owner-only（Visitor 无历史） | 0A 疑点 5 | 产品决策 | PU/任何 Phase |
+| 9 | 外部抓取出口 2 处无页面调用方（crawl/source-import） | 0A | Phase 6 | MA/Phase 6 |
+| 10 | 真实 XLSX 不入 Git 约束持续有效；仓库仅脱敏 fixture | manifest real_samples_must_not_be_committed | 持续 | MA/每 Phase |
+| 11 | product-research-record 不含事实字段（仅决策账本+hash）；Phase 2 证据读取模型需明确边界 | productResearchRecord.ts:65-76；candidateAnalysisContext.ts:38-107 | Phase 2 | MA/Phase 2 |
+| 12 | SellerSprite metricNature 身份字段默认 unknown，Phase 2 需确认读取模型使用方式 | fields.ts:32-51 | Phase 2 | MA/Phase 2 |
+| 13 | research-decision PATCH 只接受三值（提交旧四态 400）；旧四态仅兼容列读取 | research-decision/route.ts:88-97 | 已裁定文档化 | MA/已关闭 |
+| 14 | studioListingService 缺专项单测；Studio 无保存草稿能力（TTL 1h 临时文件） | 无 studioListingService.test.ts；studioListingResultStore.ts:12 | Phase 2 | MA/Phase 2 |
+| 15 | OpportunityCandidate.score 仍用于排序/UI 展示，可能被新手误解为「商品推荐分」；Phase 2 Novice Comprehension Change Package 必须裁定展示方式（不得作为首屏权威决策信号；若保留须标注参考/旧兼容排序信号；Closeout 不删除不迁移 score） | opportunityCandidateService.ts:407-410；§3.1 | Phase 2 | MA/Phase 2 gate |
+
+### 7.1 audit 观察 → 正式风险/observation 映射（Closeout 去重）
+
+audit.md 18 项补充发现/疑点为审计观察，映射如下（正式风险编号见上表）：
+
+| audit 项 | 内容 | 归属 |
+|---|---|---|
+| 补充 #1 | 任务级 AI Listing gate 缺口 | → 正式风险 #1 |
+| 补充 #2 | Reverse ASIN / Keyword Mining 未实现 | → 正式风险 #3 |
+| 补充 #3 | category_current 硬编码 | → 正式风险 #4 |
+| 补充 #4 | 旧 listing-copy 无 gate | → 正式风险 #5 |
+| 补充 #5 | keyword-brief 追溯不完整 | → 正式风险 #6 |
+| 补充 #6 | AgentStatusKey 七态派生展示态 | observation（已裁定保留，不落库） |
+| 补充 #7 | 主链两分支 + activeLegacyRegistrationId 桥接 | observation（已裁定） |
+| 补充 #8 | 外部抓取出口 3 处、2 处无调用方 | → 正式风险 #9 |
+| 补充 #9 | metricNature 身份字段 unknown | → 正式风险 #12 |
+| 补充 #10 | keyword-brief source 简版 | → 正式风险 #6（同源） |
+| 补充 #11 | manualFactConfirmation 注释漂移（8 vs 17） | observation（随代码维护） |
+| 补充 #12 | studioListingService 缺测试 | → 正式风险 #14 |
+| 补充 #13 | Studio 无保存草稿 | → 正式风险 #14（同源） |
+| 疑点 #14 | 双解析器 xlsx vs previewXlsx | observation + Phase 1 必须澄清项（§6） |
+| 疑点 #15 | realXlsxClosure 本机路径；限流/HMAC 进程内存 | observation（Phase 1 顺手处理路径问题） |
+| 疑点 #16 | agents/summary 解析失败不扣配额；image 双配额路径 | observation（产品确认项，PU） |
+| 疑点 #17 | decisionCard.ts:183 文案过时 | observation（随代码维护） |
+| 疑点 #18 | candidateEvidenceReview 三重 hash 边界 | observation（已实现细节，Phase 2 复用） |

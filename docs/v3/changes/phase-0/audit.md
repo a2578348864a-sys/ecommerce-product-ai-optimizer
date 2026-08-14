@@ -195,7 +195,9 @@ Prisma 层无 enum，全部为字符串字段（schema.prisma：OpportunityCandi
 
 ### 0B/0C 补充发现（子 Agent 交叉核对一致）
 
-1. **任务级真实 AI Listing 不受 `OPENAI_LISTING_ENABLED` 开关控制**：`listingGenerationService.ts:483-496`（copyReady 即调真实 AI）→ `taskLinkedAiListing.ts:157`（callAiJson 直连，无 realAiListingGate 检查）；独立 Studio 路径受开关控制（app/api/listing-studio/route.ts:7）。属门禁不一致，Phase 0 不修，Phase 2/6 裁定。
+> Closeout 注：以下补充发现 1-11 与「盘点疑点汇总」12-18 为审计观察；逐项去重映射（→ 正式风险 #n 或 observation）见 `decisions.md §7.1`；正式风险唯一来源为 `decisions.md §7`（15 项）。
+
+1. **任务级真实 AI Listing 不受 `OPENAI_LISTING_ENABLED` 开关控制**：`listingGenerationService.ts:483-496`（copyReady 即调真实 AI）→ `taskLinkedAiListing.ts:157`（callAiJson 直连，无 realAiListingGate 检查）；独立 Studio 路径受开关控制（app/api/listing-studio/route.ts:7）。属门禁不一致，Phase 0 不修，Phase 2/6 裁定（→ 正式风险 #1）。
 2. **Reverse ASIN / Keyword Mining 两报告未实现**：reportType.ts:6-7 仅 search_results/category_current；grep 全库无 reverse-asin/keyword-mining。
 3. **category_current 未接入候选落库**：`sellerSpriteImportContract.ts:156` 硬编码 `reportType: "SellerSprite Search Results"`（sellersprite_candidate_source_v1）；批次链（ProductBatch）可存 category_current，候选源快照仅支持 Search Results。
 4. **旧 listing-copy 链仍活跃且无 gate**：`ProductProfitForm.tsx:650` 调用 `/api/products/listing-copy`（真实 AI、无证据门禁、无站内入口）。

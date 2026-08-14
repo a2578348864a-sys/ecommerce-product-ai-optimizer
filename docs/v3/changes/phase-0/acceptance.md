@@ -48,7 +48,7 @@
 ## 4. 三视角终审
 
 - 产品视角：V3 主链（发现→候选→研究→决定→交接→Studio）已存在且资产齐备；本 Phase 未偏离 Evidence Workbench 方向；裁定未引入新功能承诺。
-- 工程视角：无重复体系建设；发现并登记 10 项遗留风险（含 1 项真实 AI 门禁不一致）；未触碰共享文件与受控操作。
+- 工程视角：无重复体系建设；**正式风险 15 项（decisions.md §7，含 1 项真实 AI 门禁不一致）+ 8 项 audit observation**；未触碰共享文件与受控操作。
 - 验收视角：所有裁定均可从当前 main 源码验证；关键缺口（Reverse ASIN/Keyword Mining、category_current 落库、keyword-brief 追溯）与 V3 路线图（Phase 3/4、30 增强）对齐。
 
 ## 5. 结论
@@ -68,3 +68,19 @@
 - 本 Phase 0 未实施该约束；V3 总纲权威文件（00–29、README.md、manifest.json）未改动。
 
 按执行包要求，本轮到此停止：不进入 Phase 1，不修改业务代码，不部署公网。最终资产去留与迁移裁定报告已提交（见最终汇报）。等待用户独立审查通过后，再授权 Phase 1–6。
+
+---
+
+## 7. Phase 0 Closeout 记录（用户独立审查通过后执行，2026 审查结论）
+
+用户独立审查结论：**核心裁定通过，PHASE_0 = PASS 保留**。Closeout 仅修文档/Change Package/CURRENT_WORK，未改业务代码、未改 V3 总纲。
+
+| Closeout 项 | 结论 | 落点 |
+|---|---|---|
+| 统一遗留风险清单 | decisions.md §7 为正式风险唯一来源：**15 项正式风险 + 8 项 observation**（audit 18 项观察去重映射，见 §7.1）；本文件「10 项」旧口径已修正 | decisions.md §7、§7.1；audit.md |
+| 钉死 Decision 语义 | V3 四态=展示/兼容层唯一权威语义，**不是 research-decision 写枚举**；写入继续用三值合同+既有映射；pending=默认兼容态；**禁止重构写合同** | decisions.md §2.1a、§2.2 |
+| Phase 1 修改边界 | **默认禁止修改 lib/server/****；唯一例外 lib/server/sellerSpritePreview*（需 Phase 1 Change Package allowlist+必要性证明）；风险 #4 顺延 | decisions.md §6 |
+| 登记 Phase 2 score 风险 | 正式风险 #15：score 展示不得作为首屏权威决策信号，若保留须标注参考；Closeout 不删除不迁移 score | decisions.md §3.1、§7 |
+| CURRENT_WORK 落地 | 全部正式风险（Phase/owner/处理阶段）已进入 CURRENT_WORK | docs/v3/CURRENT_WORK.md |
+
+Closeout 完成。用户已授权：恢复 `auto_with_integration_gates`，开始 Phase 1，按门禁自动推进 V3 Core Phase 1–6；到 `V3_CORE = DONE` 按原合同强制暂停；继续禁止公网部署。
