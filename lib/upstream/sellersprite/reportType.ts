@@ -1,5 +1,6 @@
 import {
   mapSellerSpriteHeaders,
+  normalizeSellerSpriteField,
   REQUIRED_SELLERSPRITE_FIELDS,
 } from "./fields";
 
@@ -14,13 +15,74 @@ export interface SellerSpriteReportTypeDetectionEvidence {
   hasSubCategoryBsrColumn: boolean;
 }
 
+/**
+ * unknown 判定的原因码（fail-closed 可解释性）：
+ * - missing_required_identity: 缺必需身份列（asin/productTitle/productUrl）
+ * - ambiguous_headers: 必需/判定字段存在多列歧义
+ * - missing_report_signature: 四件套不齐，无任何报告签名
+ * - requires_row_signal: 表头无搜索排名且四件套齐全，但未提供行数据（无法自动判定，fail-closed）
+ * - ambiguous_ps_without_search_rank: 无搜索排名列 + 四件套齐全，但行级 BSR 信号不是类目榜单形态
+ *   （真实 Product Search 新格式报表特征；不静默判为 Category Current）
+ */
+export type SellerSpriteReportTypeReasonCode =
+  | "missing_required_identity"
+  | "ambiguous_headers"
+  | "missing_report_signature"
+  | "requires_row_signal"
+  | "ambiguous_ps_without_search_rank";
+
 export interface SellerSpriteReportTypeDetection {
   reportType: SellerSpriteDetectedReportType;
   evidence: SellerSpriteReportTypeDetectionEvidence;
+  /** unknown 时的原因码；成功判定时为 undefined */
+  reasonCode?: SellerSpriteReportTypeReasonCode;
 }
 
+/**
+ * 类目榜单行级信号：真实 Category Current（BSR 当前类目 Top10）报表
+ * 的大类 BSR 值域为 [1..10]（12/12 真实样本验证）；真实 Product Search
+ * 报表（无搜索排名列的新格式）大类 BSR 无此约束（样本 max=750682）。
+ * 该值域仅用于「自动判定」，人工显式选择类型时以结构合法性为准
+ * （reasonCode 为 requires_row_signal / ambiguous_ps_without_search_rank
+ * 时允许显式选择覆盖，见 precheck.ts）。
+ */
+const CATEGORY_CURRENT_BSR_MAX = 10;
+
+/**
+ * 从行数据提取大类 BSR 有效值（与 fields 规范一致：千分位、多值取首个）。
+ */
+function collectRootCategoryBsrValues(
+  rows: ReadonlyArray<ReadonlyArray<string | null>>,
+  mapping: ReturnType<typeof mapSellerSpriteHeaders>,
+): number[] {
+  const index = mapping.fieldIndexes.rootCategoryBsr;
+  if (index === undefined) return [];
+  const values: number[] = [];
+  for (const row of rows) {
+    const raw = row[index];
+    if (typeof raw !== "string") continue;
+    const result = normalizeSellerSpriteField("rootCategoryBsr", raw.trim() === "" ? null : raw);
+    const normalized = result.normalized;
+    if (normalized === null) continue;
+    const first = Array.isArray(normalized) ? normalized[0] : normalized;
+    if (typeof first === "number" && Number.isFinite(first)) values.push(first);
+  }
+  return values;
+}
+
+/**
+ * 三层判断（10_PHASE1_TASK.md）：
+ * 1. 确定性表头特征：含搜索排名列 → search_results（旧格式，确定性）。
+ * 2. 行级信号（被真实双样本验证）：无搜索排名 + 四件套齐全时，
+ *    大类 BSR 值域 ⊆ [1..10] → category_current。
+ * 3. 仍歧义 → fail-closed unknown + reasonCode（绝不静默猜测）。
+ *
+ * rows 为可选：不提供行数据时，无搜索排名 + 四件套齐全只返回
+ * unknown(requires_row_signal)，禁止仅凭表头判定 Category Current。
+ */
 export function detectSellerSpriteReportType(
   headers: ReadonlyArray<string | null>,
+  rows?: ReadonlyArray<ReadonlyArray<string | null>>,
 ): SellerSpriteReportTypeDetection {
   const mapping = mapSellerSpriteHeaders(headers);
   const has = (field: keyof typeof mapping.fieldIndexes) => (
@@ -42,19 +104,31 @@ export function detectSellerSpriteReportType(
     || field === "subCategory"
     || field === "subCategoryBsr"
   ));
-  if (!hasRequiredIdentity || relevantAmbiguity) {
-    return { reportType: "unknown", evidence };
+  if (!hasRequiredIdentity) {
+    return { reportType: "unknown", evidence, reasonCode: "missing_required_identity" };
+  }
+  if (relevantAmbiguity) {
+    return { reportType: "unknown", evidence, reasonCode: "ambiguous_headers" };
   }
   if (evidence.hasSearchRankColumn) {
     return { reportType: "search_results", evidence };
   }
-  if (
-    evidence.hasRootCategoryColumn
+  const hasCategorySignature = evidence.hasRootCategoryColumn
     && evidence.hasRootCategoryBsrColumn
     && evidence.hasSubCategoryColumn
-    && evidence.hasSubCategoryBsrColumn
+    && evidence.hasSubCategoryBsrColumn;
+  if (!hasCategorySignature) {
+    return { reportType: "unknown", evidence, reasonCode: "missing_report_signature" };
+  }
+  if (rows === undefined || rows.length === 0) {
+    return { reportType: "unknown", evidence, reasonCode: "requires_row_signal" };
+  }
+  const bsrValues = collectRootCategoryBsrValues(rows, mapping);
+  if (
+    bsrValues.length > 0
+    && bsrValues.every((value) => value >= 1 && value <= CATEGORY_CURRENT_BSR_MAX)
   ) {
     return { reportType: "category_current", evidence };
   }
-  return { reportType: "unknown", evidence };
+  return { reportType: "unknown", evidence, reasonCode: "ambiguous_ps_without_search_rank" };
 }

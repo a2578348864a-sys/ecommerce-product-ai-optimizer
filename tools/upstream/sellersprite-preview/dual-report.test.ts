@@ -8,9 +8,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
-  SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
-  SELLERSPRITE_CATEGORY_CURRENT_ROWS,
-} from "../../../lib/upstream/sellersprite/fixtures/category-current.sanitized.v1";
+  GOLDEN_CC_CURRENT_ROWS,
+  GOLDEN_CURRENT_FORMAT_HEADERS,
+} from "../../../lib/upstream/sellersprite/golden/golden-fixtures";
 import {
   SellerSpritePreviewError,
   parseSellerSpritePreviewArgs,
@@ -78,8 +78,8 @@ describe("SellerSprite local preview dual report CLI", () => {
       const input = join(root, "category.xlsx");
       const output = join(root, "report");
       writeFileSync(input, createSellerSpritePreviewTestWorkbook({
-        headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
-        rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+        headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
+        rows: GOLDEN_CC_CURRENT_ROWS.map((row) => ({ ...row })),
       }));
       const result = runSellerSpritePreview(categoryArgs(input, output), {
         repositoryRoot: join(root, "repository"),
@@ -92,7 +92,7 @@ describe("SellerSprite local preview dual report CLI", () => {
         reportType: "category_current",
         query: null,
         occurrenceSummary: {
-          occurrenceCount: 2,
+          occurrenceCount: 10,
           occurrenceLabel: "Category Current records",
         },
         placementSummary: { status: "not_applicable" },
@@ -145,8 +145,8 @@ describe("SellerSprite local preview dual report CLI", () => {
     try {
       const input = join(root, "category.xlsx");
       writeFileSync(input, createSellerSpritePreviewTestWorkbook({
-        headers: SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
-        rows: SELLERSPRITE_CATEGORY_CURRENT_ROWS,
+        headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
+        rows: GOLDEN_CC_CURRENT_ROWS.map((row) => ({ ...row })),
       }));
       try {
         runSellerSpritePreview({
