@@ -180,10 +180,11 @@ Prisma 层无 enum，全部为字符串字段（schema.prisma：OpportunityCandi
 
 ### real AI gates
 
-- `realAiListingGate.ts`：`OPENAI_LISTING_ENABLED`（owner）+ `OPENAI_LISTING_VISITOR_ENABLED`（visitor）纯 env 开关（:6-13）；调用方仅 `app/api/listing-studio/route.ts`（grep 全库 2 处）。
-- `realAiImageGate.ts`：`OPENAI_IMAGE_GENERATION_ENABLED`（owner）+ `OPENAI_IMAGE_VISITOR_ENABLED`（visitor）纯 env 开关（:6-13）；调用方 = image-studio route、image-draft route、aiImageDraftService.ts:255。
-- **门禁语义**：两 gate 只做 env 布尔开关，不含 key 存在性检查/配额/错误码；key 与错误分类在 `aiClient.ts`（getAiConfig：missing_api_key/missing_base_url/missing_model，:172-206）；配额在 demoGuard（ensureDemoAiQuota:237、reserveDemoAiCalls:282、consumeDemoAiCalls:587；Studio 走 reserveVisitorStandaloneStudioQuota）。
-- 调用方（研究/交接链，只走 callAiJson + demoGuard 配额，不接 realAi gate）：workflows/product-analysis、listing-handoff（generateTaskLinkedAiListing）、image-handoff、image-draft、agents/*、products/*、generate。
+- `realAiListingGate.ts`：`OPENAI_LISTING_ENABLED`（owner）+ `OPENAI_LISTING_VISITOR_ENABLED`（visitor）纯 env 开关（:6-13）；调用方仅 `app/api/listing-studio/route.ts`（grep 全库 2 处）；**任务级 listing-handoff 链（listing-handoff route:350 → listingGenerationService.ts:483-496 → taskLinkedAiListing.ts:221 → callAiJson:157）全程未检查该开关**——关闭 OPENAI_LISTING_ENABLED 无法关闭任务级 listing 真实 AI（该链由 requireOwnerOnly + creativeHandoffGate + 乐观锁 + Claim Evidence 兜底）。
+- `realAiImageGate.ts`：`OPENAI_IMAGE_GENERATION_ENABLED`（owner）+ `OPENAI_IMAGE_VISITOR_ENABLED`（visitor）纯 env 开关（:6-13）；调用方 = image-studio route、image-draft route、aiImageDraftService.ts:255（gate 失败明确不消耗额度）。
+- **门禁语义**：两 gate 只做 env 布尔开关，不含 key 存在性检查/配额/错误码；key 与错误分类在 `aiClient.ts`（getAiConfig：missing_api_key/missing_base_url/missing_model，:172-206）；**文本 AI 唯一实现 = lib/server/aiClient.ts**（lib/aiClient 路径不存在）；图片 provider = openaiImageClient（模型白名单 gpt-image-2 :26、base URL 白名单 api.65535.space :13、结果 URL 白名单 OPENAI_IMAGE_RESULT_HOSTS :317）+ openaiImageEditClient（参考图 images.edit）。
+- **配额**：demoGuard（ensureDemoAiQuota:237、reserveDemoAiCalls:282、consumeDemoAiCalls:587）；Studio 走 reserveVisitorStandaloneStudioQuota；**两条 image 路径配额归属不同**：image-studio → studio quota，image-draft/task → ai_jobs_v1 系列；demoProductJourneyQuota：MAX_PRODUCT_CHAINS=5、lease 5 分钟、指标 product_journeys_v1（:13-15）。
+- 其他 AI 链路（只走 callAiJson + demoGuard 配额，不接 realAi gate）：workflows/product-analysis、listing-handoff、image-handoff、image-draft、agents/*（summary 经 summaryRiskGuard 硬降级，调用点 3 处：agents/summary route:4,144、orchestrator.ts:12,364、productAnalysis.ts:18,363）、products/*（ai-analysis 含 applyProductRiskGuards 宠物接触降级 :233-261）、generate（含 IP 限流 429 :511-514）。
 - AI 输出安全：summaryRiskGuard（5 级 verdict 硬降级）、alphaSafety、listingClaimEvidenceResolver、englishRendering 等（见 0A 服务端分组）。
 
 ### 四态 Decision
@@ -209,6 +210,9 @@ Prisma 层无 enum，全部为字符串字段（schema.prisma：OpportunityCandi
 13. **Studio 无「保存草稿」能力**（真实结果仅临时文件 TTL 1h，用于幂等重放）；历史双轨（Prisma ListingCopyHistory vs studio resultStore）不互通。
 14. **两套 XLSX 解析器并存**（xlsx.ts vs previewXlsx.ts，规则可能不一致）——Phase 1 需明确角色/统一。
 15. **realXlsxClosure.test.ts 依赖本机路径**（:35 硬编码 Downloads 路径），跨机不可复现；限流计数器/HMAC 密钥为进程内存（非持久化）。
+16. **配额语义疑点**：`agents/summary` JSON 解析失败（aiOk=false）时**不 consumeDemoAiCalls**（route:174-178,250-252）——访客解析失败不扣额度，是否符合配额预期待产品确认；image 两条路径配额归属不同（studio quota vs ai_jobs_v1）。
+17. **文案过时（非逻辑）**：`lib/decisionCard.ts:183` 仍写「真实 AI 生成待后续升级」，与当前 handoff 真实 AI 链路不一致——随代码维护修正。
+18. **candidateEvidenceReview 人工边界**：服务端要求 sourceIntegrity==="verified_public"（:134）+ candidate-analysis-v2/signed_source_v2 + 三重 hash 一致（:156-168），不符→unverified——05 合同人工确认边界的现有实现细节。
 
 ## 盘点疑点汇总（供 decisions 裁定）
 
