@@ -124,8 +124,10 @@
 ### product-research-record
 
 - schema：`product-research-record.v1`（revision/researchHash/candidateId/runId/contextHash/createdAt/updatedAt/latestDecision/decisionEvents），hash schema `product-research-hash.v1`，verification `product-research-verification.v1`（证据：lib/productResearchRecord.ts:14-16,65-91）。
-- 写方：`save-task`（writer research-decision → researchRecord 命名空间，taskResultJsonMutation.ts:32）；读方：研究页（research-context）、任务详情（research-decision GET）。
-- 追溯：researchHash/contextHash/inputHash/resultHash 哈希链 + decisionEvents（actor/reason/nextAction/revision）；公共 DTO 不投影 sourceRef/confirmedFacts（productResearchPublicDto.ts:190）。
+- **重要澄清**：record 本身是「决策事件账本 + hash 绑定」，**不含** facts/estimates/unknowns/risks/conflicts 字段；研究事实/评估实际存于 `candidateAnalysisContext`（lib/server/candidateAnalysisContext.ts:38-107，facts/assessment/integrity）与 `decisionEvidence`（lib/decisionEvidence.ts）。V3 若把 record 当「证据主体」需在 Phase 2 明确证据读取模型边界。
+- 写方：`save-task`（writer research-decision → researchRecord 命名空间，taskResultJsonMutation.ts:32，save-task/route.ts:757-906）；追加决策 = research-decision PATCH → productResearchRecordStore.ts:241-335（expectedRevision 乐观并发 + 幂等）。
+- 读方：研究页（research-context）、任务详情（research-decision GET）、researchContextAdapter（:97-284）、creativeHandoffPreview gate。
+- 追溯：researchHash/contextHash/inputHash/resultHash 哈希链 + decisionEvents（actor/reason/nextAction/revision）；公共 DTO 不投影 sourceRef/confirmedFacts（productResearchPublicDto.ts:190）。命名空间保护：taskResultNamespacePolicy.ts:3-32（31 个系统保留 key，通用写接口禁止触碰）。
 
 ### listing-keyword-brief
 
@@ -135,38 +137,40 @@
 
 ### Handoff 链
 
-- creative-handoff：`product-creative-handoff.v1`（确认事实带 usageScopes listing/image/internal、source references、visual reference 带身份绑定、request ledger；证据：lib/productCreativeHandoff.ts:3-6,65,168-190）；写方 `/api/tasks/[id]/creative-handoff`（POST 创建/撤销，版本化）。
+- creative-handoff：`product-creative-handoff.v1`（确认事实带 usageScopes listing/image/internal、source references、visual reference 带身份绑定、request ledger；证据：lib/productCreativeHandoff.ts:3-6,65,168-190）；写方 `/api/tasks/[id]/creative-handoff`（POST 创建/撤销，版本化，锁内 CAS + 幂等账本，persistence.ts:242-506）。
+- **confirmed 三档**：`evidenceTier = human_confirmed`（sourceRef.sourceKind=user_confirmation + confirmedBy/confirmedAt，:65-75）/ `source_snapshot`（4 分支 sourceRef：candidate_snapshot/seller_sprite_snapshot/research_result/user_confirmation，:22-61）/ `ai_hypothesis`（allowedUse/prohibitedUses，:96-112）；market_signal 永不进 Listing 创作输入（researchContextAdapter.ts:224-227）。
 - listing-handoff / image-handoff：GET/POST/PATCH，写 listingHandoffBinding / imageHandoffBinding 命名空间；confirmed 事实经 creativeHandoff 门禁（revoke 逻辑：productCreativeHandoffStatus.ts:95-96）。
-- 人工确认边界：manualFactConfirmation、creativeHandoffProjectionGate、listingSnapshotAudit。
+- 人工确认边界：manualFactConfirmation（MANUAL_FACT_FIELDS 白名单，evidenceTier=human_confirmed）、creativeHandoffProjectionGate、listingSnapshotAudit。
 
 ### Studio
 
-- Listing Studio：`/api/listing-studio`（standalone，复用 aiListingGenerator，real gate `isRealAiListingEnabled`/`isRealAiVisitorListingEnabled`，证据：app/api/listing-studio/route.ts:7-9）；`studioListingService`、`studioListingResultStore`（落库无查询入口）。
-- Image Studio：`/api/image-studio`（standalone，studioImageGenerator，real gate `isRealAiImageEnabled`，证据：app/api/image-studio/route.ts:12-14）；`studioImageResultStore`。
-- 旧 listing 链：`/api/products/listing-copy`（旧文案生成，仅 ProductProfitForm 调用）+ ListingCopyHistory（owner-only 历史）；`listing-pack/ai-generate` real 拒绝（route:198-201）。
+- Listing Studio：`/api/listing-studio`（standalone，复用 aiListingGenerator，real gate `isRealAiListingEnabled`/`isRealAiVisitorListingEnabled`，证据：app/api/listing-studio/route.ts:7-9）；`studioListingService`（Visitor 配额在 service 内 `reserveVisitorStandaloneStudioQuota`，studioListingService.ts:19-25）；**输出 meta.saved=false 不落业务库**，仅写临时 `studioListingResultStore`（无查询入口）。
+- Image Studio：`/api/image-studio`（standalone，studioImageGenerator，real gate `isRealAiImageEnabled`，env `OPENAI_IMAGE_GENERATION_ENABLED`/`OPENAI_IMAGE_VISITOR_ENABLED`，lib/server/realAiImageGate.ts:6-13）；`studioImageResultStore` 同前（落库无查询入口）。
+- 旧 listing 链：`/api/products/listing-copy`（旧文案生成，仅 ProductProfitForm 调用，**无 real AI gate**）+ ListingCopyHistory（owner-only 历史）；`listing-pack/ai-generate` real 拒绝（route:198-201）。
 
 ### SellerSprite
 
-- reportType：`search_results`（Product Search）、`category_current`（Category Current）两种；`unknown` 兜底（lib/upstream/sellersprite/reportType.ts:6-7）。
-- 解析链：precheck → xlsx/previewXlsx → canonical/fields → projections → marketSnapshot → marketSignalRanking（sellersprite-market-signal-ranking.v2，runner.ts:216）；dualReportTypes 测试覆盖表头重叠歧义。
+- reportType：`search_results`（Product Search）、`category_current`（Category Current）两种；`unknown` 兜底（lib/upstream/sellersprite/reportType.ts:6-7）；判定依据 searchRank 列 vs root/subCategory(+Bsr) 列（:22-59）。
+- 字段合同：fields.ts 键清单（asin…subCategoryBsr，:1-20）；必填 asin/productTitle/productUrl（:59-63）；**metricNature 映射**（:32-51）：searchRank/price/rating/reviews/variationCount/BSR=snapshot、estimatedMonthlySales/Revenue=estimate、**身份字段（asin/sku/brand/productTitle/productUrl/parentAsin/seller/rootCategory/subCategory）=unknown**。
+- 解析链：precheck → xlsx/previewXlsx → canonical/fields → projections → marketSnapshot（sellersprite-market-snapshot.v3，marketSnapshot.ts:32，含 sourceFileSha256/metricNatureCoverage，productionEffect/productionDatabaseWritten=false 硬编码 :672-673）→ marketSignalRanking（sellersprite-market-signal-ranking.v2，runner.ts:216）；dualReportTypes 测试覆盖表头重叠歧义。
 - 导入链：`/api/product-batches`（V3 批次主入口）与旧 `/api/opportunities/sellersprite-import`（停止新入口）；`/api/opportunities/sellersprite-preview` 只读预览 + token（sellerSpritePreviewImportToken/Origin/RateLimit）。
 - CLI：`sellersprite:preview` → tools/upstream/sellersprite-preview.ts（authoritative=false、promotionEligible=false、manifestRegistered=false、productionEffect=false、rankingSchemaVersion 等安全旗标，runner.ts:129-234）。
-- 样本：仓库内仅脱敏 fixture（lib/upstream/sellersprite/fixtures、tools/upstream/fixtures、sanitized 样本 category-current.sanitized.v1.ts / search-export.sanitized.v1.ts）；真实 XLSX 不入 Git（manifest real_samples_must_not_be_committed=true）。
+- 样本：仓库内仅脱敏 fixture（lib/upstream/sellersprite/fixtures、tools/upstream/fixtures、sanitized 样本 category-current.sanitized.v1.ts / search-export.sanitized.v1.ts）；真实 XLSX 不入 Git（manifest real_samples_must_not_be_committed=true，真实样本位于 Git 根外材料目录）。
 - 缺口：Reverse ASIN、Keyword Mining 无实现（grep 无匹配）。
 
 ### real AI gates
 
-- `realAiListingGate.ts`：`OPENAI_LISTING_ENABLED`（owner）+ `OPENAI_LISTING_VISITOR_ENABLED`（visitor）开关（:6-13）。
-- `realAiImageGate.ts`：同构（`OPENAI_IMAGE_ENABLED` 系列，app/api/image-studio/route.ts:12-14 引用）。
-- 配额：Owner 无 Journey 限制；Visitor 走 `product_journeys_v1`（demoProductJourneyQuota，reserve/commit/release，5 个完整体验名额）；旧 `ai_jobs_v1/usedAiCalls` 仅作旧路径兼容台账（docs/architecture/auth-and-quota-contract.md:39-63）。
-- 调用方：Listing/Image Studio、listing-handoff、image-handoff、image-draft、workflows/product-analysis（callAiJson + fallback）。
-- AI 输出安全：summaryRiskGuard、alphaSafety、listingClaimEvidenceResolver、englishRendering 等（见 0A 服务端分组）。
+- `realAiListingGate.ts`：`OPENAI_LISTING_ENABLED`（owner）+ `OPENAI_LISTING_VISITOR_ENABLED`（visitor）纯 env 开关（:6-13）；调用方仅 `app/api/listing-studio/route.ts`（grep 全库 2 处）。
+- `realAiImageGate.ts`：`OPENAI_IMAGE_GENERATION_ENABLED`（owner）+ `OPENAI_IMAGE_VISITOR_ENABLED`（visitor）纯 env 开关（:6-13）；调用方 = image-studio route、image-draft route、aiImageDraftService.ts:255。
+- **门禁语义**：两 gate 只做 env 布尔开关，不含 key 存在性检查/配额/错误码；key 与错误分类在 `aiClient.ts`（getAiConfig：missing_api_key/missing_base_url/missing_model，:172-206）；配额在 demoGuard（ensureDemoAiQuota:237、reserveDemoAiCalls:282、consumeDemoAiCalls:587；Studio 走 reserveVisitorStandaloneStudioQuota）。
+- 调用方（研究/交接链，只走 callAiJson + demoGuard 配额，不接 realAi gate）：workflows/product-analysis、listing-handoff（generateTaskLinkedAiListing）、image-handoff、image-draft、agents/*、products/*、generate。
+- AI 输出安全：summaryRiskGuard（5 级 verdict 硬降级）、alphaSafety、listingClaimEvidenceResolver、englishRendering 等（见 0A 服务端分组）。
 
 ### 四态 Decision
 
-- API：`/api/tasks/[id]/research-decision` GET/PATCH（expectedRevision 乐观并发、decisionId/status/reason/nextAction，route.ts:88-117）。
-- 状态：三值研究决定 → 四态兼容映射（见 0B）；UI：研究页（AgentRunClient）与任务详情（TaskRecordDetail）展示与写入。
-- 人工确认边界：creative_ready 仅表示可进入创作准备，不代表采购/盈利/合规成立（productResearchDecisionContract.ts:11-15）。
+- API：`/api/tasks/[id]/research-decision` GET/PATCH（expectedRevision 乐观并发、decisionId/status/reason/nextAction，route.ts:88-117）；**PATCH 只接受研究决定三值，提交旧四态字符串返回 400**（route.ts:88-97）。
+- 状态：三值研究决定 → 四态兼容映射（见 0B；无 pending 映射，pending 为未决策默认态，taskResultJsonMutation.ts:180-197 限定 research-decision/legacy-decision 可写兼容列）；UI：研究页（AgentRunClient）与任务详情（TaskRecordDetail）展示与写入。
+- 人工确认边界：creative_ready 仅表示可进入创作准备，不代表采购/盈利/合规成立（productResearchDecisionContract.ts:11-15）；manualFactConfirmation 白名单（注：文件头注释写「8 个字段」，实际 MANUAL_FACT_FIELDS 为 17 项，:19-37——文档漂移，登记）。
 
 ### 0B/0C 补充发现（子 Agent 交叉核对一致）
 
@@ -178,6 +182,9 @@
 6. **AgentStatusKey 七态是派生展示态**（components/agentNextStepPanelModel.ts:15-22：needs_review/needs_decision/can_continue/needs_info/rejected/missing_review_state/non_agent），由 DecisionStatus+reviewState 派生，不落库；`/api/tasks` 无 status 列。
 7. **主链两分支**：`/opportunities`（ProductBatchManager）= 实时 XLSX 批次链（product-batches API）；旧 opportunities 表单链（OpportunitiesForm）= 死代码，仅经 `sellersprite-preview/import` 与 source-import 保留能力入口。
 8. **外部抓取出口 3 处**（0A）：`opportunities/crawl`、`source-import`、`tasks/[id]/visual-reference-import`；前两者无页面调用方。
+9. **SellerSprite metricNature：身份字段默认 unknown**（fields.ts:32-51：asin/sku/brand/productTitle/productUrl/parentAsin/seller/rootCategory/subCategory=unknown），仅指标字段为 snapshot/estimate——与 05 合同「能证明同实体才算证据」铁律方向一致，Phase 2 需确认读取模型如何使用这些 unknown 身份字段。
+10. **listing-keyword-brief 仅 source+capturedAt**（source 枚举 6 值，listingKeywordBrief.ts:19-34），无 evidenceRef/reportHash/month/data period（05 合同未完整落地）。
+11. **manualFactConfirmation 注释与实现不一致**（注释「8 个字段」，实际 17 项，:19-37）——小文档漂移，随代码维护修正。
 
 ## 盘点疑点汇总（供 decisions 裁定）
 

@@ -150,3 +150,6 @@
 | 8 | listing-copy-history owner-only（Visitor 无历史） | 0A 疑点 5 | 产品决策 |
 | 9 | 外部抓取出口 2 处无页面调用方（crawl/source-import） | 0A | Phase 6 |
 | 10 | 真实 XLSX 不入 Git 约束持续有效；仓库仅脱敏 fixture | manifest real_samples_must_not_be_committed | 持续 |
+| 11 | product-research-record 不含事实字段（仅决策账本+hash），证据事实在 candidateAnalysisContext/decisionEvidence——Phase 2 证据读取模型需明确边界 | productResearchRecord.ts:65-76；candidateAnalysisContext.ts:38-107 | Phase 2 |
+| 12 | SellerSprite metricNature 身份字段默认 unknown（fields.ts:32-51），Phase 2 需确认读取模型使用方式 | fields.ts:32-51 | Phase 2 |
+| 13 | research-decision PATCH 只接受三值（提交旧四态 400）；旧四态仅兼容列读取 | research-decision/route.ts:88-97 | 文档化（已裁定） |
