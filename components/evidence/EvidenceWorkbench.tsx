@@ -21,6 +21,11 @@ import {
   AiEvidenceSummarySection,
   type AiEvidenceSummaryView,
 } from "@/components/evidence/AiEvidenceSummarySection";
+import {
+  BrowserEvidenceSection,
+  parseBrowserEvidenceView,
+  type BrowserEvidenceView,
+} from "@/components/evidence/BrowserEvidenceSection";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -342,6 +347,28 @@ export function EvidenceWorkbench({
   const [aiSummary, setAiSummary] = useState<AiEvidenceSummaryView | null>(null);
   const [aiSummaryStorageVersion, setAiSummaryStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
+  const [browserEvidence, setBrowserEvidence] = useState<BrowserEvidenceView | null>(null);
+  const [browserEvidenceStorageVersion, setBrowserEvidenceStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
+  const [browserTaskAsin, setBrowserTaskAsin] = useState<string | null>(null);
+
+  async function loadBrowserEvidence() {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
+        headers: buildFetchHeaders(),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { evidence: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; taskAsin: string | null } }
+        | { ok: false };
+      if (res.ok && json.ok) {
+        setBrowserEvidence(parseBrowserEvidenceView(json.data.evidence));
+        setBrowserEvidenceStorageVersion(json.data.storageVersion);
+        setBrowserTaskAsin(json.data.taskAsin);
+      }
+    } catch {
+      // fail-soft：读取失败保持空状态
+    }
+  }
+
   async function loadAiSummary() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/ai-evidence-summary`, {
@@ -379,6 +406,7 @@ export function EvidenceWorkbench({
   useEffect(() => {
     void loadKeywordEvidence();
     void loadAiSummary();
+    void loadBrowserEvidence();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
@@ -602,6 +630,15 @@ export function EvidenceWorkbench({
           onChanged={loadKeywordEvidence}
         />
       </section>
+
+      {/* ── 浏览器 Evidence（V3.3） ── */}
+      <BrowserEvidenceSection
+        taskId={taskId}
+        evidence={browserEvidence}
+        taskAsin={browserTaskAsin}
+        storageVersion={browserEvidenceStorageVersion}
+        onChanged={loadBrowserEvidence}
+      />
 
       {/* ── 货源 Evidence ── */}
       <section data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">

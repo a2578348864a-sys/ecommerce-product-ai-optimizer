@@ -1,0 +1,144 @@
+{
+  "runAt": "2026-08-15T09:00:56.211Z",
+  "results": [
+    {
+      "label": "A-standard-usd",
+      "asin": "B0C3NFB3CZ",
+      "pageStatus": "ok",
+      "entityBound": true,
+      "bindingProof": {
+        "urlMatchesExpected": true,
+        "pageAnchorMatchesExpected": true,
+        "productContainerFound": true
+      },
+      "currency": null,
+      "fields": {
+        "asin": {
+          "value": "B0C3NFB3CZ",
+          "status": "correct"
+        },
+        "title": {
+          "value": "OtterBox Elevation Tumbler with Closed Lid - 16OZ (RealTree Edge Flamingo Pink) ",
+          "status": "correct"
+        },
+        "price": {
+          "value": null,
+          "status": "unknown",
+          "reason": "selector_not_found"
+        },
+        "bsr": {
+          "value": 286926,
+          "status": "correct"
+        },
+        "rating": {
+          "value": 4.6,
+          "status": "correct"
+        },
+        "reviewCount": {
+          "value": 309,
+          "status": "correct"
+        }
+      },
+      "failureReasons": [
+        "selector_not_found"
+      ],
+      "savedKind": "saved",
+      "reloadedSnapshots": 1
+    },
+    {
+      "label": "B-dynamic-bsr-reviews",
+      "asin": "B0BG3C7CNJ",
+      "pageStatus": "ok",
+      "entityBound": true,
+      "bindingProof": {
+        "urlMatchesExpected": true,
+        "pageAnchorMatchesExpected": true,
+        "productContainerFound": true
+      },
+      "currency": "JPY",
+      "fields": {
+        "asin": {
+          "value": "B0BG3C7CNJ",
+          "status": "correct"
+        },
+        "title": {
+          "value": "Igloo Snoopy’s House 16-Can Lunch Pail",
+          "status": "correct"
+        },
+        "price": {
+          "value": null,
+          "status": "unknown",
+          "reason": "currency_not_usd:JPY"
+        },
+        "bsr": {
+          "value": 5899,
+          "status": "correct"
+        },
+        "rating": {
+          "value": 4.9,
+          "status": "correct"
+        },
+        "reviewCount": {
+          "value": 597,
+          "status": "correct"
+        }
+      },
+      "failureReasons": [
+        "currency_not_usd:JPY"
+      ],
+      "savedKind": "saved",
+      "reloadedSnapshots": 1
+    },
+    {
+      "label": "C-currency-structure-odd",
+      "asin": "B07G4VTV2F",
+      "pageStatus": "ok",
+      "entityBound": true,
+      "bindingProof": {
+        "urlMatchesExpected": true,
+        "pageAnchorMatchesExpected": true,
+        "productContainerFound": true
+      },
+      "currency": "JPY",
+      "fields": {
+        "asin": {
+          "value": "B07G4VTV2F",
+          "status": "correct"
+        },
+        "title": {
+          "value": "KINTO 21093 Day-off Tumbler, 16.9 fl oz (500 ml), Mustard, Double Wall Vacuum Co",
+          "status": "correct"
+        },
+        "price": {
+          "value": null,
+          "status": "unknown",
+          "reason": "currency_not_usd:JPY"
+        },
+        "bsr": {
+          "value": 34264,
+          "status": "correct"
+        },
+        "rating": {
+          "value": 4.6,
+          "status": "correct"
+        },
+        "reviewCount": {
+          "value": 1044,
+          "status": "correct"
+        }
+      },
+      "failureReasons": [
+        "currency_not_usd:JPY"
+      ],
+      "savedKind": "saved",
+      "reloadedSnapshots": 1
+    },
+    {
+      "label": "D-adversarial-asin-mismatch",
+      "taskAsin": "B0C3NFB3CZ",
+      "pageAsin": "B0BG3C7CNJ",
+      "pageUrlAsin": "B0BG3C7CNJ",
+      "hardRejected": true
+    }
+  ]
+}

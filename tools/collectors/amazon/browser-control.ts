@@ -537,8 +537,20 @@ async function evaluateByValue<T>(client: CdpClient, sessionId: string, expressi
     expression,
     returnByValue: true,
     awaitPromise: true,
-  }, sessionId) as { result?: { value?: unknown }; exceptionDetails?: unknown };
-  if (evaluated.exceptionDetails) throw new Error("CDP_RUNTIME_EVALUATION_FAILED");
+  }, sessionId) as {
+    result?: { value?: unknown };
+    exceptionDetails?: {
+      text?: unknown;
+      exception?: { description?: unknown };
+    };
+  };
+  if (evaluated.exceptionDetails) {
+    const text = typeof evaluated.exceptionDetails.text === "string" ? evaluated.exceptionDetails.text : "";
+    const description = typeof evaluated.exceptionDetails.exception?.description === "string"
+      ? evaluated.exceptionDetails.exception.description
+      : "";
+    throw new Error(`CDP_RUNTIME_EVALUATION_FAILED: ${text}${description ? ` | ${description.slice(0, 400)}` : ""}`);
+  }
   return evaluated.result?.value as T;
 }
 
