@@ -2,7 +2,8 @@
 
 > 状态：**VOC = APPROVED** ｜ **V3_4 = DONE** ｜ **V3_4_INTEGRATION_READY = TRUE**（Final Integration Precheck + Supplement 通过，2026-08-15）
 > **V3_4_NEGATIVE_RECURRING_REAL_SMOKE = PASS**（真实低星样本未形成共同痛点，系统正确未伪造 recurring——"没有足够证据"路径通过）
-> 不 merge main / 不 push / 不部署；V3.1 worktree 未删除；V3.5/6 未授权。
+> **V3_4_REMOTE_CLOSEOUT = PASS**（2026-08-15：已集成 main 并 push 至 origin/main，fast-forward 77c3135→b05922d，无冲突/无历史重写）
+> 不部署公网；V3.1 worktree 未删除；V3.5/6 未授权。
 
 ## 第一句话（大白话回答）
 
