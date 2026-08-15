@@ -199,6 +199,7 @@ describe("结果卡片解析（同卡片实体绑定 + 实体键校验）", () =
   it("超出上限 → 校验抛错", () => {
     const many = Array.from({ length: 61 }, (_, index) => ({
       offerId: String(10000000000 + index), title: "x", entityBound: true,
+      priceText: null, moqText: null, supplierName: null, imageUrl: null, detailUrl: null,
     }));
     expect(() => validateImageResultCards(many)).toThrowError("IMAGE_RESULTS_OVER_LIMIT");
   });

@@ -93,7 +93,7 @@ let taskId: string;
 
 beforeEach(async () => {
   resetSourcingPreviewStoreForTests();
-  taskId = (await createTrustedSandboxTask(DEMO_A, "research")).id;
+  taskId = (await createTrustedSandboxTask(DEMO_A, { type: "research" })).id;
 });
 
 afterEach(() => {

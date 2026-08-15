@@ -56,7 +56,7 @@ beforeEach(async () => {
   process.env[SOURCING_CLI_ENV_PATH] = cliPath;
   resetCliVersionCacheForTests();
   resetSourcingPreviewStoreForTests();
-  taskId = (await createTrustedSandboxTask(DEMO, "research")).id;
+  taskId = (await createTrustedSandboxTask(DEMO, { type: "research" })).id;
   authState.context = { mode: "demo", demoAccessId: DEMO };
 });
 
