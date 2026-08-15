@@ -1,0 +1,23 @@
+{
+  "runAt": "2026-08-15T13:58:30.617Z",
+  "results": [
+    {
+      "stage": "search_page_pc",
+      "finalUrl": "https://login.taobao.com/?redirect_url=https%3A%2F%2Flogin.1688.com%2Fmember%2Fjump.htm%3Ftarget%3Dhttps%253A%252F%252Flogin.1688.com%252Fme",
+      "httpStatus": 200,
+      "allowedFinalOrigin": false,
+      "redirectCount": 5,
+      "title": "全球领先的采购批发平台,批发网",
+      "hasLogin": true,
+      "hasCaptcha": false,
+      "hasRisk": false,
+      "offerLinks": [],
+      "body": " \"登录页面\"改进建议 | 密码登录短信登录 | 登录 | 忘记密码忘记账号名免费注册 | 使用 1688 / 淘宝App 扫码登录"
+    },
+    {
+      "stage": "detail_page",
+      "note": "搜索页登录墙/CAPTCHA/不可用——按任务书不绕过，停止自动读取",
+      "skipped": true
+    }
+  ]
+}
