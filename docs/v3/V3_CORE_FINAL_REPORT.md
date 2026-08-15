@@ -1,45 +1,67 @@
-# V3 Core 鏈€缁堟姤鍛婏紙24_FINAL_REPORT_TEMPLATE锛?
-## 鏈€缁堢粨璁?
+# V3 Core 最终报告（24_FINAL_REPORT_TEMPLATE）
+
+## 最终结论
+
 - **V3_CORE = DONE**
-- V3_FINAL = NOT_DONE锛圴3.x 鏈巿鏉冿級
+- **MANUAL_CORE_SMOKE = PASS**（用户人工验收通过，2026-08-15）
+- V3_FINAL = NOT_DONE（V3.x 未授权）
 - PUBLIC_DEPLOY = NO
-- main == origin/main: 鍚︼紙鏈湴棰嗗厛锛宲ush 绛夊緟鐢ㄦ埛鏄庣‘鎺堟潈锛?- main clean: 鏄?
-## Phase 缁撴灉
+- main == origin/main: 否（本地领先 56 提交，push 等待用户明确授权）
+- main clean: 是
 
-| Phase | 缁撴灉 | 鍏抽敭浜у嚭 |
+## Phase 结果
+
+| Phase | 结果 | 关键产出 |
 |---|---|---|
-| Phase 0 | PASS锛堝惈 Closeout锛?| 璧勪骇瑁佸畾 15 椤规寮忛闄┿€佸喅绛栬涔夐拤姝汇€乨ocs/v3/changes/phase-0/ |
-| Phase 1 | PASS | 涓夊眰鎶ュ憡鍒ゅ畾 + Golden Replay锛涚湡瀹?Products 涓嶅啀闈欓粯璇垽銆?2/12 BSR 姝ｇ‘ |
-| Phase 2 | PASS | Evidence Workbench锛堝叚澶у尯鍩?+ Novice 鍒嗗眰锛? 绔炲搧 Evidence 鍚堝悓锛泂core 鏍囨敞鍙傝€?|
-| Phase 3 | PASS | Reverse ASIN 瑙ｆ瀽锛堢湡瀹炴牱鏈?10 琛岋級+ 5 琛屽€肩骇鏍稿 + Save Evidence 闂幆 |
-| Phase 4 | PASS | Keyword Mining 瑙ｆ瀽锛堢湡瀹炴牱鏈?10 琛岋級+ 鍚屼笂锛汯eyword Brief 杩芥函瀛楁 |
-| Phase 5 | PASS | AI Evidence Summary锛坋videnceRefs 寮哄埗 + 娉ㄥ叆闅旂 + Run Trace + Golden Eval锛?|
-| Phase 6 | PASS | 鏃ч摼鏀跺彛鏍稿銆丼tudio 涓夐」楠岃瘉銆? 姝?Core Smoke 鐭╅樀銆侀闄?1/2/4/5/9 鏀跺彛 |
+| Phase 0 | PASS（含 Closeout） | 资产裁定 15 项正式风险、决策语义钉死、docs/v3/changes/phase-0/ |
+| Phase 1 | PASS | 三层报告判定 + Golden Replay；真实 Products 不再静默误判；12/12 BSR 正确 |
+| Phase 2 | PASS | Evidence Workbench（六大区域）+ Novice 分层；竞品 Evidence 契约；score 标注参考 |
+| Phase 3 | PASS | Reverse ASIN 解析（真实样本 10 行）+ 5 行值级核对 + Save Evidence 闭环 |
+| Phase 4 | PASS | Keyword Mining 解析（真实样本 10 行）+ 同上；Keyword Brief 追溯字段 |
+| Phase 5 | PASS | AI Evidence Summary（evidenceRefs 强制 + 注入隔离 + Run Trace + Golden Eval） |
+| Phase 6 | PASS | 旧链收口核对、Studio 三项验证、9 步 Core Smoke 矩阵、风险 1/2/4/5/9 收口 |
 
-## 楠岃瘉
+## 验证
 
-- lint: PASS锛? 閿欒锛?- tsc: PASS锛? 閿欒锛?- tests: **4516 passed / 0 failed**锛坢ain 涓茶鍏ㄩ噺锛?- build: PASS
-- local smoke: 3005 璁″垝浠诲姟 registered/Ready锛堝叏绋嬫湭瑙︾锛夛紱9 姝?Smoke 鑷姩鍖栫煩闃?PASS + 浜哄伐椤甸潰姝ラ宸叉枃妗ｅ寲锛堥渶璁块棶瀵嗙爜鍦?3005 鎵ц锛?- health: /api/health 鏃㈡湁锛堣剼鏈帰娴嬬敤锛?- 3005 restore: 涓嶉€傜敤锛堟湭鍋滄锛?
+- lint: PASS，0 错误
+- tsc: PASS，0 错误
+- tests: **4519 passed / 0 failed**（main 串行全量，含验收排障新增测试）
+- build: PASS
+- local smoke: 3005 由 `npm run start:local` 提供；9 步 Smoke 自动化矩阵 PASS + 人工页面步骤文档化（validation.md §3）
+- **人工验收（用户执行）**：MANUAL_CORE_SMOKE = PASS —— 主链跑通、商品不串、数据正确（商品概览 11 项真实证据）、AI 不胡编（真实 deepseek 输出 gateResult=pass、EvidenceRef 门禁通过）、新手五问可答、分数有参考标注
+- health: /api/health 既有（脚本探测用）
+- 3005 restore: 不适用（未停计划任务）
+
 ## Git
 
-- main: `锛堟渶缁堟彁浜ゅ悗濉啓锛塦
-- origin/main: `76e2c96`锛堟湰鍦伴鍏堬紝鏈?push锛?- commits: 瑙?git log锛圥hase 0 Closeout 鈫?Phase 6 鏀跺彛鍏?40+ 鎻愪氦锛屽叏閮ㄧ粡 worktree 鍙屽/闂ㄧ闆嗘垚锛?- force push: NO
+- main: `7a5c026`
+- origin/main: `76e2c96`（本地领先，未 push）
+- commits: 56 个（Phase 0 Closeout → 人工验收排障收尾，全部经 worktree 双审/门禁集成）
+- force push: NO
 - public deploy: NO
 
-## 鏁版嵁瀹夊叏
+## 数据安全
 
-- DB mutations: 鏃狅紙鏈啓 dev.db锛涙祴璇曞叏閮ㄩ殧绂?store/涓存椂搴擄級
-- historical rewrite: 鏃?- sample files committed: NO锛堜粨搴撳唴 `**/*.xlsx` 0 鍛戒腑锛涚湡瀹炴牱鏈粎鏉愭枡鏍瑰彧璇婚獙璇侊級
+- DB mutations: 无正式写入（验收任务数据为用户操作产生；诊断全程只读）
+- historical rewrite: 无
+- sample files committed: NO（仓库内 `**/*.xlsx` 0 命中；真实样本仅材料根只读验证）
 - credentials exported: NO
 
-## 澶?Agent 娌荤悊
+## 多 Agent 治理
 
-- Phase 1/3/4/5 寮€鍙戣蛋鐙珛 worktree锛坈odex/pipeline-phase1銆乧odex/backend-phase2銆乧odex/ui-phase2锛夛紝涓?Agent 鍙屽 + 瑙勬牸瀵硅处 + 闆嗘垚 main
-- 涓や釜瀛?Agent 鏇鹃浂浜у嚭琚腑鏂紝鐢变富 Agent 鐩存帴瀹炵幇锛堝鎶楀紡瀹℃煡鍐崇瓥锛?- 姣?Phase 鐙珛 Change Package + learnings锛?-10 鏉℃湁璇佹嵁瀛︿範锛?
-## 鏈€缁堥仐鐣欙紙浠呯湡姝ｉ樆濉為」锛?
-1. **push 寰呮巿鏉?*锛歮ain 棰嗗厛 origin/main锛圴3 Core 鍏ㄩ儴鎻愪氦鏈帹閫侊級鈥斺€旀寜鐢ㄦ埛鎺堟潈鎵ц
-2. **娈嬬暀椋庨櫓鐧昏**锛?7锛坰tudio resultStore 鏃犳煡璇㈠叆鍙ｏ級銆?8锛坙isting-copy-history owner-only锛屼骇鍝佸喅绛栵級銆?14锛坰tudioListingService 缂烘祴璇曪紱Studio 鏃犱繚瀛樿崏绋匡級鈥斺€擟ore 鏆傚仠鐐瑰悗鐢辩敤鎴锋巿鏉冨鐞?3. **浜哄伐椤甸潰 smoke 鏈墽琛?*锛堥渶璁块棶瀵嗙爜锛夛細9 姝ユ楠ゅ凡鏂囨。鍖栵紙validation.md 搂3锛夛紝鐢ㄦ埛鍦?3005 鎵ц鍚庡鍙戠幇闂鎸夌己闄锋祦绋嬪鐞?4. **鐪熷疄 AI 杈撳嚭浜哄伐鎶芥煡**锛欰I Summary 鐨?mock 绾ф娊鏌ョ煩闃靛凡 PASS锛涚湡瀹炶緭鍑烘娊鏌ラ渶鍦ㄩ〉闈㈡墽琛岋紙姝ラ鏂囨。鍖栵級
+- Phase 1/3/4/5 开发走独立 worktree（codex/pipeline-phase1、codex/backend-phase2、codex/ui-phase2），多 Agent 双审 + 规格对账 + 集成 main
+- 两个子 Agent 曾零产出被中断，由主 Agent 直接实现（对抗式审查决策）
+- 每 Phase 独立 Change Package + learnings，10+ 条有证据学习
 
-## 鍏綉鍙戝竷锛堟湭鎺堟潈锛屼笉濉啓锛?
-## 寮哄埗鏆傚仠澹版槑锛?0_MASTER_EXECUTION.md 搂7锛?
-`V3_CORE = DONE` 鈫?**`V3X_AUTHORIZATION_REQUIRED = TRUE`**锛氬仠姝㈣嚜鍔ㄦ帹杩涳紱涓嶅垱寤?V3.1 worktree锛涗笉鍚姩娴忚鍣?Spike锛涗笉璁块棶鐢ㄦ埛娴忚鍣ㄨ处鍙凤紱涓嶅畨瑁?V3.x 鏂颁緷璧栥€傜瓑寰呯敤鎴锋槑纭巿鏉冦€岀户缁?V3.x銆嶃€?
+## 最终遗留（仅真正阻塞项）
+
+1. **push 待授权**：main 领先 origin/main（V3 Core 全部提交未推送）——按用户授权执行
+2. **残留风险登记**：#7（studio resultStore 无查询入口）、#8（listing-copy-history owner-only，产品决策）、#14（studioListingService 缺测试；Studio 无保存草稿）——Core 暂停点后由用户授权处理
+3. **人工验收执行记录**：用户按 manual-smoke-checklist.md 在 3005 执行全部 9 步，结论 MANUAL_CORE_SMOKE = PASS；验收排障期间修复 5 个真实 bug（Evidence Workbench 挂载、DTO 投影、认证头、关键词 schema、AI 总结 schema/重试），全部经测试 + 页面实测
+4. **真实 AI 输出抽查**：mock 级抽查矩阵 PASS + 真实 deepseek 输出 gateResult=pass（facts/risks/missing/nextSteps 齐全），用户页面抽查通过
+
+## 公网发布（未授权，不填写）
+
+## 强制暂停声明（30_MASTER_EXECUTION.md §7）
+
+`V3_CORE = DONE` → **`V3X_AUTHORIZATION_REQUIRED = TRUE`**：停止自动推进；不创建 V3.1 worktree；不启动浏览器 Spike；不访问用户浏览器账号；不安装 V3.x 新依赖。等待用户明确授权「继续 V3.x」。

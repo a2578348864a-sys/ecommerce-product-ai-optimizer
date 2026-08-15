@@ -5,16 +5,17 @@
 ## 当前版本
 
 - **V3 Core: Phase 0–6 全部 PASS → `V3_CORE = DONE`**
+- **人工验收：`MANUAL_CORE_SMOKE = PASS`**（用户 2026-08-15 给出最终结论）
 - V3.x: 未授权（v3x_auto_start=false 硬约束；`V3X_AUTHORIZATION_REQUIRED = TRUE` 强制暂停中）
 - Current Wave: Core 完成，暂停点
 - Current Phase: —（暂停）
-- Status: **HARD_PAUSE**（等待用户明确授权「继续 V3.x」或「部署公网」）
+- Status: **HARD_PAUSE**（等待用户明确授权「继续 V3.x」「部署公网」或「push」）
 
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: 8f07915（验收排障修复，见下）
-- origin/main: 76e2c96（main 领先，**push 等待用户明确授权**）
+- main HEAD: 7a5c026（验收排障修复收尾）
+- origin/main: 76e2c96（main 领先 56 提交，**push 等待用户明确授权**）
 - main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
 
 ## 最终报告
@@ -56,17 +57,18 @@
 | 14 | studioListingService 缺测试/无保存草稿 | 保留登记（暂停点后授权处理） |
 | 15 | score 展示误导 | **关闭**（标注参考信号） |
 
-## 最终验证（V3_CORE = DONE 门禁）
+## 最终验证（V3_CORE = DONE 门禁 + 人工验收）
 
 - lint / tsc / build：PASS
-- tests：4519 passed / 0 failed（main 串行全量，含 DTO 投影与 AI 总结新增测试）
-- 9 步 Core Smoke：自动化矩阵 PASS + 人工页面步骤文档化（validation.md §3，需访问密码执行）
-- 3005：计划任务 registered/Ready 全程未触碰（验收服务由 start:local 提供）
+- tests：4519 passed / 0 failed（main 串行全量，含验收排障新增测试）
+- 9 步 Core Smoke：自动化矩阵 PASS + 人工页面步骤文档化（validation.md §3）
+- **人工验收：MANUAL_CORE_SMOKE = PASS**（用户 2026-08-15 实测：主链跑通、商品不串、数据正确、AI 不胡编、新手可懂、分数不误导）
+- 3005：验收服务由 start:local 提供（异常进程 10596 已清理，密码校验恢复正常）
 - 公网部署：NO；force push：NO；DB 写：NO；样本入库：NO
-- 人工验收就绪：任务详情 Evidence Workbench 7 区块渲染，商品概览 11 项真实证据（ASIN/价格/评分/评论/BSR/估算月销/月销额）经 playwright 实测出现
+- 验收排障共修复 5 个真实 bug（见上表），全部经测试 + 页面实测
 
 ## 下一步（等待用户授权，三项之一）
 
-1. **授权 push**：main（领先 origin 44+ 提交）→ origin/main
+1. **授权 push**：main（领先 origin 56 提交）→ origin/main
 2. **授权「继续 V3.x」**：解除 V3X_AUTHORIZATION_REQUIRED，按 V3.1 Browser Evidence Spike → V3.2 → … → V3.6 推进
 3. **授权「部署公网」**：仅当 V3_FINAL = DONE 后，按 28_PUBLIC_RELEASE.md 执行 Release R1
