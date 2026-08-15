@@ -4,15 +4,16 @@ import {
   SELLERSPRITE_CATEGORY_CURRENT_ROWS,
 } from "./fixtures/category-current.sanitized.v1";
 import {
-  SELLERSPRITE_SANITIZED_ROWS,
-  SELLERSPRITE_SEARCH_EXPORT_HEADERS,
-} from "./fixtures/search-export.sanitized.v1";
-import {
+  GOLDEN_CC_BSR_BEYOND_BAND_ROWS,
   GOLDEN_CC_CURRENT_ROWS,
   GOLDEN_CURRENT_FORMAT_HEADERS,
   GOLDEN_PS_NO_SEARCH_RANK_ROWS,
   goldenRowToValues,
 } from "./golden/golden-fixtures";
+import {
+  SELLERSPRITE_SANITIZED_ROWS,
+  SELLERSPRITE_SEARCH_EXPORT_HEADERS,
+} from "./fixtures/search-export.sanitized.v1";
 import { normalizeSellerSpriteField } from "./fields";
 import { buildSellerSpriteMarketSnapshot } from "./marketSnapshot";
 import { precheckSellerSpriteXlsx } from "./precheck";
@@ -45,7 +46,7 @@ describe("SellerSprite dual report type contract", () => {
     ])).toMatchObject({ reportType: "unknown" });
   });
 
-  it("detects Category Current only with the row-level BSR band signature (headers alone fail closed)", () => {
+  it("fails closed for all new-format workbooks without a search-rank column", () => {
     // 仅表头（PS/CC 表头相同，无「搜索排名」列）无法证明类型 → fail-closed（requires_row_signal）
     expect(detectSellerSpriteReportType(SELLERSPRITE_CATEGORY_CURRENT_HEADERS)).toMatchObject({
       reportType: "unknown",
@@ -58,17 +59,22 @@ describe("SellerSprite dual report type contract", () => {
       },
       reasonCode: "requires_row_signal",
     });
-    // 行级信号（真实 BSR 榜值域 [1..10]）→ category_current
+    // 行级 BSR 值域 ∈[1..10]（CC 榜单形态）：结构上仍与 PS 新格式完全相同，
+    // BSR 值域未经合同证明（Top100/加载更多导出可 >10），不得单点判定 → fail-closed
     expect(detectSellerSpriteReportType(
       SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
       GOLDEN_CC_CURRENT_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
-    )).toMatchObject({ reportType: "category_current" });
-    // 无搜索排名 + 大 BSR 值域（新格式 Product Search 模式）→ 类目榜单 BSR 必 ∈[1..10]，
-    // 含 >10 确定性判定 search_results（不静默判 CC，也不再 fail-closed）
+    )).toMatchObject({ reportType: "unknown", reasonCode: "ambiguous_ps_without_search_rank" });
+    // CC Top100 对抗样本（BSR 11..100 >10）：同样 fail-closed，绝不因 BSR 数值判 PS
+    expect(detectSellerSpriteReportType(
+      SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
+      GOLDEN_CC_BSR_BEYOND_BAND_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
+    )).toMatchObject({ reportType: "unknown", reasonCode: "ambiguous_ps_without_search_rank" });
+    // 无搜索排名 + 大 BSR 值域（新格式 Product Search 模式）：同样 fail-closed（不得单点判 PS）
     expect(detectSellerSpriteReportType(
       SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
       GOLDEN_PS_NO_SEARCH_RANK_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
-    )).toMatchObject({ reportType: "search_results" });
+    )).toMatchObject({ reportType: "unknown", reasonCode: "ambiguous_ps_without_search_rank" });
     expect(detectSellerSpriteReportType([
       "ASIN",
       "商品标题",

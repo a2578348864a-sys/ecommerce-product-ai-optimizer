@@ -41,16 +41,6 @@ export interface SellerSpriteReportTypeDetection {
 }
 
 /**
- * 类目榜单行级信号：真实 Category Current（BSR 当前类目 Top10）报表
- * 的大类 BSR 值域为 [1..10]（12/12 真实样本验证）；真实 Product Search
- * 报表（无搜索排名列的新格式）大类 BSR 无此约束（样本 max=750682）。
- * 值域互斥（CC 榜单不可能出现 >10）→ 含 >10 确定性判定 search_results，
- * 全部 ∈[1..10] 判定 category_current；无行级 BSR 数据时 fail-closed
- * （requires_row_signal），由人工选择兜底。
- */
-const CATEGORY_CURRENT_BSR_MAX = 10;
-
-/**
  * 关键词报表（Reverse ASIN / Keyword Mining）表头签名（真实样本验证：
  * ReverseASIN 32 列含「流量词/自然排名/流量占比」；KeywordMining 21 列含
  * 「关键词/相关度/ABA月排名」；两者与 PS/CC 商品报表表头互斥）。
@@ -78,6 +68,8 @@ export function detectKeywordReportType(
 
 /**
  * 从行数据提取大类 BSR 有效值（与 fields 规范一致：千分位、多值取首个）。
+ * 仅供「辅助诊断建议」（见 productBatchImportService 的 reportTypeHints），
+ * 不参与 reportType 自动判定。
  */
 function collectRootCategoryBsrValues(
   rows: ReadonlyArray<ReadonlyArray<string | null>>,
@@ -99,14 +91,18 @@ function collectRootCategoryBsrValues(
 }
 
 /**
- * 三层判断（10_PHASE1_TASK.md）：
- * 1. 确定性表头特征：含搜索排名列 → search_results（旧格式，确定性）。
- * 2. 行级信号（被真实双样本验证）：无搜索排名 + 四件套齐全时，
- *    大类 BSR 值域 ⊆ [1..10] → category_current。
- * 3. 仍歧义 → fail-closed unknown + reasonCode（绝不静默猜测）。
+ * 分类优先级（Core-Smoke-Fix.1 复核）：
+ * deterministic unique structure → validated multi-signal → ambiguous/unknown → manual fallback
  *
- * rows 为可选：不提供行数据时，无搜索排名 + 四件套齐全只返回
- * unknown(requires_row_signal)，禁止仅凭表头判定 Category Current。
+ * 1. 确定性结构：含搜索排名列 → search_results（旧格式，表头唯一签名）。
+ * 2. 关键词报表表头签名（Reverse ASIN / Keyword Mining）→ 关键词管线（互斥签名）。
+ * 3. 无搜索排名列 + 四件套齐全：CC（Category Current）与 PS（Product Search 新格式）
+ *    表头完全相同（真实 72 列样本验证），不存在任何确定性结构差异；
+ *    行级 BSR 值域未经官方合同证明（存在 Top100/Top400/加载更多导出场景，
+ *    CC BSR 可 >10），不得作为单点判别 → 一律 fail-closed unknown，
+ *    由人工选择兜底（UI 提供多信号辅助建议，见 productBatchImportService）。
+ *
+ * rows 为可选：不提供行数据时同样 fail-closed（requires_row_signal）。
  */
 export function detectSellerSpriteReportType(
   headers: ReadonlyArray<string | null>,
@@ -170,15 +166,8 @@ export function detectSellerSpriteReportType(
   if (rows === undefined || rows.length === 0) {
     return { reportType: "unknown", evidence, reasonCode: "requires_row_signal" };
   }
-  const bsrValues = collectRootCategoryBsrValues(rows, mapping);
-  if (bsrValues.length === 0) {
-    return { reportType: "unknown", evidence, reasonCode: "requires_row_signal" };
-  }
-  if (bsrValues.every((value) => value >= 1 && value <= CATEGORY_CURRENT_BSR_MAX)) {
-    return { reportType: "category_current", evidence };
-  }
-  // 存在 >10 的大类 BSR：类目榜单（Category Current Top10）的 BSR 必 ∈ [1..10]
-  // （12/12 真实样本验证），含 >10 必然不是 CC 榜单 → 无搜索排名列的新格式
-  // Product Search 报表（真实 Products(10) 样本 max=750682）。确定性判定，不误判。
-  return { reportType: "search_results", evidence };
+  // CC 与 PS 新格式在结构上不可区分（表头/列组合/工作表完全一致），
+  // 行级 BSR 值域仅作辅助诊断（UI 建议），不参与 reportType 判定 →
+  // 一律 fail-closed，人工选择兜底（不允许以未证明的 BSR≤10 合同做单点自动判定）。
+  return { reportType: "unknown", evidence, reasonCode: "ambiguous_ps_without_search_rank" };
 }

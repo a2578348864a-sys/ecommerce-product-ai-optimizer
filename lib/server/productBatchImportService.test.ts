@@ -70,11 +70,22 @@ describe("shared SellerSprite ProductBatch import", () => {
     );
 
     expect(categoryCurrent).toMatchObject({
-      reportType: "category_current",
-      reportTypeDetected: true,
+      // 新格式 CC（无搜索排名列）在结构上与 PS 不可区分 → fail-closed，人工选择兜底；
+      // 多信号辅助建议给出 category_current（BSR 榜形态 + 单类目 + 月销高）
+      reportType: "unknown",
+      reportTypeDetected: false,
       categoryDetection: {
-        status: "detected",
-        category: "Kitchen & Dining",
+        status: "unknown",
+        category: null,
+      },
+      reportTypeHints: {
+        suggestion: "category_current",
+        signals: {
+          bandLikeBsr: true,
+          singleRootCategory: true,
+          hotSales: true,
+          bestSellerMajority: false,
+        },
       },
       query: null,
       queryDetection: "not_available",
@@ -86,6 +97,7 @@ describe("shared SellerSprite ProductBatch import", () => {
         status: "detected",
         category: "Home & Kitchen",
       },
+      reportTypeHints: null,
     });
   });
 

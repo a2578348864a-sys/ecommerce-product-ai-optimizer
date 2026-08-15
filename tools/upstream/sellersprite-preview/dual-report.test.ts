@@ -140,19 +140,16 @@ describe("SellerSprite local preview dual report CLI", () => {
     }
   });
 
-  it("fails closed with report_type_mismatch before writing a success report", () => {
+  it("fails closed with report_type_mismatch for deterministic conflicts, but allows explicit choice when no structural signal exists", () => {
     const root = mkdtempSync(join(tmpdir(), "sellersprite-mismatch-cli-test-"));
     try {
-      const input = join(root, "category.xlsx");
-      writeFileSync(input, createSellerSpritePreviewTestWorkbook({
-        headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
-        rows: GOLDEN_CC_CURRENT_ROWS.map((row) => ({ ...row })),
-      }));
+      // 场景 1：确定性结构信号（搜索排名列）与显式选择冲突 → 拒绝
+      const legacy = join(root, "legacy.xlsx");
+      writeFileSync(legacy, createSellerSpritePreviewTestWorkbook());
       try {
         runSellerSpritePreview({
-          ...categoryArgs(input, join(root, "report")),
-          reportType: "search_results",
-          query: "storage",
+          ...categoryArgs(legacy, join(root, "report-legacy")),
+          reportType: "category_current",
         });
         throw new Error("expected mismatch");
       } catch (error) {
@@ -162,6 +159,18 @@ describe("SellerSprite local preview dual report CLI", () => {
           exitCode: 4,
         });
       }
+      // 场景 2：无搜索排名新格式（无确定性结构信号）→ 自动 fail-closed，
+      // 显式选择结构合法即放行（BSR 值域不作单点判定，不产生 mismatch）
+      const input = join(root, "category.xlsx");
+      writeFileSync(input, createSellerSpritePreviewTestWorkbook({
+        headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
+        rows: GOLDEN_CC_CURRENT_ROWS.map((row) => ({ ...row })),
+      }));
+      runSellerSpritePreview({
+        ...categoryArgs(input, join(root, "report")),
+        reportType: "search_results",
+        query: "storage",
+      });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

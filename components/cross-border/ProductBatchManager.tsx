@@ -296,6 +296,22 @@ export function ProductBatchManagerView({
           {showManualReportType ? (
             <div className="grid gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-slate-700" data-testid="report-type-manual-required">
               <p className="font-semibold text-amber-800">无法可靠识别报表类型，请手动选择。</p>
+              {importInspection?.reportTypeHints && (
+                <div className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-normal leading-5 text-slate-600" data-testid="report-type-hints">
+                  {importInspection.reportTypeHints.suggestion ? (
+                    <p className="font-semibold text-teal-800">
+                      检测建议：
+                      {importInspection.reportTypeHints.suggestion === "category_current"
+                        ? "更像「类目商品报表」"
+                        : "更像「搜索结果报表」"}
+                      （{importInspection.reportTypeHints.reasons.join("、") || "行级特征不足"}）
+                    </p>
+                  ) : (
+                    <p>行级特征不足（{importInspection.reportTypeHints.reasons.join("、") || "无明显榜单或搜索结果特征"}），无法给出建议。</p>
+                  )}
+                  <p className="mt-1">建议仅供参考，请以报表实际内容为准。</p>
+                </div>
+              )}
               <label className="grid gap-2">
                 手动选择报表类型
                 <select

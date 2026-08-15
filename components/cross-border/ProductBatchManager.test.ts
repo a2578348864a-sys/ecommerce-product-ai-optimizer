@@ -132,6 +132,7 @@ function render(
         ],
         validCategoryCount: 10,
       },
+      reportTypeHints: null,
       query: null,
       queryDetection: "not_available",
     },

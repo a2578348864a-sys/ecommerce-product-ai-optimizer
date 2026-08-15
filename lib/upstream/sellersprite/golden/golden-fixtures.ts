@@ -152,6 +152,24 @@ export const GOLDEN_CC_CURRENT_ROWS: ReadonlyArray<GoldenRow> = [
   goldenRow("10", "B0GOLD0110", "Golden Sports & Outdoors", "10", "Golden Water Bottles", "5", "15,900"),
 ];
 
+/**
+ * Category Current 对抗样本（Top100 / 加载更多导出场景，脱敏）：
+ * 单一大类目、大类 BSR 11..100（>10）、月销量高、Best Seller 多。
+ * 用于证明分类器不会因 BSR 数值 >10 将 CC 误判为 Product Search（必须 fail-closed）。
+ */
+export const GOLDEN_CC_BSR_BEYOND_BAND_ROWS: ReadonlyArray<GoldenRow> = [
+  goldenRow("1", "B0GOLD0201", "Golden Sports & Outdoors", "11", "Golden Water Bottles", "3", "178,600"),
+  goldenRow("2", "B0GOLD0202", "Golden Sports & Outdoors", "12", "Golden Water Bottles", "3", "150,200"),
+  goldenRow("3", "B0GOLD0203", "Golden Sports & Outdoors", "13", "Golden Water Bottles", "4", "140,100"),
+  goldenRow("4", "B0GOLD0204", "Golden Sports & Outdoors", "21", "Golden Water Bottles", "5", "110,300"),
+  goldenRow("5", "B0GOLD0205", "Golden Sports & Outdoors", "22", "Golden Water Bottles", "5", "98,700"),
+  goldenRow("6", "B0GOLD0206", "Golden Sports & Outdoors", "33", "Golden Water Bottles", "6", "85,400"),
+  goldenRow("7", "B0GOLD0207", "Golden Sports & Outdoors", "47", "Golden Water Bottles", "7", "72,100"),
+  goldenRow("8", "B0GOLD0208", "Golden Sports & Outdoors", "55", "Golden Water Bottles", "8", "60,500"),
+  goldenRow("9", "B0GOLD0209", "Golden Sports & Outdoors", "66", "Golden Water Bottles", "9", "52,300"),
+  goldenRow("10", "B0GOLD0210", "Golden Sports & Outdoors", "100", "Golden Water Bottles", "10", "41,900"),
+];
+
 /** 旧格式 Product Search（含搜索排名列）——直接复用现有脱敏 fixture */
 export const GOLDEN_PS_LEGACY_HEADERS = SELLERSPRITE_SEARCH_EXPORT_HEADERS;
 

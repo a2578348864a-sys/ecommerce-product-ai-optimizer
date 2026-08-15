@@ -10,6 +10,7 @@ import type {
 import { PRODUCT_BATCH_MAX_IMAGE_BYTES } from "@/lib/productBatchContract";
 import {
   detectProductBatchCategory,
+  buildSellerSpriteReportTypeHints,
   type ProductBatchImportInspection,
 } from "@/lib/productBatchPresentation";
 import {
@@ -63,6 +64,45 @@ export interface SellerSpriteProductBatchImportResult {
   created: boolean;
 }
 
+function extractHintInputsFromRejectedRows(
+  precheck: SellerSpritePrecheckResult,
+): Parameters<typeof buildSellerSpriteReportTypeHints>[0] {
+  // reportType unknown 时 precheck 将全部数据行标记为 rejected（unsupported_report_type），
+  // 但 rejectedRecords[].raw 保留原始行值（key 为原始表头），可用于多信号辅助诊断。
+  const bsrColumn = precheck.fieldMapping.rootCategoryBsr;
+  const categoryColumn = precheck.fieldMapping.rootCategory;
+  const salesColumn = precheck.fieldMapping.estimatedMonthlySales;
+  const rootCategoryBsrValues: number[] = [];
+  const rootCategories: string[] = [];
+  const monthlySalesValues: number[] = [];
+  let bestSellerFlagRows = 0;
+  for (const row of precheck.rejectedRecords) {
+    const pick = (column: string | undefined): string => (
+      column === undefined ? "" : (row.raw[column] ?? "").trim()
+    );
+    const bsr = Number(pick(bsrColumn).replace(/,/g, ""));
+    if (Number.isFinite(bsr) && bsr > 0) rootCategoryBsrValues.push(bsr);
+    const category = pick(categoryColumn);
+    if (category) rootCategories.push(category);
+    const sales = Number(pick(salesColumn).replace(/,/g, ""));
+    if (Number.isFinite(sales) && sales > 0) monthlySalesValues.push(sales);
+    const bestSellerFlag = row.raw["Best Seller标识"];
+    if (typeof bestSellerFlag === "string"
+      && bestSellerFlag.trim() !== ""
+      && bestSellerFlag.trim() !== "-"
+      && bestSellerFlag.trim() !== "无") {
+      bestSellerFlagRows++;
+    }
+  }
+  return {
+    rootCategoryBsrValues,
+    rootCategories,
+    monthlySalesValues,
+    bestSellerFlagRows,
+    totalRows: precheck.rejectedRecords.length,
+  };
+}
+
 export function inspectSellerSpriteProductBatch(
   bytes: Uint8Array,
   now = new Date(),
@@ -86,6 +126,9 @@ export function inspectSellerSpriteProductBatch(
         reportType: "unknown",
         rootCategories: [],
       }),
+      reportTypeHints: buildSellerSpriteReportTypeHints(
+        extractHintInputsFromRejectedRows(precheck),
+      ),
       query: null,
       queryDetection: "not_available",
     };
@@ -100,6 +143,7 @@ export function inspectSellerSpriteProductBatch(
         .map((record) => record.rootCategory.normalized)
         .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
     }),
+    reportTypeHints: null,
     query: null,
     queryDetection: "not_available",
   };

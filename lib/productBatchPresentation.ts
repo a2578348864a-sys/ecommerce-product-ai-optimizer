@@ -80,13 +80,77 @@ export type ProductBatchCategoryDetection = {
   validCategoryCount: number;
 };
 
+/**
+ * 报表类型「辅助诊断建议」（Core-Smoke-Fix.1 复核）：
+ * 仅用于无法自动识别时的人工选择提示，**不参与 reportType 自动判定**。
+ * 所有信号均为 supporting 级（真实样本规律，未经官方合同证明）：
+ * - bandLikeBsr：大类 BSR 全部 ∈[1..10]（12/12 CC 样本；Top100/加载更多导出可 >10）
+ * - singleRootCategory：大类目唯一（12/12 CC 样本；PS 搜索词可能命中单类目）
+ * - hotSales：月销量中位数 ≥ 10,000（CC 榜单热销特征；PS 热销搜索词可能命中）
+ * - bestSellerMajority：Best Seller 标识行占比 ≥ 50%（同上）
+ * 综合：≥3 信号成立 → 建议 category_current；≤1 → 建议 search_results；否则无建议。
+ * 用户可基于报表内容推翻建议（fail-closed 不变）。
+ */
+export type SellerSpriteReportTypeHints = {
+  suggestion: "category_current" | "search_results" | null;
+  signals: {
+    bandLikeBsr: boolean;
+    singleRootCategory: boolean;
+    hotSales: boolean;
+    bestSellerMajority: boolean;
+  };
+  reasons: ReadonlyArray<string>;
+};
+
 export type ProductBatchImportInspection = {
   reportType: SellerSpriteDetectedReportType;
   reportTypeDetected: boolean;
   categoryDetection: ProductBatchCategoryDetection;
+  /** 仅 reportTypeDetected=false 时有值（辅助建议，非判定） */
+  reportTypeHints: SellerSpriteReportTypeHints | null;
   query: null;
   queryDetection: "not_available";
 };
+
+/** 建议阈值（supporting 信号，非合同） */
+const HOT_SALES_MEDIAN_MIN = 10_000;
+const BEST_SELLER_RATIO_MIN = 0.5;
+
+function median(values: ReadonlyArray<number>): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export function buildSellerSpriteReportTypeHints(input: {
+  rootCategoryBsrValues: ReadonlyArray<number>;
+  rootCategories: ReadonlyArray<string>;
+  monthlySalesValues: ReadonlyArray<number>;
+  bestSellerFlagRows: number;
+  totalRows: number;
+}): SellerSpriteReportTypeHints {
+  const bandLikeBsr = input.rootCategoryBsrValues.length > 0
+    && input.rootCategoryBsrValues.every((value) => value >= 1 && value <= 10);
+  const singleRootCategory = new Set(input.rootCategories.filter(Boolean)).size === 1;
+  const salesMedian = median(input.monthlySalesValues);
+  const hotSales = salesMedian !== null && salesMedian >= HOT_SALES_MEDIAN_MIN;
+  const bestSellerMajority = input.totalRows > 0
+    && input.bestSellerFlagRows / input.totalRows >= BEST_SELLER_RATIO_MIN;
+  const signals = { bandLikeBsr, singleRootCategory, hotSales, bestSellerMajority };
+  const reasons: string[] = [];
+  if (bandLikeBsr) reasons.push("大类 BSR 值域呈榜单形态（1..10）");
+  if (singleRootCategory) reasons.push("大类目唯一");
+  if (hotSales) reasons.push(`月销量中位数高（≥${HOT_SALES_MEDIAN_MIN.toLocaleString("en-US")}）`);
+  if (bestSellerMajority) reasons.push("多数行带 Best Seller 标识");
+  const signalCount = Object.values(signals).filter(Boolean).length;
+  const suggestion: SellerSpriteReportTypeHints["suggestion"] = signalCount >= 3
+    ? "category_current"
+    : signalCount <= 1
+      ? "search_results"
+      : null;
+  return { suggestion, signals, reasons };
+}
 
 export function isAmazonUsTopLevelCategory(
   value: string,

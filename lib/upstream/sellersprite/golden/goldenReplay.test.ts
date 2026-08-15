@@ -94,13 +94,29 @@ describe("SellerSprite Golden Dataset — Parser Replay", () => {
     },
   );
 
-  it("auto-detection succeeds for new-format Product Search (BSR >10 band)", () => {
-    const caseItem = caseById("ps-no-search-rank-explicit");
-    const auto = precheckSellerSpriteXlsx(goldenWorkbook(caseItem), {
+  it("auto-detection fails closed for new-format workbooks (no single-point BSR rule)", () => {
+    const psCase = caseById("ps-no-search-rank-explicit");
+    const psAuto = precheckSellerSpriteXlsx(goldenWorkbook(psCase), {
       capturedAt: CAPTURED_AT,
     });
-    expect(auto.reportType).toBe("search_results");
-    expect(auto.detectionReasonCode).toBeUndefined();
-    expect(auto.reportTypeMatched).toBe(true);
+    expect(psAuto.reportType).toBe("unknown");
+    expect(psAuto.detectionReasonCode).toBe("ambiguous_ps_without_search_rank");
+    expect(psAuto.reportTypeMatched).toBe(false);
+
+    // 对抗样本：CC Top100（BSR 11..100 >10）不得因 BSR 数值误判为 Product Search
+    const ccBeyond = caseById("cc-bsr-beyond-band");
+    const ccAuto = precheckSellerSpriteXlsx(goldenWorkbook(ccBeyond), {
+      capturedAt: CAPTURED_AT,
+    });
+    expect(ccAuto.reportType).toBe("unknown");
+    expect(ccAuto.detectionReasonCode).toBe("ambiguous_ps_without_search_rank");
+    expect(ccAuto.reportTypeMatched).toBe(false);
+    // 显式选择 category_current 放行（结构合法），不产生 report_type_mismatch
+    const ccExplicit = precheckSellerSpriteXlsx(goldenWorkbook(ccBeyond), {
+      capturedAt: CAPTURED_AT,
+      expectedReportType: "category_current",
+    });
+    expect(ccExplicit.reportType).toBe("category_current");
+    expect(ccExplicit.reportTypeMatched).toBe(true);
   });
 });
