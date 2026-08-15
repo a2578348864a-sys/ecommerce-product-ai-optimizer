@@ -2,13 +2,14 @@
 
 > 状态：**V3_3 = PASS** ｜ **V3_3 = DONE**
 > **V3_3_INTEGRATION_READY = TRUE**（Final Integration Precheck 通过，详见 integration-precheck.md）
+> **V3_3_REMOTE_CLOSEOUT = PASS**（2026-08-15：已集成 main 并 push 至 origin/main，remote checkpoint HEAD = 49c76d2）
 > **V3_4/5/6_AUTHORIZATION_REQUIRED = TRUE** ｜ **PUBLIC_DEPLOY = FORBIDDEN**
-> Commit：`584fc04`（branch `codex/v3-3-amazon-browser-evidence`，基于 2e20581；未 push / 未 merge main）
+> Commit：`584fc04` + `49c76d2`（branch `codex/v3-3-amazon-browser-evidence`，基于 2e20581；fast-forward 集成 main，无冲突/无历史重写；已 push origin/main）
 
 ## 一、交付结论
 
 V3.3 已按任务书三十五节完成产品化：Browser Evidence Connector（browser-evidence.v1 合同）实现并全链路验证。
-未 merge main、未 push、未部署；V3.1 保持隔离；V3.4/5/6 未授权。
+**V3.3 已正式集成 main 并完成 Remote Closeout**（fast-forward 2e20581→49c76d2，无冲突）；V3.1 保持隔离；V3.4/5/6 未授权；未部署公网。
 
 ## 二、交付物
 

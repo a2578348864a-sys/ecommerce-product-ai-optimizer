@@ -7,17 +7,20 @@
 - **V3 Core: Phase 0–6 全部 PASS → `V3_CORE = DONE`**
 - **人工验收：`MANUAL_CORE_SMOKE = PASS`**（用户 2026-08-15 给出最终结论）
 - **Core-Smoke-Fix.1：`CORE_SMOKE_FIX_1 = PASS`（独立复核后恢复）**——问题 2/3 保持 PASS；问题 1 的 BSR≤10 合同假设被独立复核撤销，改为「无搜索排名一律 fail-closed + 多信号辅助建议」（提交 bbaf776 + edca2d9，证据矩阵见 docs/v3/changes/core-smoke-fix-1/report-type-evidence-matrix.md）
-- V3.x: 未授权（v3x_auto_start=false 硬约束；`V3X_AUTHORIZATION_REQUIRED = TRUE` 强制暂停中）
-- Current Wave: Core 完成，暂停点
+- **V3.1 Browser Evidence Spike：`BROWSER_EVIDENCE = APPROVED`**（human-assisted feasibility approved，非 autonomous crawling；worktree `电商工具-v3-1` branch `codex/v3-1-browser-spike` @ 1fa2029 保持隔离，未 merge）
+- **V3.2 Skill：`AMAZON_PRODUCT_RESEARCH_SKILL = APPROVED`**（已集成 main，见 docs/v3/changes/v3-2-amazon-skill/）
+- **V3.3 Browser Evidence Connector：`V3_3 = PASS` ｜ `V3_3 = DONE` ｜ `V3_3_INTEGRATION_READY = TRUE` ｜ `V3_3_REMOTE_CLOSEOUT = PASS`**（已集成 main + 已 push origin/main）
+- V3.4/5/6: 未授权（`V3_4/5/6_AUTHORIZATION_REQUIRED = TRUE` 强制暂停）
+- Current Wave: V3.3 完成，暂停点
 - Current Phase: —（暂停）
-- Status: **HARD_PAUSE**（等待用户继续人工验收；未授权 push / V3.x / 公网部署）
+- Status: **HARD_PAUSE**（等待用户继续授权；未授权 V3.4 / 公网部署）
 
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: d9c503e（**V3 Core Remote Closeout：已 push 至 origin/main，2026-08-15**）
-- origin/main: **d9c503e**（main == origin/main，ahead=0 / behind=0）
-- main clean: 是（tracked 无修改；`.env.local.bak-corrupt-*` 排障备份与 `data/demo-product-batches/` Visitor Smoke 运行数据为未跟踪产物，push 前已获用户授权忽略）
+- main HEAD: **49c76d2**（**V3.3 Remote Closeout：已 push 至 origin/main，2026-08-15**）
+- origin/main: **49c76d2**（main == origin/main，ahead=0 / behind=0）
+- main clean: 是（tracked 无修改；`.env.local.bak-corrupt-*` 排障备份与 `data/demo-product-batches/` Visitor Smoke 运行数据为未跟踪产物，沿用已授权忽略）
 
 ## 最终报告
 
@@ -81,10 +84,14 @@
 - 公网部署：NO；force push：NO；DB 写：NO；样本入库：NO
 - 验收排障共修复 5 个真实 bug（见上表），全部经测试 + 页面实测
 
-## 下一步（等待用户授权，二选一）
+## 下一步（等待用户授权，三选一）
 
-1. **授权「继续 V3.x」**：解除 V3X_AUTHORIZATION_REQUIRED，按 V3.1 Browser Evidence Spike → V3.2 → … → V3.6 推进
+1. **授权「继续 V3.4」**：解除 V3_4_AUTHORIZATION_REQUIRED，按 V3.4 VOC 推进（V3.5 1688 / V3.6 Content Tools 同样需逐项授权）
 2. **授权「部署公网」**：仅当 V3_FINAL = DONE 后，按 28_PUBLIC_RELEASE.md 执行 Release R1
+3. **V3.1 worktree 处置**：等用户单独决定 archive / delete worktree / retain for reference（本轮不自动处理）
 
-> V3 Core Remote Closeout（2026-08-15）：main 已推送至 origin/main（d9c503e），
-> 形成远端 Core checkpoint。V3X_AUTHORIZATION_REQUIRED = TRUE、PUBLIC_DEPLOY = FORBIDDEN 保持。
+> V3 Core Remote Closeout（2026-08-15）：main 已推送至 origin/main（d9c503e），形成远端 Core checkpoint。
+> V3.3 Remote Closeout（2026-08-15）：V3.3 已正式集成 main 并推送至 origin/main（49c76d2，fast-forward 2e20581→49c76d2，无冲突/无历史重写）。
+> V3.3 产品定位：**Local Human-Assisted Amazon Browser Evidence Connector**（本地服务启动隔离 Chrome → loopback CDP → Amazon 商品页 → deterministic extraction → Preview → Human Confirm → Evidence；**不支持**读取用户已开 Tab；`EXTENSION_NOT_REQUIRED_FOR_LOCAL_V1 = TRUE`，无 FOREVER 声明；公网部署 limitation 保留，见 docs/v3/changes/v3-3-amazon-browser-connector/integration-precheck.md）。
+> V3.1 已验证能力已被 V3.3 选择性吸收（selectively absorbed），V3.1 worktree 仍隔离保留。
+> `V3_4_AUTHORIZATION_REQUIRED = TRUE` ｜ `V3_5_AUTHORIZATION_REQUIRED = TRUE` ｜ `V3_6_AUTHORIZATION_REQUIRED = TRUE` ｜ `PUBLIC_DEPLOY = FORBIDDEN` 保持。
