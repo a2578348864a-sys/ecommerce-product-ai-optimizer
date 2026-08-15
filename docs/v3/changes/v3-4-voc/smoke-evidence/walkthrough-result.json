@@ -1,0 +1,61 @@
+{
+  "runAt": "2026-08-15T10:34:51.932Z",
+  "conclusion": "walkthrough_pass",
+  "sourceNote": "评论页登录墙未绕过；使用详情页公开 Top Reviews 片段（真实星级/日期/标题；正文折叠不可见为已知限制）",
+  "pageResults": [
+    {
+      "asin": "B0C3NFB3CZ",
+      "status": "ok",
+      "note": "提取 9 条 Top Reviews"
+    },
+    {
+      "asin": "B0BG3C7CNJ",
+      "status": "ok",
+      "note": "提取 10 条 Top Reviews"
+    },
+    {
+      "asin": "B07G4VTV2F",
+      "status": "ok",
+      "note": "提取 10 条 Top Reviews"
+    }
+  ],
+  "asinsFetched": [
+    "B0C3NFB3CZ",
+    "B0BG3C7CNJ",
+    "B07G4VTV2F"
+  ],
+  "reviewsFetched": 29,
+  "importedCount": 29,
+  "duplicateOnReimport": 1,
+  "stats": {
+    "totalReviews": 29,
+    "positiveCount": 28,
+    "negativeCount": 1,
+    "neutralCount": 0,
+    "ratingDistribution": [
+      {
+        "rating": 1,
+        "count": 0
+      },
+      {
+        "rating": 2,
+        "count": 1
+      },
+      {
+        "rating": 3,
+        "count": 0
+      },
+      {
+        "rating": 4,
+        "count": 1
+      },
+      {
+        "rating": 5,
+        "count": 27
+      }
+    ],
+    "sourceProductCount": 3,
+    "competitorCount": 29
+  },
+  "reviewTextHash": "f48d200e3a27fd90"
+}

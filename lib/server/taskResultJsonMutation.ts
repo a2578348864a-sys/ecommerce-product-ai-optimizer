@@ -30,7 +30,8 @@ export type TaskResultJsonWriter =
   | "competitor-evidence"
   | "keyword-evidence"
   | "ai-evidence-summary"
-  | "browser-evidence";
+  | "browser-evidence"
+  | "review-evidence";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord"],
@@ -46,6 +47,7 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "keyword-evidence": ["keywordEvidence"],
   "ai-evidence-summary": ["aiEvidenceSummary"],
   "browser-evidence": ["browserEvidence"],
+  "review-evidence": ["reviewEvidence", "vocAnalysis"],
 };
 
 export type TaskResultJsonStorageVersion = {

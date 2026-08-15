@@ -1,0 +1,7 @@
+REVIEWS_PAGE: https://www.amazon.com/ap/signin?openid.pape.max_auth_age=3600&openid.return_to= title=Amazon Sign-In
+DP_PAGE: https://www.amazon.com/dp/B0C3NFB3CZ?language=en_US title=Amazon.com | OtterBox Elevation Tumbler 
+DP_SELECTORS: {"selectors":{"cm-cr-dp-review-list":0,"cm_cr-review_list":0,"review[data-hook]":9,"review div.review":0,"cr-widget":0,"acrCustomerReviewText":2,"top-review-title":0},"bodyHasTop":true}
+DP_RAW_REVIEW_NODES: 9
+  NODE: {"text":"<img src=\"https://m.media-amazon.com/images/S/amazon-avatars-global/default._SX48_.png\"/>Nicole5 out of 5 starsGreat travel coffee mugReviewed in the United States on August 28, 2021Verified PurchaseB","inner":{"rating":"5 out of 5 stars","title":"","date":"Reviewed in the United States on August 28, 2021","body":"","collapsed":"","full":""}}
+  NODE: {"text":"<img src=\"https://m.media-amazon.com/images/S/amazon-avatars-global/abd94da0-ee8e-424d-8554-1939e781e835._CR0%2C0%2C500%2C500_SX460_SX48_.jpg\"/>Ashley / Renee / Bookstley5 out of 5 starsKeeps drinks s","inner":{"rating":"5 out of 5 stars","title":"","date":"Reviewed in the United States on May 21, 2023","body":"","collapsed":"","full":""}}
+  NODE: {"text":"<img src=\"https://m.media-amazon.com/images/S/amazon-avatars-global/b3fdcd83-1db4-47a3-9bb3-f2ba796ab27b._CR0%2C0%2C750%2C750_SX460_SX48_.jpg\"/>Alfred Rodriquez5 out of 5 starsOtterBox does it again g","inner":{"rating":"5 out of 5 stars","title":"","date":"Reviewed in the United States on June 25, 2025","body":"","collapsed":"","full":""}}

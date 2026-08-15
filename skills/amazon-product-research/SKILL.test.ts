@@ -57,6 +57,15 @@ describe("Amazon Product Research Skill (amazon-product-research.v1)", () => {
     expect(skill).toContain("禁止编造采购价、供应商、MOQ");
   });
 
+  it("reads VOC evidence when available without changing decisions or scoring", () => {
+    expect(skill).toContain("reviewEvidence");
+    expect(skill).toContain("vocAnalysis");
+    expect(skill).toContain("只读识别");
+    expect(skill).toMatch(/不得[^\n]*根据 VOC 自动改变 Decision/);
+    expect(skill).toMatch(/不得[^\n]*把 VOC 变成评分或推荐依据/);
+    expect(skill).toContain("评论是用户观点证据，不是商品事实");
+  });
+
   it("does not duplicate internal parsing/hash/ranking logic", () => {
     expect(skill).toContain("不复制解析、哈希、评分或存储逻辑");
     expect(skill).not.toContain("createHash(");

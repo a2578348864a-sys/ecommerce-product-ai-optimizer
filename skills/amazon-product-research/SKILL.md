@@ -42,8 +42,10 @@ description: Conduct or explain the current state of an Amazon product research 
    - 未导入 → 标记"关键词证据未导入"。
 
 5. **VOC（用户之声）**
-   - V3 Core 未收集 VOC 结构化证据 → 固定标记"VOC 证据未收集（高频优点/痛点/场景/未满足需求均未知）"。
-   - 禁止从评论数字或标题推测卖点/痛点。
+   - 若任务已保存 VOC Evidence（`reviewEvidence` namespace，含真实评论 Dataset）与 VOC 分析（`vocAnalysis` namespace）：只读汇报 `vocAnalysis` 的 `themes`（positiveThemes / painPointThemes / usageScenarios / recurringRequests / conflicts / weakSignals）、`unknowns`、`nextResearchSteps`，以及 Dataset 的 `stats`（totalReviews / reviewsUsed / positiveCount / negativeCount / competitorCount 等样本量信息）。
+   - **只读识别 "VOC evidence available"**：在"已有证据 / 缺失证据 / 风险 / 下一步"中消费；**不得**根据 VOC 自动改变 Decision，**不得**把 VOC 变成评分或推荐依据。
+   - 无 `reviewEvidence` / `vocAnalysis` → 固定标记"VOC 证据未收集（高频优点/痛点/场景/未满足需求均未知）"。
+   - 禁止从评论数字或标题推测卖点/痛点；禁止把单条评论说成普遍结论；评论是用户观点证据，不是商品事实。
 
 6. **货源**
    - V3 Core 未收集货源证据 → 固定标记"货源证据未收集（类似产品/价格/MOQ/SKU/supplier 均未知）"。

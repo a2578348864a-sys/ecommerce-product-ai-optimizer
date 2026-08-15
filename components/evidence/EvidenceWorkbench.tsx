@@ -26,6 +26,13 @@ import {
   parseBrowserEvidenceView,
   type BrowserEvidenceView,
 } from "@/components/evidence/BrowserEvidenceSection";
+import {
+  VocEvidenceSection,
+  parseVocAnalysisView,
+  parseVocEvidenceView,
+  type VocAnalysisView,
+  type VocEvidenceView,
+} from "@/components/evidence/VocEvidenceSection";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -351,6 +358,28 @@ export function EvidenceWorkbench({
   const [browserEvidenceStorageVersion, setBrowserEvidenceStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [browserTaskAsin, setBrowserTaskAsin] = useState<string | null>(null);
 
+  const [vocEvidence, setVocEvidence] = useState<VocEvidenceView | null>(null);
+  const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
+  const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
+
+  async function loadVoc() {
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/review-evidence`, {
+        headers: buildFetchHeaders(),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: false };
+      if (res.ok && json.ok) {
+        setVocEvidence(parseVocEvidenceView(json.data.evidence));
+        setVocAnalysis(parseVocAnalysisView(json.data.analysis));
+        setVocStorageVersion(json.data.storageVersion);
+      }
+    } catch {
+      // fail-soft：读取失败保持空状态
+    }
+  }
+
   async function loadBrowserEvidence() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
@@ -407,6 +436,7 @@ export function EvidenceWorkbench({
     void loadKeywordEvidence();
     void loadAiSummary();
     void loadBrowserEvidence();
+    void loadVoc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
@@ -638,6 +668,15 @@ export function EvidenceWorkbench({
         taskAsin={browserTaskAsin}
         storageVersion={browserEvidenceStorageVersion}
         onChanged={loadBrowserEvidence}
+      />
+
+      {/* ── VOC / Review Evidence（V3.4） ── */}
+      <VocEvidenceSection
+        taskId={taskId}
+        evidence={vocEvidence}
+        analysis={vocAnalysis}
+        storageVersion={vocStorageVersion}
+        onChanged={loadVoc}
       />
 
       {/* ── 货源 Evidence ── */}
