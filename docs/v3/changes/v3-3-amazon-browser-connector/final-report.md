@@ -1,9 +1,9 @@
 # V3.3 — Amazon Product Detail Browser Evidence Connector 最终交付报告
 
-> 状态：**V3_3 = PASS**（待独立审查确认后定稿）
-> **V3_3 = DONE**
-> **V3_4/5/6_AUTHORIZATION_REQUIRED = TRUE**
-> **PUBLIC_DEPLOY = FORBIDDEN**
+> 状态：**V3_3 = PASS** ｜ **V3_3 = DONE**
+> **V3_3_INTEGRATION_READY = TRUE**（Final Integration Precheck 通过，详见 integration-precheck.md）
+> **V3_4/5/6_AUTHORIZATION_REQUIRED = TRUE** ｜ **PUBLIC_DEPLOY = FORBIDDEN**
+> Commit：`584fc04`（branch `codex/v3-3-amazon-browser-evidence`，基于 2e20581；未 push / 未 merge main）
 
 ## 一、交付结论
 
