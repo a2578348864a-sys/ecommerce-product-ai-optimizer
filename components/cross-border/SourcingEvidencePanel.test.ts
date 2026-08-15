@@ -1,0 +1,116 @@
+/**
+ * V3.5 — SourcingEvidencePanel UI 测试（SSR 静态渲染 + 文案纪律 + 状态语义）
+ */
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
+
+vi.mock("@/lib/client/accessPassword", () => ({
+  useAccessPassword: () => ["test-password"],
+}));
+vi.mock("@/lib/client/accessToken", () => ({
+  buildAccessHeaders: () => ({ "x-access-token": "test" }),
+}));
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
+
+function renderPanel() {
+  return renderToStaticMarkup(createElement(SourcingEvidencePanel, {
+    taskId: "task-1",
+    amazonContext: { title: "亚马逊候选保温杯", image: null, asin: null },
+  }));
+}
+
+describe("SourcingEvidencePanel 文案纪律与结构", () => {
+  it("渲染供应线索面板与三个获取入口", () => {
+    const html = renderPanel();
+    expect(html).toContain("供应线索（1688）");
+    expect(html).toContain("关键词找货");
+    expect(html).toContain("图片找货");
+    expect(html).toContain("已有 1688 链接");
+    expect(html).toContain("候选主图 https:// 链接");
+  });
+
+  it("图片找货明确说明需要前台浏览器会话（不堆技术术语）", () => {
+    const html = renderPanel();
+    expect(html).toContain("1688 图搜会打开本地浏览器窗口（需前台运行）");
+    expect(html).not.toContain("CDP");
+    expect(html).not.toContain("shadow");
+    expect(html).not.toContain("resolver");
+  });
+
+  it("禁止文案零出现：无推荐/评分/采购建议", () => {
+    const html = renderPanel();
+    for (const forbidden of ["最佳供应商", "推荐供应商", "最优货源", "靠谱指数", "采购指数", "成功率", "建议购买", "采购成本", "purchaseCost"]) {
+      expect(html).not.toContain(forbidden);
+    }
+  });
+
+  it("允许文案：供应线索 / 搜索入口就绪", () => {
+    const html = renderPanel();
+    expect(html).toContain("供应线索（1688）");
+    expect(html).toContain("搜索");
+    expect(html).toContain("图搜");
+    expect(html).toContain("读取");
+  });
+});
+
+describe("SourcingEvidencePanel 询盘问题生成（确定性，不猜事实）", () => {
+  it("无 MOQ/阶梯/SKU → 生成对应确认问题", async () => {
+    const { buildInquiryQuestions } = await import("@/components/cross-border/SourcingEvidencePanel");
+    const questions = buildInquiryQuestions({
+      schema: "acquisition-candidate.v1",
+      source: "1688",
+      offerId: "674035283676",
+      sourceUrl: "https://detail.1688.com/offer/674035283676.html",
+      capturedAt: "2026-08-15T00:00:00.000Z",
+      acquisitionMethod: "keyword",
+      sourceProductRole: "candidate",
+      title: "保温杯",
+      images: [],
+      displayedPrice: { text: "¥16", nature: "displayed_price" },
+      priceRange: { min: 16, max: 16, text: "¥16" },
+      priceTiers: [],
+      displayedMoq: null,
+      skuSpecs: [],
+      sellerClaims: [{ name: "材质", value: "304不锈钢", evidenceClass: "seller_claim" }],
+      platformMetadata: [],
+      supplierDisplayName: "测试供应商",
+      matchState: null,
+    });
+    expect(questions.some((question) => question.includes("起批量"))).toBe(true);
+    expect(questions.some((question) => question.includes("数量阶梯"))).toBe(true);
+    expect(questions.some((question) => question.includes("SKU"))).toBe(true);
+    // 有材质 claim → 不重复问材质；有定制 claim → 不问定制
+    const withClaims = buildInquiryQuestions({
+      schema: "acquisition-candidate.v1",
+      source: "1688",
+      offerId: "674035283676",
+      sourceUrl: "https://detail.1688.com/offer/674035283676.html",
+      capturedAt: "2026-08-15T00:00:00.000Z",
+      acquisitionMethod: "keyword",
+      sourceProductRole: "candidate",
+      title: "保温杯",
+      images: [],
+      displayedPrice: null,
+      priceRange: null,
+      priceTiers: [{ minQty: 1, price: 16.5, text: "1 件起 ¥16.5" }],
+      displayedMoq: { text: "1 个", value: 1, nature: "displayed_moq" },
+      skuSpecs: [{ skuId: "s1", specs: "白色", price: 16.5, multiPrice: 16.5, stock: 1 }],
+      sellerClaims: [
+        { name: "加工定制", value: "是", evidenceClass: "seller_claim" },
+        { name: "内胆材质", value: "304不锈钢", evidenceClass: "seller_claim" },
+      ],
+      platformMetadata: [],
+      supplierDisplayName: "测试供应商",
+      matchState: null,
+    });
+    expect(withClaims.some((question) => question.includes("定制"))).toBe(false);
+    expect(withClaims.some((question) => question.includes("材质"))).toBe(false);
+    // 仍问包装/样品
+    expect(withClaims.some((question) => question.includes("样品"))).toBe(true);
+  });
+});

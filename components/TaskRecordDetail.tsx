@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
@@ -1674,6 +1675,15 @@ export function TaskRecordDetail({ id }: { id: string }) {
                 </Link>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>
+
+              <SourcingEvidencePanel
+                taskId={id}
+                amazonContext={{
+                  title: record ? getTitle(record) : null,
+                  image: record?.productImage ? String(record.productImage) : null,
+                  asin: null,
+                }}
+              />
             </section>
           ) : null}
         </div>
