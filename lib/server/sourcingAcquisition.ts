@@ -234,6 +234,17 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
     failClosed("risk_control_required", 403, "1688 触发了风控验证（滑块/验证码），请在 1688 页面完成验证后重试。");
   }
   if (result.exitCode !== 0) {
+    // 真实 smoke 实测：daemon 风控暂停返回 exit 9 + {ok:false,code:DAEMON_PAUSED,failureKind:risk_challenge}
+    const parsedFailure = tryParseFailureEnvelope(result.stdout);
+    if (parsedFailure) {
+      if (parsedFailure.code === "NOT_LOGGED_IN") {
+        failClosed("auth_required", 401, "1688 会话未登录或已过期，请先完成 1688 登录后重试。");
+      }
+      if (parsedFailure.code === "DAEMON_PAUSED" || /risk|challenge|slider|captcha/i.test(parsedFailure.message)) {
+        failClosed("risk_control_required", 403, "1688 触发了风控/暂停（需要人工验证），请在 1688 页面完成验证后重试。");
+      }
+      failClosed("tool_error", 502, `1688-cli ${command} 失败（${parsedFailure.code}${parsedFailure.message ? `：${parsedFailure.message.slice(0, 160)}` : ""}）。`);
+    }
     failClosed("tool_error", 502, `1688-cli ${command} 失败（exit ${result.exitCode}）。`);
   }
   const parsed = parseCliJson(result.stdout);
@@ -246,7 +257,27 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
     if (code === "NOT_LOGGED_IN") {
       failClosed("auth_required", 401, "1688 会话未登录或已过期，请先完成 1688 登录后重试。");
     }
+    if (code === "DAEMON_PAUSED" || /risk|challenge|slider|captcha/i.test(message)) {
+      failClosed("risk_control_required", 403, "1688 触发了风控/暂停（需要人工验证），请在 1688 页面完成验证后重试。");
+    }
     failClosed("tool_error", 502, `1688-cli 返回失败（${code}${message ? `：${message}` : ""}）。`);
+  }
+}
+
+/** 失败信封解析（exit≠0 时容错提取 ok:false 结构；解析失败返回 null 走通用错误） */
+function tryParseFailureEnvelope(stdout: string): { code: string; message: string } | null {
+  try {
+    const trimmed = stdout.trim();
+    const firstBrace = trimmed.indexOf("{");
+    if (firstBrace < 0) return null;
+    const parsed = JSON.parse(trimmed.slice(firstBrace)) as { ok?: unknown; code?: unknown; message?: unknown };
+    if (parsed.ok !== false) return null;
+    return {
+      code: typeof parsed.code === "string" ? parsed.code : "UNKNOWN",
+      message: typeof parsed.message === "string" ? parsed.message : "",
+    };
+  } catch {
+    return null;
   }
 }
 

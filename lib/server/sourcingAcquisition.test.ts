@@ -29,6 +29,7 @@ if (mode === "timeout") { setInterval(() => {}, 1000); return; }
 if (mode === "not-logged-in") { console.log(JSON.stringify({ok:false,code:"NOT_LOGGED_IN",message:"Session expired."})); process.exit(3); }
 if (mode === "slider") { process.exit(4); }
 if (mode === "network-error") { process.exit(9); }
+if (mode === "daemon-paused") { console.log(JSON.stringify({ok:false,code:"DAEMON_PAUSED",message:"Daemon paused after repeated 1688 failures.",failureKind:"risk_challenge",recoveryAction:"pause_for_manual_challenge"})); process.exit(9); }
 if (mode === "not-json") { console.log("not json at all"); process.exit(0); }
 if (mode === "ok-false") { console.log(JSON.stringify({ok:false,code:"TOOL_BROKE",message:"boom"})); process.exit(0); }
 if (mode === "wrong-offer-id") { console.log(JSON.stringify({offerId:"99999999999",title:"x",url:"https://detail.1688.com/offer/99999999999.html"})); process.exit(0); }
@@ -109,6 +110,11 @@ describe("searchOffersByKeyword", () => {
   it("网络错误（exit 9）→ TOOL_ERROR", async () => {
     const code = await captureCode(searchOffersByKeyword({ keyword: "x", env: fakeEnv({ FAKE_CLI_MODE: "network-error" }) }));
     expect(code).toBe("tool_error");
+  });
+
+  it("daemon 风控暂停（exit 9 + DAEMON_PAUSED）→ RISK_CONTROL_REQUIRED", async () => {
+    const code = await captureCode(searchOffersByKeyword({ keyword: "x", env: fakeEnv({ FAKE_CLI_MODE: "daemon-paused" }) }));
+    expect(code).toBe("risk_control_required");
   });
 
   it("非 JSON 输出 → SCHEMA_UNSUPPORTED", async () => {
