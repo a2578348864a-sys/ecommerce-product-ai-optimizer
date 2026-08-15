@@ -1,5 +1,7 @@
 # V3.5 — 1688 Sourcing Evidence Value Assessment 最终报告
 
+> **Historical（2026-08-15 初始价值评估阶段）**：本文件为 V3.5 早期评估证据；与后续 Acquisition Spike 及最终结论如有出入，以 `docs/v3/V3_5_PRE_IMPLEMENTATION_CONTRACT.md` 为准（Supersession 规则见 Contract §41）。
+>
 > 状态：**V3_5_VALUE = NARROW_APPROVAL**（评估结论；待用户独立审查）｜ **V3_5_ASSESSMENT = DONE**
 
 ## 第一句话（大白话回答）
@@ -64,3 +66,4 @@ PUBLIC_DEPLOY = FORBIDDEN
 ```
 
 **即使 NARROW_APPROVAL，不得自动开始 V3.5 实现。** 等待用户独立审查与授权。
+

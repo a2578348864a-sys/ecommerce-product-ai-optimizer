@@ -1,5 +1,7 @@
 # V3.5 — Recommended Contract（sourcing-evidence.v1 合同评估）
 
+> **Historical（2026-08-15 初始价值评估阶段）**：本文件为早期合同草案；正式权威合同以 `docs/v3/V3_5_PRE_IMPLEMENTATION_CONTRACT.md` 为准（Supersession 规则见 Contract §41）。
+>
 > 任务书三十节：仅在文档中评估，不正式实现。字段 Nature 分类基于 field-availability.md。
 
 ## 1. 定位
@@ -90,3 +92,4 @@ const SOURCING_PAYLOAD_MAX = 64 * 1024;  // namespace 上限
 - 进入 Evidence Workbench「货源 Evidence」区域（替代当前"未收集"占位，无数据时保持 unknown 不变）。
 - amazon-product-research.v1 未来只读识别 `sourcingEvidence available`：已知什么/缺什么/需人工确认；禁止"供应商可采购/利润足够/建议上架"。
 - 不重建旧 Supplier/Profit/Compliance Agent 链。
+
