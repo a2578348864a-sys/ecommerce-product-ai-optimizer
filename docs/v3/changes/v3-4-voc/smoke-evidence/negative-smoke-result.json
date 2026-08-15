@@ -1,0 +1,228 @@
+{
+  "runAt": "2026-08-15T13:32:06.851Z",
+  "conclusion": "negative_smoke_pass",
+  "ai": {
+    "model": "deepseek-v4-flash",
+    "runId": "df291915-8dca-46d3-9ea4-1eea93673070",
+    "inputEvidenceHash": "cc0abfae7fe9f04c",
+    "gateResult": "pass",
+    "elapsedMs": 15610,
+    "tokenUsage": {
+      "completionTokens": 2661,
+      "reasoningTokens": null
+    },
+    "unverifiedCount": 0
+  },
+  "pageLog": [
+    {
+      "asin": "B0C3NFB3CZ",
+      "status": "ok",
+      "note": "9 条"
+    },
+    {
+      "asin": "B0BG3C7CNJ",
+      "status": "ok",
+      "note": "10 条"
+    },
+    {
+      "asin": "B07G4VTV2F",
+      "status": "ok",
+      "note": "10 条"
+    },
+    {
+      "asin": "B00063QBL8",
+      "status": "ok",
+      "note": "10 条"
+    },
+    {
+      "asin": "B07984JN3L",
+      "status": "no_reviews",
+      "note": "无公开 Top Reviews"
+    },
+    {
+      "asin": "B0CHTVMXZJ",
+      "status": "ok",
+      "note": "8 条"
+    },
+    {
+      "asin": "B0FH7FRX3F",
+      "status": "ok",
+      "note": "8 条"
+    },
+    {
+      "asin": "B0FH7F65W5",
+      "status": "ok",
+      "note": "8 条"
+    },
+    {
+      "asin": "B0FH7J23JH",
+      "status": "ok",
+      "note": "8 条"
+    },
+    {
+      "asin": "B0FH7GHGFD",
+      "status": "ok",
+      "note": "9 条"
+    }
+  ],
+  "dataset": {
+    "totalReviews": 80,
+    "highStarCount": 75,
+    "lowStarCount": 4,
+    "sourceAsinCount": 9,
+    "sourceProductRole": "competitor",
+    "samplingMethod": "manual_selected",
+    "knownBias": "Top Reviews 机制天然偏正向；低星样本受评论页登录墙限制（如实记录）",
+    "reviewTextHash": "038f1e41586d25b0"
+  },
+  "lowStarCollection": {
+    "totalLowStar": 4,
+    "byAsin": [
+      {
+        "asin": "B0C3NFB3CZ",
+        "low": 0,
+        "high": 9
+      },
+      {
+        "asin": "B0BG3C7CNJ",
+        "low": 1,
+        "high": 9
+      },
+      {
+        "asin": "B07G4VTV2F",
+        "low": 0,
+        "high": 10
+      },
+      {
+        "asin": "B00063QBL8",
+        "low": 1,
+        "high": 8
+      },
+      {
+        "asin": "B0CHTVMXZJ",
+        "low": 0,
+        "high": 8
+      },
+      {
+        "asin": "B0FH7FRX3F",
+        "low": 0,
+        "high": 8
+      },
+      {
+        "asin": "B0FH7F65W5",
+        "low": 0,
+        "high": 8
+      },
+      {
+        "asin": "B0FH7J23JH",
+        "low": 0,
+        "high": 8
+      },
+      {
+        "asin": "B0FH7GHGFD",
+        "low": 2,
+        "high": 7
+      }
+    ],
+    "recurringLowBuckets": [
+      {
+        "count": 4,
+        "titles": [
+          "<img src=\"https://m.media-amazon.com/images/S/amazon-avatars",
+          "<img src=\"https://m.media-amazon.com/images/S/amazon-avatars",
+          "<img src=\"https://m.media-amazon.com/images/S/amazon-avatars",
+          "<img src=\"https://m.media-amazon.com/images/S/amazon-avatars"
+        ]
+      }
+    ]
+  },
+  "themes": {
+    "painPoints": [
+      {
+        "label": "Product damage or defects",
+        "count": 2,
+        "strength": "weak",
+        "lowRefs": 2
+      },
+      {
+        "label": "Requires pre-usage preparation",
+        "count": 1,
+        "strength": "isolated",
+        "lowRefs": 0
+      },
+      {
+        "label": "Security delays",
+        "count": 1,
+        "strength": "isolated",
+        "lowRefs": 0
+      }
+    ],
+    "positive": [
+      {
+        "label": "Keeps drinks hot",
+        "count": 5,
+        "strength": "recurring"
+      },
+      {
+        "label": "Cute and adorable design",
+        "count": 19,
+        "strength": "recurring"
+      },
+      {
+        "label": "Good quality and construction",
+        "count": 4,
+        "strength": "recurring"
+      },
+      {
+        "label": "Convenient and easy to use",
+        "count": 5,
+        "strength": "recurring"
+      },
+      {
+        "label": "Versatile and effective",
+        "count": 1,
+        "strength": "isolated"
+      }
+    ],
+    "weakSignals": [
+      {
+        "label": "Nostalgia appeal",
+        "count": 1,
+        "strength": "isolated"
+      },
+      {
+        "label": "Spill-resistant feature",
+        "count": 1,
+        "strength": "isolated"
+      }
+    ],
+    "conflicts": [
+      {
+        "label": "Product quality perception",
+        "positiveCount": 3,
+        "negativeCount": 2
+      }
+    ]
+  },
+  "recurringPainThemeDetected": true,
+  "recurringPainTheme": {
+    "label": "Product damage or defects",
+    "reviewCount": 2
+  },
+  "painThemeLowRefsCount": 2,
+  "unknowns": [
+    "The sample includes multiple product types (mugs, lunchboxes, cutting boards, reload cards), so themes may not apply uniformly.",
+    "Most reviews are positive with limited negative feedback, so pain points may be underrepresented.",
+    "Some reviews are very brief and lack detail, limiting depth of analysis.",
+    "The dataset includes Vine reviews which may have different motivations than regular purchases.",
+    "No information on price, brand, or specific model comparisons."
+  ],
+  "nextResearchSteps": [
+    "Segment analysis by product type (e.g., mugs vs. cutting boards) to identify category-specific insights.",
+    "Investigate the negative reviews in more detail to understand root causes of defects.",
+    "Conduct surveys or interviews to explore the nostalgia and gift-giving motivations.",
+    "Compare with competitor products to identify differentiating features.",
+    "Analyze review dates to detect any trends or changes over time."
+  ],
+  "unverified": []
+}

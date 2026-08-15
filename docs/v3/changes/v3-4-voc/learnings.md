@@ -57,3 +57,17 @@
    **证据**：本阶段事故与重建（文件恢复自 write 全量重建）。
    **失效条件**：无。
    **下一阶段**：保持（避免 PowerShell 写代码文件）。
+
+9. **原假设**：详情页 Top Reviews 的 `[data-hook="review"]` 节点 textContent 是纯文本（无 HTML 字面量）。
+   **实测**：Final Precheck Supplement 中 Amazon 对同一 headless 浏览器返回了不同布局，review 节点 textContent **以 `<img src="...amazon-avatars..."/> ` 字面文本开头**（80/80 条），username 剥离逻辑未命中 → 全部评论文本带解析前缀。
+   **最终规则**：详情页 Top Reviews 提取是"人工辅助准备样本"手段，其文本质量受 Amazon 布局变化影响；导入前应对 `<img .../> ` 字面前缀做防御性剥离（Smoke 脚本级；产品人工导入链路对用户粘贴的干净文本无需此处理）。
+   **证据**：negative-smoke-result.json（4 条低星均带前缀，人工核查去前缀后语义真实）。
+   **失效条件**：Amazon 恢复纯文本布局。
+   **下一阶段**：Smoke 提取表达式增加 `<img[^>]*/>` 剥离；产品链路不为此改动（用户粘贴文本天然无此问题）。
+
+10. **原假设**：真实低星样本能自然形成共同痛点（recurring negative pain point）。
+    **实测**：9 个真实 ASIN 详情页仅收集到 4 条真实低星，且主题各异（破包/强烈不满/不知所云/德语抱怨）——**没有 2+ 条独立评论指向同一具体问题**。真实世界 Top Reviews 低星稀疏且主题分散。
+    **最终规则**：recurring negative pain point 需要足够低星样本（评论页登录墙限制下难以自然凑足）；系统在样本不足时正确输出 weak 而非 recurring（fail-closed，不伪造）；产品 Smoke 验收"没有足够证据"同样 PASS。
+    **证据**：negative-smoke-result.json（AI 输出 "Product damage or defects" weak=2，未升级 recurring）。
+    **失效条件**：未来获得登录态/官方 API 后低星样本充足。
+    **下一阶段**：保持人工导入路线；若产品需要低星 recurring 证据，用户人工导入低星评论（UI 如实标注样本偏差）。

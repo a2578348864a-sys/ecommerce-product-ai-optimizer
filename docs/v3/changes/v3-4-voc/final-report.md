@@ -1,6 +1,7 @@
 # V3.4 — VOC / Review Evidence 最终报告
 
-> 状态：**VOC = APPROVED** ｜ **V3_4 = DONE** ｜ **V3_4_INTEGRATION_READY = TRUE**（Final Integration Precheck 通过，2026-08-15）
+> 状态：**VOC = APPROVED** ｜ **V3_4 = DONE** ｜ **V3_4_INTEGRATION_READY = TRUE**（Final Integration Precheck + Supplement 通过，2026-08-15）
+> **V3_4_NEGATIVE_RECURRING_REAL_SMOKE = PASS**（真实低星样本未形成共同痛点，系统正确未伪造 recurring——"没有足够证据"路径通过）
 > 不 merge main / 不 push / 不部署；V3.1 worktree 未删除；V3.5/6 未授权。
 
 ## 第一句话（大白话回答）
@@ -49,8 +50,10 @@
 ## 遗留项（如实记录）
 
 1. ~~真实 AI Smoke 未执行~~ → **已闭环**（2026-08-15 Final Integration Precheck：真实 deepseek-v4-flash 调用 2 次，11 项验收 PASS；见 validation.md §4.1）
-2. **评论页登录墙**：不绕过；详情页 Top Reviews 正文折叠不可见（标题级信息，已知限制）——真实低星评论样本受此限制（混合样本 28 高星/1 低星）
+2. **评论页登录墙**：不绕过；详情页 Top Reviews 正文折叠不可见（标题级信息，已知限制）——真实低星评论样本受此限制（混合样本 28 高星/1 低星；Supplement 扩至 9 ASIN 得 4 条真实低星）
 3. **Top Reviews 样本偏正向**：UI 星级分布图 + AI unknowns 显式提示偏差；用户可人工导入低星评论补足（导入时如实标注）
+4. **真实 recurring negative pain point 未在真实样本中形成**（4 条真实低星主题各异）——系统正确输出 weak 而非 recurring（Supplement 已闭环：V3_4_NEGATIVE_RECURRING_REAL_SMOKE = PASS，路径 2）；若产品需要更强低星证据，用户人工导入低星评论即可
+5. **Smoke 提取解析限制**：Supplement 探测中 Amazon 返回含 `<img .../> ` 字面前缀的 review 文本（布局差异）——已记录 learnings（#9），未改产品代码（人工导入链路对干净文本行为正确）
 
 ## Final Integration Precheck 结论（16 项）
 

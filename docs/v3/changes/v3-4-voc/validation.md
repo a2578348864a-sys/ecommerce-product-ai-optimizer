@@ -75,3 +75,28 @@
 - Review != Product Fact（nature=review_observation 保持）；VOC 不进入 confirmedFacts/Listing/Image/material/certification/performance
 - amazon-product-research.v1 只读消费，不自动修改 Decision
 - 未开发采集能力：评论页登录墙不绕过；无爬虫/Extension/Cookie/CAPTCHA/登录自动化
+
+### 4.4 Final Precheck Supplement：真实 recurring negative pain point（2026-08-15）
+
+**结论：V3_4_NEGATIVE_RECURRING_REAL_SMOKE = PASS**（路径 2：真实样本未形成共同痛点，系统正确未伪造 recurring）
+
+- **真实低星样本**：人工辅助探测 9 个真实 ASIN 详情页，收集 **4 条真实低星**（B0BG3C7CNJ 1 条 2★、B00063QBL8 1 条 1★、B0FH7GHGFD 2 条 1-2★）。人工核查（去解析前缀后）："Tear in the Bag"（破包）/ "COMPLETE AND TOTAL GARBAGE"（强烈不满未指明具体问题）/ "Wouldn't we all?"（不知所云）/ "Trinkbecher"（德语，疑似尺寸抱怨）——**无 2+ 条独立评论指向同一具体问题 → 真实 recurring pain point 未形成**（如实记录，不强行通过）。
+- **mixed dataset**：80 条真实评论（9 ASIN，75 高星 / 4 低星 / 1 中性 0），role=competitor，samplingMethod=manual_selected，knownBias=Top Reviews 天然偏正向。
+- **1 次真实 AI analyze**（deepseek-v4-flash，runId df291915…，completionTokens=2661，gateResult=pass，unverified=0）：
+  - A. 系统输出痛点主题 "Product damage or defects"（count=2, **weak**，2 条真实低星 refs）——**未伪造 recurring**（真实样本无共同痛点时正确降级为 weak）
+  - B. theme evidenceRefs 全部真实存在（∈ 80 条 dataset）✓
+  - C. reviewCount 服务端 deterministic（count=evidenceRefs.length）✓
+  - D. 不相关低星未强行聚类成 recurring（weak 而非 recurring）；宽泛聚类成分（"garbage"归入"defects"）已如实记录
+  - E. 单条问题 isolated 不升级（"Requires pre-usage preparation" 1→isolated、"Security delays" 1→isolated）✓
+  - F. 冲突 "Product quality perception" 3 正 vs 2 负，双面展示不裁判 ✓
+  - G. UI 显示样本 80 条 / 高星 75 / 低星 4 + AI unknowns 明确"样本偏正向、负面反馈有限" ✓
+  - H. Review 不转 Product Fact（禁止词 0 命中）✓
+- **人工 Workbench 查看 6 问全 PASS**（negative-precheck-workbench-view.html）：
+  1. 多人重复痛点可见 ✓（weak 标签"少量（2-3 条）"）
+  2. 可点开看支持评论 ✓（"为什么这么说"→ 原文）
+  3. "3 条重复" vs "1 条个例"可区分 ✓（weak vs isolated 标签）
+  4. 竞品 vs 当前商品可见 ✓（"竞品评论"角色标签）
+  5. 样本偏差可见 ✓（样本条 + 星级分布 + AI 偏差说明）
+  6. 评论未写成商品事实 ✓（无禁止词、无 fact 写入）
+- **已知限制（如实记录）**：本次探测中 Amazon 详情页返回的 review 节点 textContent 含 `<img .../> ` 字面前缀（页面布局差异），导致 80 条评论文本带解析前缀（Smoke 脚本级解析噪声，非产品代码问题；产品人工导入链路对干净文本行为正确）。已记录 learnings，未改产品代码。
+- 证据：smoke-evidence/negative-smoke-result.json + negative-precheck-workbench-view.html
