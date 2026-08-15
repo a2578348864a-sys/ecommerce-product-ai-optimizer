@@ -15,9 +15,9 @@
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: edca2d9（Core-Smoke-Fix.1 复核收尾）
-- origin/main: 76e2c96（main 领先 60 提交，**push 等待用户明确授权**）
-- main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
+- main HEAD: d9c503e（**V3 Core Remote Closeout：已 push 至 origin/main，2026-08-15**）
+- origin/main: **d9c503e**（main == origin/main，ahead=0 / behind=0）
+- main clean: 是（tracked 无修改；`.env.local.bak-corrupt-*` 排障备份与 `data/demo-product-batches/` Visitor Smoke 运行数据为未跟踪产物，push 前已获用户授权忽略）
 
 ## 最终报告
 
@@ -81,8 +81,10 @@
 - 公网部署：NO；force push：NO；DB 写：NO；样本入库：NO
 - 验收排障共修复 5 个真实 bug（见上表），全部经测试 + 页面实测
 
-## 下一步（等待用户授权，三项之一）
+## 下一步（等待用户授权，二选一）
 
-1. **授权 push**：main（领先 origin 60 提交）→ origin/main
-2. **授权「继续 V3.x」**：解除 V3X_AUTHORIZATION_REQUIRED，按 V3.1 Browser Evidence Spike → V3.2 → … → V3.6 推进
-3. **授权「部署公网」**：仅当 V3_FINAL = DONE 后，按 28_PUBLIC_RELEASE.md 执行 Release R1
+1. **授权「继续 V3.x」**：解除 V3X_AUTHORIZATION_REQUIRED，按 V3.1 Browser Evidence Spike → V3.2 → … → V3.6 推进
+2. **授权「部署公网」**：仅当 V3_FINAL = DONE 后，按 28_PUBLIC_RELEASE.md 执行 Release R1
+
+> V3 Core Remote Closeout（2026-08-15）：main 已推送至 origin/main（d9c503e），
+> 形成远端 Core checkpoint。V3X_AUTHORIZATION_REQUIRED = TRUE、PUBLIC_DEPLOY = FORBIDDEN 保持。
