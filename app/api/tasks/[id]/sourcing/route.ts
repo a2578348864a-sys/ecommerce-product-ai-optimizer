@@ -34,6 +34,10 @@ import {
   searchOffersByKeyword,
 } from "@/lib/server/sourcingAcquisition";
 import {
+  acquireByImage,
+  normalizeImageAcquisitionError,
+} from "@/lib/server/sourcingImageAcquisition";
+import {
   SourcingAcquisitionError,
   type AcquisitionCandidate,
   type AcquisitionRunTrace,
@@ -300,6 +304,50 @@ export async function POST(
     }
   }
 
+  // ── action=image：候选图片 → 1688 原生图搜 → Preview ──
+  if (action === "image") {
+    const imageUrl = asString(bodyRecord.imageUrl);
+    if (!imageUrl) return errorResponse(400, "invalid_image_url", "缺少候选图片链接。");
+    if (imageUrl.length > 2_048) return errorResponse(400, "invalid_image_url", "图片链接过长。");
+    try {
+      const { candidates, trace } = await acquireByImage({ imageUrl });
+      const runTrace: AcquisitionRunTrace = {
+        source: "1688",
+        method: "image",
+        query: imageUrl,
+        timestamp: new Date().toISOString(),
+        driverVersion: trace.driverVersion,
+        resolverVersion: trace.resolverVersion,
+        success: trace.success,
+        failClosedReason: trace.failClosedReason,
+      };
+      const preview = createSourcingPreview({
+        context: resolved.context,
+        taskId: id,
+        method: "image",
+        query: imageUrl,
+        runTrace,
+        candidates,
+      });
+      return jsonResponse({
+        ok: true,
+        data: {
+          preview: {
+            previewId: preview.previewId,
+            method: preview.method,
+            query: preview.query,
+            candidates: preview.candidates,
+            expiresAt: preview.expiresAt,
+          },
+          trace: preview.runTrace,
+        },
+      });
+    } catch (error) {
+      const normalized = normalizeImageAcquisitionError(error);
+      return errorResponse(normalized.status, normalized.code, normalized.message);
+    }
+  }
+
   // ── action=detail：单 offer 详情（Preview 面板补充；不创建 Preview） ──
   if (action === "detail") {
     const offerId = asString(bodyRecord.offerId);
@@ -367,5 +415,5 @@ export async function POST(
     }
   }
 
-  return errorResponse(400, "invalid_action", "未知操作（仅支持 search / url / detail / save）。");
+  return errorResponse(400, "invalid_action", "未知操作（仅支持 search / image / url / detail / save）。");
 }
