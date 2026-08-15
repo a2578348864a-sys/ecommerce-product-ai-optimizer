@@ -1,0 +1,171 @@
+{
+  "runAt": "2026-08-15T11:02:33.879Z",
+  "conclusion": "ai_smoke_pass",
+  "ai": {
+    "model": "deepseek-v4-flash",
+    "promptVersion": "voc-analysis.v1",
+    "runId": "542d863b-0b39-453b-91cc-7e38a5c42c65",
+    "inputEvidenceHash": "e737955e751e23ac",
+    "gateResult": "fail",
+    "elapsedMs": 15224,
+    "tokenUsage": {
+      "completionTokens": 2206,
+      "reasoningTokens": null
+    },
+    "unverifiedCount": 1
+  },
+  "pageResults": [
+    {
+      "asin": "B0C3NFB3CZ",
+      "status": "ok",
+      "note": "9 条"
+    },
+    {
+      "asin": "B0BG3C7CNJ",
+      "status": "ok",
+      "note": "10 条"
+    },
+    {
+      "asin": "B07G4VTV2F",
+      "status": "ok",
+      "note": "10 条"
+    }
+  ],
+  "dataset": {
+    "totalReviews": 29,
+    "positiveCount": 28,
+    "negativeCount": 1,
+    "neutralCount": 0,
+    "ratingDistribution": [
+      {
+        "rating": 1,
+        "count": 0
+      },
+      {
+        "rating": 2,
+        "count": 1
+      },
+      {
+        "rating": 3,
+        "count": 0
+      },
+      {
+        "rating": 4,
+        "count": 1
+      },
+      {
+        "rating": 5,
+        "count": 27
+      }
+    ],
+    "sourceProductCount": 3,
+    "lowStarCount": 1,
+    "reviewTextHash": "f48d200e3a27fd90"
+  },
+  "themes": {
+    "positive": [
+      {
+        "label": "Excellent heat retention",
+        "count": 4,
+        "strength": "recurring"
+      },
+      {
+        "label": "Great overall quality",
+        "count": 6,
+        "strength": "recurring"
+      },
+      {
+        "label": "Adorable and appealing design",
+        "count": 3,
+        "strength": "weak"
+      },
+      {
+        "label": "Perfect size",
+        "count": 1,
+        "strength": "isolated"
+      },
+      {
+        "label": "Versatile and effective",
+        "count": 1,
+        "strength": "isolated"
+      },
+      {
+        "label": "Does not leak",
+        "count": 1,
+        "strength": "isolated"
+      },
+      {
+        "label": "Good value for money",
+        "count": 1,
+        "strength": "isolated"
+      }
+    ],
+    "painPoints": [
+      {
+        "label": "Tear in the bag",
+        "count": 1,
+        "strength": "isolated"
+      }
+    ],
+    "scenarios": [
+      {
+        "label": "Travel and commuting",
+        "count": 2,
+        "strength": "weak"
+      },
+      {
+        "label": "Keeping beverages hot",
+        "count": 4,
+        "strength": "recurring"
+      },
+      {
+        "label": "Lunchtime use",
+        "count": 1,
+        "strength": "isolated"
+      },
+      {
+        "label": "Everyday hydration",
+        "count": 2,
+        "strength": "weak"
+      }
+    ],
+    "requests": [],
+    "conflicts": [
+      {
+        "label": "Quality perception",
+        "positiveCount": 6,
+        "negativeCount": 1
+      }
+    ],
+    "weakSignals": [
+      {
+        "label": "Leak resistance valued",
+        "count": 1,
+        "strength": "isolated"
+      },
+      {
+        "label": "Versatility appreciated",
+        "count": 1,
+        "strength": "isolated"
+      }
+    ]
+  },
+  "unknowns": [
+    "Specific temperature retention duration is not quantified.",
+    "The exact nature of the 'tear in the bag' issue is unclear (e.g., manufacturing defect, shipping damage).",
+    "No information on durability over long-term use.",
+    "No details on capacity, materials, or ease of cleaning.",
+    "The sample is heavily positive (28/29), which may not represent typical distribution.",
+    "Reviews are brief; lack in-depth feedback on features or performance."
+  ],
+  "nextResearchSteps": [
+    "Investigate the 'tear in the bag' issue to determine if it's a common defect or isolated incident.",
+    "Conduct surveys or interviews to quantify heat retention expectations and satisfaction.",
+    "Analyze competitor products to compare features like leak resistance and design appeal.",
+    "Gather more detailed reviews to understand specific usage scenarios and preferences.",
+    "Monitor future reviews for any emerging patterns or recurring issues."
+  ],
+  "unverified": [
+    "No explicit requests"
+  ]
+}

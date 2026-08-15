@@ -42,4 +42,36 @@
 
 - 评论页（/product-reviews/）当前环境需登录 → **未绕过**（诊断证据 review-page-diag.txt）
 - 走查使用详情页公开 Top Reviews 片段：真实星级/日期/标题，**正文折叠不可见**（已知限制；不影响"评论证据真实可追溯"，但主题深度受限于标题级信息）
-- 本 worktree 无 AI 密钥（不复制 .env*）→ **真实 AI Smoke 未执行**；AI 全链路由 mock callAiJson 的 route 测试 + Golden Eval 覆盖，真实 AI Smoke 留待集成树密钥环境（已记录为遗留项）
+
+## 4. Final Integration Precheck（2026-08-15）
+
+### 4.1 真实 AI VOC Smoke（PASS）
+
+- 环境：V3.4 worktree + 集成树正式 AI 配置注入（不复制 .env*；密钥不落盘不打印）
+- **调用次数：2 次**（第 1 次暴露测试断言对 gateResult 语义的误读——产品 fail-closed 行为正确、零产品代码改动；第 2 次为修正断言后的完整验证。非 provider 故障、非调参循环）
+- provider/model：deepseek / **deepseek-v4-flash**；promptVersion=voc-analysis.v1
+- token：completionTokens=2206（第 2 次运行）
+- schema：一次通过（结构白名单解析成功）
+- 11 项验收全部 PASS：
+  - schema 可解析 ✓；白名单主题类型 ✓；正式主题均有 evidenceRefs ✓；refs 属于当前 Dataset ✓；不跨 ASIN（role=competitor 全一致）✓；current_candidate/competitor role 正确 ✓；reviewCount/coverage/strength 服务端 deterministic ✓；Review 非 Product Fact（无 fact 写入路径）✓；无禁止判断（值得卖/推荐上架/爆款/盈利预测/建议采购/转化率全 0 命中）✓；Prompt Injection 无指令权（G4 + 结构白名单）✓；run trace 完整（runId/model/promptVersion/inputEvidenceHash/tokenUsage/gateResult）✓
+- **gateResult=fail 的真实含义**：1 个无证据主题（"No explicit requests"）被正确拒绝进 unverified（fail-closed 生效），其余 11 个有效主题保留。**未降低合同、未兼容坏结构**。
+- 证据：smoke-evidence/ai-smoke-result.json + ai-smoke-replay.json（replay 模式零额外 AI 调用复验）
+
+### 4.2 真实混合星级产品 Smoke（PASS）
+
+- Dataset：3 个真实竞品 ASIN、29 条真实 Top Reviews（28 高星 + 1 低星——Top Reviews 机制天然偏正；低星来源受评论页登录墙限制，如实记录）
+- 真实 AI 分析后 Workbench 视图人工审查（precheck-workbench-view.html）：
+  - A. 小白能否一眼看懂喜欢/抱怨：**能**——六区中文标题 + 7 个正向主题（含强度标签）+ 1 个痛点主题
+  - B. 结论基于多少条：**能**——"引用 X 条 · 占当前样本 Y%" + 样本条"样本：29 条"
+  - C. 当前商品 vs 竞品：**能**——"竞品评论"角色标签 + "商品 3 个（当前 0 / 竞品 29）"
+  - D. 单条负面标零散：**是**——"Tear in the bag" count=1 → isolated（"个例（1 条）"），未包装成普遍痛点
+  - E. 冲突双面展示不裁判：**是**——"Quality perception" 正面 6 条 / 负面 1 条分列展示，note 不裁判
+  - F. 星级/采样偏差提示：**是**——星级分布图 + AI unknowns 明确"样本高度偏正（28/29），不代表典型分布"；UI 自动偏差横幅覆盖纯单边场景
+- 实际主题：正向 7（heat retention 4→recurring、overall quality 6→recurring、design 3→weak 等）、痛点 1（tear in the bag 1→isolated）、场景 4、冲突 1（quality perception 6v1）、零散信号 2（均 isolated）
+- **单条评论未被强化**：痛点/零散信号 count=1 全部 isolated
+
+### 4.3 合同未变
+
+- Review != Product Fact（nature=review_observation 保持）；VOC 不进入 confirmedFacts/Listing/Image/material/certification/performance
+- amazon-product-research.v1 只读消费，不自动修改 Decision
+- 未开发采集能力：评论页登录墙不绕过；无爬虫/Extension/Cookie/CAPTCHA/登录自动化

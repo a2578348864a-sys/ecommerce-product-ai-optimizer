@@ -1,6 +1,6 @@
 # V3.4 — VOC / Review Evidence 最终报告
 
-> 状态：**VOC = APPROVED** ｜ **V3_4 = DONE**（待用户独立审查确认后定稿）
+> 状态：**VOC = APPROVED** ｜ **V3_4 = DONE** ｜ **V3_4_INTEGRATION_READY = TRUE**（Final Integration Precheck 通过，2026-08-15）
 > 不 merge main / 不 push / 不部署；V3.1 worktree 未删除；V3.5/6 未授权。
 
 ## 第一句话（大白话回答）
@@ -48,9 +48,30 @@
 
 ## 遗留项（如实记录）
 
-1. **真实 AI Smoke 未执行**：功能 worktree 不复制 .env*（AGENTS.md），无 AI 密钥；AI 全链路由 mock callAiJson 的 route 测试 + Golden Eval 覆盖。**集成前需在集成树执行一次真实 analyze 验证**（任务书三十一节）。
-2. **评论页登录墙**：不绕过；若未来需要完整评论正文，需单独授权评估（登录态/官方 API/human-assisted 评论页采集）。
-3. **Top Reviews 样本偏正向**（走查 28/29 为 5 星）：UI 已显式提示高星集合；用户可人工导入低星评论补足（导入时如实标注）。
+1. ~~真实 AI Smoke 未执行~~ → **已闭环**（2026-08-15 Final Integration Precheck：真实 deepseek-v4-flash 调用 2 次，11 项验收 PASS；见 validation.md §4.1）
+2. **评论页登录墙**：不绕过；详情页 Top Reviews 正文折叠不可见（标题级信息，已知限制）——真实低星评论样本受此限制（混合样本 28 高星/1 低星）
+3. **Top Reviews 样本偏正向**：UI 星级分布图 + AI unknowns 显式提示偏差；用户可人工导入低星评论补足（导入时如实标注）
+
+## Final Integration Precheck 结论（16 项）
+
+1. 真实 AI provider/model：deepseek / deepseek-v4-flash
+2. 调用次数：2（第 1 次暴露测试断言对 gateResult 语义误读——产品零改动；第 2 次完整验证；非调参循环）
+3. token/cost：completionTokens=2206（第 2 次）
+4. schema 一次通过：是（结构白名单解析成功）
+5. evidenceRefs 验证：正式主题全部有 refs 且属于 Dataset；1 个无证据主题正确拒绝（unverified）
+6. Review-Fact isolation：保持（无 fact 写入路径；禁止词 0 命中）
+7. 混合星级 Dataset 规模：29 条（3 个真实竞品 ASIN）
+8. 正/负星级分布：28 高星 / 1 低星（Top Reviews 机制天然偏正；如实记录）
+9. 实际正向主题：7 个（heat retention 4、overall quality 6、design 3、size 1、versatile 1、no-leak 1、value 1）
+10. 实际痛点主题：1 个（"Tear in the bag" count=1 → isolated）
+11. 实际冲突：1 个（"Quality perception" 6 正 vs 1 负，双面展示不裁判）
+12. 单条评论被强化：**否**（count=1 主题全部 isolated）
+13. sourceProductRole 正确：全 competitor（3 竞品 ASIN）
+14. Novice Comprehension 人工结果：A-F 六问全 PASS（见 validation.md §4.2）
+15. tests / tsc / lint / build：targeted 全绿；full 4639 passed（1 已知环境差异）；tsc 0；lint 0 errors；build 成功
+16. commit / worktree：`c221901` + 本 Precheck 增量 commit；worktree clean
+
+**V3_4_INTEGRATION_READY = TRUE**
 
 ## 结论
 
