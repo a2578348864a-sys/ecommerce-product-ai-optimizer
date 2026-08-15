@@ -6,16 +6,17 @@
 
 - **V3 Core: Phase 0–6 全部 PASS → `V3_CORE = DONE`**
 - **人工验收：`MANUAL_CORE_SMOKE = PASS`**（用户 2026-08-15 给出最终结论）
+- **Core-Smoke-Fix.1：`CORE_SMOKE_FIX_1 = PASS`**（3 个 Smoke 缺陷修复完成，页面 Smoke A–E 全通过，提交 2c8afd3，docs/v3/changes/core-smoke-fix-1/）
 - V3.x: 未授权（v3x_auto_start=false 硬约束；`V3X_AUTHORIZATION_REQUIRED = TRUE` 强制暂停中）
 - Current Wave: Core 完成，暂停点
 - Current Phase: —（暂停）
-- Status: **HARD_PAUSE**（等待用户明确授权「继续 V3.x」「部署公网」或「push」）
+- Status: **HARD_PAUSE**（等待用户继续人工验收；未授权 push / V3.x / 公网部署）
 
 ## 权威基线
 
 - repo_root: `D:\Workspace\projects\project-001-跨境电商AI工具\电商工具`
-- main HEAD: 7a5c026（验收排障修复收尾）
-- origin/main: 76e2c96（main 领先 56 提交，**push 等待用户明确授权**）
+- main HEAD: 2c8afd3（Core-Smoke-Fix.1）
+- origin/main: 76e2c96（main 领先 57 提交，**push 等待用户明确授权**）
 - main clean: 是（`.env.local.bak-corrupt-*` 为排障备份，未跟踪）
 
 ## 最终报告
@@ -36,6 +37,17 @@
 
 - 排障过程产物：`PROOF_SIGNING_SECRET` 已补入 `.env.local`（研究失败 `run_proof_unavailable` 根因，未提交）；候选/任务数据只读诊断，未写 DB。
 - 验收前服务：由 `npm run start:local` 启动（计划任务指向旧 runtime-package，guard 校验固定 buildId 无法拉起新构建——历史遗留，最终报告说明）。
+
+## Core-Smoke-Fix.1 摘要（docs/v3/changes/core-smoke-fix-1/）
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| ① 导入需手动选报表类型/类目 | 新格式 PS（无搜索排名）BSR>10 被判 unknown(ambiguous_ps_without_search_rank)，类目检测因此无输入 | BSR 值域三分支：>10→search_results（值域互斥确定性）、≤10→category_current、无值→人工；UI 三态提示（已自动识别/无法可靠识别请手动）；真实 Products(10) 实测自动识别成功 |
+| ② 开始研究约 20 秒体感慢 | 3 步 AI 串行（sourcing/risk/summary）+ 前端一次性等结果 | sourcing‖risk 并行（实测串行 51.2s→并行 21.0s，省 59%）；渐进式 UI（点击 <1s 响应 + 真实进度提示）；计数按步独立跟踪 |
+| ③ 待研究却提示无待研究商品 | ProductBatch 候选 researchAction=runtime_validation_required，前端只认 research_available | 统一权威判断 candidatePrimaryHref/isCandidateResearchActionAvailable（两处入口同源） |
+
+- 页面 Smoke A–E（3005 真实页面）：全部 PASS；刷新无重复任务/重复 AI；Owner 实测 + Visitor 由既有权限测试覆盖
+- 全量测试 4519 passed / 0 failed；tsc / lint / build：PASS
 
 ## 正式风险登记（decisions.md §7 终态）
 
@@ -70,6 +82,6 @@
 
 ## 下一步（等待用户授权，三项之一）
 
-1. **授权 push**：main（领先 origin 56 提交）→ origin/main
+1. **授权 push**：main（领先 origin 57 提交）→ origin/main
 2. **授权「继续 V3.x」**：解除 V3X_AUTHORIZATION_REQUIRED，按 V3.1 Browser Evidence Spike → V3.2 → … → V3.6 推进
 3. **授权「部署公网」**：仅当 V3_FINAL = DONE 后，按 28_PUBLIC_RELEASE.md 执行 Release R1
