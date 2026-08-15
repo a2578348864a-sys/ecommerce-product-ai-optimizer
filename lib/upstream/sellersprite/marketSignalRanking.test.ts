@@ -106,7 +106,7 @@ function syntheticRow(index: number, input: SyntheticRowInput = {}): Record<stri
     Brand: "Synthetic Brand",
     Seller: "Synthetic Seller",
     "Root Category": input.rootCategory ?? "Synthetic Root",
-    "Root Category BSR": input.rootCategoryBsr ?? String(100 + index),
+    "Root Category BSR": input.rootCategoryBsr ?? String(index),
     Subcategory: input.subCategory ?? "Synthetic Subcategory",
     "Subcategory BSR": input.subCategoryBsr ?? String(10 + index),
   };
@@ -484,12 +484,12 @@ describe("SellerSprite offline market signal ranking", () => {
     const result = rankSellerSpriteMarketSignals({
       snapshot: buildSyntheticSnapshot("category_current", [
         syntheticRow(1, {
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategory: "Sub A",
           subCategoryBsr: "1",
         }),
         syntheticRow(2, {
-          rootCategoryBsr: "200",
+          rootCategoryBsr: "2",
           subCategory: "Sub B",
           subCategoryBsr: "999",
         }),
@@ -511,10 +511,10 @@ describe("SellerSprite offline market signal ranking", () => {
 
   it("uses subcategory BSR only inside exact groups with at least three valid products", () => {
     const rows = [
-      syntheticRow(1, { rootCategoryBsr: "100", subCategory: "Same", subCategoryBsr: "30" }),
-      syntheticRow(2, { rootCategoryBsr: "100", subCategory: "Same", subCategoryBsr: "20" }),
-      syntheticRow(3, { rootCategoryBsr: "100", subCategory: "Same", subCategoryBsr: "10" }),
-      syntheticRow(4, { rootCategoryBsr: "100", subCategory: "Different", subCategoryBsr: "1" }),
+      syntheticRow(1, { rootCategoryBsr: "1", subCategory: "Same", subCategoryBsr: "30" }),
+      syntheticRow(2, { rootCategoryBsr: "1", subCategory: "Same", subCategoryBsr: "20" }),
+      syntheticRow(3, { rootCategoryBsr: "1", subCategory: "Same", subCategoryBsr: "10" }),
+      syntheticRow(4, { rootCategoryBsr: "1", subCategory: "Different", subCategoryBsr: "1" }),
     ];
     const result = rankSellerSpriteMarketSignals({
       snapshot: buildSyntheticSnapshot("category_current", rows),
@@ -635,14 +635,14 @@ describe("SellerSprite offline market signal ranking", () => {
           rating: "",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
         syntheticRow(2, {
           rating: "1",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
       ]),
@@ -689,14 +689,14 @@ describe("SellerSprite offline market signal ranking", () => {
           rating,
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
         syntheticRow(2, {
           rating: "1",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
       ]),
@@ -772,7 +772,7 @@ describe("SellerSprite offline market signal ranking", () => {
           rating: "4",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
         syntheticRow(1, {
@@ -780,14 +780,14 @@ describe("SellerSprite offline market signal ranking", () => {
           rating: "5",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
         syntheticRow(2, {
           rating: "1",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
       ]),
@@ -819,7 +819,7 @@ describe("SellerSprite offline market signal ranking", () => {
           rating: "",
           sales: "200",
           reviews: "100",
-          rootCategoryBsr: "100",
+          rootCategoryBsr: "1",
           subCategoryBsr: "100",
         }),
         syntheticRow(2, {
@@ -827,7 +827,7 @@ describe("SellerSprite offline market signal ranking", () => {
           rating: "1",
           sales: "100",
           reviews: "100",
-          rootCategoryBsr: "200",
+          rootCategoryBsr: "2",
           subCategoryBsr: "100",
         }),
       ]),
@@ -871,7 +871,7 @@ describe("SellerSprite offline market signal ranking", () => {
     const rows = Array.from({ length: 7 }, (_, index) => syntheticRow(index + 1, {
       sales: "100",
       reviews: "100",
-      rootCategoryBsr: "100",
+      rootCategoryBsr: "1",
       subCategory: "Same",
       subCategoryBsr: "100",
     }));

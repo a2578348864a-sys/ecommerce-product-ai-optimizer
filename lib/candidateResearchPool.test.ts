@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   candidatePrimaryHref,
+  isCandidateResearchActionAvailable,
   mergeCandidatePages,
   parseCandidateListResponse,
   type CandidateResearchPoolItem,
@@ -61,7 +62,7 @@ describe("Candidate research pool contract", () => {
     }))).toBe("/tasks/task-002");
   });
 
-  it("does not turn blocked or runtime-validation projections into Agent authorization", () => {
+  it("keeps blocked projections unauthorized but routes runtime-validation Candidates into research", () => {
     expect(candidatePrimaryHref(apiItem(3, {
       researchAction: "research_blocked",
       researchBlockReasonCode: "candidate_not_ready",
@@ -69,7 +70,13 @@ describe("Candidate research pool contract", () => {
     }))).toBeNull();
     expect(candidatePrimaryHref(apiItem(4, {
       researchAction: "runtime_validation_required",
-    }))).toBeNull();
+    }))).toBe("/opportunity-candidates/candidate-4?source=opportunity&candidateId=candidate-4");
+    expect(isCandidateResearchActionAvailable(apiItem(4, {
+      researchAction: "runtime_validation_required",
+    }))).toBe(true);
+    expect(isCandidateResearchActionAvailable(apiItem(3, {
+      researchAction: "research_blocked",
+    }))).toBe(false);
   });
 
   it("fails closed when the server action and convertedTaskId disagree", () => {

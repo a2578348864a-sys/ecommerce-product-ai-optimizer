@@ -20,9 +20,11 @@ export interface SellerSpriteReportTypeDetectionEvidence {
  * - missing_required_identity: 缺必需身份列（asin/productTitle/productUrl）
  * - ambiguous_headers: 必需/判定字段存在多列歧义
  * - missing_report_signature: 四件套不齐，无任何报告签名
- * - requires_row_signal: 表头无搜索排名且四件套齐全，但未提供行数据（无法自动判定，fail-closed）
- * - ambiguous_ps_without_search_rank: 无搜索排名列 + 四件套齐全，但行级 BSR 信号不是类目榜单形态
- *   （真实 Product Search 新格式报表特征；不静默判为 Category Current）
+ * - requires_row_signal: 表头无搜索排名且四件套齐全，但未提供行数据或行内无 BSR 值
+ *   （无法自动判定，fail-closed → 人工选择兜底）
+ * - ambiguous_ps_without_search_rank: 保留（历史兼容，不再产生）——旧规则下
+ *   「无搜索排名 + BSR 含 >10」视为歧义；现规则按 BSR 值域确定性判定
+ *   （见 detectSellerSpriteReportType）
  */
 export type SellerSpriteReportTypeReasonCode =
   | "missing_required_identity"
@@ -42,9 +44,9 @@ export interface SellerSpriteReportTypeDetection {
  * 类目榜单行级信号：真实 Category Current（BSR 当前类目 Top10）报表
  * 的大类 BSR 值域为 [1..10]（12/12 真实样本验证）；真实 Product Search
  * 报表（无搜索排名列的新格式）大类 BSR 无此约束（样本 max=750682）。
- * 该值域仅用于「自动判定」，人工显式选择类型时以结构合法性为准
- * （reasonCode 为 requires_row_signal / ambiguous_ps_without_search_rank
- * 时允许显式选择覆盖，见 precheck.ts）。
+ * 值域互斥（CC 榜单不可能出现 >10）→ 含 >10 确定性判定 search_results，
+ * 全部 ∈[1..10] 判定 category_current；无行级 BSR 数据时 fail-closed
+ * （requires_row_signal），由人工选择兜底。
  */
 const CATEGORY_CURRENT_BSR_MAX = 10;
 
@@ -169,11 +171,14 @@ export function detectSellerSpriteReportType(
     return { reportType: "unknown", evidence, reasonCode: "requires_row_signal" };
   }
   const bsrValues = collectRootCategoryBsrValues(rows, mapping);
-  if (
-    bsrValues.length > 0
-    && bsrValues.every((value) => value >= 1 && value <= CATEGORY_CURRENT_BSR_MAX)
-  ) {
+  if (bsrValues.length === 0) {
+    return { reportType: "unknown", evidence, reasonCode: "requires_row_signal" };
+  }
+  if (bsrValues.every((value) => value >= 1 && value <= CATEGORY_CURRENT_BSR_MAX)) {
     return { reportType: "category_current", evidence };
   }
-  return { reportType: "unknown", evidence, reasonCode: "ambiguous_ps_without_search_rank" };
+  // 存在 >10 的大类 BSR：类目榜单（Category Current Top10）的 BSR 必 ∈ [1..10]
+  // （12/12 真实样本验证），含 >10 必然不是 CC 榜单 → 无搜索排名列的新格式
+  // Product Search 报表（真实 Products(10) 样本 max=750682）。确定性判定，不误判。
+  return { reportType: "search_results", evidence };
 }

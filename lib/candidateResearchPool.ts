@@ -228,8 +228,24 @@ export function candidatePrimaryHref(
     && SAFE_ID.test(item.convertedTaskId)) {
     return `/tasks/${encodeURIComponent(item.convertedTaskId)}`;
   }
-  if (item.researchAction === "research_available") {
+  // 可进入研究的唯一权威判定：research_available（普通候选）与
+  // runtime_validation_required（SellerSprite ProductBatch 候选：允许研究，
+  // 进入研究时由服务端再次校验来源）都可进入候选研究页。
+  if (item.researchAction === "research_available"
+    || item.researchAction === "runtime_validation_required") {
     return buildCandidateResearchHref(item.id);
   }
   return null;
+}
+
+/**
+ * 研究池「可进入研究」唯一权威语义（与 candidatePrimaryHref 一致）。
+ * UI 标签（status→「待研究」）只表示候选状态，不等于可研究；
+ * 一切「开始／继续研究」入口必须复用本判断。
+ */
+export function isCandidateResearchActionAvailable(
+  item: Pick<CandidateResearchPoolItem, "researchAction">,
+): boolean {
+  return item.researchAction === "research_available"
+    || item.researchAction === "runtime_validation_required";
 }

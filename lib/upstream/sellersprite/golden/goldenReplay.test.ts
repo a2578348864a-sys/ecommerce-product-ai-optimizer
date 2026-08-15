@@ -86,19 +86,21 @@ describe("SellerSprite Golden Dataset — Parser Replay", () => {
       // 人工选择覆盖（自动判定证据不足场景）：放行，但检测证据保留
       expect(result.reportType).toBe(caseItem.expectedWithExplicit);
       expect(result.reportTypeMatched).toBe(true);
-      expect(result.detectionReasonCode).toBe(caseItem.expectedReasonCode);
+      if (caseItem.expectedReasonCode !== undefined) {
+        expect(result.detectionReasonCode).toBe(caseItem.expectedReasonCode);
+      }
       expect(result.errors.some((error) => error.code === "unsupported_report_type")).toBe(false);
       expect(result.errors.some((error) => error.code === "report_type_mismatch")).toBe(false);
     },
   );
 
-  it("auto-detection evidence is preserved under explicit override", () => {
+  it("auto-detection succeeds for new-format Product Search (BSR >10 band)", () => {
     const caseItem = caseById("ps-no-search-rank-explicit");
     const auto = precheckSellerSpriteXlsx(goldenWorkbook(caseItem), {
       capturedAt: CAPTURED_AT,
     });
-    expect(auto.reportType).toBe("unknown");
-    expect(auto.detectionReasonCode).toBe("ambiguous_ps_without_search_rank");
-    expect(auto.reportTypeMatched).toBe(false);
+    expect(auto.reportType).toBe("search_results");
+    expect(auto.detectionReasonCode).toBeUndefined();
+    expect(auto.reportTypeMatched).toBe(true);
   });
 });

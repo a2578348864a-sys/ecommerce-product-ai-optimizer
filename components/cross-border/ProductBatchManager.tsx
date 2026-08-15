@@ -79,6 +79,11 @@ function formatDate(value: string | null): string {
       }).format(date);
 }
 
+function categoryValueLabel(value: string): string {
+  return AMAZON_US_TOP_LEVEL_CATEGORIES.find((category) => category.value === value)?.label
+    ?? value;
+}
+
 function batchStatus(value: ProductBatchView["batchStatus"]): string {
   if (value === "processing") return "处理中";
   if (value === "ready") return "可使用";
@@ -278,27 +283,35 @@ export function ProductBatchManagerView({
             </p>
           ) : null}
           {detectedReportType ? (
-            <p className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
-              已识别为{productBatchReportTypeLabel(detectedReportType)}。请确认类目、查询词和价格范围。
+            <p className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800" data-testid="report-type-auto-detected">
+              已自动识别报表类型：{productBatchReportTypeLabel(detectedReportType)}。
+              {importInspection?.categoryDetection.status === "detected" && selectedCategory ? (
+                <> 已自动识别一级类目：{categoryValueLabel(selectedCategory)}。请确认查询词和价格范围后导入。</>
+              ) : (
+                <> 请确认类目、查询词和价格范围后导入。</>
+              )}
             </p>
           ) : null}
 
           {showManualReportType ? (
-            <label className="grid gap-2 text-sm font-semibold text-slate-700">
-              手动选择报表类型
-              <select
-                name="reportType"
-                value={selectedReportType}
-                required
-                disabled={busy}
-                onChange={(event) => onReportTypeChange?.(event.currentTarget.value as ReportType)}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
-              >
-                <option value="">请选择</option>
-                <option value="search_results">搜索结果报表</option>
-                <option value="category_current">类目商品报表</option>
-              </select>
-            </label>
+            <div className="grid gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-slate-700" data-testid="report-type-manual-required">
+              <p className="font-semibold text-amber-800">无法可靠识别报表类型，请手动选择。</p>
+              <label className="grid gap-2">
+                手动选择报表类型
+                <select
+                  name="reportType"
+                  value={selectedReportType}
+                  required
+                  disabled={busy}
+                  onChange={(event) => onReportTypeChange?.(event.currentTarget.value as ReportType)}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 font-normal"
+                >
+                  <option value="">请选择</option>
+                  <option value="search_results">搜索结果报表</option>
+                  <option value="category_current">类目商品报表</option>
+                </select>
+              </label>
+            </div>
           ) : effectiveReportType ? (
             <input type="hidden" name="reportType" value={effectiveReportType} />
           ) : null}

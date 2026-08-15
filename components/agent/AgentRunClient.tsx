@@ -1189,6 +1189,17 @@ export function AgentRunClient({
                 />
               ))}
             </div>
+            {isRunning ? (
+              <div
+                className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm leading-6 text-sky-800"
+                role="status"
+                data-testid="agent-run-progress-hint"
+              >
+                <Loader2 className="mr-1 inline size-3.5 animate-spin" />
+                AI 分析进行中（通常 10–30 秒，视 AI 服务响应而定）。正在并行分析货源判断与风险排查，随后生成综合结论；
+                完成后自动展示结果。请勿关闭页面或重复点击。
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">

@@ -580,10 +580,10 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
   /** 批量开始研究：跳转第一个可研究候选的研究页 */
   function startSelected() {
     const first = items.find(
-      (item) => selectedIds.includes(item.id) && item.researchAction === "research_available",
+      (item) => selectedIds.includes(item.id) && candidatePrimaryHref(item) !== null,
     );
     if (!first) {
-      setMessage("已选项中无待研究商品，请先选择状态为「待研究」的商品。");
+      setMessage("已选项中没有可开始研究的商品（已转任务或当前不满足研究条件），请重新选择。");
       return;
     }
     const href = candidatePrimaryHref(first);

@@ -46,11 +46,10 @@ export const GOLDEN_REPORT_CASES: ReadonlyArray<GoldenReportCase> = [
   {
     id: "ps-no-search-rank",
     name: "新格式 Product Search（无搜索排名列，BSR 大值域非升序）",
-    note: "真实 Products(10) 模式：无搜索排名列、rootBsr max=750682、非升序、多类目 → 不得静默判为 Category Current，fail-closed",
+    note: "真实 Products(10) 模式：无搜索排名列、rootBsr max=750682、非升序、多类目 → 行级 BSR 含 >10（类目榜单 BSR 必 ∈[1..10]），确定性判定 search_results",
     headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
     rows: GOLDEN_PS_NO_SEARCH_RANK_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
-    expectedDetected: "unknown",
-    expectedReasonCode: "ambiguous_ps_without_search_rank",
+    expectedDetected: "search_results",
   },
   {
     id: "cc-current",
@@ -104,11 +103,10 @@ export const GOLDEN_REPORT_CASES: ReadonlyArray<GoldenReportCase> = [
   {
     id: "ps-no-search-rank-explicit",
     name: "新格式 Product Search + 显式人工选择 search_results",
-    note: "真实修复场景：无搜索排名列 + BSR 非榜形态 → 自动判定 unknown(ambiguous_ps_without_search_rank)；人工显式选择 search_results 放行（结构合法），但自动判定证据如实保留",
+    note: "真实修复场景：无搜索排名列 + BSR 非榜形态（含 >10）→ 自动判定 search_results；显式选择一致 → matched=true",
     headers: [...GOLDEN_CURRENT_FORMAT_HEADERS],
     rows: GOLDEN_PS_NO_SEARCH_RANK_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
-    expectedDetected: "unknown",
-    expectedReasonCode: "ambiguous_ps_without_search_rank",
+    expectedDetected: "search_results",
     expectedWithExplicit: "search_results",
   },
   {

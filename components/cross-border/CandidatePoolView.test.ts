@@ -86,7 +86,7 @@ describe("CandidatePoolView", () => {
     expect(html).not.toContain("/agent/run?");
   });
 
-  it("does not render runtime validation as an available research link", () => {
+  it("renders runtime-validation Candidates as an available research link", () => {
     const html = render({
       items: [{
         ...item,
@@ -94,8 +94,9 @@ describe("CandidatePoolView", () => {
         researchActionMessage: "进入研究前需要服务端再次校验来源。",
       }],
     });
-    expect(html).toContain("进入研究前需要服务端再次校验来源。");
-    expect(html).not.toContain("/agent/run?");
+    expect(html).not.toContain("进入研究前需要服务端再次校验来源。");
+    expect(html).toContain("开始／继续研究");
+    expect(html).toContain("/opportunity-candidates/");
   });
 
   it("renders the converted action from the server projection", () => {

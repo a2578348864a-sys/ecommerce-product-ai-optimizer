@@ -63,11 +63,12 @@ describe("SellerSprite dual report type contract", () => {
       SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
       GOLDEN_CC_CURRENT_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
     )).toMatchObject({ reportType: "category_current" });
-    // 无搜索排名 + 大 BSR 值域（新格式 Product Search 模式）→ 不静默判 CC，fail-closed
+    // 无搜索排名 + 大 BSR 值域（新格式 Product Search 模式）→ 类目榜单 BSR 必 ∈[1..10]，
+    // 含 >10 确定性判定 search_results（不静默判 CC，也不再 fail-closed）
     expect(detectSellerSpriteReportType(
       SELLERSPRITE_CATEGORY_CURRENT_HEADERS,
       GOLDEN_PS_NO_SEARCH_RANK_ROWS.map((row) => goldenRowToValues(row, GOLDEN_CURRENT_FORMAT_HEADERS)),
-    )).toMatchObject({ reportType: "unknown", reasonCode: "ambiguous_ps_without_search_rank" });
+    )).toMatchObject({ reportType: "search_results" });
     expect(detectSellerSpriteReportType([
       "ASIN",
       "商品标题",
@@ -130,8 +131,8 @@ describe("SellerSprite dual report type contract", () => {
       applicability: "not_applicable",
     });
     expect(result.records[0].rootCategoryBsr).toMatchObject({
-      raw: "1,234",
-      normalized: 1234,
+      raw: "1",
+      normalized: 1,
       applicability: "available",
       sourceType: "provider_metric",
       metricNature: "snapshot",
@@ -218,9 +219,9 @@ describe("SellerSprite dual report type contract", () => {
       occurrenceType: "category_current_record",
       ordinalRaw: "1",
       rootCategory: { normalized: "Synthetic Root Category" },
-      rootCategoryBsr: { normalized: 1234 },
+      rootCategoryBsr: { normalized: 1 },
       subCategory: { normalized: "Synthetic Subcategory" },
-      subCategoryBsr: { normalized: 57 },
+      subCategoryBsr: { normalized: 1 },
     });
     expect(snapshot.products[0]).toMatchObject({
       reportType: "category_current",
@@ -229,8 +230,8 @@ describe("SellerSprite dual report type contract", () => {
       unknownAppearanceCount: null,
       placementSummary: { status: "not_applicable" },
       categoryEvidenceSummary: {
-        rootCategoryBsr: { status: "resolved", normalized: 1234 },
-        subCategoryBsr: { status: "resolved", normalized: 57 },
+        rootCategoryBsr: { status: "resolved", normalized: 1 },
+        subCategoryBsr: { status: "resolved", normalized: 1 },
       },
     });
     expect(snapshot.families[0]).toMatchObject({
@@ -242,9 +243,9 @@ describe("SellerSprite dual report type contract", () => {
       validCount: 2,
       missingCount: 0,
       conflictCount: 0,
-      minimum: 1234,
-      median: 1851,
-      maximum: 2468,
+      minimum: 1,
+      median: 1.5,
+      maximum: 2,
     });
     expect(snapshot.missingSignals).not.toContain("product_field:searchRank");
     expect(snapshot.missingSignals).not.toContain("product_field_partial:searchRank");
