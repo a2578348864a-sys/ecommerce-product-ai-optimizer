@@ -20,7 +20,8 @@ import { SourcingAcquisitionError } from "@/lib/upstream/1688/contracts";
 export const NATIVE_1688_BRIDGE_VERSION = "authenticated-loopback-bridge.v1";
 export const NATIVE_1688_EXTENSION_DRIVER_VERSION = "native-1688-extension-driver.v1";
 
-const BRIDGE_PORT = 53318;
+const BRIDGE_PORT_START = 53318;
+const BRIDGE_PORT_RANGE = 10;
 const BRIDGE_HOST = "127.0.0.1";
 const BRIDGE_SCRIPT = resolve(process.cwd(), "extensions", "qingxuan-1688-helper", "bridge", "server.mjs");
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
@@ -42,15 +43,41 @@ function fail(code: string, status: number, message: string): never {
 export class Native1688BridgeClient {
   private readonly token: string;
   private child: ChildProcess | null = null;
-  private readonly baseUrl = `http://${BRIDGE_HOST}:${BRIDGE_PORT}`;
+  private port: number | null = null;
+  private readonly baseHost = BRIDGE_HOST;
 
   constructor(token?: string) {
     this.token = token ?? randomBytes(32).toString("hex");
   }
 
-  /** 启动 bridge 子进程（幂等：已运行则跳过） */
+  /** 探测候选端口中是否有同 token 的活 bridge（含本实例已解析端口） */
+  private async findActivePort(): Promise<number | null> {
+    const candidates = [...(this.port !== null ? [this.port] : []), ...Array.from({ length: BRIDGE_PORT_RANGE }, (_, i) => BRIDGE_PORT_START + i)];
+    const seen = new Set<number>();
+    for (const port of candidates) {
+      if (seen.has(port)) continue;
+      seen.add(port);
+      try {
+        const response = await fetch(`http://${this.baseHost}:${port}/health`, {
+          headers: { "x-bridge-token": this.token },
+          signal: AbortSignal.timeout(600),
+        });
+        if (response.ok) return port;
+      } catch {
+        // 该端口无监听或非本 bridge
+      }
+    }
+    return null;
+  }
+
+  /** 启动 bridge 子进程（幂等：同 token 桥在任一候选端口运行则复用；否则 spawn 并探测实际端口） */
   async start(env: NodeJS.ProcessEnv = process.env): Promise<void> {
     if (this.child && this.child.exitCode === null) return;
+    const existing = await this.findActivePort();
+    if (existing !== null) {
+      this.port = existing;
+      return;
+    }
     this.child = spawn(process.execPath, [BRIDGE_SCRIPT, "--token", this.token], {
       shell: false,
       windowsHide: true,
@@ -60,21 +87,20 @@ export class Native1688BridgeClient {
     this.child.once("error", () => {
       this.child = null;
     });
-    // 等待 health
-    const deadline = Date.now() + 5_000;
+    this.child.once("exit", () => {
+      this.child = null;
+    });
+    // 等待任一候选端口 health 就绪（bridge 内部端口冲突自动重试）
+    const deadline = Date.now() + 6_000;
     while (Date.now() < deadline) {
-      try {
-        const response = await fetch(`${this.baseUrl}/health`, {
-          headers: { "x-bridge-token": this.token },
-          signal: AbortSignal.timeout(1_000),
-        });
-        if (response.ok) return;
-      } catch {
-        // 未就绪重试
+      const found = await this.findActivePort();
+      if (found !== null) {
+        this.port = found;
+        return;
       }
-      await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+      await new Promise((resolveWait) => setTimeout(resolveWait, 200));
     }
-    fail("extension_bridge_not_available", 503, "1688 扩展桥接服务启动失败。");
+    fail("extension_bridge_not_available", 503, "1688 扩展桥接服务启动失败（端口被占用或进程异常）。");
   }
 
   async stop(): Promise<void> {
@@ -85,9 +111,14 @@ export class Native1688BridgeClient {
   }
 
   private async request(path: string, options: RequestInit = {}): Promise<Response> {
+    if (this.port === null) {
+      const found = await this.findActivePort();
+      if (found === null) fail("extension_bridge_not_available", 503, "1688 扩展桥接服务未就绪。");
+      this.port = found;
+    }
     const headers = new Headers(options.headers ?? {});
     headers.set("x-bridge-token", this.token);
-    return await fetch(`${this.baseUrl}${path}`, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(15_000) });
+    return await fetch(`http://${this.baseHost}:${this.port}${path}`, { ...options, headers, signal: options.signal ?? AbortSignal.timeout(15_000) });
   }
 
   private async readJson(response: Response): Promise<{ ok: boolean; code?: string; [key: string]: unknown }> {
@@ -164,6 +195,25 @@ export class Native1688BridgeClient {
 
 export const NATIVE_1688_BRIDGE_CONFIG = {
   host: BRIDGE_HOST,
-  port: BRIDGE_PORT,
+  portStart: BRIDGE_PORT_START,
+  portRange: BRIDGE_PORT_RANGE,
   version: NATIVE_1688_BRIDGE_VERSION,
 } as const;
+
+/** 进程级共享 bridge 单例：重复获取/调用复用同一子进程（避免端口冲突与多次 spawn） */
+let sharedBridge: Native1688BridgeClient | null = null;
+
+export function getSharedBridge(): Native1688BridgeClient {
+  if (!sharedBridge) {
+    sharedBridge = new Native1688BridgeClient();
+  }
+  return sharedBridge;
+}
+
+/** 测试/关闭：停止共享 bridge 子进程 */
+export async function stopSharedBridge(): Promise<void> {
+  if (sharedBridge) {
+    await sharedBridge.stop();
+    sharedBridge = null;
+  }
+}

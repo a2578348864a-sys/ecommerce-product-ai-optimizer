@@ -35,8 +35,12 @@ describe("manifest 权限最小化（§9/§36）", () => {
     }
   });
 
-  it("permissions 为空数组", () => {
-    expect(readManifest().permissions).toEqual([]);
+  it("permissions 仅允许 storage（端口缓存；§9 最小化）", () => {
+    const permissions = readManifest().permissions ?? [];
+    for (const permission of permissions) {
+      expect(["storage"]).toContain(permission);
+    }
+    expect(permissions).not.toContain("scripting");
   });
 
   it("host_permissions 仅 1688 图搜相关域", () => {

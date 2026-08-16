@@ -21,7 +21,8 @@ import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 
 const HOST = "127.0.0.1";
-const PORT = 53318;
+const BASE_PORT = 53318;
+const PORT_RANGE = 10; // 端口冲突（本机随机出站源端口可能占用）时依次重试
 const JOB_TTL_MS = 10 * 60 * 1000;
 const MAX_COMMAND_BYTES = 6 * 1024 * 1024; // 命令含图片 base64（候选图 ≤4MB 时足够）
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
@@ -93,8 +94,12 @@ function requireClientToken(req, res) {
 }
 
 const server = createServer(async (req, res) => {
+  await handleRequest(req, res);
+});
+
+async function handleRequest(req, res) {
   prune();
-  const url = new URL(req.url ?? "/", `http://${HOST}:${PORT}`);
+  const url = new URL(req.url ?? "/", `http://${HOST}:53318`);
   const path = url.pathname;
 
   if (req.method === "OPTIONS") {
@@ -221,8 +226,33 @@ const server = createServer(async (req, res) => {
   } catch (error) {
     return json(res, 400, { ok: false, code: "bad_request", message: String(error).slice(0, 200) });
   }
-});
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`[v35-bridge] listening on http://${HOST}:${PORT} (token auth enabled)`);
-});
+function tryListen(port) {
+  return new Promise((resolveListen, rejectListen) => {
+    const candidate = createServer((req, res) => {
+      handleRequest(req, res).catch((error) => {
+        json(res, 400, { ok: false, code: "bad_request", message: String(error).slice(0, 200) });
+      });
+    });
+    candidate.once("error", (error) => rejectListen(error));
+    candidate.listen(port, HOST, () => resolveListen(candidate));
+  });
+}
+
+async function main() {
+  for (let offset = 0; offset < PORT_RANGE; offset++) {
+    const port = BASE_PORT + offset;
+    try {
+      const server = await tryListen(port);
+      console.log(`[v35-bridge] listening on http://${HOST}:${port} (token auth enabled)`);
+      return;
+    } catch {
+      // EADDRINUSE：尝试下一个端口
+    }
+  }
+  console.error(`[v35-bridge] no free port in ${BASE_PORT}..${BASE_PORT + PORT_RANGE - 1}`);
+  process.exit(1);
+}
+
+void main();

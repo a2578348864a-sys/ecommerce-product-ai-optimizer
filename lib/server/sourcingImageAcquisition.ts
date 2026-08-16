@@ -26,6 +26,7 @@ import {
   NATIVE_1688_BRIDGE_VERSION,
   NATIVE_1688_EXTENSION_DRIVER_VERSION,
   Native1688BridgeClient,
+  getSharedBridge,
   type BridgeCommandType,
 } from "@/lib/server/native1688BridgeClient";
 
@@ -163,8 +164,8 @@ export async function acquireByImage(input: {
 
   try {
     assertNotAborted(signal);
-    // 2) 桥与扩展状态
-    const bridge = input.bridgeFactory ? input.bridgeFactory() : new Native1688BridgeClient();
+    // 2) 桥与扩展状态（进程级共享单例；测试可注入）
+    const bridge = input.bridgeFactory ? input.bridgeFactory() : getSharedBridge();
     await bridge.start(input.env);
     const status = await bridge.getStatus();
     if (!status.extensionSeen) {

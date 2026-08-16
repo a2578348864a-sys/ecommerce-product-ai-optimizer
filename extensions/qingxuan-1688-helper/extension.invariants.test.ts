@@ -85,8 +85,9 @@ describe("service-worker.js invariant", () => {
     const source = readFileSync(SW_PATH, "utf8");
     expect(source).not.toContain("chrome.debugger");
     expect(source).not.toContain("chrome.cookies");
-    expect(source).toContain("127.0.0.1:53318");
-    // 只允许白名单命令转发（命令校验在 content.js；SW 侧校验无效命令）
+    // 只允许 bridge 常量（127.0.0.1 候选端口）与命令转发
+    expect(source).toContain("127.0.0.1");
+    expect(source).toContain("53318");
     expect(source).toContain("invalid_command");
     expect(source).toContain("heartbeat");
   });

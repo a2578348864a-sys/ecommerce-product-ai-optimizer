@@ -8,11 +8,54 @@
  * §34 敏感数据：日志不含 cookie/token/路径；只记录 jobId/status/时长。
  */
 
-const BRIDGE_BASE = "http://127.0.0.1:53318";
+const BRIDGE_BASE_PORTS = [53318, 53319, 53320, 53321, 53322, 53323, 53324, 53325, 53326, 53327];
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
+let bridgePort = null; // 运行时缓存（SW 重启后经 storage.session 恢复）
+
+/** 探测端口是否为轻选 bridge（health 有响应即可，401 也证明端口被 bridge 占用） */
+async function probePort(port) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) });
+    return response.status === 200 || response.status === 401;
+  } catch {
+    return false;
+  }
+}
+
+/** 解析 bridge 端口：storage.session 缓存 → 候选端口扫描 */
+async function resolveBridgePort() {
+  if (bridgePort && await probePort(bridgePort)) return bridgePort;
+  try {
+    const cached = await chrome.storage.session.get("bridgePort");
+    if (cached && typeof cached.bridgePort === "number" && await probePort(cached.bridgePort)) {
+      bridgePort = cached.bridgePort;
+      return bridgePort;
+    }
+  } catch {
+    // storage 不可用时忽略
+  }
+  for (const port of BRIDGE_BASE_PORTS) {
+    if (await probePort(port)) {
+      bridgePort = port;
+      try {
+        await chrome.storage.session.set({ bridgePort: port });
+      } catch {
+        // 忽略
+      }
+      return port;
+    }
+  }
+  return null;
+}
 
 async function fetchBridge(path, options) {
-  return await fetch(`${BRIDGE_BASE}${path}`, options);
+  const port = await resolveBridgePort();
+  if (!port) {
+    const error = new Error("bridge_not_found");
+    error.code = "bridge_not_found";
+    throw error;
+  }
+  return await fetch(`http://127.0.0.1:${port}${path}`, options);
 }
 
 async function sendTo1688Tab(message) {
