@@ -288,6 +288,7 @@ Authority 链（降序）：
 | NATIVE_IMAGE_SEARCH_AUTO_CLICK = AUXILIARY_ONLY（A.2 中间值） | **SUPERSEDED** | A.3 上传全自动后 → APPROVED（4/4、0 误点、0 人工点击） |
 | ROUTE_C_BROWSER_BRIDGE = PROVEN_ALTERNATIVE（非正式枚举） | **SUPERSEDED** | 正式枚举：ROUTE_C_BROWSER_BRIDGE = APPROVED + ROUTE_C_ROLE = IMAGE_DISCOVERY_SECONDARY |
 | V3.5 早期"三条路线都未证明" | **SUPERSEDED** | Route B/C + 图片链已真实运行验证 |
+| **IMAGE_DISCOVERY_DRIVER = V3.3-CDP-BROWSER（`--remote-debugging` 调试浏览器）** | **SUPERSEDED（2026-08-16 R1 反证）** | 真实生产 smoke 反证：同账号同 IP 下 CDP 调试浏览器 → 1688 **无限滑块**（BLOCKED_BY_RISK_CONTROL，人工多次+刷新均无法通过）；普通 Chrome → 登录/刷新正常。R1 Spike（codex/v3-5-r1-spike，FULL PASS）证明 No-Debugger 窄权限扩展形态全自动图搜可行 → 正式替换为 **NATIVE_1688_EXTENSION_DRIVER**（见 §42 R1 Amendment） |
 | Route A（官方 API） | **DEFERRED**（保持 NOT_TESTED/BLOCKED_BY_ACCESS_REQUIREMENT） | 未来合法 AK 时重新评估 |
 | 其余冻结原则（NARROW_APPROVAL/Seller Claim≠Fact/页面价≠成本/MOQ 语义/Evidence Matrix/Unknown/Question Generation/Supplier Score 禁止/PROFIT=ASSUMPTION_ONLY/旧 Agent 不复活） | **CONFIRMED** | 全部保持 |
 
@@ -301,6 +302,81 @@ ROUTE_C_BROWSER_BRIDGE = APPROVED（ROUTE_C_ROLE = IMAGE_DISCOVERY_SECONDARY；�
 
 ---
 
+## 42. R1 Amendment — No-Debugger Image Driver 正式替换（2026-08-16 授权）
+
+### 42.1 背景（真实反证，非理论偏好）
+
+| 形态 | 真实结果 |
+|---|---|
+| V3.3-CDP 调试浏览器（`--remote-debugging-port`） | **BLOCKED_BY_RISK_CONTROL**：同账号同 IP 下 1688 无限滑块（人工多次+刷新均无法通过） |
+| 普通 Chrome + 轻选窄权限扩展（R1 Spike） | **FULL PASS**：登录正常、图搜全自动、零滑块 |
+
+判定：旧 CDP Image Driver 存在**生产环境反证**，按 §41 Authority 规则合法触发修订。
+
+### 42.2 R1 Spike 证据（branch codex/v3-5-r1-spike @ 2b57ebb）
+
+```
+NORMAL_CHROME = PASS（装扩展 idle 与 active 均无风控；A/B 对照）
+NO_DEBUGGER = TRUE / REMOTE_DEBUGGING_PORT = FALSE
+Candidate 图片自动注入 = PASS（DataTransfer + files 原型 setter + 重试 ≤3）
+Upload Identity Proof = PASS（预览 srcLen vs 本地 base64 长度 ≤1% 容差）
+Search Submit = PASS（composed:true MouseEvent 穿透 closed shadow → 真实 imageId 结果页）
+结果提取 = 60 offerId（data-renderkey；§38 守卫拒绝推荐流）
+1688-cli Detail Cross-check = PASS（title 逐字一致）
+Chrome Full Restart = PASS（完整流程一次跑通）
+Wrong Upload = 0 / Wrong Click = 0 / Wrong Entity = 0 / CAPTCHA_BYPASS = 0 / COOKIE_EXPORT = 0
+```
+
+注意：以上冻结为**当前已验证的 1688 UI behavior**（composed 事件/closed shadow/data-renderkey），不泛化为通用网页自动化能力。
+
+### 42.3 正式架构
+
+```
+ImageAcquisitionDriver
+  ↓ Native1688ExtensionDriver（新正式实现）
+  ↓ Authenticated Loopback Bridge（127.0.0.1；高熵 jobId 凭证；轻选↔bridge 进程 token）
+  ↓ Qingxuan 1688 Narrow Extension（固定能力 allowlist；无 debugger/cookies/all_urls）
+  ↓ Normal Chrome（用户正常登录的当前会话；不读取/复制 Cookie）
+  ↓ 1688 Native Image Search
+```
+
+禁止（正式调用路径 ZERO CDP）：`remote-debugging-port` / `chrome.debugger` / `Debugger.attach` / `Runtime.evaluate` / CDP attach / Playwright/Puppeteer 控制已登录浏览器 / fingerprint spoof / CAPTCHA bypass。
+
+### 42.4 CDP Driver 处理
+
+旧 CDP Image Driver：**保留代码，LEGACY_DISABLED / DIAGNOSTIC_ONLY**（不再作为默认路径）。硬约束：
+
+```
+NO_AUTOMATIC_FALLBACK_TO_CDP = TRUE
+```
+
+Extension 路线失败 → 返回明确错误（EXTENSION_NOT_INSTALLED / EXTENSION_DISCONNECTED / ...）或 Manual Fallback；**绝不静默回退 CDP 再触发无限滑块**。
+
+### 42.5 正式状态目标（FULL PASS 时）
+
+```
+V3_5_IMAGE_DRIVER = NATIVE_1688_EXTENSION
+V3_5_IMAGE_ACQUISITION = APPROVED
+NO_DEBUGGER_IMAGE_DRIVER = APPROVED
+CDP_IMAGE_DRIVER = LEGACY_DISABLED
+```
+
+### 42.6 结果分级（§43-45）
+
+```
+FULL PASS  → 正式收口 V3.5（§53 全部 APPROVED）
+PARTIAL    → IMAGE_DISCOVERY_AUTOMATION = SEMI_AUTOMATED_ONE_USER_CLICK，停止研究
+FAIL       → NO_DEBUGGER_IMAGE_DRIVER = NOT_ADOPTED；Image = Manual / Future Official API；停止浏览器研究
+```
+
+### 42.7 治理
+
+- 正式分支：`codex/v3-5-r1-formal-replacement`（本 Amendment 与其同批合入）。
+- 不公网部署；V3_6_AUTHORIZATION_REQUIRED = TRUE（不变）。
+- R1 Spike 分支保留为证据（不并入 main）。
+
+---
+
 ## 最终状态（本 Contract 冻结）
 
 ```
@@ -309,6 +385,7 @@ ACQUISITION_STRATEGY = HYBRID
 KEYWORD_SEARCH = LOCAL_SESSION_CLI
 IMAGE_DISCOVERY = BROWSER_BRIDGE_NATIVE_UI_AUTOMATED
 IMAGE_DISCOVERY_AUTOMATION = FULLY_AUTOMATED_IN_ACTIVE_FOREGROUND_BROWSER_SESSION
+IMAGE_DISCOVERY_DRIVER = NO_DEBUGGER_EXTENSION（R1 Amendment §42：NATIVE_1688_EXTENSION_DRIVER；CDP = LEGACY_DISABLED）
 DETAIL = LOCAL_SESSION_CLI
 SECONDARY_DETAIL = BROWSER_BRIDGE
 MANUAL_IMPORT = KEEP_AS_FALLBACK
@@ -325,7 +402,7 @@ V3_5_PRE_IMPLEMENTATION_CONTRACT = APPROVED
 V3_5_PRE_IMPLEMENTATION_CONSOLIDATION = DONE
 V3_5_REMOTE_CLOSEOUT = PASS
 
-V3_5_IMPLEMENTATION = NOT_STARTED
+V3_5_IMPLEMENTATION = IN_PROGRESS（R1 Replacement 进行中；完成条件见 §42.5/§53）
 V3_5_IMPLEMENTATION_AUTHORIZATION_REQUIRED = TRUE
 V3_6_AUTHORIZATION_REQUIRED = TRUE
 PUBLIC_DEPLOY = FORBIDDEN

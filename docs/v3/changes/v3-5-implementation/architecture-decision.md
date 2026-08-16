@@ -56,3 +56,22 @@
 - 完整图搜链解锁条件（任一）：风控冷却（数小时~数天）/ 更换网络或 IP / 更换账号后重测；或正式评估 **Option D′（最小专用 Extension，Spike A.3 的 OpenCLI extension 路径）**——Spike 证明"正常 Chrome + 扩展"可绕过该自动化检测，但引入新权限面，需 Contract 正式决策。
 
 **未修改的结论**：A′ 架构（专用持久 profile + 上传/点击/提取驱动）在风控放行环境下仍是正确目标架构；真实 smoke 暴露的局限已如实记录，不虚报 PASS。
+
+## 7. R1 裁决（2026-08-16，正式替换）
+
+**旧裁决（A′，V3.3 CDP 模式）被真实反证 → 正式 SUPERSEDED**（Contract §41/§42）：
+
+```
+IMAGE_DISCOVERY_DRIVER = NO_DEBUGGER_EXTENSION
+ImageAcquisitionDriver → Native1688ExtensionDriver
+  → Authenticated Loopback Bridge（127.0.0.1）
+  → Qingxuan 1688 Narrow Extension（固定能力 allowlist）
+  → Normal Chrome（用户正常登录会话，不读 Cookie）
+  → 1688 Native Image Search
+```
+
+**为什么**（真实 A/B，非理论）：同账号同 IP——CDP 调试浏览器无限滑块（生产反证）；普通 Chrome + 窄权限扩展 FULL PASS（R1 Spike：上传/提交/提取/详情互证/重启全部自动通过，零 debugger、零人工点击）。
+
+**CDP 旧驱动**：保留代码，`LEGACY_DISABLED / DIAGNOSTIC_ONLY`；`NO_AUTOMATIC_FALLBACK_TO_CDP = TRUE`（Extension 失败 → 明确错误或 Manual Fallback，绝不静默回退 CDP）。
+
+**证据**：`docs/v3/changes/v3-5-r1-spike/`（branch codex/v3-5-r1-spike，FULL PASS 记录）；正式实现见 `docs/v3/changes/v3-5-r1-replacement/`。
