@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   FileText,
   History,
@@ -117,7 +118,12 @@ function NavLink({
 
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
-  const search = useSearchParams().toString();
+  // R5：从 URL 读取 from=research（useSearchParams 会触发 CSR bailout；用客户端 location 惰性读取）
+  const [fromResearch, setFromResearch] = useState(false);
+  useEffect(() => {
+    setFromResearch(typeof window !== "undefined" && window.location.search.includes("from=research"));
+  }, [pathname]);
+  const search = fromResearch ? "from=research" : "";
   const [sharedProduct] = useSharedProduct();
   const productLabel = currentProductLabel(sharedProduct.productName);
   const productMeta = sharedProduct.category ? `品类：${sharedProduct.category}` : "商品资料已载入";
