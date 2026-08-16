@@ -11,7 +11,7 @@ export const runtime = "nodejs";
  */
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ candidateId: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
   const auth = requireAuthenticated(request);
   if (!auth.ok) {
@@ -20,9 +20,9 @@ export async function POST(
       { status: auth.status },
     );
   }
-  const { candidateId } = await context.params;
+  const { id } = await context.params;
   try {
-    const result = await createOrGetResearchTask(auth.context, candidateId);
+    const result = await createOrGetResearchTask(auth.context, id);
     return NextResponse.json({ ok: true, data: result }, { status: 200 });
   } catch (error) {
     if (error instanceof StartResearchError) {
