@@ -66,7 +66,8 @@ describe("Product UI polish v2", () => {
     expect(historySource).toContain("历史成果");
     // Phase1：卡片级技术字段已从用户主流程移除
     expect(historySource).not.toContain("内部阶段");
-    expect(detailSource).toContain("商品研究记录");
+    // R5：详情页标题按生命周期（active=商品研究 / historical=研究记录）
+    expect(detailSource).toContain('isActiveResearchView ? "商品研究" : "研究记录"');
     expect(detailSource).toContain("研究结论");
     expect(detailSource).toContain("历史成果");
     // Phase 3：任务详情是研究记录，不再挂载五步推进工作台

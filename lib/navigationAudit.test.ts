@@ -47,12 +47,13 @@ describe("WorkspaceSidebar navigation", () => {
   const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavGroups");
   const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
 
-  it("exposes the four product-level destinations in the primary navigation", () => {
+  it("exposes the six product-level destinations in the primary navigation (R5)", () => {
     const mainLabels = extractItemLabels(mainNavBlock);
     expect(mainLabels).toEqual([
       "工作台",
       "发现商品",
       "待研究商品",
+      "商品研究",
       "研究记录",
       "Listing Studio",
       "Image Studio",
@@ -60,6 +61,7 @@ describe("WorkspaceSidebar navigation", () => {
     expect(mainNavBlock).toMatch(/href:\s*"\/"/);
     expect(mainNavBlock).toMatch(/\/opportunities/);
     expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
+    expect(mainNavBlock).toMatch(/\/research/);
     expect(mainNavBlock).toMatch(/\/tasks/);
     expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
   });
@@ -299,10 +301,14 @@ describe("WorkflowBatchClient advanced Alpha positioning", () => {
 describe("TaskRecordsList operational positioning", () => {
   const tasksSource = readComponentSource("components/TaskRecordsList.tsx");
 
-  it("describes the route as product research records (F6 naming)", () => {
+  it("describes the route as research records (R5: /tasks historical only)", () => {
     expect(tasksSource).toMatch(/研究记录/);
-    expect(tasksSource).toMatch(/按商品查看已保存的研究结论、风险、证据缺口和人工决定/);
+    expect(tasksSource).toMatch(/已经形成历史结果的研究/);
     expect(tasksSource).toMatch(/下一步：/);
+    // active 研究在 /research 页面（商品研究）
+    const researchPageSource = readComponentSource("app/research/page.tsx");
+    expect(researchPageSource).toMatch(/商品研究/);
+    expect(researchPageSource).toMatch(/view="research"/);
   });
 
   it("shows product-facing fields and keeps operational evidence collapsed", () => {

@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/opportunities" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/opportunities",
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string } & Record<string, unknown>) =>
     createElement("a", { href, ...props }, children),

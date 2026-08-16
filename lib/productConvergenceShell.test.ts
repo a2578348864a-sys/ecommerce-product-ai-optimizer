@@ -40,6 +40,7 @@ describe("Product Architecture Convergence shell", () => {
       { label: "工作台", href: "/" },
       { label: "发现商品", href: "/opportunities" },
       { label: "待研究商品", href: "/opportunity-candidates" },
+      { label: "商品研究", href: "/research" },
       { label: "研究记录", href: "/tasks" },
       { label: "Listing Studio", href: "/listing-studio" },
       { label: "Image Studio", href: "/image-studio" },

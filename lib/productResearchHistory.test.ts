@@ -23,11 +23,16 @@ describe("product research history presentation", () => {
     expect(source("components/ResearchProductImage.tsx")).toContain("object-contain");
     // Phase1：卡片级技术字段已从用户主流程移除
     expect(list).not.toContain("内部阶段");
-    expect(detail).toContain("商品研究记录");
+    // R5：详情页按生命周期显示"商品研究"（active）或"研究记录"（historical）
+    expect(detail).toContain('isActiveResearchView ? "商品研究" : "研究记录"');
     expect(detail).toContain("人工决定");
     expect(detail).not.toContain("技术信息与原始数据");
-    expect(listPage).toContain("商品研究记录");
-    expect(detailPage).toContain("商品研究记录");
+    // R5：/tasks 只承担历史（研究记录）；active 在 /research
+    expect(listPage).toContain('view="records"');
+    expect(listPage).toContain("研究记录");
+    expect(source("app/research/page.tsx")).toContain("商品研究");
+    expect(source("app/research/page.tsx")).toContain('view="research"');
+    expect(detailPage).not.toContain("商品研究记录");
   });
 
   it("derives saved artifacts and routes Studio actions to task detail", () => {
