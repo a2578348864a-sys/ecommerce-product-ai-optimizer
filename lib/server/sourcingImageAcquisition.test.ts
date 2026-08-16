@@ -158,6 +158,46 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
+  it("扩展 idle（SW 在但无 1688 页面 tab）→ EXTENSION_DISCONNECTED（no_1688_tab）", async () => {
+    const path = tinyPngFile();
+    try {
+      const fb = fakeBridge({
+        commands: [
+          { type: "getState", respond: () => ({ ok: false, code: "no_1688_tab" }) },
+        ],
+      });
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      }));
+      expect(code).toBe("extension_disconnected");
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("扩展已加载但 content script 不可达 → EXTENSION_DISCONNECTED", async () => {
+    const path = tinyPngFile();
+    try {
+      const fb = fakeBridge({
+        commands: [
+          { type: "getState", respond: () => ({ ok: false, code: "content_script_unreachable" }) },
+        ],
+      });
+      const code = await capture(acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      }));
+      expect(code).toBe("extension_disconnected");
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
   it("submit 失败 → SEARCH_TRIGGER_NOT_CONFIRMED", async () => {
     const path = tinyPngFile();
     try {
