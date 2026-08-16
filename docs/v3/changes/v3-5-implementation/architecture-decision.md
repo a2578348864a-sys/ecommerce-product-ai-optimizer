@@ -45,3 +45,14 @@
 
 - **Option B 保留为 Keyword/Detail 主链**（`LocalSession1688CliDriver`，只读 allowlist search/offer/whoami）——这是 Contract 已冻结的 KEYWORD_SEARCH=LOCAL_SESSION_CLI；但其图搜命令因 fail-open 缺陷永久禁用。
 - **Manual fallback 保留**：CLI/浏览器坏、1688 改版、风控时，用户可人工粘贴/导入供应线索（UI 可见，非隐藏废代码）。
+
+## 6. 真实 smoke 裁决修正（2026-08-16 实测）
+
+**发现**：裸 CDP（`--remote-debugging`）调试浏览器在 1688 图搜页触发**持续风控**——滑块验证必失败（用户人工多次尝试 + 刷新均无法通过；纯净窗口可正常登录，差异仅在调试特征）。
+
+**含义**：
+- 上传注入机制本身**实测可行**（DataTransfer + `HTMLInputElement.files` 原型 setter → 1688 页面上传预览确认，spike A.1/A.3 互证）。
+- 但**当前环境（本机 IP + 账号 + 调试浏览器特征）无法完成图搜链的验证门禁**——`REAL_IMAGE_SMOKE = BLOCKED_BY_RISK_CONTROL`（外部风控，非实现代码问题）。
+- 完整图搜链解锁条件（任一）：风控冷却（数小时~数天）/ 更换网络或 IP / 更换账号后重测；或正式评估 **Option D′（最小专用 Extension，Spike A.3 的 OpenCLI extension 路径）**——Spike 证明"正常 Chrome + 扩展"可绕过该自动化检测，但引入新权限面，需 Contract 正式决策。
+
+**未修改的结论**：A′ 架构（专用持久 profile + 上传/点击/提取驱动）在风控放行环境下仍是正确目标架构；真实 smoke 暴露的局限已如实记录，不虚报 PASS。

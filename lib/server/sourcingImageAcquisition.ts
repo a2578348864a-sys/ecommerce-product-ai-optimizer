@@ -12,6 +12,7 @@
 import "server-only";
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isValidTargetUrl } from "@/lib/server/ssrfGuard";
@@ -59,17 +60,37 @@ async function downloadCandidateImage(imageUrl: string): Promise<{ path: string;
 }
 
 /**
- * 图片找货：候选图片 URL → 1688 原生图搜 → AcquisitionCandidate[]（+ trace）
+ * 图片找货：候选图片 → 1688 原生图搜 → AcquisitionCandidate[]（+ trace）
+ * 图片来源（二选一，§77）：
+ * - imageUrl：已知 Candidate image（服务端 SSRF 守卫 + 类型/大小限制后下载）；
+ * - localImagePath：用户明确选择的本地图片（绝对路径，服务端直接校验大小；不经 URL 下载）。
  * 运行期间浏览器会话为前台窗口（FULLY_AUTOMATED_IN_ACTIVE_FOREGROUND_BROWSER_SESSION）。
  */
 export async function acquireByImage(input: {
-  imageUrl: string;
+  imageUrl?: string;
+  localImagePath?: string;
   capturedAt?: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
 }): Promise<{ candidates: AcquisitionCandidate[]; trace: ImageAcquisitionRunTrace }> {
   const capturedAt = input.capturedAt ?? new Date().toISOString();
-  const { path, base64Length } = await downloadCandidateImage(input.imageUrl);
+  let path: string;
+  let base64Length: number;
+  if (input.localImagePath) {
+    // 本地图片：仅校验存在与大小（用户明确选择；不经网络/守卫）
+    const size = statSync(input.localImagePath).size;
+    if (size < 1 || size > MAX_IMAGE_BYTES) {
+      fail("invalid_image_url", 400, `本地图片大小超出限制（≤30MB）。`);
+    }
+    path = input.localImagePath;
+    base64Length = Math.ceil(size / 3) * 4;
+  } else if (input.imageUrl) {
+    const downloaded = await downloadCandidateImage(input.imageUrl);
+    path = downloaded.path;
+    base64Length = downloaded.base64Length;
+  } else {
+    fail("invalid_image_url", 400, "缺少候选图片（imageUrl 或 localImagePath）。");
+  }
   const tempDir = path.split("candidate-image.bin")[0];
   try {
     const result = await runNativeImageSearch({
@@ -100,8 +121,10 @@ export async function acquireByImage(input: {
     }));
     return { candidates, trace: result.trace };
   } finally {
-    // 清理本次下载的临时图片（有界 temp scope，§77）
-    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    // 清理本次下载的临时图片（有界 temp scope，§77；本地用户图片不删）
+    if (!input.localImagePath && tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 
