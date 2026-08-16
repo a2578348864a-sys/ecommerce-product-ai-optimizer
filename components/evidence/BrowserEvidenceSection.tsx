@@ -377,7 +377,7 @@ export function BrowserEvidenceSection({
 
       {!taskAsin && (
         <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          当前任务未绑定 Amazon 商品链接（productUrl），无法采集。请先在任务中填写 Amazon 商品详情页链接。
+          当前任务缺少 Amazon 商品身份信息（productUrl / ASIN），无法采集。SellerSprite 导入的候选会自动继承商品链接；如仍缺失，请返回候选商品补充 Amazon 商品来源后再开始研究。
         </p>
       )}
 

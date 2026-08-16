@@ -16,6 +16,7 @@ import { isSandboxTaskId, getSandboxTask } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 import { getResearchTaskCandidateId } from "@/lib/productResearchImage";
 import { parseAsinFromDetailUrl } from "@/tools/collectors/amazon/detail-page-extract";
+import { resolveBrowserEvidenceAsinFromResultJson } from "@/lib/server/taskIdentityInheritance";
 import type {
   AmazonDetailPageExtraction,
   AmazonDetailFieldValue,
@@ -310,7 +311,9 @@ export async function readBrowserEvidenceSnapshot(
   };
 }
 
-/** 任务绑定的商品 ASIN（来自 task.productUrl，仅 amazon.com 详情页 URL）；无绑定 → null */
+/** 任务绑定的商品 ASIN（先 task.productUrl，仅 amazon.com 详情页 URL；缺失时回退
+ *  resultJson 权威身份 candidateAnalysisContext.facts：仅 marketplace 明确为 US 系才返回；
+ *  非 US 市场 fail-closed（collect 端固定导航 amazon.com））；无绑定 → null */
 export async function readBrowserEvidenceTaskAsin(
   context: AccessContext,
   taskId: string,
@@ -319,15 +322,19 @@ export async function readBrowserEvidenceTaskAsin(
     if (!isSandboxTaskId(taskId)) return null;
     const task = getSandboxTask(context.demoAccessId, taskId);
     if (!task) return null;
-    return parseAsinFromDetailUrl(task.productUrl ?? "");
+    const fromUrl = parseAsinFromDetailUrl(task.productUrl ?? "");
+    if (fromUrl) return fromUrl;
+    return resolveBrowserEvidenceAsinFromResultJson(task.resultJson ?? "{}");
   }
   if (isSandboxTaskId(taskId)) return null;
   const task = await prisma.viralAnalysisRecord.findFirst({
     where: { id: taskId },
-    select: { id: true, productUrl: true },
+    select: { id: true, productUrl: true, resultJson: true },
   });
   if (!task) return null;
-  return parseAsinFromDetailUrl(task.productUrl ?? "");
+  const fromUrl = parseAsinFromDetailUrl(task.productUrl ?? "");
+  if (fromUrl) return fromUrl;
+  return resolveBrowserEvidenceAsinFromResultJson(task.resultJson ?? "{}");
 }
 
 /** 保存（追加快照；dedupe 幂等；上限 20；candidateId 以任务权威绑定为准） */

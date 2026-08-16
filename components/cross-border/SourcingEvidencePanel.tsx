@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { sourcingCapabilities } from "@/lib/client/sourcingCapabilities";
 import type {
   AcquisitionCandidate,
   HumanConfirmedEntry,
@@ -41,7 +42,7 @@ type PreviewPayload = {
   expiresAt: number;
 };
 
-type ToolStatus = { loggedIn: boolean; toolAvailable: boolean };
+type ToolStatus = { loggedIn: boolean; toolAvailable: boolean; cli?: { loggedIn: boolean; toolAvailable: boolean }; image?: { extensionAvailable: boolean; reasonCode?: string } };
 
 const MATCH_STATE_LABEL: Record<string, string> = {
   exact_match: "与候选高度一致（需人工复核）",
@@ -124,7 +125,9 @@ export function SourcingEvidencePanel({
       setEvidence(data.data.evidence);
       setStorageVersion(data.data.storageVersion);
       setToolStatus(data.data.toolStatus);
-      if (data.data.toolStatus && !data.data.toolStatus.loggedIn) setStatus("need_login");
+      // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
+      const caps = sourcingCapabilities(data.data.toolStatus);
+      if (!caps.cliReady) setStatus("need_login");
     } catch {
       // 初始读取失败保持 idle
     }
@@ -146,6 +149,27 @@ export function SourcingEvidencePanel({
       const { response, data } = await api({ action: method, ...payload });
       if (!response.ok || !data.ok || !data.data) {
         const code = data.error?.code ?? "";
+        if (method === "image") {
+          // F3：图片找货错误按扩展/浏览器语义分流，绝不进入 CLI 登录横幅
+          if (code === "auth_required") {
+            setStatus("error");
+            setErrorMessage("图片找货需要在普通 Chrome 中登录 1688（与 1688-cli 登录无关）。请在 Chrome 完成 1688 登录后重试。");
+            return;
+          }
+          if (code === "extension_not_installed" || code === "extension_disconnected" || code === "extension_bridge_not_available") {
+            setStatus("error");
+            setErrorMessage("图片找货依赖 Qingxuan 1688 Helper 扩展。请在 chrome://extensions 加载扩展（普通 Chrome，无需 1688-cli）后重试。");
+            return;
+          }
+          if (code === "risk_control_required") {
+            setStatus("need_user_verification");
+            setErrorMessage(data.error?.message ?? "");
+            return;
+          }
+          setStatus("error");
+          setErrorMessage(data.error?.message ?? "图片找货失败，请重试。");
+          return;
+        }
         if (code === "auth_required" || code === "acquisition_tool_not_available") {
           setStatus("need_login");
           setErrorMessage(data.error?.message ?? "");
@@ -239,6 +263,8 @@ export function SourcingEvidencePanel({
   };
 
   const accessReady = accessPassword.trim().length > 0;
+  // F3：分能力 readiness（CLI 只 gate 关键词/URL；图片找货独立于 CLI）
+  const caps = sourcingCapabilities(toolStatus);
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="sourcing-evidence-panel">
@@ -262,9 +288,9 @@ export function SourcingEvidencePanel({
         <>
           {status === "need_login" ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-              <p className="text-sm font-semibold text-amber-800">{errorMessage || "1688 会话未登录或已过期。"}</p>
+              <p className="text-sm font-semibold text-amber-800">{errorMessage || "1688-cli 会话未登录或已过期。"}</p>
               <p className="mt-1 text-sm text-amber-700">
-                请先完成 1688 登录（1688-cli 的扫码登录），然后刷新本页面重试。
+                关键词找货与 1688 链接读取需要完成 1688-cli 扫码登录；图片找货不依赖 1688-cli（普通 Chrome + 扩展即可使用）。
               </p>
             </div>
           ) : null}
@@ -297,14 +323,14 @@ export function SourcingEvidencePanel({
                   <input
                     value={keyword}
                     onChange={(event) => setKeyword(event.target.value)}
-                    onKeyDown={(event) => { if (event.key === "Enter" && keyword.trim()) void runSearch("keyword", { keyword: keyword.trim() }); }}
+                    onKeyDown={(event) => { if (event.key === "Enter" && keyword.trim() && caps.cliReady) void runSearch("keyword", { keyword: keyword.trim() }); }}
                     placeholder="例如：不锈钢保温杯"
                     className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
                     data-testid="sourcing-keyword-input"
                   />
                   <button
                     type="button"
-                    disabled={!keyword.trim() || status === "searching"}
+                    disabled={!keyword.trim() || status === "searching" || !caps.cliReady}
                     onClick={() => void runSearch("keyword", { keyword: keyword.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-keyword-submit"
@@ -312,6 +338,9 @@ export function SourcingEvidencePanel({
                     搜索
                   </button>
                 </div>
+                {!caps.cliReady ? (
+                  <p className="mt-1.5 text-xs text-amber-600">需要完成 1688-cli 扫码登录后使用。</p>
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -326,7 +355,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!imageUrl.trim() || status === "searching"}
+                    disabled={!imageUrl.trim() || status === "searching" || !caps.imageReady}
                     onClick={() => void runSearch("image", { imageUrl: imageUrl.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-image-submit"
@@ -334,7 +363,13 @@ export function SourcingEvidencePanel({
                     图搜
                   </button>
                 </div>
-                <p className="mt-1.5 text-xs text-slate-400">1688 图搜会打开本地浏览器窗口（需前台运行）。</p>
+                {!caps.imageReady ? (
+                  <p className="mt-1.5 text-xs text-amber-600">
+                    图片找货依赖普通 Chrome + Qingxuan 1688 Helper 扩展（不依赖 1688-cli）。请在 chrome://extensions 加载扩展后刷新。
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-xs text-slate-400">1688 图搜会打开本地浏览器窗口（需前台运行）。</p>
+                )}
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -349,7 +384,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!offerUrl.trim() || status === "searching"}
+                    disabled={!offerUrl.trim() || status === "searching" || !caps.cliReady}
                     onClick={() => void runSearch("url", { url: offerUrl.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-url-submit"
@@ -357,6 +392,9 @@ export function SourcingEvidencePanel({
                     读取
                   </button>
                 </div>
+                {!caps.cliReady ? (
+                  <p className="mt-1.5 text-xs text-amber-600">需要完成 1688-cli 扫码登录后使用。</p>
+                ) : null}
               </div>
             </div>
           )}

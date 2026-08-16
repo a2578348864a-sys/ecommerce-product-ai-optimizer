@@ -43,6 +43,7 @@ import {
   type AcquisitionRunTrace,
 } from "@/lib/upstream/1688/contracts";
 import { crossValidateCandidateWithDetail, validate1688OfferUrl } from "@/lib/upstream/1688/entityBinding";
+import { getSharedBridge } from "@/lib/server/native1688BridgeClient";
 
 export const runtime = "nodejs";
 
@@ -199,16 +200,42 @@ export async function GET(
     const evidence = await getSourcingEvidence(resolved.context, id);
     const snapshot = await readSourcingEvidenceSnapshot(resolved.context, id);
     const login = await checkCliLogin();
+    // F3：分能力 readiness（顶层字段向后兼容；image 能力独立于 CLI）
+    const imageCapability = await probeImageCapability();
     return jsonResponse({
       ok: true,
       data: {
         evidence,
         storageVersion: toStorageVersion(snapshot),
-        toolStatus: login,
+        toolStatus: {
+          ...login,
+          cli: login,
+          image: imageCapability,
+        },
       },
     });
   } catch (error) {
     return errorResponseFrom(error);
+  }
+}
+
+/** 图片找货能力探测：扩展是否已通过 bridge 心跳（与 1688-cli 登录完全无关） */
+async function probeImageCapability(): Promise<{
+  extensionAvailable: boolean;
+  reasonCode: string;
+}> {
+  try {
+    const bridge = getSharedBridge();
+    await Promise.race([
+      bridge.start(process.env),
+      new Promise((resolve) => setTimeout(resolve, 3_000)),
+    ]);
+    const status = await bridge.getStatus();
+    return status.extensionSeen
+      ? { extensionAvailable: true, reasonCode: "extension_seen" }
+      : { extensionAvailable: false, reasonCode: "extension_not_seen" };
+  } catch {
+    return { extensionAvailable: false, reasonCode: "bridge_unavailable" };
   }
 }
 

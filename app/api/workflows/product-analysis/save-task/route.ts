@@ -70,6 +70,7 @@ import {
   type ProductResearchVerificationV1,
 } from "@/lib/productResearchRecord";
 import { comparableCandidateProductName } from "@/lib/comparableProductName";
+import { resolveTaskProductUrlFromCandidate } from "@/lib/server/taskIdentityInheritance";
 
 export const runtime = "nodejs";
 
@@ -1096,7 +1097,16 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const task = await tx.viralAnalysisRecord.create({ data: ownerTaskData });
+        const task = await tx.viralAnalysisRecord.create({
+          data: {
+            ...ownerTaskData,
+            // F4：Candidate → Task identity 继承（Authority：已保存合法 URL > ASIN+明确 marketplace 派生；fail-closed）
+            productUrl: resolveTaskProductUrlFromCandidate({
+              link: currentCandidate.link,
+              sourceMetaJson: currentCandidate.sourceMetaJson,
+            }),
+          },
+        });
         const linked = await tx.opportunityCandidate.updateMany({
           where: {
             id: workflowInput.candidateId!,

@@ -164,7 +164,7 @@ async function collectAction(context: AccessContext, taskId: string): Promise<Ne
         ok: false,
         error: {
           code: "task_asin_unbound",
-          message: "当前任务未绑定 Amazon 商品链接（productUrl），无法确定采集目标 ASIN。请先在任务中填写 Amazon 商品详情页链接。",
+          message: "当前任务缺少 Amazon 商品身份信息（productUrl / ASIN），无法确定采集目标。请返回候选商品补充 Amazon 商品来源（SellerSprite 导入应自动继承），再重新开始研究。",
         },
       }, 400);
     }
@@ -221,7 +221,7 @@ async function saveAction(
     if (!taskAsin) {
       return jsonResponse({
         ok: false,
-        error: { code: "task_asin_unbound", message: "任务未绑定 Amazon 商品链接，无法保存浏览器证据。" },
+        error: { code: "task_asin_unbound", message: "任务缺少 Amazon 商品身份信息（productUrl / ASIN），无法保存浏览器证据。请返回候选商品补充 Amazon 商品来源后重新开始研究。" },
       }, 400);
     }
     const snapshot = buildConfirmedSnapshot({

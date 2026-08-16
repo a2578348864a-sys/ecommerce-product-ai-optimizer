@@ -248,14 +248,22 @@ describe("POST action=save（Human Confirm 全链路）", () => {
 });
 
 describe("GET（状态读取）", () => {
-  it("返回 evidence（null）+ storageVersion + 登录状态", async () => {
+  it("返回 evidence（null）+ storageVersion + 分能力登录状态（F3：cli/image 独立）", async () => {
     const response = await GET(new NextRequest("http://localhost/api/tasks/x/sourcing"), context());
     expect(response.status).toBe(200);
     const body = await json(response);
-    const data = body.data as { evidence: unknown; storageVersion: { resultJsonHash: string }; toolStatus: { loggedIn: boolean } };
+    const data = body.data as {
+      evidence: unknown;
+      storageVersion: { resultJsonHash: string };
+      toolStatus: { loggedIn: boolean; cli: { loggedIn: boolean }; image: { extensionAvailable: boolean; reasonCode: string } };
+    };
     expect(data.evidence).toBeNull();
     expect(data.storageVersion.resultJsonHash).toMatch(/^[a-f0-9]{64}$/);
     expect(data.toolStatus.loggedIn).toBe(true);
+    // F3：CLI 能力独立于 image 能力（顶层字段向后兼容）
+    expect(data.toolStatus.cli.loggedIn).toBe(true);
+    expect(typeof data.toolStatus.image.extensionAvailable).toBe("boolean");
+    expect(typeof data.toolStatus.image.reasonCode).toBe("string");
   });
 
   it("Visitor B 无法读取 Visitor A 的沙箱任务（sandbox 隔离）", async () => {

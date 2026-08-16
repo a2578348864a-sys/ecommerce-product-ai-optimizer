@@ -39,6 +39,7 @@ import {
   type SellerSpriteImportSummary,
 } from "@/lib/server/sellerSpriteImportContract";
 import { assertGenericTaskResultAllowed } from "@/lib/server/taskResultNamespacePolicy";
+import { resolveTaskProductUrlFromCandidate } from "@/lib/server/taskIdentityInheritance";
 import {
   mutateDemoSandboxStore,
   readDemoSandboxStore,
@@ -259,7 +260,14 @@ function linkCandidateAndCreateTask(
   }
 
   const now = new Date().toISOString();
-  const task = buildSandboxTask(demoAccessId, input, now);
+  const task = buildSandboxTask(demoAccessId, {
+    ...input,
+    // F4：Candidate → Task identity 继承（与 Owner 路径同一 Authority；fail-closed）
+    productUrl: input.productUrl ?? resolveTaskProductUrlFromCandidate({
+      link: candidate.link,
+      sourceMetaJson: candidate.sourceMetaJson,
+    }),
+  }, now);
   const linkedCandidate: SandboxCandidate = {
     ...candidate,
     convertedTaskId: task.id,
