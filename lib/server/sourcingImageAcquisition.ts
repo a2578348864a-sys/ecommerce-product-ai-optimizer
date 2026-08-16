@@ -202,11 +202,11 @@ export async function acquireByImage(input: {
           fail("auth_required", 401, "1688 未登录或会话过期，请在普通 Chrome 中正常登录 1688 后重试。");
         }
         if (state.code === "no_1688_tab" || state.code === "content_script_unreachable") {
-          mapBridgeFailure("extension_disconnected", await bridge.getStatus());
+          mapBridgeFailure(String(state.code ?? "unknown"), await bridge.getStatus());
         }
         // client_timeout 等：SW 可能正在处理导航/恢复中 → 重试一轮，仍失败则 disconnected
         if (pageAttempt >= 1) {
-          mapBridgeFailure("extension_disconnected", await bridge.getStatus());
+          mapBridgeFailure(String(state.code ?? "timeout"), await bridge.getStatus());
         }
         continue;
       }
