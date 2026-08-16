@@ -60,7 +60,7 @@ export function useCreativeHandoffApi(taskId: string) {
         return resultRef.current ?? { kind: "error", error: { status: 0, code: "loading", message: "加载中" } };
       }
       if (previewRes.status === 404 || detailRes.status === 404) {
-        const out: HandoffLoadResult = { kind: "error", error: { status: 404, code: "task_not_found", message: "该任务不存在或你无权访问。" } };
+        const out: HandoffLoadResult = { kind: "error", error: { status: 404, code: "task_not_found", message: "该研究不存在，或当前账号无法访问。" } };
         commitResult(out);
         setState("error");
         return out;

@@ -226,14 +226,15 @@ export async function GET(
     const mode = url.searchParams.get("mode");
     if (mode === "preview") {
       const { preview, gate } = await generateCreativeHandoffPreview(id, ctx);
-      // Micro-Gate: 跨身份/不存在资源统一 404 — 不泄露 legacy_not_supported 等业务状态
-      if (!gate.allowed && gate.reason === "legacy_not_supported") {
+      // R4/R6：跨身份/不存在资源统一 404（不泄露 legacy_not_supported 等业务状态）；
+      // 同一 actor 可访问但业务不可用 → 200 + gateReason（UI 显示准确状态，不伪装"不存在"）
+      if (!gate.allowed && gate.taskAccessible === false) {
         return errorResponse(404, "task_not_found", "任务不存在。");
       }
       return NextResponse.json({ preview, gateReason: gate.reason });
     }
     const { detail, gate } = await getCreativeHandoffDetail(id, ctx);
-    if (!gate.allowed && gate.reason === "legacy_not_supported") {
+    if (!gate.allowed && gate.taskAccessible === false) {
       return errorResponse(404, "task_not_found", "任务不存在。");
     }
     return NextResponse.json({ detail, gateReason: gate.reason });

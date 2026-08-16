@@ -160,6 +160,9 @@ export type CreativeHandoffDetail = {
 export type CreativeHandoffGateResult = {
   allowed: boolean;
   reason: CreativeHandoffEligibility;
+  /** R4/R6：任务存在且当前 actor 可访问（true）→ 业务状态可如实返回；
+   *  任务不存在或跨 actor（false）→ 上层必须 404（防枚举，不泄露存在性） */
+  taskAccessible: boolean;
   candidate?: ProductCreativeHandoffCandidate;
   currentHandoff?: ProductCreativeHandoffV1 | null;
   storageVersion?: { resultJsonHash: string; updatedAt: string };
@@ -282,16 +285,17 @@ export async function checkCreativeHandoffGate(
   if (isSandbox) {
     const ctxAny = context as unknown as Record<string, unknown>;
     const demoAccessId = ctxAny.demoAccessId as string;
-    if (!demoAccessId) return { allowed: false, reason: "legacy_not_supported" };
+    // R4/R6：无主体或任务不存在 → taskAccessible=false（上层 404，防枚举）
+    if (!demoAccessId) return { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
     const sandbox = getSandboxTask(demoAccessId, taskId);
-    if (!sandbox) return { allowed: false, reason: "legacy_not_supported" };
+    if (!sandbox) return { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
     const sb = sandbox as unknown as Record<string, unknown>;
     task = sb;
     resultJsonStr = sb.resultJson as string;
     updatedAt = sb.updatedAt as string;
   } else {
     const db = await prisma.viralAnalysisRecord.findUnique({ where: { id: taskId } });
-    if (!db) return { allowed: false, reason: "legacy_not_supported" };
+    if (!db) return { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
     task = db as unknown as Record<string, unknown>;
     resultJsonStr = (db as Record<string, unknown>).resultJson as string;
     updatedAt = (db as Record<string, unknown>).updatedAt as unknown as string;
@@ -299,39 +303,42 @@ export async function checkCreativeHandoffGate(
 
   const ctxAny = context as unknown as Record<string, unknown>;
 
-  // Ownership check
+  // Ownership check——跨 actor 同样 taskAccessible=false（上层 404，不泄露存在性）
   const taskUserId = task.userId as string | undefined;
   const taskDemoAccessId = task.demoAccessId as string | undefined;
   if (context.mode === "owner" && taskUserId !== (ctxAny.ownerRef as string)) {
-    return { allowed: false, reason: "legacy_not_supported" };
+    return { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
   }
   if (context.mode === "demo" && taskDemoAccessId !== (ctxAny.demoAccessId as string)) {
-    return { allowed: false, reason: "legacy_not_supported" };
+    return { allowed: false, reason: "legacy_not_supported", taskAccessible: false };
   }
+  // 至此：任务存在且当前 actor 可访问（taskAccessible=true）——后续业务状态可如实返回
+  const accessible = true;
 
   const resultJson = parseResultJson(resultJsonStr || "");
-  if (!resultJson) return { allowed: false, reason: "legacy_not_supported" };
+  if (!resultJson) return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
 
   if (!hasProductResearchRecordNamespace(resultJson)) {
-    return { allowed: false, reason: "legacy_not_supported" };
+    // R4/R6：同一 actor 的旧版任务 → 业务状态 legacy_not_supported（不伪装"不存在"）
+    return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
   }
 
   const record = getProductResearchRecord(resultJson);
   const verification = getProductResearchVerification(resultJson);
-  if (!record || !verification) return { allowed: false, reason: "legacy_not_supported" };
+  if (!record || !verification) return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible };
 
   if (!verifyProductResearchHash(record, verification)) {
-    return { allowed: false, reason: "research_hash_invalid" };
+    return { allowed: false, reason: "research_hash_invalid", taskAccessible: accessible };
   }
 
   if (record.latestDecision?.status !== "creative_ready") {
-    return { allowed: false, reason: "decision_not_creative_ready" };
+    return { allowed: false, reason: "decision_not_creative_ready", taskAccessible: accessible };
   }
 
   const taskRec = task as Record<string, unknown>;
   const researchMode = taskRec.researchMode as string | undefined;
   if (researchMode && researchMode !== "market_research_only") {
-    return { allowed: false, reason: "research_mode_invalid" };
+    return { allowed: false, reason: "research_mode_invalid", taskAccessible: accessible };
   }
 
   const recAny = record as unknown as Record<string, unknown>;
@@ -486,6 +493,7 @@ export async function checkCreativeHandoffGate(
     return {
       allowed: false,
       reason: "no_confirmed_facts",
+      taskAccessible: accessible,
       storageVersion: {
         resultJsonHash: fullHash(resultJsonStr || ""),
         updatedAt: updatedAt || new Date().toISOString(),
@@ -525,12 +533,12 @@ export async function checkCreativeHandoffGate(
 
   if (!candidate && projectionBlockingCodes.length === 0) {
     // 无 candidateAnalysisContext 或投影失败 → 按 legacy_not_supported 处理（fail-closed）
-    return { allowed: false, reason: "legacy_not_supported", storageVersion: undefined, handoffContractInvalid: false };
+    return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible, storageVersion: undefined, handoffContractInvalid: false };
   }
 
   // blocking issue 门禁
   if (!candidate || projectionBlockingCodes.length > 0) {
-    return { allowed: false, reason: "blocking_issue_present", storageVersion: undefined };
+    return { allowed: false, reason: "blocking_issue_present", taskAccessible: accessible, storageVersion: undefined };
   }
 
   const currentHandoffRaw = resultJson.creativeHandoff;
@@ -564,7 +572,7 @@ export async function checkCreativeHandoffGate(
   };
 
   if (handoffContractInvalid) {
-    return { allowed: false, reason: "legacy_not_supported", candidate: undefined, currentHandoff: null, storageVersion, handoffContractInvalid: true, requestLedger, ledgerInvalid };
+    return { allowed: false, reason: "legacy_not_supported", taskAccessible: accessible, candidate: undefined, currentHandoff: null, storageVersion, handoffContractInvalid: true, requestLedger, ledgerInvalid };
   }
 
   // V2 Final Integration: 生产视觉参考候选（candidateAnalysisContext.productImage → 安全候选）
@@ -587,7 +595,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief };
 }
 
 // ─── Preview ──────────────────────────────────────────────

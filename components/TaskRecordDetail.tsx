@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1153,6 +1153,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
       sourcing: sourcing > 0 ? "已有" : "可选",
     };
   }, [record]);
+  // R4/R6：旧版任务（无新版创作上下文）→ Studio CTA 不伪装可用
+  const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [updatingDecision, setUpdatingDecision] = useState(false);
@@ -1664,18 +1666,26 @@ export function TaskRecordDetail({ id }: { id: string }) {
                          <p className="mt-1 text-xs font-semibold text-cyan-800">创作资料：{creativeMaterialStatus?.label ?? "需要重新确认"}</p>
                        </div>
                        <div className="flex flex-wrap gap-2">
-                         <StudioNavigationLink
-                           href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
-                           label="在 Listing Studio 中使用"
-                           pendingLabel="正在打开 Listing Studio…"
-                           className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
-                         />
-                         <StudioNavigationLink
-                           href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
-                           label="在 Image Studio 中使用"
-                           pendingLabel="正在打开 Image Studio…"
-                           className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
-                         />
+                         {studioLegacyUnsupported ? (
+                           <p className="text-xs leading-5 text-amber-700" data-testid="studio-legacy-unsupported-note">
+                             该历史研究记录缺少新版创作资料，需要重新确认研究资料后才能用于创作。
+                           </p>
+                         ) : (
+                           <>
+                             <StudioNavigationLink
+                               href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
+                               label="在 Listing Studio 中使用"
+                               pendingLabel="正在打开 Listing Studio…"
+                               className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
+                             />
+                             <StudioNavigationLink
+                               href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
+                               label="在 Image Studio 中使用"
+                               pendingLabel="正在打开 Image Studio…"
+                               className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
+                             />
+                           </>
+                         )}
                        </div>
                      </div>
                      <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>
