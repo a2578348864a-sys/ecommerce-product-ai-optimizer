@@ -146,7 +146,9 @@ function candidateFromDetail(detail: Awaited<ReturnType<typeof getOfferDetailByI
   };
 }
 
-/** save 前详情补全：对选中候选逐个拉详情 + Entity Binding 交叉验证（Wrong Entity = 0） */
+/** save 前详情补全（增强，非强制）：对选中候选逐个拉详情 + Entity Binding 交叉验证（Wrong Entity = 0）。
+ *  详情拉取失败（风控/网络/超时）→ 降级保存服务端 search 候选并加可追溯标记（§69 revalidate 对象是 preview 候选，
+ *  enrich 不阻断落盘；UI 显示"页面未显示"与标记，用户可后续查看详情）。 */
 async function enrichCandidates(
   candidates: AcquisitionCandidate[],
   selectedOfferIds: string[],
@@ -156,20 +158,31 @@ async function enrichCandidates(
   for (const offerId of selectedOfferIds.slice(0, MAX_DETAIL_ENRICH)) {
     const candidate = byOfferId.get(offerId);
     if (!candidate) continue;
-    const { detail } = await getOfferDetailById({ offerId });
-    const binding = crossValidateCandidateWithDetail(candidate, detail); // offerId 不一致即抛
-    if (!binding.ok) continue;
-    enriched.push({
-      ...candidate,
-      displayedPrice: detail.displayedPrice ?? candidate.displayedPrice,
-      priceRange: detail.priceRange ?? candidate.priceRange,
-      priceTiers: detail.priceTiers.length > 0 ? detail.priceTiers : candidate.priceTiers,
-      displayedMoq: detail.displayedMoq ?? candidate.displayedMoq,
-      skuSpecs: detail.skuSpecs.length > 0 ? detail.skuSpecs : candidate.skuSpecs,
-      sellerClaims: detail.sellerClaims.length > 0 ? detail.sellerClaims : candidate.sellerClaims,
-      platformMetadata: [...candidate.platformMetadata, ...detail.platformMetadata].slice(0, 40),
-      supplierDisplayName: detail.supplierDisplayName || candidate.supplierDisplayName,
-    });
+    try {
+      const { detail } = await getOfferDetailById({ offerId });
+      const binding = crossValidateCandidateWithDetail(candidate, detail); // offerId 不一致即抛
+      if (!binding.ok) continue;
+      enriched.push({
+        ...candidate,
+        displayedPrice: detail.displayedPrice ?? candidate.displayedPrice,
+        priceRange: detail.priceRange ?? candidate.priceRange,
+        priceTiers: detail.priceTiers.length > 0 ? detail.priceTiers : candidate.priceTiers,
+        displayedMoq: detail.displayedMoq ?? candidate.displayedMoq,
+        skuSpecs: detail.skuSpecs.length > 0 ? detail.skuSpecs : candidate.skuSpecs,
+        sellerClaims: detail.sellerClaims.length > 0 ? detail.sellerClaims : candidate.sellerClaims,
+        platformMetadata: [...candidate.platformMetadata, ...detail.platformMetadata].slice(0, 40),
+        supplierDisplayName: detail.supplierDisplayName || candidate.supplierDisplayName,
+      });
+    } catch {
+      // 降级：保留服务端 search 候选（同实体绑定已由结构层保证），标记详情未补全
+      enriched.push({
+        ...candidate,
+        platformMetadata: [
+          ...candidate.platformMetadata,
+          { name: "detailEnrichmentFailed", value: "true", evidenceClass: "platform_metadata" as const },
+        ].slice(0, 40),
+      });
+    }
   }
   return enriched;
 }
