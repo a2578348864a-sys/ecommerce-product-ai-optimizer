@@ -71,8 +71,8 @@ function readBody(req, limitBytes) {
     req.on("data", (chunk) => {
       total += chunk.length;
       if (total > limitBytes) {
+        // 不 destroy 连接：标记超限，继续消费流（避免客户端 ECONNRESET），最终返回 400
         rejectRead(new Error("payload_too_large"));
-        req.destroy();
         return;
       }
       chunks.push(chunk);

@@ -133,6 +133,8 @@ export async function acquireByImage(input: {
   capturedAt?: string;
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
+  /** 测试注入：自定义桥客户端（默认 Native1688BridgeClient） */
+  bridgeFactory?: () => Pick<Native1688BridgeClient, "start" | "getStatus" | "registerJob" | "enqueue" | "waitResult">;
 }): Promise<{ candidates: AcquisitionCandidate[]; trace: ImageAcquisitionRunTrace }> {
   const capturedAt = input.capturedAt ?? new Date().toISOString();
   const startedAt = Date.now();
@@ -162,7 +164,7 @@ export async function acquireByImage(input: {
   try {
     assertNotAborted(signal);
     // 2) 桥与扩展状态
-    const bridge = new Native1688BridgeClient();
+    const bridge = input.bridgeFactory ? input.bridgeFactory() : new Native1688BridgeClient();
     await bridge.start(input.env);
     const status = await bridge.getStatus();
     if (!status.extensionSeen) {
