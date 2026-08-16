@@ -35,10 +35,10 @@ describe("manifest 权限最小化（§9/§36）", () => {
     }
   });
 
-  it("permissions 仅允许 storage（端口缓存；§9 最小化）", () => {
+  it("permissions 仅允许 storage/alarms（端口缓存 + SW 自唤醒；§9 最小化）", () => {
     const permissions = readManifest().permissions ?? [];
     for (const permission of permissions) {
-      expect(["storage"]).toContain(permission);
+      expect(["storage", "alarms"]).toContain(permission);
     }
     expect(permissions).not.toContain("scripting");
   });
