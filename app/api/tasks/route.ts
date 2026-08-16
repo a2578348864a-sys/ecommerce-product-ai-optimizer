@@ -233,6 +233,30 @@ function isDatabaseError(error: unknown) {
   );
 }
 
+/**
+ * OA1（Option B）：研究记录进度分组 → Prisma where。
+ * - active：无 researchRecord（研究尚未保存）或 decisionStatus ∈ {pending, continue}
+ * - need_info：decisionStatus = need_info
+ * - completed：有 researchRecord 且 decisionStatus = continue（研究已保存并已决定）
+ * - abandoned：decisionStatus = rejected
+ */
+function buildResearchScopeWhere(scope: string): Prisma.ViralAnalysisRecordWhereInput | null {
+  if (scope === "active") {
+    return {
+      OR: [
+        { resultJson: { not: { contains: '"researchRecord"' } } },
+        { decisionStatus: { in: ["pending", "continue"] } },
+      ],
+    };
+  }
+  if (scope === "need_info") return { decisionStatus: "need_info" };
+  if (scope === "completed") {
+    return { decisionStatus: "continue", resultJson: { contains: '"researchRecord"' } };
+  }
+  if (scope === "abandoned") return { decisionStatus: "rejected" };
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const authError = checkAccessPassword(request);
   if (authError) return NextResponse.json(authError.body, { status: authError.status });
@@ -243,6 +267,8 @@ export async function GET(request: NextRequest) {
   const limit = parseLimit(request.nextUrl.searchParams.get("limit"));
   const offset = parseOffset(request.nextUrl.searchParams.get("offset"));
   const decisionStatusParam = asString(request.nextUrl.searchParams.get("decisionStatus"));
+  // OA1（Option B）：研究记录内部进度分组 scope=active|need_info|completed|abandoned
+  const scopeParam = asString(request.nextUrl.searchParams.get("scope"));
 
   // 兼容 agentType 参数：映射到 type（两者在本 schema 中等价）
   if (!typeParam && agentTypeParam && allowedTypes.has(agentTypeParam)) {
@@ -256,9 +282,13 @@ export async function GET(request: NextRequest) {
     ...(isDecisionStatus(decisionStatusParam) ? { decisionStatus: decisionStatusParam } : {}),
     ...(searchWhere.length ? { OR: searchWhere } : {}),
   };
+  // scope 与 decisionStatus 二选一（scope 优先）；scope 不改变分页返回结构
+  const scopeWhere = buildResearchScopeWhere(scopeParam);
+  if (scopeWhere) Object.assign(where, scopeWhere);
 
   const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "";
   const effectiveDecisionStatus = isDecisionStatus(decisionStatusParam) ? decisionStatusParam : "";
+  const effectiveScope = ["active", "need_info", "completed", "abandoned"].includes(scopeParam) ? scopeParam : "";
 
   // Access-Control-Fix.1: Resolve access context before any Prisma query.
   // Demo users only see their own sandbox tasks — never Owner tasks.
@@ -266,7 +296,23 @@ export async function GET(request: NextRequest) {
 
   if (ctx && ctx.mode === "demo") {
     try {
-      const sandboxTasks = listSandboxTasks(ctx.demoAccessId);
+      let sandboxTasks = listSandboxTasks(ctx.demoAccessId);
+      // scope（进行中/待补/已完成/已放弃）——sandbox 用 JS 侧同语义过滤
+      if (effectiveScope) {
+        sandboxTasks = sandboxTasks.filter((task) => {
+          const parsed = safeParseJson(task.resultJson);
+          const hasResearchRecord = parsed !== null && (
+            Object.prototype.hasOwnProperty.call(parsed, "researchRecord")
+            || Object.prototype.hasOwnProperty.call(parsed, "researchVerification")
+          );
+          const status = normalizeDecisionStatus(task.decisionStatus);
+          if (effectiveScope === "active") return !hasResearchRecord || status === "pending" || status === "continue";
+          if (effectiveScope === "need_info") return status === "need_info";
+          if (effectiveScope === "completed") return hasResearchRecord && status === "continue";
+          if (effectiveScope === "abandoned") return status === "rejected";
+          return true;
+        });
+      }
       const sandboxCandidates = listSandboxCandidates(ctx.demoAccessId);
       const sandboxItems = sandboxTasks.map((task) => {
         const rawResult = safeParseJson(task.resultJson);

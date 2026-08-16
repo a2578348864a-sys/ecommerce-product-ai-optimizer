@@ -307,13 +307,14 @@ function getPriorityScore(item: TaskCenterItem, highlightedTaskId: string, hasAc
   return score;
 }
 
-function updateBrowserQuery(type: string, q: string, decisionStatus: string, agentStatus: string, hasListingPack: string) {
+function updateBrowserQuery(type: string, q: string, decisionStatus: string, agentStatus: string, hasListingPack: string, scope = "") {
   const params = new URLSearchParams();
   if (type && type !== defaultType) params.set("type", type);
   if (q) params.set("q", q);
   if (decisionStatus && decisionStatus !== defaultDecisionStatus) params.set("decisionStatus", decisionStatus);
   if (agentStatus && agentStatus !== defaultAgentStatus) params.set("agentStatus", agentStatus);
   if (hasListingPack === "1") params.set(LISTING_PACK_FILTER_PARAM, "1");
+  if (scope) params.set("scope", scope);
   const query = params.toString();
   window.history.pushState(null, "", query ? `/tasks?${query}` : "/tasks");
 }
@@ -342,6 +343,22 @@ export function TaskRecordsList() {
   const [type, setType] = useState(defaultType);
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
+  // OA1（Option B）：研究记录内部进度分组（进行中/待补信息/已完成/已放弃）
+  const [scope, setScope] = useState<"" | "active" | "need_info" | "completed" | "abandoned">("active");
+
+  function onScopeChange(nextScope: "" | "active" | "need_info" | "completed" | "abandoned") {
+    setScope(nextScope);
+    void loadTasks({
+      nextType: type,
+      nextDecisionStatus: decisionStatus,
+      nextAgentStatus: agentStatus,
+      nextScope,
+      q: activeQuery,
+      offset: 0,
+      mode: "replace",
+      syncUrl: true,
+    });
+  }
   const [hasListingPackFilter, setHasListingPackFilter] = useState(false);
   const [queryInput, setQueryInput] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
@@ -362,6 +379,7 @@ export function TaskRecordsList() {
     nextType,
     nextDecisionStatus,
     nextAgentStatus,
+    nextScope,
     q,
     offset,
     mode,
@@ -370,6 +388,7 @@ export function TaskRecordsList() {
     nextType: string;
     nextDecisionStatus: string;
     nextAgentStatus: "" | AgentStatusKey;
+    nextScope: "" | "active" | "need_info" | "completed" | "abandoned";
     q: string;
     offset: number;
     mode: LoadMode;
@@ -411,6 +430,7 @@ export function TaskRecordsList() {
       });
       if (q) params.set("q", q);
       if (nextDecisionStatus) params.set("decisionStatus", nextDecisionStatus);
+      if (nextScope) params.set("scope", nextScope);
 
       const response = await fetch(`/api/tasks?${params.toString()}`, {
         cache: "no-store",
@@ -440,7 +460,7 @@ export function TaskRecordsList() {
       setAgentStatus(nextAgentStatus);
       setActiveQuery(q);
       if (mode === "replace") setOpenId("");
-      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus, nextAgentStatus, hasListingPackFilter ? "1" : "");
+      if (syncUrl) updateBrowserQuery(nextType, q, nextDecisionStatus, nextAgentStatus, hasListingPackFilter ? "1" : "", nextScope);
     } catch {
       setError("任务记录暂时无法读取，请稍后刷新。");
     } finally {
@@ -457,6 +477,7 @@ export function TaskRecordsList() {
     const initialHighlight = (params.get("highlight") || params.get("recent") || "").trim();
     const initialQuery = (params.get("q") || "").trim();
     const initialHasListingPack = params.get(LISTING_PACK_FILTER_PARAM) === "1";
+    const initialScope = params.get("scope") || "";
     // 确保 initialType 在合法值范围内，否则回退到 defaultType
     const validTypes = taskTypes.map((t) => t.value);
     const safeType = validTypes.includes(initialType) ? initialType : defaultType;
@@ -468,9 +489,16 @@ export function TaskRecordsList() {
     const safeAgentStatus = validAgentStatuses.includes(initialAgentStatus as AgentStatusKey)
       ? initialAgentStatus as "" | AgentStatusKey
       : defaultAgentStatus;
+    // OA1：默认"进行中"；URL scope 显式指定时遵循
+    const safeScope = (["active", "need_info", "completed", "abandoned"].includes(initialScope)
+      ? initialScope
+      : initialDecisionStatus
+        ? ""
+        : "active") as "" | "active" | "need_info" | "completed" | "abandoned";
     setType(safeType);
     setDecisionStatus(safeDecisionStatus);
     setAgentStatus(safeAgentStatus);
+    setScope(safeScope);
     setHasListingPackFilter(initialHasListingPack);
     setHighlightedTaskId(initialHighlight);
     setQueryInput(initialQuery);
@@ -479,6 +507,7 @@ export function TaskRecordsList() {
       nextType: safeType,
       nextDecisionStatus: safeDecisionStatus,
       nextAgentStatus: safeAgentStatus,
+      nextScope: safeScope,
       q: initialQuery,
       offset: 0,
       mode: "replace",
@@ -493,6 +522,7 @@ export function TaskRecordsList() {
       nextType: type,
       nextDecisionStatus: decisionStatus,
       nextAgentStatus: agentStatus,
+      nextScope: scope,
       q,
       offset: 0,
       mode: "replace",
@@ -506,6 +536,7 @@ export function TaskRecordsList() {
       nextType,
       nextDecisionStatus: decisionStatus,
       nextAgentStatus: agentStatus,
+      nextScope: scope,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -519,6 +550,7 @@ export function TaskRecordsList() {
       nextType: type,
       nextDecisionStatus,
       nextAgentStatus: agentStatus,
+      nextScope: scope,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -539,6 +571,7 @@ export function TaskRecordsList() {
       nextType: defaultType,
       nextDecisionStatus: defaultDecisionStatus,
       nextAgentStatus: defaultAgentStatus,
+      nextScope: scope,
       q: "",
       offset: 0,
       mode: "replace",
@@ -559,6 +592,7 @@ export function TaskRecordsList() {
       nextType: type,
       nextDecisionStatus: decisionStatus,
       nextAgentStatus: agentStatus,
+      nextScope: scope,
       q: activeQuery,
       offset: 0,
       mode: "replace",
@@ -572,6 +606,7 @@ export function TaskRecordsList() {
       nextType: page.type,
       nextDecisionStatus: page.decisionStatus || decisionStatus,
       nextAgentStatus: agentStatus,
+      nextScope: scope,
       q: page.q,
       offset: page.nextOffset,
       mode: "append",
@@ -704,7 +739,9 @@ export function TaskRecordsList() {
     if (hasListingPackFilter) result = result.filter(taskHasListingPack);
     return result;
   })();
-  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus || hasListingPackFilter);
+  const hasActiveFilters = Boolean(activeQuery || type !== defaultType || decisionStatus !== defaultDecisionStatus || agentStatus !== defaultAgentStatus || hasListingPackFilter || scope !== "");
+  // OA1：进度分组下的空态（区分"该分组没有"与"完全没有记录"）
+  const isScopeEmpty = !loading && !error && visibleItems.length === 0 && scope !== "";
   const highlightedItemExists = Boolean(highlightedTaskId && visibleItems.some((item) => item.id === highlightedTaskId));
   const displayItems = useMemo(() => [...visibleItems].sort((a, b) => {
     const priorityDiff = getPriorityScore(b, highlightedTaskId, hasActiveFilters) - getPriorityScore(a, highlightedTaskId, hasActiveFilters);
@@ -755,13 +792,39 @@ export function TaskRecordsList() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">已保存的商品研究</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">研究记录与人工决定</h2>
-                <p className="muted-text mt-1 text-sm">优先展示商品、来源、研究状态、当前决定、风险和简要结论。</p>
+                <p className="text-sm font-bold text-teal-700">商品研究</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">研究记录</h2>
+                <p className="muted-text mt-1 text-sm">进行中的研究优先展示；全部研究可按状态分组查看。</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
-                {page ? `${page.total} 条研究记录` : `${items.length} 条研究记录`}
+                {page ? `${page.total} 条` : `${items.length} 条`}
               </span>
+            </div>
+
+            {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
+            <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
+              {([
+                { value: "active", label: "进行中" },
+                { value: "need_info", label: "待补信息" },
+                { value: "completed", label: "已完成" },
+                { value: "abandoned", label: "已放弃" },
+                { value: "", label: "全部" },
+              ] as Array<{ value: "" | "active" | "need_info" | "completed" | "abandoned"; label: string }>).map((tab) => (
+                <button
+                  key={tab.value || "all"}
+                  type="button"
+                  role="tab"
+                  aria-selected={scope === tab.value}
+                  onClick={() => onScopeChange(tab.value)}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+                    scope === tab.value
+                      ? "border-teal-300 bg-teal-50 text-teal-800"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
@@ -885,6 +948,49 @@ export function TaskRecordsList() {
                   className="mt-4 rounded-full bg-white px-4 py-2 text-sm font-bold text-rose-700"
                 >
                   重试
+                </button>
+              </div>
+            ) : isScopeEmpty ? (
+              <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
+                {scope === "active" ? (
+                  <>
+                    <p className="text-lg font-semibold text-slate-950">当前没有正在研究的商品</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      在「待研究商品」中选择商品开始研究后，会显示在这里。
+                    </p>
+                    <Link
+                      href="/opportunity-candidates"
+                      className="linear-button-primary mt-5 inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
+                    >
+                      去待研究商品
+                    </Link>
+                  </>
+                ) : scope === "need_info" ? (
+                  <>
+                    <p className="text-lg font-semibold text-slate-950">没有待补资料的研究</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      这类研究仍需要补充资料后再做决定；当前没有需要补资料的商品。
+                    </p>
+                  </>
+                ) : scope === "completed" ? (
+                  <>
+                    <p className="text-lg font-semibold text-slate-950">还没有完成的研究</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      完成研究并做人工决定后，记录会显示在这里。
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-semibold text-slate-950">没有已放弃的研究</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">暂无放弃的研究记录。</p>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onScopeChange("")}
+                  className="linear-button mt-4 inline-flex h-10 items-center justify-center px-4 text-sm font-semibold"
+                >
+                  查看全部研究
                 </button>
               </div>
             ) : isDefaultEmpty ? (
@@ -1056,12 +1162,12 @@ export function TaskRecordsList() {
                             <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700">
                               {researchStatus.label}
                             </span>
-                            {/* Primary actions */}
+                            {/* Primary actions（OA3：新任务不误导为"结果"） */}
                             <Link
                               href={`/tasks/${item.id}`}
                               className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
                             >
-                              查看研究结果
+                              {researchStatus.key === "completed" ? "查看研究记录" : "打开研究"}
                             </Link>
                             <button
                               type="button"
