@@ -251,6 +251,18 @@ describe("POST action=save（Human Confirm 全链路）", () => {
       expect((body.error as { code: string }).code).toBe("invalid_action");
     }
   });
+
+  // V3 Final R13（§201）：UI 曾发 action=keyword（漂移）→ 必须回归为 invalid_action；
+  // 同时用户文案不得泄漏内部 operation allowlist（§210）
+  it("action=keyword（历史 UI 漂移值）→ INVALID_ACTION，且用户文案不含内部 allowlist", async () => {
+    const response = await POST(request({ action: "keyword", keyword: "water" }), context());
+    const body = await json(response);
+    expect(response.status).toBe(400);
+    expect((body.error as { code: string }).code).toBe("invalid_action");
+    const message = (body.error as { message: string }).message;
+    expect(message).not.toContain("search");
+    expect(message).not.toContain("job_image_consumed");
+  });
 });
 
 describe("POST begin-keyword-login（R1 固定安全登录 capability）", () => {

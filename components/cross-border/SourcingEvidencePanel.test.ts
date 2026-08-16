@@ -4,7 +4,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
+import { SourcingEvidencePanel, UI_METHOD_TO_OPERATION } from "@/components/cross-border/SourcingEvidencePanel";
 
 vi.mock("@/lib/client/accessPassword", () => ({
   useAccessPassword: () => ["test-password"],
@@ -156,5 +156,22 @@ describe("SourcingEvidencePanel 询盘问题生成（确定性，不猜事实）
     expect(withClaims.some((question) => question.includes("材质"))).toBe(false);
     // 仍问包装/样品
     expect(withClaims.some((question) => question.includes("样品"))).toBe(true);
+  });
+});
+
+// ── V3 Final R13（§201/§202）：UI 业务语义 → canonical SourcingOperation（防 keyword 漂移） ──
+
+describe("UI_METHOD_TO_OPERATION", () => {
+  it("关键词找货 → search；图片找货 → image；已有链接 → url", () => {
+    expect(UI_METHOD_TO_OPERATION.keyword).toBe("search");
+    expect(UI_METHOD_TO_OPERATION.image).toBe("image");
+    expect(UI_METHOD_TO_OPERATION.url).toBe("url");
+  });
+
+  it("映射值全部属于 SourcingOperation allowlist（search/image/url/detail/save）", () => {
+    const allowlist = new Set(["search", "image", "url", "detail", "save"]);
+    for (const operation of Object.values(UI_METHOD_TO_OPERATION)) {
+      expect(allowlist.has(operation)).toBe(true);
+    }
   });
 });

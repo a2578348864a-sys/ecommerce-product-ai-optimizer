@@ -8,6 +8,13 @@
 export const SOURCING_EVIDENCE_SCHEMA = "sourcing-evidence.v1" as const;
 export const ACQUISITION_CANDIDATE_SCHEMA = "acquisition-candidate.v1" as const;
 
+/**
+ * V3 Final R13（§202/§203）：Sourcing API 唯一 canonical operation。
+ * UI / route / driver 必须共用本类型，禁止散落裸字符串（keyword_search / sourcing_search 等漂移）。
+ */
+export const SOURCING_OPERATIONS = ["search", "image", "url", "detail", "save"] as const;
+export type SourcingOperation = (typeof SOURCING_OPERATIONS)[number];
+
 /** 获取方式 */
 export type AcquisitionMethod = "keyword" | "image" | "url";
 

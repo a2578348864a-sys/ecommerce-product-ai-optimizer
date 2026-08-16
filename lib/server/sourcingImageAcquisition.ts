@@ -230,7 +230,7 @@ export async function acquireByImage(input: {
     }
 
     // 3) 注册 job（§13/§48：taskId/candidateId/imageHash 绑定）
-    const jobId = await bridge.registerJob({
+    let jobId = await bridge.registerJob({
       imageBase64: imageBytes.toString("base64"),
       meta: {
         taskId: input.taskId,
@@ -305,11 +305,27 @@ export async function acquireByImage(input: {
     }
 
     // 5) upload + Upload Identity Proof（§15；重试 ≤3）
+    //    V3 Final R13：Bridge 对 job 图片为一次性消费（upload 入队后 job.image 置空）；
+    //    重试绝不能对同一 job 再次 enqueue upload（否则 Bridge 返回 job_image_consumed）。
+    //    重试 = 重新注册 job（新 jobId + 重新绑定图片），页面状态保持（仍在上传页）。
+    let uploadJobId = jobId;
     let uploadOk = false;
     for (let attempt = 1; attempt <= UPLOAD_RETRIES && !uploadOk; attempt++) {
       assertNotAborted(signal);
-      await bridge.enqueue(jobId, { type: "upload" });
-      const upload = await bridge.waitResult(jobId, 60_000);
+      if (attempt > 1) {
+        // 新 job 重新绑定图片（Bridge 一次性消费语义；防止 job_image_consumed）
+        uploadJobId = await bridge.registerJob({
+          imageBase64: imageBytes.toString("base64"),
+          meta: {
+            taskId: input.taskId,
+            candidateId: input.candidateId,
+            imageHash: sha256Hex(imageBytes),
+            contentType,
+          },
+        });
+      }
+      await bridge.enqueue(uploadJobId, { type: "upload" });
+      const upload = await bridge.waitResult(uploadJobId, 60_000);
       if (!upload.ok) {
         if (attempt < UPLOAD_RETRIES) {
           await sleep(3_000, signal);
@@ -318,8 +334,8 @@ export async function acquireByImage(input: {
         fail("upload_not_confirmed", 422, "1688 图片上传失败（上传入口不可用或页面状态异常）。");
       }
       await sleep(3_000, signal);
-      await bridge.enqueue(jobId, { type: "getState" });
-      state = parsePageState(await bridge.waitResult(jobId, 30_000));
+      await bridge.enqueue(uploadJobId, { type: "getState" });
+      state = parsePageState(await bridge.waitResult(uploadJobId, 30_000));
       const preview = state.preview ?? {};
       const localBase64Len = Math.ceil(imageBytes.length / 3) * 4;
       const identityOk = preview.confirmed === true
@@ -334,6 +350,8 @@ export async function acquireByImage(input: {
     if (!uploadOk) {
       fail("upload_not_confirmed", 422, "上传预览与候选图片不一致（Wrong Upload 门禁），已停止。");
     }
+    // 后续 submit/collect 使用 upload 所在 job（重试后为新 job）
+    jobId = uploadJobId;
 
     // 6) submit（No Double Submit 由 bridge phase 门禁保证；§31/§32）
     assertNotAborted(signal);

@@ -23,6 +23,7 @@ import { randomBytes } from "node:crypto";
 const HOST = "127.0.0.1";
 const BASE_PORT = 53318;
 const PORT_RANGE = 10; // 端口冲突（本机随机出站源端口可能占用）时依次重试
+const BRIDGE_VERSION = "authenticated-loopback-bridge.v1"; // V3 Final R13：/health 握手版本
 const JOB_TTL_MS = 10 * 60 * 1000;
 const MAX_COMMAND_BYTES = 6 * 1024 * 1024; // 命令含图片 base64（候选图 ≤4MB 时足够）
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
@@ -155,7 +156,7 @@ async function handleRequest(req, res) {
     if (!requireClientToken(req, res)) return;
 
     if (path === "/health" && req.method === "GET") {
-      return json(res, 200, { ok: true, jobs: jobs.size, extensionSeen: lastExtensionSeenAt > 0, lastExtensionSeenAt, extensionSwVersion });
+      return json(res, 200, { ok: true, jobs: jobs.size, extensionSeen: lastExtensionSeenAt > 0, lastExtensionSeenAt, extensionSwVersion, bridgeVersion: BRIDGE_VERSION });
     }
 
     if (path === "/jobs" && req.method === "POST") {

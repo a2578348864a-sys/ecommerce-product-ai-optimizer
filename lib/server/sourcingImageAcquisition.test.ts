@@ -16,14 +16,19 @@ import type { Native1688BridgeClient } from "@/lib/server/native1688BridgeClient
 function fakeBridge(script: {
   extensionSeen?: boolean;
   commands?: Array<{ type: string; respond: () => Record<string, unknown> }>;
+  /** 记录 registerJob 调用次数（V3 Final R13：upload 重试必须重新注册 job） */
+  onRegisterJob?: (call: number) => void;
 }) {
+  let jobCounter = 0;
   const bridge = {
     async start() {},
     async getStatus() {
       return { extensionSeen: script.extensionSeen ?? true, lastExtensionSeenAt: Date.now() };
     },
     async registerJob() {
-      return "fake-job-1";
+      jobCounter += 1;
+      script.onRegisterJob?.(jobCounter);
+      return `fake-job-${jobCounter}`;
     },
     async enqueue(_jobId: string, _command: { type: string }) {
       return { duplicate: false };
@@ -391,6 +396,49 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     expect(normalized).toEqual({ code: "auth_required", status: 401, message: "msg" });
     const generic = normalizeImageAcquisitionError(new Error("boom"));
     expect(generic.code).toBe("extension_bridge_not_available");
+  });
+
+  // V3 Final R13：upload 重试必须重新注册 job（Bridge 图片一次性消费；防止 job_image_consumed）
+  it("upload 第一次失败 → 重试时重新注册 job（registerJob 次数递增）且全链成功", { timeout: 120_000 }, async () => {
+    const path = tinyPngFile();
+    const base64Len = tinyPngBase64Length();
+    const registerCalls: number[] = [];
+    try {
+      const fb = fakeBridge({
+        commands: [
+          // 页面身份：上传页就绪
+          { type: "getState", respond: () => ({ ok: true, pageKind: "upload_page", uploadTarget: { found: true, unique: true } }) },
+          // attempt 1：upload 执行失败（如 SW 瞬时不可达）
+          { type: "upload", respond: () => ({ ok: false, code: "client_timeout" }) },
+          // attempt 2：upload 成功 + preview 一致（identity proof）
+          { type: "upload", respond: () => ({ ok: true }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "upload_page", preview: { confirmed: true, srcLength: base64Len } }) },
+          // submit 成功
+          { type: "submit", respond: () => ({ ok: true }) },
+          // 结果页就绪（轮询第一次命中）
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          // collect 3 张卡片
+          { type: "collect", respond: () => ({ ok: true, cards: [
+            { offerId: "1036420364519", title: "保温杯A", priceText: "¥13.3", moqText: "2件起批", imageUrl: "https://img.example/a.jpg", detailUrl: "https://detail.1688.com/offer/1036420364519.html", entityBound: true },
+            { offerId: "1035039187306", title: "保温杯B", priceText: null, moqText: null, imageUrl: null, detailUrl: "https://detail.1688.com/offer/1035039187306.html", entityBound: true },
+            { offerId: "1031650493303", title: "保温杯C", priceText: "¥8", moqText: null, imageUrl: null, detailUrl: "https://detail.1688.com/offer/1031650493303.html", entityBound: true },
+          ] }) },
+        ],
+        onRegisterJob: (call) => registerCalls.push(call),
+      });
+      const result = await acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      });
+      // 首次注册（步骤 3）+ upload 重试重新注册（attempt 2）= 2 次
+      expect(registerCalls.length).toBe(2);
+      expect(result.candidates).toHaveLength(3);
+      expect(result.trace.success).toBe(true);
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
   });
 });
 

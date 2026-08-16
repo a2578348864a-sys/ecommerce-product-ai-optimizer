@@ -45,7 +45,7 @@ import {
   type AcquisitionRunTrace,
 } from "@/lib/upstream/1688/contracts";
 import { crossValidateCandidateWithDetail, validate1688OfferUrl } from "@/lib/upstream/1688/entityBinding";
-import { getSharedBridge } from "@/lib/server/native1688BridgeClient";
+import { getSharedBridge, NATIVE_1688_HELPER_SW_VERSION } from "@/lib/server/native1688BridgeClient";
 
 export const runtime = "nodejs";
 
@@ -227,9 +227,14 @@ export async function GET(
   }
 }
 
-/** 图片找货能力探测：扩展是否已通过 bridge 心跳（与 1688-cli 登录完全无关） */
+/** 图片找货能力探测：扩展是否已通过 bridge 心跳（与 1688-cli 登录完全无关）。
+ *  V3 Final R13（§195-197）：readiness 必须含 Protocol Handshake——
+ *  connected + 扩展 SW 版本与期望协议版本一致（extensionSwVersion === NATIVE_1688_HELPER_SW_VERSION）；
+ *  版本不匹配 → extension_version_mismatch（UI 显示"浏览器助手需要更新"，不假绿）。 */
 async function probeImageCapability(): Promise<{
   extensionAvailable: boolean;
+  versionCompatible: boolean;
+  extensionSwVersion: string | null;
   reasonCode: string;
 }> {
   try {
@@ -239,11 +244,19 @@ async function probeImageCapability(): Promise<{
       new Promise((resolve) => setTimeout(resolve, 3_000)),
     ]);
     const status = await bridge.getStatus();
-    return status.extensionSeen
-      ? { extensionAvailable: true, reasonCode: "extension_seen" }
-      : { extensionAvailable: false, reasonCode: "extension_not_seen" };
+    if (!status.extensionSeen) {
+      return { extensionAvailable: false, versionCompatible: false, extensionSwVersion: null, reasonCode: "extension_not_seen" };
+    }
+    const swVersion = status.extensionSwVersion ?? null;
+    const versionCompatible = swVersion === NATIVE_1688_HELPER_SW_VERSION;
+    return {
+      extensionAvailable: true,
+      versionCompatible,
+      extensionSwVersion: swVersion,
+      reasonCode: versionCompatible ? "extension_seen" : "extension_version_mismatch",
+    };
   } catch {
-    return { extensionAvailable: false, reasonCode: "bridge_unavailable" };
+    return { extensionAvailable: false, versionCompatible: false, extensionSwVersion: null, reasonCode: "bridge_unavailable" };
   }
 }
 
@@ -481,5 +494,9 @@ export async function POST(
     }
   }
 
-  return errorResponse(400, "invalid_action", "未知操作（仅支持 search / image / url / detail / save）。");
+  // V3 Final R13（§210/§211）：未知 action 用户文案不泄漏内部 operation 列表；
+  // 原始 action 只进服务端日志（诊断用）。
+   
+  console.error("[sourcing] unknown action", { action });
+  return errorResponse(400, "invalid_action", "操作无法识别，请刷新页面后重试。");
 }

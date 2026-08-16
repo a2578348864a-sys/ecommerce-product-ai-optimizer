@@ -20,7 +20,18 @@ import type {
   AcquisitionCandidate,
   HumanConfirmedEntry,
   SourcingEvidenceV1,
+  SourcingOperation,
 } from "@/lib/upstream/1688/contracts";
+
+/**
+ * V3 Final R13（§201/§202）：UI 业务语义（关键词找货/图片找货/已有链接）→ 唯一 canonical operation。
+ * 关键词找货 = search（route 只接受 search/image/url/detail/save；禁止漂移为 keyword 等裸字符串）。
+ */
+export const UI_METHOD_TO_OPERATION: Record<"keyword" | "image" | "url", SourcingOperation> = {
+  keyword: "search",
+  image: "image",
+  url: "url",
+};
 
 type PanelStatus =
   | "idle"
@@ -46,7 +57,7 @@ type ToolStatus = {
   loggedIn: boolean;
   toolAvailable: boolean;
   cli?: { loggedIn: boolean; toolAvailable: boolean };
-  image?: { extensionAvailable: boolean; reasonCode?: string };
+  image?: { extensionAvailable: boolean; versionCompatible?: boolean; extensionSwVersion?: string | null; reasonCode?: string };
   /** D1：工具可用但未登录时，服务端构造的固定登录命令（仅展示，业务层不执行 login） */
   loginHint?: { command: string } | null;
   /** R1：最近一次检测时间（ISO；UI 显示"刚刚检测：HH:MM"） */
@@ -221,7 +232,8 @@ export function SourcingEvidencePanel({
     setSelected(new Set());
     setDetailByOfferId({});
     try {
-      const { response, data } = await api({ action: method, ...payload });
+      // V3 Final R13：action 必须用 canonical SourcingOperation（keyword → search）
+      const { response, data } = await api({ action: UI_METHOD_TO_OPERATION[method], ...payload });
       if (!response.ok || !data.ok || !data.data) {
         const code = data.error?.code ?? "";
         if (method === "image") {
@@ -492,6 +504,8 @@ export function SourcingEvidencePanel({
                   <p className="text-xs font-bold text-slate-500">图片找货</p>
                   {caps.imageReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">浏览器助手 ✓</span>
+                  ) : caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
+                    <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">浏览器助手需要更新</span>
                   ) : (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需加载扩展</span>
                   )}
@@ -529,26 +543,51 @@ export function SourcingEvidencePanel({
                   </p>
                 ) : null}
                 {!caps.imageReady ? (
-                  <div className="mt-1.5">
-                    <p className="text-xs text-amber-600">需要先在 Chrome 中加载浏览器助手扩展。</p>
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-xs font-semibold text-amber-700">如何加载（一次性，约 1 分钟）</summary>
-                      <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-amber-700">
-                        <li>打开 Chrome，地址栏输入 <code className="rounded bg-white px-1 font-mono">chrome://extensions</code> 并回车。</li>
-                        <li>打开右上角「开发者模式」开关。</li>
-                        <li>点击「加载已解压的扩展程序」，选择扩展文件夹：<code className="rounded bg-white px-1 font-mono">qingxuan-1688-helper</code>。</li>
-                      </ol>
+                  caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
+                    <div className="mt-1.5">
+                      <p className="text-xs font-semibold text-rose-700" data-testid="sourcing-helper-outdated">
+                        浏览器助手版本过旧（已连接：{caps.imageExtensionSwVersion ?? "未知"}），需要重新加载。
+                      </p>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs font-semibold text-rose-700">查看更新步骤（约 1 分钟）</summary>
+                        <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-rose-700">
+                          <li>打开 Chrome，地址栏输入 <code className="rounded bg-white px-1 font-mono">chrome://extensions</code> 并回车。</li>
+                          <li>找到「轻选 1688 浏览器助手」，点击「重新加载」。</li>
+                          <li>回到轻选工作台，点击下方「重新检测」确认版本生效。</li>
+                        </ol>
+                      </details>
                       <button
                         type="button"
                         disabled={checkingTools}
                         onClick={() => void refreshTools()}
-                        className="mt-2 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                        className="mt-2 rounded border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                         data-testid="sourcing-extension-recheck"
                       >
-                        {checkingTools ? "正在检测…" : "已加载，重新检测"}
+                        {checkingTools ? "正在检测…" : "重新检测"}
                       </button>
-                    </details>
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1.5">
+                      <p className="text-xs text-amber-600">需要先在 Chrome 中加载浏览器助手扩展。</p>
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs font-semibold text-amber-700">如何加载（一次性，约 1 分钟）</summary>
+                        <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-amber-700">
+                          <li>打开 Chrome，地址栏输入 <code className="rounded bg-white px-1 font-mono">chrome://extensions</code> 并回车。</li>
+                          <li>打开右上角「开发者模式」开关。</li>
+                          <li>点击「加载已解压的扩展程序」，选择扩展文件夹：<code className="rounded bg-white px-1 font-mono">qingxuan-1688-helper</code>。</li>
+                        </ol>
+                        <button
+                          type="button"
+                          disabled={checkingTools}
+                          onClick={() => void refreshTools()}
+                          className="mt-2 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                          data-testid="sourcing-extension-recheck"
+                        >
+                          {checkingTools ? "正在检测…" : "已加载，重新检测"}
+                        </button>
+                      </details>
+                    </div>
+                  )
                 ) : (
                   <p className="mt-1.5 text-xs text-slate-400">
                     浏览器助手已连接。请确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）；1688 图搜会打开本地浏览器窗口（需前台运行）。

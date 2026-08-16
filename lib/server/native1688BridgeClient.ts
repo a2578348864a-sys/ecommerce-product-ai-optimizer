@@ -19,6 +19,9 @@ import { SourcingAcquisitionError } from "@/lib/upstream/1688/contracts";
 
 export const NATIVE_1688_BRIDGE_VERSION = "authenticated-loopback-bridge.v1";
 export const NATIVE_1688_EXTENSION_DRIVER_VERSION = "native-1688-extension-driver.v1";
+/** V3 Final R13：期望的 Helper SW 版本（与 extensions/qingxuan-1688-helper SW_VERSION / manifest version 一致）。
+ *  版本不匹配 → readiness = PROTOCOL_MISMATCH（UI 显示"浏览器助手需要更新"，不假绿）。 */
+export const NATIVE_1688_HELPER_SW_VERSION = "0.3.1";
 
 const BRIDGE_PORT_START = 53318;
 const BRIDGE_PORT_RANGE = 10;
@@ -148,7 +151,10 @@ export class Native1688BridgeClient {
     });
     const body = await this.readJson(response);
     if (!response.ok || !body.ok) {
-      fail("extension_bridge_rejected", 502, `桥接服务拒绝注册（${body.code ?? response.status}）。`);
+      // V3 Final R13（§210/§211）：内部 code 只进日志，用户文案不泄漏协议细节
+       
+      console.error("[1688-bridge] job registration rejected", { code: body.code ?? response.status });
+      fail("extension_bridge_rejected", 502, "1688 图片助手未能接收任务，请确认浏览器助手状态后重试。");
     }
     return String(body.jobId);
   }
@@ -163,7 +169,10 @@ export class Native1688BridgeClient {
     });
     const body = await this.readJson(response);
     if (!response.ok || !body.ok) {
-      fail("extension_bridge_rejected", 502, `桥接服务拒绝命令（${body.code ?? response.status}）。`);
+      // V3 Final R13（§210/§211）：内部 code（如 job_image_consumed）只进日志，用户文案友好
+       
+      console.error("[1688-bridge] command rejected", { code: body.code ?? response.status, commandType: command.type });
+      fail("extension_bridge_rejected", 502, "1688 图片助手未能执行操作，请确认浏览器助手状态后重试。");
     }
     return { duplicate: body.duplicate === true };
   }
@@ -182,13 +191,21 @@ export class Native1688BridgeClient {
     return { ok: false, code: "client_timeout" };
   }
 
-  /** 桥/扩展状态探测（EXTENSION_NOT_INSTALLED / EXTENSION_DISCONNECTED 判定依据） */
-  async getStatus(): Promise<{ extensionSeen: boolean; lastExtensionSeenAt: number }> {
+  /** 桥/扩展状态探测（EXTENSION_NOT_INSTALLED / EXTENSION_DISCONNECTED 判定依据；
+   *  V3 Final R13：透出 extensionSwVersion + bridgeVersion 供 Protocol Handshake） */
+  async getStatus(): Promise<{
+    extensionSeen: boolean;
+    lastExtensionSeenAt: number;
+    extensionSwVersion: string | null;
+    bridgeVersion: string;
+  }> {
     const response = await this.request("/health");
     const body = await this.readJson(response);
     return {
       extensionSeen: body.extensionSeen === true,
       lastExtensionSeenAt: typeof body.lastExtensionSeenAt === "number" ? body.lastExtensionSeenAt : 0,
+      extensionSwVersion: typeof body.extensionSwVersion === "string" ? body.extensionSwVersion : null,
+      bridgeVersion: typeof body.bridgeVersion === "string" ? body.bridgeVersion : NATIVE_1688_BRIDGE_VERSION,
     };
   }
 }
