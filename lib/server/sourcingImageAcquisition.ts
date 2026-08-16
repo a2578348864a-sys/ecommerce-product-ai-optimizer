@@ -198,6 +198,9 @@ export async function acquireByImage(input: {
       await bridge.enqueue(jobId, { type: "getState" });
       state = parsePageState(await bridge.waitResult(jobId, 30_000));
       if (!state.ok) {
+        if (state.code === "auth_required") {
+          fail("auth_required", 401, "1688 未登录或会话过期，请在普通 Chrome 中正常登录 1688 后重试。");
+        }
         if (state.code === "no_1688_tab" || state.code === "content_script_unreachable") {
           mapBridgeFailure("extension_disconnected", await bridge.getStatus());
         }

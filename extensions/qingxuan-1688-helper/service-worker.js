@@ -62,6 +62,13 @@ async function fetchBridge(path, options) {
 async function sendTo1688Tab(message, { autoOpen = false } = {}) {
   const tabs = await chrome.tabs.query({});
   let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+  if (!target) {
+    // 登录跳转检测（login.taobao.com / login.1688.com）：明确 AUTH_REQUIRED，避免误报 disconnected
+    const loginTab = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(login\.taobao\.com|login\.1688\.com)/.test(tab.url));
+    if (loginTab) {
+      return { ok: false, code: "auth_required" };
+    }
+  }
   if (!target && autoOpen) {
     // 固定能力：自动打开 1688 图搜上传页（非任意 URL）
     target = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
@@ -78,6 +85,11 @@ async function sendTo1688Tab(message, { autoOpen = false } = {}) {
       // 未注入：等待后重试
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 3_000));
+  }
+  // 注入失败后复查页面是否跳转登录墙
+  const refreshed = await chrome.tabs.get(target.id).catch(() => null);
+  if (refreshed && refreshed.url && /^https:\/\/(login\.taobao\.com|login\.1688\.com)/.test(refreshed.url)) {
+    return { ok: false, code: "auth_required" };
   }
   return { ok: false, code: "content_script_unreachable" };
 }
