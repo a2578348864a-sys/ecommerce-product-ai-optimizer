@@ -187,7 +187,7 @@ export async function POST(
 
   const expectedStorageVersion = parseStorageVersionInput(bodyRecord.expectedStorageVersion);
   if (expectedStorageVersion === null) {
-    return errorResponse(400, "storage_version_required", "缺少或非法的 expectedStorageVersion（并发保护）。");
+    return errorResponse(400, "storage_version_required", "内容刚在其他位置更新，请刷新后重试。");
   }
   const reportRaw = bodyRecord.report;
   if (!isRecord(reportRaw)) {

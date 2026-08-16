@@ -298,6 +298,7 @@ export function BrowserEvidenceSection({
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ action: "collect" }),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { preview: unknown; evidenceId: string } }
@@ -329,6 +330,7 @@ export function BrowserEvidenceSection({
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
+          signal: AbortSignal.timeout(60_000),
           action: "save",
           evidenceId: previewEvidenceId,
           expectedStorageVersion: storageVersion,

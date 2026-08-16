@@ -321,7 +321,7 @@ export async function POST(
   // ── expectedStorageVersion（必填，Fix.2 P1-1）──
   const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
   if (!expectedStorageVersion) {
-    return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+    return errorResponse(400, "invalid_storage_version", "内容刚在其他位置更新，请刷新后重试。");
   }
 
   // ── REVOKE ──

@@ -91,9 +91,12 @@ function assertNotAborted(signal?: AbortSignal): void {
 /** 扩展/桥错误归一化（§25/§26/§27 状态语义） */
 function mapBridgeFailure(code: string, status: { extensionSeen: boolean; lastExtensionSeenAt: number }): never {
   if (!status.extensionSeen) {
-    fail("extension_not_installed", 503, "未检测到轻选 1688 扩展，请先在普通 Chrome 中加载扩展并打开 1688 页面。");
+    fail("extension_not_installed", 503, "未检测到轻选 1688 助手，请先在普通 Chrome 中安装助手并打开 1688 页面。");
   }
-  fail("extension_disconnected", 503, `轻选 1688 扩展连接中断（detail=${code}），请检查 Chrome 窗口与扩展状态后重试。`);
+  // P1-B：内部码不进用户文案（只进日志）
+  // eslint-disable-next-line no-console
+  console.error("[1688-image] extension disconnected", { detail: code });
+  fail("extension_disconnected", 503, "1688 图片助手连接中断，请检查 Chrome 窗口与助手状态后重试。");
 }
 
 /** getState 结果解析（结构校验 fail-closed） */
@@ -251,7 +254,7 @@ export async function acquireByImage(input: {
       }
     }
     if (!pageReady) {
-      fail("page_identity_unknown", 422, `1688 图搜页面未就绪（pageKind=${state.pageKind ?? "unknown"}；pageUrl=${state.pageUrl ?? "unknown"}；请确认 s.1688.com 图搜页已打开且扩展已刷新）。`);
+      fail("page_identity_unknown", 422, "1688 图搜页面未就绪，请确认已打开图搜页且助手已刷新后重试。");
     }
 
     // 5) upload + Upload Identity Proof（§15；重试 ≤3）
@@ -290,7 +293,10 @@ export async function acquireByImage(input: {
     await bridge.enqueue(jobId, { type: "submit" });
     const submit = await bridge.waitResult(jobId, 60_000);
     if (!submit.ok) {
-      fail("search_trigger_not_confirmed", 422, `“搜索图片”触发失败（${String(submit.code ?? "unknown")}）。`);
+      // P1-B：内部码不进用户文案
+      // eslint-disable-next-line no-console
+      console.error("[1688-image] submit failed", { code: String(submit.code ?? "unknown") });
+      fail("search_trigger_not_confirmed", 422, "「搜索图片」未成功触发，请确认图搜页面后重试。");
     }
 
     // 7) 结果页证明（§19：imageId + result route + 非推荐流；≤45s）
@@ -384,6 +390,8 @@ export function normalizeImageAcquisitionError(error: unknown): { code: string; 
   if (error instanceof SourcingAcquisitionError) {
     return { code: error.code, status: error.status, message: error.message };
   }
-  const message = error instanceof Error ? error.message : String(error);
-  return { code: "extension_bridge_not_available", status: 503, message: `图片获取失败：${message.slice(0, 200)}` };
+  // P1-A：未知异常不把原始 message 拼进用户文案（只进日志）
+  // eslint-disable-next-line no-console
+  console.error("[1688-image] unexpected acquisition error", { detail: error instanceof Error ? error.message.slice(0, 300) : String(error) });
+  return { code: "extension_bridge_not_available", status: 503, message: "图片找货失败，请重试；若持续失败请刷新页面并检查 Chrome 与助手状态。" };
 }

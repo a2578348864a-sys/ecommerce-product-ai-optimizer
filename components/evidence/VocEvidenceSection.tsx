@@ -456,6 +456,7 @@ export function VocEvidenceSection({
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ action: "import", expectedStorageVersion: storageVersion, reviews }),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { outcome: { importedCount: number; duplicateCount: number; rejectedCount: number } } }
@@ -494,6 +495,7 @@ export function VocEvidenceSection({
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ action: "analyze", expectedStorageVersion: storageVersion }),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { gateResult: string; unverified: number } }
@@ -522,6 +524,7 @@ export function VocEvidenceSection({
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ action: "clear", expectedStorageVersion: storageVersion }),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true } | { ok: false; error?: { code?: string; message?: string } };

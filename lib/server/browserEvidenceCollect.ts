@@ -187,6 +187,9 @@ export async function collectBrowserEvidencePreview(input: {
   } catch (error) {
     if (error instanceof BrowserEvidenceCollectError) throw error;
     const message = error instanceof Error ? error.message : "unknown_error";
+    // P1-A：技术串只进日志，用户文案固定（不泄漏 CDP_*/ReferenceError 等）
+    // eslint-disable-next-line no-console
+    console.error("[browser-evidence] collect failed", { code: "collect_failed", detail: message.slice(0, 400) });
     if (message.includes("PUBLIC_NAVIGATION_BUDGET_EXHAUSTED")) {
       throw new BrowserEvidenceCollectError("navigation_budget_exhausted", 502, "本次采集导航预算用尽，已停止。");
     }
@@ -201,13 +204,13 @@ export async function collectBrowserEvidencePreview(input: {
       throw new BrowserEvidenceCollectError(
         "extraction_failed",
         502,
-        `页面提取脚本执行失败：${message.slice(0, 240)}。请在本机浏览器手动检查该商品页结构后重试。`,
+        "Amazon 商品信息采集失败，请确认商品页可正常打开后重试；若持续失败可稍后再试。",
       );
     }
     throw new BrowserEvidenceCollectError(
       "collect_failed",
       502,
-      `浏览器采集失败：${message.slice(0, 240)}`,
+      "Amazon 商品信息采集失败，请稍后重试；若持续失败请检查本机浏览器与网络。",
     );
   } finally {
     await session.close();

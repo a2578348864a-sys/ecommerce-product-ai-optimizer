@@ -105,6 +105,7 @@ export function SourcingEvidencePanel({
       cache: "no-store",
       headers: { ...buildAccessHeaders(), "content-type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
     });
     return { response, data: await response.json() as { ok: boolean; error?: { code: string; message: string }; data?: unknown } };
   }, [taskId]);
@@ -115,6 +116,7 @@ export function SourcingEvidencePanel({
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/sourcing`, {
         cache: "no-store",
         headers: { ...buildAccessHeaders() },
+        signal: AbortSignal.timeout(30_000),
       });
       const data = await response.json() as {
         ok: boolean;

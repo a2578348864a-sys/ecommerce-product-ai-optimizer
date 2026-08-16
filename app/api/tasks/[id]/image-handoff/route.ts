@@ -251,7 +251,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return errorResponse(400, "invalid_request_id", "请求标识无效。");
   }
   const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
-  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "内容刚在其他位置更新，请刷新后重试。");
   const expectedHandoffRevision = body.expectedHandoffRevision;
   if (typeof expectedHandoffRevision !== "number" || !Number.isSafeInteger(expectedHandoffRevision) || expectedHandoffRevision < 1) {
     return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");
@@ -342,7 +342,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return errorResponse(400, "invalid_image_selection", "图片选择无效。");
   }
   const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
-  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "内容刚在其他位置更新，请刷新后重试。");
   const expectedHandoffRevision = body.expectedHandoffRevision;
   if (typeof expectedHandoffRevision !== "number" || !Number.isSafeInteger(expectedHandoffRevision) || expectedHandoffRevision < 1) {
     return errorResponse(400, "invalid_handoff_revision", "创作资料版本无效。");

@@ -52,6 +52,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** P1-A：区级加载/错误状态条（加载失败 ≠ 没有数据；提供重试） */
+function SectionStatusBar({
+  loading,
+  error,
+  onRetry,
+  loadingLabel,
+}: {
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+  loadingLabel: string;
+}) {
+  if (loading) {
+    return <p className="mt-2 text-sm text-slate-400">正在读取{loadingLabel}…</p>;
+  }
+  if (error) {
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-rose-200 bg-rose-50/60 px-3 py-2" role="alert">
+        <span className="text-sm text-rose-700">{error}</span>
+        <button type="button" onClick={onRetry} className="text-sm font-semibold text-rose-700 underline">
+          重试
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
 function text(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
@@ -363,10 +391,26 @@ export function EvidenceWorkbench({
   const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
   const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
+  // P1-A：区分 loading / empty / error / ready（不再把加载失败伪装成"没有数据"）
+  const [sectionLoading, setSectionLoading] = useState(true);
+  const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  const setSectionError = (key: string, message: string) => {
+    setSectionErrors((current) => ({ ...current, [key]: message }));
+  };
+  const clearSectionError = (key: string) => {
+    setSectionErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
   async function loadVoc() {
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/review-evidence`, {
         headers: buildFetchHeaders(),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string } } }
@@ -375,9 +419,12 @@ export function EvidenceWorkbench({
         setVocEvidence(parseVocEvidenceView(json.data.evidence));
         setVocAnalysis(parseVocAnalysisView(json.data.analysis));
         setVocStorageVersion(json.data.storageVersion);
+        clearSectionError("voc");
+      } else {
+        setSectionError("voc", "买家评论读取失败，请稍后重试。");
       }
     } catch {
-      // fail-soft：读取失败保持空状态
+      setSectionError("voc", "买家评论读取失败，请检查网络后重试。");
     }
   }
 
@@ -385,6 +432,7 @@ export function EvidenceWorkbench({
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
         headers: buildFetchHeaders(),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { evidence: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; taskAsin: string | null } }
@@ -393,9 +441,12 @@ export function EvidenceWorkbench({
         setBrowserEvidence(parseBrowserEvidenceView(json.data.evidence));
         setBrowserEvidenceStorageVersion(json.data.storageVersion);
         setBrowserTaskAsin(json.data.taskAsin);
+        clearSectionError("browser");
+      } else {
+        setSectionError("browser", "Amazon 页面证据读取失败，请稍后重试。");
       }
     } catch {
-      // fail-soft：读取失败保持空状态
+      setSectionError("browser", "Amazon 页面证据读取失败，请检查网络后重试。");
     }
   }
 
@@ -403,6 +454,7 @@ export function EvidenceWorkbench({
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/ai-evidence-summary`, {
         headers: buildFetchHeaders(),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { summary: AiEvidenceSummaryView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
@@ -410,9 +462,12 @@ export function EvidenceWorkbench({
       if (res.ok && json.ok) {
         setAiSummary(json.data.summary);
         setAiSummaryStorageVersion(json.data.storageVersion);
+        clearSectionError("aiSummary");
+      } else {
+        setSectionError("aiSummary", "AI 证据总结读取失败，请稍后重试。");
       }
     } catch {
-      // fail-soft
+      setSectionError("aiSummary", "AI 证据总结读取失败，请检查网络后重试。");
     }
   }
 
@@ -420,6 +475,7 @@ export function EvidenceWorkbench({
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/keyword-evidence`, {
         headers: buildFetchHeaders(),
+        signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { evidence: KeywordEvidenceView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
@@ -427,17 +483,24 @@ export function EvidenceWorkbench({
       if (res.ok && json.ok) {
         setKeywordReportEvidence(json.data.evidence);
         setKeywordReportStorageVersion(json.data.storageVersion);
+        clearSectionError("keyword");
+      } else {
+        setSectionError("keyword", "关键词证据读取失败，请稍后重试。");
       }
     } catch {
-      // 读取失败保持空状态（fail-soft）
+      setSectionError("keyword", "关键词证据读取失败，请检查网络后重试。");
     }
   }
 
   useEffect(() => {
-    void loadKeywordEvidence();
-    void loadAiSummary();
-    void loadBrowserEvidence();
-    void loadVoc();
+    setSectionLoading(true);
+    setSectionErrors({});
+    void Promise.allSettled([
+      loadKeywordEvidence(),
+      loadAiSummary(),
+      loadBrowserEvidence(),
+      loadVoc(),
+    ]).then(() => setSectionLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
@@ -628,6 +691,12 @@ export function EvidenceWorkbench({
       {/* ── 关键词 Evidence ── */}
       <section data-testid="workbench-keywords" className="rounded-2xl border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-bold text-slate-900">关键词 Evidence</h3>
+        <SectionStatusBar
+          loading={sectionLoading}
+          error={sectionErrors.keyword ?? ""}
+          onRetry={() => { void loadKeywordEvidence(); }}
+          loadingLabel="关键词证据"
+        />
         {keywordBrief ? (
           <div className="mt-2 space-y-1 text-sm text-slate-800">
             <p><span className="text-slate-500">主关键词：</span>{keywordBrief.primaryKeyword || "—"}</p>
@@ -663,22 +732,38 @@ export function EvidenceWorkbench({
       </section>
 
       {/* ── 浏览器 Evidence（V3.3） ── */}
-      <BrowserEvidenceSection
-        taskId={taskId}
-        evidence={browserEvidence}
-        taskAsin={browserTaskAsin}
-        storageVersion={browserEvidenceStorageVersion}
-        onChanged={loadBrowserEvidence}
-      />
+      <div data-testid="workbench-browser">
+        <SectionStatusBar
+          loading={sectionLoading}
+          error={sectionErrors.browser ?? ""}
+          onRetry={() => { void loadBrowserEvidence(); }}
+          loadingLabel="Amazon 页面证据"
+        />
+        <BrowserEvidenceSection
+          taskId={taskId}
+          evidence={browserEvidence}
+          taskAsin={browserTaskAsin}
+          storageVersion={browserEvidenceStorageVersion}
+          onChanged={loadBrowserEvidence}
+        />
+      </div>
 
       {/* ── VOC / Review Evidence（V3.4） ── */}
-      <VocEvidenceSection
-        taskId={taskId}
-        evidence={vocEvidence}
-        analysis={vocAnalysis}
-        storageVersion={vocStorageVersion}
-        onChanged={loadVoc}
-      />
+      <div data-testid="workbench-voc">
+        <SectionStatusBar
+          loading={sectionLoading}
+          error={sectionErrors.voc ?? ""}
+          onRetry={() => { void loadVoc(); }}
+          loadingLabel="买家评论"
+        />
+        <VocEvidenceSection
+          taskId={taskId}
+          evidence={vocEvidence}
+          analysis={vocAnalysis}
+          storageVersion={vocStorageVersion}
+          onChanged={loadVoc}
+        />
+      </div>
 
       {/* ── 货源 Evidence（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
       <section data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -688,6 +773,12 @@ export function EvidenceWorkbench({
       {/* ── AI 证据总结（Phase 5） ── */}
       <section data-testid="workbench-ai-summary" className="rounded-2xl border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-bold text-slate-900">AI 证据总结</h3>
+        <SectionStatusBar
+          loading={sectionLoading}
+          error={sectionErrors.aiSummary ?? ""}
+          onRetry={() => { void loadAiSummary(); }}
+          loadingLabel="AI 证据总结"
+        />
         <p className="mt-1 text-xs text-slate-500">
           AI 只解释已有 Evidence，不创造事实；fact/risk/conflict 必须带证据引用。
         </p>

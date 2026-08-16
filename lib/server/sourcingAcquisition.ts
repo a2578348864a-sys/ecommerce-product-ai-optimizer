@@ -185,7 +185,7 @@ async function runCliProcessCore(argv: string[], timeoutMs: number, env?: NodeJS
       finish(new SourcingAcquisitionError(
         "tool_not_available",
         503,
-        `无法启动 1688-cli（${errorMessage(error)}）。请确认 V35_1688_CLI_PATH 配置正确。`,
+        "1688 获取工具无法启动，请检查工具配置后重试。",
       ));
     });
     child.once("close", (exitCode) => {
@@ -243,9 +243,14 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
       if (parsedFailure.code === "DAEMON_PAUSED" || /risk|challenge|slider|captcha/i.test(parsedFailure.message)) {
         failClosed("risk_control_required", 403, "1688 触发了风控/暂停（需要人工验证），请在 1688 页面完成验证后重试。");
       }
-      failClosed("tool_error", 502, `1688-cli ${command} 失败（${parsedFailure.code}${parsedFailure.message ? `：${parsedFailure.message.slice(0, 160)}` : ""}）。`);
+      // P1-B：CLI 原始 code/message 不进用户文案（只进日志）
+      // eslint-disable-next-line no-console
+      console.error("[1688-cli] command failed", { command, code: parsedFailure.code, detail: parsedFailure.message.slice(0, 200) });
+      failClosed("tool_error", 502, "获取 1688 数据失败（工具执行异常），请稍后重试；若持续失败请重新登录 1688。");
     }
-    failClosed("tool_error", 502, `1688-cli ${command} 失败（exit ${result.exitCode}）。`);
+    // eslint-disable-next-line no-console
+    console.error("[1688-cli] command failed", { command, exitCode: result.exitCode });
+    failClosed("tool_error", 502, "获取 1688 数据失败（工具执行异常），请稍后重试；若持续失败请重新登录 1688。");
   }
   const parsed = parseCliJson(result.stdout);
   if (!isRecord(parsed)) {
@@ -260,7 +265,10 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
     if (code === "DAEMON_PAUSED" || /risk|challenge|slider|captcha/i.test(message)) {
       failClosed("risk_control_required", 403, "1688 触发了风控/暂停（需要人工验证），请在 1688 页面完成验证后重试。");
     }
-    failClosed("tool_error", 502, `1688-cli 返回失败（${code}${message ? `：${message}` : ""}）。`);
+    // P1-B：CLI 原始 code/message 不进用户文案
+    // eslint-disable-next-line no-console
+    console.error("[1688-cli] command returned failure", { command, code, detail: message });
+    failClosed("tool_error", 502, "获取 1688 数据失败（工具执行异常），请稍后重试；若持续失败请重新登录 1688。");
   }
 }
 
@@ -310,8 +318,8 @@ export async function searchOffersByKeyword(input: {
       "acquisition_tool_not_available",
       503,
       status.reason === "not_configured"
-        ? "未配置 1688 获取工具（V35_1688_CLI_PATH），请先完成 1688 登录与工具配置。"
-        : "配置的 1688-cli 路径不存在，请检查 V35_1688_CLI_PATH。",
+        ? "1688 获取工具尚未配置，请先完成 1688 登录与工具配置后重试。"
+        : "1688 获取工具路径无效，请检查工具配置后重试。",
     );
   }
   const keyword = validateSearchKeyword(input.keyword);
@@ -354,8 +362,8 @@ export async function getOfferDetailById(input: {
       "acquisition_tool_not_available",
       503,
       status.reason === "not_configured"
-        ? "未配置 1688 获取工具（V35_1688_CLI_PATH），请先完成 1688 登录与工具配置。"
-        : "配置的 1688-cli 路径不存在，请检查 V35_1688_CLI_PATH。",
+        ? "1688 获取工具尚未配置，请先完成 1688 登录与工具配置后重试。"
+        : "1688 获取工具路径无效，请检查工具配置后重试。",
     );
   }
   const offerId = validateOfferId(input.offerId);

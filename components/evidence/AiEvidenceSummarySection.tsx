@@ -78,6 +78,7 @@ export function AiEvidenceSummarySection({
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ expectedStorageVersion: storageVersion }),
+        signal: AbortSignal.timeout(120_000),
       });
       const json = await res.json() as
         | { ok: true }
@@ -154,6 +155,8 @@ export function AiEvidenceSummarySection({
           >
             <Sparkles className="size-4" />重新生成
           </button>
+          {/* P1-A：已有总结时重新生成失败也必须可见（旧总结保留 + 明确失败） */}
+          {error && <p className="mt-2 text-sm text-rose-600" role="alert">{error}</p>}
         </>
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3">

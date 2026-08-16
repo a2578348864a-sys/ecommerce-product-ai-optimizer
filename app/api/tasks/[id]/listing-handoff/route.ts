@@ -287,7 +287,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     if (body.confirmed !== true) return errorResponse(400, "confirmation_required", "请确认关键词资料后提交。");
     const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
-    if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+    if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "内容刚在其他位置更新，请刷新后重试。");
     const briefInput = body.keywordBrief;
     if (!isRecord(briefInput)) return errorResponse(400, "invalid_keyword_brief", "关键词资料无效。");
     const briefResult = buildListingKeywordBrief({
@@ -338,7 +338,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return errorResponse(400, "invalid_request_id", "请求标识无效。");
   }
   const expectedStorageVersion = parseStorageVersion(body.expectedStorageVersion);
-  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "缺少或无效的存储版本。");
+  if (!expectedStorageVersion) return errorResponse(400, "invalid_storage_version", "内容刚在其他位置更新，请刷新后重试。");
   const expectedHandoffRevision = body.expectedHandoffRevision;
   if (typeof expectedHandoffRevision !== "number" || !Number.isSafeInteger(expectedHandoffRevision) || expectedHandoffRevision < 1) {
     return errorResponse(400, "invalid_handoff_revision", "交接版本无效。");

@@ -193,7 +193,7 @@ async function importAction(
   if (expectedStorageVersion === null) {
     return jsonResponse({
       ok: false,
-      error: { code: "storage_version_required", message: "缺少或非法的 expectedStorageVersion（并发保护）。" },
+      error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" },
     }, 400);
   }
   const inputs = parseImportInputs(bodyRecord);
@@ -236,7 +236,7 @@ async function analyzeAction(
   if (expectedStorageVersion === null) {
     return jsonResponse({
       ok: false,
-      error: { code: "storage_version_required", message: "缺少或非法的 expectedStorageVersion（并发保护）。" },
+      error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" },
     }, 400);
   }
   // Visitor AI 配额门禁（Owner 直通）；VOC 不新增独立额度
@@ -271,7 +271,7 @@ async function clearAction(
   if (expectedStorageVersion === null) {
     return jsonResponse({
       ok: false,
-      error: { code: "storage_version_required", message: "缺少或非法的 expectedStorageVersion（并发保护）。" },
+      error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" },
     }, 400);
   }
   try {
