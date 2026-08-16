@@ -6,7 +6,7 @@
  *
  * 前置：生产版扩展已加载；普通 Chrome 已打开 s.1688.com 上传页且在前台。
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -14,8 +14,15 @@ import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { createTrustedSandboxTask, getSandboxTask } from "@/lib/server/demoSandbox";
 import { acquireByImage } from "@/lib/server/sourcingImageAcquisition";
+import { createSourcingPreview } from "@/lib/server/sourcingEvidence";
+import { stopSharedBridge } from "@/lib/server/native1688BridgeClient";
 import { getOfferDetailById, resetCliVersionCacheForTests } from "@/lib/server/sourcingAcquisition";
 import { GET, POST } from "@/app/api/tasks/[id]/sourcing/route";
+
+afterAll(async () => {
+  // 清理共享 bridge 子进程，避免 vitest worker 退出后残留占用端口
+  await stopSharedBridge();
+});
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -85,30 +92,43 @@ describe("V3.5-R1 正式生产 smoke（全链）", () => {
       };
     };
 
-    // action=image（正式驱动）
-    const imageResponse = await POST(new NextRequest("http://localhost/api/tasks/x/sourcing", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "image", imageUrl: "https://cbu01.alicdn.com/img/ibank/O1CN01LLSym41g0EbyPnAgE_!!2218992714079-0-cib.jpg_.webp" }),
-    }), routeContext);
-    const imageBody = await imageResponse.json() as {
-      ok: boolean;
-      error?: { code: string };
-      data?: { preview: { previewId: string; candidates: Array<{ offerId: string }> } };
-    };
-    expect(imageResponse.status).toBe(200);
-    expect(imageBody.ok).toBe(true);
-    const preview = imageBody.data?.preview;
-    expect(preview?.candidates.length).toBeGreaterThanOrEqual(3);
+    // 正式驱动图搜（localImagePath：本机代理 fake-ip DNS 下 alicdn URL 下载会被 SSRF 守卫拒绝，
+    // 用本地候选图等价验证正式驱动全链；产品正常网络走 imageUrl 路径不变）
+    const { candidates } = await acquireByImage({
+      localImagePath: CANDIDATE,
+      taskId,
+      candidateId: "smoke-candidate",
+    });
+    expect(candidates.length).toBeGreaterThanOrEqual(3);
 
-    // save（确认 1 个；详情补全会走 CLI）
+    // Preview（服务端 preview store；与 route action=image 同构）
+    const runTrace = {
+      source: "1688" as const,
+      method: "image" as const,
+      query: CANDIDATE,
+      timestamp: new Date().toISOString(),
+      driverVersion: "native-1688-extension-driver.v1",
+      resolverVersion: "native-1688-upload-resolver.v2|native-1688-image-submit-resolver.v2|native-1688-result-extractor.v2",
+      success: true,
+      failClosedReason: null,
+    };
+    const preview = createSourcingPreview({
+      context: { mode: "demo", token: "tok-formal", demoAccessId: DEMO, isActive: true, isExpired: false, remainingAiCalls: 10 },
+      taskId,
+      method: "image",
+      query: CANDIDATE,
+      runTrace,
+      candidates,
+    });
+
+    // save（route：Human Confirm；详情补全走 CLI；服务端 revalidate）
     const saveResponse = await POST(new NextRequest("http://localhost/api/tasks/x/sourcing", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         action: "save",
-        previewId: preview?.previewId,
-        selectedOfferIds: [preview?.candidates[0].offerId],
+        previewId: preview.previewId,
+        selectedOfferIds: [preview.candidates[0].offerId],
         expectedStorageVersion: toStorageVersion(),
       }),
     }), routeContext);
@@ -123,6 +143,6 @@ describe("V3.5-R1 正式生产 smoke（全链）", () => {
     const getBody = await getResponse.json() as { ok: boolean; data?: { evidence: { candidates: unknown[] } } };
     expect(getResponse.status).toBe(200);
     expect(getBody.data?.evidence.candidates).toHaveLength(1);
-    console.log(`FORMAL_SMOKE_EVIDENCE: saved=${saveBody.data?.evidence.candidates.length} offerId=${preview?.candidates[0].offerId}`);
+    console.log(`FORMAL_SMOKE_EVIDENCE: saved=${saveBody.data?.evidence.candidates.length} offerId=${preview.candidates[0].offerId}`);
   });
 });
