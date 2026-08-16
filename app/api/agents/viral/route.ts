@@ -492,7 +492,16 @@ async function handleLegacyRequest(
   }
 }
 
+// F8: orphan real-AI endpoint disabled (no formal UI caller; prevent unbilled quota burn)
+const LEGACY_AGENT_DISABLED = true;
+
 export async function POST(request: NextRequest) {
+  if (LEGACY_AGENT_DISABLED) {
+    return NextResponse.json(
+      { ok: false, error: { code: "legacy_endpoint_disabled", message: "该旧接口已下线（V3 正式主链不使用）。" } },
+      { status: 410 },
+    );
+  }
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > REQUEST_BODY_LIMIT_BYTES) {
     return jsonResponse({

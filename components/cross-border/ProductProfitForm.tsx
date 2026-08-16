@@ -1090,7 +1090,7 @@ export function ProductProfitForm() {
             待人工确认
           </p>
           <p className="mt-3 text-xs leading-5 text-slate-500">
-            当前只是预览，不会保存、不调用 AI、不自动上架。请人工复核利润、风险和上架资料。
+            当前为利润试算辅助工具：会调用 AI 辅助测算，结果仅可下载/复制，不自动上架；已不再写入任务中心（正式研究记录是唯一任务入口）。请人工复核利润、风险和上架资料。
           </p>
         </section>
       </aside>
@@ -1220,11 +1220,11 @@ export function ProductProfitForm() {
           </button>
           <button
             type="button"
-            onClick={handleSaveToTaskCenter}
-            disabled={savingToTasks}
-            className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            disabled
+            title="利润试算为辅助工具，不再写入任务中心（正式研究记录是唯一任务入口）。"
+            className="glass-button-primary inline-flex h-11 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {savingToTasks ? "保存中" : "保存到任务中心"}
+            保存到任务中心（已下线）
           </button>
           <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
             待人工确认

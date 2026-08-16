@@ -222,7 +222,16 @@ async function runMaterialAgent(inputText: string): Promise<{ data: MaterialAgen
   return { data: normalizeMaterialAgentResult(parseAiJson(aiResult.data)), aiOk: true };
 }
 
+// F8：孤儿真实 AI API 收口（无正式 UI caller；禁止无界面消耗 AI 配额）
+const LEGACY_AGENT_DISABLED = true;
+
 export async function POST(request: NextRequest) {
+  if (LEGACY_AGENT_DISABLED) {
+    return NextResponse.json(
+      { ok: false, error: { code: "legacy_endpoint_disabled", message: "该旧接口已下线（V3 正式主链不使用）。" } },
+      { status: 410 },
+    );
+  }
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (contentLength > REQUEST_BODY_LIMIT_BYTES) {
     return jsonError("这次素材太多了，建议先减少输入后重试。", 413);

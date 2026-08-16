@@ -56,102 +56,13 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("POST /api/agents/summary", () => {
-  it("AI 返回 fenced JSON 时能解析并返回 200", async () => {
-    mockCallAiJson.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        verdict: "可做但需控制成本",
-        confidence: "中",
-        summary: "宠物慢食碗可以观察，但需要先复核材质。",
-        reasons: ["需求明确", "售价区间可测"],
-        risks: ["食品接触材料需复核", "清洁和售后需关注"],
-        nextSteps: ["索取材质文件", "小批量测评"],
-        beginnerTip: "别先写认证承诺。",
-      },
-    });
-
+describe("POST /api/agents/summary（F8 收口）", () => {
+  it("孤儿真实 AI 接口已下线：任意请求返回 410，不调用 AI、不消耗配额", async () => {
     const response = await POST(createRequest(validBody()));
     const { status, body } = await readJson(response);
-
-    expect(status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(body.data.verdict).toBe("可做但需控制成本");
-  });
-
-  it("AI JSON parse 失败时不返回 500，而是保守 fallback 并标记 parseFailed", async () => {
-    mockCallAiJson.mockResolvedValueOnce({
-      ok: false,
-      error: {
-        code: "json_parse_error",
-        message: "Failed to parse JSON from AI text.",
-        detail: "not-json with long raw model output",
-      },
-    });
-
-    const response = await POST(createRequest(validBody()));
-    const { status, body } = await readJson(response);
-
-    expect(status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(body.data.parseFailed).toBe(true);
-    expect(body.data.confidence).toBe("低");
-    expect(["暂不建议做", "新手不建议做", "有经验再做", "可做但需控制成本"]).toContain(body.data.verdict);
-    expect(JSON.stringify(body)).not.toContain("not-json with long raw model output");
-  });
-
-  it("parse fallback 仍经过 hard guard，高风险儿童带电品不能给乐观结论", async () => {
-    mockCallAiJson.mockResolvedValueOnce({
-      ok: false,
-      error: {
-        code: "json_parse_error",
-        message: "Failed to parse JSON from AI text.",
-      },
-    });
-
-    const response = await POST(createRequest(validBody({
-      productName: "儿童电动牙刷",
-      category: "母婴用品",
-      extraNotes: "儿童 电动 USB充电 电池 口腔接触",
-      sourcingFindings: JSON.stringify({
-        complianceBarrier: "high",
-        beginnerFit: "low",
-        suggestedEntryLevel: "experienced",
-      }),
-      riskFindings: JSON.stringify({
-        overallLevel: "red",
-        blacklistMatches: ["儿童用品", "带电产品"],
-      }),
-    })));
-    const { status, body } = await readJson(response);
-
-    expect(status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(body.data.parseFailed).toBe(true);
-    expect(["新手不建议做", "暂不建议做"]).toContain(body.data.verdict);
-    expect(body.data.downgradeReasons.length).toBeGreaterThan(0);
-  });
-
-  it("summary 输出会清理无依据认证承诺", async () => {
-    mockCallAiJson.mockResolvedValueOnce({
-      ok: true,
-      data: {
-        verdict: "新手可小单测试",
-        confidence: "高",
-        summary: "This is FDA approved and 100% safe. 宠物慢食碗有 FDA 认证，食品级保证。",
-        reasons: ["CE certified", "CPSIA compliant", "儿童电动牙刷通过 CPC 认证，符合 ASTM 标准。"],
-        risks: ["RoHS certified", "FCC 认证齐全，已认证。"],
-        nextSteps: ["Write CPC certified in listing", "未验证前不要写入 listing 承诺，需向供应商索取测试报告。"],
-        beginnerTip: "non-toxic guaranteed，绝对安全。",
-      },
-    });
-
-    const response = await POST(createRequest(validBody()));
-    const { body } = await readJson(response);
-    const text = JSON.stringify(body);
-
-    expect(text).not.toMatch(/FDA approved|CE certified|CPSIA compliant|RoHS certified|CPC certified|100% safe|non-toxic guaranteed/i);
-    expect(text).not.toMatch(/FDA\s*认证|CPC\s*认证|ASTM\s*标准|FCC\s*认证|已认证|食品级保证|绝对安全/);
-    expect(text).toMatch(/人工复核|索取|合规文件|测试报告|未验证前不要写入/);
+    expect(status).toBe(410);
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe("legacy_endpoint_disabled");
+    expect(mockCallAiJson).not.toHaveBeenCalled();
   });
 });
