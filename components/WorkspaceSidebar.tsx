@@ -65,6 +65,12 @@ function isTaskActiveResearchHighlight(pathname: string, search: string) {
   return false;
 }
 
+/** /tasks 及其详情页归属：active 任务（from=research）归"商品研究"，其余归"研究记录" */
+function isTasksHighlight(pathname: string, search: string) {
+  if (!(pathname === "/tasks" || pathname.startsWith("/tasks/"))) return false;
+  return !isTaskActiveResearchHighlight(pathname, search);
+}
+
 function currentProductLabel(productName: string) {
   try {
     const url = new URL(productName);
@@ -89,7 +95,9 @@ function NavLink({
   const Icon = item.icon;
   const active = item.href === "/research"
     ? isTaskActiveResearchHighlight(pathname, search ?? "")
-    : isActivePath(pathname, item.href);
+    : item.href === "/tasks"
+      ? isTasksHighlight(pathname, search ?? "")
+      : isActivePath(pathname, item.href);
 
   return (
     <Link
