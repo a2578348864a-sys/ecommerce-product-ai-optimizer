@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Qingxuan 1688 Sourcing Helper",
+  "version": "0.2.0",
+  "description": "V3.5 image acquisition helper: fixed capabilities only (state/upload/submit/collect) for 1688 native image search. No chrome.debugger, no cookies, no all_urls.",
+  "permissions": [],
+  "host_permissions": [
+    "https://s.1688.com/*",
+    "https://air.1688.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://s.1688.com/*", "https://air.1688.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
