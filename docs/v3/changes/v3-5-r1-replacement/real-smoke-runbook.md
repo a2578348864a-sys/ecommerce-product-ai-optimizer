@@ -3,6 +3,22 @@
 > 前置：用户已加载生产版扩展（`D:\...\电商工具-v3-5-r1-formal\extensions\qingxuan-1688-helper`）、
 > 普通 Chrome 打开 `https://s.1688.com/selloffer/offer_search.html` 且页面在前台。
 
+## 执行记录
+
+### 2026-08-16 18:50（扩展 0.3.1 + 导航可靠性修复 a5b5525 后）— ✅ FULL PASS
+
+```
+✓ 正式驱动图搜 → 60 candidates, first=1036420364519（T-Acquire 77s：含从结果页自动导航回上传页）
+✓ 详情交叉验证 → offerId=1036420364519 title=新款316不锈钢手提大容量保温杯600ml真空保温杯便携户外保温杯（1688-cli）
+✓ Preview → Human Confirm → sourcing-evidence.v1 → GET 读回 saved=1 offerId=1003780594331
+3 tests passed (130.7s)
+```
+
+- 前置失败循环（已修复）：T-Acquire 首次失败 = 页面停留在上次 smoke 结果页（air.1688.com），
+  自动导航回上传页不可靠 → 修复：驱动导航后轮询确认上传页就绪（≤30s，≤2 次导航）+
+  SW 验证导航生效/新建 tab 兜底/preferredTabId（SW 0.3.1，commit a5b5525）。
+- 前置：用户刷新扩展（0.3.0 → 0.3.1），bridge /health 探测 extensionSwVersion=0.3.1 确认。
+
 ## 执行步骤
 
 ```bash
