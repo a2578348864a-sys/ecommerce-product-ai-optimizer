@@ -1,8 +1,12 @@
-# 轻选工作台 — Final Release Report（V3.5 Final）
+# 轻选工作台 — Final Release Report（V3.5 Final + Final Product Integration）
 
-> 状态：`LOCAL_RELEASE_CANDIDATE = APPROVED`（2026-08-16 Final Local Acceptance）
-> Git HEAD：`0457265`（main == origin/main）
+> 状态：`LOCAL_RELEASE_CANDIDATE = APPROVED`（2026-08-16，经 Final Product Audit 重开整改后重新批准）
+> Git HEAD：`b63c760`（main == origin/main）
 > 公网部署：`PUBLIC_DEPLOY = FORBIDDEN`（等待用户本地验收后单独授权）
+>
+> 修订记录：`0457265` 曾批准 Local Release Candidate → 经 `V3_FINAL_PRODUCT_AUDIT.md`（P1×8）重开为
+> REOPENED_FOR_PRODUCT_AUDIT → Final Product Integration Correction（codex/v3-final-product-integration）
+> 完成 F1-F11 全部整改（P1=0）→ 重新批准。
 
 ## 产品定位
 
@@ -86,6 +90,7 @@ Candidate → 供应线索 → 三入口（关键词找货 / 图片找货 / 1688
 
 ## Git 状态
 
-- HEAD：`0457265`（docs(v3.5): closeout - mark V3.5 implementation COMPLETE）
-- main == origin/main == 0457265；tracked clean。
-- V3_5 = CLOSED；CORE_FEATURE_DEVELOPMENT = FROZEN；PUBLIC_DEPLOY = FORBIDDEN。
+- HEAD：`b63c760`（v3 final product integration：F1-F11 全部 FIXED，P1=0）
+- main == origin/main == b63c760；tracked clean。
+- V3_5 = CLOSED；FINAL_PRODUCT_INTEGRATION = CLOSED；CORE_FEATURE_DEVELOPMENT = FROZEN；PUBLIC_DEPLOY = FORBIDDEN。
+- 整改分支 `codex/v3-final-product-integration`（已并入 main，保留分支引用）。
