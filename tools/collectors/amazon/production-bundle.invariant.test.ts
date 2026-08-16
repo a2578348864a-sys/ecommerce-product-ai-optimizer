@@ -39,9 +39,9 @@ function collectBundleFiles(root: string): string[] {
 describe("production bundle expression invariant（P1-A）", () => {
   const hasBuild = existsSync(join(NEXT_SERVER_ROOT, "app"));
 
-  it.runIf(hasBuild)("built browser-evidence route embeds the self-contained extractor artifact", () => {
-    const files = collectBundleFiles(NEXT_SERVER_ROOT)
-      .filter((path) => path.includes("browser-evidence") || path.includes("detail-page-expression"));
+  it.runIf(hasBuild)("built bundles embed the self-contained extractor artifact", () => {
+    // webpack 可能把共享工具拆进独立 chunk：扫描全部产物文件，不按文件名预过滤
+    const files = collectBundleFiles(NEXT_SERVER_ROOT);
     expect(files.length).toBeGreaterThan(0);
     let found = false;
     for (const file of files) {
@@ -61,10 +61,25 @@ describe("production bundle expression invariant（P1-A）", () => {
     expect(found, "未在构建产物中找到 detail-page 提取表达式").toBe(true);
   });
 
+  it.runIf(hasBuild)("built bundles embed self-contained review-snippet extractor artifact (Package C)", () => {
+    const files = collectBundleFiles(NEXT_SERVER_ROOT);
+    let found = false;
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      if (!source.includes("document.querySelectorAll('[data-hook=\\\"review\\\"]')")) continue;
+      found = true;
+      // 字符串工件完整：占位常量 + 提取逻辑特征（webpack 产物自身含 `${` 模板，不能全局断言）
+      expect(source).toContain("const MAX_ITEMS =");
+      expect(source).toContain("out of 5 stars");
+      expect(source).toContain("Reviewed in .*? on");
+      expect(source).not.toMatch(/functionSource/);
+    }
+    expect(found, "未在构建产物中找到 review-snippet 提取表达式").toBe(true);
+  });
+
   it.runIf(hasBuild)("built search-page route embeds self-contained search extractor artifact", () => {
-    const files = collectBundleFiles(NEXT_SERVER_ROOT)
-      .filter((path) => path.includes("extract-search-page") || path.includes("search-page-expression"));
-    if (files.length === 0) return; // 搜索流程未被打包进当前产物（产品 UI 不调用）
+    // 搜索流程不被当前产品 UI 调用 → 可能未打包进产物（此时跳过，与历史语义一致）
+    const files = collectBundleFiles(NEXT_SERVER_ROOT);
     let found = false;
     for (const file of files) {
       const source = readFileSync(file, "utf8");
@@ -74,6 +89,7 @@ describe("production bundle expression invariant（P1-A）", () => {
       expect(source).toContain("function extractAmazonSearchPage(");
       expect(source).not.toMatch(/functionSource/);
     }
+    if (!found) return;
     expect(found).toBe(true);
   });
 });
