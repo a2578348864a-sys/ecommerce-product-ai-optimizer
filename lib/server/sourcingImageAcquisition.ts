@@ -216,11 +216,14 @@ export async function acquireByImage(input: {
       if (state.pageKind !== "upload_page" || !state.uploadTarget?.found || !state.uploadTarget?.unique) {
         if (pageAttempt === 0) {
           await bridge.enqueue(jobId, { type: "navigateUploadPage" });
-          await bridge.waitResult(jobId, 15_000); // 导航结果不阻塞：下一轮 getState 验证
+          const nav = await bridge.waitResult(jobId, 15_000); // 导航结果用于诊断；页面验证交给下一轮 getState
+          if (!nav.ok && nav.code === "unknown_action") {
+            fail("extension_version_unsupported", 503, "扩展版本过旧（缺少自动导航能力），请在 chrome://extensions 重新加载扩展后重试。");
+          }
           await sleep(3_000, signal);
           continue;
         }
-        fail("page_identity_unknown", 422, "1688 图搜页面未就绪（请确认 s.1688.com 图搜页已打开且扩展已加载）。");
+        fail("page_identity_unknown", 422, `1688 图搜页面未就绪（pageKind=${state.pageKind ?? "unknown"}；请确认 s.1688.com 图搜页已打开且扩展已刷新）。`);
       }
     }
 
