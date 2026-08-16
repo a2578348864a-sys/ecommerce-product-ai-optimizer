@@ -69,20 +69,25 @@ async function sendTo1688Tab(message, { autoOpen = false } = {}) {
       return { ok: false, code: "auth_required" };
     }
   }
+  let createdByUs = false;
   if (!target && autoOpen) {
     // 固定能力：自动打开 1688 图搜上传页（非任意 URL）
     target = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
+    createdByUs = true;
   }
   if (!target || !target.id) {
     return { ok: false, code: "no_1688_tab" };
   }
-  // content script 注入重试（页面加载/导航后注入需要时间；最多 30s）
+  // content script 注入重试（扩展 reload 后旧 tab 的 content script 被移除但不自动重注入 → 首次失败后刷新 tab）
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
       const result = await chrome.tabs.sendMessage(target.id, message);
       return result;
     } catch {
-      // 未注入：等待后重试
+      // 未注入：首次失败时刷新 tab（重新注入），随后等待重试
+    }
+    if (attempt === 0 && !createdByUs) {
+      await chrome.tabs.reload(target.id).catch(() => undefined);
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 3_000));
   }
