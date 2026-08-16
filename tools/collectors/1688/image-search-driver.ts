@@ -1,5 +1,12 @@
 /**
- * V3.5 — 1688 Native Image Search 驱动（编排层）
+ * V3.5-R1 — LEGACY_DISABLED / DIAGNOSTIC_ONLY（Contract §42.4）
+ *
+ * 本 CDP 图搜驱动已被真实生产 smoke 反证：调试浏览器在 1688 触发无限滑块
+ * （BLOCKED_BY_RISK_CONTROL）。正式驱动为 Native1688ExtensionDriver（无 debugger）。
+ * 本文件仅作历史/诊断保留：NO_AUTOMATIC_FALLBACK_TO_CDP = TRUE——
+ * 任何正式调用路径不得 import 或回退到本模块。
+ *
+ * V3.5 — 1688 Native Image Search 驱动（编排层，LEGACY）
  *
  * Contract §32/§33/§37/§38/§39/§41/§52：
  * 流程：导航允许的 1688 图搜页 → Upload Target Proof → focus+Enter 打开 Native File Chooser

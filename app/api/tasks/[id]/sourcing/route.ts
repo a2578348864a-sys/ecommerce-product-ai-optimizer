@@ -323,7 +323,12 @@ export async function POST(
     if (!imageUrl) return errorResponse(400, "invalid_image_url", "缺少候选图片链接。");
     if (imageUrl.length > 2_048) return errorResponse(400, "invalid_image_url", "图片链接过长。");
     try {
-      const { candidates, trace } = await acquireByImage({ imageUrl });
+      // §48：job 绑定 actor 的任务与候选身份（candidateId 由任务派生）
+      const { candidates, trace } = await acquireByImage({
+        imageUrl,
+        taskId: id,
+        candidateId: `task:${id}`,
+      });
       const runTrace: AcquisitionRunTrace = {
         source: "1688",
         method: "image",
