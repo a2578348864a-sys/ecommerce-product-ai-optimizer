@@ -14,6 +14,7 @@ import {
   buildAiSummaryEvidenceInput,
   generateAiEvidenceSummary,
   getAiEvidenceSummary,
+  hasPersistedEvidenceInput,
   validateAiSummaryOutput,
 } from "@/lib/server/aiEvidenceSummary";
 import {
@@ -108,6 +109,23 @@ const BASE_RESULT = {
   },
   researchRecord: RESEARCH_RECORD,
   researchVerification: RESEARCH_VERIFICATION,
+  // F11 gate 最小证据（生成前要求至少一类已确认 Evidence）
+  reviewEvidence: {
+    schema: "review-evidence.v1",
+    version: 1,
+    dataset: {
+      stats: { totalReviews: 1 },
+      reviews: [{
+        evidenceId: "voc-1",
+        asin: "B0TEST0001",
+        sourceProductRole: "current_candidate",
+        reviewText: "Golden Test Bottle keeps water cold all day and the lid is sturdy.",
+        rating: 4,
+        capturedAt: NOW,
+      }],
+    },
+    updatedAt: NOW,
+  },
   decisionEvidence: {
     version: "decision-evidence-v1",
     generatedAt: NOW,
@@ -204,7 +222,9 @@ describe("AI evidence summary (Phase 5)", () => {
     const input = buildAiSummaryEvidenceInput(poisoned);
     // 指令文本只出现在数据字段（evidence value），不进入任何指令位置
     expect(input.evidence.some((item) => item.value.includes("ignore previous instructions"))).toBe(true);
-    expect(input.evidence).toHaveLength(3);
+    // decision 3 项（ev-1/ev-2/ev-x）+ F11 接入的 VOC 评论 1 条
+    expect(input.evidence).toHaveLength(4);
+    expect(input.evidence.some((item) => item.ref.startsWith("ev:voc:"))).toBe(true);
     // system prompt 不包含外部文本（由模块常量固定）
     expect(input.candidate.asin).toBe("B0TEST0001");
     expect(input.humanDecision?.label).toBe("待补信息");
@@ -302,6 +322,95 @@ describe("AI evidence summary (Phase 5)", () => {
       expectedStorageVersion: toStorageVersion(taskId),
     })).rejects.toMatchObject({ code: "ai_provider_error" });
     expect(await getAiEvidenceSummary(context, taskId)).toBeNull();
+  });
+
+  it("F11 gate: no persisted evidence -> NO_EVIDENCE_AVAILABLE without calling AI", async () => {
+    const emptyTask = await createTrustedSandboxTask(DEMO_A, {
+      type: "workflow",
+      title: "Empty Evidence Task",
+      platform: "amazon",
+      productUrl: null,
+      materialText: "",
+      source: "demo",
+      score: 0,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({ researchRecord: RESEARCH_RECORD, researchVerification: RESEARCH_VERIFICATION }),
+      productLifecycle: "new_candidate",
+      decisionStatus: "pending",
+      createdAt: NOW,
+      updatedAt: NOW,
+    } as Parameters<typeof createTrustedSandboxTask>[1]);
+    const context = visitorContext();
+    await expect(generateAiEvidenceSummary({
+      context,
+      taskId: emptyTask.id,
+      expectedStorageVersion: toStorageVersion(emptyTask.id),
+    })).rejects.toMatchObject({ code: "no_evidence_available" });
+    expect(vi.mocked(callAiJson)).not.toHaveBeenCalled();
+    expect(await getAiEvidenceSummary(context, emptyTask.id)).toBeNull();
+  });
+
+  it("F11 input builder: aggregates confirmed Browser/VOC/Sourcing/Competitor evidence with refs", () => {
+    const result = {
+      ...BASE_RESULT,
+      browserEvidence: {
+        schema: "browser-evidence.v1",
+        version: 1,
+        candidateId: "candidate-1",
+        targetAsin: "B0TEST0001",
+        snapshots: [{
+          capturedAt: NOW,
+          pageUrl: "https://www.amazon.com/dp/B0TEST0001",
+          fields: {
+            asin: { value: "B0TEST0001", status: "correct", nature: "snapshot" },
+            title: { value: "Golden Test Bottle", status: "correct", nature: "snapshot" },
+            price: { value: 24.99, status: "correct", nature: "snapshot" },
+            rating: { value: 4.6, status: "correct", nature: "snapshot" },
+            reviewCount: { value: 1234, status: "correct", nature: "snapshot" },
+            bsr: { value: 42, status: "correct", nature: "snapshot" },
+          },
+        }],
+        updatedAt: NOW,
+      },
+      sourcingEvidence: {
+        schema: "sourcing-evidence.v1",
+        taskId: "t",
+        capturedAt: NOW,
+        acquisition: { method: "keyword", query: "保温杯", runTrace: { source: "1688", method: "keyword", query: "保温杯", timestamp: NOW, driverVersion: "v1", resolverVersion: null, success: true, failClosedReason: null } },
+        // 未确认候选绝不允许进入输入
+        candidates: [
+          { offerId: "1111111111", title: "已确认保温杯", displayedPrice: { text: "¥13.3" }, displayedMoq: { text: "2件起批" }, sellerClaims: [{ name: "材质", value: "316" }], priceTiers: [], skuSpecs: [], platformMetadata: [], supplierDisplayName: "A", matchState: null },
+          { offerId: "2222222222", title: "未确认保温杯", displayedPrice: { text: "¥9.9" }, displayedMoq: null, sellerClaims: [], priceTiers: [], skuSpecs: [], platformMetadata: [], supplierDisplayName: "B", matchState: null },
+        ],
+        humanConfirmed: [{ offerId: "1111111111", confirmedAt: NOW, note: null }],
+        updatedAt: NOW,
+      },
+      competitorEvidence: {
+        schema: "competitor-evidence.v1",
+        version: 1,
+        asins: [{ asin: "B0COMPET1", note: "价格更低", addedAt: NOW, addedBy: { mode: "owner", actorRef: "owner:v1" } }],
+        updatedAt: NOW,
+      },
+    };
+    const input = buildAiSummaryEvidenceInput(result);
+    const refs = input.evidence.map((item) => item.ref);
+    expect(refs.some((ref) => ref.startsWith("ev:browser:"))).toBe(true);
+    expect(refs.some((ref) => ref.startsWith("ev:voc:"))).toBe(true);
+    expect(refs.some((ref) => ref.startsWith("ev:voc:theme:"))).toBe(false); // 无 vocAnalysis 时无主题
+    expect(refs.some((ref) => ref.startsWith("ev:sourcing:"))).toBe(true);
+    expect(refs.some((ref) => ref.startsWith("ev:competitor:"))).toBe(true);
+    // 未确认候选不得进入输入
+    const sourcingInput = input.evidence.find((item) => item.ref.startsWith("ev:sourcing:"));
+    expect(sourcingInput?.value).toContain("1111111111");
+    expect(sourcingInput?.value).not.toContain("2222222222");
+  });
+
+  it("F11 hasPersistedEvidenceInput: true when any evidence namespace exists, false when empty", () => {
+    expect(hasPersistedEvidenceInput(BASE_RESULT)).toBe(true);
+    expect(hasPersistedEvidenceInput({ researchRecord: RESEARCH_RECORD })).toBe(false);
+    expect(hasPersistedEvidenceInput({ keywordEvidence: { reportType: "reverse_asin", rows: [] } })).toBe(true);
+    expect(hasPersistedEvidenceInput({})).toBe(false);
   });
 
   it("Golden Eval: human spot-check matrix on golden output (4 questions)", () => {

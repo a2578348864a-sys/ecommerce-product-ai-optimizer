@@ -158,7 +158,7 @@ export function AiEvidenceSummarySection({
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3">
           <p className="text-sm text-slate-600">
-            尚未生成 AI 证据总结。AI 只解释已有证据，不创造事实。
+            尚未生成 AI 证据总结。基于当前已有 Evidence 生成（非最终结论），收集更多证据后可重新生成。
           </p>
           <button
             type="button"

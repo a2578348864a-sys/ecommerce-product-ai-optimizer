@@ -32,7 +32,9 @@ const mockPrisma = {
   $transaction: vi.fn(),
   viralAnalysisRecord: {
     findFirst: vi.fn().mockResolvedValue(mockRecord),
+    findUnique: vi.fn().mockResolvedValue(mockRecord),
     update: vi.fn().mockResolvedValue({ id: "task-001", decisionStatus: "continue" }),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     delete: vi.fn().mockResolvedValue(mockRecord),
   },
   opportunityCandidate: {
@@ -321,7 +323,7 @@ describe("PATCH /api/tasks/[id]", () => {
     expect(body.error?.code || body.error).toBeTruthy();
   });
 
-  it("正确密码 → 更新人工状态", async () => {
+  it("正确密码 → 更新人工状态（经正式 mutation layer，CAS 并发保护）", async () => {
     const request = createRequest({
       method: "PATCH",
       headers: { "x-access-password": CORRECT_PASSWORD },
@@ -332,9 +334,11 @@ describe("PATCH /api/tasks/[id]", () => {
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     expect(body.data.decisionStatus).toBe("continue");
-    expect(mockPrisma.viralAnalysisRecord.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "task-001" },
-      data: { decisionStatus: "continue" },
+    // F5：不再直接 update 列（避免 @updatedAt 假冲突），走 updateMany CAS（resultJson 语义一致）
+    expect(mockPrisma.viralAnalysisRecord.update).not.toHaveBeenCalled();
+    expect(mockPrisma.viralAnalysisRecord.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "task-001" }),
+      data: expect.objectContaining({ decisionStatus: "continue" }),
     }));
   });
 

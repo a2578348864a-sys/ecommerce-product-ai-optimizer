@@ -21,6 +21,7 @@ import { hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
 import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
 import {
   TaskResultJsonMutationError,
+  mutateTaskResultJson,
   updateLegacySandboxTaskDecisionStatusAtomic,
 } from "@/lib/server/taskResultJsonMutation";
 
@@ -396,24 +397,51 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       || hasProductResearchRecordNamespace(currentResult)) {
       return versionedDecisionRouteRequiredResponse();
     }
-    const record = await prisma.viralAnalysisRecord.update({
-      where: { id },
-      data: { decisionStatus },
-      select: { id: true, decisionStatus: true },
+    // F5：legacy 决定写入收敛到正式 mutation layer（writer legacy-decision）——
+    // 不再直接 Prisma update（否则 @updatedAt 脱离 resultJson 语义产生假冲突）；
+    // 同时保留 CAS 并发保护（真冲突才失败）。
+    const mutation = await mutateTaskResultJson({
+      context: auth.context,
+      taskId: id,
+      writer: "legacy-decision",
+      mutate: (currentMutation) => {
+        if (["researchRecord", "researchVerification", "researchHash", "decisionEvents"]
+          .some((key) => Object.prototype.hasOwnProperty.call(currentMutation, key))) {
+          throw new TaskResultJsonMutationError(
+            "versioned_research_decision_route_required",
+            409,
+            "新版研究记录必须使用正式研究决定接口更新。",
+          );
+        }
+        return {
+          result: currentMutation,
+          decisionStatus,
+          value: { decisionStatus: normalizeDecisionStatus(decisionStatus) },
+        };
+      },
     });
 
     return jsonResponse({
       ok: true,
       data: {
-        id: record.id,
-        decisionStatus: normalizeDecisionStatus(record.decisionStatus),
+        id,
+        decisionStatus: normalizeDecisionStatus(mutation.decisionStatus ?? decisionStatus),
       },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return notFoundResponse();
     }
-
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") return notFoundResponse();
+      if (error.code === "versioned_research_decision_route_required") {
+        return versionedDecisionRouteRequiredResponse();
+      }
+      return jsonResponse(
+        { ok: false, error: { code: error.code, message: error.message } },
+        error.status,
+      );
+    }
     return isDatabaseError(error) ? databaseError() : serverError();
   }
 }

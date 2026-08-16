@@ -145,6 +145,145 @@ export function buildAiSummaryEvidenceInput(result: Record<string, unknown>): {
     sourceType: item.sourceType,
   }));
 
+  // ── F11：接入正式 persisted Evidence（Browser / VOC / Sourcing / Competitor；Keyword 下方单独）──
+  // 只消费已人工确认/已保存的 Evidence；Preview 与未确认内容绝不进入输入。
+
+  // Amazon Browser Evidence（已保存快照；限量 10）
+  const browserEvidence = isRecord(result.browserEvidence) ? result.browserEvidence : null;
+  const browserSnapshots = Array.isArray(browserEvidence?.snapshots)
+    ? browserEvidence.snapshots.filter(isRecord)
+    : [];
+  for (const [index, snap] of browserSnapshots.slice(0, 10).entries()) {
+    const fields = isRecord(snap.fields) ? snap.fields : {};
+    const fieldValue = (name: string): string => {
+      const field = isRecord(fields[name]) ? fields[name] : null;
+      return field ? display(field.value) : "";
+    };
+    const asin = fieldValue("asin");
+    const price = fieldValue("price");
+    const rating = fieldValue("rating");
+    const reviewCount = fieldValue("reviewCount");
+    evidence.push({
+      ref: `ev:browser:${asin || `snap${index}`}:${asString(snap.capturedAt)}`,
+      field: "amazon_browser",
+      label: "Amazon 浏览器证据",
+      value: [
+        asin ? `ASIN ${asin}` : "",
+        fieldValue("title") ? `标题 ${fieldValue("title").slice(0, 120)}` : "",
+        price ? `价格 ${price}` : "",
+        rating ? `评分 ${rating}` : "",
+        reviewCount ? `评论数 ${reviewCount}` : "",
+        fieldValue("bsr") ? `BSR ${fieldValue("bsr")}` : "",
+      ].filter(Boolean).join("｜"),
+      status: "confirmed",
+      sourceType: "amazon_browser",
+    });
+  }
+
+  // VOC Review Evidence（人工导入评论，限量 10 条）+ VOC 分析主题摘要
+  const reviewEvidence = isRecord(result.reviewEvidence) ? result.reviewEvidence : null;
+  const reviews = isRecord(reviewEvidence?.dataset) && Array.isArray(reviewEvidence.dataset.reviews)
+    ? reviewEvidence.dataset.reviews.filter(isRecord)
+    : [];
+  for (const [index, review] of reviews.slice(0, 10).entries()) {
+    const reviewText = asString(review.reviewText).slice(0, 300);
+    if (!reviewText) continue;
+    evidence.push({
+      ref: `ev:voc:${asString(review.evidenceId) || `review${index}`}`,
+      field: "voc_review",
+      label: "VOC 评论证据",
+      value: `[${asString(review.sourceProductRole) || "current_candidate"}] ${reviewText}`,
+      status: "confirmed",
+      sourceType: "voc_review",
+    });
+  }
+  const vocAnalysis = isRecord(result.vocAnalysis) ? result.vocAnalysis : null;
+  const vocThemes = vocAnalysis && isRecord(vocAnalysis.themes) ? vocAnalysis.themes : null;
+  if (vocThemes) {
+    const themeGroups: Array<[string, unknown]> = [
+      ["正面主题", vocThemes.positiveThemes],
+      ["痛点主题", vocThemes.painPointThemes],
+      ["使用场景", vocThemes.usageScenarios],
+      ["反复诉求", vocThemes.recurringRequests],
+      ["冲突", vocThemes.conflicts],
+      ["弱信号", vocThemes.weakSignals],
+    ];
+    for (const [groupLabel, listRaw] of themeGroups) {
+      if (!Array.isArray(listRaw)) continue;
+      for (const [index, theme] of listRaw.filter(isRecord).slice(0, 5).entries()) {
+        const label = asString(theme.label);
+        const summary = asString(theme.summary).slice(0, 200);
+        if (!label && !summary) continue;
+        const count = typeof theme.reviewCount === "number" ? String(theme.reviewCount) : "";
+        evidence.push({
+          ref: `ev:voc:theme:${asString(theme.themeId) || `${groupLabel}${index}`}`,
+          field: "voc_theme",
+          label: `VOC ${groupLabel}`,
+          value: `${label}${count ? `（${count} 条）` : ""}｜${summary}`,
+          status: "confirmed",
+          sourceType: "voc_analysis",
+        });
+      }
+    }
+  }
+
+  // 1688 Sourcing Evidence（仅 humanConfirmed 的候选；限量 10）
+  const sourcingEvidence = isRecord(result.sourcingEvidence) ? result.sourcingEvidence : null;
+  const sourcingCandidates = Array.isArray(sourcingEvidence?.candidates)
+    ? sourcingEvidence.candidates.filter(isRecord)
+    : [];
+  const confirmedOfferIds = new Set(
+    Array.isArray(sourcingEvidence?.humanConfirmed)
+      ? sourcingEvidence.humanConfirmed
+        .filter(isRecord)
+        .map((entry) => asString(entry.offerId))
+        .filter(Boolean)
+      : [],
+  );
+  const confirmedCandidates = sourcingCandidates
+    .filter((candidate) => confirmedOfferIds.has(asString(candidate.offerId)))
+    .slice(0, 10);
+  for (const [index, item] of confirmedCandidates.entries()) {
+    const price = isRecord(item.displayedPrice) ? display(item.displayedPrice.text ?? item.displayedPrice.value) : "";
+    const moq = isRecord(item.displayedMoq) ? display(item.displayedMoq.text ?? item.displayedMoq.value) : "";
+    const claims = Array.isArray(item.sellerClaims)
+      ? item.sellerClaims.filter(isRecord).slice(0, 3)
+        .map((claim) => `${asString(claim.name)}:${display(claim.value)}`)
+        .join("；")
+      : "";
+    evidence.push({
+      ref: `ev:sourcing:${asString(item.offerId) || `offer${index}`}`,
+      field: "sourcing_evidence",
+      label: "1688 供应线索证据",
+      value: [
+        asString(item.offerId) ? `offer ${asString(item.offerId)}` : "",
+        asString(item.title).slice(0, 120) ? `标题 ${asString(item.title).slice(0, 120)}` : "",
+        price ? `页面显示价 ${price}` : "",
+        moq ? `展示MOQ ${moq}` : "",
+        claims ? `卖家自报 ${claims}` : "",
+      ].filter(Boolean).join("｜"),
+      status: "confirmed",
+      sourceType: "sourcing_evidence",
+    });
+  }
+
+  // Competitor Evidence（人工维护，上限 5）
+  const competitorEvidence = isRecord(result.competitorEvidence) ? result.competitorEvidence : null;
+  const competitorAsins = Array.isArray(competitorEvidence?.asins)
+    ? competitorEvidence.asins.filter(isRecord)
+    : [];
+  for (const [index, comp] of competitorAsins.slice(0, 5).entries()) {
+    const note = asString(comp.note).slice(0, 200);
+    evidence.push({
+      ref: `ev:competitor:${asString(comp.asin) || `comp${index}`}`,
+      field: "competitor_evidence",
+      label: "竞品证据",
+      value: `ASIN ${asString(comp.asin)}${note ? `｜备注 ${note}` : ""}`,
+      status: "confirmed",
+      sourceType: "competitor_evidence",
+    });
+  }
+
   const keywordEvidence = isRecord(result.keywordEvidence) ? result.keywordEvidence : null;
   const keywordSummary = keywordEvidence && keywordEvidence.reportType === "reverse_asin" || keywordEvidence?.reportType === "keyword_mining"
     ? {
@@ -191,6 +330,29 @@ export function buildAiSummaryEvidenceInput(result: Record<string, unknown>): {
     evidence,
     keywordSummary,
   };
+}
+
+/**
+ * F11 生成前 gate：是否存在任何已确认/已保存的正式 Evidence
+ * （Keyword / Browser / VOC / Sourcing(humanConfirmed) / Competitor）。
+ * 全空 → 不应调用真实 AI（NO_EVIDENCE_AVAILABLE）。
+ */
+export function hasPersistedEvidenceInput(result: Record<string, unknown>): boolean {
+  if (isRecord(result.keywordEvidence)) return true;
+  if (isRecord(result.browserEvidence)
+    && Array.isArray(result.browserEvidence.snapshots)
+    && result.browserEvidence.snapshots.length > 0) return true;
+  if (isRecord(result.reviewEvidence)
+    && isRecord(result.reviewEvidence.dataset)
+    && Array.isArray(result.reviewEvidence.dataset.reviews)
+    && result.reviewEvidence.dataset.reviews.length > 0) return true;
+  if (isRecord(result.sourcingEvidence)
+    && Array.isArray(result.sourcingEvidence.humanConfirmed)
+    && result.sourcingEvidence.humanConfirmed.length > 0) return true;
+  if (isRecord(result.competitorEvidence)
+    && Array.isArray(result.competitorEvidence.asins)
+    && result.competitorEvidence.asins.length > 0) return true;
+  return false;
 }
 
 /* ── Prompt（system 固定 + 数据字段） ── */
@@ -426,6 +588,14 @@ export async function generateAiEvidenceSummary(input: {
 }): Promise<{ summary: AiEvidenceSummaryV1; unverified: AiSummaryItem[]; gateResult: "pass" | "fail" }> {
   const snapshot = await readAiSummarySnapshot(input.context, input.taskId);
   const result = parseResultJson(snapshot.resultJson);
+  // F11：无任何已确认 Evidence → 不调用真实 AI（fail-closed）
+  if (!hasPersistedEvidenceInput(result)) {
+    throw new AiEvidenceSummaryError(
+      "no_evidence_available",
+      422,
+      "当前任务还没有任何已确认的 Evidence（关键词 / Amazon 浏览器 / VOC / 1688 货源 / 竞品），暂无需生成 AI 总结。请先收集并确认至少一类 Evidence。",
+    );
+  }
   const promptInput = buildAiSummaryEvidenceInput(result);
   const allowedRefs = new Set(promptInput.evidence.map((item) => item.ref));
   const inputEvidenceHash = createHash("sha256")

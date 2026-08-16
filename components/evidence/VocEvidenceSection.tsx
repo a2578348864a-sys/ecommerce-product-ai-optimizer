@@ -7,9 +7,10 @@
  * 每个主题可展开"为什么这么说"：引用 Review 数量、原文、星级、来源 ASIN、当前商品/竞品、capturedAt、sourceRef。
  * 样本量显式；当前商品 vs 竞品明确区分；单边样本提示；绝不显示"分析了全部评论"除非真实全部。
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BarChart3, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { useSessionDraft } from "@/lib/client/useSessionDraft";
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ ...buildAccessHeaders(), ...extra });
@@ -406,6 +407,32 @@ export function VocEvidenceSection({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  // F5：VOC 导入草稿会话持久化（刷新不丢输入；revision = storageVersion，任务更新后旧草稿安全失效）
+  const vocDraft = useSessionDraft<{
+    importText: string;
+    importAsin: string;
+    importRole: "current_candidate" | "competitor";
+    importRating: string;
+  }>({
+    pageKind: "voc-import",
+    entityId: taskId,
+    revision: storageVersion ? `${storageVersion.resultJsonHash}:${storageVersion.updatedAt}` : null,
+    initial: { importText: "", importAsin: "", importRole: "current_candidate", importRating: "" },
+  });
+  // 恢复（仅草稿校验通过后一次性灌入组件 state；组件 state 才是输入权威）
+  useEffect(() => {
+    if (vocDraft.draft && vocDraft.restored) {
+      setImportText(vocDraft.draft.importText);
+      setImportAsin(vocDraft.draft.importAsin);
+      setImportRole(vocDraft.draft.importRole);
+      setImportRating(vocDraft.draft.importRating);
+    }
+  }, [vocDraft.draft, vocDraft.restored]);
+  // 写入（防抖）
+  useEffect(() => {
+    vocDraft.save({ importText, importAsin, importRole, importRating });
+  }, [importText, importAsin, importRole, importRating, vocDraft]);
+
   const reviewsById = useCallback(() => {
     const map = new Map<string, VocReviewView>();
     for (const review of evidence?.dataset.reviews ?? []) map.set(review.evidenceId, review);
@@ -434,6 +461,13 @@ export function VocEvidenceSection({
         | { ok: true; data: { outcome: { importedCount: number; duplicateCount: number; rejectedCount: number } } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
+        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        if (code === "task_result_conflict") {
+          // F5：同任务其它区块更新导致 CAS 冲突 → 保留 draft、刷新最新版本、提示一键重试
+          setError("任务内容刚在其他区块更新，已自动刷新最新版本；你已输入的评论已保留，请再次点击导入。");
+          onChanged();
+          return;
+        }
         setError((json as { error?: { message?: string } }).error?.message ?? "导入失败。");
         return;
       }
@@ -442,6 +476,7 @@ export function VocEvidenceSection({
       setImportText("");
       setImportRating("");
       setImportOpen(false);
+      vocDraft.clear();
       onChanged();
     } catch {
       setError("导入失败，请重试。");
