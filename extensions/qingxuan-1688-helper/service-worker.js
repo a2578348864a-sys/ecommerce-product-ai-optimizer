@@ -59,9 +59,15 @@ async function fetchBridge(path, options) {
   return await fetch(`http://127.0.0.1:${port}${path}`, options);
 }
 
-async function sendTo1688Tab(message) {
+async function sendTo1688Tab(message, { autoOpen = false } = {}) {
   const tabs = await chrome.tabs.query({});
-  const target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+  let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+  if (!target && autoOpen) {
+    // 固定能力：自动打开 1688 图搜上传页（非任意 URL）
+    const created = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
+    await new Promise((resolveWait) => setTimeout(resolveWait, 6_000)); // 等页面加载 + content script 注入
+    target = created;
+  }
   if (!target || !target.id) {
     return { ok: false, code: "no_1688_tab" };
   }
@@ -80,12 +86,16 @@ async function handleCommand(command, jobId) {
     const imageBase64 = command.payload && typeof command.payload.imageBase64 === "string" ? command.payload.imageBase64 : "";
     if (!imageBase64) return { ok: false, code: "image_payload_missing" };
     if (Math.ceil(imageBase64.length / 4) * 3 > MAX_IMAGE_BYTES) return { ok: false, code: "image_too_large" };
-    return await sendTo1688Tab({ type: "upload", version: "1.0", jobId, payload: { imageBase64 } });
+    return await sendTo1688Tab({ type: "upload", version: "1.0", jobId, payload: { imageBase64 } }, { autoOpen: true });
   }
   if (command.type === "navigateUploadPage") {
     // 固定能力：仅导航到 1688 图搜上传页（非任意 URL；§8 禁止 openAnyUrl）
     const tabs = await chrome.tabs.query({});
-    const target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+    let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+    if (!target) {
+      const created = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
+      target = created;
+    }
     if (!target || !target.id) return { ok: false, code: "no_1688_tab" };
     try {
       await chrome.tabs.update(target.id, { url: "https://s.1688.com/selloffer/offer_search.html" });
