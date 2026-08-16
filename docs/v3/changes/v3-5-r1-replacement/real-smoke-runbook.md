@@ -19,6 +19,22 @@
   SW 验证导航生效/新建 tab 兜底/preferredTabId（SW 0.3.1，commit a5b5525）。
 - 前置：用户刷新扩展（0.3.0 → 0.3.1），bridge /health 探测 extensionSwVersion=0.3.1 确认。
 
+### 2026-08-16 19:06 — Restart Smoke（§41）✅ FULL PASS
+
+Chrome 完全关闭 → 重新启动 → 扩展需重新"加载已解压的扩展程序"（unpacked 扩展重启后未自动
+加载，用户按指引重新加载 0.3.1）→ 重跑完整 3 项：
+
+```
+✓ 正式驱动图搜 → 60 candidates, first=937354300938（T-Acquire 71s）
+✓ 详情交叉验证 → offerId=937354300938 title=简约便携保温杯女生高颜值316不锈钢茶杯 儿童男学生上学专用水杯（1688-cli）
+✓ Preview → Human Confirm → sourcing-evidence.v1 → GET 读回 saved=1 offerId=937354300938
+3 tests passed (128.0s)
+```
+
+- 学习：Chrome 完全重启后 unpacked 扩展不会自动加载（本机现象），需手动重新加载
+  （chrome://extensions → 开发者模式 → 加载已解压的扩展程序）。
+- 登录态在重启后保持（无需重新扫码）；图搜结果集与上次不同属正常（排序/推荐变化）。
+
 ## 执行步骤
 
 ```bash
