@@ -168,6 +168,109 @@ const BLOCKED_HOSTNAME_PATTERNS: RegExp[] = [
   /^169\.254\.\d+\.\d+$/,
 ];
 
+// ── Proxy Fake-IP 识别（V3 Final R9） ──
+//
+// 本机代理软件（TUN / 透明代理 / fake-ip DNS）会把"公网域名"解析到保留/特殊网段，
+// 并在出站时按域名把请求路由到真实目标。这类网段绝不可能是合法公网服务的真实地址。
+// 安全语义（R9 契约 §147/§148）：
+// - 只有"域名"解析结果落在 fake-ip 网段时才允许放行（请求实际经系统代理按域名路由）；
+// - 用户直接输入 fake-ip 网段的 IP 字面量仍然拒绝（保留网段字面量输入禁止）；
+// - RFC1918 / loopback / link-local / CGNAT / 其他保留网段保持 fail-closed（不因 fake-ip 放宽）。
+
+/** 常见代理 fake-ip 网段（IPv4 CIDR 列表：base, prefix） */
+const FAKE_IP_V4_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x1c000000, 8], // 28.0.0.0/8 — IANA 未分配/保留（实测本机代理 fake-ip 网段）
+  [0xc6120000, 15], // 198.18.0.0/15 — RFC2544 benchmark（常见 fake-ip 默认网段）
+];
+
+function isFakeIpIPv4(ip: string): boolean {
+  const octets = ipv4ToOctets(ip);
+  if (!octets) return false;
+  const value = (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3];
+  return FAKE_IP_V4_RANGES.some(([base, prefix]) => {
+    const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
+    return (value & mask) === (base & mask);
+  });
+}
+
+export type ProxyAwareUrlVerdict =
+  | { ok: true; fakeIp: boolean }
+  | {
+    ok: false;
+    reason:
+      | "protocol"
+      | "userinfo"
+      | "port"
+      | "hostname"
+      | "literal_private"
+      | "resolve_failed"
+      | "resolved_private";
+  };
+
+/**
+ * Proxy-aware 公网 https URL 校验（V3 Final R9）。
+ *
+ * 与 `isValidTargetUrl`（resolve4/resolve6，直连系统 DNS 服务器）不同，本函数使用
+ * `dns.lookup`（与 Node 实际 HTTP client 相同的系统解析路径），因此与真实出站连接
+ * 在代理环境下保持一致：代理 fake-ip 解析结果会被识别（见 FAKE_IP_V4_RANGES），
+ * 而不是被误判为"内网/本地地址"。
+ *
+ * 禁令保持（R9 契约 §146）：localhost/127.0.0.0/8/::1、RFC1918、link-local、
+ * metadata endpoints（169.254.0.0/16）、CGNAT、private/reserved IPv6、file/ftp/data/
+ * javascript 协议、userinfo、非 443 端口、IP 字面量保留地址——全部 fail-closed。
+ */
+export async function validateProxyAwareHttpsUrl(
+  inputUrl: URL,
+  lookup: TargetDnsLookup = dns.lookup.bind(dns) as TargetDnsLookup,
+): Promise<ProxyAwareUrlVerdict> {
+  if (inputUrl.protocol !== "https:") return { ok: false, reason: "protocol" };
+  if (inputUrl.username || inputUrl.password) return { ok: false, reason: "userinfo" };
+  if (inputUrl.port && inputUrl.port !== "443") return { ok: false, reason: "port" };
+
+  const hostname = inputUrl.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!hostname || hostname.endsWith(".") || isBlockedHostname(hostname)) return { ok: false, reason: "hostname" };
+
+  const literalFamily = isIP(hostname);
+  if (literalFamily === 4) {
+    // 字面量 IP：保留网段（含 fake-ip 网段）一律拒绝——fake-ip 放行只适用于域名。
+    if (isPrivateIPv4(hostname) || isFakeIpIPv4(hostname)) return { ok: false, reason: "literal_private" };
+    return { ok: true, fakeIp: false };
+  }
+  if (literalFamily === 6) {
+    if (isPrivateIPv6(hostname)) return { ok: false, reason: "literal_private" };
+    return { ok: true, fakeIp: false };
+  }
+
+  let resolved: Array<{ address: string; family: number }>;
+  try {
+    resolved = await lookup(hostname, { all: true, verbatim: true });
+  } catch {
+    return { ok: false, reason: "resolve_failed" };
+  }
+  if (resolved.length === 0) return { ok: false, reason: "resolve_failed" };
+
+  let sawFakeIp = false;
+  for (const entry of resolved) {
+    const addr = entry.address;
+    const actualFamily = isIP(addr);
+    if (actualFamily === 4) {
+      if (isFakeIpIPv4(addr)) {
+        sawFakeIp = true;
+        continue;
+      }
+      if (isPrivateIPv4(addr)) return { ok: false, reason: "resolved_private" };
+      continue;
+    }
+    if (actualFamily === 6) {
+      if (isPrivateIPv6(addr)) return { ok: false, reason: "resolved_private" };
+      continue;
+    }
+    return { ok: false, reason: "resolved_private" };
+  }
+
+  return { ok: true, fakeIp: sawFakeIp };
+}
+
 /**
  * 通过 hostname 字符串模式判断是否为内网地址。
  */

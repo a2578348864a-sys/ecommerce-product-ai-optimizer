@@ -54,6 +54,10 @@ beforeEach(async () => {
   cliPath = join(tempDir, "fake-1688-cli.js");
   writeFileSync(cliPath, FAKE_CLI, "utf8");
   process.env[SOURCING_CLI_ENV_PATH] = cliPath;
+  // V3 Final R10：自动发现可能命中真实本机 ~/.1688/cli——测试隔离到临时 HOME，
+  // 保证"工具未配置"用例在真实开发机上依然成立（不依赖部署环境）。
+  process.env.USERPROFILE = join(tempDir, "home");
+  process.env.HOME = join(tempDir, "home");
   resetCliVersionCacheForTests();
   resetSourcingPreviewStoreForTests();
   taskId = (await createTrustedSandboxTask(DEMO, { type: "research" })).id;
@@ -62,6 +66,8 @@ beforeEach(async () => {
 
 afterEach(() => {
   delete process.env[SOURCING_CLI_ENV_PATH];
+  delete process.env.USERPROFILE;
+  delete process.env.HOME;
   rmSync(tempDir, { recursive: true, force: true });
 });
 

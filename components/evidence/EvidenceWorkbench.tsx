@@ -108,6 +108,56 @@ export function natureForField(field: string): MetricNature {
   return "unknown";
 }
 
+// ── V3 Final R12：研究资料清单与研究状态行（导出纯函数，供组件与测试使用） ──
+
+export type ResearchMaterialRow = { key: string; label: string; state: "已有" | "待补" | "可选" };
+
+export type ResearchStatusSummary = {
+  status: "empty" | "partial" | "ai_ready";
+  collectedLabels: string[];
+};
+
+/**
+ * R7 权威矩阵（Requirement×Collection 语义）→ 当前研究资料 6 行清单。
+ * 与 lib/client/evidenceCompletion 的语义一致：可选+缺失→可选；必填+缺失→待补；有→已有。
+ */
+export function buildResearchMaterialRows(input: {
+  overview: WorkbenchOverviewItem[];
+  competitors: unknown[];
+  keywordReportEvidence: unknown;
+  browserEvidence: { snapshots: unknown[] } | null;
+  vocEvidence: { dataset: { reviews: unknown[] } } | null;
+  sourcingConfirmed: boolean;
+}): ResearchMaterialRow[] {
+  return [
+    { key: "productBasics", label: "商品基础资料", state: input.overview.some((item) => item.value !== "unknown") ? "已有" : "待补" },
+    { key: "competitor", label: "竞品资料", state: input.competitors.length > 0 ? "已有" : "可选" },
+    { key: "keyword", label: "关键词", state: input.keywordReportEvidence !== null ? "已有" : "待补" },
+    { key: "browser", label: "Amazon 页面", state: (input.browserEvidence?.snapshots.length ?? 0) > 0 ? "已有" : "待补" },
+    { key: "voc", label: "买家评论", state: (input.vocEvidence?.dataset.reviews.length ?? 0) > 0 ? "已有" : "待补" },
+    { key: "sourcing", label: "供应线索", state: input.sourcingConfirmed ? "已有" : "可选" },
+  ];
+}
+
+/**
+ * R12 研究状态行（§170/§175/§176/§177）：
+ * - 0 类已收集 → "研究资料尚待补充"
+ * - ≥1 类已收集、未生成 AI 证据总结 → "研究进行中"（研究开始 ≠ AI 已运行）
+ * - 已生成 AI 证据总结 → "AI 已整理当前资料"
+ */
+export function deriveResearchStatus(
+  rows: ResearchMaterialRow[],
+  aiSummary: unknown,
+): ResearchStatusSummary {
+  const collectedLabels = rows.filter((row) => row.state === "已有").map((row) => row.label);
+  const status: ResearchStatusSummary["status"] = aiSummary
+    ? "ai_ready"
+    : collectedLabels.length > 0
+      ? "partial"
+      : "empty";
+  return { status, collectedLabels };
+}
+
 const OVERVIEW_FIELDS: ReadonlyArray<{ field: string; label: string }> = [
   { field: "productTitle", label: "标题" },
   { field: "brand", label: "品牌" },
@@ -360,11 +410,14 @@ export function EvidenceWorkbench({
   taskId,
   result,
   onDataChanged,
+  sourceImageUrl,
 }: {
   taskId: string;
   result: Record<string, unknown> | null;
   /** R7：任一 Evidence 区确认/保存成功后冒泡（顶部"当前研究资料"据此重新计算） */
   onDataChanged?: () => void;
+  /** V3 Final R9（§151）：Task 已确认主图，用于 1688 图片找货输入框自动预填 */
+  sourceImageUrl?: string | null;
 }) {
   const overview = extractOverviewItems(result);
   const decision = extractDecisionSummary(result);
@@ -564,20 +617,49 @@ export function EvidenceWorkbench({
 
   const canAdd = newAsin.trim().length > 0 && competitors.length < 5 && !competitorBusy;
 
+  // V3 Final R12：当前研究资料清单（checklist 行）→ 研究状态行派生（§170/§175/§177）。
+  // 研究开始（有 1+ 类已收集 Evidence）≠ AI 总结已生成；绝不再用"研究尚未开始"表达"AI 未运行"。
+  const materialRows = buildResearchMaterialRows({
+    overview,
+    competitors,
+    keywordReportEvidence,
+    browserEvidence,
+    vocEvidence,
+    sourcingConfirmed,
+  });
+  const researchStatus = deriveResearchStatus(materialRows, aiSummary);
+
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
       {/* R7：当前研究资料（从各 Evidence 区实时 state 派生，确认保存后自动更新） */}
       <section data-testid="research-evidence-checklist" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-bold text-slate-900">当前研究资料</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-bold text-slate-900">当前研究资料</p>
+          {/* V3 Final R12：研究状态行（唯一语义：研究开始 ≠ AI 总结生成） */}
+          <span
+            data-testid="research-status-line"
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              researchStatus.status === "ai_ready"
+                ? "bg-teal-50 text-teal-700"
+                : researchStatus.status === "partial"
+                  ? "bg-sky-50 text-sky-700"
+                  : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {researchStatus.status === "ai_ready"
+              ? "AI 已整理当前资料"
+              : researchStatus.status === "partial"
+                ? "研究进行中"
+                : "研究资料尚待补充"}
+          </span>
+        </div>
+        {researchStatus.status === "partial" ? (
+          <p className="mt-1.5 text-sm leading-6 text-slate-600" data-testid="research-status-detail">
+            已收集{researchStatus.collectedLabels.join("、")}等资料；可继续补充其他 Evidence，或在下方生成 AI 证据总结。
+          </p>
+        ) : null}
         <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
-          {([
-            { key: "productBasics", label: "商品基础资料", state: overview.some((item) => item.value !== "unknown") ? "已有" : "待补" },
-            { key: "competitor", label: "竞品资料", state: competitors.length > 0 ? "已有" : "可选" },
-            { key: "keyword", label: "关键词", state: keywordReportEvidence !== null ? "已有" : "待补" },
-            { key: "browser", label: "Amazon 页面", state: (browserEvidence?.snapshots.length ?? 0) > 0 ? "已有" : "待补" },
-            { key: "voc", label: "买家评论", state: (vocEvidence?.dataset.reviews.length ?? 0) > 0 ? "已有" : "待补" },
-            { key: "sourcing", label: "供应线索", state: sourcingConfirmed ? "已有" : "可选" },
-          ] as Array<{ key: string; label: string; state: string }>).map((row) => (
+          {materialRows.map((row) => (
             <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
               <span className="text-slate-700">{row.label}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -804,7 +886,7 @@ export function EvidenceWorkbench({
       <section data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
         <SourcingEvidencePanel
           taskId={taskId}
-          amazonContext={{ title: null, image: null, asin: null }}
+          amazonContext={{ title: null, image: sourceImageUrl ?? null, asin: null }}
           onEvidenceChange={setSourcingConfirmed}
         />
       </section>

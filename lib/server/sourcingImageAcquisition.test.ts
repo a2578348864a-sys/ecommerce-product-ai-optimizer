@@ -4,11 +4,11 @@
  * §25/§26/§27/§35 覆盖：extension_not_installed / auth_required / risk_control_required /
  * upload 重试与 Wrong Upload 门禁 / 结果不足 / 正常全链（fake 命令序列）。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireByImage, normalizeImageAcquisitionError } from "@/lib/server/sourcingImageAcquisition";
+import { acquireByImage, fetchImageWithRedirectGuard, normalizeImageAcquisitionError } from "@/lib/server/sourcingImageAcquisition";
 import { SourcingAcquisitionError } from "@/lib/upstream/1688/contracts";
 import type { Native1688BridgeClient } from "@/lib/server/native1688BridgeClient";
 
@@ -391,5 +391,109 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     expect(normalized).toEqual({ code: "auth_required", status: 401, message: "msg" });
     const generic = normalizeImageAcquisitionError(new Error("boom"));
     expect(generic.code).toBe("extension_bridge_not_available");
+  });
+});
+
+// ── V3 Final R9：redirect 逐跳验证（§149；禁止盲目跟随到内网/保留地址） ──
+
+describe("fetchImageWithRedirectGuard", () => {
+  /** 测试用 proxy-aware lookup：一律解析为公网地址（与真实代理环境一致） */
+  const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
+
+  function imageResponse(body: string, init?: ResponseInit): Response {
+    return new Response(body, { status: 200, headers: { "content-type": "image/png" }, ...init });
+  }
+
+  it("正常 200 → 返回最终响应", async () => {
+    const fetchMock = vi.fn(async () => imageResponse("png-bytes"));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const response = await fetchImageWithRedirectGuard(new URL("https://m.media-amazon.com/images/I/x.jpg"), AbortSignal.timeout(5_000));
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("redirect → 内网目标 → 拒绝（invalid_image_url）", async () => {
+    const fetchMock = vi.fn(async (url: URL | string) => {
+      const current = String(url);
+      if (current.includes("initial.example")) {
+        return new Response(null, { status: 302, headers: { location: "https://192.168.1.5/steal.png" } });
+      }
+      return imageResponse("png");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://initial.example/a.png"), AbortSignal.timeout(5_000), publicLookup))
+        .rejects.toMatchObject({ code: "invalid_image_url" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("redirect → 协议降级 http → 拒绝（image_redirect_downgrade）", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 301, headers: { location: "http://cdn.example/b.png" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://initial.example/a.png"), AbortSignal.timeout(5_000), publicLookup))
+        .rejects.toMatchObject({ code: "image_redirect_downgrade" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("redirect → 保留网段字面量（28.0.0.1）→ 拒绝（literal_private 路径）", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 302, headers: { location: "https://28.0.0.1/x.png" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://initial.example/a.png"), AbortSignal.timeout(5_000), publicLookup))
+        .rejects.toMatchObject({ code: "invalid_image_url" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("redirect 超过 5 跳 → 拒绝（image_redirect_too_deep）", async () => {
+    let hops = 0;
+    const fetchMock = vi.fn(async () => {
+      hops += 1;
+      return new Response(null, { status: 302, headers: { location: `https://hop.example/${hops}.png` } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://start.example/a.png"), AbortSignal.timeout(10_000), publicLookup))
+        .rejects.toMatchObject({ code: "image_redirect_too_deep" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("redirect → 合法 https 公网目标 → 跟随并返回最终 200", async () => {
+    const fetchMock = vi.fn(async (url: URL | string) => {
+      const current = String(url);
+      if (current.includes("cdn.example")) return imageResponse("final-png");
+      return new Response(null, { status: 302, headers: { location: "https://cdn.example/final.png" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const response = await fetchImageWithRedirectGuard(new URL("https://initial.example/a.png"), AbortSignal.timeout(10_000), publicLookup);
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("3xx 无 location → 拒绝（image_redirect_missing_target）", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 302 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchImageWithRedirectGuard(new URL("https://initial.example/a.png"), AbortSignal.timeout(5_000), publicLookup))
+        .rejects.toMatchObject({ code: "image_redirect_missing_target" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

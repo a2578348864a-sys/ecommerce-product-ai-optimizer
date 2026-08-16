@@ -19,7 +19,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isValidTargetUrl } from "@/lib/server/ssrfGuard";
+import { validateProxyAwareHttpsUrl } from "@/lib/server/ssrfGuard";
+import type { TargetDnsLookup } from "@/lib/server/ssrfGuard";
 import { SourcingAcquisitionError, type AcquisitionCandidate } from "@/lib/upstream/1688/contracts";
 import type { ImageAcquisitionRunTrace } from "@/tools/collectors/1688/image-search-contract";
 import {
@@ -35,9 +36,54 @@ const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
 const ALLOWED_IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"]);
 const UPLOAD_RETRIES = 3;
 const RESULT_PAGE_WAIT_MS = 45_000;
+const MAX_IMAGE_REDIRECT_HOPS = 5;
 
 function fail(code: string, status: number, message: string): never {
   throw new SourcingAcquisitionError(code, status, message);
+}
+
+/**
+ * V3 Final R9：代理 fake-ip 环境下逐跳验证的 https 图片下载。
+ * - 初始 URL 与每一跳 redirect 目标都经过 validateProxyAwareHttpsUrl（proxy-aware + fake-ip 识别，
+ *   保留网段字面量/内网解析仍然 fail-closed）；
+ * - redirect 手动跟随（最多 MAX_IMAGE_REDIRECT_HOPS 跳），绝不盲目跟随到内网/保留地址；
+ * - 图片仅支持 https（协议降级拒绝）。
+ */
+export async function fetchImageWithRedirectGuard(
+  initialUrl: URL,
+  signal: AbortSignal,
+  lookup?: TargetDnsLookup,
+): Promise<Response> {
+  let current = initialUrl;
+  for (let hop = 0; ; hop++) {
+    const response = await fetch(current, { signal, redirect: "manual" });
+    if (response.status >= 300 && response.status < 400) {
+      if (hop >= MAX_IMAGE_REDIRECT_HOPS) {
+        fail("image_redirect_too_deep", 400, "候选图片跳转次数过多。");
+      }
+      const location = response.headers.get("location");
+      await response.body?.cancel().catch(() => undefined);
+      if (!location) {
+        fail("image_redirect_missing_target", 400, "候选图片跳转目标缺失。");
+      }
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        fail("image_redirect_invalid", 400, "候选图片跳转目标非法。");
+      }
+      if (next.protocol !== "https:") {
+        fail("image_redirect_downgrade", 400, "候选图片跳转目标仅支持 https。");
+      }
+      const verdict = await validateProxyAwareHttpsUrl(next, lookup);
+      if (!verdict.ok) {
+        fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
+      }
+      current = next;
+      continue;
+    }
+    return response;
+  }
 }
 
 /** 下载候选图片到临时目录（SSRF 守卫 + 类型/大小限制） */
@@ -49,10 +95,11 @@ async function downloadCandidateImage(imageUrl: string): Promise<{ path: string;
     fail("invalid_image_url", 400, "候选图片链接非法。");
   }
   if (url.protocol !== "https:") fail("invalid_image_url", 400, "候选图片仅支持 https 链接。");
-  const safe = await isValidTargetUrl(url);
-  if (!safe) fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
+  // V3 Final R9：proxy-aware 校验（fake-ip 识别；保留全部 SSRF fail-closed 禁令）
+  const verdict = await validateProxyAwareHttpsUrl(url);
+  if (!verdict.ok) fail("invalid_image_url", 400, "候选图片链接未通过安全校验（禁止内网/本地地址）。");
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000), redirect: "follow" });
+  const response = await fetchImageWithRedirectGuard(url, AbortSignal.timeout(30_000));
   if (!response.ok) fail("image_download_failed", 502, "候选图片下载失败。");
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
   if (!ALLOWED_IMAGE_CONTENT_TYPES.has(contentType)) {
@@ -94,7 +141,7 @@ function mapBridgeFailure(code: string, status: { extensionSeen: boolean; lastEx
     fail("extension_not_installed", 503, "未检测到轻选 1688 助手，请先在普通 Chrome 中安装助手并打开 1688 页面。");
   }
   // P1-B：内部码不进用户文案（只进日志）
-  // eslint-disable-next-line no-console
+   
   console.error("[1688-image] extension disconnected", { detail: code });
   fail("extension_disconnected", 503, "1688 图片助手连接中断，请检查 Chrome 窗口与助手状态后重试。");
 }
@@ -294,7 +341,7 @@ export async function acquireByImage(input: {
     const submit = await bridge.waitResult(jobId, 60_000);
     if (!submit.ok) {
       // P1-B：内部码不进用户文案
-      // eslint-disable-next-line no-console
+       
       console.error("[1688-image] submit failed", { code: String(submit.code ?? "unknown") });
       fail("search_trigger_not_confirmed", 422, "「搜索图片」未成功触发，请确认图搜页面后重试。");
     }
@@ -391,7 +438,7 @@ export function normalizeImageAcquisitionError(error: unknown): { code: string; 
     return { code: error.code, status: error.status, message: error.message };
   }
   // P1-A：未知异常不把原始 message 拼进用户文案（只进日志）
-  // eslint-disable-next-line no-console
+   
   console.error("[1688-image] unexpected acquisition error", { detail: error instanceof Error ? error.message.slice(0, 300) : String(error) });
   return { code: "extension_bridge_not_available", status: 503, message: "图片找货失败，请重试；若持续失败请刷新页面并检查 Chrome 与助手状态。" };
 }

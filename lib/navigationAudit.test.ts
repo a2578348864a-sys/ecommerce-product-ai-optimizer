@@ -342,8 +342,9 @@ describe("TaskRecordDetail operation overview", () => {
     // 用户进度摘要（当前状态/已完成/还缺/下一步）
     expect(detailSource).toMatch(/还缺/);
     // V2 收口：商品决策报告为聚合主体（AI 总结 / 风险 / 人工决定 / 下一步）
-    expect(detailSource).toMatch(/product-decision-report/);
-    expect(detailSource).toMatch(/研究结论/);
+    // V3 Final R12：legacy 初始分析降级为折叠"历史初始分析"，当前结论以 EvidenceWorkbench 为准
+    expect(detailSource).toMatch(/legacy-research-projection/);
+    expect(detailSource).toMatch(/历史初始分析/);
     expect(detailSource).toMatch(/AI 总结/);
     expect(detailSource).toMatch(/人工确认/);
     // 五步骤降为状态导航（工作流步骤 + 默认折叠说明，非页面主体）

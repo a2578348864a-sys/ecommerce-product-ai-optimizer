@@ -620,3 +620,96 @@ describe("isValidTargetUrl", () => {
     expect(result).toBe(false);
   });
 });
+
+// ── validateProxyAwareHttpsUrl（V3 Final R9：代理 fake-ip 识别；SSRF 禁令保持） ──
+
+const publicLookup = async (hostname: string, _options: { all: true; verbatim: true }) => {
+  return [{ address: "93.184.216.34", family: 4 }];
+};
+const fakeIp28Lookup = async () => [{ address: "28.0.0.126", family: 4 }];
+const fakeIp19818Lookup = async () => [{ address: "198.18.0.5", family: 4 }];
+const rfc1918Lookup = async () => [{ address: "10.0.0.5", family: 4 }];
+const linkLocalLookup = async () => [{ address: "169.254.169.254", family: 4 }];
+const mixedFakeIpLookup = async () => [{ address: "28.0.0.9", family: 4 }, { address: "93.184.216.34", family: 4 }];
+
+describe("validateProxyAwareHttpsUrl", () => {
+  it("https 公网域名解析到公网 → ok，非 fake-ip", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://m.media-amazon.com/images/I/x.jpg"), publicLookup);
+    expect(verdict).toEqual({ ok: true, fakeIp: false });
+  });
+
+  it("代理 fake-ip 网段 28.0.0.0/8（域名解析）→ ok 且识别 PROXY_FAKE_IP", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://m.media-amazon.com/images/I/x.jpg"), fakeIp28Lookup);
+    expect(verdict).toEqual({ ok: true, fakeIp: true });
+  });
+
+  it("代理 fake-ip 网段 198.18.0.0/15（域名解析）→ ok 且识别 PROXY_FAKE_IP", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://img.alicdn.com/imgextra/i4/x.jpg"), fakeIp19818Lookup);
+    expect(verdict).toEqual({ ok: true, fakeIp: true });
+  });
+
+  it("域名解析含 fake-ip 与公网混合（DNS rebinding 形态）→ ok（fake-ip 识别，无私有地址）", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://example.com/x.jpg"), mixedFakeIpLookup);
+    expect(verdict).toEqual({ ok: true, fakeIp: true });
+  });
+
+  it("域名解析到 RFC1918 10.0.0.0/8 → 拒绝（resolved_private）", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://example.com/x.jpg"), rfc1918Lookup);
+    expect(verdict).toEqual({ ok: false, reason: "resolved_private" });
+  });
+
+  it("域名解析到 link-local 169.254.0.0/16（metadata）→ 拒绝", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://example.com/x.jpg"), linkLocalLookup);
+    expect(verdict).toEqual({ ok: false, reason: "resolved_private" });
+  });
+
+  it("域名解析失败 → 拒绝（resolve_failed，fail-closed）", async () => {
+    const failing = async () => { throw new Error("ENOTFOUND"); };
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://example.com/x.jpg"), failing as never);
+    expect(verdict).toEqual({ ok: false, reason: "resolve_failed" });
+  });
+
+  it("fake-ip 网段 IP 字面量输入 28.0.0.1 → 拒绝（literal_private，不因 fake-ip 放行字面量）", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://28.0.0.1/x.jpg"), publicLookup);
+    expect(verdict).toEqual({ ok: false, reason: "literal_private" });
+  });
+
+  it("fake-ip 网段 IP 字面量输入 198.18.0.1 → 拒绝", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://198.18.0.1/x.jpg"), publicLookup);
+    expect(verdict).toEqual({ ok: false, reason: "literal_private" });
+  });
+
+  it("公网 IP 字面量 8.8.8.8 → 允许", async () => {
+    const verdict = await guard.validateProxyAwareHttpsUrl(new URL("https://8.8.8.8/x.jpg"), publicLookup);
+    expect(verdict).toEqual({ ok: true, fakeIp: false });
+  });
+
+  it("localhost / 127.0.0.1 / 10.0.0.1 字面量 → 拒绝", async () => {
+    for (const host of ["localhost", "127.0.0.1", "10.0.0.1", "192.168.1.1"]) {
+      const verdict = await guard.validateProxyAwareHttpsUrl(new URL(`https://${host}/x.jpg`), publicLookup);
+      expect(verdict.ok).toBe(false);
+    }
+  });
+
+  it("private/reserved IPv6（::1、fe80::1、fc00::1）→ 拒绝", async () => {
+    for (const host of ["[::1]", "[fe80::1]", "[fc00::1]"]) {
+      const verdict = await guard.validateProxyAwareHttpsUrl(new URL(`https://${host}/x.jpg`), publicLookup);
+      expect(verdict.ok).toBe(false);
+    }
+  });
+
+  it("http:// / file:// / ftp:// / data: / javascript: → 拒绝（protocol）", async () => {
+    for (const raw of ["http://example.com/x.jpg", "file:///etc/passwd", "ftp://example.com/x", "data:text/plain,hi", "javascript:alert(1)"]) {
+      const url = new URL(raw);
+      const verdict = await guard.validateProxyAwareHttpsUrl(url, publicLookup);
+      expect(verdict.ok).toBe(false);
+    }
+  });
+
+  it("userinfo 或非 443 端口 → 拒绝", async () => {
+    const withUserinfo = await guard.validateProxyAwareHttpsUrl(new URL("https://user:pass@example.com/x.jpg"), publicLookup);
+    expect(withUserinfo).toEqual({ ok: false, reason: "userinfo" });
+    const withPort = await guard.validateProxyAwareHttpsUrl(new URL("https://example.com:8443/x.jpg"), publicLookup);
+    expect(withPort).toEqual({ ok: false, reason: "port" });
+  });
+});

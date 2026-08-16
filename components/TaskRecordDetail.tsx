@@ -61,6 +61,7 @@ import {
   type UserProgressSummary,
 } from "@/lib/userProgressSummary";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
+import { resolvePublicSourceImageUrl } from "@/lib/client/sourceImageUrl";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
@@ -1137,7 +1138,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [updatingDecision, setUpdatingDecision] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
@@ -1232,7 +1232,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, accessPassword, isAccessPasswordReady, refreshKey]);
+  }, [id, accessPassword, isAccessPasswordReady]);
 
 
   
@@ -1492,74 +1492,71 @@ export function TaskRecordDetail({ id }: { id: string }) {
                  </div>
                </div>
 
-               {/* F1+OA3+R2：研究尚未开始 → 证据优先引导（AI 不是 gate；唯一 AI 动作在下方「AI 证据总结」区） */}
-               {!recordHasResearchRecord ? (
-                 <div className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-start-guidance">
-                   <p className="text-sm font-bold text-teal-800">研究尚未开始整理</p>
-                   <p className="mt-1 text-sm leading-6 text-slate-600">
-                     可以先在本页收集竞品、关键词、Amazon 页面、买家评论与 1688 供应线索（下方各区可直接使用），
-                     也可以到下方「AI 证据总结」区让 AI 整理当前已有资料；最后再做人工决定。
-                   </p>
-                 </div>
-               ) : null}
+               {/* V3 Final R12：研究状态以「当前研究资料」清单（EvidenceWorkbench 顶部，实时派生）为权威。
+                   这里不再渲染"研究尚未开始整理"（研究开始 ≠ AI 总结生成，杜绝误导文案）。 */}
 
-               {presentation && researchEvidenceSections ? (
-                 <>
-                   {/* 研究结论与证据缺口：创作产物不参与研究完成语义 */}
-                   <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="product-decision-report">
-                     <div className="flex flex-wrap items-center justify-between gap-2">
-                       <p className="text-sm font-bold text-slate-900">研究结论</p>
-                       <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
-                         {recordSummary?.riskLabel || "风险待确认"}
-                       </span>
-                     </div>
-
+               {/* V3 Final R12：历史初始分析（仅当存在 legacy 研究产出时折叠显示，明确不是当前结论） */}
+               {presentation && researchEvidenceSections && (
+                 (presentation.researchConclusions.length > 0
+                   || researchEvidenceSections.marketSignals.length > 0
+                   || researchEvidenceSections.risks.length > 0
+                   || researchEvidenceSections.evidenceGaps.length > 0
+                   || researchEvidenceSections.conflicts.length > 0) ? (
+                   <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="legacy-research-projection">
+                     <summary className="cursor-pointer text-sm font-bold text-slate-900">
+                       历史初始分析
+                       <span className="ml-2 text-xs font-normal text-slate-400">（进入本工作台前生成的初始分析，不代表当前证据结论；当前研究状态见下方「当前研究资料」与「AI 证据总结」）</span>
+                     </summary>
                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
                        <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                         <p className="text-xs font-bold text-slate-400">AI 总结</p>
+                         <p className="text-xs font-bold text-slate-400">初始 AI 总结</p>
                          {presentation.researchConclusions.length ? (
                            <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700">
                              {presentation.researchConclusions.map((conclusion) => <li key={conclusion}>- {conclusion}</li>)}
                            </ul>
-                         ) : <p className="mt-2 text-sm leading-6 text-slate-600">尚未保存可确认的研究总结。</p>}
+                         ) : <p className="mt-2 text-sm leading-6 text-slate-600">无。</p>}
                        </div>
 
                        <div className="rounded-xl border border-teal-100 bg-teal-50/40 p-3">
-                         <p className="text-xs font-bold text-teal-700">市场研究结果</p>
+                         <p className="text-xs font-bold text-teal-700">初始市场信号</p>
                          {researchEvidenceSections.marketSignals.length ? (
                            <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-700">
                              {researchEvidenceSections.marketSignals.map((item) => <li key={item}>- {item}</li>)}
                            </ul>
-                         ) : <p className="mt-2 text-sm leading-6 text-slate-600">当前记录没有结构化市场信号，需结合来源材料人工核对。</p>}
+                         ) : <p className="mt-2 text-sm leading-6 text-slate-600">无。</p>}
                        </div>
 
                        <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
-                         <p className="text-xs font-bold text-rose-700">风险</p>
+                         <p className="text-xs font-bold text-rose-700">初始风险</p>
                          {researchEvidenceSections.risks.length ? (
                            <ul className="mt-2 space-y-1 text-sm leading-6 text-rose-800">
                              {researchEvidenceSections.risks.map((item) => <li key={item}>- {item}</li>)}
                            </ul>
-                         ) : <p className="mt-2 text-sm leading-6 text-rose-700">当前没有结构化风险结论，合规、侵权和供应链风险仍需人工确认。</p>}
+                         ) : <p className="mt-2 text-sm leading-6 text-rose-700">无。</p>}
                        </div>
 
                        <div className="rounded-xl border border-amber-100 bg-amber-50/40 p-3">
-                         <p className="text-xs font-bold text-amber-700">证据缺口与待确认信息</p>
+                         <p className="text-xs font-bold text-amber-700">初始证据缺口</p>
                          {researchEvidenceSections.evidenceGaps.length || researchEvidenceSections.conflicts.length ? (
                            <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-800">
                              {[...researchEvidenceSections.evidenceGaps, ...researchEvidenceSections.conflicts].map((item) => <li key={item}>- {item}</li>)}
                            </ul>
-                         ) : <p className="mt-2 text-sm leading-6 text-amber-700">没有记录到结构化冲突；供货、利润和合规仍需以真实材料复核。</p>}
+                         ) : <p className="mt-2 text-sm leading-6 text-amber-700">无。</p>}
                        </div>
                      </div>
-                     <p className="mt-3 text-xs leading-5 text-slate-500">AI 结论仅供辅助研究，不代表采购、盈利、合规或上架成立。</p>
-                   </section>
+                     <p className="mt-3 text-xs leading-5 text-slate-500">历史分析仅供追溯，不代表采购、盈利、合规或上架成立；以当前已确认 Evidence 为准。</p>
+                   </details>
+                 ) : null
+               )}
 
-                 </>
-               ) : null}
-
-               {/* Phase 2: Evidence Workbench（商品证据工作台）——研究结论之后、人工决定之前 */}
+               {/* Phase 2: Evidence Workbench（商品证据工作台）——人工决定之前 */}
                {isRecordValue(record.result) ? (
-                 <EvidenceWorkbench taskId={record.id} result={record.result} onDataChanged={() => setRefreshKey((current) => current + 1)} />
+                 <EvidenceWorkbench
+                   taskId={record.id}
+                   result={record.result}
+                   sourceImageUrl={resolvePublicSourceImageUrl(record.result)}
+                   onDataChanged={() => void refreshRecord()}
+                 />
                ) : null}
 
                {record.type === "workflow" ? (
@@ -1569,7 +1566,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                      <p className="mt-1 text-sm leading-6 text-slate-500">查看当前决定、原因、下一步和决定历史；更新决定不会改写原始研究结论。</p>
                      <ProductResearchDecisionPanel
                        taskId={record.id}
-                       onUpdated={() => setRefreshKey((current) => current + 1)}
+                       onUpdated={() => void refreshRecord()}
                      />
                      {!hasVersionedProductResearchRecord(record.result) ? (
                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="legacy-decision-control">

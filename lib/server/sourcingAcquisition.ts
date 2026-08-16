@@ -16,6 +16,7 @@ import "server-only";
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { SourcingAcquisitionError, READ_ONLY_COMMANDS, type ReadOnlyCommand } from "@/lib/upstream/1688/contracts";
 import {
   normalizeOfferDetail,
@@ -54,23 +55,42 @@ export type CliExecutionResult = {
 };
 
 export type CliToolStatus =
-  | { available: false; reason: "not_configured" | "not_found" }
-  | { available: true; cliPath: string; detectedVersion: string | null };
+  | { available: false; reason: "not_configured" | "not_found"; discoveredPath?: string }
+  | { available: true; cliPath: string; detectedVersion: string | null; discovered: boolean };
 
-/** 解析 CLI 路径：仅信任显式 env 配置的绝对路径（fixed executable） */
+/**
+ * V3 Final R10：限定目录的本地采集工具自动发现（§155/§156）。
+ * env 显式配置优先；未配置时只在固定/正式目录中查找，绝不全磁盘搜索：
+ * - `~/.1688/cli/dist/cli.js`（1688-cli 工具自有 home 下的固定安装目录）
+ * - 项目 `tools/1688-cli/dist/cli.js`（项目正式 tools path）
+ * 返回 { path, discovered }；找不到返回 null。
+ */
+export function discoverCliPath(env: NodeJS.ProcessEnv = process.env): { path: string; discovered: boolean } | null {
+  const raw = env[SOURCING_CLI_ENV_PATH];
+  if (raw && typeof raw === "string" && raw.trim()) return { path: raw.trim(), discovered: false };
+
+  const homeDir = env.USERPROFILE ?? env.HOME;
+  const candidates: string[] = [];
+  if (homeDir) candidates.push(join(homeDir, ".1688", "cli", "dist", "cli.js"));
+  candidates.push(join(process.cwd(), "tools", "1688-cli", "dist", "cli.js"));
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return { path: candidate, discovered: true };
+  }
+  return null;
+}
+
+/** 解析 CLI 路径：显式 env 配置优先；未配置时自动发现（限定目录） */
 export function resolveCliPath(env: NodeJS.ProcessEnv = process.env): string | null {
   const raw = env[SOURCING_CLI_ENV_PATH];
-  if (!raw || typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  return trimmed;
+  if (raw && typeof raw === "string" && raw.trim()) return raw.trim();
+  return discoverCliPath(env)?.path ?? null;
 }
 
 export function getCliToolStatus(env: NodeJS.ProcessEnv = process.env): CliToolStatus {
-  const cliPath = resolveCliPath(env);
-  if (!cliPath) return { available: false, reason: "not_configured" };
-  if (!existsSync(cliPath)) return { available: false, reason: "not_found" };
-  return { available: true, cliPath, detectedVersion: null };
+  const discovery = discoverCliPath(env);
+  if (!discovery) return { available: false, reason: "not_configured" };
+  if (!existsSync(discovery.path)) return { available: false, reason: "not_found", discoveredPath: discovery.path };
+  return { available: true, cliPath: discovery.path, detectedVersion: null, discovered: discovery.discovered };
 }
 
 let cachedDetectedVersion: string | null | undefined;
@@ -244,11 +264,11 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
         failClosed("risk_control_required", 403, "1688 触发了风控/暂停（需要人工验证），请在 1688 页面完成验证后重试。");
       }
       // P1-B：CLI 原始 code/message 不进用户文案（只进日志）
-      // eslint-disable-next-line no-console
+       
       console.error("[1688-cli] command failed", { command, code: parsedFailure.code, detail: parsedFailure.message.slice(0, 200) });
       failClosed("tool_error", 502, "获取 1688 数据失败（工具执行异常），请稍后重试；若持续失败请重新登录 1688。");
     }
-    // eslint-disable-next-line no-console
+     
     console.error("[1688-cli] command failed", { command, exitCode: result.exitCode });
     failClosed("tool_error", 502, "获取 1688 数据失败（工具执行异常），请稍后重试；若持续失败请重新登录 1688。");
   }
@@ -266,7 +286,7 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
       failClosed("risk_control_required", 403, "1688 触发了风控/暂停（需要人工验证），请在 1688 页面完成验证后重试。");
     }
     // P1-B：CLI 原始 code/message 不进用户文案
-    // eslint-disable-next-line no-console
+     
     console.error("[1688-cli] command returned failure", { command, code, detail: message });
     failClosed("tool_error", 502, "获取 1688 数据失败（工具执行异常），请稍后重试；若持续失败请重新登录 1688。");
   }

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+﻿import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   ProductResearchImageConflictError,

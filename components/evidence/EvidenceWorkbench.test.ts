@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildResearchMaterialRows,
+  deriveResearchStatus,
   extractCandidateScore,
   extractDecisionSummary,
   extractEvidenceGaps,
@@ -7,6 +9,7 @@ import {
   extractOverviewItems,
   extractReportSource,
   natureForField,
+  type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
 
 const batchResult = {
@@ -108,5 +111,74 @@ describe("EvidenceWorkbench extractors", () => {
     expect(natureForField("rating")).toBe("snapshot");
     expect(natureForField("estimatedMonthlySales")).toBe("estimate");
     expect(natureForField("brand")).toBe("unknown");
+  });
+});
+
+// ── V3 Final R12：研究资料清单 + 研究状态行（§170/§175/§176/§177） ──
+
+describe("buildResearchMaterialRows / deriveResearchStatus", () => {
+  const emptyInput = {
+    overview: [],
+    competitors: [],
+    keywordReportEvidence: null,
+    browserEvidence: null,
+    vocEvidence: null,
+    sourcingConfirmed: false,
+  };
+
+  it("无任何 Evidence → 0 类已有，状态 empty（研究资料尚待补充）", () => {
+    const rows = buildResearchMaterialRows(emptyInput);
+    expect(rows.filter((row) => row.state === "已有")).toHaveLength(0);
+    expect(deriveResearchStatus(rows, null)).toEqual({ status: "empty", collectedLabels: [] });
+  });
+
+  it("已有 Amazon + VOC Evidence、无 AI 总结 → partial（研究进行中），正确列出已收集类别", () => {
+    const rows = buildResearchMaterialRows({
+      ...emptyInput,
+      browserEvidence: { snapshots: [{ asin: "B0X" }] },
+      vocEvidence: { dataset: { reviews: [{ id: "r1" }] } },
+    });
+    expect(rows.find((row) => row.key === "browser")?.state).toBe("已有");
+    expect(rows.find((row) => row.key === "voc")?.state).toBe("已有");
+    const summary = deriveResearchStatus(rows, null);
+    expect(summary.status).toBe("partial");
+    expect(summary.collectedLabels).toEqual(["Amazon 页面", "买家评论"]);
+  });
+
+  it("有 AI 证据总结 → ai_ready（AI 已整理当前资料），不再显示「研究尚未开始」", () => {
+    const rows = buildResearchMaterialRows(emptyInput);
+    const summary = deriveResearchStatus(rows, { summary: "..." });
+    expect(summary.status).toBe("ai_ready");
+  });
+
+  it("研究开始 ≠ AI 总结生成：有 Evidence 无 AI 时不落入 empty", () => {
+    const rows = buildResearchMaterialRows({
+      ...emptyInput,
+      competitors: [{ asin: "B0A" }],
+      sourcingConfirmed: true,
+    });
+    expect(deriveResearchStatus(rows, null).status).toBe("partial");
+  });
+
+  it("可选类别缺失保持可选，必填类别缺失保持待补（Requirement×Collection 语义）", () => {
+    const rows = buildResearchMaterialRows(emptyInput);
+    expect(rows.find((row) => row.key === "competitor")?.state).toBe("可选");
+    expect(rows.find((row) => row.key === "sourcing")?.state).toBe("可选");
+    expect(rows.find((row) => row.key === "keyword")?.state).toBe("待补");
+    expect(rows.find((row) => row.key === "browser")?.state).toBe("待补");
+    expect(rows.find((row) => row.key === "voc")?.state).toBe("待补");
+    expect(rows.find((row) => row.key === "productBasics")?.state).toBe("待补");
+  });
+
+  it("keyword 报表已有 → keyword 行升级为已有", () => {
+    const rows = buildResearchMaterialRows({ ...emptyInput, keywordReportEvidence: {} });
+    expect(rows.find((row) => row.key === "keyword")?.state).toBe("已有");
+  });
+
+  it("rows 类型完整（state 只能是三态）", () => {
+    const rows: ResearchMaterialRow[] = buildResearchMaterialRows(emptyInput);
+    for (const row of rows) {
+      expect(["已有", "待补", "可选"]).toContain(row.state);
+    }
   });
 });

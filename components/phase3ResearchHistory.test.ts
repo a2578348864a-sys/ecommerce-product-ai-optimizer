@@ -23,7 +23,7 @@ describe("Phase 3 research history information architecture", () => {
   });
 
   it("keeps research, decision, tools and historical artifacts as separate sections", () => {
-    for (const heading of ["商品身份与来源", "研究结论", "人工决定", "创作工具", "历史成果"]) {
+    for (const heading of ["商品身份与来源", "历史初始分析", "人工决定", "创作工具", "历史成果"]) {
       expect(detail).toContain(heading);
     }
     expect(detail).toContain("ProductResearchDecisionPanel");

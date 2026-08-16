@@ -49,11 +49,24 @@ describe("SourcingEvidencePanel 文案纪律与结构", () => {
     expect(html).not.toContain("V35");
   });
 
-  it("关键词与链接入口显示登录状态徽章与引导（无 1688-cli 字样）", () => {
+  it("V3 Final R10：关键词与链接入口状态细分（Case A：工具未检测 → 组件未安装，不误导为去登录）", () => {
     const html = renderPanel();
-    expect(html).toContain("需登录 1688");
-    expect(html).toContain("需要先登录 1688 后使用（见顶部登录提示）");
+    // toolStatus 未检测（SSR 初始态）→ Case A 文案：组件未安装（不再显示"需登录 1688"）
+    expect(html).toContain("组件未安装");
+    expect(html).toContain("关键词找货组件尚未安装");
+    expect(html).toContain("链接读取组件尚未安装");
+    expect(html).not.toContain("需登录 1688");
     expect(html).not.toContain("1688-cli");
+  });
+
+  it("V3 Final R9：Task 主图存在 → 显示当前商品主图 + [使用此图片找货]（§151）", () => {
+    const html = renderToStaticMarkup(createElement(SourcingEvidencePanel, {
+      taskId: "task-1",
+      amazonContext: { title: "亚马逊候选保温杯", image: "https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg", asin: "B0TEST0001" },
+    }));
+    expect(html).toContain("当前商品主图");
+    expect(html).toContain("使用此图片找货");
+    expect(html).toContain("https://m.media-amazon.com/images/I/71X8e8wz7mL._AC_SL1500_.jpg");
   });
 
   it("R1：两套登录态明确区分 + 登录窗口 CTA + 重新检测反馈", () => {

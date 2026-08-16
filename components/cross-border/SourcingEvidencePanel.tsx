@@ -165,6 +165,17 @@ export function SourcingEvidencePanel({
     }
   }, [loadInitial]);
 
+  // V3 Final R9（§151）：Task 已确认的主图自动预填图片找货输入框（用户可替换）。
+  // 只在用户尚未手动编辑时预填；用户一旦输入，不再覆盖。
+  const imageEditedRef = useRef(false);
+  useEffect(() => {
+    if (imageEditedRef.current) return;
+    const sourceImage = amazonContext?.image;
+    if (sourceImage && sourceImage.trim()) {
+      setImageUrl(sourceImage.trim());
+    }
+  }, [amazonContext?.image]);
+
   /** D1：用户完成登录/加载扩展后手动重新检测（按钮触发，含检测中状态 + 时间戳反馈） */
   async function refreshTools() {
     setCheckingTools(true);
@@ -361,9 +372,13 @@ export function SourcingEvidencePanel({
 
           {status === "need_login" ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3" role="alert">
-              <p className="text-sm font-semibold text-amber-800">关键词找货与链接读取：登录未完成</p>
+              <p className="text-sm font-semibold text-amber-800">
+                {caps.cliToolAvailable ? "关键词找货与链接读取：登录未完成" : "关键词找货组件尚未准备完成"}
+              </p>
               <p className="mt-1 text-sm text-amber-700">
-                图片找货不受影响（浏览器助手已独立就绪时可正常使用）。
+                {caps.cliToolAvailable
+                  ? "图片找货不受影响（浏览器助手已独立就绪时可正常使用）。"
+                  : "未检测到本机 1688 采集工具，关键词找货与链接读取暂不可用；图片找货不受影响。"}
               </p>
               {caps.cliToolAvailable ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -440,8 +455,10 @@ export function SourcingEvidencePanel({
                   <p className="text-xs font-bold text-slate-500">关键词找货</p>
                   {caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
-                  ) : (
+                  ) : caps.cliToolAvailable ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需登录 1688</span>
+                  ) : (
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">组件未安装</span>
                   )}
                 </div>
                 <div className="mt-2 flex gap-2">
@@ -463,7 +480,9 @@ export function SourcingEvidencePanel({
                     搜索
                   </button>
                 </div>
-                {!caps.cliReady ? (
+                {!caps.cliToolAvailable ? (
+                  <p className="mt-1.5 text-xs text-amber-600">关键词找货组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
+                ) : !caps.cliReady ? (
                   <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
                 ) : null}
               </div>
@@ -480,7 +499,7 @@ export function SourcingEvidencePanel({
                 <div className="mt-2 flex gap-2">
                   <input
                     value={imageUrl}
-                    onChange={(event) => setImageUrl(event.target.value)}
+                    onChange={(event) => { imageEditedRef.current = true; setImageUrl(event.target.value); }}
                     placeholder="候选主图 https:// 链接"
                     className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
                     data-testid="sourcing-image-input"
@@ -495,6 +514,20 @@ export function SourcingEvidencePanel({
                     图搜
                   </button>
                 </div>
+                {/* V3 Final R9（§151）：Task 主图自动预填 + 一键使用 */}
+                {amazonContext?.image && amazonContext.image.trim() ? (
+                  <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span className="max-w-full truncate">当前商品主图：{amazonContext.image.trim()}</span>
+                    <button
+                      type="button"
+                      onClick={() => { imageEditedRef.current = false; setImageUrl(amazonContext.image?.trim() ?? ""); }}
+                      className="rounded border border-teal-300 bg-white px-2 py-0.5 font-semibold text-teal-700 hover:bg-teal-50"
+                      data-testid="sourcing-use-source-image"
+                    >
+                      使用此图片找货
+                    </button>
+                  </p>
+                ) : null}
                 {!caps.imageReady ? (
                   <div className="mt-1.5">
                     <p className="text-xs text-amber-600">需要先在 Chrome 中加载浏览器助手扩展。</p>
@@ -528,8 +561,10 @@ export function SourcingEvidencePanel({
                   <p className="text-xs font-bold text-slate-500">已有 1688 链接</p>
                   {caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
-                  ) : (
+                  ) : caps.cliToolAvailable ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需登录 1688</span>
+                  ) : (
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">组件未安装</span>
                   )}
                 </div>
                 <div className="mt-2 flex gap-2">
@@ -550,7 +585,9 @@ export function SourcingEvidencePanel({
                     读取
                   </button>
                 </div>
-                {!caps.cliReady ? (
+                {!caps.cliToolAvailable ? (
+                  <p className="mt-1.5 text-xs text-amber-600">链接读取组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
+                ) : !caps.cliReady ? (
                   <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
                 ) : null}
               </div>
