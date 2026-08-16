@@ -247,6 +247,25 @@ describe("POST action=save（Human Confirm 全链路）", () => {
   });
 });
 
+describe("POST begin-keyword-login（R1 固定安全登录 capability）", () => {
+  it("工具可用时返回 started + 用户提示（不执行任意命令）", async () => {
+    const response = await POST(request({ action: "begin-keyword-login" }), context());
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    expect(body.ok).toBe(true);
+    expect((body.data as { started: boolean }).started).toBe(true);
+    expect((body.data as { hint: string }).hint).toContain("1688 登录窗口");
+  });
+
+  it("工具未配置 → 503 明确错误（不静默）", async () => {
+    delete process.env[SOURCING_CLI_ENV_PATH];
+    const response = await POST(request({ action: "begin-keyword-login" }), context());
+    const body = await json(response);
+    expect(response.status).toBe(503);
+    expect((body.error as { code: string }).code).toBe("acquisition_tool_not_available");
+  });
+});
+
 describe("GET（状态读取）", () => {
   it("返回 evidence（null）+ storageVersion + 分能力登录状态（F3：cli/image 独立）", async () => {
     const response = await GET(new NextRequest("http://localhost/api/tasks/x/sourcing"), context());

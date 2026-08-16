@@ -56,6 +56,23 @@ describe("SourcingEvidencePanel 文案纪律与结构", () => {
     expect(html).not.toContain("1688-cli");
   });
 
+  it("R1：两套登录态明确区分 + 登录窗口 CTA + 重新检测反馈", () => {
+    const html = renderPanel();
+    // 两套独立登录说明（常驻可见）
+    expect(html).toContain("1688 有两套相互独立的登录");
+    expect(html).toContain("关键词找货 / 链接读取");
+    expect(html).toContain("图片找货");
+    expect(html).toContain("互不影响");
+    // 重新检测按钮（扩展区 SSR 可见）
+    expect(html).toContain("重新检测");
+    // 普通 Chrome 登录说明（图片找货独立于 CLI）
+    expect(html).toContain("图片找货需确认已在普通 Chrome 中登录 1688");
+    // 无技术术语
+    expect(html).not.toContain("1688-cli");
+    expect(html).not.toContain("命令提示符");
+    expect(html).not.toContain("V35");
+  });
+
   it("禁止文案零出现：无推荐/评分/采购建议", () => {
     const html = renderPanel();
     for (const forbidden of ["最佳供应商", "推荐供应商", "最优货源", "靠谱指数", "采购指数", "成功率", "建议购买", "采购成本", "purchaseCost"]) {

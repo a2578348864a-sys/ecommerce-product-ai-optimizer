@@ -49,6 +49,8 @@ type ToolStatus = {
   image?: { extensionAvailable: boolean; reasonCode?: string };
   /** D1：工具可用但未登录时，服务端构造的固定登录命令（仅展示，业务层不执行 login） */
   loginHint?: { command: string } | null;
+  /** R1：最近一次检测时间（ISO；UI 显示"刚刚检测：HH:MM"） */
+  checkedAt?: string | null;
 };
 
 const MATCH_STATE_LABEL: Record<string, string> = {
@@ -104,7 +106,10 @@ export function SourcingEvidencePanel({
   const [detailByOfferId, setDetailByOfferId] = useState<Partial<Record<string, AcquisitionCandidate | null>>>({});
   const [noteByOfferId, setNoteByOfferId] = useState<Record<string, string>>({});
   const [checkingTools, setCheckingTools] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [lastCheckAt, setLastCheckAt] = useState<Date | null>(null);
+  const [checkResult, setCheckResult] = useState<string>("");
+  const [loginNotice, setLoginNotice] = useState("");
+  const [openingLogin, setOpeningLogin] = useState(false);
   const reqIdRef = useRef(0);
   const panelOpen = useRef(false);
 
@@ -119,7 +124,7 @@ export function SourcingEvidencePanel({
     return { response, data: await response.json() as { ok: boolean; error?: { code: string; message: string }; data?: unknown } };
   }, [taskId]);
 
-  const loadInitial = useCallback(async () => {
+  const loadInitial = useCallback(async (): Promise<ToolStatus | null> => {
     const currentId = ++reqIdRef.current;
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/sourcing`, {
@@ -131,16 +136,18 @@ export function SourcingEvidencePanel({
         ok: boolean;
         data?: { evidence: SourcingEvidenceV1 | null; storageVersion: { resultJsonHash: string; updatedAt: string }; toolStatus: ToolStatus };
       };
-      if (currentId !== reqIdRef.current) return;
-      if (!response.ok || !data.ok || !data.data) return;
+      if (currentId !== reqIdRef.current) return null;
+      if (!response.ok || !data.ok || !data.data) return null;
       setEvidence(data.data.evidence);
       setStorageVersion(data.data.storageVersion);
       setToolStatus(data.data.toolStatus);
       // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
       const caps = sourcingCapabilities(data.data.toolStatus);
       setStatus((prev) => (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login"));
+      return data.data.toolStatus;
     } catch {
       // 初始读取失败保持 idle
+      return null;
     }
   }, [taskId]);
 
@@ -151,25 +158,42 @@ export function SourcingEvidencePanel({
     }
   }, [loadInitial]);
 
-  /** D1：用户完成登录/加载扩展后手动重新检测（按钮触发，含检测中状态） */
+  /** D1：用户完成登录/加载扩展后手动重新检测（按钮触发，含检测中状态 + 时间戳反馈） */
   async function refreshTools() {
     setCheckingTools(true);
     setErrorMessage("");
+    setCheckResult("");
     try {
-      await loadInitial();
+      const fresh = await loadInitial();
+      setLastCheckAt(new Date());
+      if (fresh) {
+        const capsNow = sourcingCapabilities(fresh);
+        const parts: string[] = [];
+        parts.push(capsNow.cliReady ? "关键词登录：已完成" : (capsNow.cliToolAvailable ? "关键词登录：未完成" : "关键词工具：未安装"));
+        parts.push(capsNow.imageReady ? "浏览器助手：已连接" : "浏览器助手：未连接");
+        setCheckResult(parts.join(" · "));
+      }
     } finally {
       setCheckingTools(false);
     }
   }
 
-  /** D1：复制固定登录命令（仅在用户点击时读取剪贴板权限） */
-  async function copyLoginCommand(command: string) {
+  /** R1：打开 1688 登录窗口（固定安全 capability，用户扫码由 CLI 打开的真实浏览器完成） */
+  async function openLoginWindow() {
+    setOpeningLogin(true);
+    setErrorMessage("");
+    setLoginNotice("");
     try {
-      await navigator.clipboard.writeText(command);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2_000);
+      const { response, data } = await api({ action: "begin-keyword-login" });
+      if (!response.ok || !data.ok) {
+        setErrorMessage(data.error?.message ?? "无法打开 1688 登录窗口，请稍后重试。");
+        return;
+      }
+      setLoginNotice((data.data as { hint?: string }).hint ?? "已在电脑上打开 1688 登录窗口，请完成扫码。");
     } catch {
-      // 剪贴板不可用时按钮文字提示即可（命令本身已展示在页面上）
+      setErrorMessage("无法打开 1688 登录窗口，请稍后重试。");
+    } finally {
+      setOpeningLogin(false);
     }
   }
 
@@ -319,48 +343,64 @@ export function SourcingEvidencePanel({
         <p className="mt-3 text-sm text-slate-500">输入访问密码后可使用供应线索功能。</p>
       ) : (
         <>
+          {/* R1：两套独立登录说明（常驻，任何状态下可见） */}
+          <p className="mt-3 text-xs leading-5 text-slate-500" data-testid="sourcing-dual-login-note">
+            1688 有两套相互独立的登录：<span className="font-semibold">关键词找货 / 链接读取</span>需要完成「关键词登录」；
+            <span className="font-semibold">图片找货</span>只需要浏览器助手 + 普通 Chrome 登录 1688，互不影响。
+            图片找货需确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）。
+          </p>
+
           {status === "need_login" ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3" role="alert">
-              <p className="text-sm font-semibold text-amber-800">1688 登录未完成</p>
+              <p className="text-sm font-semibold text-amber-800">关键词找货与链接读取：登录未完成</p>
               <p className="mt-1 text-sm text-amber-700">
-                关键词找货与 1688 链接读取需要先登录 1688；图片找货只需要浏览器助手，不受影响。
+                图片找货不受影响（浏览器助手已独立就绪时可正常使用）。
               </p>
               {caps.cliToolAvailable ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={openingLogin}
+                    onClick={() => void openLoginWindow()}
+                    className="linear-button inline-flex h-8 items-center justify-center px-3 text-xs font-semibold disabled:opacity-50"
+                    data-testid="sourcing-open-login-window"
+                  >
+                    {openingLogin ? "正在打开…" : "打开 1688 登录窗口"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={checkingTools}
+                    onClick={() => void refreshTools()}
+                    className="linear-button inline-flex h-8 items-center justify-center px-3 text-xs font-semibold disabled:opacity-50"
+                    data-testid="sourcing-relogin-check"
+                  >
+                    {checkingTools ? "正在检测…" : "重新检测"}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center gap-2">
+                  <p className="text-sm text-amber-700">未检测到本机 1688 采集工具。</p>
+                  <button
+                    type="button"
+                    disabled={checkingTools}
+                    onClick={() => void refreshTools()}
+                    className="rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                    data-testid="sourcing-relogin-check"
+                  >
+                    {checkingTools ? "正在检测…" : "重新检测"}
+                  </button>
+                </div>
+              )}
+              {loginNotice ? <p className="mt-2 text-sm font-semibold text-teal-700">{loginNotice}</p> : null}
+              {caps.cliToolAvailable ? (
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-sm font-semibold text-amber-700">如何登录 1688（2 步）</summary>
+                  <summary className="cursor-pointer text-sm font-semibold text-amber-700">登录步骤（2 步）</summary>
                   <ol className="mt-2 list-inside list-decimal space-y-1.5 text-sm text-amber-700">
-                    <li>
-                      在本机打开终端（命令提示符），粘贴并运行下面的登录命令，然后按提示用手机 1688 App 扫码：
-                      {toolStatus?.loginHint?.command ? (
-                        <span className="mt-1 flex flex-wrap items-center gap-2">
-                          <code className="rounded bg-white px-2 py-1 font-mono text-xs text-slate-800">{toolStatus.loginHint.command}</code>
-                          <button
-                            type="button"
-                            onClick={() => void copyLoginCommand(toolStatus?.loginHint?.command ?? "")}
-                            className="rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                          >
-                            {copied ? "已复制" : "复制命令"}
-                          </button>
-                        </span>
-                      ) : null}
-                    </li>
-                    <li>登录完成后回到本页，点击下方「我已登录，重新检测」。</li>
+                    <li>点击「打开 1688 登录窗口」——会在电脑上打开真实浏览器登录页，用手机 1688 App 扫码。</li>
+                    <li>扫码完成后回到本页，点击「重新检测」确认登录生效。</li>
                   </ol>
                 </details>
-              ) : (
-                <p className="mt-2 text-sm text-amber-700">未检测到本机 1688 采集工具，请联系部署方完成工具配置后再登录。</p>
-              )}
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={checkingTools}
-                  onClick={() => void refreshTools()}
-                  className="linear-button inline-flex h-8 items-center justify-center px-3 text-xs font-semibold disabled:opacity-50"
-                  data-testid="sourcing-relogin-check"
-                >
-                  {checkingTools ? "检测中…" : "我已登录，重新检测"}
-                </button>
-              </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -463,12 +503,14 @@ export function SourcingEvidencePanel({
                         className="mt-2 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
                         data-testid="sourcing-extension-recheck"
                       >
-                        {checkingTools ? "检测中…" : "已加载，重新检测"}
+                        {checkingTools ? "正在检测…" : "已加载，重新检测"}
                       </button>
                     </details>
                   </div>
                 ) : (
-                  <p className="mt-1.5 text-xs text-slate-400">1688 图搜会打开本地浏览器窗口（需前台运行）。</p>
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    浏览器助手已连接。请确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）；1688 图搜会打开本地浏览器窗口（需前台运行）。
+                  </p>
                 )}
               </div>
 
@@ -505,6 +547,14 @@ export function SourcingEvidencePanel({
               </div>
             </div>
           )}
+
+          {/* R1：重新检测反馈（时间戳 + 结果摘要） */}
+          {lastCheckAt ? (
+            <p className="mt-2 text-xs text-slate-500" data-testid="sourcing-check-feedback">
+              刚刚检测：{lastCheckAt.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+              {checkResult ? ` · ${checkResult}` : ""}
+            </p>
+          ) : null}
 
           {/* ── Preview（Search Results ≠ Evidence） ── */}
           {preview && (

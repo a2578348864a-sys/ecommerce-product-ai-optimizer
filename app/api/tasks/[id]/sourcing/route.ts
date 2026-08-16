@@ -29,6 +29,7 @@ import {
 } from "@/lib/server/sourcingEvidence";
 import {
   SOURCING_CLI_DRIVER_VERSION,
+  begin1688KeywordLogin,
   buildCliLoginHint,
   checkCliLogin,
   getOfferDetailById,
@@ -205,6 +206,8 @@ export async function GET(
     const imageCapability = await probeImageCapability();
     // D1：登录引导——工具可用但未登录时，给出固定登录命令（仅 UI 展示，业务层不执行 login）
     const loginHint = login.toolAvailable && !login.loggedIn ? buildCliLoginHint() : null;
+    // R1：重新检测反馈——本次检测时间戳（UI 显示"刚刚检测：HH:MM"）
+    const checkedAt = new Date().toISOString();
     return jsonResponse({
       ok: true,
       data: {
@@ -215,6 +218,7 @@ export async function GET(
           cli: login,
           image: imageCapability,
           loginHint,
+          checkedAt,
         },
       },
     });
@@ -260,6 +264,19 @@ export async function POST(
   const action = asString(bodyRecord.action);
   const resolved = await resolveContext(request, id, bodyRecord);
   if (!resolved.ok) return resolved.response;
+
+  // ── action=begin-keyword-login：R1——固定安全登录 capability（打开 1688 登录窗口）──
+  if (action === "begin-keyword-login") {
+    try {
+      await begin1688KeywordLogin();
+      return jsonResponse({
+        ok: true,
+        data: { started: true, hint: "已在电脑上打开 1688 登录窗口，请完成扫码；完成后点击「重新检测」确认登录。" },
+      });
+    } catch (error) {
+      return errorResponseFrom(error);
+    }
+  }
 
   // ── action=search：关键词搜索（只读 CLI）→ Preview ──
   if (action === "search") {

@@ -405,6 +405,36 @@ export function buildCliLoginHint(env: NodeJS.ProcessEnv = process.env): { comma
   return { command: `node "${status.cliPath}" login` };
 }
 
+/**
+ * Package A（R1）：固定安全登录 capability——从 Web UI 启动 1688 关键词登录。
+ * 安全边界（任务 13 节）：
+ * - fixed executable + 固定参数 ["login", "--headed"]；shell=false；不接受任何用户输入。
+ * - detached 后台运行，不等待完成（扫码动作由用户在 CLI 打开的真实浏览器窗口中完成）。
+ * - 不捕获/不导出 cookie、token、password；login 会话由 CLI 自身管理。
+ * - 返回后由用户点击「重新检测」（whoami）确认登录结果。
+ */
+export async function begin1688KeywordLogin(env: NodeJS.ProcessEnv = process.env): Promise<{ started: boolean }> {
+  const status = getCliToolStatus(env);
+  if (!status.available) {
+    throw new SourcingAcquisitionError(
+      "acquisition_tool_not_available",
+      503,
+      status.reason === "not_configured"
+        ? "未检测到本机 1688 采集工具，无法打开登录窗口。请先完成工具安装配置。"
+        : "1688 采集工具路径无效，无法打开登录窗口。",
+    );
+  }
+  const child = spawn(process.execPath, [status.cliPath, "login", "--headed"], {
+    shell: false,
+    windowsHide: false,
+    detached: true,
+    stdio: "ignore",
+    env,
+  });
+  child.unref();
+  return { started: true };
+}
+
 /** 登录状态检测（只读）——只返回 loggedIn 布尔，账号标识一律丢弃 */
 export async function checkCliLogin(input: { env?: NodeJS.ProcessEnv } = {}): Promise<{
   loggedIn: boolean;
