@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   BrowserEvidenceSection,
+  normalizePreviewFields,
   parseBrowserCollectPreviewView,
   parseBrowserEvidenceView,
 } from "@/components/evidence/BrowserEvidenceSection";
@@ -135,6 +136,24 @@ describe("parseBrowserCollectPreviewView", () => {
   it("rejects a preview missing required structure", () => {
     expect(parseBrowserCollectPreviewView({ extraction: null })).toBeNull();
     expect(parseBrowserCollectPreviewView({ extraction: {}, navigation: {} })).not.toBeNull();
+  });
+});
+
+describe("normalizePreviewFields（P1-E：提取器命名 reviews → 快照命名 reviewCount）", () => {
+  it("maps extraction fields into snapshot-shaped fields without crashing", () => {
+    const preview = parseBrowserCollectPreviewView(previewFixture())!;
+    const normalized = normalizePreviewFields(preview.extraction.fields);
+    expect(normalized.reviewCount.value).toBe(4958);
+    expect(normalized.reviewCount.status).toBe("correct");
+    expect(normalized.price.value).toBe(48.95);
+    expect(normalized.asin.value).toBe("B0A1B2C3D4");
+  });
+
+  it("falls back to unknown field view when a field key is missing", () => {
+    const normalized = normalizePreviewFields({ asin: { value: "B0A1B2C3D4", status: "correct", reason: null } });
+    expect(normalized.reviewCount.value).toBeNull();
+    expect(normalized.reviewCount.status).toBe("unknown");
+    expect(normalized.price.status).toBe("unknown");
   });
 });
 

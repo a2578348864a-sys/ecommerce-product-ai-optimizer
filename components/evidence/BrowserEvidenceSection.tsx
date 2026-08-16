@@ -216,6 +216,20 @@ function reasonLabel(reason: string | null): string {
   return REASON_LABELS[reason] ?? reason;
 }
 
+/** P1-E：提取器字段命名（reviews）→ 快照命名（reviewCount），与服务端 buildConfirmedSnapshot 一致 */
+export function normalizePreviewFields(
+  fields: Record<string, BrowserSnapshotFieldView | undefined>,
+): BrowserSnapshotView["fields"] {
+  return {
+    asin: fields.asin ?? { value: null, status: "unknown", reason: "selector_not_found" },
+    title: fields.title ?? { value: null, status: "unknown", reason: "selector_not_found" },
+    price: fields.price ?? { value: null, status: "unknown", reason: "selector_not_found" },
+    bsr: fields.bsr ?? { value: null, status: "unknown", reason: "selector_not_found" },
+    rating: fields.rating ?? { value: null, status: "unknown", reason: "selector_not_found" },
+    reviewCount: fields.reviewCount ?? fields.reviews ?? { value: null, status: "unknown", reason: "selector_not_found" },
+  };
+}
+
 function CurrencyNote({ currency }: { currency: "USD" | "JPY" | "other" | null }) {
   if (currency === "USD" || currency === null) return null;
   const label = currency === "JPY" ? "日元" : "其他币种";
@@ -231,6 +245,16 @@ function SnapshotFields({ fields }: { fields: BrowserSnapshotView["fields"] }) {
     <dl className="mt-2 grid gap-2 sm:grid-cols-2">
       {FIELD_LABELS.map(({ key, label }) => {
         const field = fields[key];
+        // P1-E：提取器命名（reviews）与快照命名（reviewCount）在 Preview 路径已归一化；
+        // 这里再防御一次——字段缺失渲染"未取得"而不是崩溃
+        if (!field) {
+          return (
+            <div key={key} className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+              <dt className="text-xs text-slate-500">{label}</dt>
+              <dd className="mt-0.5 text-sm font-semibold text-slate-900">未取得</dd>
+            </div>
+          );
+        }
         return (
           <div key={key} className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
             <dt className="text-xs text-slate-500">{label}</dt>
@@ -397,7 +421,7 @@ export function BrowserEvidenceSection({
               <p className="mt-1 text-xs text-teal-700">
                 实体绑定已证明（URL ASIN = 页面 ASIN = 目标 ASIN），6 个字段为页面观察快照。
               </p>
-              <SnapshotFields fields={preview.extraction.fields as unknown as BrowserSnapshotView["fields"]} />
+              <SnapshotFields fields={normalizePreviewFields(preview.extraction.fields)} />
               <CurrencyNote
                 currency={
                   preview.extraction.fields.price?.reason?.startsWith("currency_not_usd")
