@@ -149,3 +149,64 @@
 | **R12 Research Summary canonical state** | **PASS**（状态行真实派生；legacy 降级；唯一 AI authority） |
 
 LOCAL_RELEASE_CANDIDATE 状态：**待用户复查后按既有流程评估**；PUBLIC_DEPLOY = FORBIDDEN（维持）。
+
+---
+
+# R13 补充整改 — 1688 Bridge / Helper Protocol 真链路收口
+
+> 2026-08-17 · 分支 `codex/v3-final-runtime-closeout-r13` → main（0520f31）
+> 用户真实 UI 反例推翻了 R9/R10 结论：图搜报「桥接服务拒绝命令（job_image_consumed）」、关键词报「未知操作（仅支持 search / image / url / detail / save）」。
+
+## 1. 先 trace 不猜 — 三链 operation 实测
+
+| 链 | UI_OP | API_OP | DRIVER_OP | BRIDGE_OP | HELPER_OP | 结果 |
+|---|---|---|---|---|---|---|
+| Keyword | `keyword`（漂移） | route 期望 `search` | — | — | — | **invalid_action** |
+| Image | `image` ✓ | `image` ✓ | acquireByImage | upload 重试第 2 次 enqueue upload | 图片一次性消费 → **400 job_image_consumed** | **extension_bridge_rejected** |
+| Detail URL | `url` ✓ | `url` ✓ | getOfferDetailById | — | — | 正常 |
+
+## 2. Root cause（代码实证）
+
+- **Keyword**：`SourcingEvidencePanel.runSearch` 发送 `{ action: method }`——关键词发 `action:"keyword"`，而 route action allowlist 为 `search/image/url/detail/save` → 兜底 invalid_action。UI/API operation 名漂移。
+- **Image**：`acquireByImage` upload 重试（≤3）对**同一 bridge job** 重复 enqueue upload；bridge 对 job 图片为一次性消费（入队后 `job.image=null`）→ 第二次 enqueue 必然 400 `job_image_consumed`；客户端把它直接拼进用户文案。
+- **版本**：用户 Chrome 扩展 SW = **0.3.1**（bridge /health extensionSwVersion，与仓库一致）——**版本不是 root cause**，但 readiness 无版本握手（连接即绿）是设计缺口。
+
+## 3. 修复（最小安全）
+
+1. **SourcingOperation 唯一类型**（`lib/upstream/1688/contracts.ts`）：`search/image/url/detail/save`；UI 用 `UI_METHOD_TO_OPERATION`（keyword→search）映射，route/UI/driver 共享同一契约（§202/§203）。
+2. **upload 重试重新注册 job**：attempt>1 时 `registerJob` 新 job（重新绑定图片），杜绝 job_image_consumed；后续 submit/collect 用新 jobId（§199/§200——不把 job_image_consumed 加入用户 allowlist，在正确层消费）。
+3. **Readiness Protocol Handshake**（§196/§197/§207）：
+   - bridge /health 增 `bridgeVersion`；SW 心跳上报 `swVersion` 已存在；
+   - `getStatus` 透出 `extensionSwVersion` + `bridgeVersion`；
+   - `probeImageCapability` 计算 `versionCompatible`（SW 版本 === 期望 `0.3.1`）；
+   - 不匹配 → `extension_version_mismatch` → **imageReady=false**（不假绿）→ UI「浏览器助手需要更新」+ 查看更新步骤（chrome://extensions → 重新加载 → 回工作台 → 重新检测）+ 重新检测（§205）。
+4. **UI 不泄漏内部 operation**（§210）：invalid_action 用户文案「操作无法识别，请刷新页面后重试。」（raw action 进服务端日志）；bridge 拒绝文案用户友好（「1688 图片助手未能执行操作…」），内部 code（job_image_consumed 等）只进日志（§211）。
+5. 发布 Checklist 增补：Helper 代码变更后必须 `EXTENSION_RELOAD_REQUIRED` 并真实确认 Chrome 运行版本（§206）。
+
+## 4. 真实验收（headed，用户相同操作方式：页面上直接输入/点击/粘贴）
+
+| 链 | 操作 | 真实结果 |
+|---|---|---|
+| R10 Keyword UI | 输入「儿童吸管水杯」→ 点「搜索」 | **搜索结果（10 条）** Preview，无错误 |
+| R9 Image UI | 输入真实 Amazon 主图 URL → 点「图搜」 | **搜索结果（60 条）** Preview，**无 job_image_consumed** |
+| R10 Detail UI | 粘贴 `detail.1688.com/offer/1036730598102.html` → 点「读取」 | **搜索结果（1 条）**：特美刻…/页面显示价 ￥149.00/起批 1 个/供应商 杭州特美刻实业有限公司 |
+
+版本握手实测：`toolStatus.image = { extensionAvailable:true, versionCompatible:true, extensionSwVersion:"0.3.1", reasonCode:"extension_seen" }`（§215/§216：APP/BRIDGE/EXTENSION 协议兼容均 PASS）。
+
+## 5. 测试与质量
+
+- 新增：UI_METHOD_TO_OPERATION 映射（2）、sourcingCapabilities 版本握手（4）、upload 重试重新注册 job（1）、route action=keyword 回归 + 文案不泄漏（1）。
+- 全量：**4880 passed / 90 skipped**（+8 新用例）；仅 2 个既有环境失败（bridge 53318 端口被运行中 3005 占用；release-package Windows tar 基线）。
+- tsc PASS；lint 0 errors；build PASS；R1-R12 无回归。
+- 3005 运行新构建（health 200，计划任务原状态）。
+
+## 6. 版本清单（§215）
+
+- APP_BUILD_HEAD：`0520f31`（R13 修复）
+- BRIDGE_VERSION：`authenticated-loopback-bridge.v1`（/health 握手字段）
+- EXTENSION_VERSION：`0.3.1`（manifest + SW_VERSION）
+- PROTOCOL_VERSION（期望 Helper SW）：`0.3.1`（NATIVE_1688_HELPER_SW_VERSION）
+- Chrome 当前 loaded extension version：**0.3.1**（bridge extensionSwVersion 实测）
+- 本轮未修改扩展文件 → 无需 reload；未来 Helper 变更后按 §206 执行 reload 确认。
+
+LOCAL_RELEASE_CANDIDATE：待用户复查 R13 三链后按既有流程评估；PUBLIC_DEPLOY = FORBIDDEN（维持）。
