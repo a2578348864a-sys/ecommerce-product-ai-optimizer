@@ -286,6 +286,7 @@ export function normalizeOfferDetail(
   }
 
   // SKU/规格（展示级；multiPrice 为阶梯实价，仍属展示信息）
+  // 上限按真实多规格商品放宽（实测 offer 128 SKU：颜色×容量组合），仅防无限膨胀
   const skuSpecs: SkuSpec[] = [];
   if (Array.isArray(offer.skus)) {
     for (const sku of offer.skus) {
@@ -301,8 +302,8 @@ export function normalizeOfferDetail(
       });
     }
   }
-  if (skuSpecs.length > 100) {
-    fail("schema_unsupported", `offer detail ${offerId} SKU 超出上限（100）。`);
+  if (skuSpecs.length > 500) {
+    fail("schema_unsupported", `offer detail ${offerId} SKU 超出上限（500）。`);
   }
 
   // 卖家自报（attributes / packageInfo）——≠ 事实
