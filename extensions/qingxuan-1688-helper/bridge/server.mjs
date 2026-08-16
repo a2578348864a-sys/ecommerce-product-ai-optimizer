@@ -48,6 +48,7 @@ const pendingCommands = [];
 /** @type {Map<string, {jobId: string, result: Object, expiresAt: number}>} */
 const results = new Map();
 let lastExtensionSeenAt = 0;
+let extensionSwVersion = null;
 
 function json(res, status, body) {
   res.writeHead(status, {
@@ -115,6 +116,17 @@ async function handleRequest(req, res) {
 
   try {
     // 扩展 SW 通道（无 token；jobId 凭证）
+    if (path === "/heartbeat" && req.method === "POST") {
+      lastExtensionSeenAt = Date.now();
+      const raw = await readBody(req, 64 * 1024);
+      try {
+        const body = JSON.parse(raw.toString("utf8"));
+        if (body && typeof body.swVersion === "string") extensionSwVersion = body.swVersion.slice(0, 40);
+      } catch {
+        // 版本字段可选
+      }
+      return json(res, 200, { ok: true });
+    }
     if (path === "/pending-command" && req.method === "GET") {
       lastExtensionSeenAt = Date.now();
       const next = pendingCommands.shift();
@@ -143,7 +155,7 @@ async function handleRequest(req, res) {
     if (!requireClientToken(req, res)) return;
 
     if (path === "/health" && req.method === "GET") {
-      return json(res, 200, { ok: true, jobs: jobs.size, extensionSeen: lastExtensionSeenAt > 0, lastExtensionSeenAt });
+      return json(res, 200, { ok: true, jobs: jobs.size, extensionSeen: lastExtensionSeenAt > 0, lastExtensionSeenAt, extensionSwVersion });
     }
 
     if (path === "/jobs" && req.method === "POST") {
