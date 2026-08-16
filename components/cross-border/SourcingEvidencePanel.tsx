@@ -88,9 +88,12 @@ export function buildInquiryQuestions(candidate: AcquisitionCandidate): string[]
 export function SourcingEvidencePanel({
   taskId,
   amazonContext,
+  onConfirmed,
 }: {
   taskId: string;
   amazonContext?: { title?: string | null; image?: string | null; asin?: string | null };
+  /** R7：供应线索人工确认保存成功后冒泡（顶部"当前研究资料"据此重新计算） */
+  onConfirmed?: () => void;
 }) {
   const [accessPassword] = useAccessPassword();
   const [status, setStatus] = useState<PanelStatus>("idle");
@@ -304,6 +307,7 @@ export function SourcingEvidencePanel({
       setStorageVersion(saved.storageVersion);
       setPreview(null);
       setStatus("confirmed");
+      onConfirmed?.();
     } catch {
       setStatus("error");
       setErrorMessage("网络异常，保存未完成，请重试。");

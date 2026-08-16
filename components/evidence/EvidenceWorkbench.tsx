@@ -358,9 +358,12 @@ function MissingSection({ gaps }: { gaps: string[] }) {
 export function EvidenceWorkbench({
   taskId,
   result,
+  onDataChanged,
 }: {
   taskId: string;
   result: Record<string, unknown> | null;
+  /** R7：任一 Evidence 区确认/保存成功后冒泡（顶部"当前研究资料"据此重新计算） */
+  onDataChanged?: () => void;
 }) {
   const overview = extractOverviewItems(result);
   const decision = extractDecisionSummary(result);
@@ -727,7 +730,7 @@ export function EvidenceWorkbench({
           taskId={taskId}
           evidence={keywordReportEvidence}
           storageVersion={keywordReportStorageVersion}
-          onChanged={loadKeywordEvidence}
+          onChanged={() => { loadKeywordEvidence(); onDataChanged?.(); }}
         />
       </section>
 
@@ -744,7 +747,7 @@ export function EvidenceWorkbench({
           evidence={browserEvidence}
           taskAsin={browserTaskAsin}
           storageVersion={browserEvidenceStorageVersion}
-          onChanged={loadBrowserEvidence}
+          onChanged={() => { loadBrowserEvidence(); onDataChanged?.(); }}
         />
       </div>
 
@@ -762,13 +765,17 @@ export function EvidenceWorkbench({
           evidence={vocEvidence}
           analysis={vocAnalysis}
           storageVersion={vocStorageVersion}
-          onChanged={loadVoc}
+          onChanged={() => { loadVoc(); onDataChanged?.(); }}
         />
       </div>
 
       {/* ── 货源 Evidence（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
       <section data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <SourcingEvidencePanel taskId={taskId} amazonContext={{ title: null, image: null, asin: null }} />
+        <SourcingEvidencePanel
+          taskId={taskId}
+          amazonContext={{ title: null, image: null, asin: null }}
+          onConfirmed={onDataChanged}
+        />
       </section>
 
       {/* ── AI 证据总结（Phase 5） ── */}

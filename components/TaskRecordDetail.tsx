@@ -64,6 +64,7 @@ import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
+import { deriveResearchMaterialStatus, RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import {
   deriveCreativeMaterialStatus,
   deriveHistoricalArtifactSummary,
@@ -1127,32 +1128,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
       || hasVersionedProductResearchRecord(record.result);
   }, [record]);
 
-  // OA1：Evidence Completion State（当前研究资料清单；非分数、非推荐）
-  const evidenceCompletion = useMemo(() => {
-    const result = record && isRecordValue(record.result) ? record.result : null;
-    const has = (key: string) => result !== null && Object.prototype.hasOwnProperty.call(result, key);
-    const count = (key: string, path: Array<string>) => {
-      if (!result || !has(key)) return 0;
-      let node: unknown = result[key];
-      for (const segment of path) {
-        if (!isRecordValue(node)) return 0;
-        node = node[segment];
-      }
-      return Array.isArray(node) ? node.length : 0;
-    };
-    const competitor = count("competitorEvidence", ["asins"]);
-    const keyword = has("keywordEvidence") ? 1 : 0;
-    const browser = count("browserEvidence", ["snapshots"]);
-    const voc = count("reviewEvidence", ["dataset", "reviews"]);
-    const sourcing = count("sourcingEvidence", ["humanConfirmed"]);
-    return {
-      competitor: competitor > 0 ? "已有" : "可选",
-      keyword: keyword > 0 ? "已有" : "待补",
-      browser: browser > 0 ? "已有" : "待补",
-      voc: voc > 0 ? "已有" : "待补",
-      sourcing: sourcing > 0 ? "已有" : "可选",
-    };
-  }, [record]);
+    // OA1+R7：Evidence Completion State（当前研究资料清单；统一 resolver，非分数、非推荐）
+  const evidenceCompletion = useMemo(
+    () => deriveResearchMaterialStatus(record && isRecordValue(record.result) ? record.result : null),
+    [record],
+  );
   // R4/R6：旧版任务（无新版创作上下文）→ Studio CTA 不伪装可用
   const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
   const [loading, setLoading] = useState(true);
@@ -1521,36 +1501,29 @@ export function TaskRecordDetail({ id }: { id: string }) {
                    </p>
                  </div>
                ) : null}
-               {/* OA1（用户 29 节）：Evidence Completion State——当前研究资料清单（非分数） */}
-               {!recordHasResearchRecord && isRecordValue(record.result) ? (
-                 <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-evidence-checklist">
-                   <p className="text-sm font-bold text-slate-900">当前研究资料</p>
-                   <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
-                     {[
-                       { label: "商品基础资料", state: "已有" },
-                       { label: "竞品资料", state: evidenceCompletion.competitor },
-                       { label: "关键词", state: evidenceCompletion.keyword },
-                       { label: "Amazon 页面", state: evidenceCompletion.browser },
-                       { label: "买家评论", state: evidenceCompletion.voc },
-                       { label: "供应线索", state: evidenceCompletion.sourcing },
-                     ].map((row) => (
-                       <li key={row.label} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-                         <span className="text-slate-700">{row.label}</span>
-                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                           row.state === "已有"
-                             ? "bg-teal-50 text-teal-700"
-                             : row.state === "可选"
-                               ? "bg-slate-100 text-slate-500"
-                               : "bg-amber-50 text-amber-700"
-                         }`}>
-                           {row.state}
-                         </span>
-                       </li>
-                     ))}
-                   </ul>
-                   <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；资料已确认后这里会自动更新。</p>
-                 </div>
-               ) : null}
+               {/* OA1+R7（用户 29/86-108 节）：Evidence Completion State——当前研究资料清单（统一 resolver，非分数） */}
+                {!recordHasResearchRecord && isRecordValue(record.result) ? (
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-evidence-checklist">
+                    <p className="text-sm font-bold text-slate-900">当前研究资料</p>
+                    <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
+                      {RESEARCH_MATERIAL_ROWS.map((row) => (
+                        <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+                          <span className="text-slate-700">{row.label}</span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            evidenceCompletion[row.key] === "已有"
+                              ? "bg-teal-50 text-teal-700"
+                              : evidenceCompletion[row.key] === "可选"
+                                ? "bg-slate-100 text-slate-500"
+                                : "bg-amber-50 text-amber-700"
+                          }`}>
+                            {evidenceCompletion[row.key]}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
+                  </div>
+                ) : null}
 
                {presentation && researchEvidenceSections ? (
                  <>
@@ -1608,7 +1581,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
                {/* Phase 2: Evidence Workbench（商品证据工作台）——研究结论之后、人工决定之前 */}
                {isRecordValue(record.result) ? (
-                 <EvidenceWorkbench taskId={record.id} result={record.result} />
+                 <EvidenceWorkbench taskId={record.id} result={record.result} onDataChanged={() => setRefreshKey((current) => current + 1)} />
                ) : null}
 
                {record.type === "workflow" ? (
