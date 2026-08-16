@@ -173,6 +173,24 @@
 - 无需 DB migration；无需架构重写；预计影响：Package A 约 3-4 文件（表达式生成+文案层），B 约 3-5 文件（列表 Tab+文案），C 约 4-6 文件，D 约 2-3 文件（面板 onboarding UI）
 - 最大回归风险：Package A 的表达式生成方式变更（需真实浏览器冒烟）；其余为文案/UI 层，风险低
 
+## Resolution References（V3 Final User Operability Correction 已执行）
+
+> 整改分支 `codex/v3-final-operability-correction`（8 commits）→ main a366555（ff 集成 + push）。证据：`docs/v3/changes/v3-final-user-operability/`（packages-abdc / user-journey / security-review / regression-review / plan）。
+
+| 项 | 修复提交 | 验收 |
+|---|---|---|
+| OA6 Amazon 生产 100% 失败 | 178fa2f（self-contained 字符串工件 + invariant 测试） | AMAZON_BROWSER_PRODUCTION_SMOKE=PASS（真实浏览器 vitest smoke + 3005 生产 build 采集→保存全链） |
+| OA7 技术错误泄漏 | 711dc18（apiErrorMessage 双层 + Top10 泄漏点 + 四区错误态 + 超时） | TECHNICAL_ERROR_LEAKAGE_CORE=PASS（92/92 受影响测试；真实页面无技术串） |
+| OA1 活跃研究入口 | a41df29（/tasks 五 Tab：进行中/待补/已完成/已放弃/全部） | ACTIVE_RESEARCH_UX=PASS（真实页面五 Tab + 空态 + 卡片 CTA） |
+| OA2 标题 | a41df29 | 真实页面 h1/breadcrumb「商品研究」✅ |
+| OA3 CTA + AI gate | a41df29（引导卡 AI 去 gate 化 + 清单） | 真实页面引导卡「研究尚未运行 AI 分析…AI 整理当前资料」✅ |
+| OA4 1688 onboarding | f2b320d（登录 2 步引导+固定命令+重新检测；扩展 3 步引导；术语隐藏） | 1688_ONBOARDING=PASS（真实页面业务语言 + 就绪徽章 + 按钮闭环） |
+| OA5 VOC 批量 + 半自动 | 5b09c8c（批量明示 + 行数识别 + 采集评论按钮 + Preview→确认；ASIN 预填） | VOC_BATCH_UX=PASS / VOC_COLLECTION=PARTIAL_WITH_FALLBACK（真实采集 13 条→确认；SSRF/登录墙 fail-closed；批量粘贴 3 条） |
+| 预填（VOC ASIN） | 5b09c8c | 真实页面采集面板 ASIN 自动预填 B085DTZQNZ ✅ |
+| 走查新增生产 bug | f57afa0（P1-E preview 崩溃）/ a366555（P1-F 409 不恢复） | 3005 复验：采集保存成功；AI 总结 409 自动刷新 |
+
+**最终裁决（见 FINAL_RELEASE_REPORT）：LOCAL_RELEASE_CANDIDATE = APPROVED**（P1=0、全 Gate PASS、真实普通用户 Journey 全链可独立完成；1688 扫码/扩展加载为部署环境依赖项，由用户按 UI 引导完成）。PUBLIC_DEPLOY 仍 FORBIDDEN（等用户亲自在 3005 查看最终版后另行授权）。
+
 ## 44 项回答速查
 1-3：P0=0 / P1=3 / P2=4；4：需要"进行中"（Option B Tab，不新增路由）；5：Active Task 应叫"商品研究"；6：研究记录放全部（含进行中，Tab 分层）；7：Start Research 重复=文案撞车（OA3）；8：AI 不是代码层 gate 但文案把它说成 gate；9：1688 当前=只有文字无操作；10：因为 onboarding 缺失+术语直出；11-12：Keyword 登录流程/Image 扩展流程见 Output 4；13：需要 setup wizard（轻量：就绪态+CTA+步骤）；14：应隐藏"1688-cli"字样（用户层"1688 登录"）；15-17：VOC 能力见 OA5（批量粘贴已有、无隐藏批量、无文件导入）；18-19：PARTIAL_FEASIBLE + 最小方案见 Output 5/6；20-21：批量粘贴明示需要；文件导入可选；22：理想 UI="自动采集+批量粘贴+文件上传"三入口；23-26：OA6 实证（minify toString）；27-28：Runtime/泄漏清单见 Output 7/8；29-31：自动化分类见 Output 5；32-33：30 秒 gate=未过（新任务页三个"开始"+术语）；HR demo gate=未过（需解释 CLI/Extension 才能懂）；34：推荐导航=Option B；35：Workbench 首页=商品研究（身份+资料清单+就绪态）；36：推荐最小 research progress=Evidence completion 状态（已收集/待补/可选，无百分比）；37：推荐 onboarding=Output 4 目标列；38-41：Packages A-E/无 migration/无重写/影响范围见 Output 9；42：最大回归风险=表达式生成变更；43：**不可公网部署**（P1>0）；44：修复后验收=Package E 全链 Journey + 30 秒/HR gate + 全量回归。
 
