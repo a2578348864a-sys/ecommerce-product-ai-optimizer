@@ -64,18 +64,22 @@ async function sendTo1688Tab(message, { autoOpen = false } = {}) {
   let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
   if (!target && autoOpen) {
     // 固定能力：自动打开 1688 图搜上传页（非任意 URL）
-    const created = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 6_000)); // 等页面加载 + content script 注入
-    target = created;
+    target = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
   }
   if (!target || !target.id) {
     return { ok: false, code: "no_1688_tab" };
   }
-  try {
-    return await chrome.tabs.sendMessage(target.id, message);
-  } catch {
-    return { ok: false, code: "content_script_unreachable" };
+  // content script 注入重试（页面加载/导航后注入需要时间；最多 30s）
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const result = await chrome.tabs.sendMessage(target.id, message);
+      return result;
+    } catch {
+      // 未注入：等待后重试
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 3_000));
   }
+  return { ok: false, code: "content_script_unreachable" };
 }
 
 async function handleCommand(command, jobId) {
