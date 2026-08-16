@@ -148,5 +148,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
+  // SW 自唤醒（30s 周期）：不依赖页面 content script 心跳也能轮询 bridge（页面心跳 2s 加速）
+  chrome.alarms.create("poll", { periodInMinutes: 0.5 }).catch(() => undefined);
   void pollOnce();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "poll") void pollOnce();
 });
