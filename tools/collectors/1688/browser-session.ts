@@ -273,10 +273,14 @@ export async function open1688BrowserSession(input: {
     throw new BrowserSessionError("browser_not_ready", 503, "未找到可用的 Chrome/Edge 浏览器。");
   }
 
-  // 1) 已有实例优先 attach（session 持久）
+  // 1) 已有实例优先 attach（session 持久）；垂死实例（如刚 Browser.close 的）→ 等待退出后走 launch
   const existingPort = await tryAttachExisting(profilePath);
   if (existingPort !== null) {
-    return await attachToBrowser(profilePath, existingPort, executable.browser, "existing");
+    try {
+      return await attachToBrowser(profilePath, existingPort, executable.browser, "existing");
+    } catch {
+      await delay(2_000);
+    }
   }
 
   // 2) 启动新实例（持久 profile；前台窗口）
@@ -316,6 +320,7 @@ async function attachToBrowser(
   await client.connect();
 
   let sessionId = "";
+  let targetId = "";
   let browserVersion: string | null = null;
   try {
     const version = await client.send("Browser.getVersion") as { product?: unknown };
@@ -325,7 +330,6 @@ async function attachToBrowser(
     const page = Array.isArray(targets.targetInfos)
       ? targets.targetInfos.find((info) => info.type === "page")
       : undefined;
-    let targetId: string;
     if (page && typeof page.targetId === "string") {
       targetId = page.targetId;
     } else {
@@ -345,7 +349,7 @@ async function attachToBrowser(
 
   const windowStatePromise = (async () => {
     try {
-      const result = await client.send("Browser.getWindowForTarget", { targetId: undefined }) as { windowState?: unknown };
+      const result = await client.send("Browser.getWindowForTarget", { targetId }) as { windowState?: unknown };
       return typeof result.windowState === "string" ? result.windowState : "unknown";
     } catch {
       return "unknown";
@@ -365,6 +369,10 @@ async function attachToBrowser(
     onEvent: (listener) => client.onEvent(listener),
     windowState: windowStatePromise,
     close: () => {
+      // 仅关闭驱动自己启动的实例（launched）；attach 已有实例（如用户登录窗口）时只断连接，不关用户浏览器
+      if (attached === "launched") {
+        client.send("Browser.close").catch(() => undefined);
+      }
       client.close();
     },
   };

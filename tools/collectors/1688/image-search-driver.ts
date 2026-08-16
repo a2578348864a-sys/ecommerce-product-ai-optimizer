@@ -13,7 +13,7 @@
  * - 布局重试：紧凑布局（y<50 顶部死区）→ 重开页面（最多 3 次）。
  */
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import {
   BROWSER_SESSION_DRIVER_VERSION,
   open1688BrowserSession,
@@ -109,7 +109,7 @@ async function openUploadPage(session: PersistentBrowserSession, signal?: AbortS
   proof: ReturnType<typeof parseUploadTargetProof>;
   pageState: ImageSearchPageState;
 }> {
-  await session.send("Page.navigate", { url: "https://s.1688.com/" });
+  await session.send("Page.navigate", { url: "https://s.1688.com/selloffer/offer_search.html" });
   const ready = await waitFor(async () => {
     try {
       const raw = await session.evaluate<unknown>("document.querySelector('input[type=file]#img-search-upload') !== null");
@@ -130,12 +130,52 @@ async function openUploadPage(session: PersistentBrowserSession, signal?: AbortS
   return { proof, pageState: "upload_target_found" };
 }
 
-/** focus + 可信 Enter → Native File Chooser → CDP 文件注入 */
-async function uploadViaFileChooser(
+/**
+ * 上传候选图（双路径，§33 语义保持）：
+ * Path A（主）：页面内 DataTransfer 注入（spike A.1 实测可行；免键盘/chooser/焦点依赖）
+ *             Node 读文件 → base64 → 页面构建 File → input.files → dispatch change。
+ * Path B（备）：focus + 可信 Enter → Native File Chooser → CDP setFileInputFiles（spike A.3 主路径）。
+ * 上传是否成功由调用方 Upload State Proof（预览图 + Candidate Identity）统一裁决。
+ */
+async function uploadCandidateImage(
   session: PersistentBrowserSession,
   imagePath: string,
   signal?: AbortSignal,
 ): Promise<void> {
+  const fileSize = statSync(imagePath).size;
+  // Path A：≤8MB 走 DataTransfer 注入（CDP 消息体积保护；更大走 chooser）
+  if (fileSize <= 8 * 1024 * 1024) {
+    try {
+      const base64 = readFileSync(imagePath).toString("base64");
+      const injected = await session.evaluate<{ ok: boolean; files: number; error?: string }>(`(() => {
+        try {
+          const base64 = ${JSON.stringify(base64)};
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const file = new File([bytes], "candidate-image.jpg", { type: "image/jpeg" });
+          const input = document.querySelector('input[type=file]#img-search-upload');
+          if (!(input instanceof HTMLInputElement)) return { ok: false, files: 0, error: "input_not_found" };
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          // files 是只读属性，需用原型 setter（直接赋值会被静默忽略）
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set;
+          if (!setter) return { ok: false, files: 0, error: "no_files_setter" };
+          setter.call(input, dt.files);
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+          return { ok: true, files: input.files.length };
+        } catch (error) {
+          return { ok: false, files: 0, error: String(error).slice(0, 120) };
+        }
+      })()`);
+      if (injected.ok && injected.files > 0) return;
+      // Path A 失败 → 落到 Path B
+    } catch {
+      // evaluate 异常 → 落到 Path B
+    }
+  }
+
+  // Path B：focus + Enter → chooser → 文件注入
   await session.send("Page.setInterceptFileChooserDialog", { enabled: true });
   const chooserPromise = new Promise<{ backendNodeId: number }>((resolveChooser, rejectChooser) => {
     const timeout = setTimeout(() => rejectChooser(new Error("FILE_CHOOSER_TIMEOUT")), 10_000);
@@ -151,6 +191,9 @@ async function uploadViaFileChooser(
   });
 
   // 聚焦 input + CDP 可信键盘 Enter（与用户 Tab+Enter 等价；spike A.3 实测唯一可靠激活）
+  // 前置：Page.bringToFront 把页面/窗口切到前台（CDP 键盘事件只在窗口聚焦时送达）
+  await session.send("Page.bringToFront");
+  await delay(300, signal);
   await session.evaluate("(() => { const el = document.querySelector('input[type=file]#img-search-upload'); if (el instanceof HTMLInputElement) el.focus(); return el instanceof HTMLInputElement; })()");
   await session.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
   await session.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
@@ -217,8 +260,8 @@ export async function runNativeImageSearch(input: NativeImageSearchInput): Promi
     }
     if (!uploadProof) fail("upload_target_not_found", 422, "多次尝试均未获得有效上传入口。");
 
-    // ── 上传（focus+Enter → chooser → 文件注入） ──
-    await uploadViaFileChooser(s, input.imagePath, signal);
+    // ── 上传（DataTransfer 注入主路径 → chooser 备选） ──
+    await uploadCandidateImage(s, input.imagePath, signal);
     pageState = "upload_confirmed";
 
     // ── Upload State Proof：预览图出现 + Candidate Identity Proof（base64 长度匹配） ──
