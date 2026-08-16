@@ -1,5 +1,5 @@
 {
-  "runAt": "2026-08-15T09:00:56.211Z",
+  "runAt": "2026-08-16T14:38:00.029Z",
   "results": [
     {
       "label": "A-standard-usd",
@@ -27,7 +27,7 @@
           "reason": "selector_not_found"
         },
         "bsr": {
-          "value": 286926,
+          "value": 289604,
           "status": "correct"
         },
         "rating": {
@@ -71,7 +71,7 @@
           "reason": "currency_not_usd:JPY"
         },
         "bsr": {
-          "value": 5899,
+          "value": 5854,
           "status": "correct"
         },
         "rating": {
@@ -115,7 +115,7 @@
           "reason": "currency_not_usd:JPY"
         },
         "bsr": {
-          "value": 34264,
+          "value": 34289,
           "status": "correct"
         },
         "rating": {
