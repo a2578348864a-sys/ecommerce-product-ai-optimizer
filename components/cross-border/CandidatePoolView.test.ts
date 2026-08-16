@@ -57,7 +57,9 @@ describe("CandidatePoolView", () => {
     expect(html).toContain("卖家精灵直接导入");
     expect(html).toContain("Amazon US");
     expect(html).toContain("加载更多");
-    expect(html).toContain("/opportunity-candidates/candidate-101?source=opportunity");
+    // F1：未转候选渲染「开始研究」按钮（start-research → Workbench），不再直接链到候选研究页
+    expect(html).toContain("开始研究");
+    expect(html).not.toContain("/opportunity-candidates/candidate-101?source=opportunity");
   });
 
   it("renders loading, empty and retryable error states", () => {
@@ -86,7 +88,7 @@ describe("CandidatePoolView", () => {
     expect(html).not.toContain("/agent/run?");
   });
 
-  it("renders runtime-validation Candidates as an available research link", () => {
+  it("renders runtime-validation Candidates as an available research action", () => {
     const html = render({
       items: [{
         ...item,
@@ -95,8 +97,9 @@ describe("CandidatePoolView", () => {
       }],
     });
     expect(html).not.toContain("进入研究前需要服务端再次校验来源。");
-    expect(html).toContain("开始／继续研究");
-    expect(html).toContain("/opportunity-candidates/");
+    // F1：可研究候选显示「开始研究」按钮（点击 → start-research API → Research Workbench）
+    expect(html).toContain("开始研究");
+    expect(html).not.toContain("/opportunity-candidates/");
   });
 
   it("renders the converted action from the server projection", () => {
@@ -108,7 +111,7 @@ describe("CandidatePoolView", () => {
       }],
     });
     expect(html).toContain("/tasks/task-101");
-    expect(html).toContain("查看研究结果");
+    expect(html).toContain("查看研究记录");
     expect(html).toContain("尚无正式决定");
     expect(html).toContain("移出研究池");
     expect(html).not.toContain(">删除</button>");

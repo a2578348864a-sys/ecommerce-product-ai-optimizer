@@ -8,6 +8,10 @@ import {
   updateSandboxTask,
   SandboxCandidateTaskLinkError,
 } from "@/lib/server/demoSandbox";
+import {
+  TaskResultJsonMutationError,
+  mutateTaskResultJson,
+} from "@/lib/server/taskResultJsonMutation";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
 import { normalizeRiskReviewSnapshot } from "@/lib/riskReview";
 import { normalizeProfitSnapshot } from "@/lib/profitSnapshot";
@@ -965,42 +969,39 @@ export async function POST(request: NextRequest) {
   // Demo-Sandbox.1-B: Demo writes to sandbox, Owner writes to Prisma
   if (auth.context.mode === "demo") {
     try {
-      // F1：update 模式——研究骨架任务已由 start-research 创建，研究执行后回写
+      // F1：update 模式——研究骨架任务已由 start-research 创建，研究执行后经 mutation layer 回写（CAS + namespace 保护）
       if (targetTaskId) {
         const existing = getSandboxTask(auth.context.demoAccessId, targetTaskId);
         if (!existing) {
           return jsonResponse({ ok: false, error: { code: "task_not_found", message: "研究任务不存在或不属于当前访问主体。" } }, 404);
         }
         const existingResult = safeParseJson(existing.resultJson);
-        const existingCandidateId = existingResult && isRecord(existingResult)
-          && isRecord(existingResult.candidateToTask)
+        const existingCandidateId = existingResult && isRecord(existingResult.candidateToTask)
           ? existingResult.candidateToTask.candidateId
           : null;
         if (typeof existingCandidateId !== "string" || existingCandidateId !== workflowInput.candidateId) {
           return jsonResponse({ ok: false, error: { code: "task_candidate_mismatch", message: "研究任务与候选商品绑定不一致，无法保存。" } }, 409);
         }
-        if (existingResult && isRecord(existingResult)
+        if (existingResult
           && (Object.prototype.hasOwnProperty.call(existingResult, "researchRecord")
             || hasProductResearchRecordNamespace(existingResult))) {
           return jsonResponse({ ok: false, error: { code: "task_already_researched", message: "该研究任务已保存过研究结果，请直接在研究记录中维护。" } }, 409);
         }
-        const updated = await updateSandboxTask(auth.context.demoAccessId, targetTaskId, {
-          type: "workflow",
-          title: `${productName} 一键分析`,
-          score,
-          level: riskLevel,
-          oneLineSummary: finalVerdict,
-          decisionStatus: normalizeDecisionStatus(decisionStatus),
-          resultJson: JSON.stringify(taskResult),
+        const mutation = await mutateTaskResultJson({
+          context: auth.context,
+          taskId: targetTaskId,
+          writer: "research-save",
+          mutate: () => ({
+            result: taskResult as Record<string, unknown>,
+            decisionStatus: normalizeDecisionStatus(decisionStatus),
+            value: { saved: true },
+          }),
         });
-        if (!updated) {
-          return jsonResponse({ ok: false, error: { code: "task_not_found", message: "研究任务不存在或已删除。" } }, 404);
-        }
         return jsonResponse({
           ok: true,
           data: {
-            id: updated.id,
-            title: updated.title || productName,
+            id: targetTaskId,
+            title: existing.title || productName,
             type: "workflow",
             isSandbox: true,
             sourceMode: "demo_sandbox",
@@ -1050,6 +1051,12 @@ export async function POST(request: NextRequest) {
           error: { code: error.code, message: error.message },
         }, candidateConversionStatus(error.code));
       }
+      if (error instanceof TaskResultJsonMutationError) {
+        return jsonResponse({
+          ok: false,
+          error: { code: error.code, message: error.message },
+        }, error.status);
+      }
       return jsonResponse({
         ok: false,
         error: { code: "sandbox_write_error", message: "访客任务保存失败，请稍后重试。" },
@@ -1074,10 +1081,10 @@ export async function POST(request: NextRequest) {
   // Owner Candidate conversion is one transaction; manual Tasks remain a single create.
   try {
     const record = workflowInput.candidateId
-      ? await prisma.$transaction(async (tx) => {
-        // F1：update 模式——研究骨架任务（start-research 创建）研究执行后回写
-        if (targetTaskId) {
-          const existingTask = await tx.viralAnalysisRecord.findUnique({
+      ? (targetTaskId
+        // F1：update 模式——研究骨架任务回写（mutation layer CAS；与创建路径隔离）
+        ? await (async () => {
+          const existingTask = await prisma.viralAnalysisRecord.findUnique({
             where: { id: targetTaskId },
             select: { id: true, resultJson: true },
           });
@@ -1102,12 +1109,19 @@ export async function POST(request: NextRequest) {
               "该研究任务已保存过研究结果，请直接在研究记录中维护。",
             );
           }
-          const updated = await tx.viralAnalysisRecord.update({
-            where: { id: targetTaskId },
-            data: { ...ownerTaskData, resultJson: JSON.stringify(taskResult) },
+          await mutateTaskResultJson({
+            context: auth.context,
+            taskId: targetTaskId,
+            writer: "research-save",
+            mutate: () => ({
+              result: taskResult as Record<string, unknown>,
+              decisionStatus: normalizeDecisionStatus(decisionStatus),
+              value: { saved: true },
+            }),
           });
-          return updated;
-        }
+          return { id: targetTaskId, title: `${productName} 一键分析`, type: "workflow" };
+        })()
+        : await prisma.$transaction(async (tx) => {
         const storedCandidate = await tx.opportunityCandidate.findUnique({
           where: { id: workflowInput.candidateId! },
           select: {
@@ -1226,7 +1240,7 @@ export async function POST(request: NextRequest) {
           );
         }
         return task;
-      })
+      }))
       : await prisma.viralAnalysisRecord.create({ data: ownerTaskData });
 
     return jsonResponse({
@@ -1244,6 +1258,12 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: { code: error.code, message: error.message },
       }, candidateConversionStatus(error.code));
+    }
+    if (error instanceof TaskResultJsonMutationError) {
+      return jsonResponse({
+        ok: false,
+        error: { code: error.code, message: error.message },
+      }, error.status);
     }
     return jsonResponse({
       ok: false,

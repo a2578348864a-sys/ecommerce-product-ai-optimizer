@@ -34,9 +34,11 @@ describe("SourcingEvidencePanel 文案纪律与结构", () => {
     expect(html).toContain("候选主图 https:// 链接");
   });
 
-  it("图片找货明确说明需要前台浏览器会话（不堆技术术语）", () => {
+  it("图片找货明确说明扩展能力独立于 1688-cli（不堆技术术语）", () => {
     const html = renderPanel();
-    expect(html).toContain("1688 图搜会打开本地浏览器窗口（需前台运行）");
+    // F3：toolStatus 未知时按能力独立提示（图片找货依赖扩展，不依赖 CLI 登录）
+    expect(html).toContain("图片找货依赖普通 Chrome + Qingxuan 1688 Helper 扩展");
+    expect(html).toContain("不依赖 1688-cli");
     expect(html).not.toContain("CDP");
     expect(html).not.toContain("shadow");
     expect(html).not.toContain("resolver");

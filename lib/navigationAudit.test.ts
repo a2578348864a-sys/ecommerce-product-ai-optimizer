@@ -53,7 +53,7 @@ describe("WorkspaceSidebar navigation", () => {
       "工作台",
       "发现商品",
       "待研究商品",
-      "研究历史",
+      "研究记录",
       "Listing Studio",
       "Image Studio",
     ]);
@@ -299,8 +299,8 @@ describe("WorkflowBatchClient advanced Alpha positioning", () => {
 describe("TaskRecordsList operational positioning", () => {
   const tasksSource = readComponentSource("components/TaskRecordsList.tsx");
 
-  it("describes the route as product research history", () => {
-    expect(tasksSource).toMatch(/研究历史/);
+  it("describes the route as product research records (F6 naming)", () => {
+    expect(tasksSource).toMatch(/研究记录/);
     expect(tasksSource).toMatch(/按商品查看已保存的研究结论、风险、证据缺口和人工决定/);
     expect(tasksSource).toMatch(/下一步：/);
   });

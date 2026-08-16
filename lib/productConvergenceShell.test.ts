@@ -40,7 +40,7 @@ describe("Product Architecture Convergence shell", () => {
       { label: "工作台", href: "/" },
       { label: "发现商品", href: "/opportunities" },
       { label: "待研究商品", href: "/opportunity-candidates" },
-      { label: "研究历史", href: "/tasks" },
+      { label: "研究记录", href: "/tasks" },
       { label: "Listing Studio", href: "/listing-studio" },
       { label: "Image Studio", href: "/image-studio" },
     ]);
@@ -78,7 +78,7 @@ describe("Product Architecture Convergence shell", () => {
     for (const cta of [
       "去发现商品",
       "打开待研究商品",
-      "打开研究历史",
+      "打开研究记录",
       "在任务详情确认",
       "在任务详情生成",
     ]) {

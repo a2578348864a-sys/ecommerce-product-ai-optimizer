@@ -31,7 +31,7 @@ describe("商品研究三阶段主视图", () => {
     expect(html).toContain(">开始市场研究<");
     expect(html).toContain(">保存后在任务详情准备<");
     expect(html).toContain(">发现商品<");
-    expect(html).toContain(">研究历史<");
+    expect(html).toContain(">研究记录<");
     expect(html).not.toContain(">任务中心<");
   });
 

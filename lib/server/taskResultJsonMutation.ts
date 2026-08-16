@@ -32,7 +32,8 @@ export type TaskResultJsonWriter =
   | "ai-evidence-summary"
   | "browser-evidence"
   | "review-evidence"
-  | "sourcing-evidence";
+  | "sourcing-evidence"
+  | "research-save";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord"],
@@ -50,6 +51,33 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "browser-evidence": ["browserEvidence"],
   "review-evidence": ["reviewEvidence", "vocAnalysis"],
   "sourcing-evidence": ["sourcingEvidence"],
+  // F1：研究保存（save-task update）整体回写研究骨架任务（start-research 创建）。
+  // 拥有 save-task 组装的全部顶层键；researchRecord 追加语义由 research-decision 保留。
+  "research-save": [
+    "type",
+    "workflowId",
+    "runId",
+    "productName",
+    "status",
+    "finalReport",
+    "steps",
+    "costGuard",
+    "reviewState",
+    "batchMeta",
+    "sourceMeta",
+    "candidateToTask",
+    "candidateAnalysisContext",
+    "r22CommercialValidation",
+    "researchMode",
+    "researchRecord",
+    "researchVerification",
+    "productBatchBinding",
+    "decisionEvidence",
+    "humanDecision",
+    "agentOutputSnapshot",
+    "agentRunSnapshot",
+    "listingPrepSnapshot",
+  ],
 };
 
 export type TaskResultJsonStorageVersion = {
@@ -192,7 +220,8 @@ function validateColumnChanges<T>(
 ): void {
   if (output.decisionStatus !== undefined
     && writer !== "research-decision"
-    && writer !== "legacy-decision") {
+    && writer !== "legacy-decision"
+    && writer !== "research-save") {
     throw new TaskResultJsonMutationError(
       "namespace_contract_invalid",
       500,

@@ -163,7 +163,7 @@ describe("BrowserEvidenceSection rendering", () => {
       onChanged: () => undefined,
     });
     const html = renderToStaticMarkup(element);
-    expect(html).toContain("当前任务未绑定 Amazon 商品链接");
+    expect(html).toContain("当前任务缺少 Amazon 商品身份信息");
   });
 
   it("renders saved snapshots with fields and confirm actor", () => {

@@ -113,11 +113,6 @@ export interface SandboxTaskPatch {
   score?: number;
   level?: string;
   oneLineSummary?: string;
-  /** F1：研究保存（save-task update）写入正式 resultJson 与兼容状态列 */
-  type?: string;
-  decisionStatus?: string;
-  resultJson?: string;
-  productUrl?: string | null;
 }
 
 export type SandboxCandidateTaskLinkErrorCode =
@@ -339,10 +334,6 @@ export function updateSandboxTask(
     if (patch.score !== undefined) task.score = patch.score;
     if (patch.level !== undefined) task.level = patch.level;
     if (patch.oneLineSummary !== undefined) task.oneLineSummary = patch.oneLineSummary;
-    if (patch.type !== undefined) task.type = patch.type;
-    if (patch.decisionStatus !== undefined) task.decisionStatus = patch.decisionStatus;
-    if (patch.resultJson !== undefined) task.resultJson = patch.resultJson;
-    if (patch.productUrl !== undefined) task.productUrl = patch.productUrl;
     task.updatedAt = new Date().toISOString();
     return { value: structuredClone(task), changed: true };
   });

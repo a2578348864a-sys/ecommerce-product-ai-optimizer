@@ -13,7 +13,7 @@ describe("product research history presentation", () => {
     const listPage = source("app/tasks/page.tsx");
     const detailPage = source("app/tasks/[id]/page.tsx");
 
-    expect(list).toContain("研究历史");
+    expect(list).toContain("研究记录");
     expect(list).toContain("研究时间");
     expect(list).toContain("历史成果");
     expect(list).toContain("ResearchProductImage");
@@ -26,7 +26,7 @@ describe("product research history presentation", () => {
     expect(detail).toContain("商品研究记录");
     expect(detail).toContain("人工决定");
     expect(detail).not.toContain("技术信息与原始数据");
-    expect(listPage).toContain("商品研究历史");
+    expect(listPage).toContain("商品研究记录");
     expect(detailPage).toContain("商品研究记录");
   });
 
