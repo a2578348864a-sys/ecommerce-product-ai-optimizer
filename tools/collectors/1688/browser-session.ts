@@ -34,7 +34,10 @@ export type PersistentBrowserSession = {
   attached: "existing" | "launched";
   evaluate<T>(expression: string): Promise<T>;
   evaluateWithSession<T>(expression: string, sessionId: string): Promise<T>;
-  send(method: string, params: Record<string, unknown>, sessionId?: string): Promise<unknown>;
+  /** 发送到页面 target session（Page/DOM/Input/Runtime 等页面域命令） */
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  /** 发送到浏览器根 session（Browser/Target 等浏览器域命令） */
+  sendRoot(method: string, params?: Record<string, unknown>): Promise<unknown>;
   onEvent(listener: (method: string, params: Record<string, unknown>, sessionId?: string) => void): () => void;
   windowState: Promise<string>;
   close(): void;
@@ -357,7 +360,8 @@ async function attachToBrowser(
     attached,
     evaluate: (expression) => evaluateIn(client, sessionId, expression),
     evaluateWithSession: (expression, targetSessionId) => evaluateIn(client, targetSessionId, expression),
-    send: (method, params, targetSessionId) => client.send(method, params, targetSessionId),
+    send: (method, params = {}) => client.send(method, params, sessionId),
+    sendRoot: (method, params = {}) => client.send(method, params),
     onEvent: (listener) => client.onEvent(listener),
     windowState: windowStatePromise,
     close: () => {
