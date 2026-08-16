@@ -94,17 +94,20 @@ async function handleCommand(command, jobId) {
     let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
     if (!target) {
       const created = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
+      await new Promise((resolveWait) => setTimeout(resolveWait, 6_000)); // 等页面加载 + content script 注入
       target = created;
     }
     if (!target || !target.id) return { ok: false, code: "no_1688_tab" };
     try {
       await chrome.tabs.update(target.id, { url: "https://s.1688.com/selloffer/offer_search.html" });
+      await new Promise((resolveWait) => setTimeout(resolveWait, 6_000)); // 导航后等加载 + 注入
       return { ok: true };
     } catch {
       return { ok: false, code: "navigation_failed" };
     }
   }
-  return await sendTo1688Tab({ type: command.type, version: "1.0", jobId, payload: command.payload || {} });
+  // getState 等命令：无兼容 tab 时自动打开上传页（固定 URL）
+  return await sendTo1688Tab({ type: command.type, version: "1.0", jobId, payload: command.payload || {} }, { autoOpen: true });
 }
 
 let polling = false;
