@@ -187,6 +187,7 @@ function sessionWith(options: { captchaAt?: number } = {}): IsolatedPublicBrowse
     profileLocationType: "system_temp",
     debugPort: 45_555,
     get navigationCount() { return count; },
+    calibration: null,
     navigate: async (url) => {
       count += 1;
       currentAsin = new URL(url).pathname.split("/").at(-1) ?? "";

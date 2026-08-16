@@ -104,6 +104,7 @@ function fakeSession(input?: {
     profileLocationType: "system_temp",
     debugPort: 49152,
     get navigationCount() { return count; },
+    calibration: null,
     navigate: vi.fn(async () => {
       count += 1;
       return input?.navigation ?? navigation;

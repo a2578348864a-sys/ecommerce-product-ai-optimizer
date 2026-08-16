@@ -88,6 +88,7 @@ function sessionFixture(
     profileLocationType: "system_temp",
     debugPort: 49152,
     get navigationCount() { return navigationCount; },
+    calibration: null,
     navigate,
     evaluateDomByValue,
     close,

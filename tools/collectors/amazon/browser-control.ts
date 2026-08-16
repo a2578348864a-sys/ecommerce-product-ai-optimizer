@@ -149,6 +149,20 @@ export type PublicPageNavigationResult = {
   allowedFinalOrigin: boolean;
 };
 
+export type AmazonEnvironmentCalibration = {
+  /** 校准是否执行（false = 未请求校准） */
+  attempted: boolean;
+  /** 配送地区是否成功切到目标 ZIP（含美国区域校验） */
+  deliveryConfirmed: boolean;
+  /** 校准后观察到的配送地区文本（glow-ingress） */
+  deliveryRegion: string | null;
+  /** 校准后观察到的币种偏好（customer-preferences dropdown） */
+  currencyPreference: string | null;
+  /** 是否确认语言 en_US + 币种 USD */
+  usdPreferencesConfirmed: boolean;
+  steps: AmazonEnvironmentStep[];
+};
+
 export type IsolatedPublicBrowserSession = {
   browser: "chrome" | "edge";
   browserLocationType: "system" | "system_x86";
@@ -157,6 +171,8 @@ export type IsolatedPublicBrowserSession = {
   profileLocationType: "system_temp";
   debugPort: number;
   readonly navigationCount: number;
+  /** 采集前环境校准结果（若请求了 calibrateEnvironment） */
+  readonly calibration: AmazonEnvironmentCalibration | null;
   navigate(url: string): Promise<PublicPageNavigationResult>;
   evaluateDomByValue<T>(expression: string): Promise<T>;
   close(): Promise<HumanAssistedBrowserCleanup>;
@@ -1033,6 +1049,93 @@ async function applyEnglishUsdPreferences(client: CdpClient, sessionId: string):
   };
 }
 
+/**
+ * 采集前环境校准（Amazon US 任务）：
+ * 1) 导航 amazon.com 首页 → 应用目标 ZIP（默认 10001）→ 校验配送地区含美国区域
+ * 2) 若配送确认 → 导航 customer-preferences → 设置语言 en_US + 币种 USD → 回首页 reload 复核
+ * 3) 读取最终 deliveryRegion + currencyPreference，返回结构化校准结果（不伪造 DOM、不换算汇率）
+ *
+ * 安全：全部走 Amazon 正常页面 UI；不写 cookie 之外的持久化；失败不阻断（调用方决定 fail-closed）。
+ * 导航直接使用 CDP（不经 session.navigate），不消耗业务 navigation 预算。
+ */
+export async function calibratePublicSessionEnvironment(input: {
+  client: CdpClient;
+  sessionId: string;
+  postalCode: string;
+  allowedOrigins: readonly string[];
+}): Promise<AmazonEnvironmentCalibration> {
+  const steps: AmazonEnvironmentStep[] = [];
+  const deliver = (stage: string, selector: string | null, status: AmazonEnvironmentStep["status"], textBefore: string | null, textAfter: string | null, detailCode: string | null) => {
+    steps.push({ stage, selector, status, textBefore, textAfter, detailCode });
+  };
+
+  // 1) 首页 → 配送 ZIP
+  await input.client.send("Page.navigate", { url: buildAmazonHomeUrl() }, input.sessionId);
+  await waitForDocument(input.client, input.sessionId);
+  const homepageStatus = await evaluateByValue<{ classification: string; brandMarker: boolean }>(
+    input.client,
+    input.sessionId,
+    `(() => ({
+      classification: document.title ? "ok" : "unknown",
+      brandMarker: document.querySelector('#nav-logo') !== null,
+    }))()`,
+  );
+  const delivery = await applyDeliveryPostalCode(input.client, input.sessionId, input.postalCode);
+  steps.push(...delivery.steps);
+  deliver(
+    "calibrate_delivery_result",
+    "#glow-ingress-line2",
+    delivery.confirmed ? "completed" : "failed",
+    delivery.finalSignals.deliveryRegion,
+    null,
+    delivery.confirmed ? null : "delivery_not_confirmed",
+  );
+
+  // 2) 配送确认后 → 语言/币种偏好（en_US + USD）
+  let usdPreferencesConfirmed = false;
+  let currencyPreference: string | null = null;
+  if (delivery.confirmed && homepageStatus.brandMarker) {
+    await input.client.send("Page.navigate", { url: buildAmazonPreferencesUrl() }, input.sessionId);
+    await waitForDocument(input.client, input.sessionId);
+    const preferences = await applyEnglishUsdPreferences(input.client, input.sessionId);
+    steps.push(...preferences.steps);
+    currencyPreference = preferences.currencyPreference;
+    usdPreferencesConfirmed = preferences.confirmed;
+    deliver(
+      "calibrate_preferences_result",
+      "input[name=lop][value=en_US] + #icp-currency-dropdown-id",
+      preferences.confirmed ? "completed" : "failed",
+      `currency=${preferences.currencyPreference ?? "unknown"}`,
+      null,
+      preferences.confirmed ? null : "usd_preferences_not_confirmed",
+    );
+    // 3) 回首页 reload 复核最终信号
+    await input.client.send("Page.navigate", { url: buildAmazonHomeUrl() }, input.sessionId);
+    await waitForDocument(input.client, input.sessionId);
+    await input.client.send("Page.reload", { ignoreCache: false }, input.sessionId);
+    await waitForDocument(input.client, input.sessionId);
+  }
+
+  const finalSignals = await readAmazonHomeSignals(input.client, input.sessionId);
+  deliver(
+    "calibrate_final_signals",
+    "#glow-ingress-line2",
+    "completed",
+    null,
+    `delivery=${finalSignals.deliveryRegion ?? "unknown"}`,
+    null,
+  );
+
+  return {
+    attempted: true,
+    deliveryConfirmed: delivery.confirmed,
+    deliveryRegion: finalSignals.deliveryRegion,
+    currencyPreference,
+    usdPreferencesConfirmed,
+    steps,
+  };
+}
+
 export async function runAmazonSearchCanaryBrowser(input: {
   browser: BrowserExecutableCandidate;
   query: "closet organizer";
@@ -1315,6 +1418,8 @@ export async function openIsolatedPublicBrowserSession(input: {
   allowedOrigins: readonly string[];
   maxNavigations: number;
   headless?: boolean;
+  /** Amazon US 采集前环境校准：先切配送 ZIP 到美国并设 en_US/USD，再执行业务导航 */
+  calibrateEnvironment?: { postalCode: string };
 }): Promise<IsolatedPublicBrowserSession> {
   if (!isAbsolute(input.browser.executablePath) || !existsSync(input.browser.executablePath)) {
     throw new Error("browser executable not found");
@@ -1436,12 +1541,35 @@ export async function openIsolatedPublicBrowserSession(input: {
       if (eventSessionId === sessionId) captureMainDocumentEvent(capture, method, params);
     });
 
+    // 采集前环境校准（Amazon US）：切配送 ZIP + en_US/USD 偏好；不消耗业务导航预算
+    let calibration: AmazonEnvironmentCalibration | null = null;
+    if (input.calibrateEnvironment) {
+      try {
+        calibration = await calibratePublicSessionEnvironment({
+          client,
+          sessionId,
+          postalCode: input.calibrateEnvironment.postalCode,
+          allowedOrigins: input.allowedOrigins,
+        });
+      } catch {
+        calibration = {
+          attempted: true,
+          deliveryConfirmed: false,
+          deliveryRegion: null,
+          currencyPreference: null,
+          usdPreferencesConfirmed: false,
+          steps: [{ stage: "calibrate_environment", selector: null, status: "failed", textBefore: null, textAfter: null, detailCode: "calibration_error" }],
+        };
+      }
+    }
+
     return {
       browser: input.browser.browser,
       browserLocationType: input.browser.locationType,
       browserVersion,
       profileId: profile.profileId,
       profileLocationType: profile.locationType,
+      calibration,
       debugPort,
       get navigationCount() { return navigationCount; },
       navigate: async (url) => {

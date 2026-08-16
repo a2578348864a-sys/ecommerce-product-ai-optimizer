@@ -71,6 +71,14 @@ export type BrowserCollectPreviewView = {
     httpStatus: number | null;
     navigationElapsedMs: number;
   };
+  /** 采集前环境校准结果（币种/配送地） */
+  calibration: {
+    attempted: boolean;
+    deliveryConfirmed: boolean;
+    deliveryRegion: string | null;
+    currencyPreference: string | null;
+    usdPreferencesConfirmed: boolean;
+  } | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -186,6 +194,17 @@ export function parseBrowserCollectPreviewView(value: unknown): BrowserCollectPr
       httpStatus: asNumber(navigation.httpStatus),
       navigationElapsedMs: asNumber(navigation.navigationElapsedMs) ?? 0,
     },
+    calibration: (() => {
+      const raw = isRecord(value.calibration) ? value.calibration : null;
+      if (!raw) return null;
+      return {
+        attempted: raw.attempted === true,
+        deliveryConfirmed: raw.deliveryConfirmed === true,
+        deliveryRegion: asString(raw.deliveryRegion, null) ?? null,
+        currencyPreference: asString(raw.currencyPreference, null) ?? null,
+        usdPreferencesConfirmed: raw.usdPreferencesConfirmed === true,
+      };
+    })(),
   };
 }
 
@@ -421,6 +440,22 @@ export function BrowserEvidenceSection({
               <p className="mt-1 text-xs text-teal-700">
                 实体绑定已证明（URL ASIN = 页面 ASIN = 目标 ASIN），6 个字段为页面观察快照。
               </p>
+              {/* 币种环境校准状态（Amazon US 采集前自动切配送地/USD 偏好） */}
+              {preview.calibration?.attempted ? (
+                preview.calibration.usdPreferencesConfirmed
+                  ? (
+                    <p className="mt-1 text-xs text-teal-700" data-testid="calibration-usd-ok">
+                      已校准美国配送与币种（配送地：{preview.calibration.deliveryRegion ?? "美国"} · 币种偏好：{preview.calibration.currencyPreference ?? "USD"}）。
+                    </p>
+                  )
+                  : (
+                    <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700" data-testid="calibration-not-usd">
+                      已尝试自动校准，但当前仍不是 Amazon US 价格环境
+                      {preview.calibration.deliveryRegion ? `（配送地：${preview.calibration.deliveryRegion}）` : ""}。
+                      价格不会保存（fail-closed）；请确认本机网络/代理为美国节点后重试。
+                    </p>
+                  )
+              ) : null}
               <SnapshotFields fields={normalizePreviewFields(preview.extraction.fields)} />
               <CurrencyNote
                 currency={

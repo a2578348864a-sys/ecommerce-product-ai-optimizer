@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import {
   resolveSystemBrowser,
   openIsolatedPublicBrowserSession,
+  type AmazonEnvironmentCalibration,
 } from "@/tools/collectors/amazon/browser-control";
 import {
   buildAmazonDetailPageExtractionExpression,
@@ -35,6 +36,8 @@ export type BrowserEvidenceNavigation = {
 export type BrowserEvidenceCollectPreview = {
   extraction: AmazonDetailPageExtraction;
   navigation: BrowserEvidenceNavigation;
+  /** 采集前环境校准结果（币种/配送地；未请求校准时为 null） */
+  calibration: AmazonEnvironmentCalibration | null;
 };
 
 export type BrowserEvidenceStoredPreview = {
@@ -154,6 +157,8 @@ export async function collectBrowserEvidencePreview(input: {
     allowedOrigins: BROWSER_EVIDENCE_ALLOWED_ORIGINS,
     maxNavigations: 1,
     headless: true,
+    // 币种校准：Amazon US 采集前先把配送 ZIP 切到美国并设 en_US/USD（复用 Amazon 正常 UI）
+    calibrateEnvironment: { postalCode: "10001" },
   });
   try {
     const requestedUrl = `https://www.amazon.com/dp/${input.asin}?language=en_US`;
@@ -183,7 +188,8 @@ export async function collectBrowserEvidencePreview(input: {
     if (failClosed) {
       throw new BrowserEvidenceCollectError(failClosed, 422, failClosedMessage(failClosed));
     }
-    return { extraction, navigation };
+    // 币种校准结果随 preview 返回（UI 展示"已校准配送地/币种"或"仍非 Amazon US 价格环境"）
+    return { extraction, navigation, calibration: session.calibration };
   } catch (error) {
     if (error instanceof BrowserEvidenceCollectError) throw error;
     const message = error instanceof Error ? error.message : "unknown_error";

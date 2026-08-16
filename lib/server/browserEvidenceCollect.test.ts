@@ -42,6 +42,7 @@ function preview(ext: AmazonDetailPageExtraction): BrowserEvidenceCollectPreview
       navigationElapsedMs: 2400,
       allowedFinalOrigin: true,
     },
+    calibration: null,
   };
 }
 

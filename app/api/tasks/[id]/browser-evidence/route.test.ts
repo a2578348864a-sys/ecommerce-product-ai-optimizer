@@ -138,6 +138,7 @@ function preview(asin = ASIN): BrowserEvidenceCollectPreview {
       navigationElapsedMs: 2400,
       allowedFinalOrigin: true,
     },
+    calibration: null,
   };
 }
 
