@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1153,18 +1153,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
       sourcing: sourcing > 0 ? "已有" : "可选",
     };
   }, [record]);
-  const researchStartHref = useMemo(() => {
-    if (!record || !isRecordValue(record.result)) return null;
-    const candidateToTask = isRecordValue(record.result.candidateToTask)
-      ? record.result.candidateToTask
-      : null;
-    const candidateId = candidateToTask && typeof candidateToTask.candidateId === "string"
-      ? candidateToTask.candidateId
-      : null;
-    return candidateId
-      ? `/opportunity-candidates/${encodeURIComponent(candidateId)}?taskId=${encodeURIComponent(id)}`
-      : null;
-  }, [record, id]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [updatingDecision, setUpdatingDecision] = useState(false);
@@ -1175,6 +1163,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [deleteError, setDeleteError] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  // R3：旧版人工决定——显式保存（下拉只改草稿，点[保存旧版状态]才提交）
+  const [legacyDecisionDraft, setLegacyDecisionDraft] = useState<DecisionStatus | null>(null);
 
   /**
    * 轻量刷新：成功写入（Handoff / Listing / Image）后重读服务端真实任务状态。
@@ -1390,6 +1380,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
         return;
       }
       setRecord((current) => current ? { ...current, decisionStatus: data.data.decisionStatus } : current);
+      setLegacyDecisionDraft(null);
       setDecisionMessage("人工状态已保存。");
     } catch {
       setRecord((current) => current ? { ...current, decisionStatus: previous } : current);
@@ -1518,22 +1509,16 @@ export function TaskRecordDetail({ id }: { id: string }) {
                  </div>
                </div>
 
-               {/* F1+OA3：研究尚未开始 → 证据优先引导（AI 不是 gate；按钮改为"AI 整理当前资料"） */}
+               {/* F1+OA3+R2：研究尚未开始 → 证据优先引导（AI 不是 gate；唯一 AI 动作在下方「AI 证据总结」区） */}
                {!recordHasResearchRecord ? (
                  <div className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-start-guidance">
-                   <p className="text-sm font-bold text-teal-800">研究尚未运行 AI 分析</p>
+                   <p className="text-sm font-bold text-teal-800">研究尚未开始整理</p>
                    <p className="mt-1 text-sm leading-6 text-slate-600">
-                     可以先在本页收集竞品、关键词、Amazon 页面、买家评论与 1688 供应线索（下方各区可直接使用），也可以让 AI 随时整理当前已有资料；最后再做人工决定。
+                     可以先在本页收集竞品、关键词、Amazon 页面、买家评论与 1688 供应线索（下方各区可直接使用），
+                     也可以到下方「AI 证据总结」区让 AI 整理当前已有资料；最后再做人工决定。
                    </p>
-                   <Link
-                     href={researchStartHref ?? "/opportunity-candidates"}
-                     className="linear-button-primary mt-3 inline-flex h-10 items-center gap-2 px-4 text-sm font-semibold"
-                   >
-                     AI 整理当前资料
-                   </Link>
                  </div>
                ) : null}
-
                {/* OA1（用户 29 节）：Evidence Completion State——当前研究资料清单（非分数） */}
                {!recordHasResearchRecord && isRecordValue(record.result) ? (
                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-evidence-checklist">
@@ -1636,21 +1621,40 @@ export function TaskRecordDetail({ id }: { id: string }) {
                      {!hasVersionedProductResearchRecord(record.result) ? (
                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="legacy-decision-control">
                          <p className="text-sm font-bold text-slate-800">旧版人工决定</p>
-                         <p className="mt-1 text-xs leading-5 text-slate-500">旧记录继续使用兼容状态，不补造新版决定或历史。</p>
-                         <select
-                           value={record.decisionStatus}
-                           onChange={(event) => void updateDecisionStatus(event.target.value as DecisionStatus)}
-                           disabled={updatingDecision}
-                           className="input-soft mt-3 h-11 w-full max-w-xs px-4 text-sm font-semibold text-slate-700 outline-none disabled:opacity-60"
-                         >
-                           {decisionStatusOptions.filter((option) => option.value).map((option) => (
-                             <option key={option.value} value={option.value}>{option.shortLabel}</option>
-                           ))}
-                         </select>
+                         <p className="mt-1 text-xs leading-5 text-slate-500">
+                           旧记录继续使用兼容状态，不生成新版决定记录。修改后请点击「保存旧版状态」才会生效。
+                         </p>
+                         <div className="mt-3 flex flex-wrap items-center gap-3">
+                           <select
+                             value={legacyDecisionDraft ?? record.decisionStatus}
+                             onChange={(event) => setLegacyDecisionDraft(event.target.value as DecisionStatus)}
+                             disabled={updatingDecision}
+                             className="input-soft h-11 w-full max-w-xs px-4 text-sm font-semibold text-slate-700 outline-none disabled:opacity-60"
+                             data-testid="legacy-decision-select"
+                           >
+                             {decisionStatusOptions.filter((option) => option.value).map((option) => (
+                               <option key={option.value} value={option.value}>{option.shortLabel}</option>
+                             ))}
+                           </select>
+                           <button
+                             type="button"
+                             disabled={updatingDecision || legacyDecisionDraft === null || legacyDecisionDraft === record.decisionStatus}
+                             onClick={() => void updateDecisionStatus(legacyDecisionDraft ?? record.decisionStatus)}
+                             className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold disabled:opacity-50"
+                             data-testid="legacy-decision-save"
+                           >
+                             {updatingDecision ? "保存中…" : "保存旧版状态"}
+                           </button>
+                         </div>
+                         {legacyDecisionDraft !== null && legacyDecisionDraft !== record.decisionStatus ? (
+                           <p className="mt-2 text-xs font-semibold text-amber-700" data-testid="legacy-decision-unsaved">
+                             尚未保存：改成了「{getDecisionStatusOption(legacyDecisionDraft).shortLabel}」
+                           </p>
+                         ) : null}
                          {decisionMessage ? <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p> : null}
                        </div>
                      ) : null}
-                   </section>
+                    </section>
 
                    <section className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4" data-testid="task-studio-links">
                      <div className="flex flex-wrap items-start justify-between gap-3">
