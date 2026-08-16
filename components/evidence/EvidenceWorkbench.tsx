@@ -34,6 +34,7 @@ import {
   type VocEvidenceView,
 } from "@/components/evidence/VocEvidenceSection";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
+import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -372,6 +373,7 @@ export function EvidenceWorkbench({
   const score = extractCandidateScore(result);
   const source = extractReportSource(result);
 
+  const [sourcingConfirmed, setSourcingConfirmed] = useState(false);
   const [competitors, setCompetitors] = useState<CompetitorAsinView[]>([]);
   const [storageVersion, setStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [competitorLoading, setCompetitorLoading] = useState(true);
@@ -564,6 +566,35 @@ export function EvidenceWorkbench({
 
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
+      {/* R7：当前研究资料（从各 Evidence 区实时 state 派生，确认保存后自动更新） */}
+      <section data-testid="research-evidence-checklist" className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-bold text-slate-900">当前研究资料</p>
+        <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
+          {([
+            { key: "productBasics", label: "商品基础资料", state: overview.some((item) => item.value !== "unknown") ? "已有" : "待补" },
+            { key: "competitor", label: "竞品资料", state: competitors.length > 0 ? "已有" : "可选" },
+            { key: "keyword", label: "关键词", state: keywordReportEvidence !== null ? "已有" : "待补" },
+            { key: "browser", label: "Amazon 页面", state: (browserEvidence?.snapshots.length ?? 0) > 0 ? "已有" : "待补" },
+            { key: "voc", label: "买家评论", state: (vocEvidence?.dataset.reviews.length ?? 0) > 0 ? "已有" : "待补" },
+            { key: "sourcing", label: "供应线索", state: sourcingConfirmed ? "已有" : "可选" },
+          ] as Array<{ key: string; label: string; state: string }>).map((row) => (
+            <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
+              <span className="text-slate-700">{row.label}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                row.state === "已有"
+                  ? "bg-teal-50 text-teal-700"
+                  : row.state === "可选"
+                    ? "bg-slate-100 text-slate-500"
+                    : "bg-amber-50 text-amber-700"
+              }`}>
+                {row.state}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
+      </section>
+
       {/* ── 简明结论（首屏） ── */}
       <section data-testid="workbench-summary" className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
         <h3 className="text-sm font-bold text-slate-900">简明结论</h3>
@@ -774,7 +805,7 @@ export function EvidenceWorkbench({
         <SourcingEvidencePanel
           taskId={taskId}
           amazonContext={{ title: null, image: null, asin: null }}
-          onConfirmed={onDataChanged}
+          onEvidenceChange={setSourcingConfirmed}
         />
       </section>
 

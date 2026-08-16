@@ -89,11 +89,14 @@ export function SourcingEvidencePanel({
   taskId,
   amazonContext,
   onConfirmed,
+  onEvidenceChange,
 }: {
   taskId: string;
   amazonContext?: { title?: string | null; image?: string | null; asin?: string | null };
   /** R7：供应线索人工确认保存成功后冒泡（顶部"当前研究资料"据此重新计算） */
   onConfirmed?: () => void;
+  /** R7：供应线索 evidence 状态变化上报（供 Workbench 顶部清单实时派生） */
+  onEvidenceChange?: (hasConfirmed: boolean) => void;
 }) {
   const [accessPassword] = useAccessPassword();
   const [status, setStatus] = useState<PanelStatus>("idle");
@@ -144,6 +147,7 @@ export function SourcingEvidencePanel({
       setEvidence(data.data.evidence);
       setStorageVersion(data.data.storageVersion);
       setToolStatus(data.data.toolStatus);
+      onEvidenceChange?.((data.data.evidence?.humanConfirmed.length ?? 0) > 0);
       // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
       const caps = sourcingCapabilities(data.data.toolStatus);
       setStatus((prev) => (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login"));
@@ -152,7 +156,7 @@ export function SourcingEvidencePanel({
       // 初始读取失败保持 idle
       return null;
     }
-  }, [taskId]);
+  }, [taskId, onEvidenceChange]);
 
   useEffect(() => {
     if (!panelOpen.current) {
@@ -308,6 +312,7 @@ export function SourcingEvidencePanel({
       setPreview(null);
       setStatus("confirmed");
       onConfirmed?.();
+      onEvidenceChange?.(true);
     } catch {
       setStatus("error");
       setErrorMessage("网络异常，保存未完成，请重试。");

@@ -64,7 +64,6 @@ import { ResearchProductImage } from "@/components/ResearchProductImage";
 import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
-import { deriveResearchMaterialStatus, RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import { classifyResearchLifecycle } from "@/lib/researchLifecycle";
 import {
   deriveCreativeMaterialStatus,
@@ -1133,12 +1132,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
       || Object.prototype.hasOwnProperty.call(record.result, "researchVerification")
       || hasVersionedProductResearchRecord(record.result);
   }, [record]);
-
-    // OA1+R7：Evidence Completion State（当前研究资料清单；统一 resolver，非分数、非推荐）
-  const evidenceCompletion = useMemo(
-    () => deriveResearchMaterialStatus(record && isRecordValue(record.result) ? record.result : null),
-    [record],
-  );
   // R4/R6：旧版任务（无新版创作上下文）→ Studio CTA 不伪装可用
   const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
   const [loading, setLoading] = useState(true);
@@ -1146,101 +1139,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [updatingDecision, setUpdatingDecision] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [error, setError] = useState("");
-  // Prevent stale async responses from overwriting newer state
-  const reqIdRef = useRef(0);
   const [deleteError, setDeleteError] = useState("");
   const [decisionMessage, setDecisionMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  // R3：旧版人工决定——显式保存（下拉只改草稿，点[保存旧版状态]才提交）
   const [legacyDecisionDraft, setLegacyDecisionDraft] = useState<DecisionStatus | null>(null);
 
-  /**
-   * 轻量刷新：成功写入（Handoff / Listing / Image）后重读服务端真实任务状态。
-   * 保留当前内容直到新数据到达（不整页闪 loading、不卸载子组件、不丢失展开状态），
-   * 以服务端持久化结果为唯一事实源，不维护第二套前端进度状态。
-   * 失败静默：进度摘要保持旧值，不打断用户操作，绝不错误推进。
-   */
-  const refreshRecord = useCallback(async () => {
-    reqIdRef.current += 1;
-    const currentId = reqIdRef.current;
-    try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-        headers: { ...buildAccessHeaders() },
-      });
-      if (currentId !== reqIdRef.current) return;
-      const data = await response.json() as DetailResponse;
-      if (currentId !== reqIdRef.current) return;
-      if (!response.ok || !data.ok || !data.data) return;
-      setRecord(data.data);
-      setLoading(false);
-    } catch {
-      // 刷新失败保持现有内容（进度摘要保留旧值，不打断用户）
-    }
-  }, [id]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!isAccessPasswordReady) {
-      setLoading(true);
-      setError("");
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setRecord(null);
-      setLoading(false);
-      setError("请先输入访问密码后查看任务详情。");
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    async function loadRecord() {
-      // Bump request id so any in-flight stale response is discarded
-      reqIdRef.current += 1;
-      const currentId = reqIdRef.current;
-
-      setLoading(true);
-      setError("");
-      setRecord(null);
-      try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
-          cache: "no-store",
-          headers: { ...buildAccessHeaders() },
-        });
-        // Discard if a newer request has already started
-        if (cancelled || currentId !== reqIdRef.current) return;
-
-        const data = await response.json() as DetailResponse;
-        if (cancelled || currentId !== reqIdRef.current) return;
-
-        if (!response.ok || !data.ok) {
-          setRecord(null);
-          setError(data.ok ? "任务详情读取失败。" : data.error.message);
-          return;
-        }
-        setRecord(data.data);
-      } catch {
-        if (cancelled || currentId !== reqIdRef.current) return;
-        setRecord(null);
-        setError("任务详情暂时无法读取，请稍后刷新。");
-      } finally {
-        if (!cancelled && currentId === reqIdRef.current) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadRecord();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, accessPassword, isAccessPasswordReady, refreshKey]);
-
+  
   const aiListingPackSnapshot = useMemo(() => (
     record ? getAiListingPackSnapshot(record.result) : null
   ), [record]);
@@ -1507,29 +1412,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
                    </p>
                  </div>
                ) : null}
-               {/* OA1+R7（用户 29/86-108 节）：Evidence Completion State——当前研究资料清单（统一 resolver，非分数） */}
-                {!recordHasResearchRecord && isRecordValue(record.result) ? (
-                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-evidence-checklist">
-                    <p className="text-sm font-bold text-slate-900">当前研究资料</p>
-                    <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
-                      {RESEARCH_MATERIAL_ROWS.map((row) => (
-                        <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-                          <span className="text-slate-700">{row.label}</span>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            evidenceCompletion[row.key] === "已有"
-                              ? "bg-teal-50 text-teal-700"
-                              : evidenceCompletion[row.key] === "可选"
-                                ? "bg-slate-100 text-slate-500"
-                                : "bg-amber-50 text-amber-700"
-                          }`}>
-                            {evidenceCompletion[row.key]}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
-                  </div>
-                ) : null}
 
                {presentation && researchEvidenceSections ? (
                  <>
