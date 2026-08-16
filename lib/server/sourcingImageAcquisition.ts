@@ -167,7 +167,14 @@ export async function acquireByImage(input: {
     // 2) 桥与扩展状态（进程级共享单例；测试可注入）
     const bridge = input.bridgeFactory ? input.bridgeFactory() : getSharedBridge();
     await bridge.start(input.env);
-    const status = await bridge.getStatus();
+    // 等待扩展 SW 通过心跳连接 bridge（刚刷新扩展/页面恢复前台时需要时间；最长 10s）
+    let status = await bridge.getStatus();
+    const extensionSeenDeadline = Date.now() + 10_000;
+    while (!status.extensionSeen && Date.now() < extensionSeenDeadline) {
+      assertNotAborted(signal);
+      await sleep(500, signal);
+      status = await bridge.getStatus();
+    }
     if (!status.extensionSeen) {
       mapBridgeFailure("extension_not_installed", status);
     }
