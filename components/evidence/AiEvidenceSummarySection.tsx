@@ -82,8 +82,15 @@ export function AiEvidenceSummarySection({
       });
       const json = await res.json() as
         | { ok: true }
-        | { ok: false; error?: { message?: string } };
+        | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
+        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        if (code === "task_result_conflict") {
+          // F5：同任务其它区块更新导致 CAS 冲突 → 刷新最新版本、保留输入、提示一键重试
+          setError("任务内容刚在其他位置更新，已自动刷新最新版本，请再次点击生成。");
+          onChanged();
+          return;
+        }
         setError((json as { error?: { message?: string } }).error?.message ?? "生成失败。");
         return;
       }
