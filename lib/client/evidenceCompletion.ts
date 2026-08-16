@@ -84,12 +84,11 @@ export function deriveResearchMaterialStatus(
       sourcing: "可选",
     };
   }
-  // 商品基础资料：任务来源身份存在（productUrl / candidateAnalysisContext 商品信息 / sourceMeta）
+  // 商品基础资料：任务来源身份存在（productUrl / 商品名 / candidateAnalysisContext / sourceMeta）
   const hasProductIdentity = Boolean(
     result.productUrl
-    || (isRecord(result.candidateAnalysisContext) && (
-      isRecord(result.candidateAnalysisContext.product) || isRecord(result.candidateAnalysisContext.facts)
-    ))
+    || result.productName
+    || (isRecord(result.candidateAnalysisContext) && Object.keys(result.candidateAnalysisContext).length > 0)
     || isRecord(result.sourceMeta),
   );
   const competitorCount = countArrayPath(result, "competitorEvidence", ["asins"]);
@@ -99,7 +98,8 @@ export function deriveResearchMaterialStatus(
   const vocCount = countArrayPath(result, "reviewEvidence", ["dataset", "reviews"]);
   const sourcingCount = countArrayPath(result, "sourcingEvidence", ["humanConfirmed"]);
   return {
-    productBasics: combine(false, hasProductIdentity),
+    // 商品基础资料 REQUIRED：有来源身份（productUrl / candidateAnalysisContext / sourceMeta）才算已有
+    productBasics: combine(true, hasProductIdentity),
     competitor: combine(false, competitorCount > 0),
     keyword: combine(true, keywordCount > 0),
     browser: combine(true, browserCount > 0),

@@ -16,14 +16,20 @@ function baseResult(): Record<string, unknown> {
 }
 
 describe("deriveResearchMaterialStatus（R7 统一 resolver）", () => {
-  it("空 result → 商品基础=已有（来源身份）/ 竞品=可选 / 其余=待补", () => {
-    const status = deriveResearchMaterialStatus(baseResult());
-    expect(status.productBasics).toBe("已有");
+  it("空 result → 商品基础=待补（无来源身份）/ 竞品=可选 / 其余=待补", () => {
+    const status = deriveResearchMaterialStatus({});
+    expect(status.productBasics).toBe("待补");
     expect(status.competitor).toBe("可选");
     expect(status.keyword).toBe("待补");
     expect(status.browser).toBe("待补");
     expect(status.voc).toBe("待补");
     expect(status.sourcing).toBe("可选");
+  });
+
+  it("有来源身份（sourceMeta / productUrl / productName）→ 商品基础=已有", () => {
+    expect(deriveResearchMaterialStatus(baseResult()).productBasics).toBe("已有");
+    expect(deriveResearchMaterialStatus({ productUrl: "https://www.amazon.com/dp/B0X" }).productBasics).toBe("已有");
+    expect(deriveResearchMaterialStatus({ productName: "保温杯" }).productBasics).toBe("已有");
   });
 
   it("null/undefined → 安全默认（不崩）", () => {
