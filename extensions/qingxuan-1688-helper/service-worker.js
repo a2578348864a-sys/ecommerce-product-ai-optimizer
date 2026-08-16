@@ -81,6 +81,18 @@ async function handleCommand(command, jobId) {
     if (Math.ceil(imageBase64.length / 4) * 3 > MAX_IMAGE_BYTES) return { ok: false, code: "image_too_large" };
     return await sendTo1688Tab({ type: "upload", version: "1.0", jobId, payload: { imageBase64 } });
   }
+  if (command.type === "navigateUploadPage") {
+    // 固定能力：仅导航到 1688 图搜上传页（非任意 URL；§8 禁止 openAnyUrl）
+    const tabs = await chrome.tabs.query({});
+    const target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+    if (!target || !target.id) return { ok: false, code: "no_1688_tab" };
+    try {
+      await chrome.tabs.update(target.id, { url: "https://s.1688.com/selloffer/offer_search.html" });
+      return { ok: true };
+    } catch {
+      return { ok: false, code: "navigation_failed" };
+    }
+  }
   return await sendTo1688Tab({ type: command.type, version: "1.0", jobId, payload: command.payload || {} });
 }
 

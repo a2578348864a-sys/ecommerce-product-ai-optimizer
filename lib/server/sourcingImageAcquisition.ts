@@ -191,18 +191,37 @@ export async function acquireByImage(input: {
     });
 
     // 4) getState：页面身份（§26 AUTH_REQUIRED / §27 RISK_CONTROL / §16 上传入口 proof）
-    await bridge.enqueue(jobId, { type: "getState" });
-    let state = parsePageState(await bridge.waitResult(jobId, 30_000));
-    assertNotAborted(signal);
-    if (!state.ok) mapBridgeFailure(String(state.code ?? "timeout"), await bridge.getStatus());
-    if (state.pageKind === "login_wall") {
-      fail("auth_required", 401, "1688 未登录或会话过期，请在普通 Chrome 中正常登录 1688 后重试。");
-    }
-    if (state.pageKind === "risk_control") {
-      fail("risk_control_required", 403, "1688 触发了验证，请在页面完成验证后重试（系统不会绕过）。");
-    }
-    if (state.pageKind !== "upload_page" || !state.uploadTarget?.found || !state.uploadTarget?.unique) {
-      fail("page_identity_unknown", 422, "1688 图搜页面未就绪（请确认 s.1688.com 图搜页已打开且扩展已加载）。");
+    //    页面不在上传页（如图搜后留在结果页）→ 自动导航回上传页（固定能力，≤2 次）
+    let state = parsePageState({ ok: false });
+    for (let pageAttempt = 0; pageAttempt < 2 && !(state.ok && state.pageKind === "upload_page"); pageAttempt++) {
+      assertNotAborted(signal);
+      await bridge.enqueue(jobId, { type: "getState" });
+      state = parsePageState(await bridge.waitResult(jobId, 30_000));
+      if (!state.ok) {
+        if (state.code === "no_1688_tab" || state.code === "content_script_unreachable") {
+          mapBridgeFailure("extension_disconnected", await bridge.getStatus());
+        }
+        // client_timeout 等：SW 可能正在处理导航/恢复中 → 重试一轮，仍失败则 disconnected
+        if (pageAttempt >= 1) {
+          mapBridgeFailure("extension_disconnected", await bridge.getStatus());
+        }
+        continue;
+      }
+      if (state.pageKind === "login_wall") {
+        fail("auth_required", 401, "1688 未登录或会话过期，请在普通 Chrome 中正常登录 1688 后重试。");
+      }
+      if (state.pageKind === "risk_control") {
+        fail("risk_control_required", 403, "1688 触发了验证，请在页面完成验证后重试（系统不会绕过）。");
+      }
+      if (state.pageKind !== "upload_page" || !state.uploadTarget?.found || !state.uploadTarget?.unique) {
+        if (pageAttempt === 0) {
+          await bridge.enqueue(jobId, { type: "navigateUploadPage" });
+          await bridge.waitResult(jobId, 15_000); // 导航结果不阻塞：下一轮 getState 验证
+          await sleep(3_000, signal);
+          continue;
+        }
+        fail("page_identity_unknown", 422, "1688 图搜页面未就绪（请确认 s.1688.com 图搜页已打开且扩展已加载）。");
+      }
     }
 
     // 5) upload + Upload Identity Proof（§15；重试 ≤3）

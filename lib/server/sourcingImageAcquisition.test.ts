@@ -58,7 +58,7 @@ function capture(promise: Promise<unknown>): Promise<string> {
 }
 
 describe("Native1688ExtensionDriver 编排错误映射", () => {
-  it("扩展未见（extensionSeen=false）→ EXTENSION_NOT_INSTALLED", async () => {
+  it("扩展未见（extensionSeen=false）→ EXTENSION_NOT_INSTALLED", { timeout: 30_000 }, async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({ extensionSeen: false });
@@ -114,11 +114,13 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("页面非上传页 → PAGE_IDENTITY_UNKNOWN", async () => {
+  it("页面非上传页（自动导航后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 30_000 }, async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({
         commands: [
+          { type: "getState", respond: () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } }) },
+          { type: "navigateUploadPage", respond: () => ({ ok: true }) },
           { type: "getState", respond: () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } }) },
         ],
       });
