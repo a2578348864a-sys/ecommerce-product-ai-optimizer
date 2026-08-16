@@ -27,7 +27,8 @@ ImageAcquisitionDriver
 |---|---|
 | 无 debugger / 无 remote-debugging | manifest 无 debugger/cookies/all_urls；驱动路径零 CDP（§28 审计测试锁定） |
 | Bridge 认证 | 轻选↔bridge：256bit `--token`（x-bridge-token header）；SW 通道：128bit jobId + 一次性消费 + TTL（偏差文档化，升级路径 Native Messaging DEFERRED） |
-| 命令安全 | action allowlist（getState/upload/submit/collect）+ typed/versioned 消息 + nonce 去重 |
+| 命令安全 | action allowlist（getState/upload/submit/collect/navigateUploadPage）+ typed/versioned 消息 + nonce 去重 |
+| 自动导航 | 仅固定 URL（s.1688.com/selloffer/offer_search.html）；SW 验证导航生效、被页面拦截时新建 tab 兜底、preferredTabId 避免多 tab 错选；驱动侧导航后轮询确认上传页就绪（≤30s，≤2 次导航） |
 | No Double Submit | bridge job.phase 门禁：submit 每 job 一次（重复 → duplicate_submit fail-closed） |
 | 图片边界 | 仅轻选注册 job（taskId/candidateId/sha256 imageHash 绑定；MIME/大小限制）；不读取任意本机文件 |
 | Upload Identity Proof | 预览 dataURL 长度 vs 本地 base64 长度（≤1% 容差）；不匹配 → fail-closed |

@@ -58,7 +58,7 @@ function capture(promise: Promise<unknown>): Promise<string> {
 }
 
 describe("Native1688ExtensionDriver 编排错误映射", () => {
-  it("扩展未见（extensionSeen=false）→ EXTENSION_NOT_INSTALLED", { timeout: 30_000 }, async () => {
+  it("扩展未见（extensionSeen=false）→ EXTENSION_NOT_INSTALLED", { timeout: 60_000 }, async () => {
     const path = tinyPngFile();
     try {
       const fb = fakeBridge({ extensionSeen: false });
@@ -114,14 +114,21 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
     }
   });
 
-  it("页面非上传页（自动导航后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 30_000 }, async () => {
+  it("页面非上传页（两次自动导航+轮询后仍非上传页）→ PAGE_IDENTITY_UNKNOWN", { timeout: 90_000 }, async () => {
     const path = tinyPngFile();
     try {
+      const unknownState = () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } });
       const fb = fakeBridge({
         commands: [
-          { type: "getState", respond: () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } }) },
+          // 初始 getState：非上传页
+          { type: "getState", respond: unknownState },
+          // 第 1 次导航 + 轮询 30s（每 2s 一次 getState；脚本耗尽后立即 client_timeout）
           { type: "navigateUploadPage", respond: () => ({ ok: true }) },
-          { type: "getState", respond: () => ({ ok: true, pageKind: "unknown", uploadTarget: { found: false } }) },
+          ...Array.from({ length: 16 }, () => ({ type: "getState", respond: unknownState })),
+          // 第 2 次导航 + 轮询 30s
+          { type: "getState", respond: unknownState },
+          { type: "navigateUploadPage", respond: () => ({ ok: true }) },
+          ...Array.from({ length: 16 }, () => ({ type: "getState", respond: unknownState })),
         ],
       });
       const code = await capture(acquireByImage({
@@ -131,6 +138,95 @@ describe("Native1688ExtensionDriver 编排错误映射", () => {
         bridgeFactory: () => fb,
       }));
       expect(code).toBe("page_identity_unknown");
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("结果页 → 第 1 次导航轮询超时 → 第 2 次导航成功 → 全链正常", { timeout: 90_000 }, async () => {
+    const path = tinyPngFile();
+    try {
+      const fb = fakeBridge({
+        commands: [
+          // 初始 getState：停留在结果页
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          // 第 1 次导航：轮询 30s 内页面仍未就绪（脚本耗尽 → client_timeout）
+          { type: "navigateUploadPage", respond: () => ({ ok: true }) },
+          ...Array.from({ length: 16 }, () => ({ type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) })),
+          // 第 2 次导航：轮询第 1 次 getState 即就绪
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          { type: "navigateUploadPage", respond: () => ({ ok: true }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "upload_page", uploadTarget: { found: true, unique: true } }) },
+          // 正常全链
+          { type: "upload", respond: () => ({ ok: true }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "upload_page", preview: { confirmed: true, srcLength: tinyPngBase64Length() } }) },
+          { type: "submit", respond: () => ({ ok: true }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          {
+            type: "collect",
+            respond: () => ({
+              ok: true,
+              cards: [
+                { offerId: "1036420364519", title: "保温杯A", entityBound: true },
+                { offerId: "1035039187306", title: "保温杯B", entityBound: true },
+                { offerId: "1031650493303", title: "保温杯C", entityBound: true },
+              ],
+            }),
+          },
+        ],
+      });
+      const result = await acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      });
+      expect(result.candidates).toHaveLength(3);
+      expect(result.candidates[0].offerId).toBe("1036420364519");
+      expect(result.trace.success).toBe(true);
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("导航后页面加载慢（轮询中 result_page → upload_page）→ 全链正常", { timeout: 60_000 }, async () => {
+    const path = tinyPngFile();
+    try {
+      const fb = fakeBridge({
+        commands: [
+          // 初始 getState：停留在结果页
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          { type: "navigateUploadPage", respond: () => ({ ok: true }) },
+          // 轮询：前 2 次仍结果页（页面加载中），第 3 次上传页就绪
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "upload_page", uploadTarget: { found: true, unique: true } }) },
+          // 正常全链
+          { type: "upload", respond: () => ({ ok: true }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "upload_page", preview: { confirmed: true, srcLength: tinyPngBase64Length() } }) },
+          { type: "submit", respond: () => ({ ok: true }) },
+          { type: "getState", respond: () => ({ ok: true, pageKind: "result_page", resultPage: { resultsReady: true } }) },
+          {
+            type: "collect",
+            respond: () => ({
+              ok: true,
+              cards: [
+                { offerId: "1036420364519", title: "保温杯A", entityBound: true },
+                { offerId: "1035039187306", title: "保温杯B", entityBound: true },
+                { offerId: "1031650493303", title: "保温杯C", entityBound: true },
+              ],
+            }),
+          },
+        ],
+      });
+      const result = await acquireByImage({
+        localImagePath: path,
+        taskId: "t1",
+        candidateId: "c1",
+        bridgeFactory: () => fb,
+      });
+      expect(result.candidates).toHaveLength(3);
+      expect(result.trace.success).toBe(true);
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });
     }

@@ -191,12 +191,21 @@ export async function acquireByImage(input: {
     });
 
     // 4) getState：页面身份（§26 AUTH_REQUIRED / §27 RISK_CONTROL / §16 上传入口 proof）
-    //    页面不在上传页（如图搜后留在结果页）→ 自动导航回上传页（固定能力，≤2 次）
+    //    页面不在上传页（如图搜后留在结果页）→ 自动导航回上传页（固定能力，≤2 次；
+    //    每次导航后轮询确认上传页就绪，吸收页面加载/重注入延迟；SW 侧验证导航生效，
+    //    beforeunload 等拦截时新建 tab 兜底）。
+    const uploadPageReady = (s: PageState) =>
+      s.ok && s.pageKind === "upload_page" && s.uploadTarget?.found === true && s.uploadTarget?.unique === true;
     let state = parsePageState({ ok: false });
-    for (let pageAttempt = 0; pageAttempt < 2 && !(state.ok && state.pageKind === "upload_page"); pageAttempt++) {
+    let pageReady = false;
+    for (let pageAttempt = 0; pageAttempt < 2 && !pageReady; pageAttempt++) {
       assertNotAborted(signal);
       await bridge.enqueue(jobId, { type: "getState" });
       state = parsePageState(await bridge.waitResult(jobId, 30_000));
+      if (uploadPageReady(state)) {
+        pageReady = true;
+        break;
+      }
       if (!state.ok) {
         if (state.code === "auth_required") {
           fail("auth_required", 401, "1688 未登录或会话过期，请在普通 Chrome 中正常登录 1688 后重试。");
@@ -216,18 +225,33 @@ export async function acquireByImage(input: {
       if (state.pageKind === "risk_control") {
         fail("risk_control_required", 403, "1688 触发了验证，请在页面完成验证后重试（系统不会绕过）。");
       }
-      if (state.pageKind !== "upload_page" || !state.uploadTarget?.found || !state.uploadTarget?.unique) {
-        if (pageAttempt === 0) {
-          await bridge.enqueue(jobId, { type: "navigateUploadPage" });
-          const nav = await bridge.waitResult(jobId, 20_000); // 导航结果用于诊断；页面验证交给下一轮 getState
-          if (!nav.ok && nav.code === "unknown_action") {
-            fail("extension_version_unsupported", 503, "扩展版本过旧（缺少自动导航能力），请在 chrome://extensions 重新加载扩展后重试。");
-          }
-          await sleep(4_000, signal);
-          continue;
-        }
-        fail("page_identity_unknown", 422, `1688 图搜页面未就绪（pageKind=${state.pageKind ?? "unknown"}；请确认 s.1688.com 图搜页已打开且扩展已刷新）。`);
+      // 非上传页（如停留在结果页）→ 自动导航回上传页（固定能力）
+      await bridge.enqueue(jobId, { type: "navigateUploadPage" });
+      const nav = await bridge.waitResult(jobId, 20_000); // 导航结果用于诊断；页面验证交给轮询 getState
+      if (!nav.ok && nav.code === "unknown_action") {
+        fail("extension_version_unsupported", 503, "扩展版本过旧（缺少自动导航能力），请在 chrome://extensions 重新加载扩展后重试。");
       }
+      // 导航后轮询确认上传页就绪（吸收页面加载/重注入延迟；≤30s）
+      const navDeadline = Date.now() + 30_000;
+      while (Date.now() < navDeadline) {
+        assertNotAborted(signal);
+        await sleep(2_000, signal);
+        await bridge.enqueue(jobId, { type: "getState" });
+        state = parsePageState(await bridge.waitResult(jobId, 15_000));
+        if (state.pageKind === "login_wall") {
+          fail("auth_required", 401, "1688 未登录或会话过期，请在普通 Chrome 中正常登录 1688 后重试。");
+        }
+        if (state.pageKind === "risk_control") {
+          fail("risk_control_required", 403, "1688 触发了验证，请在页面完成验证后重试（系统不会绕过）。");
+        }
+        if (uploadPageReady(state)) {
+          pageReady = true;
+          break;
+        }
+      }
+    }
+    if (!pageReady) {
+      fail("page_identity_unknown", 422, `1688 图搜页面未就绪（pageKind=${state.pageKind ?? "unknown"}；pageUrl=${state.pageUrl ?? "unknown"}；请确认 s.1688.com 图搜页已打开且扩展已刷新）。`);
     }
 
     // 5) upload + Upload Identity Proof（§15；重试 ≤3）

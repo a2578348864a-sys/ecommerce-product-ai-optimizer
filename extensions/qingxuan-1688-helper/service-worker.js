@@ -9,9 +9,11 @@
  */
 
 const BRIDGE_BASE_PORTS = [53318, 53319, 53320, 53321, 53322, 53323, 53324, 53325, 53326, 53327];
-const SW_VERSION = "0.3.0";
+const SW_VERSION = "0.3.1";
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024;
+const UPLOAD_PAGE_URL = "https://s.1688.com/selloffer/offer_search.html";
 let bridgePort = null; // 运行时缓存（SW 重启后经 storage.session 恢复）
+let preferredTabId = null; // SW 存活期内：最近导航/操作的 1688 tab（避免多 tab 错选）
 
 /** 探测端口是否为轻选 bridge（health 有响应即可，401 也证明端口被 bridge 占用） */
 async function probePort(port) {
@@ -61,7 +63,14 @@ async function fetchBridge(path, options) {
 
 async function sendTo1688Tab(message, { autoOpen = false } = {}) {
   const tabs = await chrome.tabs.query({});
-  let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+  const is1688Tab = (tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url);
+  // 优先最近操作的 1688 tab（SW 存活期内记录），避免多 tab 时错选
+  let target = null;
+  if (preferredTabId !== null) {
+    const preferred = tabs.find((tab) => tab.id === preferredTabId && is1688Tab(tab));
+    if (preferred) target = preferred;
+  }
+  if (!target) target = tabs.find(is1688Tab);
   if (!target) {
     // 登录跳转检测（login.taobao.com / login.1688.com）：明确 AUTH_REQUIRED，避免误报 disconnected
     const loginTab = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(login\.taobao\.com|login\.1688\.com)/.test(tab.url));
@@ -72,12 +81,13 @@ async function sendTo1688Tab(message, { autoOpen = false } = {}) {
   let createdByUs = false;
   if (!target && autoOpen) {
     // 固定能力：自动打开 1688 图搜上传页（非任意 URL）
-    target = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
+    target = await chrome.tabs.create({ url: UPLOAD_PAGE_URL });
     createdByUs = true;
   }
   if (!target || !target.id) {
     return { ok: false, code: "no_1688_tab" };
   }
+  preferredTabId = target.id;
   // content script 注入重试（扩展 reload 后旧 tab 的 content script 被移除但不自动重注入 → 首次失败后刷新 tab）
   for (let attempt = 0; attempt < 10; attempt++) {
     try {
@@ -112,20 +122,46 @@ async function handleCommand(command, jobId) {
   if (command.type === "navigateUploadPage") {
     // 固定能力：仅导航到 1688 图搜上传页（非任意 URL；§8 禁止 openAnyUrl）
     const tabs = await chrome.tabs.query({});
-    let target = tabs.find((tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url));
+    const is1688Tab = (tab) => tab.id && tab.url && /^https:\/\/(s\.1688\.com|air\.1688\.com)\//.test(tab.url);
+    // 优先最近操作的 1688 tab（与 sendTo1688Tab 一致，避免多 tab 错选）
+    let target = null;
+    if (preferredTabId !== null) {
+      const preferred = tabs.find((tab) => tab.id === preferredTabId && is1688Tab(tab));
+      if (preferred) target = preferred;
+    }
+    if (!target) target = tabs.find(is1688Tab);
     if (!target) {
-      const created = await chrome.tabs.create({ url: "https://s.1688.com/selloffer/offer_search.html" });
+      const created = await chrome.tabs.create({ url: UPLOAD_PAGE_URL });
       await new Promise((resolveWait) => setTimeout(resolveWait, 6_000)); // 等页面加载 + content script 注入
-      target = created;
+      preferredTabId = created.id;
+      return { ok: true };
     }
     if (!target || !target.id) return { ok: false, code: "no_1688_tab" };
+    preferredTabId = target.id;
     try {
-      await chrome.tabs.update(target.id, { url: "https://s.1688.com/selloffer/offer_search.html" });
-      await new Promise((resolveWait) => setTimeout(resolveWait, 6_000)); // 导航后等加载 + 注入
-      return { ok: true };
+      await chrome.tabs.update(target.id, { url: UPLOAD_PAGE_URL });
     } catch {
-      return { ok: false, code: "navigation_failed" };
+      // update 失败（tab 已关闭等）→ 新建上传页 tab 兜底（固定 URL）
+      const created = await chrome.tabs.create({ url: UPLOAD_PAGE_URL });
+      await new Promise((resolveWait) => setTimeout(resolveWait, 6_000));
+      preferredTabId = created.id;
+      return { ok: true };
     }
+    // 验证导航生效：页面 beforeunload/拦截时 URL 不变 → 新建上传页 tab 兜底（≤5s）
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 1_000));
+      const now = await chrome.tabs.get(target.id).catch(() => null);
+      if (!now || !now.url) continue;
+      if (now.url.startsWith(UPLOAD_PAGE_URL)) return { ok: true };
+      if (/^https:\/\/(login\.taobao\.com|login\.1688\.com)/.test(now.url)) {
+        return { ok: false, code: "auth_required" };
+      }
+    }
+    // 导航未生效（被页面拦截）→ 新建上传页 tab 兜底（固定 URL）
+    const created = await chrome.tabs.create({ url: UPLOAD_PAGE_URL });
+    await new Promise((resolveWait) => setTimeout(resolveWait, 6_000));
+    preferredTabId = created.id;
+    return { ok: true };
   }
   // getState 等命令：无兼容 tab 时自动打开上传页（固定 URL）
   return await sendTo1688Tab({ type: command.type, version: "1.0", jobId, payload: command.payload || {} }, { autoOpen: true });
