@@ -249,26 +249,9 @@ export function extractAmazonSearchPage(root: Document, options: AmazonCollector
   };
 }
 
-function functionSource(fn: (...args: never[]) => unknown): string {
-  return fn.toString();
-}
-
-export function buildAmazonPageContextExpression(): string {
-  return `(() => {
-    const sanitizeCollectorText = ${functionSource(sanitizeCollectorText)};
-    const inspectAmazonPageContext = ${functionSource(inspectAmazonPageContext)};
-    return inspectAmazonPageContext(document, location.href);
-  })()`;
-}
-
-export function buildAmazonSearchPageExtractionExpression(options: AmazonCollectorOptions): string {
-  return `(() => {
-    const sanitizeCollectorText = ${functionSource(sanitizeCollectorText)};
-    const buildCanonicalAmazonProductUrl = ${functionSource(buildCanonicalAmazonProductUrl)};
-    const detectPriceCurrency = ${functionSource(detectPriceCurrency)};
-    const detectPageStatus = ${functionSource(detectPageStatus)};
-    const extractSponsoredPlacementDiagnostic = ${functionSource(extractSponsoredPlacementDiagnostic)};
-    const extractAmazonSearchPage = ${functionSource(extractAmazonSearchPage)};
-    return extractAmazonSearchPage(document, ${JSON.stringify(options)});
-  })()`;
-}
+/**
+ * 浏览器端表达式（P1-A）：改用 self-contained 字符串工件（search-page-expression-source.ts），
+ * 不再 fn.toString() 序列化模块函数（生产 minify 会重命名标识符导致 ReferenceError）。
+ */
+export { buildAmazonSearchPageExtractionExpression, buildAmazonPageContextExpression } from "@/tools/collectors/amazon/search-page-expression-source";
+export type { AmazonSearchExpressionOptions } from "@/tools/collectors/amazon/search-page-expression-source";

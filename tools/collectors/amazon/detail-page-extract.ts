@@ -337,28 +337,11 @@ function readFirstText(
   return null;
 }
 
-function functionSource(fn: (...args: never[]) => unknown): string {
-  return fn.toString();
-}
-
-/** CDP Runtime.evaluate 表达式（浏览器内执行；只读 DOM，不触碰存储/凭据） */
-export function buildAmazonDetailPageExtractionExpression(options: AmazonDetailPageExtractionOptions): string {
-  return `(() => {
-    const sanitizeDetailText = ${functionSource(sanitizeDetailText)};
-    const parseAsinFromDetailUrl = ${functionSource(parseAsinFromDetailUrl)};
-    const normalizeAsin = ${functionSource(normalizeAsin)};
-    const detectDetailPageStatus = ${functionSource(detectDetailPageStatus)};
-    const readDetailPageAsinAnchor = ${functionSource(readDetailPageAsinAnchor)};
-    const readDetailPageBsrText = ${functionSource(readDetailPageBsrText)};
-    const parseDetailPrice = ${functionSource(parseDetailPrice)};
-    const detectDetailPriceCurrency = ${functionSource(detectDetailPriceCurrency)};
-    const parseDetailRating = ${functionSource(parseDetailRating)};
-    const parseDetailReviewCount = ${functionSource(parseDetailReviewCount)};
-    const parseDetailBsr = ${functionSource(parseDetailBsr)};
-    const unknownField = ${functionSource(unknownField)};
-    const correctField = ${functionSource(correctField)};
-    const readFirstText = ${functionSource(readFirstText)};
-    const extractAmazonDetailPage = ${functionSource(extractAmazonDetailPage)};
-    return extractAmazonDetailPage(document, location.href, ${JSON.stringify(options)});
-  })()`;
-}
+/**
+ * CDP Runtime.evaluate 表达式（浏览器内执行；只读 DOM，不触碰存储/凭据）。
+ * P1-A：改为 self-contained 字符串工件（detail-page-expression-source.ts）——
+ * 不再用 fn.toString() 序列化模块函数（生产 minify 会重命名标识符导致
+ * ReferenceError: s is not defined）；API 与返回格式完全兼容。
+ */
+export { buildAmazonDetailPageExtractionExpression } from "@/tools/collectors/amazon/detail-page-expression-source";
+export type { AmazonDetailPageExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";

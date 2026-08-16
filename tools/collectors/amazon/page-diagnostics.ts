@@ -696,6 +696,12 @@ function functionSource(fn: (...args: never[]) => unknown): string {
 }
 
 export function buildAmazonPageDiagnosticDomExpression(): string {
+  // P1-A 注：本表达式与 detail-page/search-page 同属 fn.toString() 序列化模式，
+  // 生产 minify 下可能产生未声明标识符（ReferenceError）。与主链提取不同，
+  // 本表达式仅用于导航诊断，所有调用点均以 try/catch 包裹并 fail-closed
+  // 降级为 emptyDomSignals（browser-control.ts:760-764 / 794-798），不 gate 主链。
+  // 若未来需要更精确诊断，可将本 builder 迁移为 self-contained 字符串工件
+  // （参考 detail-page-expression-source.ts）。
   return `(() => {
     const cleanWhitespace = ${functionSource(cleanWhitespace)};
     const sanitizeDiagnosticText = ${functionSource(sanitizeDiagnosticText)};
