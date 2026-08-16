@@ -93,7 +93,7 @@ function mapBridgeFailure(code: string, status: { extensionSeen: boolean; lastEx
   if (!status.extensionSeen) {
     fail("extension_not_installed", 503, "未检测到轻选 1688 扩展，请先在普通 Chrome 中加载扩展并打开 1688 页面。");
   }
-  fail("extension_disconnected", 503, "轻选 1688 扩展连接中断，请检查 Chrome 窗口与扩展状态后重试。");
+  fail("extension_disconnected", 503, `轻选 1688 扩展连接中断（detail=${code}），请检查 Chrome 窗口与扩展状态后重试。`);
 }
 
 /** getState 结果解析（结构校验 fail-closed） */
