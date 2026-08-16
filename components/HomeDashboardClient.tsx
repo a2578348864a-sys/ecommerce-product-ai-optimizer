@@ -42,7 +42,7 @@ type CandidateLoadState =
   | { status: "ready"; items: OpportunityCandidatePoolItem[]; total: number; message: string }
   | { status: "unavailable"; items: OpportunityCandidatePoolItem[]; total: number; message: string };
 
-const taskFallbackMessage = "输入访问密码后显示真实研究历史统计。";
+const taskFallbackMessage = "输入访问密码后显示真实研究记录统计。";
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("zh-CN").format(value);
@@ -120,7 +120,7 @@ export const homeWorkflowSteps = [
     id: "make-research-decision",
     label: "人工决策",
     href: "/tasks",
-    cta: "打开研究历史",
+    cta: "打开研究记录",
     description: "在任务详情确认继续、暂缓或放弃。",
     icon: ClipboardCheck,
   },
@@ -147,7 +147,7 @@ function productLanguage(value: string) {
     .replaceAll("机会雷达", "发现商品")
     .replaceAll("候选池", "候选商品")
     .replaceAll("单品分析", "商品研究")
-    .replaceAll("任务中心", "研究历史");
+    .replaceAll("任务中心", "研究记录");
 }
 
 export function HomeDashboardClient() {
@@ -162,7 +162,7 @@ export function HomeDashboardClient() {
   const [taskLoad, setTaskLoad] = useState<TaskLoadState>({
     status: "loading",
     summary: null,
-    message: "正在读取研究历史统计。",
+    message: "正在读取研究记录统计。",
   });
 
   // ── Password input & unlock state ──
@@ -246,7 +246,7 @@ export function HomeDashboardClient() {
     const controller = new AbortController();
 
     async function loadTasks() {
-      setTaskLoad({ status: "loading", summary: null, message: "正在读取研究历史统计。" });
+      setTaskLoad({ status: "loading", summary: null, message: "正在读取研究记录统计。" });
       try {
         const response = await fetch("/api/tasks?limit=50", {
           method: "GET",
@@ -268,7 +268,7 @@ export function HomeDashboardClient() {
         setTaskLoad({
           status: "ready",
           summary: summarizeTaskFollowUp(items),
-          message: "已读取本地研究历史统计。",
+          message: "已读取本地研究记录统计。",
         });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -520,20 +520,20 @@ export function HomeDashboardClient() {
                 tone={candidateLoad.status === "ready" ? "teal" : "slate"}
               />
               <StatCard
-                title="研究历史"
+                title="研究记录"
                 value={taskSummary ? formatNumber(taskSummary.total) : "—"}
                 description={taskSummary
                   ? `待复核 ${formatNumber(taskSummary.pendingReview)} 个，可跟进 ${formatNumber(taskSummary.followable)} 个。`
                   : taskLoad.message}
                 href="/tasks"
-                cta="查看研究历史"
+                cta="查看研究记录"
                 tone={taskSummary ? "indigo" : "slate"}
               />
               <StatCard
                 title="最近研究"
                 value={recentSingleRun?.productName || "暂无"}
                 description={recentSingleRun
-                  ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到研究历史" : "尚未保存"}`
+                  ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到研究记录" : "尚未保存"}`
                   : "还没有可恢复的商品研究结果。"}
                 href="/opportunity-candidates"
                 cta="前往待研究商品"
@@ -557,7 +557,7 @@ export function HomeDashboardClient() {
                 <ArrowRight className="size-4" />
               </Link>
               <p className="mt-3 text-xs leading-5 text-slate-400">
-                本页只读取浏览器本地状态和研究历史，不自动采购、不自动上架、不自动投广告。
+                本页只读取浏览器本地状态和研究记录，不自动采购、不自动上架、不自动投广告。
               </p>
             </aside>
           </section>

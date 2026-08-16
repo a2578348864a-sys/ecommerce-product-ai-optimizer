@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
-import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
+// F2：SourcingEvidencePanel 已移入 EvidenceWorkbench 证据序列（不再在页尾独立渲染）
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
@@ -1118,6 +1118,26 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
+
+  // F1：研究骨架判定 + AI 研究执行入口（无 researchRecord 时显示引导卡）
+  const recordHasResearchRecord = useMemo(() => {
+    if (!record || !isRecordValue(record.result)) return false;
+    return Object.prototype.hasOwnProperty.call(record.result, "researchRecord")
+      || Object.prototype.hasOwnProperty.call(record.result, "researchVerification")
+      || hasVersionedProductResearchRecord(record.result);
+  }, [record]);
+  const researchStartHref = useMemo(() => {
+    if (!record || !isRecordValue(record.result)) return null;
+    const candidateToTask = isRecordValue(record.result.candidateToTask)
+      ? record.result.candidateToTask
+      : null;
+    const candidateId = candidateToTask && typeof candidateToTask.candidateId === "string"
+      ? candidateToTask.candidateId
+      : null;
+    return candidateId
+      ? `/opportunity-candidates/${encodeURIComponent(candidateId)}?taskId=${encodeURIComponent(id)}`
+      : null;
+  }, [record, id]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [updatingDecision, setUpdatingDecision] = useState(false);
@@ -1382,7 +1402,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
-                  <Link href="/tasks" className="hover:text-teal-600">研究历史</Link>
+                  <Link href="/tasks" className="hover:text-teal-600">研究记录</Link>
                   <span>/</span>
                   <span className="text-slate-600">商品研究记录</span>
                   {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
@@ -1399,7 +1419,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   href="/tasks"
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  返回研究历史
+                  返回研究记录
                 </Link>
                 {record?.type === "workflow" && isRecordValue(record.result) && (
                   <button
@@ -1423,7 +1443,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
             <section className="surface-card p-6">
               <p className="text-sm font-bold text-rose-700">{error}</p>
               <Link href="/tasks" className="mt-5 inline-flex text-sm font-bold text-teal-700">
-                返回研究历史
+                返回研究记录
               </Link>
             </section>
           ) : record ? (
@@ -1469,6 +1489,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
                    </div>
                  </div>
                </div>
+
+               {/* F1：研究尚未开始 → 引导进入 AI 研究执行（保存后回写本任务） */}
+               {!recordHasResearchRecord ? (
+                 <div className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-start-guidance">
+                   <p className="text-sm font-bold text-teal-800">研究尚未开始</p>
+                   <p className="mt-1 text-sm leading-6 text-slate-600">
+                     先执行 AI 商品研究（整理来源 / 风险 / 总结与创作准备草稿），保存后再在本工作台收集竞品、关键词、Amazon 浏览器、VOC 与 1688 货源 Evidence，最后做人工决定。
+                   </p>
+                   <Link
+                     href={researchStartHref ?? "/opportunity-candidates"}
+                     className="linear-button-primary mt-3 inline-flex h-10 items-center gap-2 px-4 text-sm font-semibold"
+                   >
+                     开始 AI 研究
+                   </Link>
+                 </div>
+               ) : null}
 
                {presentation && researchEvidenceSections ? (
                  <>
@@ -1671,19 +1707,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
                   {deleting ? "删除中…" : "删除这条记录"}
                 </button>
                 <Link href="/tasks" className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
-                  返回研究历史
+                  返回研究记录
                 </Link>
                 {deleteError ? <p className="text-sm font-bold text-rose-700">{deleteError}</p> : null}
               </div>
-
-              <SourcingEvidencePanel
-                taskId={id}
-                amazonContext={{
-                  title: record ? getTitle(record) : null,
-                  image: record?.productImage ? String(record.productImage) : null,
-                  asin: null,
-                }}
-              />
             </section>
           ) : null}
         </div>

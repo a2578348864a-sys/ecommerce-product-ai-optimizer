@@ -29,13 +29,10 @@ function findElement(node: ReactNode, type: string): any | null {
 
 describe("TaskRecordsList research decision control", () => {
   it("renders a versioned summary without the legacy decision select", () => {
-    const onLegacyDecisionChange = vi.fn();
     const element = createElement(TaskDecisionControl, {
       taskId: "task-v1",
       result: versionedResult(),
       legacyDecisionStatus: "continue",
-      updating: false,
-      onLegacyDecisionChange,
     });
     const html = renderToStaticMarkup(element);
     expect(html).toContain('data-testid="versioned-research-decision-summary"');
@@ -43,24 +40,19 @@ describe("TaskRecordsList research decision control", () => {
     expect(html).toContain("/tasks/task-v1#product-research-decision");
     expect(html).not.toContain("<select");
     expect(findElement(TaskDecisionControl(element.props), "select")).toBeNull();
-    expect(onLegacyDecisionChange).not.toHaveBeenCalled();
   });
 
-  it("keeps the legacy select interactive only for Legacy records", () => {
-    const onLegacyDecisionChange = vi.fn();
+  it("F10: legacy records show status and a single link to the Research Workbench (no second decision authority)", () => {
     const rendered = TaskDecisionControl({
       taskId: "task-legacy",
       result: { type: "workflow" },
       legacyDecisionStatus: "pending",
-      updating: false,
-      onLegacyDecisionChange,
     });
     const html = renderToStaticMarkup(rendered);
     expect(html).toContain('data-testid="legacy-decision-control"');
-    expect(html).toContain("<select");
-    const select = findElement(rendered, "select");
-    expect(select).not.toBeNull();
-    select.props.onChange({ target: { value: "need_info" } });
-    expect(onLegacyDecisionChange).toHaveBeenCalledWith("need_info");
+    expect(html).toContain("待判断");
+    expect(html).toContain("/tasks/task-legacy#product-research-decision");
+    // F10：列表不再提供直接修改决定的下拉
+    expect(html).not.toContain("<select");
   });
 });

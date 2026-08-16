@@ -30,7 +30,7 @@ export const workspaceNavGroups: ReadonlyArray<{
     items: [
       { label: "发现商品", href: "/opportunities", icon: Search },
       { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
-      { label: "研究历史", href: "/tasks", icon: History },
+      { label: "研究记录", href: "/tasks", icon: History },
     ],
   },
   {

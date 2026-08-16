@@ -238,14 +238,10 @@ export function TaskDecisionControl({
   taskId,
   result,
   legacyDecisionStatus,
-  updating,
-  onLegacyDecisionChange,
 }: {
   taskId: string;
   result: unknown;
   legacyDecisionStatus: DecisionStatus;
-  updating: boolean;
-  onLegacyDecisionChange: (status: DecisionStatus) => void;
 }) {
   const versioned = getVersionedDecisionSummary(result);
   if (versioned) {
@@ -269,25 +265,22 @@ export function TaskDecisionControl({
       </div>
     );
   }
+  // F10：列表不再提供第二套决定修改入口（Decision authority 收敛到 Research Workbench）
   return (
     <div className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4 md:col-span-2" data-testid="legacy-decision-control">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm font-bold text-slate-950">人工决策状态</p>
-          <p className="mt-1 text-sm leading-6 text-slate-600">
-            {getDecisionStatusOption(legacyDecisionStatus).description} 旧版记录继续使用兼容状态控件。
+          <p className="mt-1 text-sm font-semibold text-slate-800">
+            {getDecisionStatusOption(legacyDecisionStatus).shortLabel}
+            <span className="ml-2 text-xs font-normal text-slate-500">
+              {getDecisionStatusOption(legacyDecisionStatus).description}
+            </span>
           </p>
         </div>
-        <select
-          value={legacyDecisionStatus}
-          onChange={(event) => onLegacyDecisionChange(event.target.value as DecisionStatus)}
-          disabled={updating}
-          className="input-soft h-11 min-w-[160px] px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {decisionStatusOptions.filter((option) => option.value).map((option) => (
-            <option key={option.value} value={option.value}>{option.shortLabel}</option>
-          ))}
-        </select>
+        <Link href={`/tasks/${taskId}#product-research-decision`} className="linear-button inline-flex h-9 items-center px-3 text-xs font-semibold">
+          前往研究详情修改
+        </Link>
       </div>
     </div>
   );
@@ -357,7 +350,6 @@ export function TaskRecordsList() {
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState("");
   const [deletingId, setDeletingId] = useState("");
-  const [updatingDecisionId, setUpdatingDecisionId] = useState("");
   const [highlightedTaskId, setHighlightedTaskId] = useState("");
 
   // Phase Action-Clean-M.1: batch selection + action menu
@@ -706,54 +698,6 @@ export function TaskRecordsList() {
     setSelectedIds(new Set());
   }
 
-  async function updateDecisionStatus(item: TaskCenterItem, nextDecisionStatus: DecisionStatus) {
-    if (updatingDecisionId) return;
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setError("请先输入访问密码后更新人工状态。");
-      return;
-    }
-
-    const previousStatus = item.decisionStatus;
-    setUpdatingDecisionId(item.id);
-    setError("");
-    setItems((current) => current.map((record) => (
-      record.id === item.id ? { ...record, decisionStatus: nextDecisionStatus } : record
-    )));
-
-    try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(item.id)}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...buildAccessHeaders(),
-        },
-        body: JSON.stringify({ decisionStatus: nextDecisionStatus }),
-      });
-      const data = await response.json() as
-        | { ok: true; data: { id: string; decisionStatus: DecisionStatus } }
-        | { ok: false; error: { code: string; message: string } };
-
-      if (!response.ok || !data.ok) {
-        setItems((current) => current.map((record) => (
-          record.id === item.id ? { ...record, decisionStatus: previousStatus } : record
-        )));
-        setError(data.ok ? "人工状态更新失败，请稍后再试。" : data.error.message);
-        return;
-      }
-
-      setItems((current) => current.map((record) => (
-        record.id === item.id ? { ...record, decisionStatus: data.data.decisionStatus } : record
-      )));
-    } catch {
-      setItems((current) => current.map((record) => (
-        record.id === item.id ? { ...record, decisionStatus: previousStatus } : record
-      )));
-      setError("人工状态更新失败，请检查本地服务后重试。");
-    } finally {
-      setUpdatingDecisionId("");
-    }
-  }
-
   const visibleItems = (() => {
     let result = items;
     if (agentStatus) result = result.filter((item) => getAgentStatus(item).key === agentStatus);
@@ -772,7 +716,7 @@ export function TaskRecordsList() {
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
 
   if (!unlocked) {
-    return <WorkspaceLockedPrompt pageName="研究历史" returnUrl="/tasks" />;
+    return <WorkspaceLockedPrompt pageName="研究记录" returnUrl="/tasks" />;
   }
 
   return (
@@ -785,7 +729,7 @@ export function TaskRecordsList() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Research History</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">研究历史</h1>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">研究记录</h1>
                 <p className="mt-1 text-sm text-slate-500">
                   按商品查看已保存的研究结论、风险、证据缺口和人工决定。创作成果只作为历史记录展示。
                 </p>
@@ -930,7 +874,7 @@ export function TaskRecordsList() {
 
             {loading ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8 text-sm text-teal-800">
-                正在读取研究历史…
+                正在读取研究记录…
               </div>
             ) : error ? (
               <div className="mt-6 rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm text-rose-700">
@@ -1176,8 +1120,6 @@ export function TaskRecordsList() {
                               taskId={item.id}
                               result={item.result}
                               legacyDecisionStatus={item.decisionStatus}
-                              updating={updatingDecisionId === item.id}
-                              onLegacyDecisionChange={(next) => void updateDecisionStatus(item, next)}
                             />
                             <TaskDetailList title="核心卖点" items={getStringArray(item.result, "sellingPoints")} />
                             <TaskDetailList title="用户痛点" items={getStringArray(item.result, "painPoints")} />

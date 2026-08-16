@@ -34,7 +34,7 @@ export function LegacyMigratedPage({
             <p className="text-base font-semibold text-slate-800">该功能已并入商品研究主链</p>
             <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              研究从发现商品开始，结论、风险与利润均在同一研究流程中完成，最终由人工确认后保存到研究历史。
+              研究从发现商品开始，结论、风险与利润均在同一研究流程中完成，最终由人工确认后保存到研究记录。
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link
@@ -48,7 +48,7 @@ export function LegacyMigratedPage({
                 href="/tasks"
                 className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
               >
-                查看研究历史
+                查看研究记录
               </Link>
             </div>
           </section>

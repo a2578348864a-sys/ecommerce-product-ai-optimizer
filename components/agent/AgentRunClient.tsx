@@ -243,7 +243,7 @@ const TIMELINE_STEPS: TimelineStep[] = [
   {
     key: "manual",
     title: "人工确认与保存",
-    description: "人工确认后保存任务，进入研究历史跟进。",
+    description: "人工确认后保存任务，进入研究记录跟进。",
     detail: "不会自动执行商业动作。",
     icon: ClipboardCheck,
   },
@@ -470,6 +470,11 @@ export function AgentRunClient({
 }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  // F1：来自 Research Workbench 的「开始 AI 研究」入口携带 taskId → 保存时回写该任务
+  const [linkedTaskId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("taskId");
+  });
   const [productName, setProductName] = useState(candidateMode ? "" : initialProductName || "");
   const [sourceMeta, setSourceMeta] = useState<AgentRunSourceMeta | null>(null);
   const [candidateProductImage, setCandidateProductImage] =
@@ -981,7 +986,7 @@ export function AgentRunClient({
       if ("idempotentReplay" in data) {
         setPhase("idle");
         setStepStatuses(INITIAL_STATUSES);
-        setError("该商品已占用体验名额，不会重复扣减；请从研究历史或当前页面缓存继续已有流程。");
+        setError("该商品已占用体验名额，不会重复扣减；请从研究记录或当前页面缓存继续已有流程。");
         jobRequestIdRef.current = "";
         return;
       }
@@ -1051,6 +1056,7 @@ export function AgentRunClient({
         body: JSON.stringify({
           accessPassword: saveAccessCredential,
           accessToken: saveAccessHeaders["x-access-token"] || undefined,
+          ...(linkedTaskId ? { taskId: linkedTaskId } : {}),
           workflowResult: result,
           runProof: result.runProof,
           reviewState: {
@@ -1105,6 +1111,11 @@ export function AgentRunClient({
       setStepStatuses((current) => ({ ...current, manual: "completed" }));
       // 人工决定保存成功 → 清除草稿（提交后不恢复旧未提交内容）
       decisionDraft.clear();
+      // F1：保存后直接进入 Research Workbench（研究记录详情），不再停留在旧决策页
+      const savedId = data.data.id;
+      window.setTimeout(() => {
+        window.location.assign(`/tasks/${encodeURIComponent(savedId)}`);
+      }, 600);
     } catch {
       setSaveError("网络异常，保存任务失败。");
     } finally {
@@ -1153,7 +1164,7 @@ export function AgentRunClient({
                   发现商品
                 </Link>
                 <Link href="/tasks" className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold">
-                  研究历史
+                  研究记录
                 </Link>
               </div>
             </div>
@@ -1459,14 +1470,14 @@ export function AgentRunClient({
                 <div>
                   <h2 className="text-lg font-semibold text-rose-900">商品研究未完成</h2>
                   <p className="mt-1 text-sm leading-6 text-rose-700">
-                    {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始，或进入研究历史查看已保存的记录。"}
+                    {error || "API mock 或网络返回异常。页面未崩溃，可以重新开始，或进入研究记录查看已保存的记录。"}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={resetRun} className="linear-button-primary inline-flex h-10 items-center px-4 text-sm font-semibold">
                       重新开始
                     </button>
                     <Link href="/tasks" className="linear-button inline-flex h-10 items-center px-4 text-sm font-semibold">
-                      查看研究历史
+                      查看研究记录
                     </Link>
                   </div>
                 </div>
@@ -1624,7 +1635,7 @@ export function AgentRunClient({
                       <CheckCircle2 className="size-4" />
                       {result.r22CommercialValidation
                         ? "已保存商业验证任务"
-                        : "已保存，进入研究历史"}
+                        : "已保存，进入研究记录"}
                     </Link>
                   ) : (
                     <button
@@ -1651,7 +1662,7 @@ export function AgentRunClient({
                     暂不保存
                   </button>
                   <Link href="/tasks" className="linear-button-soft inline-flex h-11 items-center gap-2 px-4 text-sm font-semibold">
-                    查看研究历史
+                    查看研究记录
                     <ArrowRight className="size-4" />
                   </Link>
                 </div>

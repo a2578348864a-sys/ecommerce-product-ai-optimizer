@@ -33,6 +33,7 @@ import {
   type VocAnalysisView,
   type VocEvidenceView,
 } from "@/components/evidence/VocEvidenceSection";
+import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -679,12 +680,9 @@ export function EvidenceWorkbench({
         onChanged={loadVoc}
       />
 
-      {/* ── 货源 Evidence ── */}
+      {/* ── 货源 Evidence（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
       <section data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">货源 Evidence</h3>
-        <p className="mt-2 text-sm text-slate-500">
-          Core 阶段货源证据未收集（采购价 / MOQ / 物流均 unknown）。
-        </p>
+        <SourcingEvidencePanel taskId={taskId} amazonContext={{ title: null, image: null, asin: null }} />
       </section>
 
       {/* ── AI 证据总结（Phase 5） ── */}
@@ -706,7 +704,7 @@ export function EvidenceWorkbench({
 
       <p className="text-xs text-slate-400">
         Evidence 全部来自真实来源；AI 不创造事实。查看完整研究记录：
-        <Link href={`/tasks/${encodeURIComponent(taskId)}`} className="ml-1 text-teal-700 underline">研究历史详情</Link>
+        <Link href={`/tasks/${encodeURIComponent(taskId)}`} className="ml-1 text-teal-700 underline">研究记录详情</Link>
       </p>
     </section>
   );

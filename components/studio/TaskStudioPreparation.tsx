@@ -219,7 +219,7 @@ export function TaskStudioPreparation({
         <h2 className="text-lg font-bold text-slate-950">无法读取研究记录</h2>
         <p className="mt-2 text-sm leading-6 text-rose-700">{friendlyError(api.result.error)}</p>
         <Link href="/tasks" className="mt-4 inline-flex h-10 items-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700">
-          返回研究历史
+          返回研究记录
         </Link>
       </section>
     );
