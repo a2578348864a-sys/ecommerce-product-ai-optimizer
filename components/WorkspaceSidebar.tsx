@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   FileText,
   History,
@@ -30,6 +30,7 @@ export const workspaceNavGroups: ReadonlyArray<{
     items: [
       { label: "发现商品", href: "/opportunities", icon: Search },
       { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
+      { label: "商品研究", href: "/research", icon: Package },
       { label: "研究记录", href: "/tasks", icon: History },
     ],
   },
@@ -51,6 +52,18 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
+/**
+ * R5：导航高亮——任务详情页根据来源区分"商品研究 / 研究记录"。
+ * - /research 及 /research/* → 商品研究
+ * - /tasks/[id]?from=research（从商品研究进入的 active 任务）→ 商品研究
+ * - /tasks 及 /tasks/[id]（默认/历史）→ 研究记录
+ */
+function isTaskActiveResearchHighlight(pathname: string, search: string) {
+  if (pathname === "/research" || pathname.startsWith("/research/")) return true;
+  if (pathname.startsWith("/tasks/") && search.includes("from=research")) return true;
+  return false;
+}
+
 function currentProductLabel(productName: string) {
   try {
     const url = new URL(productName);
@@ -64,14 +77,18 @@ function currentProductLabel(productName: string) {
 function NavLink({
   item,
   pathname,
+  search,
   compact = false,
 }: {
   item: SidebarNavItem;
   pathname: string;
+  search?: string;
   compact?: boolean;
 }) {
   const Icon = item.icon;
-  const active = isActivePath(pathname, item.href);
+  const active = item.href === "/research"
+    ? isTaskActiveResearchHighlight(pathname, search ?? "")
+    : isActivePath(pathname, item.href);
 
   return (
     <Link
@@ -100,6 +117,7 @@ function NavLink({
 
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
+  const search = useSearchParams().toString();
   const [sharedProduct] = useSharedProduct();
   const productLabel = currentProductLabel(sharedProduct.productName);
   const productMeta = sharedProduct.category ? `品类：${sharedProduct.category}` : "商品资料已载入";
@@ -140,7 +158,7 @@ export function WorkspaceSidebar() {
             <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
               <p className="px-2 pb-1 text-xs font-semibold text-teal-700">{group.label}</p>
               {group.items.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} />
+                <NavLink key={item.href} item={item} pathname={pathname} search={search} />
               ))}
             </section>
           ))}

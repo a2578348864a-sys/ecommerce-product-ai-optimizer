@@ -335,7 +335,7 @@ export function TaskDetailList({ title, items }: { title: string; items: string[
   );
 }
 
-export function TaskRecordsList() {
+export function TaskRecordsList({ view = "records" }: { view?: "research" | "records" }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
   const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
   const [items, setItems] = useState<TaskCenterItem[]>([]);
@@ -344,9 +344,9 @@ export function TaskRecordsList() {
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
   // OA1（Option B）：研究记录内部进度分组（进行中/待补信息/已完成/已放弃）
-  const [scope, setScope] = useState<"" | "active" | "need_info" | "completed" | "abandoned">("active");
+  const [scope, setScope] = useState<"" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned">(view === "research" ? "research" : "historical");
 
-  function onScopeChange(nextScope: "" | "active" | "need_info" | "completed" | "abandoned") {
+  function onScopeChange(nextScope: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned") {
     setScope(nextScope);
     void loadTasks({
       nextType: type,
@@ -388,7 +388,7 @@ export function TaskRecordsList() {
     nextType: string;
     nextDecisionStatus: string;
     nextAgentStatus: "" | AgentStatusKey;
-    nextScope: "" | "active" | "need_info" | "completed" | "abandoned";
+    nextScope: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned";
     q: string;
     offset: number;
     mode: LoadMode;
@@ -765,10 +765,12 @@ export function TaskRecordsList() {
           <header className="workspace-header">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="eyebrow">Research History</p>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">研究记录</h1>
+                <p className="eyebrow">{view === "research" ? "Active Research" : "Research History"}</p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  按商品查看已保存的研究结论、风险、证据缺口和人工决定。创作成果只作为历史记录展示。
+                  {view === "research"
+                  ? "继续正在进行或等待补充资料的商品研究，进入商品研究工作台。"
+                  : "查看已经形成历史结果的研究：已完成、已放弃与旧版记录。"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -792,9 +794,11 @@ export function TaskRecordsList() {
           <section className="surface-card p-5 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-teal-700">商品研究</p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">研究记录</h2>
-                <p className="muted-text mt-1 text-sm">进行中的研究优先展示；全部研究可按状态分组查看。</p>
+                <p className="text-sm font-bold text-teal-700">{view === "research" ? "商品研究" : "研究记录"}</p>
+                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h2>
+                <p className="muted-text mt-1 text-sm">{view === "research"
+                  ? "继续正在进行或等待补充资料的商品研究。"
+                  : "已经形成历史结果的研究：已完成、已放弃与旧版记录。"}</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {page ? `${page.total} 条` : `${items.length} 条`}
@@ -803,13 +807,19 @@ export function TaskRecordsList() {
 
             {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
             <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
-              {([
-                { value: "active", label: "进行中" },
-                { value: "need_info", label: "待补信息" },
-                { value: "completed", label: "已完成" },
-                { value: "abandoned", label: "已放弃" },
-                { value: "", label: "全部" },
-              ] as Array<{ value: "" | "active" | "need_info" | "completed" | "abandoned"; label: string }>).map((tab) => (
+              {((view === "research"
+                ? [
+                  { value: "research", label: "进行中" },
+                  { value: "need_info", label: "待补信息" },
+                  { value: "", label: "全部" },
+                ]
+                : [
+                  { value: "completed", label: "已完成" },
+                  { value: "abandoned", label: "已放弃" },
+                  { value: "historical", label: "历史" },
+                  { value: "", label: "全部" },
+                ]
+               ) as Array<{ value: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned"; label: string }>).map((tab) => (
                 <button
                   key={tab.value || "all"}
                   type="button"
@@ -952,7 +962,7 @@ export function TaskRecordsList() {
               </div>
             ) : isScopeEmpty ? (
               <div className="mt-6 rounded-3xl border border-dashed border-teal-200 bg-teal-50/50 p-8">
-                {scope === "active" ? (
+                {scope === "research" || scope === "active" ? (
                   <>
                     <p className="text-lg font-semibold text-slate-950">当前没有正在研究的商品</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -970,6 +980,13 @@ export function TaskRecordsList() {
                     <p className="text-lg font-semibold text-slate-950">没有待补资料的研究</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
                       这类研究仍需要补充资料后再做决定；当前没有需要补资料的商品。
+                    </p>
+                  </>
+                ) : scope === "historical" ? (
+                  <>
+                    <p className="text-lg font-semibold text-slate-950">还没有历史研究记录</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      完成研究并做人工决定，或放弃研究后，记录会显示在这里。
                     </p>
                   </>
                 ) : scope === "completed" ? (
@@ -1164,10 +1181,10 @@ export function TaskRecordsList() {
                             </span>
                             {/* Primary actions（OA3：新任务不误导为"结果"） */}
                             <Link
-                              href={`/tasks/${item.id}`}
+                              href={view === "research" ? `/tasks/${item.id}?from=research` : `/tasks/${item.id}`}
                               className="linear-button-primary inline-flex h-8 items-center px-3 text-xs font-semibold"
                             >
-                              {researchStatus.key === "completed" ? "查看研究记录" : "打开研究"}
+                              {view === "research" ? "继续研究" : (researchStatus.key === "completed" ? "查看研究记录" : "打开研究")}
                             </Link>
                             <button
                               type="button"

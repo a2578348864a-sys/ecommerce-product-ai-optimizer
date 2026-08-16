@@ -234,20 +234,24 @@ function isDatabaseError(error: unknown) {
 }
 
 /**
- * OA1（Option B）：研究记录进度分组 → Prisma where。
- * - active：无 researchRecord（研究尚未保存）或 decisionStatus ∈ {pending, continue}
- * - need_info：decisionStatus = need_info
- * - completed：有 researchRecord 且 decisionStatus = continue（研究已保存并已决定）
- * - abandoned：decisionStatus = rejected
+ * OA1（Option B）+ R5：研究进度分组 → Prisma where。
+ * 旧语义保留（active/need_info/completed/abandoned）；R5 新增两个导航语义：
+ * - research：active 全集（无 researchRecord 或 decisionStatus ∈ {pending,continue,need_info}）——/research 商品研究
+ * - historical：rejected + 旧版无活跃语义批次——/tasks 研究记录默认
+ * 新版 product-research-record.v1 的 decision 存储于 resultJson（无法用 SQL 过滤），
+ * 由 GET 的 JS 侧过滤兜底（见 classifyResearchLifecycle 用法）。
  */
 function buildResearchScopeWhere(scope: string): Prisma.ViralAnalysisRecordWhereInput | null {
-  if (scope === "active") {
+  if (scope === "active" || scope === "research") {
     return {
       OR: [
-        { resultJson: { not: { contains: '"researchRecord"' } } },
-        { decisionStatus: { in: ["pending", "continue"] } },
+        { resultJson: { not: { contains: '"researchRecord"' } }, decisionStatus: { in: ["pending", "continue", "need_info"] } },
+        { resultJson: { contains: '"researchRecord"' }, decisionStatus: { notIn: ["rejected"] } },
       ],
     };
+  }
+  if (scope === "historical") {
+    return { decisionStatus: "rejected" };
   }
   if (scope === "need_info") return { decisionStatus: "need_info" };
   if (scope === "completed") {
@@ -288,7 +292,7 @@ export async function GET(request: NextRequest) {
 
   const effectiveType = typeParam && allowedTypes.has(typeParam) ? typeParam : "";
   const effectiveDecisionStatus = isDecisionStatus(decisionStatusParam) ? decisionStatusParam : "";
-  const effectiveScope = ["active", "need_info", "completed", "abandoned"].includes(scopeParam) ? scopeParam : "";
+  const effectiveScope = ["active", "research", "historical", "need_info", "completed", "abandoned"].includes(scopeParam) ? scopeParam : "";
 
   // Access-Control-Fix.1: Resolve access context before any Prisma query.
   // Demo users only see their own sandbox tasks — never Owner tasks.
@@ -297,7 +301,7 @@ export async function GET(request: NextRequest) {
   if (ctx && ctx.mode === "demo") {
     try {
       let sandboxTasks = listSandboxTasks(ctx.demoAccessId);
-      // scope（进行中/待补/已完成/已放弃）——sandbox 用 JS 侧同语义过滤
+      // scope（R5：research=active 全集 / historical=rejected+legacy；旧 Tab 语义保留）——sandbox 用 JS 侧同语义过滤
       if (effectiveScope) {
         sandboxTasks = sandboxTasks.filter((task) => {
           const parsed = safeParseJson(task.resultJson);
@@ -306,7 +310,10 @@ export async function GET(request: NextRequest) {
             || Object.prototype.hasOwnProperty.call(parsed, "researchVerification")
           );
           const status = normalizeDecisionStatus(task.decisionStatus);
-          if (effectiveScope === "active") return !hasResearchRecord || status === "pending" || status === "continue";
+          if (effectiveScope === "active" || effectiveScope === "research") {
+            return !hasResearchRecord ? (status === "pending" || status === "continue" || status === "need_info") : status !== "rejected";
+          }
+          if (effectiveScope === "historical") return status === "rejected";
           if (effectiveScope === "need_info") return status === "need_info";
           if (effectiveScope === "completed") return hasResearchRecord && status === "continue";
           if (effectiveScope === "abandoned") return status === "rejected";

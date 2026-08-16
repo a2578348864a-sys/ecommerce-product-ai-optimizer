@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { TaskRecordsList } from "@/components/TaskRecordsList";
 
 export const metadata: Metadata = {
-  title: "商品研究记录 - 轻选工作台",
-  description: "按商品查看已保存的研究结论、风险、证据缺口、人工决定和历史成果。",
+  title: "研究记录 - 轻选工作台",
+  description: "已经形成历史结果的研究：已完成、已放弃与旧版记录。",
 };
 
 export default function TasksPage() {
-  return <TaskRecordsList />;
+  return <TaskRecordsList view="records" />;
 }

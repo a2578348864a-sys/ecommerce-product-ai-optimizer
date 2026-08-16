@@ -65,6 +65,7 @@ import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
 import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
 import { ProductResearchDecisionPanel } from "@/components/product-research/ProductResearchDecisionPanel";
 import { deriveResearchMaterialStatus, RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
+import { classifyResearchLifecycle } from "@/lib/researchLifecycle";
 import {
   deriveCreativeMaterialStatus,
   deriveHistoricalArtifactSummary,
@@ -1121,6 +1122,11 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
 
   // F1：研究骨架判定 + AI 研究执行入口（无 researchRecord 时显示引导卡）
+  // R5：统一生命周期分类（breadcrumb/h1/返回链接/Studio gate 复用）
+  const researchLifecycle = useMemo(() => record
+    ? classifyResearchLifecycle({ decisionStatus: record.decisionStatus, result: isRecordValue(record.result) ? record.result : null, type: record.type })
+    : { lifecycle: "active" as const, detail: "active_open" as const }, [record]);
+  const isActiveResearchView = researchLifecycle.lifecycle === "active";
   const recordHasResearchRecord = useMemo(() => {
     if (!record || !isRecordValue(record.result)) return false;
     return Object.prototype.hasOwnProperty.call(record.result, "researchRecord")
@@ -1402,14 +1408,14 @@ export function TaskRecordDetail({ id }: { id: string }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <nav className="flex items-center gap-1.5 text-sm text-slate-400">
-                  <Link href="/tasks" className="hover:text-teal-600">研究记录</Link>
+                  {/* R5：Active=商品研究 / Historical=研究记录 */}
+                  <Link href={isActiveResearchView ? "/research" : "/tasks"} className="hover:text-teal-600">{isActiveResearchView ? "商品研究" : "研究记录"}</Link>
                   <span>/</span>
-                  {/* OA2：活跃任务不叫"记录"；已保存研究后保留记录语义 */}
-                  <span className="text-slate-600">{recordHasResearchRecord ? "商品研究记录" : "商品研究"}</span>
-                  {record && <><span>/</span><span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span></>}
+                  {record && <span className="font-medium text-slate-700 truncate max-w-[200px]">{getTitle(record)}</span>}
+
                 </nav>
                 <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
-                  {recordHasResearchRecord ? "商品研究记录" : "商品研究"}
+                  {isActiveResearchView ? "商品研究" : "研究记录"}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
                   {record ? `${getTitle(record)} · ` : ""}{recordHasResearchRecord ? "查看研究结论、风险、待确认信息和人工决定；创作工具按需单独使用。" : "商品研究工作台：收集资料、让 AI 整理、最后做人工决定。"}
@@ -1417,10 +1423,10 @@ export function TaskRecordDetail({ id }: { id: string }) {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href="/tasks"
+                  href={isActiveResearchView ? "/research" : "/tasks"}
                   className="linear-button inline-flex h-11 items-center justify-center px-5 text-sm font-semibold"
                 >
-                  返回研究记录
+                  {isActiveResearchView ? "返回商品研究" : "返回研究记录"}
                 </Link>
                 {record?.type === "workflow" && isRecordValue(record.result) && (
                   <button
