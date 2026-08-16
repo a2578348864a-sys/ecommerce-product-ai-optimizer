@@ -167,12 +167,12 @@ export async function acquireByImage(input: {
     // 2) 桥与扩展状态（进程级共享单例；测试可注入）
     const bridge = input.bridgeFactory ? input.bridgeFactory() : getSharedBridge();
     await bridge.start(input.env);
-    // 等待扩展 SW 通过心跳连接 bridge（刚刷新扩展/页面恢复前台时需要时间；最长 10s）
+    // 等待扩展 SW 通过心跳/alarms 连接 bridge（页面前台心跳 2s；页面缺失时 SW alarms 30s；最长 45s）
     let status = await bridge.getStatus();
-    const extensionSeenDeadline = Date.now() + 10_000;
+    const extensionSeenDeadline = Date.now() + 45_000;
     while (!status.extensionSeen && Date.now() < extensionSeenDeadline) {
       assertNotAborted(signal);
-      await sleep(500, signal);
+      await sleep(1_000, signal);
       status = await bridge.getStatus();
     }
     if (!status.extensionSeen) {
