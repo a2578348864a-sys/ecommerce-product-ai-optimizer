@@ -19,6 +19,7 @@ import {
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
 import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
+import { classifyResearchLifecycle } from "@/lib/researchLifecycle";
 import {
   assertGenericTaskResultAllowed,
   TaskResultNamespacePolicyError,
@@ -375,7 +376,25 @@ export async function GET(request: NextRequest) {
     ]);
 
     const rawResults = records.map((record) => safeParseJson(record.resultJson));
-    const baseItems = records.map(toTaskItem);
+    // R5：research/historical 的 JS 侧精确过滤（新版 record 决策存于 resultJson，SQL 无法表达）
+    let baseItems = records.map(toTaskItem);
+    let filteredRawResults = rawResults;
+    if (effectiveScope === "research" || effectiveScope === "historical") {
+      const paired: Array<{ item: ReturnType<typeof toTaskItem>; raw: ReturnType<typeof safeParseJson> }> = [];
+      baseItems.forEach((item, index) => {
+        const lifecycle = classifyResearchLifecycle({
+          decisionStatus: item.decisionStatus,
+          result: rawResults[index],
+          type: item.type,
+        });
+        const keep = effectiveScope === "research"
+          ? lifecycle.lifecycle === "active"
+          : lifecycle.lifecycle === "historical";
+        if (keep) paired.push({ item, raw: rawResults[index] });
+      });
+      baseItems = paired.map((entry) => entry.item);
+      filteredRawResults = paired.map((entry) => entry.raw);
+    }
     const candidateIds = Array.from(new Set(
       rawResults
         .map((result) => getResearchTaskCandidateId(result))
@@ -387,10 +406,14 @@ export async function GET(request: NextRequest) {
         select: { id: true, name: true, sourceMetaJson: true },
       })
       : [];
-    const items = baseItems.map((item, index) => addProductImage(item, rawResults[index], candidates));
+    const items = baseItems.map((item, index) => addProductImage(item, filteredRawResults[index], candidates));
 
+    // R5：过滤后重新计算 total（分页语义以过滤结果为准）
+    const effectiveTotal = effectiveScope === "research" || effectiveScope === "historical"
+      ? baseItems.length
+      : total;
     const nextOffset = offset + items.length;
-    const hasMore = nextOffset < total;
+    const hasMore = nextOffset < effectiveTotal;
 
     return jsonResponse({
       ok: true,
@@ -401,7 +424,7 @@ export async function GET(request: NextRequest) {
         q,
         limit,
         offset,
-        total,
+        total: effectiveTotal,
         hasMore,
         nextOffset: hasMore ? nextOffset : null,
         decisionStatus: effectiveDecisionStatus,

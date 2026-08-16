@@ -490,12 +490,12 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
       ? initialAgentStatus as "" | AgentStatusKey
       : defaultAgentStatus;
     // OA1：默认"进行中"；URL scope 显式指定时遵循
-    const safeScope = (["active", "need_info", "completed", "abandoned"].includes(initialScope)
+    // R5：默认按视图（research→active 全集 / records→历史）；URL scope 显式指定时遵循
+    const safeScope = (["research", "historical", "active", "need_info", "completed", "abandoned"].includes(initialScope)
       ? initialScope
       : initialDecisionStatus
         ? ""
-        : "active") as "" | "active" | "need_info" | "completed" | "abandoned";
-    setType(safeType);
+        : view === "research" ? "research" : "historical") as "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned";
     setDecisionStatus(safeDecisionStatus);
     setAgentStatus(safeAgentStatus);
     setScope(safeScope);
