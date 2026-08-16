@@ -113,6 +113,11 @@ export interface SandboxTaskPatch {
   score?: number;
   level?: string;
   oneLineSummary?: string;
+  /** F1：研究保存（save-task update）写入正式 resultJson 与兼容状态列 */
+  type?: string;
+  decisionStatus?: string;
+  resultJson?: string;
+  productUrl?: string | null;
 }
 
 export type SandboxCandidateTaskLinkErrorCode =
@@ -208,7 +213,7 @@ function linkCandidateAndCreateTask(
   demoAccessId: string,
   candidateId: string,
   input: CreateSandboxTaskInput,
-  guard: { expectedProductName: string; expectedContextHash: string },
+  guard?: { expectedProductName: string; expectedContextHash: string } | null,
 ): SandboxTask {
   const candidateIndex = store.candidates.findIndex(
     (candidate) => candidate.id === candidateId && candidate.demoAccessId === demoAccessId,
@@ -244,19 +249,23 @@ function linkCandidateAndCreateTask(
   // 保存端 name 比对：与研究运行端（product-analysis 先将 productName
   // trim+slice(0,120) 再 normalize）保持完全相同的转换顺序，避免
   // Amazon 长标题保存时被误判为"候选商品在分析后已发生变化"。
-  if (normalizeCandidateIdentity(candidate.name.trim().slice(0, 120))
-    !== normalizeCandidateIdentity(guard.expectedProductName.trim().slice(0, 120))) {
-    throw new SandboxCandidateTaskLinkError(
-      "candidate_changed_since_analysis",
-      "候选商品在分析后已发生变化，请重新分析后再保存。",
-    );
-  }
-  const currentContext = buildCandidateAnalysisContext(candidate);
-  if (createCandidateAnalysisBindingHash(candidate, currentContext) !== guard.expectedContextHash) {
-    throw new SandboxCandidateTaskLinkError(
-      "candidate_context_changed_since_analysis",
-      "候选来源证据在分析后已发生变化，请重新分析后再保存。",
-    );
+  // F1：guard 可选——研究骨架创建（start-research）没有 AI 结果，跳过绑定校验；
+  //     后续研究保存（save-task update）时仍由 candidate 一致性校验保护。
+  if (guard) {
+    if (normalizeCandidateIdentity(candidate.name.trim().slice(0, 120))
+      !== normalizeCandidateIdentity(guard.expectedProductName.trim().slice(0, 120))) {
+      throw new SandboxCandidateTaskLinkError(
+        "candidate_changed_since_analysis",
+        "候选商品在分析后已发生变化，请重新分析后再保存。",
+      );
+    }
+    const currentContext = buildCandidateAnalysisContext(candidate);
+    if (createCandidateAnalysisBindingHash(candidate, currentContext) !== guard.expectedContextHash) {
+      throw new SandboxCandidateTaskLinkError(
+        "candidate_context_changed_since_analysis",
+        "候选来源证据在分析后已发生变化，请重新分析后再保存。",
+      );
+    }
   }
 
   const now = new Date().toISOString();
@@ -282,10 +291,10 @@ export function createSandboxTaskAndLinkCandidate(
   demoAccessId: string,
   candidateId: string,
   input: CreateSandboxTaskInput,
-  guard: {
+  guard?: {
     expectedProductName: string;
     expectedContextHash: string;
-  },
+  } | null,
 ): Promise<SandboxTask> {
   return createSandboxTaskAndLinkCandidateAtomic(demoAccessId, candidateId, input, guard);
 }
@@ -294,10 +303,10 @@ export function createSandboxTaskAndLinkCandidateAtomic(
   demoAccessId: string,
   candidateId: string,
   input: CreateSandboxTaskInput,
-  guard: {
+  guard?: {
     expectedProductName: string;
     expectedContextHash: string;
-  },
+  } | null,
 ): Promise<SandboxTask> {
   return mutateDemoSandboxStore((store) => {
     const task = linkCandidateAndCreateTask(store, demoAccessId, candidateId, input, guard);
@@ -330,6 +339,10 @@ export function updateSandboxTask(
     if (patch.score !== undefined) task.score = patch.score;
     if (patch.level !== undefined) task.level = patch.level;
     if (patch.oneLineSummary !== undefined) task.oneLineSummary = patch.oneLineSummary;
+    if (patch.type !== undefined) task.type = patch.type;
+    if (patch.decisionStatus !== undefined) task.decisionStatus = patch.decisionStatus;
+    if (patch.resultJson !== undefined) task.resultJson = patch.resultJson;
+    if (patch.productUrl !== undefined) task.productUrl = patch.productUrl;
     task.updatedAt = new Date().toISOString();
     return { value: structuredClone(task), changed: true };
   });

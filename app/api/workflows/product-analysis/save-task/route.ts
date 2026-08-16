@@ -4,6 +4,8 @@ import { requireAuthenticated } from "@/lib/server/demoGuard";
 import {
   createTrustedSandboxTask,
   createSandboxTaskAndLinkCandidateAtomic,
+  getSandboxTask,
+  updateSandboxTask,
   SandboxCandidateTaskLinkError,
 } from "@/lib/server/demoSandbox";
 import { createInitialProductLifecycle } from "@/lib/workflowLifecycle";
@@ -18,6 +20,7 @@ import {
   getAuthoritativeCandidate,
   type AuthoritativeCandidate,
 } from "@/lib/server/candidateAuthority";
+import { hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
 import {
   buildWorkflowRunSubject,
   createWorkflowInputHash,
@@ -88,6 +91,16 @@ function jsonResponse(body: ApiResponse, status = 200) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 安全 JSON 解析（F1 update 模式校验既有任务 resultJson） */
+function safeParseJson(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Returns true if the snapshot has meaningful Listing content (non-empty title or at least one real keyword). */
@@ -314,7 +327,10 @@ type CandidateConversionErrorCode =
   | "candidate_context_changed_since_analysis"
   | "candidate_r22_stage2_blocked"
   | "candidate_product_batch_research_blocked"
-  | "candidate_market_research_blocked";
+  | "candidate_market_research_blocked"
+  | "task_not_found"
+  | "task_candidate_mismatch"
+  | "task_already_researched";
 
 class CandidateConversionError extends Error {
   constructor(
@@ -327,7 +343,7 @@ class CandidateConversionError extends Error {
 }
 
 function candidateConversionStatus(code: CandidateConversionErrorCode): number {
-  return code === "candidate_not_found" ? 404 : 409;
+  return code === "candidate_not_found" || code === "task_not_found" ? 404 : 409;
 }
 
 function parseStoredCandidateMeta(value: string): Record<string, unknown> {
@@ -452,6 +468,9 @@ export async function POST(request: NextRequest) {
     return jsonResponse({ ok: false, error: { code: "missing_workflow_result", message: "请先完成一键分析后再保存。" } }, 400);
   }
 
+  // F1：update 模式（研究骨架任务回写）；无 taskId 时保持既有创建路径
+  const targetTaskId = asString(body.taskId) || null;
+
   if (!workflowResult.ok) {
     return jsonResponse({ ok: false, error: { code: "workflow_not_ok", message: "工作流未成功完成，无法保存。请重新分析后再试。" } }, 400);
   }
@@ -506,6 +525,9 @@ export async function POST(request: NextRequest) {
   }
   if (workflowInput.source === "opportunity" && !workflowInput.candidateId) {
     return jsonResponse({ ok: false, error: { code: "candidate_id_required", message: "机会候选分析缺少 Candidate 绑定，请从候选品池重新进入。" } }, 409);
+  }
+  if (targetTaskId && !workflowInput.candidateId) {
+    return jsonResponse({ ok: false, error: { code: "task_update_requires_candidate", message: "研究任务更新必须绑定服务端候选商品。" } }, 400);
   }
   if (!workflowInput.candidateId && workflowInput.contextHash) {
     return jsonResponse({ ok: false, error: { code: "invalid_run_input", message: "手工分析不能附加 Candidate 证据上下文。" } }, 400);
@@ -943,6 +965,49 @@ export async function POST(request: NextRequest) {
   // Demo-Sandbox.1-B: Demo writes to sandbox, Owner writes to Prisma
   if (auth.context.mode === "demo") {
     try {
+      // F1：update 模式——研究骨架任务已由 start-research 创建，研究执行后回写
+      if (targetTaskId) {
+        const existing = getSandboxTask(auth.context.demoAccessId, targetTaskId);
+        if (!existing) {
+          return jsonResponse({ ok: false, error: { code: "task_not_found", message: "研究任务不存在或不属于当前访问主体。" } }, 404);
+        }
+        const existingResult = safeParseJson(existing.resultJson);
+        const existingCandidateId = existingResult && isRecord(existingResult)
+          && isRecord(existingResult.candidateToTask)
+          ? existingResult.candidateToTask.candidateId
+          : null;
+        if (typeof existingCandidateId !== "string" || existingCandidateId !== workflowInput.candidateId) {
+          return jsonResponse({ ok: false, error: { code: "task_candidate_mismatch", message: "研究任务与候选商品绑定不一致，无法保存。" } }, 409);
+        }
+        if (existingResult && isRecord(existingResult)
+          && (Object.prototype.hasOwnProperty.call(existingResult, "researchRecord")
+            || hasProductResearchRecordNamespace(existingResult))) {
+          return jsonResponse({ ok: false, error: { code: "task_already_researched", message: "该研究任务已保存过研究结果，请直接在研究记录中维护。" } }, 409);
+        }
+        const updated = await updateSandboxTask(auth.context.demoAccessId, targetTaskId, {
+          type: "workflow",
+          title: `${productName} 一键分析`,
+          score,
+          level: riskLevel,
+          oneLineSummary: finalVerdict,
+          decisionStatus: normalizeDecisionStatus(decisionStatus),
+          resultJson: JSON.stringify(taskResult),
+        });
+        if (!updated) {
+          return jsonResponse({ ok: false, error: { code: "task_not_found", message: "研究任务不存在或已删除。" } }, 404);
+        }
+        return jsonResponse({
+          ok: true,
+          data: {
+            id: updated.id,
+            title: updated.title || productName,
+            type: "workflow",
+            isSandbox: true,
+            sourceMode: "demo_sandbox",
+            allReviewed: taskResult.reviewState.allReviewed,
+          },
+        });
+      }
       const sandboxInput = {
         type: "workflow",
         title: `${productName} 一键分析`,
@@ -1010,6 +1075,39 @@ export async function POST(request: NextRequest) {
   try {
     const record = workflowInput.candidateId
       ? await prisma.$transaction(async (tx) => {
+        // F1：update 模式——研究骨架任务（start-research 创建）研究执行后回写
+        if (targetTaskId) {
+          const existingTask = await tx.viralAnalysisRecord.findUnique({
+            where: { id: targetTaskId },
+            select: { id: true, resultJson: true },
+          });
+          if (!existingTask) {
+            throw new CandidateConversionError("task_not_found", "研究任务不存在或已删除。");
+          }
+          const existingResult = safeParseJson(existingTask.resultJson);
+          const existingCandidateId = existingResult && isRecord(existingResult.candidateToTask)
+            ? existingResult.candidateToTask.candidateId
+            : null;
+          if (typeof existingCandidateId !== "string" || existingCandidateId !== workflowInput.candidateId) {
+            throw new CandidateConversionError(
+              "task_candidate_mismatch",
+              "研究任务与候选商品绑定不一致，无法保存。",
+            );
+          }
+          if (existingResult
+            && (Object.prototype.hasOwnProperty.call(existingResult, "researchRecord")
+              || hasProductResearchRecordNamespace(existingResult))) {
+            throw new CandidateConversionError(
+              "task_already_researched",
+              "该研究任务已保存过研究结果，请直接在研究记录中维护。",
+            );
+          }
+          const updated = await tx.viralAnalysisRecord.update({
+            where: { id: targetTaskId },
+            data: { ...ownerTaskData, resultJson: JSON.stringify(taskResult) },
+          });
+          return updated;
+        }
         const storedCandidate = await tx.opportunityCandidate.findUnique({
           where: { id: workflowInput.candidateId! },
           select: {

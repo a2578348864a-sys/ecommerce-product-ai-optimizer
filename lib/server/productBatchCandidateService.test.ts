@@ -182,9 +182,8 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
     );
 
     expect(first.candidateId).toBe(repeated.candidateId);
-    expect(first.destinationUrl).toBe(
-      `/opportunity-candidates/${encodeURIComponent(first.candidateId)}`,
-    );
+    // F1：加入候选池后回到研究池（主链：发现商品 → 研究池 → 开始研究 → Workbench）
+    expect(first.destinationUrl).toBe("/opportunity-candidates");
     expect(first.destinationUrl).not.toContain("sourceMeta");
     expect(first.destinationUrl).not.toContain("Closet");
     expect(first.created).toBe(true);
@@ -237,7 +236,7 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
       candidateId: "visitor-candidate-a",
       created: true,
       destination: "research",
-      destinationUrl: "/opportunity-candidates/visitor-candidate-a",
+      destinationUrl: "/opportunity-candidates",
     });
     expect(result.destinationUrl).not.toContain("/agent/run");
   });

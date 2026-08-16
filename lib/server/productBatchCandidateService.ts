@@ -169,8 +169,9 @@ function conversionResult(
   return {
     candidateId: candidate.id,
     created,
+    // F1：加入候选池后回到研究池（主链：发现商品 → 研究池 → 开始研究 → Research Workbench）
     destination: "research",
-    destinationUrl: `/opportunity-candidates/${encodeURIComponent(candidate.id)}`,
+    destinationUrl: `/opportunity-candidates`,
     sourceMeta,
   };
 }

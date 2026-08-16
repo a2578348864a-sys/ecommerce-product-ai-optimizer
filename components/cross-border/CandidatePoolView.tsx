@@ -41,6 +41,7 @@ export type CandidatePoolViewProps = {
   onDeleteItem: (id: string) => void;
   onDeleteSelected: () => void;
   onStartSelected: () => void;
+  onStartItem?: (item: CandidateResearchPoolItem) => void;
   onManualToggle: () => void;
   onManualNameChange: (value: string) => void;
   onManualUrlChange: (value: string) => void;
@@ -84,13 +85,7 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-function researchActionLabel(item: CandidateResearchPoolItem): string {
-  if (item.researchAction === "converted") return "查看研究结果";
-  return "开始／继续研究";
-}
-
-export function CandidatePoolView(props: CandidatePoolViewProps) {
-  return (
+export function CandidatePoolView(props: CandidatePoolViewProps) {  return (
     <div className="space-y-4" data-testid="candidate-pool-view">
       <section className="surface-card-strong p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -280,11 +275,23 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                    {href ? (
-                      <Link href={href} className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
-                        {researchActionLabel(item)}
+                    {converted ? (
+                      href ? (
+                        <Link href={href} className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold">
+                          查看研究记录
+                          <ArrowRight className="size-4" />
+                        </Link>
+                      ) : null
+                    ) : href ? (
+                      <button
+                        type="button"
+                        disabled={props.busy}
+                        onClick={() => props.onStartItem?.(item)}
+                        className="linear-button-primary inline-flex h-10 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:opacity-50"
+                      >
+                        开始研究
                         <ArrowRight className="size-4" />
-                      </Link>
+                      </button>
                     ) : (
                       <span className="max-w-xs text-sm leading-6 text-amber-700">
                         {item.researchActionMessage || "当前不能进入研究。"}
@@ -577,7 +584,32 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
     })();
   }
 
-  /** 批量开始研究：跳转第一个可研究候选的研究页 */
+  /** F1：开始研究 = create/get Research Task → 直接进入 Research Workbench（不再经候选研究页做预先决策） */
+  async function startItemResearch(item: CandidateResearchPoolItem) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const response = await fetch(
+        `/api/opportunity-candidates/${encodeURIComponent(item.id)}/start-research`,
+        { method: "POST", headers: { ...buildAccessHeaders() }, cache: "no-store" },
+      );
+      const payload: unknown = await response.json().catch(() => null);
+      const data = (payload as { ok?: boolean; data?: { taskId?: string } } | null) ?? null;
+      if (!response.ok || !data?.ok || !data.data?.taskId) {
+        const message = (payload as { error?: { message?: string } } | null)?.error?.message;
+        throw new Error(message ?? "start_research_failed");
+      }
+      window.location.assign(`/tasks/${encodeURIComponent(data.data.taskId)}`);
+    } catch (error) {
+      setMessage(error instanceof Error && error.message !== "start_research_failed"
+        ? error.message
+        : "开始研究失败，请确认候选状态与登录会话后重试。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 批量开始研究：跳转第一个可研究候选的研究任务 */
   function startSelected() {
     const first = items.find(
       (item) => selectedIds.includes(item.id) && candidatePrimaryHref(item) !== null,
@@ -586,8 +618,7 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
       setMessage("已选项中没有可开始研究的商品（已转任务或当前不满足研究条件），请重新选择。");
       return;
     }
-    const href = candidatePrimaryHref(first);
-    if (href) window.location.assign(href);
+    void startItemResearch(first);
   }
 
   return (
@@ -628,6 +659,7 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
       onDeleteItem={deleteItem}
       onDeleteSelected={deleteSelected}
       onStartSelected={startSelected}
+      onStartItem={(item) => void startItemResearch(item)}
       onManualToggle={() => setManualOpen((current) => !current)}
       onManualNameChange={(value) => setManualName(value.slice(0, 120))}
       onManualUrlChange={(value) => setManualUrl(value.slice(0, 2048))}
