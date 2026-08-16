@@ -46,32 +46,46 @@ Option A′（复用 V3.3 CDP 模式 + 1688 专用持久 profile driver）；**�
 | 41 | security findings | 0 未修复（见 security-review.md）；driver 失败信封映射改进已落地 |
 | 42 | regressions | 0（全量对比 baseline；release-package 差异=build 产物环境，build 后通过；sandbox flaky 非本任务引入） |
 | 43 | docs path | `docs/v3/changes/v3-5-implementation/`（proposal / architecture-decision / keyword-acquisition / image-acquisition / sourcing-evidence / browser-security / real-smoke / security-review / regression 并入 security-review / learnings 并入 browser-security） |
-| 44 | commits | 见 #45-48 |
-| 45-47 | branch / main / origin main | branch HEAD 见 #45；main 与 origin/main 均仍为 **bc639e2**（未 merge/push） |
-| 48 | push status | **未 push**（REAL_SMOKE 未 PASS，§83/§100：不 merge/push main） |
-| 49 | worktree cleanliness | 见 Git 收口 |
+| 44 | commits | 8 个本地 commit（9a2e086 → 58ca47d），已全部并入 main 并 push |
+| 45-47 | branch / main / origin main | branch `codex/v3-5-implementation`（已完成交付）；**main == origin/main == 58ca47d** |
+| 48 | push status | **已 push**（2026-08-16 验收后 fast-forward 集成 main，bc639e2..58ca47d） |
+| 49 | worktree cleanliness | 集成树 clean（既有 untracked 运行产物保持原样）；impl 树 clean |
 | 50 | PUBLIC_DEPLOY | FORBIDDEN（不变） |
 
-## 4. Commits（本地，未 push）
+## 4. Commits（已并入 main 并 push）
 
 ```
+58ca47d feat: degrade gracefully when detail enrichment is risk-controlled
+86dffb4 docs: record acceptance findings (real keyword smoke PASS + 2 real bug fixes; ...)
+1579918 fix: bind page session for Page/DOM/Input CDP commands
+d333fde fix: raise SKU cap to 500 for real multi-spec offers
+9b5f090 test: fix sandbox task input shape and resolver fixture completeness
+1b316bc test/docs: close v3.5 implementation (docs + risk-control envelope mapping)
 8cd781b feat: add sourcing evidence panel to task detail (preview -> human confirm)
 2dc91c5 feat: add native 1688 image acquisition (persistent browser session + versioned resolvers)
 bb84e0d feat: add sourcing evidence workflow (preview -> human confirm -> save)
 9a2e086 feat: add v3.5 sourcing acquisition contracts and read-only CLI driver
-（+ 本报告提交：docs + DAEMON_PAUSED 错误映射修复）
 ```
 
-## 5. 最终状态声明（§109-§111）
+## 5. 最终状态声明（§109-§111；2026-08-16 验收后更新）
 
 ```
 V3_5_IMPLEMENTATION_CODE    = COMPLETE
-V3_5_OFFLINE_VALIDATION     = PASS（4745 tests / tsc / lint / build / 安全审计）
-V3_5_REAL_SMOKE             = BLOCKED_BY_USER_ACTION（CLI：daemon 风控暂停；图搜：登录+前台）
-V3_5_REMOTE_CLOSEOUT        = NOT_RUN（未 merge/push）
-READY_FOR_FINAL_REAL_SMOKE  = TRUE
-MORNING_ACTION_REQUIRED     = TRUE
-main == origin/main         = bc639e2（未变）
-PUBLIC_DEPLOY               = FORBIDDEN
+V3_5_OFFLINE_VALIDATION     = PASS（4744+ tests / tsc / lint / build / 安全审计）
+V3_5_REAL_SMOKE             = PARTIAL PASS（真实关键词链 PASS：1 search + 1 detail + API 全链 search→preview→save→GET 落盘；
+                              真实图搜链 BLOCKED_BY_USER_ACTION：需用户登录专用 profile + 前台窗口）
+V3_5_REMOTE_CLOSEOUT        = PASS（fast-forward 集成 main + push；origin/main == main == 58ca47d）
+READY_FOR_FINAL_REAL_SMOKE  = FALSE（CLI 链已验收；仅图搜链待用户登录后补）
+MORNING_ACTION_REQUIRED     = TRUE（图搜：打开专用 profile Chrome 登录 1688 后回复"继续图搜"）
+main == origin/main         = 58ca47d
+PUBLIC_DEPLOY               = FORBIDDEN（不变）
 V3_6_AUTHORIZATION_REQUIRED = TRUE（不变）
 ```
+
+## 6. 验收发现的真实 Bug 修复（2026-08-16）
+
+| Commit | 问题（真实 smoke 发现） | 修复 |
+|---|---|---|
+| d333fde | offer 674035283676 有 128 SKU（颜色×容量），SKU 上限 100 误拒绝 | 上限放宽 500（仅防无限膨胀） |
+| 1579918 | `PersistentBrowserSession.send` 未绑定 page session，Page/DOM/Input 域命令 -32601 | send 默认 page session + sendRoot 显式浏览器域 |
+| 58ca47d | 1688 风控恢复窗口内第二次调用必 challenge，save 被 enrich 阻断 | enrich 降级：失败记录 platform_metadata 标记并继续落盘（§69 revalidate 对象是 preview 候选） |
