@@ -1144,6 +1144,96 @@ export function TaskRecordDetail({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
   const [legacyDecisionDraft, setLegacyDecisionDraft] = useState<DecisionStatus | null>(null);
 
+  // Prevent stale async responses from overwriting newer state
+  const reqIdRef = useRef(0);
+
+  /**
+   * 轻量刷新：成功写入（Handoff / Listing / Image）后重读服务端真实任务状态。
+   * 保留当前内容直到新数据到达（不整页闪 loading、不卸载子组件、不丢失展开状态），
+   * 以服务端持久化结果为唯一事实源，不维护第二套前端进度状态。
+   * 失败静默：进度摘要保持旧值，不打断用户操作，绝不错误推进。
+   */
+  const refreshRecord = useCallback(async () => {
+    reqIdRef.current += 1;
+    const currentId = reqIdRef.current;
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+        headers: { ...buildAccessHeaders() },
+      });
+      if (currentId !== reqIdRef.current) return;
+      const data = await response.json() as DetailResponse;
+      if (currentId !== reqIdRef.current) return;
+      if (!response.ok || !data.ok || !data.data) return;
+      setRecord(data.data);
+      setLoading(false);
+    } catch {
+      // 刷新失败保持现有内容（进度摘要保留旧值，不打断用户）
+    }
+  }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isAccessPasswordReady) {
+      setLoading(true);
+      setError("");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      setRecord(null);
+      setLoading(false);
+      setError("请先输入访问密码后查看任务详情。");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function loadRecord() {
+      // Bump request id so any in-flight stale response is discarded
+      reqIdRef.current += 1;
+      const currentId = reqIdRef.current;
+
+      setLoading(true);
+      setError("");
+      setRecord(null);
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+          cache: "no-store",
+          headers: { ...buildAccessHeaders() },
+        });
+        // Discard if a newer request has already started
+        if (cancelled || currentId !== reqIdRef.current) return;
+
+        const data = await response.json() as DetailResponse;
+        if (cancelled || currentId !== reqIdRef.current) return;
+
+        if (!response.ok || !data.ok) {
+          setRecord(null);
+          setError(data.ok ? "任务详情读取失败。" : data.error.message);
+          return;
+        }
+        setRecord(data.data);
+      } catch {
+        if (cancelled || currentId !== reqIdRef.current) return;
+        setRecord(null);
+        setError("任务详情暂时无法读取，请稍后刷新。");
+      } finally {
+        if (!cancelled && currentId === reqIdRef.current) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadRecord();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, accessPassword, isAccessPasswordReady, refreshKey]);
+
 
   
   const aiListingPackSnapshot = useMemo(() => (
