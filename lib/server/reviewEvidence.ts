@@ -105,6 +105,10 @@ export type ReviewImportInput = {
   sourceUrl?: string | null;
   sourceRef?: string | null;
   bindingNote?: string | null;
+  /** Package C：浏览器采集标记（半自动 Review Collector）；缺省人工导入 */
+  sourceType?: "browser" | "manual_import";
+  bindingKind?: "browser_verified" | "manual_confirmed";
+  collectorVersion?: string;
 };
 
 export class ReviewEvidenceError extends Error {
@@ -296,12 +300,13 @@ export function buildReviewItem(input: ReviewImportInput, capturedAt: string): R
     throw new ReviewEvidenceError("invalid_rating", 400, "星级无效（应为 1-5 整数）。");
   }
   const contentHash = buildReviewContentHash(reviewText);
+  const sourceType = input.sourceType === "browser" ? "browser" : "manual_import";
   const item: ReviewItem = {
     evidenceId: randomUUID(),
     reviewId: input.reviewId?.trim() ? input.reviewId.trim().slice(0, 120) : null,
     productAsin: asin,
     sourceProductRole: input.sourceProductRole,
-    sourceType: "manual_import",
+    sourceType,
     sourceSite: input.sourceUrl && /amazon\.com/i.test(input.sourceUrl) ? "amazon" : null,
     sourceUrl: input.sourceUrl?.trim() ? input.sourceUrl.trim().slice(0, 2048) : null,
     sourceRef: input.sourceRef?.trim() ? input.sourceRef.trim().slice(0, 300) : null,
@@ -314,11 +319,13 @@ export function buildReviewItem(input: ReviewImportInput, capturedAt: string): R
     language: input.language?.trim() ? input.language.trim().slice(0, 40) : null,
     capturedAt,
     importerVersion: REVIEW_IMPORTER_VERSION,
-    collectorVersion: null,
+    collectorVersion: sourceType === "browser"
+      ? (input.collectorVersion?.trim() ? input.collectorVersion.trim().slice(0, 60) : "unknown-browser-collector")
+      : null,
     entityBindingProof: {
       asin,
       sourceProductRole: input.sourceProductRole,
-      binding: "manual_confirmed",
+      binding: input.bindingKind === "browser_verified" ? "browser_verified" : "manual_confirmed",
       note: input.bindingNote?.trim() ? input.bindingNote.trim().slice(0, 200) : null,
     },
     contentHash,

@@ -188,7 +188,8 @@ describe("VocEvidenceSection rendering (novice comprehension)", () => {
     });
     const html = renderToStaticMarkup(element);
     expect(html).toContain('data-testid="workbench-voc"');
-    expect(html).toContain("导入评论");
+    expect(html).toContain("粘贴导入");
+    expect(html).toContain("采集评论");
     expect(html).toContain("还没有评论证据");
   });
 

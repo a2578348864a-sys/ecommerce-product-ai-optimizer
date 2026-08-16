@@ -758,6 +758,7 @@ export function EvidenceWorkbench({
         />
         <VocEvidenceSection
           taskId={taskId}
+          taskAsin={browserTaskAsin}
           evidence={vocEvidence}
           analysis={vocAnalysis}
           storageVersion={vocStorageVersion}

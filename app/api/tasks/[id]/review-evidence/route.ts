@@ -1,12 +1,16 @@
 /**
  * V3.4 — Review Evidence API（review-evidence.v1 + voc-analysis.v1）
- * GET  /api/tasks/[id]/review-evidence  读取 dataset + vocAnalysis + storageVersion
+ * GET  /api/tasks/[id]/review-evidence  读取 dataset + vocAnalysis + storageVersion + taskAsin
  * POST /api/tasks/[id]/review-evidence  action=import：人工导入 Review 样本（规范化/去重/bounded/实体绑定）
  * POST /api/tasks/[id]/review-evidence  action=analyze：AI VOC 分析（quota gate + run trace + evidenceRefs 硬门禁）
  * POST /api/tasks/[id]/review-evidence  action=clear：清空 dataset（同步清除旧分析）
+ * POST /api/tasks/[id]/review-evidence  action=collect：半自动采集 Preview（隔离浏览器提取 Top Reviews 片段，不写入）
+ * POST /api/tasks/[id]/review-evidence  action=collect-confirm：人工确认后把 Preview 选中项写入（browser 绑定 + 去重）
  *
  * 安全：requireAuthenticated / subject binding / task binding / expectedStorageVersion /
  * schema validation / payload limit / namespace writer ownership；不开放任意 JSON 写入。
+ * collect-confirm 的字段值全部由服务端从 Preview 缓存重建（客户端只传 previewId + 选中索引），
+ * 与 browser-evidence save 的 Preview 取回机制一致。
  */
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,6 +24,8 @@ import {
   ReviewEvidenceError,
   REVIEW_DATASET_MAX_REVIEWS,
   REVIEW_DATASET_MAX_PER_ASIN,
+  buildReviewDuplicateKey,
+  buildReviewContentHash,
   type ReviewEvidenceV1,
   type ReviewImportInput,
   type ReviewSourceProductRole,
@@ -30,16 +36,46 @@ import {
   VocAnalysisError,
   type VocAnalysisV1,
 } from "@/lib/server/vocAnalysis";
+import {
+  REVIEW_COLLECTOR_VERSION,
+  ReviewCollectorError,
+  assertReviewCollectRequest,
+  createReviewCollectPreview,
+  takeReviewCollectPreview,
+  reviewCollectSubjectKey,
+  buildSnippetPreviewDedupeKey,
+} from "@/lib/server/reviewCollector";
+import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
 
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { evidence: ReviewEvidenceV1 | null; analysis: VocAnalysisV1 | null; storageVersion: StorageVersion } }
+  | { ok: true; data: { evidence: ReviewEvidenceV1 | null; analysis: VocAnalysisV1 | null; storageVersion: StorageVersion; taskAsin: string | null } }
   | { ok: true; data: { outcome: { kind: string; importedCount: number; duplicateCount: number; rejectedCount: number }; evidence: ReviewEvidenceV1; storageVersion: StorageVersion } }
   | { ok: true; data: { analysis: VocAnalysisV1; unverified: number; gateResult: string; storageVersion: StorageVersion } }
   | { ok: true; data: { cleared: boolean; storageVersion: StorageVersion } }
+  | {
+      ok: true;
+      data: {
+        preview: {
+          previewId: string;
+          items: Array<{
+            asin: string;
+            role: ReviewSourceProductRole;
+            rating: number | null;
+            date: string | null;
+            title: string;
+            duplicate: boolean;
+          }>;
+          pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
+          capturedAt: string;
+        };
+        storageVersion: StorageVersion;
+      };
+    }
+  | { ok: true; data: { confirmed: boolean; storageVersion: StorageVersion } }
   | { ok: false; error: { code: string; message: string } };
 
 function jsonResponse(body: ApiResponse, status = 200) {
@@ -132,7 +168,7 @@ async function getId(context: { params: Promise<{ id: string }> }): Promise<stri
 }
 
 function errorResponse(error: unknown): NextResponse {
-  if (error instanceof ReviewEvidenceError || error instanceof VocAnalysisError) {
+  if (error instanceof ReviewEvidenceError || error instanceof VocAnalysisError || error instanceof ReviewCollectorError) {
     return jsonResponse({ ok: false, error: { code: error.code, message: error.message } }, error.status);
   }
   return jsonResponse({ ok: false, error: { code: "server_error", message: "服务器错误，请稍后重试。" } }, 500);
@@ -147,14 +183,15 @@ export async function GET(
   const resolved = await resolveContext(request, id);
   if (!resolved.ok) return resolved.response;
   try {
-    const [snapshot, evidence, analysis] = await Promise.all([
+    const [snapshot, evidence, analysis, taskAsin] = await Promise.all([
       readReviewEvidenceSnapshot(resolved.context, id),
       getReviewEvidence(resolved.context, id),
       getVocAnalysis(resolved.context, id),
+      readBrowserEvidenceTaskAsin(resolved.context, id),
     ]);
     return jsonResponse({
       ok: true,
-      data: { evidence, analysis, storageVersion: toStorageVersion(snapshot) },
+      data: { evidence, analysis, storageVersion: toStorageVersion(snapshot), taskAsin },
     });
   } catch (error) {
     return errorResponse(error);
@@ -181,7 +218,9 @@ export async function POST(
   if (action === "import") return importAction(resolved.context, id, bodyRecord);
   if (action === "analyze") return analyzeAction(resolved.context, id, bodyRecord);
   if (action === "clear") return clearAction(resolved.context, id, bodyRecord);
-  return jsonResponse({ ok: false, error: { code: "invalid_action", message: "缺少或非法的 action（import / analyze / clear）。" } }, 400);
+  if (action === "collect") return collectAction(resolved.context, id, bodyRecord);
+  if (action === "collect-confirm") return collectConfirmAction(resolved.context, id, bodyRecord);
+  return jsonResponse({ ok: false, error: { code: "invalid_action", message: "缺少或非法的 action（import / analyze / clear / collect / collect-confirm）。" } }, 400);
 }
 
 async function importAction(
@@ -280,6 +319,124 @@ async function clearAction(
     return jsonResponse({
       ok: true,
       data: { cleared: cleared.cleared, storageVersion: toStorageVersion(snapshotAfter) },
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/** 半自动采集 Preview（不写入）：隔离浏览器逐 ASIN 提取详情页公开 Top Reviews 片段 */
+async function collectAction(
+  context: AccessContext,
+  taskId: string,
+  bodyRecord: Record<string, unknown>,
+): Promise<NextResponse> {
+  let asins;
+  try {
+    asins = assertReviewCollectRequest(bodyRecord.asins);
+  } catch (error) {
+    if (error instanceof ReviewCollectorError) {
+      return jsonResponse({ ok: false, error: { code: error.code, message: error.message } }, error.status);
+    }
+    throw error;
+  }
+  try {
+    const preview = await createReviewCollectPreview({ context, taskId, asins });
+    // 重复标记：与现有 dataset 的 duplicateKey 比对（reviewId 缺失时 asin+hash+rating+date）
+    const existing = await getReviewEvidence(context, taskId);
+    const existingKeys = new Set((existing?.dataset.reviews ?? []).map((review) => review.duplicateKey));
+    const items = preview.items.map((item) => {
+      const duplicateKey = buildReviewDuplicateKey({
+        reviewId: null,
+        asin: item.asin,
+        contentHash: buildReviewContentHash(item.title),
+        rating: item.rating,
+        reviewDate: item.date,
+      });
+      return { ...item, duplicate: existingKeys.has(duplicateKey) };
+    });
+    return jsonResponse({
+      ok: true,
+      data: {
+        preview: {
+          previewId: preview.previewId,
+          items,
+          pageResults: preview.pageResults,
+          capturedAt: preview.capturedAt,
+        },
+        storageVersion: await readReviewEvidenceSnapshot(context, taskId).then((snapshot) => toStorageVersion(snapshot)),
+      },
+    });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+/** 人工确认后写入：字段值全部由服务端从 Preview 缓存重建（客户端只传 previewId + 选中索引） */
+async function collectConfirmAction(
+  context: AccessContext,
+  taskId: string,
+  bodyRecord: Record<string, unknown>,
+): Promise<NextResponse> {
+  const expectedStorageVersion = parseStorageVersionInput(bodyRecord.expectedStorageVersion);
+  if (expectedStorageVersion === null) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "storage_version_required", message: "内容刚在其他位置更新，请刷新后重试。" },
+    }, 400);
+  }
+  const previewId = asString(bodyRecord.previewId);
+  if (!previewId) {
+    return jsonResponse({ ok: false, error: { code: "preview_required", message: "缺少采集预览标识。" } }, 400);
+  }
+  const selectedRaw = bodyRecord.selectedIndices;
+  if (!Array.isArray(selectedRaw) || selectedRaw.length === 0 || selectedRaw.length > 20) {
+    return jsonResponse({ ok: false, error: { code: "invalid_selection", message: "请选择要确认的评论（1-20 条）。" } }, 400);
+  }
+  const selectedIndices = selectedRaw
+    .map((value) => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : -1))
+    .filter((value) => value >= 0);
+  if (selectedIndices.length === 0) {
+    return jsonResponse({ ok: false, error: { code: "invalid_selection", message: "请选择要确认的评论。" } }, 400);
+  }
+  // Preview 取回（跨主体/跨任务 fail-closed；取回即失效，防止重复确认）
+  const preview = takeReviewCollectPreview(previewId, {
+    subjectKey: reviewCollectSubjectKey(context),
+    taskId,
+  });
+  if (!preview) {
+    return jsonResponse({
+      ok: false,
+      error: { code: "preview_expired", message: "采集预览已失效（可能已确认或超时），请重新采集。" },
+    }, 400);
+  }
+  try {
+    const uniqueIndices = [...new Set(selectedIndices)];
+    const selected: Array<{ index: number; item: (typeof preview.items)[number] }> = [];
+    for (const index of uniqueIndices) {
+      if (index >= 0 && index < preview.items.length) selected.push({ index, item: preview.items[index] });
+    }
+    if (selected.length === 0) {
+      return jsonResponse({ ok: false, error: { code: "invalid_selection", message: "所选评论不在预览范围内。" } }, 400);
+    }
+    const reviews: ReviewImportInput[] = selected.map(({ item }) => ({
+      asin: item.asin,
+      sourceProductRole: item.role,
+      reviewText: item.title,
+      rating: item.rating,
+      reviewDate: item.date ?? undefined,
+      sourceUrl: item.sourceUrl,
+      sourceRef: item.sourceUrl,
+      bindingNote: item.bindingNote,
+      sourceType: "browser",
+      bindingKind: "browser_verified",
+      collectorVersion: REVIEW_COLLECTOR_VERSION,
+    }));
+    await importReviews({ context, taskId, expectedStorageVersion, reviews });
+    const snapshotAfter = await readReviewEvidenceSnapshot(context, taskId);
+    return jsonResponse({
+      ok: true,
+      data: { confirmed: true, storageVersion: toStorageVersion(snapshotAfter) },
     });
   } catch (error) {
     return errorResponse(error);

@@ -386,12 +386,15 @@ function ThemeSection({
 
 export function VocEvidenceSection({
   taskId,
+  taskAsin,
   evidence,
   analysis,
   storageVersion,
   onChanged,
 }: {
   taskId: string;
+  /** Package C：任务绑定的商品 ASIN（角色=当前商品时预填） */
+  taskAsin?: string | null;
   evidence: VocEvidenceView | null;
   analysis: VocAnalysisView | null;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
@@ -406,6 +409,37 @@ export function VocEvidenceSection({
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Package C：半自动采集（collect preview → 人工确认 → 写入）
+  const [collectOpen, setCollectOpen] = useState(false);
+  const [collectAsin, setCollectAsin] = useState("");
+  const [collectRole, setCollectRole] = useState<"current_candidate" | "competitor">("current_candidate");
+  const [collecting, setCollecting] = useState(false);
+  const [collectPreview, setCollectPreview] = useState<{
+    previewId: string;
+    items: Array<{
+      asin: string;
+      role: "current_candidate" | "competitor";
+      rating: number | null;
+      date: string | null;
+      title: string;
+      duplicate: boolean;
+    }>;
+    pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>;
+    capturedAt: string;
+  } | null>(null);
+  const [collectSelected, setCollectSelected] = useState<Set<number>>(new Set());
+
+  // Package C：ASIN 预填——角色=当前商品且任务有 ASIN 时，填入并跟随任务 ASIN 更新
+  useEffect(() => {
+    if (taskAsin && collectRole === "current_candidate" && !collectAsin.trim()) {
+      setCollectAsin(taskAsin);
+    }
+  }, [taskAsin, collectRole, collectAsin]);
+  useEffect(() => {
+    if (taskAsin && importRole === "current_candidate" && !importAsin.trim()) {
+      setImportAsin(taskAsin);
+    }
+  }, [taskAsin, importRole, importAsin]);
 
   // F5：VOC 导入草稿会话持久化（刷新不丢输入；revision = storageVersion，任务更新后旧草稿安全失效）
   const vocDraft = useSessionDraft<{
@@ -473,7 +507,7 @@ export function VocEvidenceSection({
         return;
       }
       const outcome = json.data.outcome;
-      setNotice(`已导入 ${outcome.importedCount} 条；重复 ${outcome.duplicateCount} 条；拒绝 ${outcome.rejectedCount} 条。`);
+      setNotice(`已导入 ${outcome.importedCount} 条；重复 ${outcome.duplicateCount} 条；忽略 ${outcome.rejectedCount} 条（超限）。`);
       setImportText("");
       setImportRating("");
       setImportOpen(false);
@@ -541,10 +575,118 @@ export function VocEvidenceSection({
     }
   }
 
+  /* ── Package C：半自动采集（浏览器提取详情页公开 Top Reviews 片段） ── */
+
+  async function runCollect() {
+    const asin = collectAsin.trim().toUpperCase();
+    if (!asin) {
+      setError("请填写要采集评论的 ASIN。");
+      return;
+    }
+    setCollecting(true);
+    setError("");
+    setNotice("");
+    setCollectPreview(null);
+    setCollectSelected(new Set());
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/review-evidence`, {
+        method: "POST",
+        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          action: "collect",
+          asins: [{ asin, sourceProductRole: collectRole }],
+        }),
+        signal: AbortSignal.timeout(150_000),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>; capturedAt: string } } }
+        | { ok: false; error?: { code?: string; message?: string } };
+      if (!res.ok || !json.ok) {
+        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        if (code === "task_result_conflict") {
+          setError("任务内容刚在其他位置更新，已自动刷新最新版本；请重试采集。");
+          onChanged();
+          return;
+        }
+        setError((json as { error?: { message?: string } }).error?.message ?? "采集失败。");
+        return;
+      }
+      const preview = json.data.preview;
+      setCollectPreview(preview);
+      // 默认选中非重复项（人工确认仍然保留：取消勾选即不加入）
+      const initial = new Set<number>();
+      preview.items.forEach((item, index) => {
+        if (!item.duplicate) initial.add(index);
+      });
+      setCollectSelected(initial);
+    } catch {
+      setError("采集失败（浏览器会话异常），请重试。");
+    } finally {
+      setCollecting(false);
+    }
+  }
+
+  async function runCollectConfirm() {
+    if (!collectPreview || collectSelected.size === 0) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/review-evidence`, {
+        method: "POST",
+        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          action: "collect-confirm",
+          previewId: collectPreview.previewId,
+          selectedIndices: [...collectSelected].sort((a, b) => a - b),
+          expectedStorageVersion: storageVersion,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const json = await res.json() as
+        | { ok: true } | { ok: false; error?: { code?: string; message?: string } };
+      if (!res.ok || !json.ok) {
+        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        if (code === "preview_expired") {
+          setError("采集预览已失效，请重新采集。");
+          setCollectPreview(null);
+          return;
+        }
+        if (code === "task_result_conflict") {
+          setError("任务内容刚在其他位置更新，已自动刷新最新版本；请重新采集后确认。");
+          onChanged();
+          return;
+        }
+        setError((json as { error?: { message?: string } }).error?.message ?? "确认失败。");
+        return;
+      }
+      setNotice(`已将选中的 ${collectSelected.size} 条评论加入数据集（可打开「开始 VOC 分析」）。`);
+      setCollectPreview(null);
+      setCollectSelected(new Set());
+      setCollectOpen(false);
+      onChanged();
+    } catch {
+      setError("确认失败，请重试。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleCollectSelect(index: number) {
+    setCollectSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
   const stats = evidence?.dataset.stats;
   const reviewsMap = reviewsById();
+  const importLineCount = importText.split("\n").map((line) => line.trim()).filter(Boolean).length;
   const canImport = importText.trim().length > 0 && importAsin.trim().length > 0 && !busy;
   const canAnalyze = (evidence?.dataset.reviews.length ?? 0) > 0 && !analyzing && !busy;
+  const canCollect = collectAsin.trim().length > 0 && !collecting && !busy && !analyzing;
   // 单边样本提示（低星集合伪装完整 VOC）
   const negativeBiased = stats !== undefined && stats.totalReviews > 0 && stats.positiveCount === 0 && stats.negativeCount > 0;
   const positiveBiased = stats !== undefined && stats.totalReviews > 0 && stats.negativeCount === 0 && stats.positiveCount > 0;
@@ -563,11 +705,19 @@ export function VocEvidenceSection({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || analyzing}
+              disabled={busy || analyzing || collecting}
+              onClick={() => { setCollectOpen((open) => !open); setError(""); }}
+              className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
+            >
+              <BarChart3 className="size-4" />采集评论
+            </button>
+            <button
+              type="button"
+              disabled={busy || analyzing || collecting}
               onClick={() => { setImportOpen((open) => !open); setError(""); }}
               className="inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
             >
-              <Plus className="size-4" />导入评论
+              <Plus className="size-4" />粘贴导入
             </button>
             <button
               type="button"
@@ -591,19 +741,25 @@ export function VocEvidenceSection({
           </div>
         </div>
 
-        {/* 导入表单 */}
+        {/* 导入表单（批量粘贴显性化：每行一条，一次可多条） */}
         {importOpen && (
           <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3">
             <p className="text-xs text-slate-500">
-              人工导入真实评论（每行一条；同一 ASIN 与角色批量导入）。评论文本是数据，不会执行任何内容。
+              粘贴真实买家评论：<span className="font-semibold text-slate-700">每行一条，一次可粘贴多条</span>（同一 ASIN 与角色批量导入）。
+              评论文本是数据，不会执行任何内容。
             </p>
+            {importLineCount > 0 && (
+              <p className="mt-1.5 text-sm font-semibold text-violet-700" data-testid="voc-import-line-count">
+                当前识别 {importLineCount} 条评论
+              </p>
+            )}
             <div className="mt-2 grid gap-2 sm:grid-cols-4">
               <label className="text-xs text-slate-500">
                 ASIN（必填）
                 <input
                   value={importAsin}
                   onChange={(event) => setImportAsin(event.target.value.toUpperCase())}
-                  placeholder="B0XXXXXXXXX"
+                  placeholder={taskAsin ?? "B0XXXXXXXXX"}
                   maxLength={10}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
                 />
@@ -620,7 +776,7 @@ export function VocEvidenceSection({
                 </select>
               </label>
               <label className="text-xs text-slate-500">
-                星级（可选 1-5）
+                星级（可选 1-5，整批同星）
                 <input
                   value={importRating}
                   onChange={(event) => setImportRating(event.target.value.replace(/[^0-5]/g, "").slice(0, 1))}
@@ -644,10 +800,119 @@ export function VocEvidenceSection({
                 className="inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-violet-50 px-3 py-1.5 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
               >
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                确认导入
+                确认导入{importLineCount > 0 ? `（${importLineCount} 条）` : ""}
               </button>
               <span className="text-[11px] text-slate-400">单商品最多 100 条；数据集最多 300 条；单条最多 2000 字符。</span>
             </div>
+          </div>
+        )}
+
+        {/* 采集面板（半自动：浏览器提取 → 人工确认 → 写入） */}
+        {collectOpen && (
+          <div className="mt-3 rounded-xl border border-sky-200 bg-white p-3">
+            <p className="text-xs text-slate-500">
+              自动打开本机浏览器，读取该商品 Amazon 详情页公开的 Top Reviews（星级/日期/标题）。
+              评论全文页需要登录，系统不会绕过登录墙；提取结果需人工确认后才加入数据集。
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <label className="text-xs text-slate-500">
+                ASIN（必填）
+                <input
+                  value={collectAsin}
+                  onChange={(event) => setCollectAsin(event.target.value.toUpperCase())}
+                  placeholder={taskAsin ?? "B0XXXXXXXXX"}
+                  maxLength={10}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="text-xs text-slate-500">
+                评论来源角色
+                <select
+                  value={collectRole}
+                  onChange={(event) => setCollectRole(event.target.value as "current_candidate" | "competitor")}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                >
+                  <option value="current_candidate">当前商品</option>
+                  <option value="competitor">竞品</option>
+                </select>
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={!canCollect}
+                  onClick={() => void runCollect()}
+                  className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                >
+                  {collecting ? <Loader2 className="size-4 animate-spin" /> : <BarChart3 className="size-4" />}
+                  {collecting ? "采集中…（约 20-60 秒）" : "开始采集"}
+                </button>
+              </div>
+            </div>
+
+            {/* 采集结果预览（人工确认） */}
+            {collectPreview && (
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                {collectPreview.pageResults.map((page) => (
+                  <p key={page.asin} className="text-xs text-slate-600">
+                    ASIN {page.asin}：
+                    {page.status === "ok" ? `提取 ${page.extractedCount} 条`
+                      : page.status === "blocked_redirect" ? "需要登录/验证，未提取（系统不绕过登录墙）"
+                        : page.status === "no_reviews_extracted" ? "未发现公开评论片段"
+                          : `采集异常（${page.note ?? "未知"}）`}
+                  </p>
+                ))}
+                {collectPreview.items.length === 0 ? (
+                  <p className="mt-2 text-sm text-amber-700">没有可确认的评论，请换一个 ASIN 或改用「粘贴导入」。</p>
+                ) : (
+                  <>
+                    <p className="mt-2 text-xs font-semibold text-slate-700">
+                      以下评论来自 Amazon 详情页公开片段，勾选确认后加入数据集（{collectSelected.size}/{collectPreview.items.length} 已选）：
+                    </p>
+                    <ul className="mt-2 space-y-2">
+                      {collectPreview.items.map((item, index) => (
+                        <li key={`${item.asin}-${index}`} className="rounded-lg border border-slate-200 bg-white p-2">
+                          <label className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={collectSelected.has(index)}
+                              onChange={() => toggleCollectSelect(index)}
+                              className="mt-1 h-4 w-4"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-xs font-semibold text-slate-800">{item.title}</span>
+                              <span className="mt-0.5 block text-[11px] text-slate-500">
+                                {item.role === "current_candidate" ? "当前商品" : "竞品"} · ASIN {item.asin}
+                                {item.rating !== null ? ` · ${item.rating} 星` : ""}
+                                {item.date ? ` · ${item.date}` : ""}
+                                {item.duplicate ? " · 与现有评论重复（将跳过）" : ""}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={collectSelected.size === 0 || busy}
+                        onClick={() => void runCollectConfirm()}
+                        className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+                      >
+                        {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                        确认加入（{collectSelected.size} 条）
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setCollectPreview(null); setCollectSelected(new Set()); }}
+                        className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -688,9 +953,9 @@ export function VocEvidenceSection({
           </div>
         )}
 
-        {evidence === null && !importOpen && (
+        {evidence === null && !importOpen && !collectOpen && (
           <p className="mt-3 text-sm text-slate-500">
-            还没有评论证据。点击「导入评论」粘贴真实买家评论（当前商品或竞品），或先用少量样本体验。
+            还没有评论证据。点击「采集评论」自动读取 Amazon 详情页公开评论片段，或点击「粘贴导入」粘贴真实买家评论（每行一条，可一次粘贴多条）。
           </p>
         )}
         {notice && <p className="mt-2 text-sm text-teal-700">{notice}</p>}

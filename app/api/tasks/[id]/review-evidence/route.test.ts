@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { createTrustedSandboxTask, getSandboxTask } from "@/lib/server/demoSandbox";
 import { POST as routePost, GET as routeGet } from "@/app/api/tasks/[id]/review-evidence/route";
 import { callAiJson } from "@/lib/server/aiClient";
+import { resolveSystemBrowser } from "@/tools/collectors/amazon/browser-control";
 
 vi.hoisted(() => {
   const { join } = require("node:path");
@@ -71,6 +72,24 @@ vi.mock("@/lib/server/db", () => ({
 // aiClient：只 mock 真实 AI 调用（callAiJson 返回固定合法 VOC 输出）；analyzeVoc 全路径保持真实
 vi.mock("@/lib/server/aiClient", () => ({
   callAiJson: vi.fn(),
+}));
+
+// Package C：半自动采集——mock 隔离浏览器会话（真实浏览器由授权 smoke 覆盖）
+const collectState = vi.hoisted(() => ({
+  session: {
+    navigate: vi.fn(async () => ({ allowedFinalOrigin: true })),
+    evaluateDomByValue: vi.fn(async () => [
+      { rating: 5, date: "August 1, 2026", title: "Fits perfectly and feels premium." },
+      { rating: 2, date: "July 15, 2026", title: "Assembly instructions are confusing." },
+    ]),
+    close: vi.fn(async () => ({})),
+  },
+  browser: { browser: "chrome", locationType: "system", executablePath: "C:\\fake\\chrome.exe" },
+}));
+
+vi.mock("@/tools/collectors/amazon/browser-control", () => ({
+  resolveSystemBrowser: vi.fn(() => collectState.browser),
+  openIsolatedPublicBrowserSession: vi.fn(async () => collectState.session),
 }));
 
 const NOW = "2026-08-05T00:00:00.000Z";
@@ -289,5 +308,126 @@ describe("isolation", () => {
     }, taskId);
     expect(response.status).toBe(409);
     expect((await response.json()).error.code).toBe("task_result_conflict");
+  });
+});
+
+describe("POST collect / collect-confirm（Package C 半自动采集）", () => {
+  beforeEach(() => {
+    vi.mocked(collectState.session.navigate).mockReset();
+    vi.mocked(collectState.session.navigate).mockResolvedValue({ allowedFinalOrigin: true });
+    vi.mocked(collectState.session.evaluateDomByValue).mockReset();
+    vi.mocked(collectState.session.evaluateDomByValue).mockResolvedValue([
+      { rating: 5, date: "August 1, 2026", title: "Fits perfectly and feels premium." },
+      { rating: 2, date: "July 15, 2026", title: "Assembly instructions are confusing." },
+    ]);
+    vi.mocked(collectState.session.close).mockReset();
+  });
+
+  it("collect returns preview items with dedupe marking（不写入）", async () => {
+    // 先导入一条相同文本+日期 → collect 时该条标记 duplicate
+    await postJson({
+      action: "import",
+      expectedStorageVersion: toStorageVersion(taskId),
+      reviews: [{ asin: ASIN, sourceProductRole: "current_candidate", reviewText: "Fits perfectly and feels premium.", rating: 5, reviewDate: "August 1, 2026" }],
+    }, taskId);
+    const response = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.preview.items).toHaveLength(2);
+    const duplicateItem = body.data.preview.items.find((item: { title: string }) => item.title.includes("Fits perfectly"));
+    expect(duplicateItem.duplicate).toBe(true);
+    // collect 不写入：evidence 仍只有 1 条
+    const get = await routeGet(
+      new NextRequest("http://localhost/api/tasks/x/review-evidence", { headers: { "x-access-token": `tok-${DEMO}` } }),
+      { params: Promise.resolve({ id: taskId }) },
+    );
+    expect((await get.json()).data.evidence.dataset.reviews).toHaveLength(1);
+  });
+
+  it("collect-confirm writes browser-bound reviews with dedupe", async () => {
+    const collect = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    const preview = (await collect.json()).data.preview;
+    const confirm = await postJson({
+      action: "collect-confirm",
+      previewId: preview.previewId,
+      selectedIndices: [0, 1],
+      expectedStorageVersion: toStorageVersion(taskId),
+    }, taskId);
+    expect(confirm.status).toBe(200);
+    const body = await confirm.json();
+    expect(body.data.confirmed).toBe(true);
+    const get = await routeGet(
+      new NextRequest("http://localhost/api/tasks/x/review-evidence", { headers: { "x-access-token": `tok-${DEMO}` } }),
+      { params: Promise.resolve({ id: taskId }) },
+    );
+    const evidence = (await get.json()).data.evidence;
+    expect(evidence.dataset.reviews).toHaveLength(2);
+    // browser 绑定标记
+    expect(evidence.dataset.reviews.every((review: { sourceType: string }) => review.sourceType === "browser")).toBe(true);
+    expect(evidence.dataset.reviews[0].entityBindingProof.binding).toBe("browser_verified");
+    expect(evidence.dataset.reviews[0].collectorVersion).toMatch(/amazon-review-snippet-collector/);
+    expect(evidence.dataset.sampling.method).toBe("manual_selected"); // 采样方法不变（manual 基准）
+  });
+
+  it("preview is single-use and bound to task/subject", async () => {
+    const collect = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    const preview = (await collect.json()).data.preview;
+    // 第一次确认成功
+    const first = await postJson({
+      action: "collect-confirm",
+      previewId: preview.previewId,
+      selectedIndices: [0],
+      expectedStorageVersion: toStorageVersion(taskId),
+    }, taskId);
+    expect(first.status).toBe(200);
+    // 重复使用同一 previewId → preview_expired
+    const second = await postJson({
+      action: "collect-confirm",
+      previewId: preview.previewId,
+      selectedIndices: [1],
+      expectedStorageVersion: toStorageVersion(taskId),
+    }, taskId);
+    expect(second.status).toBe(400);
+    expect((await second.json()).error.code).toBe("preview_expired");
+  });
+
+  it("rejects invalid collect payloads and invalid selection", async () => {
+    const badAsin = await postJson({ action: "collect", asins: [{ asin: "BAD", sourceProductRole: "current_candidate" }] }, taskId);
+    expect(badAsin.status).toBe(400);
+    expect((await badAsin.json()).error.code).toBe("invalid_collect_payload");
+
+    const tooMany = await postJson({
+      action: "collect",
+      asins: Array.from({ length: 4 }, (_, index) => ({ asin: `B0A${index}B2C3D4`, sourceProductRole: "current_candidate" })),
+    }, taskId);
+    expect(tooMany.status).toBe(400);
+
+    const noSelection = await postJson({
+      action: "collect-confirm",
+      previewId: "none",
+      selectedIndices: [],
+      expectedStorageVersion: toStorageVersion(taskId),
+    }, taskId);
+    expect(noSelection.status).toBe(400);
+    expect((await noSelection.json()).error.code).toBe("invalid_selection");
+  });
+
+  it("fails closed when browser unavailable", async () => {
+    vi.mocked(resolveSystemBrowser).mockReturnValueOnce(null);
+    const response = await postJson({
+      action: "collect",
+      asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+    }, taskId);
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.code).toBe("browser_not_available");
   });
 });
