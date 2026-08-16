@@ -42,7 +42,14 @@ type PreviewPayload = {
   expiresAt: number;
 };
 
-type ToolStatus = { loggedIn: boolean; toolAvailable: boolean; cli?: { loggedIn: boolean; toolAvailable: boolean }; image?: { extensionAvailable: boolean; reasonCode?: string } };
+type ToolStatus = {
+  loggedIn: boolean;
+  toolAvailable: boolean;
+  cli?: { loggedIn: boolean; toolAvailable: boolean };
+  image?: { extensionAvailable: boolean; reasonCode?: string };
+  /** D1：工具可用但未登录时，服务端构造的固定登录命令（仅展示，业务层不执行 login） */
+  loginHint?: { command: string } | null;
+};
 
 const MATCH_STATE_LABEL: Record<string, string> = {
   exact_match: "与候选高度一致（需人工复核）",
@@ -96,6 +103,8 @@ export function SourcingEvidencePanel({
   const [storageVersion, setStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [detailByOfferId, setDetailByOfferId] = useState<Partial<Record<string, AcquisitionCandidate | null>>>({});
   const [noteByOfferId, setNoteByOfferId] = useState<Record<string, string>>({});
+  const [checkingTools, setCheckingTools] = useState(false);
+  const [copied, setCopied] = useState(false);
   const reqIdRef = useRef(0);
   const panelOpen = useRef(false);
 
@@ -129,7 +138,7 @@ export function SourcingEvidencePanel({
       setToolStatus(data.data.toolStatus);
       // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
       const caps = sourcingCapabilities(data.data.toolStatus);
-      if (!caps.cliReady) setStatus("need_login");
+      setStatus((prev) => (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login"));
     } catch {
       // 初始读取失败保持 idle
     }
@@ -141,6 +150,28 @@ export function SourcingEvidencePanel({
       void loadInitial();
     }
   }, [loadInitial]);
+
+  /** D1：用户完成登录/加载扩展后手动重新检测（按钮触发，含检测中状态） */
+  async function refreshTools() {
+    setCheckingTools(true);
+    setErrorMessage("");
+    try {
+      await loadInitial();
+    } finally {
+      setCheckingTools(false);
+    }
+  }
+
+  /** D1：复制固定登录命令（仅在用户点击时读取剪贴板权限） */
+  async function copyLoginCommand(command: string) {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      // 剪贴板不可用时按钮文字提示即可（命令本身已展示在页面上）
+    }
+  }
 
   async function runSearch(method: "keyword" | "image" | "url", payload: Record<string, unknown>) {
     setStatus("searching");
@@ -155,12 +186,12 @@ export function SourcingEvidencePanel({
           // F3：图片找货错误按扩展/浏览器语义分流，绝不进入 CLI 登录横幅
           if (code === "auth_required") {
             setStatus("error");
-            setErrorMessage("图片找货需要在普通 Chrome 中登录 1688（与 1688-cli 登录无关）。请在 Chrome 完成 1688 登录后重试。");
+            setErrorMessage("图片找货需要在普通 Chrome 中登录 1688（与关键词找货的登录相互独立）。请在 Chrome 完成 1688 登录后重试。");
             return;
           }
           if (code === "extension_not_installed" || code === "extension_disconnected" || code === "extension_bridge_not_available") {
             setStatus("error");
-            setErrorMessage("图片找货依赖 Qingxuan 1688 Helper 扩展。请在 chrome://extensions 加载扩展（普通 Chrome，无需 1688-cli）后重试。");
+            setErrorMessage("图片找货需要浏览器助手扩展。请按「图片找货」入口下的加载步骤安装后，点击「已加载，重新检测」重试。");
             return;
           }
           if (code === "risk_control_required") {
@@ -289,11 +320,47 @@ export function SourcingEvidencePanel({
       ) : (
         <>
           {status === "need_login" ? (
-            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-              <p className="text-sm font-semibold text-amber-800">{errorMessage || "1688-cli 会话未登录或已过期。"}</p>
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3" role="alert">
+              <p className="text-sm font-semibold text-amber-800">1688 登录未完成</p>
               <p className="mt-1 text-sm text-amber-700">
-                关键词找货与 1688 链接读取需要完成 1688-cli 扫码登录；图片找货不依赖 1688-cli（普通 Chrome + 扩展即可使用）。
+                关键词找货与 1688 链接读取需要先登录 1688；图片找货只需要浏览器助手，不受影响。
               </p>
+              {caps.cliToolAvailable ? (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-sm font-semibold text-amber-700">如何登录 1688（2 步）</summary>
+                  <ol className="mt-2 list-inside list-decimal space-y-1.5 text-sm text-amber-700">
+                    <li>
+                      在本机打开终端（命令提示符），粘贴并运行下面的登录命令，然后按提示用手机 1688 App 扫码：
+                      {toolStatus?.loginHint?.command ? (
+                        <span className="mt-1 flex flex-wrap items-center gap-2">
+                          <code className="rounded bg-white px-2 py-1 font-mono text-xs text-slate-800">{toolStatus.loginHint.command}</code>
+                          <button
+                            type="button"
+                            onClick={() => void copyLoginCommand(toolStatus?.loginHint?.command ?? "")}
+                            className="rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                          >
+                            {copied ? "已复制" : "复制命令"}
+                          </button>
+                        </span>
+                      ) : null}
+                    </li>
+                    <li>登录完成后回到本页，点击下方「我已登录，重新检测」。</li>
+                  </ol>
+                </details>
+              ) : (
+                <p className="mt-2 text-sm text-amber-700">未检测到本机 1688 采集工具，请联系部署方完成工具配置后再登录。</p>
+              )}
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={checkingTools}
+                  onClick={() => void refreshTools()}
+                  className="linear-button inline-flex h-8 items-center justify-center px-3 text-xs font-semibold disabled:opacity-50"
+                  data-testid="sourcing-relogin-check"
+                >
+                  {checkingTools ? "检测中…" : "我已登录，重新检测"}
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -320,7 +387,14 @@ export function SourcingEvidencePanel({
           {!preview && status !== "saving" && (
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-bold text-slate-500">关键词找货</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-500">关键词找货</p>
+                  {caps.cliReady ? (
+                    <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
+                  ) : (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需登录 1688</span>
+                  )}
+                </div>
                 <div className="mt-2 flex gap-2">
                   <input
                     value={keyword}
@@ -341,12 +415,19 @@ export function SourcingEvidencePanel({
                   </button>
                 </div>
                 {!caps.cliReady ? (
-                  <p className="mt-1.5 text-xs text-amber-600">需要完成 1688-cli 扫码登录后使用。</p>
+                  <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
                 ) : null}
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-bold text-slate-500">图片找货</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-500">图片找货</p>
+                  {caps.imageReady ? (
+                    <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">浏览器助手 ✓</span>
+                  ) : (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需加载扩展</span>
+                  )}
+                </div>
                 <div className="mt-2 flex gap-2">
                   <input
                     value={imageUrl}
@@ -366,16 +447,40 @@ export function SourcingEvidencePanel({
                   </button>
                 </div>
                 {!caps.imageReady ? (
-                  <p className="mt-1.5 text-xs text-amber-600">
-                    图片找货依赖普通 Chrome + Qingxuan 1688 Helper 扩展（不依赖 1688-cli）。请在 chrome://extensions 加载扩展后刷新。
-                  </p>
+                  <div className="mt-1.5">
+                    <p className="text-xs text-amber-600">需要先在 Chrome 中加载浏览器助手扩展。</p>
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs font-semibold text-amber-700">如何加载（一次性，约 1 分钟）</summary>
+                      <ol className="mt-1.5 list-inside list-decimal space-y-1 text-xs text-amber-700">
+                        <li>打开 Chrome，地址栏输入 <code className="rounded bg-white px-1 font-mono">chrome://extensions</code> 并回车。</li>
+                        <li>打开右上角「开发者模式」开关。</li>
+                        <li>点击「加载已解压的扩展程序」，选择扩展文件夹：<code className="rounded bg-white px-1 font-mono">qingxuan-1688-helper</code>。</li>
+                      </ol>
+                      <button
+                        type="button"
+                        disabled={checkingTools}
+                        onClick={() => void refreshTools()}
+                        className="mt-2 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                        data-testid="sourcing-extension-recheck"
+                      >
+                        {checkingTools ? "检测中…" : "已加载，重新检测"}
+                      </button>
+                    </details>
+                  </div>
                 ) : (
                   <p className="mt-1.5 text-xs text-slate-400">1688 图搜会打开本地浏览器窗口（需前台运行）。</p>
                 )}
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-bold text-slate-500">已有 1688 链接</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold text-slate-500">已有 1688 链接</p>
+                  {caps.cliReady ? (
+                    <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
+                  ) : (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需登录 1688</span>
+                  )}
+                </div>
                 <div className="mt-2 flex gap-2">
                   <input
                     value={offerUrl}
@@ -395,7 +500,7 @@ export function SourcingEvidencePanel({
                   </button>
                 </div>
                 {!caps.cliReady ? (
-                  <p className="mt-1.5 text-xs text-amber-600">需要完成 1688-cli 扫码登录后使用。</p>
+                  <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
                 ) : null}
               </div>
             </div>

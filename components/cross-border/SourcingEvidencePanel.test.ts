@@ -34,14 +34,26 @@ describe("SourcingEvidencePanel 文案纪律与结构", () => {
     expect(html).toContain("候选主图 https:// 链接");
   });
 
-  it("图片找货明确说明扩展能力独立于 1688-cli（不堆技术术语）", () => {
+  it("图片找货就绪状态与扩展加载引导（业务语言，不出现技术术语）", () => {
     const html = renderPanel();
-    // F3：toolStatus 未知时按能力独立提示（图片找货依赖扩展，不依赖 CLI 登录）
-    expect(html).toContain("图片找货依赖普通 Chrome + Qingxuan 1688 Helper 扩展");
-    expect(html).toContain("不依赖 1688-cli");
+    // D1：toolStatus 未知时按能力独立提示（图片找货依赖扩展，不依赖 CLI 登录）
+    expect(html).toContain("图片找货");
+    expect(html).toContain("需要先在 Chrome 中加载浏览器助手扩展");
+    expect(html).toContain("chrome://extensions");
+    expect(html).toContain("已加载，重新检测");
+    expect(html).not.toContain("1688-cli");
+    expect(html).not.toContain("Qingxuan");
     expect(html).not.toContain("CDP");
     expect(html).not.toContain("shadow");
     expect(html).not.toContain("resolver");
+    expect(html).not.toContain("V35");
+  });
+
+  it("关键词与链接入口显示登录状态徽章与引导（无 1688-cli 字样）", () => {
+    const html = renderPanel();
+    expect(html).toContain("需登录 1688");
+    expect(html).toContain("需要先登录 1688 后使用（见顶部登录提示）");
+    expect(html).not.toContain("1688-cli");
   });
 
   it("禁止文案零出现：无推荐/评分/采购建议", () => {

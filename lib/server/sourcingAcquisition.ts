@@ -103,7 +103,7 @@ export function assertSupportedCliVersion(version: string | null): void {
     throw new SourcingAcquisitionError(
       "tool_version_unsupported",
       503,
-      `1688-cli 版本 ${version} 未在受支持范围（${SUPPORTED_CLI_VERSION_PREFIX}*），已停止获取。`,
+      `1688 采集工具版本 ${version} 未在受支持范围（${SUPPORTED_CLI_VERSION_PREFIX}*），已停止获取。`,
     );
   }
 }
@@ -206,10 +206,10 @@ function errorMessage(error: unknown): string {
 /** 从 stdout 提取 JSON：容忍头部日志行（首个 { 开始，末尾可能截断则取最后一个 }） */
 function parseCliJson(stdout: string): unknown {
   const trimmed = stdout.trim();
-  if (!trimmed) failClosed("schema_unsupported", 422, "1688-cli 未返回任何输出。");
+  if (!trimmed) failClosed("schema_unsupported", 422, "1688 采集工具未返回任何输出。");
   const firstBrace = trimmed.indexOf("{");
   if (firstBrace < 0) {
-    failClosed("schema_unsupported", 422, "1688-cli 输出不是 JSON，已拒绝（fail-closed）。");
+    failClosed("schema_unsupported", 422, "1688 返回的数据格式无法识别，已拒绝（fail-closed）。");
   }
   const candidate = trimmed.slice(firstBrace);
   const lastBrace = candidate.lastIndexOf("}");
@@ -217,7 +217,7 @@ function parseCliJson(stdout: string): unknown {
   try {
     return JSON.parse(body);
   } catch {
-    failClosed("schema_unsupported", 422, "1688-cli 输出 JSON 解析失败，已拒绝（fail-closed）。");
+    failClosed("schema_unsupported", 422, "1688 返回的数据解析失败，已拒绝（fail-closed）。");
   }
 }
 
@@ -254,7 +254,7 @@ function assertCliSuccess(result: CliExecutionResult, command: ReadOnlyCommand):
   }
   const parsed = parseCliJson(result.stdout);
   if (!isRecord(parsed)) {
-    failClosed("schema_unsupported", 422, "1688-cli 输出结构异常，已拒绝（fail-closed）。");
+    failClosed("schema_unsupported", 422, "1688 返回的数据结构异常，已拒绝（fail-closed）。");
   }
   if (parsed.ok === false) {
     const code = typeof parsed.code === "string" ? parsed.code : "UNKNOWN";
@@ -392,6 +392,17 @@ export async function getOfferDetailById(input: {
     detail,
     trace: { driverVersion: SOURCING_CLI_DRIVER_VERSION, offerId, success: true },
   };
+}
+
+/**
+ * 登录提示命令（固定字符串，仅供 UI 展示/复制）：
+ * login 属于 FORBIDDEN_COMMANDS，业务层永不执行；这里只生成"用户在本机终端自行执行"的
+ * 固定命令文本（fixed executable + 固定 login 参数，不接受任意输入）。
+ */
+export function buildCliLoginHint(env: NodeJS.ProcessEnv = process.env): { command: string } | null {
+  const status = getCliToolStatus(env);
+  if (!status.available) return null;
+  return { command: `node "${status.cliPath}" login` };
 }
 
 /** 登录状态检测（只读）——只返回 loggedIn 布尔，账号标识一律丢弃 */

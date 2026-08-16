@@ -29,6 +29,7 @@ import {
 } from "@/lib/server/sourcingEvidence";
 import {
   SOURCING_CLI_DRIVER_VERSION,
+  buildCliLoginHint,
   checkCliLogin,
   getOfferDetailById,
   searchOffersByKeyword,
@@ -202,6 +203,8 @@ export async function GET(
     const login = await checkCliLogin();
     // F3：分能力 readiness（顶层字段向后兼容；image 能力独立于 CLI）
     const imageCapability = await probeImageCapability();
+    // D1：登录引导——工具可用但未登录时，给出固定登录命令（仅 UI 展示，业务层不执行 login）
+    const loginHint = login.toolAvailable && !login.loggedIn ? buildCliLoginHint() : null;
     return jsonResponse({
       ok: true,
       data: {
@@ -211,6 +214,7 @@ export async function GET(
           ...login,
           cli: login,
           image: imageCapability,
+          loginHint,
         },
       },
     });
