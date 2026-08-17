@@ -202,13 +202,12 @@ export function ProductResearchDecisionPanel({
     return <section className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</section>;
   }
 
-  if (!state || state.legacy || !state.record) {
+  // V3 Legacy Removal：正式决定面板只服务于 Current Research（新版研究记录）。
+  // 早期候选任务不再渲染本面板（详情页显示只读当前决定），此处仅兜底空态。
+  if (!state || !state.record) {
     return (
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-testid="legacy-research-decision">
-        <p className="text-sm font-bold text-slate-800">旧版研究记录</p>
-        <p className="mt-1 text-sm leading-6 text-slate-600">
-          旧版研究记录仅供查看，部分内容可能基于 AI 假设；系统不会为它补造新版决定、版本或历史。
-        </p>
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+        该任务暂无正式研究决定记录。
       </section>
     );
   }

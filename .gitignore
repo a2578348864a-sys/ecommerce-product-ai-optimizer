@@ -74,3 +74,6 @@ data/ai-image-drafts/
 # Short-lived standalone Studio result manifests
 data/studio-image-results/
 data/studio-listing-results/
+
+# Legacy purge DB backups (never committed)
+prisma/backups/

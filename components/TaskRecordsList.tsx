@@ -770,7 +770,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                 <p className="mt-1 text-sm text-slate-500">
                   {view === "research"
                   ? "继续正在进行或等待补充资料的商品研究，进入商品研究工作台。"
-                  : "查看已经形成历史结果的研究：已完成、已放弃与旧版记录。"}
+                  : "查看已经形成历史结果的研究：已完成、已放弃的研究记录。"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -798,7 +798,7 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                 <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{view === "research" ? "商品研究" : "研究记录"}</h2>
                 <p className="muted-text mt-1 text-sm">{view === "research"
                   ? "继续正在进行或等待补充资料的商品研究。"
-                  : "已经形成历史结果的研究：已完成、已放弃与旧版记录。"}</p>
+                  : "已经形成历史结果的研究：已完成、已放弃的研究记录。"}</p>
               </div>
               <span className="status-pill px-3 py-1 text-sm">
                 {page ? `${page.total} 条` : `${items.length} 条`}

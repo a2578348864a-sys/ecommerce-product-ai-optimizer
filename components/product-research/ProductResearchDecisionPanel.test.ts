@@ -34,10 +34,16 @@ describe("versioned product research decision panel", () => {
     expect(panelSource).toContain("await fetchProductResearchDecisionState(input.taskId, fetcher)");
   });
 
-  it("keeps Legacy read-only while versioned records use the dedicated panel", () => {
-    expect(panelSource).toContain('data-testid="legacy-research-decision"');
+  it("V3 Legacy Removal: 正式决定面板只服务 Current Research（无旧版研究记录分支）", () => {
+    expect(panelSource).not.toContain('data-testid="legacy-research-decision"');
+    expect(panelSource).not.toContain("旧版研究记录");
     expect(detailSource).toContain("ProductResearchDecisionPanel");
     expect(detailSource).toContain("hasVersionedProductResearchRecord");
+    // 详情页早期候选任务显示只读当前决定（无旧版写入口）
+    expect(detailSource).toContain('data-testid="legacy-decision-readonly"');
+    expect(detailSource).not.toContain("保存旧版状态");
+    expect(detailSource).not.toContain("旧版人工决定");
+    expect(detailSource).not.toContain("studio-legacy-unsupported-note");
   });
 
   it("does not auto-trigger Listing or Image work", () => {

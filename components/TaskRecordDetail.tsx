@@ -626,7 +626,7 @@ function WorkflowDecisionSummary({
           </div>
         ) : null}
 
-        {/* Lifecycle + Decision selector */}
+        {/* Lifecycle + Decision */}
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {isWorkflow && productLifecycle && (
             <OperationDecisionPanel taskId={taskId} lifecycle={productLifecycle} onUpdated={onLifecycleUpdated} />
@@ -636,26 +636,15 @@ function WorkflowDecisionSummary({
             {hasVersionedDecision ? (
               <div className="mt-2 rounded-lg border border-teal-200 bg-white px-3 py-2">
                 <p className="text-sm font-semibold text-teal-800">研究决定已记录，请在上方专用面板更新。</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">旧版状态仅保留查看，请使用上方的正式研究决定面板。</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">当前正式决定、原因和下一步以研究决定面板为准。</p>
               </div>
             ) : (
-              <>
-                <select
-                  value={decisionStatus}
-                  onChange={(event) => onDecisionChange(event.target.value as DecisionStatus)}
-                  disabled={updatingDecision}
-                  className="input-soft mt-2 h-11 w-full px-4 text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {decisionStatusOptions.filter((option) => option.value).map((status) => (
-                    <option key={status.value} value={status.value}>{status.shortLabel}</option>
-                  ))}
-                </select>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{decisionOption.description}</p>
-              </>
+              // V3 Legacy Removal：早期候选任务的决定状态只读展示（不再提供旧版写入口）
+              <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-sm font-semibold text-slate-800">当前决定：{decisionOption.shortLabel}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">{decisionOption.description}</p>
+              </div>
             )}
-            {decisionMessage ? (
-              <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p>
-            ) : null}
           </div>
         </div>
 
@@ -1133,16 +1122,13 @@ export function TaskRecordDetail({ id }: { id: string }) {
       || Object.prototype.hasOwnProperty.call(record.result, "researchVerification")
       || hasVersionedProductResearchRecord(record.result);
   }, [record]);
-  // R4/R6：旧版任务（无新版创作上下文）→ Studio CTA 不伪装可用
+  // V3 Legacy Removal：早期候选任务（无新版创作上下文）→ 不显示创作工具区
   const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
-  const [updatingDecision, setUpdatingDecision] = useState(false);
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
-  const [decisionMessage, setDecisionMessage] = useState("");
   const [copied, setCopied] = useState(false);
-  const [legacyDecisionDraft, setLegacyDecisionDraft] = useState<DecisionStatus | null>(null);
 
   // Prevent stale async responses from overwriting newer state
   const reqIdRef = useRef(0);
@@ -1335,44 +1321,6 @@ export function TaskRecordDetail({ id }: { id: string }) {
     }
   }
 
-  async function updateDecisionStatus(nextDecisionStatus: DecisionStatus) {
-    if (!record || updatingDecision) return;
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
-      setDecisionMessage("请先输入访问密码后更新人工状态。");
-      return;
-    }
-
-    const previous = record.decisionStatus;
-    setUpdatingDecision(true);
-    setDecisionMessage("");
-    setRecord({ ...record, decisionStatus: nextDecisionStatus });
-
-    try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(record.id)}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...buildAccessHeaders(),
-        },
-        body: JSON.stringify({ decisionStatus: nextDecisionStatus }),
-      });
-      const data = await response.json() as PatchResponse;
-      if (!response.ok || !data.ok) {
-        setRecord((current) => current ? { ...current, decisionStatus: previous } : current);
-        setDecisionMessage(data.ok ? "人工状态更新失败，请稍后再试。" : data.error.message);
-        return;
-      }
-      setRecord((current) => current ? { ...current, decisionStatus: data.data.decisionStatus } : current);
-      setLegacyDecisionDraft(null);
-      setDecisionMessage("人工状态已保存。");
-    } catch {
-      setRecord((current) => current ? { ...current, decisionStatus: previous } : current);
-      setDecisionMessage("人工状态更新失败，请检查本地服务后重试。");
-    } finally {
-      setUpdatingDecision(false);
-    }
-  }
-
   function handleCopyReport() {
     if (!record || record.type !== "workflow" || !isRecordValue(record.result)) return;
     const md = buildFinalReportMarkdown(record.result as Record<string, unknown>);
@@ -1561,83 +1509,51 @@ export function TaskRecordDetail({ id }: { id: string }) {
 
                {record.type === "workflow" ? (
                  <>
-                   <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
-                     <h2 className="text-base font-bold text-slate-950">人工决定</h2>
-                     <p className="mt-1 text-sm leading-6 text-slate-500">查看当前决定、原因、下一步和决定历史；更新决定不会改写原始研究结论。</p>
-                     <ProductResearchDecisionPanel
-                       taskId={record.id}
-                       onUpdated={() => void refreshRecord()}
-                     />
-                     {!hasVersionedProductResearchRecord(record.result) ? (
-                       <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="legacy-decision-control">
-                         <p className="text-sm font-bold text-slate-800">旧版人工决定</p>
-                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                           旧记录继续使用兼容状态，不生成新版决定记录。修改后请点击「保存旧版状态」才会生效。
-                         </p>
-                         <div className="mt-3 flex flex-wrap items-center gap-3">
-                           <select
-                             value={legacyDecisionDraft ?? record.decisionStatus}
-                             onChange={(event) => setLegacyDecisionDraft(event.target.value as DecisionStatus)}
-                             disabled={updatingDecision}
-                             className="input-soft h-11 w-full max-w-xs px-4 text-sm font-semibold text-slate-700 outline-none disabled:opacity-60"
-                             data-testid="legacy-decision-select"
-                           >
-                             {decisionStatusOptions.filter((option) => option.value).map((option) => (
-                               <option key={option.value} value={option.value}>{option.shortLabel}</option>
-                             ))}
-                           </select>
-                           <button
-                             type="button"
-                             disabled={updatingDecision || legacyDecisionDraft === null || legacyDecisionDraft === record.decisionStatus}
-                             onClick={() => void updateDecisionStatus(legacyDecisionDraft ?? record.decisionStatus)}
-                             className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold disabled:opacity-50"
-                             data-testid="legacy-decision-save"
-                           >
-                             {updatingDecision ? "保存中…" : "保存旧版状态"}
-                           </button>
-                         </div>
-                         {legacyDecisionDraft !== null && legacyDecisionDraft !== record.decisionStatus ? (
-                           <p className="mt-2 text-xs font-semibold text-amber-700" data-testid="legacy-decision-unsaved">
-                             尚未保存：改成了「{getDecisionStatusOption(legacyDecisionDraft).shortLabel}」
-                           </p>
-                         ) : null}
-                         {decisionMessage ? <p className="mt-2 text-xs font-semibold text-teal-700">{decisionMessage}</p> : null}
-                       </div>
-                     ) : null}
+                    <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
+                      <h2 className="text-base font-bold text-slate-950">人工决定</h2>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">查看当前决定、原因、下一步和决定历史；更新决定不会改写原始研究结论。</p>
+                      {/* V3 Legacy Removal：仅正式 Current Research（新版研究记录）渲染正式决定面板；
+                          早期候选任务（无新版研究记录）显示只读当前决定（不再提供旧版写入口）。 */}
+                      {hasVersionedProductResearchRecord(record.result) ? (
+                        <ProductResearchDecisionPanel
+                          taskId={record.id}
+                          onUpdated={() => void refreshRecord()}
+                        />
+                      ) : (
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="legacy-decision-readonly">
+                          <p className="text-sm font-bold text-slate-800">当前决定：{getDecisionStatusOption(record.decisionStatus).shortLabel}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">{getDecisionStatusOption(record.decisionStatus).description}</p>
+                        </div>
+                      )}
                     </section>
 
-                   <section className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4" data-testid="task-studio-links">
-                     <div className="flex flex-wrap items-start justify-between gap-3">
-                       <div>
-                         <h2 className="text-base font-bold text-slate-950">创作工具</h2>
-                         <p className="mt-1 text-sm leading-6 text-slate-600">Listing 与图片是独立工具，不是研究记录的必做步骤。</p>
-                         <p className="mt-1 text-xs font-semibold text-cyan-800">创作资料：{creativeMaterialStatus?.label ?? "需要重新确认"}</p>
-                       </div>
-                       <div className="flex flex-wrap gap-2">
-                         {studioLegacyUnsupported ? (
-                           <p className="text-xs leading-5 text-amber-700" data-testid="studio-legacy-unsupported-note">
-                             该历史研究记录缺少新版创作资料，需要重新确认研究资料后才能用于创作。
-                           </p>
-                         ) : (
-                           <>
-                             <StudioNavigationLink
-                               href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
-                               label="在 Listing Studio 中使用"
-                               pendingLabel="正在打开 Listing Studio…"
-                               className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
-                             />
-                             <StudioNavigationLink
-                               href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
-                               label="在 Image Studio 中使用"
-                               pendingLabel="正在打开 Image Studio…"
-                               className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
-                             />
-                           </>
-                         )}
-                       </div>
-                     </div>
-                     <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>
-                   </section>
+                                   {/* V3 Legacy Removal：Studio 只处理正式 Current Research Context；早期候选任务不显示创作工具区。 */}
+                {!studioLegacyUnsupported ? (
+                  <section className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4" data-testid="task-studio-links">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-bold text-slate-950">创作工具</h2>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">Listing 与图片是独立工具，不是研究记录的必做步骤。</p>
+                        <p className="mt-1 text-xs font-semibold text-cyan-800">创作资料：{creativeMaterialStatus?.label ?? "需要重新确认"}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <StudioNavigationLink
+                          href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
+                          label="在 Listing Studio 中使用"
+                          pendingLabel="正在打开 Listing Studio…"
+                          className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
+                        />
+                        <StudioNavigationLink
+                          href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
+                          label="在 Image Studio 中使用"
+                          pendingLabel="正在打开 Image Studio…"
+                          className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>
+                  </section>
+                ) : null}
                  </>
                ) : null}
 
