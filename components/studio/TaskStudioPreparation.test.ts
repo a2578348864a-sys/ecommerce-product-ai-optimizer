@@ -3,8 +3,25 @@ import {
   buildPreparationFactOptions,
   buildPreparationPreferences,
   defaultPreparationSelection,
+  visualReferenceSourceLabel,
 } from "@/components/studio/TaskStudioPreparation";
 import type { CreativeHandoffPreview } from "@/components/creative-handoff/types";
+
+describe("visualReferenceSourceLabel", () => {
+  it("candidate_fallback 产品化为「当前商品数据」，不暴露内部 tier", () => {
+    expect(visualReferenceSourceLabel("candidate_fallback")).toBe("当前商品数据");
+  });
+
+  it("xlsx_embedded 产品化为「SellerSprite 商品数据」", () => {
+    expect(visualReferenceSourceLabel("xlsx_embedded")).toBe("SellerSprite 商品数据");
+  });
+
+  it("未知或缺失 tier 回退到「当前商品数据」", () => {
+    expect(visualReferenceSourceLabel(undefined)).toBe("当前商品数据");
+    expect(visualReferenceSourceLabel("something_internal")).toBe("当前商品数据");
+  });
+});
+
 
 describe("buildPreparationFactOptions", () => {
   it("将服务端 confirmableFactCandidates 映射为用户可确认的中文事实选项", () => {

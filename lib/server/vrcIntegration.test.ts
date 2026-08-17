@@ -167,6 +167,8 @@ describe("SellerSprite → 真实主图 → approvedVisualReferences → ImageIn
     const pRef = await generateCreativeHandoffPreview(TASK_ID, visitorContext());
     const vis = pRef.gate.visualReferenceCandidates ?? [];
     expect(vis.length).toBeGreaterThanOrEqual(1);
+    // V3 Visual Reference Confirmation UI：批准前 preview DTO 必须如实反映未批准（approvable 恒 true ≠ 已批准）
+    expect(pRef.preview!.visualReferenceCandidates?.[0]?.approvedForReference).toBe(false);
     await createOrAppendCreativeHandoff(TASK_ID, visitorContext(), {
       requestId: "550e8400-e29b-41d4-a716-446655441801",
       expectedResearchRevision: 1,
@@ -184,6 +186,8 @@ describe("SellerSprite → 真实主图 → approvedVisualReferences → ImageIn
     });
 
     const p2 = await generateCreativeHandoffPreview(TASK_ID, visitorContext());
+    // V3 Visual Reference Confirmation UI：批准后 preview DTO 必须转为已批准
+    expect(p2.preview!.visualReferenceCandidates?.[0]?.approvedForReference).toBe(true);
     const inputResult = buildImageInputFromCreativeHandoff(p2.gate.currentHandoff!, 1);
     expect(inputResult.ok).toBe(true);
     const input = inputResult.ok ? inputResult.input : null;

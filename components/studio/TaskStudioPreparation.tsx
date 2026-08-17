@@ -90,6 +90,55 @@ export function buildPreparationPreferences(
   return Object.keys(safe).length > 0 ? safe : undefined;
 }
 
+/** 商品参考图来源的产品化展示（不暴露内部 tier / xlsx_embedded / sha256 / selectionId） */
+export function visualReferenceSourceLabel(sourceTier: string | undefined): string {
+  if (sourceTier === "candidate_fallback") return "当前商品数据";
+  if (sourceTier === "xlsx_embedded") return "SellerSprite 商品数据";
+  return "当前商品数据";
+}
+
+/**
+ * 安全缩略图：visual-reference-preview 端点要求 header 鉴权（<img> 无法携带），
+ * 因此用 fetch + blob + objectURL 渲染；失败时显示占位，不泄漏任何内部标识。
+ */
+function VisualReferenceThumbnail({ taskId, thumbnailUrl, alt }: {
+  taskId: string;
+  thumbnailUrl: string;
+  alt?: string;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const response = await fetch(thumbnailUrl, { headers: buildAccessHeaders() });
+        if (!response.ok) throw new Error(`status ${response.status}`);
+        const blob = await response.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [thumbnailUrl]);
+  void taskId;
+  if (failed) {
+    return <div className="h-20 w-20 shrink-0 rounded-lg border border-dashed border-rose-200 bg-rose-50" aria-label="商品参考图加载失败" />;
+  }
+  if (!src) {
+    return <div className="h-20 w-20 shrink-0 animate-pulse rounded-lg border border-slate-200 bg-slate-100" aria-busy="true" />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element -- objectURL 来自本服务鉴权端点，非外部资源
+  return <img src={src} alt={alt ?? "商品参考图候选"} className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 object-cover" />;
+}
+
 function friendlyError(error: ApiError) {
   if (error.code === "task_not_found" || error.status === 404) {
     return "该研究记录不存在，或你没有访问权限。";
@@ -127,6 +176,7 @@ export function TaskStudioPreparation({
   const [notice, setNotice] = useState("");
   const [sceneSelection, setSceneSelection] = useState(DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT);
   const restoredSceneRef = useRef(false);
+  const [visualNotice, setVisualNotice] = useState("");
 
   useEffect(() => {
     void loadPreparation();
@@ -204,6 +254,17 @@ export function TaskStudioPreparation({
         // 避免同 field 多候选全选导致后端 field 唯一性冲突（422）
         defaultPreparationSelection(factOptions));
   }, [preview, factOptions]);
+
+  // 视觉参考候选默认勾选尚未批准者（已批准的保持展示态，不重复提交）
+  useEffect(() => {
+    if (kind !== "image" || !preview) return;
+    setSelectedVisuals((current) => {
+      if (current.length > 0) return current;
+      return (preview.visualReferenceCandidates ?? [])
+        .filter((candidate) => candidate.approvedForReference !== true)
+        .map((candidate) => candidate.selectionId);
+    });
+  }, [kind, preview]);
 
   if (api.state === "loading" && !api.result) {
     return (
@@ -341,6 +402,66 @@ export function TaskStudioPreparation({
             </p>
           </section>
         ) : null}
+
+        {/* V3 Visual Reference Confirmation（权威模式）：已确认态也必须能看到并批准商品参考图 */}
+        {kind === "image" ? (
+          <section className="surface-card mb-4 border-slate-200 p-4" id="task-visual-reference-fieldset" data-testid="task-visual-reference-panel">
+            <p className="text-sm font-bold text-slate-900">商品参考图</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              只有你在这里批准的当前研究参考图，才能用于具体商品视觉草稿。
+            </p>
+            {visualOptions.length > 0 ? (
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {visualOptions.map((option) => {
+                  const approved = option.approvedForReference === true;
+                  const checked = selectedVisuals.includes(option.selectionId);
+                  return (
+                    <label key={option.selectionId} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700">
+                      {option.thumbnailUrl ? (
+                        <VisualReferenceThumbnail taskId={taskId} thumbnailUrl={option.thumbnailUrl} />
+                      ) : (
+                        <div className="h-20 w-20 shrink-0 rounded-lg border border-dashed border-slate-300 bg-slate-50" />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-slate-800">{option.summary || "研究记录中的商品参考图"}</span>
+                        <span className="mt-0.5 block text-xs text-slate-500">来源：{visualReferenceSourceLabel(option.sourceTier)}</span>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${approved ? "bg-teal-100 text-teal-800" : "bg-amber-100 text-amber-800"}`}>
+                          {approved ? "✓ 已确认" : "待确认"}
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={approved || submitting}
+                        onChange={(event) => setSelectedVisuals((current) => event.target.checked
+                          ? [...new Set([...current, option.selectionId])]
+                          : current.filter((id) => id !== option.selectionId))}
+                        className="shrink-0"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+                当前没有可确认的商品参考图。可在下方「构图概念」模式生成非正式视觉草稿，或返回研究记录补充商品图片。
+              </p>
+            )}
+            {visualOptions.some((option) => option.approvedForReference !== true) ? (
+              <button
+                type="button"
+                disabled={submitting || selectedVisuals.length === 0}
+                onClick={() => void confirmVisualReference()}
+                className="mt-3 inline-flex h-10 items-center rounded-xl bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? "正在确认…" : "确认作为商品参考图"}
+              </button>
+            ) : null}
+            {visualNotice ? (
+              <p className="mt-2 text-sm font-semibold text-rose-700" role="alert">{visualNotice}</p>
+            ) : null}
+          </section>
+        ) : null}
         {children}
       </div>
     );
@@ -354,6 +475,32 @@ export function TaskStudioPreparation({
     && selectedFacts.length > 0
     && confirmed,
   );
+
+  /** 权威模式：单独批准商品参考图（复用 createOrAppendCreativeHandoff 写入链，不绕过服务端） */
+  async function confirmVisualReference() {
+    if (!preview || submitting || selectedVisuals.length === 0) return;
+    setSubmitting(true);
+    setVisualNotice("");
+    try {
+      await api.create({
+        requestId: createBrowserUuid(),
+        selectedFactCandidateIds: selectedFacts,
+        selectedVisualReferenceCandidateIds: selectedVisuals,
+        expectedStorageVersion: preview.storageVersion!,
+        expectedResearchRevision: preview.expectedResearchRevision!,
+        expectedCurrentHandoffRevision: preview.expectedCurrentHandoffRevision!,
+      });
+      await api.refresh();
+      setVisualNotice("已确认作为商品参考图。");
+      onCommitted?.();
+    } catch (error) {
+      setVisualNotice(error instanceof HandoffApiRequestError
+        ? friendlyError(error.error)
+        : "商品参考图确认失败，请稍后重试。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function submitPreparation() {
     if (!preview || !canConfirm || submitting) return;
@@ -496,18 +643,34 @@ export function TaskStudioPreparation({
           <legend className="text-sm font-bold text-slate-900">商品参考图</legend>
           <p className="mt-1 text-xs leading-5 text-slate-500">只有你在这里批准的当前研究参考图，才能用于具体商品视觉草稿。</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
-            {visualOptions.map((option) => (
-              <label key={option.selectionId} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={selectedVisuals.includes(option.selectionId)}
-                  onChange={(event) => setSelectedVisuals((current) => event.target.checked
-                    ? [...new Set([...current, option.selectionId])]
-                    : current.filter((id) => id !== option.selectionId))}
-                />
-                <span>{option.summary || "研究记录中的商品参考图"}</span>
-              </label>
-            ))}
+            {visualOptions.map((option) => {
+              const approved = option.approvedForReference === true;
+              return (
+                <label key={option.selectionId} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                  {option.thumbnailUrl ? (
+                    <VisualReferenceThumbnail taskId={taskId} thumbnailUrl={option.thumbnailUrl} />
+                  ) : (
+                    <div className="h-20 w-20 shrink-0 rounded-lg border border-dashed border-slate-300 bg-slate-50" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-slate-800">{option.summary || "研究记录中的商品参考图"}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">来源：{visualReferenceSourceLabel(option.sourceTier)}</span>
+                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${approved ? "bg-teal-100 text-teal-800" : "bg-amber-100 text-amber-800"}`}>
+                      {approved ? "✓ 已确认" : "待确认"}
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={selectedVisuals.includes(option.selectionId)}
+                    disabled={approved}
+                    onChange={(event) => setSelectedVisuals((current) => event.target.checked
+                      ? [...new Set([...current, option.selectionId])]
+                      : current.filter((id) => id !== option.selectionId))}
+                    className="shrink-0"
+                  />
+                </label>
+              );
+            })}
           </div>
         </fieldset>
       ) : null}

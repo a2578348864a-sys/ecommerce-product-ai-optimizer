@@ -86,7 +86,7 @@ export function extractVisualReferenceCandidates(
     sourceKind: image.provenance,
     // 缓存隔离修复：summary 为用户可见文本，不包含任何 contentHash 摘要
     // （哈希仍保留在 selectionId 绑定与 contentHash 字段中，仅服务端/日志使用）
-    summary: "approved visual reference",
+    summary: "当前商品参考图",
     contentHash: image.contentHash,
     approvable: true,
   }];

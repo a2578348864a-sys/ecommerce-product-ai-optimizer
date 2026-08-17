@@ -98,6 +98,11 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     candidateCount: number;
     selectedImageId: string | null;
   }) => setProgressInput(state), []);
+  // 视觉参考确认成功后让 ImageHandoffSection 重新加载（handoff revision 变更，避免 stale 死路）
+  const [handoffEpoch, setHandoffEpoch] = useState(0);
+  const handleHandoffCommitted = useCallback(() => {
+    setHandoffEpoch((current) => current + 1);
+  }, []);
   const progressRail = (
     <StudioProgressRail
       label="图片制作进度"
@@ -109,9 +114,9 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     return (
       <>
         {progressRail}
-        <TaskStudioPreparation taskId={taskId} kind="image" onReadyChange={handleTaskReady}>
+        <TaskStudioPreparation taskId={taskId} kind="image" onReadyChange={handleTaskReady} onCommitted={handleHandoffCommitted}>
           <div className="surface-card p-4" data-testid="image-studio-task-mode">
-            <ImageHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} />
+            <ImageHandoffSection key={handoffEpoch} taskId={taskId} onProgressChange={handleTaskProgress} />
           </div>
         </TaskStudioPreparation>
       </>

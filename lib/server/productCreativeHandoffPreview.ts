@@ -6,6 +6,19 @@ function hash256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+/**
+ * 视觉参考候选是否已被当前 Handoff 批准（versus approvable，后者恒 true）。
+ * 判定与 gate 的 approvedReferenceImageDataUrl 同一指纹规范：
+ * assetFingerprint === sha256(`visual-reference:${contentHash}`)。
+ */
+function isVisualReferenceApproved(
+  currentHandoff: ProductCreativeHandoffV1 | null | undefined,
+  contentHash: string,
+): boolean {
+  const approved = currentHandoff?.versions?.[currentHandoff.versions.length - 1]?.visualReferences ?? [];
+  return approved.some((ref) => ref.assetFingerprint === hash256(`visual-reference:${contentHash}`));
+}
+
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { prisma } from "@/lib/server/db";
 import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
@@ -767,7 +780,7 @@ export async function generateCreativeHandoffPreview(
       visualReferenceCandidates: (gate.visualReferenceCandidates ?? []).map((v) => ({
         selectionId: v.selectionId,
         sourceTier: v.sourceKind,
-        approvedForReference: v.approvable === true,
+        approvedForReference: isVisualReferenceApproved(gate.currentHandoff, v.contentHash),
         summary: v.summary,
         contentHash: v.contentHash.slice(0, 8),
         // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
@@ -844,7 +857,7 @@ export async function generateCreativeHandoffPreview(
     visualReferenceCandidates: (gate.visualReferenceCandidates ?? []).map((v) => ({
       selectionId: v.selectionId,
       sourceTier: v.sourceKind,
-      approvedForReference: v.approvable === true,
+      approvedForReference: isVisualReferenceApproved(gate.currentHandoff, v.contentHash),
       summary: v.summary,
       contentHash: v.contentHash.slice(0, 8),
       // V2 Visual Preview: 安全缩略图地址（同源 API，selectionId 即绑定凭据）
