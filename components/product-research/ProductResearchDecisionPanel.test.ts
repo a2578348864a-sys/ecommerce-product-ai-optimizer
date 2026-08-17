@@ -76,6 +76,21 @@ describe("versioned product research decision panel", () => {
     expect(detailSource).toContain('typeof summary?.status === "string"');
   });
 
+  it("V3 Human Decision Authority: 创建模式禁用按钮显示缺什么（引导 + need_info 下一步提示）", () => {
+    // 明确引导：先选择决定并填写原因
+    expect(panelSource).toContain("请先选择人工决定并填写原因；信息完整后即可保存。");
+    // need_info 时提示下一步必填
+    expect(panelSource).toContain("选择『需补资料』时，还需要填写下一步动作。");
+    expect(panelSource).toContain('data-testid="need-info-nextstep-hint"');
+    // disabled 按钮旁显示 unmet requirements
+    expect(panelSource).toContain('data-testid="save-requirements-guidance"');
+    expect(panelSource).toContain("保存前待完成：");
+    expect(panelSource).toContain("填写决定原因");
+    expect(panelSource).toContain("填写下一步动作（需补资料时必填）");
+    // 更新模式同样有引导
+    expect(panelSource).toContain('data-testid="save-requirements-guidance-update"');
+  });
+
   it("does not auto-trigger Listing or Image work", () => {
     expect(panelSource).toContain("Listing / Image");
     expect(panelSource).toContain("独立创作工具");

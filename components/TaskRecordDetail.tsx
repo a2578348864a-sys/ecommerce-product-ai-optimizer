@@ -460,7 +460,10 @@ function WorkflowDecisionSummary({
         beginnerLabel={summary.beginnerLabel}
         smallBatchLabel={summary.smallBatchLabel}
         nextActions={summary.nextActions}
-        decisionStatus={decisionStatus}
+        // V3 Human Decision Authority Consistency Fix：
+        // 无正式决定（researchRecord/humanDecision）时，decisionStatus 兼容列（如存量 continue）
+        // 不构成"人工决定已选择"——Hero 显示"待判断"，与决定面板"尚未保存"一致。
+        decisionStatus={hasVersionedDecision ? decisionStatus : "pending"}
         stageLabel={operationSummary.stageLabel}
         blockingIssues={operationSummary.blockingIssues}
         reviewFocus={operationSummary.reviewFocus}

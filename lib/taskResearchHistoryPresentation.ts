@@ -51,9 +51,13 @@ export function deriveResearchHistoryStatus(input: {
 }): ResearchHistoryStatus {
   const result = isRecord(input.result) ? input.result : {};
   const researchSaved = hasSavedResearch(result, input.oneLineSummary);
+  // V3 Human Decision Authority Consistency Fix：
+  // Human Decision Exists 只能由正式决定载体证明（product-research-record.v1 / 正式 humanDecision）。
+  // decisionStatus 兼容列（如存量 candidate_research 的 continue）不是正式人工决定，
+  // 不能单独证明"已保存人工决定"（Bentgo cmsw0bzti0004udte4dauumii 等：decisionStatus=continue
+  // 但无 researchRecord → 必须显示"待确认"，与决定面板"尚未保存人工决定"一致）。
   const humanDecisionExists = hasVersionedDecision(result)
-    || isRecord(result.humanDecision)
-    || input.decisionStatus !== "pending";
+    || isRecord(result.humanDecision);
 
   if (researchSaved && humanDecisionExists) {
     return { key: "completed", label: "研究已完成", researchSaved, humanDecisionExists };

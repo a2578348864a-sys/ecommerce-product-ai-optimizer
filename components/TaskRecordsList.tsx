@@ -36,6 +36,7 @@ import {
   deriveHistoricalArtifactSummary,
   deriveResearchHistoryStatus,
 } from "@/lib/taskResearchHistoryPresentation";
+import { hasFormalHumanDecision } from "@/lib/taskWorkflowSummary";
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -1107,9 +1108,14 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                     });
                     const artifacts = deriveHistoricalArtifactSummary(item.result);
                     const versionedDecision = getVersionedDecisionSummary(item.result);
+                    // V3 Human Decision Authority Consistency Fix：
+                    // 无正式决定（researchRecord/humanDecision）时，兼容列 decisionStatus 不构成
+                    // "人工决定已选择"——列表"当前决定"显示"待人工决定"，与详情面板一致。
                     const decisionLabel = versionedDecision
                       ? getProductResearchDecisionLabel(versionedDecision.status)
-                      : getDecisionStatusOption(item.decisionStatus).shortLabel;
+                      : hasFormalHumanDecision(item.result)
+                        ? getDecisionStatusOption(item.decisionStatus).shortLabel
+                        : "待人工决定";
                     const artifactLabel = [
                       artifacts.hasListing ? "Listing 有" : "Listing 无",
                       artifacts.hasImages ? `图片 ${artifacts.imageCount} 张` : "图片无",

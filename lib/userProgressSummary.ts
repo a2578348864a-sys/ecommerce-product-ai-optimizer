@@ -39,11 +39,31 @@ function hasImageGenerated(result: Record<string, unknown>): boolean {
     && (snapshot.items as unknown[]).length > 0;
 }
 
+/**
+ * V3 Human Decision Authority Consistency Fix：
+ * 正式人工决定只能由正式载体证明（product-research-record.v1 投影 productResearchSummary
+ * 或正式 humanDecision record）。decisionStatus 兼容列（如存量 candidate_research 的 continue）
+ * 不是正式人工决定，不能单独解锁"人工决定已完成"。
+ */
+function hasFormalHumanDecision(result: Record<string, unknown>): boolean {
+  const summary = result.productResearchSummary;
+  if (isRecord(summary)
+    && summary.schema === "product-research-record.v1"
+    && typeof summary.status === "string"
+    && summary.status.trim().length > 0) {
+    return true;
+  }
+  const humanDecision = result.humanDecision;
+  return isRecord(humanDecision)
+    && typeof humanDecision.status === "string"
+    && humanDecision.status.trim().length > 0;
+}
+
 export function deriveUserProgressSummary(input: UserProgressInput): UserProgressSummary {
   const result = isRecord(input.result) ? input.result : {};
   const keys = new Set(input.artifactKeys);
   const hasResearch = keys.has("market_analysis");
-  const hasHumanConclusion = keys.has("human_conclusion") || input.decisionStatus === "continue";
+  const hasHumanConclusion = keys.has("human_conclusion") || hasFormalHumanDecision(result);
   // Handoff/Listing 判断基于浏览器 DTO 可得的字段：
   // - aiListingPackSnapshot 是 listing-handoff 的落库产物（DTO 已投影）
   // - 存在 aiListingPackSnapshot 即隐含创作交接已完成（Listing 生成依赖 Handoff）

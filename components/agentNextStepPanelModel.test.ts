@@ -81,13 +81,14 @@ describe("deriveAgentNextStepPanelState", () => {
     expect(state.primarySuggestion).not.toContain("系统会自动");
   });
 
-  it("复核完成且人工标记继续时显示可人工推进", () => {
+  it("复核完成且人工标记继续时显示可人工推进（正式决定载体存在）", () => {
     const state = deriveAgentNextStepPanelState({
       taskType: "workflow",
       decisionStatus: "continue",
       result: {
         ...baseResult,
         reviewState: completedReviewState,
+        productResearchSummary: { schema: "product-research-record.v1", revision: 1, status: "creative_ready" },
       },
     });
 
@@ -97,13 +98,31 @@ describe("deriveAgentNextStepPanelState", () => {
     expect(state.agentStatus.description).toContain("不会自动执行");
   });
 
-  it("人工标记需补资料时归为需补资料", () => {
+  it("V3 Human Decision Authority: decisionStatus=continue 但无正式决定 → 待人工决策（不因兼容列放行）", () => {
+    const state = deriveAgentNextStepPanelState({
+      taskType: "workflow",
+      decisionStatus: "continue",
+      result: {
+        ...baseResult,
+        reviewState: completedReviewState,
+        // 无 productResearchSummary / humanDecision：兼容列 continue 不构成人工决定
+      },
+    });
+
+    expect(state.stageLabel).toBe("待人工决策");
+    expect(state.agentStatus.key).toBe("needs_decision");
+    expect(state.agentStatus.label).toBe("待决策");
+    expect(state.agentStatus.description).not.toContain("已选择继续");
+  });
+
+  it("人工标记需补资料时归为需补资料（正式决定载体存在）", () => {
     const state = deriveAgentNextStepPanelState({
       taskType: "workflow",
       decisionStatus: "need_info",
       result: {
         ...baseResult,
         reviewState: completedReviewState,
+        productResearchSummary: { schema: "product-research-record.v1", revision: 1, status: "needs_information" },
       },
     });
 
@@ -111,13 +130,14 @@ describe("deriveAgentNextStepPanelState", () => {
     expect(state.agentStatus.label).toBe("需补资料");
   });
 
-  it("人工标记淘汰时归为已淘汰", () => {
+  it("人工标记淘汰时归为已淘汰（正式决定载体存在）", () => {
     const state = deriveAgentNextStepPanelState({
       taskType: "workflow",
       decisionStatus: "rejected",
       result: {
         ...baseResult,
         reviewState: completedReviewState,
+        productResearchSummary: { schema: "product-research-record.v1", revision: 1, status: "abandoned" },
       },
     });
 

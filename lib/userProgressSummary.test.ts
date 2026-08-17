@@ -90,4 +90,38 @@ describe("用户进度摘要：严格推进顺序", () => {
     expect(s.completed).toContain("Listing 草稿已生成");
     expect(s.completed).toContain("产品图片已生成");
   });
+
+  it("V3 Human Decision Authority: decisionStatus=continue 无正式决定 → 人工决定未完成（不因兼容列放行）", () => {
+    const s = build({
+      artifactKeys: ["market_analysis"],
+      decisionStatus: "continue",
+      result: { finalReport: { finalVerdict: "x" } },
+    });
+    expect(s.missing).toBe("完成人工决定");
+    expect(s.next).toBe("完成人工决定");
+    expect(s.completed).not.toContain("人工决定");
+  });
+
+  it("V3 Human Decision Authority: 正式载体（productResearchSummary / humanDecision）→ 人工决定已完成", () => {
+    const viaSummary = build({
+      artifactKeys: ["market_analysis"],
+      decisionStatus: "continue",
+      result: {
+        finalReport: { finalVerdict: "x" },
+        productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready" },
+      },
+    });
+    expect(viaSummary.completed).toContain("人工决定");
+    expect(viaSummary.missing).not.toBe("完成人工决定");
+
+    const viaHumanDecision = build({
+      artifactKeys: ["market_analysis"],
+      decisionStatus: "pending",
+      result: {
+        finalReport: { finalVerdict: "x" },
+        humanDecision: { status: "continue", source: "user", confirmedItems: ["x"] },
+      },
+    });
+    expect(viaHumanDecision.completed).toContain("人工决定");
+  });
 });

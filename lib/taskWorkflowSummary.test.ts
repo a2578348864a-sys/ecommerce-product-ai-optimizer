@@ -169,7 +169,7 @@ describe("deriveTaskWorkflowSummary", () => {
     expect(summary.missingFields).toEqual([]);
   });
 
-  it("uses decision status as a strong priority signal", () => {
+  it("uses decision status as a strong priority signal（正式决定载体存在）", () => {
     const summary = deriveTaskWorkflowSummary({
       type: "workflow",
       title: "已淘汰商品",
@@ -185,11 +185,63 @@ describe("deriveTaskWorkflowSummary", () => {
           canTestSmallBatch: true,
           nextSteps: ["联系供应商"],
         },
+        productResearchSummary: { schema: "product-research-record.v1", revision: 1, status: "abandoned" },
       },
     });
 
     expect(summary.priorityLabel).toBe("已放弃");
     expect(summary.priorityTone).toBe("rose");
+  });
+
+  it("V3 Human Decision Authority: decisionStatus=continue 无正式决定 → 不显示人工已认可类结论", () => {
+    const summary = deriveTaskWorkflowSummary({
+      type: "workflow",
+      title: "Bentgo 商品研究",
+      materialText: "Bentgo",
+      oneLineSummary: "",
+      level: "",
+      decisionStatus: "continue",
+      result: {
+        productName: "Bentgo Chill Kids",
+        finalReport: {
+          finalVerdict: "可以继续小单测试",
+          riskLevel: "green",
+          beginnerFit: "适合新手",
+          canTestSmallBatch: true,
+          nextSteps: ["联系供应商"],
+        },
+        // 无 productResearchSummary / humanDecision：兼容列 continue 不构成人工决定
+      },
+    });
+
+    // 无正式决定：reason 不得声称"人工已认可"（可因 AI 结论显示"可跟进"，但必须说明是 AI 结论/仍需人工确认）
+    expect(summary.reason).not.toContain("人工已");
+    expect(summary.reason).toContain("AI 结论");
+    expect(summary.reason).toContain("人工确认");
+  });
+
+  it("V3 Human Decision Authority: 正式决定 + continue → 保留人工已认可结论", () => {
+    const summary = deriveTaskWorkflowSummary({
+      type: "workflow",
+      title: "正式决定商品",
+      materialText: "正式决定商品",
+      oneLineSummary: "",
+      level: "A",
+      decisionStatus: "continue",
+      result: {
+        finalReport: {
+          finalVerdict: "可以继续小单测试",
+          riskLevel: "green",
+          beginnerFit: "适合新手",
+          canTestSmallBatch: true,
+          nextSteps: ["联系供应商"],
+        },
+        productResearchSummary: { schema: "product-research-record.v1", revision: 1, status: "creative_ready" },
+      },
+    });
+
+    expect(summary.priorityLabel).toBe("可跟进");
+    expect(summary.reason).toContain("人工");
   });
 });
 

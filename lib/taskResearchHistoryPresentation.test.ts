@@ -44,6 +44,69 @@ describe("research history status", () => {
     expect(withCreativeArtifacts).toEqual(withoutCreativeArtifacts);
   });
 
+  it("V3 Human Decision Authority: decisionStatus=continue + 无正式决定 → humanDecisionExists=false（Bentgo 回归）", () => {
+    // Bentgo cmsw0bzti0004udte4dauumii：decisionStatus=continue 但无 researchRecord/humanDecision
+    const bentgoLike = deriveResearchHistoryStatus({
+      result: {
+        candidateAnalysisContext: { sourceLabel: "Bentgo" },
+        productName: "Bentgo Chill Kids",
+      },
+      decisionStatus: "continue",
+      oneLineSummary: "",
+    });
+    expect(bentgoLike.humanDecisionExists).toBe(false);
+    expect(bentgoLike).toMatchObject({ key: "incomplete", label: "研究记录待补充" });
+
+    // 兼容列不能单独证明"人工决定已保存"
+    const continueOnly = deriveResearchHistoryStatus({
+      result: {},
+      decisionStatus: "continue",
+      oneLineSummary: "",
+    });
+    expect(continueOnly.humanDecisionExists).toBe(false);
+    expect(continueOnly.label).toBe("研究记录待补充");
+  });
+
+  it("V3 Human Decision Authority: 正式决定载体（productResearchSummary / humanDecision）→ humanDecisionExists=true", () => {
+    const viaVersionedSummary = deriveResearchHistoryStatus({
+      result: {
+        productResearchSummary: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          status: "creative_ready",
+          reasonSummary: "ok",
+        },
+      },
+      decisionStatus: "continue",
+      oneLineSummary: "",
+    });
+    expect(viaVersionedSummary.humanDecisionExists).toBe(true);
+
+    const viaHumanDecision = deriveResearchHistoryStatus({
+      result: {
+        humanDecision: { status: "continue", source: "user", confirmedItems: ["x"] },
+      },
+      decisionStatus: "pending",
+      oneLineSummary: "",
+    });
+    expect(viaHumanDecision.humanDecisionExists).toBe(true);
+
+    // pending + 正式决定 → true（contract 允许）
+    const pendingWithFormal = deriveResearchHistoryStatus({
+      result: {
+        productResearchSummary: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          status: "needs_information",
+          reasonSummary: "need more",
+        },
+      },
+      decisionStatus: "pending",
+      oneLineSummary: "",
+    });
+    expect(pendingWithFormal.humanDecisionExists).toBe(true);
+  });
+
   it("projects creative material and generated artifacts as read-only history summaries", () => {
     const result = {
       creativeHandoff: { currentRevision: 3, controlState: "active" },

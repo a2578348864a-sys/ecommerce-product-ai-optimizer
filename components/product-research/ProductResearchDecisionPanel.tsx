@@ -208,13 +208,25 @@ export function ProductResearchDecisionPanel({
   // - readOnly（researchCompletion 已完成）→ 最终决定只读展示。
   if (!state || !state.record) {
     const selected = PRODUCT_RESEARCH_DECISION_OPTIONS.find((option) => option.value === status)!;
+    // V3 Human Decision Authority Consistency Fix：禁用按钮必须说明缺什么，
+    // 避免用户以为"没有保存入口"（P1：Bentgo 顶部"已记录"与面板"尚未保存"矛盾的交互侧修复）。
+    const missingRequirements: string[] = [];
+    if (status.trim().length === 0) missingRequirements.push("选择人工决定");
+    if (reason.trim().length === 0) missingRequirements.push("填写决定原因");
+    if (status === "needs_information" && nextAction.trim().length === 0) missingRequirements.push("填写下一步动作（需补资料时必填）");
+    const showGuidance = !formValid;
     return (
       <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/40 p-4" data-testid="product-research-decision-create">
         <div>
           <p className="text-sm font-bold text-teal-900">人工决定</p>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            尚未保存人工决定。选择决定并填写原因后保存；保存后可在研究记录中查看最终结果。
+            尚未保存人工决定。请先选择人工决定并填写原因；信息完整后即可保存。
           </p>
+          {status === "needs_information" ? (
+            <p className="mt-1 text-xs leading-5 font-semibold text-amber-700" data-testid="need-info-nextstep-hint">
+              选择『需补资料』时，还需要填写下一步动作。
+            </p>
+          ) : null}
         </div>
         <div className="mt-4 rounded-xl border border-white bg-white p-3">
           <div className="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -264,6 +276,14 @@ export function ProductResearchDecisionPanel({
               Listing / Image 是独立创作工具；保存决定不会自动生成 Listing、图片或发布任务。
             </p>
           </div>
+          {showGuidance && missingRequirements.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3" data-testid="save-requirements-guidance">
+              <p className="text-xs font-bold text-amber-800">保存前待完成：</p>
+              <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs leading-5 text-amber-800">
+                {missingRequirements.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </div>
+          ) : null}
           {message ? <p className="mt-2 text-xs font-semibold text-teal-700">{message}</p> : null}
           {error ? <p className="mt-2 text-xs font-semibold text-rose-700">{error}</p> : null}
         </div>
@@ -386,6 +406,15 @@ export function ProductResearchDecisionPanel({
             Listing / Image 是独立创作工具；保存决定不会自动生成 Listing、图片或发布任务。
           </p>
         </div>
+        {!formValid ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3" data-testid="save-requirements-guidance-update">
+            <p className="text-xs font-bold text-amber-800">保存前待完成：</p>
+            <ul className="mt-1 list-inside list-disc space-y-0.5 text-xs leading-5 text-amber-800">
+              {reason.trim().length === 0 ? <li>填写决定原因</li> : null}
+              {status === "needs_information" && nextAction.trim().length === 0 ? <li>填写下一步动作（需补资料时必填）</li> : null}
+            </ul>
+          </div>
+        ) : null}
         {message ? <p className="mt-2 text-xs font-semibold text-teal-700">{message}</p> : null}
         {error ? <p className="mt-2 text-xs font-semibold text-rose-700">{error}</p> : null}
       </div>

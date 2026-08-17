@@ -244,6 +244,24 @@ function riskFromAgentSnapshot(level: string | undefined) {
   return { label: "暂无", tone: "slate" as const };
 }
 
+/**
+ * V3 Human Decision Authority Consistency Fix：
+ * 正式人工决定只能由正式载体证明（product-research-record.v1 投影 productResearchSummary
+ * 或正式 humanDecision record）。decisionStatus 兼容列不能单独证明"人工已认可"。
+ */
+export function hasFormalHumanDecision(result: unknown): boolean {
+  if (!isRecord(result)) return false;
+  const summary = result.productResearchSummary;
+  if (isRecord(summary)
+    && summary.schema === "product-research-record.v1"
+    && text(summary.status).length > 0) {
+    return true;
+  }
+  const humanDecision = result.humanDecision;
+  return isRecord(humanDecision)
+    && text(humanDecision.status).length > 0;
+}
+
 function getPriority(
   input: TaskWorkflowSummaryInput,
   riskTone: TaskWorkflowSummary["riskTone"],
@@ -252,13 +270,16 @@ function getPriority(
   missingFields: string[],
 ) {
   const decision = input.decisionStatus ? getDecisionStatusOption(input.decisionStatus) : null;
-  if (input.decisionStatus === "rejected") {
+  // 正式人工决定存在时，decisionStatus 才具有"人工决定"语义（兼容列同步值）；
+  // 无正式决定（如存量 candidate_research 的 continue 残留）→ 不显示"人工已认可"类结论。
+  const formalDecision = hasFormalHumanDecision(input.result);
+  if (formalDecision && input.decisionStatus === "rejected") {
     return { label: "已放弃", tone: "rose" as const, reason: decision?.description || "人工已标记淘汰。" };
   }
-  if (input.decisionStatus === "need_info") {
+  if (formalDecision && input.decisionStatus === "need_info") {
     return { label: "需补资料", tone: "amber" as const, reason: decision?.description || "信息不足，先补齐关键资料。" };
   }
-  if (input.decisionStatus === "continue") {
+  if (formalDecision && input.decisionStatus === "continue") {
     return { label: "可跟进", tone: "emerald" as const, reason: decision?.description || "人工已初步认可，可以继续推进。" };
   }
   if (riskTone === "rose" || /不建议|暂缓|放弃|淘汰|高风险/.test(verdictLabel)) {

@@ -124,11 +124,32 @@ function getDecisionLabel(decisionStatus: DecisionStatus) {
   }
 }
 
+/**
+ * V3 Human Decision Authority Consistency Fix：
+ * 正式人工决定只能由正式载体证明（product-research-record.v1 投影 productResearchSummary
+ * 或正式 humanDecision record）。decisionStatus 兼容列不能单独证明"人工已选择继续"。
+ */
+function hasFormalHumanDecision(result: unknown): boolean {
+  if (!isRecord(result)) return false;
+  const summary = result.productResearchSummary;
+  if (isRecord(summary)
+    && summary.schema === "product-research-record.v1"
+    && typeof summary.status === "string"
+    && summary.status.trim().length > 0) {
+    return true;
+  }
+  const humanDecision = result.humanDecision;
+  return isRecord(humanDecision)
+    && typeof humanDecision.status === "string"
+    && humanDecision.status.trim().length > 0;
+}
+
 function getStage(input: {
   hasFinalReport: boolean;
   decisionStatus: DecisionStatus;
   reviewState: ReviewState;
   riskLevel: AgentNextStepPanelState["riskLevel"];
+  hasFormalDecision: boolean;
 }) {
   if (!input.hasFinalReport) {
     return {
@@ -138,7 +159,7 @@ function getStage(input: {
     };
   }
 
-  if (input.decisionStatus === "rejected") {
+  if (input.hasFormalDecision && input.decisionStatus === "rejected") {
     return {
       label: "已淘汰 / 暂停推进",
       description: "人工已标记为暂不推进，当前不建议继续投入采购、上架或投放动作。",
@@ -146,7 +167,7 @@ function getStage(input: {
     };
   }
 
-  if (input.decisionStatus === "need_info") {
+  if (input.hasFormalDecision && input.decisionStatus === "need_info") {
     return {
       label: "需补充资料",
       description: "当前信息不足，先补供应商、成本、认证、平台规则等关键资料。",
@@ -162,15 +183,16 @@ function getStage(input: {
     };
   }
 
-  if (input.decisionStatus === "continue") {
-    if (input.riskLevel === "red") {
-      return {
-        label: "高风险需复查",
-        description: "人工已选择继续，但当前仍是高风险结果，必须先复查合规、认证和平台规则，不能直接推进。",
-        className: "border-rose-200 bg-rose-50 text-rose-700",
-      };
-    }
+  // 高风险与是否已有正式决定无关：一律先复查，不能直接推进。
+  if (input.riskLevel === "red") {
+    return {
+      label: "高风险需复查",
+      description: "当前为高风险结果，必须先复查合规、认证和平台规则，不能直接推进。",
+      className: "border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
 
+  if (input.hasFormalDecision && input.decisionStatus === "continue") {
     return {
       label: "可人工推进",
       description: "人工已选择继续，下一步仍需线下确认供应链、成本和平台规则。",
@@ -265,6 +287,7 @@ function getAgentStatus(input: {
   decisionStatus: DecisionStatus;
   reviewState: ReviewState;
   riskLevel: AgentNextStepPanelState["riskLevel"];
+  hasFormalDecision: boolean;
 }): AgentStatusSummary {
   const isWorkflowTask = input.taskType === undefined || input.taskType === "workflow";
 
@@ -286,7 +309,7 @@ function getAgentStatus(input: {
     );
   }
 
-  if (input.decisionStatus === "rejected") {
+  if (input.hasFormalDecision && input.decisionStatus === "rejected") {
     return makeAgentStatus(
       "rejected",
       "已淘汰",
@@ -295,7 +318,7 @@ function getAgentStatus(input: {
     );
   }
 
-  if (input.decisionStatus === "need_info") {
+  if (input.hasFormalDecision && input.decisionStatus === "need_info") {
     return makeAgentStatus(
       "needs_info",
       "需补资料",
@@ -331,7 +354,7 @@ function getAgentStatus(input: {
     );
   }
 
-  if (input.decisionStatus === "continue") {
+  if (input.hasFormalDecision && input.decisionStatus === "continue") {
     return makeAgentStatus(
       "can_continue",
       "可人工推进",
@@ -354,11 +377,13 @@ export function deriveAgentNextStepPanelState(input: AgentNextStepPanelInput): A
   const reviewState = getReviewState(result);
   const riskLevel = getRiskLevel(finalReport?.riskLevel);
   const canTestSmallBatch = finalReport?.canTestSmallBatch === true;
+  const hasFormalDecision = hasFormalHumanDecision(input.result);
   const stage = getStage({
     hasFinalReport: Boolean(finalReport),
     decisionStatus: input.decisionStatus,
     reviewState,
     riskLevel,
+    hasFormalDecision,
   });
   const agentStatus = getAgentStatus({
     taskType: input.taskType,
@@ -366,6 +391,7 @@ export function deriveAgentNextStepPanelState(input: AgentNextStepPanelInput): A
     decisionStatus: input.decisionStatus,
     reviewState,
     riskLevel,
+    hasFormalDecision,
   });
   const reportNextSteps = getStringArray(finalReport?.nextSteps, 5);
   const manualReviewChecklist = getStringArray(finalReport?.manualReviewChecklist, 6);
