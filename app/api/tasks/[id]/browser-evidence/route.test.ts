@@ -23,6 +23,17 @@ vi.hoisted(() => {
   process.env.DEMO_SANDBOX_STORE_PATH = join(dir, "sandbox.json");
   process.env.DEMO_ACCESS_STORE_PATH = join(dir, "demo-access.json");
   process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${join(dir, "unused.db").replaceAll("\\", "/")}`;
+  // 本地研究环境模拟：capability gate 放行（公网 gate 行为由专用用例覆盖）
+  process.env.LOCAL_ACQUISITION_ENABLED = "true";
+});
+
+// browser-control：resolveSystemBrowser 仅用于 capability gate 的轻量探测 → 固定可用
+vi.mock("@/tools/collectors/amazon/browser-control", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/tools/collectors/amazon/browser-control")>();
+  return {
+    ...actual,
+    resolveSystemBrowser: vi.fn(() => ({ browser: "chrome", locationType: "system", executablePath: "C:\\fake\\chrome.exe" })),
+  };
 });
 
 // demoGuard：可控返回 context（sandbox 任务走 requireAuthenticated 路径；guard 是同步函数）
@@ -526,5 +537,34 @@ describe("PreviewStore security binding", () => {
     );
     // sandbox 任务 + owner 主体 → requireAuthenticated 通过但 demo 限定 → 404（不泄漏 Preview）
     expect(save.status).toBe(404);
+  });
+});
+
+describe("POST collect — public runtime capability gate（§30/§48）", () => {
+  it("LOCAL_ACQUISITION_ENABLED 未开启（公网默认）→ 409 local_environment_required，不执行采集", async () => {
+    const saved = process.env.LOCAL_ACQUISITION_ENABLED;
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    try {
+      const response = await postJson({ action: "collect" }, taskId);
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe("local_environment_required");
+      expect(body.error.message).toContain("本地研究环境");
+      expect(vi.mocked(collectBrowserEvidencePreview)).not.toHaveBeenCalled();
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
+      else process.env.LOCAL_ACQUISITION_ENABLED = saved;
+    }
+  });
+
+  it("GET 返回 capability（本地 = available）", async () => {
+    const request = new NextRequest("http://localhost/api/tasks/x/browser-evidence", {
+      headers: { "x-access-token": `tok-${DEMO}` },
+    });
+    const response = await routeGet(request, { params: Promise.resolve({ id: taskId }) });
+    const body = await response.json();
+    expect(body.data.capability.state).toBe("available");
+    expect(body.data.capability.reasonCategory).toBeNull();
   });
 });

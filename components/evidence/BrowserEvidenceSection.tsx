@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Camera, Check, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
+import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ ...buildAccessHeaders(), ...extra });
@@ -317,12 +319,15 @@ export function BrowserEvidenceSection({
   evidence,
   taskAsin,
   storageVersion,
+  capability,
   onChanged,
 }: {
   taskId: string;
   evidence: BrowserEvidenceView | null;
   taskAsin: string | null;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
+  /** 浏览器采集能力（服务端 capability DTO；local_env_required → 按钮禁用 + 产品提示） */
+  capability?: AcquisitionCapabilityView | null;
   onChanged: () => void;
 }) {
   const [collecting, setCollecting] = useState(false);
@@ -331,7 +336,10 @@ export function BrowserEvidenceSection({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const canCollect = capability?.state === "available";
+
   async function collect() {
+    if (!canCollect) return;
     setCollecting(true);
     setError("");
     setPreview(null);
@@ -407,7 +415,7 @@ export function BrowserEvidenceSection({
         <h3 className="text-sm font-bold text-slate-900">浏览器 Evidence（Amazon 商品详情页）</h3>
         <button
           type="button"
-          disabled={collecting || saving}
+          disabled={collecting || saving || !canCollect}
           onClick={() => void collect()}
           className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
         >
@@ -419,6 +427,15 @@ export function BrowserEvidenceSection({
         自动打开本机受控浏览器，导航到任务绑定商品页（{taskAsin ?? "未绑定 ASIN"}）单页提取 6 个字段；
         结果先预览、人工确认后才保存。不自动搜索、不批量、不绕验证码。
       </p>
+
+      {/* Acquisition Capability（§8/§10）：公网环境不提供实时采集 → 明确提示，不显示"采集失败" */}
+      <CapabilityNotice
+        capability={capability}
+        localEnvMessage="实时页面采集需要在本地研究环境使用。已保存的页面证据仍可正常查看。"
+        unavailableMessage={capability?.reasonCategory === "not_installed"
+          ? "本机未检测到可用的 Chrome/Edge 浏览器，无法进行页面采集。"
+          : "浏览器采集当前暂不可用。"}
+      />
 
       {!taskAsin && (
         <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">

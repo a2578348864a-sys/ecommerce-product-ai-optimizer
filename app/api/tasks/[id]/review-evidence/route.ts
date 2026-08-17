@@ -47,12 +47,19 @@ import {
 } from "@/lib/server/reviewCollector";
 import { readBrowserEvidenceTaskAsin } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import {
+  acquisitionGateError,
+  REVIEW_LOCAL_ENV_REQUIRED_MESSAGE,
+  browserUnavailableMessage,
+  resolveBrowserAcquisitionCapability,
+  type AcquisitionCapability,
+} from "@/lib/server/acquisitionCapability";
 
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { evidence: ReviewEvidenceV1 | null; analysis: VocAnalysisV1 | null; storageVersion: StorageVersion; taskAsin: string | null } }
+  | { ok: true; data: { evidence: ReviewEvidenceV1 | null; analysis: VocAnalysisV1 | null; storageVersion: StorageVersion; taskAsin: string | null; capability: AcquisitionCapability } }
   | { ok: true; data: { outcome: { kind: string; importedCount: number; duplicateCount: number; rejectedCount: number }; evidence: ReviewEvidenceV1; storageVersion: StorageVersion } }
   | { ok: true; data: { analysis: VocAnalysisV1; unverified: number; gateResult: string; storageVersion: StorageVersion } }
   | { ok: true; data: { cleared: boolean; storageVersion: StorageVersion } }
@@ -191,7 +198,7 @@ export async function GET(
     ]);
     return jsonResponse({
       ok: true,
-      data: { evidence, analysis, storageVersion: toStorageVersion(snapshot), taskAsin },
+      data: { evidence, analysis, storageVersion: toStorageVersion(snapshot), taskAsin, capability: resolveBrowserAcquisitionCapability() },
     });
   } catch (error) {
     return errorResponse(error);
@@ -331,6 +338,15 @@ async function collectAction(
   taskId: string,
   bodyRecord: Record<string, unknown>,
 ): Promise<NextResponse> {
+  // Acquisition Capability Gate（§30/§43）：VOC 自动采集复用 Amazon 浏览器采集能力
+  const capability = resolveBrowserAcquisitionCapability();
+  const gate = acquisitionGateError(capability, browserUnavailableMessage(capability.reasonCategory));
+  if (gate) {
+    const message = capability.state === "local_env_required"
+      ? REVIEW_LOCAL_ENV_REQUIRED_MESSAGE
+      : browserUnavailableMessage(capability.reasonCategory);
+    return jsonResponse({ ok: false, error: { code: gate.code, message } }, gate.status);
+  }
   let asins;
   try {
     asins = assertReviewCollectRequest(bodyRecord.asins);

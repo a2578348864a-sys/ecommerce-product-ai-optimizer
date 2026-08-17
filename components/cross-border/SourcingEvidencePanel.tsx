@@ -16,6 +16,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { sourcingCapabilities } from "@/lib/client/sourcingCapabilities";
+import {
+  parseSourcingCapabilities,
+  type SourcingCapabilitiesView,
+} from "@/lib/client/acquisitionCapability";
+import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
 import type {
   AcquisitionCandidate,
   HumanConfirmedEntry,
@@ -149,6 +154,7 @@ export function SourcingEvidencePanel({
   const [status, setStatus] = useState<PanelStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null);
+  const [capabilities, setCapabilities] = useState<SourcingCapabilitiesView | null>(null);
   const [keyword, setKeyword] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [offerUrl, setOfferUrl] = useState("");
@@ -187,17 +193,22 @@ export function SourcingEvidencePanel({
       });
       const data = await response.json() as {
         ok: boolean;
-        data?: { evidence: SourcingEvidenceV1 | null; storageVersion: { resultJsonHash: string; updatedAt: string }; toolStatus: ToolStatus };
+        data?: { evidence: SourcingEvidenceV1 | null; storageVersion: { resultJsonHash: string; updatedAt: string }; toolStatus: ToolStatus; capabilities?: unknown };
       };
       if (currentId !== reqIdRef.current) return null;
       if (!response.ok || !data.ok || !data.data) return null;
       setEvidence(data.data.evidence);
       setStorageVersion(data.data.storageVersion);
       setToolStatus(data.data.toolStatus);
+      setCapabilities(parseSourcingCapabilities(data.data.capabilities));
       onEvidenceChange?.((data.data.evidence?.humanConfirmed.length ?? 0) > 0);
       // F3：分能力 gate——CLI 未登录只影响关键词/URL（need_login 横幅），图片能力独立
       const caps = sourcingCapabilities(data.data.toolStatus);
-      setStatus((prev) => (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login"));
+      // §16：公网（capabilities=local_env_required）不进入 need_login 诊断态——由 CapabilityNotice 统一提示
+      const publicRuntime = parseSourcingCapabilities(data.data.capabilities)?.keyword.state === "local_env_required";
+      setStatus((prev) => (
+        publicRuntime ? "idle" : (caps.cliReady ? (prev === "need_login" ? "idle" : prev) : "need_login")
+      ));
       return data.data.toolStatus;
     } catch {
       // 初始读取失败保持 idle
@@ -390,17 +401,20 @@ export function SourcingEvidencePanel({
   const accessReady = accessPassword.trim().length > 0;
   // F3：分能力 readiness（CLI 只 gate 关键词/URL；图片找货独立于 CLI）
   const caps = sourcingCapabilities(toolStatus);
+  // §16/§17：公网 runtime（capabilities=local_env_required）→ 统一"实时找货需要本地研究环境"，
+  // 不展示"组件未安装/登录失败/CLI 缺失"等本地诊断文案；已保存供应证据仍正常展示。
+  const localEnvRequired = capabilities !== null && capabilities.keyword.state === "local_env_required";
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="sourcing-evidence-panel">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-slate-900">供应线索（1688）</p>
-        {status === "need_login" ? (
+        {!localEnvRequired && status === "need_login" ? (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
             需要完成 1688 登录
           </span>
         ) : null}
-        {status === "need_user_verification" ? (
+        {!localEnvRequired && status === "need_user_verification" ? (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
             需要在 1688 页面完成验证
           </span>
@@ -411,14 +425,24 @@ export function SourcingEvidencePanel({
         <p className="mt-3 text-sm text-slate-500">输入访问密码后可使用供应线索功能。</p>
       ) : (
         <>
-          {/* R1：两套独立登录说明（常驻，任何状态下可见） */}
-          <p className="mt-3 text-xs leading-5 text-slate-500" data-testid="sourcing-dual-login-note">
+          {/* §16/§17：公网实时找货能力提示（本地研究环境） */}
+          <CapabilityNotice
+            capability={localEnvRequired
+              ? { state: "local_env_required", reasonCategory: "local_environment_required" }
+              : null}
+            localEnvMessage="实时找货需要在本地研究环境使用。已保存并确认的供应证据仍可正常查看。"
+          />
+
+          {/* R1：两套独立登录说明（常驻，任何状态下可见；公网不展示本地工具概念） */}
+          {!localEnvRequired && (
+            <p className="mt-3 text-xs leading-5 text-slate-500" data-testid="sourcing-dual-login-note">
             1688 有两套相互独立的登录：<span className="font-semibold">关键词找货 / 链接读取</span>需要完成「关键词登录」；
             <span className="font-semibold">图片找货</span>只需要浏览器助手 + 普通 Chrome 登录 1688，互不影响。
             图片找货需确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）。
-          </p>
+            </p>
+          )}
 
-          {status === "need_login" ? (
+          {!localEnvRequired && status === "need_login" ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3" role="alert">
               <p className="text-sm font-semibold text-amber-800">
                 {caps.cliToolAvailable ? "关键词找货与链接读取：登录未完成" : "关键词找货组件尚未准备完成"}
@@ -476,14 +500,14 @@ export function SourcingEvidencePanel({
             </div>
           ) : null}
 
-          {status === "need_user_verification" ? (
+          {!localEnvRequired && status === "need_user_verification" ? (
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
               <p className="text-sm font-semibold text-amber-800">{errorMessage || "1688 触发了验证。"}</p>
               <p className="mt-1 text-sm text-amber-700">请在 1688 页面完成滑块/验证后重试（系统不会绕过验证）。</p>
             </div>
           ) : null}
 
-          {status === "error" ? (
+          {!localEnvRequired && status === "error" ? (
             <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3">
               <p className="text-sm font-semibold text-rose-700">{errorMessage}</p>
             </div>
@@ -501,7 +525,9 @@ export function SourcingEvidencePanel({
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-slate-500">关键词找货</p>
-                  {caps.cliReady ? (
+                  {localEnvRequired ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
+                  ) : caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
                   ) : caps.cliToolAvailable ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需登录 1688</span>
@@ -520,7 +546,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!keyword.trim() || status === "searching" || !caps.cliReady}
+                    disabled={!keyword.trim() || status === "searching" || !caps.cliReady || localEnvRequired}
                     onClick={() => void runSearch("keyword", { keyword: keyword.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-keyword-submit"
@@ -528,17 +554,21 @@ export function SourcingEvidencePanel({
                     搜索
                   </button>
                 </div>
-                {!caps.cliToolAvailable ? (
-                  <p className="mt-1.5 text-xs text-amber-600">关键词找货组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
-                ) : !caps.cliReady ? (
-                  <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
+                {!localEnvRequired ? (
+                  !caps.cliToolAvailable ? (
+                    <p className="mt-1.5 text-xs text-amber-600">关键词找货组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
+                  ) : !caps.cliReady ? (
+                    <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
+                  ) : null
                 ) : null}
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-slate-500">图片找货</p>
-                  {caps.imageReady ? (
+                  {localEnvRequired ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
+                  ) : caps.imageReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">浏览器助手 ✓</span>
                   ) : caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
                     <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">浏览器助手需要更新</span>
@@ -556,7 +586,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!imageUrl.trim() || status === "searching" || !caps.imageReady}
+                    disabled={!imageUrl.trim() || status === "searching" || !caps.imageReady || localEnvRequired}
                     onClick={() => void runSearch("image", { imageUrl: imageUrl.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-image-submit"
@@ -578,7 +608,7 @@ export function SourcingEvidencePanel({
                     </button>
                   </p>
                 ) : null}
-                {!caps.imageReady ? (
+                {!localEnvRequired && !caps.imageReady ? (
                   caps.imageReasonCode === "extension_version_mismatch" || (caps.imageExtensionSwVersion !== null && !caps.imageVersionCompatible) ? (
                     <div className="mt-1.5">
                       <p className="text-xs font-semibold text-rose-700" data-testid="sourcing-helper-outdated">
@@ -634,7 +664,9 @@ export function SourcingEvidencePanel({
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-bold text-slate-500">已有 1688 链接</p>
-                  {caps.cliReady ? (
+                  {localEnvRequired ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需要本地研究环境</span>
+                  ) : caps.cliReady ? (
                     <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700">1688 登录 ✓</span>
                   ) : caps.cliToolAvailable ? (
                     <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">需登录 1688</span>
@@ -652,7 +684,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!offerUrl.trim() || status === "searching" || !caps.cliReady}
+                    disabled={!offerUrl.trim() || status === "searching" || !caps.cliReady || localEnvRequired}
                     onClick={() => void runSearch("url", { url: offerUrl.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-url-submit"
@@ -660,10 +692,12 @@ export function SourcingEvidencePanel({
                     读取
                   </button>
                 </div>
-                {!caps.cliToolAvailable ? (
-                  <p className="mt-1.5 text-xs text-amber-600">链接读取组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
-                ) : !caps.cliReady ? (
-                  <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
+                {!localEnvRequired ? (
+                  !caps.cliToolAvailable ? (
+                    <p className="mt-1.5 text-xs text-amber-600">链接读取组件尚未安装，安装完成后即可使用（见顶部提示）。</p>
+                  ) : !caps.cliReady ? (
+                    <p className="mt-1.5 text-xs text-amber-600">需要先登录 1688 后使用（见顶部登录提示）。</p>
+                  ) : null
                 ) : null}
               </div>
             </div>

@@ -19,6 +19,8 @@ vi.hoisted(() => {
   process.env.DEMO_SANDBOX_STORE_PATH = join(dir, "sandbox.json");
   process.env.DEMO_ACCESS_STORE_PATH = join(dir, "demo-access.json");
   process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${join(dir, "unused.db").replaceAll("\\", "/")}`;
+  // 本地研究环境模拟：VOC 自动采集 capability gate 放行（公网 gate 由专用用例覆盖）
+  process.env.LOCAL_ACQUISITION_ENABLED = "true";
 });
 
 // demoGuard：可控返回 context（guard 是同步函数；demo 按 token 区分主体）
@@ -421,13 +423,39 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
     expect((await noSelection.json()).error.code).toBe("invalid_selection");
   });
 
-  it("fails closed when browser unavailable", async () => {
+  it("fails closed when browser unavailable（本地 runtime：409 acquisition_unavailable，非 503）", async () => {
     vi.mocked(resolveSystemBrowser).mockReturnValueOnce(null);
     const response = await postJson({
       action: "collect",
       asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
     }, taskId);
-    expect(response.status).toBe(503);
-    expect((await response.json()).error.code).toBe("browser_not_available");
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error.code).toBe("acquisition_unavailable");
+  });
+
+  it("public runtime（LOCAL_ACQUISITION_ENABLED 未开启）→ collect 409 local_environment_required；import 仍可用", async () => {
+    const saved = process.env.LOCAL_ACQUISITION_ENABLED;
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    try {
+      const collect = await postJson({
+        action: "collect",
+        asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
+      }, taskId);
+      expect(collect.status).toBe(409);
+      const body = await collect.json();
+      expect(body.error.code).toBe("local_environment_required");
+      expect(body.error.message).toContain("本地研究环境");
+      // 粘贴导入（server 能力）不受影响
+      const imp = await postJson({
+        action: "import",
+        expectedStorageVersion: toStorageVersion(taskId),
+        reviews: [{ asin: ASIN, sourceProductRole: "current_candidate", reviewText: "public paste still works", rating: 4 }],
+      }, taskId);
+      expect(imp.status).toBe(200);
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
+      else process.env.LOCAL_ACQUISITION_ENABLED = saved;
+    }
   });
 });

@@ -11,6 +11,8 @@ import { useCallback, useEffect, useState } from "react";
 import { BarChart3, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
+import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ ...buildAccessHeaders(), ...extra });
@@ -390,6 +392,7 @@ export function VocEvidenceSection({
   evidence,
   analysis,
   storageVersion,
+  capability,
   onChanged,
 }: {
   taskId: string;
@@ -398,6 +401,8 @@ export function VocEvidenceSection({
   evidence: VocEvidenceView | null;
   analysis: VocAnalysisView | null;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
+  /** 浏览器采集能力（服务端 DTO；自动采集评论依赖它；粘贴导入与 VOC 分析不受影响） */
+  capability?: AcquisitionCapabilityView | null;
   onChanged: () => void;
 }) {
   const [importOpen, setImportOpen] = useState(false);
@@ -414,6 +419,9 @@ export function VocEvidenceSection({
   const [collectAsin, setCollectAsin] = useState("");
   const [collectRole, setCollectRole] = useState<"current_candidate" | "competitor">("current_candidate");
   const [collecting, setCollecting] = useState(false);
+
+  /** §11/§12：自动采集评论需要本地浏览器采集能力；粘贴导入/分析是 server 能力，不受影响 */
+  const canCollectReviews = capability?.state === "available";
   const [collectPreview, setCollectPreview] = useState<{
     previewId: string;
     items: Array<{
@@ -578,6 +586,7 @@ export function VocEvidenceSection({
   /* ── Package C：半自动采集（浏览器提取详情页公开 Top Reviews 片段） ── */
 
   async function runCollect() {
+    if (!canCollectReviews) return;
     const asin = collectAsin.trim().toUpperCase();
     if (!asin) {
       setError("请填写要采集评论的 ASIN。");
@@ -705,7 +714,7 @@ export function VocEvidenceSection({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={busy || analyzing || collecting}
+              disabled={busy || analyzing || collecting || !canCollectReviews}
               onClick={() => { setCollectOpen((open) => !open); setError(""); }}
               className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
             >
@@ -740,6 +749,15 @@ export function VocEvidenceSection({
             )}
           </div>
         </div>
+
+        {/* Acquisition Capability（§12/§13）：自动采集需要本地研究环境；粘贴导入与分析不受影响 */}
+        <CapabilityNotice
+          capability={capability}
+          localEnvMessage="自动采集评论需要在本地研究环境使用；你仍可粘贴导入评论，并使用已有评论进行 VOC 分析。"
+          unavailableMessage={capability?.reasonCategory === "not_installed"
+            ? "本机未检测到可用的 Chrome/Edge 浏览器，无法自动采集评论；可改用粘贴导入。"
+            : "自动采集评论当前暂不可用；可改用粘贴导入。"}
+        />
 
         {/* 导入表单（批量粘贴显性化：每行一条，一次可多条） */}
         {importOpen && (
@@ -839,7 +857,7 @@ export function VocEvidenceSection({
               <div className="flex items-end">
                 <button
                   type="button"
-                  disabled={!canCollect}
+                  disabled={!canCollect || !canCollectReviews}
                   onClick={() => void runCollect()}
                   className="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:opacity-50"
                 >

@@ -35,6 +35,10 @@ import {
 } from "@/components/evidence/VocEvidenceSection";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
+import {
+  parseAcquisitionCapability,
+  type AcquisitionCapabilityView,
+} from "@/lib/client/acquisitionCapability";
 
 /* ── 纯提取工具（导出供测试） ─────────────────────────── */
 
@@ -444,10 +448,12 @@ export function EvidenceWorkbench({
   const [browserEvidence, setBrowserEvidence] = useState<BrowserEvidenceView | null>(null);
   const [browserEvidenceStorageVersion, setBrowserEvidenceStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [browserTaskAsin, setBrowserTaskAsin] = useState<string | null>(null);
+  const [browserCapability, setBrowserCapability] = useState<AcquisitionCapabilityView | null>(null);
 
   const [vocEvidence, setVocEvidence] = useState<VocEvidenceView | null>(null);
   const [vocAnalysis, setVocAnalysis] = useState<VocAnalysisView | null>(null);
   const [vocStorageVersion, setVocStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
+  const [vocCapability, setVocCapability] = useState<AcquisitionCapabilityView | null>(null);
 
   // P1-A：区分 loading / empty / error / ready（不再把加载失败伪装成"没有数据"）
   const [sectionLoading, setSectionLoading] = useState(true);
@@ -471,12 +477,13 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: true; data: { evidence: unknown; analysis: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; capability?: unknown } }
         | { ok: false };
       if (res.ok && json.ok) {
         setVocEvidence(parseVocEvidenceView(json.data.evidence));
         setVocAnalysis(parseVocAnalysisView(json.data.analysis));
         setVocStorageVersion(json.data.storageVersion);
+        setVocCapability(parseAcquisitionCapability(json.data.capability));
         clearSectionError("voc");
       } else {
         setSectionError("voc", "买家评论读取失败，请稍后重试。");
@@ -493,12 +500,13 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { evidence: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; taskAsin: string | null } }
+        | { ok: true; data: { evidence: unknown; storageVersion: { resultJsonHash: string; updatedAt: string }; taskAsin: string | null; capability?: unknown } }
         | { ok: false };
       if (res.ok && json.ok) {
         setBrowserEvidence(parseBrowserEvidenceView(json.data.evidence));
         setBrowserEvidenceStorageVersion(json.data.storageVersion);
         setBrowserTaskAsin(json.data.taskAsin);
+        setBrowserCapability(parseAcquisitionCapability(json.data.capability));
         clearSectionError("browser");
       } else {
         setSectionError("browser", "Amazon 页面证据读取失败，请稍后重试。");
@@ -860,6 +868,7 @@ export function EvidenceWorkbench({
           evidence={browserEvidence}
           taskAsin={browserTaskAsin}
           storageVersion={browserEvidenceStorageVersion}
+          capability={browserCapability}
           onChanged={() => { loadBrowserEvidence(); onDataChanged?.(); }}
         />
       </div>
@@ -878,6 +887,7 @@ export function EvidenceWorkbench({
           evidence={vocEvidence}
           analysis={vocAnalysis}
           storageVersion={vocStorageVersion}
+          capability={vocCapability}
           onChanged={() => { loadVoc(); onDataChanged?.(); }}
         />
       </div>

@@ -46,6 +46,12 @@ import {
 } from "@/lib/upstream/1688/contracts";
 import { crossValidateCandidateWithDetail, validate1688OfferUrl } from "@/lib/upstream/1688/entityBinding";
 import { getSharedBridge, NATIVE_1688_HELPER_SW_VERSION } from "@/lib/server/native1688BridgeClient";
+import {
+  isLocalAcquisitionEnabled,
+  resolveSourcingAcquisitionCapabilities,
+  SOURCING_LOCAL_ENV_REQUIRED_MESSAGE,
+  type AcquisitionCapability,
+} from "@/lib/server/acquisitionCapability";
 
 export const runtime = "nodejs";
 
@@ -201,6 +207,27 @@ export async function GET(
   try {
     const evidence = await getSourcingEvidence(resolved.context, id);
     const snapshot = await readSourcingEvidenceSnapshot(resolved.context, id);
+    // Acquisition Capability（§16/§17）：非本地 runtime 直接返回 local_env_required，
+    // 不触发 CLI/bridge 探测（避免公网反复 spawn/探测）；已保存证据仍正常读取。
+    if (!isLocalAcquisitionEnabled()) {
+      const noTool: AcquisitionCapability = { state: "local_env_required", reasonCategory: "local_environment_required" };
+      return jsonResponse({
+        ok: true,
+        data: {
+          evidence,
+          storageVersion: toStorageVersion(snapshot),
+          toolStatus: {
+            loggedIn: false,
+            toolAvailable: false,
+            cli: { loggedIn: false, toolAvailable: false },
+            image: { extensionAvailable: false, versionCompatible: false, extensionSwVersion: null, reasonCode: "local_environment_required" },
+            loginHint: null,
+            checkedAt: new Date().toISOString(),
+          },
+          capabilities: { keyword: noTool, image: noTool, detail: noTool },
+        },
+      });
+    }
     const login = await checkCliLogin();
     // F3：分能力 readiness（顶层字段向后兼容；image 能力独立于 CLI）
     const imageCapability = await probeImageCapability();
@@ -220,11 +247,26 @@ export async function GET(
           loginHint,
           checkedAt,
         },
+        capabilities: resolveSourcingAcquisitionCapabilities({
+          cliToolAvailable: login.toolAvailable,
+          cliLoggedIn: login.loggedIn,
+          imageExtensionAvailable: imageCapability.extensionAvailable,
+          imageVersionCompatible: imageCapability.versionCompatible,
+        }),
       },
     });
   } catch (error) {
     return errorResponseFrom(error);
   }
+}
+
+/** 实时采集 action → 公网（非本地 runtime）能力 Gate：统一 409 local_environment_required（§30/§31）。
+ *  本地 runtime 放行给原逻辑（自带 fail-closed 与本地诊断，§19/§21/§38）。 */
+function sourcingActionCapabilityGate(action: string): { code: string; message: string } | null {
+  if (isLocalAcquisitionEnabled()) return null;
+  const realtimeActions = ["begin-keyword-login", "search", "url", "image", "detail"];
+  if (!realtimeActions.includes(action)) return null;
+  return { code: "local_environment_required", message: SOURCING_LOCAL_ENV_REQUIRED_MESSAGE };
 }
 
 /** 图片找货能力探测：扩展是否已通过 bridge 心跳（与 1688-cli 登录完全无关）。
@@ -277,6 +319,12 @@ export async function POST(
   const action = asString(bodyRecord.action);
   const resolved = await resolveContext(request, id, bodyRecord);
   if (!resolved.ok) return resolved.response;
+
+  // ── Acquisition Capability Gate（§30/§44）：本地实时采集动作在非本地 runtime 一律 409 typed ──
+  const sourcingGate = sourcingActionCapabilityGate(action);
+  if (sourcingGate) {
+    return errorResponse(409, sourcingGate.code, sourcingGate.message);
+  }
 
   // ── action=begin-keyword-login：R1——固定安全登录 capability（打开 1688 登录窗口）──
   if (action === "begin-keyword-login") {

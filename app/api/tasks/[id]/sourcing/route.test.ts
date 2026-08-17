@@ -3,7 +3,7 @@
  *
  * 模式：mock demoGuard + demo sandbox store + 假 1688-cli（V35_1688_CLI_PATH）。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +24,8 @@ vi.hoisted(() => {
   process.env.DEMO_SANDBOX_STORE_PATH = join(dir, "sandbox.json");
   process.env.DEMO_ACCESS_STORE_PATH = join(dir, "demo-access.json");
   process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${join(dir, "unused.db").replaceAll("\\", "/")}`;
+  // 本地研究环境模拟：实时采集 gate 放行（公网 gate 由专用用例覆盖）
+  process.env.LOCAL_ACQUISITION_ENABLED = "true";
 });
 
 const authState: { context: { mode: "demo"; demoAccessId: string } | { mode: "owner" } } = {
@@ -309,5 +311,48 @@ describe("GET（状态读取）", () => {
     const body = await json(response);
     expect(response.status).toBe(404);
     expect((body.error as { code: string }).code).toBe("not_found");
+  });
+});
+
+describe("公网 runtime（LOCAL_ACQUISITION_ENABLED 未开启）capability gate（§16/§30/§53）", () => {
+  const saved = process.env.LOCAL_ACQUISITION_ENABLED;
+
+  afterAll(() => {
+    if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
+    else process.env.LOCAL_ACQUISITION_ENABLED = saved;
+  });
+
+  it("GET 返回三能力 local_env_required + 空 toolStatus（不探测 CLI/bridge）", async () => {
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    const response = await GET(new NextRequest("http://localhost/api/tasks/x/sourcing"), context());
+    expect(response.status).toBe(200);
+    const body = await json(response);
+    const data = body.data as {
+      evidence: unknown;
+      toolStatus: { loggedIn: boolean; cli: { loggedIn: boolean }; image: { reasonCode: string } };
+      capabilities: { keyword: { state: string }; image: { state: string }; detail: { state: string } };
+    };
+    expect(data.evidence).toBeNull();
+    expect(data.toolStatus.loggedIn).toBe(false);
+    expect(data.toolStatus.cli.loggedIn).toBe(false);
+    expect(data.toolStatus.image.reasonCode).toBe("local_environment_required");
+    expect(data.capabilities.keyword.state).toBe("local_env_required");
+    expect(data.capabilities.image.state).toBe("local_env_required");
+    expect(data.capabilities.detail.state).toBe("local_env_required");
+  });
+
+  it("实时采集 action（search/url/image/detail/begin-keyword-login）→ 409 local_environment_required；save 仍可用", async () => {
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    const search = await POST(request({ action: "search", keyword: "保温杯" }), context());
+    expect(search.status).toBe(409);
+    expect(((await json(search)).error as { code: string }).code).toBe("local_environment_required");
+    const img = await POST(request({ action: "image", imageUrl: "https://img.example.test/a.jpg" }), context());
+    expect(img.status).toBe(409);
+    const url = await POST(request({ action: "url", url: "https://detail.1688.com/offer/674035283676.html" }), context());
+    expect(url.status).toBe(409);
+    const detail = await POST(request({ action: "detail", offerId: "674035283676" }), context());
+    expect(detail.status).toBe(409);
+    const login = await POST(request({ action: "begin-keyword-login" }), context());
+    expect(login.status).toBe(409);
   });
 });

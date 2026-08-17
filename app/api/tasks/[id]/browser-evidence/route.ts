@@ -29,12 +29,19 @@ import {
   type BrowserEvidenceCollectPreview,
 } from "@/lib/server/browserEvidenceCollect";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import {
+  acquisitionGateError,
+  BROWSER_LOCAL_ENV_REQUIRED_MESSAGE,
+  browserUnavailableMessage,
+  resolveBrowserAcquisitionCapability,
+  type AcquisitionCapability,
+} from "@/lib/server/acquisitionCapability";
 
 export const runtime = "nodejs";
 
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
-  | { ok: true; data: { evidence: BrowserEvidenceV1 | null; storageVersion: StorageVersion; taskAsin: string | null } }
+  | { ok: true; data: { evidence: BrowserEvidenceV1 | null; storageVersion: StorageVersion; taskAsin: string | null; capability: AcquisitionCapability } }
   | { ok: true; data: { preview: BrowserEvidenceCollectPreview; evidenceId: string } }
   | { ok: true; data: { kind: "saved" | "duplicate"; evidence: BrowserEvidenceV1; storageVersion: StorageVersion } }
   | { ok: false; error: { code: string; message: string } };
@@ -122,7 +129,7 @@ export async function GET(
     ]);
     return jsonResponse({
       ok: true,
-      data: { evidence, storageVersion: toStorageVersion(snapshot), taskAsin },
+      data: { evidence, storageVersion: toStorageVersion(snapshot), taskAsin, capability: resolveBrowserAcquisitionCapability() },
     });
   } catch (error) {
     return errorResponse(error);
@@ -157,6 +164,15 @@ export async function POST(
 
 /** collect：受控浏览器导航任务绑定 ASIN 单页 → 提取 → 服务端缓存 Preview（不保存） */
 async function collectAction(context: AccessContext, taskId: string): Promise<NextResponse> {
+  // Acquisition Capability Gate（§30）：runtime 不具备本地浏览器采集 → 409 typed，fail-closed
+  const capability = resolveBrowserAcquisitionCapability();
+  const gate = acquisitionGateError(capability, browserUnavailableMessage(capability.reasonCategory));
+  if (gate) {
+    const message = capability.state === "local_env_required"
+      ? BROWSER_LOCAL_ENV_REQUIRED_MESSAGE
+      : browserUnavailableMessage(capability.reasonCategory);
+    return jsonResponse({ ok: false, error: { code: gate.code, message } }, gate.status);
+  }
   try {
     const taskAsin = await readBrowserEvidenceTaskAsin(context, taskId);
     if (!taskAsin) {
