@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import { prisma } from "@/lib/server/db";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import {
@@ -13,18 +15,28 @@ import {
 } from "@/lib/server/taskResultJsonMutation";
 import {
   ProductResearchRecordError,
+  RESEARCH_COMPLETION_SCHEMA,
   appendProductResearchDecision,
   buildProductResearchActor,
+  buildProductResearchHash,
+  createInitialProductResearchRecord,
+  createProductResearchVerification,
   getProductResearchRecord,
   getProductResearchVerification,
+  getResearchCompletion,
   hasProductResearchRecordNamespace,
+  parseResearchCompletion,
   productResearchDecisionToCompatibilityStatus,
   toProductResearchDecisionSummary,
   type ProductResearchDecisionSummary,
+  type ProductResearchRecordV1,
+  type ProductResearchReviewState,
+  type ResearchCompletionV1,
   verifyProductResearchHash,
   type ProductResearchDecisionInput,
-  type ProductResearchRecordV1,
+  type ProductResearchHashInput,
 } from "@/lib/productResearchRecord";
+import { getResearchTaskCandidateId } from "@/lib/productResearchImage";
 import { taskResultWriterPersistence } from "@/lib/server/taskResultWriterServices";
 
 type RawTaskSnapshot = {
@@ -33,6 +45,216 @@ type RawTaskSnapshot = {
   resultJson: string;
   decisionStatus: string;
 };
+
+/**
+ * V3 Current Research Normalization：无 Agent workflow 复核流程的当前 Research
+ * （candidate_research 等直接人工收集 Evidence）——reviewState = 无复核步骤。
+ */
+const NO_WORKFLOW_REVIEW: ProductResearchReviewState = {
+  sourcingReviewed: false,
+  riskReviewed: false,
+  summaryReviewed: false,
+  listingReviewed: false,
+  reviewedCount: 0,
+  totalReviewSteps: 0,
+  allReviewed: true,
+};
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/**
+ * 从当前 Research（无 researchRecord）创建正式 product-research-record.v1（revision 1）。
+ * - candidateId 来自 resultJson 绑定（sourceMeta/candidateToTask，与 creative-handoff gate 同源）；
+ * - runId/contextHash/inputHash/resultHash 为确定性绑定指纹（锁定 task↔candidate 关系，
+ *   不伪造"内容完整性"承诺；verification 写入后 record 修改即 hash 失配）；
+ * - workflowStatus="completed"（研究已收集 Evidence）；reviewState=无 workflow 复核；
+ * - 单次持久化：record + verification + decisionStatus 同步（同一 canonical Task，不复制）。
+ */
+async function createCurrentResearchDecision(
+  context: AccessContext,
+  taskId: string,
+  snapshot: RawTaskSnapshot,
+  input: {
+    expectedRevision: number;
+    decision: ProductResearchDecisionInput;
+    now?: string;
+  },
+): Promise<{ kind: "created"; state: ProductResearchDecisionState }> {
+  if (input.expectedRevision !== 1) {
+    throw new ProductResearchStoreError(
+      "research_record_conflict",
+      409,
+      "研究记录尚未创建，请刷新后重试。",
+    );
+  }
+  const result = parseResultJson(snapshot.resultJson);
+  const candidateId = getResearchTaskCandidateId(result);
+  if (!candidateId) {
+    throw new ProductResearchStoreError(
+      "research_binding_invalid",
+      409,
+      "研究记录与候选商品的绑定缺失，不能创建正式研究记录。",
+    );
+  }
+  const runId = taskId;
+  const contextHash = sha256(`context:${taskId}:${candidateId}`);
+  const inputHash = sha256(`input:${taskId}:${candidateId}`);
+  const resultHash = sha256(`result:${taskId}:${candidateId}`);
+  const hashInput: ProductResearchHashInput = {
+    schema: "product-research-hash.v1",
+    candidateId,
+    runId,
+    contextHash,
+    inputHash,
+    resultHash,
+    workflowStatus: "completed",
+    reviewState: NO_WORKFLOW_REVIEW,
+  };
+  const researchHash = buildProductResearchHash(hashInput);
+  const verification = createProductResearchVerification(hashInput);
+  let record: ProductResearchRecordV1;
+  try {
+    record = createInitialProductResearchRecord({
+      candidateId,
+      runId,
+      contextHash,
+      researchHash,
+      workflowStatus: "completed",
+      reviewState: NO_WORKFLOW_REVIEW,
+      decision: input.decision,
+      actor: buildProductResearchActor(context),
+      now: input.now,
+    });
+  } catch (error) {
+    if (error instanceof ProductResearchRecordError) {
+      throw new ProductResearchStoreError(error.code, 400, error.message);
+    }
+    throw error;
+  }
+  const compatibilityStatus = productResearchDecisionToCompatibilityStatus(record.latestDecision.status);
+  try {
+    await taskResultWriterPersistence.persistResearchDecision({
+      context,
+      taskId,
+      expectedStorageVersion: {
+        resultJson: snapshot.resultJson,
+        updatedAt: snapshot.updatedAt,
+      },
+      record,
+      verification,
+      decisionStatus: compatibilityStatus,
+      updatedAt: record.updatedAt,
+    });
+  } catch (error) {
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") notFound();
+      if (error.code === "task_result_conflict") {
+        throw new ProductResearchStoreError(
+          "research_record_conflict",
+          409,
+          "研究记录已更新，请刷新后重试。",
+        );
+      }
+      throw new ProductResearchStoreError(error.code, error.status, error.message);
+    }
+    throw error;
+  }
+  return {
+    kind: "created",
+    state: { taskId, legacy: false, readOnly: false, record },
+  };
+}
+
+export type CompleteCurrentResearchResult = {
+  taskId: string;
+  lifecycle: "completed" | "abandoned";
+  researchRecord: boolean;
+  completedAt: string;
+  idempotent: boolean;
+};
+
+/**
+ * V3 Current Research Normalization：Research Completion（同一 canonical Task 的 lifecycle 收口）。
+ * Gate：当前 actor；CURRENT_ACTIVE；人工决定已保存（record 存在）且 finalStatus != needs_information；
+ * 幂等：已 researchCompletion → 返回当前状态（不重复、不新建 Task/Record）；
+ * 单次持久化（CAS）：写入 research-completion.v1 命名空间 + 更新时间。
+ */
+export async function completeCurrentResearch(
+  context: AccessContext,
+  taskId: string,
+  input: { now?: string },
+): Promise<CompleteCurrentResearchResult> {
+  const snapshot = await loadSnapshot(context, taskId);
+  const result = parseResultJson(snapshot.resultJson);
+  const existing = getResearchCompletion(result);
+  const record = getProductResearchRecord(result);
+  if (!record) {
+    throw new ProductResearchStoreError(
+      "research_decision_required",
+      409,
+      "请先保存人工决定，再完成研究。",
+    );
+  }
+  if (existing) {
+    return {
+      taskId,
+      lifecycle: existing.status,
+      researchRecord: true,
+      completedAt: existing.completedAt,
+      idempotent: true,
+    };
+  }
+  if (record.latestDecision.status === "needs_information") {
+    throw new ProductResearchStoreError(
+      "research_need_info",
+      409,
+      "当前仍需补充资料，补充后再完成研究。",
+    );
+  }
+  const now = input.now ?? new Date().toISOString();
+  const completion: ResearchCompletionV1 = {
+    schema: RESEARCH_COMPLETION_SCHEMA,
+    status: record.latestDecision.status === "abandoned" ? "abandoned" : "completed",
+    completedAt: now,
+    decisionId: record.latestDecision.decisionId,
+    revision: record.revision,
+    finalStatus: record.latestDecision.status,
+  };
+  try {
+    await taskResultWriterPersistence.persistResearchCompletion({
+      context,
+      taskId,
+      expectedStorageVersion: {
+        resultJson: snapshot.resultJson,
+        updatedAt: snapshot.updatedAt,
+      },
+      completion,
+      updatedAt: now,
+    });
+  } catch (error) {
+    if (error instanceof TaskResultJsonMutationError) {
+      if (error.code === "not_found") notFound();
+      if (error.code === "task_result_conflict") {
+        throw new ProductResearchStoreError(
+          "research_record_conflict",
+          409,
+          "研究记录已更新，请刷新后重试。",
+        );
+      }
+      throw new ProductResearchStoreError(error.code, error.status, error.message);
+    }
+    throw error;
+  }
+  return {
+    taskId,
+    lifecycle: completion.status,
+    researchRecord: true,
+    completedAt: now,
+    idempotent: false,
+  };
+}
 
 export type ProductResearchDecisionState = {
   taskId: string;
@@ -46,12 +268,12 @@ export type CandidateResearchDecisionProjection = {
   summary: ProductResearchDecisionSummary | {
     schema: null;
     status: null;
-    label: "旧版研究记录";
+    label: "待人工决定";
     reasonSummary: "";
     nextActionSummary: null;
     revision: null;
     decidedAt: null;
-    legacy: true;
+    legacy: false;
   };
 };
 
@@ -188,10 +410,19 @@ export async function getProductResearchDecisionState(
 ): Promise<ProductResearchDecisionState> {
   const snapshot = await loadSnapshot(context, taskId);
   const result = parseResultJson(snapshot.resultJson);
+  // V3 Current Research Normalization：
+  // - 无 researchRecord 的当前 Research（candidate_research 等，有当前 Evidence）不是 legacy，
+  //   是可编辑的 CURRENT_ACTIVE（首次保存决定时创建 researchRecord）；
+  // - 已有 researchRecord 且已 researchCompletion 的 CURRENT_COMPLETED → 决定只读（§30/§32）。
   if (!hasProductResearchRecordNamespace(result)) {
-    return { taskId, legacy: true, readOnly: true, record: null };
+    return { taskId, legacy: false, readOnly: false, record: null };
   }
-  return (await parseVersionedState(context, taskId, snapshot)).state;
+  const state = (await parseVersionedState(context, taskId, snapshot)).state;
+  const completion = getResearchCompletion(result);
+  if (completion) {
+    return { ...state, readOnly: true };
+  }
+  return state;
 }
 
 export async function getCandidateResearchDecisionProjections(
@@ -212,17 +443,18 @@ export async function getCandidateResearchDecisionProjections(
   for (const row of rows) {
     const result = parseResultJson(row.resultJson);
     if (!hasProductResearchRecordNamespace(result)) {
+      // V3 Current Research Normalization：无 researchRecord 的当前 Research = 待人工决定（非 legacy）
       projections.set(row.id, {
         candidateId: null,
         summary: {
           schema: null,
           status: null,
-          label: "旧版研究记录",
+          label: "待人工决定",
           reasonSummary: "",
           nextActionSummary: null,
           revision: null,
           decidedAt: null,
-          legacy: true,
+          legacy: false,
         },
       });
       continue;
@@ -247,10 +479,23 @@ export async function updateProductResearchDecision(
     now?: string;
   },
 ): Promise<{
-  kind: "updated" | "idempotent";
+  kind: "updated" | "created" | "idempotent";
   state: ProductResearchDecisionState;
 }> {
   const snapshot = await loadSnapshot(context, taskId);
+  const result = parseResultJson(snapshot.resultJson);
+  // V3 Current Research Normalization：无 researchRecord 的当前 Research（candidate_research 等）
+  // 首次保存人工决定 → 创建正式 product-research-record.v1（revision 1），与新版任务同一 writer。
+  if (!hasProductResearchRecordNamespace(result)) {
+    return createCurrentResearchDecision(context, taskId, snapshot, input);
+  }
+  if (getResearchCompletion(result)) {
+    throw new ProductResearchStoreError(
+      "research_record_completed",
+      409,
+      "该研究已完成并保存到研究记录，决定不再修改。",
+    );
+  }
   const parsed = await parseVersionedState(context, taskId, snapshot);
   const verification = getProductResearchVerification(parsed.result)!;
   let appended: ReturnType<typeof appendProductResearchDecision>;

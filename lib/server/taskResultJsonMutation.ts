@@ -19,6 +19,7 @@ import {
 
 export type TaskResultJsonWriter =
   | "research-decision"
+  | "research-completion"
   | "legacy-decision"
   | "lifecycle"
   | "listing-pack"
@@ -36,7 +37,9 @@ export type TaskResultJsonWriter =
   | "research-save";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
-  "research-decision": ["researchRecord"],
+  "research-decision": ["researchRecord", "researchVerification"],
+  // V3 Current Research Normalization：researchCompletion 由 complete 专用 writer 独占
+  "research-completion": ["researchCompletion"],
   "legacy-decision": [],
   lifecycle: ["productLifecycle"],
   "listing-pack": ["listingPackSnapshot"],

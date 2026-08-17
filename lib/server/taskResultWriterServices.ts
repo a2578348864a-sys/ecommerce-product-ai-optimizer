@@ -3,6 +3,8 @@ import "server-only";
 import {
   mergeProductResearchRecord,
   type ProductResearchRecordV1,
+  type ProductResearchVerificationV1,
+  type ResearchCompletionV1,
 } from "@/lib/productResearchRecord";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import {
@@ -54,13 +56,26 @@ export function createAiImageResultMutation(
 
 export function createResearchDecisionResultMutation(input: {
   record: ProductResearchRecordV1;
+  verification?: ProductResearchVerificationV1;
   decisionStatus: string;
   updatedAt: string;
 }) {
   return (current: Readonly<Record<string, unknown>>) => ({
-    result: mergeProductResearchRecord(current, input.record),
+    result: mergeProductResearchRecord(current, input.record, input.verification),
     value: null,
     decisionStatus: input.decisionStatus,
+    updatedAt: input.updatedAt,
+  });
+}
+
+/** V3 Current Research Normalization：Research Completion 命名空间写入（同一 canonical Task lifecycle 收口） */
+export function createResearchCompletionResultMutation(input: {
+  completion: ResearchCompletionV1;
+  updatedAt: string;
+}) {
+  return (current: Readonly<Record<string, unknown>>) => ({
+    result: { ...current, researchCompletion: input.completion },
+    value: null,
     updatedAt: input.updatedAt,
   });
 }
@@ -78,6 +93,7 @@ export function createTaskResultWriterPersistence(input: {
   return Object.freeze({
     persistResearchDecision(request: WriterInput & {
       record: ProductResearchRecordV1;
+      verification?: ProductResearchVerificationV1;
       decisionStatus: string;
       updatedAt: string;
     }) {
@@ -88,7 +104,24 @@ export function createTaskResultWriterPersistence(input: {
         expectedStorageVersion: request.expectedStorageVersion,
         mutate: createResearchDecisionResultMutation({
           record: request.record,
+          verification: request.verification,
           decisionStatus: request.decisionStatus,
+          updatedAt: request.updatedAt,
+        }),
+      });
+    },
+
+    persistResearchCompletion(request: WriterInput & {
+      completion: ResearchCompletionV1;
+      updatedAt: string;
+    }) {
+      return mutate({
+        context: request.context,
+        taskId: request.taskId,
+        writer: "research-completion",
+        expectedStorageVersion: request.expectedStorageVersion,
+        mutate: createResearchCompletionResultMutation({
+          completion: request.completion,
           updatedAt: request.updatedAt,
         }),
       });

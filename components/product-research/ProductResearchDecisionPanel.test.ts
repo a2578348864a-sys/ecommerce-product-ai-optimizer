@@ -28,22 +28,49 @@ describe("versioned product research decision panel", () => {
   it("uses the dedicated GET/PATCH contract with stable decision IDs and conflict reload", () => {
     expect(panelSource).toContain("/research-decision`");
     expect(panelSource).toContain('method: "PATCH"');
-    expect(panelSource).toContain("expectedRevision: state.record.revision");
+    // V3 Current Research Normalization：无 researchRecord 任务首次保存时 revision 1（创建）
+    expect(panelSource).toContain("expectedRevision: state.record?.revision ?? 1");
     expect(panelSource).toContain("decisionIdRef.current = createBrowserUuid()");
     expect(panelSource).toContain('data.error.code === "research_record_conflict"');
     expect(panelSource).toContain("await fetchProductResearchDecisionState(input.taskId, fetcher)");
   });
 
-  it("V3 Legacy Removal: 正式决定面板只服务 Current Research（无旧版研究记录分支）", () => {
+  it("V3 Current Research Normalization: 统一正式决定面板（无 legacy 分支/只读卡），支持创建与完成态", () => {
     expect(panelSource).not.toContain('data-testid="legacy-research-decision"');
     expect(panelSource).not.toContain("旧版研究记录");
+    // 创建模式（无 researchRecord）与完成态（readOnly）均由同一面板处理
+    expect(panelSource).toContain('data-testid="product-research-decision-create"');
+    expect(panelSource).toContain('data-testid="product-research-decision-readonly-completed"');
+    expect(panelSource).toContain("保存人工决定");
     expect(detailSource).toContain("ProductResearchDecisionPanel");
     expect(detailSource).toContain("hasVersionedProductResearchRecord");
-    // 详情页早期候选任务显示只读当前决定（无旧版写入口）
-    expect(detailSource).toContain('data-testid="legacy-decision-readonly"');
+    // 详情页：无旧版只读卡/无保存旧版状态；有完成控件
+    expect(detailSource).not.toContain('data-testid="legacy-decision-readonly"');
     expect(detailSource).not.toContain("保存旧版状态");
     expect(detailSource).not.toContain("旧版人工决定");
-    expect(detailSource).not.toContain("studio-legacy-unsupported-note");
+    expect(detailSource).toContain("ResearchCompletionControl");
+    expect(detailSource).toContain("完成研究并保存记录");
+  });
+
+  it("V3 Current Research Normalization: 完成控件门禁（无决定禁用/need_info 禁用/完成态展示）", () => {
+    expect(detailSource).toContain('data-testid="research-completion-control"');
+    expect(detailSource).toContain('data-testid="complete-research-button"');
+    expect(detailSource).toContain('data-testid="research-completed"');
+    // 无 researchRecord → 提示先保存人工决定
+    expect(detailSource).toContain("请先保存人工决定，再完成研究。");
+    // needs_information → 提示仍需补充资料（留在商品研究）
+    expect(detailSource).toContain("当前仍需补充资料，补充后再完成研究。");
+    // 完成确认文案：从商品研究移动到研究记录；现有研究资料不会删除
+    expect(detailSource).toContain("从『商品研究』移动到『研究记录』");
+    expect(detailSource).toContain("现有研究资料不会删除");
+    // 完成态：研究已完成并保存到研究记录 + 查看研究记录
+    expect(detailSource).toContain("研究已完成并保存到研究记录。");
+    expect(detailSource).toContain('href="/tasks"');
+    // 走 POST /complete（不复制 Task；同一 canonical Task lifecycle 收口）
+    expect(detailSource).toContain('fetch(`/api/tasks/${encodeURIComponent(taskId)}/complete`');
+    expect(detailSource).not.toContain("POST /api/tasks`");
+    // 完成判定：creative_ready / abandoned 可完成
+    expect(detailSource).toContain('latestStatus === "creative_ready" || latestStatus === "abandoned"');
   });
 
   it("does not auto-trigger Listing or Image work", () => {

@@ -154,7 +154,8 @@ export function ProductResearchDecisionPanel({
     && (status !== "needs_information" || nextAction.trim().length > 0);
 
   async function saveDecision() {
-    if (!state?.record || state.readOnly || saving || !formValid) return;
+    // V3 Current Research Normalization：record 为 null 时允许创建（首次保存人工决定，revision 1）
+    if (!state || state.readOnly || saving || !formValid) return;
     if (!decisionIdRef.current) decisionIdRef.current = createBrowserUuid();
     setSaving(true);
     setMessage("");
@@ -162,7 +163,7 @@ export function ProductResearchDecisionPanel({
     try {
       const outcome = await submitProductResearchDecision({
         taskId,
-        expectedRevision: state.record.revision,
+        expectedRevision: state.record?.revision ?? 1,
         decisionId: decisionIdRef.current,
         status,
         reason,
@@ -202,12 +203,101 @@ export function ProductResearchDecisionPanel({
     return <section className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">{error}</section>;
   }
 
-  // V3 Legacy Removal：正式决定面板只服务于 Current Research（新版研究记录）。
-  // 早期候选任务不再渲染本面板（详情页显示只读当前决定），此处仅兜底空态。
+  // V3 Current Research Normalization：
+  // - record 为 null（无 researchRecord 的当前 Research）→ 首次保存人工决定（创建 revision 1）；
+  // - readOnly（researchCompletion 已完成）→ 最终决定只读展示。
   if (!state || !state.record) {
+    const selected = PRODUCT_RESEARCH_DECISION_OPTIONS.find((option) => option.value === status)!;
     return (
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-        该任务暂无正式研究决定记录。
+      <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/40 p-4" data-testid="product-research-decision-create">
+        <div>
+          <p className="text-sm font-bold text-teal-900">人工决定</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            尚未保存人工决定。选择决定并填写原因后保存；保存后可在研究记录中查看最终结果。
+          </p>
+        </div>
+        <div className="mt-4 rounded-xl border border-white bg-white p-3">
+          <div className="mt-3 grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div>
+              <label className="text-xs font-bold text-slate-600" htmlFor="research-decision-status">人工决定</label>
+              <select
+                id="research-decision-status"
+                value={status}
+                onChange={(event) => setStatus(event.target.value as DecisionStatus)}
+                className="input-soft mt-1 h-11 w-full px-3 text-sm font-semibold text-slate-800"
+              >
+                {PRODUCT_RESEARCH_DECISION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{selected.description}</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-xs font-bold text-slate-600">
+                决定原因
+                <textarea
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value.slice(0, 1000))}
+                  rows={3}
+                  className="input-soft mt-1 w-full resize-none px-3 py-2 text-sm leading-6 text-slate-800"
+                />
+              </label>
+              <label className="text-xs font-bold text-slate-600">
+                下一步动作{status === "needs_information" ? "（必填）" : "（可选）"}
+                <textarea
+                  value={nextAction}
+                  onChange={(event) => setNextAction(event.target.value.slice(0, 1000))}
+                  rows={3}
+                  className="input-soft mt-1 w-full resize-none px-3 py-2 text-sm leading-6 text-slate-800"
+                />
+              </label>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void saveDecision()}
+              disabled={saving || !formValid}
+              className="linear-button-primary h-10 px-4 text-sm font-semibold disabled:opacity-50"
+            >
+              {saving ? "保存中…" : "保存人工决定"}
+            </button>
+            <p className="text-xs leading-5 text-slate-500">
+              Listing / Image 是独立创作工具；保存决定不会自动生成 Listing、图片或发布任务。
+            </p>
+          </div>
+          {message ? <p className="mt-2 text-xs font-semibold text-teal-700">{message}</p> : null}
+          {error ? <p className="mt-2 text-xs font-semibold text-rose-700">{error}</p> : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (state.readOnly) {
+    const latest = state.record.latestDecision;
+    return (
+      <section className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/40 p-4" data-testid="product-research-decision-readonly-completed">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-teal-900">最终人工决定</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">研究已完成并保存到研究记录；最终决定不再修改。</p>
+          </div>
+          <span className="rounded-full border border-teal-200 bg-white px-3 py-1 text-xs font-semibold text-teal-800">版本 {state.record.revision}</span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-white bg-white p-3">
+            <p className="text-xs font-bold text-slate-400">最终决定</p>
+            <p className="mt-1 text-sm font-bold text-slate-900">{statusLabel(latest.status)}</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-3 sm:col-span-2">
+            <p className="text-xs font-bold text-slate-400">原因与下一步</p>
+            <p className="mt-1 text-sm leading-6 text-slate-800">{latest.reason}</p>
+            <p className="mt-1 text-xs leading-5 text-teal-700">下一步：{latest.nextAction || "无"}</p>
+          </div>
+          <div className="rounded-xl border border-white bg-white p-3">
+            <p className="text-xs font-bold text-slate-400">决定时间 / 身份</p>
+            <p className="mt-1 text-sm font-semibold text-slate-700">{formatDate(latest.decidedAt)}</p>
+            <p className="mt-1 text-xs text-slate-500">{latest.actorMode === "owner" ? "管理员" : "访客"}</p>
+          </div>
+        </div>
       </section>
     );
   }
@@ -290,7 +380,7 @@ export function ProductResearchDecisionPanel({
             disabled={saving || !formValid}
             className="linear-button-primary h-10 px-4 text-sm font-semibold disabled:opacity-50"
           >
-            {saving ? "保存中…" : "保存新决定"}
+            {saving ? "保存中…" : "保存人工决定"}
           </button>
           <p className="text-xs leading-5 text-slate-500">
             Listing / Image 是独立创作工具；保存决定不会自动生成 Listing、图片或发布任务。

@@ -14,6 +14,21 @@ export {
 export const PRODUCT_RESEARCH_RECORD_SCHEMA = "product-research-record.v1" as const;
 export const PRODUCT_RESEARCH_HASH_SCHEMA = "product-research-hash.v1" as const;
 export const PRODUCT_RESEARCH_VERIFICATION_SCHEMA = "product-research-verification.v1" as const;
+/** V3 Current Research Normalization：Research Completion 正式命名空间（resultJson 顶层，无 DB migration）。
+ *  语义：同一 canonical Research Task 的 lifecycle 收口标记——completed = 本轮研究完成（最终人工判断可继续）；
+ *  abandoned = 放弃研究。Evidence 原始数据不复制、不删除。 */
+export const RESEARCH_COMPLETION_SCHEMA = "research-completion.v1" as const;
+
+export type ResearchCompletionStatus = "completed" | "abandoned";
+
+export type ResearchCompletionV1 = {
+  schema: typeof RESEARCH_COMPLETION_SCHEMA;
+  status: ResearchCompletionStatus;
+  completedAt: string;
+  decisionId: string;
+  revision: number;
+  finalStatus: ProductResearchDecisionStatus;
+};
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -246,6 +261,9 @@ function validateDecisionForWorkflow(input: {
   if (input.workflowStatus === "partial_failed" && input.decision.status !== "needs_information") {
     throw new ProductResearchRecordError("partial_failed_requires_information", "partial_failed only allows needs_information");
   }
+  // V3 Current Research Normalization：totalReviewSteps === 0 表示无 Agent workflow 复核流程
+  // （candidate_research 等直接人工收集 Evidence 的当前 Research），creative_ready 无复核要求。
+  if (input.reviewState.totalReviewSteps === 0) return;
   if (input.decision.status === "creative_ready" && (
     input.workflowStatus !== "completed"
     || input.reviewState.totalReviewSteps !== 4
@@ -360,6 +378,22 @@ export function parseProductResearchReviewState(value: unknown): ProductResearch
   ];
   if (!booleans.every((item) => typeof item === "boolean")) return null;
   if (!Number.isSafeInteger(value.reviewedCount) || !Number.isSafeInteger(value.totalReviewSteps)) return null;
+  // V3 Current Research Normalization：totalReviewSteps === 0 = 无 Agent workflow 复核流程
+  // （candidate_research 等直接人工收集 Evidence 的当前 Research）；4 = 既有 Agent 复核步骤。
+  if (value.totalReviewSteps === 0) {
+    if (Number(value.reviewedCount) !== 0 || value.allReviewed !== true) return null;
+    const noneReviewed = !value.sourcingReviewed && !value.riskReviewed && !value.summaryReviewed && !value.listingReviewed;
+    if (!noneReviewed) return null;
+    return {
+      sourcingReviewed: false,
+      riskReviewed: false,
+      summaryReviewed: false,
+      listingReviewed: false,
+      reviewedCount: 0,
+      totalReviewSteps: 0,
+      allReviewed: true,
+    };
+  }
   if (Number(value.reviewedCount) < 0 || Number(value.reviewedCount) > 4 || value.totalReviewSteps !== 4) return null;
   const counted = [value.sourcingReviewed, value.riskReviewed, value.summaryReviewed, value.listingReviewed]
     .filter(Boolean).length;
@@ -474,8 +508,32 @@ export function appendProductResearchDecision(input: {
   return { kind: "updated", record };
 }
 
-export function parseProductResearchRecord(value: unknown): ProductResearchRecordV1 | null {
-  if (!isRecord(value) || !hasExactKeys(value, [
+/**
+ * V3 Current Research Normalization：Research Completion 解析（fail-closed）。
+ */
+export function parseResearchCompletion(value: unknown): ResearchCompletionV1 | null {
+  if (!isRecord(value) || value.schema !== RESEARCH_COMPLETION_SCHEMA) return null;
+  if (value.status !== "completed" && value.status !== "abandoned") return null;
+  if (typeof value.completedAt !== "string" || !isIsoDate(value.completedAt)) return null;
+  if (typeof value.decisionId !== "string" || !UUID_PATTERN.test(value.decisionId)) return null;
+  if (!isRevision(value.revision)) return null;
+  if (!isProductResearchDecisionStatus(value.finalStatus)) return null;
+  return {
+    schema: RESEARCH_COMPLETION_SCHEMA,
+    status: value.status,
+    completedAt: value.completedAt,
+    decisionId: value.decisionId.toLowerCase(),
+    revision: value.revision,
+    finalStatus: value.finalStatus,
+  };
+}
+
+export function getResearchCompletion(value: unknown): ResearchCompletionV1 | null {
+  if (!isRecord(value)) return null;
+  return parseResearchCompletion(value.researchCompletion);
+}
+
+export function parseProductResearchRecord(value: unknown): ProductResearchRecordV1 | null {  if (!isRecord(value) || !hasExactKeys(value, [
     "schema",
     "revision",
     "researchHash",

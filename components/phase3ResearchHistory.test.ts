@@ -44,7 +44,7 @@ describe("Phase 3 research history information architecture", () => {
   it("does not expose an internal research fingerprint in the decision UI", () => {
     expect(decision).not.toContain("研究指纹");
     expect(decision).toContain("决定历史");
-    expect(decision).toContain("保存新决定");
+    expect(decision).toContain("保存人工决定");
   });
 
   it("renders legacy Listing artifacts in an explicitly read-only mode", () => {

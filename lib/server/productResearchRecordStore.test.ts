@@ -42,6 +42,7 @@ vi.mock("@/lib/server/demoSandboxTaskMutation.internal", () => ({
 import {
   getProductResearchDecisionState,
   updateProductResearchDecision,
+  completeCurrentResearch,
 } from "@/lib/server/productResearchRecordStore";
 
 const verification = createProductResearchVerification({
@@ -137,14 +138,39 @@ beforeEach(() => {
 });
 
 describe("product research record store", () => {
-  it("returns a read-only marker for legacy records without inventing a decision", async () => {
+  it("V3 Current Research Normalization: 无 researchRecord 的当前 Research → 可编辑（非 legacy、非只读）", async () => {
     mocks.recordFindFirst.mockResolvedValueOnce(ownerTask({ resultJson: '{"type":"workflow"}' }));
 
     await expect(getProductResearchDecisionState({ mode: "owner", token: "" }, "task-1"))
-      .resolves.toEqual({ taskId: "task-1", legacy: true, readOnly: true, record: null });
+      .resolves.toEqual({ taskId: "task-1", legacy: false, readOnly: false, record: null });
   });
 
-  it("rejects PATCH semantics for legacy records without creating a versioned namespace", async () => {
+  it("V3 Current Research Normalization: 无 researchRecord 任务保存决定 → 创建正式研究记录（revision 1）", async () => {
+    const noRecordTask = ownerTask({ resultJson: JSON.stringify({
+      type: "workflow",
+      candidateToTask: { version: 1, candidateId: "candidate-1", confirmation: "research_started", confirmedAt: "2026-08-17T00:00:00.000Z" },
+    }) });
+    mocks.recordFindFirst.mockResolvedValueOnce(noRecordTask);
+    mocks.recordFindUnique.mockResolvedValueOnce(noRecordTask);
+    mocks.candidateFindFirst.mockResolvedValueOnce({ id: "candidate-1" });
+
+    const outcome = await updateProductResearchDecision({ mode: "owner", token: "" }, "task-1", {
+      expectedRevision: 1,
+      decision: {
+        decisionId: "11111111-2222-4333-8444-555555555555",
+        status: "needs_information",
+        reason: "Current research needs one more source.",
+        nextAction: "Collect the missing source.",
+      },
+    });
+    expect(outcome.kind).toBe("created");
+    expect(outcome.state.record?.revision).toBe(1);
+    expect(outcome.state.readOnly).toBe(false);
+    // 写入 record + verification + decisionStatus 同步（单次持久化）
+    expect(mocks.recordUpdateMany).toHaveBeenCalled();
+  });
+
+  it("V3 Current Research Normalization: 无 researchRecord 且绑定缺失 → 拒绝创建（不伪造绑定）", async () => {
     mocks.recordFindFirst.mockResolvedValueOnce(ownerTask({ resultJson: '{"type":"workflow"}' }));
 
     await expect(updateProductResearchDecision({ mode: "owner", token: "" }, "task-1", {
@@ -152,11 +178,11 @@ describe("product research record store", () => {
       decision: {
         decisionId: "11111111-2222-4333-8444-555555555555",
         status: "needs_information",
-        reason: "Legacy must stay read-only.",
-        nextAction: "Open a new Candidate-bound research run.",
+        reason: "Missing binding must fail.",
+        nextAction: null,
       },
     })).rejects.toMatchObject({
-      code: "legacy_record_read_only",
+      code: "research_binding_invalid",
       status: 409,
     });
     expect(mocks.recordUpdateMany).not.toHaveBeenCalled();
@@ -302,5 +328,113 @@ describe("product research record store", () => {
     await expect(getProductResearchDecisionState(visitor, "task-1"))
       .rejects.toMatchObject({ code: "not_found", status: 404 });
     expect(mocks.recordFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("V3 Current Research Normalization: 完成研究（creative_ready）→ 写入 researchCompletion（completed）", async () => {
+    mocks.recordFindFirst.mockResolvedValueOnce(ownerTask());
+    mocks.recordFindUnique.mockResolvedValueOnce(ownerTask());
+
+    const outcome = await completeCurrentResearch({ mode: "owner", token: "" }, "task-1", {
+      now: "2026-08-03T01:00:00.000Z",
+    });
+
+    expect(outcome).toEqual({
+      taskId: "task-1",
+      lifecycle: "completed",
+      researchRecord: true,
+      completedAt: "2026-08-03T01:00:00.000Z",
+      idempotent: false,
+    });
+    expect(mocks.recordUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "task-1", updatedAt: new Date("2026-08-03T00:00:00.000Z"), resultJson },
+      data: expect.objectContaining({
+        resultJson: expect.stringContaining('"researchCompletion"'),
+        updatedAt: new Date("2026-08-03T01:00:00.000Z"),
+      }),
+    }));
+  });
+
+  it("V3 Current Research Normalization: 完成研究幂等（已 researchCompletion → 不重复写入）", async () => {
+    const completedTask = ownerTask({ resultJson: JSON.stringify({
+      researchRecord: record,
+      researchVerification: verification,
+      researchCompletion: {
+        schema: "research-completion.v1",
+        status: "completed",
+        completedAt: "2026-08-03T00:30:00.000Z",
+        decisionId: record.latestDecision.decisionId,
+        revision: record.revision,
+        finalStatus: record.latestDecision.status,
+      },
+    }) });
+    mocks.recordFindFirst.mockResolvedValueOnce(completedTask);
+
+    const outcome = await completeCurrentResearch({ mode: "owner", token: "" }, "task-1", {});
+    expect(outcome).toMatchObject({ lifecycle: "completed", idempotent: true });
+    expect(mocks.recordUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("V3 Current Research Normalization: needs_information 禁止完成研究", async () => {
+    const needInfoRecord = appendProductResearchDecision({
+      record,
+      expectedRevision: 1,
+      workflowStatus: verification.workflowStatus,
+      reviewState: verification.reviewState,
+      actor: { mode: "owner", actorRef: "owner:v1" },
+      now: "2026-08-03T00:30:00.000Z",
+      decision: {
+        decisionId: "55555555-5555-4555-8555-555555555555",
+        status: "needs_information",
+        reason: "Current research needs one more source.",
+        nextAction: "Collect the missing source.",
+      },
+    }).record;
+    mocks.recordFindFirst.mockResolvedValueOnce(ownerTask({ resultJson: JSON.stringify({
+      researchRecord: needInfoRecord,
+      researchVerification: verification,
+    }) }));
+
+    await expect(completeCurrentResearch({ mode: "owner", token: "" }, "task-1", {}))
+      .rejects.toMatchObject({ code: "research_need_info", status: 409 });
+    expect(mocks.recordUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("V3 Current Research Normalization: 无 researchRecord 禁止完成研究（先保存人工决定）", async () => {
+    mocks.recordFindFirst.mockResolvedValueOnce(ownerTask({ resultJson: '{"type":"workflow"}' }));
+
+    await expect(completeCurrentResearch({ mode: "owner", token: "" }, "task-1", {}))
+      .rejects.toMatchObject({ code: "research_decision_required", status: 409 });
+    expect(mocks.recordUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("V3 Current Research Normalization: 完成后的记录 → 决定只读；禁止再次修改决定", async () => {
+    const completedTask = ownerTask({ resultJson: JSON.stringify({
+      researchRecord: record,
+      researchVerification: verification,
+      researchCompletion: {
+        schema: "research-completion.v1",
+        status: "completed",
+        completedAt: "2026-08-03T00:30:00.000Z",
+        decisionId: record.latestDecision.decisionId,
+        revision: record.revision,
+        finalStatus: record.latestDecision.status,
+      },
+    }) });
+
+    mocks.recordFindFirst.mockResolvedValueOnce(completedTask);
+    const state = await getProductResearchDecisionState({ mode: "owner", token: "" }, "task-1");
+    expect(state.readOnly).toBe(true);
+
+    mocks.recordFindFirst.mockResolvedValueOnce(completedTask);
+    await expect(updateProductResearchDecision({ mode: "owner", token: "" }, "task-1", {
+      expectedRevision: 1,
+      decision: {
+        decisionId: "66666666-6666-4666-8666-666666666666",
+        status: "creative_ready",
+        reason: "Should be blocked after completion.",
+        nextAction: null,
+      },
+    })).rejects.toMatchObject({ code: "research_record_completed", status: 409 });
+    expect(mocks.recordUpdateMany).not.toHaveBeenCalled();
   });
 });

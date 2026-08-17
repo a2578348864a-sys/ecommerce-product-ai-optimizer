@@ -223,6 +223,106 @@ function safePublicHttpUrl(value: string | null | undefined) {
   }
 }
 
+/**
+ * V3 Current Research Normalization：Research Completion 控件（Active → 研究记录）。
+ * - researchCompletion 已存在 → "研究已完成并保存到研究记录。" + [查看研究记录]（幂等展示）；
+ * - 人工决定未保存（无 researchRecord）→ 禁用并提示先保存决定；
+ * - latestDecision = needs_information → 禁用并提示仍需补资料；
+ * - creative_ready / abandoned → [完成研究并保存记录]（轻量确认 → POST /complete → 成功态）。
+ * 同一 canonical Task 的 lifecycle 收口；不复制 Task、不删除 Evidence。
+ */
+function ResearchCompletionControl({
+  taskId,
+  result,
+  onCompleted,
+}: {
+  taskId: string;
+  result: Record<string, unknown>;
+  onCompleted?: () => void;
+}) {
+  const [completing, setCompleting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const completion = isRecordValue(result.researchCompletion) ? result.researchCompletion as Record<string, unknown> : null;
+  const completionStatus = completion && typeof completion.status === "string" ? completion.status : null;
+  const record = isRecordValue(result.researchRecord) ? result.researchRecord as Record<string, unknown> : null;
+  const latest = record && isRecordValue(record.latestDecision) ? record.latestDecision as Record<string, unknown> : null;
+  const latestStatus = latest && typeof latest.status === "string" ? latest.status : null;
+
+  if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
+    return (
+      <section className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-completed">
+        <p className="text-sm font-bold text-teal-800">研究已完成并保存到研究记录。</p>
+        <Link
+          href="/tasks"
+          className="mt-2 inline-flex h-9 items-center rounded-lg border border-teal-300 bg-white px-3 text-xs font-semibold text-teal-700 hover:bg-teal-50"
+        >
+          查看研究记录
+        </Link>
+      </section>
+    );
+  }
+
+  const canComplete = latestStatus === "creative_ready" || latestStatus === "abandoned";
+  const blockReason = !latestStatus
+    ? "请先保存人工决定，再完成研究。"
+    : latestStatus === "needs_information"
+      ? "当前仍需补充资料，补充后再完成研究。"
+      : "";
+
+  async function completeResearch() {
+    if (completing || !canComplete) return;
+    const confirmed = window.confirm(
+      "完成后，该商品会从『商品研究』移动到『研究记录』。现有研究资料不会删除，仍可查看并使用创作工具。",
+    );
+    if (!confirmed) return;
+    setCompleting(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/complete`, {
+        method: "POST",
+        cache: "no-store",
+        headers: { ...buildAccessHeaders() },
+      });
+      const data = await response.json() as { ok: boolean; error?: { message: string } };
+      if (!response.ok || !data.ok) {
+        setError(data.error?.message ?? "完成研究失败，请稍后重试。");
+        return;
+      }
+      setDone(true);
+      onCompleted?.();
+    } catch {
+      setError("网络异常，完成研究失败，请重试。");
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-testid="research-completion-control">
+      <p className="text-sm font-bold text-slate-900">完成研究</p>
+      <p className="mt-1 text-sm leading-6 text-slate-600">
+        人工决定与完成研究是两个动作：保存决定表示研究判断；完成研究后，该商品会从「商品研究」移动到「研究记录」，
+        现有研究资料不会删除，仍可查看并使用创作工具。
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={completing || !canComplete}
+          onClick={() => void completeResearch()}
+          className="linear-button inline-flex h-10 items-center justify-center px-4 text-sm font-semibold disabled:opacity-50"
+          data-testid="complete-research-button"
+        >
+          {completing ? "正在完成…" : "完成研究并保存记录"}
+        </button>
+        {blockReason ? <p className="text-xs font-semibold text-amber-700">{blockReason}</p> : null}
+      </div>
+      {error ? <p className="mt-2 text-xs font-semibold text-rose-700">{error}</p> : null}
+    </section>
+  );
+}
+
 function getProductIdentity(result: unknown) {
   if (!isRecordValue(result)) return { asin: null, productUrl: null };
   const candidates = [result.product, result.normalizedProduct, result.normalized, result.candidateAnalysisContext]
@@ -1512,20 +1612,22 @@ export function TaskRecordDetail({ id }: { id: string }) {
                     <section id="product-research-decision" className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="research-decision-section">
                       <h2 className="text-base font-bold text-slate-950">人工决定</h2>
                       <p className="mt-1 text-sm leading-6 text-slate-500">查看当前决定、原因、下一步和决定历史；更新决定不会改写原始研究结论。</p>
-                      {/* V3 Legacy Removal：仅正式 Current Research（新版研究记录）渲染正式决定面板；
-                          早期候选任务（无新版研究记录）显示只读当前决定（不再提供旧版写入口）。 */}
-                      {hasVersionedProductResearchRecord(record.result) ? (
-                        <ProductResearchDecisionPanel
-                          taskId={record.id}
-                          onUpdated={() => void refreshRecord()}
-                        />
-                      ) : (
-                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3" data-testid="legacy-decision-readonly">
-                          <p className="text-sm font-bold text-slate-800">当前决定：{getDecisionStatusOption(record.decisionStatus).shortLabel}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">{getDecisionStatusOption(record.decisionStatus).description}</p>
-                        </div>
-                      )}
+                      {/* V3 Current Research Normalization：所有当前 Research 统一使用正式决定面板
+                          （无 researchRecord 任务首次保存时创建正式研究记录；已完成任务只读）。 */}
+                      <ProductResearchDecisionPanel
+                        taskId={record.id}
+                        onUpdated={() => void refreshRecord()}
+                      />
                     </section>
+
+                    {/* V3 Current Research Normalization：Research Completion（Active → 研究记录） */}
+                    {isRecordValue(record.result) ? (
+                      <ResearchCompletionControl
+                        taskId={record.id}
+                        result={record.result}
+                        onCompleted={() => void refreshRecord()}
+                      />
+                    ) : null}
 
                                    {/* V3 Legacy Removal：Studio 只处理正式 Current Research Context；早期候选任务不显示创作工具区。 */}
                 {!studioLegacyUnsupported ? (
