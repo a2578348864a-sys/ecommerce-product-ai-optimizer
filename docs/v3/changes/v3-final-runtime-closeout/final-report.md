@@ -210,3 +210,54 @@ LOCAL_RELEASE_CANDIDATE 状态：**待用户复查后按既有流程评估**；P
 - 本轮未修改扩展文件 → 无需 reload；未来 Helper 变更后按 §206 执行 reload 确认。
 
 LOCAL_RELEASE_CANDIDATE：待用户复查 R13 三链后按既有流程评估；PUBLIC_DEPLOY = FORBIDDEN（维持）。
+
+---
+
+# R14 补充整改 — 1688 搜索结果商品图片真实展示
+
+> 2026-08-17 · 分支 `codex/v3-1688-candidate-images` → main（155dc69）
+> 用户真实手工验收：三条链数据真实，但关键词/图搜结果卡片的商品缩略图大量 broken-image。
+
+## 1. 先 trace 不猜（§1/§2）
+
+| 层 | 实测结果（Keyword 3+ 候选 / Image Search） |
+|---|---|
+| RAW_IMAGE_FIELD | 1688-cli search 输出 `image` 字段 = **完整 https URL**（`https://cbu01.alicdn.com/img/ibank/O1CN01VUhiVs26E8d7Rhwo7_!!2217167297629-0-cib.jpg`，10/10 齐全） |
+| NORMALIZED_IMAGE_URL | normalize 后 `candidate.images[0]` = 同一 URL（无截断/转义） |
+| API_IMAGE_URL | 同 URL（无变化） |
+| DOM_IMG_SRC | `<img src="https://cbu01.alicdn.com/...">`（完整、正确） |
+| NETWORK_FINAL_URL | 同 URL（无重定向） |
+| HTTP_STATUS | 直接访问 **200**；**带 Referer: http://127.0.0.1:3005/ → 403** |
+| CONTENT_TYPE | image/jpeg（150-220KB 真实图片） |
+
+**定性 = E 类：1688 CDN（alicdn）防盗链**——浏览器 img 请求携带页面 Referer（127.0.0.1:3005）→ alicdn 403 → broken。非 Next/Image（普通 img）、非 normalization、非代理、非 cookie、非 URL 缺失。
+
+## 2. 修复（最小安全，§4/§5/§13/§14/§15）
+
+- `SourcingCandidateThumb`（唯一展示入口）：`referrerPolicy="no-referrer"`（实证：无 Referer → 200 image/*）+ `loading="lazy"` + **onError 单张降级「暂无商品图」占位**（不显示 broken icon、不无限重试、不重复请求）；无图候选同样占位。
+- `normalizeCandidateImageUrl`（§5）：protocol-relative `//host` → `https://host`；仅接受 https 绝对 URL；相对路径/其他协议 → null（禁止猜路径）。
+- 未引入图片代理（无需：no-referrer 已实证解决，无 SSRF 面、无开放代理风险、无 cookie）。
+- 未动价格/MOQ/seller claim 语义（§20）；未做 DB migration（§12/§19——Preview 卡片正确，证据合同无图字段不强行扩展）。
+
+## 3. 真实验收（headed + 真实 3005，§21/§22/§23）
+
+| 链 | 结果 |
+|---|---|
+| 关键词（儿童吸管水杯） | **10/10 loaded**（修复前 10/10 broken）；0 broken、0 placeholder、0 pending |
+| 图搜（真实 Amazon 主图） | **60/60 loaded**（滚动触发 lazy 后全部 naturalWidth>0）；0 broken、0 placeholder |
+| 实体绑定 | first/middle/last 抽查：img + offerId（来源 URL）+ title 同卡片一致（§17）；keyword 链 image 与 offerId 同 CLI 输出对象（结构层，§18） |
+| 代理环境 | 当前美国代理节点下全部正常（§25） |
+
+after 截图：`docs/v3/changes/v3-final-runtime-closeout/r14-image-search-after.png`（§30；before 状态以修复前 10/10 broken 的 DOM 统计为证据）。
+
+## 4. 测试与质量
+
+- 新增 7 用例：normalizeCandidateImageUrl（4 类拒绝 + protocol-relative + keyword 链集成）、SourcingCandidateThumb（no-referrer 渲染 + 占位 fallback）。
+- 全量：**4887 passed / 90 skipped**（+7）；仅 2 个既有环境失败（bridge 53318 端口占用、release-package tar 基线）。tsc / lint（0 errors）/ build PASS；R1-R13 无回归。
+- 3005 运行新构建（health 200，计划任务原状态）。
+
+## 5. 门禁（§31）
+
+R14_KEYWORD_IMAGES = PASS（10/10）；R14_IMAGE_SEARCH_IMAGES = PASS（60/60）；IMAGE_ENTITY_BINDING = PASS；IMAGE_SSRF_SAFETY = PASS（无代理、无放宽）；NO_OPEN_IMAGE_PROXY = PASS（未引入代理）；PROXY_ENVIRONMENT = PASS；BROKEN_IMAGE_FALLBACK = PASS；R1-R13 无回归。
+
+LOCAL_RELEASE_CANDIDATE：待用户复查真实商品图后按既有流程评估；PUBLIC_DEPLOY = FORBIDDEN（维持）。
