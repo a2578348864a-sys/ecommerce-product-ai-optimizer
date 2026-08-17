@@ -25,11 +25,11 @@ const OWNER_PLACEHOLDER = "输入管理员密码";
 const GUEST_PLACEHOLDER = "输入访客码";
 
 export const LOGIN_PRODUCT_JOURNEY = [
-  { number: "01", label: "发现商品", description: "上传 SellerSprite，筛选候选商品", icon: Search },
-  { number: "02", label: "研究优先级", description: "结合市场信号安排研究顺序", icon: Sparkles },
-  { number: "03", label: "AI 商品研究", description: "整理信息、风险与证据缺口", icon: Sparkles },
-  { number: "04", label: "人工决策", description: "决定继续、待补或放弃", icon: CheckCircle2 },
-  { number: "05", label: "按需创作", description: "进入 Listing Studio / Image Studio", icon: ShieldCheck },
+  { number: "01", label: "导入真实数据", description: "SellerSprite 数据进入候选池", icon: Search },
+  { number: "02", label: "商品研究", description: "收集 Amazon、VOC 与供应证据", icon: Sparkles },
+  { number: "03", label: "AI 整理证据", description: "归纳重点、风险与信息缺口", icon: Sparkles },
+  { number: "04", label: "人工决定", description: "决定继续、补资料或结束研究", icon: CheckCircle2 },
+  { number: "05", label: "内容创作", description: "已确认资料进入 Listing / Image Studio", icon: ShieldCheck },
 ] as const;
 
 export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
