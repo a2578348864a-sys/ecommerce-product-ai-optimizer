@@ -71,6 +71,9 @@ describe("versioned product research decision panel", () => {
     expect(detailSource).not.toContain("POST /api/tasks`");
     // 完成判定：creative_ready / abandoned 可完成
     expect(detailSource).toContain('latestStatus === "creative_ready" || latestStatus === "abandoned"');
+    // 浏览器投影不暴露 researchRecord：完成控件必须读取 productResearchSummary（否则保存决定后按钮仍禁用）
+    expect(detailSource).toContain("result.productResearchSummary");
+    expect(detailSource).toContain('typeof summary?.status === "string"');
   });
 
   it("does not auto-trigger Listing or Image work", () => {

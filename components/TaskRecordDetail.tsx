@@ -246,9 +246,14 @@ function ResearchCompletionControl({
 
   const completion = isRecordValue(result.researchCompletion) ? result.researchCompletion as Record<string, unknown> : null;
   const completionStatus = completion && typeof completion.status === "string" ? completion.status : null;
+  // 浏览器投影只暴露 productResearchSummary（researchRecord 仅服务端内部）；
+  // 决策状态以投影 summary 为准，researchRecord 仅作兜底（完整 result 传入时）。
+  const summary = isRecordValue(result.productResearchSummary) ? result.productResearchSummary as Record<string, unknown> : null;
   const record = isRecordValue(result.researchRecord) ? result.researchRecord as Record<string, unknown> : null;
   const latest = record && isRecordValue(record.latestDecision) ? record.latestDecision as Record<string, unknown> : null;
-  const latestStatus = latest && typeof latest.status === "string" ? latest.status : null;
+  const latestStatus = typeof summary?.status === "string"
+    ? summary.status
+    : (latest && typeof latest.status === "string" ? latest.status : null);
 
   if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
     return (
