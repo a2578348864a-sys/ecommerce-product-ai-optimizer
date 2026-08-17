@@ -150,5 +150,5 @@ RESTART_SMOKE          = NOT_EXECUTED    (中断性操作未授权)
 | FINAL_FULL_REGRESSION | PASS | vitest 4932 passed / 90 skipped；TSC exit 0；LINT 0 errors；BUILD exit 0；release-package.test PR-1 PASS（VR 系列 ENVIRONMENT_SKIP：Windows 无 bash）；native1688Bridge.integration ENVIRONMENT_SKIP（53318 端口被 3005 bridge 占用，端口硬编码无 env 覆盖，已有真实 bridge evidence） |
 | RELEASE_TOOLING_FIX | 完成（71d91d9） | package-release.mjs 中文路径 Windows 工作区打包失败（Node→bsdtar 输出路径编码损坏）为真实 release bug；修复：ASCII 临时目录打包+校验+Node fs 复制；修复后真实打包 PASS（release/next-v2.2.16-1fb8af0-linux-x64.tar.gz 1,779,011 bytes，manifest SHA256 记录） |
 | RESTART_SMOKE | NOT_EXECUTED | 无业务代码变化（仅 .gitignore/docs/release-tooling），无需重建 3005；中断性操作未授权；3005 持续 health OK |
-| REMOTE_SYNC | 见下（push 后回填） | |
-| PUBLIC_PREFLIGHT | 见 docs/v3/PUBLIC_DEPLOYMENT_READINESS.md | 17 节只读规划；PUBLIC_DEPLOY=FORBIDDEN |
+| REMOTE_SYNC | PASS | 本地 b0dc5c7 = 远端 b0dc5c7（ls-remote 实证）；AHEAD=24/BEHIND=0 纯领先 fast-forward push（SSH 22 可达，BatchMode）成功 `cd7a476..b0dc5c7`；无 force/rewrite；`git status -sb` 无 ahead/behind |
+| PUBLIC_PREFLIGHT | 见 docs/v3/PUBLIC_DEPLOYMENT_READINESS.md | 17 节只读规划；PUBLIC_PREFLIGHT_BLOCKERS=0；PUBLIC_DEPLOY=FORBIDDEN |

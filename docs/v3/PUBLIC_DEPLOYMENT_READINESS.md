@@ -59,11 +59,12 @@
 
 | 项 | 状态 |
 |----|------|
-| LOCAL_MAIN | 含 Final Freeze Audit + hygiene + tooling fix + 本文档 |
-| REMOTE_MAIN（真实远端） | 以 `git ls-remote` 实证为准（本报告完成后更新） |
-| AHEAD/BEHIND/DIVERGED | 见 §16（push 后回填） |
-| 传输 | SSH 22 曾不可达；HTTPS read-only 已验证可达（ls-remote 成功） |
-| 规则 | 仅 fast-forward push；禁 force / rewrite / 删远端分支 |
+| LOCAL_MAIN | b0dc5c7（含 Final Freeze Audit + hygiene + tooling fix + 本文档） |
+| REMOTE_MAIN（真实远端） | b0dc5c7（`git ls-remote` 实证） |
+| AHEAD/BEHIND/DIVERGED | AHEAD=24 / BEHIND=0 / 纯领先（cd7a476 为本地祖先，fast-forward 验证通过） |
+| 传输 | SSH 22 可达（`GIT_SSH_COMMAND="ssh -o ConnectTimeout=15 -o BatchMode=yes"`）；push 成功 `cd7a476..b0dc5c7 main -> main` |
+| Push 后实证 | REMOTE_MAIN_HEAD == LOCAL_MAIN_HEAD（b0dc5c7）；`git status -sb` 无 ahead/behind |
+| 结果 | **REMOTE_SYNC = PASS**（无 force / 无 rewrite / 仅 fast-forward） |
 
 ## 6. Public Capability Matrix（三层分类，不假绿）
 
@@ -185,16 +186,15 @@
 
 ## 16. Blockers
 
-- Release blockers（本轮）：无（hygiene PASS / regression PASS / secret CLEAN / tooling 修复完成）。
-- Remote Sync：待执行（见 §5；push 后回填 REAL_REMOTE_MAIN_HEAD 与 AHEAD/BEHIND）。
-- Public blockers（初判 0；最终以 §17 状态为准）：全部风险面均有既有防线（fail-closed 工具状态、visitor gate+quota、loopback bridge、artifact 不含 DB、回滚分离）。
+- Release blockers：无（hygiene PASS / regression PASS / secret CLEAN / tooling 修复完成 / remote sync PASS）。
+- Remote Sync：PASS（§5 实证）。
+- Public blockers：**0**。逐项核查（§58 清单）：secret/history CLEAN；remote 已同步；build PASS；auth 为 sessionStorage token + HTTPS 计划（无 cookie 面）；visitor 生成默认 gate 关闭 + quota ledger（无法无限烧付费 API）；DB 持久化/备份/回滚分离（artifact 不含 DB）；Bridge 常量 loopback（部署无法暴露）；Public UI 工具状态 fail-closed（代码级证据：`sourcingCapabilities(null)` → 全部 false、版本不匹配 HELPER_OUTDATED；部署后 smoke 复验 §15）；必需 env 清单已给出（部署执行项）；已保存 Evidence 从 DB 读取不依赖 Helper；四层回滚方案可执行。
 - 明确**不计入** blocker：Amazon price selector unknown（fail-closed）、P2 文案项、孤儿历史任务。
 
 ## 17. Final Readiness
 
-（push 与最终验证后回填）
-
-- `PUBLIC_PREFLIGHT_BLOCKERS = <n>`
-- `PUBLIC_DEPLOYMENT_READINESS = READY_FOR_DEPLOY_AUTHORIZATION | BLOCKED`
+- `PUBLIC_PREFLIGHT_BLOCKERS = 0`
+- `PUBLIC_DEPLOYMENT_READINESS = READY_FOR_DEPLOY_AUTHORIZATION`
 - `PUBLIC_DEPLOY = FORBIDDEN`（等待用户明确授权："可以了，部署公网"）
 - `V3_6 = NOT_AUTHORIZED`
+- 下一步：用户授权后按 runbook（docs/deployment/production-runbook.md）执行：build → package-release → artifact 上传 → 解压替换 .next（备份旧版）→ pm2 restart → 本机+公网验收 → 按 §15 Public Smoke Plan 验收。
