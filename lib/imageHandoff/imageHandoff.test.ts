@@ -308,6 +308,40 @@ describe("Image Input Mapping", () => {
       expect(serialized).not.toContain("handoffFingerprint");
     }
   });
+
+  it("V3 Evidence → Creative Context Bridge: creativeContext 参考层进入 Image 输入但绝不进 productFacts", () => {
+    const creativeContext = {
+      schema: "creative-context.v1" as const,
+      version: 1 as const,
+      generatedAt: "",
+      source: { researchRevision: 1, candidateId: "cand" },
+      confirmedFacts: [],
+      confirmableFactCandidates: [],
+      vocInsights: [{ insightId: "v1", theme: "很多家长担心漏水", summary: "用户关注防漏", evidenceRefs: ["r1"], reviewCount: 4, coverage: 0.3, strength: "weak" as const, sourceType: "voc_theme", provenance: { evidenceRef: "ev:voc:r1", sourceType: "voc_theme", observedAt: "" } }],
+      keywordCandidates: [],
+      competitiveContext: [{ asin: "B0COMP1", note: "竞品强调便携", addedAt: "", evidenceRef: "ev:competitor:B0COMP1", provenance: { evidenceRef: "ev:competitor:B0COMP1", sourceType: "competitor_evidence", observedAt: "" } }],
+      sourcingContext: [],
+      aiReferences: [{ referenceId: "r1", field: "ai_summary_signal", summary: "适合儿童场景", allowedUse: "composition" as const, sourceType: "ai_evidence_summary", evidenceRef: "ev:ai:r1", provenance: { evidenceRef: "ev:ai:r1", sourceType: "ai_evidence_summary", observedAt: "" } }],
+      missingConflicts: [],
+      counts: { confirmedFacts: 0, confirmableCandidates: 0, vocInsights: 1, keywordCandidates: 0, competitiveInsights: 1, sourcingEntries: 0, aiReferences: 1, missingConflicts: 0 },
+    };
+    const r = buildImageInputFromCreativeHandoff(buildHandoff(), 1, { creativeContext });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.input.creativeContext).toBeDefined();
+      expect(r.input.creativeContext!.vocInsights.length).toBe(1);
+      expect(r.input.creativeContext!.competitiveContext.length).toBe(1);
+      expect(r.input.creativeContext!.aiReferences.length).toBe(1);
+      // 绝不进入 productFacts（VOC 不能变产品属性）
+      expect(r.input.productFacts.some((f) => f.value.includes("漏水"))).toBe(false);
+      // prompt 参考层分区 + NOT FACT
+      const prompt = buildImagePromptFromInput(r.input);
+      expect(prompt).toContain("研究参考层");
+      expect(prompt).toContain("NOT FACTS");
+      expect(prompt).toContain("VOC_INSIGHTS_START");
+      expect(assertImagePromptIsSafe(prompt)).toBe(true);
+    }
+  });
 });
 
 // ═══ Prompt（31-40）═══

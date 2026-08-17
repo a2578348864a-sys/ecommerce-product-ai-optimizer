@@ -28,6 +28,20 @@ function factLines(facts: Array<{ field: string; label: string; value: string }>
     : "(无)";
 }
 
+/** V3 Evidence → Creative Context Bridge：参考层文本（bounded；全部 NOT FACT） */
+function buildResearchReferenceLayers(
+  context: ListingGenerationInput["creativeContext"],
+): string {
+  if (!context) return "研究参考层：无";
+  const sections: string[] = [];
+  if (context.vocInsights.length) sections.push(`VOC_INSIGHTS_START\n${context.vocInsights.map((v) => `- ${v}`).join("\n")}\nVOC_INSIGHTS_END`);
+  if (context.aiReferences.length) sections.push(`AI_REFERENCES_START\n${context.aiReferences.map((v) => `- ${v}`).join("\n")}\nAI_REFERENCES_END`);
+  if (context.keywordCandidates.length) sections.push(`KEYWORD_CANDIDATES_START\n${context.keywordCandidates.map((v) => `- ${v}`).join("\n")}\nKEYWORD_CANDIDATES_END`);
+  if (context.competitiveContext.length) sections.push(`COMPETITIVE_CONTEXT_START\n${context.competitiveContext.map((v) => `- ${v}`).join("\n")}\nCOMPETITIVE_CONTEXT_END`);
+  if (context.sourcingContext.length) sections.push(`SOURCING_CONTEXT_START\n${context.sourcingContext.map((v) => `- ${v}`).join("\n")}\nSOURCING_CONTEXT_END`);
+  return sections.length ? sections.join("\n") : "研究参考层：无";
+}
+
 /**
  * 五分区 Prompt。纯函数：同输入同输出；无时间/随机/env。
  */
@@ -70,6 +84,16 @@ export function buildListingPromptFromInput(input: ListingGenerationInput): stri
     "=== 未知和冲突 (Unknowns and conflicts) ===",
     "Do NOT complete, guess or infer. If relevant, mention in risk notes only.",
     textList(input.unknowns),
+    "",
+    "=== 研究参考层 (Research reference layers — NOT FACTS) ===",
+    "Each layer below is REFERENCE ONLY. Never state any of it as a product fact,",
+    "attribute, certification, performance, effect, grade, price, cost, MOQ or guarantee.",
+    "- VOC INSIGHTS: customer language / usage scenarios / priorities only.",
+    "- AI REFERENCES: reasoning / wording direction only (AI_REFERENCE_NOT_FACT).",
+    "- KEYWORD CANDIDATES: observed search evidence, not confirmed keywords.",
+    "- COMPETITIVE CONTEXT: positioning reference only; never copy competitor facts.",
+    "- SOURCING CONTEXT: internal research only; Similar ≠ Exact; displayedPrice ≠ purchaseCost.",
+    buildResearchReferenceLayers(input.creativeContext),
     "",
     "=== 创意偏好 (Creative preferences) ===",
     preferenceLine,

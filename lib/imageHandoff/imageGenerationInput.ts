@@ -36,6 +36,15 @@ export type ImageGenerationInput = {
   humanReviewRequired: true;
   researchMode: "market_research_only";
   promotionEligible: false;
+  /**
+   * V3 Evidence → Creative Context Bridge：研究 Evidence 参考层（VOC/AI/Competitive）。
+   * 全部为参考 only（场景/方向/差异化参考）；视觉文案中的事实 claim 仍只能来自 confirmedFacts。
+   */
+  creativeContext?: {
+    vocInsights: string[];
+    aiReferences: string[];
+    competitiveContext: string[];
+  };
 };
 
 export type ImageHandoffGateResult =
@@ -78,6 +87,7 @@ function isApprovedVisualReference(value: unknown): value is { referenceFingerpr
 export function buildImageInputFromCreativeHandoff(
   handoff: ProductCreativeHandoffV1,
   researchRevision: number,
+  options: { creativeContext?: import("@/lib/creativeContextBuilder").CreativeContextV1 | null } = {},
 ): ImageHandoffGateResult {
   if (!isRecord(handoff)) {
     return { ok: false, code: "handoff_required", message: "没有可用的创作交接。" };
@@ -194,6 +204,9 @@ export function buildImageInputFromCreativeHandoff(
     humanReviewRequired: true,
     researchMode: "market_research_only",
     promotionEligible: false,
+    ...(projectCreativeContextReferences(options.creativeContext)
+      ? { creativeContext: projectCreativeContextReferences(options.creativeContext) }
+      : {}),
   };
 
   const generationInputFingerprint = createHash("sha256")
@@ -215,6 +228,32 @@ export const IMAGE_INPUT_FORBIDDEN_KEYS = Object.freeze([
 /** 确保稳定字段不被未知 key 覆盖（exact keys 防护） */
 export function hasForbiddenImageInputKey(input: Record<string, unknown>): boolean {
   return IMAGE_INPUT_FORBIDDEN_KEYS.some((key) => Object.prototype.hasOwnProperty.call(input, key));
+}
+
+/**
+ * V3 Evidence → Creative Context Bridge：Creative Context → Image 参考层（bounded，参考 only）。
+ * - VOC insights → 场景优先级 / 用户关注点（§45）；
+ * - AI references → 创意方向参考；
+ * - competitive context → 差异化方向参考（禁止复制竞品属性）。
+ * 视觉文案中的事实 claim 仍只能来自 confirmedFacts（§46）。
+ */
+export function projectCreativeContextReferences(
+  context: import("@/lib/creativeContextBuilder").CreativeContextV1 | null | undefined,
+): ImageGenerationInput["creativeContext"] {
+  if (!context) return undefined;
+  const vocInsights = context.vocInsights.slice(0, 6).map((v) =>
+    `VOC: ${v.theme}${v.summary ? ` — ${v.summary.slice(0, 120)}` : ""}${v.reviewCount > 0 ? ` (${v.reviewCount} reviews)` : ""}`,
+  );
+  const aiReferences = context.aiReferences.slice(0, 6).map((r) =>
+    `AI REFERENCE (NOT FACT): ${r.summary.slice(0, 140)}`,
+  );
+  const competitiveContext = context.competitiveContext.slice(0, 5).map((c) =>
+    `competitor ${c.asin}${c.note ? `: ${c.note.slice(0, 100)}` : ""}`,
+  );
+  if (vocInsights.length === 0 && aiReferences.length === 0 && competitiveContext.length === 0) {
+    return undefined;
+  }
+  return { vocInsights, aiReferences, competitiveContext };
 }
 
 /**

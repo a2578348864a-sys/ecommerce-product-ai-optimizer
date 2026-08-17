@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProductCreativeHandoffProjectionEvidence,
   ProjectionEvidenceAdapterError,
+  projectBrowserEvidenceStableFacts,
   type ProjectionEvidenceInput,
 } from "@/lib/productCreativeHandoffProjectionEvidence";
 import {
@@ -424,6 +425,102 @@ describe("投影接线行为（Preview 语义）", () => {
           expect(item.fact.factCategory).toBeUndefined();
         }
       }
+    });
+  });
+
+  describe("projectBrowserEvidenceStableFacts（V3 Evidence → Creative Context Bridge）", () => {
+    function browserResult(overrides: Record<string, unknown> = {}) {
+      return {
+        browserEvidence: {
+          schema: "browser-evidence.v1",
+          version: 1,
+          candidateId: "cand-1",
+          targetAsin: "B08CVT84C9",
+          snapshots: [{
+            evidenceId: "ev-1",
+            sourceType: "browser",
+            sourceSite: "amazon",
+            pageUrl: "https://www.amazon.com/dp/B08CVT84C9",
+            marketplace: "US",
+            locale: "en_US",
+            currency: "USD",
+            entityBinding: {
+              bound: true,
+              urlAsin: "B08CVT84C9",
+              pageAsin: "B08CVT84C9",
+              proof: { urlMatchesExpected: true, pageAnchorMatchesExpected: true, productContainerFound: true },
+            },
+            collectorVersion: "1.0",
+            capturedAt: "2026-08-16T16:17:00.328Z",
+            fields: {
+              asin: { value: "B08CVT84C9", status: "correct", reason: null, nature: "snapshot" },
+              title: { value: "Bentgo Chill Kids Bento Box", status: "correct", reason: null, nature: "snapshot" },
+              price: { value: 32.99, status: "correct", reason: null, nature: "snapshot" },
+              bsr: { value: 8, status: "correct", reason: null, nature: "snapshot" },
+              rating: { value: 4.6, status: "correct", reason: null, nature: "snapshot" },
+              reviewCount: { value: 18999, status: "correct", reason: null, nature: "snapshot" },
+            },
+            failureReasons: [],
+            confirmedBy: { mode: "owner", actorRef: "owner:v1" },
+            confirmedAt: "2026-08-16T16:17:10.000Z",
+          }],
+          updatedAt: "2026-08-16T16:17:10.000Z",
+        },
+        ...overrides,
+      };
+    }
+
+    it("确定性字段投影：asin(identity) / title(routing) / price+bsr+rating+review_count(market_signal)", () => {
+      const facts = projectBrowserEvidenceStableFacts(browserResult());
+      const byField = new Map(facts.map((f) => [f.field, f]));
+      expect(byField.get("asin")?.stabilityRule).toBe("identity_only");
+      expect(byField.get("title")?.stabilityRule).toBe("routing_only");
+      for (const field of ["price_usd", "bsr", "rating", "review_count"]) {
+        const fact = byField.get(field);
+        expect(fact).toBeDefined();
+        expect(fact!.factCategory).toBe("market_signal");
+        expect(fact!.stabilityRule).toBe("human_confirmation_required_for_claim");
+        expect(fact!.sourceRef.sourceKind).toBe("amazon_browser_snapshot");
+        if ("capturedAt" in fact!.sourceRef) {
+          expect(fact!.sourceRef.capturedAt).toBe("2026-08-16T16:17:00.328Z");
+        }
+      }
+      // Observed Price 语义（currency 保留）
+      expect(byField.get("price_usd")?.label).toContain("Observed Amazon Page Price");
+    });
+
+    it("Wrong Entity 保护：entityBinding.bound=false → 零投影", () => {
+      const broken = browserResult();
+      const browser = broken.browserEvidence as { snapshots: Array<Record<string, unknown>> };
+      browser.snapshots = [{
+        ...browser.snapshots[0],
+        entityBinding: { bound: false, urlAsin: null, pageAsin: "B0WRONG", proof: { urlMatchesExpected: false, pageAnchorMatchesExpected: false, productContainerFound: false } },
+      }];
+      expect(projectBrowserEvidenceStableFacts(broken)).toEqual([]);
+    });
+
+    it("Wrong Entity 保护：observed ASIN ≠ target ASIN → 零投影", () => {
+      const mismatch = browserResult();
+      const browser = mismatch.browserEvidence as { snapshots: Array<Record<string, unknown>> };
+      browser.snapshots = [{
+        ...browser.snapshots[0],
+        entityBinding: { bound: true, urlAsin: "B0OTHER", pageAsin: "B0OTHER", proof: { urlMatchesExpected: true, pageAnchorMatchesExpected: true, productContainerFound: true } },
+      }];
+      expect(projectBrowserEvidenceStableFacts(mismatch)).toEqual([]);
+    });
+
+    it("字段 status !== correct → 不投影", () => {
+      const partial = browserResult();
+      const browser = partial.browserEvidence as { snapshots: Array<{ fields: Record<string, { value: unknown; status: string; reason: string | null; nature: string }> }> };
+      browser.snapshots[0].fields.price = { value: null, status: "unknown", reason: "selector_not_found", nature: "snapshot" };
+      const facts = projectBrowserEvidenceStableFacts(partial);
+      expect(facts.some((f) => f.field === "price_usd")).toBe(false);
+      expect(facts.some((f) => f.field === "rating")).toBe(true);
+    });
+
+    it("无 browserEvidence 或空快照 → 空数组", () => {
+      expect(projectBrowserEvidenceStableFacts({})).toEqual([]);
+      expect(projectBrowserEvidenceStableFacts({ browserEvidence: { snapshots: [] } })).toEqual([]);
     });
   });
 });

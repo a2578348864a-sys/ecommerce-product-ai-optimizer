@@ -39,6 +39,17 @@ export type ListingGenerationInput = {
    * 原始 facts 永不修改；渲染仅供用户可见 Listing 字段使用。
    */
   englishRenderings?: import("@/lib/listingHandoff/listingEnglishRendering").EnglishRenderingPack;
+  /**
+   * V3 Evidence → Creative Context Bridge：研究 Evidence 参考层（VOC/AI/Keyword/Competitor/Sourcing）。
+   * 全部为参考 only —— 绝不作为事实声明（prompt 分区明确 NOT FACT）。
+   */
+  creativeContext?: {
+    vocInsights: string[];
+    aiReferences: string[];
+    keywordCandidates: string[];
+    competitiveContext: string[];
+    sourcingContext: string[];
+  };
 };
 
 export const LISTING_COMPOSER_VERSION = "listing-composer-v1" as const;
@@ -127,6 +138,7 @@ export function summarizeListingHandoffFacts(
 export function buildListingInputFromCreativeHandoff(
   handoff: ProductCreativeHandoffV1,
   researchRevision: number,
+  options: { creativeContext?: import("@/lib/creativeContextBuilder").CreativeContextV1 | null } = {},
 ): ListingHandoffGateResult {
   if (!isRecord(handoff)) {
     return { ok: false, code: "handoff_required", message: "没有可用的创作交接。" };
@@ -220,6 +232,9 @@ export function buildListingInputFromCreativeHandoff(
     humanReviewRequired: true,
     researchMode: "market_research_only",
     promotionEligible: false,
+    ...(projectCreativeContextReferences(options.creativeContext)
+      ? { creativeContext: projectCreativeContextReferences(options.creativeContext) }
+      : {}),
   };
 
   const generationInputFingerprint = computeListingGenerationFingerprint(input);
@@ -256,4 +271,39 @@ export const LISTING_INPUT_FORBIDDEN_KEYS = Object.freeze([
 /** 确保稳定字段不被未知 key 覆盖（exact keys 防护） */
 export function hasForbiddenInputKey(input: Record<string, unknown>): boolean {
   return LISTING_INPUT_FORBIDDEN_KEYS.some((key) => Object.prototype.hasOwnProperty.call(input, key));
+}
+
+/**
+ * V3 Evidence → Creative Context Bridge：Creative Context → Listing 参考层（bounded，参考 only）。
+ * - VOC insights → 客户语言/场景/需求参考；
+ * - AI references → 推理/表达参考（AI_REFERENCE_NOT_FACT）；
+ * - keyword candidates → 观察/搜索证据（未人工确认，绝不直接进 final keywords）；
+ * - competitive context → 定位参考 only（禁止复制竞品属性为目标商品事实）；
+ * - sourcing context → 内部研究参考 only（displayedPrice ≠ purchaseCost）。
+ * 纯函数；token bounding：各层 top-N + 长度上限（§56）。
+ */
+export function projectCreativeContextReferences(
+  context: import("@/lib/creativeContextBuilder").CreativeContextV1 | null | undefined,
+): ListingGenerationInput["creativeContext"] {
+  if (!context) return undefined;
+  const vocInsights = context.vocInsights.slice(0, 6).map((v) =>
+    `VOC: ${v.theme}${v.summary ? ` — ${v.summary.slice(0, 120)}` : ""}${v.reviewCount > 0 ? ` (${v.reviewCount} reviews)` : ""}`,
+  );
+  const aiReferences = context.aiReferences.slice(0, 6).map((r) =>
+    `AI REFERENCE (NOT FACT): ${r.summary.slice(0, 140)}`,
+  );
+  const keywordCandidates = context.keywordCandidates.slice(0, 10).map((k) =>
+    `observed keyword (${k.reportType}): ${k.keyword}`,
+  );
+  const competitiveContext = context.competitiveContext.slice(0, 5).map((c) =>
+    `competitor ${c.asin}${c.note ? `: ${c.note.slice(0, 100)}` : ""}`,
+  );
+  const sourcingContext = context.sourcingContext.slice(0, 5).map((s) =>
+    `sourcing offer ${s.offerId}${s.title ? `: ${s.title.slice(0, 80)}` : ""}${s.displayedPrice ? ` displayedPrice=${s.displayedPrice}` : ""}${s.confirmed ? " [human confirmed]" : " [search result, NOT confirmed]"} (Similar ≠ Exact; displayedPrice ≠ purchaseCost)`,
+  );
+  if (vocInsights.length === 0 && aiReferences.length === 0 && keywordCandidates.length === 0
+    && competitiveContext.length === 0 && sourcingContext.length === 0) {
+    return undefined;
+  }
+  return { vocInsights, aiReferences, keywordCandidates, competitiveContext, sourcingContext };
 }

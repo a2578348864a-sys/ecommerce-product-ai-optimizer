@@ -255,7 +255,10 @@ export async function generateListingDraftFromHandoff(
     throw new ListingHandoffError("handoff_required", 422, "创作交接证据缺失。");
   }
   const researchRevision = gateA.candidate.sourceResearch.researchRevision;
-  const buildResult = buildListingInputFromCreativeHandoff(handoffA, researchRevision);
+  // V3 Evidence → Creative Context Bridge：研究 Evidence 参考层随 Listing 输入进入（参考 only，非事实）
+  const buildResult = buildListingInputFromCreativeHandoff(handoffA, researchRevision, {
+    creativeContext: gateA.creativeContext ?? null,
+  });
   if (!buildResult.ok) {
     throw new ListingHandoffError(buildResult.code, 422, buildResult.message);
   }
@@ -492,6 +495,7 @@ export async function generateListingDraftFromHandoff(
           keywordBrief,
           listingBrief: generationInput.listingBrief ?? null,
           prohibitedClaims: generationInput.prohibitedClaims,
+          creativeContext: generationInput.creativeContext,
         };
         const aiResult = await generateTaskLinkedAiListing(aiInput);
         if (aiResult.ok) {

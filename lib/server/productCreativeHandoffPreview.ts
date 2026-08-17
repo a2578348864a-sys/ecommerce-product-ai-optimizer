@@ -20,7 +20,7 @@ import {
   ProductCreativeHandoffProjectionError,
   type ProductCreativeHandoffProjectionEvidence,
 } from "@/lib/productCreativeHandoffProjection";
-import { buildProductCreativeHandoffProjectionEvidence, ProjectionEvidenceAdapterError } from "@/lib/productCreativeHandoffProjectionEvidence";
+import { buildProductCreativeHandoffProjectionEvidence, ProjectionEvidenceAdapterError, projectBrowserEvidenceStableFacts } from "@/lib/productCreativeHandoffProjectionEvidence";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
 import { adaptResearchContextForHandoff } from "@/lib/server/researchContextAdapter";
@@ -32,6 +32,7 @@ import {
 import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
 import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/creativeHandoffRequestLedger";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
+import { buildCreativeContextFromResearch } from "@/lib/creativeContextBuilder";
 import type {
   ProductCreativeHandoffCandidate,
   ProductCreativeHandoffV1,
@@ -111,6 +112,25 @@ export type CreativeHandoffPreview = {
     imageStyle?: string;
     /** 用户补充要求（仅影响表达/视觉风格，不作为商品事实；Browser DTO 只返回文案） */
     additionalRequirements?: string;
+  };
+  /** V3 Evidence → Creative Context Bridge：研究 Evidence 参考层安全摘要（§51 Context Visibility） */
+  creativeContextSummary?: {
+    counts: {
+      confirmedFacts: number;
+      confirmableCandidates: number;
+      vocInsights: number;
+      keywordCandidates: number;
+      competitiveInsights: number;
+      sourcingEntries: number;
+      aiReferences: number;
+      missingConflicts: number;
+    };
+    vocInsights?: Array<{ insightId: string; theme: string; summary: string; reviewCount: number; strength: string }>;
+    keywordCandidates?: Array<{ keyword: string; reportType: string }>;
+    competitiveContext?: Array<{ asin: string; note: string }>;
+    sourcingContext?: Array<{ offerId: string; title: string; displayedPrice: string; confirmed: boolean }>;
+    aiReferences?: Array<{ summary: string; allowedUse: string }>;
+    missingConflicts?: Array<{ kind: string; summary: string }>;
   };
   visualReferenceCandidates?: {
     selectionId: string;
@@ -201,6 +221,8 @@ export type CreativeHandoffGateResult = {
     present: boolean;
     alreadyImported: boolean;
   };
+  /** V3 Evidence → Creative Context Bridge：研究 Evidence 参考层（VOC/AI/Keyword/Competitor/Sourcing；均非事实） */
+  creativeContext?: import("@/lib/creativeContextBuilder").CreativeContextV1;
 };
 
 // ─── Helpers ──────────────────────────────────────────────
@@ -209,6 +231,48 @@ function safeFingerprint(s: string): string {
   let h = 0;
   for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
   return Math.abs(h).toString(16).padStart(8, "0").slice(0, 8);
+}
+
+/**
+ * V3 Evidence → Creative Context Bridge：preview DTO 参考层安全摘要。
+ * 只暴露 bounded 字段（§51/§63）；不暴露内部 provenance 对象 / evidenceRef 原文 / 完整 resultJson。
+ */
+function projectCreativeContextSummary(
+  context: import("@/lib/creativeContextBuilder").CreativeContextV1 | undefined,
+): CreativeHandoffPreview["creativeContextSummary"] {
+  if (!context) return undefined;
+  return {
+    counts: { ...context.counts },
+    vocInsights: context.vocInsights.slice(0, 6).map((v) => ({
+      insightId: v.insightId,
+      theme: v.theme,
+      summary: v.summary.slice(0, 120),
+      reviewCount: v.reviewCount,
+      strength: v.strength,
+    })),
+    keywordCandidates: context.keywordCandidates.slice(0, 10).map((k) => ({
+      keyword: k.keyword,
+      reportType: k.reportType,
+    })),
+    competitiveContext: context.competitiveContext.slice(0, 5).map((c) => ({
+      asin: c.asin,
+      note: c.note.slice(0, 100),
+    })),
+    sourcingContext: context.sourcingContext.slice(0, 5).map((s) => ({
+      offerId: s.offerId,
+      title: s.title.slice(0, 100),
+      displayedPrice: s.displayedPrice,
+      confirmed: s.confirmed,
+    })),
+    aiReferences: context.aiReferences.slice(0, 6).map((r) => ({
+      summary: r.summary.slice(0, 120),
+      allowedUse: r.allowedUse,
+    })),
+    missingConflicts: context.missingConflicts.slice(0, 6).map((m) => ({
+      kind: m.kind,
+      summary: m.summary.slice(0, 120),
+    })),
+  };
 }
 
 /**
@@ -407,6 +471,21 @@ export async function checkCreativeHandoffGate(
       });
       candidate = projectionResult.candidate;
       projectionBlockingCodes = projectionResult.blockingCodes;
+      // V3 Evidence → Creative Context Bridge：Amazon Browser Evidence 确定性字段
+      // 追加为 stable source facts（同一商品实体 + 观察语义；确认链复用 buildConfirmableCandidates）。
+      // 仅当投影成功（researchContext 成立）且候选存在时合并；browser facts 不超过 6 项/任务。
+      if (candidate) {
+        const browserStableFacts = projectBrowserEvidenceStableFacts(resultJson);
+        if (browserStableFacts.length > 0) {
+          const existingFields = new Set(candidate.stableSourceFacts.map((f) => f.field));
+          const merged = candidate.stableSourceFacts.slice();
+          for (const fact of browserStableFacts) {
+            if (existingFields.has(fact.field)) continue; // 同 field 不重复（以 candidateAnalysisContext 为准）
+            merged.push(fact);
+          }
+          candidate = { ...candidate, stableSourceFacts: merged };
+        }
+      }
     } catch (error) {
       if (error instanceof ProductCreativeHandoffProjectionError
         && error.code === "invalid_projected_candidate") {
@@ -455,6 +534,20 @@ export async function checkCreativeHandoffGate(
     }
     // Fix.4: 从证据层构造候选（含 stable facts，confirmedFacts 留空）
     // 供 Persistence 锁内生成 confirmable 候选；Preview 展示来源层。
+    const stableSourceFactsHere = evidenceLayers
+      .filter((e): e is Extract<typeof e, { evidenceTier: "source_snapshot" }> => e.evidenceTier === "source_snapshot")
+      .map((e) => e.fact);
+    // V3 Evidence → Creative Context Bridge：Browser Evidence 确定性字段合并进 stable 层
+    // （仅当研究上下文成立时；同 field 不重复；供 Preview 展示待确认候选）。
+    {
+      const browserStableFacts = researchContext2 ? projectBrowserEvidenceStableFacts(resultJson) : [];
+      if (browserStableFacts.length > 0) {
+        const existingFields = new Set(stableSourceFactsHere.map((f) => f.field));
+        for (const fact of browserStableFacts) {
+          if (!existingFields.has(fact.field)) stableSourceFactsHere.push(fact);
+        }
+      }
+    }
     const candidateHere: ProductCreativeHandoffCandidate = {
       sourceResearch: {
         recordSchema: "product-research-record.v1",
@@ -470,9 +563,7 @@ export async function checkCreativeHandoffGate(
         identityConfirmedAt: (taskRec.createdAt instanceof Date ? taskRec.createdAt.toISOString() : (taskRec.createdAt as string)) || new Date().toISOString(),
       },
       confirmedFacts: [],
-      stableSourceFacts: evidenceLayers
-        .filter((e): e is Extract<typeof e, { evidenceTier: "source_snapshot" }> => e.evidenceTier === "source_snapshot")
-        .map((e) => e.fact),
+      stableSourceFacts: stableSourceFactsHere,
       aiCreativeReferences: evidenceLayers
         .filter((e): e is Extract<typeof e, { evidenceTier: "ai_hypothesis" }> => e.evidenceTier === "ai_hypothesis")
         .map((e) => e.reference),
@@ -528,6 +619,12 @@ export async function checkCreativeHandoffGate(
         }
         return null;
       })(),
+      // V3 Evidence → Creative Context Bridge：统一参考层（VOC/AI/Keyword/Competitor/Sourcing；均非事实）
+      creativeContext: buildCreativeContextFromResearch({
+        resultJson,
+        researchRevision: record.revision,
+        candidateId: record.candidateId,
+      }),
     };
   }
 
@@ -595,7 +692,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }) };
 }
 
 // ─── Preview ──────────────────────────────────────────────
@@ -676,6 +773,8 @@ export async function generateCreativeHandoffPreview(
       externalUrlCandidate: gate.externalUrlCandidate,
       // 创作偏好恢复（degraded 分支同样读取当前 Handoff 最新版本；仅影响表达/视觉风格）
       creativePreferences: prefsFromHandoff(gate.currentHandoff, gate.candidate),
+      // V3 Evidence → Creative Context Bridge：参考层安全摘要（§51）
+      creativeContextSummary: projectCreativeContextSummary(gate.creativeContext),
     };
     return { preview, gate };
   }
@@ -752,6 +851,8 @@ export async function generateCreativeHandoffPreview(
     expectedResearchRevision: gate.candidate.sourceResearch.researchRevision,
     expectedCurrentHandoffRevision: gate.currentHandoff?.currentRevision ?? 0,
     storageVersion: gate.storageVersion,
+    // V3 Evidence → Creative Context Bridge：参考层安全摘要（§51）
+    creativeContextSummary: projectCreativeContextSummary(gate.creativeContext),
   };
 
   return { preview, gate };

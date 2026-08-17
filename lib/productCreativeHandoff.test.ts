@@ -378,4 +378,47 @@ describe("product-creative-handoff.v1 contract", () => {
       candidate,
     })).toThrowError(expect.objectContaining({ code: "handoff_too_large" }));
   });
+
+  it("V3 Evidence → Creative Context Bridge: amazon_browser_snapshot sourceRef 可解析且指纹稳定", () => {
+    const candidate = validHandoffCandidate();
+    candidate.stableSourceFacts.push({
+      factId: "44444444-4444-4444-8444-444444444444",
+      field: "price_usd",
+      label: "Observed Amazon Page Price (USD)",
+      value: 32.99,
+      evidenceTier: "source_snapshot",
+      usageScopes: ["internal"],
+      sourceRef: {
+        sourceKind: "amazon_browser_snapshot",
+        sourceField: "price_usd",
+        amazonBrowserSnapshotFingerprint: "d".repeat(64),
+        capturedAt: CREATED_AT,
+      },
+      stabilityRule: "human_confirmation_required_for_claim",
+      factCategory: "market_signal",
+    });
+    const handoff = createProductCreativeHandoff({
+      handoffId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      taskId: "task-synthetic-1",
+      candidateId: "candidate-synthetic-1",
+      createdAt: CREATED_AT,
+      createdBy: OWNER,
+      candidate,
+    });
+    // 严格 parse 往返一致
+    expect(parseProductCreativeHandoff(handoff)).toEqual(handoff);
+    const stored = handoff.versions[0].stableSourceFacts.find((f) => f.field === "price_usd");
+    expect(stored?.sourceRef.sourceKind).toBe("amazon_browser_snapshot");
+    expect(stored?.factCategory).toBe("market_signal");
+    // 指纹确定性：相同候选 → 相同 fingerprint
+    const again = createProductCreativeHandoff({
+      handoffId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      taskId: "task-synthetic-1",
+      candidateId: "candidate-synthetic-1",
+      createdAt: CREATED_AT,
+      createdBy: OWNER,
+      candidate,
+    });
+    expect(again.versions[0].handoffFingerprint).toBe(handoff.versions[0].handoffFingerprint);
+  });
 });

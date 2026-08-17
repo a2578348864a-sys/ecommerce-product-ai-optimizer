@@ -7,6 +7,7 @@ import {
   computeListingGenerationFingerprint,
   LISTING_COMPOSER_VERSION,
   LISTING_GENERATION_POLICY_VERSION,
+  hasForbiddenInputKey,
 } from "@/lib/listingHandoff/listingGenerationInput";
 import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingStatus } from "@/lib/listingHandoff/listingBinding";
 import { createMockListingProvider, assertMockInputIsSafe, buildMockAiListingDraftFromInput } from "@/lib/listingHandoff/mockListingProvider";
@@ -271,6 +272,45 @@ describe("Input Mapping（第20章 11-20）", () => {
     const a = buildListingInputFromCreativeHandoff(buildHandoff() as never, 1);
     const b = buildListingInputFromCreativeHandoff(buildHandoff() as never, 1);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it("V3 Evidence → Creative Context Bridge: creativeContext 参考层进入输入但绝不进 facts", () => {
+    const creativeContext = {
+      schema: "creative-context.v1" as const,
+      version: 1 as const,
+      generatedAt: "",
+      source: { researchRevision: 1, candidateId: "cand" },
+      confirmedFacts: [],
+      confirmableFactCandidates: [],
+      vocInsights: [{ insightId: "v1", theme: "Perfect for kids", summary: "适合儿童", evidenceRefs: ["r1"], reviewCount: 3, coverage: 0.2, strength: "weak" as const, sourceType: "voc_theme", provenance: { evidenceRef: "ev:voc:r1", sourceType: "voc_theme", observedAt: "" } }],
+      keywordCandidates: [],
+      competitiveContext: [],
+      sourcingContext: [{ offerId: "1005001", method: "keyword", title: "儿童午餐盒", displayedPrice: "¥12.50", displayedMoq: "10", imageUrl: "", confirmed: false, evidenceRef: "ev:sourcing:1005001", observedAt: "", provenance: { evidenceRef: "ev:sourcing:1005001", sourceType: "sourcing_evidence", observedAt: "" } }],
+      aiReferences: [],
+      missingConflicts: [],
+      counts: { confirmedFacts: 0, confirmableCandidates: 0, vocInsights: 1, keywordCandidates: 0, competitiveInsights: 0, sourcingEntries: 1, aiReferences: 0, missingConflicts: 0 },
+    };
+    const r = buildListingInputFromCreativeHandoff(buildHandoff() as never, 1, { creativeContext });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      // 参考层进入 input.creativeContext（VOC + sourcing），带明确语义标记
+      expect(r.input.creativeContext).toBeDefined();
+      expect(r.input.creativeContext!.vocInsights.length).toBe(1);
+      expect(r.input.creativeContext!.vocInsights[0]).toContain("VOC:");
+      expect(r.input.creativeContext!.sourcingContext.length).toBe(1);
+      expect(r.input.creativeContext!.sourcingContext[0]).toContain("displayedPrice");
+      expect(r.input.creativeContext!.sourcingContext[0]).toContain("Similar ≠ Exact");
+      // 但绝不进入 productFacts（事实 authority 不受污染）
+      expect(r.input.productFacts.some((f) => f.value.includes("¥12.50"))).toBe(false);
+      expect(r.input.productFacts.some((f) => f.value.includes("Perfect for kids"))).toBe(false);
+      expect(hasForbiddenInputKey(r.input as unknown as Record<string, unknown>)).toBe(false);
+    }
+  });
+
+  it("V3 Evidence → Creative Context Bridge: 无 creativeContext 时输入不含该键（fingerprint 兼容）", () => {
+    const r = buildListingInputFromCreativeHandoff(buildHandoff() as never, 1);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.input.creativeContext).toBeUndefined();
   });
 });
 

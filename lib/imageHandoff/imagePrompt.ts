@@ -74,6 +74,11 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
       "",
       "=== 未知和冲突（不得推断）===",
       textList(input.unknowns),
+      "",
+      "=== 研究参考层（Research reference layers — NOT FACTS）===",
+      "Reference ONLY for scene priority, mood and differentiation direction.",
+      "Never turn any reference into product appearance, attribute, certification, performance, or text claim.",
+      buildResearchReferenceLayers(input.creativeContext),
     ].join("\n");
   }
 
@@ -108,7 +113,24 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
     "",
     "=== 未知和冲突（不得推断）===",
     textList(input.unknowns),
+    "",
+    "=== 研究参考层（Research reference layers — NOT FACTS）===",
+    "Reference ONLY for scene priority, mood and differentiation direction.",
+    "Never turn any reference into product appearance, attribute, certification, performance, or text claim.",
+    buildResearchReferenceLayers(input.creativeContext),
   ].join("\n");
+}
+
+/** V3 Evidence → Creative Context Bridge：Image 参考层文本（bounded；全部 NOT FACT） */
+function buildResearchReferenceLayers(
+  context: ImageGenerationInput["creativeContext"],
+): string {
+  if (!context) return "研究参考层：无";
+  const sections: string[] = [];
+  if (context.vocInsights.length) sections.push(`VOC_INSIGHTS_START\n${context.vocInsights.map((v) => `- ${v}`).join("\n")}\nVOC_INSIGHTS_END`);
+  if (context.aiReferences.length) sections.push(`AI_REFERENCES_START\n${context.aiReferences.map((v) => `- ${v}`).join("\n")}\nAI_REFERENCES_END`);
+  if (context.competitiveContext.length) sections.push(`COMPETITIVE_CONTEXT_START\n${context.competitiveContext.map((v) => `- ${v}`).join("\n")}\nCOMPETITIVE_CONTEXT_END`);
+  return sections.length ? sections.join("\n") : "研究参考层：无";
 }
 
 /** 防泄漏断言：Prompt 不得包含任何内部标记 */

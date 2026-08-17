@@ -169,7 +169,7 @@ export type MockListingProvider = ReturnType<typeof createMockListingProvider>;
 export function assertMockInputIsSafe(records: readonly MockProviderCallRecord[]) {
   for (const record of records) {
     if (record.received.hasInternalKey) return false;
-    const allowedKeys = ["schema", "source", "productFacts", "stableSourceFacts", "creativeReferences", "creativePreferences", "prohibitedClaims", "unknowns", "humanReviewRequired", "researchMode", "promotionEligible"];
+    const allowedKeys = ["schema", "source", "productFacts", "stableSourceFacts", "creativeReferences", "creativePreferences", "prohibitedClaims", "unknowns", "humanReviewRequired", "researchMode", "promotionEligible", "creativeContext", "listingBrief", "englishRenderings"];
     if (record.received.inputKeyCount > allowedKeys.length) return false;
   }
   return true;

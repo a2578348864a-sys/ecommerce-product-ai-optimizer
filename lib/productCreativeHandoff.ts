@@ -40,6 +40,18 @@ export type ProductCreativeHandoffResearchResultReference = {
   researchRevision: number;
 };
 
+/**
+ * V3 Evidence → Creative Context Bridge：Amazon Browser Evidence 观察快照引用。
+ * 仅代表"capturedAt 时 Amazon 页面观察值"（Observed），不是已确认商品事实；
+ * 必须经人工确认后才能升级（且 market_signal 类仅 internal）。
+ */
+export type ProductCreativeHandoffAmazonBrowserReference = {
+  sourceKind: "amazon_browser_snapshot";
+  sourceField: string;
+  amazonBrowserSnapshotFingerprint: string;
+  capturedAt: string;
+};
+
 export type ProductCreativeHandoffUserConfirmationReference = {
   sourceKind: "user_confirmation";
   sourceField: string;
@@ -48,16 +60,18 @@ export type ProductCreativeHandoffUserConfirmationReference = {
   confirmationReference: string;
 };
 
-/** @deprecated Use the 4-branch discriminated union types above. */
+/** @deprecated Use the 5-branch discriminated union types above. */
 export type ProductCreativeHandoffSnapshotSourceReference =
   | ProductCreativeHandoffCandidateSnapshotReference
   | ProductCreativeHandoffSellerSpriteSnapshotReference
-  | ProductCreativeHandoffResearchResultReference;
+  | ProductCreativeHandoffResearchResultReference
+  | ProductCreativeHandoffAmazonBrowserReference;
 
 export type ProductCreativeHandoffSourceReference =
   | ProductCreativeHandoffCandidateSnapshotReference
   | ProductCreativeHandoffSellerSpriteSnapshotReference
   | ProductCreativeHandoffResearchResultReference
+  | ProductCreativeHandoffAmazonBrowserReference
   | ProductCreativeHandoffUserConfirmationReference;
 
 export type ProductCreativeHandoffFactValue = string | number | boolean | string[];
@@ -482,10 +496,27 @@ function parseResearchResultReference(value: unknown): ProductCreativeHandoffRes
   };
 }
 
+function parseAmazonBrowserSnapshotReference(value: unknown): ProductCreativeHandoffAmazonBrowserReference | null {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "sourceKind", "sourceField", "amazonBrowserSnapshotFingerprint", "capturedAt",
+  ])) return null;
+  if (value.sourceKind !== "amazon_browser_snapshot"
+    || !isNfcTrimmedText(value.sourceField, 160)
+    || !isHash(value.amazonBrowserSnapshotFingerprint)
+    || !isIsoDate(value.capturedAt)) return null;
+  return {
+    sourceKind: "amazon_browser_snapshot",
+    sourceField: value.sourceField as string,
+    amazonBrowserSnapshotFingerprint: value.amazonBrowserSnapshotFingerprint as string,
+    capturedAt: value.capturedAt as string,
+  };
+}
+
 function parseSnapshotSourceReference(value: unknown): ProductCreativeHandoffSnapshotSourceReference | null {
   return parseCandidateSnapshotReference(value)
     ?? parseSellerSpriteSnapshotReference(value)
-    ?? parseResearchResultReference(value);
+    ?? parseResearchResultReference(value)
+    ?? parseAmazonBrowserSnapshotReference(value);
 }
 
 function parseUserConfirmationReference(value: unknown): ProductCreativeHandoffUserConfirmationReference | null {

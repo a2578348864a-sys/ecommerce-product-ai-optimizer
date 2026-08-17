@@ -264,7 +264,10 @@ export async function generateImageDraftFromHandoff(
     throw new ImageHandoffError("handoff_required", 422, "创作交接证据缺失。");
   }
   const researchRevision = gateA.candidate.sourceResearch.researchRevision;
-  const buildResult = buildImageInputFromCreativeHandoff(handoffA, researchRevision);
+  // V3 Evidence → Creative Context Bridge：研究 Evidence 参考层随 Image 输入进入（参考 only，非事实）
+  const buildResult = buildImageInputFromCreativeHandoff(handoffA, researchRevision, {
+    creativeContext: gateA.creativeContext ?? null,
+  });
   if (!buildResult.ok) {
     throw new ImageHandoffError(buildResult.code, 422, buildResult.message);
   }

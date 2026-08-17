@@ -97,6 +97,25 @@ export type CreativeHandoffPreview = {
     present: boolean;
     alreadyImported: boolean;
   };
+  /** V3 Evidence → Creative Context Bridge：研究 Evidence 参考层安全摘要（§51） */
+  creativeContextSummary?: {
+    counts: {
+      confirmedFacts: number;
+      confirmableCandidates: number;
+      vocInsights: number;
+      keywordCandidates: number;
+      competitiveInsights: number;
+      sourcingEntries: number;
+      aiReferences: number;
+      missingConflicts: number;
+    };
+    vocInsights?: Array<{ insightId: string; theme: string; summary: string; reviewCount: number; strength: string }>;
+    keywordCandidates?: Array<{ keyword: string; reportType: string }>;
+    competitiveContext?: Array<{ asin: string; note: string }>;
+    sourcingContext?: Array<{ offerId: string; title: string; displayedPrice: string; confirmed: boolean }>;
+    aiReferences?: Array<{ summary: string; allowedUse: string }>;
+    missingConflicts?: Array<{ kind: string; summary: string }>;
+  };
   blockingCodes?: string[];
   expectedResearchRevision?: number;
   expectedCurrentHandoffRevision?: number;

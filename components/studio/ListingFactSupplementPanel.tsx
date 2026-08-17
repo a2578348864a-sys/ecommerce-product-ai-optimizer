@@ -203,7 +203,14 @@ export function ListingFactSupplementPanel({
         </>
       ) : (
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          当前来源资料没有可直接核实的商品事实候选，仍可在下方填写你已核实的信息。
+          {(() => {
+            const allCandidates = preview?.confirmableFactCandidates ?? [];
+            const referenceOnly = allCandidates.filter((c) => !c.allowedUsageScopes.includes("listing"));
+            if (allCandidates.length > 0 && referenceOnly.length > 0) {
+              return "已载入研究证据（含仅内部参考的市场观察，如 Observed Price / Rating / BSR；它们不会自动成为 Listing 事实）。可在下方人工填写已核实的商品事实。";
+            }
+            return "当前来源资料没有可直接核实的商品事实候选，仍可在下方填写你已核实的信息。";
+          })()}
         </p>
       )}
 

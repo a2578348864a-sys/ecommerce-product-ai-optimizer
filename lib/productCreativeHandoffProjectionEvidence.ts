@@ -3,6 +3,7 @@ import type { ProductCreativeHandoffProjectionEvidence } from "@/lib/productCrea
 import type { ProductResearchRecordV1 } from "@/lib/productResearchRecord";
 import type { CandidateResearchContext } from "@/lib/candidateResearchContext";
 import type { AgentOutputSnapshot } from "@/lib/agentOutputSnapshot";
+import type { ProductCreativeHandoffStableSourceFact } from "@/lib/productCreativeHandoff";
 import { deriveTitleProductFacts } from "@/lib/titleDerivedProductFacts";
 import { projectSellerSpriteFactCandidates } from "@/lib/server/sellerSpriteFactProjection";
 
@@ -55,6 +56,10 @@ function cleanText(value: unknown, maxLength: number): string | null {
   const trimmed = value.trim();
   if (!trimmed || trimmed.length > maxLength) return null;
   return trimmed.normalize("NFC");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function cleanStringArray(value: unknown, maxItems: number, maxLength: number): string[] {
@@ -380,4 +385,101 @@ export function buildProductCreativeHandoffProjectionEvidence(
   }
 
   return { evidence, deterministicChecks };
+}
+
+// ─── V3 Evidence → Creative Context Bridge：Amazon Browser Evidence → stable facts ───
+
+/**
+ * 从 browserEvidence 命名空间投影确定性 stable source facts（仅可证明属于目标商品的观察字段）。
+ *
+ * 逐字段规则（§33）：
+ * - asin：identity_only（身份绑定，不用于事实声明）；
+ * - title：routing_only（路由/身份参考，不确认进 Listing）；
+ * - price（Observed Amazon Page Price）/ bsr / rating / review_count：market_signal
+ *   （仅 internal；Observed Price 绝不等于采购成本/建议售价，§7）；
+ * - 实体绑定不成立（entityBinding.bound=false 或 observed ASIN ≠ target ASIN）→ 整条快照跳过（§67 wrong entity）；
+ * - 字段 status !== "correct" → 跳过（未知值不投影）。
+ *
+ * 纯函数：无 DB/网络/Date.now/随机；同输入同输出。
+ */
+export function projectBrowserEvidenceStableFacts(
+  resultJson: Record<string, unknown>,
+): ProductCreativeHandoffStableSourceFact[] {
+  const browser = resultJson.browserEvidence;
+  if (!isRecord(browser)) return [];
+  const snapshots = Array.isArray(browser.snapshots) ? browser.snapshots.filter(isRecord) : [];
+  const targetAsin = typeof browser.targetAsin === "string" ? browser.targetAsin.trim() : "";
+  const out: ProductCreativeHandoffStableSourceFact[] = [];
+  // 只取最新快照（token bounding：不复制全部快照历史，§23/§56）
+  const latest = snapshots[snapshots.length - 1];
+  if (!latest) return [];
+  const entityBinding = isRecord(latest.entityBinding) ? latest.entityBinding : null;
+  const bound = entityBinding?.bound === true;
+  const observedAsin = typeof entityBinding?.urlAsin === "string"
+    ? entityBinding.urlAsin
+    : (typeof entityBinding?.pageAsin === "string" ? entityBinding.pageAsin : "");
+  if (!bound || (targetAsin && observedAsin && observedAsin !== targetAsin)) return [];
+  const capturedAt = typeof latest.capturedAt === "string" ? latest.capturedAt : "";
+  if (!capturedAt || Number.isNaN(Date.parse(capturedAt))) return [];
+  const fields = isRecord(latest.fields) ? latest.fields : {};
+  const field = (name: string): { value: unknown; status: unknown } | null => {
+    const raw = isRecord(fields[name]) ? fields[name] : null;
+    return raw ? { value: raw.value, status: raw.status } : null;
+  };
+  const currency = typeof latest.currency === "string" ? latest.currency : "";
+  const marketplace = typeof latest.marketplace === "string" ? latest.marketplace : "";
+  const baseFingerprint = (sourceField: string, value: unknown) =>
+    sha256(`browser:${observedAsin || targetAsin}:${sourceField}:${JSON.stringify(value)}:${capturedAt}`);
+
+  const pushFact = (sourceField: string, label: string, value: string | number | boolean, stabilityRule: ProductCreativeHandoffStableSourceFact["stabilityRule"], factCategory: "product_fact" | "market_signal") => {
+    out.push({
+      factId: uuidV4FromSeed(`browser:${sourceField}:${observedAsin || targetAsin}:${String(value)}:${capturedAt}`, "browser-fact-v1"),
+      field: sourceField,
+      label,
+      value,
+      evidenceTier: "source_snapshot",
+      usageScopes: ["internal"],
+      sourceRef: {
+        sourceKind: "amazon_browser_snapshot",
+        sourceField,
+        amazonBrowserSnapshotFingerprint: baseFingerprint(sourceField, value),
+        capturedAt,
+      },
+      stabilityRule,
+      factCategory,
+    });
+  };
+
+  // ASIN：identity_only
+  const asinField = field("asin");
+  if (asinField && asinField.status === "correct" && typeof asinField.value === "string" && asinField.value.trim()) {
+    pushFact("asin", "ASIN", asinField.value.trim(), "identity_only", "product_fact");
+  }
+  // Title：routing_only
+  const titleField = field("title");
+  if (titleField && titleField.status === "correct" && typeof titleField.value === "string" && titleField.value.trim()) {
+    pushFact("title", "商品标题", titleField.value.normalize("NFC").trim().slice(0, 240), "routing_only", "product_fact");
+  }
+  // Observed Price：market_signal（Observed Amazon Page Price，非采购成本/建议售价）
+  const priceField = field("price");
+  if (priceField && priceField.status === "correct" && typeof priceField.value === "number" && Number.isFinite(priceField.value)) {
+    pushFact("price_usd", `Observed Amazon Page Price (${currency || "USD"})`, priceField.value, "human_confirmation_required_for_claim", "market_signal");
+  }
+  // BSR：market_signal
+  const bsrField = field("bsr");
+  if (bsrField && bsrField.status === "correct" && typeof bsrField.value === "number" && Number.isFinite(bsrField.value)) {
+    pushFact("bsr", "BSR", bsrField.value, "human_confirmation_required_for_claim", "market_signal");
+  }
+  // Rating：market_signal
+  const ratingField = field("rating");
+  if (ratingField && ratingField.status === "correct" && typeof ratingField.value === "number" && Number.isFinite(ratingField.value)) {
+    pushFact("rating", "评分", ratingField.value, "human_confirmation_required_for_claim", "market_signal");
+  }
+  // Review Count：market_signal
+  const reviewCountField = field("reviewCount");
+  if (reviewCountField && reviewCountField.status === "correct" && typeof reviewCountField.value === "number" && Number.isFinite(reviewCountField.value)) {
+    pushFact("review_count", "评论数", reviewCountField.value, "human_confirmation_required_for_claim", "market_signal");
+  }
+
+  return out;
 }

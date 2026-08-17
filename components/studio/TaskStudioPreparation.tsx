@@ -275,6 +275,35 @@ export function TaskStudioPreparation({
             <span className="rounded-full bg-white px-2.5 py-1">最终人工复核：必须</span>
           </div>
         </section>
+        {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51，authoritative 模式也展示） */}
+        {preview?.creativeContextSummary ? (
+          <div className="mb-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3" data-testid="creative-context-summary">
+            <p className="text-sm font-bold text-teal-900">创作参考资料（研究证据已载入）</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              以下均来自商品研究阶段保存的证据；除「已确认商品事实」外，其余只作参考，不自动成为事实声明。
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
+              <span className="rounded-full bg-white px-2.5 py-1">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
+              <span className="rounded-full bg-white px-2.5 py-1">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
+              <span className="rounded-full bg-white px-2.5 py-1">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
+              <span className="rounded-full bg-white px-2.5 py-1">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
+              <span className="rounded-full bg-white px-2.5 py-1">AI 研究摘要：{preview.creativeContextSummary.counts.aiReferences > 0 ? "已载入" : "无"}</span>
+              {preview.creativeContextSummary.counts.missingConflicts > 0 ? (
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">缺失/冲突：{preview.creativeContextSummary.counts.missingConflicts}</span>
+              ) : null}
+            </div>
+            {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs font-bold text-teal-800">查看 VOC 洞察（客户语言/场景参考，非事实）</summary>
+                <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+                  {preview.creativeContextSummary.vocInsights.map((v) => (
+                    <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
         {kind === "listing" ? (
           <section className="surface-card mb-4 border-amber-200 bg-amber-50/70 p-4" data-testid="task-listing-facts-missing">
             <p className="text-sm font-bold text-amber-900">
@@ -377,6 +406,38 @@ export function TaskStudioPreparation({
           返回研究记录
         </Link>
       </div>
+
+      {/* V3 Evidence → Creative Context Bridge：创作参考资料摘要（§51 Context Visibility） */}
+      {preview?.creativeContextSummary ? (
+        <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/50 p-3" data-testid="creative-context-summary">
+          <p className="text-sm font-bold text-teal-900">创作参考资料（研究证据已载入）</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            以下均来自商品研究阶段保存的证据；除「已确认商品事实」外，其余只作参考，不自动成为事实声明。
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-700">
+            <span className="rounded-full bg-white px-2.5 py-1">已确认商品事实：{preview.creativeContextSummary.counts.confirmedFacts}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">待确认候选：{preview.creativeContextSummary.counts.confirmableCandidates}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">VOC 洞察：{preview.creativeContextSummary.counts.vocInsights}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">关键词候选：{preview.creativeContextSummary.counts.keywordCandidates}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">竞品参考：{preview.creativeContextSummary.counts.competitiveInsights}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">供应线索：{preview.creativeContextSummary.counts.sourcingEntries}</span>
+            <span className="rounded-full bg-white px-2.5 py-1">AI 研究摘要：{preview.creativeContextSummary.counts.aiReferences > 0 ? "已载入" : "无"}</span>
+            {preview.creativeContextSummary.counts.missingConflicts > 0 ? (
+              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">缺失/冲突：{preview.creativeContextSummary.counts.missingConflicts}</span>
+            ) : null}
+          </div>
+          {preview.creativeContextSummary.vocInsights && preview.creativeContextSummary.vocInsights.length > 0 ? (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-bold text-teal-800">查看 VOC 洞察（客户语言/场景参考，非事实）</summary>
+              <ul className="mt-2 space-y-1 text-xs leading-5 text-slate-600">
+                {preview.creativeContextSummary.vocInsights.map((v) => (
+                  <li key={v.insightId}>- {v.theme}{v.reviewCount > 0 ? `（${v.reviewCount} 条评论）` : ""}：{v.summary}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
 
       {factOptions.length > 0 ? (
         <fieldset className="mt-5">
