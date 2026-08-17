@@ -236,6 +236,35 @@ describe("product research browser DTO allowlist", () => {
     expectNoForbiddenFields(projected);
   });
 
+  it("V3 Current Research Normalization: projects researchCompletion as a safe allowlisted signal (detail scope, no internal ids)", () => {
+    const projected = projectTaskResultForBrowser({
+      productName: "Synthetic",
+      researchCompletion: {
+        schema: "research-completion.v1",
+        status: "completed",
+        completedAt: "2026-08-17T00:00:00.000Z",
+        decisionId: "22222222-2222-4222-8222-222222222222",
+        revision: 1,
+        finalStatus: "creative_ready",
+      },
+    }, "detail") as Record<string, any>;
+    expect(projected.researchCompletion).toEqual({
+      schema: "research-completion.v1",
+      status: "completed",
+      completedAt: "2026-08-17T00:00:00.000Z",
+      revision: 1,
+      finalStatus: "creative_ready",
+    });
+    expect(JSON.stringify(projected)).not.toContain("22222222-2222-4222-8222-222222222222");
+    expect(JSON.stringify(projected)).not.toContain("decisionId");
+    // list scope 不暴露完成标记（列表归属由服务端 classifyResearchLifecycle 决定）
+    const listProjected = projectTaskResultForBrowser({
+      researchCompletion: { schema: "research-completion.v1", status: "completed" },
+    }, "list");
+    expect(listProjected).not.toHaveProperty("researchCompletion");
+    expectNoForbiddenFields(projected);
+  });
+
   it("projects dedicated decision state events with an explicit field allowlist", () => {
     const projected = projectProductResearchDecisionStateForBrowser({
       taskId: "task-public",

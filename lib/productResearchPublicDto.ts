@@ -567,6 +567,14 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
     asin: scalar,
     productUrl: scalar,
   }),
+  // V3 Current Research Normalization：完成标记的安全浏览器投影（不含 decisionId 等内部标识）
+  researchCompletion: objectOf({
+    schema: scalar,
+    status: scalar,
+    completedAt: scalar,
+    revision: scalar,
+    finalStatus: scalar,
+  }),
   category: scalar,
   titleSuggestions: stringList,
   videoOpenings: stringList,

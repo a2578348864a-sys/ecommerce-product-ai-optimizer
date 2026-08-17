@@ -261,6 +261,137 @@ describe("GET /api/tasks", () => {
     }));
   });
 
+  it("V3 Current Research Normalization: scope=historical 包含已完成的当前研究（researchCompletion，decisionStatus 仍为 continue）", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-completed",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-17T01:00:00.000Z"),
+      type: "candidate_research",
+      decisionStatus: "continue",
+      title: "Completed Research",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Completed Research",
+      source: "candidate_research",
+      score: 1,
+      level: "low",
+      oneLineSummary: "Completed Research",
+      resultJson: JSON.stringify({
+        productName: "Completed Research",
+        researchRecord: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          researchHash: "a".repeat(64),
+          candidateId: "candidate-1",
+          runId: "task-completed",
+          contextHash: "b".repeat(64),
+          createdAt: "2026-08-10T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+          latestDecision: {
+            decisionId: "11111111-1111-4111-8111-111111111111",
+            revision: 1,
+            status: "creative_ready",
+            reason: "ok",
+            nextAction: null,
+            researchHash: "a".repeat(64),
+            decidedAt: "2026-08-17T00:00:00.000Z",
+            actor: { mode: "owner", actorRef: "owner:v1" },
+          },
+          decisionEvents: [],
+        },
+        researchCompletion: {
+          schema: "research-completion.v1",
+          status: "completed",
+          completedAt: "2026-08-17T01:00:00.000Z",
+          decisionId: "11111111-1111-4111-8111-111111111111",
+          revision: 1,
+          finalStatus: "creative_ready",
+        },
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=historical",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(200);
+    expect(body.page.total).toBe(1);
+    expect(body.data.items[0].id).toBe("task-completed");
+    // SQL 预过滤必须把 researchCompletion 纳入 historical（不只在 decisionStatus=rejected 内找）
+    expect(mockPrisma.viralAnalysisRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          expect.objectContaining({ resultJson: expect.objectContaining({ contains: '"researchCompletion"' }) }),
+        ]),
+      }),
+    }));
+  });
+
+  it("V3 Current Research Normalization: scope=research 不含已完成的当前研究（researchCompletion → historical）", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-completed",
+      createdAt: new Date("2026-08-10T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-17T01:00:00.000Z"),
+      type: "candidate_research",
+      decisionStatus: "continue",
+      title: "Completed Research",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Completed Research",
+      source: "candidate_research",
+      score: 1,
+      level: "low",
+      oneLineSummary: "Completed Research",
+      resultJson: JSON.stringify({
+        productName: "Completed Research",
+        researchRecord: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          researchHash: "a".repeat(64),
+          candidateId: "candidate-1",
+          runId: "task-completed",
+          contextHash: "b".repeat(64),
+          createdAt: "2026-08-10T00:00:00.000Z",
+          updatedAt: "2026-08-17T00:00:00.000Z",
+          latestDecision: {
+            decisionId: "11111111-1111-4111-8111-111111111111",
+            revision: 1,
+            status: "creative_ready",
+            reason: "ok",
+            nextAction: null,
+            researchHash: "a".repeat(64),
+            decidedAt: "2026-08-17T00:00:00.000Z",
+            actor: { mode: "owner", actorRef: "owner:v1" },
+          },
+          decisionEvents: [],
+        },
+        researchCompletion: {
+          schema: "research-completion.v1",
+          status: "completed",
+          completedAt: "2026-08-17T01:00:00.000Z",
+          decisionId: "11111111-1111-4111-8111-111111111111",
+          revision: 1,
+          finalStatus: "creative_ready",
+        },
+      }),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const { status, body } = await getJsonStatus(response);
+    expect(status).toBe(200);
+    // JS 侧 classifyResearchLifecycle：researchCompletion → historical_completed → 从商品研究移出
+    expect(body.page.total).toBe(0);
+    expect(body.data.items).toEqual([]);
+  });
+
   it("服务端未配置密码 → GET 返回 500", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "");
     vi.stubEnv("APP_ACCESS_PASSWORD", "");

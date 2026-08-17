@@ -49,6 +49,37 @@ describe("classifyResearchLifecycle（R5 统一分类器）", () => {
     expect(classified.detail).toBe("historical_legacy");
   });
 
+  it("V3 Current Research Normalization：researchCompletion 完成标记优先 → historical_completed / historical_abandoned", () => {
+    const completed = {
+      ...versionedResult("creative_ready"),
+      researchCompletion: {
+        schema: "research-completion.v1",
+        status: "completed",
+        completedAt: "2026-08-17T00:00:00.000Z",
+        decisionId: "d1",
+        revision: 1,
+        finalStatus: "creative_ready",
+      },
+    };
+    expect(classifyResearchLifecycle({ decisionStatus: "continue", result: completed }).lifecycle).toBe("historical");
+    expect(classifyResearchLifecycle({ decisionStatus: "continue", result: completed }).detail).toBe("historical_completed");
+    expect(isHistoricalResearch({ decisionStatus: "continue", result: completed })).toBe(true);
+    expect(isActiveResearch({ decisionStatus: "continue", result: completed })).toBe(false);
+
+    const abandoned = {
+      ...versionedResult("abandoned"),
+      researchCompletion: {
+        schema: "research-completion.v1",
+        status: "abandoned",
+        completedAt: "2026-08-17T00:00:00.000Z",
+        decisionId: "d1",
+        revision: 1,
+        finalStatus: "abandoned",
+      },
+    };
+    expect(classifyResearchLifecycle({ decisionStatus: "pending", result: abandoned }).detail).toBe("historical_abandoned");
+  });
+
   it("isActiveResearch / isHistoricalResearch 便捷判定", () => {
     expect(isActiveResearch({ decisionStatus: "continue", result: null })).toBe(true);
     expect(isHistoricalResearch({ decisionStatus: "rejected", result: null })).toBe(true);

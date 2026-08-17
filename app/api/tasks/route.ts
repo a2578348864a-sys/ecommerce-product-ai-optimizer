@@ -252,11 +252,19 @@ function buildResearchScopeWhere(scope: string): Prisma.ViralAnalysisRecordWhere
     };
   }
   if (scope === "historical") {
-    return { decisionStatus: "rejected" };
+    // V3 Current Research Normalization：完成标记（researchCompletion）与放弃（rejected）均属研究记录；
+    // 已完成任务 decisionStatus 仍为 continue（兼容列），必须显式纳入。
+    return {
+      OR: [
+        { decisionStatus: "rejected" },
+        { resultJson: { contains: '"researchCompletion"' } },
+      ],
+    };
   }
   if (scope === "need_info") return { decisionStatus: "need_info" };
   if (scope === "completed") {
-    return { decisionStatus: "continue", resultJson: { contains: '"researchRecord"' } };
+    // V3 Current Research Normalization：已完成 = researchCompletion 完成标记（creative_ready → continue）
+    return { decisionStatus: "continue", resultJson: { contains: '"researchCompletion"' } };
   }
   if (scope === "abandoned") return { decisionStatus: "rejected" };
   return null;
@@ -310,13 +318,17 @@ export async function GET(request: NextRequest) {
             Object.prototype.hasOwnProperty.call(parsed, "researchRecord")
             || Object.prototype.hasOwnProperty.call(parsed, "researchVerification")
           );
+          // V3 Current Research Normalization：完成标记（researchCompletion）与放弃（rejected）均属研究记录
+          const hasResearchCompletion = parsed !== null
+            && isRecord(parsed.researchCompletion)
+            && parsed.researchCompletion.schema === "research-completion.v1";
           const status = normalizeDecisionStatus(task.decisionStatus);
           if (effectiveScope === "active" || effectiveScope === "research") {
-            return !hasResearchRecord ? (status === "pending" || status === "continue" || status === "need_info") : status !== "rejected";
+            return !hasResearchRecord ? (status === "pending" || status === "continue" || status === "need_info") : status !== "rejected" && !hasResearchCompletion;
           }
-          if (effectiveScope === "historical") return status === "rejected";
+          if (effectiveScope === "historical") return status === "rejected" || hasResearchCompletion;
           if (effectiveScope === "need_info") return status === "need_info";
-          if (effectiveScope === "completed") return hasResearchRecord && status === "continue";
+          if (effectiveScope === "completed") return hasResearchCompletion && status === "continue";
           if (effectiveScope === "abandoned") return status === "rejected";
           return true;
         });
