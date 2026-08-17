@@ -23,6 +23,7 @@ const imageInput: ImageGenerationInput = {
   schema: "image-generation-input.v1",
   mode: "composition_concept",
   source: { handoffRevision: 1, researchRevision: 1 },
+  targetProduct: { displayName: "TestBrand Bottle", brand: "TestBrand", productType: "Water Bottle", seriesOrModel: null, capacity: null },
   productFacts: [{ field: "brand", label: "品牌", value: "TestBrand" }],
   approvedVisualReferences: [],
   compositionReferences: ["适合户外风格"],

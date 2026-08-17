@@ -36,6 +36,32 @@ function preferenceLine(prefs: Record<string, string>) {
     : "(无)";
 }
 
+/**
+ * V3 Image Product Identity Lock（§8/§23/§31）：目标商品身份硬约束文本。
+ * productType 已确认 → 类别锁；未确认 → 要求保持与目标商品同类别（不猜具体类别）。
+ * 低层参考（VOC/AI/竞品/供应）永不能覆盖此身份（§22/§24）。
+ */
+export function buildTargetProductIdentityBlock(input: ImageGenerationInput): string {
+  const t = input.targetProduct;
+  const lines = [
+    t.displayName ? `- Product title: ${t.displayName}` : null,
+    t.productType ? `- Product type: ${t.productType}` : null,
+    t.brand ? `- Brand: ${t.brand}` : null,
+    t.seriesOrModel ? `- Series/model: ${t.seriesOrModel}` : null,
+    t.capacity ? `- Size/capacity: ${t.capacity}` : null,
+  ].filter((line): line is string => line !== null);
+  const categoryLock = t.productType
+    ? `The image subject MUST remain a ${t.productType}. Do NOT change the product category. Do NOT replace the subject with serum, cosmetics, skincare, clothing, shoes, headphones, electronics, food or any other product.`
+    : "The image subject MUST remain the same product category as the target product described above. Do NOT replace it with a different product category (e.g. serum, cosmetics, skincare, clothing, electronics).";
+  return [
+    "TARGET PRODUCT IDENTITY (HARD CONSTRAINT)",
+    ...lines,
+    categoryLock,
+    "Do NOT add brand logos, trademarks, certification marks, packaging text or any unconfirmed text.",
+    "Reference layers below must never override this identity.",
+  ].join("\n");
+}
+
 /** 双模式 Prompt 构造（纯函数） */
 export function buildImagePromptFromInput(input: ImageGenerationInput): string {
   const commonSafety = [
@@ -51,11 +77,13 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
     return [
       ...commonSafety,
       "",
+      buildTargetProductIdentityBlock(input),
+      "",
       "MODE: composition_concept only.",
       "- Produce ONLY an abstract composition concept: layout, background direction, scene mood, text whitespace areas, colour direction, camera angle suggestion.",
       "- Do NOT depict the specific product shape or any real product appearance.",
+      "- Use abstract placeholders or silhouettes — but the placeholder subject MUST remain the target product category above.",
       "- Do NOT complete unknown product attributes (colour, material, structure, interface, packaging, accessories).",
-      "- Use abstract placeholders, silhouettes or non-product-specific compositions.",
       "- Do NOT generate logos, certification marks, or packaging text.",
       "- Do NOT imply this is a finished product image.",
       "",
@@ -78,6 +106,7 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
       "=== 研究参考层（Research reference layers — NOT FACTS）===",
       "Reference ONLY for scene priority, mood and differentiation direction.",
       "Never turn any reference into product appearance, attribute, certification, performance, or text claim.",
+      "Never let any reference change the target product category.",
       buildResearchReferenceLayers(input.creativeContext),
     ].join("\n");
   }
@@ -85,6 +114,8 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
   // product_visual_draft
   return [
     ...commonSafety,
+    "",
+    buildTargetProductIdentityBlock(input),
     "",
     "MODE: product_visual_draft.",
     "- The product shape may ONLY come from the approved visual reference(s) listed below.",
@@ -117,6 +148,7 @@ export function buildImagePromptFromInput(input: ImageGenerationInput): string {
     "=== 研究参考层（Research reference layers — NOT FACTS）===",
     "Reference ONLY for scene priority, mood and differentiation direction.",
     "Never turn any reference into product appearance, attribute, certification, performance, or text claim.",
+    "Never let any reference change the target product category.",
     buildResearchReferenceLayers(input.creativeContext),
   ].join("\n");
 }

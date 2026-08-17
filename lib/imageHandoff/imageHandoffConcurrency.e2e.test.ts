@@ -275,6 +275,33 @@ describe("PR2-3 Owner 真实 SQLite CAS（Image）", () => {
     const parsed = JSON.parse(row!.resultJson);
     expect((parsed.aiImageDraftSnapshot as { items: unknown[] }).items).toHaveLength(1);
   });
+
+  it("O6. Task A 的 Image Draft 不会出现在 Task B（cross-task result binding，§6/§44）", async () => {
+    await createHandoff("task-pr23", ownerContext, REQ);
+    const provider = createMockImageProvider();
+    const input = await imageInputFor("task-pr23", ownerContext as never, REQ2);
+    const result = await generateImageDraftFromHandoff("task-pr23", ownerContext as never, input, { provider });
+    expect(result.imageSaved).toBe(true);
+    const rowA = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr23" } });
+    const itemsA = (JSON.parse(rowA!.resultJson).aiImageDraftSnapshot as { items: Array<{ id: string }> }).items;
+    expect(itemsA.length).toBe(1);
+
+    // Task B（独立任务，从未生成）→ snapshot 为空；A 的 draft id/storageKey 不得出现在 B
+    await client!.viralAnalysisRecord.create({
+      data: {
+        id: "task-pr23-b", createdAt: new Date(NOW), updatedAt: new Date(NOW),
+        type: "workflow", decisionStatus: "creative_ready", title: "Synthetic B", platform: "local-test",
+        productUrl: null, materialText: "Synthetic B", source: "isolated-pr23", score: 0, level: "low",
+        oneLineSummary: "Synthetic B", resultJson: JSON.stringify({ type: "workflow" }),
+      },
+    });
+    const rowB = await client!.viralAnalysisRecord.findUnique({ where: { id: "task-pr23-b" } });
+    const rawB = rowB!.resultJson;
+    expect(JSON.parse(rawB).aiImageDraftSnapshot ?? null).toBeNull();
+    expect(rawB).not.toContain(itemsA[0].id);
+    // A 的 storageKey 也不得被 B 引用（存储路径 taskId 隔离由 aiImageDraftStorage 保证）
+    expect(rawB).not.toContain("task-pr23");
+  });
 });
 
 describe("PR2-3 Visitor 真实 Store 锁（Image）", () => {

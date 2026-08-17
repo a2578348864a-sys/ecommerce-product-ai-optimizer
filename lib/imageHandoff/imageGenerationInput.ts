@@ -18,6 +18,19 @@ import type { ProductCreativeHandoffV1 } from "@/lib/productCreativeHandoff";
 
 export type ImageVisualMode = "composition_concept" | "product_visual_draft";
 
+/**
+ * V3 Image Product Identity — 目标商品身份（唯一权威，§7/§8）。
+ * 从 Creative Handoff productIdentity + confirmedFacts（brand/product_type/series_or_model/capacity）
+ * 确定性构建；productType 是构图概念模式的 HARD CONSTRAINT。
+ */
+export type TargetProductIdentity = {
+  displayName: string;
+  brand: string | null;
+  productType: string | null;
+  seriesOrModel: string | null;
+  capacity: string | null;
+};
+
 export type ImageGenerationInput = {
   schema: "image-generation-input.v1";
   mode: ImageVisualMode;
@@ -25,6 +38,8 @@ export type ImageGenerationInput = {
     handoffRevision: number;
     researchRevision: number;
   };
+  /** V3 Image Product Identity：目标商品身份硬约束（provider 必须保持类别） */
+  targetProduct: TargetProductIdentity;
   productFacts: Array<{ field: string; label: string; value: string }>;
   approvedVisualReferences: Array<{ referenceFingerprint: string; summary: string; selectionId: string; approvedAt: string | null }>;
   /** Final Capability: 批准参考的原始图片（dataUrl base64；仅服务端真实 Provider 使用；mock 与 fingerprint 忽略） */
@@ -188,6 +203,21 @@ export function buildImageInputFromCreativeHandoff(
     inputDisplayName = version.productIdentity.displayName.trim().slice(0, 200);
   }
 
+  // V3 Image Product Identity（§7/§8）：从 productIdentity + confirmedFacts 确定性构建唯一权威。
+  // productType 来自确认事实（不可猜）；displayName 兜底（已确认商品标识，非外观属性）。
+  const identityFact = (field: string): string | null => {
+    const fact = productFacts.find((f) => f.field === field);
+    return fact && fact.value.trim() ? fact.value.trim().slice(0, 120) : null;
+  };
+  const targetProduct: TargetProductIdentity = {
+    displayName: (typeof version.productIdentity.displayName === "string" ? version.productIdentity.displayName.trim().slice(0, 240) : "")
+      || identityFact("product_type") || "目标商品",
+    brand: identityFact("brand"),
+    productType: identityFact("product_type"),
+    seriesOrModel: identityFact("series_or_model"),
+    capacity: identityFact("capacity"),
+  };
+
   const input: ImageGenerationInput = {
     schema: "image-generation-input.v1",
     mode,
@@ -195,6 +225,7 @@ export function buildImageInputFromCreativeHandoff(
       handoffRevision: handoff.currentRevision,
       researchRevision,
     },
+    targetProduct,
     productFacts,
     approvedVisualReferences,
     compositionReferences: inputDisplayName ? [...compositionReferences, inputDisplayName] : compositionReferences,

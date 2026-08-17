@@ -26,6 +26,7 @@ function generationInput(): ImageGenerationInput {
     schema: "image-generation-input.v1",
     mode: "composition_concept",
     source: { handoffRevision: 2, researchRevision: 1 },
+    targetProduct: { displayName: "Test Bottle 30oz", brand: null, productType: "Water Bottle", seriesOrModel: null, capacity: "30oz" },
     productFacts: [{ field: "capacity", label: "容量", value: "30oz" }],
     approvedVisualReferences: [],
     compositionReferences: [],
