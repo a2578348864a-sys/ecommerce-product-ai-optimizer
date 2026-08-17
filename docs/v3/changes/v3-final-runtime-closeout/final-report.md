@@ -261,3 +261,78 @@ after 截图：`docs/v3/changes/v3-final-runtime-closeout/r14-image-search-after
 R14_KEYWORD_IMAGES = PASS（10/10）；R14_IMAGE_SEARCH_IMAGES = PASS（60/60）；IMAGE_ENTITY_BINDING = PASS；IMAGE_SSRF_SAFETY = PASS（无代理、无放宽）；NO_OPEN_IMAGE_PROXY = PASS（未引入代理）；PROXY_ENVIRONMENT = PASS；BROKEN_IMAGE_FALLBACK = PASS；R1-R13 无回归。
 
 LOCAL_RELEASE_CANDIDATE：待用户复查真实商品图后按既有流程评估；PUBLIC_DEPLOY = FORBIDDEN（维持）。
+
+---
+
+# V3 Legacy Research Task Purge & Compatibility Removal
+
+> 2026-08-17 · 分支 `codex/v3-remove-legacy-research` → main（ec811e2）
+> 用户授权：LEGACY_RESEARCH_TASKS = REMOVE / LEGACY_RESEARCH_COMPATIBILITY = REMOVE。只保留 Current Research Task / Evidence Workbench / Human Decision / Creative Handoff / Studio。
+
+## 1. 备份（BACKUP FIRST）
+
+- 官方 `db:backup`（SQLite 在线备份）：`.local-backups/db-guard/2026-08-17T06-33-14/dev.db`（6,868,992 B）
+- 副本：`prisma/backups/dev.db.before-legacy-purge-20260817-143257`（内容一致）
+- **SHA256：`706E0799EDB33FCA7994279E38E329B5E5693ADF467FC3CC747B1B1C3B8E124A`**（两处一致）
+- 可读验证：PRAGMA quick_check = ok；tasks=11 / candidates=11
+- 备份目录已加入 .gitignore（不提交 Git，§27）
+
+## 2. DRY RUN Inventory（只读，不假定）
+
+11 个任务全量盘点（id/title/type/source/createdAt/updatedAt/decisionStatus/resultJson 结构/关联字段）：
+
+| 类别 | 任务 | 判定 |
+|---|---|---|
+| AgentRun 新版（5） | 合成验收商品×2 / Owala FreeSip / John Boos / HydroJug | 全部含 `researchRecord` + `creativeHandoff` + `decisionEvidence`（完整新版创作链） |
+| candidate_research 新版 Evidence（5） | Owala FreeSip / John Boos / Bentgo / BrüMate / THERMOS | 全部含 `browserEvidence/reviewEvidence/aiEvidenceSummary`（Current Evidence Workbench 结构；用户 R7-R14 验收数据） |
+| candidate_research 空壳（1） | Owala SmoothSip（pending） | 仅 keywordEvidence；无 researchRecord/无 evidence 链 |
+
+- **LEGACY_TASK_COUNT = 0**（代码实证：无任何任务属于"旧版主链"格式——全部为当前 V3 结构；§4 硬约束"只有代码实证属于旧主链的 Task 才能删除"）
+- CURRENT_TASK_COUNT = 11；**LEGACY ∩ CURRENT = ∅ ✓（无需 STOP）**
+- 判定依据（非时间/标题/无证据）：resultJson 顶层结构（researchRecord/creativeHandoff/browserEvidence 等均为当前正式字段）
+- 关联：ListingCopyHistory 为独立实体（taskId=null，7 条），与任务删除无关
+- **删除 Task 数量 = 0**；删除 child row = 0；保留 shared row = 11（全部任务 + 关联数据原样保留）
+
+## 3. 产品层兼容移除（LEGACY_RESEARCH_COMPATIBILITY = REMOVE）
+
+| 项 | 处理 |
+|---|---|
+| 旧版人工决定 / 保存旧版状态（详情页 legacy-decision-control） | **移除**；早期候选任务显示只读「当前决定」卡（legacy-decision-readonly） |
+| 旧版研究记录（详情/面板 legacy-research-decision 分支） | **移除**（ProductResearchDecisionPanel 只服务新版研究记录） |
+| Studio legacy 提示（studio-legacy-unsupported-note / TaskStudioPreparation legacy_not_supported） | **移除**；无新版创作上下文任务不显示创作工具区；Studio 只处理正式 Current Research Context |
+| /tasks 描述「已完成、已放弃与旧版记录」 | 改为「已完成、已放弃的研究记录」 |
+| 详情页「旧版状态仅保留查看」 | 移除 |
+
+**保留（正式链依赖，B 类）**：
+- research-decision 的 legacy readOnly 门禁（数据保护——不能对无 researchRecord 记录写版本化决定）
+- classifyResearchLifecycle 的 historical_legacy（数据分类；当前 0 命中，未来非标准 decisionStatus 仍需要）
+- TaskRecordsList 列表「人工决策状态」卡片（只读状态展示 + 链接详情决定区；F10 收敛）
+- PATCH /api/tasks/[id] decisionStatus（通用 task 字段能力）
+- WorkflowDecisionSummary（无调用点遗留组件，未触碰）
+
+## 4. 验收（headed + 真实 3005）
+
+| 项 | 结果 |
+|---|---|
+| BrüMate（无 researchRecord）详情页 | 无「旧版研究记录/旧版人工决定/保存旧版状态/缺少新版创作资料/创作工具区」；显示只读「当前决定：可继续」 |
+| HydroJug（有 researchRecord）详情页 | 正式决定面板 + 创作工具区（Listing/Image CTA）正常；零「旧版」字样 |
+| /research | 10 条 active，无旧版字样 |
+| /tasks | 空态「还没有历史研究记录」+ 新描述（0 条允许） |
+| Listing Studio | PASS（handoff 正常读取上下文） |
+| Image Studio | PASS |
+| 1688 最小回归 | 关键词「儿童吸管水杯」→ 10 条 Preview，10/10 图片 loaded |
+| Owner/Visitor 隔离 | 未触碰权限层（仅 UI/文案），全量权限测试通过 |
+
+## 5. 测试与质量
+
+- 更新 ProductResearchDecisionPanel.test.ts（legacy 分支移除断言 + 详情页只读卡断言）；全量 **4887 passed / 90 skipped**（仅 2 个既有环境失败：bridge 53318 端口占用、release-package tar 基线）；tsc / lint（0 errors）/ build PASS。
+- Git：独立分支 `codex/v3-remove-legacy-research`（ec811e2）→ main；备份不提交。
+- 3005 运行新构建（health 200，计划任务 Ready/Enabled）。
+
+## 6. 结论
+
+- **LEGACY_RESEARCH_TASKS = REMOVE（数据层无旧版任务可删；已备份）**
+- **LEGACY_RESEARCH_COMPATIBILITY = REMOVE（UI/文案收口完成）**
+- 正式产品只保留：Current Research Task / Evidence Workbench / Current Human Decision / Current Creative Handoff / Listing-Image Studio
+- **独立问题（未混入本轮）**：早期候选任务（无 researchRecord，存量验收数据）决定为只读——如需对这些存量任务继续做决定操作，需另行评估（新 lifecycle 或升级路径，不在本轮范围，§14）
+- LOCAL_RELEASE_CANDIDATE：待用户复查后按既有流程评估；PUBLIC_DEPLOY = FORBIDDEN（维持）；V3_6 = NOT_AUTHORIZED
