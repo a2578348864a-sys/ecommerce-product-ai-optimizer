@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { SourcingAcquisitionError } from "./contracts";
-import { normalizeOfferDetail, normalizeSearchOffers } from "./normalize";
+import { normalizeCandidateImageUrl, normalizeOfferDetail, normalizeSearchOffers } from "./normalize";
 import { SANITIZED_OFFER_RESPONSE, SANITIZED_SEARCH_RESPONSE } from "./fixtures/sanitized.v1";
 
 const CAPTURED_AT = "2026-08-15T00:00:00.000Z";
@@ -173,5 +173,44 @@ describe("normalizeOfferDetail", () => {
       priceTiers: Array.from({ length: 31 }, (_, index) => ({ minQty: index + 1, price: 10 })),
     };
     expect(() => normalizeOfferDetail(manyTiers, { capturedAt: CAPTURED_AT })).toThrowError(/上限/);
+  });
+});
+
+// ── V3 Final R14（§5）：候选商品图 URL 规范化（唯一 display 入口） ──
+
+describe("normalizeCandidateImageUrl", () => {
+  it("完整 https URL 保留", () => {
+    expect(normalizeCandidateImageUrl("https://cbu01.alicdn.com/img/ibank/x.jpg")).toBe("https://cbu01.alicdn.com/img/ibank/x.jpg");
+  });
+
+  it("protocol-relative //host → https://host", () => {
+    expect(normalizeCandidateImageUrl("//cbu01.alicdn.com/img/ibank/x.jpg")).toBe("https://cbu01.alicdn.com/img/ibank/x.jpg");
+  });
+
+  it("相对路径（无可证 base）→ null（禁止猜路径）", () => {
+    expect(normalizeCandidateImageUrl("/img/ibank/x.jpg")).toBeNull();
+    expect(normalizeCandidateImageUrl("img/ibank/x.jpg")).toBeNull();
+  });
+
+  it("http / data: / javascript: / 空白 → null", () => {
+    expect(normalizeCandidateImageUrl("http://cbu01.alicdn.com/x.jpg")).toBeNull();
+    expect(normalizeCandidateImageUrl("data:image/png;base64,abc")).toBeNull();
+    expect(normalizeCandidateImageUrl("javascript:alert(1)")).toBeNull();
+    expect(normalizeCandidateImageUrl("   ")).toBeNull();
+    expect(normalizeCandidateImageUrl(null)).toBeNull();
+  });
+
+  it("keyword 搜索候选 images 经 normalize 后为完整 https（含 protocol-relative 兜底）", () => {
+    const offers = SANITIZED_SEARCH_RESPONSE.offers.map((offer, index) => ({
+      ...offer,
+      image: index === 0 ? "https://cbu01.alicdn.com/img/ibank/a.jpg" : "//cbu01.alicdn.com/img/ibank/b.jpg",
+    }));
+    const result = normalizeSearchOffers(offers, {
+      method: "keyword",
+      query: "保温杯",
+      capturedAt: "2026-08-17T00:00:00.000Z",
+    });
+    expect(result[0].images[0]).toBe("https://cbu01.alicdn.com/img/ibank/a.jpg");
+    expect(result[1].images[0]).toBe("https://cbu01.alicdn.com/img/ibank/b.jpg");
   });
 });

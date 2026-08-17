@@ -4,7 +4,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SourcingEvidencePanel, UI_METHOD_TO_OPERATION } from "@/components/cross-border/SourcingEvidencePanel";
+import { SourcingCandidateThumb, SourcingEvidencePanel, UI_METHOD_TO_OPERATION } from "@/components/cross-border/SourcingEvidencePanel";
 
 vi.mock("@/lib/client/accessPassword", () => ({
   useAccessPassword: () => ["test-password"],
@@ -173,5 +173,29 @@ describe("UI_METHOD_TO_OPERATION", () => {
     for (const operation of Object.values(UI_METHOD_TO_OPERATION)) {
       expect(allowlist.has(operation)).toBe(true);
     }
+  });
+});
+
+// ── V3 Final R14（§14/§15）：候选商品缩略图——no-referrer + 占位 fallback ──
+
+describe("SourcingCandidateThumb", () => {
+  it("有真实图片 URL → img 渲染且 referrerpolicy=no-referrer（防盗链修复）", () => {
+    const html = renderToStaticMarkup(createElement(SourcingCandidateThumb, {
+      imageUrl: "https://cbu01.alicdn.com/img/ibank/x.jpg",
+      offerId: "12345",
+    }));
+    expect(html).toContain("<img");
+    expect(html).toContain('referrerPolicy="no-referrer"');
+    expect(html).toContain("https://cbu01.alicdn.com/img/ibank/x.jpg");
+    expect(html).not.toContain("暂无商品图");
+  });
+
+  it("无图片 URL → 「暂无商品图」占位（不渲染 broken img）", () => {
+    const html = renderToStaticMarkup(createElement(SourcingCandidateThumb, {
+      imageUrl: null,
+      offerId: "12345",
+    }));
+    expect(html).toContain("暂无商品图");
+    expect(html).not.toContain("<img");
   });
 });

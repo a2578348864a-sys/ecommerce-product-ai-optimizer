@@ -40,10 +40,23 @@ function asString(value: unknown, fallback = ""): string {
   return fallback;
 }
 
+/**
+ * V3 Final R14（§4/§5）：候选商品图 URL 安全规范化（唯一 display 入口，组件不猜字段）。
+ * - protocol-relative `//host/...` → `https://host/...`（仅当以 // 开头）；
+ * - 仅接受 https 绝对 URL；相对路径（无 base 可证）→ null（禁止猜路径）；
+ * - http / data: / javascript: / 空白 → null。
+ */
+export function normalizeCandidateImageUrl(raw: unknown): string | null {
+  const value = asString(raw);
+  if (!value) return null;
+  const candidate = value.startsWith("//") ? `https:${value}` : value;
+  if (!/^https:\/\/[^\s]+$/i.test(candidate)) return null;
+  return candidate;
+}
+
 function asNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/[￥¥,\s]/g, ""));
+  if (typeof value === "string") {    const parsed = Number(value.replace(/[￥¥,\s]/g, ""));
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
@@ -207,7 +220,7 @@ export function normalizeSearchOffers(
       acquisitionMethod: input.method,
       sourceProductRole: role,
       title,
-      images: images.map((image) => asString(image)).filter(Boolean).slice(0, 10),
+      images: images.map((image) => normalizeCandidateImageUrl(image)).filter((v): v is string => v !== null).slice(0, 10),
       displayedPrice,
       priceRange,
       priceTiers: [],

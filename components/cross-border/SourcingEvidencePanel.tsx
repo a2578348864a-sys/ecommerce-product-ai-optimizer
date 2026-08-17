@@ -33,6 +33,42 @@ export const UI_METHOD_TO_OPERATION: Record<"keyword" | "image" | "url", Sourcin
   url: "url",
 };
 
+/**
+ * V3 Final R14：候选商品缩略图（唯一展示入口）。
+ * - 1688 CDN（alicdn）防盗链：页面 Referer 触发 403 → referrerPolicy="no-referrer"（实证 200）；
+ * - 单张加载失败 → 降级「暂无商品图」占位（不显示 broken icon、不无限重试）；
+ * - 无图 → 占位；lazy 加载。
+ */
+export function SourcingCandidateThumb({
+  imageUrl,
+  offerId,
+  className = "h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover",
+}: {
+  imageUrl: string | null | undefined;
+  offerId: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!imageUrl || failed) {
+    return (
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50" data-testid={`no-image-${offerId}`}>
+        <span className="px-1 text-center text-[10px] leading-tight text-slate-400">暂无商品图</span>
+      </div>
+    );
+  }
+   
+  return (
+    <img
+      src={imageUrl}
+      alt=""
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className={className}
+    />
+  );
+}
+
 type PanelStatus =
   | "idle"
   | "searching"
@@ -667,12 +703,7 @@ export function SourcingEvidencePanel({
                           aria-label={`选择 ${candidate.title}`}
                           data-testid={`select-${candidate.offerId}`}
                         />
-                        {candidate.images[0] ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={candidate.images[0]} alt="" className="h-16 w-16 shrink-0 rounded-lg border border-slate-200 object-cover" />
-                        ) : (
-                          <div className="h-16 w-16 shrink-0 rounded-lg border border-dashed border-slate-300" />
-                        )}
+                        <SourcingCandidateThumb imageUrl={candidate.images[0]} offerId={candidate.offerId} />
                         <div className="min-w-0 flex-1">
                           <p className="line-clamp-2 text-sm font-semibold text-slate-800">{candidate.title}</p>
                           <p className="mt-1 text-xs text-slate-500">
