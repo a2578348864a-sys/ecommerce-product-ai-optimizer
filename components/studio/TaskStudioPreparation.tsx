@@ -492,7 +492,7 @@ export function TaskStudioPreparation({
       ) : null}
 
       {kind === "image" && visualOptions.length > 0 ? (
-        <fieldset className="mt-4">
+        <fieldset className="mt-4" id="task-visual-reference-fieldset">
           <legend className="text-sm font-bold text-slate-900">商品参考图</legend>
           <p className="mt-1 text-xs leading-5 text-slate-500">只有你在这里批准的当前研究参考图，才能用于具体商品视觉草稿。</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2">

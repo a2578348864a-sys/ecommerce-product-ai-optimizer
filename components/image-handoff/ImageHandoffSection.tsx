@@ -492,7 +492,9 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
             <button
               type="button"
               className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-800"
-              onClick={() => router.push(`/tasks/${encodeURIComponent(taskId)}#creative-materials`)}
+              onClick={() => {
+                document.getElementById("task-visual-reference-fieldset")?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
             >
               确认商品参考图
             </button>
