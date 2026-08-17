@@ -14,8 +14,9 @@
  */
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 /** git bash 的 tar 不识别 D:\ 前缀，转换为 /d/ 风格 */
@@ -111,11 +112,11 @@ function materializeSymlinks() {
 function pack(outFile, excludes) {
   mkdirSync(dirname(outFile), { recursive: true });
   const args = [
-    "-czf", unixPath(outFile),
+    "-czf", outFile,
     "--dereference",
     ...excludes,
     "--exclude=./node_modules", "--exclude=./.git", "--exclude=*.log",
-    "-C", unixPath(ROOT), ".next",
+    "-C", ROOT, ".next",
   ];
   mustRun("tar", args);
 }
@@ -130,19 +131,19 @@ function sha256File(p) {
 
 /** 打包后校验：BUILD_ID 一致 + external modules 目录存在 */
 function verifyArtifact(outFile, buildId, modules) {
-  const list = mustRun("tar", ["-tzf", unixPath(outFile)]);
+  const list = mustRun("tar", ["-tzf", outFile]);
   if (!list.includes(".next/BUILD_ID")) throw new Error("artifact missing .next/BUILD_ID");
   for (const mod of modules) {
     const marker = `.next/node_modules/${mod}/package.json`;
     if (!list.includes(marker)) throw new Error(`artifact missing external module: ${mod}`);
   }
-  // BUILD_ID 内容校验（从 tar 中读取）
-  const tmpDir = join(OUT_DIR, ".verify-tmp");
+  // BUILD_ID 内容校验（从 tar 中读取；解包目录与 artifact 同处 ASCII 工作目录）
+  const tmpDir = join(dirname(outFile), ".verify-tmp");
   mkdirSync(tmpDir, { recursive: true });
-  mustRun("tar", ["-xzf", unixPath(outFile), "-C", unixPath(tmpDir), ".next/BUILD_ID"]);
+  mustRun("tar", ["-xzf", outFile, "-C", tmpDir, ".next/BUILD_ID"]);
   const packedBuildId = readFileSync(join(tmpDir, ".next", "BUILD_ID"), "utf8").trim();
   if (packedBuildId !== buildId) throw new Error(`BUILD_ID mismatch: packed=${packedBuildId} expected=${buildId}`);
-  mustRun("rm", ["-rf", tmpDir]);
+  rmSync(tmpDir, { recursive: true, force: true });
 }
 
 const buildId = readFileSync(join(NEXT_DIR, "BUILD_ID"), "utf8").trim();
@@ -155,18 +156,30 @@ if (materialized.length > 0) {
   console.log(`materialized symlinks: ${materialized.join(", ")}`);
 }
 
-const artifact = join(OUT_DIR, `next-v${version()}-${shortSha()}-linux-x64.tar.gz`);
-pack(artifact, TAR_EXCLUDES);
-verifyArtifact(artifact, buildId, modules);
+// Windows 中文路径兼容：tar（bsdtar）经 Node execFileSync 传参时无法打开含非
+// ASCII 字符的输出文件（路径编码损坏）。artifact 先在 ASCII 临时目录打包并校验，
+// 完成后用 Node fs（UTF-16 原生 API，无编码问题）复制到最终输出目录。
+const artifactName = `next-v${version()}-${shortSha()}-linux-x64.tar.gz`;
+const finalArtifact = join(OUT_DIR, artifactName);
+const workDir = mkdtempSync(join(tmpdir(), "release-pack-"));
+const artifact = join(workDir, artifactName);
+try {
+  pack(artifact, TAR_EXCLUDES);
+  verifyArtifact(artifact, buildId, modules);
+  mkdirSync(OUT_DIR, { recursive: true });
+  copyFileSync(artifact, finalArtifact);
+} finally {
+  rmSync(workDir, { recursive: true, force: true });
+}
 
 const manifest = {
   schema: "release-artifact.v1",
   version: version(),
   commit: shortSha(),
   buildId,
-  artifact: artifact,
-  artifactSizeBytes: fileSize(artifact),
-  artifactSha256: sha256File(artifact),
+  artifact: finalArtifact,
+  artifactSizeBytes: fileSize(finalArtifact),
+  artifactSha256: sha256File(finalArtifact),
   externalModules: modules,
   packedAt: new Date().toISOString(),
 };
