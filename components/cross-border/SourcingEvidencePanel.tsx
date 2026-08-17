@@ -654,11 +654,11 @@ export function SourcingEvidencePanel({
                       </details>
                     </div>
                   )
-                ) : (
+                ) : !localEnvRequired ? (
                   <p className="mt-1.5 text-xs text-slate-400">
                     浏览器助手已连接。请确认已在普通 Chrome 中登录 1688（系统无法代替确认登录态）；1688 图搜会打开本地浏览器窗口（需前台运行）。
                   </p>
-                )}
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
