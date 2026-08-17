@@ -451,3 +451,99 @@ LOCAL_RELEASE_CANDIDATE：待用户复查真实商品图后按既有流程评估
 - `historical_legacy` 保留为 defensive 分类（当前真实数据 0 命中）。
 - PUBLIC_DEPLOY = FORBIDDEN（维持）；V3_6 = NOT_AUTHORIZED。
 - 3005 保持运行，等待用户亲自验证 Journey（商品研究 → 保存决定 → 完成研究 → 研究记录）。
+
+---
+
+# V3 Human Decision Authority Consistency Fix — P1 最终报告
+
+> 2026-08-17 · 分支 `codex/v3-human-decision-authority`（5084e30）→ main
+> 用户报告 P1：Bentgo（cmsw0bzti0004udte4dauumii）详情页顶部显示"人工决定：已记录"，但底部决定面板显示"尚未保存人工决定"，且保存按钮灰色——状态自相矛盾，用户以为研究已完、找不到保存入口。
+
+## 1. decisionStatus 的真实定位（修复后正式语义）
+
+- `decisionStatus` 是**兼容列 / projection / filtering helper**：继续用于 /research 列表过滤（buildResearchScopeWhere）、lifecycle active/historical 分类（classifyResearchLifecycle 的旧版兜底分支）、列表筛选下拉等 A 类用途。
+- **它不再是 Human Decision Authority**：不能单独证明"已保存人工决定"、"可以完成研究"、"已存在正式 researchRecord"或"Creative Handoff ready"。
+- 正式 Human Decision authority = `product-research-record.v1`（浏览器投影 `productResearchSummary`，schema + status 有值）**或** 正式 `humanDecision` record（status 有值）。实证：agent_run 任务两者都有；新体系（THERMOS/Bentgo）只有 researchRecord。
+
+## 2. 被删除的错误 fallback
+
+| 位置 | 旧逻辑 | 新逻辑 |
+|---|---|---|
+| `lib/taskResearchHistoryPresentation.ts` | `humanDecisionExists = ... \|\| input.decisionStatus !== "pending"` | 只认 productResearchSummary / humanDecision |
+| `lib/userProgressSummary.ts` | `hasHumanConclusion = keys.has("human_conclusion") \|\| decisionStatus === "continue"` | 只认 human_conclusion artifact / 正式载体 |
+| `lib/taskWorkflowSummary.ts` getPriority | `decisionStatus === continue/rejected/need_info` 直接给"可跟进/已放弃/需补资料" | 仅正式决定存在时才采用（否则回退风险/结论信号） |
+| `components/agentNextStepPanelModel.ts` getStage/getAgentStatus | `decisionStatus === continue` → "可人工推进" | 仅正式决定存在时；高风险 guard 保持与决定无关 |
+| `components/TaskRecordsList.tsx` 卡片 | 无正式决定 → `getDecisionStatusOption(decisionStatus).shortLabel`（"可继续"） | 无正式决定 → **"待人工决定"** |
+| `components/TaskRecordDetail.tsx` TaskDecisionHero | 直接传 decisionStatus | 无正式决定 → 传 `"pending"`（Hero 显示"待判断"） |
+
+## 3. 全仓 Authority Sweep 结果
+
+grep `decisionStatus` 全部误用点，分类：
+
+- **A 类（保留，UI filter / compatibility projection）**：`lib/researchLifecycle.ts:92`（active 分类兜底）、`lib/productResearchPresentation.ts` deriveStage（humanDecision.status 优先，兼容列仅 stage 展示）、`lib/productPipeline.ts`（pipeline status 是流程展示，非决定断言）、`app/api/tasks/route.ts` scope 过滤。
+- **B 类（必须改，Human Decision existence）——共 6 处，全部已修**：taskResearchHistoryPresentation（主修）+ userProgressSummary + taskWorkflowSummary + agentNextStepPanelModel（2 处：getStage/getAgentStatus）+ TaskRecordsList 卡片 + TaskDecisionHero。
+- **C 类（Completion Gate）——原本就安全，回归确认**：`completeCurrentResearch` 无 record → `research_decision_required` 409，不看 decisionStatus。
+- **D 类（Studio/Handoff readiness）——未发现误用**：creative-handoff gate 基于 researchRecord/hash 验证，不读兼容列。
+
+## 4. Bentgo 修复前 → 修复后
+
+| 项 | 修复前 | 修复后（headed 实测） |
+|---|---|---|
+| 顶部徽标 | 人工决定：**已记录** ❌ | 人工决定：**待确认** ✅ |
+| 研究状态 | 研究记录待补充 | 研究记录待补充（一致） |
+| 底部面板 | 尚未保存人工决定（一致但矛盾） | 尚未保存人工决定（两处一致，矛盾消除） |
+| 列表卡片"当前决定" | "可继续" ❌ | "待人工决定" ✅ |
+| 保存按钮 | 灰色无解释 | 灰色 + "保存前待完成：填写决定原因…" 引导 ✅ |
+
+## 5. 保存按钮为什么 disabled + 用户如何知道缺什么
+
+- disabled 是因为表单校验 gate：`reason 必填`；`needs_information` 时 `下一步动作必填`（§7 明确不要取消 required gate）。
+- 新增 Disabled Button UX（§8）：按钮下方显示"保存前待完成"列表（填写决定原因 / 填写下一步动作（需补资料时必填））；创建模式新增引导句"请先选择人工决定并填写原因；信息完整后即可保存"，`needs_information` 时额外提示"选择『需补资料』时，还需要填写下一步动作"。
+
+## 6. 保存后的统一状态 / F5 持久（headed 实测，§9/§11）
+
+1. 初始：顶部"待确认" + 面板"尚未保存" ✅
+2. 选"进入创作准备" + 填原因 → 保存按钮 disabled → **enabled**，引导消失 ✅
+3. 点击保存 → 成功提示 + 顶部立即变"研究已完成 / 人工决定：已记录" + 面板"正式研究决定" ✅
+4. F5 → 完全一致（研究已完成 / 已记录 / 版本 1 / 完成按钮可用）✅
+5. /research 列表：该任务卡片同步（保存后状态一致）✅
+
+## 7. Completion 仍安全（§13）
+
+- **保存正式决定前**：`POST /complete` → **409 `research_decision_required`**（Bentgo decisionStatus=continue 也不能放行）✅
+- **保存正式决定后**：gate 正常放行 → completed（headed 实测中 Bentgo 因此被正式完成，与 THERMOS 相同——这是有意的真实验收动作；Bentgo 现已在研究记录中，researchCompletion=completed）
+- need_info 决定 → 409 `research_need_info`（fixture 测试覆盖）
+
+## 8. 存量数据
+
+- **未修改任何存量 decisionStatus**（NO_DB_DATA_REWRITE = PASS）；本轮只修读语义，不抹历史数据。
+- Bentgo 因验收被正式保存决定（revision 1 creative_ready）+ 完成（researchCompletion）——这是 §11/§13 要求的真实 Journey 数据；其余 5 个 candidate_research 任务保持原状（decisionStatus=continue 但无正式决定，现在 UI 正确显示"待确认/待人工决定"）。
+
+## 9. 测试与质量
+
+- 新增/更新测试：taskResearchHistoryPresentation（continue 无正式→false / 正式载体→true / pending+正式→true）、userProgressSummary（兼容列不放行 / 正式载体放行）、taskWorkflowSummary（无正式不显示人工认可 / 正式+continue 保留）、agentNextStepPanelModel（无正式→待决策 / 高风险 guard 独立）、ProductResearchDecisionPanel（引导 + need-info 提示 + 更新模式引导）。
+- **targeted：150 passed**（13 files）；**full regression：4915 passed / 90 skipped**（仅 2 个既有环境失败：native1688Bridge 53318 端口占用、release-package Windows tar 基线，非本轮引入）；tsc / lint（0 errors）/ build 全 PASS。
+- **headed 真 3005**：Bentgo 全流程（初始徽标 → 表单 → 保存 → 顶部同步 → F5 → 列表标签）实测通过。
+
+## 10. Final Gate
+
+| Gate | 结果 |
+|---|---|
+| DECISION_AUTHORITY = FORMAL_RECORD_ONLY | PASS |
+| BENTGO_INITIAL_BADGE = 待确认 | PASS（headed 实测） |
+| BENTGO_PANEL = 尚未保存 | PASS（headed 实测） |
+| NO_STATUS_CONTRADICTION = PASS | PASS |
+| DISABLED_BUTTON_GUIDANCE = PASS | PASS |
+| FORMAL_DECISION_SAVE = PASS | PASS（headed 实测） |
+| F5_PERSIST = PASS | PASS（headed 实测） |
+| COMPLETION_BEFORE_DECISION = DENY | PASS（409 research_decision_required） |
+| COMPLETION_AFTER_VALID_DECISION = PASS / CONTRACT_CORRECT | PASS |
+| NO_DB_DATA_REWRITE = PASS | PASS（未动存量 decisionStatus） |
+| **P1 = CLOSED** | ✅ |
+
+## 11. Git / 运行
+
+- 分支 `codex/v3-human-decision-authority`（5084e30，12 files +319/-26）→ main（ff-only）。
+- 3005 运行修复后构建（health 200，计划任务 Ready/Enabled）。
+- PUBLIC_DEPLOY = FORBIDDEN（维持）；V3_6 = NOT_AUTHORIZED；未触碰 1688/Amazon/VOC/Studio。
+- 提醒：Bentgo 已作为验收被完成（在研究记录中）；如需回退 Bentgo 的保存+完成（回到"未决定"状态），备份 `.local-backups/db-guard/2026-08-17T20-17-48` 之前的状态可恢复，或告诉我由我处理。
