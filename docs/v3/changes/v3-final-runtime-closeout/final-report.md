@@ -336,3 +336,118 @@ LOCAL_RELEASE_CANDIDATE：待用户复查真实商品图后按既有流程评估
 - 正式产品只保留：Current Research Task / Evidence Workbench / Current Human Decision / Current Creative Handoff / Listing-Image Studio
 - **独立问题（未混入本轮）**：早期候选任务（无 researchRecord，存量验收数据）决定为只读——如需对这些存量任务继续做决定操作，需另行评估（新 lifecycle 或升级路径，不在本轮范围，§14）
 - LOCAL_RELEASE_CANDIDATE：待用户复查后按既有流程评估；PUBLIC_DEPLOY = FORBIDDEN（维持）；V3_6 = NOT_AUTHORIZED
+
+---
+
+# V3 Current Research Normalization & Completion Closure 最终报告
+
+> 2026-08-17 · 分支 `codex/v3-current-research-normalization` → main（5 commits：d05f9f2 / 41fc8cb / 48c6617 / 8835047 / 98b4283）
+> 目标（TARGETED WORKFLOW CORRECTION / NO NEW FEATURE）：把上一轮遗留的"无 researchRecord 任务决定只读"纠正为正式 CURRENT_ACTIVE 人工决定，并打通 Active → Completed → 研究记录的完整生命周期。
+
+## 0. 第一句回答（用户最关心的问题）
+
+**是的：那 6 个之前被误认为旧版的 candidate_research 任务已被正式认定为"当前未完成 Research"（CURRENT_ACTIVE，非 legacy，未删除），并恢复了统一正式人工决定（首次保存即创建 product-research-record.v1 revision 1）；用户现在能把一条 Research 从『商品研究』明确完成到『研究记录』——真实 Journey 已用 THERMOS（cmsw7363z0002cih40bujcawy）完整走通并落库验证。**
+
+## 1. 本轮修正的三件事（相对上一轮 Legacy Removal）
+
+上一轮把无 researchRecord 任务的决定区改成只读卡（legacy-decision-readonly），并把无记录任务标为 legacy。本轮按用户要求正式归一：
+
+| 上轮（已纠正） | 本轮（正式语义） |
+|---|---|
+| 无 researchRecord → legacy / 只读 | 无 researchRecord 但有当前 Evidence（browserEvidence/reviewEvidence/aiEvidenceSummary 等）→ **CURRENT_ACTIVE**，可编辑 |
+| 无记录任务不能写版本化决定 | 首次保存人工决定 → 创建 `product-research-record.v1` revision 1（同一 versioned writer，无第二 writer、无 clone） |
+| 完成研究 = 不存在的动作 | `POST /api/tasks/[id]/complete`：auth / closure gate / 幂等 / CAS 单次持久化；同一 canonical Task lifecycle 转换（Active → historical） |
+| researchRecord 只存在于 agent_run 任务 | researchRecord 是"正式决定/完成记录载体"：Active 阶段可有（5 个 AgentRun 任务在 agent_run 时创建），完成标记为独立命名空间 `research-completion.v1`（resultJson 顶层，无 DB migration） |
+
+## 2. 关键代码实证
+
+- `lib/productResearchRecord.ts`：`RESEARCH_COMPLETION_SCHEMA="research-completion.v1"`、`ResearchCompletionV1`、`parseResearchCompletion`（fail-closed：schema/status/completedAt/decisionId UUID/revision/finalStatus 全校验）、`getResearchCompletion`；`validateDecisionForWorkflow` 与 `parseProductResearchReviewState` 支持 `totalReviewSteps===0`（无 Agent workflow 复核的候选研究）。
+- `lib/server/productResearchRecordStore.ts`：
+  - `getProductResearchDecisionState`：无 record → `{legacy:false, readOnly:false, record:null}`（可编辑）；有 record + researchCompletion → `readOnly:true`（完成态决定锁定）。
+  - `createCurrentResearchDecision`：expectedRevision 必须 = 1；candidateId 从 resultJson 绑定提取；runId=taskId；contextHash/inputHash/resultHash 为确定性 sha256 绑定指纹；workflowStatus="completed" + NO_WORKFLOW_REVIEW；单次 CAS persist（record + verification + decisionStatus 兼容列同步：creative_ready→continue / needs_information→need_info / abandoned→rejected）。
+  - `completeCurrentResearch`：幂等（已 researchCompletion → 返回当前状态，不重复写）；gate（无 record → `research_decision_required` 409；needs_information → `research_need_info` 409）；写 `research-completion.v1`（CAS）；同一 Task，不复制。
+- `lib/server/taskResultWriterServices.ts` + `taskResultJsonMutation.ts`：`persistResearchDecision` 支持 verification 合并；新增 `persistResearchCompletion`（writer=`research-completion`，OWNED_NAMESPACES 注册 `researchCompletion`；research-decision 追加拥有 `researchVerification`——headed 验收发现并修复的 namespace 契约）。
+- `lib/researchLifecycle.ts`：`classifyResearchLifecycle` 先读 researchCompletion（completed→`historical_completed`、abandoned→`historical_abandoned`），再读 researchRecord.latestDecision，再 decisionStatus；`historical_legacy` 仅 defensive（真实数据 0 命中）。
+- `app/api/tasks/[id]/complete/route.ts`（新）：POST，requireAuthenticated → completeCurrentResearch → `{taskId, lifecycle, researchRecord, completedAt, idempotent}`。
+- `app/api/tasks/route.ts`：`buildResearchScopeWhere("historical")` 纳入 researchCompletion（已完成任务 decisionStatus 仍为 continue，SQL 预过滤必须显式包含）；`scope=completed` 改为 researchCompletion 完成标记；demo sandbox JS 侧过滤同步（headed 验收发现：否则完成任务不会出现在 /tasks）。
+- `lib/productResearchPublicDto.ts`：`DETAIL_FIELDS` 增加 `researchCompletion` 安全投影（schema/status/completedAt/revision/finalStatus，**不含 decisionId**——headed 验收发现：否则 F5 后完成态不显示）。
+- `components/TaskRecordDetail.tsx`：统一正式决定面板（无条件渲染 ProductResearchDecisionPanel，移除 legacy-decision-readonly 只读卡）；新增 `ResearchCompletionControl`（无决定→禁用"请先保存人工决定"；needs_information→禁用"当前仍需补充资料"；creative_ready/abandoned→[完成研究并保存记录] + 确认弹窗；已完成→"研究已完成并保存到研究记录。"+[查看研究记录]）。完成态判定读取 `productResearchSummary.status`（浏览器投影不含 researchRecord——headed 验收发现并修复）。
+- `components/product-research/ProductResearchDecisionPanel.tsx`：创建模式（record null，testid `product-research-decision-create`，保存人工决定 → revision 1）；完成态只读模式（testid `product-research-decision-readonly-completed`，"最终人工决定/研究已完成并保存到研究记录；最终决定不再修改"）。
+
+## 3. 真实验收（headed + 真实 3005，THERMOS cmsw7363z0002cih40bujcawy）
+
+```
+登录（管理员）→ /research（10 条）→ 打开 THERMOS（candidate_research，无 researchRecord，
+  有 browserEvidence/reviewEvidence/aiEvidenceSummary/sourcingEvidence）
+→ 决定区显示创建模式"尚未保存人工决定" + 完成按钮禁用"请先保存人工决定，再完成研究。"（✓ 门禁文案）
+→ 人工决定=进入创作准备 + 原因 → 保存人工决定 → DB：researchRecord revision 1 / creative_ready /
+  researchVerification / decisionStatus=continue（兼容列同步）✓
+→ F5 刷新 → 决定面板"正式研究决定 版本 1 进入创作准备"（✓ 持久化）；完成按钮仍禁用（发现 productResearchSummary
+  投影问题 → 修复 → 重新构建重启 3005）
+→ [完成研究并保存记录] → confirm 弹窗"完成后，该商品会从『商品研究』移动到『研究记录』。现有研究资料不会删除…"（✓）
+→ 确认 → "研究已完成并保存到研究记录。" + [查看研究记录]（✓）
+→ F5 → 最终人工决定只读卡（版本 1 / 进入创作准备 / 不再修改）+ 创作工具区（Listing/Image Studio CTA 正常）✓
+→ /research：10 → 9 条，THERMOS 不再出现 ✓
+→ /tasks：0 → 1 条，THERMOS 显示"研究已完成" ✓
+→ 幂等：重复 POST /complete 两次均 200 + idempotent:true + 同一 completedAt（无重复写入）✓
+→ DB 断言：tasks=11（不变）、candidates=11（不变，无 clone）、researchCompletion 仅 1 条、
+  evidence 4 个命名空间全部保留 ✓
+→ Evidence API：browser-evidence / review-evidence / ai-evidence-summary / sourcing 全部 200 ✓
+→ 详情 API：productResearchSummary.status=creative_ready + researchCompletion.status=completed，
+  decisionId 不泄露（LEAKS_DECISION_ID=false）✓
+```
+
+### fixture Journey（visitor / 临时 DEMO_SANDBOX_STORE_PATH，零真实数据影响）— `lib/server/researchCompletionFixtureJourney.test.ts`
+
+| 场景 | 结果 |
+|---|---|
+| need_info 决定 → 完成 | `research_need_info` 409 拒绝；仍 active_need_info（留在商品研究）✓ |
+| abandoned 决定 → 完成 | researchCompletion=abandoned → historical_abandoned（已放弃历史）；重复完成 idempotent:true ✓ |
+| creative_ready 决定 → 完成 | completed → historical_completed；决定 readOnly ✓ |
+
+## 4. 测试与质量
+
+- **FULL_REGRESSION = PASS**：`npx vitest run` → **4907 passed / 90 skipped**（仅 2 个既有环境失败：native1688Bridge 53318 端口被 3005 占用、release-package Windows tar 基线——均非本轮引入）。
+- 新增/更新测试：store（无记录可编辑 / 首次保存创建 revision 1 / 绑定缺失拒绝 / 完成写 researchCompletion / 幂等 / need_info 拒 / 无决定拒 / 完成态只读 + 禁止再改）、complete route（6 项：成功/幂等/401/无决定 409/need_info 409/空 id 400）、lifecycle（historical_completed/abandoned 优先）、tasks route（scope=historical 含 researchCompletion / scope=research 排除已完成）、publicDto（researchCompletion 安全投影不泄露 decisionId）、panel（创建/完成态/门禁文案/productResearchSummary 读取断言）、fixture journey（3 场景）。
+- tsc / lint（0 errors）/ build：全部 PASS。
+- 修复过程中发现的真实缺陷（headed 验收驱动）：① research-decision writer 未拥有 researchVerification 命名空间（namespace_contract_invalid）→ 注册；② scope=historical SQL 预过滤不含 researchCompletion → 完成任务不显示在 /tasks；③ DETAIL_FIELDS 缺 researchCompletion → F5 后完成态不显示；④ 完成控件读 researchRecord（投影已剥离）→ 改读 productResearchSummary。
+
+## 5. Git / 运行 / 备份
+
+- 分支 `codex/v3-current-research-normalization`（5 commits）→ main（ff-only）：
+  - d05f9f2 fix(v3): normalize current research lifecycle - candidate_research is CURRENT_ACTIVE
+  - 41fc8cb fix(v3): restore unified human decision editing for all current research
+  - 48c6617 feat(v3): close research via POST /api/tasks/[id]/complete
+  - 8835047 fix(v3): completion control reads projected summary - real headed acceptance find
+  - 98b4283 test(v3): visitor fixture journeys for research completion gates
+- 3005 运行最新构建（health 200，计划任务 QingXuanAgent-Local-3005 Ready/Enabled）。
+- DB 轻量备份：`.local-backups/db-guard/2026-08-17T15-31-17/dev.db`（SHA256 `706E0799EDB33FCA7994279E38E329B5E5693ADF467FC3CC747B1B1C3B8E124A`，备份于真实 Journey 之前；不提交）。
+
+## 6. Final Gate（§64）
+
+| Gate | 结果 |
+|---|---|
+| LEGACY_DATA = 0 | PASS（11 任务全为当前 V3 结构；6 个 candidate_research 正式认定为 CURRENT_ACTIVE，0 删除） |
+| CURRENT_ACTIVE_DECISION_EDIT = PASS | PASS（THERMOS headed 保存人工决定成功） |
+| DECISION_PERSIST = PASS | PASS（researchRecord revision 1 + verification + decisionStatus 同步；F5 后仍显示） |
+| RESEARCH_COMPLETION_ACTION = PASS | PASS（完成按钮 + confirm + 成功态 + 移入研究记录） |
+| RESEARCH_COMPLETION_IDEMPOTENT = PASS | PASS（重复 POST /complete → idempotent:true，无重复） |
+| NO_TASK_CLONE = PASS | PASS（tasks/candidates 均 11 不变） |
+| ACTIVE_TO_HISTORY = PASS | PASS（/research 10→9；/tasks 0→1；F5 正确） |
+| RESEARCH_RECORD_VISIBLE = PASS | PASS（/tasks 显示 THERMOS 研究已完成；详情 Evidence/Decision/Studio 正常） |
+| NEED_INFO_STAYS_ACTIVE = PASS | PASS（fixture：need_info 完成被拒，留在商品研究） |
+| REJECTED_HISTORY = PASS | PASS（fixture：abandoned → historical_abandoned 已放弃历史） |
+| EVIDENCE_PRESERVED = PASS | PASS（4 个 evidence 命名空间完整；Evidence API 全部 200） |
+| LISTING/IMAGE_ACTIVE+COMPLETED = PASS | PASS（completed 详情创作工具区正常；Studio 读取上下文） |
+| OWNER_VISITOR_ISOLATION = PASS | PASS（权限层未触碰；全量权限测试通过；fixture 用临时 store 隔离） |
+| SCROLL = PASS | PASS（TaskRecordsList 滚动逻辑未改动；列表浏览/查看更多正常） |
+| FULL_REGRESSION = PASS | PASS（4907 passed / 90 skipped，仅 2 个既有环境失败） |
+| **LOCAL_RELEASE_CANDIDATE** | **APPROVED**（待用户亲自验证 Journey 后按既有流程评估） |
+
+## 7. 遗留与边界
+
+- createCurrentResearchDecision 的确定性 hash 是"绑定指纹"（锁定 task↔candidate），不承诺内容完整性；verification 写入后 record 任何修改即 hash 失配（assertBinding 门禁）。
+- abandoned 决定未完成前仍显示在 /research（可继续操作）；完成 abandoned 后进入已放弃历史——语义按 §14 保持。
+- `historical_legacy` 保留为 defensive 分类（当前真实数据 0 命中）。
+- PUBLIC_DEPLOY = FORBIDDEN（维持）；V3_6 = NOT_AUTHORIZED。
+- 3005 保持运行，等待用户亲自验证 Journey（商品研究 → 保存决定 → 完成研究 → 研究记录）。
