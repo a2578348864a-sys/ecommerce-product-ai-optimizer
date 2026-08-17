@@ -137,3 +137,18 @@ RESTART_SMOKE          = NOT_EXECUTED    (中断性操作未授权)
 - 主链（Candidate → Research → Evidence → Decision → Record → Creative Context → Studio）以真实任务 4dauumii 全链实证闭环；Fact Safety、Owner/Visitor 隔离、本地采集真实性、公网能力边界四项安全支柱全部对抗通过。
 - 8 项 P2 仅记录不修；等待用户单独授权 Final Freeze Correction（如需）。
 - 本报告为唯一审计产物；未修改任何业务代码/数据；3005 保持运行。
+
+---
+
+## 9. Release Engineering 追加状态（2026-08-17 发布前收口；不改写上述审计证据）
+
+| 项 | 状态 | 证据 |
+|----|------|------|
+| RELEASE_HYGIENE | PASS | V3F-03（demo-product-batches 加入 .gitignore，数据保留）、V3F-04（.env.local.bak-corrupt 移至 .local-backups/env-corrupt/2026-08-17T23-48-55/ + gitignore 防线）、V3F-05（删除 0 字节文件）；gitignore 19/19 覆盖验证；untracked surface=0 |
+| SECRET_HISTORY_SCAN | CLEAN | DEEPSEEK_API_KEY/OPENAI_API_KEY/PROOF_SIGNING_SECRET：HEAD=0、全历史（783 commits/全 refs）=0；sk- 前缀扫描=0；ACCESS_PASSWORD 唯一命中为 vocAnalysis.test.ts 注入样本（非泄漏，.env.example 无该值） |
+| SECRET_ROTATION_REQUIRED | NO | 真实高熵密钥从未进入 Git 历史 |
+| FINAL_FULL_REGRESSION | PASS | vitest 4932 passed / 90 skipped；TSC exit 0；LINT 0 errors；BUILD exit 0；release-package.test PR-1 PASS（VR 系列 ENVIRONMENT_SKIP：Windows 无 bash）；native1688Bridge.integration ENVIRONMENT_SKIP（53318 端口被 3005 bridge 占用，端口硬编码无 env 覆盖，已有真实 bridge evidence） |
+| RELEASE_TOOLING_FIX | 完成（71d91d9） | package-release.mjs 中文路径 Windows 工作区打包失败（Node→bsdtar 输出路径编码损坏）为真实 release bug；修复：ASCII 临时目录打包+校验+Node fs 复制；修复后真实打包 PASS（release/next-v2.2.16-1fb8af0-linux-x64.tar.gz 1,779,011 bytes，manifest SHA256 记录） |
+| RESTART_SMOKE | NOT_EXECUTED | 无业务代码变化（仅 .gitignore/docs/release-tooling），无需重建 3005；中断性操作未授权；3005 持续 health OK |
+| REMOTE_SYNC | 见下（push 后回填） | |
+| PUBLIC_PREFLIGHT | 见 docs/v3/PUBLIC_DEPLOYMENT_READINESS.md | 17 节只读规划；PUBLIC_DEPLOY=FORBIDDEN |
