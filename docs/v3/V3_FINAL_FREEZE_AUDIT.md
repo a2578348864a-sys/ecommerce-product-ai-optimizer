@@ -18,7 +18,7 @@ LOCAL_RELEASE_CANDIDATE= APPROVED
 PUBLIC_DEPLOYMENT_READINESS = READY_FOR_PREFLIGHT
 PUBLIC_DEPLOY          = FORBIDDEN       (审计非部署授权)
 V3_6                   = NOT_AUTHORIZED
-REMOTE_SYNC            = BEHIND          (本地 main 领先 origin/main=cd7a476 共 3 提交，未授权 push)
+REMOTE_SYNC            = BEHIND          (本地 main 领先 origin/main=cd7a476 共 5 提交：fa4ea5a/d9e7210/f962c76 + 审计报告 2 提交，未授权 push)
 REAL_PROVIDER_SMOKE    = NOT_EXECUTED    (付费 AI 调用未授权)
 RESTART_SMOKE          = NOT_EXECUTED    (中断性操作未授权)
 ```
@@ -127,7 +127,7 @@ RESTART_SMOKE          = NOT_EXECUTED    (中断性操作未授权)
 | Known failures 重新确认 | 完成 | `native1688Bridge.integration.test.ts`：fail "bridge did not start"（53318 端口被运行中 3005 的 bridge 占用），11 tests skipped —— 环境性失败，与代码无关；`scripts/release-package.test.ts`：fail execFileSync（Windows tar 基线差异），3 tests skipped —— 环境性失败，与代码无关 |
 | Planned task | Ready | `schtasks /Query \QingXuanAgent-Local-3005` = Ready；127.0.0.1:3005 由 PID 40508 监听 |
 | Decision 读取路径 | PASS | 4dauumii：research-decision 返回 record（revision=1 === decisionEvents=1，readOnly=true，schema=product-research-record.v1，legacy=false）；pending 任务 0eeqmqqj：record=null，readOnly=false（无正式决定不显示已保存） |
-| REMOTE_SYNC（push 本地 main） | BEHIND | origin/main=cd7a476（HTTPS ls-remote 实证可达）；本地领先 3 提交（fa4ea5a/d9e7210/f962c76）；SSH 22 不可达；push 未授权，未改 remote 配置 |
+| REMOTE_SYNC（push 本地 main） | BEHIND | origin/main=cd7a476（HTTPS ls-remote 实证可达）；本地领先 5 提交（fa4ea5a/d9e7210/f962c76 + 审计报告 f0936d2/0378b2a）；SSH 22 不可达；push 未授权，未改 remote 配置 |
 | Public Preflight | NOT_AUTHORIZED | PUBLIC_DEPLOY=FORBIDDEN（审计非部署授权）；V3_6=NOT_AUTHORIZED |
 | F5/重登/重开浏览器持久化实证 | 依赖既有交付验证 | Evidence Save/Decision Save/Completion/Fact Confirm/Listing/Image history 的 F5 保留由上一轮 P1 修复交付及 209 项测试覆盖；本轮未重复全量 UI 复测 |
 
