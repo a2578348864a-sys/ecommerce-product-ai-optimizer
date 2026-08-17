@@ -67,6 +67,11 @@ logs/
 data/demo-access.json
 # Demo sandbox data (contains demo user tasks/candidates — do not commit)
 data/demo-sandbox.json
+# Demo sandbox product batches (Visitor demo runtime data — do not commit)
+data/demo-product-batches/
+# Local env backups (may contain real secrets — never commit)
+.env.local.bak-*
+.env.local.bak-corrupt-*
 # Local/demo security gate test artifacts
 data/demo-sandbox.test-system-recovery3.json
 # Private AI image drafts and request ledger
