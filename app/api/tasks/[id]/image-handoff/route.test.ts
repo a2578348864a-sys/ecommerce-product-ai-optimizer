@@ -49,10 +49,12 @@ async function callPOST(taskId: string, body: unknown) {
   }) as never, { params: Promise.resolve({ id: taskId }) });
 }
 
-function activeGate() {
+function activeGate(overrides: Record<string, unknown> = {}) {
   return {
     allowed: true,
     reason: "eligible",
+    approvedReferenceImageDataUrl: "data:image/jpeg;base64,/9j/x",
+    visualReferenceCandidates: [],
     currentHandoff: {
       schema: "product-creative-handoff.v1",
       handoffId: "handoff-1",
@@ -68,6 +70,7 @@ function activeGate() {
       }],
     },
     storageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+    ...overrides,
   };
 }
 
@@ -309,5 +312,83 @@ describe("GET /api/tasks/[id]/image-handoff", () => {
     expect(raw).not.toContain("actorRef");
     expect(raw).not.toContain("candidateId");
     expect(raw).not.toContain("researchHash");
+  });
+});
+
+describe("Visual Reference Gate（§32-35：白底/细节/包装要求已确认参考图）", () => {
+  function generateBody(overrides: Record<string, unknown> = {}) {
+    return {
+      requestId: "r-gate",
+      expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+      expectedHandoffRevision: 2,
+      mode: "composition_concept",
+      primaryImagePurpose: "white_studio",
+      lifestyleScene: "none",
+      customImagePurpose: "",
+      userCreativeDescription: "白底商品图。",
+      confirmed: true,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.generateImageDraftFromHandoff.mockResolvedValue({
+      imageStatus: "concept_only", currentHandoffRevision: 2, sourceHandoffRevision: 2,
+      idempotentReplay: false, humanReviewRequired: true, draft: null,
+    });
+  });
+
+  it("white_studio 无已确认参考 → 409 blocked_needs_visual_reference，不调用 Provider", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({ approvedReferenceImageDataUrl: null }));
+    const res = await callPOST("task-1", generateBody());
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("blocked_needs_visual_reference");
+    expect(body.error.message).toContain("白底商品图需要先确认商品参考图");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("detail_closeup 无已确认参考 → 409", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({ approvedReferenceImageDataUrl: null }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "detail_closeup", lifestyleScene: "outdoor_travel" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("blocked_needs_visual_reference");
+  });
+
+  it("packaging_bundle 无已确认参考 → 409", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({ approvedReferenceImageDataUrl: null }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "packaging_bundle" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("blocked_needs_visual_reference");
+  });
+
+  it("white_studio 有已确认参考 → 放行（Provider 调用）", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callPOST("task-1", generateBody());
+    expect(res.status).toBe(200);
+    expect(mocks.generateImageDraftFromHandoff).toHaveBeenCalled();
+  });
+
+  it("comparison 无参考 → 放行（概念模式允许；§41 矩阵）", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({ approvedReferenceImageDataUrl: null }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "comparison" }));
+    expect(res.status).toBe(200);
+  });
+
+  it("GET 暴露 visualReferenceCandidates 安全投影（不含 contentHash/dataUrl）", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({
+      visualReferenceCandidates: [{
+        selectionId: "visual:abc", sourceKind: "candidate_fallback", approvable: true, summary: "approved visual reference", contentHash: "c".repeat(64),
+      }],
+    }));
+    const res = await callGET("task-1");
+    const body = await res.json();
+    expect(body.data.visualReferenceCandidates).toHaveLength(1);
+    expect(body.data.visualReferenceCandidates[0].selectionId).toBe("visual:abc");
+    expect(body.data.visualReferenceCandidates[0].sourceKind).toBe("candidate_fallback");
+    expect(JSON.stringify(body.data.visualReferenceCandidates)).not.toContain("c".repeat(64));
+    expect(JSON.stringify(body.data.visualReferenceCandidates)).not.toContain("dataUrl");
   });
 });

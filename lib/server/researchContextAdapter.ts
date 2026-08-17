@@ -26,7 +26,7 @@ import {
   type CandidateResearchContext,
 } from "@/lib/candidateResearchContext";
 import { getProductResearchRecord } from "@/lib/productResearchRecord";
-import { parseProductImageSnapshot } from "@/lib/productResearchImage";
+import { parseProductImageSnapshot, readCandidateProductImageSnapshot } from "@/lib/productResearchImage";
 import {
   buildCandidateAnalysisContext,
   createCandidateAnalysisBindingHash,
@@ -92,10 +92,13 @@ function sellerSpriteRawFromListingFacts(
 /**
  * 从任务 resultJson 确定性适配 CandidateResearchContext。
  * 输入：任务 resultJson（含 candidateAnalysisContext V1 + researchRecord + sourceMeta）。
+ * options.candidateSourceMetaJson：候选来源元数据（DB/sandbox），用于图片快照的
+ * candidate_fallback 回退（任务内嵌 candidateSnapshot 缺失时，从候选已校验快照解析）。
  * 返回 ok=false 时不改变调用方语义（按原 fail-closed 404 处理）。
  */
 export function adaptResearchContextForHandoff(
   resultJson: Record<string, unknown>,
+  options: { candidateSourceMetaJson?: string } = {},
 ): ResearchContextAdapterResult {
   const contextRaw = resultJson.candidateAnalysisContext;
   if (!isRecord(contextRaw)) {
@@ -145,23 +148,30 @@ export function adaptResearchContextForHandoff(
     : "";
   if (!capturedAt) return { ok: false, reason: "captured_at_invalid" };
 
-  // 5) 图片快照（任务自有已验证资源；无则省略 productImage——Handoff 合同允许可选）
+  // 5) 图片快照（任务自有已验证资源；无则回退候选快照 candidate_fallback——
+  //    与 task detail 缩略图同一来源，保证视觉候选可用；仍无则省略 productImage）
   let productImage: CandidateResearchContext["productImage"] = undefined;
   const imageSnapshot = candidateSnapshot && isRecord(candidateSnapshot.productImageSnapshot)
     ? parseProductImageSnapshot(candidateSnapshot.productImageSnapshot)
     : null;
-  if (imageSnapshot) {
-    const mime = imageSnapshot.mimeType;
+  const fallbackImage = imageSnapshot
+    ? null
+    : options.candidateSourceMetaJson
+      ? readCandidateProductImageSnapshot(options.candidateSourceMetaJson)
+      : null;
+  const effectiveImage = imageSnapshot ?? fallbackImage;
+  if (effectiveImage) {
+    const mime = effectiveImage.mimeType;
     if ((mime === "image/jpeg" || mime === "image/png")
-      && typeof imageSnapshot.contentHash === "string"
-      && /^[a-f0-9]{64}$/i.test(imageSnapshot.contentHash)
-      && typeof imageSnapshot.dataUrl === "string"
-      && imageSnapshot.dataUrl.length <= 2_800_000) {
+      && typeof effectiveImage.contentHash === "string"
+      && /^[a-f0-9]{64}$/i.test(effectiveImage.contentHash)
+      && typeof effectiveImage.dataUrl === "string"
+      && effectiveImage.dataUrl.length <= 2_800_000) {
       productImage = {
-        dataUrl: imageSnapshot.dataUrl,
+        dataUrl: effectiveImage.dataUrl,
         mimeType: mime,
-        contentHash: imageSnapshot.contentHash.toLowerCase(),
-        provenance: "task_snapshot",
+        contentHash: effectiveImage.contentHash.toLowerCase(),
+        provenance: imageSnapshot ? "task_snapshot" : "candidate_fallback",
       };
     }
   }

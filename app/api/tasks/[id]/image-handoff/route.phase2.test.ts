@@ -55,6 +55,8 @@ function gate(overrides: Record<string, unknown> = {}) {
     candidate: { sourceResearch: { researchRevision: 2 } },
     imageDraftRaw: { items: CANDIDATES },
     imageStudioSelectionRaw: { selectedImageId: "image-b", sourceHandoffRevision: 2 },
+    approvedReferenceImageDataUrl: "data:image/jpeg;base64,/9j/x",
+    visualReferenceCandidates: [],
     storageVersion: VERSION,
     ...overrides,
   };

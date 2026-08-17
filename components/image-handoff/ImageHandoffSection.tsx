@@ -42,6 +42,8 @@ type ImageStateData = {
   candidates: ImageDraftSafeSummary[];
   selectedImageId: string | null;
   approvedVisualReferenceSummary: Array<{ referenceFingerprint: string; summary: string; selectionId?: string }>;
+  /** Visual Reference Closure：任务自有图片候选（服务端安全投影，不含哈希/dataUrl） */
+  visualReferenceCandidates?: Array<{ selectionId: string; sourceKind: string; approvable: boolean; summary: string }>;
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   expectedHandoffRevision: number | null;
   allowedModes: Array<"composition_concept" | "product_visual_draft">;
@@ -405,10 +407,16 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   }
 
   const isComposition = state.mode === "composition_concept";
+  // Visual Reference Gate（§32-35）：白底主图/产品细节特写/包装套装要求已确认商品参考图
+  const REQUIRES_REFERENCE_PURPOSES = new Set(["white_studio", "detail_closeup", "packaging_bundle"]);
+  const purposeRequiresReference = REQUIRES_REFERENCE_PURPOSES.has(creativeIntent.primaryImagePurpose);
+  const hasApprovedReference = state.approvedVisualReferenceSummary.length > 0;
+  const referenceGateBlocked = purposeRequiresReference && !hasApprovedReference;
   const generateDisabled = !state.canGenerate
     || submitting
     || state.imageStatus === "revoked"
     || state.imageStatus === "invalid"
+    || referenceGateBlocked
     || (creativeIntent.primaryImagePurpose === "custom" && !creativeIntent.customImagePurpose.trim());
 
   return (
@@ -465,6 +473,30 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                 转为独立创作
               </button>
             </div>
+        ) : null}
+
+        {/* Visual Reference Gate（§32-35）：无已确认参考图时，白底主图/细节特写/包装套装不可生成 */}
+        {referenceGateBlocked ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="visual-reference-gate-blocked">
+            <p className="font-bold">
+              {creativeIntent.primaryImagePurpose === "white_studio"
+                ? "白底商品图需要先确认商品参考图。"
+                : creativeIntent.primaryImagePurpose === "detail_closeup"
+                  ? "产品细节特写需要已确认的商品参考图。"
+                  : "包装/套装展示需要已确认的商品参考图或包装事实。"}
+            </p>
+            <p className="mt-1">
+              确认后，生图会以这张图片作为当前商品的外观参考，尽量保持商品主体，仅改变背景、场景和构图（不代表像素级完全一致）。
+              请先在「创作资料 → 商品参考图」中批准参考图；未确认前不执行真实生图。
+            </p>
+            <button
+              type="button"
+              className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-800"
+              onClick={() => router.push(`/tasks/${encodeURIComponent(taskId)}#creative-materials`)}
+            >
+              确认商品参考图
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -619,9 +651,14 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                   type="button"
                   onClick={() => void handleSelect(candidate.id!)}
                   disabled={submitting || state.selectedImageId === candidate.id}
+                  title={candidate.mode === "composition_concept"
+                    ? "构图概念仅用于构图/场景/视觉方向参考，不代表真实商品外观，不能作为正式商品图。"
+                    : "已基于批准的商品参考图生成，仍需人工核对商品外观。"}
                   className="inline-flex h-9 items-center justify-center rounded-lg bg-teal-600 px-3 text-sm font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {state.selectedImageId === candidate.id ? "已选择" : "选择此图"}
+                  {state.selectedImageId === candidate.id
+                    ? (candidate.mode === "composition_concept" ? "已选为构图参考" : "已选择")
+                    : (candidate.mode === "composition_concept" ? "作为构图参考" : "选择此图")}
                 </button>
               </div>
             </article>

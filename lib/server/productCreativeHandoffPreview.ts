@@ -33,6 +33,7 @@ import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenera
 import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/creativeHandoffRequestLedger";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { buildCreativeContextFromResearch } from "@/lib/creativeContextBuilder";
+import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import type {
   ProductCreativeHandoffCandidate,
   ProductCreativeHandoffV1,
@@ -417,8 +418,10 @@ export async function checkCreativeHandoffGate(
   // V2 BLOCKER 修复：真实 save-task 写入 CandidateAnalysisContextV1，经 Research Context
   // Adapter 确定性转换为 Handoff 可消费格式；已兼容格式原样通过。适配失败按 fail-closed 处理。
   const contextRaw = resultJson.candidateAnalysisContext;
+  // Visual Reference（candidate_fallback）：候选快照图片使视觉候选在任务未内嵌快照时仍可用
+  const candidateSourceMetaForImage = await loadCandidateSourceMeta(context, record.candidateId ?? null);
   const adaptedContext = contextRaw !== undefined
-    ? adaptResearchContextForHandoff(resultJson)
+    ? adaptResearchContextForHandoff(resultJson, { candidateSourceMetaJson: candidateSourceMetaForImage })
     : null;
   const researchContext = adaptedContext?.ok === true ? adaptedContext.context : null;
   // SellerSprite 外部主图 URL 候选：URL 存在于候选快照（未下载）时展示，
@@ -504,7 +507,7 @@ export async function checkCreativeHandoffGate(
     // 把投影前的证据层附加到 Gate（供 Preview 展示），但 allowed=false（不可创建）。
     const contextRaw2 = resultJson.candidateAnalysisContext;
     const adaptedContext2 = contextRaw2 !== undefined
-      ? adaptResearchContextForHandoff(resultJson)
+      ? adaptResearchContextForHandoff(resultJson, { candidateSourceMetaJson: candidateSourceMetaForImage })
       : null;
     const researchContext2 = adaptedContext2?.ok === true ? adaptedContext2.context : null;
     const agentOutput2 = extractAgentOutputSnapshotFromTask(resultJson);

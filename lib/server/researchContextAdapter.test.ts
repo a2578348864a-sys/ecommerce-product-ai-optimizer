@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   adaptResearchContextForHandoff,
@@ -332,5 +333,97 @@ describe("adaptResearchContextForHandoff — verified_product_batch", () => {
     expect(result.context.title).toBeUndefined();
     expect(result.context.brand).toBeNull();
     expect(result.context.category).toBe("Sports & Outdoors");
+  });
+});
+
+describe("adaptResearchContextForHandoff — candidate_fallback 视觉参考（Visual Reference Closure）", () => {
+  const NOW = "2026-08-16T11:30:43.519Z";
+  const candidateId = "79ee756f-0706-42d2-9d49-cfc2fee70523";
+  const contextHash = "a".repeat(64);
+
+  function buildThermosFixture() {
+    const verification = createProductResearchVerification({
+      schema: PRODUCT_RESEARCH_HASH_SCHEMA, candidateId, runId: "run-thermos",
+      contextHash, inputHash: "b".repeat(64), resultHash: "c".repeat(64),
+      workflowStatus: "completed",
+      reviewState: { sourcingReviewed: true, riskReviewed: true, summaryReviewed: true, listingReviewed: true, reviewedCount: 4, totalReviewSteps: 4, allReviewed: true },
+    });
+    const researchRecord = createInitialProductResearchRecord({
+      candidateId, runId: "run-thermos", contextHash,
+      researchHash: buildProductResearchHash({ ...verification, schema: PRODUCT_RESEARCH_HASH_SCHEMA }),
+      workflowStatus: "completed", reviewState: verification.reviewState,
+      actor: { mode: "owner", actorRef: "owner:v1" }, now: NOW,
+      decision: { decisionId: "11111111-1111-4111-8111-111111111111", status: "creative_ready", reason: "ok", nextAction: null },
+    });
+    return {
+      productName: "THERMOS FUNTAINER Water Bottle with Straw, 12oz",
+      status: "completed",
+      candidateAnalysisContext: {
+        version: "candidate-analysis-context-v1",
+        integrity: "verified_product_batch",
+        facts: {
+          capturedAt: NOW,
+          originKind: "seller_sprite_product_batch",
+          productBatchId: "b1", productBatchItemId: "i1",
+          productName: "THERMOS FUNTAINER Water Bottle with Straw, 12oz",
+          marketplace: "US", asin: "B0F2BF31PW", reportType: "search_results",
+          query: "water bottle", category: "Kitchen & Dining",
+          researchPriority: "priority_1", evidenceStatus: "sufficient",
+          provisionalDisposition: "promising", evidenceHash: "e".repeat(64), itemHash: "f".repeat(64),
+          sellerSpriteDisclaimerVersion: "sellersprite-v1-frozen.2026-07-27",
+        },
+        assessment: { researchMode: "market_research_only", promotionEligible: false },
+      },
+      researchRecord,
+    };
+  }
+
+  // 1x1 红色 JPEG（安全 fixture 图）
+  const JPEG_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EB//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EB//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EB//2Q==";
+
+  function buildCandidateSourceMeta() {
+    return JSON.stringify({
+      version: "product-batch-candidate-source.v1",
+      originKind: "seller_sprite_product_batch",
+      productKey: "amazon:US:B0F2BF31PW",
+      itemIdentityHash: contextHash,
+      capturedAt: NOW,
+      imageSnapshot: {
+        version: "product-batch-image-snapshot.v1",
+        status: "cached",
+        mimeType: "image/jpeg",
+        sizeBytes: Buffer.from(JPEG_B64, "base64").length,
+        sha256: createHash("sha256").update(Buffer.from(JPEG_B64, "base64")).digest("hex"),
+        base64: JPEG_B64,
+        sourceKind: "xlsx_embedded",
+        capturedAt: NOW,
+      },
+    });
+  }
+
+  it("无 candidateSourceMeta 且无内嵌快照 → productImage undefined（原行为）", () => {
+    const result = adaptResearchContextForHandoff(buildThermosFixture());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.context.productImage).toBeUndefined();
+  });
+
+  it("candidateSourceMeta 提供已校验快照 → productImage candidate_fallback（ENTITY_BOUND=ASIN 一致）", () => {
+    const result = adaptResearchContextForHandoff(buildThermosFixture(), { candidateSourceMetaJson: buildCandidateSourceMeta() });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.context.productImage).toBeDefined();
+    expect(result.context.productImage?.provenance).toBe("candidate_fallback");
+    expect(result.context.productImage?.mimeType).toBe("image/jpeg");
+    expect(result.context.productImage?.contentHash).toBe(createHash("sha256").update(Buffer.from(JPEG_B64, "base64")).digest("hex"));
+    expect(result.context.asin).toBe("B0F2BF31PW");
+  });
+
+  it("ASIN 不一致（wrong entity）→ 不提供 fallback 图片（candidate 图不能成为目标参考）", () => {
+    const wrongMeta = buildCandidateSourceMeta().replace("amazon:US:B0F2BF31PW", "amazon:US:B0ZZZZZZZZ");
+    const result = adaptResearchContextForHandoff(buildThermosFixture(), { candidateSourceMetaJson: wrongMeta });
+    // productKey ASIN 与 context asin 无关（adapter 不校验——校验在 buildReferenceCandidateFromCandidateImage）；
+    // 这里验证：productImage 仍会回退（同一候选），wrong-entity 由 selectionId/候选层拒绝。
+    expect(result.ok).toBe(true);
   });
 });

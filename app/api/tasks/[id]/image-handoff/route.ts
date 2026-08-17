@@ -214,6 +214,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           handoff?.currentRevision ?? null,
         ),
         approvedVisualReferenceSummary,
+        // Visual Reference Closure：任务自有图片候选（candidate_fallback 修复后可用），
+        // 浏览器仅获得 selectionId/sourceKind/approvable（不含 contentHash/dataUrl）
+        visualReferenceCandidates: (gate.visualReferenceCandidates ?? []).map((candidate) => ({
+          selectionId: candidate.selectionId,
+          sourceKind: candidate.sourceKind,
+          approvable: candidate.approvable === true,
+          summary: candidate.summary,
+        })),
         storageVersion,
         expectedHandoffRevision: handoff?.currentRevision ?? null,
         allowedModes: mode ? [mode] : [],
@@ -291,6 +299,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
+
+  // Visual Reference Gate（§32-35）：白底主图/产品细节特写/包装套装要求已确认商品参考图；
+  // 无参考时阻止付费生成（BLOCKED_NEEDS_VISUAL_REFERENCE），不回落抽象轮廓冒充商品图。
+  const REQUIRES_VISUAL_REFERENCE_PURPOSES = new Set(["white_studio", "detail_closeup", "packaging_bundle"]);
+  const purpose = creativeDirection.data.primaryImagePurpose;
+  if (REQUIRES_VISUAL_REFERENCE_PURPOSES.has(purpose)) {
+    const gateForPurpose = await checkCreativeHandoffGate(id, ctx!);
+    if (!gateForPurpose.approvedReferenceImageDataUrl) {
+      const messages: Record<string, string> = {
+        white_studio: "白底商品图需要先确认商品参考图。请先批准商品参考图（创作资料 → 商品参考图）后重试。",
+        detail_closeup: "产品细节特写需要已确认的商品参考图。请先批准商品参考图后重试。",
+        packaging_bundle: "包装/套装展示需要已确认的商品参考图或包装事实。请先批准商品参考图后重试。",
+      };
+      return errorResponse(409, "blocked_needs_visual_reference", messages[purpose]);
+    }
+  }
 
   try {
     const result = await generateImageDraftFromHandoff(id, ctx!, {

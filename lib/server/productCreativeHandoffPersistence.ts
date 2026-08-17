@@ -29,6 +29,7 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import { resolveVisualReferenceSelectionIds, buildApprovedVisualReference } from "@/lib/server/visualReferenceCandidates";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
 import { adaptResearchContextForHandoff } from "@/lib/server/researchContextAdapter";
+import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import {
   buildConfirmableCandidates,
   confirmSelectedProductFacts,
@@ -398,8 +399,10 @@ export async function createOrAppendCreativeHandoff(
         const currentJson = current as Record<string, unknown>;
         const contextRaw = currentJson.candidateAnalysisContext;
         // V2 BLOCKER 修复：真实 save-task 写入 V1 格式，经 Adapter 转换（兼容格式原样通过）
+        const candidateToTask = (currentJson.candidateToTask ?? {}) as Record<string, unknown>;
+        const candidateSourceMetaForImage = await loadCandidateSourceMeta(context, typeof candidateToTask.candidateId === "string" ? candidateToTask.candidateId : null);
         const adaptedContext = contextRaw !== undefined
-          ? adaptResearchContextForHandoff(currentJson)
+          ? adaptResearchContextForHandoff(currentJson, { candidateSourceMetaJson: candidateSourceMetaForImage })
           : null;
         const researchContext = adaptedContext?.ok === true ? adaptedContext.context : null;
         const resolvedVisuals = resolveVisualReferenceSelectionIds(
