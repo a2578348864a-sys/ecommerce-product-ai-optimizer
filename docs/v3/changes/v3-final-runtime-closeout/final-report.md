@@ -547,3 +547,173 @@ grep `decisionStatus` 全部误用点，分类：
 - 3005 运行修复后构建（health 200，计划任务 Ready/Enabled）。
 - PUBLIC_DEPLOY = FORBIDDEN（维持）；V3_6 = NOT_AUTHORIZED；未触碰 1688/Amazon/VOC/Studio。
 - 提醒：Bentgo 已作为验收被完成（在研究记录中）；如需回退 Bentgo 的保存+完成（回到"未决定"状态），备份 `.local-backups/db-guard/2026-08-17T20-17-48` 之前的状态可恢复，或告诉我由我处理。
+
+
+---
+
+# V3 Evidence → Creative Context Closure — P1 最终报告
+
+> 2026-08-17 · 分支 `codex/v3-evidence-creative-context` → main
+> 主链 P1：商品研究阶段已保存的 Evidence 此前没有进入 Listing / Image 创作上下文。
+
+## 0. 第一句回答（用户最关心的问题）
+
+**是的：用户在商品研究中收集的 Amazon Evidence（browserEvidence）、VOC（reviewEvidence/vocAnalysis）、AI 证据摘要（aiEvidenceSummary）、关键词（keywordEvidence）、竞品（competitorEvidence）和 1688 供应线索（sourcingEvidence）现在已真正进入 Listing / Image 的创作上下文（预览、生成输入与提示词均可见），并且系统严格区分『事实』与『参考资料』——只有经过正式人工确认的商品事实才进入 confirmedFacts（Bentgo 实测：bsr 从浏览器证据确认后进入 revision 2 的 confirmedFacts；VOC/AI/竞品/供应/关键词全部只作参考层，绝不自动成为事实）。**
+
+## 1. 原断层 root cause
+
+Creative Handoff 投影链（`buildProductCreativeHandoffProjectionEvidence`）只读取 `candidateAnalysisContext` + `agentOutputSnapshot` 两个输入；Evidence Workbench 的证据命名空间（browserEvidence/reviewEvidence/vocAnalysis/aiEvidenceSummary/sourcingEvidence/competitorEvidence/keywordEvidence）只被展示层消费，从未进入创作链 → Studio 显示"当前来源资料没有可直接核实的商品事实候选"。
+
+## 2. 原 Listing/Image 输入链
+
+- Listing：creativeHandoff → `buildListingInputFromCreativeHandoff` → productFacts/creativeReferences/prohibitedClaims/unknowns → `buildListingPromptFromInput`（五分区）→ Provider（mock/real）
+- Image：creativeHandoff → `buildImageInputFromCreativeHandoff` → productFacts/approvedVisualReferences/compositionReferences → `buildImagePromptFromInput`（双模式）
+
+## 3. 新 Creative Context Builder（唯一桥）
+
+`lib/creativeContextBuilder.ts`：`buildCreativeContextFromResearch(resultJson)` → typed `creative-context.v1`（纯函数、确定性、runtime projection、无 DB migration、无第二套 Research 模型）。所有 Evidence 先进入统一 Builder，再由 Listing/Image 消费（不做三套零散 adapter）。
+
+## 4-5. Builder 输入/输出
+
+- 输入：resultJson（researchRecord + candidateAnalysisContext + 全部 Evidence namespaces + creativeHandoff + agentOutputSnapshot）
+- 输出：confirmedFacts / confirmableFactCandidates / vocInsights / keywordCandidates / competitiveContext / sourcingContext / aiReferences / missingConflicts + counts（bounded、evidenceRef 可追溯）
+
+## 6-7. confirmedFacts authority / confirmableFactCandidates 来源
+
+- confirmedFacts 只来自现有 Creative Handoff 已人工确认的事实（`parseHandoffConfirmedFacts`），绝不因 Evidence 自动增加。
+- candidates 来源：(a) candidateAnalysisContext stable facts（既有链）；(b) **browserEvidence 确定性字段**（新增投影 `projectBrowserEvidenceStableFacts`，经新 sourceRef 分支 `amazon_browser_snapshot` 进入同一确认链）。
+
+## 8-10. browserEvidence 投影字段 / provenance / entity binding
+
+| FIELD | VALUE | EVIDENCE_REF | ENTITY_BINDING | WHY |
+|---|---|---|---|---|
+| asin | B08CVT84C9 | ev:browser:{asin}:{capturedAt} | bound+urlAsin=targetAsin | identity_only（身份绑定） |
+| title | 页面标题 | 同上 | 同上 | routing_only（路由参考） |
+| price_usd | 32.99 | 同上 | 同上 | market_signal（Observed Amazon Page Price，非采购成本） |
+| bsr | 8 | 同上 | 同上 | market_signal |
+| rating | 4.6 | 同上 | 同上 | market_signal |
+| review_count | 18999 | 同上 | 同上 | market_signal |
+
+规则：entityBinding.bound=false 或 observed ASIN ≠ target ASIN → 整条跳过（wrong entity 保护）；字段 status ≠ correct → 跳过；同 field 与 candidateAnalysisContext 冲突时以 candidate snapshot 为准（不重复）。
+
+## 11-20. 各层去向与 Fact 边界
+
+- VOC → `vocInsights`（theme/summary/evidenceRefs/reviewCount/strength；NOT FACT，绝不产生"产品漏水"或"100% 防漏"）
+- AI Summary + agentOutputSnapshot → `aiReferences`（AI_REFERENCE_NOT_FACT；AI 总结是解释层，不二次升权）
+- Keyword → `keywordCandidates`（observed/search evidence；人工确认 gate 复用现有 listingKeywordBrief 机制，不新建编辑器）
+- Competitor → `competitiveContext`（reference-only；禁止复制竞品属性为目标商品事实）
+- Sourcing → `sourcingContext`（displayedPrice ≠ purchaseCost；Similar ≠ Exact；confirmed 标记来自 humanConfirmed）
+- Missing/conflicts → `missingConflicts`（不得推断补全）；sourceImages/visualReferences 沿用既有 visual reference 链
+
+## 21-24. 接入与安全
+
+- preview gate 新增 `creativeContext`（完整 Builder 输出，服务端）→ preview DTO 只暴露 `creativeContextSummary`（§63 Public DTO：无 resultJson/内部 hash/raw connector state）
+- Listing/Image generation input 增加 bounded `creativeContext` 参考层；prompt 增加"研究参考层（NOT FACTS）"分区（VOC/KEYWORD/COMPETITIVE/SOURCING/AI 各自明确用途）
+- evidenceRef 全程保留；不复制 14KB reviews/raw 1688（只投影摘要/top-N/引用）
+
+## 25-31. 人工确认 / 保护 / readiness
+
+- 新 candidates 只展示、人工确认后才进 confirmedFacts（确认链复用 `confirmSelectedProductFacts`，CAS/revision 不变）
+- 已有 confirmedFacts 不被重建覆盖（merge 现有版本）；新 Evidence 只新增 candidates，不重置旧确认
+- readiness 语义不变（READY/NEEDS_CONFIRMATION/NOT_AVAILABLE）；无正式决定任务（BrüMate）维持 gate 拒绝
+- Human Decision / Research Completion / Creative Handoff 三者继续分离
+
+## 32. Bentgo 修复前 Context（baseline）
+
+- confirmedFacts=2（brand/series_or_model）；confirmable candidates=6（仅 candidate snapshot）；VOC=0；AI refs=0；keyword=0；competitor=0；sourcing=0；Studio 显示"当前来源资料没有可直接核实的商品事实候选"
+
+## 33-38. Bentgo 修复后 Context（headed + API 实测）
+
+- confirmable candidates=7（+bsr 来自 amazon_browser_snapshot）；VOC insights=12；AI references=9；missing/conflicts=7；keyword/competitor/sourcing=0（Bentgo 无此类证据）
+- VOC 实测：School lunches (n=2)、Kids meals (n=2) 等主题带 reviewCount/evidenceRefs
+- 人工确认 bsr=8 → **confirmedFacts=3（revision 2，F5 持久）**，bsr 为 market_signal 仅 internal（不污染 Listing）
+- John Boos（agent_run）：旧链正常（confirmable=9、aiRefs=2）+ keyword candidates=10（keywordEvidence 真实进入）+ AI refs=10 → 回归 PASS
+- BrüMate（无正式决定）：gate=legacy_not_supported → 未绕过
+
+## 39-43. Listing 正式消费 / Prompt Policy / Claim Gate / 真实验收
+
+- Listing input 携带 creativeContext 参考层；prompt 明确：CONFIRMED FACTS=可声明事实；VOC/KEYWORD/COMPETITIVE/SOURCING/AI=参考 only；MISSING=不得推断
+- Listing claim filter / integrity gate 不变：只允许 confirmedFacts 支撑 factual claim（VOC/AI/竞品/供应进入 prompt 不放宽 claim gate）
+- 真实 AI smoke：LISTING_PROVIDER_MODE=real 需付费调用 → 遵守授权纪律（§89），未擅自多次调用；以 Context Inspection + contract tests（mock 链验证 reference layers 进入 prompt 且不污染 facts）替代
+
+## 44-47. Image 正式消费 / Claim Safety
+
+- Image input 携带 creativeContext（VOC→场景优先级、AI→创意方向、Competitive→差异化参考）；视觉文案事实 claim 仍只能来自 confirmedFacts
+- 实测 Image Studio 显示"创作参考资料（研究证据已载入）"：VOC 12 / AI 已载入 / 缺失 7
+- agentOutputSnapshot 保留为 aiReference（不高于 Evidence 事实权限）；candidateAnalysisContext 保留为 identity/source snapshot
+
+## 48-53. 事实 Authority / UI / Missing
+
+- 唯一事实 authority：deterministic source fact candidate + Human Confirmation → confirmedFacts（其余一律参考层）
+- Studio 新增轻量"创作参考资料"摘要（§51）：已确认事实/待确认候选/VOC/关键词/竞品/供应/AI/缺失计数，可展开 VOC 洞察；不复制 Evidence Workbench
+- 无足够 confirmedFacts 时文案："已载入研究证据（含仅内部参考的市场观察，如 Observed Price / Rating / BSR；它们不会自动成为 Listing 事实）"（不再假装 Context 为空）
+
+## 54-56. Prompt Injection / Raw Text / Token Budget
+
+- 全部外部文本（review/competitor/sourcing/browser）视为 UNTRUSTED：bounded excerpt（≤200 字符）+ NFC + 结构化字段；注入文本测试确认不升级为 Fact
+- 不把 HTML/脚本/评论原文直接拼 prompt；token bounding：各层 top-N（VOC 12 / keyword 20 / competitor 5 / sourcing 5 / AI 10 / missing 12）+ 长度上限
+
+## 57-64. Determinism / Migration / CAS / 兼容 / 历史 / DTO / 隔离
+
+- 纯函数确定性投影（同输入同输出，测试覆盖）；无 DB migration；revision/CAS/fingerprint 沿用
+- 旧 Studio-ready 任务不强制 NEEDS_CONFIRMATION（已有 confirmedFacts 继续有效，新 Evidence 作为额外 context）；历史 Listing/Image 不被重写
+- Public DTO 只暴露必要 projection；Owner/Visitor actor isolation 不变（gate 权限链未触碰）
+
+## 65-74. 测试（新增）
+
+- bridge 8 项（分层/观察价语义/Fact Lane/错实体/status 门禁/确定性/注入隔离/降级）
+- browser 投影 5 项（字段规则/错实体×2/status/空）
+- handoff contract 1 项（amazon_browser_snapshot sourceRef 解析+指纹稳定）
+- listing 2 项（参考层进输入不污染 facts / 无 context 兼容）+ image 1 项（参考层进输入不污染 facts + prompt NOT FACTS）
+- 全量回归：**4932 passed / 90 skipped**（仅 2 个既有环境失败：native1688Bridge 53318 端口占用、release-package Windows tar 基线，非本轮引入）
+
+## 75-76. Bentgo Headed Journey（真实 3005）
+
+打开研究记录 → Evidence Workbench（确认证据存在）→ Listing Studio → "创作参考资料（研究证据已载入）"（VOC 12/AI 已载入/缺失 7）→ 不再显示"没有来源资料" → 确认 bsr=8（浏览器证据候选）→ revision 2 → F5 保留 → Image Studio 同样显示上下文。
+
+## 77-78. John Boos / BrüMate
+
+John Boos（agent_run）旧链无回归（confirmable 9/aiRefs 2 + keyword 10 进入参考层）；BrüMate（无正式决定）gate 拒绝（legacy_not_supported），未绕 gate。
+
+## 79-85. 范围控制
+
+Performance：Builder 纯投影（不重跑 AI Summary）；无新 Agent/RAG/向量库；不扩展 1688/Amazon/VOC/Keyword 采集（只消费已有 Evidence）。
+
+## 86-89. Git / Backup / Validation / Real AI
+
+- 分支 `codex/v3-evidence-creative-context`（21 files +1809/-13）→ main（ff-only）；未 push/force/history-rewrite；未触碰 prisma/dev.db 与本地备份
+- DB 备份（headed Journey 前）：`.local-backups/db-guard/2026-08-17T22-51-57/dev.db`（SHA256 F2DD8D8E158048339219259445617FFCF226B1A4918E80981E77B3649AD709A6，不提交）
+- tsc / lint（0 errors）/ build 全 PASS；targeted + full regression 通过；headed Playwright 真 3005 全流程
+- 真实 AI Listing smoke：provider=real 需付费授权 → 未擅自调用（Context Inspection + contract tests 替代）
+
+## 90. Final Gate
+
+| Gate | 结果 |
+|---|---|
+| EVIDENCE_TO_CREATIVE_BRIDGE = PASS | PASS |
+| FACT_AUTHORITY_PRESERVED = PASS | PASS |
+| BROWSER_FACT_CANDIDATES = PASS | PASS（bsr/rating/review_count/price 进入 candidates） |
+| HUMAN_CONFIRMATION_GATE = PASS | PASS（bsr 确认后 revision 2，F5 保留） |
+| VOC_CONTEXT = PASS | PASS（12 insights 可见） |
+| AI_REFERENCE = PASS | PASS（9 refs 可见） |
+| KEYWORD_CONTEXT = PASS | PASS（John Boos 10 candidates 真实进入） |
+| COMPETITIVE_CONTEXT = PASS（fixture） | PASS（contract tests） |
+| SOURCING_CONTEXT = PASS（fixture） | PASS（contract tests） |
+| VOC_NOT_FACT / AI_NOT_FACT / COMPETITOR_NOT_FACT / SOURCING_NOT_FACT / KEYWORD_NOT_FACT | 全 PASS |
+| PROVENANCE = PASS | PASS |
+| WRONG_ENTITY_PROTECTION = PASS | PASS |
+| PROMPT_INJECTION_ISOLATION = PASS | PASS |
+| LISTING_CONTEXT = PASS | PASS（headed + input/prompt） |
+| IMAGE_CONTEXT = PASS | PASS（headed） |
+| EXISTING_CONFIRMED_FACTS_PRESERVED = PASS | PASS（revision merge） |
+| NO_DB_MIGRATION = PASS | PASS |
+| OWNER_VISITOR_ISOLATION = PASS | PASS |
+| FULL_REGRESSION = PASS | PASS（4932 passed） |
+| **P1_EVIDENCE_CREATIVE_CONTEXT = CLOSED** | ✅ |
+| **LOCAL_RELEASE_CANDIDATE = APPROVED** | ✅（待用户亲自验证后按既有流程评估） |
+
+## 91-93. 汇报与 STOP
+
+- 第一句回答见第 0 节。
+- 遗留：真实 AI Listing smoke 因付费授权纪律未执行（provider=real）；若用户授权单次调用，我可执行并在 Context Inspection 基础上补充输出安全检查。
+- **STOP**：未继续 V3.6/公网部署/RAG/1688/Amazon/VOC/Keyword 采集扩展/UI polish；3005 保持运行（health 200），等待用户亲自验证"商品研究收集的资料现在 Listing/Image 有没有真的用上"。
