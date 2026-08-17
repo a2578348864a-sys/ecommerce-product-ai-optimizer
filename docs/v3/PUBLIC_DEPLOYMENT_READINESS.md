@@ -198,3 +198,24 @@
 - `PUBLIC_DEPLOY = FORBIDDEN`（等待用户明确授权："可以了，部署公网"）
 - `V3_6 = NOT_AUTHORIZED`
 - 下一步：用户授权后按 runbook（docs/deployment/production-runbook.md）执行：build → package-release → artifact 上传 → 解压替换 .next（备份旧版）→ pm2 restart → 本机+公网验收 → 按 §15 Public Smoke Plan 验收。
+
+---
+
+## 18. Deployment Execution Record（2026-08-18 00:12 +0800，用户已授权"可以了，部署公网"）
+
+| 项 | 值 |
+|----|----|
+| 部署对象 | 112.124.54.81（iZbp1cvdvghmferp57a3tzZ）/ `/www/alibaba-ai-assistant` / pm2 `alibaba-ai-assistant` |
+| Artifact | `release/next-v2.2.16-85d5454-linux-x64.tar.gz`（1,779,831 bytes） |
+| Artifact SHA256 | `e0caa95a3d9bc2c682288a75945e1daff6214e1ee2061a8390fc42e58069cf12` |
+| BUILD_ID | `qXZraBGJPqPX4aRP_rsGG`（与本地 main 85d5454 构建一致） |
+| 部署前服务器状态 | 旧版运行中（BUILD_ID 7ndpOyntWBlB1NLbNr4tR，uptime 5D）；服务器 git 存在 5 个 listing 模块未提交修改——已比对确认其内容与本地 main 一致（3 文件仅 BOM 差异；2 文件为本地 main 的 V3 creativeContext 超集），替换不丢失任何服务器独有逻辑 |
+| .next 备份 | `.next.bak-20260818-001207`（服务器保留） |
+| Env 变更 | 服务器 .env 补充 `PROOF_SIGNING_SECRET`（此前缺失，V3 新增；值经 SSH 通道 scp 临时文件追加，未打印、临时文件已删除）——现 17 键与本地一致 |
+| PM2 | restart 成功（PID 49076，status online，restart count 81） |
+| 健康检查 | 服务器本地 `127.0.0.1:3005/api/health` = `{"ok":true}`；公网 `/api/health` = 200 |
+| 公网页面验收 | `/`=200、`/tasks`=200、`/opportunities`=200、`/research`=200、`/workflow`=200 |
+| 公网 Auth 验证 | 匿名访问 `/api/tasks`、`/api/opportunity-candidates`、`/api/tasks/abc123` 均 401（auth 生效） |
+| DB | 无 schema/migration 变化，未迁移；服务器 DB 独立（prisma/），release 未触碰 |
+| 本地 3005 | 不受影响，health OK 持续运行 |
+| 后续事项 | §15 Public Smoke（HTTPS/Visitor 登录/Demo 数据/Studio 等）待用户安排执行；PROOF_SIGNING_SECRET 与本地一致，如需独立密钥可在后续轮换 |
