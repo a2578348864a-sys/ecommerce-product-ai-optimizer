@@ -49,7 +49,7 @@ RESTART_SMOKE          = NOT_EXECUTED    (中断性操作未授权)
 | Amazon 页面证据 | PASS | entityBinding.bound=true（urlAsin=pageAsin=targetAsin，三项 proof 全 true）；fields asin/title/bsr/rating/reviewCount=correct；confirmedBy=owner |
 | 买家评论 / VOC | PASS | reviewEvidence.dataset.reviews 完整（sourceRef 保留）；VOC 12 条 insight 仅 weak/isolated |
 | AI 证据摘要 | PASS | ai-evidence-summary.v1：gateResult=pass，evidenceRefCoverage total=14，inputEvidenceHash 绑定 |
-| 人工决定 | PASS | researchDecisionSummary：creative_ready / workflowStatus=completed / revision=1 / fingerprint 绑定 |
+| 人工决定 | PASS | researchDecisionSummary：creative_ready / workflowStatus=completed / revision=1 / fingerprint 绑定；research-decision 读取路径实证：record revision=1 === decisionEvents=1（readOnly=true）；pending 任务 record=null（不误显示已保存） |
 | 完成研究 | PASS | researchCompletion：completed / revision=1 / finalStatus=creative_ready（与 record 一致，正交不混淆） |
 | 研究记录（/tasks history） | PASS | productResearchSummary（schema=product-research-record.v1, legacy=false） |
 | Creative Context | PASS | eligible + 8 confirmable（全需人工确认）+ 3 confirmedFacts + 9 AI 引用（non_factual_angle）+ 7 missing/conflict |
@@ -123,7 +123,10 @@ RESTART_SMOKE          = NOT_EXECUTED    (中断性操作未授权)
 |----|------|------|
 | REAL_PROVIDER_SMOKE（Listing/Image 真实 AI 生成） | NOT_EXECUTED | LISTING/IMAGE_PROVIDER_MODE=real 为付费调用，审计未获授权 |
 | RESTART_SMOKE（3005 重启冒烟） | NOT_EXECUTED | 中断性操作未授权；当前进程健康（health OK）且 runtime=main 已实证 |
-| Full test suite / tsc / lint / build | 未全量重跑 | 核心 6 文件 209/209 PASS；已知环境失败：native1688Bridge.integration.test（53318 端口被 3005 占用）、scripts/release-package.test.ts（Windows tar 基线）——均为环境性失败，与代码无关 |
+| Full test suite / tsc / lint / build | 未全量重跑 | 核心 6 文件 209/209 PASS（本次会话重跑）；known failures 本次会话重新确认（见下） |
+| Known failures 重新确认 | 完成 | `native1688Bridge.integration.test.ts`：fail "bridge did not start"（53318 端口被运行中 3005 的 bridge 占用），11 tests skipped —— 环境性失败，与代码无关；`scripts/release-package.test.ts`：fail execFileSync（Windows tar 基线差异），3 tests skipped —— 环境性失败，与代码无关 |
+| Planned task | Ready | `schtasks /Query \QingXuanAgent-Local-3005` = Ready；127.0.0.1:3005 由 PID 40508 监听 |
+| Decision 读取路径 | PASS | 4dauumii：research-decision 返回 record（revision=1 === decisionEvents=1，readOnly=true，schema=product-research-record.v1，legacy=false）；pending 任务 0eeqmqqj：record=null，readOnly=false（无正式决定不显示已保存） |
 | REMOTE_SYNC（push 本地 main） | BEHIND | origin/main=cd7a476（HTTPS ls-remote 实证可达）；本地领先 3 提交（fa4ea5a/d9e7210/f962c76）；SSH 22 不可达；push 未授权，未改 remote 配置 |
 | Public Preflight | NOT_AUTHORIZED | PUBLIC_DEPLOY=FORBIDDEN（审计非部署授权）；V3_6=NOT_AUTHORIZED |
 | F5/重登/重开浏览器持久化实证 | 依赖既有交付验证 | Evidence Save/Decision Save/Completion/Fact Confirm/Listing/Image history 的 F5 保留由上一轮 P1 修复交付及 209 项测试覆盖；本轮未重复全量 UI 复测 |
