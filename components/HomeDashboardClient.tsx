@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import { serverCandidateToPoolItem, type OpportunityCandidatePoolItem } from "@/lib/opportunityCandidatePool";
 import {
   getRecommendedNextAction,
@@ -234,6 +234,31 @@ export function HomeDashboardClient() {
     }
   }, []);
 
+  // V3 UX Closure：访客推荐体验（Golden Demo Lazy Seed；仅 demo 模式）
+  const demoMode = getAccessMode() === "demo";
+  const [demoGolden, setDemoGolden] = useState<{ taskId: string } | null | undefined>(undefined);
+  useEffect(() => {
+    if (!demoMode) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch("/api/demo/golden", {
+          method: "GET",
+          headers: { ...buildAccessHeaders() },
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        const json = await response.json() as
+          | { ok: true; data: { taskId: string } | null }
+          | { ok: false };
+        setDemoGolden(json.ok && json.data ? { taskId: json.data.taskId } : null);
+      } catch {
+        setDemoGolden(null);
+      }
+    })();
+    return () => controller.abort();
+  }, [demoMode]);
+
   useEffect(() => {
     if (!isAccessPasswordReady) return;
 
@@ -358,6 +383,43 @@ export function HomeDashboardClient() {
             </div>
             <WorkspaceMobileNav />
           </header>
+
+          {/* V3 UX Closure：推荐体验（访客 Golden Demo 入口；演示回放不消耗额度） */}
+          {demoMode && demoGolden ? (
+            <section
+              className="surface-card-strong overflow-hidden p-5 sm:p-6"
+              data-testid="home-recommended-demo"
+              aria-labelledby="home-recommended-demo-title"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="linear-kicker">推荐体验</p>
+                  <h2 id="home-recommended-demo-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                    THERMOS FUNTAINER 儿童保温杯（演示商品）
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                    含 Amazon 页面采集、VOC 评论分析、1688 供应线索的全套真实采集样本回放；可体验
+                    「采集 → 确认商品事实 → 研究结论 → Listing / Image」完整流程。演示回放不消耗额度。
+                  </p>
+                  <ol className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                    {["1 数据采集", "2 确认商品事实", "3 研究结论", "4 Listing / Image"].map((step) => (
+                      <li key={step} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                        {step}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <Link
+                  href={`/tasks/${demoGolden.taskId}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100"
+                  data-testid="home-recommended-demo-cta"
+                >
+                  开始体验
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+              </div>
+            </section>
+          ) : null}
 
           <section
             className="surface-card-strong overflow-hidden p-5 sm:p-6"

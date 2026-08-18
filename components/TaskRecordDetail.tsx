@@ -1522,6 +1522,20 @@ export function TaskRecordDetail({ id }: { id: string }) {
                    </p>
                  </div>
                ) : null}
+               {/* V3 UX Closure：演示任务轻量 Step Guide（非强制 Wizard，用户地图） */}
+               {record && isRecordValue(record.result) && (record.result as Record<string, unknown>).demoTemplate ? (
+                 <div className="mb-5 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4" data-testid="demo-step-guide">
+                   <p className="text-sm font-bold text-indigo-800">演示体验路线</p>
+                   <ol className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                     {["1 数据采集（Amazon / VOC / 1688 演示回放）", "2 确认商品事实", "3 查看研究结论", "4 Listing / Image"].map((step, index) => (
+                       <li key={step} className={`rounded-full border px-2.5 py-1 ${index === 0 ? "border-indigo-300 bg-white text-indigo-700" : "border-slate-200 bg-white"}`}>
+                         {step}
+                       </li>
+                     ))}
+                   </ol>
+                   <p className="mt-2 text-xs text-slate-500">以下为演示数据（真实采集样本回放，不消耗额度）；可按顺序体验，也可跳过任一步骤。</p>
+                 </div>
+               ) : null}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-4">
                   <ResearchProductImage

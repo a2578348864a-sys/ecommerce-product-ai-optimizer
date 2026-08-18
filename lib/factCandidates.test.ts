@@ -86,9 +86,10 @@ describe("extractFactCandidates", () => {
     const candidates = extractFactCandidates(thermosResultJson());
     const fields = candidates.map((c) => c.field).join(",");
     expect(fields).not.toContain("voc_theme");
-    expect(candidates.some((c) => c.sourceKind === "ai_summary")).toBe(false);
-    expect(candidates.some((c) => c.sourceKind === "competitor")).toBe(false);
-    expect(candidates.some((c) => c.sourceKind === "seller_claim")).toBe(false);
+    const sourceKinds = candidates.map((c) => String(c.sourceKind)).join(",");
+    expect(sourceKinds).not.toContain("ai_summary");
+    expect(sourceKinds).not.toContain("competitor");
+    expect(sourceKinds).not.toContain("seller_claim");
     // 供应商声称（304不锈钢）不得自动成为 material 候选（material 只能来自标题派生/确定性来源）
     const material = candidates.find((c) => c.field === "material");
     expect(material?.sourceRef).not.toContain("sellerClaims");
