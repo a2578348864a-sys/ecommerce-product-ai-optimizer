@@ -341,17 +341,19 @@ describe("公网 runtime（LOCAL_ACQUISITION_ENABLED 未开启）capability gate
     expect(data.capabilities.detail.state).toBe("local_env_required");
   });
 
-  it("实时采集 action（search/url/image/detail/begin-keyword-login）→ 409 local_environment_required；save 仍可用", async () => {
+  it("实时采集 action（search/url/image/detail）→ demo 主体 200 演示回放（demo 分支）；begin-keyword-login 409；save 仍可用", async () => {
     delete process.env.LOCAL_ACQUISITION_ENABLED;
     const search = await POST(request({ action: "search", keyword: "保温杯" }), context());
-    expect(search.status).toBe(409);
-    expect(((await json(search)).error as { code: string }).code).toBe("local_environment_required");
+    expect(search.status).toBe(200);
+    const searchBody = (await json(search)) as { data: { demo: boolean; preview: { candidates: unknown[] } } };
+    expect(searchBody.data.demo).toBe(true);
+    expect(searchBody.data.preview.candidates.length).toBeGreaterThan(0);
     const img = await POST(request({ action: "image", imageUrl: "https://img.example.test/a.jpg" }), context());
-    expect(img.status).toBe(409);
+    expect(img.status).toBe(200);
     const url = await POST(request({ action: "url", url: "https://detail.1688.com/offer/674035283676.html" }), context());
-    expect(url.status).toBe(409);
+    expect(url.status).toBe(200);
     const detail = await POST(request({ action: "detail", offerId: "674035283676" }), context());
-    expect(detail.status).toBe(409);
+    expect(detail.status).toBe(200);
     const login = await POST(request({ action: "begin-keyword-login" }), context());
     expect(login.status).toBe(409);
   });

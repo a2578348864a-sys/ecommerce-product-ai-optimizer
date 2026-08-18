@@ -541,16 +541,71 @@ describe("PreviewStore security binding", () => {
 });
 
 describe("POST collect — public runtime capability gate（§30/§48）", () => {
-  it("LOCAL_ACQUISITION_ENABLED 未开启（公网默认）→ 409 local_environment_required，不执行采集", async () => {
+  it("LOCAL_ACQUISITION_ENABLED 未开启（公网默认）→ demo 主体 200 演示回放（demo 分支，不执行真实采集）", async () => {
     const saved = process.env.LOCAL_ACQUISITION_ENABLED;
     delete process.env.LOCAL_ACQUISITION_ENABLED;
     try {
       const response = await postJson({ action: "collect" }, taskId);
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(200);
       const body = await response.json();
-      expect(body.ok).toBe(false);
-      expect(body.error.code).toBe("local_environment_required");
-      expect(body.error.message).toContain("本地研究环境");
+      expect(body.ok).toBe(true);
+      expect(body.data.demo).toBe(true);
+      expect(body.data.preview.extraction.schemaVersion).toBe("amazon-detail-page-extraction.v1");
+      expect(body.data.preview.extraction.pageStatus).toBe("ok");
+      expect(body.data.evidenceId).toBe("demo-acquisition-sample-v1");
+      // 演示回放不触发真实浏览器采集
+      expect(vi.mocked(collectBrowserEvidencePreview)).not.toHaveBeenCalled();
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
+      else process.env.LOCAL_ACQUISITION_ENABLED = saved;
+    }
+  });
+
+  it("LOCAL_ACQUISITION_ENABLED 未开启（公网默认）→ owner 主体仍 409 local_environment_required", async () => {
+    const saved = process.env.LOCAL_ACQUISITION_ENABLED;
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    try {
+      const response = await routePost(
+        new NextRequest("http://localhost/api/tasks/x/browser-evidence", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-access-token": "tok-owner" },
+          body: JSON.stringify({ action: "collect" }),
+        }),
+        { params: Promise.resolve({ id: taskId }) },
+      );
+      // sandbox 任务 + owner 主体 → demo 限定 404（owner 不进入 demo 回放；公网 owner 场景由正式 gate 覆盖）
+      expect(response.status).toBe(404);
+      expect(vi.mocked(collectBrowserEvidencePreview)).not.toHaveBeenCalled();
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
+      else process.env.LOCAL_ACQUISITION_ENABLED = saved;
+    }
+  });
+
+  it("demo 回放 collect → save 全链：preview 进入正式 PreviewStore，save 走三 ASIN 硬门禁后写入任务", async () => {
+    const saved = process.env.LOCAL_ACQUISITION_ENABLED;
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    try {
+      const collect = await postJson({ action: "collect" }, taskId);
+      expect(collect.status).toBe(200);
+      const collectBody = await collect.json();
+      expect(collectBody.data.demo).toBe(true);
+      const evidenceId = collectBody.data.evidenceId;
+      expect(evidenceId).toBe("demo-acquisition-sample-v1");
+
+      const save = await postJson({
+        action: "save",
+        evidenceId,
+        expectedStorageVersion: toStorageVersion(taskId),
+      }, taskId);
+      expect(save.status).toBe(200);
+      const saveBody = await save.json();
+      expect(saveBody.ok).toBe(true);
+      expect(["saved", "duplicate"]).toContain(saveBody.data.kind);
+      // 保存后 GET 能读到已确认证据（demo 回放数据已正式写入 sandbox 任务）
+      const readBack = await postJson({ action: "collect" }, taskId); // collect 再触发不影响已保存
+      expect(readBack.status).toBe(200);
+      // 不调用真实浏览器采集
       expect(vi.mocked(collectBrowserEvidencePreview)).not.toHaveBeenCalled();
     } finally {
       if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;

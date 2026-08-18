@@ -11,6 +11,7 @@ vi.mock("@/lib/client/accessPassword", () => ({
 }));
 vi.mock("@/lib/client/accessToken", () => ({
   buildAccessHeaders: () => ({ "x-access-token": "test" }),
+  getAccessMode: () => null,
 }));
 
 beforeEach(() => {

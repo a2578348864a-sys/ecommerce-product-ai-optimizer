@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
@@ -419,9 +419,14 @@ export function VocEvidenceSection({
   const [collectAsin, setCollectAsin] = useState("");
   const [collectRole, setCollectRole] = useState<"current_candidate" | "competitor">("current_candidate");
   const [collecting, setCollecting] = useState(false);
+  const [collectDemo, setCollectDemo] = useState(false);
 
-  /** §11/§12：自动采集评论需要本地浏览器采集能力；粘贴导入/分析是 server 能力，不受影响 */
-  const canCollectReviews = capability?.state === "available";
+  /** §11/§12：自动采集评论需要本地浏览器采集能力；粘贴导入/分析是 server 能力，不受影响。
+   *  演示模式（Visitor）：本地采集能力不可用（local_env_required）时仍可体验
+   *  “演示采集”——服务端回放预置真实评论样本（demo 分支），结果标注“演示数据”。 */
+  const demoMode = getAccessMode() === "demo";
+  const canCollectReviews = capability?.state === "available"
+    || (capability?.state === "local_env_required" && demoMode);
   const [collectPreview, setCollectPreview] = useState<{
     previewId: string;
     items: Array<{
@@ -540,15 +545,17 @@ export function VocEvidenceSection({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { gateResult: string; unverified: number } }
+        | { ok: true; data: { gateResult: string; unverified: number; demo?: boolean } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
         setError((json as { error?: { message?: string } }).error?.message ?? "VOC 分析失败。");
         return;
       }
-      setNotice(json.data.gateResult === "fail"
-        ? `分析完成，但 ${json.data.unverified} 个主题因缺少有效评论引用未被采用。`
-        : "分析完成。");
+      setNotice(json.data.demo === true
+        ? "演示数据：已回放示例 VOC 分析结果（非实时 AI 调用）。"
+        : json.data.gateResult === "fail"
+          ? `分析完成，但 ${json.data.unverified} 个主题因缺少有效评论引用未被采用。`
+          : "分析完成。");
       onChanged();
     } catch {
       setError("VOC 分析失败，请稍后重试。");
@@ -608,7 +615,7 @@ export function VocEvidenceSection({
         signal: AbortSignal.timeout(150_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>; capturedAt: string } } }
+        | { ok: true; data: { preview: { previewId: string; items: Array<{ asin: string; role: "current_candidate" | "competitor"; rating: number | null; date: string | null; title: string; duplicate: boolean }>; pageResults: Array<{ asin: string; status: string; note: string | null; extractedCount: number }>; capturedAt: string }; demo?: boolean } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
         const code = (json as { error?: { code?: string } }).error?.code ?? "";
@@ -622,6 +629,7 @@ export function VocEvidenceSection({
       }
       const preview = json.data.preview;
       setCollectPreview(preview);
+      setCollectDemo(json.data.demo === true);
       // 默认选中非重复项（人工确认仍然保留：取消勾选即不加入）
       const initial = new Set<number>();
       preview.items.forEach((item, index) => {
@@ -753,7 +761,9 @@ export function VocEvidenceSection({
         {/* Acquisition Capability（§12/§13）：自动采集需要本地研究环境；粘贴导入与分析不受影响 */}
         <CapabilityNotice
           capability={capability}
-          localEnvMessage="自动采集评论需要在本地研究环境使用；你仍可粘贴导入评论，并使用已有评论进行 VOC 分析。"
+          localEnvMessage={demoMode
+            ? "演示模式：当前环境不执行实时评论采集，可点击「演示采集」回放示例评论片段（演示数据，非实时采集）。"
+            : "自动采集评论需要在本地研究环境使用；你仍可粘贴导入评论，并使用已有评论进行 VOC 分析。"}
           unavailableMessage={capability?.reasonCategory === "not_installed"
             ? "本机未检测到可用的 Chrome/Edge 浏览器，无法自动采集评论；可改用粘贴导入。"
             : "自动采集评论当前暂不可用；可改用粘贴导入。"}
@@ -870,6 +880,11 @@ export function VocEvidenceSection({
             {/* 采集结果预览（人工确认） */}
             {collectPreview && (
               <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                {collectDemo && (
+                  <p className="mb-2 inline-block rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800" data-testid="demo-sample-badge">
+                    演示数据（示例评论片段，非实时采集）
+                  </p>
+                )}
                 {collectPreview.pageResults.map((page) => (
                   <p key={page.asin} className="text-xs text-slate-600">
                     ASIN {page.asin}：

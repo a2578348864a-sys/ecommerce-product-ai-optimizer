@@ -42,6 +42,7 @@ import {
 import {
   SourcingAcquisitionError,
   type AcquisitionCandidate,
+  type AcquisitionMethod,
   type AcquisitionRunTrace,
 } from "@/lib/upstream/1688/contracts";
 import { crossValidateCandidateWithDetail, validate1688OfferUrl } from "@/lib/upstream/1688/entityBinding";
@@ -52,6 +53,10 @@ import {
   SOURCING_LOCAL_ENV_REQUIRED_MESSAGE,
   type AcquisitionCapability,
 } from "@/lib/server/acquisitionCapability";
+import {
+  DEMO_ACQUISITION_EVIDENCE_ID,
+  DEMO_SOURCING_EVIDENCE_SAMPLE,
+} from "@/lib/server/demoAcquisitionSamples";
 
 export const runtime = "nodejs";
 
@@ -321,6 +326,51 @@ export async function POST(
   if (!resolved.ok) return resolved.response;
 
   // ── Acquisition Capability Gate（§30/§44）：本地实时采集动作在非本地 runtime 一律 409 typed ──
+  // Demo 模式（公网 Visitor 采集体验回放）：本地采集能力不可用（非本地 runtime）时，
+  // 用预置真实 1688 供应线索样本回放 search/url/image/detail → save 全链；
+  // 结果带 demo 标记，前端必须展示“演示数据”，不伪装实时采集。
+  const demoReplayActions = ["search", "url", "image", "detail"];
+  if (resolved.context.mode === "demo" && !isLocalAcquisitionEnabled() && demoReplayActions.includes(action)) {
+    try {
+      const query = action === "search"
+        ? asString(bodyRecord.keyword)
+        : action === "url" ? asString(bodyRecord.url) : asString(bodyRecord.offerId);
+      const runTrace: AcquisitionRunTrace = {
+        source: "1688",
+        method: action as AcquisitionMethod,
+        query,
+        timestamp: new Date().toISOString(),
+        driverVersion: "demo-replay.v1",
+        resolverVersion: null,
+        success: true,
+        failClosedReason: null,
+      };
+      const preview = createSourcingPreview({
+        context: resolved.context,
+        taskId: id,
+        method: action as "keyword" | "url" | "image",
+        query,
+        runTrace,
+        candidates: DEMO_SOURCING_EVIDENCE_SAMPLE.candidates,
+      });
+      return jsonResponse({
+        ok: true,
+        data: {
+          preview: {
+            previewId: preview.previewId,
+            method: preview.method,
+            query: preview.query,
+            candidates: preview.candidates,
+            expiresAt: preview.expiresAt,
+          },
+          trace: preview.runTrace,
+          demo: true,
+        },
+      });
+    } catch (error) {
+      return errorResponseFrom(error);
+    }
+  }
   const sourcingGate = sourcingActionCapabilityGate(action);
   if (sourcingGate) {
     return errorResponse(409, sourcingGate.code, sourcingGate.message);
@@ -520,8 +570,14 @@ export async function POST(
       return errorResponse(400, "candidate_mismatch", "确认列表与预览候选不一致，已拒绝保存。");
     }
     try {
-      // 详情补全 + Entity Binding 交叉验证（服务端重新验证，不信任客户端字段）
-      const enriched = await enrichCandidates(confirmedCandidates, selectedOfferIds);
+      // 详情补全 + Entity Binding 交叉验证（服务端重新验证，不信任客户端字段）。
+      // Demo 回放（公网演示环境）：预览来自预置样本（driverVersion=demo-replay.v1），
+      // 跳过真实详情拉取；候选字段为历史真实采集样本，保存链与正式一致。
+      const isDemoReplay = resolved.context.mode === "demo"
+        && preview.runTrace.driverVersion === "demo-replay.v1";
+      const enriched = isDemoReplay
+        ? confirmedCandidates
+        : await enrichCandidates(confirmedCandidates, selectedOfferIds);
       const evidence = await saveSourcingEvidence({
         context: resolved.context,
         taskId: id,

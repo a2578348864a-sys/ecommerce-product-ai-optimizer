@@ -12,7 +12,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { Camera, Check, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
 
@@ -333,10 +333,15 @@ export function BrowserEvidenceSection({
   const [collecting, setCollecting] = useState(false);
   const [preview, setPreview] = useState<BrowserCollectPreviewView | null>(null);
   const [previewEvidenceId, setPreviewEvidenceId] = useState<string | null>(null);
+  const [previewDemo, setPreviewDemo] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const canCollect = capability?.state === "available";
+  // 演示模式（Visitor）：本地采集能力不可用（local_env_required）时，仍可体验
+  // “演示采集”——服务端回放预置真实采集样本（demo 分支），结果标注“演示数据”。
+  const demoMode = getAccessMode() === "demo";
+  const canCollect = capability?.state === "available"
+    || (capability?.state === "local_env_required" && demoMode);
 
   async function collect() {
     if (!canCollect) return;
@@ -344,6 +349,7 @@ export function BrowserEvidenceSection({
     setError("");
     setPreview(null);
     setPreviewEvidenceId(null);
+    setPreviewDemo(false);
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/browser-evidence`, {
         method: "POST",
@@ -352,7 +358,7 @@ export function BrowserEvidenceSection({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { preview: unknown; evidenceId: string } }
+        | { ok: true; data: { preview: unknown; evidenceId: string; demo?: boolean } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
         setError((json as { error?: { message?: string } }).error?.message ?? "采集失败，请重试。");
@@ -365,6 +371,7 @@ export function BrowserEvidenceSection({
       }
       setPreview(parsed);
       setPreviewEvidenceId(json.data.evidenceId);
+      setPreviewDemo(json.data.demo === true);
     } catch {
       setError("采集失败，请重试。");
     } finally {
@@ -420,7 +427,7 @@ export function BrowserEvidenceSection({
           className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
         >
           {collecting ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
-          {collecting ? "采集中…" : "采集页面证据"}
+          {collecting ? "采集中…" : (capability?.state === "local_env_required" && demoMode ? "演示采集" : "采集页面证据")}
         </button>
       </div>
       <p className="mt-1 text-xs text-slate-500">
@@ -431,7 +438,9 @@ export function BrowserEvidenceSection({
       {/* Acquisition Capability（§8/§10）：公网环境不提供实时采集 → 明确提示，不显示"采集失败" */}
       <CapabilityNotice
         capability={capability}
-        localEnvMessage="实时页面采集需要在本地研究环境使用。已保存的页面证据仍可正常查看。"
+        localEnvMessage={demoMode
+          ? "演示模式：当前环境不执行实时浏览器采集，可点击「演示采集」回放示例采集结果（演示数据，非实时采集）。"
+          : "实时页面采集需要在本地研究环境使用。已保存的页面证据仍可正常查看。"}
         unavailableMessage={capability?.reasonCategory === "not_installed"
           ? "本机未检测到可用的 Chrome/Edge 浏览器，无法进行页面采集。"
           : "浏览器采集当前暂不可用。"}
@@ -448,6 +457,11 @@ export function BrowserEvidenceSection({
         <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
           <div className="flex flex-wrap items-center justify-between gap-1">
             <p className="text-xs font-bold text-indigo-800">采集预览（尚未保存）</p>
+            {previewDemo && (
+              <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800" data-testid="demo-sample-badge">
+                演示数据（示例采集结果，非实时采集）
+              </span>
+            )}
             <span className="text-[11px] text-slate-500">
               采集时间 {new Date(preview.extraction.capturedAt).toLocaleString("zh-CN")} · 耗时 {preview.navigation.navigationElapsedMs}ms
             </span>
