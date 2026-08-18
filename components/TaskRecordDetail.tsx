@@ -1556,7 +1556,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                  </div>
                ) : null}
                {/* V3 UX Closure：演示任务轻量 Step Guide（非强制 Wizard，用户地图） */}
-               {record && isRecordValue(record.result) && (record.result as Record<string, unknown>).demoTemplate ? (
+               {record && (record.source === "demo_acquisition_sample" || (isRecordValue(record.result) && (record.result as Record<string, unknown>).demoTemplate)) ? (
                  <div className="mb-5 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4" data-testid="demo-step-guide">
                    <p className="text-sm font-bold text-indigo-800">演示体验路线</p>
                    <ol className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
