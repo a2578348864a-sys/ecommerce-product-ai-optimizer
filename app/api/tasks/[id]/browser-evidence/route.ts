@@ -38,6 +38,9 @@ import {
 } from "@/lib/server/acquisitionCapability";
 import {
   DEMO_ACQUISITION_EVIDENCE_ID,
+  DEMO_BROWSER_EVIDENCE_SAMPLE,
+  DEMO_SAMPLE_AMAZON_ID,
+  DEMO_SAMPLE_VERSION,
   buildDemoBrowserCollectPreview,
 } from "@/lib/server/demoAcquisitionSamples";
 
@@ -46,7 +49,7 @@ export const runtime = "nodejs";
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
   | { ok: true; data: { evidence: BrowserEvidenceV1 | null; storageVersion: StorageVersion; taskAsin: string | null; capability: AcquisitionCapability } }
-  | { ok: true; data: { preview: BrowserEvidenceCollectPreview; evidenceId: string; demo?: boolean } }
+  | { ok: true; data: { preview: BrowserEvidenceCollectPreview; evidenceId: string; demo?: boolean; demoSampleId?: string; demoSampleVersion?: number } }
   | { ok: true; data: { kind: "saved" | "duplicate"; evidence: BrowserEvidenceV1; storageVersion: StorageVersion } }
   | { ok: false; error: { code: string; message: string } };
 
@@ -185,7 +188,8 @@ async function collectAction(context: AccessContext, taskId: string): Promise<Ne
           },
         }, 400);
       }
-      const capturedAt = new Date().toISOString();
+      // 固定样本捕获时间：重复 demo replay 时 capturedAt+pageUrl+asin 命中既有快照 → duplicate（幂等）
+      const capturedAt = DEMO_BROWSER_EVIDENCE_SAMPLE.snapshots[0].capturedAt;
       const preview = buildDemoBrowserCollectPreview(taskAsin);
       storeBrowserEvidencePreview({
         evidenceId: DEMO_ACQUISITION_EVIDENCE_ID,
@@ -196,7 +200,16 @@ async function collectAction(context: AccessContext, taskId: string): Promise<Ne
         taskId,
         asin: taskAsin,
       });
-      return jsonResponse({ ok: true, data: { preview, evidenceId: DEMO_ACQUISITION_EVIDENCE_ID, demo: true } });
+      return jsonResponse({
+        ok: true,
+        data: {
+          preview,
+          evidenceId: DEMO_ACQUISITION_EVIDENCE_ID,
+          demo: true,
+          demoSampleId: DEMO_SAMPLE_AMAZON_ID,
+          demoSampleVersion: DEMO_SAMPLE_VERSION,
+        },
+      });
     } catch (error) {
       return errorResponse(error);
     }

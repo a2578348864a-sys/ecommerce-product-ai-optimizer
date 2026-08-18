@@ -613,6 +613,50 @@ describe("POST collect — public runtime capability gate（§30/§48）", () =>
     }
   });
 
+  it("demo replay 幂等：第二次相同 sample save → duplicate，snapshots 不再 +1（第三次 F5 稳定）", async () => {
+    const saved = process.env.LOCAL_ACQUISITION_ENABLED;
+    delete process.env.LOCAL_ACQUISITION_ENABLED;
+    try {
+      // 第一次 collect → save（saved）
+      await postJson({ action: "collect" }, taskId);
+      const save1 = await postJson({
+        action: "save",
+        evidenceId: "demo-acquisition-sample-v1",
+        expectedStorageVersion: toStorageVersion(taskId),
+      }, taskId);
+      expect(save1.status).toBe(200);
+      const body1 = await save1.json();
+      expect(body1.data.kind).toBe("saved");
+      const count1 = body1.data.evidence.snapshots.length;
+
+      // 第二次 collect → save（固定样本 capturedAt 命中三键 → duplicate，不 append）
+      await postJson({ action: "collect" }, taskId);
+      const save2 = await postJson({
+        action: "save",
+        evidenceId: "demo-acquisition-sample-v1",
+        expectedStorageVersion: toStorageVersion(taskId),
+      }, taskId);
+      expect(save2.status).toBe(200);
+      const body2 = await save2.json();
+      expect(body2.data.kind).toBe("duplicate");
+      expect(body2.data.evidence.snapshots.length).toBe(count1);
+
+      // 第三次（模拟 F5 后重复操作）——再次 collect → save 仍 duplicate
+      await postJson({ action: "collect" }, taskId);
+      const save3 = await postJson({
+        action: "save",
+        evidenceId: "demo-acquisition-sample-v1",
+        expectedStorageVersion: toStorageVersion(taskId),
+      }, taskId);
+      const body3 = await save3.json();
+      expect(body3.data.evidence.snapshots.length).toBe(count1);
+      // 数据最终稳定在 count1（1 个样本快照 + 初始注入 1 个 = 2 的场景由任务初始状态决定；断言"不再增长"）
+    } finally {
+      if (saved === undefined) delete process.env.LOCAL_ACQUISITION_ENABLED;
+      else process.env.LOCAL_ACQUISITION_ENABLED = saved;
+    }
+  });
+
   it("GET 返回 capability（本地 = available）", async () => {
     const request = new NextRequest("http://localhost/api/tasks/x/browser-evidence", {
       headers: { "x-access-token": `tok-${DEMO}` },
