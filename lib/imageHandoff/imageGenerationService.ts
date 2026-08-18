@@ -211,9 +211,14 @@ export function buildImageHandoffDraftSnapshot(input: {
     disclaimer: AI_IMAGE_DRAFT_DISCLAIMER,
     items: [
       ...(input.existingSnapshot?.items ?? []),
+      // V3 Draft Metadata Consistency：每个 item 继承同一 generation context——
+      // handoffMode/approvedReferenceFingerprint/compositionSummary 由 provider 返回透传，
+      // sourceHandoffRevision 与 humanReviewRequired 在此统一补齐（count=1/2/N 逐张一致，
+      // 不因 batch index 分支产生 schema 差异；未来新 Draft 永不落入 legacy_unclassified）。
       ...(input.rawDrafts ?? (input.rawDraft ? [{ ...input.rawDraft, ...(input.itemId ? { id: input.itemId } : {}) }] : []))
         .map((draft) => ({
           ...draft,
+          humanReviewRequired: true,
           ...(input.sourceHandoffRevision === undefined
             ? {}
             : { sourceHandoffRevision: input.sourceHandoffRevision }),
