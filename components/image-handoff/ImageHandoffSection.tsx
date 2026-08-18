@@ -14,8 +14,11 @@ import { studioErrorMessage } from "@/lib/client/studioErrorMessage";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
 import {
   DEFAULT_STUDIO_IMAGE_CREATIVE_INTENT,
+  lifestyleSceneLabel,
+  primaryPurposeLabel,
   type StudioImageCreativeIntent,
 } from "@/lib/studioImageCreativeIntent";
+import { evaluatePurposeRequirements } from "@/lib/imageHandoff/purposeRequirements";
 
 type ImageStatus =
   | "ready" | "active" | "stale" | "revoked" | "concept_only" | "legacy_unbound" | "invalid";
@@ -423,11 +426,21 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
   const purposeRequiresReference = REQUIRES_REFERENCE_PURPOSES.has(creativeIntent.primaryImagePurpose);
   const hasApprovedReference = state.approvedVisualReferenceSummary.length > 0;
   const referenceGateBlocked = purposeRequiresReference && !hasApprovedReference;
+  // V3 Creative Intent Propagation：Purpose 要求证据 gate（前端与服务端共享同一规则；不静默降级）
+  const purposeGate = evaluatePurposeRequirements(
+    creativeIntent.primaryImagePurpose,
+    (state.creativeDescriptionContext?.confirmedFacts ?? []).map((fact) => ({
+      field: "",
+      label: fact.label,
+      value: String(fact.value ?? ""),
+    })),
+  );
   const generateDisabled = !state.canGenerate
     || submitting
     || state.imageStatus === "revoked"
     || state.imageStatus === "invalid"
     || referenceGateBlocked
+    || !purposeGate.ok
     || (creativeIntent.primaryImagePurpose === "custom" && !creativeIntent.customImagePurpose.trim());
 
   return (
@@ -511,6 +524,14 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
             </button>
           </div>
         ) : null}
+
+        {/* V3 Creative Intent Propagation：Purpose 要求证据 Gate（无证据不静默降级） */}
+        {!purposeGate.ok ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800" data-testid="purpose-gate-blocked">
+            <p className="font-bold">当前图片用途暂时无法生成。</p>
+            <p className="mt-1">{purposeGate.message}</p>
+          </div>
+        ) : null}
       </div>
 
       {/* 无 Handoff / legacy */}
@@ -541,6 +562,11 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
             <p className="mt-0.5 text-sm text-slate-500">
               模式：{modeLabel(state.mode)}
               {isComposition ? "（不生成真实商品外观）" : "（基于批准视觉参考）"}
+            </p>
+            {/* V3 Creative Intent Propagation：生成前显式意图摘要（用户选择不回读成默认值） */}
+            <p className="mt-1 text-xs font-semibold text-slate-600" data-testid="creative-intent-summary">
+              主用途：{primaryPurposeLabel(creativeIntent.primaryImagePurpose)}
+              {creativeIntent.lifestyleScene !== "none" ? ` · 生活场景：${lifestyleSceneLabel(creativeIntent.lifestyleScene)}` : ""}
             </p>
           </div>
           <div>

@@ -9,6 +9,7 @@ import { computeImageStatus, parseImageHandoffBinding, type ImageStatus } from "
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
 import { classifyImageDraft, isFinalSelectableDraft } from "@/lib/imageHandoff/historicalDraftClassification";
+import { evaluatePurposeRequirements } from "@/lib/imageHandoff/purposeRequirements";
 import {
   buildTaskImageCreativeDescriptionContext,
   parseTaskImageCreativeDirection,
@@ -356,6 +357,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         packaging_bundle: "包装/套装展示需要已确认的商品参考图或包装事实。请先批准商品参考图后重试。",
       };
       return errorResponse(409, "blocked_needs_visual_reference", messages[purpose]);
+    }
+
+    // V3 Creative Intent Propagation：Purpose 要求证据 gate（不静默降级为普通棚拍图）。
+    // 包装/套装展示必须有已确认包装证据；无证据时阻止生成并明确告知用户。
+    if (purpose === "packaging_bundle") {
+      const latestVersion = gateForPurpose.currentHandoff?.versions?.[gateForPurpose.currentHandoff.versions.length - 1];
+      const confirmedFacts = (latestVersion?.confirmedFacts ?? [])
+        .map((fact) => ({ field: fact.field, label: fact.label, value: String(fact.value ?? "") }));
+      const purposeGate = evaluatePurposeRequirements("packaging_bundle", confirmedFacts);
+      if (!purposeGate.ok) {
+        return errorResponse(409, purposeGate.code, purposeGate.message);
+      }
     }
   }
 

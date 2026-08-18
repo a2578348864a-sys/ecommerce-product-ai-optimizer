@@ -405,6 +405,41 @@ describe("Visual Reference Gate（§32-35：白底/细节/包装要求已确认�
     expect(JSON.stringify(body.data.visualReferenceCandidates)).not.toContain("c".repeat(64));
     expect(JSON.stringify(body.data.visualReferenceCandidates)).not.toContain("dataUrl");
   });
+
+  it("packaging_bundle 无已确认包装证据 → 409 image_purpose_requires_packaging_evidence（不静默降级）", async () => {
+    // activeGate 的 confirmedFacts 仅 capacity=30oz（无包装语义）
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "packaging_bundle" }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("image_purpose_requires_packaging_evidence");
+    expect(body.error.message).toContain("包装/套装");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("packaging_bundle 有已确认包装证据 → 放行", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({
+      currentHandoff: {
+        schema: "product-creative-handoff.v1",
+        handoffId: "handoff-1",
+        controlState: "active",
+        currentRevision: 2,
+        versions: [{
+          revision: 2,
+          productIdentity: { displayName: "30oz 黑色不锈钢水杯" },
+          visualReferences: [],
+          creativePreferences: {},
+          confirmedFacts: [
+            { field: "capacity", label: "容量", value: "30oz", usageScopes: ["image"] },
+            { field: "quantity_or_pack_size", label: "数量/包装", value: "2 个装", usageScopes: ["image"] },
+          ],
+          aiCreativeReferences: [],
+        }],
+      },
+    }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "packaging_bundle" }));
+    expect(res.status).toBe(200);
+  });
 });
 
 // ── V3 Final Freeze：历史草稿分类投影 + 最终选择 Gate ─────────────────────────

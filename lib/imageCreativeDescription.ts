@@ -209,6 +209,12 @@ export function applyTaskImageCreativeDirection(
     compositionReferences: [...input.compositionReferences],
     prohibitedVisualClaims: [...input.prohibitedVisualClaims],
     unknowns: [...input.unknowns],
+    // V3 Creative Intent Propagation：显式 typed 字段（purpose/scene 保持独立可追踪，不混入文本）
+    primaryPurpose: direction.primaryImagePurpose,
+    lifestyleScene: direction.lifestyleScene,
+    ...(direction.primaryImagePurpose === "custom" && direction.customImagePurpose
+      ? { customPurposeText: direction.customImagePurpose }
+      : {}),
     creativePreferences: {
       ...input.creativePreferences,
       imageStyle: intent.visualStyle,

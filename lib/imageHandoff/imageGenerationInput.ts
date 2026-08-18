@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ProductCreativeHandoffV1 } from "@/lib/productCreativeHandoff";
+import { inferStudioImageCreativeIntentFromPreferences } from "@/lib/studioImageCreativeIntent";
 
 /**
  * PR2-3: 从当前有效 Creative Handoff 构造安全 Image 生成输入。
@@ -44,6 +45,16 @@ export type ImageGenerationInput = {
   approvedVisualReferences: Array<{ referenceFingerprint: string; summary: string; selectionId: string; approvedAt: string | null }>;
   /** Final Capability: 批准参考的原始图片（dataUrl base64；仅服务端真实 Provider 使用；mock 与 fingerprint 忽略） */
   referenceImageDataUrl?: string;
+  /**
+   * V3 Creative Intent Propagation：用户显式选择的图片主用途（typed enum，非中文 label）。
+   * 由 Image Studio UI → POST direction 传入（applyTaskImageCreativeDirection 覆盖）；
+   * 无显式选择时从 Handoff creativePreferences 推断恢复。
+   */
+  primaryPurpose?: import("@/lib/studioImageCreativeIntent").StudioImagePrimaryPurpose;
+  /** V3 Creative Intent Propagation：用户显式选择的生活场景（typed enum；none 表示不指定） */
+  lifestyleScene?: import("@/lib/studioImageCreativeIntent").StudioImageLifestyleScene;
+  /** V3 Creative Intent Propagation：custom 用途的用户自定义文本（prompt 内 untrusted 围栏展示，永不视为指令） */
+  customPurposeText?: string;
   compositionReferences: string[];
   creativePreferences: Record<string, string>;
   prohibitedVisualClaims: string[];
@@ -239,6 +250,16 @@ export function buildImageInputFromCreativeHandoff(
       ? { creativeContext: projectCreativeContextReferences(options.creativeContext) }
       : {}),
   };
+
+  // V3 Creative Intent Propagation：从 Handoff creativePreferences 恢复显式 purpose/scene
+  // （inferStudioImageCreativeIntentFromPreferences 的确定性文本匹配；生成时会被 POST direction 覆盖）。
+  const inferredIntent = inferStudioImageCreativeIntentFromPreferences(
+    isRecord(prefs) ? (prefs as Record<string, unknown>) : undefined,
+  );
+  if (inferredIntent) {
+    input.primaryPurpose = inferredIntent.primaryImagePurpose;
+    input.lifestyleScene = inferredIntent.lifestyleScene;
+  }
 
   const generationInputFingerprint = createHash("sha256")
     .update(JSON.stringify(input), "utf8")

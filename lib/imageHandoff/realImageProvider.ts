@@ -29,7 +29,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { createMockImageProvider, type MockImageProvider } from "@/lib/imageHandoff/mockImageProvider";
 import type { ImageGenerationInput, ImageVisualMode } from "@/lib/imageHandoff/imageGenerationInput";
-import { buildTargetProductIdentityBlock } from "@/lib/imageHandoff/imagePrompt";
+import { buildCreativeIntentBlock, buildTargetProductIdentityBlock } from "@/lib/imageHandoff/imagePrompt";
 
 export type ImageProviderMode = "mock" | "real";
 
@@ -57,15 +57,21 @@ export const REAL_IMAGE_PROVIDER_CAPABILITY = Object.freeze({
   note: "openai SDK images.edit（multipart image+prompt，gpt-image-2 支持 input_fidelity）；参考图真实作为 Provider 输入。",
 } as const);
 
-/** product_visual_draft 的编辑 Prompt：保持批准参考产品形态；不增加未知配件/功能/认证/Logo */
-function buildProductVisualPrompt(input: ImageGenerationInput): string {
+/** product_visual_draft 的编辑 Prompt：保持批准参考产品形态；显式携带用户 Creative Intent；
+ *  不增加未知配件/功能/认证/Logo；purpose/scene 不得覆盖商品身份与视觉参考。
+ *  导出供 dry-run / Provider Request 捕获测试使用。 */
+export function buildProductVisualPrompt(input: ImageGenerationInput): string {
   const factLines = input.productFacts.slice(0, 8).map((f) => `${f.label}: ${f.value}`).join("; ");
   return [
     "Edit the attached approved product reference image into a product visual draft for listing material planning.",
     "Keep the product shape, structure, materials and packaging text exactly as shown in the reference image.",
     "Do NOT add functions, accessories, certifications, logos, or packaging text that are not in the reference image.",
     "Do NOT alter logos or packaging text shown in the reference.",
-    "Adjust background, composition, lighting and colour direction only.",
+    buildTargetProductIdentityBlock(input),
+    "",
+    "PRIMARY CREATIVE PURPOSE / SECONDARY SCENE (user-selected creative intent; identity and approved reference ALWAYS win over intent):",
+    ...buildCreativeIntentBlock(input),
+    "Adjust background, composition, lighting and colour direction ONLY according to the creative intent above.",
     "Unknown or conflicting details must stay visually neutral; never infer or complete.",
     "The output remains a human-review draft and must not be presented as a finished product photo.",
     factLines ? `Confirmed facts for context only: ${factLines}.` : "",
