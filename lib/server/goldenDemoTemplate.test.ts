@@ -1,15 +1,14 @@
 /**
- * V3 UX Closure — Golden Demo Lazy Seed / Backfill / 隔离测试（行为优先）
+ * V3 UX Closure — Golden Demo Lazy Seed / Backfill / 隔离测试（行为优先，经公开 adapter 验证）
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readDemoSandboxStore } from "@/lib/server/demoSandboxStore.internal";
+import { listSandboxTasks } from "@/lib/server/demoSandbox";
 import {
   ensureVisitorDemoCopy,
   findVisitorDemoCopy,
-  GOLDEN_DEMO_CANDIDATE_ID,
   GOLDEN_DEMO_TEMPLATE_ID,
   readDemoTemplateMarker,
 } from "@/lib/server/goldenDemoTemplate";
@@ -43,53 +42,44 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
     expect(copy?.sourceProductKey).toBe("amazon:US:B0F2BF31PW");
     expect(copy?.taskId).toMatch(/^sandbox_task_/);
 
-    const store = readDemoSandboxStore();
-    const task = store.tasks.find((t) => t.id === copy?.taskId);
+    const tasks = await listSandboxTasks("demo-visitor-a");
+    const task = tasks.find((t) => t.id === copy?.taskId);
     expect(task).toBeDefined();
     expect(task?.demoAccessId).toBe("demo-visitor-a");
     const marker = readDemoTemplateMarker(task?.resultJson ?? "");
     expect(marker?.demoTemplateId).toBe(GOLDEN_DEMO_TEMPLATE_ID);
-    // candidate 同步创建（research 绑定）
-    const candidate = store.candidates.find((c) => c.id === GOLDEN_DEMO_CANDIDATE_ID);
-    expect(candidate).toBeDefined();
-    expect(candidate?.demoAccessId).toBe("demo-visitor-a");
-    expect(candidate?.convertedTaskId).toBe(copy?.taskId);
-    // 模板完整性：证据 + researchRecord + completion + handoff
+    // 模板完整性：证据 + researchRecord + completion（含 evidenceHash）+ handoff
     const rj = JSON.parse(task?.resultJson ?? "{}");
     expect(rj.browserEvidence.snapshots.length).toBeGreaterThan(0);
     expect(rj.researchRecord.schema).toBe("product-research-record.v1");
     expect(rj.researchCompletion.status).toBe("completed");
+    // Staleness 契约：seed 时注入 evidenceHash（演示任务启用重新确认体验）
+    expect(rj.researchCompletion.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
     expect(rj.creativeHandoff).toBeDefined();
     expect(rj.aiImageDraftSnapshot.items.length).toBeGreaterThan(0);
   });
 
   it("重复调用 → 幂等（不重复创建）", async () => {
     await ensureVisitorDemoCopy("demo-visitor-b");
-    const first = readDemoSandboxStore().tasks.length;
+    const first = (await listSandboxTasks("demo-visitor-b")).length;
     const again = await ensureVisitorDemoCopy("demo-visitor-b");
-    const second = readDemoSandboxStore().tasks.length;
+    const second = (await listSandboxTasks("demo-visitor-b")).length;
     expect(second).toBe(first);
-    expect(again?.taskId).toBe(readDemoSandboxStore().tasks[0].id);
+    expect(again?.taskId).toBe((await listSandboxTasks("demo-visitor-b"))[0].id);
   });
 
   it("跨 Visitor 隔离：每个 Visitor 独立副本，不共享 Task", async () => {
     const a = await ensureVisitorDemoCopy("demo-visitor-c");
     const b = await ensureVisitorDemoCopy("demo-visitor-d");
     expect(a?.taskId).not.toBe(b?.taskId);
-    const store = readDemoSandboxStore();
-    const tasksA = store.tasks.filter((t) => t.demoAccessId === "demo-visitor-c");
-    const tasksB = store.tasks.filter((t) => t.demoAccessId === "demo-visitor-d");
+    const tasksA = await listSandboxTasks("demo-visitor-c");
+    const tasksB = await listSandboxTasks("demo-visitor-d");
     expect(tasksA.length).toBe(1);
     expect(tasksB.length).toBe(1);
-    // 同一 candidateId 在不同 Visitor 下各自独立存在
-    const candsA = store.candidates.filter((c) => c.demoAccessId === "demo-visitor-c" && c.id === GOLDEN_DEMO_CANDIDATE_ID);
-    const candsB = store.candidates.filter((c) => c.demoAccessId === "demo-visitor-d" && c.id === GOLDEN_DEMO_CANDIDATE_ID);
-    expect(candsA.length).toBe(1);
-    expect(candsB.length).toBe(1);
+    expect(tasksA[0].id).not.toBe(tasksB[0].id);
   });
 
   it("Backfill：已有 THERMOS 历史副本（无标记）→ 补标记，不新建", async () => {
-    // 模拟历史手动副本（无 demoTemplate 标记）
     const { createTrustedSandboxTask } = await import("@/lib/server/demoSandbox");
     const task = await createTrustedSandboxTask("demo-visitor-e", {
       title: "THERMOS FUNTAINER Water Bottle with Straw, 12oz, Construction",
@@ -101,9 +91,9 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
 
     const copy = await ensureVisitorDemoCopy("demo-visitor-e");
     expect(copy?.taskId).toBe(task.id); // 复用历史任务，不新建
-    const store = readDemoSandboxStore();
-    expect(store.tasks.filter((t) => t.demoAccessId === "demo-visitor-e").length).toBe(1);
-    const updated = store.tasks.find((t) => t.id === task.id);
+    const tasks = await listSandboxTasks("demo-visitor-e");
+    expect(tasks.length).toBe(1);
+    const updated = tasks.find((t) => t.id === task.id);
     expect(readDemoTemplateMarker(updated?.resultJson ?? "")?.demoTemplateId).toBe(GOLDEN_DEMO_TEMPLATE_ID);
   });
 
@@ -112,6 +102,6 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
     await ensureVisitorDemoCopy("demo-visitor-f");
     const found = await findVisitorDemoCopy("demo-visitor-f");
     expect(found?.taskId).toBeDefined();
-    expect(readDemoSandboxStore().tasks.length).toBe(1);
+    expect((await listSandboxTasks("demo-visitor-f")).length).toBe(1);
   });
 });

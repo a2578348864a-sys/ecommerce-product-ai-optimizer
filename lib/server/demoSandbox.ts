@@ -352,6 +352,47 @@ export function createGenericSandboxTask(
   return createTrustedSandboxTask(demoAccessId, input);
 }
 
+/**
+ * V3 UX Closure — 演示模板种子（Golden Demo per-Visitor 副本）。
+ * 唯一允许通过公开 adapter 写入"预置完整任务 + 固定 id 候选"的入口
+ * （createGenericSandboxTask 会拒绝系统键 researchRecord/handoff 等；
+ * createSandboxCandidate 不支持固定 id）。
+ * 内部走 mutateDemoSandboxStore（approved adapter 边界由 mutationBoundary 守护）。
+ */
+export function createSeededSandboxTaskAndCandidate(
+  demoAccessId: string,
+  task: Omit<SandboxTask, "demoAccessId">,
+  candidate: Omit<SandboxCandidate, "demoAccessId">,
+): Promise<{ taskId: string }> {
+  return mutateDemoSandboxStore((store) => {
+    const now = new Date().toISOString();
+    const fullTask: SandboxTask = { ...task, demoAccessId, createdAt: task.createdAt || now, updatedAt: task.updatedAt || now };
+    const fullCandidate: SandboxCandidate = { ...candidate, demoAccessId, createdAt: candidate.createdAt || now };
+    store.tasks.push(fullTask);
+    store.candidates.push(fullCandidate);
+    return { value: { taskId: fullTask.id }, changed: true };
+  });
+}
+
+/**
+ * V3 UX Closure — 更新任务 resultJson（Backfill 注入 demoTemplate 标记等）。
+ * 仅允许服务端信任路径使用（Golden Demo backfill）；不开放任意 JSON 写入。
+ */
+export function updateSandboxTaskResultJson(
+  demoAccessId: string,
+  taskId: string,
+  resultJson: string,
+): Promise<boolean> {
+  return mutateDemoSandboxStore((store) => {
+    const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);
+    if (idx === -1) return { value: false, changed: false };
+    const task = store.tasks[idx];
+    task.resultJson = resultJson;
+    task.updatedAt = new Date().toISOString();
+    return { value: true, changed: true };
+  });
+}
+
 export function deleteSandboxTask(demoAccessId: string, taskId: string): Promise<boolean> {
   return mutateDemoSandboxStore((store) => {
     const idx = store.tasks.findIndex((t) => t.id === taskId && t.demoAccessId === demoAccessId);

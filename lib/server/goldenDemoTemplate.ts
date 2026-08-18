@@ -11,13 +11,12 @@ import { randomUUID } from "node:crypto";
 import { GOLDEN_DEMO_TEMPLATE_RESULT_JSON } from "@/lib/server/goldenDemoTemplateData";
 import { computeResearchEvidenceHash } from "@/lib/productResearchRecord";
 import {
-  createTrustedSandboxTask,
-  getSandboxTask,
-  isSandboxTaskId,
+  createSeededSandboxTaskAndCandidate,
+  listSandboxTasks,
+  updateSandboxTaskResultJson,
   type SandboxCandidate,
   type SandboxTask,
 } from "@/lib/server/demoSandbox";
-import { mutateDemoSandboxStore } from "@/lib/server/demoSandboxStore.internal";
 
 export const GOLDEN_DEMO_TEMPLATE_ID = "thermos-funtainer-v1" as const;
 export const GOLDEN_DEMO_TEMPLATE_VERSION = 1 as const;
@@ -95,10 +94,8 @@ function buildTemplateResultJson(): string {
   return JSON.stringify(result);
 }
 
-/** 给现有 THERMOS 副本注入 demoTemplate 标记（backfill，幂等） */
-function backfillMarker(store: { tasks: SandboxTask[] }, taskId: string): boolean {
-  const task = store.tasks.find((t) => t.id === taskId);
-  if (!task) return false;
+/** 给现有 THERMOS 副本注入 demoTemplate 标记（backfill，幂等；经公开 adapter 写回） */
+async function backfillMarker(demoAccessId: string, task: SandboxTask): Promise<boolean> {
   if (readDemoTemplateMarker(task.resultJson)) return false;
   const result = parseResultJson(task.resultJson);
   result.demoTemplate = {
@@ -106,9 +103,7 @@ function backfillMarker(store: { tasks: SandboxTask[] }, taskId: string): boolea
     demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
     sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
   } satisfies DemoTemplateMarker;
-  task.resultJson = JSON.stringify(result);
-  task.updatedAt = new Date().toISOString();
-  return true;
+  return updateSandboxTaskResultJson(demoAccessId, task.id, JSON.stringify(result));
 }
 
 /**
@@ -118,86 +113,76 @@ function backfillMarker(store: { tasks: SandboxTask[] }, taskId: string): boolea
  * - 无 → 通过正式 sandbox writer 创建独立副本（task + candidate，不共享 Task）。
  */
 export async function ensureVisitorDemoCopy(demoAccessId: string): Promise<GoldenDemoCopy | null> {
+  const tasks = await listSandboxTasks(demoAccessId);
+
   // 1) 已有标记副本？
-  const existingMarked = await mutateDemoSandboxStore((store) => {
-    const task = store.tasks.find((t) => t.demoAccessId === demoAccessId && readDemoTemplateMarker(t.resultJson) !== null);
-    if (!task) return { value: null, changed: false };
-    return { value: task.id, changed: false };
-  });
-  if (existingMarked) {
+  const marked = tasks.find((t) => readDemoTemplateMarker(t.resultJson) !== null);
+  if (marked) {
     return {
-      taskId: existingMarked,
+      taskId: marked.id,
       demoTemplateId: GOLDEN_DEMO_TEMPLATE_ID,
       demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
       sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
     };
   }
 
-  // 2) 历史 THERMOS 副本（backfill 标记）
-  const backfilled = await mutateDemoSandboxStore((store) => {
-    const task = store.tasks.find((t) => t.demoAccessId === demoAccessId && isThermosTask(t));
-    if (!task) return { value: null, changed: false };
-    const changed = backfillMarker(store, task.id);
-    return { value: changed ? task.id : null, changed };
-  });
-  if (backfilled) {
-    return {
-      taskId: backfilled,
-      demoTemplateId: GOLDEN_DEMO_TEMPLATE_ID,
-      demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
-      sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
-    };
+  // 2) 历史 THERMOS 副本（backfill 标记，幂等）
+  const historical = tasks.find((t) => isThermosTask(t));
+  if (historical) {
+    const changed = await backfillMarker(demoAccessId, historical);
+    if (changed) {
+      return {
+        taskId: historical.id,
+        demoTemplateId: GOLDEN_DEMO_TEMPLATE_ID,
+        demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
+        sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
+      };
+    }
   }
 
-  // 3) 创建独立副本（task + candidate 同一事务）
-  const created = await mutateDemoSandboxStore(async (store) => {
-    const taskId = `sandbox_task_demo_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
-    const now = new Date().toISOString();
-    const resultJson = buildTemplateResultJson();
-    const task: SandboxTask = {
-      id: taskId,
-      demoAccessId,
-      type: "workflow",
-      title: "THERMOS FUNTAINER 儿童保温杯（演示体验）",
-      decisionStatus: "continue",
-      platform: "amazon",
-      productUrl: "https://www.amazon.com/dp/B0F2BF31PW?language=en_US",
-      materialText: "",
-      source: "demo_acquisition_sample",
-      score: 0,
-      level: "演示体验",
-      oneLineSummary: "演示商品：含 Amazon 页面采集、VOC 评论分析、1688 供应线索的全套真实采集证据，可直接体验研究到创作的完整流程。",
-      resultJson,
-      productLifecycle: "",
-      createdAt: now,
-      updatedAt: now,
-    };
-    const candidate: SandboxCandidate = {
-      id: GOLDEN_DEMO_CANDIDATE_ID,
-      demoAccessId,
-      name: "THERMOS FUNTAINER Water Bottle with Straw, 12oz, Construction",
-      rawInput: "THERMOS FUNTAINER Water Bottle with Straw, 12oz, Construction",
-      link: "https://www.amazon.com/dp/B0F2BF31PW?language=en_US",
-      score: 0,
-      source: "demo_acquisition_sample",
-      keyword: "kids water bottle",
-      riskLevel: "unknown",
-      riskLabel: "演示样本",
-      summaryLabel: "演示样本",
-      status: "worth_analyzing",
-      sourceMetaJson: "{}",
-      analysisJson: "{}",
-      createdAt: now,
-      convertedTaskId: taskId,
-    };
-    store.tasks.push(task);
-    store.candidates.push(candidate);
-    return { value: taskId, changed: true };
-  });
+  // 3) 创建独立副本（task + candidate 同一事务，公开 adapter）
+  const taskId = `sandbox_task_demo_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
+  const now = new Date().toISOString();
+  const resultJson = buildTemplateResultJson();
+  const task: Omit<SandboxTask, "demoAccessId"> = {
+    id: taskId,
+    type: "workflow",
+    title: "THERMOS FUNTAINER 儿童保温杯（演示体验）",
+    decisionStatus: "continue",
+    platform: "amazon",
+    productUrl: "https://www.amazon.com/dp/B0F2BF31PW?language=en_US",
+    materialText: "",
+    source: "demo_acquisition_sample",
+    score: 0,
+    level: "演示体验",
+    oneLineSummary: "演示商品：含 Amazon 页面采集、VOC 评论分析、1688 供应线索的全套真实采集证据，可直接体验研究到创作的完整流程。",
+    resultJson,
+    productLifecycle: "",
+    createdAt: now,
+    updatedAt: now,
+  };
+  const candidate: Omit<SandboxCandidate, "demoAccessId"> = {
+    id: GOLDEN_DEMO_CANDIDATE_ID,
+    name: "THERMOS FUNTAINER Water Bottle with Straw, 12oz, Construction",
+    rawInput: "THERMOS FUNTAINER Water Bottle with Straw, 12oz, Construction",
+    link: "https://www.amazon.com/dp/B0F2BF31PW?language=en_US",
+    score: 0,
+    source: "demo_acquisition_sample",
+    keyword: "kids water bottle",
+    riskLevel: "unknown",
+    riskLabel: "演示样本",
+    summaryLabel: "演示样本",
+    status: "worth_analyzing",
+    sourceMetaJson: "{}",
+    analysisJson: "{}",
+    createdAt: now,
+    convertedTaskId: taskId,
+  };
+  const created = await createSeededSandboxTaskAndCandidate(demoAccessId, task, candidate);
 
   return created
     ? {
-        taskId: created,
+        taskId: created.taskId,
         demoTemplateId: GOLDEN_DEMO_TEMPLATE_ID,
         demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
         sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
@@ -207,8 +192,8 @@ export async function ensureVisitorDemoCopy(demoAccessId: string): Promise<Golde
 
 /** 读取某 Visitor 已存在的 Golden Demo 副本（不创建） */
 export async function findVisitorDemoCopy(demoAccessId: string): Promise<GoldenDemoCopy | null> {
-  const store = await mutateDemoSandboxStore((s) => ({ value: s.tasks, changed: false }));
-  const task = store.find((t) => t.demoAccessId === demoAccessId && isThermosTask(t));
+  const tasks = await listSandboxTasks(demoAccessId);
+  const task = tasks.find((t) => isThermosTask(t));
   if (!task) return null;
   return {
     taskId: task.id,
@@ -217,5 +202,3 @@ export async function findVisitorDemoCopy(demoAccessId: string): Promise<GoldenD
     sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
   };
 }
-
-export { createTrustedSandboxTask, getSandboxTask, isSandboxTaskId };
