@@ -18,6 +18,7 @@ import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
 import { EvidenceWorkbench } from "@/components/evidence/EvidenceWorkbench";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
+import { getResearchStaleState } from "@/lib/productResearchRecord";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
 import { deriveAgentRunTimelineItems } from "@/lib/agentRunTimeline";
@@ -256,6 +257,36 @@ function ResearchCompletionControl({
     : (latest && typeof latest.status === "string" ? latest.status : null);
 
   if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
+    // V3 UX Closure Staleness：完成研究后证据内容发生变化 → 明确提示 + 重新确认
+    const staleState = getResearchStaleState(result);
+    if (completionStatus === "completed" && staleState.stale) {
+      return (
+        <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="research-stale-notice">
+          <p className="text-sm font-bold text-amber-800">研究资料在完成研究后发生了变化</p>
+          <p className="mt-1 text-sm leading-6 text-amber-700">
+            当前研究结论基于旧版本资料；新增的证据尚未纳入结论。请重新确认研究，确认后旧结论才会对应当前资料；
+            重新确认前，新的 Listing / Image 生成会被暂停（历史结果保留）。
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={completing}
+              onClick={() => void completeResearch()}
+              className="inline-flex h-9 items-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+            >
+              {completing ? "确认中…" : "重新确认研究"}
+            </button>
+            <Link
+              href="/tasks"
+              className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              查看研究记录
+            </Link>
+          </div>
+          {error && <p className="mt-2 text-sm text-rose-600" role="alert">{error}</p>}
+        </section>
+      );
+    }
     return (
       <section className="mt-4 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="research-completed">
         <p className="text-sm font-bold text-teal-800">研究已完成并保存到研究记录。</p>
@@ -1520,6 +1551,20 @@ export function TaskRecordDetail({ id }: { id: string }) {
                    <p className="mt-3 text-sm leading-6 text-slate-600">
                      研究是否完成只取决于研究记录和人工决定；Listing 与图片是可选的后续创作，不改变研究状态。
                    </p>
+                 </div>
+               ) : null}
+               {/* V3 UX Closure：演示任务轻量 Step Guide（非强制 Wizard，用户地图） */}
+               {record && isRecordValue(record.result) && (record.result as Record<string, unknown>).demoTemplate ? (
+                 <div className="mb-5 rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4" data-testid="demo-step-guide">
+                   <p className="text-sm font-bold text-indigo-800">演示体验路线</p>
+                   <ol className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                     {["1 数据采集（Amazon / VOC / 1688 演示回放）", "2 确认商品事实", "3 查看研究结论", "4 Listing / Image"].map((step, index) => (
+                       <li key={step} className={`rounded-full border px-2.5 py-1 ${index === 0 ? "border-indigo-300 bg-white text-indigo-700" : "border-slate-200 bg-white"}`}>
+                         {step}
+                       </li>
+                     ))}
+                   </ol>
+                   <p className="mt-2 text-xs text-slate-500">以下为演示数据（真实采集样本回放，不消耗额度）；可按顺序体验，也可跳过任一步骤。</p>
                  </div>
                ) : null}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

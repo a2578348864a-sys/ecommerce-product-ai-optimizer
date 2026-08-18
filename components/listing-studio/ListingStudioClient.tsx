@@ -179,6 +179,9 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
     return (
       <>
         {progressRail}
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" data-testid="listing-mode-task-linked">
+          来自研究记录（TASK-LINKED）· 事实来自商品研究确认
+        </div>
         <TaskStudioPreparation taskId={taskId} kind="listing" onReadyChange={handleTaskReady} onCommitted={handleTaskCommitted}>
           <div className="surface-card p-4" data-testid="listing-studio-task-mode">
             <ListingHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} refreshSignal={refreshKey} />
@@ -187,7 +190,15 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
       </>
     );
   }
-  return <>{progressRail}<ManualListingStudioClient onProgressChange={handleManualProgress} /></>;
+  return (
+    <>
+      {progressRail}
+      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="listing-mode-standalone">
+        独立工具（STANDALONE）· 资料由你提供，未经商品研究验证
+      </div>
+      <ManualListingStudioClient onProgressChange={handleManualProgress} />
+    </>
+  );
 }
 
 function ManualListingStudioClient({ onProgressChange }: {

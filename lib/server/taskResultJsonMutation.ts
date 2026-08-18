@@ -34,7 +34,8 @@ export type TaskResultJsonWriter =
   | "browser-evidence"
   | "review-evidence"
   | "sourcing-evidence"
-  | "research-save";
+  | "research-save"
+  | "fact-candidates";
 
 const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "research-decision": ["researchRecord", "researchVerification"],
@@ -45,6 +46,8 @@ const OWNED_NAMESPACES: Record<TaskResultJsonWriter, readonly string[]> = {
   "listing-pack": ["listingPackSnapshot"],
   "ai-listing": ["aiListingPackSnapshot", "listingHandoffBinding"],
   "ai-image": ["aiImageDraftSnapshot", "imageHandoffBinding", "imageStudioSelection"],
+  // V3 UX Closure：Fact Candidate 人工确认（批量）——Human Confirmation Authority 的独立命名空间
+  "fact-candidates": ["factCandidates"],
   "creative-handoff": ["creativeHandoff", "creativeHandoffRequestLedger"],
   "keyword-brief": ["listingKeywordBrief"],
   "visual-reference": ["sourceMeta"],

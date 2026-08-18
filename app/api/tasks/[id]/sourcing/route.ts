@@ -55,7 +55,9 @@ import {
 } from "@/lib/server/acquisitionCapability";
 import {
   DEMO_ACQUISITION_EVIDENCE_ID,
+  DEMO_SAMPLE_SOURCING_ID,
   DEMO_SOURCING_EVIDENCE_SAMPLE,
+  DEMO_SAMPLE_VERSION,
 } from "@/lib/server/demoAcquisitionSamples";
 
 export const runtime = "nodejs";
@@ -365,6 +367,8 @@ export async function POST(
           },
           trace: preview.runTrace,
           demo: true,
+          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
+          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {
@@ -424,6 +428,8 @@ export async function POST(
             expiresAt: preview.expiresAt,
           },
           trace: preview.runTrace,
+          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
+          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {
@@ -469,6 +475,8 @@ export async function POST(
             expiresAt: preview.expiresAt,
           },
           trace: preview.runTrace,
+          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
+          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {
@@ -517,6 +525,8 @@ export async function POST(
             expiresAt: preview.expiresAt,
           },
           trace: preview.runTrace,
+          demoSampleId: DEMO_SAMPLE_SOURCING_ID,
+          demoSampleVersion: DEMO_SAMPLE_VERSION,
         },
       });
     } catch (error) {

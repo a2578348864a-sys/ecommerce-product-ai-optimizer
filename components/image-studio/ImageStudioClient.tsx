@@ -114,6 +114,9 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
     return (
       <>
         {progressRail}
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" data-testid="image-mode-task-linked">
+          来自研究记录（TASK-LINKED）· 商品身份 / 事实 / 参考图来自研究确认
+        </div>
         <TaskStudioPreparation taskId={taskId} kind="image" onReadyChange={handleTaskReady} onCommitted={handleHandoffCommitted}>
           <div className="surface-card p-4" data-testid="image-studio-task-mode">
             <ImageHandoffSection key={handoffEpoch} taskId={taskId} onProgressChange={handleTaskProgress} />
@@ -122,7 +125,15 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
       </>
     );
   }
-  return <>{progressRail}<ManualImageStudioClient onProgressChange={handleManualProgress} /></>;
+  return (
+    <>
+      {progressRail}
+      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="image-mode-standalone">
+        独立工具（STANDALONE）· 商品身份与参考图由你提供，未经商品研究验证
+      </div>
+      <ManualImageStudioClient onProgressChange={handleManualProgress} />
+    </>
+  );
 }
 
 function ManualImageStudioClient({ onProgressChange }: {

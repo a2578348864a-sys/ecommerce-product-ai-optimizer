@@ -21,6 +21,11 @@ import type { SourcingEvidenceV1 } from "@/lib/upstream/1688/contracts";
 import type { AmazonEnvironmentStep } from "@/tools/collectors/amazon/browser-control";
 
 export const DEMO_ACQUISITION_EVIDENCE_ID = "demo-acquisition-sample-v1" as const;
+/** 演示样本标识（幂等语义）：thermos-amazon-v1 / thermos-voc-v1 / thermos-sourcing-v1 */
+export const DEMO_SAMPLE_AMAZON_ID = "thermos-amazon-v1" as const;
+export const DEMO_SAMPLE_VOC_ID = "thermos-voc-v1" as const;
+export const DEMO_SAMPLE_SOURCING_ID = "thermos-sourcing-v1" as const;
+export const DEMO_SAMPLE_VERSION = 1 as const;
 
 export const DEMO_BROWSER_EVIDENCE_SAMPLE: BrowserEvidenceV1 = {
   "schema": "browser-evidence.v1",
@@ -1534,7 +1539,9 @@ export function buildDemoBrowserCollectPreview(taskAsin: string): BrowserEvidenc
         rating: field("rating"),
         reviews: field("reviews"),
       },
-      capturedAt: new Date().toISOString(),
+      // 固定样本捕获时间：重复 demo replay（collect → save）时 capturedAt+pageUrl+asin
+      // 三键命中既有快照 → saveBrowserEvidence 判定 duplicate → 不再 append（幂等）。
+      capturedAt: DEMO_BROWSER_EVIDENCE_SAMPLE.snapshots[0].capturedAt,
       collectorVersion: "amazon-detail-page-extractor.v1",
     },
     navigation: {
