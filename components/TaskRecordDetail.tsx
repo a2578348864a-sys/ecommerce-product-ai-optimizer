@@ -18,7 +18,6 @@ import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
 import { EvidenceWorkbench } from "@/components/evidence/EvidenceWorkbench";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
-import { getResearchStaleState } from "@/lib/productResearchRecord";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
 import { deriveAgentRunTimelineItems } from "@/lib/agentRunTimeline";
@@ -235,10 +234,13 @@ function safePublicHttpUrl(value: string | null | undefined) {
 function ResearchCompletionControl({
   taskId,
   result,
+  researchStale,
   onCompleted,
 }: {
   taskId: string;
   result: Record<string, unknown>;
+  /** 服务端计算的 stale 状态（client 无法计算 evidence hash） */
+  researchStale?: boolean;
   onCompleted?: () => void;
 }) {
   const [completing, setCompleting] = useState(false);
@@ -258,7 +260,7 @@ function ResearchCompletionControl({
 
   if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
     // V3 UX Closure Staleness：完成研究后证据内容发生变化 → 明确提示 + 重新确认
-    const staleState = getResearchStaleState(result);
+    const staleState = { stale: researchStale === true };
     if (completionStatus === "completed" && staleState.stale) {
       return (
         <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4" data-testid="research-stale-notice">
@@ -1678,6 +1680,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                       <ResearchCompletionControl
                         taskId={record.id}
                         result={record.result}
+                        researchStale={(record as { researchStale?: boolean }).researchStale === true}
                         onCompleted={() => void refreshRecord()}
                       />
                     ) : null}
