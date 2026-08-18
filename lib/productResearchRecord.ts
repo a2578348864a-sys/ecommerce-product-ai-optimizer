@@ -28,6 +28,8 @@ export type ResearchCompletionV1 = {
   decisionId: string;
   revision: number;
   finalStatus: ProductResearchDecisionStatus;
+  /** V3 UX Closure：完成时记录的研究证据内容指纹（staleness 契约） */
+  evidenceHash?: string;
 };
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -510,6 +512,8 @@ export function appendProductResearchDecision(input: {
 
 /**
  * V3 Current Research Normalization：Research Completion 解析（fail-closed）。
+ * evidenceHash（可选）：完成研究时记录的证据内容指纹（V3 UX Closure Staleness）。
+ * 解析宽松保留该字段（不参与 hasExactKeys 校验），旧数据无此字段视为"未绑定版本"。
  */
 export function parseResearchCompletion(value: unknown): ResearchCompletionV1 | null {
   if (!isRecord(value) || value.schema !== RESEARCH_COMPLETION_SCHEMA) return null;
@@ -518,6 +522,9 @@ export function parseResearchCompletion(value: unknown): ResearchCompletionV1 | 
   if (typeof value.decisionId !== "string" || !UUID_PATTERN.test(value.decisionId)) return null;
   if (!isRevision(value.revision)) return null;
   if (!isProductResearchDecisionStatus(value.finalStatus)) return null;
+  const evidenceHash = typeof value.evidenceHash === "string" && HASH_PATTERN.test(value.evidenceHash)
+    ? value.evidenceHash
+    : null;
   return {
     schema: RESEARCH_COMPLETION_SCHEMA,
     status: value.status,
@@ -525,12 +532,71 @@ export function parseResearchCompletion(value: unknown): ResearchCompletionV1 | 
     decisionId: value.decisionId.toLowerCase(),
     revision: value.revision,
     finalStatus: value.finalStatus,
+    ...(evidenceHash ? { evidenceHash } : {}),
   };
 }
 
 export function getResearchCompletion(value: unknown): ResearchCompletionV1 | null {
   if (!isRecord(value)) return null;
   return parseResearchCompletion(value.researchCompletion);
+}
+
+/** 参与证据指纹的证据命名空间（完成研究后新增/更新这些内容 → 研究状态需重新确认） */
+const EVIDENCE_FINGERPRINT_NAMESPACES = [
+  "browserEvidence",
+  "reviewEvidence",
+  "vocAnalysis",
+  "sourcingEvidence",
+  "keywordEvidence",
+  "competitorEvidence",
+  "aiEvidenceSummary",
+  "candidateAnalysisContext",
+  "factCandidates",
+] as const;
+
+/**
+ * V3 UX Closure — 计算研究证据内容指纹（canonical hash of evidence 命名空间）。
+ * 完成研究时记录；之后任一证据命名空间变化 → hash 失配 → NEEDS_RECONFIRMATION。
+ */
+export function computeResearchEvidenceHash(result: Record<string, unknown> | null): string | null {
+  if (!isRecord(result)) return null;
+  const fingerprint: Record<string, unknown> = {};
+  for (const key of EVIDENCE_FINGERPRINT_NAMESPACES) {
+    if (Object.prototype.hasOwnProperty.call(result, key)) {
+      fingerprint[key] = result[key];
+    }
+  }
+  if (Object.keys(fingerprint).length === 0) return null;
+  return sha256Canonical(fingerprint);
+}
+
+export type ResearchStaleState = {
+  /** completion 是否存在（无 completion 无 stale 语义） */
+  completed: boolean;
+  /** 研究资料是否在完成研究后发生变化 */
+  stale: boolean;
+  /** 完成时记录的证据指纹（无则 null = 旧数据未绑定版本） */
+  completionEvidenceHash: string | null;
+  /** 当前证据指纹 */
+  currentEvidenceHash: string | null;
+};
+
+/**
+ * V3 UX Closure — 判定完成研究后的证据 stale 状态。
+ * completion.evidenceHash 与当前 evidence hash 失配（或 completion 无 hash 而当前有证据变化）→ stale。
+ * 旧数据（completion 无 evidenceHash）不自动视为 stale（兼容），仅在 completion 存在 hash 后启用。
+ */
+export function getResearchStaleState(result: Record<string, unknown> | null): ResearchStaleState {
+  const completion = getResearchCompletion(result);
+  if (!completion || completion.status !== "completed") {
+    return { completed: false, stale: false, completionEvidenceHash: null, currentEvidenceHash: null };
+  }
+  const currentEvidenceHash = computeResearchEvidenceHash(result);
+  const completionEvidenceHash = completion.evidenceHash ?? null;
+  const stale = completionEvidenceHash !== null
+    && currentEvidenceHash !== null
+    && completionEvidenceHash !== currentEvidenceHash;
+  return { completed: true, stale, completionEvidenceHash, currentEvidenceHash };
 }
 
 export function parseProductResearchRecord(value: unknown): ProductResearchRecordV1 | null {  if (!isRecord(value) || !hasExactKeys(value, [

@@ -19,11 +19,13 @@ import {
   appendProductResearchDecision,
   buildProductResearchActor,
   buildProductResearchHash,
+  computeResearchEvidenceHash,
   createInitialProductResearchRecord,
   createProductResearchVerification,
   getProductResearchRecord,
   getProductResearchVerification,
   getResearchCompletion,
+  getResearchStaleState,
   hasProductResearchRecordNamespace,
   parseResearchCompletion,
   productResearchDecisionToCompatibilityStatus,
@@ -173,6 +175,8 @@ export type CompleteCurrentResearchResult = {
   researchRecord: boolean;
   completedAt: string;
   idempotent: boolean;
+  /** V3 UX Closure：研究资料在完成后发生变化，本次为重新确认 */
+  reconfirmed?: boolean;
 };
 
 /**
@@ -197,13 +201,62 @@ export async function completeCurrentResearch(
       "请先保存人工决定，再完成研究。",
     );
   }
+  const now = input.now ?? new Date().toISOString();
+  const currentEvidenceHash = computeResearchEvidenceHash(result);
+  // V3 UX Closure Staleness：已存在 completion 时，若完成研究后证据内容发生变化
+  // （evidenceHash 失配）→ 允许重新确认（更新证据指纹 + 完成时间，reconfirmed）；
+  // 否则幂等返回现有状态。
   if (existing) {
+    const existingHash = existing.evidenceHash ?? null;
+    const stale = existingHash !== null
+      && currentEvidenceHash !== null
+      && existingHash !== currentEvidenceHash;
+    if (!stale) {
+      return {
+        taskId,
+        lifecycle: existing.status,
+        researchRecord: true,
+        completedAt: existing.completedAt,
+        idempotent: true,
+      };
+    }
+    const reconfirmed: ResearchCompletionV1 = {
+      ...existing,
+      completedAt: now,
+      ...(currentEvidenceHash ? { evidenceHash: currentEvidenceHash } : {}),
+    };
+    try {
+      await taskResultWriterPersistence.persistResearchCompletion({
+        context,
+        taskId,
+        expectedStorageVersion: {
+          resultJson: snapshot.resultJson,
+          updatedAt: snapshot.updatedAt,
+        },
+        completion: reconfirmed,
+        updatedAt: now,
+      });
+    } catch (error) {
+      if (error instanceof TaskResultJsonMutationError) {
+        if (error.code === "not_found") notFound();
+        if (error.code === "task_result_conflict") {
+          throw new ProductResearchStoreError(
+            "research_record_conflict",
+            409,
+            "研究记录已更新，请刷新后重试。",
+          );
+        }
+        throw new ProductResearchStoreError(error.code, error.status, error.message);
+      }
+      throw error;
+    }
     return {
       taskId,
-      lifecycle: existing.status,
+      lifecycle: reconfirmed.status,
       researchRecord: true,
-      completedAt: existing.completedAt,
-      idempotent: true,
+      completedAt: now,
+      idempotent: false,
+      reconfirmed: true,
     };
   }
   if (record.latestDecision.status === "needs_information") {
@@ -213,7 +266,6 @@ export async function completeCurrentResearch(
       "当前仍需补充资料，补充后再完成研究。",
     );
   }
-  const now = input.now ?? new Date().toISOString();
   const completion: ResearchCompletionV1 = {
     schema: RESEARCH_COMPLETION_SCHEMA,
     status: record.latestDecision.status === "abandoned" ? "abandoned" : "completed",
@@ -221,6 +273,7 @@ export async function completeCurrentResearch(
     decisionId: record.latestDecision.decisionId,
     revision: record.revision,
     finalStatus: record.latestDecision.status,
+    ...(currentEvidenceHash ? { evidenceHash: currentEvidenceHash } : {}),
   };
   try {
     await taskResultWriterPersistence.persistResearchCompletion({

@@ -26,6 +26,7 @@ import {
   getProductResearchRecord,
   getProductResearchVerification,
   getResearchCompletion,
+  getResearchStaleState,
   verifyProductResearchHash,
   hasProductResearchRecordNamespace,
 } from "@/lib/productResearchRecord";
@@ -62,6 +63,7 @@ export type CreativeHandoffEligibility =
   | "legacy_not_supported"
   | "decision_not_creative_ready"
   | "research_not_completed"
+  | "research_stale_requires_reconfirmation"
   | "workflow_incomplete"
   | "research_hash_invalid"
   | "verification_invalid"
@@ -422,6 +424,13 @@ export async function checkCreativeHandoffGate(
   const completion = getResearchCompletion(resultJson);
   if (!completion || completion.status !== "completed") {
     return { allowed: false, reason: "research_not_completed", taskAccessible: accessible };
+  }
+
+  // V3 UX Closure Staleness：完成研究后证据内容发生变化（evidenceHash 失配）→
+  // 新 Listing/Image 生成 fail-closed，直到用户重新确认研究（completeCurrentResearch reconfirm）。
+  // 旧 completion 无 evidenceHash（旧数据）→ 不视为 stale（兼容）。
+  if (getResearchStaleState(resultJson).stale) {
+    return { allowed: false, reason: "research_stale_requires_reconfirmation", taskAccessible: accessible };
   }
 
   const taskRec = task as Record<string, unknown>;

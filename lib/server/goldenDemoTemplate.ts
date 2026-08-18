@@ -9,6 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { GOLDEN_DEMO_TEMPLATE_RESULT_JSON } from "@/lib/server/goldenDemoTemplateData";
+import { computeResearchEvidenceHash } from "@/lib/productResearchRecord";
 import {
   createTrustedSandboxTask,
   getSandboxTask,
@@ -76,7 +77,7 @@ function isThermosTask(task: SandboxTask): boolean {
   return readDemoTemplateMarker(task.resultJson) !== null;
 }
 
-/** 构建带 demoTemplate 标记的模板 resultJson（确定性，无随机时间） */
+/** 构建带 demoTemplate 标记的模板 resultJson（确定性，无随机时间；注入 completion evidenceHash 启用 staleness） */
 function buildTemplateResultJson(): string {
   const result = JSON.parse(JSON.stringify(GOLDEN_DEMO_TEMPLATE_RESULT_JSON)) as Record<string, unknown>;
   result.demoTemplate = {
@@ -84,6 +85,13 @@ function buildTemplateResultJson(): string {
     demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
     sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
   } satisfies DemoTemplateMarker;
+  // Staleness 契约：completion 记录当前证据指纹 → 演示采集/新增证据后研究状态自动进入
+  // NEEDS_RECONFIRMATION（可体验"重新确认"流程），不会让旧结论冒充当前状态。
+  const completion = isRecord(result.researchCompletion) ? result.researchCompletion : null;
+  const evidenceHash = computeResearchEvidenceHash(result);
+  if (completion && evidenceHash) {
+    result.researchCompletion = { ...completion, evidenceHash };
+  }
   return JSON.stringify(result);
 }
 

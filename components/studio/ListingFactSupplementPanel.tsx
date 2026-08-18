@@ -146,7 +146,7 @@ export function ListingFactSupplementPanel({
             <div key={`${fact.field}:${fact.value}`} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-sm text-slate-700">
               <strong>{fact.label}</strong>：{fact.value}
               <span className="mt-1 block text-xs text-teal-700">
-                {fact.sourceKind === "user_confirmation" ? "人工补充并确认" : "系统提取并确认"}
+                {fact.sourceKind === "user_confirmation" ? "人工核实确认" : "来源证据确认"}
               </span>
             </div>
           ))}
