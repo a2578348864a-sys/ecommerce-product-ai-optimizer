@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccessPassword } from "@/lib/client/accessPassword";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import { sourcingCapabilities } from "@/lib/client/sourcingCapabilities";
 import {
   parseSourcingCapabilities,
@@ -169,8 +169,13 @@ export function SourcingEvidencePanel({
   const [checkResult, setCheckResult] = useState<string>("");
   const [loginNotice, setLoginNotice] = useState("");
   const [openingLogin, setOpeningLogin] = useState(false);
+  const [previewDemo, setPreviewDemo] = useState(false);
   const reqIdRef = useRef(0);
   const panelOpen = useRef(false);
+
+  // 演示模式（Visitor）：本地采集能力不可用（local_env_required）时，搜索入口仍可
+  // 体验“演示找货”——服务端回放预置真实 1688 供应线索样本（demo 分支），结果标注“演示数据”。
+  const demoMode = getAccessMode() === "demo";
 
   const api = useCallback(async (body: Record<string, unknown>) => {
     const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/sourcing`, {
@@ -318,13 +323,14 @@ export function SourcingEvidencePanel({
         setErrorMessage(data.error?.message ?? "获取失败，请重试。");
         return;
       }
-      const payloadData = data.data as { preview: PreviewPayload; trace?: unknown };
+      const payloadData = data.data as { preview: PreviewPayload; trace?: unknown; demo?: boolean };
       const candidates = payloadData.preview.candidates;
       if (candidates.length === 0) {
         setStatus("no_results");
         return;
       }
       setPreview(payloadData.preview);
+      setPreviewDemo(payloadData.demo === true);
       setStatus("preview");
     } catch {
       setStatus("error");
@@ -403,7 +409,9 @@ export function SourcingEvidencePanel({
   const caps = sourcingCapabilities(toolStatus);
   // §16/§17：公网 runtime（capabilities=local_env_required）→ 统一"实时找货需要本地研究环境"，
   // 不展示"组件未安装/登录失败/CLI 缺失"等本地诊断文案；已保存供应证据仍正常展示。
+  // 演示模式（Visitor）：改为"演示找货"引导——demo 分支回放预置样本，搜索按钮可点。
   const localEnvRequired = capabilities !== null && capabilities.keyword.state === "local_env_required";
+  const canDemoReplay = localEnvRequired && demoMode;
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4" data-testid="sourcing-evidence-panel">
@@ -425,12 +433,14 @@ export function SourcingEvidencePanel({
         <p className="mt-3 text-sm text-slate-500">输入访问密码后可使用供应线索功能。</p>
       ) : (
         <>
-          {/* §16/§17：公网实时找货能力提示（本地研究环境） */}
+          {/* §16/§17：公网实时找货能力提示（本地研究环境）；演示模式改为"演示找货"引导 */}
           <CapabilityNotice
             capability={localEnvRequired
               ? { state: "local_env_required", reasonCategory: "local_environment_required" }
               : null}
-            localEnvMessage="实时找货需要在本地研究环境使用。已保存并确认的供应证据仍可正常查看。"
+            localEnvMessage={demoMode
+              ? "演示模式：当前环境不执行实时 1688 找货，可点击下方「演示找货」回放示例供应线索（演示数据，非实时采集）。"
+              : "实时找货需要在本地研究环境使用。已保存并确认的供应证据仍可正常查看。"}
           />
 
           {/* R1：两套独立登录说明（常驻，任何状态下可见；公网不展示本地工具概念） */}
@@ -546,7 +556,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!keyword.trim() || status === "searching" || !caps.cliReady || localEnvRequired}
+                    disabled={!keyword.trim() || status === "searching" || !caps.cliReady || (localEnvRequired && !demoMode)}
                     onClick={() => void runSearch("keyword", { keyword: keyword.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-keyword-submit"
@@ -586,7 +596,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!imageUrl.trim() || status === "searching" || !caps.imageReady || localEnvRequired}
+                    disabled={!imageUrl.trim() || status === "searching" || !caps.imageReady || (localEnvRequired && !demoMode)}
                     onClick={() => void runSearch("image", { imageUrl: imageUrl.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-image-submit"
@@ -684,7 +694,7 @@ export function SourcingEvidencePanel({
                   />
                   <button
                     type="button"
-                    disabled={!offerUrl.trim() || status === "searching" || !caps.cliReady || localEnvRequired}
+                    disabled={!offerUrl.trim() || status === "searching" || !caps.cliReady || (localEnvRequired && !demoMode)}
                     onClick={() => void runSearch("url", { url: offerUrl.trim() })}
                     className="linear-button inline-flex h-9 items-center justify-center px-3 text-sm font-semibold disabled:opacity-50"
                     data-testid="sourcing-url-submit"
@@ -718,6 +728,11 @@ export function SourcingEvidencePanel({
                 <p className="text-sm font-bold text-slate-700">
                   搜索结果（{preview.candidates.length} 条）— 需人工确认后才成为供应线索
                 </p>
+                {previewDemo && (
+                  <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800" data-testid="demo-sample-badge">
+                    演示数据（示例供应线索，非实时采集）
+                  </span>
+                )}
                 <button type="button" onClick={() => { setPreview(null); setStatus("idle"); }} className="text-sm font-semibold text-slate-400 hover:text-slate-600">
                   取消
                 </button>

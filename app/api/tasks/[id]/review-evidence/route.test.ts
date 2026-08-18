@@ -434,7 +434,7 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
     expect(body.error.code).toBe("acquisition_unavailable");
   });
 
-  it("public runtime（LOCAL_ACQUISITION_ENABLED 未开启）→ collect 409 local_environment_required；import 仍可用", async () => {
+  it("public runtime（LOCAL_ACQUISITION_ENABLED 未开启）→ demo 主体 collect 200 演示回放（demo 分支）；import 仍可用", async () => {
     const saved = process.env.LOCAL_ACQUISITION_ENABLED;
     delete process.env.LOCAL_ACQUISITION_ENABLED;
     try {
@@ -442,10 +442,12 @@ describe("POST collect / collect-confirm（Package C 半自动采集）", () => 
         action: "collect",
         asins: [{ asin: ASIN, sourceProductRole: "current_candidate" }],
       }, taskId);
-      expect(collect.status).toBe(409);
+      expect(collect.status).toBe(200);
       const body = await collect.json();
-      expect(body.error.code).toBe("local_environment_required");
-      expect(body.error.message).toContain("本地研究环境");
+      expect(body.ok).toBe(true);
+      expect(body.data.demo).toBe(true);
+      expect(body.data.preview.items.length).toBeGreaterThan(0);
+      expect(body.data.preview.items[0].asin.length).toBeGreaterThan(0);
       // 粘贴导入（server 能力）不受影响
       const imp = await postJson({
         action: "import",
