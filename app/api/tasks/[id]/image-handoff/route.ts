@@ -8,6 +8,7 @@ import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPre
 import { computeImageStatus, parseImageHandoffBinding, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
+import { classifyImageDraft, isFinalSelectableDraft } from "@/lib/imageHandoff/historicalDraftClassification";
 import {
   buildTaskImageCreativeDescriptionContext,
   parseTaskImageCreativeDirection,
@@ -32,6 +33,46 @@ const FORBIDDEN_KEYS = new Set([
 
 function errorResponse(status: number, code: string, message: string) {
   return NextResponse.json({ error: { code, message } }, { status });
+}
+
+function safeString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** V3 Final Freeze：历史草稿安全投影（分类确定性来源：classifyImageDraft；不含图片字节） */
+function buildDraftHistoryProjection(
+  imageDraftRaw: unknown,
+  currentCandidateIds: Array<string | null>,
+): Array<{
+  id: string;
+  classification: ReturnType<typeof classifyImageDraft>;
+  generatedAt: string | null;
+  sourceHandoffRevision: number | null;
+  approvedReferenceFingerprint: string | null;
+  inCurrentCandidates: boolean;
+}> {
+  if (!isRecord(imageDraftRaw) || !Array.isArray(imageDraftRaw.items)) return [];
+  const current = new Set(currentCandidateIds.filter((id): id is string => typeof id === "string"));
+  return imageDraftRaw.items
+    .map((item) => {
+      if (!isRecord(item)) return null;
+      const id = safeString(item.id);
+      if (!id) return null;
+      return {
+        id,
+        classification: classifyImageDraft(item),
+        generatedAt: safeString(item.createdAt),
+        sourceHandoffRevision: typeof item.sourceHandoffRevision === "number"
+          && Number.isSafeInteger(item.sourceHandoffRevision)
+          ? item.sourceHandoffRevision
+          : null,
+        approvedReferenceFingerprint: typeof item.approvedReferenceFingerprint === "string"
+          ? item.approvedReferenceFingerprint.slice(0, 16)
+          : null,
+        inCurrentCandidates: current.has(id),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -222,6 +263,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           approvable: candidate.approvable === true,
           summary: candidate.summary,
         })),
+        // V3 Final Freeze：历史草稿分类投影（仅 id/分类/时间/来源版本，不含图片字节与内部引用）
+        draftHistory: buildDraftHistoryProjection(gate.imageDraftRaw, candidates.map((c) => c.id)),
         storageVersion,
         expectedHandoffRevision: handoff?.currentRevision ?? null,
         allowedModes: mode ? [mode] : [],
@@ -382,6 +425,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (handoff.currentRevision !== expectedHandoffRevision) {
       return errorResponse(409, "handoff_revision_conflict", "创作资料已经更新，请刷新后重新选择。");
+    }
+    // V3 Final Freeze：历史草稿最终选择 Gate（fail-closed，不依赖前端隐藏按钮）。
+    // 只允许 PRODUCT_VISUAL_DRAFT；历史异常 / 构图概念 / 无法分类一律拒绝。
+    if (isRecord(gate.imageDraftRaw) && Array.isArray(gate.imageDraftRaw.items)) {
+      const target = (gate.imageDraftRaw.items as unknown[]).find(
+        (item) => isRecord(item) && item.id === selectedImageId,
+      );
+      if (target) {
+        const classification = classifyImageDraft(target);
+        if (classification === "invalid_product_identity") {
+          return errorResponse(409, "invalid_product_identity_draft", "该图片属于历史异常结果（商品身份错误），不能作为正式商品图。");
+        }
+        if (!isFinalSelectableDraft(classification)) {
+          return errorResponse(409, "concept_draft_not_final_asset", "构图概念或历史草稿不能作为正式商品图，请选择基于商品参考图生成的产品图片草稿。");
+        }
+      }
     }
     const currentCandidates = imageDraftSafeSummaries(gate.imageDraftRaw, handoff.currentRevision);
     if (!currentCandidates.some((candidate) => candidate.id === selectedImageId)) {

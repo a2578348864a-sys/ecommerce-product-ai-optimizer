@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireOwnerOnly: vi.fn(),
   checkCreativeHandoffGate: vi.fn(),
   generateImageDraftFromHandoff: vi.fn(),
+  mutateTaskResultJson: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
@@ -20,16 +21,29 @@ vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
   checkCreativeHandoffGate: mocks.checkCreativeHandoffGate,
 }));
 
-vi.mock("@/lib/imageHandoff/imageGenerationService", () => ({
-  generateImageDraftFromHandoff: mocks.generateImageDraftFromHandoff,
-  ImageHandoffError: class ImageHandoffError extends Error {
-    constructor(public code: string, public status: number, message: string) {
+vi.mock("@/lib/server/taskResultJsonMutation", () => ({
+  mutateTaskResultJson: mocks.mutateTaskResultJson,
+  TaskResultJsonMutationError: class TaskResultJsonMutationError extends Error {
+    constructor(public status: number, public code: string, message: string) {
       super(message);
-      this.name = "ImageHandoffError";
+      this.name = "TaskResultJsonMutationError";
     }
   },
-  imageDraftSafeSummary: () => null,
 }));
+
+vi.mock("@/lib/imageHandoff/imageGenerationService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/imageHandoff/imageGenerationService")>();
+  return {
+    ...actual,
+    generateImageDraftFromHandoff: mocks.generateImageDraftFromHandoff,
+    ImageHandoffError: class ImageHandoffError extends Error {
+      constructor(public code: string, public status: number, message: string) {
+        super(message);
+        this.name = "ImageHandoffError";
+      }
+    },
+  };
+});
 
 import { ImageHandoffError as MockedImageHandoffError } from "@/lib/imageHandoff/imageGenerationService";
 
@@ -390,5 +404,113 @@ describe("Visual Reference Gate（§32-35：白底/细节/包装要求已确认�
     expect(body.data.visualReferenceCandidates[0].sourceKind).toBe("candidate_fallback");
     expect(JSON.stringify(body.data.visualReferenceCandidates)).not.toContain("c".repeat(64));
     expect(JSON.stringify(body.data.visualReferenceCandidates)).not.toContain("dataUrl");
+  });
+});
+
+// ── V3 Final Freeze：历史草稿分类投影 + 最终选择 Gate ─────────────────────────
+
+const HISTORY_ITEMS = [
+  { id: "baa8bd0d-824c-47fd-8b00-3092bfa27597", createdAt: "2026-08-17T17:28:11.385Z", generationBasis: { productName: "composition concept" } },
+  { id: "4a74ca28-ca79-4c47-a991-6e8ac80c71bf", createdAt: "2026-08-17T17:29:07.945Z", generationBasis: { productName: "composition concept" } },
+  { id: "2b51c7d9-dc3c-4ab6-b576-78ada0001899", createdAt: "2026-08-17T18:21:07.057Z", generationBasis: { productName: "composition concept" } },
+  { id: "legacy-unknown-draft", createdAt: "2026-08-17T18:00:00.000Z", generationBasis: { productName: "composition concept" } },
+  { id: "current-valid-draft", handoffMode: "product_visual_draft", sourceHandoffRevision: 2, createdAt: "2026-08-18T05:52:25.642Z", approvedReferenceFingerprint: "f6d3762f2185bc93aaaaaaaaaa" },
+];
+
+function gateWithHistory(overrides: Record<string, unknown> = {}) {
+  return activeGate({
+    imageDraftRaw: { version: 1, items: HISTORY_ITEMS },
+    ...overrides,
+  });
+}
+
+async function callPATCH(taskId: string, body: unknown) {
+  const { PATCH } = await import("@/app/api/tasks/[id]/image-handoff/route");
+  return PATCH(new Request(`http://localhost/api/tasks/${taskId}/image-handoff`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-access-token": "tok_test" },
+    body: JSON.stringify(body),
+  }) as never, { params: Promise.resolve({ id: taskId }) });
+}
+
+function selectBody(selectedImageId: string) {
+  return {
+    selectedImageId,
+    expectedStorageVersion: { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-05T00:00:00.000Z" },
+    expectedHandoffRevision: 2,
+    confirmed: true,
+  };
+}
+
+describe("V3 Final Freeze — 历史草稿最终选择 Gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireOwnerOnly.mockReturnValue({ ok: true, context: { mode: "owner" } });
+    mocks.requireAuthenticated.mockReturnValue({ ok: true, context: { mode: "owner", token: "owner" } });
+  });
+
+  it("历史异常（invalid_product_identity）→ 409 invalid_product_identity_draft", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gateWithHistory());
+    const res = await callPATCH("task-1", selectBody("baa8bd0d-824c-47fd-8b00-3092bfa27597"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("invalid_product_identity_draft");
+  });
+
+  it("另一张历史异常 → 409 invalid_product_identity_draft", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gateWithHistory());
+    const res = await callPATCH("task-1", selectBody("4a74ca28-ca79-4c47-a991-6e8ac80c71bf"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("invalid_product_identity_draft");
+  });
+
+  it("历史构图概念 → 409 concept_draft_not_final_asset", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gateWithHistory());
+    const res = await callPATCH("task-1", selectBody("2b51c7d9-dc3c-4ab6-b576-78ada0001899"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("concept_draft_not_final_asset");
+  });
+
+  it("无法分类的旧草稿 → 409 concept_draft_not_final_asset（fail-closed）", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gateWithHistory());
+    const res = await callPATCH("task-1", selectBody("legacy-unknown-draft"));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("concept_draft_not_final_asset");
+  });
+
+  it("有效 product_visual_draft（当前候选）→ 200 可正式选择", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gateWithHistory());
+    mocks.mutateTaskResultJson.mockResolvedValue({ ok: true } as never);
+    const res = await callPATCH("task-1", selectBody("current-valid-draft"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.selectedImageId).toBe("current-valid-draft");
+  });
+
+  it("GET draftHistory 安全投影：四类分类正确且不含图片字节/内部字段", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(gateWithHistory());
+    const res = await callGET("task-1");
+    const body = await res.json();
+    const history = body.data.draftHistory as Array<Record<string, unknown>>;
+    expect(history).toHaveLength(5);
+    const byId = new Map(history.map((entry) => [entry.id, entry]));
+    expect(byId.get("baa8bd0d-824c-47fd-8b00-3092bfa27597")?.classification).toBe("invalid_product_identity");
+    expect(byId.get("4a74ca28-ca79-4c47-a991-6e8ac80c71bf")?.classification).toBe("invalid_product_identity");
+    expect(byId.get("2b51c7d9-dc3c-4ab6-b576-78ada0001899")?.classification).toBe("composition_concept");
+    expect(byId.get("legacy-unknown-draft")?.classification).toBe("legacy_unclassified");
+    expect(byId.get("current-valid-draft")?.classification).toBe("product_visual_draft");
+    expect(byId.get("current-valid-draft")?.inCurrentCandidates).toBe(true);
+    expect(byId.get("current-valid-draft")?.approvedReferenceFingerprint).toBe("f6d3762f2185bc93");
+    const serialized = JSON.stringify(history);
+    expect(serialized).not.toContain("storageKey");
+    expect(serialized).not.toContain("sha256");
+    expect(serialized).not.toContain("dataUrl");
+    expect(serialized).not.toContain("promptSummary");
+  });
+
+  it("GET 无 imageDraftRaw → draftHistory 空数组", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callGET("task-1");
+    const body = await res.json();
+    expect(body.data.draftHistory).toEqual([]);
   });
 });

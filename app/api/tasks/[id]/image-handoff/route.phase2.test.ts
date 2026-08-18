@@ -36,9 +36,10 @@ vi.mock("@/lib/server/taskResultJsonMutation", () => ({
 }));
 
 const VERSION = { resultJsonHash: "a".repeat(64), updatedAt: "2026-08-08T00:00:00.000Z" };
+// V3 Final Freeze：候选携带 handoffMode（product_visual_draft 才可正式选择；composition_concept 由选择 gate 拒绝）
 const CANDIDATES = [
-  { id: "image-a", mode: "composition_concept", compositionSummary: "A", approvedReferenceFingerprint: null, generatedAt: "2026-08-08T00:00:00.000Z", sourceHandoffRevision: 2, humanReviewRequired: true },
-  { id: "image-b", mode: "composition_concept", compositionSummary: "B", approvedReferenceFingerprint: null, generatedAt: "2026-08-08T00:00:00.000Z", sourceHandoffRevision: 2, humanReviewRequired: true },
+  { id: "image-a", mode: "composition_concept", handoffMode: "composition_concept", compositionSummary: "A", approvedReferenceFingerprint: null, generatedAt: "2026-08-08T00:00:00.000Z", sourceHandoffRevision: 2, humanReviewRequired: true },
+  { id: "image-b", mode: "product_visual_draft", handoffMode: "product_visual_draft", compositionSummary: "B", approvedReferenceFingerprint: "f6d3762f2185bc93", generatedAt: "2026-08-08T00:00:00.000Z", sourceHandoffRevision: 2, humanReviewRequired: true },
 ];
 
 function gate(overrides: Record<string, unknown> = {}) {

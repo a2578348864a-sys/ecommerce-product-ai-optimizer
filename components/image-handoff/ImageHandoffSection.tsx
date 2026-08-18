@@ -30,6 +30,15 @@ type ImageDraftSafeSummary = {
   humanReviewRequired: boolean;
 };
 
+type ImageDraftHistoryEntry = {
+  id: string;
+  classification: "product_visual_draft" | "composition_concept" | "invalid_product_identity" | "legacy_unclassified";
+  generatedAt: string | null;
+  sourceHandoffRevision: number | null;
+  approvedReferenceFingerprint: string | null;
+  inCurrentCandidates: boolean;
+};
+
 type ImageStateData = {
   canGenerate: boolean;
   imageStatus: ImageStatus;
@@ -44,6 +53,8 @@ type ImageStateData = {
   approvedVisualReferenceSummary: Array<{ referenceFingerprint: string; summary: string; selectionId?: string }>;
   /** Visual Reference Closure：任务自有图片候选（服务端安全投影，不含哈希/dataUrl） */
   visualReferenceCandidates?: Array<{ selectionId: string; sourceKind: string; approvable: boolean; summary: string }>;
+  /** V3 Final Freeze：历史草稿分类投影（含当前候选与历史；UI 分组展示，历史不可正式选择） */
+  draftHistory?: ImageDraftHistoryEntry[];
   storageVersion: { resultJsonHash: string; updatedAt: string } | null;
   expectedHandoffRevision: number | null;
   allowedModes: Array<"composition_concept" | "product_visual_draft">;
@@ -651,21 +662,79 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleSelect(candidate.id!)}
+                  onClick={() => {
+                    if (candidate.mode === "composition_concept") {
+                      // V3 Final Freeze：构图概念不进入正式选择（服务端 PATCH gate 同样拒绝）；
+                      // 按钮保留仅为提示构图/场景/视觉方向参考语义。
+                      setNotice({ tone: "info", text: "构图概念仅用于构图/场景/视觉方向参考，不代表真实商品外观，不能作为正式商品图。" });
+                      return;
+                    }
+                    void handleSelect(candidate.id!);
+                  }}
                   disabled={submitting || state.selectedImageId === candidate.id}
                   title={candidate.mode === "composition_concept"
                     ? "构图概念仅用于构图/场景/视觉方向参考，不代表真实商品外观，不能作为正式商品图。"
                     : "已基于批准的商品参考图生成，仍需人工核对商品外观。"}
                   className="inline-flex h-9 items-center justify-center rounded-lg bg-teal-600 px-3 text-sm font-bold text-white transition hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {state.selectedImageId === candidate.id
-                    ? (candidate.mode === "composition_concept" ? "已选为构图参考" : "已选择")
-                    : (candidate.mode === "composition_concept" ? "作为构图参考" : "选择此图")}
+                  {candidate.mode === "composition_concept" ? "作为构图参考" : (state.selectedImageId === candidate.id ? "已选择" : "选择此图")}
                 </button>
               </div>
             </article>
           ) : null)}
         </div>
+      ) : null}
+
+      {/* V3 Final Freeze：历史草稿区（旧版创作资料/历史异常/旧构图概念）——折叠弱化、不可正式选择 */}
+      {state.draftHistory && state.draftHistory.some((entry) => !entry.inCurrentCandidates) ? (
+        <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3" data-testid="task-image-history-drafts">
+          <summary className="cursor-pointer text-sm font-bold text-slate-600">
+            历史草稿（{state.draftHistory.filter((entry) => !entry.inCurrentCandidates).length} 项 · 旧版创作资料，仅保留用于问题追踪）
+          </summary>
+          <div className="mt-3 space-y-3">
+            {state.draftHistory
+              .filter((entry) => !entry.inCurrentCandidates)
+              .map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`flex items-start gap-3 rounded-xl border p-3 ${
+                    entry.classification === "invalid_product_identity"
+                      ? "border-rose-200 bg-rose-50/40"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="w-24 shrink-0">
+                    <DraftImagePreview taskId={taskId} draftId={entry.id} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                      <span className={`rounded-full px-2 py-0.5 ${
+                        entry.classification === "invalid_product_identity"
+                          ? "bg-rose-100 text-rose-700"
+                          : entry.classification === "composition_concept"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {entry.classification === "invalid_product_identity"
+                          ? "历史异常 · 商品身份错误"
+                          : entry.classification === "composition_concept"
+                            ? "构图概念"
+                            : "历史草稿"}
+                      </span>
+                      <span className="text-slate-400">{formatTime(entry.generatedAt)}</span>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-5 text-slate-500">
+                      {entry.classification === "invalid_product_identity"
+                        ? "历史异常结果（商品身份错误），仅保留用于问题追踪，不能作为正式商品图。"
+                        : entry.classification === "composition_concept"
+                          ? "构图概念，仅用于构图参考，不代表真实商品外观，不能作为正式商品图。"
+                          : "旧版创作资料生成的历史草稿，不能作为正式商品图。"}
+                    </p>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </details>
       ) : null}
 
       {notice ? (
