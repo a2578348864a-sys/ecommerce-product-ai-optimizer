@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { FactCandidateReview } from "@/components/evidence/FactCandidateReview";
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 import {
   KeywordReportEvidenceSection,
@@ -181,9 +182,17 @@ export function extractOverviewItems(result: unknown): WorkbenchOverviewItem[] {
   const batchSnapshot = sourceMeta && isRecord(sourceMeta.productBatchSnapshot)
     ? sourceMeta.productBatchSnapshot
     : null;
-  const facts = batchSnapshot && isRecord(batchSnapshot.productFacts)
+  // V3 UX Closure：productFacts 优先取 sourceMeta.productBatchSnapshot（SellerSprite 导入任务）；
+  // 回退到 candidateAnalysisContext.facts.productFacts（同一 productFacts 结构，当前 Research /
+  // 演示任务无 sourceMeta 时的权威来源）——系统已有的确定性商品事实必须展示，不能显示"待补"。
+  let facts = batchSnapshot && isRecord(batchSnapshot.productFacts)
     ? batchSnapshot.productFacts
     : null;
+  if (!facts) {
+    const cac = isRecord(result.candidateAnalysisContext) ? result.candidateAnalysisContext : null;
+    const cacFacts = cac && isRecord(cac.facts) ? cac.facts : null;
+    facts = cacFacts && isRecord(cacFacts.productFacts) ? cacFacts.productFacts : null;
+  }
   const items: WorkbenchOverviewItem[] = [];
   for (const { field, label } of OVERVIEW_FIELDS) {
     if (!facts) break;
@@ -670,20 +679,45 @@ export function EvidenceWorkbench({
           {materialRows.map((row) => (
             <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
               <span className="text-slate-700">{row.label}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                row.state === "已有"
-                  ? "bg-teal-50 text-teal-700"
-                  : row.state === "可选"
-                    ? "bg-slate-100 text-slate-500"
-                    : "bg-amber-50 text-amber-700"
-              }`}>
-                {row.state}
-              </span>
+              {row.key === "productBasics" && row.state === "待补" ? (
+                <a
+                  href="#fact-candidate-review"
+                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                  data-testid="cta-product-basics"
+                >
+                  补充商品事实 →
+                </a>
+              ) : row.key === "browser" && row.state === "待补" ? (
+                <a
+                  href="#workbench-browser-evidence"
+                  className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                  data-testid="cta-browser-collect"
+                >
+                  采集 Amazon 页面 →
+                </a>
+              ) : (
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  row.state === "已有"
+                    ? "bg-teal-50 text-teal-700"
+                    : row.state === "可选"
+                      ? "bg-slate-100 text-slate-500"
+                      : "bg-amber-50 text-amber-700"
+                }`}>
+                  {row.state}
+                </span>
+              )}
             </li>
           ))}
         </ul>
         <p className="mt-2 text-xs text-slate-400">下方各区可直接补充资料；确认保存后，这里的状态会自动更新。</p>
       </section>
+
+      {/* V3 UX Closure：Fact Candidate Review（商品基础资料待补时的就地补充入口） */}
+      <FactCandidateReview
+        taskId={taskId}
+        storageVersion={storageVersion}
+        onChanged={() => onDataChanged?.()}
+      />
 
       {/* ── 简明结论（首屏） ── */}
       <section data-testid="workbench-summary" className="rounded-2xl border border-teal-200 bg-teal-50/60 p-4">

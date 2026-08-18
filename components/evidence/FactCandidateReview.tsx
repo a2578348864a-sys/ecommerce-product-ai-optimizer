@@ -1,0 +1,228 @@
+"use client";
+
+/**
+ * V3 UX Closure — Fact Candidate Review（商品事实候选确认）
+ *
+ * 系统从确定性证据（SellerSprite / Amazon 页面 / 商品标题）提取「事实候选」，
+ * 用户勾选/取消/修改后批量确认——确认即成为本任务的 Confirmed Fact（Human Confirmation
+ * Authority，独立 fact-candidates writer）。
+ *
+ * 安全语义：
+ * - 候选来源固定为确定性证据；AI/VOC/竞品/供应商声称不会出现在这里；
+ * - 「确认」是人类对候选值的核实（可修改），不是 AI 升权；
+ * - 已确认事实显示来源（seller_sprite / amazon_browser / product_title），不再重复确认。
+ */
+import { useCallback, useEffect, useState } from "react";
+import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { buildAccessHeaders } from "@/lib/client/accessToken";
+
+type FactCandidateView = {
+  candidateId: string;
+  field: string;
+  label: string;
+  value: string | number;
+  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "product_title";
+  sourceRef: string;
+};
+
+type ConfirmedFactView = FactCandidateView & { confirmedAt: string; confirmedBy: string };
+
+const SOURCE_LABELS: Record<string, string> = {
+  seller_sprite_product_facts: "SellerSprite 商品数据",
+  amazon_browser_evidence: "Amazon 页面证据",
+  product_title: "商品标题（自动识别）",
+};
+
+function buildFetchHeaders(extra?: Record<string, string>): Headers {
+  return new Headers({ ...buildAccessHeaders(), ...extra });
+}
+
+export function FactCandidateReview({
+  taskId,
+  storageVersion,
+  onChanged,
+}: {
+  taskId: string;
+  storageVersion: { resultJsonHash: string; updatedAt: string } | null;
+  onChanged: () => void;
+}) {
+  const [candidates, setCandidates] = useState<FactCandidateView[] | null>(null);
+  const [confirmed, setConfirmed] = useState<ConfirmedFactView[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [editedValues, setEditedValues] = useState<Record<string, string | number>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
+        method: "GET",
+        headers: buildFetchHeaders(),
+        cache: "no-store",
+      });
+      const json = await res.json() as
+        | { ok: true; data: { candidates: FactCandidateView[]; confirmed: ConfirmedFactView[] } }
+        | { ok: false; error?: { message?: string } };
+      if (!res.ok || !json.ok) {
+        setError((json as { error?: { message?: string } }).error?.message ?? "无法读取商品事实候选。");
+        return;
+      }
+      setCandidates(json.data.candidates);
+      setConfirmed(json.data.confirmed);
+    } catch {
+      setError("无法读取商品事实候选，请重试。");
+    } finally {
+      setLoading(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  function toggle(candidateId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
+  }
+
+  async function confirmSelected() {
+    if (selected.size === 0 || !storageVersion) return;
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const selections = [...selected].map((candidateId) => {
+        const candidate = candidates?.find((c) => c.candidateId === candidateId);
+        return {
+          candidateId,
+          confirmed: true,
+          value: editedValues[candidateId] ?? candidate?.value,
+        };
+      });
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
+        method: "POST",
+        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ selections, expectedStorageVersion: storageVersion }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { confirmedCount: number } }
+        | { ok: false; error?: { code?: string; message?: string } };
+      if (!res.ok || !json.ok) {
+        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        if (code === "task_result_conflict") {
+          setError("内容刚在其他位置更新，已刷新最新版本；请重新勾选确认。");
+          onChanged();
+          return;
+        }
+        setError((json as { error?: { message?: string } }).error?.message ?? "确认失败，请重试。");
+        return;
+      }
+      setNotice(`已确认 ${json.data.confirmedCount} 项商品事实。`);
+      setSelected(new Set());
+      setEditedValues({});
+      await load();
+      onChanged();
+    } catch {
+      setError("确认失败，请重试。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading && candidates === null && confirmed === null) {
+    return (
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-loading">
+        <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据提取商品事实候选…
+      </div>
+    );
+  }
+
+  const total = (candidates?.length ?? 0) + (confirmed?.length ?? 0);
+  if (total === 0 && !error) {
+    return (
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-empty">
+        暂无可提取的商品事实候选（来源：SellerSprite 商品数据 / Amazon 页面证据 / 商品标题）。
+      </div>
+    );
+  }
+
+  return (
+    <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4" data-testid="fact-candidate-review">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">
+          商品事实候选 <span className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">来自研究证据 · 人工确认</span>
+        </h3>
+        <button
+          type="button"
+          disabled={saving || selected.size === 0}
+          onClick={() => void confirmSelected()}
+          className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+          确认所选事实（{selected.size}）
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">
+        系统从已有研究证据提取以下候选；勾选并「确认」后即成为本任务已确认事实（可修改值，来源保持不变）。
+        AI 摘要、评论与供应商声称不会自动成为候选。
+      </p>
+      {error && <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</p>}
+      {notice && <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-700">{notice}</p>}
+
+      {confirmed && confirmed.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-bold text-slate-700">已确认（{confirmed.length}）</p>
+          <ul className="mt-1 space-y-1">
+            {confirmed.map((item) => (
+              <li key={item.candidateId} className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm" data-testid="fact-confirmed-item">
+                <span className="font-semibold text-slate-800">{item.label}</span>
+                <span className="flex-1 text-right text-slate-700">{item.value}</span>
+                <span className="shrink-0 text-[11px] text-slate-400">来源：{SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {candidates && candidates.length > 0 && (
+        <div className="mt-3">
+          <p className="text-xs font-bold text-slate-700">候选（{candidates.length}，勾选后批量确认）</p>
+          <ul className="mt-1 space-y-1">
+            {candidates.map((item) => (
+              <li key={item.candidateId} className="flex items-start gap-2 rounded-lg border border-slate-100 px-3 py-2 text-sm" data-testid="fact-candidate-item">
+                <input
+                  type="checkbox"
+                  checked={selected.has(item.candidateId)}
+                  onChange={() => toggle(item.candidateId)}
+                  className="mt-1 size-4 rounded border-slate-300 text-indigo-600"
+                  aria-label={`确认 ${item.label}`}
+                />
+                <span className="w-28 shrink-0 font-semibold text-slate-800">{item.label}</span>
+                <input
+                  type="text"
+                  value={String(editedValues[item.candidateId] ?? item.value)}
+                  onChange={(event) => setEditedValues((prev) => ({ ...prev, [item.candidateId]: event.target.value }))}
+                  className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-slate-700 focus:border-indigo-400 focus:outline-none"
+                  aria-label={`${item.label} 值（可修改）`}
+                />
+                <span className="shrink-0 text-[11px] text-slate-400" title={item.sourceRef}>
+                  <Sparkles className="mr-0.5 inline size-3" />
+                  {SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
