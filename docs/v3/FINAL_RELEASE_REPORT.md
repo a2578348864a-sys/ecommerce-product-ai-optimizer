@@ -1,12 +1,13 @@
-# 轻选工作台 — Final Release Report（V3.5 Final + Final Product Integration）
+# 轻选工作台 — Final Release Report（V3 FROZEN）
 
-> 状态：`LOCAL_RELEASE_CANDIDATE = APPROVED`（2026-08-16，经 Final Product Audit 重开整改后重新批准）
-> Git HEAD：`b63c760`（main == origin/main）
-> 公网部署：`PUBLIC_DEPLOY = FORBIDDEN`（等待用户本地验收后单独授权）
+> 状态：`V3 = FROZEN`（`V3_PRODUCT_INTEGRATION = PASS`、`V3_PUBLIC_DEMO_READINESS = PASS`、`V3_RELEASE_STATUS = APPROVED`、P0=0 / P1=0）
+> Git HEAD：`ae67912`（main == origin/main，working tree clean）
+> 公网部署：https://112.124.54.81（V3 Public Demo，Visitor 沙箱隔离）
+> 最终审计：`V3_FINAL_FREEZE_AUDIT.md`（P0=0 P1=0 → APPROVED）
 >
 > 修订记录：`0457265` 曾批准 Local Release Candidate → 经 `V3_FINAL_PRODUCT_AUDIT.md`（P1×8）重开为
 > REOPENED_FOR_PRODUCT_AUDIT → Final Product Integration Correction（codex/v3-final-product-integration）
-> 完成 F1-F11 全部整改（P1=0）→ 重新批准。
+> 完成 F1-F11 全部整改（P1=0）→ 重新批准 → V3 公网部署（112.124.54.81）→ V3 冻结（ae67912）。
 
 ## 产品定位
 
