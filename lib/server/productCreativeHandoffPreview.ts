@@ -25,6 +25,7 @@ import { getSandboxTask, isSandboxTaskId } from "@/lib/server/demoSandbox";
 import {
   getProductResearchRecord,
   getProductResearchVerification,
+  getResearchCompletion,
   verifyProductResearchHash,
   hasProductResearchRecordNamespace,
 } from "@/lib/productResearchRecord";
@@ -60,6 +61,7 @@ export type CreativeHandoffEligibility =
   | "no_confirmed_facts"
   | "legacy_not_supported"
   | "decision_not_creative_ready"
+  | "research_not_completed"
   | "workflow_incomplete"
   | "research_hash_invalid"
   | "verification_invalid"
@@ -411,6 +413,15 @@ export async function checkCreativeHandoffGate(
 
   if (record.latestDecision?.status !== "creative_ready") {
     return { allowed: false, reason: "decision_not_creative_ready", taskAccessible: accessible };
+  }
+
+  // V3 Completion Authority：Human Decision ≠ Research Completion。
+  // creative_ready 只是研究判断（"可以进入创作准备"），不等于"研究已正式完成"。
+  // Studio eligibility 必须绑定正式完成标记（research-completion.v1 / completed）——
+  // 未完成的任务不得生成 Creative Handoff / Listing / Image（服务端 fail-closed，不靠前端隐藏）。
+  const completion = getResearchCompletion(resultJson);
+  if (!completion || completion.status !== "completed") {
+    return { allowed: false, reason: "research_not_completed", taskAccessible: accessible };
   }
 
   const taskRec = task as Record<string, unknown>;

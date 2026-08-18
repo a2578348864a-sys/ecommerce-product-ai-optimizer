@@ -292,6 +292,7 @@ export function TaskStudioPreparation({
     // V3 Legacy Removal：Studio 只处理正式 Current Research Context；
     // legacy_not_supported 不再作为独立用户状态（详情页已不再展示创作工具区），统一为通用未就绪提示。
     const isDecisionNotReady = gateReason === "decision_not_creative_ready";
+    const isResearchNotCompleted = gateReason === "research_not_completed";
     const isBlocked = gateReason === "blocking_issue_present" || gateReason === "research_hash_invalid" || gateReason === "verification_invalid" || gateReason === "research_mode_invalid";
     return (
       <section className="surface-card border-amber-200 p-5" role="alert" data-testid={`task-studio-gate-${gateReason}`}>
@@ -299,9 +300,11 @@ export function TaskStudioPreparation({
         <p className="mt-2 text-sm leading-6 text-slate-700">
           {isDecisionNotReady
             ? "研究决定尚未进入可创作状态，请先返回商品研究完成人工决定。"
-            : isBlocked
-              ? "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。"
-              : "创作资料尚未准备完成，请先返回商品研究确认资料。"}
+            : isResearchNotCompleted
+              ? "研究已准备好，但尚未完成研究。请先返回研究记录执行「完成研究」，之后即可进入创作。"
+              : isBlocked
+                ? "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。"
+                : "创作资料尚未准备完成，请先返回商品研究确认资料。"}
         </p>
         <Link
           href={`/tasks/${encodeURIComponent(taskId)}`}

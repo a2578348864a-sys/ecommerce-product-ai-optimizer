@@ -124,6 +124,8 @@ describe("真实 SellerSprite XLSX ProductBatch 主链事实补全闭环验收",
       status: "completed",
       researchRecord,
       researchVerification: ver,
+    // V3 Completion Authority：正式完成标记（creative_ready 仅 Human Decision；完成需 research-completion.v1）
+    researchCompletion: { schema: "research-completion.v1", status: "completed", completedAt: "2026-08-05T00:00:00.000Z", decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, finalStatus: "creative_ready" },
       candidateAnalysisContext: {
         version: "candidate-analysis-context-v1",
         integrity: "verified_product_batch",
@@ -303,6 +305,8 @@ describe("真实 XLSX 修复前后对照", () => {
       status: "completed",
       researchRecord,
       researchVerification: ver,
+    // V3 Completion Authority：正式完成标记（creative_ready 仅 Human Decision；完成需 research-completion.v1）
+    researchCompletion: { schema: "research-completion.v1", status: "completed", completedAt: "2026-08-05T00:00:00.000Z", decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, finalStatus: "creative_ready" },
       candidateAnalysisContext: {
         version: "candidate-analysis-context-v1",
         integrity: "verified_product_batch",

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,7 +17,8 @@ vi.hoisted(() => {
 });
 
 import { createProductResearchVerification, createInitialProductResearchRecord, buildProductResearchHash, PRODUCT_RESEARCH_HASH_SCHEMA } from "@/lib/productResearchRecord";
-import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
+import { checkCreativeHandoffGate, generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
+
 import { createOrAppendCreativeHandoff } from "@/lib/server/productCreativeHandoffPersistence";
 import { buildRequestFingerprint } from "@/lib/creativeHandoffRequestLedger";
 import { buildImageInputFromCreativeHandoff } from "@/lib/imageHandoff/imageGenerationInput";
@@ -96,6 +97,8 @@ function researchDoc() {
     type: "workflow",
     researchRecord,
     researchVerification: verification,
+    // V3 Completion Authority：正式完成标记（creative_ready decision 需 research-completion.v1 才算完成）
+    researchCompletion: { schema: "research-completion.v1", status: "completed", completedAt: NOW, decisionId: "22222222-2222-4222-8222-222222222222", revision: 1, finalStatus: "creative_ready" },
     candidateAnalysisContext: context,
     agentOutputSnapshot: agentOutput,
     sourceMeta: {
@@ -162,6 +165,25 @@ async function setupConfirmed() {
 }
 
 describe("SellerSprite → 真实主图 → approvedVisualReferences → ImageInput 全链", () => {
+  it("Completion Authority：creative_ready 但无 researchCompletion → gate 拒绝（research_not_completed）", async () => {
+    seedTask();
+    // 构造无完成标记的 fixture 任务（decision=creative_ready 仅 Human Decision，不等于完成）
+    const storePath = join(tmpdir(), "vrc-integration", "sandbox.json");
+    const store = JSON.parse(readFileSync(storePath, "utf8"));
+    const target = (store.tasks ?? []).find((t: { id: string }) => t.id === TASK_ID);
+    if (target) {
+      const parsed = JSON.parse(target.resultJson);
+      delete parsed.researchCompletion;
+      target.resultJson = JSON.stringify(parsed);
+    }
+    writeFileSync(storePath, JSON.stringify(store), "utf8");
+    const gate = await checkCreativeHandoffGate(TASK_ID, visitorContext());
+    expect(gate.allowed).toBe(false);
+    expect(gate.reason).toBe("research_not_completed");
+    const p = await generateCreativeHandoffPreview(TASK_ID, visitorContext());
+    expect(p.preview).toBeNull();
+  });
+
   it("批准真实主图后 ImageGenerationInput 包含 approvedVisualReferences >= 1 且共享 facts 保留", async () => {    await setupConfirmed();
     // 批准视觉参考（纯视觉批准 append）
     const pRef = await generateCreativeHandoffPreview(TASK_ID, visitorContext());
@@ -251,3 +273,4 @@ describe("SellerSprite → 真实主图 → approvedVisualReferences → ImageIn
     expect(input!.mode).toBe("product_visual_draft");
   });
 });
+
