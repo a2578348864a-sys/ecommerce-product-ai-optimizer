@@ -348,27 +348,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // 无参考时阻止付费生成（BLOCKED_NEEDS_VISUAL_REFERENCE），不回落抽象轮廓冒充商品图。
   const REQUIRES_VISUAL_REFERENCE_PURPOSES = new Set(["white_studio", "detail_closeup", "packaging_bundle"]);
   const purpose = creativeDirection.data.primaryImagePurpose;
-  if (REQUIRES_VISUAL_REFERENCE_PURPOSES.has(purpose)) {
-    const gateForPurpose = await checkCreativeHandoffGate(id, ctx!);
-    if (!gateForPurpose.approvedReferenceImageDataUrl) {
-      const messages: Record<string, string> = {
-        white_studio: "白底商品图需要先确认商品参考图。请先批准商品参考图（创作资料 → 商品参考图）后重试。",
-        detail_closeup: "产品细节特写需要已确认的商品参考图。请先批准商品参考图后重试。",
-        packaging_bundle: "包装/套装展示需要已确认的商品参考图或包装事实。请先批准商品参考图后重试。",
-      };
-      return errorResponse(409, "blocked_needs_visual_reference", messages[purpose]);
-    }
+  const gateForPurpose = await checkCreativeHandoffGate(id, ctx!);
+  if (REQUIRES_VISUAL_REFERENCE_PURPOSES.has(purpose) && !gateForPurpose.approvedReferenceImageDataUrl) {
+    const messages: Record<string, string> = {
+      white_studio: "白底商品图需要先确认商品参考图。请先批准商品参考图（创作资料 → 商品参考图）后重试。",
+      detail_closeup: "产品细节特写需要已确认的商品参考图。请先批准商品参考图后重试。",
+      packaging_bundle: "包装/套装展示需要已确认的商品参考图或包装事实。请先批准商品参考图后重试。",
+    };
+    return errorResponse(409, "blocked_needs_visual_reference", messages[purpose]);
+  }
 
-    // V3 Creative Intent Propagation：Purpose 要求证据 gate（不静默降级为普通棚拍图）。
-    // 包装/套装展示必须有已确认包装证据；无证据时阻止生成并明确告知用户。
-    if (purpose === "packaging_bundle") {
-      const latestVersion = gateForPurpose.currentHandoff?.versions?.[gateForPurpose.currentHandoff.versions.length - 1];
-      const confirmedFacts = (latestVersion?.confirmedFacts ?? [])
-        .map((fact) => ({ field: fact.field, label: fact.label, value: String(fact.value ?? "") }));
-      const purposeGate = evaluatePurposeRequirements("packaging_bundle", confirmedFacts);
-      if (!purposeGate.ok) {
-        return errorResponse(409, purposeGate.code, purposeGate.message);
-      }
+  // V3 Purpose Evidence Gates（全部用途 fail-closed，不静默降级；在 generation service / quota 之前执行）：
+  // PACKAGING_SET → 包装证据；SIZE_SPEC → 尺寸证据（容量≠尺寸）；USAGE_STEPS → 使用方式证据；
+  // SELLING_POINT_INFOGRAPHIC → 已确认卖点证据。只读 confirmedFacts（VOC/AI/描述文本不作权威）。
+  {
+    const latestVersion = gateForPurpose.currentHandoff?.versions?.[gateForPurpose.currentHandoff.versions.length - 1];
+    const confirmedFacts = (latestVersion?.confirmedFacts ?? [])
+      .map((fact) => ({ field: fact.field, label: fact.label, value: String(fact.value ?? "") }));
+    const purposeGate = evaluatePurposeRequirements(purpose, confirmedFacts);
+    if (!purposeGate.ok) {
+      return errorResponse(409, purposeGate.code, purposeGate.message);
     }
   }
 

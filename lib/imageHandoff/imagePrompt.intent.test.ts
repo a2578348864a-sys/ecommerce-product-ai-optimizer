@@ -203,3 +203,48 @@ describe("Creative Intent Propagation 全链 dry-run", () => {
     expect(lines.join("\n")).toContain("PRIMARY CREATIVE PURPOSE: default ecommerce presentation");
   });
 });
+
+// ── V3 Evidence Gates Final Closure：Custom + Outdoor/Travel Provider Request Dry-run ──
+describe("Custom + Outdoor/Travel Provider Request Dry-run（无真实调用）", () => {
+  const customDirection = "Preserve the approved product exactly. Place the same product in a natural outdoor/travel environment. Do not add text, packaging, accessories, unsupported functions or claims.";
+  const input = baseInput({
+    primaryPurpose: "custom",
+    lifestyleScene: "outdoor_travel",
+    customPurposeText: customDirection,
+  });
+
+  it("dry-run 请求摘要：PRIMARY_PURPOSE=CUSTOM / SCENE=OUTDOOR_TRAVEL / CUSTOM_DIRECTION_PRESENT=true", () => {
+    const prompt = buildProductVisualPrompt(input);
+    expect(prompt).toContain("PRIMARY CREATIVE PURPOSE: Follow the user's custom creative purpose");
+    expect(prompt).toContain("SECONDARY SCENE: Outdoor/travel environment as supporting context");
+    expect(prompt).toContain("CUSTOM PURPOSE TEXT (untrusted creative direction");
+    expect(prompt).toContain("Preserve the approved product exactly");
+    expect(prompt).toContain("Place the same product in a natural outdoor/travel environment");
+    expect(prompt).toContain("Do not add text, packaging, accessories, unsupported functions or claims");
+  });
+
+  it("TARGET_PRODUCT_IDENTITY_PRESENT=true / VISUAL_REFERENCE_PRESENT=true（不回归）", () => {
+    const prompt = buildProductVisualPrompt(input);
+    expect(prompt).toContain("TARGET PRODUCT IDENTITY (HARD CONSTRAINT)");
+    expect(prompt).toContain("MUST remain a Water Bottle");
+    expect(prompt).toContain("approved product reference image");
+    expect(prompt).toContain("identity and approved reference ALWAYS win over intent");
+  });
+
+  it("UNSUPPORTED_CLAIMS_ADDED=false：custom 文本未引入任何新事实/包装/认证", () => {
+    const prompt = buildProductVisualPrompt(input);
+    expect(prompt).not.toContain("leakproof");
+    expect(prompt).not.toContain("BPA");
+    expect(prompt).not.toContain("24H Cold");
+    expect(prompt).not.toContain("Dishwasher Safe");
+    expect(prompt).toContain("Do NOT add functions, accessories, certifications, logos, or packaging text");
+  });
+
+  it("无 studio 默认覆盖：不出现覆盖用户 outdoor 意图的固定白底/棚拍指令", () => {
+    const prompt = buildProductVisualPrompt(input);
+    expect(prompt).not.toContain("Clean white studio background.");
+    expect(prompt).not.toContain("plain gray background");
+    expect(prompt).not.toContain("isolated on white");
+    expect(prompt).toContain("outdoor/travel environment");
+  });
+});

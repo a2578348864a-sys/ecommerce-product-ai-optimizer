@@ -440,6 +440,105 @@ describe("Visual Reference Gate（§32-35：白底/细节/包装要求已确认�
     const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "packaging_bundle" }));
     expect(res.status).toBe(200);
   });
+
+  it("dimension_specification 无已确认尺寸（仅 capacity）→ 409 image_purpose_requires_dimensions", async () => {
+    // activeGate 的 confirmedFacts 仅 capacity=30oz（容量≠尺寸）
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "dimension_specification" }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("image_purpose_requires_dimensions");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("dimension_specification 有已确认尺寸 → 放行", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({
+      currentHandoff: {
+        schema: "product-creative-handoff.v1",
+        handoffId: "handoff-1",
+        controlState: "active",
+        currentRevision: 2,
+        versions: [{
+          revision: 2,
+          productIdentity: { displayName: "30oz 黑色不锈钢水杯" },
+          visualReferences: [],
+          creativePreferences: {},
+          confirmedFacts: [
+            { field: "capacity", label: "容量", value: "30oz", usageScopes: ["image"] },
+            { field: "width", label: "宽度", value: "3.24 in", usageScopes: ["image"] },
+            { field: "height", label: "高度", value: "10.68 in", usageScopes: ["image"] },
+          ],
+          aiCreativeReferences: [],
+        }],
+      },
+    }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "dimension_specification" }));
+    expect(res.status).toBe(200);
+  });
+
+  it("usage_steps 无已确认使用方式 → 409 image_purpose_requires_usage_facts", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "usage_steps" }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("image_purpose_requires_usage_facts");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("usage_steps 有已确认使用方式 → 放行", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({
+      currentHandoff: {
+        schema: "product-creative-handoff.v1",
+        handoffId: "handoff-1",
+        controlState: "active",
+        currentRevision: 2,
+        versions: [{
+          revision: 2,
+          productIdentity: { displayName: "30oz 黑色不锈钢水杯" },
+          visualReferences: [],
+          creativePreferences: {},
+          confirmedFacts: [
+            { field: "usage_steps", label: "使用步骤", value: "打开杯盖即可饮用", usageScopes: ["image"] },
+          ],
+          aiCreativeReferences: [],
+        }],
+      },
+    }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "usage_steps" }));
+    expect(res.status).toBe(200);
+  });
+
+  it("selling_point_infographic 无已确认卖点（仅 identity facts）→ 409 image_purpose_requires_confirmed_claims", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate());
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "selling_point_infographic" }));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("image_purpose_requires_confirmed_claims");
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
+  });
+
+  it("selling_point_infographic 有已确认卖点（material）→ 放行", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(activeGate({
+      currentHandoff: {
+        schema: "product-creative-handoff.v1",
+        handoffId: "handoff-1",
+        controlState: "active",
+        currentRevision: 2,
+        versions: [{
+          revision: 2,
+          productIdentity: { displayName: "30oz 黑色不锈钢水杯" },
+          visualReferences: [],
+          creativePreferences: {},
+          confirmedFacts: [
+            { field: "material", label: "材质", value: "Stainless Steel", usageScopes: ["image"] },
+          ],
+          aiCreativeReferences: [],
+        }],
+      },
+    }));
+    const res = await callPOST("task-1", generateBody({ primaryImagePurpose: "selling_point_infographic" }));
+    expect(res.status).toBe(200);
+  });
 });
 
 // ── V3 Final Freeze：历史草稿分类投影 + 最终选择 Gate ─────────────────────────
