@@ -30,6 +30,27 @@ export const SELLERSPRITE_IMPORT_SOURCE_SCHEMA = "sellersprite_candidate_source_
 export const SELLERSPRITE_IMPORT_MARKETPLACE = "Amazon US";
 export const SELLERSPRITE_IMPORT_MAX_SOURCE_META_UTF8_BYTES = 16 * 1024;
 
+/**
+ * SellerSprite Plugin 捕获附加字段（可选，仅插件链路写入）。
+ * 面板 22 列中未进入基础字段的插件特有指标 + 来源子类型标记。
+ * 该对象整体随 sourceMeta 的 `plugin` 键落库；缺省字段一律为 null。
+ */
+export type SellerSpritePluginCapture = {
+  /** 来源子类型：SellerSprite 浏览器插件（Reverse ASIN / 搜索结果面板）确定性捕获 */
+  subtype: "sellersprite_plugin";
+  /** 面板捕获时刻（ISO 8601）；XLSX 链路为 null */
+  capturedAt: string | null;
+  bsr: number | null;
+  subCategoryBsr: number | null;
+  variationCount: number | null;
+  reviewRate: number | null;
+  grossMargin: number | null;
+  listingDate: string | null;
+  sellerCount: number | null;
+  fulfillment: string | null;
+  seller: string | null;
+};
+
 export type SellerSpriteImportRow = {
   rowHash: string;
   rowNumber: number;
@@ -52,6 +73,8 @@ export type SellerSpriteImportRow = {
   skuRaw?: string | null;
   /** SellerSprite Source Fact Projection：产品卖点原文（内容候选提取源） */
   sellingPointsRaw?: string | null;
+  /** SellerSprite Plugin 捕获（可选）：存在时 sourceMeta 记录 subtype 与插件附加指标 */
+  pluginCapture?: SellerSpritePluginCapture | null;
 };
 
 export type SellerSpriteSelectedRowSource = {
@@ -152,6 +175,8 @@ export type SellerSpriteCandidateSourceMeta = {
   source: {
     provider: "SellerSprite";
     type: "sellersprite_xlsx";
+    /** 可选子类型标记：插件确定性捕获链路（XLSX 链路无此键，向后兼容） */
+    subtype?: "sellersprite_plugin";
     marketplace: "Amazon US";
     reportType: "SellerSprite Search Results";
     capturedAt: null;
@@ -179,6 +204,8 @@ export type SellerSpriteCandidateSourceMeta = {
     sku?: string | null;
     sellingPoints?: string | null;
   };
+  /** SellerSprite Plugin 捕获附加指标（可选，仅插件链路） */
+  plugin?: SellerSpritePluginCapture;
   estimates: {
     searchRank: number | null;
     estimatedMonthlySales: number | null;
@@ -197,6 +224,7 @@ export function buildSellerSpriteCandidateSourceMeta(
     source: {
       provider: "SellerSprite",
       type: "sellersprite_xlsx",
+      ...(row.pluginCapture ? { subtype: row.pluginCapture.subtype } : {}),
       marketplace: "Amazon US",
       reportType: "SellerSprite Search Results",
       capturedAt: null,
@@ -225,6 +253,7 @@ export function buildSellerSpriteCandidateSourceMeta(
         ...(row.sellingPointsRaw ? { sellingPoints: row.sellingPointsRaw } : {}),
       },
     } : {}),
+    ...(row.pluginCapture ? { plugin: row.pluginCapture } : {}),
     estimates: {
       searchRank: row.searchRank,
       estimatedMonthlySales: row.estimatedMonthlySales,
