@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildAmazonDetailPageExtractionExpression,
   extractAmazonDetailPage,
+  extractAmazonProductInfo,
+  mapProductInfoToCanonical,
   parseAsinFromDetailUrl,
   parseDetailBsr,
   parseDetailPrice,
   parseDetailRating,
   parseDetailReviewCount,
+  readProductInfoRows,
   type AmazonDetailDomRoot,
 } from "./detail-page-extract";
 
@@ -20,15 +23,15 @@ type Node = {
   querySelectorAll?: (selector: string) => ReadonlyArray<Node>;
 };
 
-function node(text: string | null = null, children: Record<string, Node> = {}): Node {
+function node(text: string | null = null, children: Record<string, Node | ReadonlyArray<Node>> = {}): Node {
   return {
     textContent: text,
     querySelector(selector: string) {
-      return children[selector] ?? null;
+      return (children[selector] as Node | undefined) ?? null;
     },
     querySelectorAll(selector: string) {
       const list = children[`${selector}[]`];
-      return list ? [list] : [];
+      return Array.isArray(list) ? list : [];
     },
   };
 }
@@ -47,7 +50,7 @@ function buildRoot(input: {
     { text: `ASIN: ${ASIN}` },
   ];
   const detailContainer = node(null, {
-    "tr, li[]": node(rows.map((row) => row.text).join(" ")),
+    "tr, li[]": rows.map((row) => node(row.text)),
     "tr, li": node(rows[0].text),
   });
   const root: AmazonDetailDomRoot = {
@@ -210,5 +213,73 @@ describe("Amazon detail page extractor (V3.1 Spike)", () => {
     const expression = buildAmazonDetailPageExtractionExpression(options());
     expect(expression).toContain("extractAmazonDetailPage(document, location.href");
     expect(expression).not.toMatch(/cookie|localStorage|sessionStorage|credentials|password/i);
+  });
+});
+
+// ── V3 Final PHASE 1 — Product Information 提取（Bounded DOM） ──
+
+describe("Amazon product info extractor (PHASE 1)", () => {
+  function specTableRoot(rows: Array<[string, string]>, overrides: { title?: string | null; bodyText?: string; asinAnchor?: string } = {}): AmazonDetailDomRoot {
+    const trNodes = rows.map(([label, value]) => node(undefined, { "td, th[]": [node(label), node(value)] }));
+    const tableContainer = node(undefined, { "table.a-keyvalue.prodDetTable tr[]": trNodes });
+    const root: AmazonDetailDomRoot = {
+      body: { innerText: overrides.bodyText ?? "" },
+      querySelector(selector: string) {
+        switch (selector) {
+          case "#productTitle": return overrides.title ? node(overrides.title) : null;
+          case "#productDetails_expanderTables_depthLeftSections": return tableContainer;
+          case "#productDetails_expanderTables_depthRightSections": return null;
+          case "#productOverview_feature_div": return null;
+          case "#detailBullets_feature_div": return node(undefined, {
+            "tr, li[]": [node(overrides.asinAnchor ?? `ASIN: ${ASIN}`)],
+            "tr, li": node(overrides.asinAnchor ?? `ASIN: ${ASIN}`),
+          });
+          default: return null;
+        }
+      },
+      querySelectorAll(selector: string) {
+        if (selector === "#productDetails_expanderTables_depthLeftSections") return [tableContainer];
+        return [];
+      },
+    };
+    return root;
+  }
+
+  it("readProductInfoRows：限定规格容器内行（label/value）", () => {
+    const root = specTableRoot([
+      ["Material Type", "Stainless Steel"],
+      ["Item Weight", "0.22 kg"],
+    ]);
+    const rows = readProductInfoRows(root);
+    expect(rows).toEqual([
+      { label: "Material Type", value: "Stainless Steel", sourceSection: "productDetails_depthLeftSections" },
+      { label: "Item Weight", value: "0.22 kg", sourceSection: "productDetails_depthLeftSections" },
+    ]);
+  });
+
+  it("mapProductInfoToCanonical：label 映射到 canonical 字段（首个匹配优先）", () => {
+    const mapped = mapProductInfoToCanonical([
+      { label: "Material Type", value: "Stainless Steel" },
+      { label: "Brand", value: "THERMOS" },
+      { label: "Item Dimensions W x H", value: "2.7\"W x 6.9\"H" },
+      { label: "Price", value: "JPY 3,192" }, // 非 canonical label → 忽略
+    ]);
+    expect(mapped.material).toBe("Stainless Steel");
+    expect(mapped.brand).toBe("THERMOS");
+    expect(mapped.dimensions).toBe("2.7\"W x 6.9\"H");
+    expect(mapped.price).toBeUndefined();
+  });
+
+  it("extractAmazonProductInfo：实体绑定证明 → 提取 + canonicalFacts；未绑定 → fail-closed 空", () => {
+    const bound = specTableRoot([["Material Type", "Wood"]], { title: "Test Board" });
+    const ok = extractAmazonProductInfo(bound, URL, options());
+    expect(ok.entityBound).toBe(true);
+    expect(ok.canonicalFacts.material).toBe("Wood");
+
+    const unbound = specTableRoot([["Material Type", "Wood"]], { title: "Test Board", asinAnchor: "B0OTHER0001" });
+    const bad = extractAmazonProductInfo(unbound, URL, options());
+    expect(bad.entityBound).toBe(false);
+    expect(bad.rows).toEqual([]);
+    expect(bad.canonicalFacts).toEqual({});
   });
 });

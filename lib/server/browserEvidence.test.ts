@@ -191,7 +191,70 @@ describe("browserEvidence build (extraction → snapshot)", () => {
     expect(snapshot.failureReasons).toEqual([]);
     expect(snapshot.confirmedBy).toEqual({ mode: "visitor", actorRef: `visitor:${DEMO_A}` });
   });
+  // V3 Final PHASE 1：productInfo 规格行
+  it("build: 带 productInfo 快照（entityBound 前提；rows 有界）", () => {
+    const snapshot = buildSnapshot({
+      extraction: extraction(),
+    });
+    const withInfo = {
+      ...snapshot,
+      productInfo: {
+        schemaVersion: "amazon-product-info-extraction.v1",
+        rows: [
+          { label: "Material Type", value: "Wood", sourceSection: "productDetails_depthRightSections" },
+          { label: "Item Weight", value: "16 ounces", sourceSection: "productDetails_depthRightSections" },
+        ],
+        canonicalFacts: { material: "Wood", weight: "16 ounces" },
+        capturedAt: NOW,
+        collectorVersion: "amazon-detail-page-extractor.v1",
+      },
+    };
+    const parsed = parseBrowserEvidence({
+      schema: "browser-evidence.v1",
+      version: 1,
+      candidateId: "candidate-browser-evidence",
+      targetAsin: TARGET_ASIN,
+      snapshots: [withInfo],
+      updatedAt: NOW,
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed!.snapshots[0].productInfo?.canonicalFacts.material).toBe("Wood");
+    expect(parsed!.snapshots[0].productInfo?.rows).toHaveLength(2);
+  });
 
+  it("parse fail-soft: 非法 productInfo（非法来源区/非法 schema/超行数）→ 快照整体忽略", () => {
+    const base = buildSnapshot();
+    const badSection = parseBrowserEvidence({
+      schema: "browser-evidence.v1",
+      version: 1,
+      candidateId: "candidate-browser-evidence",
+      targetAsin: TARGET_ASIN,
+      snapshots: [{
+        ...base,
+        productInfo: {
+          schemaVersion: "amazon-product-info-extraction.v1",
+          rows: [{ label: "x", value: "y", sourceSection: "sponsored_feature_div" }],
+          canonicalFacts: {},
+          capturedAt: NOW,
+          collectorVersion: "v",
+        },
+      }],
+      updatedAt: NOW,
+    });
+    expect(badSection).toBeNull();
+    const badSchema = parseBrowserEvidence({
+      schema: "browser-evidence.v1",
+      version: 1,
+      candidateId: "candidate-browser-evidence",
+      targetAsin: TARGET_ASIN,
+      snapshots: [{
+        ...base,
+        productInfo: { schemaVersion: "other.v1", rows: [], canonicalFacts: {}, capturedAt: NOW, collectorVersion: "v" },
+      }],
+      updatedAt: NOW,
+    });
+    expect(badSchema).toBeNull();
+  });
   it("flags JPY currency as unknown price with currency_not_usd reason", () => {
     const jpy = extraction({
       fields: {

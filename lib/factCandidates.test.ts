@@ -142,3 +142,54 @@ describe("fact-candidates 持久化视图", () => {
     expect(view.confirmed[0].sourceKind).toBe("seller_sprite_product_facts");
   });
 });
+
+describe("V3 Final PHASE 1 — Product Information 规格候选（amazon_product_info）", () => {
+  function resultWithProductInfo(): Record<string, unknown> {
+    const result = thermosResultJson();
+    const snapshots = (result.browserEvidence as { snapshots: Array<Record<string, unknown>> }).snapshots;
+    snapshots[0].productInfo = {
+      schemaVersion: "amazon-product-info-extraction.v1",
+      rows: [
+        { label: "Material Type", value: "Stainless Steel", sourceSection: "productDetails_depthRightSections" },
+        { label: "Item Dimensions W x H", value: "2.7\"W x 6.9\"H", sourceSection: "productDetails_depthRightSections" },
+        { label: "Item Weight", value: "0.22 kg", sourceSection: "productDetails_depthRightSections" },
+        { label: "Product Care Instructions", value: "Top Rack Dishwasher Safe", sourceSection: "productDetails_depthRightSections" },
+      ],
+      canonicalFacts: {
+        material: "Stainless Steel",
+        dimensions: "2.7\"W x 6.9\"H",
+        weight: "0.22 kg",
+        care: "Top Rack Dishwasher Safe",
+        some_unknown_field: "x",
+      },
+      capturedAt: "2026-08-19T00:00:00.000Z",
+      collectorVersion: "amazon-detail-page-extractor.v1",
+    };
+    return result;
+  }
+
+  it("提取 amazon_product_info 规格候选（dimensions/weight/care；material 与标题派生同字段去重）", () => {
+    const candidates = extractFactCandidates(resultWithProductInfo());
+    // 标题派生未覆盖的字段 → 来自 amazon_product_info
+    expect(candidates.find((c) => c.field === "dimensions")?.value).toBe("2.7\"W x 6.9\"H");
+    expect(candidates.find((c) => c.field === "dimensions")?.sourceKind).toBe("amazon_product_info");
+    expect(candidates.find((c) => c.field === "weight")?.value).toBe("0.22 kg");
+    expect(candidates.find((c) => c.field === "care")?.value).toBe("Top Rack Dishwasher Safe");
+    // material：同字段去重（标题派生优先，productInfo 同值不重复）
+    const materialCandidates = candidates.filter((c) => c.field === "material");
+    expect(materialCandidates.length).toBe(1);
+  });
+
+  it("未知 canonical 字段 fail-closed（不进入候选）；同字段与既有来源去重", () => {
+    const candidates = extractFactCandidates(resultWithProductInfo());
+    expect(candidates.some((c) => c.field === "some_unknown_field")).toBe(false);
+    // material 已由标题派生产生候选 → 与 amazon_product_info 去重（只保留一个）
+    const materialCandidates = candidates.filter((c) => c.field === "material");
+    expect(materialCandidates.length).toBe(1);
+  });
+
+  it("无 productInfo 快照 → 不产生 amazon_product_info 候选", () => {
+    const candidates = extractFactCandidates(thermosResultJson());
+    expect(candidates.some((c) => c.sourceKind === "amazon_product_info")).toBe(false);
+  });
+});

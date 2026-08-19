@@ -326,6 +326,177 @@ export function extractAmazonDetailPage(
   };
 }
 
+/**
+ * V3 Final PHASE 1 — Amazon Product Information 提取（Bounded DOM，复用实体绑定前提）
+ *
+ * 数据链：Existing Collector（6 字段）→ 若仍有 MISSING_RELEVANT → Product Information 提取
+ * （material/dimensions/weight/care/included_components/operation 等规格行）→ Fact Candidate
+ * → Human Confirmation。绝不直接写 Confirmed Fact。
+ *
+ * 提取范围（Bounded/Targeted/Read-only，Spike 实证）：
+ * - 主规格表容器：#productDetails_expanderTables_depthLeftSections /
+ *   #productDetails_expanderTables_depthRightSections 内的 table.a-keyvalue.prodDetTable 行
+ * - 概览区：#productOverview_feature_div 内的 table 行
+ * - 不触碰 buybox / sponsored / related / recommended 区（Related Product Gate 天然成立）
+ * 实体绑定未证明（entityBound=false）→ 全字段 unknown（fail-closed）。
+ */
+
+export type AmazonProductInfoRow = {
+  label: string;
+  value: string;
+  sourceSection: "productDetails_depthLeftSections" | "productDetails_depthRightSections" | "productOverview_feature_div";
+};
+
+export type AmazonProductInfoExtraction = {
+  schemaVersion: "amazon-product-info-extraction.v1";
+  entityBound: boolean;
+  bindingReason: string | null;
+  rows: AmazonProductInfoRow[];
+  /** canonical 字段 → 页面原样值（经 PRODUCT_INFO_LABEL_MAP 映射；未映射的 label 只留在 rows） */
+  canonicalFacts: Record<string, string>;
+  capturedAt: string;
+  collectorVersion: string;
+};
+
+/** canonical 字段 → 页面 label 候选（首个命中优先；与 CDP 表达式工件、factCandidates 提取保持同一映射） */
+export const PRODUCT_INFO_LABEL_MAP: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ["brand", ["Brand Name", "Brand"]],
+  ["product_type", ["Item Type Name", "Bottle Type"]],
+  ["series_or_model", ["Model Name", "Model Number"]],
+  ["material", ["Material Type", "Material"]],
+  ["capacity", ["Total Capacity", "Capacity"]],
+  ["dimensions", ["Item Dimensions L x W x H", "Item Dimensions L x W x Thickness", "Item Dimensions W x H", "Product Dimensions", "Size (inches)"]],
+  ["weight", ["Item Weight"]],
+  ["color_or_variant", ["Color", "Theme"]],
+  ["quantity_or_pack_size", ["Unit Count", "Number of Items", "Package Quantity"]],
+  ["functional_feature", ["Other Special Features of the Product", "Additional Features", "Special Feature", "Material Features", "Material Feature"]],
+  ["care", ["Product Care Instructions", "Care Instructions"]],
+  ["included_components", ["Included Components"]],
+  ["operation", ["Lid Type", "Cap Type", "Closure Type"]],
+];
+
+const PRODUCT_INFO_CONTAINER_SELECTORS = [
+  "#productDetails_expanderTables_depthLeftSections",
+  "#productDetails_expanderTables_depthRightSections",
+];
+
+const PRODUCT_INFO_ROW_LIMIT = 60;
+const PRODUCT_INFO_TEXT_LIMIT = 200;
+
+/** 只读主规格表行（限定容器；不触碰 buybox/sponsored/related 区） */
+export function readProductInfoRows(root: {
+  querySelectorAll: (selector: string) => ReadonlyArray<unknown>;
+}): AmazonProductInfoRow[] {
+  const rows: AmazonProductInfoRow[] = [];
+  const seen = new Set<string>();
+  const containers = PRODUCT_INFO_CONTAINER_SELECTORS.map((selector) => root.querySelectorAll(selector));
+  const sections: Array<AmazonProductInfoRow["sourceSection"]> = ["productDetails_depthLeftSections", "productDetails_depthRightSections"];
+  for (let ci = 0; ci < containers.length; ci += 1) {
+    const container = containers[ci];
+    for (const node of container) {
+      const table = (node as { querySelectorAll?: (s: string) => ReadonlyArray<unknown> });
+      const tableRows = table.querySelectorAll?.("table.a-keyvalue.prodDetTable tr") ?? [];
+      for (const rowNode of tableRows) {
+        const cells = (rowNode as { querySelectorAll?: (s: string) => ReadonlyArray<unknown> })
+          .querySelectorAll?.("td, th") ?? [];
+        if (cells.length < 2) continue;
+        const label = sanitizeDetailText((cells[0] as { textContent?: string | null }).textContent, PRODUCT_INFO_TEXT_LIMIT);
+        const value = sanitizeDetailText((cells[1] as { textContent?: string | null }).textContent, PRODUCT_INFO_TEXT_LIMIT);
+        if (!label || !value) continue;
+        const key = `${sections[ci]}:${label}`;
+        if (seen.has(key) || rows.length >= PRODUCT_INFO_ROW_LIMIT) continue;
+        seen.add(key);
+        rows.push({ label, value, sourceSection: sections[ci] });
+      }
+    }
+  }
+  // 概览区（productOverview_feature_div）作为补充源
+  for (const node of root.querySelectorAll("#productOverview_feature_div")) {
+    const tableRows = (node as { querySelectorAll?: (s: string) => ReadonlyArray<unknown> })
+      .querySelectorAll?.("table tr") ?? [];
+    for (const rowNode of tableRows) {
+      const cells = (rowNode as { querySelectorAll?: (s: string) => ReadonlyArray<unknown> })
+        .querySelectorAll?.("td, th") ?? [];
+      if (cells.length < 2) continue;
+      const label = sanitizeDetailText((cells[0] as { textContent?: string | null }).textContent, PRODUCT_INFO_TEXT_LIMIT);
+      const value = sanitizeDetailText((cells[1] as { textContent?: string | null }).textContent, PRODUCT_INFO_TEXT_LIMIT);
+      if (!label || !value) continue;
+      const key = `productOverview_feature_div:${label}`;
+      if (seen.has(key) || rows.length >= PRODUCT_INFO_ROW_LIMIT) continue;
+      seen.add(key);
+      rows.push({ label, value, sourceSection: "productOverview_feature_div" });
+    }
+  }
+  return rows;
+}
+
+/** canonical 映射：rows → { field: 页面原样值 }（首个匹配 label 优先；未映射 label 忽略） */
+export function mapProductInfoToCanonical(rows: ReadonlyArray<Pick<AmazonProductInfoRow, "label" | "value">>): Record<string, string> {
+  const recovered: Record<string, string> = {};
+  const used = new Set<string>();
+  for (const [field, labels] of PRODUCT_INFO_LABEL_MAP) {
+    for (const label of labels) {
+      const row = rows.find((r) => r.label === label);
+      if (row && !used.has(label)) {
+        recovered[field] = row.value;
+        used.add(label);
+        break;
+      }
+    }
+  }
+  return recovered;
+}
+
+/** Product Information 提取（entityBound 前提；未绑定 → 全空 fail-closed） */
+export function extractAmazonProductInfo(
+  root: AmazonDetailDomRoot,
+  pageUrl: string,
+  options: AmazonDetailPageExtractionOptions,
+): AmazonProductInfoExtraction {
+  const pageStatus = detectDetailPageStatus(root);
+  const urlAsin = parseAsinFromDetailUrl(pageUrl);
+  const pageAsin = readDetailPageAsinAnchor(root);
+  const expectedAsin = normalizeAsin(options.expectedAsin);
+  const productContainerFound = root.querySelector("#productTitle") !== null;
+  const urlMatchesExpected = expectedAsin !== null && urlAsin === expectedAsin;
+  const pageAnchorMatchesExpected = expectedAsin !== null && pageAsin === expectedAsin;
+  const entityBound = pageStatus === "ok"
+    && productContainerFound
+    && urlMatchesExpected
+    && pageAnchorMatchesExpected;
+  const bindingReason = !entityBound
+    ? (pageStatus !== "ok"
+      ? `page_status_${pageStatus}`
+      : !urlMatchesExpected
+        ? "url_asin_mismatch"
+        : !pageAnchorMatchesExpected
+          ? "page_asin_anchor_mismatch"
+          : "product_container_not_found")
+    : null;
+
+  if (!entityBound) {
+    return {
+      schemaVersion: "amazon-product-info-extraction.v1",
+      entityBound,
+      bindingReason,
+      rows: [],
+      canonicalFacts: {},
+      capturedAt: options.capturedAt,
+      collectorVersion: options.collectorVersion,
+    };
+  }
+  const rows = readProductInfoRows(root);
+  return {
+    schemaVersion: "amazon-product-info-extraction.v1",
+    entityBound,
+    bindingReason,
+    rows,
+    canonicalFacts: mapProductInfoToCanonical(rows),
+    capturedAt: options.capturedAt,
+    collectorVersion: options.collectorVersion,
+  };
+}
+
 function readFirstText(
   root: AmazonDetailDomRoot,
   selectors: readonly string[],
@@ -345,3 +516,5 @@ function readFirstText(
  */
 export { buildAmazonDetailPageExtractionExpression } from "@/tools/collectors/amazon/detail-page-expression-source";
 export type { AmazonDetailPageExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";
+export { buildAmazonProductInfoExtractionExpression } from "@/tools/collectors/amazon/detail-page-expression-source";
+export type { AmazonProductInfoExpressionOptions } from "@/tools/collectors/amazon/detail-page-expression-source";

@@ -49,6 +49,7 @@ import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/c
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { buildCreativeContextFromResearch } from "@/lib/creativeContextBuilder";
 import { getFactCandidates } from "@/lib/factCandidates";
+import { mapResearchConfirmedToHandoff } from "@/lib/canonicalFactMapping";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import type {
   ProductCreativeHandoffCandidate,
@@ -603,7 +604,19 @@ export async function checkCreativeHandoffGate(
         displayName: (taskRec.productName as string) || (taskRec.title as string) || "",
         identityConfirmedAt: (taskRec.createdAt instanceof Date ? taskRec.createdAt.toISOString() : (taskRec.createdAt as string)) || new Date().toISOString(),
       },
-      confirmedFacts: [],
+      // V3 Final PHASE 1：研究侧已确认事实桥接挂入 degraded 候选的 confirmedFacts
+      // （research 确认即显示；sourceRef 溯源 fact-candidates:<candidateId>）
+      confirmedFacts: (() => {
+        const researchConfirmed = getFactCandidates(resultJson)?.confirmed ?? [];
+        if (researchConfirmed.length === 0) return [];
+        const bridge = mapResearchConfirmedToHandoff({
+          confirmed: researchConfirmed,
+          actor: { mode: context.mode === "owner" ? "owner" : "visitor", subjectFingerprint: "0000000000000000" },
+          candidateId: record.candidateId,
+          confirmedAt: new Date().toISOString(),
+        });
+        return bridge.facts;
+      })(),
       stableSourceFacts: stableSourceFactsHere,
       aiCreativeReferences: evidenceLayers
         .filter((e): e is Extract<typeof e, { evidenceTier: "ai_hypothesis" }> => e.evidenceTier === "ai_hypothesis")
@@ -666,6 +679,9 @@ export async function checkCreativeHandoffGate(
         researchRevision: record.revision,
         candidateId: record.candidateId,
       }),
+      // V3 Final PHASE 1：研究侧已确认事实（factCandidates 权威）桥接挂入降级候选，
+      // 消除「研究已确认 N 条但创作侧显示无已确认事实」的 gate 失真与计数误导
+      workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: f.field, label: f.label, value: f.value, sourceKind: f.sourceKind })),
     };
   }
 

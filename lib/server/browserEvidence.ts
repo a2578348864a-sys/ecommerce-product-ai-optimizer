@@ -20,6 +20,8 @@ import { resolveBrowserEvidenceAsinFromResultJson } from "@/lib/server/taskIdent
 import type {
   AmazonDetailPageExtraction,
   AmazonDetailFieldValue,
+  AmazonProductInfoExtraction,
+  AmazonProductInfoRow,
 } from "@/tools/collectors/amazon/detail-page-extract";
 
 export const BROWSER_EVIDENCE_SCHEMA = "browser-evidence.v1" as const;
@@ -63,6 +65,14 @@ export type BrowserEvidenceSnapshot = {
     bsr: BrowserEvidenceField<number>;
     rating: BrowserEvidenceField<number>;
     reviewCount: BrowserEvidenceField<number>;
+  };
+  /** V3 Final PHASE 1：Product Information 规格行（实体绑定前提；有界；可选） */
+  productInfo?: {
+    schemaVersion: "amazon-product-info-extraction.v1";
+    rows: AmazonProductInfoRow[];
+    canonicalFacts: Record<string, string>;
+    capturedAt: string;
+    collectorVersion: string;
   };
   failureReasons: string[];
   confirmedBy: { mode: "owner" | "visitor"; actorRef: string };
@@ -191,6 +201,43 @@ function parseSnapshot(value: unknown): BrowserEvidenceSnapshot | null {
   if (!actorRef) return null;
   if (!pageUrl || !capturedAt || !confirmedAt || !collectorVersion) return null;
   if (Number.isNaN(Date.parse(capturedAt)) || Number.isNaN(Date.parse(confirmedAt))) return null;
+  // V3 Final PHASE 1：productInfo 可选解析（结构非法 → 该快照整体忽略，fail-soft）
+  let productInfo: BrowserEvidenceSnapshot["productInfo"];
+  if (value.productInfo === undefined) {
+    productInfo = undefined;
+  } else {
+    if (!isRecord(value.productInfo)) return null;
+    if (value.productInfo.schemaVersion !== "amazon-product-info-extraction.v1") return null;
+    const rows: AmazonProductInfoRow[] = [];
+    if (!Array.isArray(value.productInfo.rows) || value.productInfo.rows.length > 60) return null;
+    for (const rawRow of value.productInfo.rows) {
+      if (!isRecord(rawRow)) return null;
+      const label = text(rawRow.label, 200);
+      const val = text(rawRow.value, 200);
+      const section = rawRow.sourceSection;
+      if (!label || !val) return null;
+      if (section !== "productDetails_depthLeftSections"
+        && section !== "productDetails_depthRightSections"
+        && section !== "productOverview_feature_div") return null;
+      rows.push({ label, value: val, sourceSection: section });
+    }
+    const canonicalFacts: Record<string, string> = {};
+    if (!isRecord(value.productInfo.canonicalFacts)) return null;
+    for (const [field, v] of Object.entries(value.productInfo.canonicalFacts)) {
+      if (typeof v !== "string" || v.length > 200) return null;
+      canonicalFacts[field] = v;
+    }
+    const piCapturedAt = text(value.productInfo.capturedAt, 40);
+    const piCollectorVersion = text(value.productInfo.collectorVersion, 80);
+    if (!piCapturedAt || !piCollectorVersion || Number.isNaN(Date.parse(piCapturedAt))) return null;
+    productInfo = {
+      schemaVersion: "amazon-product-info-extraction.v1",
+      rows,
+      canonicalFacts,
+      capturedAt: piCapturedAt,
+      collectorVersion: piCollectorVersion,
+    };
+  }
   return {
     evidenceId,
     sourceType: "browser",
@@ -203,6 +250,7 @@ function parseSnapshot(value: unknown): BrowserEvidenceSnapshot | null {
     collectorVersion,
     capturedAt,
     fields: { asin, title, price, bsr, rating, reviewCount },
+    ...(productInfo ? { productInfo } : {}),
     failureReasons: value.failureReasons as string[],
     confirmedBy: { mode: confirmedMode, actorRef },
     confirmedAt,
@@ -218,6 +266,8 @@ export function buildBrowserEvidenceSnapshot(input: {
   collectorVersion: string;
   capturedAt: string;
   confirmedBy: { mode: "owner" | "visitor"; actorRef: string };
+  /** V3 Final PHASE 1：Product Information 提取（可选；实体绑定前提） */
+  productInfo?: AmazonProductInfoExtraction | null;
 }): BrowserEvidenceSnapshot {
   const f = input.extraction.fields;
   const field = <T,>(value: AmazonDetailFieldValue): BrowserEvidenceField<T> => ({
@@ -260,6 +310,17 @@ export function buildBrowserEvidenceSnapshot(input: {
     failureReasons,
     confirmedBy: input.confirmedBy,
     confirmedAt: input.capturedAt,
+    ...(input.productInfo && input.productInfo.entityBound
+      ? {
+          productInfo: {
+            schemaVersion: input.productInfo.schemaVersion,
+            rows: input.productInfo.rows.slice(0, 60),
+            canonicalFacts: input.productInfo.canonicalFacts,
+            capturedAt: input.productInfo.capturedAt,
+            collectorVersion: input.productInfo.collectorVersion,
+          },
+        }
+      : {}),
   };
 }
 
@@ -433,6 +494,25 @@ function assertSnapshotWritable(snapshot: BrowserEvidenceSnapshot): void {
       422,
       "浏览器证据快照字段超白名单（仅允许 asin/title/price/bsr/rating/reviewCount 六项），已拒绝保存。",
     );
+  }
+  // 1b) productInfo 结构自校验（V3 Final PHASE 1：可选；rows 有界、schema 固定、来源区白名单）
+  if (snapshot.productInfo !== undefined) {
+    if (snapshot.productInfo.schemaVersion !== "amazon-product-info-extraction.v1") {
+      throw new BrowserEvidenceError("invalid_snapshot", 422, "浏览器证据快照的 productInfo 结构无效，已拒绝保存。");
+    }
+    if (!Array.isArray(snapshot.productInfo.rows) || snapshot.productInfo.rows.length > 60) {
+      throw new BrowserEvidenceError("invalid_snapshot", 422, "浏览器证据快照的 productInfo 行数超限，已拒绝保存。");
+    }
+    for (const row of snapshot.productInfo.rows) {
+      if (typeof row.label !== "string" || typeof row.value !== "string" || row.label.length > 200 || row.value.length > 200) {
+        throw new BrowserEvidenceError("invalid_snapshot", 422, "浏览器证据快照的 productInfo 行无效，已拒绝保存。");
+      }
+      if (row.sourceSection !== "productDetails_depthLeftSections"
+        && row.sourceSection !== "productDetails_depthRightSections"
+        && row.sourceSection !== "productOverview_feature_div") {
+        throw new BrowserEvidenceError("invalid_snapshot", 422, "浏览器证据快照的 productInfo 来源区非法，已拒绝保存。");
+      }
+    }
   }
   // 2) 实体绑定证明必须完整且全部成立（write-hard）
   const proof = snapshot.entityBinding.proof;

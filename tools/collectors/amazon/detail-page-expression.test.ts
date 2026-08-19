@@ -10,10 +10,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAmazonDetailPageExtractionExpression,
+  buildAmazonProductInfoExtractionExpression,
   DETAIL_PAGE_EXTRACTOR_SOURCE,
+  PRODUCT_INFO_EXTRACTOR_SOURCE,
 } from "@/tools/collectors/amazon/detail-page-expression-source";
 import {
   extractAmazonDetailPage,
+  extractAmazonProductInfo,
   type AmazonDetailPageExtractionOptions,
 } from "@/tools/collectors/amazon/detail-page-extract";
 
@@ -159,5 +162,102 @@ describe("detail-page expression source（P1-A）", () => {
     expect(expression).not.toContain("__OPTIONS__");
     expect(expression).toContain('"capturedAt":"2026-08-16T00:00:00.000Z"');
     expect(expression).toContain('"expectedAsin":"B0TEST0001"');
+  });
+});
+
+// ── V3 Final PHASE 1 — Product Info 表达式工件（自包含 + Node 侧 parity） ──
+
+describe("product-info expression source (PHASE 1)", () => {
+  function productInfoDom(rows: Array<[string, string]>) {
+    const trNodes = rows.map(([label, value]) => ({
+      textContent: null,
+      querySelectorAll: (selector: string) => {
+        if (selector === "td, th") return [{ textContent: label }, { textContent: value }];
+        return [];
+      },
+    }));
+    const container = {
+      textContent: null,
+      querySelectorAll: (selector: string) => {
+        if (selector === "table.a-keyvalue.prodDetTable tr") return trNodes;
+        return [];
+      },
+    };
+    const detailBullets = {
+      textContent: null,
+      querySelectorAll: (selector: string) => {
+        if (selector === "tr, li") return [{ textContent: "ASIN: B0TEST0001" }];
+        return [];
+      },
+    };
+    return {
+      querySelector: (selector: string) => {
+        switch (selector) {
+          case "#productTitle": return { textContent: "Test Bottle" };
+          case "#productDetails_expanderTables_depthLeftSections": return container;
+          case "#productDetails_expanderTables_depthRightSections": return null;
+          case "#productOverview_feature_div": return null;
+          case "#detailBullets_feature_div": return detailBullets;
+          default: return null;
+        }
+      },
+      querySelectorAll: (selector: string) => {
+        if (selector === "#productDetails_expanderTables_depthLeftSections") return [container];
+        return [];
+      },
+      body: { innerText: "Test Bottle product page" },
+    };
+  }
+
+  function runProductInfoExpression(dom: unknown, opts: AmazonDetailPageExtractionOptions) {
+    const expression = buildAmazonProductInfoExtractionExpression(opts);
+    const runner = Function("document", "location", `return ${expression}`) as (
+      doc: unknown,
+      loc: { href: string },
+    ) => unknown;
+    return runner(dom, { href: "https://www.amazon.com/dp/B0TEST0001" });
+  }
+
+  it("is self-contained: helpers declared inside IIFE, no module identifiers", () => {
+    expect(PRODUCT_INFO_EXTRACTOR_SOURCE).toContain("function readProductInfoRows(");
+    expect(PRODUCT_INFO_EXTRACTOR_SOURCE).toContain("function mapProductInfoToCanonical(");
+    expect(PRODUCT_INFO_EXTRACTOR_SOURCE).toContain("function extractAmazonProductInfo(");
+    expect(PRODUCT_INFO_EXTRACTOR_SOURCE).not.toMatch(/import\s|require\(/);
+  });
+
+  it("matches the Node-side TS extractor on a spec-table page", () => {
+    const dom = productInfoDom([
+      ["Material Type", "Stainless Steel"],
+      ["Item Weight", "0.22 kg"],
+    ]);
+    const opts = options();
+    const fromExpression = runProductInfoExpression(dom, opts) as ReturnType<typeof extractAmazonProductInfo>;
+    const fromNode = extractAmazonProductInfo(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.entityBound).toBe(true);
+    expect(fromExpression.canonicalFacts.material).toBe("Stainless Steel");
+    expect(fromExpression.canonicalFacts.weight).toBe("0.22 kg");
+    expect(fromExpression.rows).toHaveLength(2);
+  });
+
+  it("fails closed on ASIN mismatch (no rows, no canonicalFacts)", () => {
+    const dom = productInfoDom([["Material Type", "Stainless Steel"]]);
+    // 修改 ASIN 锚点为不匹配值
+    const mismatched = {
+      ...dom,
+      querySelector: (selector: string) => {
+        if (selector === "#detailBullets_feature_div") {
+          return { textContent: null, querySelectorAll: () => [{ textContent: "ASIN: B0OTHER0001" }] };
+        }
+        return dom.querySelector(selector);
+      },
+    };
+    const opts = options();
+    const fromExpression = runProductInfoExpression(mismatched, opts) as ReturnType<typeof extractAmazonProductInfo>;
+    const fromNode = extractAmazonProductInfo(mismatched as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.entityBound).toBe(false);
+    expect(fromExpression.rows).toEqual([]);
+    expect(fromExpression.canonicalFacts).toEqual({});
   });
 });

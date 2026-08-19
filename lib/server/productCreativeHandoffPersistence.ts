@@ -28,6 +28,8 @@ import {
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { resolveVisualReferenceSelectionIds, buildApprovedVisualReference } from "@/lib/server/visualReferenceCandidates";
 import { parseCandidateResearchContext } from "@/lib/candidateResearchContext";
+import { getFactCandidates } from "@/lib/factCandidates";
+import { mapResearchConfirmedToHandoff } from "@/lib/canonicalFactMapping";
 import { adaptResearchContextForHandoff } from "@/lib/server/researchContextAdapter";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import {
@@ -150,11 +152,14 @@ function normalizedFactValue(value: string | number | boolean | string[]): strin
 /**
  * 已确认事实是追加式事实账本：新版本继承旧事实，只允许补充尚未占用的 canonical field。
  * 同一 field 的来源候选与人工输入不得同时成为真值；同值重放不新增，不同值 fail-closed。
+ * V3 Final PHASE 1：research 入参 = 研究侧已确认事实（factCandidates 权威）经 Canonical
+ * Adapter 桥接而来；与 selected/manual 同一冲突语义（已有研究确认值 → 创作侧不得再填不同值）。
  */
 export function mergeConfirmedProductFacts(input: {
   existing: ProductCreativeHandoffConfirmedFact[];
   selected: ProductCreativeHandoffConfirmedFact[];
   manual: ProductCreativeHandoffConfirmedFact[];
+  research?: ProductCreativeHandoffConfirmedFact[];
 }): ProductCreativeHandoffConfirmedFact[] {
   const selectedFields = new Set(input.selected.map((fact) => fact.field));
   const crossSourceConflict = input.manual.find((fact) => selectedFields.has(fact.field));
@@ -168,7 +173,7 @@ export function mergeConfirmedProductFacts(input: {
 
   const merged = [...input.existing];
   const byField = new Map(merged.map((fact) => [fact.field, fact]));
-  for (const fact of [...input.selected, ...input.manual]) {
+  for (const fact of [...input.selected, ...input.manual, ...(input.research ?? [])]) {
     const existing = byField.get(fact.field);
     if (!existing) {
       merged.push(fact);
@@ -374,10 +379,22 @@ export async function createOrAppendCreativeHandoff(
       const existingConfirmedFacts = currentHandoff && currentHandoff.versions.length > 0
         ? currentHandoff.versions[currentHandoff.versions.length - 1].confirmedFacts
         : [];
+      // V3 Final PHASE 1：研究侧已确认事实（factCandidates 权威）经唯一 Canonical Adapter 桥接
+      // ——已有 Confirmed Fact 自动进入 Listing 链，不再要求用户重复输入（SHARED_CONTRACT_FREEZE §8/§9）
+      const researchConfirmed = getFactCandidates(current)?.confirmed ?? [];
+      const researchBridge = researchConfirmed.length > 0
+        ? mapResearchConfirmedToHandoff({
+            confirmed: researchConfirmed,
+            actor,
+            candidateId: gateCandidate.sourceResearch.candidateId,
+            confirmedAt: now,
+          })
+        : { facts: [], skipped: [] };
       const effectiveConfirmed = mergeConfirmedProductFacts({
         existing: existingConfirmedFacts,
         selected: conversion.confirmedFacts,
         manual: manualConfirmed,
+        research: researchBridge.facts,
       });
       // 跨层排他：无论新确认或继承，stable 必须剔除 confirmed 已占用的 field
       const confirmedFieldSet = new Set(effectiveConfirmed.map((f) => f.field));

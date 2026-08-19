@@ -18,6 +18,7 @@ export type FactCandidateSourceKind =
   | "seller_sprite_product_facts"
   | "amazon_browser_evidence"
   | "product_title"
+  | "amazon_product_info"
   | "human_manual";
 
 export type FactCandidate = {
@@ -216,6 +217,25 @@ export function extractFactCandidates(resultJson: unknown): FactCandidate[] {
     if (reviewCount !== null) push({ field: "reviews", label: LABELS.reviews, value: reviewCount, sourceKind: "amazon_browser_evidence", sourceRef: "browserEvidence.snapshots[0].fields.reviewCount" });
     const bsr = displayValue(isRecord(fields.bsr) ? fields.bsr.value : null);
     if (bsr !== null) push({ field: "bsr", label: LABELS.bsr, value: bsr, sourceKind: "amazon_browser_evidence", sourceRef: "browserEvidence.snapshots[0].fields.bsr" });
+  }
+
+  // 4) Product Information 规格行（V3 Final PHASE 1：Bounded DOM 提取的确定性页面观察；
+  //    与 seller_sprite/browser/title 同字段去重后补充——已确认优先级由候选列表过滤处理）
+  if (isRecord(snapshot) && isRecord(snapshot.productInfo) && isRecord(snapshot.productInfo.canonicalFacts)) {
+    const canonicalFacts = snapshot.productInfo.canonicalFacts;
+    for (const [field, value] of Object.entries(canonicalFacts)) {
+      const label = LABELS[field];
+      if (!label) continue; // 未知字段 fail-closed（不进入候选）
+      const normalized = displayValue(value);
+      if (normalized === null) continue;
+      push({
+        field,
+        label,
+        value: normalized,
+        sourceKind: "amazon_product_info",
+        sourceRef: `browserEvidence.snapshots[0].productInfo.${field}`,
+      });
+    }
   }
 
   return candidates;

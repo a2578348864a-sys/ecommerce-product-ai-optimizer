@@ -17,7 +17,9 @@ import {
 } from "@/tools/collectors/amazon/browser-control";
 import {
   buildAmazonDetailPageExtractionExpression,
+  buildAmazonProductInfoExtractionExpression,
   type AmazonDetailPageExtraction,
+  type AmazonProductInfoExtraction,
 } from "@/tools/collectors/amazon/detail-page-extract";
 import { BrowserEvidenceError, type BrowserEvidenceSnapshot } from "@/lib/server/browserEvidence";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -38,6 +40,8 @@ export type BrowserEvidenceCollectPreview = {
   navigation: BrowserEvidenceNavigation;
   /** 采集前环境校准结果（币种/配送地；未请求校准时为 null） */
   calibration: AmazonEnvironmentCalibration | null;
+  /** V3 Final PHASE 1：Product Information 提取（规格行 + canonical 映射；实体绑定前提；失败时 null） */
+  productInfo?: AmazonProductInfoExtraction | null;
 };
 
 export type BrowserEvidenceStoredPreview = {
@@ -188,13 +192,27 @@ export async function collectBrowserEvidencePreview(input: {
     if (failClosed) {
       throw new BrowserEvidenceCollectError(failClosed, 422, failClosedMessage(failClosed));
     }
+    // V3 Final PHASE 1：Product Information 提取（同一会话、同一页面、实体绑定前提；
+    // 失败不阻断主采集——productInfo=null，由候选层按无规格数据处理）
+    let productInfo: AmazonProductInfoExtraction | null = null;
+    try {
+      productInfo = await session.evaluateDomByValue<AmazonProductInfoExtraction>(
+        buildAmazonProductInfoExtractionExpression({
+          expectedAsin: input.asin,
+          capturedAt: input.capturedAt,
+          collectorVersion: BROWSER_EVIDENCE_COLLECTOR_VERSION,
+        }),
+      );
+    } catch {
+      productInfo = null;
+    }
     // 币种校准结果随 preview 返回（UI 展示"已校准配送地/币种"或"仍非 Amazon US 价格环境"）
-    return { extraction, navigation, calibration: session.calibration };
+    return { extraction, navigation, calibration: session.calibration, productInfo };
   } catch (error) {
     if (error instanceof BrowserEvidenceCollectError) throw error;
     const message = error instanceof Error ? error.message : "unknown_error";
     // P1-A：技术串只进日志，用户文案固定（不泄漏 CDP_*/ReferenceError 等）
-    // eslint-disable-next-line no-console
+     
     console.error("[browser-evidence] collect failed", { code: "collect_failed", detail: message.slice(0, 400) });
     if (message.includes("PUBLIC_NAVIGATION_BUDGET_EXHAUSTED")) {
       throw new BrowserEvidenceCollectError("navigation_budget_exhausted", 502, "本次采集导航预算用尽，已停止。");
@@ -284,6 +302,17 @@ export function buildConfirmedSnapshot(input: {
     failureReasons: Object.values(fields)
       .map((item) => item.reason)
       .filter((reason): reason is string => reason !== null),
+    ...(preview.productInfo && preview.productInfo.entityBound
+      ? {
+          productInfo: {
+            schemaVersion: preview.productInfo.schemaVersion,
+            rows: preview.productInfo.rows.slice(0, 60),
+            canonicalFacts: preview.productInfo.canonicalFacts,
+            capturedAt: preview.productInfo.capturedAt,
+            collectorVersion: preview.productInfo.collectorVersion,
+          },
+        }
+      : {}),
     confirmedBy: {
       mode: context.mode === "demo" ? "visitor" : "owner",
       actorRef: context.mode === "demo" ? `visitor:${context.demoAccessId}` : "owner:v1",
