@@ -331,7 +331,11 @@ export function FactCandidateReview({
       }
       await load();
       onChanged();
-      setNotice("已补齐商品规格资料，请在下方核对后确认。");
+      if (collectJson.data.demo) {
+        setNotice("已读取演示采集快照（非实时访问 Amazon）；请在下方核对后确认。");
+      } else {
+        setNotice("已补齐商品规格资料，请在下方核对后确认。");
+      }
     } catch {
       setError("智能补齐失败，请检查网络后重试。");
     } finally {
