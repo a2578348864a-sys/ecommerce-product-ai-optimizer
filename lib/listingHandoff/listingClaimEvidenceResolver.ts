@@ -534,19 +534,41 @@ export function verifyListingClaims(
           const contentEntries = entries.filter((entry) =>
             (["other", "performance"].includes(entry.factType) || entry.sourceFactId.endsWith(":rendering"))
             && entry.normalizedValue.length >= 20);
-          // 先剥离完整长事实，再处理其中的逐字连续短语，最后剥离短字段事实。
-          // 这样既不会拆碎完整长事实，也不会先删掉 material 后破坏 "SoftSip Silicone Straw" 之类原文短语。
+          // 剥离顺序（V3R P1-01 FIRST_DIVERGENCE_POINT 修复）：
+          // 1) 完整长事实；2) 短字段完整值；3) 最后才剥离 fragments（逐字短语残留）。
+          // 旧顺序在短值之前剥离 fragments——长值（如 included_components "…Digital Kitchen Scale…"）
+          // 的单 token 片段（kitchen）会先拆坏其他原子事实的完整值（series_or_model "Food Kitchen"），
+          // 导致后续完整值剥离失败、残留碎片被误判 unclassified_factual_claim。
+          // 修复后：fragments 只清理「完整值剥离失败后的逐字残留」，不破坏仍存在的原子值。
+          // 剥离正则：必须带 "u" flag（\p{L}\p{N} 真正生效）+ 只保留前向词边界 (?<!\p{L}\p{N})。
+          // - 前向边界挡住值嵌入其他词（短值 red 不拆 covered 中的 red：前是字母 e）；
+          // - 不设后向边界：允许「值 + 字段词后缀」的合法组合（"黑色款"=值黑色+后缀款、
+          //   "24 oz容量"=值+字段词容量），否则这类合法表达会被误判 unclassified_factual_claim。
           // 每个值同时尝试"带尾部标点"与"去尾部标点"两种形态（splitSegments 会吞掉句尾标点）。
           for (const exactValue of contentEntries
             .map((entry) => entry.normalizedValue)
             .filter(Boolean)
             .sort((a, b) => b.length - a.length)) {
-            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}`, "giu"), "");
             const stripped = stripTrailingPunct(exactValue);
             if (stripped !== exactValue) {
-              rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}(?![\\p{L}\\p{N}])`, "gi"), "");
+              rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}`, "giu"), "");
             }
           }
+          // 2) 短字段完整值（非 contentEntries 的 entry 完整值）
+          for (const exactValue of entries
+            .filter((entry) => !contentEntries.includes(entry))
+            .map((entry) => entry.normalizedValue)
+            .filter(Boolean)
+            .sort((a, b) => b.length - a.length)) {
+            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}`, "giu"), "");
+            const stripped = stripTrailingPunct(exactValue);
+            if (stripped !== exactValue) {
+              rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}`, "giu"), "");
+            }
+          }
+          // 3) fragments：完整值剥离失败后的逐字短语残留（如 "covered SoftSip straw" 中的
+          //    原文短语）。此时所有原子完整值已剥离，fragments 不会拆坏任何仍存在的证据值。
           // 保护 allow 词后再剥离 fragments：单 token 片段（如长事实中的 every）不得拆坏
           // allow 词（every ⊆ everyday）。剥离完成后还原。
           const protectedWords: string[] = [];
@@ -558,24 +580,13 @@ export function verifyListingClaims(
             },
           );
           // 该步骤不允许同义改写或 Brief 派生词。
-          // 词边界替换：防止单 token 片段（如 every）拆坏 allow 词（如 everyday）。
+          // 词边界替换（前向 + u flag）：防止单 token 片段（如 every）拆坏 allow 词（如 everyday）。
           for (const fragment of confirmedContentFragments(entries)) {
-            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(fragment)}(?![\\p{L}\\p{N}])`, "gi"), "");
+            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(fragment)}`, "giu"), "");
           }
           protectedWords.forEach((word, i) => {
             rest = rest.replaceAll(`__P${i}__`, word);
           });
-          for (const exactValue of entries
-            .filter((entry) => !contentEntries.includes(entry))
-            .map((entry) => entry.normalizedValue)
-            .filter(Boolean)
-            .sort((a, b) => b.length - a.length)) {
-            rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(exactValue)}(?![\\p{L}\\p{N}])`, "gi"), "");
-            const stripped = stripTrailingPunct(exactValue);
-            if (stripped !== exactValue) {
-              rest = rest.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(stripped)}(?![\\p{L}\\p{N}])`, "gi"), "");
-            }
-          }
           rest = compactText(rest);
           // 剩余部分允许：其他 confirmed 事实值（组合事实，含部分重叠如 Bottle ⊆ Water Bottle）、
           // 中性词、字段词/连接词/介词
