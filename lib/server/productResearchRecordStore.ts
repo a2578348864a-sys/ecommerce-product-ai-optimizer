@@ -222,8 +222,16 @@ export async function completeCurrentResearch(
     }
     const reconfirmed: ResearchCompletionV1 = {
       ...existing,
+      // V3 Research Staleness UX Closure：Reconfirmation = Completion Version N+1——
+      // revision 递增，保留上一版本快照（reconfirmedFrom）审计；不修改历史 Version N。
+      revision: existing.revision + 1,
       completedAt: now,
       ...(currentEvidenceHash ? { evidenceHash: currentEvidenceHash } : {}),
+      reconfirmedFrom: {
+        revision: existing.revision,
+        completedAt: existing.completedAt,
+        evidenceHash: existing.evidenceHash ?? null,
+      },
     };
     try {
       await taskResultWriterPersistence.persistResearchCompletion({

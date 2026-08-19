@@ -17,7 +17,7 @@ import {
   resolveResearchTaskProductImage,
   type ResearchProductImageDisplay,
 } from "@/lib/productResearchImage";
-import { getResearchStaleState, hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
+import { getResearchStaleState, describeEvidenceChangesSinceCompletion, hasProductResearchRecordNamespace } from "@/lib/productResearchRecord";
 import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
 import {
   TaskResultJsonMutationError,
@@ -243,11 +243,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       ? getSandboxCandidate(ctx.demoAccessId, candidateId)
       : null;
     const researchStale = getResearchStaleState(result).stale;
+    const evidenceChangesSinceCompletion = describeEvidenceChangesSinceCompletion(result);
     const data = {
         ...sandboxTaskToDetail(task),
       resultJson: publicResult,
       result: publicResult,
       researchStale,
+      evidenceChangesSinceCompletion,
       productImage: resolveResearchTaskProductImage({
         taskResult: result,
         candidates: candidate ? [candidate] : [],
@@ -270,7 +272,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return jsonResponse({
       ok: true,
-      data: await addOwnerProductImage(toTaskItem(record), safeParseJson(record.resultJson)).then((item) => ({ ...item, researchStale: getResearchStaleState(safeParseJson(record.resultJson)).stale })),
+      data: await addOwnerProductImage(toTaskItem(record), safeParseJson(record.resultJson)).then((item) => ({
+        ...item,
+        researchStale: getResearchStaleState(safeParseJson(record.resultJson)).stale,
+        evidenceChangesSinceCompletion: describeEvidenceChangesSinceCompletion(safeParseJson(record.resultJson)),
+      })),
     });
   } catch (error) {
     return isDatabaseError(error) ? databaseError() : serverError();

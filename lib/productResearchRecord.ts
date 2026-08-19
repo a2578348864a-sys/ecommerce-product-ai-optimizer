@@ -30,6 +30,16 @@ export type ResearchCompletionV1 = {
   finalStatus: ProductResearchDecisionStatus;
   /** V3 UX Closure：完成时记录的研究证据内容指纹（staleness 契约） */
   evidenceHash?: string;
+  /**
+   * V3 Research Staleness UX Closure：重新确认研究（reconfirm）时保留的上一版本完成快照。
+   * 重新确认 = 创建 Completion Version N+1（revision+1、更新 completedAt/evidenceHash），
+   * 历史 Version N 由 reconfirmedFrom 审计保留——不修改、不删除历史完成信息。
+   */
+  reconfirmedFrom?: {
+    revision: number;
+    completedAt: string;
+    evidenceHash: string | null;
+  };
 };
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -525,6 +535,20 @@ export function parseResearchCompletion(value: unknown): ResearchCompletionV1 | 
   const evidenceHash = typeof value.evidenceHash === "string" && HASH_PATTERN.test(value.evidenceHash)
     ? value.evidenceHash
     : null;
+  // V3 Research Staleness UX Closure：reconfirmedFrom（上一版本完成快照）宽松解析保留
+  let reconfirmedFrom: ResearchCompletionV1["reconfirmedFrom"];
+  if (isRecord(value.reconfirmedFrom)) {
+    const from = value.reconfirmedFrom;
+    if (isRevision(from.revision)
+      && typeof from.completedAt === "string" && isIsoDate(from.completedAt)
+      && (from.evidenceHash === null || (typeof from.evidenceHash === "string" && HASH_PATTERN.test(from.evidenceHash)))) {
+      reconfirmedFrom = {
+        revision: from.revision,
+        completedAt: from.completedAt,
+        evidenceHash: typeof from.evidenceHash === "string" ? from.evidenceHash : null,
+      };
+    }
+  }
   return {
     schema: RESEARCH_COMPLETION_SCHEMA,
     status: value.status,
@@ -533,6 +557,7 @@ export function parseResearchCompletion(value: unknown): ResearchCompletionV1 | 
     revision: value.revision,
     finalStatus: value.finalStatus,
     ...(evidenceHash ? { evidenceHash } : {}),
+    ...(reconfirmedFrom ? { reconfirmedFrom } : {}),
   };
 }
 
@@ -555,15 +580,89 @@ const EVIDENCE_FINGERPRINT_NAMESPACES = [
 ] as const;
 
 /**
+ * V3 Research Staleness UX Closure — STALENESS_POLICY（市场观察与重复证据敏感度）。
+ *
+ * 规则：
+ * 1. DUPLICATE_EVIDENCE → NO_STALE：browserEvidence 快照指纹剥离 evidenceId/capturedAt/
+ *    collectorVersion 等采集元数据——完全相同字段值重复采集/重复保存不触发 Stale。
+ * 2. MARKET_OBSERVATION_VOLATILITY → NO_STALE：price/rating/reviewCount/bsr 属 Market
+ *    Observation（市场状态观察），正常短期波动（如 BSR 5→4、价格小幅变化）不强制整个
+ *    Research Stale。仅当快照的商品身份（asin/title）或商品规格证据（productInfo 规格行）
+ *    变化时视为 MEANINGFUL_RESEARCH_CHANGE → STALE。
+ * 3. 其余命名空间（review/voc/sourcing/keyword/competitor/aiSummary/context/factCandidates）
+ *    语义内容变化 → STALE（新证据或事实变更）。
+ *
+ * 实现：快照先经 normalizeBrowserEvidenceForFingerprint 归一化（去采集元数据 + market
+ * 观察字段值打平为固定占位），再进入 canonical hash——完成时与之后使用同一归一化，
+ * 使「重复采集」与「市场波动」前后指纹一致（NO_STALE），而真实新证据/身份变化失配。
+ */
+
+/** Market Observation 字段（浏览器快照中）——波动不触发 Stale */
+const BROWSER_MARKET_OBSERVATION_FIELDS = new Set(["price", "rating", "reviewCount", "bsr", "reviews"]);
+
+/** 快照归一化：保留商品身份与规格证据；剥离采集元数据与市场观察值 */
+function normalizeBrowserEvidenceForFingerprint(snapshot: unknown): unknown {
+  if (!isRecord(snapshot)) return snapshot;
+  const fields = isRecord(snapshot.fields) ? snapshot.fields : null;
+  const normalizedFields: Record<string, unknown> = {};
+  if (fields) {
+    for (const [key, value] of Object.entries(fields)) {
+      if (BROWSER_MARKET_OBSERVATION_FIELDS.has(key)) {
+        // 市场观察：仅保留字段存在性（值波动不参与指纹），新增/移除字段仍算变化
+        normalizedFields[key] = "__market_observation__";
+      } else {
+        normalizedFields[key] = value;
+      }
+    }
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (key === "evidenceId" || key === "capturedAt" || key === "collectorVersion") continue;
+    out[key] = key === "fields" ? normalizedFields : value;
+  }
+  return out;
+}
+
+/** 浏览器证据命名空间归一化（供指纹）：快照数组逐项归一化 + 语义去重（同语义快照只计一次） */
+function normalizeBrowserEvidenceForFingerprintNamespace(value: unknown): unknown {
+  if (!isRecord(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value)) {
+    if (key === "snapshots" && Array.isArray(v)) {
+      // 语义去重：相同归一化快照（如重复采集同商品页，仅 capturedAt/evidenceId 不同）
+      // 只保留一个——「新增同语义采集」不改变指纹 → 不触发 Stale。
+      const seen = new Set<string>();
+      const unique: unknown[] = [];
+      for (const snapshot of v) {
+        const normalized = normalizeBrowserEvidenceForFingerprint(snapshot);
+        const key2 = sha256Canonical(normalized);
+        if (!seen.has(key2)) {
+          seen.add(key2);
+          unique.push(normalized);
+        }
+      }
+      out[key] = unique;
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+/**
  * V3 UX Closure — 计算研究证据内容指纹（canonical hash of evidence 命名空间）。
- * 完成研究时记录；之后任一证据命名空间变化 → hash 失配 → NEEDS_RECONFIRMATION。
+ * 完成研究时记录；之后证据命名空间的「语义内容」变化 → hash 失配 → NEEDS_RECONFIRMATION。
+ * V3 Research Staleness UX Closure：browserEvidence 经 STALENESS_POLICY 归一化
+ * （去采集元数据 + market observation 值打平）——重复采集/市场波动不触发 Stale。
  */
 export function computeResearchEvidenceHash(result: Record<string, unknown> | null): string | null {
   if (!isRecord(result)) return null;
   const fingerprint: Record<string, unknown> = {};
   for (const key of EVIDENCE_FINGERPRINT_NAMESPACES) {
     if (Object.prototype.hasOwnProperty.call(result, key)) {
-      fingerprint[key] = result[key];
+      fingerprint[key] = key === "browserEvidence"
+        ? normalizeBrowserEvidenceForFingerprintNamespace(result[key])
+        : result[key];
     }
   }
   if (Object.keys(fingerprint).length === 0) return null;
@@ -597,6 +696,82 @@ export function getResearchStaleState(result: Record<string, unknown> | null): R
     && currentEvidenceHash !== null
     && completionEvidenceHash !== currentEvidenceHash;
   return { completed: true, stale, completionEvidenceHash, currentEvidenceHash };
+}
+
+export type EvidenceChangeSinceCompletionItem = {
+  /** 证据类型（命名空间中文名） */
+  evidenceType: string;
+  /** 来源（sourceSite / source 标记） */
+  source: string;
+  /** 捕获/更新时间 */
+  capturedAt: string;
+  /** 变化摘要（Changed Fields / New Evidence） */
+  summary: string;
+};
+
+/**
+ * V3 Research Staleness UX Closure — NEW_EVIDENCE_SINCE_LAST_COMPLETION 投影。
+ * 基于 completion.completedAt 列出完成研究后新增/变更的证据（供重新确认 UI 展示）。
+ * 只读、纯函数；不清空、不修改任何证据。
+ */
+export function describeEvidenceChangesSinceCompletion(
+  result: Record<string, unknown> | null,
+): EvidenceChangeSinceCompletionItem[] {
+  if (!isRecord(result)) return [];
+  const completion = getResearchCompletion(result);
+  const since = completion?.completedAt;
+  const items: EvidenceChangeSinceCompletionItem[] = [];
+  if (!since) return items;
+
+  // 1) browserEvidence：capturedAt 晚于 completion 的快照 = 新增采集
+  const browser = isRecord(result.browserEvidence) ? result.browserEvidence : null;
+  if (browser) {
+    const snapshots = Array.isArray(browser.snapshots) ? browser.snapshots : [];
+    for (const snap of snapshots) {
+      if (!isRecord(snap)) continue;
+      const capturedAt = typeof snap.capturedAt === "string" ? snap.capturedAt : "";
+      if (!capturedAt || capturedAt <= since) continue;
+      const fields = isRecord(snap.fields) ? snap.fields : null;
+      const asin = fields && isRecord(fields.asin) && typeof fields.asin.value === "string"
+        ? fields.asin.value
+        : "";
+      const changed: string[] = [];
+      for (const key of ["title", "price", "rating", "reviewCount", "bsr", "reviews"]) {
+        const f = fields && isRecord(fields[key]) ? fields[key] : null;
+        if (f && f.value !== null && f.value !== undefined) changed.push(key);
+      }
+      items.push({
+        evidenceType: "Amazon 页面证据",
+        source: "browserEvidence",
+        capturedAt,
+        summary: `新增采集${asin ? `（ASIN ${asin}）` : ""}${changed.length > 0 ? `：${changed.join(" / ")}` : ""}`,
+      });
+    }
+  }
+
+  // 2) 其他证据命名空间：完成时不存在 / 之后出现的命名空间（存在性变化）
+  const namespaceLabels: Array<[string, string]> = [
+    ["reviewEvidence", "买家评论"],
+    ["vocAnalysis", "VOC 分析"],
+    ["sourcingEvidence", "供应线索"],
+    ["keywordEvidence", "关键词证据"],
+    ["competitorEvidence", "竞品证据"],
+    ["aiEvidenceSummary", "AI 证据总结"],
+  ];
+  for (const [key, label] of namespaceLabels) {
+    const value = result[key];
+    if (value === undefined) continue;
+    const updatedAt = isRecord(value) && typeof value.updatedAt === "string" ? value.updatedAt : "";
+    if (updatedAt && updatedAt > since) {
+      items.push({
+        evidenceType: label,
+        source: key,
+        capturedAt: updatedAt,
+        summary: "内容更新（Changed Fields / New Evidence）",
+      });
+    }
+  }
+  return items;
 }
 
 export function parseProductResearchRecord(value: unknown): ProductResearchRecordV1 | null {  if (!isRecord(value) || !hasExactKeys(value, [

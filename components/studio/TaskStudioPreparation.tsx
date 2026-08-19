@@ -293,25 +293,36 @@ export function TaskStudioPreparation({
     // legacy_not_supported 不再作为独立用户状态（详情页已不再展示创作工具区），统一为通用未就绪提示。
     const isDecisionNotReady = gateReason === "decision_not_creative_ready";
     const isResearchNotCompleted = gateReason === "research_not_completed";
+    const isResearchStale = gateReason === "research_stale_requires_reconfirmation";
     const isBlocked = gateReason === "blocking_issue_present" || gateReason === "research_hash_invalid" || gateReason === "verification_invalid" || gateReason === "research_mode_invalid";
     return (
       <section className="surface-card border-amber-200 p-5" role="alert" data-testid={`task-studio-gate-${gateReason}`}>
-        <h2 className="text-lg font-bold text-slate-950">创作资料尚未准备完成</h2>
+        <h2 className="text-lg font-bold text-slate-950">
+          {isResearchStale ? "研究资料需要重新确认" : "创作资料尚未准备完成"}
+        </h2>
         <p className="mt-2 text-sm leading-6 text-slate-700">
-          {isDecisionNotReady
-            ? "研究决定尚未进入可创作状态，请先返回商品研究完成人工决定。"
-            : isResearchNotCompleted
-              ? "研究已准备好，但尚未完成研究。请先返回研究记录执行「完成研究」，之后即可进入创作。"
-              : isBlocked
-                ? "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。"
-                : "创作资料尚未准备完成，请先返回商品研究确认资料。"}
+          {isResearchStale
+            ? "研究完成后又新增或变更了研究证据，当前研究结论基于旧版本资料。新的 Listing / Image 生成已暂停（历史结果保留）；请返回研究记录执行「重新确认研究」，确认后创作工具恢复可用。"
+            : isDecisionNotReady
+              ? "研究决定尚未进入可创作状态，请先返回商品研究完成人工决定。"
+              : isResearchNotCompleted
+                ? "研究已准备好，但尚未完成研究。请先返回研究记录执行「完成研究」，之后即可进入创作。"
+                : isBlocked
+                  ? "当前研究资料状态暂不支持创作，请先返回商品研究核对资料。"
+                  : "创作资料尚未准备完成，请先返回商品研究确认资料。"}
         </p>
-        <Link
-          href={`/tasks/${encodeURIComponent(taskId)}`}
-          className="mt-4 inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"
-        >
-          返回商品研究
-        </Link>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Link
+            href={`/tasks/${encodeURIComponent(taskId)}`}
+            className={`inline-flex h-10 items-center rounded-xl px-4 text-sm font-semibold ${
+              isResearchStale
+                ? "border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                : "border border-slate-300 bg-white text-slate-700"
+            }`}
+          >
+            {isResearchStale ? "返回研究记录重新确认" : "返回商品研究"}
+          </Link>
+        </div>
       </section>
     );
   }

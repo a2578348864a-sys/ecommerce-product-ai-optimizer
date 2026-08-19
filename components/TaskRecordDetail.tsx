@@ -235,12 +235,20 @@ function ResearchCompletionControl({
   taskId,
   result,
   researchStale,
+  evidenceChangesSinceCompletion = [],
   onCompleted,
 }: {
   taskId: string;
   result: Record<string, unknown>;
   /** 服务端计算的 stale 状态（client 无法计算 evidence hash） */
   researchStale?: boolean;
+  /** V3 Research Staleness UX Closure：完成研究后新增/变更的证据明细（服务端投影） */
+  evidenceChangesSinceCompletion?: Array<{
+    evidenceType: string;
+    source: string;
+    capturedAt: string;
+    summary: string;
+  }>;
   onCompleted?: () => void;
 }) {
   const [completing, setCompleting] = useState(false);
@@ -269,6 +277,21 @@ function ResearchCompletionControl({
             当前研究结论基于旧版本资料；新增的证据尚未纳入结论。请重新确认研究，确认后旧结论才会对应当前资料；
             重新确认前，新的 Listing / Image 生成会被暂停（历史结果保留）。
           </p>
+          {/* V3 Research Staleness UX Closure：NEW_EVIDENCE_SINCE_LAST_COMPLETION 明细 */}
+          {evidenceChangesSinceCompletion.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-white/60 p-3" data-testid="new-evidence-since-completion">
+              <p className="text-xs font-bold text-amber-800">自上次确认后新增 / 变更的证据</p>
+              <ul className="mt-1.5 space-y-1">
+                {evidenceChangesSinceCompletion.map((item, index) => (
+                  <li key={`${item.evidenceType}-${item.capturedAt}-${index}`} className="flex flex-wrap items-baseline gap-x-2 text-xs leading-5 text-slate-700">
+                    <span className="font-semibold text-slate-800">{item.evidenceType}</span>
+                    <span className="text-slate-500">{new Date(item.capturedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                    <span className="text-slate-600">{item.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -276,7 +299,15 @@ function ResearchCompletionControl({
               onClick={() => void completeResearch()}
               className="inline-flex h-9 items-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
             >
-              {completing ? "确认中…" : "重新确认研究"}
+              {completing ? "确认中…" : "确认研究结论仍然有效"}
+            </button>
+            <button
+              type="button"
+              disabled={completing}
+              onClick={() => void modifyDecision()}
+              className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              修改人工决定
             </button>
             <Link
               href="/tasks"
@@ -285,6 +316,10 @@ function ResearchCompletionControl({
               查看研究记录
             </Link>
           </div>
+          <p className="mt-2 text-[11px] leading-5 text-amber-600/80">
+            重新确认不会删除任何证据 / 事实 / 人工决定，也不会重跑研究；仅创建 Research Completion 新版本（Version N+1），
+            历史完成版本保留可查。
+          </p>
           {error && <p className="mt-2 text-sm text-rose-600" role="alert">{error}</p>}
         </section>
       );
@@ -311,8 +346,12 @@ function ResearchCompletionControl({
 
   async function completeResearch() {
     if (completing || !canComplete) return;
+    // V3 Research Staleness UX Closure：stale 时是「重新确认」语义（创建 Version N+1）；
+    // 首次完成保留原文案（Active → 研究记录）。
     const confirmed = window.confirm(
-      "完成后，该商品会从『商品研究』移动到『研究记录』。现有研究资料不会删除，仍可查看并使用创作工具。",
+      researchStale === true
+        ? "确认研究结论仍然有效？确认后创建新的 Research Completion 版本（Version N+1），当前资料与结论对齐；\n不会删除任何证据 / 事实 / 人工决定，历史完成版本保留。"
+        : "完成后，该商品会从『商品研究』移动到『研究记录』。现有研究资料不会删除，仍可查看并使用创作工具。",
     );
     if (!confirmed) return;
     setCompleting(true);
@@ -335,6 +374,11 @@ function ResearchCompletionControl({
     } finally {
       setCompleting(false);
     }
+  }
+
+  /** V3 Research Staleness UX Closure：修改人工决定 → 滚动到人工决定面板（不重跑研究） */
+  function modifyDecision() {
+    document.getElementById("product-research-decision")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -1265,6 +1309,8 @@ export function TaskRecordDetail({ id }: { id: string }) {
   }, [record]);
   // V3 Legacy Removal：早期候选任务（无新版创作上下文）→ 不显示创作工具区
   const studioLegacyUnsupported = record !== null && !hasVersionedProductResearchRecord(record.result);
+  // V3 Research Staleness UX Closure：研究资料在完成研究后发生变化 → 创作 CTA 禁用（需重新确认研究）
+  const researchStale = (record as { researchStale?: boolean } | null)?.researchStale === true;
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
@@ -1681,6 +1727,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
                         taskId={record.id}
                         result={record.result}
                         researchStale={(record as { researchStale?: boolean }).researchStale === true}
+                        evidenceChangesSinceCompletion={(record as { evidenceChangesSinceCompletion?: Array<{ evidenceType: string; source: string; capturedAt: string; summary: string }> }).evidenceChangesSinceCompletion}
                         onCompleted={() => void refreshRecord()}
                       />
                     ) : null}
@@ -1695,21 +1742,55 @@ export function TaskRecordDetail({ id }: { id: string }) {
                         <p className="mt-1 text-xs font-semibold text-cyan-800">创作资料：{creativeMaterialStatus?.label ?? "需要重新确认"}</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <StudioNavigationLink
-                          href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
-                          label="在 Listing Studio 中使用"
-                          pendingLabel="正在打开 Listing Studio…"
-                          className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
-                        />
-                        <StudioNavigationLink
-                          href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
-                          label="在 Image Studio 中使用"
-                          pendingLabel="正在打开 Image Studio…"
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
-                        />
+                        {/* V3 Research Staleness UX Closure：RESEARCH_STALE=TRUE 时 CTA 变
+                            Disabled/Blocked 态并显示「需要先重新确认研究」——不得表现为正常 Primary
+                            Action，避免点击后进入 Studio 死路；重新确认研究是当前 Primary CTA（见上方
+                            ResearchCompletionControl）。 */}
+                        {researchStale ? (
+                          <>
+                            <span
+                              className="inline-flex h-10 cursor-not-allowed items-center justify-center rounded-xl bg-slate-200 px-4 text-sm font-bold text-slate-400"
+                              data-testid="listing-studio-cta-blocked"
+                              aria-disabled="true"
+                              title="需要先重新确认研究"
+                            >
+                              Listing Studio · 需要先重新确认研究
+                            </span>
+                            <span
+                              className="inline-flex h-10 cursor-not-allowed items-center justify-center rounded-xl border border-slate-200 bg-slate-100 px-4 text-sm font-bold text-slate-400"
+                              data-testid="image-studio-cta-blocked"
+                              aria-disabled="true"
+                              title="需要先重新确认研究"
+                            >
+                              Image Studio · 需要先重新确认研究
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <StudioNavigationLink
+                              href={`/listing-studio?taskId=${encodeURIComponent(record.id)}`}
+                              label="在 Listing Studio 中使用"
+                              pendingLabel="正在打开 Listing Studio…"
+                              className="inline-flex h-10 items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white hover:bg-teal-700"
+                            />
+                            <StudioNavigationLink
+                              href={`/image-studio?taskId=${encodeURIComponent(record.id)}`}
+                              label="在 Image Studio 中使用"
+                              pendingLabel="正在打开 Image Studio…"
+                              className="inline-flex h-10 items-center justify-center rounded-xl border border-cyan-200 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50"
+                            />
+                          </>
+                        )}
                       </div>
                     </div>
-                    <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>
+                    {researchStale ? (
+                      <p className="mt-3 text-xs font-semibold leading-5 text-amber-700" data-testid="studio-cta-stale-reason">
+                        研究资料在完成研究后发生了变化，新的 Listing / Image 生成已暂停。请先在上方「重新确认研究」确认当前资料，
+                        确认后创作工具恢复可用（历史结果保留）。
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs leading-5 text-slate-500">Studio 会重新读取并核验本研究记录；详细的创作前资料确认在 Studio 内完成。</p>
+                    )}
                   </section>
                 ) : null}
                  </>
