@@ -28,21 +28,55 @@ vi.mock("@/lib/productCreativeHandoffStatus", () => ({
 
 const now = "2026-08-10T00:00:00.000Z";
 function gate(usageScopes: string[]) {
+  const owner = { mode: "owner" as const, subjectFingerprint: "a1b2c3d4e5f6a7b8" };
   return {
     allowed: true,
     reason: "eligible",
     currentHandoff: {
-      controlState: "active",
+      schema: "product-creative-handoff.v1",
+      handoffId: "11111111-1111-4111-8111-111111111111",
+      taskId: "task-1",
+      candidateId: "candidate-1",
       currentRevision: 1,
+      controlState: "active",
+      createdAt: now,
+      createdBy: owner,
+      researchMode: "market_research_only",
+      promotionEligible: false,
       versions: [{
         revision: 1,
+        createdAt: now,
+        createdBy: owner,
+        sourceResearch: {
+          recordSchema: "product-research-record.v1",
+          candidateId: "candidate-1",
+          researchRevision: 1,
+          researchHash: "a".repeat(64),
+          workflowStatus: "completed",
+          decisionStatus: "creative_ready",
+          candidateSourceFingerprint: "b".repeat(64),
+        },
+        productIdentity: { displayName: "测试商品", identityConfirmedAt: now },
         confirmedFacts: [{
+          factId: "00000000-0000-4000-8000-000000000001",
           field: usageScopes.includes("listing") ? "brand" : "visual_note",
           label: "测试事实",
           value: "TestBrand",
+          evidenceTier: "human_confirmed",
           usageScopes,
+          sourceRef: { sourceKind: "user_confirmation", sourceField: "brand", confirmedBy: owner, confirmedAt: now, confirmationReference: "fact-candidates:brand" },
+          confirmedAt: now,
+          confirmedBy: owner,
         }],
-        prohibitedClaims: [{ summary: "不得夸大" }],
+        stableSourceFacts: [],
+        aiCreativeReferences: [],
+        issues: [],
+        prohibitedClaims: [{ claimId: "00000000-0000-4000-8000-000000000002", category: "absolute_claim", summary: "不得夸大", appliesTo: ["both"], source: "system_rule" }],
+        creativePreferences: { evidenceTier: "creative_preference", tone: "professional" },
+        visualReferences: [],
+        humanReviewRequired: true,
+        confirmation: { confirmed: true, confirmedAt: now, confirmedBy: owner },
+        handoffFingerprint: "d".repeat(64),
       }],
     },
     candidate: {

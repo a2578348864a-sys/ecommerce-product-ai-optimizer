@@ -259,15 +259,14 @@ export function mergeConfirmedIntoOverview(
   return [...overview, ...extra];
 }
 
-/** 商品事实期望字段集 = MANUAL_FACT_FIELDS（15）+ 采集核心 5 字段（category/price/rating/reviews/bsr） */
-export const EXPECTED_FACT_FIELDS: ReadonlySet<string> = new Set([
-  ...MANUAL_FACT_FIELDS.map((item) => item.field),
-  "category",
-  "price",
-  "rating",
-  "reviews",
-  "bsr",
-]);
+/**
+ * 商品事实期望字段集 = MANUAL_FACT_FIELDS（15）——仅商品本身规格事实。
+ * 契约④ MARKET_OBSERVATION：category/price/rating/reviews/bsr 是市场观察（market_observation），
+ * 不是商品事实，不参与「商品事实已有/仍缺」计数（它们在市场观察区单独展示）。
+ */
+export const EXPECTED_FACT_FIELDS: ReadonlySet<string> = new Set(
+  MANUAL_FACT_FIELDS.map((item) => item.field),
+);
 
 /** overview 字段名 → 事实字段名的归一化别名（其余同名直接覆盖） */
 const FACT_FIELD_ALIAS: Record<string, string> = {
@@ -277,8 +276,8 @@ const FACT_FIELD_ALIAS: Record<string, string> = {
 };
 
 /**
- * 已覆盖事实字段集：overview 已知项（归一化后）+ confirmed 字段。
- * 用于"已有 N 项 / 仍缺 M 项"计数（N=已覆盖，M=期望集 − 已覆盖）。
+ * 已覆盖商品事实字段集：overview 已知项（归一化后）+ confirmed 字段，
+ * 仅统计 product_fact（市场观察字段不计入「商品事实 N/M」）。
  */
 export function coveredFactFieldSet(
   overview: WorkbenchOverviewItem[],
@@ -290,7 +289,9 @@ export function coveredFactFieldSet(
     const canonical = FACT_FIELD_ALIAS[item.field] ?? item.field;
     if (EXPECTED_FACT_FIELDS.has(canonical)) covered.add(canonical);
   }
-  for (const item of confirmed) covered.add(item.field);
+  for (const item of confirmed) {
+    if (EXPECTED_FACT_FIELDS.has(item.field)) covered.add(item.field);
+  }
   return covered;
 }
 
@@ -531,9 +532,17 @@ export function EvidenceWorkbench({
 
   // V3 Final HWF（P1-03 一致性）：factCandidates 是唯一已确认事实权威；
   // 商品概览合并已确认事实（含标题派生字段），Summary 与基础资料计数统一以合并视图为准。
+  // V3R（契约④ MARKET_OBSERVATION）：商品事实计数仅统计 product_fact——
+  // category/price/rating/reviews/bsr 是市场观察，单独计数展示。
   const confirmedFacts = getFactCandidates(result)?.confirmed ?? [];
+  const confirmedProductFacts = confirmedFacts.filter(
+    (item) => EXPECTED_FACT_FIELDS.has(item.field),
+  );
+  const confirmedMarketObservations = confirmedFacts.filter(
+    (item) => !EXPECTED_FACT_FIELDS.has(item.field),
+  );
   const mergedOverview = mergeConfirmedIntoOverview(overview, confirmedFacts);
-  const coveredFacts = coveredFactFieldSet(overview, confirmedFacts);
+  const coveredFacts = coveredFactFieldSet(overview, confirmedProductFacts);
   const productBasicsDetail = `已有 ${coveredFacts.size} 项 / 仍缺 ${EXPECTED_FACT_FIELDS.size - coveredFacts.size} 项`;
 
   const [sourcingConfirmed, setSourcingConfirmed] = useState(false);
@@ -826,7 +835,7 @@ export function EvidenceWorkbench({
             <dt className="text-xs text-slate-500">目前知道什么</dt>
             <dd className="mt-0.5 text-slate-800">
               {overview.some((item) => item.value !== "unknown") || confirmedFacts.length > 0
-                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedFacts.length} 条商品事实。`
+                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedProductFacts.length} 条商品事实${confirmedMarketObservations.length > 0 ? `、${confirmedMarketObservations.length} 项市场观察（价格/评分/评论数/BSR/类目）` : ""}。`
                 : "暂无已确认的商品证据。"}
             </dd>
           </div>

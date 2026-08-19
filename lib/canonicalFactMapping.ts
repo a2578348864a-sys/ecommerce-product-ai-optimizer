@@ -15,11 +15,15 @@
  */
 import { createHash } from "node:crypto";
 import type { ConfirmedFactCandidate } from "@/lib/factCandidates";
+import { MARKET_OBSERVATION_FIELDS, factCategoryOf as factCategory } from "@/lib/factCandidates";
 import type {
   ProductCreativeHandoffConfirmedFact,
   ProductCreativeHandoffInternalActor,
   ProductCreativeHandoffUsageScope,
 } from "@/lib/productCreativeHandoff";
+
+// 契约④要求的事实类别出口（product_fact | market_observation）——单一权威，展示/消费共用
+export { factCategory };
 
 /** Research field → Listing/Consumer field（唯一映射表；同名直通） */
 export const RESEARCH_TO_LISTING_FIELD_MAP: Readonly<Record<string, string>> = {
@@ -45,8 +49,12 @@ export const RESEARCH_TO_LISTING_FIELD_MAP: Readonly<Record<string, string>> = {
   compatibility: "compatibility",
 };
 
-/** 仅 internal scope（市场信号；不成为 Listing 声明） */
-const INTERNAL_ONLY_FIELDS: ReadonlySet<string> = new Set(["category", "price", "rating", "reviews", "bsr"]);
+/**
+ * 仅 internal scope（市场信号；不成为 Listing 声明）。
+ * V3R（契约④）：与 factCandidates.MARKET_OBSERVATION_FIELDS 同源——单一市场观察字段权威，
+ * 展示层（factCategoryOf）与消费层（internal-only）不得各自维护集合。
+ */
+const INTERNAL_ONLY_FIELDS: ReadonlySet<string> = MARKET_OBSERVATION_FIELDS;
 
 /** 经 Human Confirm 后可消费（internal + listing + image） */
 const PRODUCT_SCOPE_FIELDS: ReadonlySet<string> = new Set([
@@ -66,6 +74,8 @@ const PRODUCT_SCOPE_FIELDS: ReadonlySet<string> = new Set([
   "operation",
   "compatibility",
 ]);
+
+/** 字段 → 事实类别（product_fact | market_observation）；消费层与展示层共用同一判定（见上方 export） */
 
 function usageScopesFor(field: string): ProductCreativeHandoffUsageScope[] {
   if (INTERNAL_ONLY_FIELDS.has(field)) return ["internal"];

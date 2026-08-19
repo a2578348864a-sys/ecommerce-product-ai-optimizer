@@ -104,6 +104,22 @@ describe("detail-page expression source（P1-A）", () => {
     expect(fromExpression.fields.reviews.value).toBe(1234);
   });
 
+  it("matches on new buybox price container (V3R)", () => {
+    const dom = fakeDom({
+      "#body": { innerText: "Test Bottle product page" },
+      "#productTitle": { textContent: "Test Bottle" },
+      "#detailBullets_feature_div": { rows: [{ textContent: "ASIN: B0TEST0001" }] },
+      "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen": { textContent: "$39.99" },
+      "#acrPopover .a-icon-alt": { textContent: "4.6 out of 5 stars" },
+      "#acrCustomerReviewText": { textContent: "1,234 ratings" },
+    });
+    const opts = options();
+    const fromExpression = runExpression(dom, opts) as ReturnType<typeof extractAmazonDetailPage>;
+    const fromNode = extractAmazonDetailPage(dom as never, "https://www.amazon.com/dp/B0TEST0001", opts);
+    expect(fromExpression).toEqual(fromNode);
+    expect(fromExpression.fields.price.value).toBe(39.99);
+  });
+
   it("matches on ASIN mismatch (entity not bound, all fields unknown)", () => {
     const dom = fakeDom({
       "#body": { innerText: "Test Bottle product page" },

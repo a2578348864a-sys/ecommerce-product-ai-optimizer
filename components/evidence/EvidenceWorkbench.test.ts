@@ -250,7 +250,7 @@ describe("mergeConfirmedIntoOverview / coveredFactFieldSet", () => {
     expect(merged.find((item) => item.field === "capacity")?.nature).toBe("snapshot"); // 人工核实确定性值
   });
 
-  it("coveredFactFieldSet：overview 归一化（rootCategory→category / BSR）+ confirmed 并集", () => {
+  it("coveredFactFieldSet：overview 归一化（rootCategory→category / BSR）+ confirmed 并集；市场观察不计入商品事实", () => {
     const overview = extractOverviewItems({
       sourceMeta: {
         productBatchSnapshot: {
@@ -261,13 +261,27 @@ describe("mergeConfirmedIntoOverview / coveredFactFieldSet", () => {
     });
     const covered = coveredFactFieldSet(overview, confirmed([{ field: "capacity", value: "12oz" }]));
     expect(covered.has("brand")).toBe(true);
-    expect(covered.has("category")).toBe(true);
-    expect(covered.has("bsr")).toBe(true);
+    // V3R（契约④）：category/bsr 是市场观察，不计入商品事实覆盖
+    expect(covered.has("category")).toBe(false);
+    expect(covered.has("bsr")).toBe(false);
     expect(covered.has("capacity")).toBe(true);
     expect(covered.has("price")).toBe(false);
-    expect(covered.size).toBe(4);
+    expect(covered.size).toBe(2);
     expect(EXPECTED_FACT_FIELDS.has("capacity")).toBe(true);
-    expect(EXPECTED_FACT_FIELDS.size).toBe(20);
+    expect(EXPECTED_FACT_FIELDS.has("price")).toBe(false);
+    expect(EXPECTED_FACT_FIELDS.size).toBe(15);
+  });
+
+  it("coveredFactFieldSet：confirmed 中的市场观察字段（price 等）不计入商品事实覆盖", () => {
+    const covered = coveredFactFieldSet([], confirmed([
+      { field: "capacity", value: "12oz" },
+      { field: "price", value: 13.99 },
+      { field: "reviews", value: 176393 },
+    ]));
+    expect(covered.has("capacity")).toBe(true);
+    expect(covered.has("price")).toBe(false);
+    expect(covered.has("reviews")).toBe(false);
+    expect(covered.size).toBe(1);
   });
 
   it("buildResearchMaterialRows：已确认事实使商品基础资料升级为已有并给出 N/M 明细", () => {
@@ -284,6 +298,6 @@ describe("mergeConfirmedIntoOverview / coveredFactFieldSet", () => {
     });
     const productBasics = rows.find((row) => row.key === "productBasics");
     expect(productBasics?.state).toBe("已有");
-    expect(productBasics?.detail).toBe("已有 1 项 / 仍缺 19 项");
+    expect(productBasics?.detail).toBe("已有 1 项 / 仍缺 14 项");
   });
 });

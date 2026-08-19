@@ -15,7 +15,7 @@ vi.hoisted(() => {
   process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${join(dir, "unused.db").replaceAll("\\", "/")}`;
 });
 
-import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
+import { generateCreativeHandoffPreview, checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { createInitialProductResearchRecord, createProductResearchVerification, buildProductResearchHash, PRODUCT_RESEARCH_HASH_SCHEMA } from "@/lib/productResearchRecord";
 import { buildConfirmableCandidates } from "@/lib/productCreativeHandoffConfirmation";
 
@@ -121,5 +121,28 @@ describe("Fix.5 降级 Preview 回归", () => {
       return `confirm:${createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 24)}`;
     });
     expect(preview!.confirmableFactCandidates!.map((c) => c.selectionId)).toEqual(expectedIds);
+  });
+});
+
+// ── V3R 契约③ PROVENANCE_MERGE：workbenchConfirmedFacts 字段归一化（防重复展示） ──
+
+describe("V3R workbenchConfirmedFacts consumer-field 归一化", () => {
+  it("research field（price/reviews）归一化为 consumer field（price_usd/review_count）", async () => {
+    const doc = JSON.parse(researchDoc());
+    const confirmedFacts = [
+      { candidateId: "seller_sprite_product_facts:price", field: "price", label: "参考价格 (USD)", value: 13.99, sourceKind: "seller_sprite_product_facts", sourceRef: "x", humanConfirmationRequired: true, confirmedAt: NOW, confirmedBy: "visitor:test" },
+      { candidateId: "amazon_browser_evidence:reviews", field: "reviews", label: "评论数", value: 176393, sourceKind: "amazon_browser_evidence", sourceRef: "y", humanConfirmationRequired: true, confirmedAt: NOW, confirmedBy: "visitor:test" },
+      { candidateId: "seller_sprite_product_facts:brand", field: "brand", label: "品牌", value: "Etekcity", sourceKind: "seller_sprite_product_facts", sourceRef: "z", humanConfirmationRequired: true, confirmedAt: NOW, confirmedBy: "visitor:test" },
+    ];
+    doc.factCandidates = { schema: "fact-candidates.v1", version: 1, confirmed: confirmedFacts, updatedAt: NOW };
+    seedTask("demo-task", JSON.stringify(doc));
+    // 与 ListingFactSupplementPanel 消费同一 gate.workbenchConfirmedFacts（checkCreativeHandoffGate 构建处）
+    const gate = await checkCreativeHandoffGate("demo-task", visitorContext());
+    const fields = (gate.workbenchConfirmedFacts ?? []).map((f) => f.field);
+    expect(fields).toContain("price_usd"); // research price → consumer price_usd
+    expect(fields).toContain("review_count"); // research reviews → consumer review_count
+    expect(fields).toContain("brand"); // 同名直通
+    expect(fields).not.toContain("price");
+    expect(fields).not.toContain("reviews");
   });
 });

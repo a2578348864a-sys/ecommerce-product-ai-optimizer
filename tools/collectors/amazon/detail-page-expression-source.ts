@@ -173,7 +173,7 @@ export const DETAIL_PAGE_EXTRACTOR_SOURCE = [
   "    const title = sanitizeDetailText(titleNode && titleNode.textContent, 500);",
   "    fields.asin = correctField('asin', expectedAsin);",
   "    fields.title = title ? correctField('title', title) : unknownField('title', 'selector_not_found');",
-  "    const priceText = sanitizeDetailText(readFirstText(root, ['#corePrice_feature_div .a-offscreen', '.priceToPay .a-offscreen', '#priceblock_ourprice', '#priceblock_dealprice']), 60);",
+  "    const priceText = sanitizeDetailText(readFirstText(root, ['#corePriceDisplay_desktop_feature_div .a-price .a-offscreen', '#corePriceDisplay_mobile_feature_div .a-price .a-offscreen', '#corePrice_feature_div .a-offscreen', '#corePrice_feature_div .a-price .a-offscreen', '.priceToPay .a-offscreen', '#priceblock_ourprice', '#priceblock_dealprice']), 60);",
   "    const price = parseDetailPrice(priceText);",
   "    const priceCurrency = detectDetailPriceCurrency(priceText);",
   "    fields.price = price !== null",

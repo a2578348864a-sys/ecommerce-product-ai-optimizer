@@ -165,7 +165,9 @@ export async function collectBrowserEvidencePreview(input: {
     calibrateEnvironment: { postalCode: "10001" },
   });
   try {
-    const requestedUrl = `https://www.amazon.com/dp/${input.asin}?language=en_US`;
+    // V3R（Research→Creative Consistency）：URL 显式携带 currency=USD——隔离 profile 不继承用户
+    // 币种设置，仅设 language 时页面可能按非 USD 报价；显式 currency 参数保证价格按 USD 提取。
+    const requestedUrl = `https://www.amazon.com/dp/${input.asin}?language=en_US&currency=USD`;
     const nav = await session.navigate(requestedUrl);
     const navigation: BrowserEvidenceNavigation = {
       requestedUrl,

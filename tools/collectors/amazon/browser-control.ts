@@ -976,8 +976,13 @@ async function applyDeliveryPostalCode(
   await client.send("Page.reload", { ignoreCache: false }, sessionId);
   await waitForDocument(client, sessionId);
   const finalSignals = await readAmazonHomeSignals(client, sessionId);
-  const explicitUsRegion = finalSignals.deliveryRegion?.includes(postalCode) === true
-    && /\b(?:new york|ny|united states|usa)\b/i.test(finalSignals.deliveryRegion);
+  // V3R（Research→Creative Consistency）：放宽 US 配送确认——ZIP 或英文 US 标记任一即可
+  // （旧逻辑要求同时含 "10001" 与英文 US 标记；本地化/简版页面常只显示其一 → 误判非 US）。
+  // 注意：不把 "deliver to" 当作独立标记（"Deliver to Japan" 会误判）；区域词本身已覆盖
+  // "Deliver to New York / United States" 等常见页面文案。
+  const zipMatched = finalSignals.deliveryRegion?.includes(postalCode) === true;
+  const englishUsMarker = /\b(?:new york|ny|united states|usa)\b/i.test(finalSignals.deliveryRegion ?? "");
+  const explicitUsRegion = zipMatched || englishUsMarker;
   confirmed = explicitUsRegion;
   const dialogFeedback = await evaluateByValue<string | null>(client, sessionId, `(() => {
     const text = document.querySelector('#GLUXZipError, .a-alert-content')?.textContent;
@@ -1026,7 +1031,13 @@ async function applyEnglishUsdPreferences(client: CdpClient, sessionId: string):
       language: language instanceof HTMLInputElement && language.checked ? language.value : null,
       currency: currency instanceof HTMLSelectElement ? currency.value : null,
     };
-    if (result.language === 'en_US' && result.currency === 'USD' && save instanceof HTMLElement) save.click();
+    // V3R（Research→Creative Consistency）：币种控件缺失（Amazon 偏好页改版/简版）时降级——
+    // 语言 en_US 成功 + 保存按钮存在即点击保存；币种由 collect URL 的 currency=USD 参数兜底，
+    // 页面价格是否 USD 仍由 detail-page-extract 的 currency_not_usd fail-closed 最终把关。
+    const currencyControlMissing = !(currency instanceof HTMLSelectElement);
+    if (result.language === 'en_US' && save instanceof HTMLElement && (result.currency === 'USD' || currencyControlMissing)) {
+      save.click();
+    }
     return result;
   })()`);
   steps.push({
@@ -1043,7 +1054,9 @@ async function applyEnglishUsdPreferences(client: CdpClient, sessionId: string):
               : null,
   });
   return {
-    confirmed: setResult.language === "en_US" && setResult.currency === "USD" && setResult.saveFound,
+    // V3R：币种控件缺失时不再整体判失败（语言已设 en_US、保存已点击、币种由 URL 参数兜底）
+    confirmed: setResult.language === "en_US" && setResult.saveFound
+      && (setResult.currency === "USD" || !setResult.currencyFound),
     currencyPreference: setResult.currency,
     steps,
   };
@@ -1091,10 +1104,12 @@ export async function calibratePublicSessionEnvironment(input: {
     delivery.confirmed ? null : "delivery_not_confirmed",
   );
 
-  // 2) 配送确认后 → 语言/币种偏好（en_US + USD）
+  // 2) 语言/币种偏好（en_US + USD）
+  // V3R（Research→Creative Consistency）：偏好步骤与配送确认解耦——ZIP 设置失败 ≠ 非 US 环境，
+  // 语言/币种偏好独立生效；只要确认是 Amazon 首页（brandMarker）即尝试设置。
   let usdPreferencesConfirmed = false;
   let currencyPreference: string | null = null;
-  if (delivery.confirmed && homepageStatus.brandMarker) {
+  if (homepageStatus.brandMarker) {
     await input.client.send("Page.navigate", { url: buildAmazonPreferencesUrl() }, input.sessionId);
     await waitForDocument(input.client, input.sessionId);
     const preferences = await applyEnglishUsdPreferences(input.client, input.sessionId);
@@ -1245,7 +1260,9 @@ export async function runAmazonSearchCanaryBrowser(input: {
       environmentSteps = [...environmentSteps, ...delivery.steps];
       finalHomeSignals = delivery.finalSignals;
 
-      if (delivery.confirmed) {
+      // V3R（Research→Creative Consistency）：偏好步骤与配送确认解耦——ZIP 设置失败 ≠ 非 US 环境，
+      // 语言/币种偏好独立生效；只要首页识别为 Amazon（已通过 shouldContinueAfterHomepageDiagnostic）即尝试。
+      {
         await client.send("Page.navigate", { url: buildAmazonPreferencesUrl() }, sessionId);
         preferencesNavigationCount = 1;
         pageUrl = await waitForDocument(client, sessionId);

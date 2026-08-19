@@ -31,6 +31,16 @@ export type FactCandidate = {
   /** 可追溯来源引用（如 evidenceRef / 字段路径） */
   sourceRef: string;
   humanConfirmationRequired: true;
+  /**
+   * V3R（契约③ PROVENANCE_MERGE）：同字段其他来源的并列值（多 Provenance 保留）。
+   * 旧逻辑 first-source-wins 静默丢弃（如 price：SellerSprite 13.99 vs Amazon 10.99）；
+   * 现在并列展示，人工确认时可看到多来源差异后再决定值。仅视图层，不持久化。
+   */
+  alternateSources?: Array<{
+    sourceKind: FactCandidateSourceKind;
+    sourceRef: string;
+    value: string | number;
+  }>;
 };
 
 export type ConfirmedFactCandidate = FactCandidate & {
@@ -85,7 +95,25 @@ const LABELS: Record<string, string> = {
 };
 
 /**
- * 手动补充事实的可选字段注册表（供 [+手动补充商品事实] 下拉使用）。
+ * 市场观察字段（market_observation，非商品事实）：
+ * category/price/rating/reviews/bsr 反映「平台市场状态」而非「商品本身规格」。
+ * 契约④ MARKET_OBSERVATION：这些字段确认后不参与商品事实计数、不进 Listing
+ * （消费端硬排除已正确）；展示/计数层必须与 product_fact 分离。
+ */
+export const MARKET_OBSERVATION_FIELDS: ReadonlySet<string> = new Set([
+  "category",
+  "price",
+  "rating",
+  "reviews",
+  "bsr",
+]);
+
+/** 字段 → 事实类别：product_fact（商品事实）| market_observation（市场观察） */
+export function factCategoryOf(field: string): "product_fact" | "market_observation" {
+  return MARKET_OBSERVATION_FIELDS.has(field) ? "market_observation" : "product_fact";
+}
+
+/** 手动补充事实的可选字段注册表（供 [+手动补充商品事实] 下拉使用）。
  * 与既有 canonical fact field 一致；不同商品可只填相关字段（动态 Fact Set）。
  */
 export const MANUAL_FACT_FIELDS: ReadonlyArray<{ field: string; label: string }> = [
@@ -120,10 +148,18 @@ export function extractFactCandidates(resultJson: unknown): FactCandidate[] {
   const candidates: FactCandidate[] = [];
   const seen = new Set<string>();
 
-  const push = (candidate: Omit<FactCandidate, "candidateId" | "humanConfirmationRequired">) => {
-    // 同字段只保留一个候选（优先级 = 先提取的来源：SellerSprite > browserEvidence > 标题派生），
-    // 避免同字段多来源重复（如 reviews：SellerSprite 48110 vs Amazon 48116）。
-    if (seen.has(candidate.field)) return;
+  const push = (candidate: Omit<FactCandidate, "candidateId" | "humanConfirmationRequired" | "alternateSources">) => {
+    // V3R（契约③ PROVENANCE_MERGE）：同字段多来源不再静默丢弃——
+    // 首来源作为候选值（first-source-wins 仅用于选默认值），其余来源并列保留在
+    // alternateSources 供人工核对（如 price：SellerSprite 13.99 vs Amazon 10.99）。
+    const existing = candidates.find((c) => c.field === candidate.field);
+    if (existing) {
+      existing.alternateSources = [
+        ...(existing.alternateSources ?? []),
+        { sourceKind: candidate.sourceKind, sourceRef: candidate.sourceRef, value: candidate.value },
+      ];
+      return;
+    }
     seen.add(candidate.field);
     const id = candidateIdFor(candidate.field, candidate.sourceKind);
     candidates.push({ ...candidate, candidateId: id, humanConfirmationRequired: true });

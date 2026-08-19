@@ -13,7 +13,9 @@ import {
   buildFactCandidateView,
   extractFactCandidates,
   FACT_CANDIDATES_SCHEMA,
+  factCategoryOf,
   getFactCandidates,
+  MARKET_OBSERVATION_FIELDS,
   type ConfirmedFactCandidate,
 } from "@/lib/factCandidates";
 
@@ -99,6 +101,28 @@ describe("extractFactCandidates", () => {
     const candidates = extractFactCandidates(thermosResultJson());
     const priceCount = candidates.filter((c) => c.field === "price").length;
     expect(priceCount).toBe(1);
+  });
+
+  it("V3R 契约③ PROVENANCE_MERGE：同字段多来源不再静默丢弃——并列值保留在 alternateSources", () => {
+    // THERMOS 样本：SellerSprite price=19.99 先入，browserEvidence price=19.99 同值并入
+    const candidates = extractFactCandidates(thermosResultJson());
+    const price = candidates.find((c) => c.field === "price");
+    expect(price).toBeDefined();
+    expect(price?.value).toBe(19.99); // 首来源（SellerSprite）作为默认值
+    expect(price?.alternateSources ?? []).toHaveLength(1); // Amazon 页面证据并列保留
+    expect(price?.alternateSources?.[0]?.sourceKind).toBe("amazon_browser_evidence");
+    expect(price?.alternateSources?.[0]?.value).toBe(19.99);
+  });
+
+  it("V3R 契约③：不同来源不同值（如价格多源）也能并列保留", () => {
+    const result = thermosResultJson();
+    // 改 browserEvidence 价格为 18.50（模拟多源价格差异）
+    const snapshots = (result.browserEvidence as { snapshots: Array<{ fields: Record<string, unknown> }> }).snapshots;
+    snapshots[0].fields.price = { value: 18.5, status: "correct" };
+    const candidates = extractFactCandidates(result);
+    const price = candidates.find((c) => c.field === "price");
+    expect(price?.value).toBe(19.99);
+    expect(price?.alternateSources?.[0]?.value).toBe(18.5);
   });
 
   it("空输入/无证据 → 空候选（不强制填满）", () => {
@@ -191,5 +215,20 @@ describe("V3 Final PHASE 1 — Product Information 规格候选（amazon_product
   it("无 productInfo 快照 → 不产生 amazon_product_info 候选", () => {
     const candidates = extractFactCandidates(thermosResultJson());
     expect(candidates.some((c) => c.sourceKind === "amazon_product_info")).toBe(false);
+  });
+});
+
+describe("V3R — MARKET_OBSERVATION 分类（契约④）", () => {
+  it("market 5 字段（category/price/rating/reviews/bsr）归类 market_observation", () => {
+    expect(MARKET_OBSERVATION_FIELDS.size).toBe(5);
+    for (const field of ["category", "price", "rating", "reviews", "bsr"]) {
+      expect(factCategoryOf(field)).toBe("market_observation");
+    }
+  });
+
+  it("其余字段（含 MANUAL_FACT_FIELDS 全部）归类 product_fact", () => {
+    for (const field of ["brand", "capacity", "material", "dimensions", "weight", "color_or_variant", "quantity_or_pack_size", "functional_feature", "included_components", "compatibility"]) {
+      expect(factCategoryOf(field)).toBe("product_fact");
+    }
   });
 });

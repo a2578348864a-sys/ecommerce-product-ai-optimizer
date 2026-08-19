@@ -1,11 +1,14 @@
 /**
  * V3 Final HWF — Fact Candidate Review Selection Preservation（纯函数行为测试）
  * 覆盖任务书 §12 Selection Preservation / §21.7 SELECTION_PRESERVED。
+ * V3R — 契约⑥ FACT_SELECTION：Select All = visible/selectable/validated/unconfirmed/not blocked/not conflicted + indeterminate。
  */
 import { describe, expect, it } from "vitest";
 import {
   preserveSelectionAfterConfirm,
   pruneSelectionToAlive,
+  selectableCandidateIds,
+  selectAllState,
 } from "./FactCandidateReview";
 
 describe("FactCandidateReview Selection Preservation", () => {
@@ -40,5 +43,38 @@ describe("FactCandidateReview Selection Preservation", () => {
     const alive = new Set(["brand", "price", "capacity"]);
     const next = pruneSelectionToAlive(selected, alive);
     expect([...next].sort()).toEqual(["brand", "price"]);
+  });
+});
+
+// ── V3R 契约⑥ FACT_SELECTION：Select All ──
+
+describe("FactCandidateReview Select All（契约⑥）", () => {
+  const candidates = [
+    { candidateId: "brand" },
+    { candidateId: "capacity" },
+    { candidateId: "price" },
+  ];
+
+  it("selectable = 全部候选（已验证/未确认/未阻断/无冲突，服务端保证）", () => {
+    expect([...selectableCandidateIds(candidates)].sort()).toEqual(["brand", "capacity", "price"]);
+  });
+
+  it("selectAllState：全选 → all；部分 → some（indeterminate）；未选 → none", () => {
+    expect(selectAllState(new Set(["brand", "capacity", "price"]), selectableCandidateIds(candidates))).toBe("all");
+    expect(selectAllState(new Set(["brand"]), selectableCandidateIds(candidates))).toBe("some");
+    expect(selectAllState(new Set(), selectableCandidateIds(candidates))).toBe("none");
+  });
+
+  it("selectAllState：已确认项（不在候选）不参与全选判定", () => {
+    const selectable = selectableCandidateIds(candidates);
+    // 用户勾选了候选之外的历史勾选（refresh 后本应清理，但防御性处理）
+    // 候选内 2/3 选中 → some（外部勾选不计入 selectable 命中）
+    expect(selectAllState(new Set(["brand", "price", "stale_old"]), selectable)).toBe("some");
+    // 候选内 3/3 选中（外部勾选多余但无害）→ all
+    expect(selectAllState(new Set(["brand", "capacity", "price", "stale_old"]), selectable)).toBe("all");
+  });
+
+  it("selectAllState：无可选项 → none（空列表不误报 all）", () => {
+    expect(selectAllState(new Set(), new Set())).toBe("none");
   });
 });

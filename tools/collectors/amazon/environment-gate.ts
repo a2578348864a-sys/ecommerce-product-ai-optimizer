@@ -57,8 +57,13 @@ function hasAmazonMarketplaceEvidence(signals: AmazonEnvironmentSignals): boolea
 
 function hasExplicitUsDelivery(deliveryRegion: string | null): boolean {
   if (!deliveryRegion) return false;
+  // V3R（Research→Creative Consistency）：与 applyDeliveryPostalCode 的放宽口径保持一致——
+  // ZIP（10001）或英文 US 区域标记任一即视为美国配送环境；本地化/简版页面常只显示其一，
+  // 旧逻辑双标记必选导致真实 US 环境误判非 US。
+  // 注意：不把 "deliver to" 当作独立标记（"Deliver to Japan" 会误判）；区域词本身已覆盖
+  // "Deliver to New York / United States" 等常见页面文案。
   return /\b10001\b/.test(deliveryRegion)
-    && /\b(?:new york|ny|united states|usa)\b/i.test(deliveryRegion);
+    || /\b(?:new york|ny|united states|usa)\b/i.test(deliveryRegion);
 }
 
 export function evaluateAmazonEnvironment(signals: AmazonEnvironmentSignals): AmazonEnvironmentGateResult {

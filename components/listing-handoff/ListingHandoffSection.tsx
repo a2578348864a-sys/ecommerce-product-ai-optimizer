@@ -54,6 +54,8 @@ type ListingStateResponse = {
       missingForQuality: string[];
       counts: { identity: number; specification: number; functional: number; listingEligible: number };
     } | null;
+    // V3R（契约①）：claimPreflight 与服务端 Generate 校验同源（可生成与否的事实校验预演）
+    claimPreflight?: { pass: boolean; reason: string | null } | null;
     keywordBriefSummary?: { primaryKeyword: string; source: string; backendTermsCount: number } | null;
   };
 };
@@ -135,6 +137,7 @@ export function ListingHandoffSection({
     prohibitedClaims: 0,
   });
   const [readiness, setReadiness] = useState<ListingStateResponse["data"]["readiness"]>(null);
+  const [claimPreflight, setClaimPreflight] = useState<ListingStateResponse["data"]["claimPreflight"]>(null);
   /** v2.2.14：每个复制按钮独立的短暂反馈（"已复制 ✓" / "复制失败"） */
   const [copiedButton, setCopiedButton] = useState<string | null>(null);
   const [copyFailedButton, setCopyFailedButton] = useState<string | null>(null);
@@ -166,6 +169,7 @@ export function ListingHandoffSection({
         setCanGenerate(json.data.canGenerate);
         setFactSummary(json.data.factSummary);
         setReadiness(json.data.readiness ?? null);
+        setClaimPreflight(json.data.claimPreflight ?? null);
       }
     } catch {
       if (mounted.current) setNotice({ tone: "error", text: "网络异常，请重试。" });
@@ -570,10 +574,18 @@ export function ListingHandoffSection({
         ) : status === "ready" ? (
           <div>
             <p>
-              {factSummary.listingEligibleFacts > 0
-                ? "创作资料已确认 · 可生成 Listing 草稿"
-                : "创作资料已确认 · 但缺少可用于 Listing 的商品事实"}
+              {claimPreflight && !claimPreflight.pass
+                ? "创作资料已确认 · 事实校验未通过，暂不能生成"
+                : factSummary.listingEligibleFacts > 0
+                  ? "创作资料已确认 · 可生成 Listing 草稿"
+                  : "创作资料已确认 · 但缺少可用于 Listing 的商品事实"}
             </p>
+            {/* V3R（契约①）：claimPreflight 未通过时展示与服务端 Generate 同源的阻断原因 */}
+            {claimPreflight && !claimPreflight.pass ? (
+              <p className="mt-1 rounded-lg bg-amber-50 px-3 py-2 text-amber-800" data-testid="claim-preflight-blocked" role="alert">
+                暂不能生成：{claimPreflight.reason}
+              </p>
+            ) : null}
             <button
               type="button"
               disabled={!canGenerate || submitting}

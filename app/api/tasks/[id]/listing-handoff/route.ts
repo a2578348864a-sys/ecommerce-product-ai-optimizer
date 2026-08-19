@@ -9,6 +9,7 @@ import { computeListingStatus, parseListingHandoffBinding, type ListingStatus } 
 import { TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenerationInput";
+import { preflightListingClaimSafety } from "@/lib/listingHandoff/listingClaimPreflight";
 import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildListingBrief } from "@/lib/listingHandoff/listingBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
@@ -211,11 +212,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       : [];
 
     const staleDraftPresent = listingStatus === "stale" && draft !== null;
+
+    // V3R（契约① LISTENING_READINESS）：canGenerate 与服务端 Generate 的事实校验同源——
+    // 预演确定性校验链（buildListingInput → deterministic draft → filter → verify → haveEvidence）。
+    // 仅当 handoff 可用时预演；不可用时不预演（canGenerate 已为 false）。
+    const claimPreflight = handoff && handoff.controlState === "active"
+      && listingStatus !== "revoked"
+      && listingStatus !== "invalid"
+      ? preflightListingClaimSafety({ handoff, researchRevision: researchRevision ?? 1 })
+      : null;
+
     const canGenerate = handoff?.controlState === "active"
       && listingStatus !== "revoked"
       && listingStatus !== "invalid"
       && handoffEffectiveStatus?.status === "active"
-      && factSummary.listingEligibleFacts > 0;
+      && factSummary.listingEligibleFacts > 0
+      && (claimPreflight === null || claimPreflight.pass);
 
     // Quality.1：readiness（claimSafe / copyReady / keywordReady / missingForQuality）
     const { buildListingReadiness } = await import("@/lib/listingHandoff/listingReadiness");
@@ -254,6 +266,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
               missingForQuality: readiness.missingForQuality,
               counts: readiness.counts,
             }
+          : null,
+        // V3R（契约①）：claimPreflight 与服务端 Generate 校验同源；pass=false 时 reason 为
+        // 面向用户的阻断原因（人话），UI 直接展示，不再让用户点击生成后才失败。
+        claimPreflight: claimPreflight
+          ? claimPreflight.pass
+            ? { pass: true, reason: null }
+            : { pass: false, reason: claimPreflight.reason }
           : null,
         keywordBriefSummary: keywordBrief
           ? { primaryKeyword: keywordBrief.primaryKeyword, source: keywordBrief.source, backendTermsCount: keywordBrief.backendSearchTerms.length }

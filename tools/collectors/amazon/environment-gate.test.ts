@@ -57,9 +57,29 @@ describe("Amazon environment gate", () => {
     expect(result.canSearch).toBe(false);
   });
 
+  it("passes with postal code only (V3R relaxation: ZIP alone is a US delivery signal)", () => {
+    const result = evaluateAmazonEnvironment({
+      ...valid,
+      deliveryRegion: "Deliver to 10001",
+    });
+    expect(result.status).toBe("passed");
+    expect(result.canSearch).toBe(true);
+    expect(result.observed.market).toBe("US");
+  });
+
+  it("passes with English US region marker only, without ZIP (V3R relaxation)", () => {
+    const result = evaluateAmazonEnvironment({
+      ...valid,
+      deliveryRegion: "Delivering to United States",
+    });
+    expect(result.status).toBe("passed");
+    expect(result.canSearch).toBe(true);
+    expect(result.observed.market).toBe("US");
+  });
+
   it.each([
     ["Japan delivery", { deliveryRegion: "Deliver to Japan" }, "delivery_verification", "delivery_region_not_us"],
-    ["postal code only", { deliveryRegion: "Deliver to 10001" }, "delivery_verification", "delivery_region_not_us"],
+    ["Canada delivery", { deliveryRegion: "Deliver to Toronto" }, "delivery_verification", "delivery_region_not_us"],
     ["currency unknown", { currencyPreference: null }, "currency_verification", "currency_not_usd"],
     ["language drift", { language: "ja-jp" }, "language_verification", "language_not_en_us"],
     ["brand missing", { amazonBrandMarkerPresent: false }, "marketplace_verification", "marketplace_unconfirmed"],

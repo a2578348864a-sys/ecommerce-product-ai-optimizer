@@ -7,6 +7,16 @@ function hash256(value: string): string {
 }
 
 /**
+ * V3R（契约③ PROVENANCE_MERGE）：研究侧已确认事实字段 → 创作链 consumer field 归一化。
+ * 展示合并时与 handoff confirmedFacts（consumer field，如 price_usd/review_count）同空间去重，
+ * 避免同一事实（如 price=13.99）因字段名不同（research price vs consumer price_usd）重复展示。
+ * 未知字段保持原样（展示层 fail-open 仅去重，不参与任何写入）。
+ */
+function toConsumerField(researchField: string): string {
+  return RESEARCH_TO_LISTING_FIELD_MAP[researchField] ?? researchField;
+}
+
+/**
  * 视觉参考候选是否已被当前 Handoff 批准（versus approvable，后者恒 true）。
  * 判定与 gate 的 approvedReferenceImageDataUrl 同一指纹规范：
  * assetFingerprint === sha256(`visual-reference:${contentHash}`)。
@@ -49,7 +59,7 @@ import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/c
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { buildCreativeContextFromResearch } from "@/lib/creativeContextBuilder";
 import { getFactCandidates } from "@/lib/factCandidates";
-import { mapResearchConfirmedToHandoff } from "@/lib/canonicalFactMapping";
+import { mapResearchConfirmedToHandoff, RESEARCH_TO_LISTING_FIELD_MAP } from "@/lib/canonicalFactMapping";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import type {
   ProductCreativeHandoffCandidate,
@@ -681,7 +691,7 @@ export async function checkCreativeHandoffGate(
       }),
       // V3 Final PHASE 1：研究侧已确认事实（factCandidates 权威）桥接挂入降级候选，
       // 消除「研究已确认 N 条但创作侧显示无已确认事实」的 gate 失真与计数误导
-      workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: f.field, label: f.label, value: f.value, sourceKind: f.sourceKind })),
+      workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })),
     };
   }
 
@@ -749,7 +759,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: f.field, label: f.label, value: f.value, sourceKind: f.sourceKind })) };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: toConsumerField(f.field), label: f.label, value: f.value, sourceKind: f.sourceKind })) };
 }
 
 // ─── Preview ──────────────────────────────────────────────

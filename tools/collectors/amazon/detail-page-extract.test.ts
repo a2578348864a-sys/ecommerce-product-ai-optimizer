@@ -40,6 +40,7 @@ function buildRoot(input: {
   bodyText?: string;
   title?: string | null;
   priceText?: string | null;
+  newBuyboxPriceText?: string | null;
   ratingText?: string | null;
   reviewsText?: string | null;
   detailRows?: Array<{ text: string }>;
@@ -58,7 +59,10 @@ function buildRoot(input: {
     querySelector(selector: string) {
       switch (selector) {
         case "#productTitle": return input.title ? node(input.title) : null;
+        case "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen": return input.newBuyboxPriceText ? node(input.newBuyboxPriceText) : null;
+        case "#corePriceDisplay_mobile_feature_div .a-price .a-offscreen": return null;
         case "#corePrice_feature_div .a-offscreen": return input.priceText ? node(input.priceText) : null;
+        case "#corePrice_feature_div .a-price .a-offscreen": return null;
         case ".priceToPay .a-offscreen": return null;
         case "#priceblock_ourprice": return null;
         case "#priceblock_dealprice": return null;
@@ -101,6 +105,16 @@ describe("Amazon detail page extractor (V3.1 Spike)", () => {
     expect(result.fields.bsr).toMatchObject({ status: "correct", value: 2541 });
     expect(result.fields.rating).toMatchObject({ status: "correct", value: 4.2 });
     expect(result.fields.reviews).toMatchObject({ status: "correct", value: 4958 });
+  });
+
+  it("extracts price from the new buybox container (V3R)", () => {
+    const root = buildRoot({
+      title: "New Buybox Product",
+      newBuyboxPriceText: "$39.99",
+    });
+    const result = extractAmazonDetailPage(root, URL, options());
+    expect(result.entityBound).toBe(true);
+    expect(result.fields.price).toMatchObject({ status: "correct", value: 39.99 });
   });
 
   it("fails closed when URL ASIN does not match the expected entity", () => {

@@ -15,7 +15,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Loader2, Plus, Sparkles } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
-import { MANUAL_FACT_FIELDS, humanManualCandidateId } from "@/lib/factCandidates";
+import {
+  MANUAL_FACT_FIELDS,
+  factCategoryOf,
+  humanManualCandidateId,
+} from "@/lib/factCandidates";
 
 type FactCandidateView = {
   candidateId: string;
@@ -24,6 +28,8 @@ type FactCandidateView = {
   value: string | number;
   sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "product_title" | "human_manual";
   sourceRef: string;
+  /** V3R（契约③ PROVENANCE_MERGE）：同字段其他来源的并列值（多 Provenance 保留，供人工核对） */
+  alternateSources?: Array<{ sourceKind: string; sourceRef: string; value: string | number }>;
 };
 
 type ConfirmedFactView = FactCandidateView & { confirmedAt: string; confirmedBy: string };
@@ -35,6 +41,24 @@ const SOURCE_LABELS: Record<string, string> = {
   amazon_product_info: "Amazon 商品规格",
   human_manual: "人工核实（手动补充）",
 };
+
+// V3R（契约④ MARKET_OBSERVATION）：候选/已确认按事实类别分组展示——
+// 商品事实（product_fact）为主区；市场观察（价格/评分/评论数/BSR/类目）独立成区，
+// 明确其「市场状态观察」语义（确认后不进 Listing，仅作市场参考）。
+const MARKET_OBSERVATION_GROUP_LABEL = "市场观察（价格/评分/评论数/BSR/类目，不进 Listing）";
+
+function groupByCategory<T extends { field: string }>(items: ReadonlyArray<T>): {
+  productFacts: T[];
+  marketObservations: T[];
+} {
+  const productFacts: T[] = [];
+  const marketObservations: T[] = [];
+  for (const item of items) {
+    if (factCategoryOf(item.field) === "market_observation") marketObservations.push(item);
+    else productFacts.push(item);
+  }
+  return { productFacts, marketObservations };
+}
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ ...buildAccessHeaders(), ...extra });
@@ -63,6 +87,30 @@ export function pruneSelectionToAlive(
     if (aliveCandidateIds.has(id)) next.add(id);
   }
   return next;
+}
+
+/**
+ * V3R（契约⑥ FACT_SELECTION）：候选全选的可见可选项。
+ * 候选均为「已验证/未确认/未阻断/无冲突」的待确认项（服务端已保证），
+ * 故 selectable = 当前候选集合；已确认项不在候选列表，天然不参与全选。
+ */
+export function selectableCandidateIds(candidates: ReadonlyArray<Pick<FactCandidateView, "candidateId">>): Set<string> {
+  return new Set(candidates.map((c) => c.candidateId));
+}
+
+/** 全选状态：all=全部可选已选中；some=部分选中（indeterminate）；none=未选中 */
+export function selectAllState(
+  selected: ReadonlySet<string>,
+  selectable: ReadonlySet<string>,
+): "all" | "some" | "none" {
+  if (selectable.size === 0) return "none";
+  let hit = 0;
+  for (const id of selectable) {
+    if (selected.has(id)) hit += 1;
+  }
+  if (hit === selectable.size) return "all";
+  if (hit > 0) return "some";
+  return "none";
 }
 
 export function FactCandidateReview({
@@ -163,7 +211,7 @@ export function FactCandidateReview({
       const already = data.alreadyConfirmedCount ?? 0;
       setNotice(
         data.confirmedCount > 0
-          ? `已确认 ${data.confirmedCount} 项商品事实。${already > 0 ? `（${already} 项已确认过，未重复写入）` : ""}`
+          ? `已确认 ${data.confirmedCount} 项（含市场观察；商品事实与市场观察分开展示）。${already > 0 ? `（${already} 项已确认过，未重复写入）` : ""}`
           : `${already > 0 ? `已确认过 ${already} 项（未重复写入）。` : "没有新的商品事实需要确认。"}`,
       );
       setError("");
@@ -398,7 +446,21 @@ export function FactCandidateReview({
 
       {confirmed && confirmed.length > 0 && (
         <div className="mt-3">
-          <p className="text-xs font-bold text-slate-700">已确认（{confirmed.length}）</p>
+          {(() => {
+            const grouped = groupByCategory(confirmed);
+            const marketCount = grouped.marketObservations.length;
+            const productCount = grouped.productFacts.length;
+            return (
+              <p className="text-xs font-bold text-slate-700" data-testid="fact-confirmed-counts">
+                已确认（{confirmed.length}）
+                {productCount > 0 && marketCount > 0
+                  ? `：商品事实 ${productCount} 项 · 市场观察 ${marketCount} 项`
+                  : marketCount > 0
+                    ? `：市场观察 ${marketCount} 项`
+                    : ""}
+              </p>
+            );
+          })()}
           <ul className="mt-1 space-y-1">
             {confirmed.map((item) => (
               <li key={item.candidateId} className="flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm" data-testid="fact-confirmed-item">
@@ -408,14 +470,69 @@ export function FactCandidateReview({
               </li>
             ))}
           </ul>
+          {(() => {
+            const grouped = groupByCategory(confirmed);
+            if (grouped.marketObservations.length === 0) return null;
+            return (
+              <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/40 px-3 py-2" data-testid="fact-confirmed-market-observations">
+                <p className="text-[11px] font-bold text-amber-800">{MARKET_OBSERVATION_GROUP_LABEL}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {grouped.marketObservations.map((item) => (
+                    <li key={item.candidateId} className="flex items-start justify-between gap-2 text-sm">
+                      <span className="font-semibold text-slate-800">{item.label}</span>
+                      <span className="flex-1 text-right text-slate-700">{item.value}</span>
+                      <span className="shrink-0 text-[11px] text-slate-400">来源：{SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
       )}
 
       {candidates && candidates.length > 0 && (
         <div className="mt-3">
-          <p className="text-xs font-bold text-slate-700">候选（{candidates.length}，勾选后批量确认）</p>
+          {(() => {
+            // V3R（契约⑥ FACT_SELECTION）：全选 = 可见/可选/已验证/未确认/未阻断/无冲突的候选
+            const selectable = selectableCandidateIds(candidates);
+            const allState = selectAllState(selected, selectable);
+            const toggleAll = () => {
+              if (allState === "all") {
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  for (const id of selectable) next.delete(id);
+                  return next;
+                });
+              } else {
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  for (const id of selectable) next.add(id);
+                  return next;
+                });
+              }
+            };
+            return (
+              <label className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700" data-testid="fact-candidate-select-all">
+                <input
+                  type="checkbox"
+                  checked={allState === "all"}
+                  ref={(element) => {
+                    if (element) element.indeterminate = allState === "some";
+                  }}
+                  onChange={toggleAll}
+                  className="size-4 rounded border-slate-300 text-indigo-600"
+                  aria-label="全选候选事实"
+                />
+                候选（{candidates.length}，全选/勾选后批量确认）
+              </label>
+            );
+          })()}
           <ul className="mt-1 space-y-1">
-            {candidates.map((item) => (
+            {(() => {
+              // V3R（契约④）：主列表只展示商品事实候选；市场观察候选在市场观察区展示（避免重复渲染）
+              const grouped = groupByCategory(candidates);
+              return grouped.productFacts.map((item) => (
               <li key={item.candidateId} className="flex items-start gap-2 rounded-lg border border-slate-100 px-3 py-2 text-sm" data-testid="fact-candidate-item">
                 <input
                   type="checkbox"
@@ -425,20 +542,74 @@ export function FactCandidateReview({
                   aria-label={`确认 ${item.label}`}
                 />
                 <span className="w-28 shrink-0 font-semibold text-slate-800">{item.label}</span>
-                <input
-                  type="text"
-                  value={String(editedValues[item.candidateId] ?? item.value)}
-                  onChange={(event) => setEditedValues((prev) => ({ ...prev, [item.candidateId]: event.target.value }))}
-                  className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-slate-700 focus:border-indigo-400 focus:outline-none"
-                  aria-label={`${item.label} 值（可修改）`}
-                />
+                <span className="flex-1">
+                  <input
+                    type="text"
+                    value={String(editedValues[item.candidateId] ?? item.value)}
+                    onChange={(event) => setEditedValues((prev) => ({ ...prev, [item.candidateId]: event.target.value }))}
+                    className="w-full rounded-md border border-slate-200 px-2 py-1 text-slate-700 focus:border-indigo-400 focus:outline-none"
+                    aria-label={`${item.label} 值（可修改）`}
+                  />
+                  {/* V3R（契约③ PROVENANCE_MERGE）：多来源并列值——不静默丢弃，供人工核对后决定 */}
+                  {item.alternateSources && item.alternateSources.length > 0 ? (
+                    <span className="mt-1 block text-[11px] leading-4 text-amber-700" data-testid="fact-candidate-alternates">
+                      另有来源值：
+                      {item.alternateSources.map((alt) => `${SOURCE_LABELS[alt.sourceKind] ?? alt.sourceKind} ${String(alt.value)}`).join("；")}
+                      （来源不同，确认前请核对）
+                    </span>
+                  ) : null}
+                </span>
                 <span className="shrink-0 text-[11px] text-slate-400" title={item.sourceRef}>
                   <Sparkles className="mr-0.5 inline size-3" />
                   {SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}
                 </span>
               </li>
-            ))}
+              ));
+            })()}
           </ul>
+          {(() => {
+            const grouped = groupByCategory(candidates);
+            if (grouped.marketObservations.length === 0) return null;
+            return (
+              <div className="mt-2 rounded-lg border border-amber-100 bg-amber-50/40 px-3 py-2" data-testid="fact-candidate-market-observations">
+                <p className="text-[11px] font-bold text-amber-800">{MARKET_OBSERVATION_GROUP_LABEL}</p>
+                <ul className="mt-1 space-y-1">
+                  {grouped.marketObservations.map((item) => (
+                    <li key={item.candidateId} className="flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(item.candidateId)}
+                        onChange={() => toggle(item.candidateId)}
+                        className="mt-1 size-4 rounded border-slate-300 text-indigo-600"
+                        aria-label={`确认 ${item.label}`}
+                      />
+                      <span className="w-28 shrink-0 font-semibold text-slate-800">{item.label}</span>
+                      <span className="flex-1">
+                        <input
+                          type="text"
+                          value={String(editedValues[item.candidateId] ?? item.value)}
+                          onChange={(event) => setEditedValues((prev) => ({ ...prev, [item.candidateId]: event.target.value }))}
+                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-slate-700 focus:border-indigo-400 focus:outline-none"
+                          aria-label={`${item.label} 值（可修改）`}
+                        />
+                        {item.alternateSources && item.alternateSources.length > 0 ? (
+                          <span className="mt-1 block text-[11px] leading-4 text-amber-700" data-testid="fact-candidate-alternates">
+                            另有来源值：
+                            {item.alternateSources.map((alt) => `${SOURCE_LABELS[alt.sourceKind] ?? alt.sourceKind} ${String(alt.value)}`).join("；")}
+                            （来源不同，确认前请核对）
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-slate-400" title={item.sourceRef}>
+                        <Sparkles className="mr-0.5 inline size-3" />
+                        {SOURCE_LABELS[item.sourceKind] ?? item.sourceKind}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
       )}
 

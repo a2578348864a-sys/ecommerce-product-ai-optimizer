@@ -269,8 +269,13 @@ export function extractAmazonDetailPage(
       ? correctField("title", title)
       : unknownField("title", "selector_not_found");
 
+    // V3R（Research→Creative Consistency）：补新 buybox 价格容器（#corePriceDisplay_*_feature_div
+    // 内的 .a-price .a-offscreen）——2024+ 详情页新版价格块；旧选择器保留兜底。
     const priceText = sanitizeDetailText(readFirstText(root, [
+      "#corePriceDisplay_desktop_feature_div .a-price .a-offscreen",
+      "#corePriceDisplay_mobile_feature_div .a-price .a-offscreen",
       "#corePrice_feature_div .a-offscreen",
+      "#corePrice_feature_div .a-price .a-offscreen",
       ".priceToPay .a-offscreen",
       "#priceblock_ourprice",
       "#priceblock_dealprice",
