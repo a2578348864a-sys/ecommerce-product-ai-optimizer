@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
-import { createTrustedSandboxTask, getSandboxTask } from "@/lib/server/demoSandbox";
+import { createTrustedSandboxTask, getSandboxTask, updateSandboxTaskResultJson } from "@/lib/server/demoSandbox";
 import { GET, POST } from "./route";
 
 vi.hoisted(() => {
@@ -136,17 +136,213 @@ describe("POST /fact-candidates（批量人工确认）", () => {
     expect(confirmedBrand.confirmedBy).toBe("visitor:demo-access-a");
   });
 
-  it("确认不存在于候选列表的项 → 400 candidate_not_found（禁止伪造来源）", async () => {
+  it("确认不存在于候选列表的项 → 409 fact_conflict（fail-closed，禁止伪造来源）", async () => {
     const post = await postJson({
       selections: [{ candidateId: "fake:field", confirmed: true, value: "x" }],
       expectedStorageVersion: toStorageVersion(),
     });
-    expect(post.status).toBe(400);
+    expect(post.status).toBe(409);
     const body = await post.json();
-    expect(body.error.code).toBe("candidate_not_found");
+    expect(body.error.code).toBe("fact_conflict");
+    expect(body.error.conflicts[0].reason).toBe("candidate_missing");
   });
 
-  it("stale storageVersion → 409 task_result_conflict", async () => {
+  // ── V3 Final HWF：Safe Rebase / Partial Conflict / 幂等 / Selection Preservation ──
+
+  it("UNRELATED_TASK_UPDATE：无关 namespace 更新 → 候选 fingerprint 未变 → 批量确认仍成功（FALSE_CONFLICT 消除）", async () => {
+    const get1 = await (await getJson()).json();
+    const svOld = get1.data.storageVersion;
+    const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
+    const capacity = get1.data.candidates.find((c: { field: string }) => c.field === "capacity");
+    // 无关更新：其他 writer 的 namespace（aiEvidenceSummary）变化 → resultJson hash 变
+    const task = getSandboxTask(DEMO, taskId);
+    const rj = JSON.parse(task!.resultJson);
+    rj.aiEvidenceSummary = { schema: "ai-evidence-summary.v1", version: 1, summary: "x" };
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify(rj));
+
+    const post = await postJson({
+      selections: [
+        { candidateId: brand.candidateId, confirmed: true, value: "THERMOS" },
+        { candidateId: capacity.candidateId, confirmed: true, value: "12oz" },
+      ],
+      expectedStorageVersion: svOld, // 过期版本 → Safe Rebase
+    });
+    expect(post.status).toBe(200);
+    const body = await post.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.confirmedCount).toBe(2);
+    expect(body.data.conflicts).toEqual([]);
+
+    const get2 = await (await getJson()).json();
+    expect(get2.data.confirmed.map((c: { field: string }) => c.field)).toEqual(
+      expect.arrayContaining(["brand", "capacity"]),
+    );
+  });
+
+  it("SAFE_REBASE_ONCE：候选未变 → 旧版本冲突自动重试成功（用户无感，仅 1 次）", async () => {
+    const get1 = await (await getJson()).json();
+    const svOld = get1.data.storageVersion;
+    const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
+    // 先确认另一条 → 版本变化（模拟其他区域更新）
+    await postJson({
+      selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
+      expectedStorageVersion: svOld,
+    });
+    const get2 = await (await getJson()).json();
+    const capacity = get2.data.candidates.find((c: { field: string }) => c.field === "capacity");
+    // 用旧版本确认 capacity（候选未变）→ Safe Rebase 自动成功
+    const post = await postJson({
+      selections: [{ candidateId: capacity.candidateId, confirmed: true, value: "12oz" }],
+      expectedStorageVersion: svOld,
+    });
+    expect(post.status).toBe(200);
+    const body = await post.json();
+    expect(body.data.confirmedCount).toBe(1);
+    expect(body.data.conflicts).toEqual([]);
+    const get3 = await (await getJson()).json();
+    expect(get3.data.confirmed.map((c: { field: string }) => c.field)).toContain("capacity");
+  });
+
+  it("REAL_CANDIDATE_CHANGE：候选值被其他操作改变 + 提交旧值（无 edited）→ 409 fact_conflict（value_changed），不自动确认", async () => {
+    const get1 = await (await getJson()).json();
+    const svOld = get1.data.storageVersion;
+    const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
+    const task = getSandboxTask(DEMO, taskId);
+    const rj = JSON.parse(task!.resultJson);
+    rj.candidateAnalysisContext.facts.productFacts.brand = "THERMOS Inc"; // 候选值变化
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify(rj));
+
+    const post = await postJson({
+      selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
+      expectedStorageVersion: svOld,
+    });
+    expect(post.status).toBe(409);
+    const body = await post.json();
+    expect(body.error.code).toBe("fact_conflict");
+    expect(body.error.conflicts).toHaveLength(1);
+    expect(body.error.conflicts[0].reason).toBe("value_changed");
+    // fail-closed：未写入任何确认
+    const get2 = await (await getJson()).json();
+    expect(get2.data.confirmed).toEqual([]);
+  });
+
+  it("用户显式修改值（edited=true）→ 尊重用户值（Human Review CORRECT），不视为冲突", async () => {
+    const get1 = await (await getJson()).json();
+    const svOld = get1.data.storageVersion;
+    const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
+    const task = getSandboxTask(DEMO, taskId);
+    const rj = JSON.parse(task!.resultJson);
+    rj.candidateAnalysisContext.facts.productFacts.brand = "THERMOS Inc"; // 候选值变化
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify(rj));
+
+    const post = await postJson({
+      selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS Pro", edited: true }],
+      expectedStorageVersion: svOld,
+    });
+    expect(post.status).toBe(200);
+    const body = await post.json();
+    expect(body.data.confirmedCount).toBe(1);
+    const get2 = await (await getJson()).json();
+    expect(get2.data.confirmed.find((c: { field: string }) => c.field === "brand").value).toBe("THERMOS Pro");
+  });
+
+  it("PARTIAL_CONFLICT：4 选 1 值变化 → 3 条成功确认 + 1 条返回复核（不整批清空）", async () => {
+    const get1 = await (await getJson()).json();
+    const svOld = get1.data.storageVersion;
+    const byField = new Map(get1.data.candidates.map((c: { field: string }) => [c.field, c]));
+    const picks = ["brand", "capacity", "category", "price"];
+    for (const field of picks) expect(byField.has(field)).toBe(true);
+    const task = getSandboxTask(DEMO, taskId);
+    const rj = JSON.parse(task!.resultJson);
+    rj.candidateAnalysisContext.facts.productFacts.price = 29.99; // price 候选值变化
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify(rj));
+
+    const post = await postJson({
+      selections: picks.map((field) => {
+        const c = byField.get(field) as { candidateId: string; value: string | number };
+        return { candidateId: c.candidateId, confirmed: true, value: String(c.value) };
+      }),
+      expectedStorageVersion: svOld,
+    });
+    expect(post.status).toBe(200);
+    const body = await post.json();
+    expect(body.data.confirmedCount).toBe(3);
+    expect(body.data.conflicts).toHaveLength(1);
+    expect(body.data.conflicts[0].reason).toBe("value_changed");
+    expect(body.data.conflicts[0].candidateId).toBe((byField.get("price") as { candidateId: string }).candidateId);
+
+    const get2 = await (await getJson()).json();
+    const confirmedFields = get2.data.confirmed.map((c: { field: string }) => c.field);
+    expect(confirmedFields).toEqual(expect.arrayContaining(["brand", "capacity", "category"]));
+    expect(confirmedFields).not.toContain("price");
+  });
+
+  it("CANDIDATE_MISSING：候选被删除 → 409 fact_conflict（candidate_missing），fail-closed", async () => {
+    const get1 = await (await getJson()).json();
+    const svOld = get1.data.storageVersion;
+    const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
+    const task = getSandboxTask(DEMO, taskId);
+    const rj = JSON.parse(task!.resultJson);
+    delete rj.candidateAnalysisContext.facts.productFacts.brand; // 候选消失
+    await updateSandboxTaskResultJson(DEMO, taskId, JSON.stringify(rj));
+
+    const post = await postJson({
+      selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
+      expectedStorageVersion: svOld,
+    });
+    expect(post.status).toBe(409);
+    const body = await post.json();
+    expect(body.error.conflicts[0].reason).toBe("candidate_missing");
+    const get2 = await (await getJson()).json();
+    expect(get2.data.confirmed).toEqual([]);
+  });
+
+  it("IDEMPOTENT_BATCH：重复提交同值 batch → alreadyConfirmed，不重复写入、不 bump 版本（不触发 Stale）", async () => {
+    const get1 = await (await getJson()).json();
+    const sv = get1.data.storageVersion;
+    const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
+    const post1 = await postJson({
+      selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
+      expectedStorageVersion: sv,
+    });
+    expect(post1.status).toBe(200);
+    const svAfter1 = (await (await getJson()).json()).data.storageVersion;
+
+    // 重复同值 batch（模拟网络重试/双击）→ 幂等
+    const post2 = await postJson({
+      selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
+      expectedStorageVersion: svAfter1,
+    });
+    expect(post2.status).toBe(200);
+    const b2 = await post2.json();
+    expect(b2.data.confirmedCount).toBe(0);
+    expect(b2.data.alreadyConfirmedCount).toBe(1);
+
+    // 版本未 bump（updatedAt / hash 不变）
+    const svAfter2 = (await (await getJson()).json()).data.storageVersion;
+    expect(svAfter2.updatedAt).toBe(svAfter1.updatedAt);
+    expect(svAfter2.resultJsonHash).toBe(svAfter1.resultJsonHash);
+  });
+
+  it("MANUAL_FACT：human_manual 白名单 + 值必填（fail-closed）", async () => {
+    const post = await postJson({
+      selections: [{ candidateId: "human_manual:weight", confirmed: true, value: "12.7 oz" }],
+      expectedStorageVersion: toStorageVersion(),
+    });
+    expect(post.status).toBe(200);
+    const bad = await postJson({
+      selections: [{ candidateId: "human_manual:not_a_field", confirmed: true, value: "x" }],
+      expectedStorageVersion: toStorageVersion(),
+    });
+    expect(bad.status).toBe(400);
+    const empty = await postJson({
+      selections: [{ candidateId: "human_manual:weight", confirmed: true, value: "" }],
+      expectedStorageVersion: toStorageVersion(),
+    });
+    expect(empty.status).toBe(400);
+  });
+
+  it("过期 storageVersion + 已确认同值 → 幂等成功（不再 409 要求重新勾选）", async () => {
     const get1 = await (await getJson()).json();
     const brand = get1.data.candidates.find((c: { field: string }) => c.field === "brand");
     // 先确认一次（版本变化）
@@ -154,7 +350,7 @@ describe("POST /fact-candidates（批量人工确认）", () => {
       selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
       expectedStorageVersion: toStorageVersion(),
     });
-    // 用旧 storageVersion 再确认 → 409
+    // 用旧 storageVersion 重复确认同值 → 幂等：200 + alreadyConfirmedCount=1，不重复写
     const post = await postJson({
       selections: [{ candidateId: brand.candidateId, confirmed: true, value: "THERMOS" }],
       expectedStorageVersion: {
@@ -162,7 +358,10 @@ describe("POST /fact-candidates（批量人工确认）", () => {
         updatedAt: "2020-01-01T00:00:00.000Z",
       },
     });
-    expect(post.status).toBe(409);
+    expect(post.status).toBe(200);
+    const body = await post.json();
+    expect(body.data.confirmedCount).toBe(0);
+    expect(body.data.alreadyConfirmedCount).toBe(1);
   });
 
   it("重复确认同候选 → 更新不重复（幂等，confirmed 数量不变）", async () => {

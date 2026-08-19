@@ -39,6 +39,31 @@ function buildFetchHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ ...buildAccessHeaders(), ...extra });
 }
 
+// ── V3 Final HWF：Selection Preservation（导出纯函数，供测试） ──
+// 批量确认后只移除「已成功确认」的勾选；冲突项保留待复核（任务书 §12）。
+export function preserveSelectionAfterConfirm(
+  selected: ReadonlySet<string>,
+  conflictCandidateIds: ReadonlySet<string>,
+): Set<string> {
+  const next = new Set<string>();
+  for (const id of selected) {
+    if (conflictCandidateIds.has(id)) next.add(id);
+  }
+  return next;
+}
+
+// 刷新后清理「候选/已确认中已不存在」的勾选项（candidate_missing 场景），其余保留用户意图。
+export function pruneSelectionToAlive(
+  selected: ReadonlySet<string>,
+  aliveCandidateIds: ReadonlySet<string>,
+): Set<string> {
+  const next = new Set<string>();
+  for (const id of selected) {
+    if (aliveCandidateIds.has(id)) next.add(id);
+  }
+  return next;
+}
+
 export function FactCandidateReview({
   taskId,
   storageVersion,
@@ -80,6 +105,11 @@ export function FactCandidateReview({
       }
       setCandidates(json.data.candidates);
       setConfirmed(json.data.confirmed);
+      // V3 Final HWF：Selection Preservation——候选已不存在的勾选项清理（其余保留用户意图）
+      const alive = new Set<string>();
+      for (const c of json.data.candidates) alive.add(c.candidateId);
+      for (const c of json.data.confirmed) alive.add(c.candidateId);
+      setSelected((prev) => pruneSelectionToAlive(prev, alive));
     } catch {
       setError("无法读取商品事实候选，请重试。");
     } finally {
@@ -100,6 +130,43 @@ export function FactCandidateReview({
     });
   }
 
+  /** 服务端批量确认响应（V3 Final HWF：Safe Rebase / Partial Conflict / 幂等） */
+  type ConfirmResponse =
+    | { ok: true; data: { confirmedCount: number; alreadyConfirmedCount?: number; conflicts?: Array<{ candidateId: string; label: string; reason: "candidate_missing" | "value_changed" }> } }
+    | { ok: false; error?: { code?: string; message?: string; conflicts?: Array<{ candidateId: string; label: string; reason: string }> } };
+
+  function applyConfirmOutcome(json: ConfirmResponse) {
+    if (!json.ok) return;
+    const data = json.data;
+    const conflicts = data.conflicts ?? [];
+    const conflictIds = new Set(conflicts.map((c) => c.candidateId));
+    // Selection Preservation：只移除已成功确认的项；冲突项保留勾选待复核
+    setSelected((prev) => preserveSelectionAfterConfirm(prev, conflictIds));
+    setEditedValues((prev) => {
+      const next: Record<string, string | number> = {};
+      for (const [id, value] of Object.entries(prev)) {
+        if (conflictIds.has(id)) next[id] = value;
+      }
+      return next;
+    });
+    if (conflicts.length > 0) {
+      setError(
+        data.confirmedCount > 0
+          ? `已确认 ${data.confirmedCount} 条。另外 ${conflicts.length} 条资料刚发生变化，请检查后重新确认。`
+          : "这几条商品资料刚发生变化，系统没有替你确认。请检查最新内容后再确认。",
+      );
+      setNotice("");
+    } else {
+      const already = data.alreadyConfirmedCount ?? 0;
+      setNotice(
+        data.confirmedCount > 0
+          ? `已确认 ${data.confirmedCount} 项商品事实。${already > 0 ? `（${already} 项已确认过，未重复写入）` : ""}`
+          : `${already > 0 ? `已确认过 ${already} 项（未重复写入）。` : "没有新的商品事实需要确认。"}`,
+      );
+      setError("");
+    }
+  }
+
   async function confirmSelected() {
     if (selected.size === 0 || !storageVersion) return;
     setSaving(true);
@@ -108,10 +175,13 @@ export function FactCandidateReview({
     try {
       const selections = [...selected].map((candidateId) => {
         const candidate = candidates?.find((c) => c.candidateId === candidateId);
+        const editedValue = editedValues[candidateId];
+        const edited = editedValue !== undefined && editedValue !== String(candidate?.value);
         return {
           candidateId,
           confirmed: true,
-          value: editedValues[candidateId] ?? candidate?.value,
+          value: editedValue ?? candidate?.value,
+          ...(edited ? { edited: true } : {}),
         };
       });
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
@@ -120,22 +190,25 @@ export function FactCandidateReview({
         body: JSON.stringify({ selections, expectedStorageVersion: storageVersion }),
         signal: AbortSignal.timeout(60_000),
       });
-      const json = await res.json() as
-        | { ok: true; data: { confirmedCount: number } }
-        | { ok: false; error?: { code?: string; message?: string } };
+      const json = await res.json() as ConfirmResponse;
       if (!res.ok || !json.ok) {
-        const code = (json as { error?: { code?: string } }).error?.code ?? "";
-        if (code === "task_result_conflict") {
-          setError("内容刚在其他位置更新，已刷新最新版本；请重新勾选确认。");
+        const error = (json as { error?: { code?: string; message?: string; conflicts?: unknown[] } }).error ?? {};
+        if (error.code === "task_result_conflict") {
+          // 服务端已自动 Safe Rebase 过一次仍冲突（真实并发竞态）→ 刷新最新状态，不要求重新勾选
+          setError("内容刚刚发生变化，请刷新后重试。");
           onChanged();
           return;
         }
-        setError((json as { error?: { message?: string } }).error?.message ?? "确认失败，请重试。");
+        if (error.code === "fact_conflict") {
+          setError("这几条商品资料刚发生变化，系统没有替你确认。请检查最新内容后再确认。");
+          await load();
+          onChanged();
+          return;
+        }
+        setError(error.message ?? "确认失败，请重试。");
         return;
       }
-      setNotice(`已确认 ${json.data.confirmedCount} 项商品事实。`);
-      setSelected(new Set());
-      setEditedValues({});
+      applyConfirmOutcome(json);
       await load();
       onChanged();
     } catch {
@@ -170,20 +243,25 @@ export function FactCandidateReview({
         }),
         signal: AbortSignal.timeout(60_000),
       });
-      const json = await res.json() as
-        | { ok: true; data: { confirmedCount: number } }
-        | { ok: false; error?: { code?: string; message?: string } };
+      const json = await res.json() as ConfirmResponse;
       if (!res.ok || !json.ok) {
-        const code = (json as { error?: { code?: string } }).error?.code ?? "";
-        if (code === "task_result_conflict") {
-          setError("内容刚在其他位置更新，已刷新最新版本；请重新添加。");
+        const error = (json as { error?: { code?: string; message?: string } }).error ?? {};
+        if (error.code === "task_result_conflict") {
+          // 服务端已自动 Safe Rebase 过一次仍冲突（真实并发竞态）→ 刷新最新状态，不要求重新添加
+          setError("内容刚刚发生变化，请刷新后重试。");
           onChanged();
           return;
         }
-        setError((json as { error?: { message?: string } }).error?.message ?? "添加失败，请重试。");
+        if (error.code === "fact_conflict") {
+          setError("这条商品资料刚发生变化，系统没有替你确认。请检查最新内容后再添加。");
+          await load();
+          onChanged();
+          return;
+        }
+        setError(error.message ?? "添加失败，请重试。");
         return;
       }
-      setNotice("已手动补充并确认 1 项商品事实（来源：人工核实）。");
+      applyConfirmOutcome(json);
       setManualValue("");
       setManualNote("");
       setManualOpen(false);
