@@ -17,7 +17,8 @@ export const FACT_CANDIDATES_VERSION = 1 as const;
 export type FactCandidateSourceKind =
   | "seller_sprite_product_facts"
   | "amazon_browser_evidence"
-  | "product_title";
+  | "product_title"
+  | "human_manual";
 
 export type FactCandidate = {
   candidateId: string;
@@ -65,6 +66,8 @@ const LABELS: Record<string, string> = {
   series_or_model: "系列/型号",
   capacity: "容量",
   material: "材质",
+  dimensions: "尺寸",
+  weight: "重量",
   color_or_variant: "颜色/款式",
   quantity_or_pack_size: "数量/包装",
   category: "类目",
@@ -72,7 +75,40 @@ const LABELS: Record<string, string> = {
   rating: "评分",
   reviews: "评论数",
   bsr: "大类 BSR",
+  functional_feature: "功能特性",
+  care: "清洁保养",
+  construction: "构造",
+  included_components: "随附组件",
+  operation: "操作方式",
+  compatibility: "兼容性",
 };
+
+/**
+ * 手动补充事实的可选字段注册表（供 [+手动补充商品事实] 下拉使用）。
+ * 与既有 canonical fact field 一致；不同商品可只填相关字段（动态 Fact Set）。
+ */
+export const MANUAL_FACT_FIELDS: ReadonlyArray<{ field: string; label: string }> = [
+  { field: "brand", label: "品牌" },
+  { field: "product_type", label: "商品类型" },
+  { field: "series_or_model", label: "系列/型号" },
+  { field: "material", label: "材质" },
+  { field: "capacity", label: "容量" },
+  { field: "dimensions", label: "尺寸" },
+  { field: "weight", label: "重量" },
+  { field: "color_or_variant", label: "颜色/款式" },
+  { field: "quantity_or_pack_size", label: "数量/包装" },
+  { field: "functional_feature", label: "功能特性" },
+  { field: "care", label: "清洁保养" },
+  { field: "construction", label: "构造" },
+  { field: "included_components", label: "随附组件" },
+  { field: "operation", label: "操作方式" },
+  { field: "compatibility", label: "兼容性" },
+];
+
+/** 手动补充事实的确定性 candidateId（sourceKind=human_manual） */
+export function humanManualCandidateId(field: string): string {
+  return `human_manual:${field}`;
+}
 
 /**
  * 从 resultJson 提取 Fact Candidates。

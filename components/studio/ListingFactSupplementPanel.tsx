@@ -45,6 +45,14 @@ function titleDerivedHint(canonicalField: string): string {
 
 export type ManualFactInput = { field: string; value: string };
 
+/** V3 Final HWF（FIX-6）：Evidence Workbench 已确认事实（factCandidates namespace，只读展示） */
+export type WorkbenchConfirmedFact = {
+  field: string;
+  label: string;
+  value: string | number;
+  sourceKind: string;
+};
+
 export function ListingFactSupplementPanel({
   taskId,
   preview,
@@ -52,6 +60,7 @@ export function ListingFactSupplementPanel({
   refresh,
   onCommitted,
   existingFacts = [],
+  workbenchConfirmedFacts = [],
 }: {
   taskId: string;
   preview: CreativeHandoffPreview | null;
@@ -67,8 +76,27 @@ export function ListingFactSupplementPanel({
   refresh: () => Promise<unknown>;
   onCommitted?: () => void;
   existingFacts?: HandoffDetailConfirmedFact[];
+  /** 研究阶段已确认事实（factCandidates 权威），只读合并展示；不桥接写入创作链 */
+  workbenchConfirmedFacts?: ReadonlyArray<WorkbenchConfirmedFact>;
 }) {
-  const existingFields = useMemo(() => new Set(existingFacts.map((fact) => fact.field)), [existingFacts]);
+  // 合并展示视图（按 field 去重；handoff 事实优先——它已进入创作链）。
+  // 注意：workbenchConfirmedFacts 只参与展示与"缺事实"判定，不随 create 提交。
+  const mergedFacts = useMemo(
+    () => {
+      const seen = new Set(existingFacts.map((fact) => fact.field));
+      const merged: Array<{ field: string; label: string; value: string | number; sourceKind: string }> = [
+        ...existingFacts.map((fact) => ({ field: fact.field, label: fact.label, value: fact.value, sourceKind: fact.sourceKind })),
+      ];
+      for (const fact of workbenchConfirmedFacts) {
+        if (seen.has(fact.field)) continue;
+        seen.add(fact.field);
+        merged.push(fact);
+      }
+      return merged;
+    },
+    [existingFacts, workbenchConfirmedFacts],
+  );
+  const existingFields = useMemo(() => new Set(mergedFacts.map((fact) => fact.field)), [mergedFacts]);
   const candidates = useMemo(
     () => (preview?.confirmableFactCandidates ?? []).filter((candidate) =>
       candidate.allowedUsageScopes.includes("listing") && !existingFields.has(candidate.canonicalField)),
@@ -136,17 +164,21 @@ export function ListingFactSupplementPanel({
           </p>
         </div>
         <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
-          已确认 {existingFacts.length} 项
+          已确认 {mergedFacts.length} 项
         </span>
       </div>
 
-      {existingFacts.length > 0 ? (
+      {mergedFacts.length > 0 ? (
         <div className="mt-3 grid gap-2 md:grid-cols-2" data-testid="listing-confirmed-facts">
-          {existingFacts.map((fact) => (
-            <div key={`${fact.field}:${fact.value}`} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-sm text-slate-700">
+          {mergedFacts.map((fact) => (
+            <div key={fact.field} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-sm text-slate-700">
               <strong>{fact.label}</strong>：{fact.value}
               <span className="mt-1 block text-xs text-teal-700">
-                {fact.sourceKind === "user_confirmation" ? "人工核实确认" : "来源证据确认"}
+                {fact.sourceKind === "human_manual"
+                  ? "人工核实（手动补充）"
+                  : fact.sourceKind === "user_confirmation"
+                    ? "人工核实确认"
+                    : "来源证据确认"}
               </span>
             </div>
           ))}

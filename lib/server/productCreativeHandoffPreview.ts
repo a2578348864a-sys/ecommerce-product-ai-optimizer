@@ -48,6 +48,7 @@ import { summarizeListingHandoffFacts } from "@/lib/listingHandoff/listingGenera
 import { parseRequestLedger, type CreativeHandoffRequestLedgerV1 } from "@/lib/creativeHandoffRequestLedger";
 import { evaluateHandoffStatus } from "@/lib/productCreativeHandoffStatus";
 import { buildCreativeContextFromResearch } from "@/lib/creativeContextBuilder";
+import { getFactCandidates } from "@/lib/factCandidates";
 import { loadCandidateSourceMeta } from "@/lib/server/candidateSourceMeta";
 import type {
   ProductCreativeHandoffCandidate,
@@ -193,6 +194,8 @@ export type CreativeHandoffDetail = {
   versions?: { revision: number; createdAt: string; confirmedFactFields: string[] }[];
   createdAt?: string;
   storageVersion?: { resultJsonHash: string; updatedAt: string };
+  /** V3 Final HWF（FIX-6）：研究阶段已确认事实（factCandidates 权威，只读展示，不写入创作链） */
+  workbenchConfirmedFacts?: Array<{ field: string; label: string; value: string | number; sourceKind: string }>;
 };
 
 export type CreativeHandoffGateResult = {
@@ -204,6 +207,8 @@ export type CreativeHandoffGateResult = {
   candidate?: ProductCreativeHandoffCandidate;
   currentHandoff?: ProductCreativeHandoffV1 | null;
   storageVersion?: { resultJsonHash: string; updatedAt: string };
+  /** V3 Final HWF（FIX-6）：研究阶段已确认事实（factCandidates 权威，只读展示视图） */
+  workbenchConfirmedFacts?: Array<{ field: string; label: string; value: string | number; sourceKind: string }>;
   /** true 当 resultJson 中存在 creativeHandoff 但严格 Parser 失败 — 必须 fail-closed */
   handoffContractInvalid?: boolean;
   /** 当前存储的 Request Ledger（严格解析失败时 null 且 ledgerInvalid=true） */
@@ -728,7 +733,7 @@ export async function checkCreativeHandoffGate(
     approvedReferenceImageDataUrl = researchContext.productImage.dataUrl;
   }
 
-  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }) };
+  return { allowed: true, reason: "eligible", taskAccessible: accessible, candidate, currentHandoff, storageVersion, requestLedger, ledgerInvalid, listingHandoffBindingRaw, listingDraftRaw, imageHandoffBindingRaw: resultJson.imageHandoffBinding, imageDraftRaw: resultJson.aiImageDraftSnapshot, imageStudioSelectionRaw: resultJson.imageStudioSelection, visualReferenceCandidates: visualCandidates, approvedReferenceImageDataUrl, externalUrlCandidate, keywordBriefRaw: resultJson.listingKeywordBrief, creativeContext: buildCreativeContextFromResearch({ resultJson, researchRevision: record.revision, candidateId: record.candidateId }), workbenchConfirmedFacts: (getFactCandidates(resultJson)?.confirmed ?? []).map((f) => ({ field: f.field, label: f.label, value: f.value, sourceKind: f.sourceKind })) };
 }
 
 // ─── Preview ──────────────────────────────────────────────
@@ -956,6 +961,7 @@ export async function getCreativeHandoffDetail(
     })),
     createdAt: handoff.createdAt,
     storageVersion: gate.storageVersion,
+    workbenchConfirmedFacts: gate.workbenchConfirmedFacts ?? [],
   };
   return { detail, gate };
 }

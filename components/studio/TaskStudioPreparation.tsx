@@ -385,6 +385,7 @@ export function TaskStudioPreparation({
               refresh={api.refresh}
               onCommitted={onCommitted}
               existingFacts={detail.confirmedFacts ?? []}
+              workbenchConfirmedFacts={detail.workbenchConfirmedFacts ?? []}
             />
             <div className="mt-3 flex flex-wrap gap-2">
               <Link

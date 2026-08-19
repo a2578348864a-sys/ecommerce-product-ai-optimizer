@@ -13,15 +13,16 @@
  * - 已确认事实显示来源（seller_sprite / amazon_browser / product_title），不再重复确认。
  */
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Plus, Sparkles } from "lucide-react";
 import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { MANUAL_FACT_FIELDS, humanManualCandidateId } from "@/lib/factCandidates";
 
 type FactCandidateView = {
   candidateId: string;
   field: string;
   label: string;
   value: string | number;
-  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "product_title";
+  sourceKind: "seller_sprite_product_facts" | "amazon_browser_evidence" | "product_title" | "human_manual";
   sourceRef: string;
 };
 
@@ -31,6 +32,7 @@ const SOURCE_LABELS: Record<string, string> = {
   seller_sprite_product_facts: "SellerSprite 商品数据",
   amazon_browser_evidence: "Amazon 页面证据",
   product_title: "商品标题（自动识别）",
+  human_manual: "人工核实（手动补充）",
 };
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
@@ -54,6 +56,11 @@ export function FactCandidateReview({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // V3 UX Closure Manual Fact：手动补充商品事实（SYSTEM CANNOT EXTRACT → 用户手动补充）
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualField, setManualField] = useState(MANUAL_FACT_FIELDS[0]?.field ?? "");
+  const [manualValue, setManualValue] = useState("");
+  const [manualNote, setManualNote] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,9 +145,60 @@ export function FactCandidateReview({
     }
   }
 
+  async function addManualFact() {
+    if (!storageVersion) return;
+    const field = manualField.trim();
+    const value = manualValue.trim();
+    if (!field || !value) {
+      setError("请选择事实类型并填写事实值。");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/fact-candidates`, {
+        method: "POST",
+        headers: buildFetchHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          selections: [{
+            candidateId: humanManualCandidateId(field),
+            confirmed: true,
+            value,
+          }],
+          expectedStorageVersion: storageVersion,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const json = await res.json() as
+        | { ok: true; data: { confirmedCount: number } }
+        | { ok: false; error?: { code?: string; message?: string } };
+      if (!res.ok || !json.ok) {
+        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        if (code === "task_result_conflict") {
+          setError("内容刚在其他位置更新，已刷新最新版本；请重新添加。");
+          onChanged();
+          return;
+        }
+        setError((json as { error?: { message?: string } }).error?.message ?? "添加失败，请重试。");
+        return;
+      }
+      setNotice("已手动补充并确认 1 项商品事实（来源：人工核实）。");
+      setManualValue("");
+      setManualNote("");
+      setManualOpen(false);
+      await load();
+      onChanged();
+    } catch {
+      setError("添加失败，请重试。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading && candidates === null && confirmed === null) {
     return (
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-loading">
+      <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-loading">
         <Loader2 className="mr-1 inline size-4 animate-spin" /> 正在从研究证据提取商品事实候选…
       </div>
     );
@@ -149,14 +207,14 @@ export function FactCandidateReview({
   const total = (candidates?.length ?? 0) + (confirmed?.length ?? 0);
   if (total === 0 && !error) {
     return (
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-empty">
+      <div id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-testid="fact-candidates-empty">
         暂无可提取的商品事实候选（来源：SellerSprite 商品数据 / Amazon 页面证据 / 商品标题）。
       </div>
     );
   }
 
   return (
-    <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4" data-testid="fact-candidate-review">
+    <section id="fact-candidate-review" className="mt-4 scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4" data-testid="fact-candidate-review">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">
           商品事实候选 <span className="ml-1 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold text-indigo-700">来自研究证据 · 人工确认</span>
@@ -223,6 +281,70 @@ export function FactCandidateReview({
           </ul>
         </div>
       )}
+
+      {/* V3 UX Closure Manual Fact：系统无法提取时，用户手动补充（进入同一 Human Confirmation Authority） */}
+      <div className="mt-4 border-t border-slate-100 pt-3" data-testid="manual-fact-entry">
+        <button
+          type="button"
+          onClick={() => setManualOpen((open) => !open)}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          aria-expanded={manualOpen}
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          手动补充商品事实
+        </button>
+        {manualOpen && (
+          <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 sm:grid-cols-[200px_1fr_auto]">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              事实类型
+              <select
+                value={manualField}
+                onChange={(event) => setManualField(event.target.value)}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800"
+                data-testid="manual-fact-field"
+              >
+                {MANUAL_FACT_FIELDS.map((entry) => (
+                  <option key={entry.field} value={entry.field}>{entry.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
+              事实值
+              <input
+                type="text"
+                value={manualValue}
+                onChange={(event) => setManualValue(event.target.value)}
+                placeholder="例如：304 不锈钢"
+                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800"
+                data-testid="manual-fact-value"
+              />
+            </label>
+            <div className="flex items-end gap-2">
+              <input
+                type="text"
+                value={manualNote}
+                onChange={(event) => setManualNote(event.target.value)}
+                placeholder="可选备注"
+                className="hidden w-32 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 sm:block"
+                aria-label="可选备注"
+              />
+              <button
+                type="button"
+                disabled={saving || !manualValue.trim()}
+                onClick={() => void addManualFact()}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
+                data-testid="manual-fact-add"
+              >
+                {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                添加并确认
+              </button>
+            </div>
+            <p className="text-[11px] leading-5 text-slate-400 sm:col-span-3">
+              手动补充的事实会标记为「人工核实（手动补充）」——不会伪装成 Amazon / SellerSprite / 标题等自动提取来源。
+            </p>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

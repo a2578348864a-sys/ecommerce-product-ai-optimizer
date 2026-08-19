@@ -130,6 +130,14 @@ export type HandoffDetailConfirmedFact = {
   sourceKind: "candidate_snapshot" | "seller_sprite_snapshot" | "research_result" | "user_confirmation";
 };
 
+/** V3 Final HWF（FIX-6）：研究阶段已确认事实（factCandidates 权威，只读展示，不写入创作链） */
+export type HandoffWorkbenchConfirmedFact = {
+  field: string;
+  label: string;
+  value: string | number;
+  sourceKind: string;
+};
+
 export type HandoffDetailVersion = {
   revision: number;
   createdAt: string;
@@ -146,6 +154,8 @@ export type CreativeHandoffDetail = {
   humanReviewRequired: boolean;
   sourceResearchRevision?: number;
   confirmedFacts?: HandoffDetailConfirmedFact[];
+  /** V3 Final HWF（FIX-6）：研究阶段已确认事实（只读展示） */
+  workbenchConfirmedFacts?: HandoffWorkbenchConfirmedFact[];
   listingFactSummary?: { confirmedFacts: number; listingEligibleFacts: number; prohibitedClaims: number };
   prohibitedClaims?: { category: string; summary: string; appliesTo: string[] }[];
   versions?: HandoffDetailVersion[];

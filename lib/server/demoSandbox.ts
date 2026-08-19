@@ -358,19 +358,47 @@ export function createGenericSandboxTask(
  * （createGenericSandboxTask 会拒绝系统键 researchRecord/handoff 等；
  * createSandboxCandidate 不支持固定 id）。
  * 内部走 mutateDemoSandboxStore（approved adapter 边界由 mutationBoundary 守护）。
+ *
+ * V3 Final HWF FIX-5：check-then-act 原子化——幂等判定移入物理 Store 写锁内重查，
+ * 并发双 seed（同 Visitor 同时触发 ensure）不会产生重复副本：
+ * - 固定 id 候选已存在 → 复用其关联任务（convertedTaskId），不重复创建；
+ * - 候选残留但无任务（异常态）→ 补建任务并复用候选；
+ * - 同 id 任务已存在 → 不重复创建。
  */
 export function createSeededSandboxTaskAndCandidate(
   demoAccessId: string,
   task: Omit<SandboxTask, "demoAccessId">,
   candidate: Omit<SandboxCandidate, "demoAccessId">,
-): Promise<{ taskId: string }> {
-  return mutateDemoSandboxStore((store) => {
+): Promise<{ taskId: string; created: boolean }> {
+  return mutateDemoSandboxStore<{ taskId: string; created: boolean }>((store) => {
+    const existingCandidate = store.candidates.find(
+      (c) => c.demoAccessId === demoAccessId && c.id === candidate.id,
+    ) ?? null;
+    if (existingCandidate) {
+      const linkedTask = existingCandidate.convertedTaskId
+        ? store.tasks.find((t) => t.demoAccessId === demoAccessId && t.id === existingCandidate.convertedTaskId) ?? null
+        : null;
+      if (linkedTask) {
+        // 并发 seed 第二方：副本已存在（固定 id 候选 + 其任务）→ 复用，不重复创建
+        return { value: { taskId: linkedTask.id, created: false }, changed: false };
+      }
+      // 候选残留但任务缺失（异常态）：补建任务、复用候选（不重复创建候选）
+      const now = new Date().toISOString();
+      const fullTask: SandboxTask = { ...task, demoAccessId, createdAt: task.createdAt || now, updatedAt: task.updatedAt || now };
+      existingCandidate.convertedTaskId = fullTask.id;
+      store.tasks.push(fullTask);
+      return { value: { taskId: fullTask.id, created: true }, changed: true };
+    }
+    const existingTask = store.tasks.find((t) => t.demoAccessId === demoAccessId && t.id === task.id);
+    if (existingTask) {
+      return { value: { taskId: existingTask.id, created: false }, changed: false };
+    }
     const now = new Date().toISOString();
     const fullTask: SandboxTask = { ...task, demoAccessId, createdAt: task.createdAt || now, updatedAt: task.updatedAt || now };
     const fullCandidate: SandboxCandidate = { ...candidate, demoAccessId, createdAt: candidate.createdAt || now };
     store.tasks.push(fullTask);
     store.candidates.push(fullCandidate);
-    return { value: { taskId: fullTask.id }, changed: true };
+    return { value: { taskId: fullTask.id, created: true }, changed: true };
   });
 }
 

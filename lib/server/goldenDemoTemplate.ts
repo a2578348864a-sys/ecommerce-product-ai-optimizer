@@ -111,6 +111,8 @@ async function backfillMarker(demoAccessId: string, task: SandboxTask): Promise<
  * - 已有带标记副本 → skip；
  * - 有 THERMOS 历史副本（无标记）→ backfill 标记（一次）；
  * - 无 → 通过正式 sandbox writer 创建独立副本（task + candidate，不共享 Task）。
+ * 并发安全：创建路径的 check-then-act 已原子化（createSeededSandboxTaskAndCandidate
+ * 在物理 Store 写锁内重查固定 id 候选/任务），并发双 seed 不会产生重复副本。
  */
 export async function ensureVisitorDemoCopy(demoAccessId: string): Promise<GoldenDemoCopy | null> {
   const tasks = await listSandboxTasks(demoAccessId);
@@ -180,14 +182,12 @@ export async function ensureVisitorDemoCopy(demoAccessId: string): Promise<Golde
   };
   const created = await createSeededSandboxTaskAndCandidate(demoAccessId, task, candidate);
 
-  return created
-    ? {
-        taskId: created.taskId,
-        demoTemplateId: GOLDEN_DEMO_TEMPLATE_ID,
-        demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
-        sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
-      }
-    : null;
+  return {
+    taskId: created.taskId,
+    demoTemplateId: GOLDEN_DEMO_TEMPLATE_ID,
+    demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
+    sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
+  };
 }
 
 /** 读取某 Visitor 已存在的 Golden Demo 副本（不创建） */

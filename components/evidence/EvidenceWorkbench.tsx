@@ -37,6 +37,11 @@ import {
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import {
+  getFactCandidates,
+  MANUAL_FACT_FIELDS,
+  type ConfirmedFactCandidate,
+} from "@/lib/factCandidates";
+import {
   parseAcquisitionCapability,
   type AcquisitionCapabilityView,
 } from "@/lib/client/acquisitionCapability";
@@ -115,7 +120,7 @@ export function natureForField(field: string): MetricNature {
 
 // ── V3 Final R12：研究资料清单与研究状态行（导出纯函数，供组件与测试使用） ──
 
-export type ResearchMaterialRow = { key: string; label: string; state: "已有" | "待补" | "可选" };
+export type ResearchMaterialRow = { key: string; label: string; state: "已有" | "待补" | "可选"; detail?: string };
 
 export type ResearchStatusSummary = {
   status: "empty" | "partial" | "ai_ready";
@@ -133,9 +138,20 @@ export function buildResearchMaterialRows(input: {
   browserEvidence: { snapshots: unknown[] } | null;
   vocEvidence: { dataset: { reviews: unknown[] } } | null;
   sourcingConfirmed: boolean;
+  /** V3 Final HWF：商品基础资料状态覆盖（已确认事实计数参与判定；可选，默认按 overview 派生） */
+  productBasicsState?: "已有" | "待补";
+  /** V3 Final HWF：商品基础资料明细（"已有 N 项 / 仍缺 M 项"） */
+  productBasicsDetail?: string;
 }): ResearchMaterialRow[] {
+  const productBasicsState: "已有" | "待补" =
+    input.productBasicsState ?? (input.overview.some((item) => item.value !== "unknown") ? "已有" : "待补");
   return [
-    { key: "productBasics", label: "商品基础资料", state: input.overview.some((item) => item.value !== "unknown") ? "已有" : "待补" },
+    {
+      key: "productBasics",
+      label: "商品基础资料",
+      state: productBasicsState,
+      ...(input.productBasicsDetail ? { detail: input.productBasicsDetail } : {}),
+    },
     { key: "competitor", label: "竞品资料", state: input.competitors.length > 0 ? "已有" : "可选" },
     { key: "keyword", label: "关键词", state: input.keywordReportEvidence !== null ? "已有" : "待补" },
     { key: "browser", label: "Amazon 页面", state: (input.browserEvidence?.snapshots.length ?? 0) > 0 ? "已有" : "待补" },
@@ -217,6 +233,67 @@ export function extractOverviewItems(result: unknown): WorkbenchOverviewItem[] {
   return items;
 }
 
+/**
+ * V3 Final HWF（P1-03 一致性）：把已确认商品事实（factCandidates namespace，唯一已确认权威）
+ * 追加为商品概览条目——标题派生等字段同样展示，消除"已确认 9 条却显示暂无证据"的矛盾。
+ * 与 overview 同字段（如 brand/price）以 overview 为准去重（同字段候选来自同一事实）。
+ */
+export function mergeConfirmedIntoOverview(
+  overview: WorkbenchOverviewItem[],
+  confirmed: ReadonlyArray<ConfirmedFactCandidate>,
+): WorkbenchOverviewItem[] {
+  const seen = new Set(overview.map((item) => item.field));
+  const extra: WorkbenchOverviewItem[] = [];
+  for (const item of confirmed) {
+    if (seen.has(item.field)) continue;
+    seen.add(item.field);
+    const value = String(item.value);
+    extra.push({
+      field: item.field,
+      label: item.label,
+      value,
+      nature: item.sourceKind === "product_title" ? "derived" : "snapshot",
+      raw: value,
+    });
+  }
+  return [...overview, ...extra];
+}
+
+/** 商品事实期望字段集 = MANUAL_FACT_FIELDS（15）+ 采集核心 5 字段（category/price/rating/reviews/bsr） */
+export const EXPECTED_FACT_FIELDS: ReadonlySet<string> = new Set([
+  ...MANUAL_FACT_FIELDS.map((item) => item.field),
+  "category",
+  "price",
+  "rating",
+  "reviews",
+  "bsr",
+]);
+
+/** overview 字段名 → 事实字段名的归一化别名（其余同名直接覆盖） */
+const FACT_FIELD_ALIAS: Record<string, string> = {
+  rootCategory: "category",
+  rootCategoryBsr: "bsr",
+  subCategoryBsr: "bsr",
+};
+
+/**
+ * 已覆盖事实字段集：overview 已知项（归一化后）+ confirmed 字段。
+ * 用于"已有 N 项 / 仍缺 M 项"计数（N=已覆盖，M=期望集 − 已覆盖）。
+ */
+export function coveredFactFieldSet(
+  overview: WorkbenchOverviewItem[],
+  confirmed: ReadonlyArray<Pick<ConfirmedFactCandidate, "field">>,
+): Set<string> {
+  const covered = new Set<string>();
+  for (const item of overview) {
+    if (item.value === "unknown") continue;
+    const canonical = FACT_FIELD_ALIAS[item.field] ?? item.field;
+    if (EXPECTED_FACT_FIELDS.has(canonical)) covered.add(canonical);
+  }
+  for (const item of confirmed) covered.add(item.field);
+  return covered;
+}
+
 export type WorkbenchDecisionSummary = {
   status: string;
   label: string;
@@ -232,6 +309,19 @@ const DECISION_LABELS: Record<string, string> = {
 
 export function extractDecisionSummary(result: unknown): WorkbenchDecisionSummary {
   if (!isRecord(result)) return null;
+  // V3 Final HWF（P1-03）：详情页浏览器投影只暴露 productResearchSummary
+  // （researchRecord 仅服务端内部，DETAIL_FIELDS 不投影）——决策状态以投影 summary 为权威，
+  // researchRecord.latestDecision 仅作完整 result 传入时的兜底。
+  const summary = isRecord(result.productResearchSummary) ? result.productResearchSummary : null;
+  if (summary && typeof summary.status === "string") {
+    const status = summary.status;
+    return {
+      status,
+      label: typeof summary.label === "string" && summary.label ? summary.label : (DECISION_LABELS[status] ?? status),
+      reason: text(summary.reasonSummary),
+      nextAction: text(summary.nextActionSummary),
+    };
+  }
   const record = isRecord(result.researchRecord) ? result.researchRecord : null;
   const latest = record && isRecord(record.latestDecision) ? record.latestDecision : null;
   if (!latest) return null;
@@ -439,6 +529,13 @@ export function EvidenceWorkbench({
   const score = extractCandidateScore(result);
   const source = extractReportSource(result);
 
+  // V3 Final HWF（P1-03 一致性）：factCandidates 是唯一已确认事实权威；
+  // 商品概览合并已确认事实（含标题派生字段），Summary 与基础资料计数统一以合并视图为准。
+  const confirmedFacts = getFactCandidates(result)?.confirmed ?? [];
+  const mergedOverview = mergeConfirmedIntoOverview(overview, confirmedFacts);
+  const coveredFacts = coveredFactFieldSet(overview, confirmedFacts);
+  const productBasicsDetail = `已有 ${coveredFacts.size} 项 / 仍缺 ${EXPECTED_FACT_FIELDS.size - coveredFacts.size} 项`;
+
   const [sourcingConfirmed, setSourcingConfirmed] = useState(false);
   const [competitors, setCompetitors] = useState<CompetitorAsinView[]>([]);
   const [storageVersion, setStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
@@ -643,6 +740,8 @@ export function EvidenceWorkbench({
     browserEvidence,
     vocEvidence,
     sourcingConfirmed,
+    productBasicsState: coveredFacts.size > 0 ? "已有" : "待补",
+    productBasicsDetail,
   });
   const researchStatus = deriveResearchStatus(materialRows, aiSummary);
 
@@ -678,7 +777,7 @@ export function EvidenceWorkbench({
         <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
           {materialRows.map((row) => (
             <li key={row.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-              <span className="text-slate-700">{row.label}</span>
+              <span className="text-slate-700">{row.label}{row.detail ? <span className="ml-1 text-xs text-slate-400">（{row.detail}）</span> : null}</span>
               {row.key === "productBasics" && row.state === "待补" ? (
                 <a
                   href="#fact-candidate-review"
@@ -726,8 +825,8 @@ export function EvidenceWorkbench({
           <div>
             <dt className="text-xs text-slate-500">目前知道什么</dt>
             <dd className="mt-0.5 text-slate-800">
-              {overview.some((item) => item.value !== "unknown")
-                ? `已整理商品概览 ${overview.filter((item) => item.value !== "unknown").length} 项真实证据。`
+              {overview.some((item) => item.value !== "unknown") || confirmedFacts.length > 0
+                ? `已整理商品概览 ${mergedOverview.filter((item) => item.value !== "unknown").length} 项、已确认 ${confirmedFacts.length} 条商品事实。`
                 : "暂无已确认的商品证据。"}
             </dd>
           </div>
@@ -769,7 +868,7 @@ export function EvidenceWorkbench({
           )}
         </div>
         <div className="mt-3">
-          <OverviewGrid items={overview} />
+          <OverviewGrid items={mergedOverview} />
         </div>
         {source?.evidenceHash && (
           <details className="mt-2">

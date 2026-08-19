@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listSandboxTasks } from "@/lib/server/demoSandbox";
+import { listSandboxCandidates, listSandboxTasks } from "@/lib/server/demoSandbox";
 import {
   ensureVisitorDemoCopy,
   findVisitorDemoCopy,
@@ -66,6 +66,37 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
     const second = (await listSandboxTasks("demo-visitor-b")).length;
     expect(second).toBe(first);
     expect(again?.taskId).toBe((await listSandboxTasks("demo-visitor-b"))[0].id);
+  });
+
+  // ── V3 Final HWF FIX-5：并发双 seed 原子化（check-then-act 移入写锁） ──
+  it("并发双 seed（同 Visitor 同时触发）→ 仅 1 个副本（task + candidate 各一，同一 taskId）", async () => {
+    const [a, b] = await Promise.all([
+      ensureVisitorDemoCopy("demo-visitor-concurrent"),
+      ensureVisitorDemoCopy("demo-visitor-concurrent"),
+    ]);
+    // 两个调用都解析到同一任务
+    expect(a?.taskId).toBeDefined();
+    expect(b?.taskId).toBe(a?.taskId);
+    // 物理上只有 1 个 task + 1 个固定 id 候选
+    const tasks = await listSandboxTasks("demo-visitor-concurrent");
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe(a?.taskId);
+    const candidates = await listSandboxCandidates("demo-visitor-concurrent");
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].id).toBe("fixture-vr-cand-001");
+    expect(candidates[0].convertedTaskId).toBe(a?.taskId);
+  });
+
+  it("并发双 seed 不破坏标记/证据完整性（单一副本带 demoTemplate 标记）", async () => {
+    await Promise.all([
+      ensureVisitorDemoCopy("demo-visitor-concurrent-2"),
+      ensureVisitorDemoCopy("demo-visitor-concurrent-2"),
+    ]);
+    const tasks = await listSandboxTasks("demo-visitor-concurrent-2");
+    expect(tasks).toHaveLength(1);
+    expect(readDemoTemplateMarker(tasks[0].resultJson)?.demoTemplateId).toBe(GOLDEN_DEMO_TEMPLATE_ID);
+    const rj = JSON.parse(tasks[0].resultJson);
+    expect(rj.researchCompletion.evidenceHash).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("跨 Visitor 隔离：每个 Visitor 独立副本，不共享 Task", async () => {

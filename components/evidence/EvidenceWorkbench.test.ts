@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResearchMaterialRows,
+  coveredFactFieldSet,
   deriveResearchStatus,
+  EXPECTED_FACT_FIELDS,
   extractCandidateScore,
   extractDecisionSummary,
   extractEvidenceGaps,
   extractKeywordBrief,
   extractOverviewItems,
   extractReportSource,
+  mergeConfirmedIntoOverview,
   natureForField,
   type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
+import type { ConfirmedFactCandidate } from "@/lib/factCandidates";
 
 const batchResult = {
   sourceMeta: {
@@ -80,6 +84,32 @@ describe("EvidenceWorkbench extractors", () => {
     expect(decision?.label).toBe("待补信息");
     expect(decision?.reason).toContain("货源");
     expect(extractDecisionSummary({})).toBeNull();
+  });
+
+  // ── V3 Final HWF（P1-03）：详情页投影（productResearchSummary）为决策权威 ──
+  it("reads decision from productResearchSummary projection (detail page has no researchRecord)", () => {
+    const decision = extractDecisionSummary({
+      productResearchSummary: {
+        schema: "product-research-record.v1",
+        revision: 2,
+        status: "creative_ready",
+        label: "进入创作准备",
+        reasonSummary: "证据已齐",
+        nextActionSummary: "生成 Listing",
+        decidedAt: "2026-08-15T00:00:00.000Z",
+        actorMode: "owner",
+        researchHashFingerprint: "f".repeat(64),
+        legacy: false,
+      },
+    });
+    expect(decision?.status).toBe("creative_ready");
+    expect(decision?.label).toBe("进入创作准备");
+    expect(decision?.reason).toBe("证据已齐");
+    expect(decision?.nextAction).toBe("生成 Listing");
+  });
+
+  it("falls back to researchRecord.latestDecision when summary is absent (full result path)", () => {
+    expect(extractDecisionSummary(batchResult)?.status).toBe("needs_information");
   });
 
   it("extracts evidence gaps without inventing missing items", () => {
@@ -180,5 +210,80 @@ describe("buildResearchMaterialRows / deriveResearchStatus", () => {
     for (const row of rows) {
       expect(["已有", "待补", "可选"]).toContain(row.state);
     }
+  });
+});
+
+// ── V3 Final HWF（P1-03 一致性）：已确认事实合并与计数 ──
+
+describe("mergeConfirmedIntoOverview / coveredFactFieldSet", () => {
+  const confirmed = (items: Array<Partial<ConfirmedFactCandidate> & { field: string; value: string | number }>): ConfirmedFactCandidate[] =>
+    items.map((item, index) => ({
+      candidateId: `human_manual:${item.field}`,
+      label: item.field,
+      sourceKind: "human_manual",
+      sourceRef: "human_manual.supplied",
+      humanConfirmationRequired: true,
+      confirmedAt: "2026-08-15T00:00:00.000Z",
+      confirmedBy: "owner",
+      ...item,
+      field: item.field,
+      value: item.value,
+    }));
+
+  it("追加标题派生等已确认事实到商品概览（消除「已确认却显示暂无证据」矛盾）", () => {
+    const overview = extractOverviewItems({
+      sourceMeta: {
+        productBatchSnapshot: { asin: "B0TEST0001", productFacts: { productTitle: "T", brand: "B", price: 10 } },
+      },
+    });
+    const merged = mergeConfirmedIntoOverview(overview, confirmed([
+      { field: "product_type", value: "保温杯", sourceKind: "product_title" },
+      { field: "brand", value: "B2", sourceKind: "product_title" }, // 与 overview 同字段 → 去重
+      { field: "capacity", value: "12oz" },
+    ]));
+    const fields = merged.map((item) => item.field);
+    expect(fields).toContain("product_type");
+    expect(fields).toContain("capacity");
+    expect(fields.filter((field) => field === "brand")).toHaveLength(1);
+    const productType = merged.find((item) => item.field === "product_type");
+    expect(productType?.nature).toBe("derived"); // 标题派生
+    expect(merged.find((item) => item.field === "capacity")?.nature).toBe("snapshot"); // 人工核实确定性值
+  });
+
+  it("coveredFactFieldSet：overview 归一化（rootCategory→category / BSR）+ confirmed 并集", () => {
+    const overview = extractOverviewItems({
+      sourceMeta: {
+        productBatchSnapshot: {
+          asin: "B0TEST0001",
+          productFacts: { productTitle: "T", brand: "B", rootCategory: "Kitchen", rootCategoryBsr: 100 },
+        },
+      },
+    });
+    const covered = coveredFactFieldSet(overview, confirmed([{ field: "capacity", value: "12oz" }]));
+    expect(covered.has("brand")).toBe(true);
+    expect(covered.has("category")).toBe(true);
+    expect(covered.has("bsr")).toBe(true);
+    expect(covered.has("capacity")).toBe(true);
+    expect(covered.has("price")).toBe(false);
+    expect(covered.size).toBe(4);
+    expect(EXPECTED_FACT_FIELDS.has("capacity")).toBe(true);
+    expect(EXPECTED_FACT_FIELDS.size).toBe(20);
+  });
+
+  it("buildResearchMaterialRows：已确认事实使商品基础资料升级为已有并给出 N/M 明细", () => {
+    const covered = coveredFactFieldSet([], confirmed([{ field: "capacity", value: "12oz" }]));
+    const rows = buildResearchMaterialRows({
+      overview: [],
+      competitors: [],
+      keywordReportEvidence: null,
+      browserEvidence: null,
+      vocEvidence: null,
+      sourcingConfirmed: false,
+      productBasicsState: covered.size > 0 ? "已有" : "待补",
+      productBasicsDetail: `已有 ${covered.size} 项 / 仍缺 ${EXPECTED_FACT_FIELDS.size - covered.size} 项`,
+    });
+    const productBasics = rows.find((row) => row.key === "productBasics");
+    expect(productBasics?.state).toBe("已有");
+    expect(productBasics?.detail).toBe("已有 1 项 / 仍缺 19 项");
   });
 });

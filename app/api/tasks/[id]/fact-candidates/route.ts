@@ -20,6 +20,8 @@ import {
   FACT_CANDIDATES_SCHEMA,
   FACT_CANDIDATES_VERSION,
   getFactCandidates,
+  humanManualCandidateId,
+  MANUAL_FACT_FIELDS,
   type ConfirmedFactCandidate,
 } from "@/lib/factCandidates";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -155,6 +157,35 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const existing = confirmedMap.get(candidateId);
     const candidate = candidateMap.get(candidateId);
     if (!confirmedFlag) continue; // 取消勾选 = 不写入（已确认项不在此接口撤销）
+    // V3 UX Closure Manual Fact：human_manual:<field> 手动补充项（服务端白名单校验字段，
+    // 来源固定为 human_manual——人工核实，不得伪造 Evidence 来源）
+    if (!existing && !candidate && candidateId.startsWith("human_manual:")) {
+      const field = candidateId.slice("human_manual:".length);
+      const registryEntry = MANUAL_FACT_FIELDS.find((entry) => entry.field === field);
+      if (!registryEntry) {
+        return jsonResponse({ ok: false, error: { code: "invalid_manual_field", message: "该事实字段不在支持列表中。" } }, 400);
+      }
+      const valueRaw = raw.value;
+      const value = (typeof valueRaw === "string" && valueRaw.trim())
+        ? valueRaw.trim().slice(0, 500)
+        : (typeof valueRaw === "number" && Number.isFinite(valueRaw)) ? valueRaw : null;
+      if (value === null || value === "") {
+        return jsonResponse({ ok: false, error: { code: "manual_value_required", message: "请填写该商品事实的值。" } }, 400);
+      }
+      const now = new Date().toISOString();
+      confirmed.push({
+        candidateId: humanManualCandidateId(field),
+        field,
+        label: registryEntry.label,
+        value,
+        sourceKind: "human_manual",
+        sourceRef: "human_manual.supplied",
+        humanConfirmationRequired: true,
+        confirmedAt: now,
+        confirmedBy: actorRef(auth.context),
+      });
+      continue;
+    }
     if (!existing && !candidate) {
       return jsonResponse({ ok: false, error: { code: "candidate_not_found", message: "确认项不在候选列表中（来源不受支持）。" } }, 400);
     }

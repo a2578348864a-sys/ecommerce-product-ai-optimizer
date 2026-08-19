@@ -417,7 +417,7 @@ export function BrowserEvidenceSection({
   const canConfirm = preview !== null && pageOk && preview.extraction.entityBound && !saving;
 
   return (
-    <section data-testid="workbench-browser-evidence" className="rounded-2xl border border-slate-200 bg-white p-4">
+    <section id="workbench-browser-evidence" data-testid="workbench-browser-evidence" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">浏览器 Evidence（Amazon 商品详情页）</h3>
         <button

@@ -580,6 +580,24 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   videoOpenings: stringList,
   commentTriggers: stringList,
   conversionSuggestions: stringList,
+  // V3 Final HWF（P1-03/FIX-6）：已确认商品事实（factCandidates 唯一权威）投影到详情页，
+  // 供 Evidence Workbench / Studio Listing 面板只读展示；不含任何系统内部标识。
+  factCandidates: objectOf({
+    schema: scalar,
+    version: scalar,
+    updatedAt: scalar,
+    confirmed: arrayOf(objectOf({
+      candidateId: scalar,
+      field: scalar,
+      label: scalar,
+      value: scalar,
+      sourceKind: scalar,
+      sourceRef: scalar,
+      humanConfirmationRequired: scalar,
+      confirmedAt: scalar,
+      confirmedBy: scalar,
+    })),
+  }),
 };
 
 function isRecord(value: unknown): value is JsonRecord {
