@@ -31,6 +31,7 @@ afterEach(() => {
   delete process.env.QX_RUNTIME_MODE;
   delete process.env.ACCESS_PASSWORD;
   delete process.env.DEMO_ACCESS_STORE_PATH;
+  delete process.env.QX_PUBLIC_ORIGIN;
 });
 
 describe("双来源冲突矩阵（§16 FROZEN）", () => {
@@ -189,6 +190,43 @@ describe("CSRF 基础（契约 09-4 / §28）", () => {
       headers: { ...guestCookieHeader(token), origin: "http://127.0.0.1:3010" },
     });
     expect(requireAuthenticated(sameOrigin).ok).toBe(true);
+  });
+
+  it("反代部署（QX_PUBLIC_ORIGIN 配置）：公网 Origin 视为同源（Phase 4 修复）", () => {
+    process.env.QX_RUNTIME_MODE = "public_showcase";
+    process.env.QX_PUBLIC_ORIGIN = "https://112.124.54.81";
+    const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
+    const token = generateSignedToken("demo", record.id);
+    // nextUrl.origin 是回环自址（nginx + X-Forwarded-Proto 场景），公网 Origin 精确匹配 QX_PUBLIC_ORIGIN → 通过
+    const proxied = buildRequest("http://127.0.0.1:3005/api/tasks/sandbox_task_1/listing-handoff", {
+      method: "POST",
+      headers: { ...guestCookieHeader(token), origin: "https://112.124.54.81" },
+    });
+    expect(requireAuthenticated(proxied).ok).toBe(true);
+    // 跨站 Origin 仍拒绝（QX_PUBLIC_ORIGIN 不构成宽免）
+    const crossSite = buildRequest("http://127.0.0.1:3005/api/x", {
+      method: "POST",
+      headers: { ...guestCookieHeader(token), origin: "https://evil.example" },
+    });
+    expect(requireAuthenticated(crossSite)).toMatchObject({ ok: false, status: 403, code: "origin_denied" });
+    // scheme 不同也拒绝（http 明文伪造 https 公网 origin 无效）
+    const wrongScheme = buildRequest("http://127.0.0.1:3005/api/x", {
+      method: "POST",
+      headers: { ...guestCookieHeader(token), origin: "http://112.124.54.81" },
+    });
+    expect(requireAuthenticated(wrongScheme)).toMatchObject({ ok: false, status: 403, code: "origin_denied" });
+  });
+
+  it("未配置 QX_PUBLIC_ORIGIN：反代自址不匹配 → 仍 fail-closed（原行为不变）", () => {
+    process.env.QX_RUNTIME_MODE = "public_showcase";
+    delete process.env.QX_PUBLIC_ORIGIN;
+    const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
+    const token = generateSignedToken("demo", record.id);
+    const proxied = buildRequest("http://127.0.0.1:3005/api/x", {
+      method: "POST",
+      headers: { ...guestCookieHeader(token), origin: "https://112.124.54.81" },
+    });
+    expect(requireAuthenticated(proxied)).toMatchObject({ ok: false, status: 403, code: "origin_denied" });
   });
 
   it("Cookie 认证变更请求缺少 Origin → FAIL CLOSED（origin_denied，§28）", () => {

@@ -115,11 +115,19 @@ function sameIdentity(a: AccessContext, b: AccessContext): boolean {
  * 精确比较优先；回环主机归一化兜底（本定制 Next 会把 127.0.0.1 规范化为 localhost，
  * 本地/回环部署下浏览器 Origin 可能是 127.0.0.1 而 nextUrl.origin 是 localhost）。
  * 跨站伪造 Origin 不可能通过（浏览器自动设置 Origin，JS 无法伪造）。
+ *
+ * 反向代理部署（nginx + X-Forwarded-Proto）下，nextUrl.origin 是回环自址
+ * （如 https://localhost:3005），与浏览器真实 Origin（https://公网域名/IP）必然不同，
+ * 纯自址比较会误拒所有同源变更请求。显式配置 QX_PUBLIC_ORIGIN 时，允许精确匹配
+ * 该公网 origin（白名单式 exact match；浏览器无法伪造 Origin，跨站伪造仍被拒）。
+ * 未配置 QX_PUBLIC_ORIGIN = 原行为完全不变（本地/直连部署）。
  */
 export function isSameOriginRequest(origin: string, request: NextRequest): boolean {
   const self = (request as { nextUrl?: { origin?: string } }).nextUrl?.origin;
   if (!self) return false;
   if (origin === self) return true;
+  const publicOrigin = (process.env.QX_PUBLIC_ORIGIN || "").trim().replace(/\/+$/, "");
+  if (publicOrigin && origin === publicOrigin) return true;
   try {
     const a = new URL(origin);
     const b = new URL(self);
