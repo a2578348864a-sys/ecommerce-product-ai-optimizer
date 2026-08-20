@@ -287,6 +287,9 @@ function ManualImageStudioClient({ onProgressChange }: {
         if (mode === "real" && !shouldRetainStudioAttempt(apiErrorCode(json))) {
           realAttemptRef.current = null;
         }
+        if (typeof json === "object" && json && "demoAccess" in json) {
+          updateDemoAccessSnapshot((json as { demoAccess: DemoAccessInfo }).demoAccess);
+        }
         setError(errorMessage(json, "图片生成失败，请稍后重试。"));
         return;
       }

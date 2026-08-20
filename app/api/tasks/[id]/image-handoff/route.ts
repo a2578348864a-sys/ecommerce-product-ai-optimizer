@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
+import { getDemoAccessById } from "@/lib/server/demoAccess";
 import {
   requireAuthenticated,
   requireOwnerOnly,
   guardDemoProviderAction,
   finalizeDemoProviderAction,
   markVisitorStandaloneStudioProviderStarted,
+  buildDemoAccessSnapshot,
   type DemoProviderActionToken,
 } from "@/lib/server/demoGuard";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -21,6 +23,13 @@ import {
   buildTaskImageCreativeDescriptionContext,
   parseTaskImageCreativeDirection,
 } from "@/lib/imageCreativeDescription";
+
+/** Guest 权威配额快照（响应体随生成/配额拒绝返回，供客户端横幅实时更新；Owner 不返回） */
+function demoAccessSnapshotFor(ctx: AccessContext): Record<string, unknown> | undefined {
+  if (ctx.mode !== "demo") return undefined;
+  const record = getDemoAccessById(ctx.demoAccessId);
+  return record ? (buildDemoAccessSnapshot(record) as unknown as Record<string, unknown>) : undefined;
+}
 
 const ALLOWED_GENERATE_FIELDS = new Set([
   "requestId", "expectedStorageVersion", "expectedHandoffRevision", "mode",
@@ -385,7 +394,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let providerOptions: { provider?: unknown } = {};
   if (ctx!.mode === "demo") {
     const guarded = guardDemoProviderAction(ctx!, req, { kind: "image", requestId, units: count });
-    if (!guarded.ok) return errorResponse(guarded.status, guarded.code, guarded.message);
+    if (!guarded.ok) {
+      const snap = demoAccessSnapshotFor(ctx!);
+      return NextResponse.json({
+        ok: false,
+        error: { code: guarded.code, message: guarded.message },
+        ...(snap ? { demoAccess: snap } : {}),
+      }, { status: guarded.status });
+    }
     providerToken = guarded.token;
     if (guarded.token.reservation) {
       // Provider start 拦截器：每次真实 generate 前记账（成功/失败均计费；重放不触发）
@@ -414,6 +430,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         !result.idempotentReplay,
       );
     }
+    const snap = demoAccessSnapshotFor(ctx!);
     return NextResponse.json({
       ok: true,
       data: {
@@ -425,6 +442,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         draft: result.draft,
         candidates: result.candidates,
       },
+      ...(snap ? { demoAccess: snap } : {}),
     });
   } catch (err) {
     // 失败路径：若 Provider 拦截器已记账则 release 为 no-op；否则回补预留（§7）

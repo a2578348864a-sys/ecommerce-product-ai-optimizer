@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
+import { getDemoAccessById } from "@/lib/server/demoAccess";
 import {
   requireAuthenticated,
   requireOwnerOnly,
   guardDemoProviderAction,
   finalizeDemoProviderAction,
   markVisitorStandaloneStudioProviderStarted,
+  buildDemoAccessSnapshot,
   type DemoProviderActionToken,
 } from "@/lib/server/demoGuard";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
@@ -21,6 +23,13 @@ import { preflightListingClaimSafety } from "@/lib/listingHandoff/listingClaimPr
 import { buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildListingBrief } from "@/lib/listingHandoff/listingBrief";
 import { mutateTaskResultJson } from "@/lib/server/taskResultJsonMutation";
+
+/** Guest 权威配额快照（响应体随生成/配额拒绝返回，供客户端横幅实时更新；Owner 不返回） */
+function demoAccessSnapshotFor(ctx: AccessContext): Record<string, unknown> | undefined {
+  if (ctx.mode !== "demo") return undefined;
+  const record = getDemoAccessById(ctx.demoAccessId);
+  return record ? (buildDemoAccessSnapshot(record) as unknown as Record<string, unknown>) : undefined;
+}
 
 const ALLOWED_GENERATE_FIELDS = new Set([
   "action",
@@ -385,7 +394,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let providerToken: DemoProviderActionToken | null = null;
   if (ctx!.mode === "demo") {
     const guarded = guardDemoProviderAction(ctx!, req, { kind: "listing", requestId, units: 1 });
-    if (!guarded.ok) return errorResponse(guarded.status, guarded.code, guarded.message);
+    if (!guarded.ok) {
+      const snap = demoAccessSnapshotFor(ctx!);
+      return NextResponse.json({
+        ok: false,
+        error: { code: guarded.code, message: guarded.message },
+        ...(snap ? { demoAccess: snap } : {}),
+      }, { status: guarded.status });
+    }
     providerToken = guarded.token;
     // Provider start boundary：真实 callAiJson 发生前记账（成功/失败均计费；未调用则下方回补）
     if (guarded.token.reservation) {
@@ -410,6 +426,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         result.draft?.providerAttempted === true,
       );
     }
+    const snap = demoAccessSnapshotFor(ctx!);
     return NextResponse.json({
       ok: true,
       data: {
@@ -422,6 +439,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         safeFallbackApplied: result.safeFallbackApplied === true,
         draft: result.draft,
       },
+      ...(snap ? { demoAccess: snap } : {}),
     });
   } catch (err) {
     // 失败路径：若 Provider 已记账（boundary 已触发）则 release 为 no-op；否则回补预留（§7）
