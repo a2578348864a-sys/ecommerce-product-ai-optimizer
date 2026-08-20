@@ -2,8 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import {
-  loadDemoAccessStore,
-  saveDemoAccessStore,
+  withDemoAccessStoreTransaction,
   type DemoAccessRecord,
   type DemoAccessStore,
 } from "@/lib/server/demoAccess";
@@ -215,19 +214,16 @@ function recoverExpiredReservations(access: DemoAccessRecord, nowMs: number): bo
   return changed;
 }
 
-function loadMigratedAccess(id: string, nowMs: number): {
-  store: DemoAccessStore;
+function migrateAccess(store: DemoAccessStore, id: string, nowMs: number): {
   access: DemoAccessRecord | null;
   changed: boolean;
 } {
-  const store = loadDemoAccessStore();
   const access = findAccess(store, id);
-  if (!access) return { store, access: null, changed: false };
+  if (!access) return { access: null, changed: false };
   const sandbox = readDemoSandboxStoreStrict();
   const migrated = applyLegacyMigration(access, sandbox, nowMs);
   const recovered = recoverExpiredReservations(access, nowMs);
-  const changed = migrated || recovered;
-  return { store, access, changed };
+  return { access, changed: migrated || recovered };
 }
 
 function storeFailure(): DemoProductJourneyFailure {
@@ -240,10 +236,11 @@ function storeFailure(): DemoProductJourneyFailure {
 }
 
 export function getDemoProductJourneySnapshot(id: string, nowMs = Date.now()): DemoProductJourneySnapshot {
-  const loaded = loadMigratedAccess(id, nowMs);
-  if (!loaded.access) throw new Error("VISITOR_ACCESS_NOT_FOUND");
-  if (loaded.changed) saveDemoAccessStore(loaded.store);
-  return buildDemoProductJourneySnapshot(loaded.access);
+  return withDemoAccessStoreTransaction((store) => {
+    const migrated = migrateAccess(store, id, nowMs);
+    if (!migrated.access) throw new Error("VISITOR_ACCESS_NOT_FOUND");
+    return buildDemoProductJourneySnapshot(migrated.access);
+  });
 }
 
 export function reserveDemoProductJourney(
@@ -253,78 +250,73 @@ export function reserveDemoProductJourney(
   options: { nowMs?: number; leaseMs?: number } = {},
 ): DemoProductJourneyResult {
   const nowMs = options.nowMs ?? Date.now();
-  let loaded: ReturnType<typeof loadMigratedAccess>;
   try {
-    loaded = loadMigratedAccess(id, nowMs);
+    return withDemoAccessStoreTransaction((store) => {
+      const migrated = migrateAccess(store, id, nowMs);
+      const access = migrated.access;
+      if (!access) {
+        return { ok: false, code: "visitor_access_not_found", message: "访客码不存在。", snapshot: null };
+      }
+      if (!access.isActive) {
+        return {
+          ok: false,
+          code: "visitor_access_inactive",
+          message: "该访客码已被停用。",
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+      if (!identity.trim() || identity.length > 256 || !requestId.trim() || requestId.length > 128) {
+        return {
+          ok: false,
+          code: "product_journey_reservation_conflict",
+          message: "商品研究链标识无效。",
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+
+      const key = reservationKey(identity);
+      const reservations = access.productJourneyReservations || {};
+      const existing = reservations[key];
+      if (existing?.status === "committed") {
+        return { ok: true, duplicate: true, status: "committed", snapshot: buildDemoProductJourneySnapshot(access) };
+      }
+      if (existing?.status === "reserved") {
+        if (existing.requestId === requestId) {
+          return { ok: true, duplicate: true, status: "reserved", snapshot: buildDemoProductJourneySnapshot(access) };
+        }
+        return {
+          ok: false,
+          code: "product_journey_in_progress",
+          message: "该商品研究链正在建立，请勿重复提交。",
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+      if (activeReservations(access).length >= MAX_PRODUCT_CHAINS) {
+        return {
+          ok: false,
+          code: "visitor_product_quota_exhausted",
+          message: EXHAUSTED_MESSAGE,
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+
+      const now = new Date(nowMs).toISOString();
+      reservations[key] = {
+        identity,
+        requestId,
+        status: "reserved",
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+        leaseExpiresAt: new Date(nowMs + Math.max(1, options.leaseMs ?? PRODUCT_JOURNEY_RESERVATION_LEASE_MS)).toISOString(),
+        source: "current",
+      };
+      access.productJourneyReservations = reservations;
+      access.lastUsedAt = now;
+      return { ok: true, duplicate: false, status: "reserved", snapshot: buildDemoProductJourneySnapshot(access) };
+    });
   } catch {
     return storeFailure();
   }
-  const { store, access } = loaded;
-  if (!access) {
-    return { ok: false, code: "visitor_access_not_found", message: "访客码不存在。", snapshot: null };
-  }
-  if (!access.isActive) {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return {
-      ok: false,
-      code: "visitor_access_inactive",
-      message: "该访客码已被停用。",
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-  if (!identity.trim() || identity.length > 256 || !requestId.trim() || requestId.length > 128) {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return {
-      ok: false,
-      code: "product_journey_reservation_conflict",
-      message: "商品研究链标识无效。",
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-
-  const key = reservationKey(identity);
-  const reservations = access.productJourneyReservations || {};
-  const existing = reservations[key];
-  if (existing?.status === "committed") {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return { ok: true, duplicate: true, status: "committed", snapshot: buildDemoProductJourneySnapshot(access) };
-  }
-  if (existing?.status === "reserved") {
-    if (loaded.changed) saveDemoAccessStore(store);
-    if (existing.requestId === requestId) {
-      return { ok: true, duplicate: true, status: "reserved", snapshot: buildDemoProductJourneySnapshot(access) };
-    }
-    return {
-      ok: false,
-      code: "product_journey_in_progress",
-      message: "该商品研究链正在建立，请勿重复提交。",
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-  if (activeReservations(access).length >= MAX_PRODUCT_CHAINS) {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return {
-      ok: false,
-      code: "visitor_product_quota_exhausted",
-      message: EXHAUSTED_MESSAGE,
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-
-  const now = new Date(nowMs).toISOString();
-  reservations[key] = {
-    identity,
-    requestId,
-    status: "reserved",
-    createdAt: existing?.createdAt || now,
-    updatedAt: now,
-    leaseExpiresAt: new Date(nowMs + Math.max(1, options.leaseMs ?? PRODUCT_JOURNEY_RESERVATION_LEASE_MS)).toISOString(),
-    source: "current",
-  };
-  access.productJourneyReservations = reservations;
-  access.lastUsedAt = now;
-  saveDemoAccessStore(store);
-  return { ok: true, duplicate: false, status: "reserved", snapshot: buildDemoProductJourneySnapshot(access) };
 }
 
 function settleProductJourney(
@@ -334,60 +326,55 @@ function settleProductJourney(
   target: "committed" | "released",
   nowMs = Date.now(),
 ): DemoProductJourneyResult {
-  let loaded: ReturnType<typeof loadMigratedAccess>;
   try {
-    loaded = loadMigratedAccess(id, nowMs);
+    return withDemoAccessStoreTransaction((store) => {
+      const migrated = migrateAccess(store, id, nowMs);
+      const access = migrated.access;
+      if (!access) {
+        return { ok: false, code: "visitor_access_not_found", message: "访客码不存在。", snapshot: null };
+      }
+      const reservation = access.productJourneyReservations?.[reservationKey(identity)];
+      if (!reservation) {
+        return {
+          ok: false,
+          code: "product_journey_reservation_missing",
+          message: "商品研究链名额预留状态缺失。",
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+      if (reservation.requestId !== requestId) {
+        if (reservation.status === "committed" && target === "committed") {
+          return { ok: true, duplicate: true, status: "committed", snapshot: buildDemoProductJourneySnapshot(access) };
+        }
+        return {
+          ok: false,
+          code: "product_journey_reservation_conflict",
+          message: "商品研究链名额预留与当前请求不一致。",
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+      if (reservation.status === target) {
+        return { ok: true, duplicate: true, status: target, snapshot: buildDemoProductJourneySnapshot(access) };
+      }
+      if (reservation.status !== "reserved") {
+        return {
+          ok: false,
+          code: "product_journey_reservation_conflict",
+          message: "商品研究链名额已进入不可变终态。",
+          snapshot: buildDemoProductJourneySnapshot(access),
+        };
+      }
+
+      const now = new Date(nowMs).toISOString();
+      reservation.status = target;
+      reservation.updatedAt = now;
+      if (target === "committed") reservation.committedAt = now;
+      else reservation.releasedAt = now;
+      return { ok: true, duplicate: false, status: target, snapshot: buildDemoProductJourneySnapshot(access) };
+    });
   } catch {
     return storeFailure();
   }
-  const { store, access } = loaded;
-  if (!access) {
-    return { ok: false, code: "visitor_access_not_found", message: "访客码不存在。", snapshot: null };
-  }
-  const reservation = access.productJourneyReservations?.[reservationKey(identity)];
-  if (!reservation) {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return {
-      ok: false,
-      code: "product_journey_reservation_missing",
-      message: "商品研究链名额预留状态缺失。",
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-  if (reservation.requestId !== requestId) {
-    if (reservation.status === "committed" && target === "committed") {
-      if (loaded.changed) saveDemoAccessStore(store);
-      return { ok: true, duplicate: true, status: "committed", snapshot: buildDemoProductJourneySnapshot(access) };
-    }
-    if (loaded.changed) saveDemoAccessStore(store);
-    return {
-      ok: false,
-      code: "product_journey_reservation_conflict",
-      message: "商品研究链名额预留与当前请求不一致。",
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-  if (reservation.status === target) {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return { ok: true, duplicate: true, status: target, snapshot: buildDemoProductJourneySnapshot(access) };
-  }
-  if (reservation.status !== "reserved") {
-    if (loaded.changed) saveDemoAccessStore(store);
-    return {
-      ok: false,
-      code: "product_journey_reservation_conflict",
-      message: "商品研究链名额已进入不可变终态。",
-      snapshot: buildDemoProductJourneySnapshot(access),
-    };
-  }
-
-  const now = new Date(nowMs).toISOString();
-  reservation.status = target;
-  reservation.updatedAt = now;
-  if (target === "committed") reservation.committedAt = now;
-  else reservation.releasedAt = now;
-  saveDemoAccessStore(store);
-  return { ok: true, duplicate: false, status: target, snapshot: buildDemoProductJourneySnapshot(access) };
 }
 
 export function commitDemoProductJourney(

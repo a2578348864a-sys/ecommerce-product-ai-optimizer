@@ -16,7 +16,12 @@ export function formatDemoAccessBannerContent(demo: DemoAccessInfo): string {
   const imageRemaining = demo.standaloneImageUnitsRemaining ?? 3;
   // Public Guest（契约 04-4 / §25 / §26）：研究 OFF → 不展示「商品研究 0/5」；只展示有消费路径的 Listing/Image 额度
   if (demo.credentialKind === "anonymous") {
-    return `访客体验 · 独立 Listing 剩余 ${listingRemaining} 次 · 独立生图 剩余 ${imageRemaining} 张 · 演示回放不限次数`;
+    const globalNote = demo.globalCapExhausted?.image
+      ? " · 今日公开生图额度已用完"
+      : demo.globalCapExhausted?.text
+        ? " · 今日公开 AI 额度已用完"
+        : "";
+    return `访客体验 · 独立 Listing 剩余 ${listingRemaining} 次 · 独立生图 剩余 ${imageRemaining} 张 · 演示回放不限次数${globalNote}`;
   }
   return `访客体验 · 商品研究 ${demo.usedProducts}/${demo.maxProducts} · 独立 Listing 剩余 ${listingRemaining} 次 · 独立生图 剩余 ${imageRemaining} 张${demo.remainingProducts <= 0 ? " · 已有研究记录仍可查看" : ""}`;
 }

@@ -121,6 +121,7 @@ describe("POST /api/tasks/[id]/image-handoff", () => {
         customImagePurpose: "",
         userCreativeDescription: "商品居中，使用可信的户外旅行环境并预留文字区域。",
       }),
+      expect.anything(), // V3.1 Phase 2：provider options（D1 guard 拦截器包装）
     );
   });
 

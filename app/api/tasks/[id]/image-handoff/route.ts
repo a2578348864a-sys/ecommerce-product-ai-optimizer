@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import {
+  requireAuthenticated,
+  requireOwnerOnly,
+  guardDemoProviderAction,
+  finalizeDemoProviderAction,
+  markVisitorStandaloneStudioProviderStarted,
+  type DemoProviderActionToken,
+} from "@/lib/server/demoGuard";
 import type { AccessContext } from "@/lib/server/accessPassword";
-import { generateImageDraftFromHandoff, ImageHandoffError, imageDraftSafeSummaries } from "@/lib/imageHandoff/imageGenerationService";
+import { generateImageDraftFromHandoff, ImageHandoffError, imageDraftSafeSummaries, withDefaultImageProviderInterceptor } from "@/lib/imageHandoff/imageGenerationService";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
 import { computeImageStatus, parseImageHandoffBinding, type ImageStatus } from "@/lib/imageHandoff/imageBinding";
 import { mutateTaskResultJson, TaskResultJsonMutationError } from "@/lib/server/taskResultJsonMutation";
@@ -344,6 +351,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
 
+
   // Visual Reference Gate（§32-35）：白底主图/产品细节特写/包装套装要求已确认商品参考图；
   // 无参考时阻止付费生成（BLOCKED_NEEDS_VISUAL_REFERENCE），不回落抽象轮廓冒充商品图。
   const REQUIRES_VISUAL_REFERENCE_PURPOSES = new Set(["white_studio", "detail_closeup", "packaging_bundle"]);
@@ -371,6 +379,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
   }
 
+  // D1（Phase 2）：Image 生成统一 quota authority（§5：units = count；remaining < count 整体拒绝）。
+  // 顺序（§6）：scope → IP backstop → guest quota + global cap（同事务原子预留）→ provider call → 结算。
+  let providerToken: DemoProviderActionToken | null = null;
+  let providerOptions: { provider?: unknown } = {};
+  if (ctx!.mode === "demo") {
+    const guarded = guardDemoProviderAction(ctx!, req, { kind: "image", requestId, units: count });
+    if (!guarded.ok) return errorResponse(guarded.status, guarded.code, guarded.message);
+    providerToken = guarded.token;
+    if (guarded.token.reservation) {
+      // Provider start 拦截器：每次真实 generate 前记账（成功/失败均计费；重放不触发）
+      providerOptions = withDefaultImageProviderInterceptor(() => {
+        markVisitorStandaloneStudioProviderStarted(ctx!, guarded.token!.reservation!);
+      });
+    }
+  }
+
   try {
     const result = await generateImageDraftFromHandoff(id, ctx!, {
       requestId,
@@ -381,7 +405,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       approvedVisualReferenceSelectionIds,
       ...creativeDirection.data,
       confirmed: true,
-    });
+    }, providerOptions as never);
+    if (ctx!.mode === "demo") {
+      finalizeDemoProviderAction(
+        ctx!,
+        providerToken,
+        { kind: "image", requestId, units: count },
+        !result.idempotentReplay,
+      );
+    }
     return NextResponse.json({
       ok: true,
       data: {
@@ -395,6 +427,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
   } catch (err) {
+    // 失败路径：若 Provider 拦截器已记账则 release 为 no-op；否则回补预留（§7）
+    if (ctx!.mode === "demo") {
+      finalizeDemoProviderAction(ctx!, providerToken, { kind: "image", requestId, units: count }, false);
+    }
     if (err instanceof ImageHandoffError) return errorResponse(err.status, err.code, err.message);
     if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
     throw err;

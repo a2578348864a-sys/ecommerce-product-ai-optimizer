@@ -135,16 +135,6 @@ export function isSameOriginRequest(origin: string, request: NextRequest): boole
   }
 }
 
-function originMismatch(request: NextRequest): boolean {
-  const method = (request.method || "GET").toUpperCase();
-  if (method !== "POST" && method !== "PATCH" && method !== "PUT" && method !== "DELETE") return false;
-  const origin = request.headers?.get("origin") || "";
-  if (!origin) return false;
-  const self = (request as { nextUrl?: { origin?: string } }).nextUrl?.origin;
-  if (!self) return false;
-  return !isSameOriginRequest(origin, request);
-}
-
 /** 是否携带任何访问凭据（header / guest cookie / body token）。 */
 export function hasAnyAccessCredential(request: NextRequest, body?: Record<string, unknown>): boolean {
   if ((request.headers?.get("x-access-token") || "").trim()) return true;
@@ -163,9 +153,6 @@ export function resolveAccessContext(
   request: NextRequest,
   body?: Record<string, unknown>,
 ): AccessResolution {
-  // 0) CSRF 基础：变更方法 + Origin 存在但不匹配 → 拒绝（契约 09-4）
-  if (originMismatch(request)) return { ok: false, reason: "origin" };
-
   // 1) Legacy header 通道（保持既有语义）：
   //    - x-access-token：存在即定案（有效 → 身份；无效 → fail-closed，不回退）
   //    - x-access-password：遗留双用途（token 或 raw password）；能解析为 token 才算 header 身份，
@@ -182,6 +169,20 @@ export function resolveAccessContext(
 
   // 2) Guest cookie 通道（token 传输层）
   const cookieIdentity = trySessionIdentity(readGuestCookieToken(request));
+
+  // 0) CSRF / Origin（契约 09-4 / §28，Phase 2 收紧）：
+  //    - 变更方法 + Origin 存在但不匹配 → 拒绝；
+  //    - Cookie 认证的变更请求必须携带同源 Origin（missing / null / malformed → fail closed）。
+  //    非 Cookie 认证（legacy header/body/raw）保持现状（bearer 语义，无 ambient CSRF 面）。
+  const mutating = (() => {
+    const method = (request.method || "GET").toUpperCase();
+    return method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE";
+  })();
+  if (mutating) {
+    const origin = request.headers?.get("origin") || "";
+    if (origin && !isSameOriginRequest(origin, request)) return { ok: false, reason: "origin" };
+    if (cookieIdentity.valid && !origin) return { ok: false, reason: "origin" };
+  }
 
   // 3) COOKIE + HEADER 冲突矩阵（契约 03-5 / §8）
   if (cookieIdentity.present && headerIdentity.present) {

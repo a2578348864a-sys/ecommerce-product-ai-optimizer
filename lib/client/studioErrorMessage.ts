@@ -10,6 +10,11 @@ const STUDIO_ERROR_MESSAGES: Record<string, string> = {
   visitor_listing_quota_exceeded: "本次 Listing 真实 AI 体验额度已用完。",
   demo_standalone_listing_quota_exceeded: "该访客码的独立 Listing 体验额度已用完。",
   demo_standalone_image_quota_exceeded: "该访客码的独立生图体验额度已用完。",
+  // V3.1 Phase 2：公开模式成本/安全错误码（§39 / §40 区分展示）
+  global_provider_cap_exceeded: "今日公开体验的 AI 额度暂时已用完，请明日再来体验。",
+  rate_limited: "操作过于频繁，请稍后再试。",
+  origin_denied: "请求来源校验失败，请刷新页面后重试。",
+  guest_scope_denied: "公开体验模式仅支持演示案例，此操作不可用。",
   provider_auth_failed: "AI 服务认证失败，请联系管理员检查服务配置。",
   configuration_error: "AI 服务配置异常，请联系管理员检查服务配置。",
   provider_config_invalid: "AI 服务配置异常，请联系管理员检查服务配置。",

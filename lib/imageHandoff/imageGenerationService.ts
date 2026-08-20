@@ -179,6 +179,23 @@ export function setImageProviderForTests(provider: MockImageProvider | null) {
   injectedImageProviderForTests = provider ? { provider } : null;
 }
 
+/**
+ * V3.1 Phase 2（D1）：包装默认 Image Provider，在真实 generate 调用前触发记账拦截器。
+ * 拦截器在每次 Provider 调用前执行（含失败路径），保证「Provider 调用发生前已预留/记账」。
+ */
+export function withDefaultImageProviderInterceptor(interceptor: () => void): ImageGenerationOptions {
+  const base = defaultImageProvider();
+  const baseGenerate = base.generate.bind(base);
+  const wrapped = {
+    ...base,
+    generate: ((input: Parameters<MockImageProvider["generate"]>[0], options: Parameters<MockImageProvider["generate"]>[1]) => {
+      interceptor();
+      return baseGenerate(input, options);
+    }) as MockImageProvider["generate"],
+  };
+  return { provider: wrapped };
+}
+
 function defaultImageProvider(): MockImageProvider {
   if (injectedImageProviderForTests) return injectedImageProviderForTests.provider;
   // V2 Final Integration: Provider 模式由服务端环境决定（IMAGE_PROVIDER_MODE=mock|real，fail-closed）。

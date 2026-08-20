@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { isSandboxTaskId } from "@/lib/server/demoSandbox";
-import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
+import {
+  requireAuthenticated,
+  requireOwnerOnly,
+  guardDemoProviderAction,
+  finalizeDemoProviderAction,
+  markVisitorStandaloneStudioProviderStarted,
+  type DemoProviderActionToken,
+} from "@/lib/server/demoGuard";
+import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
 import type { AccessContext } from "@/lib/server/accessPassword";
 import { generateListingDraftFromHandoff, ListingHandoffError, draftSafeSummary, type ListingDraftSafeSummary } from "@/lib/listingHandoff/listingGenerationService";
 import { checkCreativeHandoffGate } from "@/lib/server/productCreativeHandoffPreview";
@@ -372,6 +380,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { ctx, error } = getAuth(req, id, body);
   if (error) return error;
 
+  // D1（Phase 2）：Listing 生成统一 quota authority（§4，GUARD COVERAGE=100%）。
+  // 顺序（§6）：scope → IP backstop → guest quota + global cap（同事务原子预留）→ provider call → 结算。
+  let providerToken: DemoProviderActionToken | null = null;
+  if (ctx!.mode === "demo") {
+    const guarded = guardDemoProviderAction(ctx!, req, { kind: "listing", requestId, units: 1 });
+    if (!guarded.ok) return errorResponse(guarded.status, guarded.code, guarded.message);
+    providerToken = guarded.token;
+    // Provider start boundary：真实 callAiJson 发生前记账（成功/失败均计费；未调用则下方回补）
+    if (guarded.token.reservation) {
+      bindProviderCallStartBoundary(() => {
+        markVisitorStandaloneStudioProviderStarted(ctx!, guarded.token!.reservation!);
+      });
+    }
+  }
+
   try {
     const result = await generateListingDraftFromHandoff(id, ctx!, {
       requestId,
@@ -379,6 +402,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       expectedHandoffRevision,
       listingBrief: listingBriefResult.brief,
     });
+    if (ctx!.mode === "demo") {
+      finalizeDemoProviderAction(
+        ctx!,
+        providerToken,
+        { kind: "listing", requestId, units: 1 },
+        result.draft?.providerAttempted === true,
+      );
+    }
     return NextResponse.json({
       ok: true,
       data: {
@@ -393,6 +424,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
   } catch (err) {
+    // 失败路径：若 Provider 已记账（boundary 已触发）则 release 为 no-op；否则回补预留（§7）
+    if (ctx!.mode === "demo") {
+      finalizeDemoProviderAction(ctx!, providerToken, { kind: "listing", requestId, units: 1 }, false);
+    }
     if (err instanceof ListingHandoffError) return errorResponse(err.status, err.code, err.message);
     if (err instanceof TaskResultJsonMutationError) return errorResponse(err.status, err.code, err.message);
     throw err;

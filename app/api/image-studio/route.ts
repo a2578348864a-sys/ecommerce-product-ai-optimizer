@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticated } from "@/lib/server/demoGuard";
+import { consumeIpBackstop } from "@/lib/server/ipBackstop";
 import { validateAiImageGenerateRequest } from "@/lib/aiImageDraft";
 import {
   parseStudioImageInput,

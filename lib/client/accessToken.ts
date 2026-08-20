@@ -42,6 +42,8 @@ export interface DemoAccessInfo {
   remainingAiJobs?: number;
   /** V3.1 Phase 1：显式凭据判别（契约 02 / §9）；anonymous 时 UI 隐藏无消费路径的研究额度（契约 04-4 / §25）。 */
   credentialKind?: "password" | "anonymous";
+  /** V3.1 Phase 2：全局 Provider 日硬上限状态（§39：与 guest quota 区分）。 */
+  globalCapExhausted?: { text: boolean; image: boolean };
 }
 
 const TOKEN_KEY = "qx:access-token:session:v1";

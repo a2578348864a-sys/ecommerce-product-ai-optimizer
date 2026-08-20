@@ -59,8 +59,9 @@
 - Creative Handoff 后的 Listing 和 Image 不调用 `reserveDemoProductJourney`，不增加 `usedProducts`。
 - 已有有效 Listing/Image 默认按各自的指纹和幂等合同读取或复用。
 - 商品名额不是 Provider 请求次数，不得按底层 Provider call 扣商品名额。
-- `demoAccess.ts` 中的 `ai_jobs_v1 / usedAiCalls` 仅作为旧版独立 Listing Studio / Image 路径的兼容性 Provider 成本台账；它不得显示为 Visitor 商品配额，也不得换算为已用商品。
-- 新创建的 Visitor 码默认不分配旧 `ai_jobs_v1` 数量。如旧路径存在无限付费重生成风险，必须单独报告和立项，不得在本合同中临时造第二套商品计费系统。
+- `demoAccess.ts` 中的 `ai_jobs_v1 / usedAiCalls` 是**共享真实 AI 体验台账**（每次真实 AI 动作 1 单位，Provider 成本 1~2 次调用）。它不得显示为 Visitor 商品配额，也不得换算为已用商品。
+- 当前消费 `ai_jobs_v1` 的路径（按代码核证）：`generate`、`agents/risk|viral|material|sourcing|summary`、`products/keywords|ai-analysis|listing-copy`、`tasks/[id]/ai-evidence-summary|review-evidence`、image-draft（`aiImageDraftService`）、`opportunities` 批量预留。新创建的 Visitor 码默认 `maxAiCalls=0`（fail-closed：以上路径全部 403）。
+- V3.1 Phase 2 补充（与 guest quota 区分）：**全局每日 Provider 调用硬上限**（`PUBLIC_DAILY_TEXT_PROVIDER_CALL_CAP` / `PUBLIC_DAILY_IMAGE_PROVIDER_CALL_CAP`，独立 ledger `data/provider-usage.json`）在 PUBLIC_SHOWCASE 模式对所有 demo 真实 Provider 路径生效；guest 配额（listing/image 各 1 次，ENV 可配）是每身份额度，全局 cap 是预算绝对上限（清 Cookie/无痕/多 Guest 均不可绕过）。上限耗尽返回 `global_provider_cap_exceeded`（403），与 `quota_exceeded` 区分。
 
 ## 6. 旧 Visitor 兼容
 

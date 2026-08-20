@@ -8,11 +8,17 @@ const mocks = vi.hoisted(() => ({
   reserveDemoProductJourney: vi.fn(),
   commitDemoProductJourney: vi.fn(),
   releaseDemoProductJourney: vi.fn(),
+  guardDemoProviderAction: vi.fn(() => ({ ok: true, token: { reservation: null } })),
+  finalizeDemoProviderAction: vi.fn(),
+  markVisitorStandaloneStudioProviderStarted: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   requireOwnerOnly: mocks.requireOwnerOnly,
+  guardDemoProviderAction: mocks.guardDemoProviderAction,
+  finalizeDemoProviderAction: mocks.finalizeDemoProviderAction,
+  markVisitorStandaloneStudioProviderStarted: mocks.markVisitorStandaloneStudioProviderStarted,
 }));
 
 vi.mock("@/lib/server/demoSandbox", () => ({

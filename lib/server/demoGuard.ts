@@ -40,7 +40,9 @@ import {
   type DemoAccessContext,
 } from "@/lib/server/accessPassword";
 import { isPublicShowcase } from "@/lib/server/runtimeMode";
-import { isAnonymousGuest, isPublicGuestRouteDenied } from "@/lib/server/guestScope";
+import { isAnonymousGuest, resolveGuestCapability } from "@/lib/server/guestCapabilities";
+import { getGlobalProviderUsage } from "@/lib/server/providerUsageLedger";
+import { consumeIpBackstop, type IpBackstopKind } from "@/lib/server/ipBackstop";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
 import {
   buildDemoProductJourneySnapshot,
@@ -71,6 +73,8 @@ export interface DemoAccessSnapshot extends DemoProductJourneySnapshot {
   standaloneImageUnitsRemaining: number;
   /** V3.1 Phase 1：显式凭据判别（契约 02 / §9）；UI 据此隐藏无消费路径的研究额度（契约 04-4）。 */
   credentialKind: "password" | "anonymous";
+  /** V3.1 Phase 2：全局 Provider 日硬上限状态（§39：与 guest quota 区分展示；仅 PUBLIC_SHOWCASE demo 上下文提供）。 */
+  globalCapExhausted?: { text: boolean; image: boolean };
 }
 
 export type DemoAiQuotaReservation = {
@@ -181,6 +185,10 @@ export function buildDemoAccessSnapshot(record: DemoAccessRecord): DemoAccessSna
     standaloneImageUnitsReserved: image.reserved,
     standaloneImageUnitsRemaining: image.remaining,
     credentialKind: record.credentialKind === "anonymous" ? "anonymous" : "password",
+    ...(isPublicShowcase() ? (() => {
+      const global = getGlobalProviderUsage();
+      return { globalCapExhausted: { text: global.text.exhausted, image: global.image.exhausted } };
+    })() : {}),
   };
 }
 
@@ -200,16 +208,16 @@ export function requireAuthenticated(
       return guardError(401, "token_context_conflict", "访问凭据冲突，请重新登录后再操作。");
     }
     if (resolved.reason === "origin") {
-      return guardError(403, "origin_mismatch", "请求来源校验失败。");
+      return guardError(403, "origin_denied", "请求来源校验失败。");
     }
     return guardError(401, "invalid_access", "请先登录后再操作。");
   }
-  // Public guest scope deny-list（契约 01-5 / §20；服务器端强制，不靠隐藏 UI）
+  // Public guest capability allow-list（契约 01-5 / §21-24：DEFAULT DENY，显式 ALLOW 才放行）
   if (isPublicShowcase() && isAnonymousGuest(resolved.context)) {
     const pathname = (request as { nextUrl?: { pathname?: string } }).nextUrl?.pathname ?? "";
-    const denied = isPublicGuestRouteDenied(request.method || "GET", pathname);
-    if (denied) {
-      return guardError(403, denied, "公开体验模式仅支持演示案例，此操作不可用。");
+    const capability = resolveGuestCapability(request.method || "GET", pathname);
+    if (!capability) {
+      return guardError(403, "guest_scope_denied", "公开体验模式仅支持演示案例，此操作不可用。");
     }
   }
   return { ok: true, context: resolved.context };
@@ -231,7 +239,7 @@ export function requireOwnerOnly(
       return guardError(401, "token_context_conflict", "访问凭据冲突，请重新登录后再操作。");
     }
     if (resolved.reason === "origin") {
-      return guardError(403, "origin_mismatch", "请求来源校验失败。");
+      return guardError(403, "origin_denied", "请求来源校验失败。");
     }
     return guardError(401, "invalid_access", "请先登录后再操作。");
   }
@@ -253,6 +261,65 @@ function getDemoForbiddenMessage(action: string): string {
     import: "访客体验模式下禁止导入候选到正式库。",
   };
   return messages[action] || messages.write;
+}
+
+// ── D1: 统一 Provider 动作守卫（listing/image 全部真实生成路径共用同一 quota authority）──
+
+export type DemoProviderActionInput = {
+  kind: DemoStandaloneStudioKind;
+  requestId: string;
+  units: number;
+};
+
+export type DemoProviderActionToken = {
+  reservation: VisitorStandaloneStudioQuotaReservation | null;
+};
+
+export type DemoProviderActionGuard =
+  | { ok: true; token: DemoProviderActionToken }
+  | { ok: false; status: number; code: string; message: string };
+
+/**
+ * 昂贵动作统一守卫（§2 / §6 Guard Order）：
+ *   scope/ownership（调用方 requireAuthenticated + sandbox 守卫）→ IP backstop →
+ *   guest action quota（standalone 预留，legacy 3 / anonymous 1，ENV 可配）→ global provider cap（同事务）→ 原子预留。
+ * Owner 直通（不消耗 guest quota / global cap）。
+ */
+export function guardDemoProviderAction(
+  ctx: AccessContext,
+  request: NextRequest,
+  input: DemoProviderActionInput,
+): DemoProviderActionGuard {
+  if (ctx.mode === "owner") return { ok: true, token: { reservation: null } };
+  const ipKind: IpBackstopKind = input.kind === "listing" ? "text" : "image";
+  if (consumeIpBackstop(request, ipKind, input.units).limited) {
+    return { ok: false, status: 429, code: "rate_limited", message: "操作过于频繁，请稍后再试。" };
+  }
+  const reserved = reserveVisitorStandaloneStudioQuota(ctx, {
+    kind: input.kind,
+    requestId: input.requestId,
+    units: input.units,
+  });
+  if (!reserved.ok) return reserved;
+  return { ok: true, token: { reservation: reserved.reservation } };
+}
+
+/**
+ * 结算/回补（§7）：Provider 调用实际发生（charged=true）→ commit；否则（确定性失败/幂等重放）→ release。
+ * mark/release 均幂等（committed 上重放不改变状态）。
+ */
+export function finalizeDemoProviderAction(
+  ctx: AccessContext,
+  token: DemoProviderActionToken | null,
+  input: DemoProviderActionInput,
+  charged: boolean,
+): void {
+  if (ctx.mode === "owner" || !token?.reservation) return;
+  if (charged) {
+    markVisitorStandaloneStudioProviderStarted(ctx, token.reservation);
+  } else {
+    releaseVisitorStandaloneStudioQuota(ctx, token.reservation);
+  }
 }
 
 // ── AI quota checks ─────────────────────────────
@@ -282,6 +349,7 @@ export function ensureDemoAiQuota(
       access_expired: { code: "demo_access_expired", message: "该临时访问已过期，请联系管理员获取新的访问码。" },
       quota_exceeded: { code: "demo_ai_quota_exceeded", message: "本临时访问码的 AI 分析额度已用完，可继续浏览样例与复制报告。" },
       reservation_conflict: { code: "demo_ai_quota_conflict", message: "AI 额度预扣冲突，请稍后重试。" },
+      global_provider_cap_exceeded: { code: "global_provider_cap_exceeded", message: "今日公开体验的 AI 额度暂时已用完，请明日再来体验。" },
     } as const;
     return { ok: false, status: 403, ...errors[reserved.code] };
   }
@@ -296,7 +364,7 @@ export function ensureDemoAiQuota(
 }
 
 function quotaReservationError(
-  code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict",
+  code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict" | "global_provider_cap_exceeded",
 ) {
   const errors = {
     access_not_found: { code: "demo_access_not_found", message: "临时访问码不存在。" },
@@ -304,6 +372,7 @@ function quotaReservationError(
     access_expired: { code: "demo_access_expired", message: "该临时访问已过期，请联系管理员获取新的访问码。" },
     quota_exceeded: { code: "demo_ai_quota_exceeded", message: "本临时访问码的 AI 分析额度不足。" },
     reservation_conflict: { code: "demo_ai_quota_conflict", message: "AI 额度预扣冲突，请稍后重试。" },
+    global_provider_cap_exceeded: { code: "global_provider_cap_exceeded", message: "今日公开体验的 AI 额度暂时已用完，请明日再来体验。" },
   } as const;
   return { ok: false as const, status: 403, ...errors[code] };
 }
@@ -657,7 +726,8 @@ type VisitorStandaloneStudioQuotaError = {
     | "demo_access_not_found"
     | "demo_access_inactive"
     | "demo_standalone_quota_conflict"
-    | "demo_standalone_quota_store_busy";
+    | "demo_standalone_quota_store_busy"
+    | "global_provider_cap_exceeded";
   message: string;
   snapshot?: DemoAccessSnapshot | null;
 };
@@ -671,24 +741,28 @@ type VisitorStandaloneStudioQuotaSuccess = {
 function standaloneQuotaError(
   kind: DemoStandaloneStudioKind,
   code: string,
+  ctx?: AccessContext | null,
   snapshot?: DemoAccessSnapshot | null,
 ): VisitorStandaloneStudioQuotaError {
+  const guestMessage = (action: string) =>
+    (ctx && ctx.mode === "demo" && ctx.credentialKind === "anonymous")
+      ? `本次公开体验的${action}生成额度已用完，可继续查看已有结果。`
+      : action === "Listing"
+        ? "该访客码的独立 Listing 体验额度已用完。"
+        : "该访客码的独立生图体验额度已用完。";
   if (code === "quota_exceeded") {
     return kind === "listing"
-      ? {
-          ok: false,
-          status: 403,
-          code: "demo_standalone_listing_quota_exceeded",
-          message: "该访客码的独立 Listing 体验额度已用完。",
-          snapshot,
-        }
-      : {
-          ok: false,
-          status: 403,
-          code: "demo_standalone_image_quota_exceeded",
-          message: "该访客码的独立生图体验额度已用完。",
-          snapshot,
-        };
+      ? { ok: false, status: 403, code: "demo_standalone_listing_quota_exceeded", message: guestMessage("Listing"), snapshot }
+      : { ok: false, status: 403, code: "demo_standalone_image_quota_exceeded", message: guestMessage("图片"), snapshot };
+  }
+  if (code === "global_provider_cap_exceeded") {
+    return {
+      ok: false,
+      status: 403,
+      code: "global_provider_cap_exceeded",
+      message: "今日公开体验的 AI 额度暂时已用完，请明日再来体验。",
+      snapshot,
+    };
   }
   if (code === "access_not_found") {
     return { ok: false, status: 403, code: "demo_access_not_found", message: "访客码不存在。", snapshot };
@@ -717,7 +791,7 @@ export function reserveVisitorStandaloneStudioQuota(
       input.requestId,
       input.units,
     );
-    if (!result.ok) return standaloneQuotaError(input.kind, result.code, getLatestDemoSnapshot(ctx));
+    if (!result.ok) return standaloneQuotaError(input.kind, result.code, ctx, getLatestDemoSnapshot(ctx));
     return {
       ok: true,
       reservation: {
@@ -757,7 +831,7 @@ export function markVisitorStandaloneStudioProviderStarted(
       reservation.requestId,
       reservation.units,
     );
-    if (!result.ok) return standaloneQuotaError(reservation.kind, result.code, getLatestDemoSnapshot(ctx));
+    if (!result.ok) return standaloneQuotaError(reservation.kind, result.code, ctx, getLatestDemoSnapshot(ctx));
     return {
       ok: true,
       reservation: { ...reservation, duplicate: result.duplicate, status: result.status },
@@ -794,7 +868,7 @@ export function releaseVisitorStandaloneStudioQuota(
       reservation.requestId,
       reservation.units,
     );
-    if (!result.ok) return standaloneQuotaError(reservation.kind, result.code, getLatestDemoSnapshot(ctx));
+    if (!result.ok) return standaloneQuotaError(reservation.kind, result.code, ctx, getLatestDemoSnapshot(ctx));
     return {
       ok: true,
       reservation: { ...reservation, duplicate: result.duplicate, status: result.status },
@@ -844,6 +918,7 @@ export function reserveVisitorImageAiCalls(
     access_expired: { status: 403, code: "visitor_access_expired", message: "该临时访问已过期。" },
     quota_exceeded: { status: 403, code: "visitor_ai_quota_exceeded", message: "共享真实 AI 体验次数已用完。" },
     reservation_conflict: { status: 409, code: "image_request_conflict", message: "请求标识与已有请求不一致。" },
+    global_provider_cap_exceeded: { status: 403, code: "global_provider_cap_exceeded", message: "今日公开体验的 AI 额度暂时已用完，请明日再来体验。" },
   };
   return { ok: false, ...messages[result.code] };
 }

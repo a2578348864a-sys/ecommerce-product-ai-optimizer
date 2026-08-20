@@ -17,9 +17,11 @@
 4. **CSRF 策略**：
    - SameSite=Lax：跨站 POST 不携带该 Cookie（主防线）。
    - 全站同源（无 CORS 放开）；所有 guest 变更端点要求 JSON Content-Type（现状已如此）。
-   - 对 demo-mode 的 POST/PATCH 端点增加 **Origin 头校验**（存在时必须等于自身 Origin，否则 403）——实现期补齐，
-     与既有 Route 错误契约不冲突（新增 403 code：`origin_mismatch`）。
-   - 铸 token 端点本身无 CSRF 风险（无状态副作用），但仍受 L1 限流。
+   - 对 demo-mode 的 POST/PATCH 端点增加 **Origin 头校验**（Phase 2 收紧，§28）：
+     变更方法 + Cookie 认证 → Origin 必须存在且同源；missing / null / foreign / malformed → 403 `origin_denied`
+     （fail closed，无例外）；非 Cookie 认证（legacy header/body）保持 bearer 语义。
+   - 铸 token 端点（POST /api/auth/guest）是 state-changing：必须携带同源 Origin（missing → 403 `origin_denied`），
+     并受 IP Abuse Backstop（429 `rate_limited`）。
 5. **HTTPS 前置**：Secure Cookie 意味着 guest 流程从第一天就只在 HTTPS 下工作；
    **禁止 HTTP guest 过渡期**（HTTP 下 Cookie 不回传 → 流程直接失败，这是特性不是缺陷；契约 11 顺序保证）。
 6. **双来源冲突语义（§8 裁定，FROZEN，详见契约 03-5）**：Cookie+Header 同身份 → accept；不同身份 → **FAIL CLOSED**；

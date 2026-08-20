@@ -7,11 +7,17 @@ const mocks = vi.hoisted(() => ({
   generateImageDraftFromHandoff: vi.fn(),
   imageDraftSafeSummaries: vi.fn(),
   mutateTaskResultJson: vi.fn(),
+  guardDemoProviderAction: vi.fn(() => ({ ok: true, token: { reservation: null } })),
+  finalizeDemoProviderAction: vi.fn(),
+  markVisitorStandaloneStudioProviderStarted: vi.fn(),
 }));
 
 vi.mock("@/lib/server/demoGuard", () => ({
   requireAuthenticated: mocks.requireAuthenticated,
   requireOwnerOnly: mocks.requireOwnerOnly,
+  guardDemoProviderAction: mocks.guardDemoProviderAction,
+  finalizeDemoProviderAction: mocks.finalizeDemoProviderAction,
+  markVisitorStandaloneStudioProviderStarted: mocks.markVisitorStandaloneStudioProviderStarted,
 }));
 vi.mock("@/lib/server/demoSandbox", () => ({ isSandboxTaskId: () => false }));
 vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
@@ -117,6 +123,7 @@ describe("Phase 2 Task Image Studio route", () => {
       "task-1",
       expect.objectContaining({ mode: "owner" }),
       expect.objectContaining({ count: 2 }),
+      expect.anything(), // V3.1 Phase 2：provider options（D1 guard 拦截器包装）
     );
   });
 

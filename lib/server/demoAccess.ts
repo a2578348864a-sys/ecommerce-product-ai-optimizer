@@ -26,6 +26,8 @@ import {
   writeFileSync,
 } from "fs";
 import { resolve } from "path";
+import { withFileLock, atomicWriteJson, readJsonStore } from "@/lib/server/atomicFileStore";
+import { reserveGlobalProviderCalls, refundGlobalProviderCalls, type ProviderKind } from "@/lib/server/providerUsageLedger";
 
 export const DEMO_TEXT_AI_RESERVATION_LEASE_MS = 5 * 60 * 1000;
 export const DEMO_IMAGE_AI_RESERVATION_LEASE_MS = 30 * 60 * 1000;
@@ -220,91 +222,33 @@ export function generateDemoId(): string {
   return `demo_${randomBytes(8).toString("hex")}`;
 }
 
-// ── Store I/O ───────────────────────────────────
+// ── Store I/O（D2：统一复用 atomicFileStore 锁 + 原子写，禁止第二套 mutex）──
 
 export function loadDemoAccessStore(): DemoAccessStore {
-  const storePath = getStorePath();
-  ensureDataDir();
-  if (!existsSync(storePath)) {
-    return { version: 1, accesses: [] };
-  }
-  try {
-    const raw = readFileSync(storePath, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed?.version === 1 && Array.isArray(parsed.accesses)) {
-      return parsed as DemoAccessStore;
-    }
-    return { version: 1, accesses: [] };
-  } catch {
-    return { version: 1, accesses: [] };
-  }
+  return readJsonStore<DemoAccessStore>(getStorePath(), { version: 1, accesses: [] });
 }
 
 export function saveDemoAccessStore(store: DemoAccessStore): void {
-  ensureDataDir();
-  const storePath = getStorePath();
-  const tempPath = `${storePath}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  try {
-    writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf-8");
-    try {
-      renameSync(tempPath, storePath);
-    } catch (error) {
-      const code = error instanceof Error && "code" in error ? String(error.code) : "";
-      if (code !== "EPERM" && code !== "EEXIST") throw error;
-      if (existsSync(storePath)) unlinkSync(storePath);
-      renameSync(tempPath, storePath);
-    }
-  } finally {
-    if (existsSync(tempPath)) unlinkSync(tempPath);
-  }
+  atomicWriteJson(getStorePath(), store);
 }
 
-const DEMO_STORE_LOCK_MAX_ATTEMPTS = 100;
-const DEMO_STORE_LOCK_RETRY_MS = 10;
-const DEMO_STORE_STALE_LOCK_MS = 2 * 60 * 1000;
-
-function waitSynchronously(milliseconds: number) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-}
-
-function withDemoAccessStoreTransaction<T>(operation: (store: DemoAccessStore) => T): T {
-  ensureDataDir();
-  const lockPath = `${getStorePath()}.lock`;
-  let lockFd: number | null = null;
-  for (let attempt = 0; attempt < DEMO_STORE_LOCK_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      lockFd = openSync(lockPath, "wx");
-      break;
-    } catch (error) {
-      const code = error instanceof Error && "code" in error ? String(error.code) : "";
-      if (code !== "EEXIST") throw error;
-      try {
-        if (Date.now() - statSync(lockPath).mtimeMs > DEMO_STORE_STALE_LOCK_MS) {
-          unlinkSync(lockPath);
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      waitSynchronously(DEMO_STORE_LOCK_RETRY_MS);
-    }
-  }
-  if (lockFd === null) throw new Error("demo_access_store_busy");
-  try {
+/**
+ * demo-access 统一串行事务（D2，§8）：所有 guest quota mutation / reservation /
+ * guest creation 都经由此锁；内部再嵌套 provider ledger 锁（固定 demo→ledger 顺序，无死锁）。
+ */
+export function withDemoAccessStoreTransaction<T>(operation: (store: DemoAccessStore) => T): T {
+  return withFileLock(getStorePath(), () => {
     const store = loadDemoAccessStore();
     const result = operation(store);
     saveDemoAccessStore(store);
     return result;
-  } finally {
-    closeSync(lockFd);
-    try { unlinkSync(lockPath); } catch { /* another process can remove only a stale lock */ }
-  }
+  });
 }
 
 // ── CRUD ────────────────────────────────────────
 
 export function createDemoAccess(input: CreateDemoAccessInput): CreateDemoAccessOutput {
-  const store = loadDemoAccessStore();
+  return withDemoAccessStoreTransaction((store) => {
   const anonymous = input.credentialKind === "anonymous";
   let plainPassword = "";
   let salt: string | undefined;
@@ -334,9 +278,9 @@ export function createDemoAccess(input: CreateDemoAccessInput): CreateDemoAccess
   };
 
   store.accesses.push(record);
-  saveDemoAccessStore(store);
 
   return { record, plainPassword };
+  });
 }
 
 export function getDemoAccessById(id: string): DemoAccessRecord | null {
@@ -372,16 +316,13 @@ export function isDemoAccessActive(access: DemoAccessRecord): boolean {
  * Clear the legacy Visitor-code expiry during login/migration.
  */
 export function clearDemoAccessLegacyExpiry(id: string): DemoAccessRecord | null {
-  const store = loadDemoAccessStore();
-  const idx = store.accesses.findIndex((a) => a.id === id);
-  if (idx === -1) return null;
-
-  const access = store.accesses[idx];
-  if (access.expiresAt !== null) {
-    access.expiresAt = null;
-    saveDemoAccessStore(store);
-  }
-  return access;
+  return withDemoAccessStoreTransaction((store) => {
+    const idx = store.accesses.findIndex((a) => a.id === id);
+    if (idx === -1) return null;
+    const access = store.accesses[idx];
+    if (access.expiresAt !== null) access.expiresAt = null;
+    return access;
+  });
 }
 
 /** @deprecated Use clearDemoAccessLegacyExpiry; retained for older scripts/tests. */
@@ -400,19 +341,18 @@ export function isDemoAiQuotaExhausted(access: DemoAccessRecord): boolean {
 // ── Mutations (for future phases) ───────────────
 
 export function incrementDemoAiCalls(id: string, count: number): DemoAccessRecord | null {
-  const store = loadDemoAccessStore();
-  const idx = store.accesses.findIndex((a) => a.id === id);
-  if (idx === -1) return null;
-
-  store.accesses[idx].usedAiCalls += count;
-  store.accesses[idx].lastUsedAt = new Date().toISOString();
-  saveDemoAccessStore(store);
-  return store.accesses[idx];
+  return withDemoAccessStoreTransaction((store) => {
+    const idx = store.accesses.findIndex((a) => a.id === id);
+    if (idx === -1) return null;
+    store.accesses[idx].usedAiCalls += count;
+    store.accesses[idx].lastUsedAt = new Date().toISOString();
+    return store.accesses[idx];
+  });
 }
 
 export type DemoAiImageQuotaResult =
   | { ok: true; record: DemoAccessRecord; duplicate: boolean }
-  | { ok: false; code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict" };
+  | { ok: false; code: "access_not_found" | "access_inactive" | "access_expired" | "quota_exceeded" | "reservation_conflict" | "global_provider_cap_exceeded" };
 
 function recoverExpiredReservations(access: DemoAccessRecord, nowMs: number): boolean {
   let changed = false;
@@ -441,16 +381,20 @@ function recoverExpiredReservations(access: DemoAccessRecord, nowMs: number): bo
     reservation.settledAt = new Date(nowMs).toISOString();
     reservation.updatedAt = new Date(nowMs).toISOString();
     changed = true;
+    if (reservation.status === "refunded") {
+      refundGlobalProviderCalls(reservation.kind === "text" ? "text" : "image", reservation.count);
+    }
   }
   return changed;
 }
 
 export function recoverExpiredDemoAiReservations(id: string, nowMs = Date.now()): DemoAccessRecord | null {
-  const store = loadDemoAccessStore();
-  const access = store.accesses.find((item) => item.id === id);
-  if (!access) return null;
-  if (recoverExpiredReservations(access, nowMs)) saveDemoAccessStore(store);
-  return access;
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    if (!access) return null;
+    recoverExpiredReservations(access, nowMs);
+    return access;
+  });
 }
 
 export function reserveDemoAiImageCalls(
@@ -467,15 +411,14 @@ export function reserveDemoAiImageCalls(
     providerCallsPlanned?: number;
   } = {},
 ): DemoAiImageQuotaResult {
-  const store = loadDemoAccessStore();
+  return withDemoAccessStoreTransaction((store) => {
   const idx = store.accesses.findIndex((access) => access.id === id);
-  if (idx === -1) return { ok: false, code: "access_not_found" };
+  if (idx === -1) return { ok: false, code: "access_not_found" } as const;
   const access = store.accesses[idx];
   const nowMs = options.nowMs ?? Date.now();
-  const recovered = recoverExpiredReservations(access, nowMs);
-  const saveRecovery = () => { if (recovered) saveDemoAccessStore(store); };
-  if (!access.isActive) { saveRecovery(); return { ok: false, code: "access_inactive" }; }
-  if (isDemoAccessExpired(access)) { saveRecovery(); return { ok: false, code: "access_expired" }; }
+  recoverExpiredReservations(access, nowMs);
+  if (!access.isActive) return { ok: false, code: "access_inactive" } as const;
+  if (isDemoAccessExpired(access)) return { ok: false, code: "access_expired" } as const;
   const reservations = access.aiImageQuotaReservations || {};
   const existing = reservations[requestHash];
   if (existing) {
@@ -484,16 +427,16 @@ export function reserveDemoAiImageCalls(
       || existing.jobType !== options.jobType
       || existing.jobRequestId !== options.jobRequestId
       || existing.providerCallsPlanned !== options.providerCallsPlanned) {
-      saveRecovery();
-      return { ok: false, code: "reservation_conflict" };
+      return { ok: false, code: "reservation_conflict" } as const;
     }
-    saveRecovery();
-    return { ok: true, record: access, duplicate: true };
+    return { ok: true, record: access, duplicate: true } as const;
   }
   if (!Number.isInteger(count) || count <= 0 || getRemainingAiCalls(access) < count) {
-    saveRecovery();
-    return { ok: false, code: "quota_exceeded" };
+    return { ok: false, code: "quota_exceeded" } as const;
   }
+  // Global Provider Hard Cap（§13-17）：与 guest quota 同一事务串行预留；失败 → 整体拒绝
+  const global = reserveGlobalProviderCalls(options.kind === "text" ? "text" : "image", count);
+  if (!global.ok) return { ok: false, code: "global_provider_cap_exceeded" } as const;
   const now = new Date(nowMs).toISOString();
   const leaseMs = options.leaseMs ?? (options.kind === "text" ? DEMO_TEXT_AI_RESERVATION_LEASE_MS : DEMO_IMAGE_AI_RESERVATION_LEASE_MS);
   access.usedAiCalls += count;
@@ -515,25 +458,25 @@ export function reserveDemoAiImageCalls(
         : {}),
     },
   };
-  saveDemoAccessStore(store);
-  return { ok: true, record: access, duplicate: false };
+  return { ok: true, record: access, duplicate: false } as const;
+  });
 }
 
 export function commitDemoAiImageCalls(id: string, requestHash: string): DemoAccessRecord | null {
-  const store = loadDemoAccessStore();
-  const access = store.accesses.find((item) => item.id === id);
-  const reservation = access?.aiImageQuotaReservations?.[requestHash];
-  if (!access || !reservation) return null;
-  if (reservation.status === "reserved") {
-    reservation.status = "committed";
-    reservation.chargedCount = reservation.quotaMetric === "ai_jobs_v1"
-      ? 1
-      : reservation.providerStartedCount ?? reservation.count;
-    reservation.updatedAt = new Date().toISOString();
-    reservation.settledAt = reservation.updatedAt;
-    saveDemoAccessStore(store);
-  }
-  return reservation.status === "committed" ? access : null;
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    const reservation = access?.aiImageQuotaReservations?.[requestHash];
+    if (!access || !reservation) return null;
+    if (reservation.status === "reserved") {
+      reservation.status = "committed";
+      reservation.chargedCount = reservation.quotaMetric === "ai_jobs_v1"
+        ? 1
+        : reservation.providerStartedCount ?? reservation.count;
+      reservation.updatedAt = new Date().toISOString();
+      reservation.settledAt = reservation.updatedAt;
+    }
+    return reservation.status === "committed" ? access : null;
+  });
 }
 
 export type DemoAiCallSettlementResult =
@@ -556,42 +499,42 @@ export function markDemoAiCallProviderStarted(
   startedCount: number,
   nowMs = Date.now(),
 ): DemoAiProviderStartResult {
-  const store = loadDemoAccessStore();
-  const access = store.accesses.find((item) => item.id === id);
-  if (!access) return { ok: false, code: "access_not_found" };
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    if (!access) return { ok: false, code: "access_not_found" } as const;
 
-  const reservation = access.aiImageQuotaReservations?.[requestHash];
-  if (!reservation) return { ok: false, code: "reservation_not_found" };
-  if (reservation.kind && reservation.kind !== "text"
-    && reservation.quotaMetric !== "ai_jobs_v1") {
-    return { ok: false, code: "reservation_conflict" };
-  }
-  const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
-    ? reservation.providerCallsPlanned ?? 0
-    : reservation.count;
-  if (!Number.isInteger(startedCount) || startedCount <= 0 || startedCount > providerLimit) {
-    return { ok: false, code: "invalid_started_count" };
-  }
-  if (reservation.status !== "reserved") {
-    return reservation.providerStartedCount === startedCount
-      ? { ok: true, record: access, duplicate: true }
-      : { ok: false, code: "reservation_conflict" };
-  }
+    const reservation = access.aiImageQuotaReservations?.[requestHash];
+    if (!reservation) return { ok: false, code: "reservation_not_found" } as const;
+    if (reservation.kind && reservation.kind !== "text"
+      && reservation.quotaMetric !== "ai_jobs_v1") {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
+    const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
+      ? reservation.providerCallsPlanned ?? 0
+      : reservation.count;
+    if (!Number.isInteger(startedCount) || startedCount <= 0 || startedCount > providerLimit) {
+      return { ok: false, code: "invalid_started_count" } as const;
+    }
+    if (reservation.status !== "reserved") {
+      return reservation.providerStartedCount === startedCount
+        ? { ok: true, record: access, duplicate: true } as const
+        : { ok: false, code: "reservation_conflict" } as const;
+    }
 
-  const currentCount = reservation.providerStartedCount ?? 0;
-  if (startedCount === currentCount) {
-    return { ok: true, record: access, duplicate: true };
-  }
-  if (startedCount !== currentCount + 1) {
-    return { ok: false, code: "reservation_conflict" };
-  }
+    const currentCount = reservation.providerStartedCount ?? 0;
+    if (startedCount === currentCount) {
+      return { ok: true, record: access, duplicate: true } as const;
+    }
+    if (startedCount !== currentCount + 1) {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
 
-  const now = new Date(nowMs).toISOString();
-  reservation.providerStartedCount = startedCount;
-  reservation.providerStartedAt = reservation.providerStartedAt || now;
-  reservation.updatedAt = now;
-  saveDemoAccessStore(store);
-  return { ok: true, record: access, duplicate: false };
+    const now = new Date(nowMs).toISOString();
+    reservation.providerStartedCount = startedCount;
+    reservation.providerStartedAt = reservation.providerStartedAt || now;
+    reservation.updatedAt = now;
+    return { ok: true, record: access, duplicate: false } as const;
+  });
 }
 
 export function settleDemoAiCallReservation(
@@ -603,77 +546,81 @@ export function settleDemoAiCallReservation(
     providerCallsFailed?: number;
   } = {},
 ): DemoAiCallSettlementResult {
-  const store = loadDemoAccessStore();
-  const access = store.accesses.find((item) => item.id === id);
-  if (!access) return { ok: false, code: "access_not_found" };
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    if (!access) return { ok: false, code: "access_not_found" } as const;
 
-  const reservation = access.aiImageQuotaReservations?.[requestHash];
-  if (!reservation) return { ok: false, code: "reservation_not_found" };
-  if (reservation.kind && reservation.kind !== "text") {
-    return { ok: false, code: "reservation_conflict" };
-  }
-  const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
-    ? reservation.providerCallsPlanned ?? 0
-    : reservation.count;
-  if (!Number.isInteger(startedCount) || startedCount < 0 || startedCount > providerLimit) {
-    return { ok: false, code: "invalid_started_count" };
-  }
-  const completedCount = audit.providerCallsCompleted ?? Math.max(0, startedCount);
-  const failedCount = audit.providerCallsFailed ?? 0;
-  if (!Number.isInteger(completedCount) || completedCount < 0
-    || !Number.isInteger(failedCount) || failedCount < 0
-    || completedCount + failedCount !== startedCount) {
-    return { ok: false, code: "invalid_started_count" };
-  }
-  if (reservation.providerStartedCount !== undefined
-    && reservation.providerStartedCount !== startedCount) {
-    return { ok: false, code: "reservation_conflict" };
-  }
+    const reservation = access.aiImageQuotaReservations?.[requestHash];
+    if (!reservation) return { ok: false, code: "reservation_not_found" } as const;
+    if (reservation.kind && reservation.kind !== "text") {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
+    const providerLimit = reservation.quotaMetric === "ai_jobs_v1"
+      ? reservation.providerCallsPlanned ?? 0
+      : reservation.count;
+    if (!Number.isInteger(startedCount) || startedCount < 0 || startedCount > providerLimit) {
+      return { ok: false, code: "invalid_started_count" } as const;
+    }
+    const completedCount = audit.providerCallsCompleted ?? Math.max(0, startedCount);
+    const failedCount = audit.providerCallsFailed ?? 0;
+    if (!Number.isInteger(completedCount) || completedCount < 0
+      || !Number.isInteger(failedCount) || failedCount < 0
+      || completedCount + failedCount !== startedCount) {
+      return { ok: false, code: "invalid_started_count" } as const;
+    }
+    if (reservation.providerStartedCount !== undefined
+      && reservation.providerStartedCount !== startedCount) {
+      return { ok: false, code: "reservation_conflict" } as const;
+    }
 
-  if (reservation.status !== "reserved") {
-    return reservation.providerStartedCount === startedCount
-      && (reservation.providerCallsCompleted ?? completedCount) === completedCount
-      && (reservation.providerCallsFailed ?? failedCount) === failedCount
-      ? { ok: true, record: access, duplicate: true }
-      : { ok: false, code: "reservation_conflict" };
-  }
+    if (reservation.status !== "reserved") {
+      return reservation.providerStartedCount === startedCount
+        && (reservation.providerCallsCompleted ?? completedCount) === completedCount
+        && (reservation.providerCallsFailed ?? failedCount) === failedCount
+        ? { ok: true, record: access, duplicate: true } as const
+        : { ok: false, code: "reservation_conflict" } as const;
+    }
 
-  const chargedCount = reservation.quotaMetric === "ai_jobs_v1"
-    ? (startedCount > 0 ? 1 : 0)
-    : startedCount;
-  const unusedCount = reservation.count - chargedCount;
-  access.usedAiCalls = Math.max(0, access.usedAiCalls - unusedCount);
-  reservation.status = startedCount > 0 ? "committed" : "refunded";
-  reservation.chargedCount = chargedCount;
-  reservation.providerStartedCount = startedCount;
-  reservation.providerCallsCompleted = completedCount;
-  reservation.providerCallsFailed = failedCount;
-  reservation.updatedAt = new Date().toISOString();
-  reservation.settledAt = reservation.updatedAt;
-  saveDemoAccessStore(store);
-  return { ok: true, record: access, duplicate: false };
+    const chargedCount = reservation.quotaMetric === "ai_jobs_v1"
+      ? (startedCount > 0 ? 1 : 0)
+      : startedCount;
+    const unusedCount = reservation.count - chargedCount;
+    access.usedAiCalls = Math.max(0, access.usedAiCalls - unusedCount);
+    reservation.status = startedCount > 0 ? "committed" : "refunded";
+    reservation.chargedCount = chargedCount;
+    reservation.providerStartedCount = startedCount;
+    reservation.providerCallsCompleted = completedCount;
+    reservation.providerCallsFailed = failedCount;
+    reservation.updatedAt = new Date().toISOString();
+    reservation.settledAt = reservation.updatedAt;
+    if (reservation.status === "refunded") {
+      refundGlobalProviderCalls(reservation.kind === "text" ? "text" : "image", reservation.count);
+    }
+    return { ok: true, record: access, duplicate: false } as const;
+  });
 }
 
 export function refundDemoAiImageCalls(id: string, requestHash: string): DemoAccessRecord | null {
-  const store = loadDemoAccessStore();
-  const access = store.accesses.find((item) => item.id === id);
-  const reservation = access?.aiImageQuotaReservations?.[requestHash];
-  if (!access || !reservation) return null;
-  if (reservation.status === "reserved") {
-    access.usedAiCalls = Math.max(0, access.usedAiCalls - reservation.count);
-    reservation.status = "refunded";
-    reservation.updatedAt = new Date().toISOString();
-    saveDemoAccessStore(store);
-  }
-  return access;
+  return withDemoAccessStoreTransaction((store) => {
+    const access = store.accesses.find((item) => item.id === id);
+    const reservation = access?.aiImageQuotaReservations?.[requestHash];
+    if (!access || !reservation) return null;
+    if (reservation.status === "reserved") {
+      access.usedAiCalls = Math.max(0, access.usedAiCalls - reservation.count);
+      reservation.status = "refunded";
+      reservation.updatedAt = new Date().toISOString();
+      refundGlobalProviderCalls(reservation.kind === "text" ? "text" : "image", reservation.count);
+    }
+    return access;
+  });
 }
 
 export function updateDemoLastUsed(id: string): void {
-  const store = loadDemoAccessStore();
-  const idx = store.accesses.findIndex((a) => a.id === id);
-  if (idx === -1) return;
-  store.accesses[idx].lastUsedAt = new Date().toISOString();
-  saveDemoAccessStore(store);
+  withDemoAccessStoreTransaction((store) => {
+    const idx = store.accesses.findIndex((a) => a.id === id);
+    if (idx === -1) return;
+    store.accesses[idx].lastUsedAt = new Date().toISOString();
+  });
 }
 
 export type DemoStandaloneStudioQuotaResult =
@@ -691,7 +638,8 @@ export type DemoStandaloneStudioQuotaResult =
         | "quota_exceeded"
         | "reservation_not_found"
         | "reservation_conflict"
-        | "invalid_units";
+        | "invalid_units"
+        | "global_provider_cap_exceeded";
     };
 
 function standaloneReservationKey(kind: DemoStandaloneStudioKind, requestId: string) {
@@ -755,6 +703,7 @@ export function reserveDemoStandaloneStudioQuota(
       existing.status = "released";
       existing.releasedAt = new Date(nowMs).toISOString();
       existing.updatedAt = existing.releasedAt;
+      refundGlobalProviderCalls(kind === "listing" ? "text" : "image", existing.units);
     }
     if (existing?.status === "reserved" || existing?.status === "committed") {
       return {
@@ -767,6 +716,10 @@ export function reserveDemoStandaloneStudioQuota(
 
     const usage = getDemoStandaloneStudioQuotaUsage(access, kind, nowMs);
     if (usage.remaining < units) return { ok: false, code: "quota_exceeded" } as const;
+
+    // Global Provider Hard Cap（§13-17）：与 guest quota 同一事务串行预留
+    const global = reserveGlobalProviderCalls(kind === "listing" ? "text" : "image", units);
+    if (!global.ok) return { ok: false, code: "global_provider_cap_exceeded" } as const;
 
     const now = new Date(nowMs).toISOString();
     access.standaloneStudioQuotaReservations = {
@@ -851,6 +804,7 @@ export function releaseDemoStandaloneStudioQuota(
     reservation.status = "released";
     reservation.releasedAt = now;
     reservation.updatedAt = now;
+    refundGlobalProviderCalls(kind === "listing" ? "text" : "image", units);
     return { ok: true, record: access, duplicate: false, status: "released" } as const;
   });
 }

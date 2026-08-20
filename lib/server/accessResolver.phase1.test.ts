@@ -9,7 +9,7 @@ import { createDemoAccess, saveDemoAccessStore } from "@/lib/server/demoAccess";
 import { resolveAccessContext, getAccessContext } from "@/lib/server/accessPassword";
 import { requireAuthenticated, requireOwnerOnly } from "@/lib/server/demoGuard";
 import { GUEST_COOKIE_NAME } from "@/lib/server/guestCookie";
-import { isPublicGuestRouteDenied } from "@/lib/server/guestScope";
+import { resolveGuestCapability } from "@/lib/server/guestCapabilities";
 
 const STORE = ".next/test-stores/access-resolver.phase1.json";
 
@@ -177,70 +177,98 @@ describe("CSRF 基础（契约 09-4 / §28）", () => {
       method: "POST",
       headers: { origin: "https://evil.example" },
     });
-    expect(requireAuthenticated(req)).toMatchObject({ ok: false, status: 403, code: "origin_mismatch" });
+    expect(requireAuthenticated(req)).toMatchObject({ ok: false, status: 403, code: "origin_denied" });
   });
 
-  it("同源 Origin → 通过；无 Origin（curl/测试）→ 通过", () => {
+  it("同源 Origin + Cookie 认证 → 通过（§29）", () => {
     process.env.QX_RUNTIME_MODE = "public_showcase";
     const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
     const token = generateSignedToken("demo", record.id);
-    const sameOrigin = buildRequest("http://127.0.0.1:3010/api/x", {
+    const sameOrigin = buildRequest("http://127.0.0.1:3010/api/tasks/sandbox_task_1/listing-handoff", {
       method: "POST",
       headers: { ...guestCookieHeader(token), origin: "http://127.0.0.1:3010" },
     });
     expect(requireAuthenticated(sameOrigin).ok).toBe(true);
+  });
+
+  it("Cookie 认证变更请求缺少 Origin → FAIL CLOSED（origin_denied，§28）", () => {
+    process.env.QX_RUNTIME_MODE = "public_showcase";
+    const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
+    const token = generateSignedToken("demo", record.id);
     const noOrigin = buildRequest("http://127.0.0.1:3010/api/x", { method: "POST", headers: guestCookieHeader(token) });
-    expect(requireAuthenticated(noOrigin).ok).toBe(true);
+    expect(requireAuthenticated(noOrigin)).toMatchObject({ ok: false, status: 403, code: "origin_denied" });
+    const nullOrigin = buildRequest("http://127.0.0.1:3010/api/x", {
+      method: "POST",
+      headers: { ...guestCookieHeader(token), origin: "null" },
+    });
+    expect(requireAuthenticated(nullOrigin)).toMatchObject({ ok: false, status: 403, code: "origin_denied" });
+  });
+
+  it("非 Cookie 认证（legacy header）变更请求无 Origin → 保持既有语义（bearer，无 ambient CSRF 面）", () => {
+    delete process.env.QX_RUNTIME_MODE;
+    const { record } = createDemoAccess({ label: "legacy", maxAiCalls: 5 });
+    const token = generateSignedToken("demo", record.id);
+    const headerOnly = buildRequest("http://127.0.0.1:3005/api/x", {
+      method: "POST",
+      headers: { "x-access-token": token },
+    });
+    expect(requireAuthenticated(headerOnly).ok).toBe(true);
   });
 });
 
-describe("Public Guest Scope Deny-list（契约 01-5 / §20）", () => {
-  it("命中表：新建研究 / 采集导入 / Browser Use 全部 deny", () => {
-    expect(isPublicGuestRouteDenied("POST", "/api/workflows/product-analysis")).toBe("guest_scope_denied");
-    expect(isPublicGuestRouteDenied("POST", "/api/opportunities/crawl")).toBe("guest_scope_denied");
-    expect(isPublicGuestRouteDenied("POST", "/api/opportunities/sellersprite-import")).toBe("guest_scope_denied");
-    expect(isPublicGuestRouteDenied("POST", "/api/opportunities/sellersprite-plugin-import")).toBe("guest_scope_denied");
-    expect(isPublicGuestRouteDenied("POST", "/api/opportunity-candidates/abc-123/start-research")).toBe("guest_scope_denied");
-    expect(isPublicGuestRouteDenied("POST", "/api/tasks/sandbox_task_1/browser-evidence")).toBe("guest_scope_denied");
-    expect(isPublicGuestRouteDenied("GET", "/api/opportunity-candidates/research-context")).toBe("guest_scope_denied");
+describe("Public Guest Capability Allow-list（契约 01-5 / §21-24，DEFAULT DENY）", () => {
+  it("显式 ALLOW：金标演示 / 只读任务 / 证据 / 交接链 / 生成（quota）", () => {
+    expect(resolveGuestCapability("GET", "/api/demo/golden")).toBe("view_golden_demo");
+    expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_1")).toBe("view_guest_task");
+    expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_1/fact-candidates")).toBe("view_evidence");
+    expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_1/image-draft/img_1")).toBe("view_existing_images");
+    expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_1/listing-handoff")).toBe("view_existing_listing");
+    expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_1/listing-handoff")).toBe("generate_guest_listing");
+    expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_1/image-handoff")).toBe("generate_guest_image");
+    expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_1/research-decision")).toBe("human_demo_interaction");
   });
 
-  it("不命中：金标演示 / 只读任务 / 交接链（guest scope = GOLDEN_DEMO_INTERACTIVE_ONLY）", () => {
-    expect(isPublicGuestRouteDenied("GET", "/api/demo/golden")).toBeNull();
-    expect(isPublicGuestRouteDenied("GET", "/api/tasks/sandbox_task_1")).toBeNull();
-    expect(isPublicGuestRouteDenied("POST", "/api/tasks/sandbox_task_1/listing-handoff")).toBeNull();
-    expect(isPublicGuestRouteDenied("POST", "/api/tasks/sandbox_task_1/image-handoff")).toBeNull();
+  it("UNKNOWN_GUEST_ACTION_DENIED：未注册动作 → null（默认 DENY，§23）", () => {
+    expect(resolveGuestCapability("POST", "/api/workflows/product-analysis")).toBeNull();
+    expect(resolveGuestCapability("POST", "/api/opportunities/crawl")).toBeNull();
+    expect(resolveGuestCapability("POST", "/api/opportunities/sellersprite-import")).toBeNull();
+    expect(resolveGuestCapability("POST", "/api/opportunity-candidates")).toBeNull();
+    expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_1/browser-evidence")).toBeNull();
+    expect(resolveGuestCapability("DELETE", "/api/tasks/sandbox_task_1")).toBeNull();
+    expect(resolveGuestCapability("GET", "/api/tasks")).toBeNull();
+    expect(resolveGuestCapability("GET", "/api/opportunity-candidates")).toBeNull();
+    expect(resolveGuestCapability("GET", "/api/runtime-mode")).toBeNull();
   });
 
-  it("PUBLIC_SHOWCASE + anonymous guest：研究路由 → 403 guest_scope_denied（服务端强制）", () => {
+  it("PUBLIC_SHOWCASE + anonymous guest：未注册路由 → 403 guest_scope_denied（服务端强制）", () => {
     process.env.QX_RUNTIME_MODE = "public_showcase";
     const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
     const token = generateSignedToken("demo", record.id);
     const req = buildRequest("http://127.0.0.1:3010/api/workflows/product-analysis", {
       method: "POST",
-      headers: { ...guestCookieHeader(token), "content-type": "application/json" },
+      headers: { ...guestCookieHeader(token), "content-type": "application/json", origin: "http://127.0.0.1:3010" },
     });
     expect(requireAuthenticated(req)).toMatchObject({ ok: false, status: 403, code: "guest_scope_denied" });
   });
 
-  it("PUBLIC_SHOWCASE + 遗留 visitor token：不受 deny-list 限制（仅 anonymous guest）", () => {
+  it("PUBLIC_SHOWCASE + anonymous guest：显式 ALLOW 路由放行（金标演示）", () => {
+    process.env.QX_RUNTIME_MODE = "public_showcase";
+    const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
+    const token = generateSignedToken("demo", record.id);
+    const req = buildRequest("http://127.0.0.1:3010/api/demo/golden", {
+      method: "GET",
+      headers: guestCookieHeader(token),
+    });
+    expect(requireAuthenticated(req).ok).toBe(true);
+  });
+
+  it("PUBLIC_SHOWCASE + 遗留 visitor token：不受 allow-list 限制（仅 anonymous guest）", () => {
     process.env.QX_RUNTIME_MODE = "public_showcase";
     const { record } = createDemoAccess({ label: "legacy", maxAiCalls: 5 });
     const token = generateSignedToken("demo", record.id);
     const req = buildRequest("http://127.0.0.1:3010/api/workflows/product-analysis", {
       method: "POST",
       headers: { "x-access-token": token, "content-type": "application/json" },
-    });
-    expect(requireAuthenticated(req).ok).toBe(true);
-  });
-
-  it("legacy 模式（缺省）：匿名 guest cookie 不触发 deny-list（无公开模式语义）", () => {
-    delete process.env.QX_RUNTIME_MODE;
-    const { record } = createDemoAccess({ label: "G", credentialKind: "anonymous" });
-    const token = generateSignedToken("demo", record.id);
-    const req = buildRequest("http://127.0.0.1:3005/api/workflows/product-analysis", {
-      method: "POST",
-      headers: { ...guestCookieHeader(token), "content-type": "application/json" },
     });
     expect(requireAuthenticated(req).ok).toBe(true);
   });

@@ -16,6 +16,7 @@ import { loadDemoAccessStore, createDemoAccess } from "@/lib/server/demoAccess";
 import { ensureVisitorDemoCopy } from "@/lib/server/goldenDemoTemplate";
 import { listSandboxTasks, getSandboxTask } from "@/lib/server/demoSandbox";
 import { GUEST_COOKIE_NAME, GUEST_COOKIE_MAX_AGE_SECONDS } from "@/lib/server/guestCookie";
+import { resetIpBackstopForTests } from "@/lib/server/ipBackstop";
 
 const { mockCallAiJson } = vi.hoisted(() => ({ mockCallAiJson: vi.fn() }));
 vi.mock("@/lib/server/aiClient", () => ({
@@ -28,9 +29,9 @@ const STORE = join(tmpdir(), "guest-route-" + RUN + ".json");
 const SANDBOX = join(tmpdir(), "guest-sandbox-" + RUN + ".json");
 
 function guestRequest(cookieValue?: string, origin?: string): NextRequest {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers: Record<string, string> = { "content-type": "application/json", origin: "http://127.0.0.1:3010" };
   if (cookieValue) headers.cookie = GUEST_COOKIE_NAME + "=" + cookieValue;
-  if (origin) headers.origin = origin;
+  if (origin !== undefined) headers.origin = origin;
   return new NextRequest("http://127.0.0.1:3010/api/auth/guest", { method: "POST", headers });
 }
 
@@ -39,6 +40,7 @@ function extractSetCookie(response: Response): string {
 }
 
 beforeEach(() => {
+  resetIpBackstopForTests();
   vi.clearAllMocks();
   process.env.QX_RUNTIME_MODE = "public_showcase";
   process.env.ACCESS_PASSWORD = "guest-test-signing-secret";
@@ -52,6 +54,7 @@ afterEach(() => {
   delete process.env.ACCESS_PASSWORD;
   delete process.env.DEMO_ACCESS_STORE_PATH;
   delete process.env.DEMO_SANDBOX_STORE_PATH;
+  delete process.env.QX_IP_GUEST_START_LIMIT_15M;
   try { if (existsSync(STORE)) unlinkSync(STORE); } catch { /* ok */ }
   try { if (existsSync(STORE + ".lock")) unlinkSync(STORE + ".lock"); } catch { /* ok */ }
   try { if (existsSync(SANDBOX)) unlinkSync(SANDBOX); } catch { /* ok */ }
@@ -98,6 +101,19 @@ describe("POST /api/auth/guest — 铸造（PUBLIC_SHOWCASE）", () => {
     expect(setCookie.startsWith(GUEST_COOKIE_NAME + "=")).toBe(true);
   });
 
+  it("GUEST_CREATION_ABUSE：同 IP 快速创建 flood → 429 rate_limited（§45）", async () => {
+    process.env.QX_IP_GUEST_START_LIMIT_15M = "2";
+    const first = await POST(guestRequest());
+    expect(first.status).toBe(200);
+    const second = await POST(guestRequest());
+    expect(second.status).toBe(200);
+    const third = await POST(guestRequest());
+    expect(third.status).toBe(429);
+    const json = await third.clone().json();
+    expect(json.error.code).toBe("rate_limited");
+    delete process.env.QX_IP_GUEST_START_LIMIT_15M;
+  });
+
   it("非 PUBLIC_SHOWCASE 模式（缺省/local_owner）→ 403 guest_start_unavailable", async () => {
     delete process.env.QX_RUNTIME_MODE;
     const response = await POST(guestRequest());
@@ -109,11 +125,11 @@ describe("POST /api/auth/guest — 铸造（PUBLIC_SHOWCASE）", () => {
     expect(response2.status).toBe(403);
   });
 
-  it("跨站 Origin → 403 origin_mismatch（§28）", async () => {
+  it("跨站 Origin → 403 origin_denied（§28）", async () => {
     const response = await POST(guestRequest(undefined, "https://evil.example"));
     expect(response.status).toBe(403);
     const json = await response.clone().json();
-    expect(json.error.code).toBe("origin_mismatch");
+    expect(json.error.code).toBe("origin_denied");
   });
 });
 

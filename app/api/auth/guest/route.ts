@@ -16,6 +16,7 @@ import { getAccessSession } from "@/lib/server/accessSession";
 import { createDemoAccess, getDemoAccessById, updateDemoLastUsed } from "@/lib/server/demoAccess";
 import { buildDemoAccessSnapshot } from "@/lib/server/demoGuard";
 import { isSameOriginRequest } from "@/lib/server/accessPassword";
+import { consumeIpBackstop } from "@/lib/server/ipBackstop";
 import { isPublicShowcase } from "@/lib/server/runtimeMode";
 import {
   GUEST_COOKIE_NAME,
@@ -33,11 +34,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // CSRF 基础：跨站 Origin 禁止调用 guest mutation（§28）
+  // CSRF 基础（契约 09-4 / §28，Phase 2 收紧）：guest start 是 state-changing，
+  // 必须携带同源 Origin；missing / null / foreign / malformed → fail closed。
   const origin = request.headers.get("origin") || "";
-  if (origin && !isSameOriginRequest(origin, request)) {
+  if (!origin || !isSameOriginRequest(origin, request)) {
     return NextResponse.json(
-      { ok: false, error: { code: "origin_mismatch", message: "请求来源校验失败。" } },
+      { ok: false, error: { code: "origin_denied", message: "请求来源校验失败。" } },
       { status: 403 }
     );
   }
@@ -64,6 +66,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 2) CREATE：missing / expired / revoked / invalid → 新 anonymous demo-access + stok_v1 + Set-Cookie
+    // IP Abuse Backstop（§45）：同 IP 快速创建 flood → 429（不依赖 fingerprint）
+    if (consumeIpBackstop(request, "guest_start").limited) {
+      return NextResponse.json(
+        { ok: false, error: { code: "rate_limited", message: "操作过于频繁，请稍后再试。" } },
+        { status: 429 }
+      );
+    }
     const { record } = createDemoAccess({ label: "公开访客", credentialKind: "anonymous" });
     const token = generateSignedToken("demo", record.id);
 
