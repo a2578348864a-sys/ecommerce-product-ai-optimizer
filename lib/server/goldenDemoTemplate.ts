@@ -8,7 +8,7 @@
  * 幂等：ensureVisitorDemoCopy 按标记检查；已有副本（含无标记的历史副本）不重复创建。
  */
 import { randomUUID } from "node:crypto";
-import { GOLDEN_DEMO_TEMPLATE_RESULT_JSON } from "@/lib/server/goldenDemoTemplateData";
+import { GOLDEN_DEMO_TEMPLATE_RESULT_JSON, GOLDEN_DEMO_CANDIDATE_SOURCE_META } from "@/lib/server/goldenDemoTemplateData";
 import { computeResearchEvidenceHash } from "@/lib/productResearchRecord";
 import {
   createSeededSandboxTaskAndCandidate,
@@ -191,7 +191,7 @@ export async function ensureVisitorDemoCopy(demoAccessId: string): Promise<Golde
     riskLabel: "演示样本",
     summaryLabel: "演示样本",
     status: "worth_analyzing",
-    sourceMetaJson: "{}",
+    sourceMetaJson: GOLDEN_DEMO_CANDIDATE_SOURCE_META,
     analysisJson: "{}",
     createdAt: now,
     convertedTaskId: taskId,

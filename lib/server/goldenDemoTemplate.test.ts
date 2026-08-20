@@ -206,4 +206,69 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
       }
     }
   });
+
+  // ── V3.1 FINAL CLOSURE：B0F2BF31PW exact-product reference image（IMAGE_REAL_ACCEPTANCE 前置） ──
+  it("参考图资产：seeded candidate 携带 identity-locked productImageSnapshot（exact B0F2BF31PW，无变体污染）", async () => {
+    await ensureVisitorDemoCopy("demo-visitor-refimg-1");
+    const candidates = await listSandboxCandidates("demo-visitor-refimg-1");
+    const cand = candidates.find((c) => c.id === "fixture-vr-cand-001");
+    expect(cand).toBeDefined();
+    const sourceMeta = JSON.parse(cand?.sourceMetaJson ?? "{}");
+    const snapshot = sourceMeta.productImageSnapshot as Record<string, unknown> | undefined;
+    expect(snapshot).toBeDefined();
+    // Identity Lock：productKey = exact ASIN；identityHash === facts.itemHash（exact item 绑定）
+    expect(sourceMeta.marketScreeningIdentity.productKey).toBe("amazon:US:B0F2BF31PW");
+    expect(sourceMeta.marketScreeningIdentity.identityHash).toBe("8414c17ff9c728a83df01eebfa3ff2ae0bbb0fb2fcdd51a3bc2576c41e05b67d");
+    expect(snapshot?.productKey).toBe("amazon:US:B0F2BF31PW");
+    expect(snapshot?.candidateIdentityHash).toBe(sourceMeta.marketScreeningIdentity.identityHash);
+    expect(snapshot?.mimeType).toBe("image/jpeg");
+    expect(snapshot?.status).toBe("available");
+    // 资产真实性：contentHash === sha256(dataUrl 解码字节)；bytes 一致
+    const b64 = String(snapshot?.dataUrl).replace(/^data:image\/jpeg;base64,/, "");
+    const { createHash } = await import("node:crypto");
+    const digest = createHash("sha256").update(Buffer.from(b64, "base64")).digest("hex");
+    expect(snapshot?.contentHash).toBe(digest);
+    expect(snapshot?.bytes).toBe(Buffer.from(b64, "base64").length);
+    expect(Buffer.from(b64, "base64").length).toBeLessThan(2 * 1024 * 1024);
+  });
+
+  it("模板 resultJson：sourceMeta.candidateSnapshot 可解析 + visualReferences 指纹 = sha256(visual-reference:contentHash)（视觉参考门禁输入）", async () => {
+    const { parseProductImageSnapshot } = await import("@/lib/productResearchImage");
+    const copy = await ensureVisitorDemoCopy("demo-visitor-refimg-2");
+    const tasks = await listSandboxTasks("demo-visitor-refimg-2");
+    const rj = JSON.parse(tasks.find((t) => t.id === copy?.taskId)?.resultJson ?? "{}");
+    // task_snapshot 权威路径（researchContext.productImage 数据源）
+    const snap = rj.sourceMeta?.candidateSnapshot?.productImageSnapshot as unknown;
+    const parsed = parseProductImageSnapshot(snap);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.productKey).toBe("amazon:US:B0F2BF31PW");
+    expect(parsed?.candidateIdentityHash).toBe("8414c17ff9c728a83df01eebfa3ff2ae0bbb0fb2fcdd51a3bc2576c41e05b67d");
+    // 批准参考指纹 = gate 判定条件：assetFingerprint === sha256("visual-reference:" + contentHash)
+    const { createHash } = await import("node:crypto");
+    const handoffVersions = rj.creativeHandoff?.versions as Array<{ visualReferences?: Array<{ assetFingerprint?: string }> }> | undefined;
+    const ref = handoffVersions?.[handoffVersions.length - 1]?.visualReferences?.[0];
+    expect(ref?.assetFingerprint).toBe(
+      createHash("sha256").update("visual-reference:" + parsed?.contentHash).digest("hex"),
+    );
+  });
+
+  it("门禁输入路径：adaptResearchContextForHandoff 从 seeded 副本解析出 productImage（task_snapshot）", async () => {
+    const { adaptResearchContextForHandoff } = await import("@/lib/server/researchContextAdapter");
+    const copy = await ensureVisitorDemoCopy("demo-visitor-refimg-3");
+    const tasks = await listSandboxTasks("demo-visitor-refimg-3");
+    const task = tasks.find((t) => t.id === copy?.taskId);
+    const rj = JSON.parse(task?.resultJson ?? "{}");
+    const candidates = await listSandboxCandidates("demo-visitor-refimg-3");
+    const cand = candidates.find((c) => c.id === "fixture-vr-cand-001");
+    const adapted = adaptResearchContextForHandoff(rj, {
+      candidateSourceMetaJson: cand?.sourceMetaJson,
+    });
+    expect(adapted.ok).toBe(true);
+    if (adapted.ok) {
+      expect(adapted.context.productImage?.provenance).toBe("task_snapshot");
+      expect(adapted.context.productImage?.contentHash).toBe("f6d01ad0df1007568b1ad6baf8acd5bac0b352f4273256d8eff8ddb52afc2685");
+      expect(adapted.context.productImage?.dataUrl).toMatch(/^data:image\/jpeg;base64,/);
+      expect(adapted.context.asin).toBe("B0F2BF31PW");
+    }
+  });
 });
