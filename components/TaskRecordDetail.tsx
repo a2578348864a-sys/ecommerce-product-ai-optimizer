@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 // F2：SourcingEvidencePanel 已移入 EvidenceWorkbench 证据序列（不再在页尾独立渲染）
 import { canRequestWithAccessPassword, useAccessPassword } from "@/lib/client/accessPassword";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, isGuestMode } from "@/lib/client/accessToken";
 import { clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
 import { WorkspaceLockedPrompt } from "@/components/WorkspaceLockedPrompt";
 import { ProfitSnapshotCard, type ProfitSnapshot } from "@/components/cross-border/ProfitSnapshotCard";
@@ -1291,7 +1291,8 @@ function OperationDecisionPanel({ taskId, lifecycle, onUpdated }: { taskId: stri
 
 export function TaskRecordDetail({ id }: { id: string }) {
   const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  // V3.1 Phase 1: Anonymous Guest（凭据在 HttpOnly Cookie，sessionStorage 无 token/密码）视为已解锁
+  const unlocked = (isAccessPasswordReady && accessPassword.trim().length > 0) || isGuestMode();
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
 
@@ -1356,7 +1357,7 @@ export function TaskRecordDetail({ id }: { id: string }) {
       };
     }
 
-    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+    if (!canRequestWithAccessPassword(isAccessPasswordReady, accessPassword) && !isGuestMode()) {
       setRecord(null);
       setLoading(false);
       setError("请先输入访问密码后查看任务详情。");

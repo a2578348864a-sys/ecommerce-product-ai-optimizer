@@ -40,6 +40,8 @@ export interface DemoAccessInfo {
   maxAiJobs?: number;
   usedAiJobs?: number;
   remainingAiJobs?: number;
+  /** V3.1 Phase 1：显式凭据判别（契约 02 / §9）；anonymous 时 UI 隐藏无消费路径的研究额度（契约 04-4 / §25）。 */
+  credentialKind?: "password" | "anonymous";
 }
 
 const TOKEN_KEY = "qx:access-token:session:v1";
@@ -169,8 +171,36 @@ export function updateDemoAccessSnapshot(snapshot: DemoAccessInfo): void {
   }
 }
 
+/**
+ * V3.1 Phase 1：Guest 模式标记。
+ * Anonymous Guest 的 token 只在 HttpOnly Cookie（契约 09），sessionStorage 永无 token（§17 / §18）；
+ * 因此 mode=demo 且无 sessionStorage token 即 guest 会话（与遗留 visitor 的 mode=demo+token 明确区分）。
+ */
+export function isGuestMode(): boolean {
+  return getAccessMode() === "demo" && !getAccessToken();
+}
+
+/**
+ * Guest 铸造成功后保存「轻量会话标记」（不含 token）。
+ * 只存 mode=demo + 服务端权威 demoAccess 快照；token 由浏览器自动随 Cookie 发送。
+ */
+export function saveGuestAccess(demoAccess: DemoAccessInfo): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(MODE_KEY, "demo");
+    storage.setItem(DEMO_ACCESS_KEY, JSON.stringify(demoAccess));
+    storage.removeItem(TOKEN_KEY);
+    storage.removeItem("qx:access-password:session:v2");
+    storage.removeItem("qx:access-expires:session:v2");
+    storage.removeItem("qx:access-password:v1");
+  } catch {
+    // ignore
+  }
+}
+
 export function isAuthenticated(): boolean {
-  return !!getAccessToken();
+  return !!getAccessToken() || isGuestMode();
 }
 
 /**

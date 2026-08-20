@@ -1,8 +1,16 @@
 "use client";
 
+/**
+ * V3.1 Phase 1 — 首页（模式感知渲染，契约 01 / §6 / §12 / §40）
+ *   public_showcase → 已认证（guest/遗留）→ 工作台；否则 → GuestLanding（一键进入演示）
+ *   local_owner（显式）→ 无认证回环信任 → 直接工作台（§6：NO AUTH）
+ *   缺省（未显式设置 QX_RUNTIME_MODE）= v3.0.1 现状语义 → 保持现有登录流程（安全默认）
+ * GET / 不创建 guest / sandbox / quota（只有点击按钮才 POST /api/auth/guest，§12）。
+ */
 import { useEffect, useState } from "react";
 import { HomeDashboardClient } from "@/components/HomeDashboardClient";
 import { LoginPage } from "@/components/LoginPage";
+import { GuestLanding } from "@/components/GuestLanding";
 import {
   saveAccessToken,
   getAccessToken,
@@ -12,16 +20,30 @@ import {
 import { getSafeLoginRedirect } from "@/lib/client/loginRedirect";
 import { clearAllSessionDrafts } from "@/lib/client/useSessionDraft";
 
+interface RuntimeInfo {
+  mode: "local_owner" | "public_showcase";
+  noAuthOwner: boolean;
+}
+
 export default function Home() {
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Hydrate from sessionStorage on mount
+  // Hydrate from sessionStorage + query runtime mode (server authority, contract 01)
   useEffect(() => {
     setAuthenticated(isAuthenticated());
-    setReady(true);
+    fetch("/api/runtime-mode", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (json?.ok && (json.mode === "local_owner" || json.mode === "public_showcase")) {
+          setRuntime({ mode: json.mode, noAuthOwner: json.noAuthOwner === true });
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setReady(true));
   }, []);
 
   async function handleLogin(password: string) {
@@ -73,6 +95,7 @@ export default function Home() {
             standaloneImageUnitsUsed: json.demoAccess.standaloneImageUnitsUsed,
             standaloneImageUnitsReserved: json.demoAccess.standaloneImageUnitsReserved,
             standaloneImageUnitsRemaining: json.demoAccess.standaloneImageUnitsRemaining,
+            credentialKind: json.demoAccess.credentialKind,
           }
         : undefined;
 
@@ -96,6 +119,17 @@ export default function Home() {
 
   if (!ready) return null;
 
+  // PUBLIC_SHOWCASE：已认证（guest 或遗留会话）→ 工作台；否则 → 一键进入演示（§40）
+  if (runtime?.mode === "public_showcase") {
+    return authenticated ? <HomeDashboardClient /> : <GuestLanding />;
+  }
+
+  // LOCAL_OWNER 显式配置：无认证回环信任 → 直接工作台（§6）
+  if (runtime?.mode === "local_owner" && runtime.noAuthOwner) {
+    return <HomeDashboardClient />;
+  }
+
+  // 缺省（v3.0.1 现状语义）或 mode 读取失败 → 保持现有登录流程
   if (!authenticated) {
     return (
       <LoginPage

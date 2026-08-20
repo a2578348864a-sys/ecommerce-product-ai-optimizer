@@ -34,7 +34,13 @@ import {
   releaseDemoStandaloneStudioQuota,
   reserveDemoStandaloneStudioQuota,
 } from "@/lib/server/demoAccess";
-import { getAccessContext, type AccessContext, type DemoAccessContext } from "@/lib/server/accessPassword";
+import {
+  resolveAccessContext,
+  type AccessContext,
+  type DemoAccessContext,
+} from "@/lib/server/accessPassword";
+import { isPublicShowcase } from "@/lib/server/runtimeMode";
+import { isAnonymousGuest, isPublicGuestRouteDenied } from "@/lib/server/guestScope";
 import { bindProviderCallStartBoundary } from "@/lib/server/aiClient";
 import {
   buildDemoProductJourneySnapshot,
@@ -63,6 +69,8 @@ export interface DemoAccessSnapshot extends DemoProductJourneySnapshot {
   standaloneImageUnitsUsed: number;
   standaloneImageUnitsReserved: number;
   standaloneImageUnitsRemaining: number;
+  /** V3.1 Phase 1：显式凭据判别（契约 02 / §9）；UI 据此隐藏无消费路径的研究额度（契约 04-4）。 */
+  credentialKind: "password" | "anonymous";
 }
 
 export type DemoAiQuotaReservation = {
@@ -172,6 +180,7 @@ export function buildDemoAccessSnapshot(record: DemoAccessRecord): DemoAccessSna
     standaloneImageUnitsUsed: image.used,
     standaloneImageUnitsReserved: image.reserved,
     standaloneImageUnitsRemaining: image.remaining,
+    credentialKind: record.credentialKind === "anonymous" ? "anonymous" : "password",
   };
 }
 
@@ -185,11 +194,25 @@ export function requireAuthenticated(
   request: NextRequest,
   body?: Record<string, unknown>,
 ): GuardResult {
-  const ctx = getAccessContext(request, body);
-  if (!ctx) {
+  const resolved = resolveAccessContext(request, body);
+  if (!resolved.ok) {
+    if (resolved.reason === "conflict") {
+      return guardError(401, "token_context_conflict", "访问凭据冲突，请重新登录后再操作。");
+    }
+    if (resolved.reason === "origin") {
+      return guardError(403, "origin_mismatch", "请求来源校验失败。");
+    }
     return guardError(401, "invalid_access", "请先登录后再操作。");
   }
-  return { ok: true, context: ctx };
+  // Public guest scope deny-list（契约 01-5 / §20；服务器端强制，不靠隐藏 UI）
+  if (isPublicShowcase() && isAnonymousGuest(resolved.context)) {
+    const pathname = (request as { nextUrl?: { pathname?: string } }).nextUrl?.pathname ?? "";
+    const denied = isPublicGuestRouteDenied(request.method || "GET", pathname);
+    if (denied) {
+      return guardError(403, denied, "公开体验模式仅支持演示案例，此操作不可用。");
+    }
+  }
+  return { ok: true, context: resolved.context };
 }
 
 // ── requireOwnerOnly ────────────────────────────
@@ -202,14 +225,20 @@ export function requireOwnerOnly(
   request: NextRequest,
   body?: Record<string, unknown>,
 ): GuardResult {
-  const ctx = getAccessContext(request, body);
-  if (!ctx) {
+  const resolved = resolveAccessContext(request, body);
+  if (!resolved.ok) {
+    if (resolved.reason === "conflict") {
+      return guardError(401, "token_context_conflict", "访问凭据冲突，请重新登录后再操作。");
+    }
+    if (resolved.reason === "origin") {
+      return guardError(403, "origin_mismatch", "请求来源校验失败。");
+    }
     return guardError(401, "invalid_access", "请先登录后再操作。");
   }
-  if (ctx.mode === "demo") {
+  if (resolved.context.mode === "demo") {
     return guardError(403, "demo_action_forbidden", getDemoForbiddenMessage("write"));
   }
-  return { ok: true, context: ctx };
+  return { ok: true, context: resolved.context };
 }
 
 // ── Demo forbidden messages ─────────────────────

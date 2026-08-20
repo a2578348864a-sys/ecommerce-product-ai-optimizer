@@ -9,6 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { isPublicShowcase } from "@/lib/server/runtimeMode";
 import { getAccessPassword } from "@/lib/server/accessPassword";
 import { clearDemoAccessLegacyExpiry, findDemoAccessByPassword } from "@/lib/server/demoAccess";
 import { createOwnerSession, createDemoSession } from "@/lib/server/accessSession";
@@ -16,6 +17,14 @@ import { generateSignedToken } from "@/lib/server/signedToken";
 import { buildDemoAccessSnapshot } from "@/lib/server/demoGuard";
 
 export async function POST(request: NextRequest) {
+  // PUBLIC_SHOWCASE：无密码 / 无访客码 / 无注册（契约 01-4 / §7）；唯一入口 = POST /api/auth/guest
+  if (isPublicShowcase()) {
+    return NextResponse.json(
+      { ok: false, error: { code: "guest_login_disabled", message: "公开体验模式无需密码，请直接进入演示。" } },
+      { status: 403 }
+    );
+  }
+
   // Parse body
   let body: { password?: string };
   try {
