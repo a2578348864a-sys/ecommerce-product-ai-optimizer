@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, updateDemoAccessSnapshot, type DemoAccessInfo } from "@/lib/client/accessToken";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { useRouter } from "next/navigation";
 import { ImageScenePresetPicker } from "@/components/image-studio/ImageScenePresetPicker";
@@ -346,6 +346,9 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
         ? parsed.payload as { ok?: boolean; data?: ImageGenerateResult; error?: { code?: string } }
         : { ok: false, error: parsed.error };
       if (!res.ok || !json.ok) {
+        if (json && typeof json === "object" && "demoAccess" in json) {
+          updateDemoAccessSnapshot((json as { demoAccess: DemoAccessInfo }).demoAccess);
+        }
         if (json.error?.code === "image_idempotency_conflict" || json.error?.code === "handoff_stale"
           || json.error?.code === "handoff_revision_conflict" || json.error?.code === "task_result_conflict") {
           setRequestId(null);
@@ -366,6 +369,9 @@ export function ImageHandoffSection({ taskId, onCommitted, onProgressChange }: {
         canGenerate: false,
       } : current);
       setNotice({ tone: "info", text: data.idempotentReplay ? "已恢复同一请求的已保存结果。" : "图片草稿已生成，需人工复核后使用。" });
+      if ("demoAccess" in json && json.demoAccess) {
+        updateDemoAccessSnapshot((json as { demoAccess: DemoAccessInfo }).demoAccess);
+      }
       setRequestId(null);
       await loadState();
       onCommitted?.();

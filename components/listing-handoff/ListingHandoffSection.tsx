@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buildAccessHeaders } from "@/lib/client/accessToken";
+import { buildAccessHeaders, updateDemoAccessSnapshot, type DemoAccessInfo } from "@/lib/client/accessToken";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { copyPlainText } from "@/lib/client/copyPlainText";
 
@@ -252,16 +252,23 @@ export function ListingHandoffSection({
         return;
       }
       if (!res.ok) {
-        const json = (await res.json()) as { error?: { code?: string; message?: string } };
+        const json = (await res.json()) as { error?: { code?: string; message?: string } } & { demoAccess?: DemoAccessInfo };
         if (json.error?.code === "handoff_stale" || json.error?.code === "handoff_revision_conflict") {
           handleConflict();
           return;
+        }
+        if (json.demoAccess) {
+          updateDemoAccessSnapshot(json.demoAccess);
         }
         setNotice({ tone: "error", text: `生成失败：${json.error?.message ?? "请重试。"}` });
         setRetryBody(body as unknown as Record<string, unknown>);
         return;
       }
       const json = (await res.json()) as GenerateResponse;
+      const demoAccessSnapshot = (json as { demoAccess?: DemoAccessInfo }).demoAccess;
+      if (demoAccessSnapshot) {
+        updateDemoAccessSnapshot(demoAccessSnapshot);
+      }
       if (mounted.current) {
         if (json.ok && json.data.idempotentReplay) {
           setNotice({ tone: "info", text: "该请求已成功生成过，未重复调用。" });
