@@ -3119,7 +3119,7 @@ export const GOLDEN_DEMO_TEMPLATE_RESULT_JSON: Record<string, unknown> = {
             "subjectFingerprint": "39c8566f921d86b7"
           }
         },
-        "handoffFingerprint": "dab0aab993ec7f7b260cfff349ee1665396d5f99df0df68cd80e1b330c7b7bfe"
+        "handoffFingerprint": "7ebfa663d3d20fdf1f7c68d1ecb40095b49dc3d1ff849f7f346ee9adfa75a461"
       }
     ]
   },

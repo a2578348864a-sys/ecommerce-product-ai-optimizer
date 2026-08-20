@@ -250,6 +250,9 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
     expect(ref?.assetFingerprint).toBe(
       createHash("sha256").update("visual-reference:" + parsed?.contentHash).digest("hex"),
     );
+    // 存储 handoff 完整可解析（handoffFingerprint 内容哈希随视觉参考重算一致）
+    const { parseProductCreativeHandoff } = await import("@/lib/productCreativeHandoff");
+    expect(parseProductCreativeHandoff(rj.creativeHandoff)).not.toBeNull();
   });
 
   it("门禁输入路径：adaptResearchContextForHandoff 从 seeded 副本解析出 productImage（task_snapshot）", async () => {
