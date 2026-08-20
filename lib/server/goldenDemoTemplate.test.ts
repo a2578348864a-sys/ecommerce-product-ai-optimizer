@@ -135,4 +135,75 @@ describe("ensureVisitorDemoCopy（Lazy Seed）", () => {
     expect(found?.taskId).toBeDefined();
     expect((await listSandboxTasks("demo-visitor-f")).length).toBe(1);
   });
+
+  // ── P1-IMG-01 LAYER-2：Image Draft Snapshot accessMode 契约 ──
+  it("GOLDEN_DEMO_IMAGE_ACCESS_MODE：Visitor 副本快照 accessMode = visitor（snapshot + items）", async () => {
+    const copy = await ensureVisitorDemoCopy("demo-visitor-access-1");
+    const tasks = await listSandboxTasks("demo-visitor-access-1");
+    const rj = JSON.parse(tasks.find((t) => t.id === copy?.taskId)?.resultJson ?? "{}");
+    expect(rj.aiImageDraftSnapshot.accessMode).toBe("visitor");
+    expect(rj.aiImageDraftSnapshot.items.length).toBeGreaterThan(0);
+    for (const item of rj.aiImageDraftSnapshot.items) {
+      expect(item.accessMode).toBe("visitor");
+    }
+  });
+
+  it("OWNER_IMAGE_ACCESS_MODE：模板静态素材保持 owner（Owner 上下文不被规范化路径覆盖）", async () => {
+    const { GOLDEN_DEMO_TEMPLATE_RESULT_JSON } = await import("@/lib/server/goldenDemoTemplateData");
+    const snap = GOLDEN_DEMO_TEMPLATE_RESULT_JSON.aiImageDraftSnapshot as {
+      accessMode?: string;
+      items?: { accessMode?: string }[];
+    };
+    // 素材保真：模板静态数据保留原始 owner 采集快照（owner 正式任务路径不经 sandbox producer）
+    expect(snap.accessMode).toBe("owner");
+    expect((snap.items ?? []).length).toBeGreaterThan(0);
+    for (const item of snap.items ?? []) {
+      expect(item.accessMode).toBe("owner");
+    }
+    // 只读防改：seed 产物必须与静态素材解耦（新副本永远 visitor）
+    const copy = await ensureVisitorDemoCopy("demo-visitor-access-2");
+    const tasks = await listSandboxTasks("demo-visitor-access-2");
+    const rj = JSON.parse(tasks.find((t) => t.id === copy?.taskId)?.resultJson ?? "{}");
+    expect(rj.aiImageDraftSnapshot.accessMode).toBe("visitor");
+  });
+
+  it("NO_OWNER_TO_VISITOR_LEAKAGE：副本不含 owner 私有标识 / 凭据 / 绝对路径", async () => {
+    const copy = await ensureVisitorDemoCopy("demo-visitor-leak");
+    const tasks = await listSandboxTasks("demo-visitor-leak");
+    const raw = tasks.find((t) => t.id === copy?.taskId)?.resultJson ?? "";
+    const leaks: string[] = [];
+    for (const needle of [
+      "ACCESS_PASSWORD=",
+      "PROOF_SIGNING_SECRET",
+      "D:\\",
+      "/Users/",
+      "/home/",
+      "cmsw7363z0002cih40bujcawy",
+      "authorization",
+      "Bearer ",
+      "sessionStorage",
+    ]) {
+      if (raw.includes(needle)) leaks.push(needle);
+    }
+    // API key 形态：词边界 + sk- + 长 key 体（避免命中 risk-/task- 等普通词）
+    if (/\bsk-[A-Za-z0-9]{8,}/.test(raw)) leaks.push("sk-<key>");
+    expect(leaks).toEqual([]);
+  });
+
+  it("NO_SECOND_AUTHORITY + Recreate 回归：重复 seed / 多 Visitor 副本一律 visitor（不依赖一次性迁移）", async () => {
+    // 同 Visitor 幂等重入
+    await ensureVisitorDemoCopy("demo-visitor-recreate-1");
+    await ensureVisitorDemoCopy("demo-visitor-recreate-1");
+    // 全新 Visitor（等价 DELETE_AND_RECREATE 的新副本）
+    await ensureVisitorDemoCopy("demo-visitor-recreate-2");
+    for (const vid of ["demo-visitor-recreate-1", "demo-visitor-recreate-2"]) {
+      const tasks = await listSandboxTasks(vid);
+      expect(tasks).toHaveLength(1);
+      const rj = JSON.parse(tasks[0].resultJson);
+      expect(rj.aiImageDraftSnapshot.accessMode).toBe("visitor");
+      for (const item of rj.aiImageDraftSnapshot.items) {
+        expect(item.accessMode).toBe("visitor");
+      }
+    }
+  });
 });

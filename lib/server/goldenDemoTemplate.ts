@@ -84,6 +84,22 @@ function buildTemplateResultJson(): string {
     demoTemplateVersion: GOLDEN_DEMO_TEMPLATE_VERSION,
     sourceProductKey: GOLDEN_DEMO_SOURCE_PRODUCT_KEY,
   } satisfies DemoTemplateMarker;
+  // P1-IMG-01 LAYER-2 fix：Image Draft Snapshot 的 accessMode 必须由注入目标
+  // 的 Task / Sandbox 执行上下文决定，而不是继承模板静态素材的 owner 值。
+  // 本函数只服务于 Visitor Sandbox 副本注入（ensureVisitorDemoCopy），
+  // 因此此处按 sandbox 上下文把 snapshot 与其 items 规范化为 visitor；
+  // 模板静态数据（GOLDEN_DEMO_TEMPLATE_RESULT_JSON）保持原始 owner 素材保真，
+  // Owner 正式任务路径不经由此函数，天然保持 owner。禁止 imageId / 商品特判，
+  // 禁止在 serving route 层改写（serving security gate 保持 KEEP）。
+  const draftSnapshot = isRecord(result.aiImageDraftSnapshot) ? result.aiImageDraftSnapshot : null;
+  if (draftSnapshot) {
+    draftSnapshot.accessMode = "visitor";
+    if (Array.isArray(draftSnapshot.items)) {
+      for (const item of draftSnapshot.items) {
+        if (isRecord(item)) item.accessMode = "visitor";
+      }
+    }
+  }
   // Staleness 契约：completion 记录当前证据指纹 → 演示采集/新增证据后研究状态自动进入
   // NEEDS_RECONFIRMATION（可体验"重新确认"流程），不会让旧结论冒充当前状态。
   const completion = isRecord(result.researchCompletion) ? result.researchCompletion : null;
