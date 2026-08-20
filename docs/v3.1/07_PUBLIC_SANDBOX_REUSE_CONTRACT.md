@@ -29,12 +29,13 @@
 
 1. **SANDBOX_REUSE_CONFIRMED = YES**：匿名 guest 复用现有 sandbox，**零改动**；
    `ensureVisitorDemoCopy` / demoAccessId 隔离 / 标记 / 写锁全部原样复用。
-2. 匿名 guest 的最小启动流 = 契约 02/03（记录 + 铸 token + Cookie）→ `GET /api/demo/golden` 惰性 seed → 后续
-   CRUD 按 demoAccessId 过滤。**不引入第二套沙箱系统**。
-3. 匿名记录对遗留密码登录 fail-closed（契约 02-6 已冻结）。
+2. 匿名 guest 的最小启动流 = 契约 02/03（记录 + 铸 token + Cookie，12h）→ `GET /api/demo/golden` 惰性 seed →
+   后续 CRUD 按 demoAccessId 过滤。**不引入第二套沙箱系统**。
+3. 匿名记录对遗留密码登录 fail-closed（契约 02-9 已冻结）。
 4. **GC 政策（FUTURE_IMPLEMENTATION，公开推广前必须立项）**：anonymous 记录 + 其 sandbox 副本需要过期回收；
    回收时金标副本用 demoTemplate 标记 + 固定候选 id 区分；机制冻结：按 `lastUsedAt` 超过阈值 + 总量上限双条件清理，
    值可调（建议 PRUNE_AFTER_DAYS=30、MAX_GUEST_RECORDS=500），实现期定值。
+   （与契约 02-6 一致：若启用记录 expiresAt，必须 ≤ token 过期；GC 是独立回收机制，不改变访问门控。）
 5. MVP 期间（未上 GC 前）数据增长由契约 05/08 的限流 + 铸造速率钳制；上线验收清单必须包含「记录数增长监控」。
 
 ## CONFIRMED_DEFECT

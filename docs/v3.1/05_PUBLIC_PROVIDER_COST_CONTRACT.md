@@ -27,31 +27,37 @@ image-draft/独立 studio 单次调用 n=1|2；`maxRetries:0`；错误只分类�
 ## FROZEN_DECISION
 
 1. **MAX_PROVIDER_CALLS_PER_ACTION 冻结**：RESEARCH = 4、LISTING = 1、IMAGE = 2（每动作）。
-2. 每动作必须声明 `(USER_QUOTA_UNIT, MAX_PROVIDER_CALLS)` 对，新增 Provider 路径必须过配额预留（契约 04-5）。
-3. **全局日上限（机制冻结，值为可调 env，缺省 = RECOMMENDED）**：
-   | 指标 | LOW | RECOMMENDED（缺省） | MAX_SAFE |
-   |---|---|---|---|
-   | GLOBAL_TEXT_CALLS_PER_DAY | 50 | 200 | 500 |
-   | GLOBAL_IMAGE_CALLS_PER_DAY | 10 | 40 | 100 |
-   实现：服务端全局计数器（进程内存 + 文件持久化，fail-closed，按 UTC 日重置）；达到上限 → 403 `global_cap_exceeded`。
-4. **guest（anonymous）maxAiCalls 档位**（配置驱动，禁止硬编码）：LOW=0（纯金标演示，真实 AI 全关，**出厂缺省**）、
-   RECOMMENDED=10、MAX_SAFE=30（每个 guest 每 24h Cookie 生命周期）。
-   档位切换只改 env/记录创建参数，不动代码。
-5. **IP HMAC 兜底（仅防滥用，不建身份）**：`bucket = HMAC(serverSecret, ip + 15minBucket)` 仅存服务端；
-   每 15 分钟每 IP：文本 ≤ 10、图片 ≤ 2；超限 429。不写 Cookie、不做指纹。
-6. 成本模型结论：出厂配置下 guest 真实 AI 消耗 = 0（scope + maxAiCalls=0 双 fail-closed）；
-   启用 RECOMMENDED 档的日成本上界 = 200 文本 + 40 图片（与单访客 10 文本 + 3+3 独立额度共同钳制）。
-7. 成本监控：全局计数器每日快照 + PM2 日志 grep（`providerCallsStarted`）；超 RECOMMENDED 80% 告警（实现期定告警通道）。
+2. 每动作必须声明 `(USER_QUOTA_UNIT, MAX_PROVIDER_CALLS)` 对，新增 Provider 路径必须过配额预留（契约 04-7）。
+3. **成本模型必须覆盖三类（§14 裁定）**，分别计算 `User Actions × Max Provider Calls × Cost Exposure`：
+   - RESEARCH：guest 动作数 = **0**（研究 OFF，`RESEARCH_PROVIDER_EXPOSURE = 0`）→ guest 研究侧暴露为 0；
+   - LISTING：guest 动作数 ≤ 1（配额 1）→ 每 guest 每 12h ≤ **1 次调用** → `LISTING_PROVIDER_EXPOSURE > 0`；
+   - IMAGE：guest 动作数 ≤ 1（配额 1）→ 每 guest 每 12h ≤ **2 次调用**（count=2 上限）→ `IMAGE_PROVIDER_EXPOSURE > 0`。
+   **即使 Research=0，Listing/Image 仍必须纳入 GLOBAL DAILY HARD CAP（§14 裁定）。**
+4. **不冻结「guest cost = 0」（§15 裁定）；冻结 GLOBAL_COST_IS_BOUNDED**：
+   - `GLOBAL_TEXT_CALLS_HARD_CAP_PER_DAY` 与 `GLOBAL_IMAGE_CALLS_HARD_CAP_PER_DAY` 均为 **ENV 可配**；
+   - 文本硬上限覆盖 Research/Listing/所有文本 Provider 调用；图片硬上限覆盖所有图片 Provider 调用；
+   - **若真实单价未知，允许以 Call Count Hard Cap 作为绝对保险**（§15 裁定）；两种 cap 语义等价接受其一或并用。
+   - 参考档位（初始建议值，ENV 可配，非冻结数字）：文本 50/200/500（LOW/REC/MAX_SAFE）、图片 10/40/100；
+     上线前按真实成本与流量校准。
+   - 实现：服务端全局计数器（进程内存 + 文件持久化，fail-closed，按 UTC 日重置）；达到上限 → 403 `global_cap_exceeded`。
+   - **Release Gate：任何 Provider 路径没有 Hard Cap → BLOCK（§15 裁定）。**
+5. **IP HMAC 兜底原则（§5 裁定，具体数字 ENV 可配）**：`IP_BACKSTOP IS NOT PRODUCT QUOTA`；
+   `IP_THRESHOLD > 单个正常 Guest 完整合法使用上限` 且预留 **NAT HEADROOM**；
+   不得出现「Guest UI 还有剩余额度，但正常使用被 IP Guard 提前阻断」；IP Guard 只针对明显异常创建、
+   明显 burst、批量 Session Abuse。上线前必须通过 **NAT / NORMAL USE TEST**。
+   实现：`bucket = HMAC(serverSecret, ip + 15minBucket)` 仅存服务端内存；不写 Cookie、不做指纹（契约 08）。
+6. 成本监控：全局计数器每日快照 + PM2 日志 grep（`providerCallsStarted`）；超配置值 80% 告警（实现期定告警通道）。
 
 ## CONFIRMED_DEFECT
 
-- D1（见契约 04）：交接链无配额 → 上述调用图在交接链上「每动作」可被访客无限触发，是唯一突破成本上界的路径；
-  治理后成本模型才成立。
+- D1（见契约 04）：交接链无配额 → 调用图在交接链上「每动作」可被访客无限触发，是唯一突破成本上界的路径；
+  治理（契约 04-7）完成前 PUBLIC RELEASE 被 D1 阻断。
 
 ## FUTURE_IMPLEMENTATION
 
-- 全局计数器模块 + 日重置；IP HMAC 桶（内存 LRU）；监控快照端点（owner-only）。
+- 全局计数器模块 + 日重置；IP HMAC 桶（内存 LRU，阈值公式 + NAT headroom 校准）；监控快照端点（owner-only）；
+  NAT/NORMAL USE TEST 脚本。
 
 ## UNKNOWN
 
-- 无阻断项。
+- 真实 Provider 单价未知（§15 裁定已允许 Call Count Hard Cap 先行）——不阻断。

@@ -16,18 +16,24 @@
 
 1. **遗留访客零行为变化**：登录、12h TTL、双头、sessionStorage、Banner 展示、金标演示、配额显示全部原样。
    v3.1 只做**增量**（铸 token 端点 + Cookie 来源 + 模式开关 + 加固），不重写既有路径。
-2. **存量数据零迁移**：不批量改写 `data/demo-access.json`；credentialKind 归一化在加载器内存中完成
+2. **Legacy Visitor 3/3 保持兼容（§3 裁定重申）**：standaloneListing=3 / standaloneImage=3 不变；
+   **不得为了 Anonymous Guest 修改历史 Visitor 数据**（匿名记录 1/1 缺省只作用于新建 anonymous 记录，env 驱动）。
+3. **productJourneys 语义不变（§4 裁定重申）**：继续 = 新建商品研究链计数；**不重解释为 AI Research Quota**；
+   对 legacy Visitor 展示与消费路径照旧；仅 anonymous guest UI 隐藏无消费路径的 0/5 条目（契约 04-4）。
+4. 存量数据**零迁移**：不批量改写 `data/demo-access.json`；credentialKind 归一化在加载器内存中完成
    （契约 02-1），不落盘改写存量记录。
-3. 匿名记录继续对遗留密码登录 fail-closed（回归测试固化，契约 13）。
-4. 契约文档对齐（D3）：实现期在 v3.1 代码落地时同步修订 `docs/architecture/auth-and-quota-contract.md`
+5. 匿名记录继续对遗留密码登录 fail-closed（§9 裁定；回归测试固化，契约 13）。
+6. 契约文档对齐（D3）：实现期在 v3.1 代码落地时同步修订 `docs/architecture/auth-and-quota-contract.md`
    （二选一：确认消费 / 迁移配额），保持「文档 = 代码」一致。
-5. U1 核查（实现期）：只读脚本输出存量记录「passwordHash 是否存在」的布尔统计（不打印内容、不改写），
+7. U1 核查（实现期）：只读脚本输出存量记录「passwordHash 是否存在」的布尔统计（不打印内容、不改写），
    确认无半成品记录被归一化误伤；发现异常记录只报告，不自动修复。
-6. v3.0.1 保持不可变：v3.1 任何发布都不移动/重写/force-push v3.0.1 与 40470a1 历史。
+8. **签名密钥语义（§7 裁定）**：ACCESS_PASSWORD 降为内部签名密钥后，遗留 stok_v1 token 的验签行为不变
+   （同一派生密钥）；遗留 Visitor 登录在密码 UX 移除前照旧，移除后按 Phase 4 顺序统一迁移（契约 11/13）。
+9. v3.0.1 保持不可变：v3.1 任何发布都不移动/重写/force-push v3.0.1 与 40470a1 历史。
 
 ## CONFIRMED_DEFECT
 
-- D3（文档漂移，治理见第 4 条）。不阻断 Phase 0（行为 fail-closed 安全，仅文档不准确）。
+- D3（文档漂移，治理见第 6 条）。不阻断 Phase 0（行为 fail-closed 安全，仅文档不准确）。
 
 ## FUTURE_IMPLEMENTATION
 
@@ -35,4 +41,4 @@
 
 ## UNKNOWN
 
-- U1（非阻断，见契约 02 UNKNOWN 与第 5 条）。
+- U1（非阻断，见契约 02 UNKNOWN 与第 7 条）。

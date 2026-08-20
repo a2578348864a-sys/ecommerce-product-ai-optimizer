@@ -19,22 +19,29 @@
 
 ## FROZEN_DECISION
 
-1. **公开上线必须单实例**（当前部署已满足）：`PUBLIC_SHOWCASE_NODE_INSTANCES = 1`，多实例禁止（契约 01-6）。
-2. **D2 治理 = 多实例前置条件**：任何扩容（PM2 cluster / 多进程 / 多机）前，demo-access 全部配额写路径必须
+1. **PUBLIC_SHOWCASE_NODE_INSTANCES = 1（§11 裁定，FROZEN）**：公开上线必须单实例（当前部署已满足）。
+2. **Release Gate 必须自动/脚本验证**：发布脚本检查 `pm2 jlist` 的 `exec_mode=fork_mode` 且 `instances=1`；
+   若 `instances > 1` 或 `cluster mode` → **PUBLIC_RELEASE = BLOCKED**，直到 `CROSS_PROCESS_ATOMICITY = PASS`。
+   验证脚本纳入发布 runbook（契约 13）。
+3. **D2 治理 = 多实例前置条件**：任何扩容（PM2 cluster / 多进程 / 多机）前，demo-access 全部配额写路径必须
    改走 `withDemoAccessStoreTransaction`；productJourney 模块补同一把锁；`createDemoAccess`（guest 铸造会高频调用）同样入锁。
-3. 管理脚本（建码等）必须经 store API 入锁写，禁止裸 `writeFileSync`（改造 `create-demo-password.mjs:82` 路径）。
-4. 单实例下 `Atomics.wait` 阻塞 ≤1s 可接受；多实例化时改成异步锁（避免请求路径阻塞）——多实例前必改。
-5. demo-sandbox.json 在单实例下已满足原子性要求（mutex + fsync + backup），**无需改动**。
-6. 锁语义不引入分布式事务、不引入 Redis/DB 迁移（范围冻结）。
+4. 管理脚本（建码等）必须经 store API 入锁写，禁止裸 `writeFileSync`（改造 `create-demo-password.mjs:82` 路径）。
+5. 单实例下 `Atomics.wait` 阻塞 ≤1s 可接受；多实例化时改成异步锁（避免请求路径阻塞）——多实例前必改。
+6. demo-sandbox.json 在单实例下已满足原子性要求（mutex + fsync + backup），**无需改动**。
+7. **单进程也必须过并发配额测试（§12 裁定）**：remaining=1 时两个同时到达的 HTTP 请求 →
+   必须恰好 1 success + 1 quota_exhausted；`SINGLE_PROCESS_QUOTA_ATOMICITY = PASS`；
+   不得只因为 PM2 single instance 就跳过并发测试（测试矩阵见契约 13）。
+8. 锁语义不引入分布式事务、不引入 Redis/DB 迁移（范围冻结）。
 
 ## CONFIRMED_DEFECT
 
 - D2（见契约 04）：跨进程非原子。当前单实例部署下**未触发**；公开模式会提高并发写频率（guest 铸造/配额结算），
-  单实例下仍安全；多实例前必须治理。
+  单实例下仍安全；多实例前必须治理（第 3 条）。
 
 ## FUTURE_IMPLEMENTATION
 
-- demo-access 全路径入锁（D2）；脚本改造；锁等待改异步（多实例时）；锁竞争监控（busy 计数日志）。
+- demo-access 全路径入锁（D2）；脚本改造；锁等待改异步（多实例时）；锁竞争监控（busy 计数日志）；
+  实例数验证脚本接入发布 runbook。
 
 ## UNKNOWN
 
