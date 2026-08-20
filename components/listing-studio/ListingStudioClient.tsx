@@ -176,8 +176,10 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
   );
 
   if (taskId) {
+    // P1-UI-01：与 ImageStudioClient 同构修复——单一 wrapper 作为 .main grid 唯一子项，
+    // 内部正常文档流（rail → banner → content），防止 rail 布局盒被父 grid 压缩。
     return (
-      <>
+      <div data-testid="listing-studio-task-flow" className="studio-main-flow">
         {progressRail}
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" data-testid="listing-mode-task-linked">
           来自研究记录（TASK-LINKED）· 事实来自商品研究确认
@@ -187,17 +189,17 @@ export function ListingStudioClient({ taskId = "" }: { taskId?: string }) {
             <ListingHandoffSection taskId={taskId} onProgressChange={handleTaskProgress} refreshSignal={refreshKey} />
           </div>
         </TaskStudioPreparation>
-      </>
+      </div>
     );
   }
   return (
-    <>
+    <div data-testid="listing-studio-standalone-flow" className="studio-main-flow">
       {progressRail}
       <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="listing-mode-standalone">
         独立工具（STANDALONE）· 资料由你提供，未经商品研究验证
       </div>
       <ManualListingStudioClient onProgressChange={handleManualProgress} />
-    </>
+    </div>
   );
 }
 

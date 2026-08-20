@@ -111,8 +111,11 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
   );
 
   if (taskId) {
+    // P1-UI-01：Studio 主区域必须以单一 wrapper 作为 .main grid 的唯一子项，
+    // 避免 rail/banner/content 各自成为 grid items 导致 rail 布局盒被压缩、
+    // TASK-LINKED banner 与 stepper 视觉重叠。内部保持正常文档流。
     return (
-      <>
+      <div data-testid="image-studio-task-flow" className="studio-main-flow">
         {progressRail}
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700" data-testid="image-mode-task-linked">
           来自研究记录（TASK-LINKED）· 商品身份 / 事实 / 参考图来自研究确认
@@ -122,17 +125,17 @@ export function ImageStudioClient({ taskId = "" }: { taskId?: string }) {
             <ImageHandoffSection key={handoffEpoch} taskId={taskId} onProgressChange={handleTaskProgress} />
           </div>
         </TaskStudioPreparation>
-      </>
+      </div>
     );
   }
   return (
-    <>
+    <div data-testid="image-studio-standalone-flow" className="studio-main-flow">
       {progressRail}
       <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" data-testid="image-mode-standalone">
         独立工具（STANDALONE）· 商品身份与参考图由你提供，未经商品研究验证
       </div>
       <ManualImageStudioClient onProgressChange={handleManualProgress} />
-    </>
+    </div>
   );
 }
 

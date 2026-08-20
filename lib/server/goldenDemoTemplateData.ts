@@ -129,6 +129,328 @@ export const GOLDEN_DEMO_TEMPLATE_RESULT_JSON: Record<string, unknown> = {
           "actorRef": "owner:v1"
         },
         "confirmedAt": "2026-08-16T19:26:11.484Z"
+      },
+      {
+        "evidenceId": "1e2dcd50-0573-4d45-b17e-02d21e3575a2",
+        "sourceType": "browser",
+        "sourceSite": "amazon",
+        "pageUrl": "https://www.amazon.com/dp/B0F2BF31PW?language=en_US",
+        "marketplace": "amazon.com",
+        "locale": null,
+        "currency": "USD",
+        "entityBinding": {
+          "bound": true,
+          "urlAsin": "B0F2BF31PW",
+          "pageAsin": "B0F2BF31PW",
+          "proof": {
+            "urlMatchesExpected": true,
+            "pageAnchorMatchesExpected": true,
+            "productContainerFound": true
+          }
+        },
+        "collectorVersion": "amazon-detail-page-extractor.v1",
+        "capturedAt": "2026-08-20T08:23:54.753Z",
+        "fields": {
+          "asin": {
+            "value": "B0F2BF31PW",
+            "status": "correct",
+            "reason": null,
+            "nature": "snapshot"
+          },
+          "title": {
+            "value": "THERMOS FUNTAINER Water Bottle with Straw, 12oz, Construction",
+            "status": "correct",
+            "reason": null,
+            "nature": "snapshot"
+          },
+          "price": {
+            "value": null,
+            "status": "unknown",
+            "reason": "selector_not_found",
+            "nature": "snapshot"
+          },
+          "bsr": {
+            "value": 8,
+            "status": "correct",
+            "reason": null,
+            "nature": "snapshot"
+          },
+          "rating": {
+            "value": 4.7,
+            "status": "correct",
+            "reason": null,
+            "nature": "snapshot"
+          },
+          "reviewCount": {
+            "value": 48135,
+            "status": "correct",
+            "reason": null,
+            "nature": "snapshot"
+          }
+        },
+        "productInfo": {
+          "schemaVersion": "amazon-product-info-extraction.v1",
+          "rows": [
+            {
+              "label": "Brand Name",
+              "value": "THERMOS",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Recommended Uses For Product",
+              "value": "Water",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Age Range Description",
+              "value": "Kid",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Model Name",
+              "value": "FUNTAINER 12 Ounce Bottle",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Included Components",
+              "value": "kids water bottle",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Number Of Lid Components",
+              "value": "3 pieces",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Straw Assembly Type",
+              "value": "Multi-component with valve",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "UPC",
+              "value": "041205772453",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Manufacturer",
+              "value": "THERMOS",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Global Trade Identification Number",
+              "value": "00041205772453",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Item Type Name",
+              "value": "insulated-beverage-bottles",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Unit Count",
+              "value": "1 Count",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Best Sellers Rank",
+              "value": "#8 in Kitchen & Dining (See Top 100 in Kitchen & Dining) #2 in Insulated Bottles",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "ASIN",
+              "value": "B0F2BF31PW",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Customer Reviews",
+              "value": "4.7 4.7 out of 5 stars (48,135) var dpAcrHasRegisteredArcLinkClickAction; P.when('A', 'ready').execute(function(A) { if (dpAcrHasRegisteredArcLinkClickAction !== true) { dpAcrHasRegisteredArcLinkClick",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Steel Grade",
+              "value": "18/8 stainless steel",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Material Type",
+              "value": "Stainless Steel",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Straw Material",
+              "value": "Clear plastic",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Product Care Instructions",
+              "value": "Top Rack Dishwasher Safe",
+              "sourceSection": "productDetails_depthLeftSections"
+            },
+            {
+              "label": "Capacity",
+              "value": "12 ounces",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Metric Capacity",
+              "value": "355ml",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Item Dimensions W x H",
+              "value": "2.7\"W x 6.9\"H",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Item Weight",
+              "value": "0.22 kg",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Number of Items",
+              "value": "1",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Base Diameter",
+              "value": "2.7 inches",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Recommended Use",
+              "value": "School and daily use",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Cold Retention Duration",
+              "value": "Up to 12 hours",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Insulation Technology",
+              "value": "Vacuum insulation",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Bottle Body Construction",
+              "value": "Double-wall vacuum insulated",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Additional Features",
+              "value": "Cold 12 Hours, Double Wall, Vacuum Insulated",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Lid Mechanism",
+              "value": "Push button",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Leak Proof Feature",
+              "value": "When Closed",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Lid Opening Mechanism",
+              "value": "Push button with flip-up spout",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Handle Type",
+              "value": "Integrated carry handle with soft grip",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Handle Attachment",
+              "value": "Integrated Swing Handle",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Hot Liquid Compatibility",
+              "value": "Not for hot liquids",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Cap Type",
+              "value": "Flip Top Cap",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Color",
+              "value": "Construction",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Lid Color",
+              "value": "Light Blue",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Body Finish",
+              "value": "Matte Silver",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Accent Color",
+              "value": "Orange",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Theme",
+              "value": "Construction",
+              "sourceSection": "productDetails_depthRightSections"
+            },
+            {
+              "label": "Brand",
+              "value": "THERMOS",
+              "sourceSection": "productOverview_feature_div"
+            },
+            {
+              "label": "Recommended Uses For Product",
+              "value": "Water",
+              "sourceSection": "productOverview_feature_div"
+            },
+            {
+              "label": "Item Highlight",
+              "value": "(function(f) {var _np=(window.P._namespace(\"DetailPageProductOverviewTemplatesJava\"));if(_np.guardFatal){_np.guardFatal(f)(_np);}else{f(_np);}}(function(P) { P.when('A').execute(function(A){ A.on('a:t",
+              "sourceSection": "productOverview_feature_div"
+            },
+            {
+              "label": "Capacity",
+              "value": "12 ounces",
+              "sourceSection": "productOverview_feature_div"
+            },
+            {
+              "label": "Color",
+              "value": "Construction",
+              "sourceSection": "productOverview_feature_div"
+            }
+          ],
+          "canonicalFacts": {
+            "brand": "THERMOS",
+            "product_type": "insulated-beverage-bottles",
+            "series_or_model": "FUNTAINER 12 Ounce Bottle",
+            "material": "Stainless Steel",
+            "capacity": "12 ounces",
+            "dimensions": "2.7\"W x 6.9\"H",
+            "weight": "0.22 kg",
+            "color_or_variant": "Construction",
+            "quantity_or_pack_size": "1 Count",
+            "functional_feature": "Cold 12 Hours, Double Wall, Vacuum Insulated",
+            "care": "Top Rack Dishwasher Safe",
+            "included_components": "kids water bottle",
+            "operation": "Flip Top Cap"
+          },
+          "capturedAt": "2026-08-20T08:05:47.198Z",
+          "collectorVersion": "amazon-product-info-extraction.v1"
+        },
+        "failureReasons": [],
+        "confirmedBy": {
+          "mode": "owner",
+          "actorRef": "owner:v1"
+        },
+        "confirmedAt": "2026-08-20T08:30:00.000Z"
       }
     ],
     "updatedAt": "2026-08-16T19:26:11.486Z"
@@ -2287,7 +2609,7 @@ export const GOLDEN_DEMO_TEMPLATE_RESULT_JSON: Record<string, unknown> = {
             "factId": "f8c2e054-cda5-4986-b080-a0f128b42fa9",
             "field": "series_or_model",
             "label": "系列/型号",
-            "value": "FUNTAINER Water",
+            "value": "FUNTAINER 12 Ounce Bottle",
             "evidenceTier": "human_confirmed",
             "usageScopes": [
               "internal",
@@ -2301,10 +2623,10 @@ export const GOLDEN_DEMO_TEMPLATE_RESULT_JSON: Record<string, unknown> = {
                 "mode": "owner",
                 "subjectFingerprint": "39c8566f921d86b7"
               },
-              "confirmedAt": "2026-08-17T17:26:27.310Z",
-              "confirmationReference": "confirm:58754461366e9ffd65abb4ad5cd05b4c"
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:series_or_model"
             },
-            "confirmedAt": "2026-08-17T17:26:27.310Z",
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
             "confirmedBy": {
               "mode": "owner",
               "subjectFingerprint": "39c8566f921d86b7"
@@ -2461,6 +2783,222 @@ export const GOLDEN_DEMO_TEMPLATE_RESULT_JSON: Record<string, unknown> = {
               "mode": "owner",
               "subjectFingerprint": "39c8566f921d86b7"
             }
+          },
+          {
+            "factId": "a5a3adb9-2e8d-4ada-9671-02054a58d946",
+            "field": "material",
+            "label": "材质",
+            "value": "Stainless Steel",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "material",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:material"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "e6cb306b-1cdf-4bab-a626-4ab4a199ea5a",
+            "field": "dimensions",
+            "label": "尺寸",
+            "value": "2.7\"W x 6.9\"H",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "dimensions",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:dimensions"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "83a8c960-cc35-42ec-8194-ef261da5e57e",
+            "field": "weight",
+            "label": "重量",
+            "value": "0.22 kg",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "weight",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:weight"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "994ffdd0-c55c-43ee-a901-6673203bcde0",
+            "field": "color_or_variant",
+            "label": "颜色/款式",
+            "value": "Construction",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "color_or_variant",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:color_or_variant"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "f3e807db-0f85-4372-b33b-a85d8f7152a4",
+            "field": "quantity_or_pack_size",
+            "label": "数量/包装",
+            "value": "1 Count",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "quantity_or_pack_size",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:quantity_or_pack_size"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "9b3c0cc0-af6a-4de9-b666-957c0b52057a",
+            "field": "care",
+            "label": "清洁保养",
+            "value": "Top Rack Dishwasher Safe",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "care",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:care"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "672a0356-e64a-4a06-afc0-19bded2f1438",
+            "field": "operation",
+            "label": "操作方式",
+            "value": "Flip Top Cap",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "operation",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:operation"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
+          },
+          {
+            "factId": "81f634e5-b229-4df6-922e-3c7dcd87adba",
+            "field": "functional_feature",
+            "label": "功能特性",
+            "value": "Cold 12 Hours, Double Wall, Vacuum Insulated",
+            "evidenceTier": "human_confirmed",
+            "usageScopes": [
+              "internal",
+              "listing",
+              "image"
+            ],
+            "sourceRef": {
+              "sourceKind": "user_confirmation",
+              "sourceField": "functional_feature",
+              "confirmedBy": {
+                "mode": "owner",
+                "subjectFingerprint": "39c8566f921d86b7"
+              },
+              "confirmedAt": "2026-08-20T08:30:00.000Z",
+              "confirmationReference": "fact-candidates:amazon_product_info:functional_feature"
+            },
+            "confirmedAt": "2026-08-20T08:30:00.000Z",
+            "confirmedBy": {
+              "mode": "owner",
+              "subjectFingerprint": "39c8566f921d86b7"
+            }
           }
         ],
         "stableSourceFacts": [
@@ -2538,7 +3076,7 @@ export const GOLDEN_DEMO_TEMPLATE_RESULT_JSON: Record<string, unknown> = {
             "subjectFingerprint": "39c8566f921d86b7"
           }
         },
-        "handoffFingerprint": "efe5252eb4cef43c3f1f33428ee6df63863a244d08f023c160eee5a795cc93b2"
+        "handoffFingerprint": "dab0aab993ec7f7b260cfff349ee1665396d5f99df0df68cd80e1b330c7b7bfe"
       }
     ]
   },
