@@ -40,6 +40,7 @@ export const GUEST_CAPABILITY_ROUTES: ReadonlyArray<GuestCapabilityRoute> = [
   { capability: "view_evidence", method: "GET", pattern: "/api/tasks/:taskId/browser-evidence" },
   { capability: "view_evidence", method: "GET", pattern: "/api/tasks/:taskId/research-decision" },
   { capability: "view_existing_listing", method: "GET", pattern: "/api/tasks/:taskId/listing-handoff" },
+  { capability: "view_existing_listing", method: "GET", pattern: "/api/tasks/:taskId/creative-handoff" },
   { capability: "view_existing_listing", method: "GET", pattern: "/api/tasks/:taskId/listing-pack" },
   { capability: "view_existing_images", method: "GET", pattern: "/api/tasks/:taskId/image-handoff" },
   { capability: "view_existing_images", method: "GET", pattern: "/api/tasks/:taskId/image-draft" },

@@ -10,6 +10,7 @@ describe("Guest Capability Allow-list（§21-24：DEFAULT DENY）", () => {
     expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_abc/ai-evidence-summary")).toBe("view_evidence");
     expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_abc/competitor-evidence")).toBe("view_market_observations");
     expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_abc/listing-handoff")).toBe("view_existing_listing");
+    expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_abc/creative-handoff")).toBe("view_existing_listing");
     expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_abc/image-handoff")).toBe("view_existing_images");
     expect(resolveGuestCapability("GET", "/api/tasks/sandbox_task_abc/image-draft/img_1")).toBe("view_existing_images");
     expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_abc/listing-handoff")).toBe("generate_guest_listing");
