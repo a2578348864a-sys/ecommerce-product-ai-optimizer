@@ -201,8 +201,31 @@ export function saveGuestAccess(demoAccess: DemoAccessInfo): void {
   }
 }
 
+/** V3.1 local_owner（显式）：无认证回环信任的客户端会话标记（服务端始终为权威）。 */
+const NO_AUTH_OWNER_KEY = "qx:no-auth-owner:v1";
+
+export function isNoAuthOwnerMode(): boolean {
+  const storage = getStorage();
+  if (!storage) return false;
+  try {
+    return storage.getItem(NO_AUTH_OWNER_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setNoAuthOwnerMode(): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(NO_AUTH_OWNER_KEY, "1");
+  } catch {
+    // ignore
+  }
+}
+
 export function isAuthenticated(): boolean {
-  return !!getAccessToken() || isGuestMode();
+  return !!getAccessToken() || isGuestMode() || isNoAuthOwnerMode();
 }
 
 /**

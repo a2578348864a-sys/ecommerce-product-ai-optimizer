@@ -12,7 +12,7 @@ import {
 
 import {
   buildAccessHeaders,
-  getAccessToken,
+  isAuthenticated,
   updateDemoAccessInfo,
 } from "@/lib/client/accessToken";
 import { ResearchProductImage } from "@/components/ResearchProductImage";
@@ -720,7 +720,7 @@ export function ProductBatchManager() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!getAccessToken()) {
+    if (!isAuthenticated()) {
       setState("unauthenticated");
       setBatches([]);
       setSelectedBatch(null);

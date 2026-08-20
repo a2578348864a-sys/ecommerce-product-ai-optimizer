@@ -1290,9 +1290,10 @@ function OperationDecisionPanel({ taskId, lifecycle, onUpdated }: { taskId: stri
 }
 
 export function TaskRecordDetail({ id }: { id: string }) {
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const [accessPassword, , isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
   // V3.1 Phase 1: Anonymous Guest（凭据在 HttpOnly Cookie，sessionStorage 无 token/密码）视为已解锁
-  const unlocked = (isAccessPasswordReady && accessPassword.trim().length > 0) || isGuestMode();
+  // V3.1 local_owner（显式）：无认证回环信任 → 直接解锁
+  const unlocked = ((isAccessPasswordReady && accessPassword.trim().length > 0) || isGuestMode()) || noAuthOwner;
   const router = useRouter();
   const [record, setRecord] = useState<TaskCenterItem | null>(null);
 

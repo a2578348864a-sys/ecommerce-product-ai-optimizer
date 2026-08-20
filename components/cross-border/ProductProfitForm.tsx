@@ -344,8 +344,8 @@ function getProductConfidence(
 }
 
 export function ProductProfitForm() {
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, , isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   const [sharedProduct, updateShared] = useSharedProduct();
   const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<ProductProfitDraft>({
     storageKey: "qx:draft:products-new:v1",

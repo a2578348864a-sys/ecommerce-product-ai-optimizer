@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
+import { setNoAuthOwnerMode } from "@/lib/client/accessToken";
 
 type SidebarNavItem = { label: string; href: string; icon: LucideIcon };
 
@@ -133,6 +134,21 @@ export function WorkspaceSidebar() {
   }, [pathname]);
   const search = fromResearch ? "from=research" : "";
   const [sharedProduct] = useSharedProduct();
+  // V3.1 local_owner（显式）：无认证回环信任 → 设置客户端解锁标记（覆盖全部工作台页/深链）
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/runtime-mode", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.ok && json.mode === "local_owner" && json.noAuthOwner === true) {
+          setNoAuthOwnerMode();
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const productLabel = currentProductLabel(sharedProduct.productName);
   const productMeta = sharedProduct.category ? `品类：${sharedProduct.category}` : "商品资料已载入";
 

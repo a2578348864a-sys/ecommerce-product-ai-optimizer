@@ -386,6 +386,7 @@ type OpportunitiesFormProps = {
 type OpportunitiesFormContentProps = OpportunitiesFormProps & {
   accessPassword: string;
   isAccessPasswordReady: boolean;
+  noAuthOwner?: boolean;
   draftVal: string;
   setDraft: (value: string) => void;
   draftRestored: boolean;
@@ -410,7 +411,7 @@ export function OpportunitiesForm({
 }
 
 function OpportunitiesFormWithLocalAccess({ surface }: Pick<OpportunitiesFormProps, "surface">) {
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
+  const [accessPassword, , isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
   const { draftValue: draftVal, setDraftValue: setDraft, restored: draftRestored } = useLocalDraft<string>({
     storageKey: DRAFT_KEY,
     ttlMs: 10 * 60 * 1000,
@@ -420,6 +421,7 @@ function OpportunitiesFormWithLocalAccess({ surface }: Pick<OpportunitiesFormPro
     surface={surface}
     accessPassword={accessPassword}
     isAccessPasswordReady={isAccessPasswordReady}
+    noAuthOwner={noAuthOwner}
     draftVal={draftVal}
     setDraft={setDraft}
     draftRestored={draftRestored}
@@ -431,6 +433,7 @@ function OpportunitiesFormContent({
   visualFixture,
   accessPassword,
   isAccessPasswordReady,
+  noAuthOwner,
   draftVal,
   setDraft,
   draftRestored,
@@ -480,7 +483,7 @@ function OpportunitiesFormContent({
   const [openMoreId, setOpenMoreId] = useState<string | null>(null);
   const [moreMenuStyle, setMoreMenuStyle] = useState<React.CSSProperties>({ display: "none" });
 
-  const unlocked = visualFixtureMode || (isAccessPasswordReady && accessPassword.trim().length > 0);
+  const unlocked = visualFixtureMode || (isAccessPasswordReady && accessPassword.trim().length > 0) || noAuthOwner;
 
   // Restore draft on mount (only once)
   const didRestore = useRef(false);

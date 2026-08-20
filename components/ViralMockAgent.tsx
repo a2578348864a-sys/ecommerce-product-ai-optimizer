@@ -386,8 +386,8 @@ export function ViralMockAgent() {
   const setMaterialText = (value: string) => setDraftValue((current) => ({ ...current, materialText: value }));
   const setResult = (value: DisplayResult | null) => setDraftValue((current) => ({ ...current, result: value }));
   const setSavedRecordId = (value: string) => setDraftValue((current) => ({ ...current, savedRecordId: value }));
-  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   const [notice, setNotice] = useState("模拟拆解不消耗额度；AI 深度拆解会请求后端并消耗 AI 额度。");
   const [fieldError, setFieldError] = useState("");
   // accessPasswordError removed with password input — now handled by WorkspaceLockedPrompt

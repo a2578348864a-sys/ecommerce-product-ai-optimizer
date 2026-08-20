@@ -110,8 +110,8 @@ export function SourcingForm() {
   const setTargetPlatform = (value: string) => updateDraft({ targetPlatform: value });
   const setDescription = (value: string) => updateDraft({ description: value });
   const setResult = (value: SourcingData | null) => updateDraft({ result: value });
-  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savingTask, setSavingTask] = useState(false);

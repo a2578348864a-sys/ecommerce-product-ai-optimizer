@@ -15,6 +15,7 @@ import {
   saveAccessToken,
   getAccessToken,
   isAuthenticated,
+  setNoAuthOwnerMode,
   type DemoAccessInfo,
 } from "@/lib/client/accessToken";
 import { getSafeLoginRedirect } from "@/lib/client/loginRedirect";
@@ -40,6 +41,9 @@ export default function Home() {
       .then((json) => {
         if (json?.ok && (json.mode === "local_owner" || json.mode === "public_showcase")) {
           setRuntime({ mode: json.mode, noAuthOwner: json.noAuthOwner === true });
+          if (json.mode === "local_owner" && json.noAuthOwner === true) {
+            setNoAuthOwnerMode();
+          }
         }
       })
       .catch(() => undefined)

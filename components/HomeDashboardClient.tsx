@@ -151,7 +151,7 @@ function productLanguage(value: string) {
 }
 
 export function HomeDashboardClient() {
-  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
+  const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
   const [candidateLoad, setCandidateLoad] = useState<CandidateLoadState>({
     status: "loading",
     items: [],
@@ -171,7 +171,7 @@ export function HomeDashboardClient() {
   const [validating, setValidating] = useState(false);
   const [apiProbeStatus, setApiProbeStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
 
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
 
   // ── Password submit: validate against server BEFORE saving ──
   async function handlePasswordSubmit() {

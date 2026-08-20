@@ -192,8 +192,8 @@ function StatusIcon({ status }: { status: QueueStatus }) {
 }
 
 export function WorkflowBatchClient() {
-  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   const [input, setInput] = useState("");
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [batchId, setBatchId] = useState<string | null>(null);

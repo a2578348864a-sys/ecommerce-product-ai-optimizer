@@ -337,8 +337,8 @@ export function TaskDetailList({ title, items }: { title: string; items: string[
 }
 
 export function TaskRecordsList({ view = "records" }: { view?: "research" | "records" }) {
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, , isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   const [items, setItems] = useState<TaskCenterItem[]>([]);
   const [page, setPage] = useState<TaskPageInfo | null>(null);
   const [type, setType] = useState(defaultType);

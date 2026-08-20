@@ -81,8 +81,8 @@ const typeLabels: Record<string, string> = {
 
 export function SummaryForm() {
   const [sharedProduct] = useSharedProduct();
-  const [accessPassword, setAccessPassword, isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   const { draftValue, setDraftValue, clearDraft, restored } = useLocalDraft<SummaryDraft>({
     storageKey: "qx:draft:summary:v1",
     initialValue: {

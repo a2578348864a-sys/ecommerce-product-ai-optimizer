@@ -468,8 +468,8 @@ export function AgentRunClient({
   candidateMode?: boolean;
   candidateId?: string;
 }) {
-  const [accessPassword, , isAccessPasswordReady] = useAccessPassword();
-  const unlocked = isAccessPasswordReady && accessPassword.trim().length > 0;
+  const [accessPassword, , isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
+  const unlocked = isAccessPasswordReady && (accessPassword.trim().length > 0 || noAuthOwner);
   // F1：来自 Research Workbench 的「开始 AI 研究」入口携带 taskId → 保存时回写该任务
   const [linkedTaskId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isNoAuthOwnerMode, setNoAuthOwnerMode as applyNoAuthOwnerFlag } from "@/lib/client/accessToken";
 
 export const ACCESS_PASSWORD_STORAGE_KEY = "qx:access-password:v1";
 export const DEFAULT_ACCESS_PASSWORD_TTL_MS = 12 * 60 * 60 * 1000;
@@ -46,6 +47,7 @@ export type UseAccessPasswordResult = [
   AccessPasswordSetter,
   boolean,
   () => void,
+  boolean,
 ] & {
   accessPassword: string;
   setAccessPassword: AccessPasswordSetter;
@@ -54,6 +56,7 @@ export type UseAccessPasswordResult = [
   hasAccessPassword: boolean;
   isExpired: boolean;
   expiresAt: number | null;
+  noAuthOwner: boolean;
   saveAccessPassword: (value: string) => void;
   getValidAccessPassword: () => string;
 };
@@ -149,7 +152,7 @@ export function clearStoredAccessPassword(): void {
 }
 
 export function canRequestWithAccessPassword(isReady: boolean, password: string): boolean {
-  return isReady && password.trim().length > 0;
+  return (isReady && password.trim().length > 0) || isNoAuthOwnerMode();
 }
 
 // ── React hook ──
@@ -158,12 +161,31 @@ export function useAccessPassword(): UseAccessPasswordResult {
   const [password, setPasswordState] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [noAuthOwner, setNoAuthOwner] = useState(false);
 
   useEffect(() => {
     // Hydrate from sessionStorage — survives refresh within same tab.
     setPasswordState(getValidAccessPassword());
     setExpiresAt(getAccessPasswordExpiresAt());
+    setNoAuthOwner(isNoAuthOwnerMode());
     setHydrated(true);
+  }, []);
+
+  // V3.1 local_owner（显式）：无认证回环信任 → 页面解锁（runtime-mode 服务端权威）
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/runtime-mode", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.ok && json.mode === "local_owner" && json.noAuthOwner === true) {
+          applyNoAuthOwnerFlag();
+          setNoAuthOwner(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setPassword: AccessPasswordSetter = (value) => {
@@ -189,6 +211,7 @@ export function useAccessPassword(): UseAccessPasswordResult {
     setPassword,
     hydrated,
     clearPassword,
+    noAuthOwner,
   ] as UseAccessPasswordResult;
 
   result.accessPassword = password;
@@ -200,6 +223,7 @@ export function useAccessPassword(): UseAccessPasswordResult {
   result.expiresAt = expiresAt;
   result.saveAccessPassword = setPassword;
   result.getValidAccessPassword = getValidAccessPassword;
+  result.noAuthOwner = noAuthOwner;
 
   return result;
 }
