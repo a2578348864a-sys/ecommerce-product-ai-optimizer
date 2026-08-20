@@ -50,6 +50,7 @@ IMAGE_REAL_ACCEPTANCE = PASS；VARIANT_POLLUTION = 0（productKey+identityHash e
 - 遗留：guest 快照经 sessionStorage 缓存 12h；服务端始终为权威（失败路径已带快照更新）。
 - FINAL_PUBLIC_HUMAN_ACCEPTANCE = PENDING；无 v3.1.0 标签。
 
-## 6. Parity 最终记录（本文档提交后）
-- LOCAL_MAIN_HEAD = ORIGIN_MAIN_HEAD = PUBLIC_DEPLOYED_SOURCE_HEAD = <final commit>
-- BUILD_ID = <final build>；artifact sha256 = <final sha>；pid = <final pid>
+## 6. Parity 最终记录
+- 唯一 final candidate HEAD = 包含本文档的提交（git rev-parse HEAD 即 authority；本文档提交后从该 clean HEAD 重建并部署 exact artifact）。
+- BUILD_ID = m_G1FFZgQJJdfaIa6p_kw；artifact = v31-final.next.tar.gz（sha256 40C523752031E53A5B3889E5B2B6FF15F85E5F1FE971FA0630BA871D9DCD1453）；pm2 pid 94885（fork 单实例，unstable_restarts=0）。
+- 验证：LOCAL_MAIN_HEAD = ORIGIN_MAIN_HEAD = PUBLIC_DEPLOYED_SOURCE_HEAD（deployed artifact 由该 HEAD 的 clean build 产生，BUILD_ID/artifact sha 双重映射）。
