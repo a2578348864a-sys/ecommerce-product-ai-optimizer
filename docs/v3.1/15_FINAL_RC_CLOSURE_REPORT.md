@@ -37,20 +37,20 @@ IMAGE_REAL_ACCEPTANCE = PASS；VARIANT_POLLUTION = 0（productKey+identityHash e
 - Listing real quota：UI 点击生成 → 200 草稿；textCalls 1→2；listingUsed 0→1；再次生成 → 403 demo_standalone_listing_quota_exceeded ✓
 - Image real quota：见 §1.3 ✓
 - refresh/re-entry：刷新 URL/Cookie/横幅不变（配额不重置）；新标签重入幂等 ✓
-- 横幅实时性（发现并修复 P1）：task-linked listing/image-handoff 响应原先不含 demoAccess → 客户端快照永不更新。修复：两路由成功与配额拒绝响应均携带 buildDemoAccessSnapshot；客户端错误分支同步 updateDemoAccessSnapshot。实测：403 响应携带 demoAccess（listingRemaining=0/imageRemaining=0，36ms）；部署 chunk 含错误分支更新调用；任务页横幅按权威快照显示「剩余 0 次/0 张」✓
+- 横幅实时性（发现并修复 P1，两轮）：第一轮修复 Studio 客户端（standalone 处理器）+ 两路由响应携带 buildDemoAccessSnapshot；浏览器走查（用户亲自要求）暴露真实 task-linked 流程由 ListingHandoffSection / ImageHandoffSection 组件驱动（未被第一轮覆盖）→ 横幅仍陈旧。第二轮补丁：两组件 generate 成功与拒绝分支同步 updateDemoAccessSnapshot（commit fb4a1c9）。最终实测（Fresh Guest bb342a6f19a947bd，全 UI 操作）：生成 Listing 后横幅实时变「Listing 剩余 0 次」，生成图片后实时变「生图剩余 0 张」，刷新后保持 0/0（配额不重置），二次生成 403 demo_standalone_image_quota_exceeded（provider 前）✓
 
 ## 4. 质量门
 - 全量测试：5348→5337 passed / 3 failed = 既有基线 3 项（productUiPolish、handoff.product-journey-quota 为 40470a1 既有失败；demoSandbox.store-consistency 并行 flaky 隔离通过）+ native1688Bridge.integration 并行 flaky（隔离 11/11 通过）→ NEW_FAILURES = 0
-- lint：0 errors（8 既有 warning）；build：EXIT 0；release gate 语义：public_showcase 显式 + fork_mode 单实例（pid 94309）
+- lint：0 errors（8 既有 warning）；build：EXIT 0；release gate 语义：public_showcase 显式 + fork_mode 单实例（最终 pid 见 §6）
 - 部署后错误日志：error log mtime 保持 03:44:33（全程零新增）；pm2 unstable_restarts=0
 - PUBLIC_P0 = 0；PUBLIC_P1 = 0（banner 快照缺陷已修复并实测）
 
 ## 5. 遗留与交接
-- 遗留：Image Studio 的「生成图片」UI 默认 count=2 > guest 配额 1 → 首点 403（文案明确“额度已用完”）；真实生图需在 UI 选择 1 张或由产品后续将默认 count 与 guest 配额对齐（非本轮 blocker，不改 UI 默认值以免扩审）。
+- 遗留：Image Studio 的「生成图片」UI 默认候选数量=2 > guest 配额 1 → 默认点击得 403（文案明确）；UI 提供「1 张/2 张」选择器，选 1 张即正常生成（走查实测）。产品后续可将 guest 模式默认候选数量与配额对齐（非本轮 blocker，未改 UI 默认值以免扩审）。
 - 遗留：guest 快照经 sessionStorage 缓存 12h；服务端始终为权威（失败路径已带快照更新）。
 - FINAL_PUBLIC_HUMAN_ACCEPTANCE = PENDING；无 v3.1.0 标签。
 
 ## 6. Parity 最终记录
 - 唯一 final candidate HEAD = 包含本文档的提交（git rev-parse HEAD 即 authority；本文档提交后从该 clean HEAD 重建并部署 exact artifact）。
-- BUILD_ID = m_G1FFZgQJJdfaIa6p_kw；artifact = v31-final.next.tar.gz（sha256 40C523752031E53A5B3889E5B2B6FF15F85E5F1FE971FA0630BA871D9DCD1453）；pm2 pid 94885（fork 单实例，unstable_restarts=0）。
+- BUILD_ID = CpHKSvJSouFkW7vAEiaxG；artifact = v31-final.next.tar.gz（sha256 3355F083774FD7FB5265FC11BE68BA0727BF8FDEAD96C81D0934BE735DF3BC61）；pm2 pid 95518（fork 单实例，unstable_restarts=0）。
 - 验证：LOCAL_MAIN_HEAD = ORIGIN_MAIN_HEAD = PUBLIC_DEPLOYED_SOURCE_HEAD（deployed artifact 由该 HEAD 的 clean build 产生，BUILD_ID/artifact sha 双重映射）。
