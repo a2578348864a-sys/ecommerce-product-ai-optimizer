@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "amazon-recorded.v1",
+  "match": {
+    "inputHash": "wrong-entity-hash",
+    "asin": "B0CORRECT1",
+    "marketplace": "amazon.com"
+  },
+  "extraction": {
+    "entityType": "product_detail",
+    "observedEntity": "B0WRONG999",
+    "context": {
+      "host": "www.amazon.com",
+      "marketplace": "amazon.com",
+      "pageUrl": "https://www.amazon.com/dp/B0WRONG999",
+      "pageStatus": "amazon_normal",
+      "observedMarket": "US",
+      "observedCurrency": "USD",
+      "deliveryRegion": "Deliver to New York 10001",
+      "language": "en-us",
+      "amazonBrandMarkerPresent": true
+    },
+    "observations": [],
+    "adPlacements": [],
+    "detail": {
+      "asin": "B0WRONG999",
+      "title": "Wrong Product",
+      "price": 9.99,
+      "priceCurrency": "USD",
+      "rating": 3.1,
+      "reviewCount": 55,
+      "bsr": 999,
+      "sellingPoints": [],
+      "productUrl": "https://www.amazon.com/dp/B0WRONG999",
+      "imageUrl": null,
+      "position": 1,
+      "sponsored": false,
+      "capturedAt": "2026-08-21T12:00:00.000Z"
+    },
+    "rawCardCount": 1,
+    "keyContainerFound": true,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}

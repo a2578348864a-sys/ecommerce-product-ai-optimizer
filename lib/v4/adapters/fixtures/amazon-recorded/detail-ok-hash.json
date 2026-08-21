@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "amazon-recorded.v1",
+  "match": {
+    "inputHash": "detail-ok-hash",
+    "asin": "B0YOGA1234",
+    "marketplace": "amazon.com"
+  },
+  "extraction": {
+    "entityType": "product_detail",
+    "observedEntity": "B0YOGA1234",
+    "context": {
+      "host": "www.amazon.com",
+      "marketplace": "amazon.com",
+      "pageUrl": "https://www.amazon.com/dp/B0YOGA1234",
+      "pageStatus": "amazon_normal",
+      "observedMarket": "US",
+      "observedCurrency": "USD",
+      "deliveryRegion": "Deliver to New York 10001",
+      "language": "en-us",
+      "amazonBrandMarkerPresent": true
+    },
+    "observations": [],
+    "adPlacements": [],
+    "detail": {
+      "asin": "B0YOGA1234",
+      "title": "Yoga Mat Non-Slip TPE 6mm",
+      "price": 24.99,
+      "priceCurrency": "USD",
+      "rating": 4.5,
+      "reviewCount": 1234,
+      "bsr": 2541,
+      "sellingPoints": [],
+      "productUrl": "https://www.amazon.com/dp/B0YOGA1234",
+      "imageUrl": null,
+      "position": 1,
+      "sponsored": false,
+      "capturedAt": "2026-08-21T12:00:00.000Z"
+    },
+    "rawCardCount": 1,
+    "keyContainerFound": true,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}
