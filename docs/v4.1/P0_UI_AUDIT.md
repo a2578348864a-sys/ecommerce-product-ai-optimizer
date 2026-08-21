@@ -47,9 +47,30 @@
 6. **V3 回归入口已验证存在**：/api/demo/golden + /api/auth/guest + GuestLanding/DemoAccessBanner + 各测试；/opportunities*、listing-studio、image-studio、/tasks*、research、agent/run。
 7. **缺口**：/replay 两页无 page.test；演示页（listing-studio/image-studio/tasks/research）无 page.test（仅 API 层）；移动导航无 V4/Replay 项；首页零 V4 元素直接违反 §三/§四。
 
-## 4. 子 Agent C 审计结论（测试/安全/模式）——（待补）
+## 4. 子 Agent C 审计结论（测试/安全/运行模式）—— 要点
 
-## 5. 文件所有权表（草案，子 Agent A 复核后定稿）
+1. **测试清单**：app/v4 两页 page.test（off/on 占位）；components/v4 共 20+ 套（含 ReplayView 10、ReplayView.realbundle 5=真 bundle、ReplayTimeline、RunConsoleView、GateBPanel、FactGatePanel、CommercialPanel…）；lib/v4 全套；lib/server runtimeMode(4)/guestCapabilities(5)/releaseGates(7)/demoGuard(707 行)/ipBackstop/accessResolver；V3.1 flag-off 稳定性采样 stabilityRegression(53)+releaseGates(7)。只读复跑 13 套/105 用例全绿。
+2. **Public 允许请求清单**：guestCapabilities 白名单 26 条（仅 /api/demo/golden 与 /api/tasks/:taskId/* 的只读/受控动作），默认 DENY（未命中→403 guest_scope_denied）；/replay 页面与 /api/v4/replay 均不在白名单（Replay=SSR+文件直读，浏览器端 0 API 请求——设计；/api/v4/replay 仅 flag 门禁为观察项）。
+3. **V4 flag 契约**：QX_V4_GRAPH_ENABLED 仅 1/true/yes/on；off → /api/v4/* 404 + V4DisabledPlaceholder + 导航隐藏；本地 .env.local 已 on（本地预览），公网部署不设（保持 OFF）。
+4. **SSR/hydration/时区/Cookie**：时区已集中（labels.ts DISPLAY_TIME_ZONE=Asia/Shanghai；残留 new Date() 仅 server now prop 与 ReplayView 展示字段，无 toLocaleString 残留）；guest cookie 仅在 /api/auth/guest 设置（__Host-lqx_guest HttpOnly/Secure/12h）。
+5. **观察项与裁断（根 Agent 定稿）**：
+   - C 观察① sourceRunId/manifest.files[].path 未进脱敏扫描 → 裁断：非风险（sourceRunId=UUID 仅案例追溯展示；files[].path=allowlist 逻辑键名，非本地路径/PII/密钥）；不触发 §16-9；不回改 exporter（禁改范围）。
+   - C 观察② /replay 页面未跟随 flag 门禁 → 裁断：**有意设计**——Public Replay 是公开只读入口，与 Live flag 解耦（指令书 P4 公网故事依赖它）；不改。公网 /api/v4/* 仍 flag-off 404。
+   - C 观察③ 74/5/11 未定位 → 裁断：出处=指令书 §二 事实基线；已用真实 bundle 实测一致（74 事件/5 human_decision/11 Guard 展示项），测试可断言（ReplayView.realbundle.test.ts 已覆盖）。
+6. **回归矩阵定位**：hash 复算/篡改 409（schema.test + [bundleId] route）；脱敏 scanOk（schema + realbundle）；固定时区（realbundle:64-65）；410（legacy410.test 2）；B1 fail-closed（handoff quota test 191-204）；flag 404（v4 routes tests + page.test 占位）；V3 关键路由（runtimeMode/guestCapabilities/demoGuard/releaseGates/stabilityRegression）。
+
+## 5. 文件所有权表（定稿，对照 V4.1 指令书 §11）
+
+| 文件/区域 | 所有权 |
+|---|---|
+| components/WorkspaceSidebar.tsx（含 MobileNav、navGroups）、app/layout.tsx | 根 Agent（共享高冲突） |
+| lib/v4/featureFlag 与侧栏 flag 双源统一（runtime-mode 扩展 v4GraphEnabled） | 根 Agent |
+| components/v4/labels.ts（跨 A/B/C 共用） | 根 Agent 独占（冻结输出） |
+| app/page.tsx + components/{GuestLanding,HomeDashboardClient,LoginPage} 改造 | A（首页与 V4 展示组件）；CTA/模式契约由根 Agent 冻结 |
+| 首页新组件（Hero/Workflow/价值卡/FeaturedReplay/边界区） | A；共享展示件（RunStatusBadge/BudgetMeter/NodeFlow/ScenarioCard/FactStatusBadge）由 A 统一收口 |
+| app/v4/runs、app/v4/runs/[runId] 与 components/v4/api.ts、RunList*/RunConsole* | B（Runs 体验；api.ts 契约冻结） |
+| app/replay、[bundleId]、components/v4/{ReplayView,ReplayTimeline} | C（Replay 增强；真实 bundle 回归） |
+| lib/v4/**、app/api/v4/**、prisma/**、package.json、next.config.ts | 禁止修改（指令书 §四 非目标） |
 
 | 文件/区域 | 所有权 |
 |---|---|
@@ -65,4 +86,4 @@
 - 本地 .env.local 已启用 QX_V4_GRAPH_ENABLED=on + NEXT_PUBLIC_QX_V4_GRAPH_ENABLED=true（本地预览；公网部署保持 OFF，未改动公网环境）。
 
 ---
-审计状态：A ✅ 已并入；B ✅ 已并入；C ⏳ 运行中（并入后定稿）。本文件不含任何业务代码修改。
+审计状态：A ✅ / B ✅ / C ✅ 全部并入；**P0 定稿**。本文件不含任何业务代码修改（P0 仅审计文档与基线截图）。

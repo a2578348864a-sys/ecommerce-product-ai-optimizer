@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getRuntimeMode, isLocalOwnerNoAuthTrust } from "@/lib/server/runtimeMode";
+import { isV4GraphEnabled } from "@/lib/v4/featureFlag";
 
 export async function GET(request: NextRequest) {
   void request;
@@ -14,5 +15,7 @@ export async function GET(request: NextRequest) {
     ok: true,
     mode: getRuntimeMode(),
     noAuthOwner: isLocalOwnerNoAuthTrust(),
+    /** V4.1：服务端权威 V4 Graph flag（导航/CTA 唯一来源，消除 NEXT_PUBLIC 双源）。 */
+    v4GraphEnabled: isV4GraphEnabled(),
   });
 }

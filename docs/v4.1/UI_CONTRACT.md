@@ -73,9 +73,9 @@
 - 时间线步数、人工决策数、Content Guard 数、scanOk、脱敏字段数、bundle hash：仅从真实 bundle 派生；
 - 任何伪进度条；任何星级/评分冒充真实数据；任何「当前状态/统计」数字无 API 来源即省略或空态。
 
-## 7. E2E 验收矩阵（§十三，待 P0-C 请求清单并入后定稿）
+## 7. E2E 验收矩阵（§十三，P0-C 定稿）
 
-- Public：/ 首屏 V4 定位+Evidence/Human Decision+Public Badge；主 CTA 无滚动可见；一次点击进 /replay；真实 bundle 74 步/5 Gate/11 Guard/blocked/hash/脱敏；刷新一致；console 0；无 /api/v4/*、Owner、Browser、Amazon/1688、/api/tasks/* 请求；不消耗访客配额。
+- Public：/ 首屏 V4 定位+Evidence/Human Decision+Public Badge；主 CTA 无滚动可见；一次点击进 /replay；真实 bundle 74 步/5 Gate/11 Guard/blocked/hash/脱敏；刷新一致；console 0；**网络断言**（P0-C 定稿）：允许 = 页面文档 + RSC 预取 + 静态资源 + /api/runtime-mode（自带探针）+（点击后）/api/auth/guest、/api/demo/golden（金标演示区）；**禁止** = /api/v4/*、Owner 会话端点、Browser 端点、Amazon/1688、/api/tasks/*（评审白名单外）、任何写 API；不消耗访客 Provider 配额。
 - Local：flag OFF→V4 API 404 + 不渲染 Live CTA；flag ON→Local Live Badge + 主 CTA 进 /v4/runs；列表/详情可走；Evidence/Gate/Fact/Commercial/Content 可理解；interrupt/resume 不回归；console 0；刷新一致；无重复 Provider 副作用。
 - V3 回归：访客入口、Listing/Image Studio、研究记录可用；配额契约不变；/api/opportunities 根 410 保留；B1 creative gate fail-closed。
 

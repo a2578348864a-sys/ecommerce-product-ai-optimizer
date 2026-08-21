@@ -2,8 +2,8 @@
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "轻选工作台｜AI 跨境商品研究工作台",
-  description: "从发现商品、商品研究到 Listing 和图片草稿，用 AI 整理信息和辅助创作，由人工完成最终决定。",
+  title: "轻选工作台｜AI 跨境商品研究与上架准备工作台",
+  description: "基于证据链、产品事实闸门和人工决策的 AI 跨境商品研究与上架准备工作台：AI 完成研究与资料整理，人做关键商业决策。",
 };
 
 export default function RootLayout({

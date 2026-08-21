@@ -16,57 +16,76 @@ import {
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
 import { setNoAuthOwnerMode } from "@/lib/client/accessToken";
+import type { RuntimeMode } from "@/lib/server/runtimeMode";
 
 type SidebarNavItem = { label: string; href: string; icon: LucideIcon };
 
+export type SidebarRuntime = { mode: RuntimeMode | null; v4Graph: boolean };
+/** V4.1 运行模式感知导航分组（纯函数，SSR 与客户端一致） */
+export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
+  label: string;
+  items: ReadonlyArray<SidebarNavItem>;
+}> {
+  const v4Group: SidebarNavItem[] = [];
+  // 公网（public_showcase）绝不渲染 Live 研究任务入口（即使部署误开 flag）；本地 + v4Graph 才显示。
+  if (runtime.v4Graph && runtime.mode !== "public_showcase") {
+    v4Group.push({ label: "研究任务", href: "/v4/runs", icon: Sparkles });
+  }
+  v4Group.push({ label: "案例回放", href: "/replay", icon: History });
+
+  const researchItems: SidebarNavItem[] = [
+    { label: "发现商品", href: "/opportunities", icon: Search },
+    { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
+    { label: "商品研究", href: "/research", icon: Package },
+    { label: "研究记录", href: "/tasks", icon: History },
+  ];
+  const creativeItems: SidebarNavItem[] = [
+    { label: "Listing Studio", href: "/listing-studio", icon: FileText },
+    { label: "Image Studio", href: "/image-studio", icon: Images },
+  ];
+
+  if (runtime.mode === "public_showcase") {
+    return [
+      { label: "V4 工作台", items: v4Group },
+      { label: "内容工具", items: creativeItems },
+      { label: "历史功能", items: researchItems },
+    ];
+  }
+  return [
+    { label: "V4 工作台", items: v4Group },
+    { label: "研究与决策", items: researchItems },
+    { label: "内容准备", items: creativeItems },
+  ];
+}
+
+/** 模式 Badge 文案（unknown → 空，避免 hydration 漂移） */
+export function modeBadgeLabel(runtime: SidebarRuntime): string {
+  if (runtime.mode === "public_showcase") return "Public Replay · 只读脱敏案例";
+  if (runtime.mode === "local_owner") {
+    return runtime.v4Graph ? "Local Live · 可执行研究流程" : "本地模式 · V4 未启用";
+  }
+  return "";
+}
+
+/** 供外部读取的默认/静态分组 */
 export const workspaceNavGroups: ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SidebarNavItem>;
-}> = [
-  {
-    label: "工作台",
-    items: [{ label: "工作台", href: "/", icon: LayoutDashboard }],
-  },
-  {
-    label: "商品研究",
-    items: [
-      { label: "发现商品", href: "/opportunities", icon: Search },
-      { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
-      { label: "商品研究", href: "/research", icon: Package },
-      { label: "研究记录", href: "/tasks", icon: History },
-    ],
-  },
-  {
-    label: "创作工具",
-    items: [
-      { label: "Listing Studio", href: "/listing-studio", icon: FileText },
-      { label: "Image Studio", href: "/image-studio", icon: Images },
-    ],
-  },
-] as const;
+}> = buildV4NavGroups({ mode: "local_owner", v4Graph: false });
 
 export const workspaceNavItems: ReadonlyArray<SidebarNavItem> = workspaceNavGroups.flatMap((group) => group.items);
-
-const mobileNavItems = workspaceNavItems;
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-/**
- * R5：导航高亮——任务详情页根据来源区分"商品研究 / 研究记录"。
- * - /research 及 /research/* → 商品研究
- * - /tasks/[id]?from=research（从商品研究进入的 active 任务）→ 商品研究
- * - /tasks 及 /tasks/[id]（默认/历史）→ 研究记录
- */
 function isTaskActiveResearchHighlight(pathname: string, search: string) {
   if (pathname === "/research" || pathname.startsWith("/research/")) return true;
   if (pathname.startsWith("/tasks/") && search.includes("from=research")) return true;
   return false;
 }
 
-/** /tasks 及其详情页归属：active 任务（from=research）归"商品研究"，其余归"研究记录" */
 function isTasksHighlight(pathname: string, search: string) {
   if (!(pathname === "/tasks" || pathname.startsWith("/tasks/"))) return false;
   return !isTaskActiveResearchHighlight(pathname, search);
@@ -81,12 +100,6 @@ function currentProductLabel(productName: string) {
   }
   return productName;
 }
-
-function isV4NavEnabled() {
-  const v = process.env.NEXT_PUBLIC_QX_V4_GRAPH_ENABLED;
-  return v === "1" || v === "true";
-}
-
 function NavLink({
   item,
   pathname,
@@ -132,20 +145,23 @@ function NavLink({
 
 export function WorkspaceSidebar() {
   const pathname = usePathname() || "/";
-  // R5：从 URL 读取 from=research（useSearchParams 会触发 CSR bailout；用客户端 location 惰性读取）
   const [fromResearch, setFromResearch] = useState(false);
   useEffect(() => {
     setFromResearch(typeof window !== "undefined" && window.location.search.includes("from=research"));
   }, [pathname]);
   const search = fromResearch ? "from=research" : "";
   const [sharedProduct] = useSharedProduct();
-  // V3.1 local_owner（显式）：无认证回环信任 → 设置客户端解锁标记（覆盖全部工作台页/深链）
+  // V4.1：runtime-mode 服务端权威（模式 + V4 Graph flag）；SSR 初始 unknown → 保守（不泄露 Live 入口）
+  const [runtime, setRuntime] = useState<SidebarRuntime>({ mode: null, v4Graph: false });
   useEffect(() => {
     let cancelled = false;
     fetch("/api/runtime-mode", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        if (!cancelled && json?.ok && json.mode === "local_owner" && json.noAuthOwner === true) {
+        if (cancelled || !json?.ok) return;
+        const mode = json.mode === "public_showcase" || json.mode === "local_owner" ? json.mode : null;
+        setRuntime({ mode, v4Graph: json.v4GraphEnabled === true });
+        if (mode === "local_owner" && json.noAuthOwner === true) {
           setNoAuthOwnerMode();
         }
       })
@@ -155,7 +171,9 @@ export function WorkspaceSidebar() {
     };
   }, []);
   const productLabel = currentProductLabel(sharedProduct.productName);
-  const productMeta = sharedProduct.category ? `品类：${sharedProduct.category}` : "商品资料已载入";
+  const productMeta = sharedProduct.category ? "品类：" + sharedProduct.category : "商品资料已载入";
+  const badge = modeBadgeLabel(runtime);
+  const groups = buildV4NavGroups(runtime);
 
   return (
     <>
@@ -179,17 +197,23 @@ export function WorkspaceSidebar() {
               <Sparkles className="size-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
+                <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">V4</span>
+              </div>
               <p className="mt-0.5 whitespace-nowrap text-sm font-semibold leading-5 text-slate-950">
-                AI 跨境商品研究工作台
+                AI 跨境商品研究与上架准备工作台
               </p>
               <p className="muted-text mt-1 text-sm leading-6">辅助研究 · 人工决定</p>
+              {badge ? (
+                <p data-testid="sidebar-mode-badge" className="mt-1.5 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{badge}</p>
+              ) : null}
             </div>
           </div>
         </div>
 
         <nav className="surface-card p-2" aria-label="工作台导航">
-          {workspaceNavGroups.map((group, index) => (
+          {groups.map((group, index) => (
             <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
               <p className="px-2 pb-1 text-xs font-semibold text-teal-700">{group.label}</p>
               {group.items.map((item) => (
@@ -197,25 +221,34 @@ export function WorkspaceSidebar() {
               ))}
             </section>
           ))}
-          {isV4NavEnabled() && (
-            <section className="mt-3 border-t border-slate-100 pt-3">
-              <p className="px-2 pb-1 text-xs font-semibold text-teal-700">V4 研究图</p>
-              <NavLink item={{ label: "运行控制台", href: "/v4/runs", icon: Sparkles }} pathname={pathname} search={search} />
-            </section>
-          )}
         </nav>
       </div>
     </aside>
     </>
   );
 }
-
 export function WorkspaceMobileNav() {
   const pathname = usePathname() || "/";
+  const [runtime, setRuntime] = useState<SidebarRuntime>({ mode: null, v4Graph: false });
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/runtime-mode", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.ok) return;
+        const mode = json.mode === "public_showcase" || json.mode === "local_owner" ? json.mode : null;
+        setRuntime({ mode, v4Graph: json.v4GraphEnabled === true });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const items = buildV4NavGroups(runtime).flatMap((group) => group.items);
 
   return (
     <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
-      {mobileNavItems.map((item) => {
+      {items.map((item) => {
         const Icon = item.icon;
         const active = isActivePath(pathname, item.href);
         return (
