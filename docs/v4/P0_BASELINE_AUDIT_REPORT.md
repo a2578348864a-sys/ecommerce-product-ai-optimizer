@@ -9,7 +9,7 @@
 
 - 基线可信度：**可信**。HEAD 与项目书基线一致，工作树干净，关键断言绝大部分 verified。
 - 最大实现差异：真实数据架构是「versioned resultJson 命名空间」JSON 存储，而非书内描述的 Prisma 表集合；Prisma 只有 6 个模型。LangGraph 确实未安装（G2 确认）。
-- 基线质量：lint 0 error / 8 warning；typecheck（tsc --noEmit）通过；全量测试 5335 passed / 4 failed / 90 skipped —— **1 个确定性失败**（handoff.product-journey-quota.test.ts，v3.1.0 冻结 tag 上可稳定复现：测试 mock 与 route 契约漂移），另 2 个文件隔离重跑通过（并行负载超时 flake）。
+- 基线质量：lint 0 error / 8 warning；typecheck（tsc --noEmit）通过；全量测试 5335 passed / 4 failed / 90 skipped —— **2 个确定性基线失败**（P1 复核更正）：(a) handoff.product-journey-quota.test.ts（测试 mock 与 route 契约漂移，route:369 直读 approvedReferenceImageDataUrl）；(b) productUiPolish.test.ts 登录旅程断言陈旧（断言旧文案 01 发现商品，实际 v3 发布文案 01 导入真实数据，组件更新于 aba883f 早于测试）。另 2 个文件隔离重跑通过（并行负载超时 flake）。
 - P1 是否可开始：**是**（本批次用户已授权 P0→P7 连续执行；P0 门禁全过，自动进入 P1）。
 
 ## Repository Baseline
