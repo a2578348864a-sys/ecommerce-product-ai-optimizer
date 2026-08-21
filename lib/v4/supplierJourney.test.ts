@@ -93,7 +93,7 @@ const domainDb: DomainDb = {
   },
 };
 
-function factDb(): FactStoreDb {
+function factDb(): FactStoreDb & { v4FactRecord: { update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<Record<string, unknown>> } } {
   const rows: Record<string, unknown>[] = [];
   let seq = 0;
   return {
@@ -103,11 +103,7 @@ function factDb(): FactStoreDb {
         const where = args.where as Record<string, unknown>;
         return rows.filter((r) => Object.entries(where).every(([k, v]) => r[k] === v));
       },
-      async update(args) {
-        const row = rows.find((r) => r.id === args.where.id)!;
-        Object.assign(row, args.data);
-        return row;
-      },
+      async update(args) { const row = rows.find((r) => r.id === args.where.id)!; Object.assign(row, args.data); return row; },
     },
   };
 }
