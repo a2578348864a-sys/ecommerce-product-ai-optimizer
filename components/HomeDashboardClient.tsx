@@ -33,6 +33,7 @@ import { V4ValueCards } from "@/components/v4/home/V4ValueCards";
 import { V4FeaturedReplayCard } from "@/components/v4/home/V4FeaturedReplayCard";
 import { V4BoundaryNotice } from "@/components/v4/home/V4BoundaryNotice";
 import type { FeaturedReplay, HomeRuntime } from "@/components/v4/home/heroLogic";
+import { NEXT_ACTION_USER_LABELS, userStatus } from "@/components/v4/userLanguage";
 
 type TasksApiResponse =
   | { ok: true; records?: HomeDashboardTaskItem[]; data?: { items?: HomeDashboardTaskItem[] } }
@@ -159,12 +160,101 @@ function productLanguage(value: string) {
 /** 兼容旧调用：无 props 时默认本地语义（flag OFF、非无认证回环），保证既有渲染/测试不回归。 */
 const DEFAULT_RUNTIME: HomeRuntime = { mode: "local_owner", noAuthOwner: false, v4Graph: false };
 
+// ─────────────────────────────────────────────────────────────
+// V4.1 C 端本地工作台（local_owner）：商品研究进度 + 下一步由你决定。
+// 普通页面只出现中文用户语言；内部状态码只在分组逻辑中使用，
+// 展示统一走 userLanguage（userStatus / NEXT_ACTION_USER_LABELS）。
+// ─────────────────────────────────────────────────────────────
+
+type LocalRunItem = {
+  runId: string;
+  candidateLabel: string | null;
+  keyword: string | null;
+  marketplace: string | null;
+  status: string;
+  currentNode: string;
+  wait?: { kind?: string; reasonCode?: string } | null;
+};
+
+const LOCAL_WAITING_STATUS = new Set(["waiting_human", "waiting_auth", "waiting_input"]);
+const LOCAL_RESEARCHING_STATUS = new Set(["draft", "planning", "running", "revising", "paused_budget"]);
+const LOCAL_FAILED_STATUS = new Set(["failed_terminal", "failed_recoverable"]);
+
+/** 市场代码 → 用户可读站点名（C 端不暴露内部主机/代码；未映射 → 诚实「市场待补充」）。 */
+const LOCAL_MARKET_LABELS: Record<string, string> = {
+  "amazon.com": "Amazon 美国站",
+  "amazon.ca": "Amazon 加拿大站",
+  "amazon.co.uk": "Amazon 英国站",
+  "amazon.de": "Amazon 德国站",
+  "amazon.fr": "Amazon 法国站",
+  "amazon.it": "Amazon 意大利站",
+  "amazon.es": "Amazon 西班牙站",
+  "amazon_us": "Amazon 美国站",
+  us: "美国站",
+  uk: "英国站",
+  "1688.com": "1688 供应",
+  "1688": "1688 供应",
+};
+
+function localMarketLabel(marketplace: string | null): string {
+  if (!marketplace) return "市场待补充";
+  const trimmed = marketplace.trim();
+  return LOCAL_MARKET_LABELS[trimmed.toLowerCase()] ?? LOCAL_MARKET_LABELS[trimmed] ?? "市场待补充";
+}
+
+/** 当前节点 → 用户下一步动作（NEXT_ACTION_USER_LABELS 的 key）。 */
+const LOCAL_NODE_NEXT_ACTION: Record<string, string> = {
+  gate_a: "finish_gate_a_decision",
+  product_fact_gate: "confirm_product_facts",
+  commercial_check: "fill_commercial_costs",
+  gate_b: "fill_commercial_costs",
+  content_skills: "content_generation",
+  content_review: "content_review",
+  content_handoff: "check_listing",
+};
+
+/** 由 run 状态推导「下一步」用户按钮文案（取 NEXT_ACTION_USER_LABELS；无对应动作时诚实展示进度）。 */
+function localNextActionLabel(run: LocalRunItem): string {
+  if (run.status === "completed") return NEXT_ACTION_USER_LABELS.review_report;
+  if (run.status === "failed_terminal" || run.status === "failed_recoverable") return NEXT_ACTION_USER_LABELS.retry;
+  const waitKind = run.wait?.kind;
+  if (waitKind === "budget") return NEXT_ACTION_USER_LABELS.retry;
+  if (waitKind === "authentication") return NEXT_ACTION_USER_LABELS.start_research;
+  const nodeKey = LOCAL_NODE_NEXT_ACTION[run.currentNode];
+  if (nodeKey) return NEXT_ACTION_USER_LABELS[nodeKey];
+  if (waitKind === "input") return NEXT_ACTION_USER_LABELS.fill_commercial_costs;
+  return "查看研究进度";
+}
+
+function isLocalRunItem(value: unknown): value is LocalRunItem {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.runId === "string" && typeof v.status === "string";
+}
+
+/**
+ * 首页客户端分发：local_owner（或默认）→ C 端本地工作台；Public/guest 分支保持现状。
+ * 上游 page.tsx / HomeGate 无需改动：仅在此按 runtime.mode 切换渲染。
+ */
 export function HomeDashboardClient({
   runtime = DEFAULT_RUNTIME,
   featured = null,
 }: {
   runtime?: HomeRuntime;
   featured?: FeaturedReplay | null;
+}) {
+  if (runtime.mode === "local_owner") {
+    return <LocalWorkspace runtime={runtime} />;
+  }
+  return <PublicDashboard runtime={runtime} featured={featured} />;
+}
+
+function PublicDashboard({
+  runtime,
+  featured,
+}: {
+  runtime: HomeRuntime;
+  featured: FeaturedReplay | null;
 }) {
   const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
   const [candidateLoad, setCandidateLoad] = useState<CandidateLoadState>({
@@ -682,6 +772,166 @@ export function HomeDashboardClient({
               </p>
             </div>
           </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+function LocalRunSection({
+  title,
+  items,
+  loading,
+  testId,
+  emptyHint = "暂无记录",
+}: {
+  title: string;
+  items: LocalRunItem[];
+  loading: boolean;
+  testId: string;
+  emptyHint?: string;
+}) {
+  return (
+    <section className="surface-card min-w-0 p-4 sm:p-5" data-testid={testId} aria-labelledby={testId + "-title"}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id={testId + "-title"} className="text-base font-semibold text-slate-900">{title}</h2>
+        {!loading && (
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">
+            {items.length} 条
+          </span>
+        )}
+      </div>
+      {loading ? (
+        <p className="mt-3 text-sm text-slate-400">正在读取研究记录…</p>
+      ) : items.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-400">{emptyHint}</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {items.map((run) => (
+            <li key={run.runId}>
+              <Link
+                href={"/v4/runs/" + encodeURIComponent(run.runId)}
+                className="group flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-900">{run.candidateLabel ?? "待补充商品名称"}</span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-500">市场：{localMarketLabel(run.marketplace)}</span>
+                </span>
+                <span className="inline-flex shrink-0 items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                  {userStatus(run.status)}
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-teal-700">
+                  {localNextActionLabel(run)}
+                  <ArrowRight className="size-4 group-hover:translate-x-0.5" aria-hidden="true" />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
+  const [runsState, setRunsState] = useState<{ status: "loading" | "ready"; runs: LocalRunItem[] }>({
+    status: "loading",
+    runs: [],
+  });
+
+  useEffect(() => {
+    if (!runtime.v4Graph) {
+      setRunsState({ status: "ready", runs: [] });
+      return;
+    }
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch("/api/v4/runs", {
+          method: "GET",
+          headers: { ...buildAccessHeaders() },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setRunsState({ status: "ready", runs: [] });
+          return;
+        }
+        const json = await response.json().catch(() => null);
+        const runs = Array.isArray(json?.runs) ? json.runs.filter(isLocalRunItem) : [];
+        setRunsState({ status: "ready", runs });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setRunsState({ status: "ready", runs: [] });
+      }
+    })();
+    return () => controller.abort();
+  }, [runtime.v4Graph]);
+
+  const isReady = runsState.status === "ready";
+  const runs = isReady ? runsState.runs : [];
+  const waitingList = runs.filter((r) => LOCAL_WAITING_STATUS.has(r.status)).slice(0, 5);
+  const researchingList = runs.filter((r) => LOCAL_RESEARCHING_STATUS.has(r.status)).slice(0, 5);
+  const failedList = runs.filter((r) => LOCAL_FAILED_STATUS.has(r.status)).slice(0, 5);
+  const completedList = runs.filter((r) => r.status === "completed").slice(0, 4);
+
+  return (
+    <main className="app-shell px-4 py-6 sm:px-6 lg:px-8" data-testid="home-dashboard">
+      <div className="workspace-page workspace-layout">
+        <WorkspaceSidebar />
+        <div className="flex min-w-0 flex-col gap-5">
+          <WorkspaceMobileNav />
+
+          <header className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">工作台</h1>
+            <p className="text-sm leading-6 text-slate-600">了解你的商品研究进度，下一步由你决定。</p>
+          </header>
+
+          {runtime.v4Graph ? (
+            <>
+              <section
+                className="surface-card-strong min-w-0 p-5"
+                data-testid="local-start-research"
+                aria-labelledby="local-start-research-title"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="linear-kicker">商品研究</p>
+                    <h2 id="local-start-research-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                      开始商品研究
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                      从候选商品开始研究，AI 整理数据依据，关键决定由你确认。
+                    </p>
+                  </div>
+                  <Link
+                    href="/v4/runs"
+                    className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+                    data-testid="local-start-research-cta"
+                  >
+                    开始商品研究
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
+                </div>
+              </section>
+
+              <LocalRunSection title="等待我确认" items={waitingList} loading={!isReady} testId="local-status-waiting" />
+              <LocalRunSection title="正在研究" items={researchingList} loading={!isReady} testId="local-status-researching" />
+              <LocalRunSection title="失败待处理" items={failedList} loading={!isReady} testId="local-status-failed" />
+              <LocalRunSection title="最近完成" items={completedList} loading={!isReady} testId="local-status-completed" />
+            </>
+          ) : (
+            <section
+              className="surface-card min-w-0 p-5"
+              data-testid="local-v4-off-guide"
+              aria-labelledby="local-v4-off-guide-title"
+            >
+              <p className="linear-kicker">商品研究</p>
+              <h2 id="local-v4-off-guide-title" className="mt-1 text-lg font-semibold text-slate-950">
+                研究能力未开启
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">本地研究能力未开启，请联系管理员开启后使用。</p>
+            </section>
+          )}
         </div>
       </div>
     </main>

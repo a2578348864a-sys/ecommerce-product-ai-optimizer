@@ -29,8 +29,8 @@ describe("Phase 2 Studio entry points", () => {
     const sidebar = source("components/WorkspaceSidebar.tsx");
     expect(sidebar).toContain("商品研究");
     expect(sidebar).toContain("待研究商品");
-    expect(sidebar).toContain("内容准备");
-    expect(sidebar).toContain("内容工具");
+    expect(sidebar).toContain("创作工具");
+    expect(sidebar).toContain("创作工具");
     expect(sidebar).toContain("/listing-studio");
     expect(sidebar).toContain("/image-studio");
     expect(sidebar).toContain("WorkspaceMobileNav");
