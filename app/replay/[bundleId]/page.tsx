@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseBundle, verifyBundleHash, type ReplayBundle } from "@/lib/v4/replay/schema";
@@ -39,6 +40,7 @@ async function loadReplayBundle(bundleId: string): Promise<ReplayBundle | null> 
 export default async function ReplayDetailPage({ params }: ReplayDetailPageProps) {
   const { bundleId } = await params;
   const bundle = await loadReplayBundle(bundleId);
+  const hasGuest = Boolean((await cookies()).get("__Host-lqx_guest")?.value);
 
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
@@ -50,7 +52,7 @@ export default async function ReplayDetailPage({ params }: ReplayDetailPageProps
             {bundle ? (
               <>
                 <ReplayView bundle={bundle} now={new Date()} />
-                <ReplayDemoChoicePanel bundleId={bundle.bundleId} />
+                <ReplayDemoChoicePanel bundleId={bundle.bundleId} guested={hasGuest} />
               </>
             ) : (
               <section

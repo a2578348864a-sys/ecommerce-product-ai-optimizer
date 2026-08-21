@@ -22,12 +22,12 @@ describe("ReplayDemoChoicePanel（访客演示沙盒）", () => {
     expect(html).toContain('data-testid="replay-demo-choice-loading"');
   });
 
-  it("接口不可用 → 显示「即将开放」诚实空态", () => {
+  it("未建立访客身份/接口不可用 → 诚实空态（指引先进入演示，不请求沙盒接口）", () => {
     const html = renderToStaticMarkup(
       createElement(ReplayDemoChoicePanel, { bundleId: BUNDLE_ID, initialStatus: "unavailable" }),
     );
     expect(html).toContain('data-testid="replay-demo-choice-unavailable"');
-    expect(html).toContain("即将开放");
+    expect(html).toContain("请先进入公开演示建立访客身份");
   });
 
   it("ready 态渲染 Gate A / Gate B / 备注 / 保存 / 重置，且注入的初始选择被回显", () => {

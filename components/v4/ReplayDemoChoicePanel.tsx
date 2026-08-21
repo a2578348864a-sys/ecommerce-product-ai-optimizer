@@ -33,6 +33,8 @@ function gateLabel(decision: string): string {
 
 export type ReplayDemoChoicePanelProps = {
   bundleId: string;
+  /** 服务端 cookie 门控：访客身份已建立时才与沙盒接口交互（未建立不请求，避免 401 console error）。 */
+  guested?: boolean;
   /** 仅测试用：跳过真实 fetch，直接以指定状态（loading/ready/unavailable）渲染。 */
   initialStatus?: ReplayDemoChoiceStatus;
   /** 仅测试用：注入初始选择。 */
@@ -41,6 +43,7 @@ export type ReplayDemoChoicePanelProps = {
 
 export function ReplayDemoChoicePanel({
   bundleId,
+  guested = false,
   initialStatus,
   initialState,
 }: ReplayDemoChoicePanelProps) {
@@ -51,6 +54,10 @@ export function ReplayDemoChoicePanel({
 
   useEffect(() => {
     if (initialStatus && initialStatus !== "loading") return;
+    if (!guested) {
+      setStatus("unavailable");
+      return;
+    }
     let alive = true;
     // 仅公开演示访客（public_showcase）启用；本地等模式显示不可用（不发起 demo-choice 请求，避免 403 console error）。
     fetch("/api/runtime-mode", { cache: "no-store" })
@@ -144,7 +151,7 @@ export function ReplayDemoChoicePanel({
 
       {status === "unavailable" ? (
         <p data-testid="replay-demo-choice-unavailable" className="mt-3 text-sm text-slate-400">
-          即将开放：决策体验接口尚未就绪，敬请期待。
+          请先进入公开演示建立访客身份（返回首页点击体验入口），或当前模式未启用演示沙盒。
         </p>
       ) : status === "loading" ? (
         <p data-testid="replay-demo-choice-loading" className="mt-3 text-sm text-slate-400">
