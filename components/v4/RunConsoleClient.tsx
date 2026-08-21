@@ -6,9 +6,34 @@ import { confirmFact, getCommercial, getFacts, getReport, getRun, resumeRun, rev
 import { postContentReview } from "./api";
 import { RunConsoleView } from "./RunConsoleView";
 import type { ReportViewLike } from "./api";
-import type { FactGateItem, FactGateCallbacks } from "./FactGatePanel";
+import type { ConfirmationMethod, FactGateItem, FactGateCallbacks } from "./FactGatePanel";
+import type { DisplayFactStatus } from "./FactStatusBadge";
 
 type LoadState = "loading" | "ready" | "error";
+
+function toDisplayFactStatus(status: string | null | undefined): DisplayFactStatus {
+  if (status === "confirmed" || status === "rejected" || status === "unknown" || status === "conflict" || status === "revoked") return status;
+  return "unconfirmed";
+}
+
+/** 把 API 的 FactView 映射为 FactGatePanel 的 FactGateItem（仅展示投影，不伪造字段）。 */
+function mapFactViews(facts: FactView[]): FactGateItem[] {
+  return facts.map((f) => ({
+    key: f.id || f.offerIdentity + "|" + f.variantKey + "|" + f.field,
+    variantKey: f.variantKey,
+    field: f.field,
+    value: f.value,
+    status: toDisplayFactStatus(f.status),
+    revision: f.revision,
+    actor: f.actor,
+    updatedAt: f.createdAt,
+    confirmationMethod: f.confirmationMethod as ConfirmationMethod | null | undefined,
+    claimRefs: f.claimRefs,
+    documentRefs: f.documentRefs,
+    revokedByRevision: f.revokedByRevision,
+    revocationReason: (f.detail as Record<string, unknown> | undefined)?.reason as string | undefined,
+  }));
+}
 
 /** Run Console 数据壳：拉取详情、管理加载/错误态，并驱动交互刷新。 */
 export function RunConsoleClient({ runId }: { runId: string }) {
@@ -16,7 +41,7 @@ export function RunConsoleClient({ runId }: { runId: string }) {
   const [run, setRun] = useState<ResearchRunState | null>(null);
   const [events, setEvents] = useState<ResearchRunEvent[]>([]);
   const [report, setReport] = useState<ReportViewLike | null>(null);
-  const [facts, setFacts] = useState<FactView[]>([]);
+  const [facts, setFacts] = useState<FactView[] | null>(null);
   const [commercial, setCommercial] = useState<unknown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
@@ -35,6 +60,16 @@ export function RunConsoleClient({ runId }: { runId: string }) {
         setEvents(data.events ?? []);
         const reportData = (await getReport(runId).catch(() => null))?.report ?? null;
         setReport(reportData);
+        // facts 仅在 product_fact_gate 抓取：null = 尚未生成/无法加载（诚实空态，不显示“0 项”）。
+        if (data.run.currentNode === "product_fact_gate") {
+          const identity = supplierIdentityFromReport(reportData);
+          const fetched = identity
+            ? await getFacts(runId, identity.offerIdentity, identity.variantKey).catch(() => null)
+            : null;
+          setFacts(fetched);
+        } else {
+          setFacts(null);
+        }
         if (data.run.currentNode === "commercial_check" || data.run.currentNode === "gate_b") {
           const commercialData = await getCommercial(runId).catch(() => null);
           setCommercial(commercialData);
@@ -154,5 +189,18 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     );
   }
 
-  return <RunConsoleView run={run} events={events} report={report} facts={facts as unknown as FactGateItem[]} factCallbacks={factCallbacks} commercial={{ output: commercial }} gateB={gateB as never} contentReview={contentReview} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
+  return (
+    <RunConsoleView
+      run={run}
+      events={events}
+      report={report}
+      facts={facts ? mapFactViews(facts) : null}
+      factCallbacks={factCallbacks}
+      commercial={{ output: commercial }}
+      gateB={gateB as never}
+      contentReview={contentReview}
+      onRefresh={() => void refresh(false)}
+      onRetry={() => void retry()}
+    />
+  );
 }
