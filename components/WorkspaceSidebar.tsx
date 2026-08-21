@@ -43,6 +43,12 @@ export const workspaceNavGroups: ReadonlyArray<{
       { label: "Image Studio", href: "/image-studio", icon: Images },
     ],
   },
+  ...(process.env.NEXT_PUBLIC_QX_V4_GRAPH_ENABLED === "1" || process.env.NEXT_PUBLIC_QX_V4_GRAPH_ENABLED === "true"
+    ? [{
+        label: "V4 研究图",
+        items: [{ label: "运行控制台", href: "/v4/runs", icon: Sparkles }],
+      }]
+    : []),
 ] as const;
 
 export const workspaceNavItems: ReadonlyArray<SidebarNavItem> = workspaceNavGroups.flatMap((group) => group.items);
