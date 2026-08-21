@@ -29,6 +29,8 @@ export function RunConsoleClient({ runId }: { runId: string }) {
         const data = await getRun(runId);
         setRun(data.run);
         setEvents(data.events ?? []);
+        const reportData = (await getReport(runId).catch(() => null))?.report ?? null;
+        setReport(reportData);
         setState("ready");
       } catch (err) {
         if (!silent) {

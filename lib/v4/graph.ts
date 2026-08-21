@@ -307,7 +307,8 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
   };
 
   const validateOutput: NodeFn = async (state) => {
-    const validation = deps.tools.validate({ toolResult: state.activeToolResult ?? { toolName: "unknown", outputHash: "", payload: {}, ok: false }, questionId: state.activeQuestionId ?? "" });
+    // P2：市场工具结果已由注册表 envelope 校验（validateToolResult）；不再走 fake 校验。
+    const validation = state.activeToolEnvelope ? { valid: true, reason: "envelope-validated" } : deps.tools.validate({ toolResult: state.activeToolResult ?? { toolName: "unknown", outputHash: "", payload: {}, ok: false }, questionId: state.activeQuestionId ?? "" });
     if (!validation.valid) {
       return failState("validate_output", { code: "SCHEMA_INVALID", recoverable: true, safeMessage: validation.reason });
     }
