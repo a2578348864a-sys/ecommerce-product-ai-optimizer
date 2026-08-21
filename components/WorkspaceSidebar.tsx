@@ -26,15 +26,8 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SidebarNavItem>;
 }> {
-  const v4Group: SidebarNavItem[] = [
-    { label: "V4 概览", href: "/", icon: LayoutDashboard },
-  ];
-  // 公网（public_showcase）绝不渲染 Live 研究任务入口（即使部署误开 flag）；本地 + v4Graph 才显示。
-  if (runtime.v4Graph && runtime.mode !== "public_showcase") {
-    v4Group.push({ label: "研究任务", href: "/v4/runs", icon: Sparkles });
-  }
-  v4Group.push({ label: "案例回放", href: "/replay", icon: History });
-
+  // 本地（local_owner / SSR 初始）：普通卖家工作台——7 项主导航；
+  // V4 研究任务/案例回放不在本地导航（案例回放仅公网 Public Replay 保留；V4 runs 经首页“开始商品研究”进入）。
   const researchItems: SidebarNavItem[] = [
     { label: "发现商品", href: "/opportunities", icon: Search },
     { label: "待研究商品", href: "/opportunity-candidates", icon: Sparkles },
@@ -45,8 +38,11 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
     { label: "Listing Studio", href: "/listing-studio", icon: FileText },
     { label: "Image Studio", href: "/image-studio", icon: Images },
   ];
-
   if (runtime.mode === "public_showcase") {
+    const v4Group: SidebarNavItem[] = [
+      { label: "V4 概览", href: "/", icon: LayoutDashboard },
+      { label: "案例回放", href: "/replay", icon: History },
+    ];
     return [
       { label: "V4 工作台", items: v4Group },
       { label: "内容工具", items: creativeItems },
@@ -54,9 +50,9 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
     ];
   }
   return [
-    { label: "V4 工作台", items: v4Group },
-    { label: "研究与决策", items: researchItems },
-    { label: "内容准备", items: creativeItems },
+    { label: "工作台", items: [{ label: "工作台", href: "/", icon: LayoutDashboard }] },
+    { label: "商品研究", items: researchItems },
+    { label: "创作工具", items: creativeItems },
   ];
 }
 

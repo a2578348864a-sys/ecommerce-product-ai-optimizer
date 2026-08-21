@@ -47,11 +47,10 @@ describe("WorkspaceSidebar navigation", () => {
   const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavGroups");
   const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
 
-  it("exposes V4 workspace + research mainline destinations (v4.1)", () => {
-    // v4.1: sidebar is derived by buildV4NavGroups (V4 workspace / research / content groups).
+  it("exposes C 端 workbench + research mainline destinations (v4.1)", () => {
+    // v4.1: local nav = 7 items (workbench / research mainline / creative tools);
+    // V4 runs/replay not in local nav (replay only in public mode).
     expect(sidebarSource).toMatch(/buildV4NavGroups/);
-    expect(sidebarSource).toMatch(/\/replay/);
-    expect(sidebarSource).toMatch(/\/v4\/runs/);
     expect(sidebarSource).toMatch(/\/opportunities/);
     expect(sidebarSource).toMatch(/\/opportunity-candidates/);
     expect(sidebarSource).toMatch(/\/research/);

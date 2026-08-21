@@ -41,6 +41,11 @@ export type RunSummary = {
   currentNode: ResearchRunNode;
   revision: number;
   budget: { usedCost: number };
+  /** C 端展示只读字段（列表 API 富化；可能为空 → 诚实空态）。 */
+  candidateLabel?: string | null;
+  keyword?: string | null;
+  marketplace?: string | null;
+  firstGap?: string | null;
   updatedAt: string;
   /** 加法扩展：等待人工/输入/授权/预算时存在（同一 ResearchRunWait 形态）。 */
   wait?: ResearchRunWait | null;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireV4Auth, jsonError, jsonOk, scopeForContext } from "@/lib/v4/apiHelpers";
 import { getAuthoritativeCandidate } from "@/lib/server/candidateAuthority";
 import { ResearchRunStore, type ResearchRunDb, listRuns } from "@/lib/v4/runStore";
+import { getSandboxCandidate } from "@/lib/server/demoSandbox";
 import { prisma } from "@/lib/server/db";
 import { startRun } from "@/lib/v4/graph";
 
@@ -15,7 +16,26 @@ export async function GET(request: NextRequest) {
   if (gate instanceof NextResponse) return gate;
   const { ownerScope, sandboxId } = scopeForContext(gate.ctx);
   const runs = await listRuns({ ownerScope, sandboxId });
-  return jsonOk({ runs });
+  // C 端展示只读扩展：商品名/关键词/市场/最重要缺口（多源回退，缺则诚实空态；不改变既有字段）。
+  const store = new ResearchRunStore(prisma as unknown as ResearchRunDb);
+  const enriched = [];
+  for (const run of runs) {
+    let candidate = null as Awaited<ReturnType<typeof getAuthoritativeCandidate>>;
+    try { candidate = await getAuthoritativeCandidate(gate.ctx, run.candidateId); } catch { candidate = null; }
+    if (!candidate && run.sandboxId) {
+      try { candidate = getSandboxCandidate(run.sandboxId, run.candidateId) as never; } catch { candidate = null; }
+    }
+    let report = null as { gaps?: { question?: string }[]; marketplace?: string } | null;
+    try { const row = await store.getRun(run.runId); if (row?.reportJson) report = JSON.parse(row.reportJson); } catch { report = null; }
+    enriched.push({
+      ...run,
+      candidateLabel: candidate?.name ?? null,
+      keyword: candidate?.keyword ?? null,
+      marketplace: report?.marketplace ?? null,
+      firstGap: report?.gaps?.find((g) => g.question)?.question ?? null,
+    });
+  }
+  return jsonOk({ runs: enriched });
 }
 
 export async function POST(request: NextRequest) {
