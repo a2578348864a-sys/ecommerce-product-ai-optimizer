@@ -15,6 +15,7 @@ import {
   piiData,
   secretData,
   unlicensedData,
+  credentialData,
 } from "./fixtures/leakCases";
 
 const NOW = "2026-08-21T12:00:00.000Z";
@@ -185,6 +186,46 @@ describe("V4 P6 exporter — redaction scanning", () => {
     expect(imagePlan.images[0].ref).toBe("https://img.example.com/ok.jpg");
   });
 
+  it("redacts JWT / AWS AKIA / PEM private key / bearer tokens (P6-A risk extension)", () => {
+    const res = run(credentialData);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const { bundle } = res;
+    expect(res.publishable).toBe(true);
+    expect(hasEntry(bundle, "secret", "redacted")).toBe(true);
+    expect(hasEntry(bundle, "secret", "removed")).toBe(true);
+    const summary = (bundle.data.report as Record<string, unknown>).summary as string;
+    expect(summary).toContain("***");
+    expect(summary).not.toContain("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
+    expect(summary).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(summary).not.toContain("BEGIN PRIVATE KEY");
+    expect(summary).not.toContain("abcdefghijklmnopqrstuvwxyz012345");
+    const supplier = (bundle.data.commercial as Record<string, unknown>).supplier as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(supplier, "client_secret")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(supplier, "refresh_token")).toBe(false);
+    const events = bundle.data.events as { payloadJson: string }[];
+    expect(events[0].payloadJson).toContain("***");
+    expect(events[0].payloadJson).not.toContain("BEGIN RSA PRIVATE KEY");
+    // 脱敏不得破坏结构完整性（内容 hash 复算 + 契约解析仍通过）。
+    expect(verifyBundleHash(bundle, sha256)).toBe(true);
+    expect(parseBundle(JSON.stringify(bundle)).ok).toBe(true);
+  });
+
+  it("redacts real-newline PEM private key blocks embedded in plain text", () => {
+    const res = run({
+      ...cleanData,
+      report: {
+        summary: "密钥文件内容：\n-----BEGIN OPENSSH PRIVATE KEY-----\nAAAAHmNsaWVudC1zZWNyZXQtbG9uZy1kdW1teQ==\n-----END OPENSSH PRIVATE KEY-----\n请勿外传。",
+      },
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.publishable).toBe(true);
+    const summary = (res.bundle.data.report as Record<string, unknown>).summary as string;
+    expect(summary).toContain("***");
+    expect(summary).not.toContain("OPENSSH PRIVATE KEY");
+    expect(summary).not.toContain("AAAAHmNsaWVudC1zZWNyZXQtbG9uZy1kdW1teQ==");
+  });
   it("blocks export when an unlicensed image is present (scanOk=false, not publishable)", () => {
     const res = run(unlicensedData);
     expect(res.ok).toBe(true);

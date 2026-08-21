@@ -82,14 +82,14 @@ function sha256(value: string): string {
 // ---------------------------------------------------------------------------
 type Kind = RedactionEntry["kind"];
 
-const KEY_SECRET = /^(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|credential|authorization|auth[_-]?token|private[_-]?key)$/i;
+const KEY_SECRET = /^(?:password|passwd|pwd|secret|token|refresh[_-]?token|access[_-]?token|auth[_-]?token|session[_-]?token|id[_-]?token|api[_-]?key|apikey|access[_-]?key|secret[_-]?key|client[_-]?secret|app[_-]?secret|credential|authorization|private[_-]?key)$/i;
 const KEY_PII = /^(?:email|e-?mail|phone|mobile|tel|telephone|id[_-]?card|idcard|id[_-]?number|ssn|social[_-]?security|身份证)$/i;
 const KEY_CONTACT = /^(?:contact|supplier[_-]?contact|contact[_-]?name|contact[_-]?phone|contact[_-]?email|wechat|wx|qq|联系人|address)$/i;
 const KEY_COST = /^(?:purchase[_-]?price|unit[_-]?price|unit[_-]?cost|cost|cost[_-]?price|item[_-]?cost|landed[_-]?cost|raw[_-]?cost|wholesale[_-]?price|采购价|成本|单价|毛利|margin|profit|profit[_-]?margin|min[_-]?price|moq)$/i;
 const KEY_EXIF = /^(?:exif|gps|gpsLatitude|gpsLongitude|imageMetadata|jpegMetadata|EXIF)$/i;
 const KEY_UNLICENSED = /^(?:license|licensed|unlicensed|unauthorized)$/i;
 
-const VALUE_SECRET = /(?:sk-[A-Za-z0-9_-]{12,}|(?:password|passwd|pwd|token|secret|api[_-]?key|authorization|bearer)\s*[:=]\s*\S+|gh[pous]_[A-Za-z0-9]{20,})/gi;
+const VALUE_SECRET = /(?:sk-[A-Za-z0-9_-]{12,}|gh[pous]_[A-Za-z0-9]{20,}|eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}|AKIA[0-9A-Z]{16}|-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----|\bbearer\s+[A-Za-z0-9._~+/=-]{16,}|(?:password|passwd|pwd|token|secret|api[_-]?key|authorization|bearer)\s*[:=]\s*\S+(?:[ \t]+\S+){0,3})/gi; // P6-A 风险扩展：JWT / AWS AKIA / PEM 私钥块 / Bearer 不透明 token
 const VALUE_EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
 const VALUE_PHONE = /(?:\+?86\s*)?1[3-9]\d{9}|\+?\d{10,13}(?!\d)/g;
 const VALUE_ID = /\b\d{17}[\dXx]\b|\b\d{15}\b/g;

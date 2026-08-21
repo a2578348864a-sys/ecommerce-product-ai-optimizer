@@ -172,3 +172,31 @@ export const unlicensedData: Record<string, unknown> = {
   },
   report: { summary: "检测到 unlicensed image。" },
 };
+
+/** 凭证泄漏（P6-A 风险扩展）：JWT / AWS AKIA / PEM 私钥 / Bearer 不透明 token（值级）+ client_secret/refresh_token（key 级）。 */
+export const credentialData: Record<string, unknown> = {
+  candidate: {
+    id: "cand_009",
+    name: "不锈钢保温杯",
+    source: "1688",
+    link: "https://1688.com/offer/999",
+    score: 70,
+    keyword: "cup",
+    riskLevel: "low",
+    status: "pooled",
+  },
+  report: {
+    summary:
+      "凭证示例：JWT=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U，AWS=AKIAIOSFODNN7EXAMPLE，PEM=-----BEGIN PRIVATE KEY-----MIIEvQIBADANBgkqhkiG9w0BAQEFAASC-----END PRIVATE KEY-----，Bearer=abcdefghijklmnopqrstuvwxyz012345。",
+  },
+  commercial: {
+    supplier: {
+      name: "测试供应商",
+      client_secret: "s3cret-cli",
+      refresh_token: "rfrsh-tkn",
+    },
+  },
+  events: [
+    { seq: 1, type: "tool_result_validated", node: "dispatch_tool", payloadJson: JSON.stringify({ pem: "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA7D8..\n-----END RSA PRIVATE KEY-----" }), createdAt: "2026-08-01T00:00:00.000Z" },
+  ],
+};
