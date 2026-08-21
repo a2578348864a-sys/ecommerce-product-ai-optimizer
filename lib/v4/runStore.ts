@@ -35,6 +35,7 @@ export type RunRow = {
   automaticPlanRevisionCount: number;
   stateJson: string;
   eventsJson: string;
+  reportJson: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 };
@@ -131,6 +132,7 @@ function draftState(input: CreateRunInput): ResearchRunState {
 
 export type SaveStatePatch = {
   stateJson: string;
+  reportJson?: string;
   status?: ResearchRunStatus;
   currentNode?: ResearchRunNode;
   planRevision?: number;
@@ -308,6 +310,7 @@ export class ResearchRunStore {
           ? { automaticPlanRevisionCount: patch.automaticPlanRevisionCount }
           : {}),
         eventsJson: JSON.stringify(mergedEvents),
+        ...(patch.reportJson !== undefined ? { reportJson: patch.reportJson } : {}),
         revision: current.revision + 1,
       },
     });

@@ -42,6 +42,9 @@ import {
   type ResumePayload,
 } from "@/lib/v4/contracts";
 import { CandidateNotFoundError, DomainAdapter, type CandidateSnapshot, type DomainDb } from "@/lib/v4/domain";
+import { buildToolEnvelope, executeMarketTool, MARKET_TOOL_NAMES } from "@/lib/v4/tools/registry";
+import type { ToolCallEnvelope as ToolCallEnvelopeLike, ToolResultEnvelope } from "@/lib/v4/tools/envelope";
+import { buildMarketReport, validateEvidenceForMerge, validateReportCitations, type EvidenceItemV2, type MarketResearchReport } from "@/lib/v4/report";
 import { FakeToolRegistry, type ConflictItem, type ContentDraft, type EvidenceItem, type FeasibilitySnapshot, type ResearchPlan, type ResearchQuestion, type ToolResult } from "@/lib/v4/fakeTools";
 import { createPrismaRunStore, ResearchRunStore, type RunRow, RunStoreError } from "@/lib/v4/runStore";
 import { createPrismaJournal, IdempotencyConflictError, SideEffectJournal, buildIdempotencyKey, sha256, stableStringify } from "@/lib/v4/journal";
@@ -99,6 +102,9 @@ export const GraphStateAnnotation = Annotation.Root({
   lastValidation: Annotation<{ valid: boolean; reason: string } | null>,
   lastEvent: Annotation<Omit<ResearchRunEvent, "seq"> | null>,
   retryMode: Annotation<boolean>,
+  activeToolEnvelope: Annotation<ToolResultEnvelope | null>,
+  evidenceV2: Annotation<EvidenceItemV2[]>({ reducer: (a, b) => [...a, ...b], default: () => [] }),
+  report: Annotation<MarketResearchReport | null>,
 });
 
 export type GraphState = typeof GraphStateAnnotation.State;
@@ -113,6 +119,8 @@ export type GraphDeps = {
   journal: SideEffectJournal;
   runStore: ResearchRunStore;
   checkpointPath: (runId: string) => string;
+  /** P2：市场工具注册表（recorded/live）。缺省时退化为 fake tools。 */
+  marketTools?: { names: readonly string[]; execute(envelope: ToolCallEnvelopeLike): Promise<ToolResultEnvelope> };
 };
 
 export function initialBudget(): ResearchBudget {
@@ -156,6 +164,14 @@ function consumeBudget(
     next.usedCost > next.maxCost;
   return { budget: next, over };
 }
+
+/** P2：fake 计划问题名 → 市场工具名（recorded/live 双模式经注册表执行）。 */
+const LEGACY_TO_MARKET: Record<string, string> = {
+  competitor_research: "amazon/search",
+  keyword_research: "keyword",
+  review_voc: "voc",
+  opportunity_priority: "sellersprite",
+};
 
 function nextQuestion(state: GraphState): ResearchQuestion | null {
   return (
@@ -232,7 +248,39 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
     if (!question) {
       return failState("dispatch_tool", { code: "UNKNOWN_RECOVERABLE", recoverable: true, safeMessage: "no remaining question" });
     }
-    const toolResult = deps.tools.tool({ toolName: question.toolName, questionId: question.questionId, inputHash: question.inputHash });
+    // P2：市场工具经注册表（recorded/live）；fake 计划问题名映射到市场工具
+    const marketName: string | null = deps.marketTools && (LEGACY_TO_MARKET[question.toolName] || (MARKET_TOOL_NAMES as readonly string[]).includes(question.toolName)) ? (LEGACY_TO_MARKET[question.toolName] ?? question.toolName) : null;
+    let toolResult: ToolResult = deps.tools.tool({ toolName: question.toolName, questionId: question.questionId, inputHash: question.inputHash });
+    let envResult: ToolResultEnvelope | null = null;
+    if (marketName && deps.marketTools) {
+      const targetEntity = state.candidateSnapshot?.name || state.candidateId;
+      const envelope = buildToolEnvelope({
+        runId: state.runId,
+        questionId: question.questionId,
+        toolName: marketName,
+        targetEntity,
+        marketplace: marketName.startsWith("amazon") ? "amazon.com" : "US",
+        inputHash: question.inputHash,
+        idempotencyKey: buildIdempotencyKey({ runId: state.runId, questionId: question.questionId, toolName: marketName, inputHash: question.inputHash }),
+        budget: { maxCost: state.budget.maxCost, currency: state.budget.currency, maxBrowserSteps: state.budget.maxBrowserSteps },
+      });
+      envResult = await deps.marketTools.execute(envelope);
+      if (envResult.status === "waiting_auth") {
+        return { status: "waiting_auth", currentNode: "dispatch_tool", wait: { kind: "authentication", reasonCode: envResult.errors[0]?.code ?? "AUTH_REQUIRED", instructions: "工具需要人工接管（登录/验证码）。", requestedAt: new Date().toISOString() }, lastEvent: ev("dispatch_tool", "waiting_human", { reason: envResult.errors[0]?.code }) };
+      }
+      if (envResult.status === "budget_exceeded") {
+        return { status: "paused_budget", currentNode: "dispatch_tool", wait: { kind: "budget", reasonCode: "BUDGET_EXCEEDED", requestedAt: new Date().toISOString() }, lastEvent: ev("dispatch_tool", "budget_paused", {}) };
+      }
+      if (envResult.status === "stopped_error") {
+        const code = envResult.errors[0]?.code ?? "UNKNOWN_RECOVERABLE";
+        const recoverable = code === "DOM_CHANGED" || code === "RATE_LIMITED" || code === "TIMEOUT" || code === "SCHEMA_INVALID" || code === "SOURCE_STALE";
+        return failState("dispatch_tool", { code, recoverable, safeMessage: envResult.errors[0]?.safeMessage });
+      }
+      if (envResult.status !== "ok" && envResult.status !== "no_results") {
+        return failState("dispatch_tool", { code: "UNKNOWN_RECOVERABLE", recoverable: true, safeMessage: "tool status " + envResult.status });
+      }
+      toolResult = { toolName: marketName, outputHash: sha256(stableStringify(envResult)), payload: { envelope: envResult }, ok: envResult.status === "ok" };
+    }
     const budget = consumeBudget(state.budget, { browserSteps: 1, llmTokens: 50, cost: 0.05 });
     if (budget.over) {
       interrupt<InterruptValue, ResumePayload>({ kind: "budget", reasonCode: "BUDGET_EXCEEDED", node: "dispatch_tool" } satisfies InterruptValue);
@@ -248,12 +296,13 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
       currentNode: "dispatch_tool",
       activeQuestionId: question.questionId,
       activeToolCallId: `call-${question.inputHash.slice(0, 12)}`,
-      activeToolName: question.toolName,
+      activeToolName: marketName ?? question.toolName,
       activeInputHash: question.inputHash,
       activeToolResult: toolResult,
+      activeToolEnvelope: envResult,
       dispatchedQuestionIds: [...state.dispatchedQuestionIds, question.questionId],
       budget: budget.budget,
-      lastEvent: ev("dispatch_tool", "tool_dispatched", { toolName: question.toolName, questionId: question.questionId, inputHash: question.inputHash }),
+      lastEvent: ev("dispatch_tool", "tool_dispatched", { toolName: marketName ?? question.toolName, questionId: question.questionId, inputHash: question.inputHash }),
     };
   };
 
@@ -276,6 +325,36 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
     questionId: string,
     idemKey: string,
   ): Promise<Partial<GraphState>> => {
+    let evidenceV2Items: EvidenceItemV2[] = [];
+    if (state.activeToolEnvelope && state.activeToolEnvelope.status === "ok") {
+      const env = state.activeToolEnvelope;
+      const data = (env.data ?? {}) as Record<string, unknown>;
+      const type: EvidenceItemV2["type"] =
+        state.activeToolName === "amazon/search" || state.activeToolName === "amazon/detail" ? "amazon_page" :
+        state.activeToolName === "keyword" ? "keyword" :
+        state.activeToolName === "voc" ? "voc" : "sellersprite";
+      const item: EvidenceItemV2 = {
+        evidenceId: `ev-${questionId}-${state.evidenceRevision + 1}`,
+        type,
+        entity: String(env.observedEntity ?? state.candidateId),
+        marketplace: "US",
+        observedAt: env.capturedAt,
+        sourceRef: env.rawArtifactRefs?.[0]?.ref ?? state.activeToolName ?? "recorded",
+        fields: {
+          asin: data.asin ?? undefined,
+          title: data.title ?? undefined,
+          price: data.price ?? undefined,
+          rating: data.rating ?? undefined,
+          reviewCount: data.reviewCount ?? undefined,
+          ...(data.themes ? { themes: data.themes } : {}),
+          ...(data.keywords ? { keywords: data.keywords } : {}),
+        },
+        rawRef: env.rawArtifactRefs?.[0]?.ref,
+        warnings: (env.warnings ?? []).map((w) => w.message),
+      };
+      const v = validateEvidenceForMerge(item);
+      if (v.ok) { evidenceV2Items = [item]; }
+    }
     const evidenceItem = deps.tools.evidence({ toolResult, questionId });
     await deps.journal.commit({ runId: state.runId, idempotencyKey: idemKey });
     const evidenceRevision = state.evidenceRevision + 1;
@@ -283,13 +362,13 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
       status: "running",
       currentNode: "merge_evidence",
       evidence: [evidenceItem],
+      ...(evidenceV2Items.length ? { evidenceV2: evidenceV2Items, activeToolEnvelope: null } : {}),
       evidenceRevision,
       activeQuestionId: null,
       activeToolResult: null,
       lastEvent: ev("merge_evidence", "evidence_merged", { evidenceRevision, count: state.evidence.length + 1 }),
-    };
   };
-
+    };
   const mergeEvidence: NodeFn = async (state) => {
     const toolResult = state.activeToolResult;
     if (!toolResult) {
@@ -380,9 +459,27 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
   };
 
   const synthesizeMarket: NodeFn = async (state) => {
-    return { status: "running", currentNode: "synthesize_market" };
+    const gaps = (state.activeToolEnvelope && state.activeToolEnvelope.status === "no_results")
+      ? [{ question: "工具未返回结果（no_results）", reason: state.activeToolEnvelope.warnings?.[0]?.message ?? "fixture 缺失" }]
+      : state.questions.filter((q) => !state.dispatchedQuestionIds.includes(q.questionId)).map((q) => ({ question: q.questionId, reason: "未执行" }));
+    if (state.evidenceV2.length === 0 && state.evidence.length === 0) {
+      return { status: "running", currentNode: "synthesize_market", gaps: gaps.map((x) => x.question), lastEvent: ev("synthesize_market", "node_completed", { evidenceCount: 0, gaps: gaps.length }) };
+    }
+    const report = buildMarketReport({
+      reportId: `report-${state.runId.slice(0, 8)}`,
+      runId: state.runId,
+      candidateId: state.candidateId,
+      marketplace: "US",
+      evidence: state.evidenceV2,
+      gaps,
+      planRevision: state.planRevision,
+    });
+    const cited = validateReportCitations(report);
+    if (!cited.ok) {
+      return failState("synthesize_market", { code: "SCHEMA_INVALID", recoverable: true, safeMessage: "报告引用不完整" });
+    }
+    return { status: "running", currentNode: "synthesize_market", report, lastEvent: ev("synthesize_market", "node_completed", { evidenceCount: report.evidence.length, sections: report.sections.length }) };
   };
-
   const gateA: NodeFn = async (state) => {
     const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "GATE_A", node: "gate_a", instructions: "Review market synthesis and decide whether to continue." } satisfies InterruptValue);
     const human = decision as HumanDecisionPayload;
@@ -692,6 +789,9 @@ function initialInput(input: StartRunInput, budget: ResearchBudget): GraphState 
     lastValidation: null,
     lastEvent: null,
     retryMode: false,
+      activeToolEnvelope: null,
+      evidenceV2: [],
+      report: null,
   };
 }
 
@@ -732,6 +832,9 @@ function initialInputFromRun(state: ResearchRunState): GraphState {
     lastValidation: null,
     lastEvent: null,
     retryMode: false,
+      activeToolEnvelope: null,
+      evidenceV2: [],
+      report: null,
   };
 }
 
@@ -998,6 +1101,7 @@ export class ResearchRunRunner {
       status: patch.status,
       currentNode: patch.currentNode,
       planRevision: state.planRevision,
+      ...(state.report ? { reportJson: JSON.stringify(state.report) } : {}),
       automaticPlanRevisionCount: state.automaticPlanRevisionCount,
       events,
     });
@@ -1090,6 +1194,7 @@ function defaultDeps(): GraphDeps {
     journal: createPrismaJournal() as unknown as SideEffectJournal,
     runStore: createPrismaRunStore() as unknown as ResearchRunStore,
     checkpointPath: (runId: string) => checkpointDbPath(runId),
+    marketTools: { names: MARKET_TOOL_NAMES as readonly string[], execute: executeMarketTool },
   };
 }
 

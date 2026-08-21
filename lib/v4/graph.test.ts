@@ -27,7 +27,7 @@ function makeRunStoreDb() {
       const row: RunRow = {
         id: args.data.id as string, candidateId: args.data.candidateId as string,
         ownerScope: args.data.ownerScope as string, sandboxId: (args.data.sandboxId as string | null) ?? null,
-        mode: args.data.mode as string, graphVersion: args.data.graphVersion as string,
+        mode: args.data.mode as string, graphVersion: args.data.graphVersion as string, reportJson: (args.data.reportJson as string | null) ?? null,
         status: args.data.status as string, currentNode: args.data.currentNode as string,
         revision: args.data.revision as number, planRevision: args.data.planRevision as number,
         automaticPlanRevisionCount: args.data.automaticPlanRevisionCount as number,

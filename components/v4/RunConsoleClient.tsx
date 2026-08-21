@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ResearchRunEvent, ResearchRunState } from "@/lib/v4/contracts";
-import { getRun, resumeRun } from "./api";
+import { getReport, getRun, resumeRun } from "./api";
 import { RunConsoleView } from "./RunConsoleView";
+import type { ReportViewLike } from "./api";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -12,6 +13,7 @@ export function RunConsoleClient({ runId }: { runId: string }) {
   const [state, setState] = useState<LoadState>("loading");
   const [run, setRun] = useState<ResearchRunState | null>(null);
   const [events, setEvents] = useState<ResearchRunEvent[]>([]);
+  const [report, setReport] = useState<ReportViewLike | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
 
@@ -90,5 +92,5 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     );
   }
 
-  return <RunConsoleView run={run} events={events} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
+  return <RunConsoleView run={run} events={events} report={report} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
 }

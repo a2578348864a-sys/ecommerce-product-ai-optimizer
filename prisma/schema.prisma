@@ -169,6 +169,7 @@ model V4ResearchRun {
   automaticPlanRevisionCount Int      @default(0)
   stateJson                  String
   eventsJson                 String   @default("[]")
+  reportJson                 String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 

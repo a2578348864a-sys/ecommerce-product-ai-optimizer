@@ -49,6 +49,8 @@ export type RevisionConflictBody = {
 const RUNS_BASE = "/api/v4/runs";
 
 /** API 调用错误：携带 HTTP 状态、业务码与（可选）最新 revision。 */
+export type ReportViewLike = { reportId: string; summary: string; sections: { title: string; sentences: { text: string; evidenceRefs: string[]; kind: string }[] }[]; gaps: { question: string; reason: string }[]; conflicts: { evidenceA: string; evidenceB: string; field: string }[]; unknowns: string[]; planRevision: number };
+
 export class V4ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -144,6 +146,18 @@ export async function cancelRun(runId: string, expectedRevision: number): Promis
 
 export async function getEvents(runId: string): Promise<EventListResponse> {
   return request<EventListResponse>(RUNS_BASE + "/" + encodeRunId(runId) + "/events");
+}
+
+/** GET /api/v4/runs/[runId]/report → 市场报告（404 = 未生成，返回 null）。 */
+export async function getReport(runId: string): Promise<{ report: ReportViewLike } | null> {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/report", { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null) as { code?: string; message?: string } | null;
+    throw new V4ApiError(res.status, errBody?.code ?? "http_error", errBody?.message ?? "报告加载失败");
+  }
+  const body = await res.json();
+  return body as { report: ReportViewLike };
 }
 
 // 导出以便 UI 复用 wait/error 判别（类型投影，不依赖 server-only）。
