@@ -31,7 +31,13 @@ const LOCAL_OFF: HomeRuntime = { mode: "local_owner", noAuthOwner: false, v4Grap
 
 const FEATURED: FeaturedReplay = {
   bundleId: "replay-b39aa5cccec5d45f2e74",
-  title: "replay-b39aa5cccec5d45f2e74",
+  candidateName: "便携保温杯",
+  keyword: "stainless steel 保温杯",
+  market: "US",
+  link: "https://example.com/product/1",
+  riskLevel: "未见明显风险",
+  summary: "市场研究报告：证据充分，商品事实已确认。",
+  thumbnail: { src: "https://example.com/img/1.jpg", alt: "脱敏案例缩略图" },
   capturedAt: "2026-08-21T15:31:51.166Z",
   exportedAt: "2026-08-21T16:02:08.309Z",
   scanOk: true,
@@ -124,14 +130,30 @@ describe("V4ValueCards", () => {
 });
 
 describe("V4FeaturedReplayCard", () => {
-  it("renders derived stats and replay CTA from real metrics", () => {
+  it("renders business fields, derived stats and replay CTA from real metrics", () => {
     const html = renderToStaticMarkup(createElement(V4FeaturedReplayCard, { featured: FEATURED }));
     expect(html).toContain("真实脱敏历史案例回放");
+    expect(html).toContain("便携保温杯"); // 候选名为主标题，而非 UUID
+    expect(html).toContain("报告结论摘要");
+    expect(html).toContain("候选名");
+    expect(html).toContain("关键词");
+    expect(html).toContain("市场");
+    expect(html).toContain("风险等级");
     expect(html).toContain("时间线步数");
     expect(html).toContain("人工决策");
     expect(html).toContain("Content Guard 项");
     expect(html).toContain("查看完整研究回放");
     expect(html).toContain("/replay/replay-b39aa5cccec5d45f2e74");
+    expect(html).toContain("https://example.com/img/1.jpg");
+  });
+
+  it("renders honest empty states for absent business fields (no UUID title)", () => {
+    const html = renderToStaticMarkup(createElement(V4FeaturedReplayCard, {
+      featured: { ...FEATURED, candidateName: null, keyword: null, market: null, summary: null, riskLevel: null, link: null, thumbnail: null },
+    }));
+    expect(html).toContain("真实脱敏案例回放");
+    expect(html).toContain("未记录");
+    expect(html).toContain("无缩略图");
   });
 
   it("renders an honest empty state when no bundle is available", () => {
@@ -171,10 +193,16 @@ describe("Featured Replay loader — real bundle", () => {
     expect(m.guardItems).toBe(11);
   });
 
-  it("falls back to bundleId when candidate has no display name", () => {
+  it("avoids UUID as candidate title and derives business fields honestly", () => {
     const m = resolveReplayMetrics(bundle);
     expect(m.bundleId).toBe("replay-b39aa5cccec5d45f2e74");
-    expect(m.title).toBe(m.bundleId);
+    expect(m.candidateName).toBeNull(); // candidate 仅有 id，不作为业务标题
+    expect(m.keyword).toBeNull();
+    expect(m.link).toBeNull();
+    expect(m.thumbnail).toBeNull();
+    expect(m.market).toBe("US");
+    expect(m.summary).toBe("市场研究报告（1 条已验证证据，1 项缺口）。");
+    expect(m.riskLevel).toBe("存在信息缺口");
     expect(m.scanOk).toBe(true);
     expect(m.redactionEntries).toBe(2);
     expect(m.filesCount).toBe(5);
