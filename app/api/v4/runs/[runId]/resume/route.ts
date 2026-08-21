@@ -14,8 +14,8 @@ const REQUEST_BODY_LIMIT_BYTES = 16 * 1024;
 function normalizeResumePayload(raw: unknown): ResumePayload | null {
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  if (r.kind === "human_decision" && (r.decision === "continue" || r.decision === "stop")) {
-    return { kind: "human_decision", decision: r.decision, note: typeof r.note === "string" ? r.note.slice(0, 2000) : undefined };
+  if (r.kind === "human_decision" && typeof r.decision === "string" && ["continue", "stop", "continue_sourcing", "needs_information", "abandon", "content_ready", "revise_product"].includes(r.decision)) {
+    return { kind: "human_decision", decision: r.decision as Extract<ResumePayload, { kind: "human_decision" }>["decision"], note: typeof r.note === "string" ? r.note.slice(0, 2000) : undefined };
   }
   if (r.kind === "input" && typeof r.value === "string" && r.value.length > 0 && r.value.length <= 2000) {
     return { kind: "input", value: r.value };
