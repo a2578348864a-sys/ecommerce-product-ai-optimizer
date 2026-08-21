@@ -1,0 +1,129 @@
+{
+  "schemaVersion": "1688-recorded.v1",
+  "match": {
+    "inputHash": "search-ok-hash",
+    "keyword": "保温杯",
+    "operation": "search"
+  },
+  "extraction": {
+    "operation": "search",
+    "observedEntity": "保温杯",
+    "context": {
+      "host": "detail.1688.com",
+      "pageUrl": "https://s.1688.com/selloffer/offer_search.html?keywords=保温杯",
+      "pageStatus": "ok",
+      "capturedAt": "2026-08-21T12:00:00.000Z"
+    },
+    "candidates": [
+      {
+        "schema": "acquisition-candidate.v1",
+        "source": "1688",
+        "offerId": "674035283676",
+        "sourceUrl": "https://detail.1688.com/offer/674035283676.html",
+        "capturedAt": "2026-08-21T12:00:00.000Z",
+        "acquisitionMethod": "keyword",
+        "sourceProductRole": "candidate",
+        "title": "跨境750ml大容量小口瓶304不锈钢保温杯户外运动车载便携磨砂水杯",
+        "images": [
+          "https://img.example.test/a.jpg",
+          "https://img.example.test/b.jpg"
+        ],
+        "displayedPrice": {
+          "text": "¥16",
+          "nature": "displayed_price"
+        },
+        "priceRange": {
+          "min": 16,
+          "max": 16,
+          "text": "¥16"
+        },
+        "priceTiers": [],
+        "displayedMoq": null,
+        "skuSpecs": [],
+        "sellerClaims": [],
+        "platformMetadata": [
+          {
+            "name": "supplierYears",
+            "value": "11",
+            "evidenceClass": "platform_metadata"
+          },
+          {
+            "name": "location",
+            "value": "浙江 武义县",
+            "evidenceClass": "platform_metadata"
+          },
+          {
+            "name": "verified",
+            "value": "factory",
+            "evidenceClass": "platform_metadata"
+          },
+          {
+            "name": "isP4P",
+            "value": "false",
+            "evidenceClass": "platform_metadata"
+          }
+        ],
+        "supplierDisplayName": "永康市迎庆杯业有限公司",
+        "matchState": null
+      },
+      {
+        "schema": "acquisition-candidate.v1",
+        "source": "1688",
+        "offerId": "930374004918",
+        "sourceUrl": "https://detail.1688.com/offer/930374004918.html",
+        "capturedAt": "2026-08-21T12:00:00.000Z",
+        "acquisitionMethod": "keyword",
+        "sourceProductRole": "candidate",
+        "title": "新款不锈钢保温杯钢盖简约保温杯女生高颜值便携手提杯真空保温杯",
+        "images": [
+          "https://img.example.test/d.jpg"
+        ],
+        "displayedPrice": {
+          "text": "¥16.5",
+          "nature": "displayed_price"
+        },
+        "priceRange": {
+          "min": 16.5,
+          "max": 16.5,
+          "text": "¥16.5"
+        },
+        "priceTiers": [],
+        "displayedMoq": null,
+        "skuSpecs": [],
+        "sellerClaims": [],
+        "platformMetadata": [
+          {
+            "name": "supplierYears",
+            "value": "2",
+            "evidenceClass": "platform_metadata"
+          },
+          {
+            "name": "location",
+            "value": "浙江 金华市",
+            "evidenceClass": "platform_metadata"
+          },
+          {
+            "name": "verified",
+            "value": "factory",
+            "evidenceClass": "platform_metadata"
+          },
+          {
+            "name": "isP4P",
+            "value": "true",
+            "evidenceClass": "platform_metadata"
+          }
+        ],
+        "supplierDisplayName": "永康市希杰工贸有限公司",
+        "matchState": null
+      }
+    ],
+    "detail": null,
+    "rawCardCount": 2,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}

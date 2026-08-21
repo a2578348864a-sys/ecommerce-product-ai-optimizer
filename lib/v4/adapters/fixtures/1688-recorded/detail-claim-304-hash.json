@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "1688-recorded.v1",
+  "match": {
+    "inputHash": "detail-claim-304-hash",
+    "offerId": "930374004918",
+    "operation": "detail"
+  },
+  "extraction": {
+    "operation": "detail",
+    "observedEntity": "930374004918",
+    "context": {
+      "host": "detail.1688.com",
+      "pageUrl": "https://detail.1688.com/offer/930374004918.html",
+      "pageStatus": "ok",
+      "shippingLocation": {
+        "province": "浙江",
+        "city": "金华市",
+        "text": "浙江 金华市"
+      },
+      "capturedAt": "2026-08-21T12:00:00.000Z"
+    },
+    "candidates": [],
+    "detail": {
+      "offerId": "930374004918",
+      "sourceUrl": "https://detail.1688.com/offer/930374004918.html",
+      "capturedAt": "2026-08-21T12:00:00.000Z",
+      "title": "跨境750ml大容量小口瓶304不锈钢保温杯户外运动车载便携磨砂水杯",
+      "mainImages": [
+        "https://img.example.test/main.jpg",
+        "https://img.example.test/sub1.jpg"
+      ],
+      "displayedPrice": {
+        "text": "￥21.30",
+        "nature": "displayed_price"
+      },
+      "priceRange": {
+        "min": 21.3,
+        "max": 21.3,
+        "text": "￥21.30"
+      },
+      "priceTiers": [
+        {
+          "minQty": 1,
+          "price": 16.5,
+          "text": "1 件起 ¥16.5"
+        }
+      ],
+      "displayedMoq": {
+        "text": "1 个",
+        "value": 1,
+        "nature": "displayed_moq"
+      },
+      "skuSpecs": [
+        {
+          "skuId": "5980020430300",
+          "specs": "绿色【一杯双饮+手提绳】>600ml【定制联系客服】",
+          "price": 21.3,
+          "multiPrice": 16.5,
+          "stock": 5293
+        },
+        {
+          "skuId": "5980020430298",
+          "specs": "白色【一杯双饮+手提绳】>600ml【定制联系客服】",
+          "price": 21.3,
+          "multiPrice": 16.5,
+          "stock": 3914
+        }
+      ],
+      "sellerClaims": [
+        {
+          "name": "内胆材质",
+          "value": "304不锈钢",
+          "evidenceClass": "seller_claim"
+        },
+        {
+          "name": "材质等级",
+          "value": "SUS304食品级",
+          "evidenceClass": "seller_claim"
+        },
+        {
+          "name": "功能",
+          "value": "保温,便携",
+          "evidenceClass": "seller_claim"
+        },
+        {
+          "name": "是否有第三方检测报告",
+          "value": "没有",
+          "evidenceClass": "seller_claim"
+        }
+      ],
+      "platformMetadata": [
+        {
+          "name": "saledCount",
+          "value": "3081",
+          "evidenceClass": "platform_metadata"
+        },
+        {
+          "name": "categoryId",
+          "value": "1043766",
+          "evidenceClass": "platform_metadata"
+        },
+        {
+          "name": "unitName",
+          "value": "个",
+          "evidenceClass": "platform_metadata"
+        },
+        {
+          "name": "options",
+          "value": "颜色:白色【一杯双饮+手提绳】,粉色【一杯双饮+手提绳】 | 容量:600ml【定制联系客服】",
+          "evidenceClass": "platform_metadata"
+        }
+      ],
+      "supplierDisplayName": "永康市希杰工贸有限公司"
+    },
+    "rawCardCount": 1,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}

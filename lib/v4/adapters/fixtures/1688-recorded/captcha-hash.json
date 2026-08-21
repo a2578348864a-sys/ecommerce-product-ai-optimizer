@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1688-recorded.v1",
+  "match": {
+    "inputHash": "captcha-hash",
+    "offerId": "930374004918",
+    "operation": "detail"
+  },
+  "extraction": {
+    "operation": "detail",
+    "observedEntity": "930374004918",
+    "context": {
+      "host": "detail.1688.com",
+      "pageUrl": "https://detail.1688.com/offer/930374004918.html",
+      "pageStatus": "captcha",
+      "shippingLocation": {
+        "province": "浙江",
+        "city": "金华市",
+        "text": "浙江 金华市"
+      },
+      "capturedAt": "2026-08-21T12:00:00.000Z"
+    },
+    "candidates": [],
+    "detail": null,
+    "rawCardCount": 1,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}
