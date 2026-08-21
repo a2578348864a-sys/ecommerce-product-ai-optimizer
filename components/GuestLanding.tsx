@@ -82,6 +82,8 @@ export function GuestLanding({ runtime, featured }: { runtime: HomeRuntime; feat
             </span>
           </div>
 
+          <p className="linear-kicker">Evidence-first · Human-in-the-loop</p>
+
           <h1
             id="guest-title"
             aria-label="AI 跨境商品研究与上架准备工作台"
