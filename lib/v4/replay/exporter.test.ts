@@ -2,6 +2,7 @@
  * V4 P6 — ReplayBundle 导出器测试（P6-A 所有权，D1-D3）。
  */
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 
 import { parseBundle, verifyBundleHash, type ReplayBundle, type RedactionEntry } from "./schema";
 import { exportReplayBundle, verifyBundleIntegrity } from "./exporter";
@@ -30,6 +31,8 @@ function run(data: Record<string, unknown>, overrides: Record<string, unknown> =
 function hasEntry(bundle: ReplayBundle, kind: RedactionEntry["kind"], action: RedactionEntry["action"]): boolean {
   return bundle.redactionReport.entries.some((e) => e.kind === kind && e.action === action);
 }
+
+const sha256 = (input: string): string => createHash("sha256").update(input, "utf8").digest("hex");
 
 const ALLOWLIST = [
   "candidate", "report", "facts", "commercial", "content", "events", "gates", "timeline", "evidenceRefs",
@@ -62,7 +65,7 @@ describe("V4 P6 exporter — status & allowlist gating", () => {
       expect(f.sha256).toMatch(/^[0-9a-f]{64}$/);
     }
     expect(bundle.manifest.bundleSha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(verifyBundleHash(bundle)).toBe(true);
+    expect(verifyBundleHash(bundle, sha256)).toBe(true);
     expect(verifyBundleIntegrity(bundle)).toBe(true);
   });
 
@@ -190,8 +193,9 @@ describe("V4 P6 exporter — redaction scanning", () => {
     expect(res.publishable).toBe(false);
     expect(bundle.redactionReport.scanOk).toBe(false);
     expect(hasEntry(bundle, "unlicensed", "blocked")).toBe(true);
-    // 结构仍可通过 format 校验，但不可发布。
-    expect(verifyBundleHash(bundle)).toBe(true);
+    // 结构仍可通过内容复算校验（Lead P6-C 修复 verifyBundleHash），但不可发布。
+    expect(verifyBundleHash(bundle, sha256)).toBe(true);
+    expect(parseBundle(JSON.stringify(bundle)).ok).toBe(true);
     expect(bundle.schemaVersion).toBe("replay-bundle.v1");
     expect(bundle.data.content).toBeDefined();
   });
@@ -239,21 +243,26 @@ describe("V4 P6 exporter — determinism & integrity", () => {
       ...bundle,
       manifest: { ...bundle.manifest, bundleSha256: "not-a-hex" },
     };
-    expect(verifyBundleHash(malformed)).toBe(false);
+    expect(verifyBundleHash(malformed, sha256)).toBe(false);
   });
 
-  it("schema.parseBundle gates the schema major version (frozen-note)", () => {
-    // 冻结 schema.parseBundle 存在缺陷：对 "replay-bundle.v1" 计算 major 时，
-    // split(".")[0] = "replay-bundle"，随后 replace("replay-bundle.v","") 不命中 →
-    // Number("replay-bundle") = NaN → 对 v1 也返回 SCHEMA_UNSUPPORTED。
-    // 该函数由 Lead 冻结（P6-A 不得修改），此处按实际行为断言并作为风险上报。
+  it("schema.parseBundle gates the schema major version (Lead P6-C fix)", () => {
+    // Lead P6-C 已修复 parseBundle：主版本经 /^replay-bundle\.v(\d+)/ 提取；结构缺失 fail-closed。
     const res = run(cleanData);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     const raw = JSON.stringify(res.bundle);
-    expect(res.bundle.schemaVersion).toBe("replay-bundle.v1");
-    expect(parseBundle(raw)).toEqual({ ok: false, code: "SCHEMA_UNSUPPORTED" });
+    // v1 正常通过。
+    expect(parseBundle(raw).ok).toBe(true);
     // 非 JSON → INVALID。
     expect(parseBundle("not json")).toEqual({ ok: false, code: "INVALID" });
+    // 结构缺失（去掉 data）→ INVALID（fail-closed）。
+    const noData = JSON.parse(raw) as Record<string, unknown>;
+    delete noData.data;
+    expect(parseBundle(JSON.stringify(noData))).toEqual({ ok: false, code: "INVALID" });
+    // 主版本不符 → SCHEMA_UNSUPPORTED。
+    const v2 = JSON.parse(raw) as { schemaVersion: string };
+    v2.schemaVersion = "replay-bundle.v2";
+    expect(parseBundle(JSON.stringify(v2))).toEqual({ ok: false, code: "SCHEMA_UNSUPPORTED" });
   });
 });

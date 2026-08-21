@@ -12,12 +12,14 @@
  *   - 任一 "blocked"（未授权图片）→ redactionReport.scanOk = false → 不可发布。
  *   - 敏感叶子按 key 识别 → removed；文本中嵌入的泄漏 → redacted（掩码）。
  *
- * 本模块为纯函数，不触碰 prisma / 数据库；hash 用 node:crypto 与本地 stableStringify
- * （与 lib/v4/journal 同构，但不引入 server/prisma 依赖，便于单测与 Lead 的 API 复用）。
+ * 本模块为纯函数，不触碰 prisma / 数据库；hash 用 node:crypto 的 sha256。
+ * bundleSha256 = sha256(canonicalBundleWithoutHash(bundle))（Lead 冻结契约，P6-C），
+ * 逐文件 sha256 对 data[key] 做确定性规范字符串化后计算。
  */
 import { createHash } from "node:crypto";
 
 import {
+  canonicalBundleWithoutHash,
   REPLAY_BUNDLE_SCHEMA,
   REPLAY_DATA_ALLOWLIST,
   type RedactionEntry,
@@ -308,10 +310,6 @@ function buildFileHashes(data: Record<string, unknown>): ReplayManifestFile[] {
   return files;
 }
 
-/** 计算 bundle sha256：对不含 bundleSha256 的整包做稳定字符串化后再哈希。 */
-function computeBundleSha256(bundleWithoutSha: Omit<ReplayBundle, "manifest"> & { manifest: { files: ReplayManifestFile[]; bundleSha256: string } }): string {
-  return sha256(stableStringify(bundleWithoutSha));
-}
 
 /**
  * 导出 ReplayBundle。
@@ -346,7 +344,7 @@ export function exportReplayBundle(input: ReplayExportInput, now: string = new D
     redactionReport,
     data,
   };
-  const bundleSha256 = computeBundleSha256(bundleWithoutSha);
+  const bundleSha256 = sha256(canonicalBundleWithoutHash(bundleWithoutSha as ReplayBundle));
   const bundle: ReplayBundle = {
     ...bundleWithoutSha,
     manifest: { files, bundleSha256 },
@@ -372,9 +370,5 @@ export function verifyBundleIntegrity(bundle: ReplayBundle): boolean {
       return false;
     }
   }
-  const recomputedBundle = {
-    ...bundle,
-    manifest: { files: bundle.manifest.files, bundleSha256: "" },
-  };
-  return computeBundleSha256(recomputedBundle) === bundle.manifest.bundleSha256;
+  return sha256(canonicalBundleWithoutHash(bundle)) === bundle.manifest.bundleSha256;
 }
