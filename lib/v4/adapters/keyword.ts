@@ -563,6 +563,22 @@ export async function runKeywordAdapter(
     });
   }
 
+  // WE-2 地区/站点切换：marketplace 不匹配 → 立即停止。
+  if (source.marketplace && call.marketplace && source.marketplace !== call.marketplace) {
+    return buildResult({
+      call,
+      status: "stopped_error",
+      observedEntity: source.entity || call.targetEntity,
+      data: null,
+      rawArtifactRefs: [],
+      capturedAt,
+      usedCost: 0,
+      warnings: [],
+      errors: [{ code: "WRONG_ENTITY" }],
+      nextAction: "stop",
+    });
+  }
+
   const normalized = normalizeKeywordSource(source);
   const rawArtifactRefs: RawArtifactRef[] = [
     {

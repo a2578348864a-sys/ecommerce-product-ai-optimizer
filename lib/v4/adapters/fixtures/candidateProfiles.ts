@@ -12,11 +12,31 @@ import type { KeywordSourcePayload } from "@/lib/v4/adapters/keyword";
 import type { SellerSpriteSourcePayload } from "@/lib/v4/adapters/sellersprite";
 import type { VocSourcePayload } from "@/lib/v4/adapters/voc";
 
+/** evidence-and-feasibility.schema.json 的 evidence 子集（对齐 kind/sourceType/typedValue/unit/currency/sampleSize/confidenceDimensions/contentHash）。 */
+export type FixtureEvidenceItem = {
+  evidenceId: string;
+  kind: "source_fact" | "platform_metadata" | "estimate" | "signal" | "unknown" | "conflict";
+  sourceType: "xlsx" | "amazon" | "keyword_provider" | "review" | "supplier" | "calculation" | "policy";
+  entity: string;
+  field: string;
+  typedValue: { value: unknown; unit: string | null; currency: string | null };
+  sampleSize: number | null;
+  confidenceDimensions: Record<string, number> | null;
+  contentHash: string;
+  capturedAt: string;
+};
+
 export type CandidateProfileFixture = {
   profile: "evidence_sufficient" | "data_insufficient" | "conflict_obvious";
   candidateId: string;
   marketplace: string;
   targetEntity: string;
+  priorityBand: "now" | "later" | "hold" | "needs_review";
+  confidence: "high" | "medium" | "low";
+  /** 冲突明显画像：key/value 双值并列，不自动归一 */
+  conflicts: Array<{ field: string; evidenceA: string; evidenceB: string }>;
+  /** 对齐 evidence schema 的证据投影（为 C 的 eval / 报告引用校验提供数据基础） */
+  evidenceItems: FixtureEvidenceItem[];
   sellersprite: SellerSpriteSourcePayload;
   keyword: KeywordSourcePayload;
   voc: VocSourcePayload;
@@ -26,12 +46,31 @@ const FILE_SHA_SUFFICIENT = "a".repeat(64);
 const FILE_SHA_INSUFFICIENT = "b".repeat(64);
 const FILE_SHA_CONFLICT = "c".repeat(64);
 
+/** 确定性 64-hex contentHash（fixture 专用，非密码学安全，仅为稳定可复现）。 */
+function fixtureHash(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0").repeat(8).slice(0, 64);
+}
+
 /* ── 画像 1：证据充足 ── */
 export const evidenceSufficient: CandidateProfileFixture = {
   profile: "evidence_sufficient",
   candidateId: "cand-suf-0001",
   marketplace: "amazon.com",
   targetEntity: "Kitchen Storage",
+  priorityBand: "now",
+  confidence: "high",
+  conflicts: [],
+  evidenceItems: [
+    { evidenceId: "ev-suf-price-001", kind: "source_fact", sourceType: "xlsx", entity: "B0TESTAAA1", field: "price", typedValue: { value: 22.99, unit: "USD", currency: "USD" }, sampleSize: null, confidenceDimensions: { coverage: 0.97 }, contentHash: fixtureHash("suf-price"), capturedAt: "2026-08-15T09:00:00.000Z" },
+    { evidenceId: "ev-suf-sales-002", kind: "estimate", sourceType: "xlsx", entity: "B0TESTAAA1", field: "estimatedMonthlySales", typedValue: { value: 3200, unit: "units/month", currency: null }, sampleSize: null, confidenceDimensions: { coverage: 0.92 }, contentHash: fixtureHash("suf-sales"), capturedAt: "2026-08-15T09:00:00.000Z" },
+    { evidenceId: "ev-suf-key-003", kind: "estimate", sourceType: "keyword_provider", entity: "Kitchen Storage", field: "monthlySearches", typedValue: { value: 18200, unit: "searches/month", currency: null }, sampleSize: null, confidenceDimensions: { coverage: 0.9 }, contentHash: fixtureHash("suf-key"), capturedAt: "2026-08-15T09:00:00.000Z" },
+    { evidenceId: "ev-suf-rank-004", kind: "signal", sourceType: "keyword_provider", entity: "Kitchen Storage", field: "abaMonthlyRank", typedValue: { value: 1240, unit: "rank", currency: null }, sampleSize: null, confidenceDimensions: { coverage: 0.85 }, contentHash: fixtureHash("suf-rank"), capturedAt: "2026-08-15T09:00:00.000Z" },
+    { evidenceId: "ev-suf-theme-005", kind: "source_fact", sourceType: "review", entity: "cand-suf-0001", field: "voc.space_efficiency", typedValue: { value: "space efficiency", unit: null, currency: null }, sampleSize: 12, confidenceDimensions: { coverage: 0.25 }, contentHash: fixtureHash("suf-theme"), capturedAt: "2026-08-20T00:00:00.000Z" },
+  ],
   sellersprite: {
     sourceFileName: "kitchen-storage-search.sample.xlsx",
     sourceFileSha256: FILE_SHA_SUFFICIENT,
@@ -150,6 +189,7 @@ export const evidenceSufficient: CandidateProfileFixture = {
   },
   voc: {
     candidateId: "cand-suf-0001",
+    marketplace: "amazon.com",
     sampledEvidenceIds: null,
     reviews: [
       { evidenceId: "rev-000001", productAsin: "B0TESTAAA1", sourceProductRole: "current_candidate", rating: 5, reviewDate: "2026-07-01", reviewText: "fits nicely under the counter and holds a lot", duplicateKey: "rid:r-1", language: "en", locale: "en-US" },
@@ -182,6 +222,14 @@ export const dataInsufficient: CandidateProfileFixture = {
   candidateId: "cand-ins-0002",
   marketplace: "amazon.com",
   targetEntity: "Bamboo Laptop Stand",
+  priorityBand: "later",
+  confidence: "low",
+  conflicts: [],
+  evidenceItems: [
+    { evidenceId: "ev-ins-price-001", kind: "source_fact", sourceType: "xlsx", entity: "B0TESTD001", field: "price", typedValue: { value: 24.99, unit: "USD", currency: "USD" }, sampleSize: null, confidenceDimensions: { coverage: 0.5 }, contentHash: fixtureHash("ins-price"), capturedAt: "2026-08-16T10:30:00.000Z" },
+    { evidenceId: "ev-ins-key-002", kind: "estimate", sourceType: "keyword_provider", entity: "B0TESTD001", field: "monthlySearches", typedValue: { value: 4100, unit: "searches/month", currency: null }, sampleSize: null, confidenceDimensions: { coverage: 0.6 }, contentHash: fixtureHash("ins-key"), capturedAt: "2026-08-16T10:30:00.000Z" },
+    { evidenceId: "ev-ins-voc-003", kind: "signal", sourceType: "review", entity: "cand-ins-0002", field: "voc.desk_fit", typedValue: { value: "desk fit", unit: null, currency: null }, sampleSize: 3, confidenceDimensions: { coverage: 0.1 }, contentHash: fixtureHash("ins-voc"), capturedAt: "2026-08-20T00:00:00.000Z" },
+  ],
   sellersprite: {
     sourceFileName: "bamboo-stand-category.sample.xlsx",
     sourceFileSha256: FILE_SHA_INSUFFICIENT,
@@ -245,6 +293,7 @@ export const dataInsufficient: CandidateProfileFixture = {
   },
   voc: {
     candidateId: "cand-ins-0002",
+    marketplace: "amazon.com",
     sampledEvidenceIds: null,
     reviews: [
       { evidenceId: "rev-200001", productAsin: "B0TESTD001", sourceProductRole: "current_candidate", rating: 4, reviewDate: "2026-07-02", reviewText: "lightweight and fits my desk", duplicateKey: "rid:r-201", language: "en", locale: "en-US" },
@@ -265,6 +314,20 @@ export const conflictObvious: CandidateProfileFixture = {
   candidateId: "cand-con-0003",
   marketplace: "amazon.com",
   targetEntity: "Insulated Water Bottle",
+  priorityBand: "needs_review",
+  confidence: "low",
+  conflicts: [
+    { field: "keyword.monthlySearches", evidenceA: "exact(third-party)", evidenceB: "estimate" },
+    { field: "rating", evidenceA: "4.8", evidenceB: "recent return complaints" },
+    { field: "price", evidenceA: "26.0", evidenceB: "outside brief band" },
+    { field: "voc.cold_retention", evidenceA: "praised", evidenceB: "complained" },
+  ],
+  evidenceItems: [
+    { evidenceId: "ev-con-key-001", kind: "conflict", sourceType: "keyword_provider", entity: "Insulated Water Bottle", field: "keyword.monthlySearches", typedValue: { value: "exact(third-party)/estimate", unit: "searches/month", currency: null }, sampleSize: null, confidenceDimensions: { coverage: 0.5 }, contentHash: fixtureHash("con-key"), capturedAt: "2026-08-17T11:00:00.000Z" },
+    { evidenceId: "ev-con-rating-002", kind: "conflict", sourceType: "xlsx", entity: "B0TESTE001", field: "rating", typedValue: { value: "4.8", unit: "stars", currency: null }, sampleSize: null, confidenceDimensions: { coverage: 0.9 }, contentHash: fixtureHash("con-rating"), capturedAt: "2026-08-17T11:00:00.000Z" },
+    { evidenceId: "ev-con-price-003", kind: "conflict", sourceType: "xlsx", entity: "B0TESTE001", field: "price", typedValue: { value: 26.0, unit: "USD", currency: "USD" }, sampleSize: null, confidenceDimensions: { coverage: 0.92 }, contentHash: fixtureHash("con-price"), capturedAt: "2026-08-17T11:00:00.000Z" },
+    { evidenceId: "ev-con-voc-004", kind: "conflict", sourceType: "review", entity: "cand-con-0003", field: "voc.cold_retention", typedValue: { value: "praised/complained", unit: null, currency: null }, sampleSize: 8, confidenceDimensions: { coverage: 0.5 }, contentHash: fixtureHash("con-voc"), capturedAt: "2026-08-20T00:00:00.000Z" },
+  ],
   sellersprite: {
     sourceFileName: "insulated-bottle-search.sample.xlsx",
     sourceFileSha256: FILE_SHA_CONFLICT,
@@ -342,6 +405,7 @@ export const conflictObvious: CandidateProfileFixture = {
   },
   voc: {
     candidateId: "cand-con-0003",
+    marketplace: "amazon.com",
     sampledEvidenceIds: null,
     reviews: [
       { evidenceId: "rev-300001", productAsin: "B0TESTE001", sourceProductRole: "current_candidate", rating: 5, reviewDate: "2026-07-01", reviewText: "keeps water cold all day", duplicateKey: "rid:r-301", language: "en", locale: "en-US" },

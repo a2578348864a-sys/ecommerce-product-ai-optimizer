@@ -88,7 +88,7 @@ describe("voc adapter", () => {
   });
 
   it("marks low confidence for samples below the minimum", async () => {
-    const result = await runVocAdapter(makeCall(), {
+    const result = await runVocAdapter(makeCall({ targetEntity: "cand-ins-0002" }), {
       mode: "recorded",
       fixture: dataInsufficient.voc,
     });
@@ -101,7 +101,7 @@ describe("voc adapter", () => {
 
   it("flags template/robot reviews and injects a template_reviews bias", async () => {
     // conflictObvious.voc has 3 identical "good product" reviews (repeated text).
-    const result = await runVocAdapter(makeCall(), {
+    const result = await runVocAdapter(makeCall({ targetEntity: "cand-con-0003" }), {
       mode: "recorded",
       fixture: conflictObvious.voc,
     });
@@ -111,7 +111,7 @@ describe("voc adapter", () => {
   });
 
   it("detects injection in review text but keeps behavior bounded", async () => {
-    const result = await runVocAdapter(makeCall(), {
+    const result = await runVocAdapter(makeCall({ targetEntity: "cand-con-0003" }), {
       mode: "recorded",
       fixture: conflictObvious.voc,
     });
@@ -129,6 +129,7 @@ describe("voc adapter", () => {
     ];
     const source: VocSourcePayload = {
       candidateId: "cand-x",
+      marketplace: "amazon.com",
       sampledEvidenceIds: null,
       reviews,
       themes: [{ label: "t", bucket: "positive", evidenceRefs: ["rev-v1"], summary: "s", limitations: null }],
@@ -192,5 +193,58 @@ describe("voc adapter", () => {
     expect(readLive).toHaveBeenCalledTimes(1);
     expect(sets.length).toBe(1);
     expect(gets.length).toBe(2);
+  });
+
+  it("WE-3 stops with WRONG_ENTITY when target candidate mismatches the data surface", async () => {
+    const result = await runVocAdapter(makeCall({ targetEntity: "cand-other-999" }), {
+      mode: "recorded",
+      fixture: evidenceSufficient.voc, // candidateId cand-suf-0001
+    });
+    expect(result.status).toBe("stopped_error");
+    expect(result.errors[0]?.code).toBe("WRONG_ENTITY");
+    expect(result.nextAction).toBe("stop");
+  });
+
+  it("WE-2 stops with WRONG_ENTITY when marketplace switches", async () => {
+    const result = await runVocAdapter(makeCall({ marketplace: "amazon.ca" }), {
+      mode: "recorded",
+      fixture: evidenceSufficient.voc, // marketplace amazon.com
+    });
+    expect(result.status).toBe("stopped_error");
+    expect(result.errors[0]?.code).toBe("WRONG_ENTITY");
+    expect(result.nextAction).toBe("stop");
+  });
+
+  it("PI-2 injection leaves allowedDomains/budget/nextAction unchanged and text only in raw artifact", async () => {
+    const call = makeCall({ targetEntity: "cand-con-0003" });
+    const baseline = await runVocAdapter(call, { mode: "recorded", fixture: conflictObvious.voc, now: () => "2026-08-20T00:00:00.000Z" });
+    const data = baseline.data as { injectionDetected: boolean; themes: Array<{ summary: string }> };
+    expect(data.injectionDetected).toBe(true);
+    // 权限/预算/下一步不变（adapter 不修改输入 call 的授权与预算）
+    expect(call.allowedDomains).toEqual([]);
+    expect(call.budget.maxCost).toBe(1);
+    expect(baseline.cost.currency).toBe(call.budget.currency);
+    expect(baseline.nextAction).toBe("continue");
+    // 注入文本只进 rawArtifactRef，不出现在结构化 data（版权最小化）
+    expect(JSON.stringify(baseline.data)).not.toContain("ignore previous instructions");
+    expect(baseline.rawArtifactRefs.some((r) => /voc\//.test(r.ref))).toBe(true);
+  });
+
+  it("evidence kinds are never 'action' (theme buckets are observation kinds only)", async () => {
+    const result = await runVocAdapter(makeCall(), { mode: "recorded", fixture: evidenceSufficient.voc });
+    const data = result.data as { themes: Array<{ bucket: string }> };
+    expect(data.themes.length).toBeGreaterThan(0);
+    for (const theme of data.themes) {
+      expect(["positive", "pain", "scenario", "request", "conflict", "weak"]).toContain(theme.bucket);
+    }
+    expect(JSON.stringify(result.data)).not.toMatch(/\baction\b/i);
+  });
+
+  it("GOLD-1 preserves unknowns and never claims success", async () => {
+    const result = await runVocAdapter(makeCall(), { mode: "recorded", fixture: evidenceSufficient.voc });
+    const data = result.data as { unknowns: string[]; themes: unknown[] };
+    // unknown 不静默关闭，保留为 unknowns
+    expect(data.unknowns.length).toBeGreaterThan(0);
+    expect(JSON.stringify(result.data)).not.toMatch(/爆款|能卖|预计月赚|worth selling/i);
   });
 });

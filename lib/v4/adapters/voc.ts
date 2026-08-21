@@ -67,6 +67,7 @@ export type VocThemeSource = {
 
 export type VocSourcePayload = {
   candidateId: string | null;
+  marketplace: string;
   sampledEvidenceIds: string[] | null;
   reviews: VocReviewSource[];
   themes: VocThemeSource[];
@@ -449,6 +450,7 @@ export function reviewVocToSource(input: {
   return {
     source: {
       candidateId,
+      marketplace: "",
       sampledEvidenceIds: null,
       reviews,
       themes,
@@ -519,6 +521,38 @@ export async function runVocAdapter(
       warnings: sourceWarnings.map((m) => ({ code: "SOURCE_UNAVAILABLE", message: m })),
       errors: [{ code: "SOURCE_STALE" }],
       nextAction: "retry",
+    });
+  }
+
+  // WE-3 实体不匹配：目标候选与数据面 candidateId 不一致 → 立即停止，不合并证据。
+  if (call.targetEntity && source.candidateId && call.targetEntity !== source.candidateId) {
+    return buildResult({
+      call,
+      status: "stopped_error",
+      observedEntity: source.candidateId,
+      data: null,
+      rawArtifactRefs: [],
+      capturedAt,
+      usedCost: 0,
+      warnings: [],
+      errors: [{ code: "WRONG_ENTITY" }],
+      nextAction: "stop",
+    });
+  }
+
+  // WE-2 地区/站点切换：marketplace 不匹配 → 立即停止。
+  if (source.marketplace && call.marketplace && source.marketplace !== call.marketplace) {
+    return buildResult({
+      call,
+      status: "stopped_error",
+      observedEntity: source.candidateId || call.targetEntity,
+      data: null,
+      rawArtifactRefs: [],
+      capturedAt,
+      usedCost: 0,
+      warnings: [],
+      errors: [{ code: "WRONG_ENTITY" }],
+      nextAction: "stop",
     });
   }
 

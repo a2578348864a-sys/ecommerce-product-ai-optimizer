@@ -514,7 +514,40 @@ export async function runSellerSpriteAdapter(
     });
   }
 
+  // WE-2 地区/站点切换：marketplace 不匹配 → 立即停止。
+  if (source.marketplace && call.marketplace && source.marketplace !== call.marketplace) {
+    return buildResult({
+      call,
+      status: "stopped_error",
+      observedEntity,
+      data: null,
+      rawArtifactRefs: [],
+      capturedAt,
+      usedCost: 0,
+      warnings: [],
+      errors: [{ code: "WRONG_ENTITY" }],
+      nextAction: "stop",
+    });
+  }
+
   const normalized = normalizeSellerSpriteSource(source);
+
+  // WE-1/WE-3 目标 ASIN 未出现在候选集（推荐位/变体混杂错收）→ 停止，不合并证据。
+  const targetIsAsin = /^[A-Z0-9]{10}$/.test(call.targetEntity);
+  if (targetIsAsin && normalized.output && !normalized.output.candidates.some((c) => c.asin === call.targetEntity)) {
+    return buildResult({
+      call,
+      status: "stopped_error",
+      observedEntity: call.targetEntity,
+      data: null,
+      rawArtifactRefs: [],
+      capturedAt,
+      usedCost: 0,
+      warnings: [],
+      errors: [{ code: "WRONG_ENTITY" }],
+      nextAction: "stop",
+    });
+  }
   const rawArtifactRefs: RawArtifactRef[] = [
     {
       kind: deps.mode === "recorded" ? "recorded" : "xlsx",
