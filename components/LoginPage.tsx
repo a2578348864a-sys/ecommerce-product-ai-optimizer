@@ -75,16 +75,13 @@ export function LoginPage({ onSubmit, error, loading }: LoginPageProps) {
 
           <h1
             id="login-title"
-            aria-label="AI 跨境商品研究工作台"
+            aria-label="AI 跨境商品研究与上架准备工作台"
             className="mt-7 max-w-2xl break-words text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-slate-950 sm:text-5xl"
           >
-            <span className="block lg:inline">AI 跨境商品</span>{" "}
-            <span className="block lg:inline">研究工作台</span>
+            <span className="block lg:inline">AI 跨境商品研究与上架准备工作台</span>
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-            <span className="block xl:inline">把商品发现、研究判断和内容草稿串成</span>{" "}
-            <span className="block xl:inline">一条清晰流程，</span>{" "}
-            <span className="block xl:inline">关键决定始终由你确认。</span>
+            从市场机会、证据、产品事实到 Listing / Image；AI 完成研究，人做关键决策。
           </p>
 
           <ol className="login-product-journey" data-testid="login-product-journey" aria-label="商品研究流程">

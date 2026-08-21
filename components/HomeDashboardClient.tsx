@@ -27,6 +27,12 @@ import {
   type HomeDashboardTaskItem,
   type TaskFollowUpSummary,
 } from "@/lib/homeDashboardSummary";
+import { V4Hero } from "@/components/v4/home/V4Hero";
+import { V4Workflow } from "@/components/v4/home/V4Workflow";
+import { V4ValueCards } from "@/components/v4/home/V4ValueCards";
+import { V4FeaturedReplayCard } from "@/components/v4/home/V4FeaturedReplayCard";
+import { V4BoundaryNotice } from "@/components/v4/home/V4BoundaryNotice";
+import type { FeaturedReplay, HomeRuntime } from "@/components/v4/home/heroLogic";
 
 type TasksApiResponse =
   | { ok: true; records?: HomeDashboardTaskItem[]; data?: { items?: HomeDashboardTaskItem[] } }
@@ -87,7 +93,7 @@ function StatCard({
     <article className="surface-card-strong flex min-h-[190px] min-w-0 flex-col p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-slate-600">{title}</p>
-        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${toneClass}`}>{cta}</span>
+        <span className={"rounded-full border px-2 py-1 text-xs font-semibold " + toneClass}>{cta}</span>
       </div>
       <p className="mt-4 text-3xl font-semibold text-slate-950">{value}</p>
       <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{description}</p>
@@ -150,7 +156,16 @@ function productLanguage(value: string) {
     .replaceAll("任务中心", "研究记录");
 }
 
-export function HomeDashboardClient() {
+/** 兼容旧调用：无 props 时默认本地语义（flag OFF、非无认证回环），保证既有渲染/测试不回归。 */
+const DEFAULT_RUNTIME: HomeRuntime = { mode: "local_owner", noAuthOwner: false, v4Graph: false };
+
+export function HomeDashboardClient({
+  runtime = DEFAULT_RUNTIME,
+  featured = null,
+}: {
+  runtime?: HomeRuntime;
+  featured?: FeaturedReplay | null;
+}) {
   const [accessPassword, setAccessPassword, isAccessPasswordReady, , noAuthOwner] = useAccessPassword();
   const [candidateLoad, setCandidateLoad] = useState<CandidateLoadState>({
     status: "loading",
@@ -353,10 +368,10 @@ export function HomeDashboardClient() {
   const workflowStateByHref: Record<(typeof homeWorkflowSteps)[number]["href"], string> = {
     "/opportunities": "导入或手工选择商品",
     "/opportunity-candidates": candidateLoad.status === "ready" && candidateSummary.total > 0
-      ? `已有 ${formatNumber(candidateSummary.total)} 个候选`
+      ? "已有 " + formatNumber(candidateSummary.total) + " 个候选"
       : candidateLoad.status === "unavailable" ? "暂不可用" : "等待选择商品",
     "/tasks": taskSummary?.pendingReview
-      ? `${formatNumber(taskSummary.pendingReview)} 项等待确认`
+      ? formatNumber(taskSummary.pendingReview) + " 项等待确认"
       : "由你完成最终确认",
   };
 
@@ -368,115 +383,133 @@ export function HomeDashboardClient() {
         <WorkspaceSidebar />
 
         <div className="flex min-w-0 flex-col gap-5">
-          <header className="workspace-header">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="eyebrow">轻选工作台</p>
-                <h1 className="mt-2 max-w-3xl text-2xl font-semibold text-slate-950 sm:text-3xl">
-                  AI 跨境商品研究工作台
-                </h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  从候选发现到 Listing 和图片准备，用一条清晰流程完成商品研究。
-                </p>
-              </div>
-              <span className="linear-pill linear-pill-brand px-3 py-1 text-sm">辅助研究 · 人工确认</span>
+          <WorkspaceMobileNav />
+
+          {/* 顶部品牌条（契约 §1.A-1）：轻选工作台 + V4 Badge；模式 Badge 由 Hero 派生 */}
+          <header className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-5 text-teal-600" aria-hidden="true" />
+              <p className="text-sm font-semibold text-slate-700">轻选工作台</p>
+              <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">V4</span>
             </div>
-            <WorkspaceMobileNav />
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+              辅助研究 · 人工决定
+            </span>
           </header>
 
-          {/* V3 UX Closure：推荐体验（访客 Golden Demo 入口；演示回放不消耗额度） */}
-          {demoMode && demoGolden ? (
-            <section
-              className="surface-card-strong overflow-hidden p-5 sm:p-6"
-              data-testid="home-recommended-demo"
-              aria-labelledby="home-recommended-demo-title"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="linear-kicker">推荐体验</p>
-                  <h2 id="home-recommended-demo-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                    THERMOS FUNTAINER 儿童保温杯（演示商品）
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                    含 Amazon 页面采集、VOC 评论分析、1688 供应线索的全套真实采集样本回放；可体验
-                    「采集 → 确认商品事实 → 研究结论 → Listing / Image」完整流程。演示回放不消耗额度。
-                  </p>
-                  <ol className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-                    {["1 数据采集", "2 确认商品事实", "3 研究结论", "4 Listing / Image"].map((step) => (
-                      <li key={step} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-                <Link
-                  href={`/tasks/${demoGolden.taskId}`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100"
-                  data-testid="home-recommended-demo-cta"
-                >
-                  开始体验
-                  <ArrowRight className="size-4" aria-hidden="true" />
-                </Link>
-              </div>
-            </section>
-          ) : null}
+          {/* V4.1 — 首页主叙事：Hero / Workflow / 价值卡 / Featured Replay / 产品边界（契约 §1.A） */}
+          <V4Hero runtime={runtime} />
+          <V4Workflow />
+          <V4ValueCards />
+          <V4FeaturedReplayCard featured={featured} />
+          <V4BoundaryNotice runtime={runtime} />
 
+          {/* 现有内容工具（降级区，非首屏主叙事）：金标演示 + 五步研究入口 */}
           <section
-            className="surface-card-strong overflow-hidden p-5 sm:p-6"
-            data-testid="home-workflow"
-            aria-labelledby="home-workflow-title"
+            data-testid="home-legacy-tools"
+            className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+            aria-labelledby="home-legacy-tools-title"
           >
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="linear-kicker">你的商品研究路线</p>
-                <h2 id="home-workflow-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
-                  五步完成一次商品研究
+                <p className="linear-kicker">现有内容工具</p>
+                <h2 id="home-legacy-tools-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                  从既有工具继续
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  从发现商品开始，研究、创作，最后由你人工确认是否继续。
+                  保留研究记录、创作工具与金标演示入口；以上内容为既有能力，不属于 V4 主叙事。
                 </p>
               </div>
-              <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
-                AI 辅助 · 人工确认
-              </span>
             </div>
 
-            <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {homeWorkflowSteps.map((step, index) => {
-                const Icon = step.icon;
-                const isRecommended = recommendation.href === step.href;
-                return (
-                  <li key={step.id} className="min-w-0">
+            <div className="mt-5 space-y-4">
+              {/* V3 Golden Demo 推荐体验（访客入口，演示回放不消耗额度） */}
+              {demoMode && demoGolden ? (
+                <section
+                  className="surface-card-strong overflow-hidden p-5"
+                  data-testid="home-recommended-demo"
+                  aria-labelledby="home-recommended-demo-title"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="linear-kicker">推荐体验</p>
+                      <h3 id="home-recommended-demo-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                        THERMOS FUNTAINER 儿童保温杯（演示商品）
+                      </h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                        含 Amazon 页面采集、VOC 评论分析、1688 供应线索的全套真实采集样本回放；可体验
+                        「采集 → 确认商品事实 → 研究结论 → Listing / Image」完整流程。演示回放不消耗额度。
+                      </p>
+                    </div>
                     <Link
-                      href={step.href}
-                      aria-current={isRecommended ? "step" : undefined}
-                      className={`group flex h-full min-h-[222px] flex-col rounded-2xl border p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 ${
-                        isRecommended
-                          ? "border-teal-300 bg-teal-50/80 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-teal-200 hover:bg-teal-50/40"
-                      }`}
+                      href={"/tasks/" + demoGolden.taskId}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-100"
+                      data-testid="home-recommended-demo-cta"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="linear-icon size-9 rounded-xl">
-                          <Icon className="size-5" aria-hidden="true" />
-                        </div>
-                        <span className="text-xs font-semibold text-slate-400">{String(index + 1).padStart(2, "0")}</span>
-                      </div>
-                      <h3 className="mt-4 text-base font-semibold text-slate-950">{step.label}</h3>
-                      <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{step.description}</p>
-                      <div className="mt-4 border-t border-slate-100 pt-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">当前状态</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-700">{workflowStateByHref[step.href]}</p>
-                        <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
-                          下一步入口
-                          <ArrowRight className="size-4 group-hover:translate-x-0.5" aria-hidden="true" />
-                        </span>
-                      </div>
+                      开始体验
+                      <ArrowRight className="size-4" aria-hidden="true" />
                     </Link>
-                  </li>
-                );
-              })}
-            </ol>
+                  </div>
+                </section>
+              ) : null}
+
+              {/* 五步完成一次商品研究（现有研究入口） */}
+              <section
+                className="surface-card-strong overflow-hidden p-5"
+                data-testid="home-workflow"
+                aria-labelledby="home-workflow-title"
+              >
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="linear-kicker">现有研究入口</p>
+                    <h3 id="home-workflow-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                      五步完成一次商品研究
+                    </h3>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                      从发现商品开始，研究、创作，最后由你人工确认是否继续。
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+                    AI 辅助 · 人工确认
+                  </span>
+                </div>
+
+                <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {homeWorkflowSteps.map((step, index) => {
+                    const Icon = step.icon;
+                    const isRecommended = recommendation.href === step.href;
+                    return (
+                      <li key={step.id} className="min-w-0">
+                        <Link
+                          href={step.href}
+                          aria-current={isRecommended ? "step" : undefined}
+                          className={"group flex h-full min-h-[222px] flex-col rounded-2xl border p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 " + (isRecommended
+                            ? "border-teal-300 bg-teal-50/80 shadow-sm"
+                            : "border-slate-200 bg-white hover:border-teal-200 hover:bg-teal-50/40")}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="linear-icon size-9 rounded-xl">
+                              <Icon className="size-5" aria-hidden="true" />
+                            </div>
+                            <span className="text-xs font-semibold text-slate-400">{String(index + 1).padStart(2, "0")}</span>
+                          </div>
+                          <h4 className="mt-4 text-base font-semibold text-slate-950">{step.label}</h4>
+                          <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{step.description}</p>
+                          <div className="mt-4 border-t border-slate-100 pt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">当前状态</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-700">{workflowStateByHref[step.href]}</p>
+                            <span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-teal-700">
+                              下一步入口
+                              <ArrowRight className="size-4 group-hover:translate-x-0.5" aria-hidden="true" />
+                            </span>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </section>
+            </div>
           </section>
 
           {/* ── Access password entry (only on home page) ── */}
@@ -541,7 +574,6 @@ export function HomeDashboardClient() {
                       {passwordError}
                     </p>
                   ) : null}
-                  {isAccessPasswordReady && !accessPassword.trim() && passwordError ? null : null}
                   <p className="mt-3 text-xs text-slate-400">
                     访问保护 · 密码仅保存在当前会话中 · 关闭网页后需重新输入 · 不收集个人信息
                   </p>
@@ -585,7 +617,7 @@ export function HomeDashboardClient() {
                 title="研究记录"
                 value={taskSummary ? formatNumber(taskSummary.total) : "—"}
                 description={taskSummary
-                  ? `待复核 ${formatNumber(taskSummary.pendingReview)} 个，可跟进 ${formatNumber(taskSummary.followable)} 个。`
+                  ? "待复核 " + formatNumber(taskSummary.pendingReview) + " 个，可跟进 " + formatNumber(taskSummary.followable) + " 个。"
                   : taskLoad.message}
                 href="/tasks"
                 cta="查看研究记录"
@@ -595,7 +627,7 @@ export function HomeDashboardClient() {
                 title="最近研究"
                 value={recentSingleRun?.productName || "暂无"}
                 description={recentSingleRun
-                  ? `${formatRecentTime(recentSingleRun.completedAt)} · ${recentSingleRun.savedTaskId ? "已保存到研究记录" : "尚未保存"}`
+                  ? formatRecentTime(recentSingleRun.completedAt) + " · " + (recentSingleRun.savedTaskId ? "已保存到研究记录" : "尚未保存")
                   : "还没有可恢复的商品研究结果。"}
                 href="/opportunity-candidates"
                 cta="前往待研究商品"

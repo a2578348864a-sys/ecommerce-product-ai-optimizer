@@ -32,37 +32,34 @@ describe("Product Architecture Convergence shell", () => {
   const sidebarSource = readSource("components/WorkspaceSidebar.tsx");
   const homeSource = readSource("components/HomeDashboardClient.tsx");
 
-  it("freezes the primary navigation on the research mainline", () => {
-    // 当前权威结构：workspaceNavGroups（分组 + items），含研究主链与创作工具
-    const primary = itemRoutes(arrayBlock(sidebarSource, "workspaceNavGroups"));
-
-    expect(primary).toEqual([
-      { label: "工作台", href: "/" },
-      { label: "发现商品", href: "/opportunities" },
-      { label: "待研究商品", href: "/opportunity-candidates" },
-      { label: "商品研究", href: "/research" },
-      { label: "研究记录", href: "/tasks" },
-      { label: "Listing Studio", href: "/listing-studio" },
-      { label: "Image Studio", href: "/image-studio" },
-    ]);
+  it("freezes the primary navigation on the research mainline (v4.1)", () => {
+    // v4.1: sidebar primary routes are derived by buildV4NavGroups.
+    expect(sidebarSource).toMatch(/buildV4NavGroups/);
+    expect(sidebarSource).toMatch(/\/opportunities/);
+    expect(sidebarSource).toMatch(/\/opportunity-candidates/);
+    expect(sidebarSource).toMatch(/\/research/);
+    expect(sidebarSource).toMatch(/\/tasks/);
+    expect(sidebarSource).toMatch(/\/replay/);
+    expect(sidebarSource).toMatch(/\/listing-studio/);
+    expect(sidebarSource).toMatch(/\/image-studio/);
   });
 
-  it("hides legacy batch analysis and aligns mobile navigation", () => {
-    const advanced = labeledRoutes(arrayBlock(sidebarSource, "advancedNavItems"));
-
-    expect(advanced).toEqual([]);
-    expect(sidebarSource).toMatch(/const mobileNavItems = workspaceNavItems;/);
+  it("hides legacy batch analysis and aligns mobile navigation (v4.1)", () => {
     expect(sidebarSource).not.toContain("/workflow/batch");
     expect(sidebarSource).not.toContain("高级 / Alpha");
     expect(sidebarSource).not.toContain("高级临时分析");
+    // v4.1: mobile nav derives from the same buildV4NavGroups as desktop.
+    expect(sidebarSource).toMatch(/buildV4NavGroups\(runtime\)\.flatMap/);
   });
 
   it("positions the product as a cross-border research workbench", () => {
     for (const source of [sidebarSource, homeSource]) {
       expect(source).toContain("轻选工作台");
-      expect(source).toContain("AI 跨境商品研究工作台");
       expect(source).not.toContain("AI 跨境商品研究助手");
     }
+    expect(sidebarSource).toContain("AI 跨境商品研究与上架准备工作台");
+    const heroSource = readSource("components/v4/home/V4Hero.tsx");
+    expect(heroSource).toContain("AI 跨境商品研究与上架准备工作台");
   });
 
   it("shows five workflow entrances from discovery to content draft", () => {

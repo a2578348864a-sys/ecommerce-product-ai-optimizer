@@ -47,23 +47,18 @@ describe("WorkspaceSidebar navigation", () => {
   const mainNavBlock = extractConstBlock(sidebarSource, "workspaceNavGroups");
   const advancedBlock = extractConstBlock(sidebarSource, "advancedNavItems");
 
-  it("exposes the six product-level destinations in the primary navigation (R5)", () => {
-    const mainLabels = extractItemLabels(mainNavBlock);
-    expect(mainLabels).toEqual([
-      "工作台",
-      "发现商品",
-      "待研究商品",
-      "商品研究",
-      "研究记录",
-      "Listing Studio",
-      "Image Studio",
-    ]);
-    expect(mainNavBlock).toMatch(/href:\s*"\/"/);
-    expect(mainNavBlock).toMatch(/\/opportunities/);
-    expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
-    expect(mainNavBlock).toMatch(/\/research/);
-    expect(mainNavBlock).toMatch(/\/tasks/);
-    expect(mainNavBlock).not.toMatch(/\/workflow\/batch/);
+  it("exposes V4 workspace + research mainline destinations (v4.1)", () => {
+    // v4.1: sidebar is derived by buildV4NavGroups (V4 workspace / research / content groups).
+    expect(sidebarSource).toMatch(/buildV4NavGroups/);
+    expect(sidebarSource).toMatch(/\/replay/);
+    expect(sidebarSource).toMatch(/\/v4\/runs/);
+    expect(sidebarSource).toMatch(/\/opportunities/);
+    expect(sidebarSource).toMatch(/\/opportunity-candidates/);
+    expect(sidebarSource).toMatch(/\/research/);
+    expect(sidebarSource).toMatch(/\/tasks/);
+    expect(sidebarSource).toMatch(/\/listing-studio/);
+    expect(sidebarSource).toMatch(/\/image-studio/);
+    expect(sidebarSource).not.toMatch(/\/workflow\/batch/);
   });
 
   it("does not render an empty advanced section or expose legacy batch analysis", () => {
@@ -98,10 +93,9 @@ describe("WorkspaceSidebar navigation", () => {
     expect(sidebarSource).not.toMatch(/项目说明/);
   });
 
-  it("shows /opportunity-candidates as the primary product research destination", () => {
-    expect(mainNavBlock).toMatch(/待研究商品/);
-    expect(mainNavBlock).toMatch(/\/opportunity-candidates/);
-    expect(advancedBlock).not.toMatch(/\/opportunity-candidates/);
+  it("shows /opportunity-candidates as a primary product research destination (v4.1)", () => {
+    expect(sidebarSource).toMatch(/待研究商品/);
+    expect(sidebarSource).toMatch(/\/opportunity-candidates/);
   });
 
   it("does not contain dangerous copy in nav labels", () => {
@@ -212,8 +206,10 @@ describe("HomeDashboardClient navigation", () => {
   const homeSource = readComponentSource("components/HomeDashboardClient.tsx");
 
   it("positions the product as a cross-border research workbench", () => {
-    expect(homeSource).toMatch(/AI 跨境商品研究工作台/);
+    const heroSource = readComponentSource("components/v4/home/V4Hero.tsx");
+    expect(heroSource).toMatch(/AI 跨境商品研究与上架准备工作台/);
     expect(homeSource).toMatch(/轻选工作台/);
+    expect(homeSource).toMatch(/V4Hero/);
     expect(homeSource).not.toMatch(/AI 跨境商品研究助手/);
     expect(homeSource).not.toMatch(/轻选 Agent/);
   });

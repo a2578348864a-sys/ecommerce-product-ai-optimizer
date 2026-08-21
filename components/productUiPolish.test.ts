@@ -16,7 +16,7 @@ describe("Product UI polish v2", () => {
   const layoutSource = readSource("app/layout.tsx");
 
   it("presents the public first screen as one five-step product journey", () => {
-    expect(loginSource).toContain("AI 跨境商品研究工作台");
+    expect(loginSource).toContain("AI 跨境商品研究与上架准备工作台");
     expect(loginSource).toContain("轻选工作台");
     expect(loginSource).toContain('data-testid="login-product-journey"');
     // 对齐 V3 正式发布文案（commit aba883f「align login flow copy with V3 product model」）；断言意图=登录页保留五步旅程
@@ -78,7 +78,7 @@ describe("Product UI polish v2", () => {
 
   it("uses the converged product positioning in page metadata", () => {
     expect(layoutSource).toContain("轻选工作台");
-    expect(layoutSource).toContain("AI 跨境商品研究工作台");
+    expect(layoutSource).toContain("AI 跨境商品研究与上架准备工作台");
     expect(layoutSource).not.toContain("跨境电商运营全流程 Agent 工作台");
     expect(layoutSource).not.toContain("轻选 Agent");
   });

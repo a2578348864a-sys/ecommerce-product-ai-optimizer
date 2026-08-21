@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * V3.1 Phase 1 — Public Showcase Landing（契约 01-4 / §12 / §40）
- * 无密码、无注册、无访客码；一键 POST /api/auth/guest → HttpOnly Cookie → 金标演示。
- * GET / 本身不创建任何 guest / sandbox / quota（只有点击按钮才 POST）。
+ * V4.1 — Public Showcase 首屏（契约 §1.B）。
+ *
+ * 首屏 V4 定位 + 模式 Badge（Public Replay · 只读脱敏案例）+ 主 CTA「查看真实脱敏案例」→ /replay；
+ * 下方依次为 Workflow / 价值卡 / Featured Replay / 产品边界区；
+ * 金标演示保留为「现有内容工具」区（原 POST /api/auth/guest + /api/demo/golden 逻辑不变，降级为非首屏）。
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  CheckCircle2,
-  Eye,
-  Loader2,
-  Search,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { saveGuestAccess, type DemoAccessInfo } from "@/lib/client/accessToken";
+import { V4Workflow } from "@/components/v4/home/V4Workflow";
+import { V4ValueCards } from "@/components/v4/home/V4ValueCards";
+import { V4FeaturedReplayCard } from "@/components/v4/home/V4FeaturedReplayCard";
+import { V4BoundaryNotice } from "@/components/v4/home/V4BoundaryNotice";
+import type { FeaturedReplay, HomeRuntime } from "@/components/v4/home/heroLogic";
 
-export function GuestLanding() {
+export function GuestLanding({ runtime, featured }: { runtime: HomeRuntime; featured: FeaturedReplay | null }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -41,7 +41,6 @@ export function GuestLanding() {
       }
       // 轻量会话标记（无 token；token 在 HttpOnly Cookie）
       saveGuestAccess(json.demoAccess as DemoAccessInfo);
-      // 惰性 seed 金标演示副本并直达演示任务（Evidence / Listing / Image 历史）
       try {
         const goldenRes = await fetch("/api/demo/golden", { method: "GET", cache: "no-store" });
         const golden = await goldenRes.json().catch(() => null);
@@ -65,82 +64,101 @@ export function GuestLanding() {
       <div className="login-bg" />
       <div className="login-grid" />
 
-      <main className="login-main">
+      <main className="relative z-10 mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-6 sm:px-6">
         <section className="login-product-intro" aria-labelledby="guest-title">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="login-brand-icon">
               <Sparkles className="size-7" aria-hidden="true" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">轻选工作台</p>
-              <p className="mt-1 text-xs text-slate-500">跨境商品研究与内容准备</p>
+              <p className="mt-1 text-xs text-slate-500">AI 跨境商品研究与上架准备</p>
             </div>
+            <span
+              data-testid="guest-mode-badge"
+              className="ml-auto inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600"
+            >
+              Public Replay · 只读脱敏案例
+            </span>
           </div>
 
           <h1
             id="guest-title"
-            aria-label="3 分钟体验真实商品研究案例"
+            aria-label="AI 跨境商品研究与上架准备工作台"
             className="mt-7 max-w-2xl break-words text-[2rem] font-semibold leading-tight tracking-[-0.04em] text-slate-950 sm:text-5xl"
           >
-            <span className="block lg:inline">3 分钟体验</span>{" "}
-            <span className="block lg:inline">真实商品研究案例</span>
+            AI 跨境商品研究与上架准备工作台
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
-            无需密码、无需注册：一键进入 THERMOS 金标演示，查看采集证据、VOC 分析、
-            研究结论与 Listing / Image 创作全流程。
+            从市场机会、证据、产品事实到 Listing / Image；AI 完成研究，人做关键决策。
+          </p>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">
+            这里是公开只读展示：不预测爆款，不承诺盈利，不自动采购或上架。
           </p>
 
-          <ol className="login-product-journey" aria-label="演示流程">
-            {[
-              { number: "01", label: "金标演示", description: "完整研究案例回放", icon: Eye },
-              { number: "02", label: "证据与结论", description: "采集 / VOC / 供应证据", icon: Search },
-              { number: "03", label: "Listing", description: "已确认事实的文案草稿", icon: CheckCircle2 },
-              { number: "04", label: "Image", description: "商品图片候选历史", icon: ShieldCheck },
-            ].map((step) => {
-              const Icon = step.icon;
-              return (
-                <li key={step.number} className="login-step">
-                  <span className="login-step-number">{step.number}</span>
-                  <div>
-                    <p className="login-step-label">{step.label}</p>
-                    <p className="login-step-desc">{step.description}</p>
-                  </div>
-                  <Icon className="ml-auto size-4 text-teal-600" aria-hidden="true" />
-                </li>
-              );
-            })}
-          </ol>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <Link
+              href="/replay"
+              data-testid="guest-primary-cta"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 px-5 text-sm font-semibold text-white shadow-sm shadow-teal-200 transition hover:from-teal-600 hover:to-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 active:scale-[0.98]"
+            >
+              查看真实脱敏案例
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+            <a
+              href="#workflow"
+              data-testid="guest-secondary-cta"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:border-teal-200 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+            >
+              了解研究流程
+            </a>
+          </div>
         </section>
 
-        <section className="login-panel" aria-label="进入演示">
-          <div className="login-card">
-            <div className="login-card-icon">
-              <Sparkles className="size-5" aria-hidden="true" />
-            </div>
-            <h2 className="login-card-title">公开演示体验</h2>
-            <p className="login-card-desc">访客身份由浏览器安全 Cookie 自动建立，无需任何密码。</p>
+        <V4Workflow />
+        <V4ValueCards />
+        <V4FeaturedReplayCard featured={featured} />
+        <V4BoundaryNotice runtime={runtime} />
 
+        <section
+          className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+          aria-labelledby="guest-tools-title"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="linear-kicker">现有内容工具</p>
+              <h2 id="guest-tools-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
+                金标演示 · 完整研究案例回放
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                无需密码、无需注册：一键进入 THERMOS 金标演示，查看采集证据、VOC 分析、
+                研究结论与 Listing / Image 创作全流程。演示回放不消耗额度。
+              </p>
+            </div>
             <button
               type="button"
-              className="linear-button mt-5 inline-flex h-11 w-full items-center justify-center gap-2 px-4 text-sm font-semibold"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-teal-300 bg-teal-50 px-4 text-sm font-semibold text-teal-700 transition hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
               onClick={handleStart}
               disabled={loading}
               data-testid="guest-start-button"
             >
               {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {loading ? "正在进入…" : "3分钟体验真实商品研究案例"}
+              {loading ? "正在进入…" : "体验金标演示"}
               {!loading ? <ArrowRight className="size-4" aria-hidden="true" /> : null}
             </button>
+          </div>
 
-            {error ? (
-              <p className="mt-3 text-sm text-rose-600" role="alert" data-testid="guest-start-error">
-                {error}
-              </p>
-            ) : null}
-
-            <p className="mt-4 text-xs leading-5 text-slate-400">
-              演示数据为历史采集样本回放；本模式不支持新建商品研究、实时采集或外部导入。
+          {error ? (
+            <p className="mt-3 text-sm text-rose-600" role="alert" data-testid="guest-start-error">
+              {error}
             </p>
+          ) : null}
+
+          <div className="mt-4 flex items-start gap-2 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-400">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-500" aria-hidden="true" />
+            <span>
+              演示数据为历史采集样本回放；本模式不支持新建商品研究、实时采集或外部导入，也不消耗访客额度。
+            </span>
           </div>
         </section>
       </main>

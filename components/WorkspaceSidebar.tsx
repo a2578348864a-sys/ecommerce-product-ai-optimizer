@@ -26,7 +26,9 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
   label: string;
   items: ReadonlyArray<SidebarNavItem>;
 }> {
-  const v4Group: SidebarNavItem[] = [];
+  const v4Group: SidebarNavItem[] = [
+    { label: "V4 概览", href: "/", icon: LayoutDashboard },
+  ];
   // 公网（public_showcase）绝不渲染 Live 研究任务入口（即使部署误开 flag）；本地 + v4Graph 才显示。
   if (runtime.v4Graph && runtime.mode !== "public_showcase") {
     v4Group.push({ label: "研究任务", href: "/v4/runs", icon: Sparkles });
