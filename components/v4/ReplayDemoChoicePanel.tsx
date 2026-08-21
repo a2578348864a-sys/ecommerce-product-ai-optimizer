@@ -10,7 +10,7 @@
  *
  * 边界：
  *   - 仅影响当前访客的演示沙盒，绝不修改公开案例（页面上明确标注）。
- *   - 接口不可用（GET 失败/404/403）→ 显示「即将开放」诚实空态。
+ *   - 接口不可用（GET 失败/404/403）→ 显示「仅公开演示访客可用（本地模式不启用）」诚实空态。
  *   - 不写任何 Owner 正式数据；组件零路由/零权限逻辑。
  */
 import { useEffect, useState } from "react";
@@ -52,17 +52,27 @@ export function ReplayDemoChoicePanel({
   useEffect(() => {
     if (initialStatus && initialStatus !== "loading") return;
     let alive = true;
-    const url = "/api/replay/demo-choice?bundleId=" + encodeURIComponent(bundleId);
-    fetch(url, { headers: { Accept: "application/json" } })
-      .then(async (res) => {
+    // 仅公开演示访客（public_showcase）启用；本地等模式显示不可用（不发起 demo-choice 请求，避免 403 console error）。
+    fetch("/api/runtime-mode", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
         if (!alive) return;
-        if (!res.ok) {
+        if (!json?.ok || json.mode !== "public_showcase") {
           setStatus("unavailable");
           return;
         }
-        const data = (await res.json().catch(() => null)) as ReplayDemoChoiceState | null;
-        setChoice(data ?? {});
-        setStatus("ready");
+        const url = "/api/replay/demo-choice?bundleId=" + encodeURIComponent(bundleId);
+        return fetch(url, { headers: { Accept: "application/json" } })
+          .then(async (res) => {
+            if (!alive) return;
+            if (!res.ok) {
+              setStatus("unavailable");
+              return;
+            }
+            const data = (await res.json().catch(() => null)) as ReplayDemoChoiceState | null;
+            setChoice(data ?? {});
+            setStatus("ready");
+          });
       })
       .catch(() => {
         if (alive) setStatus("unavailable");
