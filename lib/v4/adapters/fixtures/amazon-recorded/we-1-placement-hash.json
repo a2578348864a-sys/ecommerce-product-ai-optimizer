@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "amazon-recorded.v1",
+  "match": {
+    "inputHash": "we-1-placement-hash",
+    "asin": "B0DOM00002",
+    "marketplace": "amazon.com"
+  },
+  "extraction": {
+    "entityType": "search_results",
+    "observedEntity": "B0DOM00002",
+    "context": {
+      "host": "www.amazon.com",
+      "marketplace": "amazon.com",
+      "pageUrl": "https://www.amazon.com/s?k=closet+organizer",
+      "pageStatus": "amazon_normal",
+      "observedMarket": "US",
+      "observedCurrency": "USD",
+      "deliveryRegion": "Deliver to New York 10001",
+      "language": "en-us",
+      "amazonBrandMarkerPresent": true
+    },
+    "observations": [
+      {
+        "asin": "B0DOM00002",
+        "title": "Promoted placement with changed markup",
+        "price": 18.99,
+        "priceCurrency": "USD",
+        "rating": 4.5,
+        "reviewCount": 1234,
+        "bsr": null,
+        "sellingPoints": [],
+        "productUrl": "https://www.amazon.com/dp/B0DOM00002",
+        "imageUrl": null,
+        "position": 3,
+        "sponsored": null,
+        "capturedAt": "2026-08-21T12:00:00.000Z",
+        "sponsoredDiagnostic": {
+          "state": null,
+          "reasonCode": "ambiguous_ad_text_without_known_marker",
+          "matchedText": "Promoted"
+        }
+      }
+    ],
+    "adPlacements": [
+      {
+        "asin": "B0DOM00001",
+        "title": "Sponsored Adjustable Closet Organizer",
+        "price": 29.99,
+        "priceCurrency": "USD",
+        "rating": 4.5,
+        "reviewCount": 1234,
+        "bsr": null,
+        "sellingPoints": [],
+        "productUrl": "https://www.amazon.com/dp/B0DOM00001",
+        "imageUrl": null,
+        "position": 1,
+        "sponsored": true,
+        "capturedAt": "2026-08-21T12:00:00.000Z"
+      }
+    ],
+    "detail": null,
+    "rawCardCount": 3,
+    "keyContainerFound": true,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}

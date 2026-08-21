@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "amazon-recorded.v1",
+  "match": {
+    "inputHash": "we-3-variant-hash",
+    "asin": "B0PARENT01",
+    "marketplace": "amazon.com"
+  },
+  "extraction": {
+    "entityType": "product_detail",
+    "observedEntity": "B0CHILD001",
+    "context": {
+      "host": "www.amazon.com",
+      "marketplace": "amazon.com",
+      "pageUrl": "https://www.amazon.com/dp/B0CHILD001",
+      "pageStatus": "amazon_normal",
+      "observedMarket": "US",
+      "observedCurrency": "USD",
+      "deliveryRegion": "Deliver to New York 10001",
+      "language": "en-us",
+      "amazonBrandMarkerPresent": true
+    },
+    "observations": [],
+    "detail": {
+      "asin": "B0CHILD001",
+      "title": "Yoga Mat (Child Variant)",
+      "price": 19.99,
+      "priceCurrency": "USD",
+      "rating": 4.5,
+      "reviewCount": 1234,
+      "bsr": null,
+      "sellingPoints": [],
+      "productUrl": "https://www.amazon.com/dp/B0CHILD001",
+      "imageUrl": null,
+      "position": 1,
+      "sponsored": false,
+      "capturedAt": "2026-08-21T12:00:00.000Z"
+    },
+    "adPlacements": [],
+    "rawCardCount": 1,
+    "keyContainerFound": true,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}

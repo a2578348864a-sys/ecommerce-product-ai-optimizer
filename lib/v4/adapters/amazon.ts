@@ -86,6 +86,23 @@ export type AmazonAdapterMode = "recorded" | "live";
 
 export type AmazonEntityType = "search_results" | "product_detail";
 
+export type AmazonSponsoredState = "organic" | "ad" | "unknown";
+
+/** 与 evidence-and-feasibility.schema.json 对齐的观测级证据元数据。 */
+export type AmazonEvidenceMeta = {
+  kind: "source_fact" | "platform_metadata" | "signal" | "unknown";
+  sourceType: "amazon";
+  sampleSize: number | null;
+  confidenceDimensions: Record<string, number>;
+  contentHash: string;
+};
+
+export type AmazonSponsoredDiagnostic = {
+  state: boolean | null;
+  reasonCode: string | null;
+  matchedText: string | null;
+};
+
 export type AmazonBoundedObservation = {
   asin: string | null;
   title: string | null;
@@ -100,6 +117,12 @@ export type AmazonBoundedObservation = {
   imageUrl: string | null;
   position: number;
   sponsored: boolean | null;
+  /** 推荐位/赞助位状态（deriveSponsoredState 归一：organic/ad/unknown；缺省时由 adapter 计算）。 */
+  sponsoredState?: AmazonSponsoredState;
+  /** 原始赞助诊断（用于 WE-1 非标准赞助标记判定；可选，recorded 可省略）。 */
+  sponsoredDiagnostic?: AmazonSponsoredDiagnostic | null;
+  /** 证据元数据（与 evidence schema 对齐；缺省时由 adapter 计算）。 */
+  evidence?: AmazonEvidenceMeta;
   capturedAt: string;
 };
 
@@ -218,16 +241,28 @@ export function validateEntity(
   const target = parseTargetEntity(envelope.targetEntity);
 
   if (target.kind === "asin") {
-    if (extraction.entityType !== "product_detail") {
-      return { code: "WRONG_ENTITY", reason: "entity_type_mismatch:expected_product_detail,got_" + extraction.entityType };
+    if (extraction.entityType === "product_detail") {
+      const observedAsin = extraction.observedEntity?.toUpperCase();
+      if (observedAsin !== target.value) {
+        return { code: "WRONG_ENTITY", reason: "asin_mismatch:expected_" + target.value + ",observed_" + (observedAsin ?? "unknown") };
+      }
+      const detailAsin = extraction.detail?.asin?.toUpperCase();
+      if (!detailAsin || detailAsin !== target.value) {
+        return { code: "WRONG_ENTITY", reason: "asin_binding_unproven:expected_" + target.value + ",observed_" + (detailAsin ?? "unknown") };
+      }
+      return null;
     }
-    const observedAsin = extraction.observedEntity?.toUpperCase();
-    if (observedAsin !== target.value) {
-      return { code: "WRONG_ENTITY", reason: "asin_mismatch:expected_" + target.value + ",observed_" + (observedAsin ?? "unknown") };
+    // ASIN on search_results：目标卡必须是自然位（WE-1 推荐位/相似商品不得误收）。
+    if (extraction.entityType !== "search_results") {
+      return { code: "WRONG_ENTITY", reason: "entity_type_mismatch:expected_product_detail_or_search_results,got_" + extraction.entityType };
     }
-    const detailAsin = extraction.detail?.asin?.toUpperCase();
-    if (!detailAsin || detailAsin !== target.value) {
-      return { code: "WRONG_ENTITY", reason: "asin_binding_unproven:expected_" + target.value + ",observed_" + (detailAsin ?? "unknown") };
+    const targetObs = extraction.observations.filter((observation) => observation.asin?.toUpperCase() === target.value);
+    if (targetObs.length === 0) {
+      return { code: "WRONG_ENTITY", reason: "target_card_not_found_in_search:" + target.value };
+    }
+    const hasOrganic = targetObs.some((observation) => (observation.sponsoredState ?? deriveSponsoredState(observation.sponsored, observation.sponsoredDiagnostic)) === "organic");
+    if (!hasOrganic) {
+      return { code: "WRONG_ENTITY", reason: "target_card_not_organic:" + target.value };
     }
     return null;
   }
@@ -320,14 +355,66 @@ export function checkBudget(
   return null;
 }
 
-/** 把 sponsored=true 的观测从目标集合剥离到 adPlacements；sponsored=null 保留但记警告。 */
+/**
+ * 赞助/推荐位判定（WE-1）：sponsored=true → ad；false → organic；
+ * sponsored=null 时结合赞助诊断——命中已知有机结构 → organic；命中模糊广告文案/标记 → ad；
+ * 其余 → unknown（保留在 organic 集合但记警告，不默认当作自然位）。
+ */
+export function deriveSponsoredState(
+  sponsored: boolean | null,
+  diagnostic?: AmazonSponsoredDiagnostic | null,
+): AmazonSponsoredState {
+  if (sponsored === true) return "ad";
+  if (sponsored === false) return "organic";
+  const reason = diagnostic?.reasonCode ?? "";
+  const matched = diagnostic?.matchedText ?? "";
+  if (reason === "ambiguous_ad_text_without_known_marker" || /(?:sponsored|promoted|advertisement|ad)|广告|推广/i.test(matched)) {
+    return "ad";
+  }
+  if (reason === "known_organic_structure") return "organic";
+  return "unknown";
+}
+
+/** 观测级证据元数据（与 evidence schema 对齐，contentHash 确定性计算）。 */
+export function buildEvidenceMeta(observation: Pick<AmazonBoundedObservation, "asin" | "title" | "price" | "rating" | "reviewCount" | "bsr">): AmazonEvidenceMeta {
+  const payload = JSON.stringify({
+    asin: observation.asin,
+    title: observation.title,
+    price: observation.price,
+    rating: observation.rating,
+    reviewCount: observation.reviewCount,
+    bsr: observation.bsr,
+  });
+  const contentHash = createHash("sha256").update(payload).digest("hex");
+  const confidenceDimensions: Record<string, number> = {
+    entity: observation.asin ? 1 : 0,
+    price: observation.price != null ? 1 : 0,
+    rating: observation.rating != null ? 1 : 0,
+  };
+  // kind 反映置信度：有身份且有价格/评分 → source_fact；有身份但关键字段缺失 → signal；无身份 → unknown。
+  const kind: AmazonEvidenceMeta["kind"] = !observation.asin
+    ? "unknown"
+    : (observation.price != null && observation.rating != null)
+      ? "source_fact"
+      : "signal";
+  return {
+    kind,
+    sourceType: "amazon",
+    sampleSize: observation.asin ? 1 : null,
+    confidenceDimensions,
+    contentHash,
+  };
+}
+
+/** 把 ad 位（含模糊广告标记）从目标集合剥离到 adPlacements；organic 保留，unknown 保留但记警告。 */
 export function splitAdPlacements(
   observations: AmazonBoundedObservation[],
 ): { observations: AmazonBoundedObservation[]; adPlacements: AmazonBoundedObservation[] } {
   const adPlacements: AmazonBoundedObservation[] = [];
   const organic: AmazonBoundedObservation[] = [];
   for (const observation of observations) {
-    if (observation.sponsored === true) {
+    const state = observation.sponsoredState ?? deriveSponsoredState(observation.sponsored, observation.sponsoredDiagnostic);
+    if (state === "ad") {
       adPlacements.push(observation);
     } else {
       organic.push(observation);
@@ -364,6 +451,9 @@ function filterObservation(
   const out: Record<string, unknown> = {};
   // 身份 / locator 字段始终保留
   for (const field of IDENTITY_FIELDS) out[field] = observation[field];
+  // 推荐位状态 + 证据元数据始终保留（与 evidence schema 对齐，缺省时计算）
+  out.sponsoredState = observation.sponsoredState ?? deriveSponsoredState(observation.sponsored, observation.sponsoredDiagnostic);
+  out.evidence = observation.evidence ?? buildEvidenceMeta(observation);
   for (const field of allowed) {
     const obsKey = OBSERVATION_FIELD_MAP[field];
     if (!obsKey || IDENTITY_FIELDS.has(obsKey)) continue;
@@ -401,6 +491,13 @@ export function buildBoundedData(
     if (!extraction.keyContainerFound) missingFields["keyContainer"] = "search_result_container_not_found";
   } else {
     if (!extraction.detail) missingFields["detail"] = "detail_entity_not_bound";
+  }
+  // 请求了但所有观测都为空的字段 → 记为 unknown（绝不补成 source_fact 值）。
+  for (const field of allowed) {
+    const obsKey = OBSERVATION_FIELD_MAP[field];
+    if (!obsKey) continue;
+    const allNull = observations.every((observation) => observation[obsKey] == null);
+    if (allNull) missingFields[field] = "missing_on_all_observations";
   }
 
   const target = parseTargetEntity(envelope.targetEntity);
@@ -804,6 +901,7 @@ function translateSearchExtraction(
       imageUrl: string | null;
       position: number;
       sponsored: boolean | null;
+      sponsoredDiagnostic: { state: boolean | null; reasonCode: string; matchedText: string | null } | null;
       capturedAt: string;
     }>;
   },
@@ -826,6 +924,8 @@ function translateSearchExtraction(
     imageUrl: observation.imageUrl,
     position: observation.position,
     sponsored: observation.sponsored,
+    sponsoredState: deriveSponsoredState(observation.sponsored, observation.sponsoredDiagnostic),
+    sponsoredDiagnostic: observation.sponsoredDiagnostic,
     capturedAt: observation.capturedAt,
   }));
   const gate = environmentGate.evaluateAmazonEnvironment({

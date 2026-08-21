@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "amazon-recorded.v1",
+  "match": {
+    "inputHash": "profile-c-hash",
+    "query": "yoga mat",
+    "marketplace": "amazon.com"
+  },
+  "extraction": {
+    "entityType": "search_results",
+    "observedEntity": "yoga mat",
+    "context": {
+      "host": "www.amazon.com",
+      "marketplace": "amazon.com",
+      "pageUrl": "https://www.amazon.com/s?k=yoga+mat",
+      "pageStatus": "amazon_normal",
+      "observedMarket": "US",
+      "observedCurrency": "USD",
+      "deliveryRegion": "Deliver to New York 10001",
+      "language": "en-us",
+      "amazonBrandMarkerPresent": true
+    },
+    "observations": [
+      {
+        "asin": "B0CONFLICT",
+        "title": "Yoga Mat",
+        "price": 24.99,
+        "priceCurrency": "USD",
+        "rating": 4.5,
+        "reviewCount": 1234,
+        "bsr": null,
+        "sellingPoints": [],
+        "productUrl": "https://www.amazon.com/dp/B0YOGA1234",
+        "imageUrl": null,
+        "position": 1,
+        "sponsored": false,
+        "capturedAt": "2026-08-21T12:00:00.000Z",
+        "evidence": {
+          "kind": "source_fact",
+          "sourceType": "amazon",
+          "sampleSize": 1,
+          "confidenceDimensions": {
+            "entity": 1,
+            "price": 1,
+            "rating": 1
+          },
+          "contentHash": "c1"
+        }
+      },
+      {
+        "asin": "B0CONFLICT",
+        "title": "Yoga Mat",
+        "price": 19.99,
+        "priceCurrency": "USD",
+        "rating": 3.1,
+        "reviewCount": 1234,
+        "bsr": null,
+        "sellingPoints": [],
+        "productUrl": "https://www.amazon.com/dp/B0YOGA1234",
+        "imageUrl": null,
+        "position": 1,
+        "sponsored": false,
+        "capturedAt": "2026-08-21T12:00:00.000Z",
+        "evidence": {
+          "kind": "source_fact",
+          "sourceType": "amazon",
+          "sampleSize": 1,
+          "confidenceDimensions": {
+            "entity": 1,
+            "price": 1,
+            "rating": 1
+          },
+          "contentHash": "c2"
+        }
+      }
+    ],
+    "adPlacements": [],
+    "detail": null,
+    "rawCardCount": 2,
+    "keyContainerFound": true,
+    "rawArtifactSample": null,
+    "cost": {
+      "usedBrowserSteps": 1,
+      "usedCost": 0.05,
+      "currency": "USD"
+    }
+  }
+}

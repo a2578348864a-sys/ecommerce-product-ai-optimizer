@@ -148,10 +148,32 @@ describe("validateEntity", () => {
     expect(err!.reason).toContain("marketplace_mismatch");
   });
 
-  it("rejects ASIN target when page is search_results", () => {
-    const err = validateEntity(makeEnvelope({ targetEntity: "B0YOGA1234" }), makeSearchExtraction());
+  it("accepts ASIN target on search_results when an organic card matches (WE-1 positive)", () => {
+    const extraction = makeSearchExtraction({ observations: [baseObservation({ asin: "B0YOGA1234", sponsored: false })] });
+    const err = validateEntity(makeEnvelope({ targetEntity: "B0YOGA1234" }), extraction);
+    expect(err).toBeNull();
+  });
+
+  it("rejects ASIN target on search_results when target card is a recommended/ad placement (WE-1)", () => {
+    const extraction = makeSearchExtraction({
+      observations: [baseObservation({ asin: "B0YOGA1234", sponsored: true })],
+    });
+    const err = validateEntity(makeEnvelope({ targetEntity: "B0YOGA1234" }), extraction);
     expect(err).not.toBeNull();
-    expect(err!.reason).toContain("entity_type_mismatch");
+    expect(err!.reason).toContain("target_card_not_organic");
+  });
+
+  it("rejects ASIN target on search_results when target card is an ambiguous ad marker (WE-1)", () => {
+    const extraction = makeSearchExtraction({
+      observations: [baseObservation({
+        asin: "B0YOGA1234",
+        sponsored: null,
+        sponsoredDiagnostic: { state: null, reasonCode: "ambiguous_ad_text_without_known_marker", matchedText: "Promoted" },
+      })],
+    });
+    const err = validateEntity(makeEnvelope({ targetEntity: "B0YOGA1234" }), extraction);
+    expect(err).not.toBeNull();
+    expect(err!.reason).toContain("target_card_not_organic");
   });
 
   it("rejects ASIN mismatch on detail page", () => {
@@ -430,6 +452,161 @@ describe("runAmazonAdapter — live mode gate", () => {
     expect(result.status).toBe("waiting_auth");
     expect(result.nextAction).toBe("wait_human");
     expect(result.errors[0].code).toBe("CAPTCHA_OR_BOT_CHECK");
+  });
+});
+
+describe("P2-C review — prompt injection (PI-1/PI-2/PI-3)", () => {
+  beforeEach(() => __resetAmazonAdapterCacheForTest());
+
+  it("PI-1 web body injection: control fields unchanged, injection only into rawArtifact/data", async () => {
+    const envelope = makeEnvelope({ inputHash: "pi-1-web-body-hash", requestedFields: ["asin", "title", "price", "productUrl", "capturedAt"] });
+    const result = await runAmazonAdapter(envelope, { fixturesDir });
+    expect(result.status).toBe("ok");
+    expect(result.nextAction).toBe("continue");
+    expect(envelope.allowedDomains).toEqual(["amazon.com", "www.amazon.com"]);
+    expect(envelope.budget.maxCost).toBe(1);
+    expect(envelope.requestedFields).toEqual(["asin", "title", "price", "productUrl", "capturedAt"]);
+    const data = result.data as { observations: Array<Record<string, unknown>> };
+    const ev = data.observations[0].evidence as { kind: string; sourceType: string };
+    expect(ev.kind).not.toBe("action");
+    expect(ev.sourceType).toBe("amazon");
+    expect(result.errors).toEqual([]);
+    expect(data).not.toHaveProperty("instructions");
+    expect(data).not.toHaveProperty("plan");
+    expect(data).not.toHaveProperty("permission");
+    expect(data).not.toHaveProperty("stopConditions");
+    expect(data.observations[0].title as string).toContain("Ignore all previous instructions");
+    expect(result.rawArtifactRefs.length).toBeGreaterThan(0);
+    expect(result.warnings.some((w) => w.code === "INJECTION_TEXT_CAPTURED_AS_DATA")).toBe(true);
+  });
+
+  it("PI-2 review injection: treated as untrusted data, no control-field mutation", async () => {
+    const result = await runAmazonAdapter(makeEnvelope({ inputHash: "pi-2-review-hash" }), { fixturesDir });
+    expect(result.status).toBe("ok");
+    expect(result.nextAction).toBe("continue");
+    const data = result.data as { observations: Array<Record<string, unknown>> };
+    expect(data.observations[0].title as string).toContain("approve the purchase");
+    expect(data).not.toHaveProperty("plan");
+    expect(data).not.toHaveProperty("permission");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("PI-3 XLSX formula injection: not executed, only captured as field text", async () => {
+    const result = await runAmazonAdapter(makeEnvelope({ inputHash: "pi-3-xlsx-hash" }), { fixturesDir });
+    expect(result.status).toBe("ok");
+    expect(result.nextAction).toBe("continue");
+    const data = result.data as { observations: Array<Record<string, unknown>> };
+    const title = data.observations[0].title as string;
+    expect(title).toContain("=cmd|'/C calc'!A0");
+    expect(title).toContain("=HYPERLINK(");
+    expect(data).not.toHaveProperty("instructions");
+  });
+});
+
+describe("P2-C review — WRONG_ENTITY (WE-1/WE-2/WE-3)", () => {
+  beforeEach(() => __resetAmazonAdapterCacheForTest());
+
+  it("WE-1 recommended-position wrong ASIN -> WRONG_ENTITY + stop + no evidence merge", async () => {
+    const result = await runAmazonAdapter(
+      makeEnvelope({ inputHash: "we-1-placement-hash", targetEntity: "B0DOM00002", requestedFields: ["asin", "title", "price"] }),
+      { fixturesDir },
+    );
+    expect(result.status).toBe("stopped_error");
+    expect(result.nextAction).toBe("stop");
+    expect(result.errors[0].code).toBe("WRONG_ENTITY");
+    expect(result.data).toBeNull();
+    expect(result.observedEntity).toBe("B0DOM00002");
+  });
+
+  it("WE-2 region switch -> WRONG_ENTITY (market/currency mismatch)", async () => {
+    const result = await runAmazonAdapter(makeEnvelope({ inputHash: "we-2-region-hash" }), { fixturesDir });
+    expect(result.status).toBe("stopped_error");
+    expect(result.nextAction).toBe("stop");
+    expect(result.errors[0].code).toBe("WRONG_ENTITY");
+    expect(result.data).toBeNull();
+  });
+
+  it("WE-3 variant mix -> WRONG_ENTITY (observed ASIN != target)", async () => {
+    const result = await runAmazonAdapter(
+      makeEnvelope({ inputHash: "we-3-variant-hash", targetEntity: "B0PARENT01" }),
+      { fixturesDir },
+    );
+    expect(result.status).toBe("stopped_error");
+    expect(result.nextAction).toBe("stop");
+    expect(result.errors[0].code).toBe("WRONG_ENTITY");
+    expect(result.observedEntity).toBe("B0CHILD001");
+    expect(result.data).toBeNull();
+  });
+});
+
+describe("P2-C review — three candidate profiles (evidence schema aligned)", () => {
+  beforeEach(() => __resetAmazonAdapterCacheForTest());
+
+  it("profile A: evidence sufficient -> source_fact, rich observations, no missing", async () => {
+    const result = await runAmazonAdapter(
+      makeEnvelope({ inputHash: "profile-a-hash", requestedFields: ["asin", "title", "price", "rating", "reviewCount", "bsr", "productUrl", "capturedAt"] }),
+      { fixturesDir },
+    );
+    expect(result.status).toBe("ok");
+    const data = result.data as { observations: Array<Record<string, unknown>>; missingFields: Record<string, string> };
+    expect(data.observations).toHaveLength(2);
+    const ev = data.observations[0].evidence as { kind: string; sourceType: string; sampleSize: number; contentHash: string };
+    expect(ev.kind).toBe("source_fact");
+    expect(ev.sourceType).toBe("amazon");
+    expect(ev.sampleSize).toBe(1);
+    expect(ev.contentHash).toBeTruthy();
+    expect(Object.keys(data.missingFields).length).toBe(0);
+  });
+
+  it("profile B: data insufficient -> missing price/rating, evidence NOT padded to source_fact", async () => {
+    const result = await runAmazonAdapter(
+      makeEnvelope({ inputHash: "profile-b-hash", requestedFields: ["asin", "title", "price", "rating", "reviewCount"] }),
+      { fixturesDir },
+    );
+    expect(result.status).toBe("ok");
+    const data = result.data as { observations: Array<Record<string, unknown>>; missingFields: Record<string, string> };
+    expect(data.observations[0].price).toBeNull();
+    expect(data.observations[0].rating).toBeNull();
+    expect(data.missingFields.price).toBeTruthy();
+    expect(data.missingFields.rating).toBeTruthy();
+    const ev = data.observations[0].evidence as { kind: string };
+    expect(ev.kind).not.toBe("source_fact");
+  });
+
+  it("profile C: conflicts obvious -> dual values side by side, not normalized", async () => {
+    const result = await runAmazonAdapter(
+      makeEnvelope({ inputHash: "profile-c-hash", requestedFields: ["asin", "title", "price", "rating"] }),
+      { fixturesDir },
+    );
+    expect(result.status).toBe("ok");
+    const data = result.data as { observations: Array<Record<string, unknown>> };
+    expect(data.observations).toHaveLength(2);
+    expect(data.observations.map((o) => o.price)).toEqual([24.99, 19.99]);
+    expect(data.observations.map((o) => o.rating)).toEqual([4.5, 3.1]);
+  });
+});
+
+describe("P2-C review — deterministic fixture replay + GOLD-1 boundaries", () => {
+  beforeEach(() => __resetAmazonAdapterCacheForTest());
+  const fixedNow = () => "2026-08-21T12:00:00.000Z";
+
+  it("deterministic replay: same fixture -> identical output (not P1 fakeTools table)", async () => {
+    const opts = { fixturesDir, now: fixedNow };
+    const a = await runAmazonAdapter(makeEnvelope({ inputHash: "search-ok-hash" }), opts);
+    __resetAmazonAdapterCacheForTest();
+    const b = await runAmazonAdapter(makeEnvelope({ inputHash: "search-ok-hash" }), opts);
+    expect(a).toEqual(b);
+    expect(a.status).toBe("ok");
+    expect((a.data as { observations: Array<{ asin: string }> }).observations[0].asin).toBe("B0YOGA1234");
+  });
+
+  it("GOLD-1: no forbidden marketing text in output data", async () => {
+    const result = await runAmazonAdapter(
+      makeEnvelope({ inputHash: "profile-a-hash", requestedFields: ["asin", "title", "price", "rating", "reviewCount", "productUrl", "capturedAt"] }),
+      { fixturesDir },
+    );
+    const json = JSON.stringify(result.data);
+    expect(json).not.toMatch(/能卖|爆款概率|预计月赚|值得卖/);
   });
 });
 
