@@ -33,8 +33,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   // P5-C 裁定：已阻断资产不得 approve_export
   if (choice === "approve_export") {
     const listing = (content as { listing?: { blocked?: boolean } }).listing;
-    const images = (content as { images?: { checks?: { pass?: boolean }[] } }).images;
-    const blocked = listing?.blocked === true || (images?.checks?.some((chk) => chk.pass === false) ?? false);
+    const images = (content as { images?: { checks?: { checks?: { pass?: boolean }[]; overallStatus?: string } } }).images;
+    const visualBlocked = images?.checks?.overallStatus === "blocked" || (images?.checks?.checks?.some((chk) => chk.pass === false) ?? false);
+    const blocked = listing?.blocked === true || visualBlocked;
     if (blocked) {
       return jsonError("content_blocked", "存在阻断项（Listing blocked 或视觉检查失败），不可导出。", 409);
     }

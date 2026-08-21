@@ -534,7 +534,16 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
       try { commercial = JSON.parse(row.commercialJson) as CalcOutput; } catch { commercial = null; }
     }
     if (!commercial) {
-      interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", node: "commercial_check", instructions: "请提供商业计算输入（采购价/MOQ/售价/尺寸重量/头程/佣金/履约/汇率）。" } satisfies InterruptValue);
+      const resumedInput = interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", node: "commercial_check", instructions: "请提供商业计算输入（采购价/MOQ/售价/尺寸重量/头程/佣金/履约/汇率）。" } satisfies InterruptValue);
+      // resume 后重查：仍无计算输出 → 再次 interrupt
+      const rowNow = await deps.runStore.getRun(state.runId);
+      let calcNow: CalcOutput | null = null;
+      if (rowNow && rowNow.commercialJson) { try { calcNow = JSON.parse(rowNow.commercialJson) as CalcOutput; } catch { calcNow = null; } }
+      if (!calcNow) {
+        interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", node: "commercial_check", instructions: "商业计算输入仍未提供。" } satisfies InterruptValue);
+        return { status: "waiting_input", currentNode: "commercial_check", wait: { kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", instructions: "请提供商业计算输入。", requestedAt: new Date().toISOString() }, lastEvent: ev("commercial_check", "waiting_human", { reason: "COMMERCIAL_INPUT_REQUIRED" }) };
+      }
+      void resumedInput;
       return { status: "waiting_input", currentNode: "commercial_check", wait: { kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", instructions: "请提供商业计算输入。", requestedAt: new Date().toISOString() }, lastEvent: ev("commercial_check", "waiting_human", { reason: "COMMERCIAL_INPUT_REQUIRED" }) };
     }
     return { status: "running", currentNode: "commercial_check", commercial, lastEvent: ev("commercial_check", "node_completed", { scenario: "baseline" }) };
@@ -564,7 +573,16 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
       try { contentDraft = JSON.parse(row.contentJson); } catch { contentDraft = null; }
     }
     if (!contentDraft) {
-      interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", node: "content_skills", instructions: "请先通过内容 Skills 管线生成 Listing/Image 草稿与 Guards 结果。" } satisfies InterruptValue);
+      const resumedInput = interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", node: "content_skills", instructions: "请先通过内容 Skills 管线生成 Listing/Image 草稿与 Guards 结果。" } satisfies InterruptValue);
+      // resume 后重查：仍无内容 → 再次 interrupt（防止未生成即前进）
+      const rowNow = await deps.runStore.getRun(state.runId);
+      let draftNow: unknown = null;
+      if (rowNow && rowNow.contentJson) { try { draftNow = JSON.parse(rowNow.contentJson); } catch { draftNow = null; } }
+      if (!draftNow) {
+        interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", node: "content_skills", instructions: "内容草稿仍未生成。" } satisfies InterruptValue);
+        return { status: "waiting_input", currentNode: "content_skills", wait: { kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", instructions: "请先生成内容草稿。", requestedAt: new Date().toISOString() }, lastEvent: ev("content_skills", "waiting_human", { reason: "CONTENT_GENERATION_REQUIRED" }) };
+      }
+      void resumedInput;
       return { status: "waiting_input", currentNode: "content_skills", wait: { kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", instructions: "请先生成内容草稿。", requestedAt: new Date().toISOString() }, lastEvent: ev("content_skills", "waiting_human", { reason: "CONTENT_GENERATION_REQUIRED" }) };
     }
     const budget = consumeBudget(state.budget, { browserSteps: 0, llmTokens: 100, cost: 0.1 });
