@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
   if (!bundleId) return error("invalid_bundle", "缺少 bundleId。", 400);
   const demoAccessId = String(g.context.demoAccessId ?? "");
   const choice = getDemoChoice(BASE, demoAccessId, bundleId);
-  return NextResponse.json({ ok: true, choice });
+  // 平铺返回（panel 契约：直接 { gateA, gateB, note }）。
+  return NextResponse.json({ ok: true, ...(choice ?? {}) });
 }
 
 export async function POST(request: NextRequest) {

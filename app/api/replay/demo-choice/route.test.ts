@@ -41,7 +41,7 @@ describe("/api/replay/demo-choice (gate 6 minimal API, form contract)", () => {
     const ok = await GET(req("/api/replay/demo-choice?bundleId=b1"));
     expect(ok.status).toBe(200);
     const j = await ok.json();
-    expect(j.choice.gateA).toBe("continue_sourcing");
+    expect(j.gateA).toBe("continue_sourcing");
   });
   it("POST invalid decision 400; valid form 200; DELETE 200", async () => {
     const bad = await POST(req("/api/replay/demo-choice?bundleId=b1", { method: "POST", body: JSON.stringify({ gateA: "fly_to_moon" }) }));
@@ -49,7 +49,7 @@ describe("/api/replay/demo-choice (gate 6 minimal API, form contract)", () => {
     const okb = await POST(req("/api/replay/demo-choice?bundleId=b1", { method: "POST", body: JSON.stringify({ gateA: "continue_sourcing", gateB: "content_ready", note: "accept" }) }));
     expect(okb.status).toBe(200);
     const j = await okb.json();
-    expect(j.choice.bundleId).toBe("b1");
+    expect(j.gateB).toBe("content_ready");
     expect((await DELETE(req("/api/replay/demo-choice?bundleId=b1", { method: "DELETE" }))).status).toBe(200);
   });
 });
