@@ -37,7 +37,15 @@
 4. **风险文案**：首页/落地/Replay 无「自动选品/爆款/稳赚/自动上架/多 Agent/行业基础设施」正面表述（自动上架/自动选品均为否定句或边界声明）；唯一残留：V3「爆款」113 处（app/viral、ViralMockAgent、WorkflowNextStepCard「爆款雷达/爆款拆解」等旧功能名），建议 V4.1 收口时对用户可见处降级/改词。
 5. **五秒理解缺口**（vs 指令书 §三/§六A）：首屏缺少「Evidence / Human Decision」作为主张抬头；「脱敏案例回放」资产未被首页/侧栏引用；公网主 CTA 进金标任务而非 Replay。
 
-## 3. 子 Agent A 审计结论（UI/路由）——（待补）
+## 3. 子 Agent A 审计结论（UI/路由）—— 要点
+
+1. **全局 Shell**：app/layout.tsx 仅 `<html lang=zh-CN><body>{children}`（无 Topbar/全局品牌标识）；WorkspaceSidebar（238 行）品牌卡为「轻选工作台 / AI 跨境商品研究工作台 / 辅助研究·人工决定」（V3 语义）；V4 段（L200-205）仅 isV4NavEnabled() 为真时渲染「V4 研究图 → 运行控制台 /v4/runs」；**移动导航不含 V4 项**。
+2. **首页**：page.tsx（148 行）模式感知分发（public→GuestLanding|HomeDashboard；local noAuthOwner→HomeDashboard；缺省→LoginPage）；HomeDashboardClient（657 行）首屏 = Header（H1「AI 跨境商品研究工作台」）→ V3 金标演示卡（CTA→/tasks/{taskId}）→「五步完成一次商品研究」workflow 卡（全指向 V3 路径）→ 密码/解锁 → StatCard×3 → 推荐 → 新手 → 边界声明。**零 V4/Evidence/Fact Gate/Content Guard/Replay/Featured Replay 元素**。
+3. **路由/组件图**：/v4/runs、/v4/runs/[runId] = server page（force-dynamic + isV4GraphEnabled 门禁）+ client 数据壳（RunListClient→api.ts fetch→RunListTable；RunConsoleClient→getRun/getReport/getFacts/getCommercial→RunConsoleView 含 PlanSummary/InterruptPanel/ErrorPanel/NodeFlow/BudgetMeter/FactGatePanel/CommercialPanel/GateBPanel/ContentReviewPanel/ReportPanel/EventStream）；/replay、/replay/[bundleId] = server page + 只读文件直读 data/replay-bundles（parseBundle+verifyBundleHash）→ ReplayView（ReplayTimeline + resolve* 系列）。
+4. **可复用组件**：labels.ts（零依赖）、NodeFlow、RunStatusBadge、BudgetMeter、PlanSummary、EventStream、ScenarioCard/CommercialFormulaExpansion/RulesMeta/FactStatusBadge、ReplayTimeline+resolve*、RunListTable（绑定 RunSummary）；StatCard 为 HomeDashboardClient 私有未导出（需提取或重建）。
+5. **所有权（对照 §11）**：WorkspaceSidebar/MobileNav/NavGroups + app/layout.tsx → 根 Agent；components/v4/api.ts → B 组（契约冻结）；labels.ts → 根 Agent（三组共用）；共享展示件（RunStatusBadge/BudgetMeter/NodeFlow/FactGatePanel/ScenarioCard/FactStatusBadge）→ A 组收口；page.tsx+HomeDashboardClient → A 实现、根 Agent 冻结 CTA/模式契约；flag 双源（NEXT_PUBLIC_QX_V4_GRAPH_ENABLED vs QX_V4_GRAPH_ENABLED）→ 根 Agent 统一。
+6. **V3 回归入口已验证存在**：/api/demo/golden + /api/auth/guest + GuestLanding/DemoAccessBanner + 各测试；/opportunities*、listing-studio、image-studio、/tasks*、research、agent/run。
+7. **缺口**：/replay 两页无 page.test；演示页（listing-studio/image-studio/tasks/research）无 page.test（仅 API 层）；移动导航无 V4/Replay 项；首页零 V4 元素直接违反 §三/§四。
 
 ## 4. 子 Agent C 审计结论（测试/安全/模式）——（待补）
 
@@ -57,4 +65,4 @@
 - 本地 .env.local 已启用 QX_V4_GRAPH_ENABLED=on + NEXT_PUBLIC_QX_V4_GRAPH_ENABLED=true（本地预览；公网部署保持 OFF，未改动公网环境）。
 
 ---
-（P0 定稿于子 Agent A/C 报告并入后；本文件不含任何业务代码修改。）
+审计状态：A ✅ 已并入；B ✅ 已并入；C ⏳ 运行中（并入后定稿）。本文件不含任何业务代码修改。
