@@ -27,7 +27,7 @@ npx prisma db push
 cp .env.example .env.local
 ```
 
-编辑 `.env.local`，至少设置 `ACCESS_PASSWORD`（登录密码）。默认 AI Provider 为 Mock 模式，无需 API Key 即可运行。详见 [configuration.md](../guides/configuration.md)。
+编辑 `.env.local`，至少设置 `ACCESS_PASSWORD`（登录密码）。Listing/Image Provider 默认为 Mock 模式，本地研究演示无需真实 API Key；研究 AI Provider（`AI_PROVIDER=deepseek|openai`）需要有效密钥——`.env.example` 中的 key 为占位值，真实调用前必须替换。详见 [configuration.md](../guides/configuration.md)。
 
 ## 启动开发服务器
 
@@ -48,7 +48,7 @@ npm run dev:local     # 启动开发服务器（带数据库门禁）
 npm run check:provider-config
 ```
 
-该命令检查 Provider 配置是否就绪（不暴露密钥值）。
+该命令检查 Provider 配置是否就绪（不暴露密钥值）。preflight 会自动创建 `data/ai-image-drafts/` 存储目录（与运行时一致），全新克隆无需手工建目录。
 
 ## 常用脚本
 

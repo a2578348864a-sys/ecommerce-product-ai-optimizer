@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { accessSync, constants, statSync } from "node:fs";
+import { accessSync, constants, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import nextEnv from "@next/env";
@@ -30,7 +30,20 @@ function defaultStorageCheck(rawPath) {
     if (!stat.isDirectory()) return { ok: false, reason: "not_directory" };
     accessSync(absolutePath, constants.R_OK | constants.W_OK);
     return { ok: true };
-  } catch {
+  } catch (err) {
+    // 全新克隆时 data/ai-image-drafts/ 不存在（被 .gitignore 排除）→ 与运行时
+    // aiImageDraftStorage 的 mkdir recursive 行为一致，preflight 自建后复检。
+    if (err && (err.code === "ENOENT" || err.code === "ENOTDIR")) {
+      try {
+        mkdirSync(resolve(rawPath), { recursive: true });
+        const stat = statSync(resolve(rawPath));
+        if (!stat.isDirectory()) return { ok: false, reason: "not_directory" };
+        accessSync(resolve(rawPath), constants.R_OK | constants.W_OK);
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: "not_readable_writable" };
+      }
+    }
     return { ok: false, reason: "not_readable_writable" };
   }
 }
