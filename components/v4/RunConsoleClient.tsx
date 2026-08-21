@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ResearchRunEvent, ResearchRunState } from "@/lib/v4/contracts";
 import { confirmFact, getCommercial, getFacts, getReport, getRun, resumeRun, revokeFact, type FactView } from "./api";
 import { postContentReview } from "./api";
-import { RunConsoleView } from "./RunConsoleView";
+import { RunConsoleView, type ContentView } from "./RunConsoleView";
 import type { ReportViewLike } from "./api";
 import type { ConfirmationMethod, FactGateItem, FactGateCallbacks } from "./FactGatePanel";
 import type { DisplayFactStatus } from "./FactStatusBadge";
@@ -35,6 +35,18 @@ function mapFactViews(facts: FactView[]): FactGateItem[] {
   }));
 }
 
+/** 已到达内容阶段的节点（在此抓取 Listing/图片数据；未达 → null）。 */
+const CONTENT_READY_NODES = new Set(["content_handoff", "content_skills", "content_review", "complete"]);
+
+/** GET /api/v4/runs/[runId]/content → 内容包（404 = 尚未生成，返回 null）。 */
+async function getContent(runId: string): Promise<ContentView> {
+  const res = await fetch("/api/v4/runs/" + encodeURIComponent(runId) + "/content", { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  const body = (await res.json()) as { content?: unknown };
+  return (body.content as unknown) as ContentView;
+}
+
 /** Run Console 数据壳：拉取详情、管理加载/错误态，并驱动交互刷新。 */
 export function RunConsoleClient({ runId }: { runId: string }) {
   const [state, setState] = useState<LoadState>("loading");
@@ -43,6 +55,7 @@ export function RunConsoleClient({ runId }: { runId: string }) {
   const [report, setReport] = useState<ReportViewLike | null>(null);
   const [facts, setFacts] = useState<FactView[] | null>(null);
   const [commercial, setCommercial] = useState<unknown | null>(null);
+  const [content, setContent] = useState<ContentView>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
 
@@ -73,6 +86,13 @@ export function RunConsoleClient({ runId }: { runId: string }) {
         if (data.run.currentNode === "commercial_check" || data.run.currentNode === "gate_b") {
           const commercialData = await getCommercial(runId).catch(() => null);
           setCommercial(commercialData);
+        }
+        // content：到达内容阶段或已完成时才抓取；否则 null（尚未生成，诚实空态）。
+        if (CONTENT_READY_NODES.has(data.run.currentNode) || data.run.status === "completed") {
+          const contentData = await getContent(runId).catch(() => null);
+          setContent(contentData);
+        } else {
+          setContent(null);
         }
         setState("ready");
       } catch (err) {
@@ -206,6 +226,7 @@ export function RunConsoleClient({ runId }: { runId: string }) {
       commercial={{ output: commercial }}
       gateB={gateB as never}
       contentReview={contentReview}
+      content={content}
       onRefresh={() => void refresh(false)}
       onRetry={() => void retry()}
     />
