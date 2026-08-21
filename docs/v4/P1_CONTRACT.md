@@ -91,3 +91,16 @@ A/B 不触碰对方路径、不触碰 Lead 路径、不触碰 V3.1 既有文件�
 ## 6. 执行顺序
 
 1. Lead：本契约入库（docs/v4/P1_CONTRACT.md）。2. Lead：prisma schema+migration+generate，跑回归。3. Lead：npm install 冻结元组 + next.config.ts，跑 lint/test/build 回归（flag off）。4. Lead：建 worktree 分支。5. Wave 1：A、B 并行实现；第 3 子 Agent 只读评审。6. Lead：逐个合并、补公共接线（API 路由）、全量门禁。7. Lead：真实浏览器 E2E + TASK_REPORT。8. Gate 判定，PASS→P2，否则停止。
+
+
+## 7. 修订（P1-C 只读评审裁决，Lead 采纳）
+
+- 六轨 revision 冲突：以 V4ResearchRun.revision（业务行）为唯一判定源；stateJson.revision 必须与之恒等；checkpoint.businessRevision 仅作控制流参考；evidenceRevision/factRevision/planRevision 是语义计数器，不作并发判定。
+- inputHash 必须 canonical JSON 序列化（键排序+定长编码），防漏去重/误去重。
+- 三方一致性测试：checkpoint 存在但 run 行缺失、journal 有 committed 但 checkpoint 无、checkpoint 引用未提交 revision——均按 fail_closed 处理。
+- Journal recorded 悬空不自动重放；只有显式 retry（resume kind=retry）才允许重新执行并更新 journal 状态。
+- canTransit 语义修正：failed_recoverable 只允许 → revising/running/waiting_*（不得直接 → completed）；终态矩阵以 isTerminalStatus 为准。
+- 协作式取消：先落副作用结果（journal）再写终态 cancelled；取消后任何 save/appendEvent 必须失败。
+- graphVersion fail_closed 只依赖 runStore 行字段，不依赖 SqliteSaver configurable 持久化。
+- 测试隔离：mkdtemp 临时 checkpoint/journal DB；runStore 用内存或临时 sqlite；junction node_modules 只读，禁 install/generate/migrate。
+- 必测优先级（C 风险排序）：R1 进程中断恢复不重复副作用 > R2 expectedRevision 并发/双轨冲突 > R3 幂等重复/冲突。A 的测试必须覆盖 C 矩阵 A1–G3（30+ 场景）中与本工作包相关的全部场景。
