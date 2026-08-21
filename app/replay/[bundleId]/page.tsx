@@ -30,7 +30,8 @@ async function loadReplayBundle(bundleId: string): Promise<ReplayBundle | null> 
   }
   const parsed = parseBundle(raw);
   if (!parsed.ok) return null;
-  if (!verifyBundleHash(parsed.bundle)) return null;
+  const sha256 = (s: string) => { const { createHash } = require("node:crypto"); return createHash("sha256").update(s).digest("hex"); };
+  if (!verifyBundleHash(parsed.bundle, sha256)) return null;
   return parsed.bundle;
 }
 

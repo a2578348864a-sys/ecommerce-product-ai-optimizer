@@ -5,6 +5,16 @@ import { prisma } from "@/lib/server/db";
 import { requireV4GraphEnabled } from "@/lib/v4/featureFlag";
 import { exportReplayBundle } from "@/lib/v4/replay/exporter";
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const BUNDLES_DIR = "data/replay-bundles";
+
+function safeParse(json: string | null): unknown {
+  if (!json) return null;
+  try { return JSON.parse(json); } catch { return null; }
+}
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -23,7 +33,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   if (run.ownerScope !== "owner") return jsonError("run_not_found", "运行不存在。", 404);
   if (run.status !== "completed") return jsonError("run_not_completed", "仅已完成运行可导出。", 409);
 
-  const result = await exportReplayBundle({ run, now: () => new Date().toISOString() });
+  const result = await exportReplayBundle({
+    sourceRunId: run.id,
+    runStatus: run.status,
+    capturedAt: run.updatedAt instanceof Date ? run.updatedAt.toISOString() : String(run.updatedAt),
+    data: {
+      candidate: { id: run.candidateId },
+      report: safeParse(run.reportJson),
+      commercial: safeParse(run.commercialJson),
+      content: safeParse(run.contentJson),
+      events: safeParse(run.eventsJson),
+    },
+  });
   if (!result.ok) return jsonError("export_failed", result.reason, 400);
-  return jsonOk({ bundle: result.bundle, redactionReport: result.bundle.redactionReport }, 200);
+  // 审批落盘：仅当 bundle 可发布（scanOk）且 Owner 显式 approve
+  let body: Record<string, unknown> = {};
+  try { body = (await request.json()) as Record<string, unknown>; } catch { /* 无 body = 仅预览 */ }
+  if (body.approve === true) {
+    if (!result.bundle.redactionReport.scanOk) return jsonError("redaction_scan_failed", "脱敏扫描未通过，不可发布。", 409);
+    mkdirSync(BUNDLES_DIR, { recursive: true });
+    const file = join(BUNDLES_DIR, result.bundle.bundleId + ".json");
+    writeFileSync(file, JSON.stringify(result.bundle), "utf8");
+    return jsonOk({ bundle: result.bundle, redactionReport: result.bundle.redactionReport, published: true }, 200);
+  }
+  return jsonOk({ bundle: result.bundle, redactionReport: result.bundle.redactionReport, published: false }, 200);
 }
