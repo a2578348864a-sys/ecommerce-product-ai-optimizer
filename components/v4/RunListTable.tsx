@@ -28,10 +28,10 @@ export function RunListTable({ runs }: { runs: RunSummary[] }) {
         </thead>
         <tbody>
           {runs.map((run) => (
-            <tr key={run.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+            <tr key={run.runId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
               <td className="px-4 py-2">
-                <Link href={"/v4/runs/" + encodeURIComponent(run.id)} className="font-semibold text-teal-700 hover:underline">
-                  {run.id}
+                <Link href={"/v4/runs/" + encodeURIComponent(run.runId)} className="font-semibold text-teal-700 hover:underline">
+                  {run.runId}
                 </Link>
               </td>
               <td className="px-4 py-2"><RunStatusBadge status={run.status} /></td>

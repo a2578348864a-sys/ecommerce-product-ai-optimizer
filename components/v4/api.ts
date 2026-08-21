@@ -26,7 +26,8 @@ import type {
 
 /** 列表投影（契约 RunSummary = id/candidateId/status/currentNode/revision/budget.usedCost/updatedAt）。 */
 export type RunSummary = {
-  id: string;
+  /** API 权威字段（ResearchRunState.runId）。 */
+  runId: string;
   candidateId: string;
   status: ResearchRunStatus;
   currentNode: ResearchRunNode;

@@ -24,8 +24,8 @@ describe("RunListTable", () => {
     const html = renderToStaticMarkup(
       createElement(RunListTable, {
         runs: [
-          makeRunSummary({ id: "run_1", status: "running", currentNode: "dispatch_tool" }),
-          makeRunSummary({ id: "run_2", status: "cancelled", currentNode: "cancel" }),
+          makeRunSummary({ runId: "run_1", status: "running", currentNode: "dispatch_tool" }),
+          makeRunSummary({ runId: "run_2", status: "cancelled", currentNode: "cancel" }),
         ],
       }),
     );

@@ -68,7 +68,7 @@ export function makeEvent(overrides: Partial<ResearchRunEvent> = {}): ResearchRu
 
 export function makeRunSummary(overrides: Partial<RunSummary> = {}): RunSummary {
   return {
-    id: "run_1",
+    runId: "run_1",
     candidateId: "cand_1",
     status: "running",
     currentNode: "dispatch_tool",
