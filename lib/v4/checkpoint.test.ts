@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { StateGraph, Annotation, START, END, interrupt, Command } from "@langchain/langgraph";
 
-import { defaultCheckpointPath, openCheckpoint } from "@/lib/v4/checkpoint";
+import { checkpointDbPath, defaultCheckpointPath, openCheckpoint } from "@/lib/v4/checkpoint";
 
 let root = "";
 
@@ -36,6 +36,12 @@ const build = (checkpointer: ReturnType<typeof openCheckpoint>["saver"]) =>
 describe("Checkpoint adapter (SqliteSaver, control-flow only)", () => {
   it("defaultCheckpointPath is under .tmp/v4-graph", () => {
     expect(defaultCheckpointPath("run-1")).toBe(join(".tmp", "v4-graph", "checkpoints-run-1.db"));
+  });
+
+  it("checkpointDbPath defaults to .tmp/v4-graph and honors baseDir", () => {
+    expect(checkpointDbPath("run-1")).toBe(join(".tmp", "v4-graph", "checkpoints-run-1.db"));
+    expect(checkpointDbPath("run-1", "/tmp/cp")).toBe(join("/tmp/cp", "checkpoints-run-1.db"));
+    expect(checkpointDbPath("run-1")).toBe(defaultCheckpointPath("run-1"));
   });
 
   it("persists graph state across close/reopen (process restart simulation)", async () => {

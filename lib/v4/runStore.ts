@@ -17,6 +17,7 @@ import {
   type ResearchRunState,
   type ResearchRunStatus,
 } from "@/lib/v4/contracts";
+import { prisma } from "@/lib/server/db";
 
 export type RunRow = {
   id: string;
@@ -68,6 +69,25 @@ export class RunStoreError extends Error {
     this.latestRevision = latestRevision;
   }
 }
+
+/**
+ * API 契约：RunStore 接口（Lead 冻结）。面向 ResearchRunState 的读写 + CAS + 事件追加。
+ * save 在 expectedRevision 冲突时抛 REVISION_CONFLICT 错误。
+ */
+// 可注入的 prisma 引用（生产默认全局 prisma；测试可替换为临时库）。
+let runPrisma: typeof prisma = prisma;
+
+/** 测试专用：替换 runStore 的 prisma 引用。 */
+export function __setRunPrismaForTest(p: typeof prisma): void {
+  runPrisma = p;
+}
+
+export type RunStore = {
+  create(state: ResearchRunState): Promise<void>;
+  get(runId: string): Promise<ResearchRunState | null>;
+  save(state: ResearchRunState, expectedRevision: number): Promise<void>;
+  appendEvent(runId: string, event: ResearchRunEvent, expectedRevision: number): Promise<void>;
+};
 
 export type CreateRunInput = {
   id: string;
@@ -272,9 +292,23 @@ export class ResearchRunStore {
         current.revision,
       );
     }
+    const existing = parseEvents(current.eventsJson);
+    const nextSeq = existing.reduce((max, e) => Math.max(max, e.seq), 0) + 1;
+    const cancelledEvent: ResearchRunEvent = {
+      seq: nextSeq,
+      type: "cancelled",
+      node: "cancel",
+      payloadJson: JSON.stringify({}),
+      createdAt: new Date().toISOString(),
+    };
     return this.db.v4ResearchRun.update({
       where: { id: runId },
-      data: { status: "cancelled", currentNode: "cancel", revision: current.revision + 1 },
+      data: {
+        status: "cancelled",
+        currentNode: "cancel",
+        eventsJson: JSON.stringify([...existing, cancelledEvent]),
+        revision: current.revision + 1,
+      },
     });
   }
 
@@ -287,6 +321,105 @@ export class ResearchRunStore {
   readEvents(run: RunRow): ResearchRunEvent[] {
     return parseEvents(run.eventsJson);
   }
+
+  // ---- RunStore 契约实现（state-level，API 用） ----
+
+  /** 从 ResearchRunState 创建运行。 */
+  async create(state: ResearchRunState): Promise<void> {
+    await this.db.v4ResearchRun.create({
+      data: {
+        id: state.runId,
+        candidateId: state.candidateId,
+        ownerScope: state.ownerScope ?? "",
+        sandboxId: state.sandboxId ?? null,
+        mode: state.mode,
+        graphVersion: this.graphVersion,
+        status: state.status,
+        currentNode: state.currentNode,
+        revision: state.revision,
+        planRevision: state.planRevision,
+        automaticPlanRevisionCount: state.automaticPlanRevisionCount,
+        stateJson: JSON.stringify(state),
+        eventsJson: "[]",
+      },
+    });
+  }
+
+  /** 读取运行状态（null 若不存在）；revision 以行内（row.revision）为准。 */
+  async get(runId: string): Promise<ResearchRunState | null> {
+    const row = await this.getRun(runId);
+    if (!row) return null;
+    const state = this.readState(row);
+    if (!state) return null;
+    return { ...state, revision: row.revision };
+  }
+
+  /** CAS 保存状态；expectedRevision 冲突抛 REVISION_CONFLICT；终态后抛 TERMINAL_FROZEN。 */
+  async save(state: ResearchRunState, expectedRevision: number): Promise<void> {
+    const current = await this.getRun(state.runId);
+    if (!current) throw new RunStoreError("NOT_FOUND", `Run ${state.runId} not found`);
+    if (isTerminalRow(current.status)) {
+      throw new RunStoreError("TERMINAL_FROZEN", `Run ${state.runId} is terminal (${current.status}); cannot write`, current.revision);
+    }
+    if (current.revision !== expectedRevision) {
+      throw new RunStoreError("REVISION_CONFLICT", `Run ${state.runId} revision ${current.revision} != expected ${expectedRevision}`, current.revision);
+    }
+    await this.db.v4ResearchRun.update({
+      where: { id: state.runId },
+      data: {
+        stateJson: JSON.stringify(state),
+        status: state.status,
+        currentNode: state.currentNode,
+        planRevision: state.planRevision,
+        automaticPlanRevisionCount: state.automaticPlanRevisionCount,
+        revision: expectedRevision + 1,
+      },
+    });
+  }
+
+  /** CAS 追加单条事件；expectedRevision 冲突抛 REVISION_CONFLICT；终态后抛 TERMINAL_FROZEN。 */
+  async appendEvent(runId: string, event: ResearchRunEvent, expectedRevision: number): Promise<void> {
+    const current = await this.getRun(runId);
+    if (!current) throw new RunStoreError("NOT_FOUND", `Run ${runId} not found`);
+    if (isTerminalRow(current.status)) {
+      throw new RunStoreError("TERMINAL_FROZEN", `Run ${runId} is terminal (${current.status}); cannot write`, current.revision);
+    }
+    if (current.revision !== expectedRevision) {
+      throw new RunStoreError("REVISION_CONFLICT", `Run ${runId} revision ${current.revision} != expected ${expectedRevision}`, current.revision);
+    }
+    const existing = parseEvents(current.eventsJson);
+    const merged = [...existing, event];
+    await this.db.v4ResearchRun.update({
+      where: { id: runId },
+      data: { eventsJson: JSON.stringify(merged), revision: expectedRevision + 1 },
+    });
+  }
+}
+
+/**
+ * 创建基于全局 prisma 的 RunStore（API 契约）。
+ */
+export function createPrismaRunStore(): RunStore {
+  return new ResearchRunStore(runPrisma as unknown as ResearchRunDb);
+}
+
+/**
+ * 列出某 owner/sandbox 范围内的运行（API 契约）。
+ */
+export async function listRuns(scope: {
+  ownerScope: string;
+  sandboxId?: string | null;
+}): Promise<ResearchRunState[]> {
+  const rows = await runPrisma.v4ResearchRun.findMany({
+    where: {
+      ownerScope: scope.ownerScope,
+      ...(scope.sandboxId !== undefined ? { sandboxId: scope.sandboxId } : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  return rows
+    .map((r) => parseState(r.stateJson))
+    .filter((s): s is ResearchRunState => s !== null);
 }
 
 function isTerminalRow(status: string): boolean {

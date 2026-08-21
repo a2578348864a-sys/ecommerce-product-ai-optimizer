@@ -30,6 +30,7 @@ import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 
 import {
   RESEARCH_RUN_SCHEMA_VERSION,
+  isTerminalStatus,
   type ResearchBudget,
   type ResearchRunError,
   type ResearchRunEvent,
@@ -39,11 +40,12 @@ import {
   type ResearchRunWait,
   type ResumePayload,
 } from "@/lib/v4/contracts";
-import { DomainAdapter, type CandidateSnapshot } from "@/lib/v4/domain";
+import { CandidateNotFoundError, DomainAdapter, type CandidateSnapshot, type DomainDb } from "@/lib/v4/domain";
 import { FakeToolRegistry, type ConflictItem, type ContentDraft, type EvidenceItem, type FeasibilitySnapshot, type ResearchPlan, type ResearchQuestion, type ToolResult } from "@/lib/v4/fakeTools";
-import { ResearchRunStore, type RunRow, RunStoreError } from "@/lib/v4/runStore";
-import { SideEffectJournal, buildIdempotencyKey, sha256, stableStringify } from "@/lib/v4/journal";
-import { openCheckpoint } from "@/lib/v4/checkpoint";
+import { createPrismaRunStore, ResearchRunStore, type RunRow, RunStoreError } from "@/lib/v4/runStore";
+import { createPrismaJournal, IdempotencyConflictError, SideEffectJournal, buildIdempotencyKey, sha256, stableStringify } from "@/lib/v4/journal";
+import { checkpointDbPath, openCheckpoint } from "@/lib/v4/checkpoint";
+import { prisma } from "@/lib/server/db";
 
 export type ResearchGraph = CompiledStateGraph<any, any>;
 
@@ -600,6 +602,8 @@ export type RunStepResult = {
   completed: boolean;
   cancelled: boolean;
   run: RunRow;
+  state: ResearchRunState;
+  events: ResearchRunEvent[];
 };
 
 export type StartRunInput = {
@@ -649,6 +653,45 @@ function initialInput(input: StartRunInput, budget: ResearchBudget): GraphState 
   };
 }
 
+/** 从已存在的 ResearchRunState 构建 graph 初始输入（startRun 用）。 */
+function initialInputFromRun(state: ResearchRunState): GraphState {
+  return {
+    runId: state.runId,
+    candidateId: state.candidateId,
+    ownerScope: state.ownerScope ?? "",
+    sandboxId: state.sandboxId ?? null,
+    mode: state.mode,
+    status: "running",
+    currentNode: "load_context",
+    planRevision: state.planRevision,
+    automaticPlanRevisionCount: state.automaticPlanRevisionCount,
+    activeQuestionId: null,
+    activeToolCallId: null,
+    activeToolName: null,
+    activeInputHash: null,
+    activeToolResult: null,
+    evidenceRevision: state.evidenceRevision,
+    factRevision: state.factRevision ?? null,
+    policyPackVersion: state.policyPackVersion ?? null,
+    budget: state.budget,
+    wait: null,
+    lastError: null,
+    contextHash: "",
+    candidateSnapshot: null,
+    plan: null,
+    questions: [],
+    dispatchedQuestionIds: [],
+    evidence: [],
+    conflicts: [],
+    facts: null,
+    feasibility: null,
+    content: null,
+    handoff: null,
+    lastValidation: null,
+    lastEvent: null,
+  };
+}
+
 export class ResearchRunRunner {
   private readonly deps: GraphDeps;
 
@@ -673,6 +716,33 @@ export class ResearchRunRunner {
       return await this.drive(input.runId, graph, config, state);
     } finally {
       this.close(input.runId);
+    }
+  }
+
+  /**
+   * API 契约 startRun：驱动一个已存在的运行（draft/当前 checkpoint）到下一个等待点或终态。
+   * 不创建运行；校验 graphVersion + expectedRevision + 可操作性。
+   */
+  async runExisting(runId: string, expectedRevision: number): Promise<RunStepResult> {
+    await this.deps.runStore.assertGraphVersion(runId);
+    const run = await this.deps.runStore.getRun(runId);
+    if (!run) throw new RunStoreError("NOT_FOUND", `Run ${runId} not found`);
+    if (isTerminalStatus(run.status as ResearchRunStatus)) {
+      throw new RunStoreError("TERMINAL_FROZEN", `Run ${runId} is terminal (${run.status})`, run.revision);
+    }
+    if (run.revision !== expectedRevision) {
+      throw new RunStoreError("REVISION_CONFLICT", `Run ${runId} revision ${run.revision} != expected ${expectedRevision}`, run.revision);
+    }
+    const state = this.deps.runStore.readState(run);
+    if (!state) throw new RunStoreError("NOT_FOUND", `Run ${runId} has no persisted state`);
+    const input = initialInputFromRun(state);
+    const config = this.configFor(runId);
+    this.enteredNodes.set(runId, new Set());
+    try {
+      const graph = this.compile(runId);
+      return await this.drive(runId, graph, config, input);
+    } finally {
+      this.close(runId);
     }
   }
 
@@ -869,16 +939,228 @@ export class ResearchRunRunner {
 
   private toResult(run: RunRow, interruptValue: InterruptValue | null): RunStepResult {
     const state = this.deps.runStore.readState(run);
+    const events = this.deps.runStore.readEvents(run);
+    const fallback = this.emptyState(run);
     return {
-      status: state?.status ?? "draft",
-      currentNode: (state?.currentNode ?? "load_context") as ResearchRunNode,
+      status: state?.status ?? fallback.status,
+      currentNode: (state?.currentNode ?? fallback.currentNode) as ResearchRunNode,
       wait: state?.wait ?? null,
       lastError: state?.lastError ?? null,
       completed: state?.status === "completed",
       cancelled: state?.status === "cancelled",
       run,
+      state: state ?? fallback,
+      events,
+    };
+  }
+
+  private emptyState(run: RunRow): ResearchRunState {
+    const now = new Date().toISOString();
+    const budget: ResearchBudget = {
+      maxWallClockMs: 120_000,
+      maxBrowserSteps: 100,
+      maxLlmTokens: 100_000,
+      maxImageCalls: 20,
+      maxCost: 10,
+      currency: "USD",
+      usedBrowserSteps: 0,
+      usedLlmTokens: 0,
+      usedImageCalls: 0,
+      usedCost: 0,
+    };
+    return {
+      schemaVersion: RESEARCH_RUN_SCHEMA_VERSION,
+      runId: run.id,
+      candidateId: run.candidateId,
+      ownerScope: run.ownerScope,
+      sandboxId: run.sandboxId,
+      mode: (run.mode === "public_replay" ? "public_replay" : "local_live"),
+      status: (run.status as ResearchRunStatus) ?? "draft",
+      currentNode: (run.currentNode as ResearchRunNode) ?? "load_context",
+      revision: run.revision,
+      planRevision: run.planRevision,
+      automaticPlanRevisionCount: run.automaticPlanRevisionCount,
+      activeQuestionId: null,
+      activeToolCallId: null,
+      evidenceRevision: 0,
+      factRevision: null,
+      policyPackVersion: null,
+      budget,
+      wait: null,
+      checkpoint: null,
+      lastError: null,
+      createdAt: toIso(run.createdAt),
+      updatedAt: toIso(run.updatedAt),
+      completedAt: null,
     };
   }
 }
 
 export const INTERRUPT_KEY = "__interrupt__";
+// ---------------------------------------------------------------------------
+// API 契约（Lead 冻结）：GraphRunResult + startRun/resumeRun/cancelRun
+// ---------------------------------------------------------------------------
+
+export type GraphRunResult =
+  | { ok: true; state: ResearchRunState; events: ResearchRunEvent[] }
+  | {
+      ok: false;
+      code:
+        | "REVISION_CONFLICT"
+        | "RUN_NOT_FOUND"
+        | "RUN_NOT_ACTIONABLE"
+        | "GRAPH_VERSION_MISMATCH"
+        | "CANDIDATE_INVALID"
+        | "BUDGET_EXCEEDED"
+        | "INTERNAL";
+      latestRevision?: number;
+      safeMessage?: string;
+    };
+
+function defaultDeps(): GraphDeps {
+  return {
+    domain: new DomainAdapter(prisma as unknown as DomainDb),
+    tools: new FakeToolRegistry(),
+    journal: createPrismaJournal() as unknown as SideEffectJournal,
+    runStore: createPrismaRunStore() as unknown as ResearchRunStore,
+    checkpointPath: (runId: string) => checkpointDbPath(runId),
+  };
+}
+
+let depsFactory: () => GraphDeps = defaultDeps;
+
+/** 测试专用：注入 deps 工厂（不在公开契约内；API 路由不依赖）。 */
+export function setGraphDepsFactoryForTest(factory: () => GraphDeps): void {
+  depsFactory = factory;
+}
+
+function toGraphRunResult(result: RunStepResult): GraphRunResult {
+  return { ok: true, state: result.state, events: result.events };
+}
+
+function mapError(error: unknown): GraphRunResult {
+  if (error instanceof RunStoreError) {
+    if (error.code === "REVISION_CONFLICT") {
+      return { ok: false, code: "REVISION_CONFLICT", latestRevision: error.latestRevision, safeMessage: error.message };
+    }
+    if (error.code === "NOT_FOUND") {
+      return { ok: false, code: "RUN_NOT_FOUND", safeMessage: error.message };
+    }
+    if (error.code === "TERMINAL_FROZEN") {
+      return { ok: false, code: "RUN_NOT_ACTIONABLE", latestRevision: error.latestRevision, safeMessage: error.message };
+    }
+    if (error.code === "GRAPH_VERSION_MISMATCH") {
+      return { ok: false, code: "GRAPH_VERSION_MISMATCH", latestRevision: error.latestRevision, safeMessage: error.message };
+    }
+    if (error.code === "RESUME_GATE_FAILED") {
+      const isBudget = /budget/i.test(error.message);
+      return {
+        ok: false,
+        code: isBudget ? "BUDGET_EXCEEDED" : "CANDIDATE_INVALID",
+        latestRevision: error.latestRevision,
+        safeMessage: error.message,
+      };
+    }
+    return { ok: false, code: "INTERNAL", latestRevision: error.latestRevision, safeMessage: error.message };
+  }
+  if (error instanceof CandidateNotFoundError) {
+    return { ok: false, code: "CANDIDATE_INVALID", safeMessage: error.message };
+  }
+  if (error instanceof IdempotencyConflictError) {
+    return { ok: false, code: "INTERNAL", safeMessage: error.message };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return { ok: false, code: "INTERNAL", safeMessage: message };
+}
+
+/** API 契约：驱动已存在的运行到下一个等待点或终态。 */
+export async function startRun(runId: string, expectedRevision: number): Promise<GraphRunResult> {
+  try {
+    const runner = new ResearchRunRunner(depsFactory());
+    const result = await runner.runExisting(runId, expectedRevision);
+    return toGraphRunResult(result);
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+/** API 契约：从当前中断处恢复运行。 */
+export async function resumeRun(
+  runId: string,
+  expectedRevision: number,
+  payload: ResumePayload,
+): Promise<GraphRunResult> {
+  try {
+    const runner = new ResearchRunRunner(depsFactory());
+    const result = await runner.resumeRun(runId, payload, expectedRevision);
+    return toGraphRunResult(result);
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+/** API 契约：取消运行（终态后不可再写）。 */
+export async function cancelRun(
+  runId: string,
+  expectedRevision: number,
+  reasonCode?: string,
+): Promise<GraphRunResult> {
+  try {
+    const runner = new ResearchRunRunner(depsFactory());
+    const row = await runner.cancelRun(runId, expectedRevision);
+    const result: RunStepResult = {
+      status: "cancelled",
+      currentNode: "cancel",
+      wait: null,
+      lastError: null,
+      completed: false,
+      cancelled: true,
+      run: row,
+      state: runnerStateFromRow(row),
+      events: row ? JSON.parse(row.eventsJson) : [],
+    };
+    return toGraphRunResult(result);
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+function runnerStateFromRow(row: RunRow): ResearchRunState {
+  const now = new Date().toISOString();
+  return {
+    schemaVersion: RESEARCH_RUN_SCHEMA_VERSION,
+    runId: row.id,
+    candidateId: row.candidateId,
+    ownerScope: row.ownerScope,
+    sandboxId: row.sandboxId,
+    mode: (row.mode === "public_replay" ? "public_replay" : "local_live"),
+    status: "cancelled",
+    currentNode: "cancel",
+    revision: row.revision,
+    planRevision: row.planRevision,
+    automaticPlanRevisionCount: row.automaticPlanRevisionCount,
+    activeQuestionId: null,
+    activeToolCallId: null,
+    evidenceRevision: 0,
+    factRevision: null,
+    policyPackVersion: null,
+    budget: {
+      maxWallClockMs: 120_000,
+      maxBrowserSteps: 100,
+      maxLlmTokens: 100_000,
+      maxImageCalls: 20,
+      maxCost: 10,
+      currency: "USD",
+      usedBrowserSteps: 0,
+      usedLlmTokens: 0,
+      usedImageCalls: 0,
+      usedCost: 0,
+    },
+    wait: null,
+    checkpoint: null,
+    lastError: null,
+    createdAt: toIso(row.createdAt),
+    updatedAt: now,
+    completedAt: null,
+  };
+}

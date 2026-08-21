@@ -14,7 +14,12 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import { prisma } from "@/lib/server/db";
+
 export type JournalStatus = "recorded" | "committed" | "skipped_duplicate" | "failed";
+
+/** API 契约别名（Lead 冻结）。 */
+export type JournalEntryStatus = JournalStatus;
 
 export type JournalEntry = {
   id: string;
@@ -114,6 +119,22 @@ export type JournalDecision =
   | { kind: "skip"; entry: JournalEntry }
   | { kind: "conflict"; entry: JournalEntry };
 
+/**
+ * API 契约：Journal 幂等接口（Lead 冻结）。
+ * - ensureCommitted：确保副作用恰好提交一次；已提交则返回 skipped_duplicate（不重放）。
+ * - markFailed：标记副作用失败。
+ */
+export type Journal = {
+  ensureCommitted(
+    runId: string,
+    entry: { idempotencyKey: string; inputHash: string; action: string },
+  ): Promise<{ status: "committed" | "skipped_duplicate" }>;
+  markFailed(
+    runId: string,
+    entry: { idempotencyKey: string; action?: string },
+  ): Promise<void>;
+};
+
 export class SideEffectJournal {
   private readonly db: JournalDb;
   constructor(db: JournalDb) {
@@ -182,4 +203,44 @@ export class SideEffectJournal {
       data: { status: "failed" },
     });
   }
+
+  /** API 契约：确保副作用恰好提交一次。 */
+  async ensureCommitted(
+    runId: string,
+    entry: { idempotencyKey: string; inputHash: string; action: string },
+  ): Promise<{ status: "committed" | "skipped_duplicate" }> {
+    const decision = await this.resolve({
+      runId,
+      idempotencyKey: entry.idempotencyKey,
+      inputHash: entry.inputHash,
+      action: entry.action,
+    });
+    if (decision.kind === "conflict") {
+      throw new IdempotencyConflictError({
+        runId,
+        idempotencyKey: entry.idempotencyKey,
+        existingInputHash: decision.entry.inputHash,
+        newInputHash: entry.inputHash,
+      });
+    }
+    if (decision.kind === "skip") return { status: "skipped_duplicate" };
+    // apply / retry -> 提交
+    await this.commit({ runId, idempotencyKey: entry.idempotencyKey });
+    return { status: "committed" };
+  }
+
+  /** API 契约：标记副作用失败。 */
+  async markFailed(
+    runId: string,
+    entry: { idempotencyKey: string; action?: string },
+  ): Promise<void> {
+    await this.fail({ runId, idempotencyKey: entry.idempotencyKey });
+  }
+}
+
+/**
+ * 创建基于全局 prisma 的 Journal（API 契约）。
+ */
+export function createPrismaJournal(): Journal {
+  return new SideEffectJournal(prisma as unknown as JournalDb);
 }

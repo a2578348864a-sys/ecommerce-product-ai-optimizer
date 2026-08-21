@@ -7,7 +7,16 @@ import { DomainAdapter, type CandidateRow, type DomainDb } from "@/lib/v4/domain
 import { FakeToolRegistry } from "@/lib/v4/fakeTools";
 import { SideEffectJournal, buildIdempotencyKey, type JournalDb, type JournalEntry } from "@/lib/v4/journal";
 import { ResearchRunStore, type ResearchRunDb, type RunRow } from "@/lib/v4/runStore";
-import { ResearchRunRunner, initialBudget, type GraphDeps } from "@/lib/v4/graph";
+import {
+  ResearchRunRunner,
+  cancelRun,
+  initialBudget,
+  resumeRun,
+  setGraphDepsFactoryForTest,
+  startRun,
+  type GraphDeps,
+} from "@/lib/v4/graph";
+import type { ResearchRunState } from "@/lib/v4/contracts";
 
 function makeRunStoreDb() {
   const rows = new Map<string, RunRow>();
@@ -86,6 +95,7 @@ let runStore: ResearchRunStore;
 let journal: SideEffectJournal;
 let journalDb: ReturnType<typeof makeJournalDb>;
 let runner: ResearchRunRunner;
+let deps: GraphDeps;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "v4-graph-"));
@@ -94,7 +104,7 @@ beforeEach(() => {
   journalDb = makeJournalDb();
   journal = new SideEffectJournal(journalDb.db);
   const domainDb: DomainDb = { opportunityCandidate: { async findUnique(args) { return args.where.id === "c-1" ? candidateRow : null; } } };
-  const deps: GraphDeps = {
+  deps = {
     domain: new DomainAdapter(domainDb),
     tools: new FakeToolRegistry(),
     journal,
@@ -241,5 +251,102 @@ describe("ResearchRunRunner (StateGraph + interrupt HITL)", () => {
     expect(result.status).toBe("paused_budget");
     expect(result.wait?.kind).toBe("budget");
     expect(result.currentNode).toBe("dispatch_tool");
+  });
+});
+
+function draftState(runId: string): ResearchRunState {
+  return {
+    schemaVersion: "researchRun.v4",
+    runId,
+    candidateId: "c-1",
+    ownerScope: "owner",
+    sandboxId: null,
+    mode: "local_live",
+    status: "draft",
+    currentNode: "load_context",
+    revision: 0,
+    planRevision: 0,
+    automaticPlanRevisionCount: 0,
+    activeQuestionId: null,
+    activeToolCallId: null,
+    evidenceRevision: 0,
+    factRevision: null,
+    policyPackVersion: null,
+    budget: initialBudget(),
+    wait: null,
+    checkpoint: null,
+    lastError: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: null,
+  };
+}
+
+describe("API contract: startRun / resumeRun / cancelRun", () => {
+  beforeEach(() => {
+    setGraphDepsFactoryForTest(() => deps);
+  });
+
+  it("startRun drives a draft run to the first waiting_human", async () => {
+    const runId = "api-start";
+    await runStore.create(draftState(runId));
+    const result = await startRun(runId, 0);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.state.status).toBe("waiting_human");
+      expect(result.state.currentNode).toBe("build_plan");
+      expect(result.state.wait?.kind).toBe("human_decision");
+      expect(result.events.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("resumeRun continues to the next wait and eventually completes", async () => {
+    const runId = "api-resume";
+    await runStore.create(draftState(runId));
+    let result = await startRun(runId, 0);
+    expect(result.ok).toBe(true);
+    let rev = (result as { ok: true; state: ResearchRunState }).state.revision;
+    let guard = 0;
+    let next = result;
+    while (next.ok && (next as { state: ResearchRunState }).state.status === "waiting_human" && guard < 10) {
+      rev = (next as { ok: true; state: ResearchRunState }).state.revision;
+      next = await resumeRun(runId, rev, { kind: "human_decision", decision: "continue" });
+      guard += 1;
+    }
+    expect(next.ok).toBe(true);
+    expect((next as { ok: true; state: ResearchRunState }).state.status).toBe("completed");
+  });
+
+  it("cancelRun cancels a run and returns cancelled state + event", async () => {
+    const runId = "api-cancel";
+    await runStore.create(draftState(runId));
+    const started = await startRun(runId, 0);
+    expect(started.ok).toBe(true);
+    const rev = (started as { ok: true; state: ResearchRunState }).state.revision;
+    const result = await cancelRun(runId, rev);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.state.status).toBe("cancelled");
+      expect(result.state.currentNode).toBe("cancel");
+      expect(result.events.some((e) => e.type === "cancelled")).toBe(true);
+    }
+  });
+
+  it("startRun on a missing run -> RUN_NOT_FOUND", async () => {
+    const result = await startRun("nope", 0);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("RUN_NOT_FOUND");
+  });
+
+  it("resumeRun with wrong expectedRevision -> REVISION_CONFLICT (latestRevision)", async () => {
+    const runId = "api-rev";
+    await runStore.create(draftState(runId));
+    await startRun(runId, 0);
+    const result = await resumeRun(runId, 999, { kind: "human_decision", decision: "continue" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("REVISION_CONFLICT");
+      expect(result.latestRevision).toBeTypeOf("number");
+    }
   });
 });

@@ -130,3 +130,42 @@ describe("SideEffectJournal (V4SideEffectJournal semantics)", () => {
     expect(computeInputHash({ x: 1 })).not.toBe(computeInputHash({ x: 2 }));
   });
 });
+
+describe("Journal API contract (ensureCommitted / markFailed)", () => {
+  it("ensureCommitted commits the first time and returns committed", async () => {
+    const db = makeJournalDb();
+    const journal = new SideEffectJournal(db);
+    const result = await journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h", action: "tool" });
+    expect(result.status).toBe("committed");
+    expect(db.entries.get("r|k")?.status).toBe("committed");
+  });
+
+  it("ensureCommitted returns skipped_duplicate on re-call (no replay)", async () => {
+    const db = makeJournalDb();
+    const journal = new SideEffectJournal(db);
+    await journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h", action: "tool" });
+    const second = await journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h", action: "tool" });
+    expect(second.status).toBe("skipped_duplicate");
+    // Still exactly one committed side-effect; the re-call did not re-apply.
+    expect(db.entries.get("r|k")?.status).toBe("skipped_duplicate");
+  });
+
+  it("ensureCommitted throws conflict on different inputHash", async () => {
+    const db = makeJournalDb();
+    const journal = new SideEffectJournal(db);
+    await journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h1", action: "tool" });
+    await expect(
+      journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h2", action: "tool" }),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
+  });
+
+  it("markFailed sets the entry to failed; ensureCommitted then retries", async () => {
+    const db = makeJournalDb();
+    const journal = new SideEffectJournal(db);
+    await journal.resolve({ runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" });
+    await journal.markFailed("r", { idempotencyKey: "k" });
+    expect(db.entries.get("r|k")?.status).toBe("failed");
+    const retry = await journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h", action: "tool" });
+    expect(retry.status).toBe("committed");
+  });
+});

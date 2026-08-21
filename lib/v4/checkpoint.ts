@@ -24,6 +24,15 @@ export function defaultCheckpointPath(runId: string): string {
   return path.join(".tmp", "v4-graph", `checkpoints-${runId}.db`);
 }
 
+/**
+ * API 契约：checkpoint DB 路径。
+ * 默认 .tmp/v4-graph/checkpoints-<runId>.db；baseDir 可覆盖（测试用 mkdtemp）。
+ */
+export function checkpointDbPath(runId: string, baseDir?: string): string {
+  const dir = baseDir ?? path.join(".tmp", "v4-graph");
+  return path.join(dir, `checkpoints-${runId}.db`);
+}
+
 /** 打开（或创建）一个 SqliteSaver checkpoint DB。 */
 export function openCheckpoint(dbPath: string): CheckpointHandle {
   const saver = SqliteSaver.fromConnString(dbPath);
