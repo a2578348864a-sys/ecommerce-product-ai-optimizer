@@ -303,6 +303,14 @@ export function findDemoAccessByPassword(password: string): DemoAccessRecord | n
 
 // ── Status checks ───────────────────────────────
 
+/**
+ * Demo 记录永不失效（契约：12h Token/Cookie 控制访问；GC 独立）。
+ * - 访问有效期由访问 Token（12h，signedToken.ts）与服务端 Session（12h，accessSession.ts）控制；
+ * - 记录本身无过期语义：expiresAt 在登录/迁移时被清除（clearDemoAccessLegacyExpiry），
+ *   状态开关由 isActive 承担（见 isDemoAccessActive）；
+ * - 数据清理（GC）独立于访问生命周期，不依赖本函数。
+ */
+
 export function isDemoAccessExpired(access: DemoAccessRecord): boolean {
   void access;
   return false;

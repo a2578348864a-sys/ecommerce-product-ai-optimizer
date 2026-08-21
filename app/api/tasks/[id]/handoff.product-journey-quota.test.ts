@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   reserveDemoProductJourney: vi.fn(),
   commitDemoProductJourney: vi.fn(),
   releaseDemoProductJourney: vi.fn(),
+  checkCreativeHandoffGate: vi.fn(),
   guardDemoProviderAction: vi.fn(() => ({ ok: true, token: { reservation: null } })),
   finalizeDemoProviderAction: vi.fn(),
   markVisitorStandaloneStudioProviderStarted: vi.fn(),
@@ -52,7 +53,7 @@ vi.mock("@/lib/imageHandoff/imageGenerationService", () => ({
 }));
 
 vi.mock("@/lib/server/productCreativeHandoffPreview", () => ({
-  checkCreativeHandoffGate: vi.fn(),
+  checkCreativeHandoffGate: mocks.checkCreativeHandoffGate,
 }));
 
 const taskId = "sandbox-task-existing-product";
@@ -165,6 +166,12 @@ describe("existing Visitor product downstream quota contract", () => {
       idempotentReplay: false,
       draft: { imageId: "image-1" },
     });
+    mocks.checkCreativeHandoffGate.mockResolvedValue({
+      allowed: true,
+      taskAccessible: true,
+      approvedReferenceImageDataUrl: "data:image/png;base64,QUFBQQ==",
+      currentHandoff: null,
+    });
     const { POST } = await import("@/app/api/tasks/[id]/image-handoff/route");
     const response = await POST(visitorRequest(`/api/tasks/${taskId}/image-handoff`, {
       requestId,
@@ -176,6 +183,26 @@ describe("existing Visitor product downstream quota contract", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.generateImageDraftFromHandoff).toHaveBeenCalledOnce();
+    expect(mocks.reserveDemoProductJourney).not.toHaveBeenCalled();
+    expect(mocks.commitDemoProductJourney).not.toHaveBeenCalled();
+    expect(mocks.releaseDemoProductJourney).not.toHaveBeenCalled();
+  });
+
+  it("fails closed (409 creative_gate_unavailable) when the creative handoff gate is empty — no generation, no reservation", async () => {
+    mocks.checkCreativeHandoffGate.mockResolvedValue(undefined as never);
+    const { POST } = await import("@/app/api/tasks/[id]/image-handoff/route");
+    const response = await POST(visitorRequest(`/api/tasks/${taskId}/image-handoff`, {
+      requestId,
+      expectedStorageVersion,
+      expectedHandoffRevision: 2,
+      mode: "composition_concept",
+      confirmed: true,
+      primaryImagePurpose: "white_studio",
+    }) as never, { params: Promise.resolve({ id: taskId }) });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: { code: "creative_gate_unavailable" } });
+    expect(mocks.generateImageDraftFromHandoff).not.toHaveBeenCalled();
     expect(mocks.reserveDemoProductJourney).not.toHaveBeenCalled();
     expect(mocks.commitDemoProductJourney).not.toHaveBeenCalled();
     expect(mocks.releaseDemoProductJourney).not.toHaveBeenCalled();

@@ -366,6 +366,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const REQUIRES_VISUAL_REFERENCE_PURPOSES = new Set(["white_studio", "detail_closeup", "packaging_bundle"]);
   const purpose = creativeDirection.data.primaryImagePurpose;
   const gateForPurpose = await checkCreativeHandoffGate(id, ctx!);
+  // B1 修复（fail-closed）：gate 结果为空/无效 → 409，不生成内容、不写数据、无 Provider 副作用。
+  if (!gateForPurpose) {
+    return errorResponse(409, "creative_gate_unavailable", "创作门禁暂不可用，请刷新后重试。");
+  }
   if (REQUIRES_VISUAL_REFERENCE_PURPOSES.has(purpose) && !gateForPurpose.approvedReferenceImageDataUrl) {
     const messages: Record<string, string> = {
       white_studio: "白底商品图需要先确认商品参考图。请先批准商品参考图（创作资料 → 商品参考图）后重试。",
