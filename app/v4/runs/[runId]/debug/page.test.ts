@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DebugView } from "./page";
+import { DebugView } from "@/components/v4/DebugView";
 import { makeEvent, makeRun, makeWait } from "@/components/v4/fixtures";
 
 describe("RunDebugPage — 开发调试详情", () => {
