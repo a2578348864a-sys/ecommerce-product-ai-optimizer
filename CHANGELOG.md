@@ -2,6 +2,28 @@
 
 本项目按语义化版本管理，版本标记见 Git tags 与 GitHub Releases。
 
+## [4.0.0] - 2026-08-22
+
+### 新增
+- **V4 商品研究图（Local Live）**：单一有状态 Research Workflow（LangGraph，`QX_V4_GRAPH_ENABLED` 特性开关；本地开启后 `/v4/runs` 全链运行）
+- **Evidence 链**：报告事实性结论强制 evidenceRefs 引用（validateReportCitations），无证据断言不入报告
+- **Product Fact Gate**：商业计算三情景（乐观/基线/悲观，合同版本固定）+ 商品事实门禁（SupplierClaim 不自动晋级；只读已确认事实；缺失 fail-closed）
+- **Human Decision**：Gate A / Fact Gate / Gate B / Content Review 五个人工中断点，全部依据官方决策词表
+- **Public Replay**：公网只读脱敏历史案例回放（/replay；bundle 内容哈希校验，篡改 → 409 bundle_tampered）
+- **重放资产**：Replay 导出/审批/列表/详情（Owner 审批制；scanOk 门禁；allowlist 字段白名单）
+- **V4 技能包**：机会优先级/竞品/关键词/VOC/供应商/Listing/合规/图片计划/视觉事实检查/产品策略（`skills/v4/`）
+
+### 修复
+- **B1**：image-handoff 路由对创作门禁空值 fail-closed（409 creative_gate_unavailable，不生成/不写数据/无 Provider 副作用）+ 回归测试
+- **B3**：`/api/opportunities` 历史 A–E 批量分析根路由下线（410 legacy_endpoint；子路由保留）
+- 脱敏模式扩展：JWT / AWS AKIA / PEM 私钥块 / Bearer token / client_secret·refresh_token 键（Replay 导出）
+- 干净安装：`check:provider-config` 自动创建 `data/ai-image-drafts/`（与运行时一致）
+
+### 已知限制
+- Amazon/1688 真机 live 模式与真实图片生成需授权后启用（本机默认 Mock；公网不提供实时采集）
+- 移动端 /v4/runs 导航未加（V3.1 常量冻结约束）；视觉检查无资产观测时保守 blocked
+- 依赖：1 high（brace-expansion dev-only）；项目书 research-report.schema.json 未接线（in-code 校验强制）
+- 发布记录：validatedCodeSha=`2feb848…`（全量 lint/test/tsc/build 与浏览器 E2E 基线），release SHA 见 Git tag `v4.0.0`
 ## [2.2.16] - 2026-08-12
 
 ### 变更

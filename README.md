@@ -2,7 +2,7 @@
 
 轻选工作台是一套基于真实电商数据的 AI 商品研究与内容生产工作台，通过 Evidence 驱动的研究流程，把 SellerSprite、Amazon、VOC、1688 供应线索与 AI 内容生产连接起来，并保留人工确认作为关键决策门禁。
 
-（**V3 FROZEN**；最终 HEAD `ae67912`；详见 [Final Release Report](docs/v3/FINAL_RELEASE_REPORT.md)）
+（V4 已发布 **v4.0.0**：Evidence 驱动研究图 + 人工决策门禁 + Local Live / Public Replay，详见 [V4 文档索引](docs/v4/README.md)；V3 保持 FROZEN，详见 [Final Release Report](docs/v3/FINAL_RELEASE_REPORT.md)）
 
 ## Overview
 
@@ -140,6 +140,21 @@ npm run check     # lint + test + build
 | `tests/` | 测试辅助 |
 | `docs/` | 项目文档 |
 
+
+## V4 — 商品研究图（Local Live / Public Replay）
+
+V4 把研究流程组织为**单一有状态 Research Workflow**（LangGraph，`QX_V4_GRAPH_ENABLED` 特性开关控制）：来源证据 → 商业/产品事实门禁 → 人工决策 → 内容草稿。
+
+- **Evidence 链**：每条事实性结论都必须携带可追溯证据引用（`evidenceRefs`），无证据的断言不进入报告
+- **Product Fact Gate**：商业计算（乐观/基线/悲观三情景，固定合同版本）与商品事实（SupplierClaim 不自动晋级；只读已确认事实）均设门禁，缺失时 fail-closed
+- **Human Decision**：Gate A（继续研究 / 需信息 / 放弃）、Fact Gate、Gate B（内容就绪 / 改商品 / 需信息 / 放弃）、Content Review（批准导出 / 要求修订 / 拒绝资产）均由人工完成
+- **Local Live**：本地 `QX_V4_GRAPH_ENABLED=on` 时 `/v4/runs` 全链运行（加载上下文 → 市场工具 → 商业检查 → 内容技能 → 人工中断点 → 完整报告）
+- **Public Replay**：公网只读展示**已脱敏、含完整性校验**的历史案例回放（`/replay`），回放不进入任何真实浏览器 / 数据源，不代表当前市场或经营现况
+
+**诚实边界（V4 同样适用）**：系统是辅助研究工具，不会自动选品、自动采购、自动上架或投放广告；不承诺盈利或销量；公网不提供实时采集；真实 Provider 调用受服务端开关与配额门禁（本机默认 Mock）。
+
+已知限制与发布详情见 [KNOWN_LIMITATIONS.md](docs/v4/KNOWN_LIMITATIONS.md)、[RELEASE_NOTES_V4.md](docs/v4/RELEASE_NOTES_V4.md) 与 [CHANGELOG.md](CHANGELOG.md)。
+
 ## Documentation
 
 - [文档索引](docs/README.md)
@@ -152,8 +167,8 @@ npm run check     # lint + test + build
 
 **V3 = FROZEN**（`V3_PRODUCT_INTEGRATION = PASS`、`V3_PUBLIC_DEMO_READINESS = PASS`、`V3_RELEASE_STATUS = APPROVED`、P0=0 / P1=0）。
 
-- **Main**: `main` = 唯一权威基线（HEAD `ae67912`），本地与远端一致，working tree clean；项目进入 **MAINTENANCE ONLY**，不再进行新版本开发。
-- **Public Demo**: https://112.124.54.81（V3 公网演示，Visitor 沙箱隔离；部署与运维见 [部署手册](docs/deployment/production-runbook.md)）。
+- **Main**: `main` = 唯一权威基线（V4 发布 HEAD，tag `v4.0.0`），本地与远端一致，working tree clean；V4 为当前版本线，V3 历史冻结保留。
+- **Public**: https://112.124.54.81（Public Showcase：`QX_RUNTIME_MODE=public_showcase`，公网只读 Replay 历史案例回放 + V3 公网演示遗产；Visitor 沙箱隔离；部署与运维见 [部署手册](docs/deployment/production-runbook.md)）。
 - **Experiment**: `experiment/listing-evidence-expression-v1`（commit `466e8c0`）为历史冻结实验分支，不进入基线、不部署生产；其目标已由 main 能力实现并覆盖，分支仅作历史追溯保留。
 - **历史**: V1/V2/V3 全部 Git 历史与 release tag 原样保留，作为开发记录。
 

@@ -87,5 +87,5 @@ data/studio-listing-results/
 # Legacy purge DB backups (never committed)
 prisma/backups/
 
-# V4 Replay bundles (published demo artifacts, regenerable)
-data/replay-bundles/
+# (removed) V4 Replay bundles are RELEASED with the repo: public Replay serves committed,
+# hash-verified desensitized bundles from data/replay-bundles/
