@@ -116,8 +116,15 @@ export function RunConsoleClient({ runId }: { runId: string }) {
       review: null as { choice?: string; note?: string; actor?: string; at?: string } | null,
       onChoice: (choice: "approve_export" | "request_revision" | "reject_asset", note?: string) => {
         void (async () => {
-          await postContentReview(runId, choice, note).catch(() => undefined);
-          await resumeRun(runId, run.revision, { kind: "human_decision", decision: choice as never, note }).catch(() => undefined);
+          try {
+            await postContentReview(runId, choice, note);
+            // 审核保存使 revision +1；用最新 revision 恢复，避免两步竞态 409（门禁 7 复验）。
+            const latest = await getRun(runId).catch(() => null);
+            const rev = latest?.run?.revision ?? run.revision;
+            await resumeRun(runId, rev, { kind: "human_decision", decision: choice as never, note });
+          } catch {
+            // 服务端拒绝（如 content_blocked）或网络异常：刷新带回真实状态与原因。
+          }
           void refresh(true);
         })();
       },
