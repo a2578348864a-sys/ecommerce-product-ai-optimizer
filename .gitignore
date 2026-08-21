@@ -82,3 +82,6 @@ data/studio-listing-results/
 
 # Legacy purge DB backups (never committed)
 prisma/backups/
+
+# V4 Replay bundles (published demo artifacts, regenerable)
+data/replay-bundles/
