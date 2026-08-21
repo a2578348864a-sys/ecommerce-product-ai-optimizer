@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   IdempotencyConflictError,
+  IdempotencyPendingError,
   SideEffectJournal,
   buildIdempotencyKey,
   computeInputHash,
@@ -88,22 +89,35 @@ describe("SideEffectJournal (V4SideEffectJournal semantics)", () => {
     expect(decision.entry?.inputHash).toBe("h1");
   });
 
-  it("recorded (not committed) + same inputHash -> retry (crash recovery)", async () => {
+  it("recorded (dangling) does NOT auto-replay -> pending; explicit retry -> retry", async () => {
     const db = makeJournalDb();
     const journal = new SideEffectJournal(db);
     await journal.resolve({ runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" });
-    // status still "recorded" (crash before commit)
+    // status still "recorded" (crash before commit): must NOT auto-replay
     const decision = await journal.resolve({ runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" });
-    expect(decision.kind).toBe("retry");
+    expect(decision.kind).toBe("pending");
+    // explicit retry (resume kind=retry -> explicitRetry=true) allows re-execution
+    await journal.retry("r", "k");
+    const retried = await journal.resolve(
+      { runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" },
+      { explicitRetry: true },
+    );
+    expect(retried.kind).toBe("retry");
   });
 
-  it("failed + same inputHash -> retry", async () => {
+  it("failed + same inputHash -> pending (no auto-replay); explicit retry -> retry", async () => {
     const db = makeJournalDb();
     const journal = new SideEffectJournal(db);
     await journal.resolve({ runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" });
     await journal.fail({ runId: "r", idempotencyKey: "k" });
     const decision = await journal.resolve({ runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" });
-    expect(decision.kind).toBe("retry");
+    expect(decision.kind).toBe("pending");
+    await journal.retry("r", "k");
+    const retried = await journal.resolve(
+      { runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" },
+      { explicitRetry: true },
+    );
+    expect(retried.kind).toBe("retry");
   });
 
   it("commit/fail transition status", async () => {
@@ -159,13 +173,44 @@ describe("Journal API contract (ensureCommitted / markFailed)", () => {
     ).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
-  it("markFailed sets the entry to failed; ensureCommitted then retries", async () => {
+  it("markFailed -> ensureCommitted throws pending; after retry -> committed", async () => {
     const db = makeJournalDb();
     const journal = new SideEffectJournal(db);
     await journal.resolve({ runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" });
     await journal.markFailed("r", { idempotencyKey: "k" });
     expect(db.entries.get("r|k")?.status).toBe("failed");
-    const retry = await journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h", action: "tool" });
-    expect(retry.status).toBe("committed");
+    // dangling failed: no auto-replay
+    await expect(
+      journal.ensureCommitted("r", { idempotencyKey: "k", inputHash: "h", action: "tool" }),
+    ).rejects.toBeInstanceOf(IdempotencyPendingError);
+    // explicit retry -> re-execute via resolve(explicitRetry) then commit
+    await journal.retry("r", "k");
+    const retryDecision = await journal.resolve(
+      { runId: "r", idempotencyKey: "k", inputHash: "h", action: "tool" },
+      { explicitRetry: true },
+    );
+    expect(retryDecision.kind).toBe("retry");
+    await journal.commit({ runId: "r", idempotencyKey: "k" });
+    expect(db.entries.get("r|k")?.status).toBe("committed");
+  });
+});
+
+describe("P1-C: canonical JSON inputHash (§7.2)", () => {
+  it("inputHash is key-order independent (canonical JSON)", () => {
+    const a = computeInputHash({ z: 1, a: { y: 2, x: 3 } });
+    const b = computeInputHash({ a: { x: 3, y: 2 }, z: 1 });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("different values still yield different inputHash", () => {
+    expect(computeInputHash({ a: 1 })).not.toBe(computeInputHash({ a: 2 }));
+    expect(computeInputHash({ a: [1, 2] })).not.toBe(computeInputHash({ a: [2, 1] }));
+  });
+
+  it("idempotencyKey derives from canonical inputHash", () => {
+    const keyA = buildIdempotencyKey({ runId: "r", questionId: "q", toolName: "t", inputHash: computeInputHash({ a: 1, b: 2 }) });
+    const keyB = buildIdempotencyKey({ runId: "r", questionId: "q", toolName: "t", inputHash: computeInputHash({ b: 2, a: 1 }) });
+    expect(keyA).toBe(keyB);
   });
 });

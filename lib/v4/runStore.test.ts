@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
-import { ResearchRunStore, RunStoreError, createPrismaRunStore, listRuns, __setRunPrismaForTest, type ResearchRunDb } from "@/lib/v4/runStore";
+import { ResearchRunStore, RunStoreError, assertValidStatusTransition, createPrismaRunStore, listRuns, __setRunPrismaForTest, type ResearchRunDb } from "@/lib/v4/runStore";
 import { RESEARCH_GRAPH_VERSION, type ResearchRunState } from "@/lib/v4/contracts";
 
 let root = "";
@@ -218,5 +218,44 @@ describe("RunStore API contract (state-level create/get/save/appendEvent)", () =
     expect(typeof store.get).toBe("function");
     expect(typeof store.save).toBe("function");
     expect(typeof store.appendEvent).toBe("function");
+  });
+
+  it("stateJson.revision always equals row.revision (P1-C §7.1)", async () => {
+    const store = new ResearchRunStore(db as unknown as ResearchRunDb);
+    await store.create(sampleState("run-rev"));
+    const s = sampleState("run-rev");
+    s.status = "waiting_human";
+    s.currentNode = "build_plan";
+    s.revision = 1;
+    await store.save(s, 0);
+    const row = await (db as unknown as { v4ResearchRun: { findUnique: (a: { where: { id: string } }) => Promise<{ revision: number; stateJson: string } | null> } }).v4ResearchRun.findUnique({ where: { id: "run-rev" } });
+    const stateJsonRev = (JSON.parse(row!.stateJson) as { revision: number }).revision;
+    expect(stateJsonRev).toBe(row!.revision);
+    expect(stateJsonRev).toBe(1);
+  });
+
+  it("failed_recoverable cannot transition directly to completed (P1-C §7.5)", async () => {
+    const store = new ResearchRunStore(db as unknown as ResearchRunDb);
+    await store.create(sampleState("run-fr"));
+    const failed = sampleState("run-fr");
+    failed.status = "failed_recoverable";
+    failed.revision = 1;
+    await store.save(failed, 0);
+    const toCompleted = sampleState("run-fr");
+    toCompleted.status = "completed";
+    toCompleted.revision = 2;
+    await expect(store.save(toCompleted, 1)).rejects.toMatchObject({ code: "RESUME_GATE_FAILED" });
+    // allowed: failed_recoverable -> running / revising / waiting_*
+    const toRunning = sampleState("run-fr");
+    toRunning.status = "revising";
+    toRunning.revision = 2;
+    await expect(store.save(toRunning, 1)).resolves.toBeUndefined();
+  });
+
+  it("assertValidStatusTransition rejects failed_recoverable -> completed and allows retry states", () => {
+    expect(() => assertValidStatusTransition("failed_recoverable", "completed")).toThrow(/failed_recoverable/);
+    expect(() => assertValidStatusTransition("failed_recoverable", "revising")).not.toThrow();
+    expect(() => assertValidStatusTransition("failed_recoverable", "running")).not.toThrow();
+    expect(() => assertValidStatusTransition("failed_recoverable", "waiting_human")).not.toThrow();
   });
 });

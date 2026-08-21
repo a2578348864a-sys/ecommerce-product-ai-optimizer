@@ -176,10 +176,13 @@ export class ResearchRunStore {
         current.revision,
       );
     }
+    if (patch.status !== undefined) {
+      assertValidStatusTransition(current.status, patch.status);
+    }
     return this.db.v4ResearchRun.update({
       where: { id: runId },
       data: {
-        stateJson: patch.stateJson,
+        stateJson: normalizeStateRevision(patch.stateJson, current.revision + 1),
         ...(patch.status !== undefined ? { status: patch.status } : {}),
         ...(patch.currentNode !== undefined ? { currentNode: patch.currentNode } : {}),
         ...(patch.planRevision !== undefined ? { planRevision: patch.planRevision } : {}),
@@ -254,14 +257,18 @@ export class ResearchRunStore {
         current.revision,
       );
     }
+    if (patch.status !== undefined) {
+      assertValidStatusTransition(current.status, patch.status);
+    }
     const existing = parseEvents(current.eventsJson);
     const nextSeq = existing.reduce((max, e) => Math.max(max, e.seq), 0) + 1;
     const appended = (patch.events ?? []).map((e, i) => ({ ...e, seq: nextSeq + i }));
     const mergedEvents = [...existing, ...appended];
+    const normalizedStateJson = normalizeStateRevision(patch.stateJson, current.revision + 1);
     return this.db.v4ResearchRun.update({
       where: { id: runId },
       data: {
-        stateJson: patch.stateJson,
+        stateJson: normalizedStateJson,
         ...(patch.status !== undefined ? { status: patch.status } : {}),
         ...(patch.currentNode !== undefined ? { currentNode: patch.currentNode } : {}),
         ...(patch.planRevision !== undefined ? { planRevision: patch.planRevision } : {}),
@@ -364,10 +371,12 @@ export class ResearchRunStore {
     if (current.revision !== expectedRevision) {
       throw new RunStoreError("REVISION_CONFLICT", `Run ${state.runId} revision ${current.revision} != expected ${expectedRevision}`, current.revision);
     }
+    assertValidStatusTransition(current.status, state.status);
+    const normalizedState = { ...state, revision: expectedRevision + 1 };
     await this.db.v4ResearchRun.update({
       where: { id: state.runId },
       data: {
-        stateJson: JSON.stringify(state),
+        stateJson: JSON.stringify(normalizedState),
         status: state.status,
         currentNode: state.currentNode,
         planRevision: state.planRevision,
@@ -420,6 +429,30 @@ export async function listRuns(scope: {
   return rows
     .map((r) => parseState(r.stateJson))
     .filter((s): s is ResearchRunState => s !== null);
+}
+
+/**
+ * P1-C 修正（§7.5）：failed_recoverable 不得直接 → completed。
+ * 只允许 → revising/running/waiting_*；终态矩阵以 isTerminalStatus 为准。
+ */
+export function assertValidStatusTransition(from: string, to: string): void {
+  if (from === "failed_recoverable" && to === "completed") {
+    throw new RunStoreError(
+      "RESUME_GATE_FAILED",
+      `failed_recoverable cannot transition directly to completed`,
+    );
+  }
+}
+
+function normalizeStateRevision(stateJson: string, revision: number): string {
+  if (!stateJson || stateJson === "{}") return stateJson;
+  try {
+    const state = JSON.parse(stateJson) as Record<string, unknown>;
+    state.revision = revision;
+    return JSON.stringify(state);
+  } catch {
+    return stateJson;
+  }
 }
 
 function isTerminalRow(status: string): boolean {

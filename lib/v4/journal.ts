@@ -79,6 +79,21 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
+/** 副作用已记录但未提交（悬空），且未显式 retry —— 不自动重放。 */
+export class IdempotencyPendingError extends Error {
+  readonly code = "IDEMPOTENCY_PENDING";
+  readonly runId: string;
+  readonly idempotencyKey: string;
+  constructor(input: { runId: string; idempotencyKey: string }) {
+    super(
+      `Idempotency entry ${input.idempotencyKey} is recorded but not committed; explicit retry required`,
+    );
+    this.name = "IdempotencyPendingError";
+    this.runId = input.runId;
+    this.idempotencyKey = input.idempotencyKey;
+  }
+}
+
 /** 稳定的 JSON 字符串化（按键排序），用于计算 inputHash。 */
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") {
@@ -117,6 +132,7 @@ export type JournalDecision =
   | { kind: "apply"; entry: JournalEntry | null }
   | { kind: "retry"; entry: JournalEntry }
   | { kind: "skip"; entry: JournalEntry }
+  | { kind: "pending"; entry: JournalEntry }
   | { kind: "conflict"; entry: JournalEntry };
 
 /**
@@ -149,12 +165,15 @@ export class SideEffectJournal {
    * - recorded / failed 且同 inputHash → retry（崩溃/失败恢复，可重放）。
    * - skipped_duplicate 且同 inputHash → skip。
    */
-  async resolve(input: {
-    runId: string;
-    idempotencyKey: string;
-    inputHash: string;
-    action: string;
-  }): Promise<JournalDecision> {
+  async resolve(
+    input: {
+      runId: string;
+      idempotencyKey: string;
+      inputHash: string;
+      action: string;
+    },
+    options?: { explicitRetry?: boolean },
+  ): Promise<JournalDecision> {
     const existing = await this.db.v4SideEffectJournal.findFirst({
       where: { runId: input.runId, idempotencyKey: input.idempotencyKey },
     });
@@ -184,8 +203,11 @@ export class SideEffectJournal {
     if (existing.status === "skipped_duplicate") {
       return { kind: "skip", entry: existing };
     }
-    // recorded 或 failed → 允许重放（崩溃/失败恢复）
-    return { kind: "retry", entry: existing };
+    // recorded / failed 悬空：不自动重放；仅显式 retry（resume kind=retry）才允许重执行。
+    if (options?.explicitRetry) {
+      return { kind: "retry", entry: existing };
+    }
+    return { kind: "pending", entry: existing };
   }
 
   /** 应用成功后标记 committed。 */
@@ -224,6 +246,9 @@ export class SideEffectJournal {
       });
     }
     if (decision.kind === "skip") return { status: "skipped_duplicate" };
+    if (decision.kind === "pending") {
+      throw new IdempotencyPendingError({ runId, idempotencyKey: entry.idempotencyKey });
+    }
     // apply / retry -> 提交
     await this.commit({ runId, idempotencyKey: entry.idempotencyKey });
     return { status: "committed" };
@@ -235,6 +260,14 @@ export class SideEffectJournal {
     entry: { idempotencyKey: string; action?: string },
   ): Promise<void> {
     await this.fail({ runId, idempotencyKey: entry.idempotencyKey });
+  }
+
+  /** 显式 retry：允许对 recorded/failed 悬空条目重新执行（置回 recorded，交由下轮 resolve 重放）。 */
+  async retry(runId: string, idempotencyKey: string): Promise<void> {
+    await this.db.v4SideEffectJournal.updateMany({
+      where: { runId, idempotencyKey },
+      data: { status: "recorded" },
+    });
   }
 }
 

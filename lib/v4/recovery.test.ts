@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { DomainAdapter, type CandidateRow, type DomainDb } from "@/lib/v4/domain";
 import { FakeToolRegistry } from "@/lib/v4/fakeTools";
-import { SideEffectJournal, type JournalDb, type JournalEntry } from "@/lib/v4/journal";
+import { SideEffectJournal, buildIdempotencyKey, type JournalDb, type JournalEntry } from "@/lib/v4/journal";
 import { ResearchRunStore, type ResearchRunDb, type RunRow } from "@/lib/v4/runStore";
 import { ResearchRunRunner, type GraphDeps } from "@/lib/v4/graph";
 
@@ -174,5 +174,30 @@ describe("Recovery: process interrupt with same checkpoint DB (no duplicate side
     await expect(
       runner2.resumeRun(runId, { kind: "human_decision", decision: "continue" }, rev2),
     ).rejects.toMatchObject({ code: "TERMINAL_FROZEN" });
+  });
+});
+
+describe("P1-C: three-way consistency / journal-vs-checkpoint (§7.3)", () => {
+  it("journal committed but checkpoint lost -> skip, no duplicate side-effect (§7.3b)", async () => {
+    const runId = "run-cp-loss";
+    const checkpointPath = (r: string) => join(root, `cp-${r}.db`);
+    const runStoreDb = makeRunStoreDb();
+    const runStore = new ResearchRunStore(runStoreDb.db);
+    const journalDb = makeJournalDb();
+    const journal = new SideEffectJournal(journalDb.db);
+    // Deterministic plan question key
+    const domain = new DomainAdapter({ opportunityCandidate: { async findUnique(args) { return args.where.id === "c-1" ? candidateRow : null; } } });
+    const tools = new FakeToolRegistry();
+    const ctx = await domain.loadContext({ candidateId: "c-1" });
+    const plan = tools.plan({ contextHash: ctx.contextHash, budgetInputHash: "0" });
+    const q = plan.questions[0];
+    const idemKey = buildIdempotencyKey({ runId, questionId: q.questionId, toolName: q.toolName, inputHash: q.inputHash });
+    // Commit the side-effect (as if a prior process did it, then checkpoint was lost)
+    await journal.ensureCommitted(runId, { idempotencyKey: idemKey, inputHash: q.inputHash, action: q.toolName });
+    // Re-dispatch the same tool (checkpoint lost -> graph would re-run merge) -> journal says committed -> skip
+    const decision = await journal.resolve({ runId, idempotencyKey: idemKey, inputHash: q.inputHash, action: q.toolName });
+    expect(decision.kind).toBe("skip");
+    // No new side-effect was applied: the entry stays committed/skipped (no re-apply)
+    expect(journalDb.entries.get(`${runId}|${idemKey}`)?.status).toBe("skipped_duplicate");
   });
 });

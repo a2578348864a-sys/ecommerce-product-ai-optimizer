@@ -92,6 +92,7 @@ const candidateRow: CandidateRow = {
 let root = "";
 let checkpointPath: (runId: string) => string;
 let runStore: ResearchRunStore;
+let runRows: Map<string, RunRow>;
 let journal: SideEffectJournal;
 let journalDb: ReturnType<typeof makeJournalDb>;
 let runner: ResearchRunRunner;
@@ -100,7 +101,9 @@ let deps: GraphDeps;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "v4-graph-"));
   checkpointPath = (runId: string) => join(root, `cp-${runId}.db`);
-  runStore = new ResearchRunStore(makeRunStoreDb().db);
+  const runDb = makeRunStoreDb();
+  runRows = runDb.rows;
+  runStore = new ResearchRunStore(runDb.db);
   journalDb = makeJournalDb();
   journal = new SideEffectJournal(journalDb.db);
   const domainDb: DomainDb = { opportunityCandidate: { async findUnique(args) { return args.where.id === "c-1" ? candidateRow : null; } } };
@@ -348,5 +351,47 @@ describe("API contract: startRun / resumeRun / cancelRun", () => {
       expect(result.code).toBe("REVISION_CONFLICT");
       expect(result.latestRevision).toBeTypeOf("number");
     }
+  });
+
+  it("resume with missing run row -> RUN_NOT_FOUND (P1-C §7.3a)", async () => {
+    const runId = "run-missing-row";
+    await runStore.create(draftState(runId));
+    const started = await startRun(runId, 0);
+    expect(started.ok).toBe(true);
+    // Simulate run row loss (checkpoint still exists)
+    runRows.delete(runId);
+    const result = await resumeRun(runId, 1, { kind: "human_decision", decision: "continue" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("RUN_NOT_FOUND");
+  });
+
+  it("resume rejects checkpoint referencing uncommitted revision (P1-C §7.3c)", async () => {
+    const runId = "run-uncommitted";
+    await runStore.create(draftState(runId));
+    const s = draftState(runId);
+    s.checkpoint = { checkpointId: runId, businessRevision: 5, createdAt: new Date().toISOString() };
+    await runStore.save(s, 0);
+    const result = await resumeRun(runId, 1, { kind: "human_decision", decision: "continue" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("INTERNAL");
+  });
+
+  it("cancel records the cancelled event atomically and freezes writes (P1-C §7.6)", async () => {
+    const runId = "run-cancel-ev";
+    await runStore.create(draftState(runId));
+    const started = await startRun(runId, 0);
+    expect(started.ok).toBe(true);
+    const rev = (started as { ok: true; state: ResearchRunState }).state.revision;
+    const result = await cancelRun(runId, rev);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.state.status).toBe("cancelled");
+      expect(result.events.some((e) => e.type === "cancelled")).toBe(true);
+    }
+    // after cancel, any save must fail
+    const rev2 = (result as { ok: true; state: ResearchRunState }).state.revision;
+    await expect(
+      runStore.save({ ...draftState(runId), status: "running" }, rev2),
+    ).rejects.toMatchObject({ code: "TERMINAL_FROZEN" });
   });
 });

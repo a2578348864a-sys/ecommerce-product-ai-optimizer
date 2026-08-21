@@ -97,6 +97,7 @@ export const GraphStateAnnotation = Annotation.Root({
   handoff: Annotation<{ factRevision: number; policyPackVersion: string } | null>,
   lastValidation: Annotation<{ valid: boolean; reason: string } | null>,
   lastEvent: Annotation<Omit<ResearchRunEvent, "seq"> | null>,
+  retryMode: Annotation<boolean>,
 });
 
 export type GraphState = typeof GraphStateAnnotation.State;
@@ -279,28 +280,12 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
     };
   };
 
-  const mergeEvidence: NodeFn = async (state) => {
-    const toolResult = state.activeToolResult;
-    if (!toolResult) {
-      return failState("merge_evidence", { code: "UNKNOWN_RECOVERABLE", recoverable: true, safeMessage: "no tool result" });
-    }
-    const questionId = state.activeQuestionId ?? "";
-    const inputHash = state.activeInputHash ?? "";
-    const toolName = state.activeToolName ?? "";
-    const idemKey = buildIdempotencyKey({ runId: state.runId, questionId, toolName, inputHash });
-    const decision = await deps.journal.resolve({ runId: state.runId, idempotencyKey: idemKey, inputHash, action: toolName });
-    if (decision.kind === "conflict") {
-      return failState("merge_evidence", { code: "SCHEMA_INVALID", recoverable: true, safeMessage: "idempotency conflict" });
-    }
-    if (decision.kind === "skip") {
-      return {
-        status: "running",
-        currentNode: "merge_evidence",
-        activeQuestionId: null,
-        activeToolResult: null,
-        lastEvent: ev("merge_evidence", "evidence_merged", { evidenceRevision: state.evidenceRevision, count: state.evidence.length, status: "skipped_duplicate" }),
-      };
-    }
+  const applyEvidence = async (
+    state: GraphState,
+    toolResult: ToolResult,
+    questionId: string,
+    idemKey: string,
+  ): Promise<Partial<GraphState>> => {
     const evidenceItem = deps.tools.evidence({ toolResult, questionId });
     await deps.journal.commit({ runId: state.runId, idempotencyKey: idemKey });
     const evidenceRevision = state.evidenceRevision + 1;
@@ -313,6 +298,70 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
       activeToolResult: null,
       lastEvent: ev("merge_evidence", "evidence_merged", { evidenceRevision, count: state.evidence.length + 1 }),
     };
+  };
+
+  const mergeEvidence: NodeFn = async (state) => {
+    const toolResult = state.activeToolResult;
+    if (!toolResult) {
+      return failState("merge_evidence", { code: "UNKNOWN_RECOVERABLE", recoverable: true, safeMessage: "no tool result" });
+    }
+    const questionId = state.activeQuestionId ?? "";
+    const inputHash = state.activeInputHash ?? "";
+    const toolName = state.activeToolName ?? "";
+    const idemKey = buildIdempotencyKey({ runId: state.runId, questionId, toolName, inputHash });
+    const decision = await deps.journal.resolve(
+      { runId: state.runId, idempotencyKey: idemKey, inputHash, action: toolName },
+      { explicitRetry: state.retryMode },
+    );
+    if (decision.kind === "conflict") {
+      return failState("merge_evidence", { code: "SCHEMA_INVALID", recoverable: true, safeMessage: "idempotency conflict" });
+    }
+    if (decision.kind === "pending") {
+      // 悬空 recorded：不自动重放；等待显式 retry。
+      interrupt<InterruptValue, ResumePayload>({
+        kind: "input",
+        reasonCode: "IDEMPOTENCY_PENDING",
+        node: "merge_evidence",
+        instructions: "Side-effect not committed; explicit retry required.",
+      });
+      // resumed after retry: re-resolve with explicitRetry=true
+      const retried = await deps.journal.resolve(
+        { runId: state.runId, idempotencyKey: idemKey, inputHash, action: toolName },
+        { explicitRetry: true },
+      );
+      if (retried.kind === "conflict") {
+        return failState("merge_evidence", { code: "SCHEMA_INVALID", recoverable: true, safeMessage: "idempotency conflict" });
+      }
+      if (retried.kind === "pending") {
+        return {
+          status: "waiting_input",
+          currentNode: "merge_evidence",
+          wait: { kind: "input", reasonCode: "IDEMPOTENCY_PENDING", instructions: "Side-effect not committed; explicit retry required.", requestedAt: new Date().toISOString() },
+          lastEvent: ev("merge_evidence", "tool_result_validated", { status: "pending_retry" }),
+        };
+      }
+      if (retried.kind === "skip") {
+        return {
+          status: "running",
+          currentNode: "merge_evidence",
+          activeQuestionId: null,
+          activeToolResult: null,
+          lastEvent: ev("merge_evidence", "evidence_merged", { evidenceRevision: state.evidenceRevision, count: state.evidence.length, status: "skipped_duplicate" }),
+        };
+      }
+      // retried apply/retry -> merge below
+      return applyEvidence(state, toolResult, questionId, idemKey);
+    }
+    if (decision.kind === "skip") {
+      return {
+        status: "running",
+        currentNode: "merge_evidence",
+        activeQuestionId: null,
+        activeToolResult: null,
+        lastEvent: ev("merge_evidence", "evidence_merged", { evidenceRevision: state.evidenceRevision, count: state.evidence.length, status: "skipped_duplicate" }),
+      };
+    }
+    return applyEvidence(state, toolResult, questionId, idemKey);
   };
 
   const detectConflicts: NodeFn = async (state) => {
@@ -576,9 +625,11 @@ export function projectState(
     policyPackVersion: state.policyPackVersion ?? null,
     budget: state.budget,
     wait: waitOverride === undefined ? (state.wait ?? null) : waitOverride,
-    checkpoint: checkpointId
-      ? { checkpointId, businessRevision: nextRevision, createdAt: now }
-      : null,
+    checkpoint: {
+      checkpointId: checkpointId ?? run.id,
+      businessRevision: nextRevision,
+      createdAt: now,
+    },
     lastError: state.lastError ?? null,
     createdAt: toIso(run.createdAt),
     updatedAt: now,
@@ -650,6 +701,7 @@ function initialInput(input: StartRunInput, budget: ResearchBudget): GraphState 
     handoff: null,
     lastValidation: null,
     lastEvent: null,
+    retryMode: false,
   };
 }
 
@@ -689,6 +741,7 @@ function initialInputFromRun(state: ResearchRunState): GraphState {
     handoff: null,
     lastValidation: null,
     lastEvent: null,
+    retryMode: false,
   };
 }
 
@@ -751,10 +804,9 @@ export class ResearchRunRunner {
     payload: ResumePayload,
     expectedRevision: number,
   ): Promise<RunStepResult> {
-    // resume gate: graphVersion + expectedRevision + candidate/budget revalidation
+    // resume gate: graphVersion + three-way consistency + expectedRevision + candidate/budget revalidation
     await this.deps.runStore.assertGraphVersion(runId);
-    const run = await this.deps.runStore.getRun(runId);
-    if (!run) throw new RunStoreError("NOT_FOUND", `Run ${runId} not found`);
+    const run = await this.verifyConsistency(runId);
     if (run.status === "cancelled" || run.status === "completed" || run.status === "failed_terminal") {
       throw new RunStoreError("TERMINAL_FROZEN", `Run ${runId} is terminal (${run.status})`, run.revision);
     }
@@ -775,6 +827,10 @@ export class ResearchRunRunner {
     if (!this.enteredNodes.has(runId)) this.enteredNodes.set(runId, new Set());
     try {
       const graph = this.compile(runId);
+      // 显式 retry：置 retryMode，允许 journal recorded/failed 悬空条目重执行。
+      if (payload.kind === "retry") {
+        await graph.updateState(config, { retryMode: true } as never);
+      }
       const input = new Command<ResumePayload>({ resume: payload });
       return await this.drive(runId, graph, config, input);
     } finally {
@@ -810,6 +866,26 @@ export class ResearchRunRunner {
 
   private checkpointHandles = new Map<string, ReturnType<typeof openCheckpoint>>();
   private enteredNodes = new Map<string, Set<string>>();
+
+  /**
+   * P1-C 三方一致性 fail_closed（§7.3）：
+   * - run 行缺失 → NOT_FOUND；
+   * - checkpoint 引用未提交 revision（stateJson.checkpoint.businessRevision > 行 revision）→ 拒绝。
+   * journal committed 但 checkpoint 缺失由幂等 journal（skip_duplicate）兜底，不重复副作用。
+   */
+  private async verifyConsistency(runId: string): Promise<RunRow> {
+    const run = await this.deps.runStore.getRun(runId);
+    if (!run) throw new RunStoreError("NOT_FOUND", `Run ${runId} not found`);
+    const state = this.deps.runStore.readState(run);
+    if (state && state.checkpoint && state.checkpoint.businessRevision > run.revision) {
+      throw new RunStoreError(
+        "RESUME_GATE_FAILED",
+        `Run ${runId} checkpoint references uncommitted revision ${state.checkpoint.businessRevision} > row ${run.revision}`,
+        run.revision,
+      );
+    }
+    return run;
+  }
 
   private async readCheckpointState(runId: string): Promise<GraphState> {
     const config = this.configFor(runId);
@@ -1053,10 +1129,12 @@ function mapError(error: unknown): GraphRunResult {
       return { ok: false, code: "GRAPH_VERSION_MISMATCH", latestRevision: error.latestRevision, safeMessage: error.message };
     }
     if (error.code === "RESUME_GATE_FAILED") {
-      const isBudget = /budget/i.test(error.message);
+      const msg = error.message;
+      const isBudget = /budget/i.test(msg);
+      const isConsistency = /uncommitted|consistency/i.test(msg);
       return {
         ok: false,
-        code: isBudget ? "BUDGET_EXCEEDED" : "CANDIDATE_INVALID",
+        code: isBudget ? "BUDGET_EXCEEDED" : isConsistency ? "INTERNAL" : "CANDIDATE_INVALID",
         latestRevision: error.latestRevision,
         safeMessage: error.message,
       };
