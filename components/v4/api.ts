@@ -16,6 +16,8 @@
  */
 import { buildAccessHeaders } from "@/lib/client/accessToken";
 import type {
+  ResearchRunCheckpoint,
+  ResearchRunError,
   ResearchRunEvent,
   ResearchRunNode,
   ResearchRunState,
@@ -24,7 +26,13 @@ import type {
   ResumePayload,
 } from "@/lib/v4/contracts";
 
-/** 列表投影（契约 RunSummary = id/candidateId/status/currentNode/revision/budget.usedCost/updatedAt）。 */
+/**
+ * 列表投影（契约 RunSummary = id/candidateId/status/currentNode/revision/budget.usedCost/updatedAt）。
+ *
+ * 加法扩展说明：/api/v4/runs 实际返回完整的 ResearchRunState（wait/activeQuestionId/
+ * lastError/checkpoint/planRevision 等）。为让列表能诚实展示「下一步人工动作」与
+ * 「可恢复/终态失败」，这里按加法扩展可选字段；既有字段与既有调用方保持不变。
+ */
 export type RunSummary = {
   /** API 权威字段（ResearchRunState.runId）。 */
   runId: string;
@@ -34,6 +42,16 @@ export type RunSummary = {
   revision: number;
   budget: { usedCost: number };
   updatedAt: string;
+  /** 加法扩展：等待人工/输入/授权/预算时存在（同一 ResearchRunWait 形态）。 */
+  wait?: ResearchRunWait | null;
+  /** 加法扩展：等待输入时挂起的问题 id（若 API 返回）。 */
+  activeQuestionId?: string | null;
+  /** 加法扩展：最近一次错误（用于区分可恢复/终态失败）。 */
+  lastError?: ResearchRunError | null;
+  /** 加法扩展：断点信息（若 API 返回）。 */
+  checkpoint?: ResearchRunCheckpoint | null;
+  /** 加法扩展：计划修订号（供列表轻量展示）。 */
+  planRevision?: number;
 };
 
 export type RunListResponse = { runs: RunSummary[] };

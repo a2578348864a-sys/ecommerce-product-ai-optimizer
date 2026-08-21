@@ -7,8 +7,8 @@ import { isV4GraphEnabled } from "@/lib/v4/featureFlag";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "V4 运行控制台 - 轻选工作台",
-  description: "查看单个 V4 研究运行的状态、节点、预算、错误与人工中断。",
+  title: "V4 研究任务详情 - 轻选工作台",
+  description: "查看单个 V4 研究任务的阶段总览、节点、下一步需要谁做什么、预算、错误与人工中断。",
 };
 
 type V4RunDetailPageProps = {
@@ -27,10 +27,10 @@ export default async function V4RunDetailPage({ params }: V4RunDetailPageProps) 
         <div className="min-w-0">
           <div className="workspace-header page-header space-y-4">
             <header className="space-y-3">
-              <p className="eyebrow">V4 研究图 · Run Console</p>
+              <p className="eyebrow">V4 研究任务 · Run Console</p>
               <div>
-                <h1 className="section-title text-2xl sm:text-3xl">运行控制台</h1>
-                <p className="mt-2 text-sm text-slate-600">运行 {normalized} 的状态、节点、预算与人工中断。</p>
+                <h1 className="section-title text-2xl sm:text-3xl">研究任务详情</h1>
+                <p className="mt-2 text-sm text-slate-600">任务 {normalized} 的阶段总览、当前节点、下一步需要谁做什么、预算与人工中断。</p>
               </div>
             </header>
             <WorkspaceMobileNav />
