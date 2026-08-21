@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "policy-pack.v1",
+  "version": "2026.08-home-v1",
+  "marketplace": "US",
+  "category": "home",
+  "locale": "en-US",
+  "effectiveAt": "2026-08-01T00:00:00.000Z",
+  "reviewedAt": "2026-08-10T00:00:00.000Z",
+  "sourceUrl": "https://sellercentral.amazon.com/help/hub/reference/external/G201795950",
+  "rules": [
+    {
+      "id": "us-home.field-allowlist",
+      "kind": "field_allowlist",
+      "terms": [
+        "title",
+        "bullets",
+        "description",
+        "search_terms"
+      ],
+      "severity": "error"
+    },
+    {
+      "id": "us-home.length-title",
+      "kind": "length_limit",
+      "field": "title",
+      "maxLength": 200,
+      "severity": "error"
+    },
+    {
+      "id": "us-home.length-bullets",
+      "kind": "length_limit",
+      "field": "bullets",
+      "maxLength": 500,
+      "severity": "error"
+    },
+    {
+      "id": "us-home.length-description",
+      "kind": "length_limit",
+      "field": "description",
+      "maxLength": 2000,
+      "severity": "error"
+    },
+    {
+      "id": "us-home.length-search-terms",
+      "kind": "length_limit",
+      "field": "search_terms",
+      "maxLength": 250,
+      "severity": "error"
+    },
+    {
+      "id": "us-home.charset",
+      "kind": "charset",
+      "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+      "severity": "warning"
+    },
+    {
+      "id": "us-home.banned-terms",
+      "kind": "banned_terms",
+      "terms": [
+        "cure",
+        "heal",
+        "prevent",
+        "diagnose",
+        "FDA approved",
+        "surgical grade",
+        "hypoallergenic",
+        "antibacterial"
+      ],
+      "severity": "error"
+    },
+    {
+      "id": "us-home.trademark-terms",
+      "kind": "trademark_terms",
+      "terms": [
+        "Peloton",
+        "Yeti",
+        "Nike",
+        "Adidas"
+      ],
+      "severity": "error"
+    },
+    {
+      "id": "us-home.absolute-terms",
+      "kind": "absolute_terms",
+      "terms": [
+        "best",
+        "100%",
+        "No.1",
+        "number one",
+        "guaranteed",
+        "guarantee",
+        "perfect",
+        "never",
+        "always",
+        "top rated",
+        "top-rated",
+        "highest quality",
+        "cheapest"
+      ],
+      "severity": "error"
+    }
+  ]
+}
