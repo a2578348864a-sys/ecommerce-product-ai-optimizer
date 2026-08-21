@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ResearchRunEvent, ResearchRunState } from "@/lib/v4/contracts";
-import { getReport, getRun, resumeRun } from "./api";
+import { confirmFact, getFacts, getReport, getRun, resumeRun, revokeFact, type FactView } from "./api";
 import { RunConsoleView } from "./RunConsoleView";
 import type { ReportViewLike } from "./api";
+import type { FactGateItem, FactGateCallbacks } from "./FactGatePanel";
 
 type LoadState = "loading" | "ready" | "error";
 
@@ -14,6 +15,7 @@ export function RunConsoleClient({ runId }: { runId: string }) {
   const [run, setRun] = useState<ResearchRunState | null>(null);
   const [events, setEvents] = useState<ResearchRunEvent[]>([]);
   const [report, setReport] = useState<ReportViewLike | null>(null);
+  const [facts, setFacts] = useState<FactView[]>([]);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
 
@@ -43,6 +45,29 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     },
     [runId],
   );
+
+  const supplierIdentityFromReport = (report: ReportViewLike | null) => {
+    if (!report) return null;
+    const supplier = report.evidence.find((e) => e.type === "sellersprite" || (e.entity && e.entity.includes("1688")));
+    if (!supplier) return null;
+    const f = supplier.fields as Record<string, unknown> | undefined;
+    return { offerIdentity: String(f?.offerIdentity ?? supplier.entity).slice(0, 128), variantKey: String(f?.variantKey ?? "default").slice(0, 128) };
+  };
+
+  const factCallbacks: FactGateCallbacks = useMemo(() => ({
+    onConfirm: (item, payload) => {
+      void (async () => {
+        const identity = supplierIdentityFromReport(report);
+        if (!identity) return;
+        await confirmFact(runId, { offerIdentity: identity.offerIdentity, variantKey: item.variantKey, field: item.field, value: item.value, status: "confirmed", confirmationMethod: payload.confirmationMethod, claimRefs: payload.claimRefs, documentRefs: payload.documentRefs }).catch(() => undefined);
+        void refresh(true);
+      })();
+    },
+    onReject: (item) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await confirmFact(runId, { offerIdentity: identity.offerIdentity, variantKey: item.variantKey, field: item.field, value: item.value, status: "rejected" }).catch(() => undefined); void refresh(true); })(); },
+    onUnknown: (item) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await confirmFact(runId, { offerIdentity: identity.offerIdentity, variantKey: item.variantKey, field: item.field, value: item.value, status: "unknown" }).catch(() => undefined); void refresh(true); })(); },
+    onConflict: (item, payload) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await confirmFact(runId, { offerIdentity: identity.offerIdentity, variantKey: item.variantKey, field: item.field, value: item.value, status: "conflict", detail: { otherValue: payload.otherValue } }).catch(() => undefined); void refresh(true); })(); },
+    onRevoke: (item, payload) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await revokeFact(runId, identity.offerIdentity + "|" + item.variantKey + "|" + item.field, payload.reason).catch(() => undefined); void refresh(true); })(); },
+  }), [runId, report, refresh]);
 
   const retry = useCallback(async () => {
     if (!run) return;
@@ -94,5 +119,5 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     );
   }
 
-  return <RunConsoleView run={run} events={events} report={report} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
+  return <RunConsoleView run={run} events={events} report={report} facts={facts as unknown as FactGateItem[]} factCallbacks={factCallbacks} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
 }

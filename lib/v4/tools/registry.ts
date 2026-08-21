@@ -11,9 +11,10 @@ import { runAmazonAdapter } from "@/lib/v4/adapters/amazon";
 import { runKeywordAdapter } from "@/lib/v4/adapters/keyword";
 import { runVocAdapter } from "@/lib/v4/adapters/voc";
 import { runSellerSpriteAdapter } from "@/lib/v4/adapters/sellersprite";
+import { run1688Adapter } from "@/lib/v4/adapters/1688";
 import { getCandidateProfileFixture } from "@/lib/v4/adapters/fixtures/candidateProfiles";
 
-export const MARKET_TOOL_NAMES = ["amazon/search", "amazon/detail", "keyword", "voc", "sellersprite"] as const;
+export const MARKET_TOOL_NAMES = ["amazon/search", "amazon/detail", "keyword", "voc", "sellersprite", "supplier_1688"] as const;
 export type MarketToolName = (typeof MARKET_TOOL_NAMES)[number];
 
 export function isMarketTool(toolName: string): toolName is MarketToolName {
@@ -137,6 +138,10 @@ export async function executeMarketTool(envelope: ToolCallEnvelope): Promise<Too
       }
       case "keyword":
       case "voc":
+      case "supplier_1688": {
+        result = await run1688Adapter(envelope);
+        break;
+      }
       case "sellersprite": {
         const profileResult = profileFixtureFor(envelope.toolName);
         if (profileResult) { result = profileResult; break; }

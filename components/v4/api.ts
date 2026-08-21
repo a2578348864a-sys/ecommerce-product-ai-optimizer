@@ -49,7 +49,7 @@ export type RevisionConflictBody = {
 const RUNS_BASE = "/api/v4/runs";
 
 /** API 调用错误：携带 HTTP 状态、业务码与（可选）最新 revision。 */
-export type ReportViewLike = { reportId: string; summary: string; sections: { title: string; sentences: { text: string; evidenceRefs: string[]; kind: string }[] }[]; gaps: { question: string; reason: string }[]; conflicts: { evidenceA: string; evidenceB: string; field: string }[]; unknowns: string[]; planRevision: number };
+export type ReportViewLike = { reportId: string; summary: string; sections: { title: string; sentences: { text: string; evidenceRefs: string[]; kind: string }[] }[]; gaps: { question: string; reason: string }[]; conflicts: { evidenceA: string; evidenceB: string; field: string }[]; unknowns: string[]; planRevision: number; evidence: { type: string; entity: string; fields?: Record<string, unknown> }[] };
 
 export class V4ApiError extends Error {
   readonly status: number;
@@ -158,6 +158,60 @@ export async function getReport(runId: string): Promise<{ report: ReportViewLike
   }
   const body = await res.json();
   return body as { report: ReportViewLike };
+}
+
+/** 事实视图/操作（P3）。 */
+export type FactView = {
+  id: string;
+  runId: string;
+  offerIdentity: string;
+  variantKey: string;
+  field: string;
+  value: string;
+  status: string;
+  confirmationMethod: string | null;
+  claimRefs: string[];
+  documentRefs: string[];
+  actor: string;
+  revision: number;
+  revokedByRevision: number | null;
+  detail: Record<string, unknown>;
+  createdAt: string;
+};
+
+export async function getFacts(runId: string, offerIdentity: string, variantKey: string) {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/facts?offerIdentity=" + encodeURIComponent(offerIdentity) + "&variantKey=" + encodeURIComponent(variantKey), { cache: "no-store" });
+  if (!res.ok) throw new V4ApiError(res.status, "http_error", "事实加载失败");
+  const body = await res.json();
+  return (body.facts ?? []) as FactView[];
+}
+
+export async function confirmFact(runId: string, input: { offerIdentity: string; variantKey: string; field: string; value: string; status: string; confirmationMethod?: string; claimRefs?: string[]; documentRefs?: string[]; detail?: Record<string, unknown> }) {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/facts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+    throw new V4ApiError(res.status, errBody?.error?.code ?? "http_error", errBody?.error?.message ?? "事实操作失败");
+  }
+  const body = await res.json();
+  return body.fact as FactView;
+}
+
+export async function revokeFact(runId: string, factKey: string, reason: string) {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/facts/" + encodeURIComponent(factKey) + "/revoke", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+    throw new V4ApiError(res.status, errBody?.error?.code ?? "http_error", errBody?.error?.message ?? "撤销失败");
+  }
+  const body = await res.json();
+  return body.fact as FactView;
 }
 
 // 导出以便 UI 复用 wait/error 判别（类型投影，不依赖 server-only）。

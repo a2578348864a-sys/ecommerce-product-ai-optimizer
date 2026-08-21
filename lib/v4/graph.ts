@@ -171,6 +171,7 @@ const LEGACY_TO_MARKET: Record<string, string> = {
   keyword_research: "keyword",
   review_voc: "voc",
   opportunity_priority: "sellersprite",
+  supplier_research: "supplier_1688",
 };
 
 function nextQuestion(state: GraphState): ResearchQuestion | null {
@@ -253,13 +254,13 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
     let toolResult: ToolResult = deps.tools.tool({ toolName: question.toolName, questionId: question.questionId, inputHash: question.inputHash });
     let envResult: ToolResultEnvelope | null = null;
     if (marketName && deps.marketTools) {
-      const targetEntity = state.candidateSnapshot?.name || state.candidateId;
+      const targetEntity = typeof question.input?.offerId === "string" ? String(question.input.offerId) : typeof question.input?.targetEntity === "string" ? String(question.input.targetEntity) : state.candidateSnapshot?.name || state.candidateId;
       const envelope = buildToolEnvelope({
         runId: state.runId,
         questionId: question.questionId,
         toolName: marketName,
         targetEntity,
-        marketplace: marketName.startsWith("amazon") ? "amazon.com" : "US",
+        marketplace: marketName.startsWith("amazon") ? "amazon.com" : marketName === "supplier_1688" ? "1688.com" : "US",
         inputHash: question.inputHash,
         idempotencyKey: buildIdempotencyKey({ runId: state.runId, questionId: question.questionId, toolName: marketName, inputHash: question.inputHash }),
         budget: { maxCost: state.budget.maxCost, currency: state.budget.currency, maxBrowserSteps: state.budget.maxBrowserSteps },
@@ -485,9 +486,9 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
     const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "GATE_A", node: "gate_a", instructions: "Review market synthesis and decide whether to continue." } satisfies InterruptValue);
     const human = decision as HumanDecisionPayload;
     if (human.kind !== "human_decision" || human.decision === "stop") {
-      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "stop" }) };
+      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "stop", note: human.note ?? null }) };
     }
-    return { status: "running", currentNode: "gate_a", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "continue" }) };
+    return { status: "running", currentNode: "gate_a", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: human.decision, note: human.note ?? null }) };
   };
 
   const supplierResearch: NodeFn = async (state) => {

@@ -8,6 +8,7 @@ import { NodeFlow } from "./NodeFlow";
 import { PlanSummary } from "./PlanSummary";
 import { RunStatusBadge } from "./RunStatusBadge";
 import { ReportPanel, type ReportView } from "./ReportPanel";
+import { FactGatePanel, type FactGateItem, type FactGateCallbacks } from "./FactGatePanel";
 import { formatDateTime } from "./labels";
 
 type RunConsoleViewProps = {
@@ -16,10 +17,12 @@ type RunConsoleViewProps = {
   onRefresh?: () => void;
   onRetry?: () => void;
   report?: ReportView | null;
+  facts?: FactGateItem[];
+  factCallbacks?: FactGateCallbacks;
 };
 
 /** Run Console 详情页内容（纯展示；由 RunConsoleClient 注入数据与回调）。 */
-export function RunConsoleView({ run, events, onRefresh, onRetry, report }: RunConsoleViewProps) {
+export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts, factCallbacks }: RunConsoleViewProps) {
   return (
     <div data-testid="run-console-view" className="space-y-4">
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -51,6 +54,7 @@ export function RunConsoleView({ run, events, onRefresh, onRetry, report }: RunC
       <NodeFlow currentNode={run.currentNode} />
       <BudgetMeter budget={run.budget} />
       <CancelResumeControls runId={run.runId} status={run.status} revision={run.revision} onAction={onRefresh} />
+      {run.currentNode === "product_fact_gate" && factCallbacks ? <FactGatePanel items={facts ?? []} {...factCallbacks} /> : null}
       {report ? <ReportPanel report={report} /> : null}
 <EventStream events={events} />
     </div>
