@@ -757,7 +757,7 @@ export function ActivityTab({ events }: { events: ResearchRunEvent[] }) {
         <li key={e.seq} className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white/85 px-3 py-2">
           <span className={"mt-0.5 size-2 shrink-0 rounded-full " + (e.type === "failed" || e.type === "cancelled" ? "bg-rose-400" : e.type === "completed" ? "bg-emerald-500" : "bg-teal-400")} aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-800">{USER_EVENT_LABELS[e.type] ?? e.type}</p>
+            <p className="text-sm font-medium text-slate-800">{e.type === "human_decision" && e.node === "product_fact_gate" ? "已确认商品信息" : (USER_EVENT_LABELS[e.type] ?? e.type)}</p>
           </div>
           <time className="shrink-0 text-[11px] text-slate-400">{formatDateTime(e.createdAt)}</time>
         </li>
