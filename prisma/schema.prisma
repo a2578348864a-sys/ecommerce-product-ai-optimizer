@@ -171,6 +171,7 @@ model V4ResearchRun {
   eventsJson                 String   @default("[]")
   reportJson                 String?
   commercialJson             String?
+  contentJson                String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 

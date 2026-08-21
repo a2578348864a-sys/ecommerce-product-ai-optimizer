@@ -236,5 +236,19 @@ export async function postCommercial(runId: string, input: unknown) {
   return body.commercial as unknown;
 }
 
+export async function postContentReview(runId: string, choice: string, note?: string) {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/content/review", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ choice, note }),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+    throw new V4ApiError(res.status, errBody?.error?.code ?? "http_error", errBody?.error?.message ?? "审核提交失败");
+  }
+  const body = await res.json();
+  return body.review as { choice: string; note?: string; actor: string; at: string };
+}
+
 // 导出以便 UI 复用 wait/error 判别（类型投影，不依赖 server-only）。
 export type { ResearchRunState, ResearchRunEvent, ResearchRunStatus, ResearchRunNode, ResearchRunWait, ResumePayload };

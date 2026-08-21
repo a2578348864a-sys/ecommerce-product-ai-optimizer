@@ -37,6 +37,7 @@ export type RunRow = {
   eventsJson: string;
   reportJson: string | null;
   commercialJson: string | null;
+  contentJson: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 };
@@ -135,6 +136,7 @@ export type SaveStatePatch = {
   stateJson: string;
   reportJson?: string;
   commercialJson?: string;
+  contentJson?: string;
   status?: ResearchRunStatus;
   currentNode?: ResearchRunNode;
   planRevision?: number;
@@ -314,6 +316,7 @@ export class ResearchRunStore {
         eventsJson: JSON.stringify(mergedEvents),
         ...(patch.reportJson !== undefined ? { reportJson: patch.reportJson } : {}),
         ...(patch.commercialJson !== undefined ? { commercialJson: patch.commercialJson } : {}),
+        ...(patch.contentJson !== undefined ? { contentJson: patch.contentJson } : {}),
         revision: current.revision + 1,
       },
     });

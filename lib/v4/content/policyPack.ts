@@ -35,9 +35,14 @@ export type PolicyPackStatus = { ok: true; pack: PolicyPack } | { ok: false; cod
 export function checkPolicyPack(pack: PolicyPack | null, now: string): PolicyPackStatus {
   if (!pack) return { ok: false, code: "PACK_UNKNOWN", message: "policy pack 不存在" };
   if (!pack.effectiveAt) return { ok: false, code: "PACK_STALE", message: "policy pack 缺少 effectiveAt" };
+  const effective = Date.parse(pack.effectiveAt);
   const reviewed = Date.parse(pack.reviewedAt);
-  const days = (Date.parse(now) - reviewed) / 86400000;
-  if (Number.isNaN(reviewed) || days > 180) {
+  const nowMs = Date.parse(now);
+  if (Number.isNaN(effective)) return { ok: false, code: "PACK_STALE", message: "effectiveAt 无效" };
+  if (effective > nowMs) return { ok: false, code: "PACK_STALE", message: "policy pack 尚未生效（effectiveAt=" + pack.effectiveAt + "）" };
+  if (Number.isNaN(reviewed) || reviewed > nowMs) return { ok: false, code: "PACK_STALE", message: "reviewedAt 无效或为未来日期" };
+  const days = (nowMs - reviewed) / 86400000;
+  if (days > 180) {
     return { ok: false, code: "PACK_STALE", message: "policy pack 超过 180 天未复核（reviewedAt=" + pack.reviewedAt + "）" };
   }
   return { ok: true, pack };

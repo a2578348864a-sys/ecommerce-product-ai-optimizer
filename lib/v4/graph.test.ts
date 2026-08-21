@@ -29,6 +29,7 @@ function makeRunStoreDb() {
         ownerScope: args.data.ownerScope as string, sandboxId: (args.data.sandboxId as string | null) ?? null,
         mode: args.data.mode as string, graphVersion: args.data.graphVersion as string, reportJson: (args.data.reportJson as string | null) ?? null,
         commercialJson: (args.data.commercialJson as string | null) ?? null,
+        contentJson: (args.data.contentJson as string | null) ?? null,
         status: args.data.status as string, currentNode: args.data.currentNode as string,
         revision: args.data.revision as number, planRevision: args.data.planRevision as number,
         automaticPlanRevisionCount: args.data.automaticPlanRevisionCount as number,
@@ -164,6 +165,13 @@ describe("ResearchRunRunner (StateGraph + interrupt HITL)", () => {
 
     rev = await currentRevision(runId);
     result = await resumeContinue(runId, rev);
+    expect(result.status).toBe("waiting_input");
+    expect(result.currentNode).toBe("content_skills");
+    // P5: inject content draft
+    const dRow = await runStore.getRun(runId);
+    await runStore.saveRun(runId, dRow!.revision, { stateJson: dRow!.stateJson, contentJson: JSON.stringify({ listing: { blocked: false }, images: { checks: { overallStatus: "ok" } } }) });
+    rev = await currentRevision(runId);
+    result = await resumeContinue(runId, rev);
     expect(result.status).toBe("waiting_human");
     expect(result.currentNode).toBe("content_review");
     expect(result.wait?.reasonCode).toBe("CONTENT_REVIEW");
@@ -243,6 +251,9 @@ describe("ResearchRunRunner (StateGraph + interrupt HITL)", () => {
       if (result.status === "waiting_input" && result.currentNode === "commercial_check") {
         const r2 = await runStore.getRun(runId);
         await runStore.saveRun(runId, r2!.revision, { stateJson: r2!.stateJson, commercialJson: JSON.stringify({ schemaVersion: "calc-commercial.v1", scenarios: {}, sensitiveVariables: [], unknowns: [], uncoveredCosts: [], rules: { version: "calc-commercial.v1", marketplace: "US", category: "home", reviewedAt: "2026-08-01T00:00:00.000Z", sourceUrl: "https://example.com", stale: false }, generatedAt: "2026-08-21T00:00:00.000Z" }) });
+      } else if (result.status === "waiting_input" && result.currentNode === "content_skills") {
+        const r3 = await runStore.getRun(runId);
+        await runStore.saveRun(runId, r3!.revision, { stateJson: r3!.stateJson, contentJson: JSON.stringify({ listing: { blocked: false }, images: { checks: { overallStatus: "ok" } } }) });
       }
       const rev = await currentRevision(runId);
       result = await resumeContinue(runId, rev);

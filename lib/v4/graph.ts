@@ -556,22 +556,36 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
   };
 
   const contentSkills: NodeFn = async (state) => {
-    const draft = deps.tools.content({ handoff: state.handoff ?? { factRevision: 0, policyPackVersion: "policy.v1" } });
+    // P5：内容草稿（Listing/Image/Guards 结果）由 API POST /content 经 Skills 管线生成并持久化到 contentJson；
+    // 未生成时 → waiting_input（返回补信息/生成路径）。
+    const row = await deps.runStore.getRun(state.runId);
+    let contentDraft: unknown = null;
+    if (row && row.contentJson) {
+      try { contentDraft = JSON.parse(row.contentJson); } catch { contentDraft = null; }
+    }
+    if (!contentDraft) {
+      interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", node: "content_skills", instructions: "请先通过内容 Skills 管线生成 Listing/Image 草稿与 Guards 结果。" } satisfies InterruptValue);
+      return { status: "waiting_input", currentNode: "content_skills", wait: { kind: "input", reasonCode: "CONTENT_GENERATION_REQUIRED", instructions: "请先生成内容草稿。", requestedAt: new Date().toISOString() }, lastEvent: ev("content_skills", "waiting_human", { reason: "CONTENT_GENERATION_REQUIRED" }) };
+    }
     const budget = consumeBudget(state.budget, { browserSteps: 0, llmTokens: 100, cost: 0.1 });
     if (budget.over) {
       interrupt<InterruptValue, ResumePayload>({ kind: "budget", reasonCode: "BUDGET_EXCEEDED", node: "content_skills" } satisfies InterruptValue);
       return { status: "paused_budget", currentNode: "content_skills", budget: budget.budget, wait: { kind: "budget", reasonCode: "BUDGET_EXCEEDED", requestedAt: new Date().toISOString() } };
     }
-    return { status: "running", currentNode: "content_skills", content: draft, budget: budget.budget, lastEvent: ev("content_skills", "tool_dispatched", { toolName: "content_skills" }) };
+    return { status: "running", currentNode: "content_skills", content: contentDraft as ContentDraft, budget: budget.budget, lastEvent: ev("content_skills", "tool_dispatched", { toolName: "content_skills" }) };
   };
 
   const contentReview: NodeFn = async (state) => {
-    const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "CONTENT_REVIEW", node: "content_review", instructions: "Review the content draft before completion." } satisfies InterruptValue);
+    const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "CONTENT_REVIEW", node: "content_review", instructions: "Review content: approve_export / request_revision / reject_asset." } satisfies InterruptValue);
     const human = decision as HumanDecisionPayload;
-    if (human.kind !== "human_decision" || human.decision === "stop") {
-      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("content_review", "human_decision", { decision: "stop" }) };
+    const choice = human.kind === "human_decision" ? human.decision : "stop";
+    if (human.kind !== "human_decision" || choice === "stop" || choice === "reject_asset") {
+      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("content_review", "human_decision", { decision: choice === "reject_asset" ? "reject_asset" : "abandon", note: human.note ?? null }) };
     }
-    return { status: "running", currentNode: "content_review", wait: null, lastEvent: ev("content_review", "human_decision", { decision: "continue" }) };
+    if (choice === "request_revision") {
+      return { status: "running", currentNode: "content_skills", wait: null, lastEvent: ev("content_review", "human_decision", { decision: "request_revision", note: human.note ?? null }) };
+    }
+    return { status: "running", currentNode: "content_review", wait: null, lastEvent: ev("content_review", "human_decision", { decision: "approve_export", note: human.note ?? null }) };
   };
 
   const complete: NodeFn = async () => {
@@ -654,6 +668,11 @@ function gateBRoute(state: GraphState): string {
   return "content_handoff";
 }
 
+function contentReviewRoute(state: GraphState): string {
+  if (state.lastEvent?.payloadJson && state.lastEvent.payloadJson.includes("request_revision")) return "content_skills";
+  return "complete";
+}
+
 export function buildGraph(deps: GraphDeps, checkpointer: BaseCheckpointSaver): ResearchGraph {
   const nodes = makeNodes(deps);
   const g = new StateGraph(GraphStateAnnotation);
@@ -703,7 +722,7 @@ export function buildGraph(deps: GraphDeps, checkpointer: BaseCheckpointSaver): 
   cond("gate_b", gateBRoute, ["content_handoff", "product_fact_gate", "commercial_check", "cancel", "fail"]);
   cond("content_handoff", terminalOr("content_skills"), ["content_skills", "fail", "cancel"]);
   cond("content_skills", terminalOr("content_review"), ["content_review", "fail", "cancel"]);
-  cond("content_review", terminalOr("complete"), ["complete", "fail", "cancel"]);
+  cond("content_review", contentReviewRoute, ["complete", "content_skills", "cancel", "fail"]);
   edge("complete", END);
   edge("fail", END);
   edge("cancel", END);

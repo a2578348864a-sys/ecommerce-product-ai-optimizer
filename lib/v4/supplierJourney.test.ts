@@ -23,6 +23,7 @@ function makeRunDb() {
         mode: args.data.mode as string, graphVersion: args.data.graphVersion as string,
         reportJson: (args.data.reportJson as string | null) ?? null,
         commercialJson: (args.data.commercialJson as string | null) ?? null,
+        contentJson: (args.data.contentJson as string | null) ?? null,
         status: args.data.status as string, currentNode: args.data.currentNode as string,
         revision: args.data.revision as number, planRevision: args.data.planRevision as number,
         automaticPlanRevisionCount: args.data.automaticPlanRevisionCount as number,

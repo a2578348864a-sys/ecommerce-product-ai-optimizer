@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ResearchRunEvent, ResearchRunState } from "@/lib/v4/contracts";
 import { confirmFact, getCommercial, getFacts, getReport, getRun, resumeRun, revokeFact, type FactView } from "./api";
+import { postContentReview } from "./api";
 import { RunConsoleView } from "./RunConsoleView";
 import type { ReportViewLike } from "./api";
 import type { FactGateItem, FactGateCallbacks } from "./FactGatePanel";
@@ -74,6 +75,20 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     onRevoke: (item, payload) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await revokeFact(runId, identity.offerIdentity + "|" + item.variantKey + "|" + item.field, payload.reason).catch(() => undefined); void refresh(true); })(); },
   }), [runId, report, refresh]);
 
+  const contentReview = useMemo(() => {
+    if (!run || run.currentNode !== "content_review") return null;
+    return {
+      review: null as { choice?: string; note?: string; actor?: string; at?: string } | null,
+      onChoice: (choice: "approve_export" | "request_revision" | "reject_asset", note?: string) => {
+        void (async () => {
+          await postContentReview(runId, choice, note).catch(() => undefined);
+          await resumeRun(runId, run.revision, { kind: "human_decision", decision: choice as never, note }).catch(() => undefined);
+          void refresh(true);
+        })();
+      },
+    };
+  }, [run, runId, refresh]);
+
   const gateB = useMemo(() => {
     if (!run || run.currentNode !== "gate_b") return null;
     return {
@@ -139,5 +154,5 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     );
   }
 
-  return <RunConsoleView run={run} events={events} report={report} facts={facts as unknown as FactGateItem[]} factCallbacks={factCallbacks} commercial={{ output: commercial }} gateB={gateB as never} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
+  return <RunConsoleView run={run} events={events} report={report} facts={facts as unknown as FactGateItem[]} factCallbacks={factCallbacks} commercial={{ output: commercial }} gateB={gateB as never} contentReview={contentReview} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
 }

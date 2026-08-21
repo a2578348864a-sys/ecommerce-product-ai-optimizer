@@ -11,6 +11,7 @@ import { ReportPanel, type ReportView } from "./ReportPanel";
 import { FactGatePanel, type FactGateItem, type FactGateCallbacks } from "./FactGatePanel";
 import { CommercialPanel } from "./CommercialPanel";
 import { GateBPanel, type GateBPanelProps } from "./GateBPanel";
+import { ContentReviewPanel } from "./ContentReviewPanel";
 import { formatDateTime } from "./labels";
 
 type RunConsoleViewProps = {
@@ -23,10 +24,11 @@ type RunConsoleViewProps = {
   factCallbacks?: FactGateCallbacks;
   commercial?: { output: unknown; currency?: string } | null;
   gateB?: GateBPanelProps | null;
+  contentReview?: { review: { choice?: string; note?: string; actor?: string; at?: string } | null; onChoice: (c: "approve_export" | "request_revision" | "reject_asset", note?: string) => void } | null;
 };
 
 /** Run Console 详情页内容（纯展示；由 RunConsoleClient 注入数据与回调）。 */
-export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts, factCallbacks, commercial, gateB }: RunConsoleViewProps) {
+export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts, factCallbacks, commercial, gateB, contentReview }: RunConsoleViewProps) {
   return (
     <div data-testid="run-console-view" className="space-y-4">
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -61,6 +63,7 @@ export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts,
       {run.currentNode === "product_fact_gate" && factCallbacks ? <FactGatePanel items={facts ?? []} {...factCallbacks} /> : null}
       {run.currentNode === "commercial_check" && commercial?.output ? <CommercialPanel status={commercial.output as never} currency={commercial.currency ?? "CNY"} /> : null}
       {run.currentNode === "gate_b" && gateB ? <GateBPanel {...gateB} /> : null}
+      {run.currentNode === "content_review" && contentReview ? <ContentReviewPanel review={contentReview.review} onChoice={contentReview.onChoice} /> : null}
       {report ? <ReportPanel report={report} /> : null}
 <EventStream events={events} />
     </div>
