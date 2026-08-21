@@ -34,6 +34,10 @@
     "test:project-materials": "node scripts/run-project-materials-tests.mjs"
   },
   "dependencies": {
+    "@langchain/core": "1.2.9",
+    "@langchain/langgraph": "1.4.12",
+    "@langchain/langgraph-checkpoint": "1.1.5",
+    "@langchain/langgraph-checkpoint-sqlite": "1.0.4",
     "@prisma/client": "5.22.0",
     "lucide-react": "^0.468.0",
     "next": "16.3.0",

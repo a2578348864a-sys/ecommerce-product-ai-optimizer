@@ -153,3 +153,40 @@ model ProductDiscoverySelection {
   updatedAt                  DateTime      @updatedAt
   activeProductBatch         ProductBatch? @relation(fields: [activeProductBatchId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
+
+
+model V4ResearchRun {
+  id                         String   @id @default(cuid())
+  candidateId                String
+  ownerScope                 String
+  sandboxId                  String?
+  mode                       String   @default("local_live")
+  graphVersion               String   @default("research-graph.v4.1")
+  status                     String   @default("draft")
+  currentNode                String   @default("load_context")
+  revision                   Int      @default(0)
+  planRevision               Int      @default(0)
+  automaticPlanRevisionCount Int      @default(0)
+  stateJson                  String
+  eventsJson                 String   @default("[]")
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@index([candidateId])
+  @@index([ownerScope, sandboxId])
+  @@index([status, updatedAt])
+}
+
+model V4SideEffectJournal {
+  id             String   @id @default(cuid())
+  runId          String
+  idempotencyKey String
+  inputHash      String
+  action         String
+  status         String   @default("recorded")
+  detailJson     String   @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@unique([runId, idempotencyKey])
+  @@index([runId])
+}
