@@ -1,8 +1,8 @@
 # P7 TASK_REPORT — 发布与最终验收（V4-FINAL-R2）
 
 - 判定：**CONDITIONAL（本地面向发布验收通过；DONE 声明附条件）** —— 阻断项均为「用户裁定/授权」性质，无 V4 代码缺陷
-- RC SHA：`1494e77a1b6e44f4f97cf5054338eadc284269a6`（本地 main；**未 push/tag/deploy**——按授权边界）
-- 报告时间：2026-08-21 16:27:30 +08:00；集成 HEAD：`2d60366`
+- RC SHA：`032f8ac2828983ab560e2df90d59d242e2c16ed`（本地 main；**未 push/tag/deploy**——按授权边界；含冻结后 3 个审计收口 commit：3c6a9fa / 4cd1ad0 / 032f8ac）
+- 报告时间：2026-08-21 16:27:30 +08:00；集成 HEAD：`2d60366`；审计收口复核 HEAD：`032f8ac`（P7-A/B/C 三份只读审计全部收口后复核）
 - 验证：A=自动化回归矩阵；B=安全/Eval/依赖审计；C=文档/演示/干净安装审计；Lead=全链浏览器 E2E + 裁定
 
 ## 验证矩阵（实测）
@@ -11,7 +11,7 @@
 | lint | exit 0（0 error / 8 warning，与 P0 基线一致） |
 | typecheck（tsc --noEmit） | exit 0 |
 | 全量测试（npm test） | 5769 passed / 1 failed（B1 基线）/ 78 skipped；V4 专项 44 files/419 全过；V3.1 抽样 517/517（flag off）无回归 |
-| build | 各 Phase 多次成功（P6 最后一次 flagged build 成功；P7-A 因 3005 占用记录跳过） |
+| build | RC `032f8ac` 受控窗口实测 **PASS**（停 3005 → npm run build exit 0 → 计划任务重启服务，health 200 / 登录页 200 / V4 flag-off 404 保持；P7-A 记录的覆盖缺口已闭合） |
 | 依赖审计 | 0 critical / 1 high（brace-expansion dev-only，audit fix 可修）；无敏感文件被跟踪 |
 | 硬指标（14） | 5/5 有强制实现：wrong_entity=0、引用覆盖率=100%、SupplierClaim 自动晋级=0、跨 sandbox=0、Replay secret/PII/路径=0 |
 | 浏览器旅程 | 全链 completed（run 84a4cefd，rev30）+ 恢复/取消/失败路径/Replay 防篡改（409）/flag rollback |
@@ -40,7 +40,7 @@
 - 已知限制/Deferred：KNOWN_LIMITATIONS.md + RELEASE_NOTES_V4.md（Deferred V5 见 00 决策）。
 
 ## DONE 声明格式（17）
-- 完成范围：V4 P0-P6 全部门禁 + P7 本地发布验收（RC SHA 1494e77，未发布）。
+- 完成范围：V4 P0-P6 全部门禁 + P7 本地发布验收（RC SHA 032f8ac，未发布；lint/typecheck/全量测试/Build 四件套在 RC 上全部实测通过，唯一失败=B1 基线，待用户裁定）。
 - 测试命令与结果：见验证矩阵。
 - 真实浏览器旅程：全链 completed + 恢复/取消/失败/Replay 防篡改 + flag rollback（各 Phase E2E 证据）。
 - 迁移/回滚：3 个 additive migration（V4ResearchRun/V4FactRecord/commercialJson/contentJson/reportJson 列）；回滚=删表/删列 + 删 .tmp/v4-graph；flag 关=V3.1 原样。
