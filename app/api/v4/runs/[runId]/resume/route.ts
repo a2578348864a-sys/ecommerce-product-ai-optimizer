@@ -4,6 +4,7 @@ import { ResearchRunStore, type ResearchRunDb } from "@/lib/v4/runStore";
 import { prisma } from "@/lib/server/db";
 import { requireV4GraphEnabled } from "@/lib/v4/featureFlag";
 import { startRun, resumeRun, cancelRun } from "@/lib/v4/graph";
+import { exportBlocker } from "@/lib/v4/content/exportGuard";
 import type { ResumePayload } from "@/lib/v4/contracts";
 
 export const runtime = "nodejs";
@@ -59,6 +60,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   const payloadRaw = body.payload;
   const payload = normalizeResumePayload(payloadRaw);
   if (!payload) return jsonError("invalid_payload", "恢复载荷无效。", 400);
+  // 门禁 7：content_review 的 approve_export 必须通过资产级导出校验（与 content/review 同守卫，防绕过）。
+  if (payload.kind === "human_decision" && payload.decision === "approve_export" && run.currentNode === "content_review") {
+    const blocker = exportBlocker(run.contentJson);
+    if (blocker) return jsonError(blocker.code, blocker.message, 409);
+  }
   const result = await resumeRun(runId, expectedRevision, payload);
 
   return graphResultResponse(result);

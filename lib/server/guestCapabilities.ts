@@ -53,6 +53,10 @@ export const GUEST_CAPABILITY_ROUTES: ReadonlyArray<GuestCapabilityRoute> = [
   { capability: "human_demo_interaction", method: "POST", pattern: "/api/tasks/:taskId/complete" },
   { capability: "generate_guest_listing", method: "POST", pattern: "/api/tasks/:taskId/listing-handoff" },
   { capability: "generate_guest_image", method: "POST", pattern: "/api/tasks/:taskId/image-handoff" },
+  // V4.1 门禁 6：Public Replay 演示沙盒选择（GET 读/POST 写/DELETE 重置；仅访客自身 sandbox）
+  { capability: "human_demo_interaction", method: "GET", pattern: "/api/replay/demo-choice" },
+  { capability: "human_demo_interaction", method: "POST", pattern: "/api/replay/demo-choice" },
+  { capability: "human_demo_interaction", method: "DELETE", pattern: "/api/replay/demo-choice" },
 ];
 
 function escapeRegExpLiteral(value: string): string {

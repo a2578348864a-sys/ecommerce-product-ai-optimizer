@@ -25,6 +25,10 @@ describe("Guest Capability Allow-list（§21-24：DEFAULT DENY）", () => {
     expect(resolveGuestCapability("POST", "/api/opportunities/sellersprite-import")).toBeNull();
     expect(resolveGuestCapability("POST", "/api/opportunities/sellersprite-plugin-import")).toBeNull();
     expect(resolveGuestCapability("POST", "/api/opportunities/source-import")).toBeNull();
+  // V4.1 门禁 6：演示沙盒选择白名单（GET/POST/DELETE 显式 ALLOW）
+  expect(resolveGuestCapability("GET", "/api/replay/demo-choice")).toBe("human_demo_interaction");
+  expect(resolveGuestCapability("POST", "/api/replay/demo-choice")).toBe("human_demo_interaction");
+  expect(resolveGuestCapability("DELETE", "/api/replay/demo-choice")).toBe("human_demo_interaction");
     expect(resolveGuestCapability("POST", "/api/opportunity-candidates")).toBeNull();
     expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_abc/browser-evidence")).toBeNull();
     expect(resolveGuestCapability("POST", "/api/tasks/sandbox_task_abc/visual-reference-import")).toBeNull();

@@ -3,6 +3,7 @@ import { requireV4Auth, jsonError, jsonOk, scopeMatches, v4DisabledResponse } fr
 import { ResearchRunStore, type ResearchRunDb } from "@/lib/v4/runStore";
 import { prisma } from "@/lib/server/db";
 import { requireV4GraphEnabled } from "@/lib/v4/featureFlag";
+import { exportBlocker } from "@/lib/v4/content/exportGuard";
 
 export const runtime = "nodejs";
 
@@ -30,15 +31,10 @@ export async function POST(request: NextRequest, context: { params: Promise<{ ru
   const current = await store.getRun(runId);
   if (!current) return jsonError("run_not_found", "运行不存在。", 404);
   const content = current.contentJson ? JSON.parse(current.contentJson) : {};
-  // P5-C 裁定：已阻断资产不得 approve_export
+  // 门禁 7（P5-C 裁定延续）：已阻断资产不得 approve_export（共享守卫，与 resume 路径一致）。
   if (choice === "approve_export") {
-    const listing = (content as { listing?: { blocked?: boolean } }).listing;
-    const images = (content as { images?: { checks?: { checks?: { pass?: boolean }[]; overallStatus?: string } } }).images;
-    const visualBlocked = images?.checks?.overallStatus === "blocked" || (images?.checks?.checks?.some((chk) => chk.pass === false) ?? false);
-    const blocked = listing?.blocked === true || visualBlocked;
-    if (blocked) {
-      return jsonError("content_blocked", "存在阻断项（Listing blocked 或视觉检查失败），不可导出。", 409);
-    }
+    const blocker = exportBlocker(current.contentJson);
+    if (blocker) return jsonError(blocker.code, blocker.message, 409);
   }
   const updated = { ...(content as Record<string, unknown>), review: { choice, note, actor, at: new Date().toISOString() } };
   await store.saveRun(runId, current.revision, { stateJson: current.stateJson, contentJson: JSON.stringify(updated) });

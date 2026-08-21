@@ -89,3 +89,6 @@ prisma/backups/
 
 # (removed) V4 Replay bundles are RELEASED with the repo: public Replay serves committed,
 # hash-verified desensitized bundles from data/replay-bundles/
+
+# Public Replay 演示沙盒选择（访客运行时数据，非案例）
+data/replay-demo-choices/

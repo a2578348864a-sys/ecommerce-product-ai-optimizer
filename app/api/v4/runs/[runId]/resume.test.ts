@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   flagEnabled: true,
   authCtx: { mode: "owner", token: "t" } as MockAuthCtx,
   authOk: true,
-  runRow: { id: "r1", candidateId: "cand-1", ownerScope: "owner", sandboxId: null, mode: "local_live", graphVersion: "research-graph.v4.1", status: "waiting_human", currentNode: "gate_a", revision: 3, planRevision: 0, automaticPlanRevisionCount: 0, stateJson: "{}", eventsJson: "[]", createdAt: new Date(), updatedAt: new Date() },
+  runRow: { id: "r1", candidateId: "cand-1", ownerScope: "owner", sandboxId: null, mode: "local_live", graphVersion: "research-graph.v4.1", status: "waiting_human", currentNode: "gate_a", revision: 3, planRevision: 0, automaticPlanRevisionCount: 0, stateJson: "{}", eventsJson: "[]", contentJson: null as string | null, createdAt: new Date(), updatedAt: new Date() },
   graphResult: { ok: true, state: { runId: "r1", status: "running" }, events: [] },
 }));
 
@@ -89,5 +89,24 @@ describe("/api/v4/runs/[runId]/resume", () => {
     graphMocks.cancelRun.mockResolvedValue({ ok: false, code: "RUN_NOT_ACTIONABLE", safeMessage: "终态" });
     const res = await cancelPOST(req({ expectedRevision: 3 }), { params: Promise.resolve({ runId: "r1" }) });
     expect(res.status).toBe(409);
+  });
+  it("approve_export 在 content_review 且资产阻断时 → 409 content_blocked（门禁 7 防绕过）", async () => {
+    mocks.runRow = { ...mocks.runRow, currentNode: "content_review", status: "waiting_human", contentJson: JSON.stringify({ listing: { blocked: false }, images: { checks: { overallStatus: "blocked", checks: [{ check: "identity", pass: false }] } } }) };
+    graphMocks.resumeRun.mockClear();
+    const res = await resumePOST(req({
+      expectedRevision: 3,
+      payload: { kind: "human_decision", decision: "approve_export", note: "x" },
+    } as never), { params: Promise.resolve({ runId: "r1" }) });
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({ error: { code: "content_blocked" } });
+    expect(graphMocks.resumeRun).not.toHaveBeenCalled();
+  });
+
+  it("approve_export 在资产无阻断时放行（走 resumeRun）", async () => {
+    mocks.runRow = { ...mocks.runRow, currentNode: "content_review", status: "waiting_human", contentJson: JSON.stringify({ listing: { blocked: false }, images: { checks: { overallStatus: "pass", checks: [{ check: "identity", pass: true }] } } }) };
+    graphMocks.resumeRun.mockResolvedValue({ ok: true, state: { runId: "r1", status: "running" }, events: [] });
+    const res = await resumePOST(req({ expectedRevision: 3, payload: { kind: "human_decision", decision: "approve_export" } } as never), { params: Promise.resolve({ runId: "r1" }) });
+    expect(res.status).not.toBe(409);
+    expect(graphMocks.resumeRun).toHaveBeenCalled();
   });
 });
