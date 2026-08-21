@@ -9,6 +9,8 @@ import { PlanSummary } from "./PlanSummary";
 import { RunStatusBadge } from "./RunStatusBadge";
 import { ReportPanel, type ReportView } from "./ReportPanel";
 import { FactGatePanel, type FactGateItem, type FactGateCallbacks } from "./FactGatePanel";
+import { CommercialPanel } from "./CommercialPanel";
+import { GateBPanel, type GateBPanelProps } from "./GateBPanel";
 import { formatDateTime } from "./labels";
 
 type RunConsoleViewProps = {
@@ -19,10 +21,12 @@ type RunConsoleViewProps = {
   report?: ReportView | null;
   facts?: FactGateItem[];
   factCallbacks?: FactGateCallbacks;
+  commercial?: { output: unknown; currency?: string } | null;
+  gateB?: GateBPanelProps | null;
 };
 
 /** Run Console 详情页内容（纯展示；由 RunConsoleClient 注入数据与回调）。 */
-export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts, factCallbacks }: RunConsoleViewProps) {
+export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts, factCallbacks, commercial, gateB }: RunConsoleViewProps) {
   return (
     <div data-testid="run-console-view" className="space-y-4">
       <section className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -55,6 +59,8 @@ export function RunConsoleView({ run, events, onRefresh, onRetry, report, facts,
       <BudgetMeter budget={run.budget} />
       <CancelResumeControls runId={run.runId} status={run.status} revision={run.revision} onAction={onRefresh} />
       {run.currentNode === "product_fact_gate" && factCallbacks ? <FactGatePanel items={facts ?? []} {...factCallbacks} /> : null}
+      {run.currentNode === "commercial_check" && commercial?.output ? <CommercialPanel status={commercial.output as never} currency={commercial.currency ?? "CNY"} /> : null}
+      {run.currentNode === "gate_b" && gateB ? <GateBPanel {...gateB} /> : null}
       {report ? <ReportPanel report={report} /> : null}
 <EventStream events={events} />
     </div>

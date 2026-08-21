@@ -22,6 +22,7 @@ function makeRunDb() {
         ownerScope: args.data.ownerScope as string, sandboxId: (args.data.sandboxId as string | null) ?? null,
         mode: args.data.mode as string, graphVersion: args.data.graphVersion as string,
         reportJson: (args.data.reportJson as string | null) ?? null,
+        commercialJson: (args.data.commercialJson as string | null) ?? null,
         status: args.data.status as string, currentNode: args.data.currentNode as string,
         revision: args.data.revision as number, planRevision: args.data.planRevision as number,
         automaticPlanRevisionCount: args.data.automaticPlanRevisionCount as number,
@@ -162,8 +163,15 @@ describe("P3 supplier journey: Gate A → 1688 claims → Fact Gate → facts", 
 
     // Fact Gate 通过 → factRevision 提升
     const factsDone = await runner.resumeRun("sup-1", { kind: "human_decision", decision: "continue" }, gateA.run.revision);
-    expect(factsDone.status).toBe("waiting_human");
-    expect(factsDone.currentNode).toBe("gate_b");
+    expect(factsDone.status).toBe("waiting_input");
+    expect(factsDone.currentNode).toBe("commercial_check");
+    // P4：注入商业输出后到 Gate B
+    const crow = await runStore.getRun("sup-1");
+    await runStore.saveRun("sup-1", crow!.revision, { stateJson: crow!.stateJson, commercialJson: JSON.stringify({ schemaVersion: "calc-commercial.v1", scenarios: {}, sensitiveVariables: [], unknowns: [], uncoveredCosts: [], rules: { version: "calc-commercial.v1", marketplace: "US", category: "home", reviewedAt: "2026-08-01T00:00:00.000Z", sourceUrl: "https://example.com", stale: false }, generatedAt: "2026-08-21T00:00:00.000Z" }) });
+    const rev2 = (await runStore.getRun("sup-1"))!.revision;
+    const gateB = await runner.resumeRun("sup-1", { kind: "human_decision", decision: "continue" }, rev2);
+    expect(gateB.status).toBe("waiting_human");
+    expect(gateB.currentNode).toBe("gate_b");
     const current = await currentFacts(db, "sup-1", "930374004918", "v1");
     expect(current.length).toBe(1);
     expect(current[0].field).toBe("material");

@@ -214,5 +214,27 @@ export async function revokeFact(runId: string, factKey: string, reason: string)
   return body.fact as FactView;
 }
 
+export async function getCommercial(runId: string) {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/commercial", { cache: "no-store" });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new V4ApiError(res.status, "http_error", "商业计算加载失败");
+  const body = await res.json();
+  return body.commercial as unknown;
+}
+
+export async function postCommercial(runId: string, input: unknown) {
+  const res = await fetch(RUNS_BASE + "/" + encodeRunId(runId) + "/commercial", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ input }),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+    throw new V4ApiError(res.status, errBody?.error?.code ?? "http_error", errBody?.error?.message ?? "商业计算失败");
+  }
+  const body = await res.json();
+  return body.commercial as unknown;
+}
+
 // 导出以便 UI 复用 wait/error 判别（类型投影，不依赖 server-only）。
 export type { ResearchRunState, ResearchRunEvent, ResearchRunStatus, ResearchRunNode, ResearchRunWait, ResumePayload };

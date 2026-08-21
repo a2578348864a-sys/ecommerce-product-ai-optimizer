@@ -19,6 +19,7 @@ function makeRunStoreDb() {
         id: args.data.id as string, candidateId: args.data.candidateId as string,
         ownerScope: args.data.ownerScope as string, sandboxId: (args.data.sandboxId as string | null) ?? null,
         mode: args.data.mode as string, graphVersion: args.data.graphVersion as string, reportJson: (args.data.reportJson as string | null) ?? null,
+        commercialJson: (args.data.commercialJson as string | null) ?? null,
         status: args.data.status as string, currentNode: args.data.currentNode as string,
         revision: args.data.revision as number, planRevision: args.data.planRevision as number,
         automaticPlanRevisionCount: args.data.automaticPlanRevisionCount as number,
@@ -140,7 +141,11 @@ describe("Recovery: process interrupt with same checkpoint DB (no duplicate side
     // Note: may pause at product_fact_gate. Drive through remaining gates.
     let current = result;
     let guard = 0;
-    while (current.status === "waiting_human" && guard < 10) {
+    while ((current.status === "waiting_human" || current.status === "waiting_input") && guard < 12) {
+      if (current.status === "waiting_input" && current.currentNode === "commercial_check") {
+        const rr = await runStore.getRun(runId);
+        await runStore.saveRun(runId, rr!.revision, { stateJson: rr!.stateJson, commercialJson: JSON.stringify({ schemaVersion: "calc-commercial.v1", scenarios: {}, sensitiveVariables: [], unknowns: [], uncoveredCosts: [], rules: { version: "calc-commercial.v1", marketplace: "US", category: "home", reviewedAt: "2026-08-01T00:00:00.000Z", sourceUrl: "https://example.com", stale: false }, generatedAt: "2026-08-21T00:00:00.000Z" }) });
+      }
       rev = await currentRevision(runStore, runId);
       current = await runner2.resumeRun(runId, { kind: "human_decision", decision: "continue" }, rev);
       guard += 1;

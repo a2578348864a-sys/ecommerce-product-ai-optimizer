@@ -45,7 +45,7 @@ describe("GateBPanel", () => {
     expect(html).toContain("继续（进入内容制作）");
     expect(html).toContain("返回补充信息");
     expect(html).toContain("修改产品后重算");
-    expect(html).toContain("停止（不进入内容制作）");
+    expect(html).toContain("放弃（不进入内容制作）");
   });
 
   it("displays the revision and the human-only submission note", () => {
@@ -59,13 +59,13 @@ describe("GateBPanel", () => {
     // 未选择任何选项 → 提交禁用
     expect(tagMarkup(render({}), "gate-b-submit")).toContain("disabled");
     // stop 缺 reason → 不可提交
-    expect(canSubmitGateB({ option: "stop", reason: "", rulesStale: false, staleConfirmed: false })).toBe(false);
+    expect(canSubmitGateB({ option: "abandon", reason: "", rulesStale: false, staleConfirmed: false })).toBe(false);
     // stop 填 reason → 可提交
-    expect(canSubmitGateB({ option: "stop", reason: "毛利过低，不考虑", rulesStale: false, staleConfirmed: false })).toBe(true);
+    expect(canSubmitGateB({ option: "abandon", reason: "毛利过低，不考虑", rulesStale: false, staleConfirmed: false })).toBe(true);
     // 其他选项缺 reason 也可提交
-    expect(canSubmitGateB({ option: "proceed", reason: "", rulesStale: false, staleConfirmed: false })).toBe(true);
-    expect(canSubmitGateB({ option: "get_more_info", rulesStale: false })).toBe(true);
-    expect(canSubmitGateB({ option: "modify_product", rulesStale: false })).toBe(true);
+    expect(canSubmitGateB({ option: "content_ready", reason: "", rulesStale: false, staleConfirmed: false })).toBe(true);
+    expect(canSubmitGateB({ option: "needs_information", rulesStale: false })).toBe(true);
+    expect(canSubmitGateB({ option: "revise_product", rulesStale: false })).toBe(true);
     // 无选项 → 不可提交
     expect(canSubmitGateB({ option: "", rulesStale: false })).toBe(false);
   });
@@ -76,14 +76,14 @@ describe("GateBPanel", () => {
     expect(html).toContain('data-testid="gate-b-stale-warning"');
     expect(html).toContain('data-testid="gate-b-confirm-stale"');
     // proceed 按钮被禁用
-    expect(tagMarkup(html, "gate-b-option-proceed")).toContain("disabled");
+    expect(tagMarkup(html, "gate-b-option-content_ready")).toContain("disabled");
     // 非 proceed 选项不被 stale 禁用
-    expect(tagMarkup(html, "gate-b-option-get_more_info")).not.toContain("disabled");
+    expect(tagMarkup(html, "gate-b-option-needs_information")).not.toContain("disabled");
     // 门禁逻辑：stale 未确认时 proceed 不可提交，确认后可提交
     expect(isProceedStaleBlocked(true, false)).toBe(true);
     expect(isProceedStaleBlocked(true, true)).toBe(false);
-    expect(canSubmitGateB({ option: "proceed", rulesStale: true, staleConfirmed: false })).toBe(false);
-    expect(canSubmitGateB({ option: "proceed", rulesStale: true, staleConfirmed: true })).toBe(true);
+    expect(canSubmitGateB({ option: "content_ready", rulesStale: true, staleConfirmed: false })).toBe(false);
+    expect(canSubmitGateB({ option: "content_ready", rulesStale: true, staleConfirmed: true })).toBe(true);
   });
 
   it("does not emit monthly-earnings text (D8)", () => {

@@ -43,6 +43,7 @@ import {
 } from "@/lib/v4/contracts";
 import { CandidateNotFoundError, DomainAdapter, type CandidateSnapshot, type DomainDb } from "@/lib/v4/domain";
 import { buildToolEnvelope, executeMarketTool, MARKET_TOOL_NAMES } from "@/lib/v4/tools/registry";
+import type { CalcOutput } from "@/lib/v4/calculator/contract";
 import type { ToolCallEnvelope as ToolCallEnvelopeLike, ToolResultEnvelope } from "@/lib/v4/tools/envelope";
 import { buildMarketReport, validateEvidenceForMerge, validateReportCitations, type EvidenceItemV2, type MarketResearchReport } from "@/lib/v4/report";
 import { FakeToolRegistry, type ConflictItem, type ContentDraft, type EvidenceItem, type FeasibilitySnapshot, type ResearchPlan, type ResearchQuestion, type ToolResult } from "@/lib/v4/fakeTools";
@@ -105,6 +106,9 @@ export const GraphStateAnnotation = Annotation.Root({
   activeToolEnvelope: Annotation<ToolResultEnvelope | null>,
   evidenceV2: Annotation<EvidenceItemV2[]>({ reducer: (a, b) => [...a, ...b], default: () => [] }),
   report: Annotation<MarketResearchReport | null>,
+  gateAChoice: Annotation<string | null>,
+  gateBChoice: Annotation<string | null>,
+  commercial: Annotation<CalcOutput | null>,
 });
 
 export type GraphState = typeof GraphStateAnnotation.State;
@@ -483,12 +487,16 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
     return { status: "running", currentNode: "synthesize_market", report, lastEvent: ev("synthesize_market", "node_completed", { evidenceCount: report.evidence.length, sections: report.sections.length }) };
   };
   const gateA: NodeFn = async (state) => {
-    const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "GATE_A", node: "gate_a", instructions: "Review market synthesis and decide whether to continue." } satisfies InterruptValue);
+    const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "GATE_A", node: "gate_a", instructions: "Review market synthesis and decide: continue_sourcing / needs_information / abandon." } satisfies InterruptValue);
     const human = decision as HumanDecisionPayload;
-    if (human.kind !== "human_decision" || human.decision === "stop") {
-      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "stop", note: human.note ?? null }) };
+    const choice = human.kind === "human_decision" ? human.decision : "stop";
+    if (human.kind !== "human_decision" || choice === "stop" || choice === "abandon") {
+      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "abandon", note: human.note ?? null }) };
     }
-    return { status: "running", currentNode: "gate_a", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: human.decision, note: human.note ?? null }) };
+    if (choice === "needs_information") {
+      return { status: "running", currentNode: "gate_a", gateAChoice: "needs_information", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "needs_information", note: human.note ?? null }) };
+    }
+    return { status: "running", currentNode: "gate_a", gateAChoice: "continue_sourcing", wait: null, lastEvent: ev("gate_a", "human_decision", { decision: "continue_sourcing", note: human.note ?? null }) };
   };
 
   const supplierResearch: NodeFn = async (state) => {
@@ -518,17 +526,28 @@ function makeNodes(deps: GraphDeps): Record<string, NodeFn> {
   };
 
   const commercialCheck: NodeFn = async (state) => {
-    const feasibility = deps.tools.feasibility({ facts: state.facts ?? {}, budgetInputHash: String(state.budget.usedCost) });
-    return { status: "running", currentNode: "commercial_check", feasibility };
-  };
-
-  const gateB: NodeFn = async (state) => {
-    const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "GATE_B", node: "gate_b", instructions: "Review commercial feasibility and decide whether to continue." } satisfies InterruptValue);
-    const human = decision as HumanDecisionPayload;
-    if (human.kind !== "human_decision" || human.decision === "stop") {
-      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("gate_b", "human_decision", { decision: "stop" }) };
+    // P4：确定性 Calculator 输出由 API POST /commercial 持久化到行 commercialJson；
+    // 未提供输入时 → waiting_input（返回补信息路径）。
+    const row = await deps.runStore.getRun(state.runId);
+    let commercial: CalcOutput | null = null;
+    if (row && row.commercialJson) {
+      try { commercial = JSON.parse(row.commercialJson) as CalcOutput; } catch { commercial = null; }
     }
-    return { status: "running", currentNode: "gate_b", wait: null, lastEvent: ev("gate_b", "human_decision", { decision: "continue" }) };
+    if (!commercial) {
+      interrupt<InterruptValue, ResumePayload>({ kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", node: "commercial_check", instructions: "请提供商业计算输入（采购价/MOQ/售价/尺寸重量/头程/佣金/履约/汇率）。" } satisfies InterruptValue);
+      return { status: "waiting_input", currentNode: "commercial_check", wait: { kind: "input", reasonCode: "COMMERCIAL_INPUT_REQUIRED", instructions: "请提供商业计算输入。", requestedAt: new Date().toISOString() }, lastEvent: ev("commercial_check", "waiting_human", { reason: "COMMERCIAL_INPUT_REQUIRED" }) };
+    }
+    return { status: "running", currentNode: "commercial_check", commercial, lastEvent: ev("commercial_check", "node_completed", { scenario: "baseline" }) };
+  };
+  const gateB: NodeFn = async (state) => {
+
+    const decision = interrupt<InterruptValue, ResumePayload>({ kind: "human_decision", reasonCode: "GATE_B", node: "gate_b", instructions: "Review commercial feasibility: content_ready / revise_product / needs_information / abandon." } satisfies InterruptValue);
+    const human = decision as HumanDecisionPayload;
+    const choice = human.kind === "human_decision" ? human.decision : "stop";
+    if (human.kind !== "human_decision" || choice === "stop" || choice === "abandon") {
+      return { status: "cancelled", currentNode: "cancel", wait: null, lastEvent: ev("gate_b", "human_decision", { decision: "abandon", note: human.note ?? null }) };
+    }
+    return { status: "running", currentNode: "gate_b", gateBChoice: choice, wait: null, lastEvent: ev("gate_b", "human_decision", { decision: choice, note: human.note ?? null }) };
   };
 
   const contentHandoff: NodeFn = async (state) => {
@@ -624,6 +643,17 @@ function mergeEvidenceRoute(state: GraphState): string {
 // Graph builder
 // ---------------------------------------------------------------------------
 
+function gateARoute(state: GraphState): string {
+  if (state.gateAChoice === "needs_information") return "assess_gaps";
+  return "supplier_research";
+}
+
+function gateBRoute(state: GraphState): string {
+  if (state.gateBChoice === "revise_product") return "product_fact_gate";
+  if (state.gateBChoice === "needs_information") return "commercial_check";
+  return "content_handoff";
+}
+
 export function buildGraph(deps: GraphDeps, checkpointer: BaseCheckpointSaver): ResearchGraph {
   const nodes = makeNodes(deps);
   const g = new StateGraph(GraphStateAnnotation);
@@ -666,11 +696,11 @@ export function buildGraph(deps: GraphDeps, checkpointer: BaseCheckpointSaver): 
   cond("detect_conflicts", detectConflictsRoute, ["revise_plan", "synthesize_market", "fail", "cancel"]);
   cond("revise_plan", terminalOr("dispatch_tool"), ["dispatch_tool", "fail", "cancel"]);
   cond("synthesize_market", terminalOr("gate_a"), ["gate_a", "fail", "cancel"]);
-  cond("gate_a", terminalOr("supplier_research"), ["supplier_research", "fail", "cancel"]);
+  cond("gate_a", gateARoute, ["supplier_research", "assess_gaps", "cancel", "fail"]);
   cond("supplier_research", terminalOr("product_fact_gate"), ["product_fact_gate", "fail", "cancel"]);
   cond("product_fact_gate", terminalOr("commercial_check"), ["commercial_check", "fail", "cancel"]);
   cond("commercial_check", terminalOr("gate_b"), ["gate_b", "fail", "cancel"]);
-  cond("gate_b", terminalOr("content_handoff"), ["content_handoff", "fail", "cancel"]);
+  cond("gate_b", gateBRoute, ["content_handoff", "product_fact_gate", "commercial_check", "cancel", "fail"]);
   cond("content_handoff", terminalOr("content_skills"), ["content_skills", "fail", "cancel"]);
   cond("content_skills", terminalOr("content_review"), ["content_review", "fail", "cancel"]);
   cond("content_review", terminalOr("complete"), ["complete", "fail", "cancel"]);
@@ -791,6 +821,9 @@ function initialInput(input: StartRunInput, budget: ResearchBudget): GraphState 
     lastValidation: null,
     lastEvent: null,
     retryMode: false,
+      gateAChoice: null,
+      gateBChoice: null,
+      commercial: null,
       activeToolEnvelope: null,
       evidenceV2: [],
       report: null,
@@ -834,6 +867,9 @@ function initialInputFromRun(state: ResearchRunState): GraphState {
     lastValidation: null,
     lastEvent: null,
     retryMode: false,
+      gateAChoice: null,
+      gateBChoice: null,
+      commercial: null,
       activeToolEnvelope: null,
       evidenceV2: [],
       report: null,
@@ -1104,6 +1140,7 @@ export class ResearchRunRunner {
       currentNode: patch.currentNode,
       planRevision: state.planRevision,
       ...(state.report ? { reportJson: JSON.stringify(state.report) } : {}),
+      ...(state.commercial ? { commercialJson: JSON.stringify(state.commercial) } : {}),
       automaticPlanRevisionCount: state.automaticPlanRevisionCount,
       events,
     });

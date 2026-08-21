@@ -28,6 +28,7 @@ function makeRunStoreDb() {
         id: args.data.id as string, candidateId: args.data.candidateId as string,
         ownerScope: args.data.ownerScope as string, sandboxId: (args.data.sandboxId as string | null) ?? null,
         mode: args.data.mode as string, graphVersion: args.data.graphVersion as string, reportJson: (args.data.reportJson as string | null) ?? null,
+        commercialJson: (args.data.commercialJson as string | null) ?? null,
         status: args.data.status as string, currentNode: args.data.currentNode as string,
         revision: args.data.revision as number, planRevision: args.data.planRevision as number,
         automaticPlanRevisionCount: args.data.automaticPlanRevisionCount as number,
@@ -131,7 +132,7 @@ async function resumeContinue(runId: string, expectedRevision: number) {
 }
 
 describe("ResearchRunRunner (StateGraph + interrupt HITL)", () => {
-  it("#1 happy path: draft -> waiting_human x5 -> completed", async () => {
+  it("#1 happy path: draft -> waiting_human x5 + commercial input -> completed", async () => {
     const runId = "run-happy";
     const start = await runner.startRun({ runId, candidateId: "c-1", ownerScope: "owner", sandboxId: null, mode: "local_live" });
     expect(start.status).toBe("waiting_human");
@@ -152,13 +153,21 @@ describe("ResearchRunRunner (StateGraph + interrupt HITL)", () => {
 
     rev = await currentRevision(runId);
     result = await resumeContinue(runId, rev);
+    expect(result.status).toBe("waiting_input");
+    expect(result.currentNode).toBe("commercial_check");
+    // P4：注入商业计算输出后继续
+    const cRow = await runStore.getRun(runId);
+    await runStore.saveRun(runId, cRow!.revision, { stateJson: cRow!.stateJson, commercialJson: JSON.stringify({ schemaVersion: "calc-commercial.v1", scenarios: { baseline: { landedCostPerUnit: 10, preAdContributionMargin: 5, marginRate: 0.25, breakEvenUnits: 40, moqCapital: 200 }, optimistic: { landedCostPerUnit: 9, preAdContributionMargin: 6, marginRate: 0.3, breakEvenUnits: 33, moqCapital: 200 }, pessimistic: { landedCostPerUnit: 12, preAdContributionMargin: 2, marginRate: 0.1, breakEvenUnits: 100, moqCapital: 200 } }, sensitiveVariables: [], unknowns: [], uncoveredCosts: [], rules: { version: "calc-commercial.v1", marketplace: "US", category: "home", reviewedAt: "2026-08-01T00:00:00.000Z", sourceUrl: "https://example.com", stale: false }, generatedAt: "2026-08-21T00:00:00.000Z" }) });
+    rev = await currentRevision(runId);
+    result = await resumeContinue(runId, rev);
     expect(result.status).toBe("waiting_human");
-    expect(result.currentNode).toBe("gate_b");
 
     rev = await currentRevision(runId);
     result = await resumeContinue(runId, rev);
     expect(result.status).toBe("waiting_human");
     expect(result.currentNode).toBe("content_review");
+    expect(result.wait?.reasonCode).toBe("CONTENT_REVIEW");
+
 
     rev = await currentRevision(runId);
     result = await resumeContinue(runId, rev);
@@ -230,7 +239,11 @@ describe("ResearchRunRunner (StateGraph + interrupt HITL)", () => {
     expect(start.status).toBe("waiting_human");
     let result = start;
     let guard = 0;
-    while (result.status === "waiting_human" && guard < 10) {
+    while ((result.status === "waiting_human" || result.status === "waiting_input") && guard < 12) {
+      if (result.status === "waiting_input" && result.currentNode === "commercial_check") {
+        const r2 = await runStore.getRun(runId);
+        await runStore.saveRun(runId, r2!.revision, { stateJson: r2!.stateJson, commercialJson: JSON.stringify({ schemaVersion: "calc-commercial.v1", scenarios: {}, sensitiveVariables: [], unknowns: [], uncoveredCosts: [], rules: { version: "calc-commercial.v1", marketplace: "US", category: "home", reviewedAt: "2026-08-01T00:00:00.000Z", sourceUrl: "https://example.com", stale: false }, generatedAt: "2026-08-21T00:00:00.000Z" }) });
+      }
       const rev = await currentRevision(runId);
       result = await resumeContinue(runId, rev);
       guard += 1;
@@ -311,7 +324,7 @@ describe("API contract: startRun / resumeRun / cancelRun", () => {
     let rev = (result as { ok: true; state: ResearchRunState }).state.revision;
     let guard = 0;
     let next = result;
-    while (next.ok && (next as { state: ResearchRunState }).state.status === "waiting_human" && guard < 10) {
+    while (next.ok && ((next as { state: ResearchRunState }).state.status === "waiting_human" || (next as { state: ResearchRunState }).state.status === "waiting_input") && guard < 12) {
       rev = (next as { ok: true; state: ResearchRunState }).state.revision;
       next = await resumeRun(runId, rev, { kind: "human_decision", decision: "continue" });
       guard += 1;

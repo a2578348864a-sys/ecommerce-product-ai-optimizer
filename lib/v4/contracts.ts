@@ -171,9 +171,9 @@ export type SideEffectJournalEntry = {
   createdAt: string;
 };
 
-/** resume 动作载荷（API 契约 D9）。 */
+/** resume 动作载荷（API 契约 D9）。decision 支持通用 continue/stop 与书内权威 Gate 选项（human-decision.schema）。 */
 export type ResumePayload =
-  | { kind: "human_decision"; decision: "continue" | "stop"; note?: string }
+  | { kind: "human_decision"; decision: "continue" | "stop" | "continue_sourcing" | "needs_information" | "abandon" | "content_ready" | "revise_product"; note?: string }
   | { kind: "input"; value: string }
   | { kind: "retry" };
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ResearchRunEvent, ResearchRunState } from "@/lib/v4/contracts";
-import { confirmFact, getFacts, getReport, getRun, resumeRun, revokeFact, type FactView } from "./api";
+import { confirmFact, getCommercial, getFacts, getReport, getRun, resumeRun, revokeFact, type FactView } from "./api";
 import { RunConsoleView } from "./RunConsoleView";
 import type { ReportViewLike } from "./api";
 import type { FactGateItem, FactGateCallbacks } from "./FactGatePanel";
@@ -16,6 +16,7 @@ export function RunConsoleClient({ runId }: { runId: string }) {
   const [events, setEvents] = useState<ResearchRunEvent[]>([]);
   const [report, setReport] = useState<ReportViewLike | null>(null);
   const [facts, setFacts] = useState<FactView[]>([]);
+  const [commercial, setCommercial] = useState<unknown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
 
@@ -33,6 +34,10 @@ export function RunConsoleClient({ runId }: { runId: string }) {
         setEvents(data.events ?? []);
         const reportData = (await getReport(runId).catch(() => null))?.report ?? null;
         setReport(reportData);
+        if (data.run.currentNode === "commercial_check" || data.run.currentNode === "gate_b") {
+          const commercialData = await getCommercial(runId).catch(() => null);
+          setCommercial(commercialData);
+        }
         setState("ready");
       } catch (err) {
         if (!silent) {
@@ -68,6 +73,21 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     onConflict: (item, payload) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await confirmFact(runId, { offerIdentity: identity.offerIdentity, variantKey: item.variantKey, field: item.field, value: item.value, status: "conflict", detail: { otherValue: payload.otherValue } }).catch(() => undefined); void refresh(true); })(); },
     onRevoke: (item, payload) => { void (async () => { const identity = supplierIdentityFromReport(report); if (!identity) return; await revokeFact(runId, identity.offerIdentity + "|" + item.variantKey + "|" + item.field, payload.reason).catch(() => undefined); void refresh(true); })(); },
   }), [runId, report, refresh]);
+
+  const gateB = useMemo(() => {
+    if (!run || run.currentNode !== "gate_b") return null;
+    return {
+      revision: run.revision,
+      actor: "owner",
+      rulesStale: false,
+      onSubmit: (payload: { option: string; reason?: string }) => {
+        void (async () => {
+          await resumeRun(runId, run.revision, { kind: "human_decision", decision: payload.option as never, note: payload.reason }).catch(() => undefined);
+          void refresh(true);
+        })();
+      },
+    };
+  }, [run, runId, refresh]);
 
   const retry = useCallback(async () => {
     if (!run) return;
@@ -119,5 +139,5 @@ export function RunConsoleClient({ runId }: { runId: string }) {
     );
   }
 
-  return <RunConsoleView run={run} events={events} report={report} facts={facts as unknown as FactGateItem[]} factCallbacks={factCallbacks} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
+  return <RunConsoleView run={run} events={events} report={report} facts={facts as unknown as FactGateItem[]} factCallbacks={factCallbacks} commercial={{ output: commercial }} gateB={gateB as never} onRefresh={() => void refresh(false)} onRetry={() => void retry()} />;
 }
