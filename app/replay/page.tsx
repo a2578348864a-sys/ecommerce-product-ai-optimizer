@@ -5,6 +5,7 @@ import path from "node:path";
 import { parseBundle, type ReplayBundle } from "@/lib/v4/replay/schema";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { formatDateTime } from "@/components/v4/labels";
+import { resolveDisplayTitle, resolveReplayMetrics } from "@/components/v4/replay-resolvers";
 
 export const dynamic = "force-dynamic";
 
@@ -17,28 +18,18 @@ type ReplayPreview = {
   bundleId: string;
   capturedAt: string;
   title: string;
+  /** 以下统计全部由真实 bundle 动态派生（禁止硬编码 74/5/11）。 */
+  events: number;
+  gates: number;
+  checks: number;
   scanOk: boolean;
   redactionEntries: number;
+  hashPrefix: string;
 };
-
-function displayTitle(bundle: ReplayBundle): string {
-  const data =
-    bundle.data && typeof bundle.data === "object" && !Array.isArray(bundle.data)
-      ? (bundle.data as Record<string, unknown>)
-      : {};
-  const candidate =
-    data.candidate && typeof data.candidate === "object" && !Array.isArray(data.candidate)
-      ? (data.candidate as Record<string, unknown>)
-      : null;
-  if (candidate) {
-    const name = candidate.name ?? candidate.productName ?? candidate.title ?? candidate.id;
-    if (typeof name === "string" && name.trim()) return name;
-  }
-  return bundle.bundleId;
-}
 
 /**
  * 读母案例 bundle（只读，D4 落盘 data/replay-bundles/）。目录缺失/损坏 → 空列表，绝不伪造。
+ * 统计通过 resolveReplayMetrics 动态派生（时间线步骤/人工决策/Content Guard/脱敏/hash 前 12 位）。
  */
 async function loadReplayBundleList(): Promise<ReplayPreview[]> {
   const dir = path.join(process.cwd(), "data", "replay-bundles");
@@ -61,12 +52,17 @@ async function loadReplayBundleList(): Promise<ReplayPreview[]> {
     const parsed = parseBundle(raw);
     if (!parsed.ok) continue;
     const bundle = parsed.bundle;
+    const metrics = resolveReplayMetrics(bundle);
     previews.push({
       bundleId: bundle.bundleId,
       capturedAt: bundle.capturedAt,
-      title: displayTitle(bundle),
-      scanOk: bundle.redactionReport.scanOk,
-      redactionEntries: bundle.redactionReport.entries.length,
+      title: resolveDisplayTitle(bundle),
+      events: metrics.events,
+      gates: metrics.gates,
+      checks: metrics.checks,
+      scanOk: metrics.scanOk,
+      redactionEntries: metrics.redactionEntries,
+      hashPrefix: metrics.bundleSha256.slice(0, 12),
     });
   }
 
@@ -76,6 +72,13 @@ async function loadReplayBundleList(): Promise<ReplayPreview[]> {
 
 export default async function ReplayListPage() {
   const bundles = await loadReplayBundleList();
+
+  const totalBundles = bundles.length;
+  const totalEvents = bundles.reduce((sum, b) => sum + b.events, 0);
+  const totalGates = bundles.reduce((sum, b) => sum + b.gates, 0);
+  const totalChecks = bundles.reduce((sum, b) => sum + b.checks, 0);
+  const totalRedactions = bundles.reduce((sum, b) => sum + b.redactionEntries, 0);
+  const allScanOk = bundles.length > 0 && bundles.every((b) => b.scanOk);
 
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
@@ -95,7 +98,50 @@ export default async function ReplayListPage() {
             <WorkspaceMobileNav />
           </div>
 
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
+            {totalBundles > 0 ? (
+              <section
+                data-testid="replay-collection-summary"
+                aria-label="真实脱敏案例库概览"
+                className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+              >
+                <p className="eyebrow">Replay 案例库</p>
+                <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
+                  真实脱敏案例库概览
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  以下数字由已导出落盘的真实案例 bundle 动态推导，全部只读；不构成对当前市场或经营现况的承诺。
+                </p>
+                <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <dt className="text-[11px] font-medium text-slate-500">可用案例</dt>
+                    <dd className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">{totalBundles}</dd>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <dt className="text-[11px] font-medium text-slate-500">时间线步骤合计</dt>
+                    <dd className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">{totalEvents}</dd>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <dt className="text-[11px] font-medium text-slate-500">人工决策合计</dt>
+                    <dd className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">{totalGates}</dd>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <dt className="text-[11px] font-medium text-slate-500">Content Guard 合计</dt>
+                    <dd className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">{totalChecks}</dd>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                    <dt className="text-[11px] font-medium text-slate-500">脱敏字段合计 / 扫描</dt>
+                    <dd className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">
+                      {totalRedactions}
+                      <span className="ml-1.5 align-middle text-xs font-semibold text-slate-500">
+                        · {allScanOk ? "全部通过" : "部分未通过"}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
+
             <section
               data-testid="replay-list"
               className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
@@ -124,9 +170,32 @@ export default async function ReplayListPage() {
                         <p className="mt-1 text-xs text-slate-500">
                           回放时点：{formatDateTime(b.capturedAt)}
                         </p>
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          脱敏 {b.redactionEntries} 项 · {b.scanOk ? "扫描通过" : "扫描未通过"} · b#{b.bundleId}
-                        </p>
+                        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-500 sm:grid-cols-3">
+                          <div>
+                            <dt>时间线步骤</dt>
+                            <dd className="font-semibold tabular-nums text-slate-700">{b.events}</dd>
+                          </div>
+                          <div>
+                            <dt>人工决策</dt>
+                            <dd className="font-semibold tabular-nums text-slate-700">{b.gates}</dd>
+                          </div>
+                          <div>
+                            <dt>Content Guard</dt>
+                            <dd className="font-semibold tabular-nums text-slate-700">{b.checks}</dd>
+                          </div>
+                          <div>
+                            <dt>脱敏字段</dt>
+                            <dd className="font-semibold tabular-nums text-slate-700">{b.redactionEntries}</dd>
+                          </div>
+                          <div>
+                            <dt>脱敏扫描</dt>
+                            <dd className="font-semibold text-slate-700">{b.scanOk ? "通过" : "未通过"}</dd>
+                          </div>
+                          <div>
+                            <dt>bundle</dt>
+                            <dd className="break-all font-semibold text-slate-700">{b.hashPrefix}…</dd>
+                          </div>
+                        </dl>
                       </Link>
                     </li>
                   ))}

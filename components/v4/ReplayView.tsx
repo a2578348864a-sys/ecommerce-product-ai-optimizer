@@ -5,336 +5,57 @@
  *
  * 只注入母 bundle（只读不可变），渲染：
  *   - 「真实脱敏历史案例回放」标识与 capturedAt / 时效提示
+ *   - 摘要层（回放链路概览）：由真实 bundle 动态派生的统计（时间线步骤 / 人工决策 /
+ *     Content Guard / 脱敏字段 / 扫描结果 / bundle hash 前缀），让用户在时间线前先看到完整链路概览
  *   - 时间线（暂停 / 快进 / Evidence 点击展开，见 ReplayTimeline）
  *   - Gate 决策历史记录（只读，不可修改）
  *   - Content Guard 结果展示（只读）
  *
  * 不伪造网络/进度：进度仅由 ReplayTimeline 的离散步骤推进，无连续进度条；
  * 不发起任何请求，也不写入任何运行数据（Visitor 的 Gate 选择/草稿不在本组件）。
+ *
+ * 说明：时间线/证据/Gate/Guard/统计等纯派生函数在 ./replay-resolvers（服务端与客户端共用），
+ * 此处再导出以保持既有导入路径（测试与页面均从 "./ReplayView" 引用）向后兼容。
  */
 import type { ReplayBundle } from "@/lib/v4/replay/schema";
 import { formatDateTime } from "./labels";
+import { ReplayTimeline, formatStepTime } from "./ReplayTimeline";
+
+export {
+  GATE_NAME_LABELS,
+  GATE_DECISION_LABELS,
+  REPLAY_STALE_DAYS,
+  formatGateName,
+  formatGateDecision,
+  isReplayStale,
+  resolveContentChecks,
+  resolveDisplayTitle,
+  resolveEvidenceIndex,
+  resolveGates,
+  resolveMeta,
+  resolveReplayMetrics,
+  resolveTimelineSteps,
+} from "./replay-resolvers";
+export type {
+  ReplayContentCheck,
+  ReplayGateRecord,
+  ReplayMeta,
+  ReplayMetrics,
+} from "./replay-resolvers";
+
 import {
-  ReplayTimeline,
-  formatStepTime,
-  type ReplayEvidence,
-  type ReplayTimelineStep,
-} from "./ReplayTimeline";
-
-export type ReplayGateRecord = {
-  gate: string;
-  decision: string;
-  reason?: string;
-  actor?: string;
-  decidedAt?: string;
-};
-
-export type ReplayContentCheck = {
-  title: string;
-  status: string;
-  findings?: string[];
-};
-
-export type ReplayMeta = {
-  bundleId: string;
-  sourceRunId: string;
-  exportedAt: string;
-  capturedAt: string;
-  mode: string;
-  allowlistVersion: string;
-  bundleSha256: string;
-  filesCount: number;
-  scanOk: boolean;
-  redactionEntries: number;
-};
-
-/** Gate 名称展示（事件 node → 中文门禁名）。 */
-export const GATE_NAME_LABELS: Record<string, string> = {
-  build_plan: "研究计划",
-  gate_a: "门禁 A",
-  gate_b: "门禁 B",
-  product_fact_gate: "产品事实门禁",
-  content_review: "内容审核",
-  complete: "完成",
-};
-
-/** Gate 决策展示（canonical 决策词 → 中文 + 原词回溯）。 */
-export const GATE_DECISION_LABELS: Record<string, string> = {
-  continue: "继续",
-  continue_sourcing: "继续研究",
-  needs_information: "需信息",
-  abandon: "放弃",
-  content_ready: "内容就绪",
-  revise_product: "修改商品",
-  approve_export: "批准导出",
-  request_revision: "要求修订",
-  reject_asset: "拒绝资产",
-};
-
-export function formatGateName(gate: string): string {
-  return GATE_NAME_LABELS[gate] ?? gate;
-}
-
-export function formatGateDecision(decision: string): string {
-  const label = GATE_DECISION_LABELS[decision];
-  return label && label !== decision ? `${label}（${decision}）` : decision;
-}
-
-/** 判定回放数据是否超时效（默认 30 天）。 */
-export const REPLAY_STALE_DAYS = 30;
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function asString(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return fallback;
-}
-
-function asBool(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") return value;
-  return fallback;
-}
-
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((v): v is string => typeof v === "string");
-}
-
-/** 时间线步骤：优先 data.timeline，回退到 data.events（ResearchRunEvent 形状）。 */
-export function resolveTimelineSteps(bundle: ReplayBundle): ReplayTimelineStep[] {
-  const data = asRecord(bundle.data) ?? {};
-  const steps: ReplayTimelineStep[] = [];
-
-  const timeline = Array.isArray(data.timeline) ? data.timeline : [];
-  for (const raw of timeline) {
-    if (typeof raw === "string") {
-      steps.push({ id: raw, at: "", title: raw });
-      continue;
-    }
-    const r = asRecord(raw);
-    if (!r) continue;
-    const id = asString(r.id ?? r.stepId ?? r.seq, "s" + steps.length);
-    const at = asString(r.at ?? r.ts ?? r.createdAt);
-    const title = asString(r.title ?? r.label ?? r.name ?? r.kind, "步骤");
-    steps.push({
-      id,
-      at,
-      title,
-      detail: asString(r.detail ?? r.summary),
-      kind: asString(r.kind),
-      evidenceRefs: resolveEvidenceRefs(r.evidenceRefs),
-    });
-  }
-  if (steps.length > 0) return steps;
-
-  // 回退：从结构化事件派生（仅用公开字段，不含思维链）。
-  const events = Array.isArray(data.events) ? data.events : [];
-  for (const raw of events) {
-    const r = asRecord(raw);
-    if (!r) continue;
-    const seq = asString(r.seq, "");
-    const title = asString(r.type ?? "事件");
-    const node = asString(r.node);
-    steps.push({
-      id: seq ? "ev-" + seq : "ev-" + steps.length,
-      at: asString(r.createdAt),
-      title: node && node !== title ? title + " · " + node : title,
-      kind: node,
-      detail: summarizeEventPayload(asString(r.payloadJson)),
-    });
-  }
-  return steps;
-}
-
-function summarizeEventPayload(payloadJson: string): string {
-  if (!payloadJson) return "";
-  try {
-    const parsed = JSON.parse(payloadJson) as Record<string, unknown>;
-    for (const key of ["reason", "message", "decision", "summary", "note", "label"]) {
-      const value = parsed[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return "";
-  } catch {
-    return "";
-  }
-}
-
-function resolveEvidenceRefs(value: unknown): ReplayEvidence[] {
-  if (!Array.isArray(value)) return [];
-  const out: ReplayEvidence[] = [];
-  for (const raw of value) {
-    if (typeof raw === "string") {
-      out.push({ id: raw });
-      continue;
-    }
-    const r = asRecord(raw);
-    if (!r) continue;
-    const id = asString(r.id ?? r.evidenceId ?? r.ref);
-    if (!id) continue;
-    out.push({
-      id,
-      label: asString(r.label ?? r.title ?? r.kind),
-      sourceUrl: asString(r.sourceUrl ?? r.url),
-      capturedAt: asString(r.capturedAt),
-      summary: asString(r.summary ?? r.snippet),
-    });
-  }
-  return out;
-}
-
-/** 顶层证据索引（供步骤只带 id 时展开引用）。 */
-export function resolveEvidenceIndex(bundle: ReplayBundle): ReplayEvidence[] {
-  const data = asRecord(bundle.data) ?? {};
-  return resolveEvidenceRefs(data.evidenceRefs);
-}
-
-/** Gate 决策历史记录（只读）。 */
-export function resolveGates(bundle: ReplayBundle): ReplayGateRecord[] {
-  const data = asRecord(bundle.data) ?? {};
-  const gates = Array.isArray(data.gates) ? data.gates : [];
-  const out: ReplayGateRecord[] = [];
-  for (const raw of gates) {
-    const r = asRecord(raw);
-    if (!r) continue;
-    out.push({
-      gate: asString(r.gate ?? r.name ?? "gate"),
-      decision: asString(r.decision ?? r.option),
-      reason: asString(r.reason ?? r.note),
-      actor: asString(r.actor),
-      decidedAt: asString(r.decidedAt ?? r.at ?? r.createdAt),
-    });
-  }
-  if (out.length > 0) return out;
-  // v4.0.1：数据无顶层 gates 时，从实际 bundle events 的 human_decision 派生（真实决策映射）。
-  const events = Array.isArray(data.events) ? data.events : [];
-  for (const raw of events) {
-    const r = asRecord(raw);
-    if (!r || asString(r.type) !== "human_decision") continue;
-    let payload: Record<string, unknown> = {};
-    try {
-      const parsed = JSON.parse(asString(r.payloadJson)) as unknown;
-      const rec = asRecord(parsed);
-      if (rec) payload = rec;
-    } catch {
-      // 无法解析的 payload 不阻断：仍记录事件本身。
-    }
-    out.push({
-      gate: asString(r.node, "gate"),
-      decision: asString(payload.decision ?? payload.choice),
-      reason: asString(payload.note ?? payload.reason),
-      actor: asString(payload.actor),
-      decidedAt: asString(r.createdAt),
-    });
-  }
-  return out;
-}
-
-/** Content Guard 结果（只读）。 */
-export function resolveContentChecks(bundle: ReplayBundle): ReplayContentCheck[] {
-  const data = asRecord(bundle.data) ?? {};
-  const content = asRecord(data.content);
-  if (!content) return [];
-
-  const candidates = Array.isArray(content.guards)
-    ? content.guards
-    : Array.isArray(content.checks)
-      ? content.checks
-      : Array.isArray(content.results)
-        ? content.results
-        : [];
-  const out: ReplayContentCheck[] = [];
-  for (const raw of candidates) {
-    if (typeof raw === "string") {
-      out.push({ title: raw, status: "记录" });
-      continue;
-    }
-    const r = asRecord(raw);
-    if (!r) continue;
-    out.push({
-      title: asString(r.title ?? r.name ?? r.check ?? "检查项"),
-      status: asString(r.status ?? r.result ?? "记录"),
-      findings: asStringArray(r.findings ?? r.messages ?? r.reasons),
-    });
-  }
-  if (out.length === 0) {
-    // v4.0.1：从 content.images.checks（VisualFactCheckResult）与 content.listing 派生。
-    const listing = asRecord(content.listing);
-    if (listing) {
-      out.push({
-        title: "Listing 内容守卫",
-        status: listing.blocked === true ? "blocked" : "通过",
-        findings: asStringArray(listing.issues),
-      });
-    }
-    const images = asRecord(content.images);
-    const visual = asRecord(images && images.checks);
-    if (visual) {
-      const overall = asString(visual.overallStatus);
-      const summary = asString(visual.summary);
-      out.push({
-        title: "图片视觉事实检查",
-        status: overall === "blocked" ? "blocked" : overall || "记录",
-        findings: summary ? [summary] : [],
-      });
-      if (Array.isArray(visual.checks)) {
-        for (const rawCheck of visual.checks) {
-          const c = asRecord(rawCheck);
-          if (!c) continue;
-          out.push({
-            title: "视觉检查 · " + asString(c.check ?? c.title ?? "检查项"),
-            status: c.pass === false ? "失败" : c.pass === true ? "通过" : "记录",
-            findings: asStringArray(c.issues),
-          });
-        }
-      }
-    }
-  }
-  return out;
-}
-
-/** 展示标题（母 case 名），回退到 bundleId。 */
-export function resolveDisplayTitle(bundle: ReplayBundle): string {
-  const data = asRecord(bundle.data) ?? {};
-  const candidate = asRecord(data.candidate);
-  if (candidate) {
-    const name = asString(candidate.name ?? candidate.productName ?? candidate.title ?? candidate.id);
-    if (name) return name;
-  }
-  return bundle.bundleId;
-}
-
-/** 回放时效判定：capturedAt 距今超过 REPLAY_STALE_DAYS 天。 */
-export function isReplayStale(
-  capturedAt: string,
-  now: Date = new Date(),
-  staleDays = REPLAY_STALE_DAYS,
-): boolean {
-  if (!capturedAt) return false;
-  const t = new Date(capturedAt).getTime();
-  if (Number.isNaN(t)) return false;
-  return now.getTime() - t > staleDays * 24 * 60 * 60 * 1000;
-}
-
-export function resolveMeta(bundle: ReplayBundle): ReplayMeta {
-  return {
-    bundleId: bundle.bundleId,
-    sourceRunId: bundle.sourceRunId,
-    exportedAt: bundle.exportedAt,
-    capturedAt: bundle.capturedAt,
-    mode: bundle.mode,
-    allowlistVersion: bundle.allowlistVersion,
-    bundleSha256: bundle.manifest.bundleSha256,
-    filesCount: bundle.manifest.files.length,
-    scanOk: bundle.redactionReport.scanOk,
-    redactionEntries: bundle.redactionReport.entries.length,
-  };
-}
+  REPLAY_STALE_DAYS,
+  formatGateDecision,
+  formatGateName,
+  isReplayStale,
+  resolveContentChecks,
+  resolveDisplayTitle,
+  resolveEvidenceIndex,
+  resolveGates,
+  resolveMeta,
+  resolveReplayMetrics,
+  resolveTimelineSteps,
+} from "./replay-resolvers";
 
 export type ReplayViewProps = {
   bundle: ReplayBundle;
@@ -343,7 +64,7 @@ export type ReplayViewProps = {
 };
 
 /**
- * ReplayView：组合时间线 / Gate 决策 / Content Guard / 标识与时效。
+ * ReplayView：组合时间线 / Gate 决策 / Content Guard / 标识与时效 + 摘要层。
  * 纯展示：props 注入 bundle；播放为本地控制；不发起网络，不写入任何数据。
  */
 export function ReplayView({ bundle, now }: ReplayViewProps) {
@@ -353,6 +74,7 @@ export function ReplayView({ bundle, now }: ReplayViewProps) {
   const evidenceIndex = resolveEvidenceIndex(bundle);
   const gates = resolveGates(bundle);
   const checks = resolveContentChecks(bundle);
+  const metrics = resolveReplayMetrics(bundle);
   const stale = isReplayStale(meta.capturedAt, now);
 
   return (
@@ -388,6 +110,71 @@ export function ReplayView({ bundle, now }: ReplayViewProps) {
           </p>
         ) : null}
       </header>
+
+      {/* 摘要层：链路概览（真实派生统计，只读，不写数据） */}
+      <section
+        data-testid="replay-summary"
+        aria-label="回放链路概览"
+        className="rounded-2xl border border-slate-200 bg-white p-4"
+      >
+        <h2 className="text-sm font-bold text-slate-900">回放链路概览</h2>
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          以下数字由本脱敏案例 bundle 动态推导：反映一次完整研究链路的节点数、人工参与点与脱敏结果。
+        </p>
+        <dl className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+          <div
+            data-testid="replay-metric-events"
+            className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+          >
+            <dt className="text-[11px] font-medium text-slate-500">时间线步骤</dt>
+            <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{metrics.events}</dd>
+          </div>
+          <div
+            data-testid="replay-metric-gates"
+            className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+          >
+            <dt className="text-[11px] font-medium text-slate-500">人工决策</dt>
+            <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{metrics.gates}</dd>
+          </div>
+          <div
+            data-testid="replay-metric-checks"
+            className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+          >
+            <dt className="text-[11px] font-medium text-slate-500">Content Guard</dt>
+            <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{metrics.checks}</dd>
+          </div>
+          <div
+            data-testid="replay-metric-redaction"
+            className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+          >
+            <dt className="text-[11px] font-medium text-slate-500">脱敏字段</dt>
+            <dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-900">{metrics.redactionEntries}</dd>
+          </div>
+          <div
+            data-testid="replay-metric-scan"
+            className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+          >
+            <dt className="text-[11px] font-medium text-slate-500">脱敏扫描</dt>
+            <dd
+              className={
+                "mt-0.5 text-lg font-bold tabular-nums " +
+                (metrics.scanOk ? "text-slate-900" : "text-amber-600")
+              }
+            >
+              {metrics.scanOk ? "通过" : "未通过"}
+            </dd>
+          </div>
+          <div
+            data-testid="replay-metric-hash"
+            className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+          >
+            <dt className="text-[11px] font-medium text-slate-500">bundle hash</dt>
+            <dd className="mt-0.5 text-sm font-bold tabular-nums text-slate-900 break-all">
+              {metrics.bundleSha256.slice(0, 12)}…
+            </dd>
+          </div>
+        </dl>
+      </section>
 
       {/* 脱敏说明 */}
       <section
