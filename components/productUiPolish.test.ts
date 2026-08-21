@@ -19,11 +19,11 @@ describe("Product UI polish v2", () => {
     expect(loginSource).toContain("AI 跨境商品研究工作台");
     expect(loginSource).toContain("轻选工作台");
     expect(loginSource).toContain('data-testid="login-product-journey"');
-    expect(loginSource).toMatch(/number:\s*"01",\s*label:\s*"发现商品"/);
-    expect(loginSource).toMatch(/number:\s*"02",\s*label:\s*"研究优先级"/);
-    expect(loginSource).toMatch(/number:\s*"03",\s*label:\s*"AI 商品研究"/);
-    expect(loginSource).toMatch(/number:\s*"04",\s*label:\s*"人工决策"/);
-    expect(loginSource).toMatch(/number:\s*"05",\s*label:\s*"按需创作"/);
+    // 对齐 V3 正式发布文案（commit aba883f「align login flow copy with V3 product model」）；断言意图=登录页保留五步旅程
+    expect(loginSource).toMatch(/number:\s*"01",\s*label:\s*"导入真实数据"/);
+    expect(loginSource).toMatch(/number:\s*"02",\s*label:\s*"商品研究"/);
+    expect(loginSource).toMatch(/number:\s*"03",\s*label:\s*"AI 整理证据"/);
+    expect(loginSource).toMatch(/number:\s*"04",\s*label:\s*"人工决定"/);
     expect(loginSource).not.toContain("跨境电商运营 Agent 工作台");
     expect(loginSource).not.toContain("商品分析完成");
     expect(loginSource).not.toContain("AI 复核通过");

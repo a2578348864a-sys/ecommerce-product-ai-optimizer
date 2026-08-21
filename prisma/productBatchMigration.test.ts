@@ -156,7 +156,9 @@ describe("ProductBatch V1 migration", () => {
     expect(schema).toMatch(/model ProductDiscoverySelection \{/u);
     expect(schema).toMatch(/originProductBatchItemId\s+String\?\s+@unique/u);
     expect(schema).toMatch(/onDelete: Restrict/u);
-    expect(schema).not.toMatch(/\brevisionReason\b|\brevision\s+Int\b/u);
+    // 守卫范围收窄到 ProductBatch 模型块（V4 新增的 V4ResearchRun.revision 是 researchRun.v4 契约字段，不属 V1 边界）
+    const productBatchBlock = schema.match(/model ProductBatch \{[\s\S]*?\n\}/u)?.[0] ?? schema;
+    expect(productBatchBlock).not.toMatch(/\brevisionReason\b|\brevision\s+Int\b/u);
   });
 
   it("adds the three new tables without destructive SQL", () => {

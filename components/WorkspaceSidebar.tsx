@@ -43,12 +43,6 @@ export const workspaceNavGroups: ReadonlyArray<{
       { label: "Image Studio", href: "/image-studio", icon: Images },
     ],
   },
-  ...(process.env.NEXT_PUBLIC_QX_V4_GRAPH_ENABLED === "1" || process.env.NEXT_PUBLIC_QX_V4_GRAPH_ENABLED === "true"
-    ? [{
-        label: "V4 研究图",
-        items: [{ label: "运行控制台", href: "/v4/runs", icon: Sparkles }],
-      }]
-    : []),
 ] as const;
 
 export const workspaceNavItems: ReadonlyArray<SidebarNavItem> = workspaceNavGroups.flatMap((group) => group.items);
@@ -86,6 +80,11 @@ function currentProductLabel(productName: string) {
     // Ordinary product titles are not URLs and should remain visible.
   }
   return productName;
+}
+
+function isV4NavEnabled() {
+  const v = process.env.NEXT_PUBLIC_QX_V4_GRAPH_ENABLED;
+  return v === "1" || v === "true";
 }
 
 function NavLink({
@@ -198,6 +197,12 @@ export function WorkspaceSidebar() {
               ))}
             </section>
           ))}
+          {isV4NavEnabled() && (
+            <section className="mt-3 border-t border-slate-100 pt-3">
+              <p className="px-2 pb-1 text-xs font-semibold text-teal-700">V4 研究图</p>
+              <NavLink item={{ label: "运行控制台", href: "/v4/runs", icon: Sparkles }} pathname={pathname} search={search} />
+            </section>
+          )}
         </nav>
       </div>
     </aside>
