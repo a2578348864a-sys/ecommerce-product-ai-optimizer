@@ -72,6 +72,10 @@ data/demo-product-batches/
 # Local env backups (may contain real secrets — never commit)
 .env.local.bak-*
 .env.local.bak-corrupt-*
+# Env files by environment (currently absent — prevent accidental commits)
+.env.production
+.env.development
+.env.test
 # Local/demo security gate test artifacts
 data/demo-sandbox.test-system-recovery3.json
 # Private AI image drafts and request ledger
