@@ -87,7 +87,7 @@ export function ReplayDemoChoicePanel({
     return () => {
       alive = false;
     };
-  }, [bundleId, initialStatus]);
+  }, [bundleId, initialStatus, guested]);
 
   async function save() {
     setSaving(true);
