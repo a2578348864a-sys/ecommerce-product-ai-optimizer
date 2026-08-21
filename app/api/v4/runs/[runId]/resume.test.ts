@@ -1,8 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { NextRequest } from "next/server";
+
+type MockAuthCtx = { mode: "owner" | "demo"; token: string; demoAccessId?: string; isActive?: boolean; isExpired?: boolean; remainingAiCalls?: number };
 
 const mocks = vi.hoisted(() => ({
   flagEnabled: true,
-  authCtx: { mode: "owner" as const, token: "t" },
+  authCtx: { mode: "owner", token: "t" } as MockAuthCtx,
   authOk: true,
   runRow: { id: "r1", candidateId: "cand-1", ownerScope: "owner", sandboxId: null, mode: "local_live", graphVersion: "research-graph.v4.1", status: "waiting_human", currentNode: "gate_a", revision: 3, planRevision: 0, automaticPlanRevisionCount: 0, stateJson: "{}", eventsJson: "[]", createdAt: new Date(), updatedAt: new Date() },
   graphResult: { ok: true, state: { runId: "r1", status: "running" }, events: [] },
@@ -38,7 +41,7 @@ vi.mock("@/lib/server/db", () => ({ prisma: {} }));
 import { POST as resumePOST } from "./resume/route";
 import { POST as cancelPOST } from "./cancel/route";
 
-const req = (body: unknown) => new Request("http://localhost/api/v4/runs/r1/resume", { method: "POST", body: JSON.stringify(body) });
+const req = (body: unknown) => new NextRequest("http://localhost/api/v4/runs/r1/resume", { method: "POST", body: JSON.stringify(body) });
 
 describe("/api/v4/runs/[runId]/resume", () => {
   beforeEach(() => {

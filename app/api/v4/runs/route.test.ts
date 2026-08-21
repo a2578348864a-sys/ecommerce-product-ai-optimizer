@@ -1,8 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { NextRequest } from "next/server";
+
+type MockAuthCtx = { mode: "owner" | "demo"; token: string; demoAccessId?: string; isActive?: boolean; isExpired?: boolean; remainingAiCalls?: number };
 
 const mocks = vi.hoisted(() => ({
   flagEnabled: true,
-  authCtx: { mode: "owner" as const, token: "t" },
+  authCtx: { mode: "owner", token: "t" } as MockAuthCtx,
   authOk: true,
   candidate: { id: "cand-1", name: "测试候选" },
   startResult: { ok: true, state: { runId: "r1", status: "waiting_human" }, events: [] },
@@ -45,24 +48,24 @@ describe("/api/v4/runs", () => {
 
   it("flag off → 404 v4_graph_disabled", async () => {
     mocks.flagEnabled = false;
-    const res = await POST(new Request("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
+    const res = await POST(new NextRequest("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toMatchObject({ ok: false, error: { code: "v4_graph_disabled" } });
   });
 
   it("unauthenticated → 401", async () => {
     mocks.authOk = false;
-    const res = await POST(new Request("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
+    const res = await POST(new NextRequest("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
     expect(res.status).toBe(401);
   });
 
   it("missing candidateId → 400", async () => {
-    const res = await POST(new Request("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({}) }));
+    const res = await POST(new NextRequest("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({}) }));
     expect(res.status).toBe(400);
   });
 
   it("owner creates run → 201 with run state", async () => {
-    const res = await POST(new Request("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
+    const res = await POST(new NextRequest("http://localhost/api/v4/runs", { method: "POST", body: JSON.stringify({ candidateId: "cand-1" }) }));
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.ok).toBe(true);
@@ -70,7 +73,7 @@ describe("/api/v4/runs", () => {
   });
 
   it("GET lists runs for owner scope", async () => {
-    const res = await GET(new Request("http://localhost/api/v4/runs"));
+    const res = await GET(new NextRequest("http://localhost/api/v4/runs"));
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true, runs: [] });
   });
