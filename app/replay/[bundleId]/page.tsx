@@ -47,7 +47,7 @@ export default async function ReplayDetailPage({ params }: ReplayDetailPageProps
           <WorkspaceMobileNav />
           <div className="mt-4">
             {bundle ? (
-              <ReplayView bundle={bundle} />
+              <ReplayView bundle={bundle} now={new Date()} />
             ) : (
               <section
                 data-testid="replay-unavailable"

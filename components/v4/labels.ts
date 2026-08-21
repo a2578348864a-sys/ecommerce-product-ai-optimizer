@@ -157,7 +157,10 @@ export function statusToneClass(status: ResearchRunStatus): string {
   return STATUS_TONE_CLASSES[statusTone(status)];
 }
 
-/** 格式化为本地日期时间（zh-CN）。 */
+/** 展示时区（固定，SSR/客户端一致；避免跨时区 hydration 漂移）。 */
+export const DISPLAY_TIME_ZONE = "Asia/Shanghai";
+
+/** 格式化为固定时区（Asia/Shanghai）日期时间（zh-CN）。 */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";
   const date = new Date(value);
@@ -165,6 +168,7 @@ export function formatDateTime(value: string | null | undefined): string {
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(date);
 }
 

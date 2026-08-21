@@ -4,6 +4,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseBundle, type ReplayBundle } from "@/lib/v4/replay/schema";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
+import { formatDateTime } from "@/components/v4/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -121,7 +122,7 @@ export default async function ReplayListPage() {
                       >
                         <h3 className="text-base font-semibold text-slate-800">{b.title}</h3>
                         <p className="mt-1 text-xs text-slate-500">
-                          回放时点：{b.capturedAt ? new Date(b.capturedAt).toLocaleString("zh-CN") : "—"}
+                          回放时点：{formatDateTime(b.capturedAt)}
                         </p>
                         <p className="mt-1 text-[11px] text-slate-400">
                           脱敏 {b.redactionEntries} 项 · {b.scanOk ? "扫描通过" : "扫描未通过"} · b#{b.bundleId}

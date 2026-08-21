@@ -48,6 +48,38 @@ export type ReplayMeta = {
   redactionEntries: number;
 };
 
+/** Gate 名称展示（事件 node → 中文门禁名）。 */
+export const GATE_NAME_LABELS: Record<string, string> = {
+  build_plan: "研究计划",
+  gate_a: "门禁 A",
+  gate_b: "门禁 B",
+  product_fact_gate: "产品事实门禁",
+  content_review: "内容审核",
+  complete: "完成",
+};
+
+/** Gate 决策展示（canonical 决策词 → 中文 + 原词回溯）。 */
+export const GATE_DECISION_LABELS: Record<string, string> = {
+  continue: "继续",
+  continue_sourcing: "继续研究",
+  needs_information: "需信息",
+  abandon: "放弃",
+  content_ready: "内容就绪",
+  revise_product: "修改商品",
+  approve_export: "批准导出",
+  request_revision: "要求修订",
+  reject_asset: "拒绝资产",
+};
+
+export function formatGateName(gate: string): string {
+  return GATE_NAME_LABELS[gate] ?? gate;
+}
+
+export function formatGateDecision(decision: string): string {
+  const label = GATE_DECISION_LABELS[decision];
+  return label && label !== decision ? `${label}（${decision}）` : decision;
+}
+
 /** 判定回放数据是否超时效（默认 30 天）。 */
 export const REPLAY_STALE_DAYS = 30;
 
@@ -178,6 +210,28 @@ export function resolveGates(bundle: ReplayBundle): ReplayGateRecord[] {
       decidedAt: asString(r.decidedAt ?? r.at ?? r.createdAt),
     });
   }
+  if (out.length > 0) return out;
+  // v4.0.1：数据无顶层 gates 时，从实际 bundle events 的 human_decision 派生（真实决策映射）。
+  const events = Array.isArray(data.events) ? data.events : [];
+  for (const raw of events) {
+    const r = asRecord(raw);
+    if (!r || asString(r.type) !== "human_decision") continue;
+    let payload: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(asString(r.payloadJson)) as unknown;
+      const rec = asRecord(parsed);
+      if (rec) payload = rec;
+    } catch {
+      // 无法解析的 payload 不阻断：仍记录事件本身。
+    }
+    out.push({
+      gate: asString(r.node, "gate"),
+      decision: asString(payload.decision ?? payload.choice),
+      reason: asString(payload.note ?? payload.reason),
+      actor: asString(payload.actor),
+      decidedAt: asString(r.createdAt),
+    });
+  }
   return out;
 }
 
@@ -207,6 +261,39 @@ export function resolveContentChecks(bundle: ReplayBundle): ReplayContentCheck[]
       status: asString(r.status ?? r.result ?? "记录"),
       findings: asStringArray(r.findings ?? r.messages ?? r.reasons),
     });
+  }
+  if (out.length === 0) {
+    // v4.0.1：从 content.images.checks（VisualFactCheckResult）与 content.listing 派生。
+    const listing = asRecord(content.listing);
+    if (listing) {
+      out.push({
+        title: "Listing 内容守卫",
+        status: listing.blocked === true ? "blocked" : "通过",
+        findings: asStringArray(listing.issues),
+      });
+    }
+    const images = asRecord(content.images);
+    const visual = asRecord(images && images.checks);
+    if (visual) {
+      const overall = asString(visual.overallStatus);
+      const summary = asString(visual.summary);
+      out.push({
+        title: "图片视觉事实检查",
+        status: overall === "blocked" ? "blocked" : overall || "记录",
+        findings: summary ? [summary] : [],
+      });
+      if (Array.isArray(visual.checks)) {
+        for (const rawCheck of visual.checks) {
+          const c = asRecord(rawCheck);
+          if (!c) continue;
+          out.push({
+            title: "视觉检查 · " + asString(c.check ?? c.title ?? "检查项"),
+            status: c.pass === false ? "失败" : c.pass === true ? "通过" : "记录",
+            findings: asStringArray(c.issues),
+          });
+        }
+      }
+    }
   }
   return out;
 }
@@ -251,7 +338,8 @@ export function resolveMeta(bundle: ReplayBundle): ReplayMeta {
 
 export type ReplayViewProps = {
   bundle: ReplayBundle;
-  now?: Date;
+  /** 服务端渲染时固定快照（stale 判定用；页面传入，保证 SSR/客户端一致）。 */
+  now: Date;
 };
 
 /**
@@ -334,7 +422,7 @@ export function ReplayView({ bundle, now }: ReplayViewProps) {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-800">
-                      {g.gate} · {g.decision}
+                      {formatGateName(g.gate)} · {formatGateDecision(g.decision)}
                     </p>
                     {g.reason ? (
                       <p className="mt-0.5 break-words text-xs leading-5 text-slate-600">

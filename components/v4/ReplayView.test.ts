@@ -92,7 +92,7 @@ describe("ReplayView", () => {
     expect(html).toContain('data-testid="replay-gates"');
     expect(html).toContain("Gate 决策记录（历史，不可修改）");
     expect(html).toContain('data-testid="replay-gate-record"');
-    expect(html).toContain("gate_a");
+  expect(html).toContain("门禁 A");
     expect(html).toContain("proceed");
     expect(html).toContain("信息充分，进入供应商验证");
     expect(html).toContain("owner");
