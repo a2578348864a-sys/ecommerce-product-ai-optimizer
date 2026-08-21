@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   const demoAccessId = g.context.demoAccessId ?? "";
   const choice: ReplayDemoChoice = { bundleId, gateA: gateA || undefined, gateB: gateB || undefined, note: note || undefined, at: new Date().toISOString() };
   saveDemoChoice(BASE, demoAccessId, choice);
-  return NextResponse.json({ ok: true, choice: getDemoChoice(BASE, demoAccessId, bundleId) });
+  return NextResponse.json({ ok: true, ...(getDemoChoice(BASE, demoAccessId, bundleId) ?? choice) });
 }
 
 export async function DELETE(request: NextRequest) {
