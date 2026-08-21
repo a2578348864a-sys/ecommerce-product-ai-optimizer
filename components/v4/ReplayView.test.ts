@@ -145,9 +145,11 @@ describe("ReplayView resolvers", () => {
     expect(resolveContentChecks(makeBundle()).map((c) => c.title)).toEqual(["禁用词", "事实一致性"]);
   });
 
-  it("resolves a display title from candidate, falling back to bundleId", () => {
+  it("resolves a display title from candidate business name, falling back to honest empty state", () => {
     expect(resolveDisplayTitle(makeBundle())).toBe("便携保温杯");
-    expect(resolveDisplayTitle(makeBundle({ data: {} }))).toBe("bundle_1");
+    // 无业务名时不回退为 bundle id / 候选 UUID（硬门禁：不得以 UUID 为主标题）。
+    expect(resolveDisplayTitle(makeBundle({ data: {} }))).toBe("未命名案例");
+    expect(resolveDisplayTitle(makeBundle({ data: { candidate: { id: "91a60705-3cbd-46ff-888a-9a111eeaf64d" } } }))).toBe("未命名案例");
   });
 
   it("detects replay staleness only when capturedAt is old", () => {

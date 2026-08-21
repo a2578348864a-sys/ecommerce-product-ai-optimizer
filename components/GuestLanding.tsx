@@ -126,13 +126,13 @@ export function GuestLanding({ runtime, featured }: { runtime: HomeRuntime; feat
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="linear-kicker">现有内容工具</p>
+              <p className="linear-kicker">现有内容工具 · 历史演示</p>
               <h2 id="guest-tools-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                金标演示 · 完整研究案例回放
+                金标演示（历史案例）
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                无需密码、无需注册：一键进入 THERMOS 金标演示，查看采集证据、VOC 分析、
-                研究结论与 Listing / Image 创作全流程。演示回放不消耗额度。
+                历史遗留的金标演示回放；上方「查看真实脱敏案例」为唯一主体验入口。如需进入历史演示，
+                无需密码、无需注册：一键进入 THERMOS 金标演示回放（不消耗额度）。
               </p>
             </div>
             <button
@@ -143,7 +143,7 @@ export function GuestLanding({ runtime, featured }: { runtime: HomeRuntime; feat
               data-testid="guest-start-button"
             >
               {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-              {loading ? "正在进入…" : "体验金标演示"}
+              {loading ? "正在进入…" : "进入历史演示"}
               {!loading ? <ArrowRight className="size-4" aria-hidden="true" /> : null}
             </button>
           </div>

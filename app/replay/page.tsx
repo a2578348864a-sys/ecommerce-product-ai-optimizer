@@ -5,7 +5,11 @@ import path from "node:path";
 import { parseBundle, type ReplayBundle } from "@/lib/v4/replay/schema";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 import { formatDateTime } from "@/components/v4/labels";
-import { resolveDisplayTitle, resolveReplayMetrics } from "@/components/v4/replay-resolvers";
+import {
+  resolveBusinessFields,
+  resolveDisplayTitle,
+  resolveReplayMetrics,
+} from "@/components/v4/replay-resolvers";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +22,13 @@ type ReplayPreview = {
   bundleId: string;
   capturedAt: string;
   title: string;
+  /** 业务字段（无 → 诚实空态）。 */
+  productName: string;
+  keyword: string;
+  market: string;
+  conclusion: string;
+  risk: string;
+  thumbnail: string;
   /** 以下统计全部由真实 bundle 动态派生（禁止硬编码 74/5/11）。 */
   events: number;
   gates: number;
@@ -29,7 +40,7 @@ type ReplayPreview = {
 
 /**
  * 读母案例 bundle（只读，D4 落盘 data/replay-bundles/）。目录缺失/损坏 → 空列表，绝不伪造。
- * 统计通过 resolveReplayMetrics 动态派生（时间线步骤/人工决策/Content Guard/脱敏/hash 前 12 位）。
+ * 业务字段 + 统计均通过 resolveBusinessFields / resolveReplayMetrics 动态派生。
  */
 async function loadReplayBundleList(): Promise<ReplayPreview[]> {
   const dir = path.join(process.cwd(), "data", "replay-bundles");
@@ -53,10 +64,17 @@ async function loadReplayBundleList(): Promise<ReplayPreview[]> {
     if (!parsed.ok) continue;
     const bundle = parsed.bundle;
     const metrics = resolveReplayMetrics(bundle);
+    const business = resolveBusinessFields(bundle);
     previews.push({
       bundleId: bundle.bundleId,
       capturedAt: bundle.capturedAt,
       title: resolveDisplayTitle(bundle),
+      productName: business.productName,
+      keyword: business.keyword,
+      market: business.market,
+      conclusion: business.conclusion,
+      risk: business.risk,
+      thumbnail: business.thumbnail,
       events: metrics.events,
       gates: metrics.gates,
       checks: metrics.checks,
@@ -166,11 +184,45 @@ export default async function ReplayListPage() {
                         data-testid={"replay-preview-" + b.bundleId}
                         className="block rounded-xl border border-slate-200 bg-slate-50/60 p-4 transition hover:border-teal-300 hover:bg-teal-50/40"
                       >
-                        <h3 className="text-base font-semibold text-slate-800">{b.title}</h3>
-                        <p className="mt-1 text-xs text-slate-500">
-                          回放时点：{formatDateTime(b.capturedAt)}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h3 className="text-base font-semibold text-slate-800">{b.title}</h3>
+                            <p className="mt-1 text-xs text-slate-500">
+                              回放时点：{formatDateTime(b.capturedAt)}
+                            </p>
+                          </div>
+                          {b.thumbnail ? (
+                            <div
+                              role="img"
+                              aria-label={b.productName || "案例缩略图"}
+                              className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 bg-slate-100 bg-cover bg-center"
+                              style={{ backgroundImage: 'url("' + b.thumbnail + '")' }}
+                            />
+                          ) : (
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-[10px] text-slate-300">
+                              无图
+                            </div>
+                          )}
+                        </div>
+                        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-slate-500 sm:grid-cols-3">
+                          <div>
+                            <dt>关键词</dt>
+                            <dd className="break-words font-semibold text-slate-700">{b.keyword || "未提供"}</dd>
+                          </div>
+                          <div>
+                            <dt>市场</dt>
+                            <dd className="font-semibold text-slate-700">{b.market || "未提供"}</dd>
+                          </div>
+                          <div>
+                            <dt>风险</dt>
+                            <dd className="break-words font-semibold text-slate-700">{b.risk || "未提供"}</dd>
+                          </div>
+                        </dl>
+                        <p className="mt-1.5 break-words text-[11px] leading-5 text-slate-500">
+                          <span className="font-medium text-slate-600">结论：</span>
+                          {b.conclusion || "未提供"}
                         </p>
-                        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-500 sm:grid-cols-3">
+                        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-slate-100 pt-2 text-[11px] text-slate-500 sm:grid-cols-3">
                           <div>
                             <dt>时间线步骤</dt>
                             <dd className="font-semibold tabular-nums text-slate-700">{b.events}</dd>

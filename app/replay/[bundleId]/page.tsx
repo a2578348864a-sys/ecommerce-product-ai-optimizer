@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parseBundle, verifyBundleHash, type ReplayBundle } from "@/lib/v4/replay/schema";
 import { ReplayView } from "@/components/v4/ReplayView";
+import { ReplayDemoChoicePanel } from "@/components/v4/ReplayDemoChoicePanel";
 import { WorkspaceMobileNav, WorkspaceSidebar } from "@/components/WorkspaceSidebar";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +46,12 @@ export default async function ReplayDetailPage({ params }: ReplayDetailPageProps
         <WorkspaceSidebar />
         <div className="min-w-0 max-w-4xl">
           <WorkspaceMobileNav />
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
             {bundle ? (
-              <ReplayView bundle={bundle} now={new Date()} />
+              <>
+                <ReplayView bundle={bundle} now={new Date()} />
+                <ReplayDemoChoicePanel bundleId={bundle.bundleId} />
+              </>
             ) : (
               <section
                 data-testid="replay-unavailable"
