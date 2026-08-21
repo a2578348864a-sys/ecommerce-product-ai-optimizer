@@ -27,6 +27,7 @@ function baseInput(over: Partial<CalcInput> = {}): CalcInput {
     purchasePrice: { value: 15, currency: "CNY", kind: "source_value", capturedAt: "2026-08-20T00:00:00.000Z" },
     moq: 100,
     salePrice: { value: 12, currency: "USD" },
+    category: "kitchen",
     dims: { lengthCm: 30, widthCm: 20, heightCm: 10 },
     weightKg: 1.5,
     freightPerKg: { value: 20, currency: "CNY" },
@@ -176,8 +177,61 @@ describe("calcCommercial — deterministic Calculator (calc-commercial.v1)", () 
     expect(res.output.scenarios.baseline.landedCostPerUnit).toBe(5.2);
   });
 
+  it("缺失: commissionRate=null -> BLOCKED_MISSING_INPUT（费率 unknown）", () => {
+    const res = calcCommercial(baseInput({ commissionRate: null }), { now: NOW, rulesMeta: rules() });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe("BLOCKED_MISSING_INPUT");
+      expect(res.missing).toContain("commissionRate");
+    }
+  });
+
+  it("缺失: fulfillmentFee=null -> BLOCKED_MISSING_INPUT（费率 unknown）", () => {
+    const res = calcCommercial(baseInput({ fulfillmentFee: null }), { now: NOW, rulesMeta: rules() });
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe("BLOCKED_MISSING_INPUT");
+      expect(res.missing).toContain("fulfillmentFee");
+    }
+  });
+
+  it("category=null -> unknowns 含 category（不阻断）", () => {
+    const res = calcCommercial(baseInput({ category: null }), { now: NOW, rulesMeta: rules() });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.output.unknowns).toContain("category");
+    expect(res.output.unknowns).not.toContain("freight_volumetric_weight_unavailable");
+  });
+
+  it("有效期窗口 stale: 在 [effectiveDate, effectiveEndDate] 内不 stale；窗口外/未生效/过期 -> RULES_STALE", () => {
+    // 在窗口内（且 reviewedAt 很旧）-> 仍 ok（窗口优先，覆盖 reviewedAt 回退）
+    const within = calcCommercial(baseInput(), {
+      now: NOW,
+      rulesMeta: rules({ reviewedAt: advance(-200), effectiveDate: advance(-10), effectiveEndDate: advance(10) }),
+    });
+    expect(within.ok).toBe(true);
+    if (within.ok) expect(within.output.rules.stale).toBe(false);
+
+    // 未生效（now < effectiveDate）-> RULES_STALE
+    const notYet = calcCommercial(baseInput(), {
+      now: NOW,
+      rulesMeta: rules({ effectiveDate: advance(5), effectiveEndDate: advance(30) }),
+    });
+    expect(notYet.ok).toBe(false);
+    if (!notYet.ok) expect(notYet.code).toBe("RULES_STALE");
+
+    // 已过期（now > effectiveEndDate）-> RULES_STALE
+    const expired = calcCommercial(baseInput(), {
+      now: NOW,
+      rulesMeta: rules({ effectiveDate: advance(-30), effectiveEndDate: advance(-5) }),
+    });
+    expect(expired.ok).toBe(false);
+    if (!expired.ok) expect(expired.code).toBe("RULES_STALE");
+  });
+
+
   it("unknown 不补全: 缺失项进入 unknowns，不伪造填充为‘已知’", () => {
-    const res = calcCommercial(baseInput({ dims: null }), { now: NOW, rulesMeta: rules({ category: "" }) });
+    const res = calcCommercial(baseInput({ dims: null, category: null }), { now: NOW, rulesMeta: rules() });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.output.unknowns).toEqual(
