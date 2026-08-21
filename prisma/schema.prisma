@@ -191,3 +191,26 @@ model V4SideEffectJournal {
   @@unique([runId, idempotencyKey])
   @@index([runId])
 }
+
+model V4FactRecord {
+  id                String   @id @default(cuid())
+  runId             String
+  candidateId       String
+  offerIdentity     String
+  variantKey        String
+  field             String
+  value             String
+  status            String   @default("confirmed")
+  confirmationMethod String?
+  claimRefsJson     String   @default("[]")
+  documentRefsJson  String   @default("[]")
+  actor             String
+  revision          Int
+  revokedByRevision Int?
+  detailJson        String   @default("{}")
+  createdAt         DateTime @default(now())
+
+  @@unique([runId, offerIdentity, variantKey, field, revision])
+  @@index([runId, offerIdentity, variantKey, field])
+  @@index([runId, revision])
+}
