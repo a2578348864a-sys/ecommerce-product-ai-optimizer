@@ -1,18 +1,17 @@
 /**
- * Public Replay 演示沙盒选择（门禁 6）：访客在自己的 sandbox 保存 Gate 决策/备注，
+ * Public Replay 演示沙盒选择（门禁 6）：访客在自己的 sandbox 保存 Gate A/Gate B 决策与备注，
  * 与母案例 bundle 完全隔离；刷新保持；DELETE 重置。
  *
- * 安全：demoAccessId/bundleId 强白名单格式；文件写入 tmp+rename 原子替换；
- * 目录为受控运行数据（.gitignore）。
+ * 契约（以 UI 面板为准，整包表单）：每 demoAccessId × bundleId 一条记录 { gateA?, gateB?, note?, at }。
  */
 
-import { mkdirSync, readFileSync, existsSync, writeFileSync, renameSync, rmSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdirSync, readFileSync, existsSync, writeFileSync, renameSync } from "node:fs";
+import { join } from "node:path";
 
 export type ReplayDemoChoice = {
   bundleId: string;
-  gateId: string;
-  decision: string;
+  gateA?: string;
+  gateB?: string;
   note?: string;
   at: string;
 };
@@ -33,7 +32,7 @@ function fileFor(baseDir: string, demoAccessId: string): string {
   return join(dirFor(baseDir), id + ".json");
 }
 
-function readChoices(baseDir: string, demoAccessId: string): ReplayDemoChoice[] {
+function readAll(baseDir: string, demoAccessId: string): ReplayDemoChoice[] {
   const file = fileFor(baseDir, demoAccessId);
   if (!existsSync(file)) return [];
   try {
@@ -44,36 +43,30 @@ function readChoices(baseDir: string, demoAccessId: string): ReplayDemoChoice[] 
   }
 }
 
-function writeChoices(baseDir: string, demoAccessId: string, choices: ReplayDemoChoice[]): void {
+function writeAll(baseDir: string, demoAccessId: string, choices: ReplayDemoChoice[]): void {
   const file = fileFor(baseDir, demoAccessId);
-  const dir = dirFor(baseDir);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dirFor(baseDir), { recursive: true });
   const tmp = file + ".tmp";
   writeFileSync(tmp, JSON.stringify(choices, null, 2), "utf8");
   renameSync(tmp, file);
 }
 
-/** 读取该访客对某 bundle 的选择（无 → []）。 */
-export function getDemoChoices(baseDir: string, demoAccessId: string, bundleId: string): ReplayDemoChoice[] {
-  const safe = safeId(bundleId) ?? "";
-  return readChoices(baseDir, demoAccessId).filter((c) => c.bundleId === safe);
+export function getDemoChoice(baseDir: string, demoAccessId: string, bundleId: string): ReplayDemoChoice | null {
+  const safe = safeId(bundleId);
+  if (!safe) return null;
+  return readAll(baseDir, demoAccessId).find((c) => c.bundleId === safe) ?? null;
 }
 
-/** 保存（upsert by bundleId+gateId）。 */
-export function saveDemoChoice(baseDir: string, demoAccessId: string, choice: ReplayDemoChoice): ReplayDemoChoice[] {
-  const prev = readChoices(baseDir, demoAccessId);
-  const next = prev.filter((c) => !(c.bundleId === choice.bundleId && c.gateId === choice.gateId));
-  next.push(choice);
-  writeChoices(baseDir, demoAccessId, next);
-  return getDemoChoices(baseDir, demoAccessId, choice.bundleId);
+export function saveDemoChoice(baseDir: string, demoAccessId: string, choice: ReplayDemoChoice): ReplayDemoChoice {
+  const prev = readAll(baseDir, demoAccessId).filter((c) => c.bundleId !== choice.bundleId);
+  prev.push(choice);
+  writeAll(baseDir, demoAccessId, prev);
+  return choice;
 }
 
-/** 重置该 bundle 的全部选择。 */
-export function resetDemoChoices(baseDir: string, demoAccessId: string, bundleId: string): ReplayDemoChoice[] {
-  const safe = safeId(bundleId) ?? "";
-  const prev = readChoices(baseDir, demoAccessId).filter((c) => c.bundleId !== safe);
-  writeChoices(baseDir, demoAccessId, prev);
-  return [];
+export function resetDemoChoice(baseDir: string, demoAccessId: string, bundleId: string): void {
+  const safe = safeId(bundleId);
+  if (!safe) return;
+  const prev = readAll(baseDir, demoAccessId).filter((c) => c.bundleId !== safe);
+  writeAll(baseDir, demoAccessId, prev);
 }
-
-export const REPLAY_DEMO_CHOICES_DIR = "data/replay-demo-choices";
