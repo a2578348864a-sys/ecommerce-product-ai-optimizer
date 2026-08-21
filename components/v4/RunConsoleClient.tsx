@@ -38,13 +38,40 @@ function mapFactViews(facts: FactView[]): FactGateItem[] {
 /** 已到达内容阶段的节点（在此抓取 Listing/图片数据；未达 → null）。 */
 const CONTENT_READY_NODES = new Set(["content_handoff", "content_skills", "content_review", "complete"]);
 
+/** API 内容包 → C 端 ContentView 适配（images.checks 在 API 是 VisualFactCheckResult 对象，C 端用数组+状态）。 */
+function toContentView(raw: unknown): ContentView {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const images = (r.images ?? null) as Record<string, unknown> | null;
+  const checkRaw = images?.checks as Record<string, unknown> | null | undefined;
+  const checks = Array.isArray(checkRaw?.checks)
+    ? (checkRaw.checks as { check?: string; pass?: boolean; evidence?: string; issues?: unknown[] }[]).map((c) => ({
+        check: String(c.check ?? ""),
+        pass: c.pass === true,
+        evidence: String(c.evidence ?? ""),
+        issues: Array.isArray(c.issues) ? c.issues.map((x) => String(x)) : [],
+      }))
+    : undefined;
+  return {
+    listing: (r.listing ?? null) as ContentView extends { listing?: infer L } ? L : never,
+    images: images
+      ? {
+          overallStatus: (checkRaw?.overallStatus as "ok" | "needs_human" | "blocked" | undefined) ?? undefined,
+          summary: typeof checkRaw?.summary === "string" ? checkRaw.summary : undefined,
+          checks,
+        }
+      : null,
+    review: (r.review ?? null) as ContentView extends { review?: infer R } ? R : never,
+  };
+}
+
 /** GET /api/v4/runs/[runId]/content → 内容包（404 = 尚未生成，返回 null）。 */
 async function getContent(runId: string): Promise<ContentView> {
   const res = await fetch("/api/v4/runs/" + encodeURIComponent(runId) + "/content", { cache: "no-store" });
   if (res.status === 404) return null;
   if (!res.ok) return null;
   const body = (await res.json()) as { content?: unknown };
-  return (body.content as unknown) as ContentView;
+  return toContentView(body.content);
 }
 
 /** Run Console 数据壳：拉取详情、管理加载/错误态，并驱动交互刷新。 */
