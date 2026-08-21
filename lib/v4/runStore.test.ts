@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 
-import { ResearchRunStore, RunStoreError, assertValidStatusTransition, createPrismaRunStore, listRuns, __setRunPrismaForTest, type ResearchRunDb } from "@/lib/v4/runStore";
+import { ResearchRunStore, RunStoreError, assertValidStatusTransition, createPrismaRunStore, listRuns, parseState, __setRunPrismaForTest, type ResearchRunDb } from "@/lib/v4/runStore";
 import { RESEARCH_GRAPH_VERSION, type ResearchRunState } from "@/lib/v4/contracts";
 
 let root = "";
@@ -49,6 +49,21 @@ describe("ResearchRunStore (V4ResearchRun prisma-backed + CAS)", () => {
   function store(): ResearchRunStore {
     return new ResearchRunStore(db as unknown as ResearchRunDb);
   }
+
+  it("createRun persists a parseable draft state (Lead E2E regression)", async () => {
+    const store = createPrismaRunStore() as unknown as ResearchRunStore;
+    await store.createRun({ id: "run-draft-persist", candidateId: "cand-x", ownerScope: "owner", sandboxId: null, mode: "local_live" });
+    const row = await store.getRun("run-draft-persist");
+    expect(row).not.toBeNull();
+    expect(row!.stateJson).not.toBe("{}");
+    const state = parseState(row!.stateJson);
+    expect(state).not.toBeNull();
+    expect(state!.schemaVersion).toBe("researchRun.v4");
+    expect(state!.status).toBe("draft");
+    expect(state!.revision).toBe(0);
+    expect(state!.budget.maxCost).toBe(10);
+    expect(state!.currentNode).toBe("load_context");
+  });
 
   it("createRun -> draft, revision 0, graphVersion default", async () => {
     const s = store();

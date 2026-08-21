@@ -178,6 +178,22 @@ export type ResumePayload =
   | { kind: "retry" };
 
 /** 状态合法转换（简化判定表；终态不可再写）。 */
+/** 默认预算（确定性；与 graph.initialBudget 同源，避免循环依赖）。 */
+export function defaultResearchBudget(): ResearchBudget {
+  return {
+    maxWallClockMs: 120_000,
+    maxBrowserSteps: 100,
+    maxLlmTokens: 100_000,
+    maxImageCalls: 20,
+    maxCost: 10,
+    currency: "USD",
+    usedBrowserSteps: 0,
+    usedLlmTokens: 0,
+    usedImageCalls: 0,
+    usedCost: 0,
+  };
+}
+
 export function isTerminalStatus(status: ResearchRunStatus): boolean {
   return status === "completed" || status === "cancelled" || status === "failed_terminal";
 }

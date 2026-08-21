@@ -30,6 +30,7 @@ import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 
 import {
   RESEARCH_RUN_SCHEMA_VERSION,
+  defaultResearchBudget,
   isTerminalStatus,
   type ResearchBudget,
   type ResearchRunError,
@@ -115,18 +116,7 @@ export type GraphDeps = {
 };
 
 export function initialBudget(): ResearchBudget {
-  return {
-    maxWallClockMs: 120_000,
-    maxBrowserSteps: 100,
-    maxLlmTokens: 100_000,
-    maxImageCalls: 20,
-    maxCost: 10,
-    currency: "USD",
-    usedBrowserSteps: 0,
-    usedLlmTokens: 0,
-    usedImageCalls: 0,
-    usedCost: 0,
-  };
+  return defaultResearchBudget();
 }
 
 function ev(

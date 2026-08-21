@@ -12,6 +12,8 @@ import "server-only";
 
 import {
   RESEARCH_GRAPH_VERSION,
+  RESEARCH_RUN_SCHEMA_VERSION,
+  defaultResearchBudget,
   type ResearchRunEvent,
   type ResearchRunNode,
   type ResearchRunState,
@@ -98,6 +100,35 @@ export type CreateRunInput = {
   graphVersion?: string;
 };
 
+function draftState(input: CreateRunInput): ResearchRunState {
+  const now = new Date().toISOString();
+  return {
+    schemaVersion: RESEARCH_RUN_SCHEMA_VERSION,
+    runId: input.id,
+    candidateId: input.candidateId,
+    ownerScope: input.ownerScope,
+    sandboxId: input.sandboxId ?? null,
+    mode: input.mode === "public_replay" ? "public_replay" : "local_live",
+    status: "draft",
+    currentNode: "load_context",
+    revision: 0,
+    planRevision: 0,
+    automaticPlanRevisionCount: 0,
+    activeQuestionId: null,
+    activeToolCallId: null,
+    evidenceRevision: 0,
+    factRevision: null,
+    policyPackVersion: null,
+    budget: defaultResearchBudget(),
+    wait: null,
+    checkpoint: null,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+  };
+}
+
 export type SaveStatePatch = {
   stateJson: string;
   status?: ResearchRunStatus;
@@ -128,7 +159,8 @@ export class ResearchRunStore {
         revision: 0,
         planRevision: 0,
         automaticPlanRevisionCount: 0,
-        stateJson: "{}",
+        // Lead 集成修复（E2E 发现）：createRun 必须持久化合法 draft ResearchRunState（runExisting 依赖初始状态）。
+        stateJson: JSON.stringify(draftState(input)),
         eventsJson: "[]",
       },
     });

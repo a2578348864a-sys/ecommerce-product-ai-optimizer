@@ -10,6 +10,7 @@
 import "server-only";
 
 import path from "node:path";
+import fs from "node:fs";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 
@@ -35,6 +36,10 @@ export function checkpointDbPath(runId: string, baseDir?: string): string {
 
 /** 打开（或创建）一个 SqliteSaver checkpoint DB。 */
 export function openCheckpoint(dbPath: string): CheckpointHandle {
+  const dir = path.dirname(dbPath);
+  if (dir && dir !== ".") {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   const saver = SqliteSaver.fromConnString(dbPath);
   const rawSaver = saver as unknown as { db?: { close(): void } };
   return {
