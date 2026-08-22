@@ -1,0 +1,31 @@
+[
+  {
+    "candidateId": "91a60705",
+    "group": "needs",
+    "productName": "Kitchen Storage",
+    "marketplace": "US",
+    "summary": "市场研究报告（1 条已验证证据，1 项缺口）。",
+    "gap": "工具未返回结果（no_results）",
+    "gapReason": "no recorded fixture for inputHash=10fa62e4f20d193f548942652456d7b05b3e9a6169a331a4493a3e7a9a5d5c8e",
+    "evidence": [
+      {
+        "type": "sellersprite",
+        "entity": "Kitchen Storage",
+        "fields": []
+      }
+    ],
+    "listingTitle": "stainless steel - red - home",
+    "listingPoints": [
+      "Material: stainless steel\nColor: red",
+      "Material: stainless steel. Color: red."
+    ],
+    "imgOverall": "blocked",
+    "imgReasons": [
+      "无法确认是不是同一个商品",
+      "无法确认产品结构",
+      "没有识别出颜色",
+      "无法确认数量"
+    ],
+    "runCount": 14
+  }
+]

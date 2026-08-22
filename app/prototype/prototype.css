@@ -1,0 +1,141 @@
+/* 工作台原型（本地 Owner 视觉样板）——品控核验台：纸白台面 / 墨绿印台 / 琥珀待办 / 炭字 */
+:root {
+  --paper: #F6F5F2;
+  --ink: #24272B;
+  --green: #174A3A;
+  --green-soft: #E4EDE8;
+  --amber: #B07C1E;
+  --amber-soft: #F7EDDA;
+  --slate: #5F6B7C;
+  --rose: #8C3A2B;
+  --line: #DCD9D2;
+  --card: #FFFFFF;
+}
+
+.proto {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.proto-display {
+  font-family: 'Source Han Serif SC', 'Noto Serif SC', 'Songti SC', SimSun, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* 结论贴纸：撕边、微转、斜影（唯一 signature） */
+.sticker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+  border-radius: 0.35rem 0.55rem 0.4rem 0.5rem;
+  transform: rotate(-2deg);
+  box-shadow: 2px 3px 0 rgba(36, 39, 43, 0.18);
+}
+.sticker::after {
+  content: '';
+  position: absolute;
+  right: -3px; top: -3px;
+  width: 9px; height: 9px;
+  background: var(--paper);
+  clip-path: polygon(0 0, 100% 40%, 40% 100%);
+}
+.sticker-green { background: var(--green); }
+.sticker-amber { background: var(--amber); }
+.sticker-blue { background: var(--slate); }
+.sticker-rose { background: var(--rose); }
+
+/* 主按钮：墨绿实心，方形刀口 */
+.proto-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.3rem;
+  background: var(--green);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: 0.5rem 0.7rem 0.5rem 0.3rem;
+  box-shadow: 3px 4px 0 rgba(23, 74, 58, 0.22);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.proto-btn:hover { transform: translateY(-1px); box-shadow: 4px 6px 0 rgba(23,74,58,0.25); }
+.proto-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.proto-btn-sub {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem; font-weight: 600; font-size: 0.85rem;
+  border: 1px solid var(--line); background: #fff; color: var(--ink);
+  border-radius: 0.45rem 0.6rem 0.45rem 0.3rem;
+}
+
+/* 商品占位图：灰底 + 高光线稿（纸袋/货箱 + 容器剪影） */
+.proto-thumb {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(145deg, #ECEAE4, #E2E0D8);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem 0.75rem 0.5rem 0.4rem;
+  overflow: hidden;
+}
+.proto-thumb svg { width: 62%; height: 62%; opacity: 0.75; }
+.proto-thumb .thumb-cap {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 0.2rem 0.4rem; font-size: 0.62rem; color: #8A877E;
+  background: rgba(255,255,255,0.65); border-top: 1px dashed var(--line);
+  text-align: center;
+}
+
+/* 结构线：检查单 */
+.proto-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem 0.9rem 0.7rem 0.5rem;
+  box-shadow: 0 1px 0 rgba(36,39,43,0.04);
+}
+
+/* 模块标题：编码 = 序号圆（业务顺序真实存在） */
+.proto-module-head {
+  display: flex; align-items: center; gap: 0.6rem;
+}
+.proto-module-no {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 999px;
+  background: var(--green-soft); color: var(--green);
+  font-size: 0.75rem; font-weight: 700;
+}
+
+/* 工作组小标 */
+.proto-group-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.5rem;
+}
+
+/* 底部导航（390）：两项 */
+.proto-tabbar {
+  display: none;
+}
+@media (max-width: 640px) {
+  .proto-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0;
+    background: #fff; border-top: 1px solid var(--line);
+    padding: 0.35rem 0 0.5rem;
+    justify-content: space-around;
+    z-index: 40;
+  }
+  .proto-tabbar a {
+    display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+    font-size: 0.7rem; color: var(--slate); padding: 0.2rem 1rem;
+    border-radius: 0.4rem;
+  }
+  .proto-tabbar a.active { color: var(--green); font-weight: 700; }
+  .proto-bottom-pad { padding-bottom: 5.2rem; }
+}
