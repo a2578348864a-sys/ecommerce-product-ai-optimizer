@@ -169,9 +169,10 @@ function conversionResult(
   return {
     candidateId: candidate.id,
     created,
-    // F1：加入候选池后回到研究池（主链：发现商品 → 研究池 → 开始研究 → Research Workbench）
+    // 轮 8：未转候选回到研究池的唯一合法交接出口——必须携带本次候选的精确 id，
+    // 由服务端单一出口生成并 encodeURIComponent；客户端不得二次拼装或猜测。
     destination: "research",
-    destinationUrl: `/opportunity-candidates`,
+    destinationUrl: `/opportunity-candidates?view=startable&candidateId=${encodeURIComponent(candidate.id)}`,
     sourceMeta,
   };
 }

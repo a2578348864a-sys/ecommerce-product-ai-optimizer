@@ -37,6 +37,40 @@ import {
   deriveResearchHistoryStatus,
 } from "@/lib/taskResearchHistoryPresentation";
 import { hasFormalHumanDecision } from "@/lib/taskWorkflowSummary";
+import { collectPagedTasks, deriveProductProjectGroup, type ProductProjectGroup, type ProductProjectGroupView } from "@/lib/researchLifecycle";
+
+/** 轮 6：/research 与工作台共用的纯视图工具（需要我处理 / AI 研究中 / 全部）。 */
+export type ResearchViewItem = {
+  id: string;
+  decisionStatus: DecisionStatus;
+  result: unknown;
+  oneLineSummary: string;
+};
+
+export type ResearchGroupTabValue = "needs" | "researching" | "";
+
+export function deriveResearchViewTabs(): Array<{ value: ResearchGroupTabValue; label: string }> {
+  return [
+    { value: "needs", label: "需要我处理" },
+    { value: "researching", label: "AI 研究中" },
+    { value: "", label: "全部" },
+  ];
+}
+
+export function deriveResearchViewGroups<T extends ResearchViewItem>(
+  items: readonly T[],
+  aiRunStatusById: Readonly<Record<string, string>>,
+): Array<{ item: T; view: ProductProjectGroupView }> {
+  return items.map((item) => ({
+    item,
+    view: deriveProductProjectGroup({
+      aiRunStatus: aiRunStatusById[item.id],
+      decisionStatus: item.decisionStatus,
+      result: item.result,
+      oneLineSummary: item.oneLineSummary,
+    }),
+  }));
+}
 
 const defaultType = "";
 const defaultDecisionStatus = "";
@@ -344,8 +378,46 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
   const [type, setType] = useState(defaultType);
   const [decisionStatus, setDecisionStatus] = useState(defaultDecisionStatus);
   const [agentStatus, setAgentStatus] = useState<"" | AgentStatusKey>(defaultAgentStatus);
+  // 轮 6：/research 使用与工作台一致的三组分法（需要我处理 default / AI 研究中 / 全部）
+  const [researchTab, setResearchTab] = useState<ResearchGroupTabValue>("needs");
+  const [runStatusById, setRunStatusById] = useState<Record<string, string>>({});
+  const [runStatusUnavailable, setRunStatusUnavailable] = useState(false);
   // OA1（Option B）：研究记录内部进度分组（进行中/待补信息/已完成/已放弃）
   const [scope, setScope] = useState<"" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned">(view === "research" ? "research" : "historical");
+
+  // 轮 6：/research 运行状态富集（fail-closed 分页读取，与工作台同源）
+  useEffect(() => {
+    if (view !== "research" || !isAccessPasswordReady || !canRequestWithAccessPassword(isAccessPasswordReady, accessPassword)) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await collectPagedTasks<{ id: string; aiRunStatus?: string }>(async (offset) => {
+          const response = await fetch("/api/tasks?scope=product-research&limit=50&offset=" + offset, {
+            headers: { ...buildAccessHeaders() },
+            cache: "no-store",
+          });
+          const json = await response.json().catch(() => null) as { ok?: boolean; records?: Array<{ id: string; aiRunStatus?: string }> } | null;
+          if (!response.ok || !json?.ok) return null;
+          return { items: json.records ?? [], hasMore: false };
+        });
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const item of items) {
+          if (item.id && typeof item.aiRunStatus === "string") map[item.id] = item.aiRunStatus;
+        }
+        setRunStatusById(map);
+        setRunStatusUnavailable(false);
+      } catch {
+        if (cancelled) return;
+        setRunStatusUnavailable(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, isAccessPasswordReady, accessPassword]);
 
   function onScopeChange(nextScope: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned") {
     setScope(nextScope);
@@ -744,11 +816,23 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
   // OA1：进度分组下的空态（区分"该分组没有"与"完全没有记录"）
   const isScopeEmpty = !loading && !error && visibleItems.length === 0 && scope !== "";
   const highlightedItemExists = Boolean(highlightedTaskId && visibleItems.some((item) => item.id === highlightedTaskId));
-  const displayItems = useMemo(() => [...visibleItems].sort((a, b) => {
-    const priorityDiff = getPriorityScore(b, highlightedTaskId, hasActiveFilters) - getPriorityScore(a, highlightedTaskId, hasActiveFilters);
-    if (priorityDiff !== 0) return priorityDiff;
-    return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
-  }), [hasActiveFilters, highlightedTaskId, visibleItems]);
+  // 轮 6：/research 三组过滤（与工作台同分类器）
+  const researchGroups = view === "research"
+    ? deriveResearchViewGroups(visibleItems, runStatusById)
+    : null;
+  const displayItems = useMemo(() => {
+    let base = visibleItems;
+    if (view === "research" && researchGroups) {
+      const target = researchTab;
+      if (target === "needs") base = researchGroups.filter((g) => g.view.group === "needs_action").map((g) => g.item);
+      if (target === "researching") base = researchGroups.filter((g) => g.view.group === "researching").map((g) => g.item);
+    }
+    return [...base].sort((a, b) => {
+      const priorityDiff = getPriorityScore(b, highlightedTaskId, hasActiveFilters) - getPriorityScore(a, highlightedTaskId, hasActiveFilters);
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+    });
+  }, [hasActiveFilters, highlightedTaskId, visibleItems, researchTab, researchGroups]);
   const isListingPackEmpty = !loading && !error && visibleItems.length === 0 && hasListingPackFilter && items.length > 0;
   const isSearchEmpty = !loading && !error && visibleItems.length === 0 && hasActiveFilters && !isListingPackEmpty;
   const isDefaultEmpty = !loading && !error && visibleItems.length === 0 && !hasActiveFilters;
@@ -808,35 +892,50 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
 
             {/* OA1（Option B）：进度分组 Tab（进行中/待补信息/已完成/已放弃） */}
             <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="研究进度分组">
-              {((view === "research"
-                ? [
-                  { value: "research", label: "进行中" },
-                  { value: "need_info", label: "待补信息" },
-                  { value: "", label: "全部" },
-                ]
-                : [
+              {view === "research"
+                ? deriveResearchViewTabs().map((tab) => (
+                  <button
+                    key={tab.value || "all"}
+                    type="button"
+                    role="tab"
+                    aria-selected={researchTab === tab.value}
+                    onClick={() => setResearchTab(tab.value)}
+                    data-testid={"research-tab-" + (tab.value || "all")}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+                      researchTab === tab.value
+                        ? "border-teal-300 bg-teal-50 text-teal-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))
+                : ([
                   { value: "completed", label: "已完成" },
                   { value: "abandoned", label: "已放弃" },
                   { value: "historical", label: "历史" },
                   { value: "", label: "全部" },
-                ]
-               ) as Array<{ value: "" | "research" | "historical" | "active" | "need_info" | "completed" | "abandoned"; label: string }>).map((tab) => (
-                <button
-                  key={tab.value || "all"}
-                  type="button"
-                  role="tab"
-                  aria-selected={scope === tab.value}
-                  onClick={() => onScopeChange(tab.value)}
-                  className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
-                    scope === tab.value
-                      ? "border-teal-300 bg-teal-50 text-teal-800"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+                ] as Array<{ value: "" | "completed" | "abandoned" | "historical"; label: string }>).map((tab) => (
+                  <button
+                    key={tab.value || "all"}
+                    type="button"
+                    role="tab"
+                    aria-selected={scope === tab.value}
+                    onClick={() => onScopeChange(tab.value)}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-semibold transition ${
+                      scope === tab.value
+                        ? "border-teal-300 bg-teal-50 text-teal-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-teal-200"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
             </div>
+
+            {view === "research" && runStatusUnavailable ? (
+              <p data-testid="research-runstatus-note" className="mt-3 text-xs text-amber-700">运行状态暂时不可读，当前按资料待处理展示。</p>
+            ) : null}
 
             <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <summary className="cursor-pointer text-sm font-bold text-slate-700 select-none">
@@ -1120,6 +1219,9 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                       artifacts.hasListing ? "Listing 有" : "Listing 无",
                       artifacts.hasImages ? `图片 ${artifacts.imageCount} 张` : "图片无",
                     ].join(" · ");
+                    const groupView = view === "research"
+                      ? researchGroups?.find((g) => g.item.id === item.id)?.view ?? null
+                      : null;
                     return (
                       <article
                         key={item.id}
@@ -1140,6 +1242,11 @@ export function TaskRecordsList({ view = "records" }: { view?: "research" | "rec
                                   <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
                                     {researchStatus.label}
                                   </span>
+                                  {groupView ? (
+                                    <span data-testid="research-group-label" className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                      {groupView.group === "needs_action" ? "需要我处理" : groupView.group === "researching" ? "AI 研究中" : "已完成"}
+                                    </span>
+                                  ) : null}
                                   {highlighted ? <span className="text-emerald-700">刚保存</span> : null}
                                   <span>最后更新 {formatDate(item.updatedAt || item.createdAt)}</span>
                                 </div>

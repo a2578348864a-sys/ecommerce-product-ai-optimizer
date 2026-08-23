@@ -15,7 +15,9 @@ import {
 } from "lucide-react";
 import { useSharedProduct } from "@/hooks/useSharedProduct";
 import { DemoAccessBanner } from "@/components/DemoAccessBanner";
-import { setNoAuthOwnerMode } from "@/lib/client/accessToken";
+import { buildAccessHeaders, setNoAuthOwnerMode } from "@/lib/client/accessToken";
+import { classifyResearchLifecycle } from "@/lib/researchLifecycle";
+import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 import type { RuntimeMode } from "@/lib/server/runtimeMode";
 
 type SidebarNavItem = { label: string; href: string; icon: LucideIcon };
@@ -59,9 +61,7 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
 /** 模式 Badge 文案（unknown → 空，避免 hydration 漂移） */
 export function modeBadgeLabel(runtime: SidebarRuntime): string {
   if (runtime.mode === "public_showcase") return "Public Replay · 只读脱敏案例";
-  if (runtime.mode === "local_owner") {
-    return runtime.v4Graph ? "Local Live · 可执行研究流程" : "本地模式 · V4 未启用";
-  }
+  // §4.5：普通本地页面不显示 V4 / Local Live 等技术模式文案（保留公网展示）
   return "";
 }
 
@@ -78,15 +78,59 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-function isTaskActiveResearchHighlight(pathname: string, search: string) {
+export function isTaskActiveResearchHighlight(pathname: string, search: string, hasActiveDetail: boolean | null) {
   if (pathname === "/research" || pathname.startsWith("/research/")) return true;
-  if (pathname.startsWith("/tasks/") && search.includes("from=research")) return true;
+  // §4.1/§4.3：活动研究详情高亮"商品研究"——由真实记录生命周期决定，不依赖 from=research 临时参数；
+  // 直接打开/刷新详情 URL 后仍一致；null=尚在读取 → 不抢高亮（回退"研究记录"）。
+  if (pathname.startsWith("/tasks/")) {
+    if (hasActiveDetail === null) return search.includes("from=research");
+    return hasActiveDetail;
+  }
   return false;
 }
 
-function isTasksHighlight(pathname: string, search: string) {
+function isTasksHighlight(pathname: string, search: string, hasActiveDetail: boolean | null) {
   if (!(pathname === "/tasks" || pathname.startsWith("/tasks/"))) return false;
-  return !isTaskActiveResearchHighlight(pathname, search);
+  return !isTaskActiveResearchHighlight(pathname, search, hasActiveDetail);
+}
+
+/** §4.1/§4.3：任务详情研究高亮（数据驱动，侧栏与移动导航共用；读取中返回 null 不抢高亮）。 */
+function useTaskDetailResearchHighlight(pathname: string): boolean | null {
+  const taskId = pathname.match(/^\/tasks\/([^/?#]+)/)?.[1] ?? null;
+  const [state, setState] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!taskId) {
+      setState(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+          cache: "no-store",
+          headers: { ...buildAccessHeaders() },
+        });
+        const json = await response.json().catch(() => null) as { ok?: boolean; data?: { decisionStatus?: string; type?: string; result?: unknown } } | null;
+        if (cancelled) return;
+        if (!response.ok || !json?.ok || !json.data) {
+          setState(false);
+          return;
+        }
+        const lifecycle = classifyResearchLifecycle({
+          decisionStatus: (json.data.decisionStatus ?? "pending") as DecisionStatus,
+          result: (json.data.result ?? null) as Record<string, unknown> | null,
+          type: json.data.type ?? "workflow",
+        });
+        setState(lifecycle.lifecycle === "active");
+      } catch {
+        if (!cancelled) setState(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
+  return state;
 }
 
 function currentProductLabel(productName: string) {
@@ -103,17 +147,19 @@ function NavLink({
   pathname,
   search,
   compact = false,
+  hasActiveDetail = null,
 }: {
   item: SidebarNavItem;
   pathname: string;
   search?: string;
   compact?: boolean;
+  hasActiveDetail?: boolean | null;
 }) {
   const Icon = item.icon;
   const active = item.href === "/research"
-    ? isTaskActiveResearchHighlight(pathname, search ?? "")
+    ? isTaskActiveResearchHighlight(pathname, search ?? "", hasActiveDetail)
     : item.href === "/tasks"
-      ? isTasksHighlight(pathname, search ?? "")
+      ? isTasksHighlight(pathname, search ?? "", hasActiveDetail)
       : isActivePath(pathname, item.href);
 
   return (
@@ -148,6 +194,7 @@ export function WorkspaceSidebar() {
     setFromResearch(typeof window !== "undefined" && window.location.search.includes("from=research"));
   }, [pathname]);
   const search = fromResearch ? "from=research" : "";
+  const hasActiveDetail = useTaskDetailResearchHighlight(pathname);
   const [sharedProduct] = useSharedProduct();
   // V4.1：runtime-mode 服务端权威（模式 + V4 Graph flag）；SSR 初始 unknown → 保守（不泄露 Live 入口）
   const [runtime, setRuntime] = useState<SidebarRuntime>({ mode: null, v4Graph: false });
@@ -197,9 +244,11 @@ export function WorkspaceSidebar() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
                 <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
-                <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">V4</span>
+                {runtime.mode === "public_showcase" ? (
+                  <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">V4</span>
+                ) : null}
               </div>
-              <p className="mt-0.5 whitespace-nowrap text-sm font-semibold leading-5 text-slate-950">
+              <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-950">
                 AI 跨境商品研究与上架准备工作台
               </p>
               <p className="muted-text mt-1 text-sm leading-6">辅助研究 · 人工决定</p>
@@ -215,7 +264,7 @@ export function WorkspaceSidebar() {
             <section key={group.label} className={index > 0 ? "mt-3 border-t border-slate-100 pt-3" : ""}>
               <p className="px-2 pb-1 text-xs font-semibold text-teal-700">{group.label}</p>
               {group.items.map((item) => (
-                <NavLink key={item.href} item={item} pathname={pathname} search={search} />
+                <NavLink key={item.href} item={item} pathname={pathname} search={search} hasActiveDetail={hasActiveDetail} />
               ))}
             </section>
           ))}
@@ -243,12 +292,17 @@ export function WorkspaceMobileNav() {
     };
   }, []);
   const items = buildV4NavGroups(runtime).flatMap((group) => group.items);
+  const researchHighlight = useTaskDetailResearchHighlight(pathname);
 
   return (
     <nav className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="工作台移动导航">
       {items.map((item) => {
         const Icon = item.icon;
-        const active = isActivePath(pathname, item.href);
+        const active = item.href === "/research"
+          ? isTaskActiveResearchHighlight(pathname, "", researchHighlight)
+          : item.href === "/tasks"
+            ? isTasksHighlight(pathname, "", researchHighlight)
+            : isActivePath(pathname, item.href);
         return (
           <Link
             key={item.href}

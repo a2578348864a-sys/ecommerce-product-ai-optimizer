@@ -1,5 +1,6 @@
 import {
   PRODUCT_RESEARCH_RECORD_SCHEMA,
+  getResearchStaleState,
   parseProductResearchRecord,
   type ProductResearchDecisionEvent,
   type ProductResearchRecordV1,
@@ -563,9 +564,37 @@ const DETAIL_FIELDS: Readonly<Record<string, ProjectionSpec>> = {
   normalizedProduct: productSpec,
   normalized: productSpec,
   candidateAnalysisContext: objectOf({
+    integrity: scalar,
     sourceLabel: scalar,
     asin: scalar,
     productUrl: scalar,
+    // 轮 9：SellerSprite 批次商品概览的正式安全投影——只放行展示所需 productFacts 与
+    // 必要来源标识；禁止 projection 出 productBatchId/productBatchItemId/evidenceHash/itemHash/
+    // itemIdentityHash/productKey/原始 sourceMeta（未列入 spec 的字段一律不下发）。
+    facts: objectOf({
+      productName: scalar,
+      marketplace: scalar,
+      asin: scalar,
+      reportType: scalar,
+      query: scalar,
+      category: scalar,
+      capturedAt: scalar,
+      productFacts: objectOf({
+        productTitle: scalar,
+        brand: scalar,
+        price: scalar,
+        rating: scalar,
+        reviews: scalar,
+        estimatedMonthlySales: scalar,
+        estimatedMonthlyRevenue: scalar,
+        rootCategory: scalar,
+        rootCategoryBsr: scalar,
+        subCategory: scalar,
+        subCategoryBsr: scalar,
+        variationCount: scalar,
+        sellerCount: scalar,
+      }),
+    }),
   }),
   // V3 Current Research Normalization：完成标记的安全浏览器投影（不含 decisionId 等内部标识）
   researchCompletion: objectOf({
@@ -777,7 +806,12 @@ export function projectTaskResultForBrowser(
   }
   const record = parseProductResearchRecord(value.researchRecord);
   if (record) output.productResearchSummary = projectResearchSummary(record);
-  if (scope === "list") output.legacyListSummary = projectLegacyListSummary(value, context);
+  if (scope === "list") {
+    // §3 统一状态出口：通用 status 不再承载 stale；正式工作台状态只经顶层 aiRunStatus。
+    // 需要 stale 的消费方使用明确命名字段 researchStale（bool），不得借用通用 status。
+    output.researchStale = getResearchStaleState(value).stale;
+    output.legacyListSummary = projectLegacyListSummary(value, context);
+  }
   return output;
 }
 

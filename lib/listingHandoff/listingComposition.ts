@@ -242,6 +242,7 @@ export function buildDeterministicListingPackDraft(
 
 import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
+import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
 
 export type OptimizedListingDraft = {
   titles: string[];
@@ -371,8 +372,20 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
   backendSearchTerms: string[];
 } {
   if (!brief) {
-    // 无 Keyword Brief：正文可以由确认事实生成，但 SEO 词必须保持为空，不能从 facts 自动拆词。
-    return { keywords: [], backendSearchTerms: [] };
+    // 轮 16：无手工 Keyword Brief → 从已保存 keywordEvidence 派生 auto_suggested 计划，
+    // 不关闭 SEO 优化；关键词是 SEO 参考，不是商品事实（不进 confirmed facts）。
+    const auto = buildAutoKeywordPlan({
+      keywordCandidates: input.creativeContext?.keywordCandidates ?? [],
+      confirmedFacts: input.productFacts.map((f) => ({ field: f.field, label: f.label, value: f.value })),
+      ownBrand: valueOf(input, "brand") ?? "",
+      knownBrands: [],
+    });
+    const kw: string[] = [];
+    if (auto.primaryKeyword) kw.push(auto.primaryKeyword);
+    for (const s of auto.supportingKeywords) {
+      if (!kw.includes(s)) kw.push(s);
+    }
+    return { keywords: kw.slice(0, 12), backendSearchTerms: auto.backendSearchTerms };
   }
   const keywords: string[] = [];
   if (brief.primaryKeyword) keywords.push(brief.primaryKeyword);

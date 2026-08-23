@@ -241,6 +241,20 @@ export async function POST(
   return jsonResponse({ ok: false, error: { code: "invalid_action", message: "缺少或非法的 action（import / analyze / clear / collect / collect-confirm）。" } }, 400);
 }
 
+/** 轮 12：从任务 resultJson 解析权威 ASIN（browserEvidence.targetAsin 或 candidateAnalysisContext.facts.asin）。 */
+function authoritativeReviewAsin(resultJson: string): string | null {
+  try {
+    const parsed = JSON.parse(resultJson) as Record<string, unknown>;
+    const browserEvidence = parsed.browserEvidence as Record<string, unknown> | undefined;
+    if (browserEvidence && typeof browserEvidence.targetAsin === "string" && /^[A-Z0-9]{10}$/i.test(browserEvidence.targetAsin)) return browserEvidence.targetAsin.toUpperCase();
+    const cac = parsed.candidateAnalysisContext as Record<string, unknown> | undefined;
+    const facts = cac ? cac.facts as Record<string, unknown> | undefined : undefined;
+    if (facts && typeof facts.asin === "string" && /^[A-Z0-9]{10}$/i.test(facts.asin)) return facts.asin.toUpperCase();
+  } catch {
+    return null;
+  }
+  return null;
+}
 async function importAction(
   context: AccessContext,
   taskId: string,
@@ -262,6 +276,22 @@ async function importAction(
         message: `导入数据格式无效：需要 reviews 数组（每条含 asin/sourceProductRole/reviewText/rating），单次不超过 ${REVIEW_DATASET_MAX_REVIEWS} 条。`,
       },
     }, 400);
+  }
+  // 轮 12：当前商品评论的 ASIN 必须等于任务权威 ASIN（服务端身份绑定；不一致零写入 fail-closed）。
+  try {
+    const snapshotForIdentity = await readReviewEvidenceSnapshot(context, taskId);
+    const authoritativeAsin = authoritativeReviewAsin(snapshotForIdentity.resultJson)
+      ?? (await readBrowserEvidenceTaskAsin(context, taskId));
+    if (authoritativeAsin) {
+      const mismatch = inputs.find((item) => item.sourceProductRole === "current_candidate"
+        && item.asin.trim().toUpperCase() !== authoritativeAsin.toUpperCase());
+      if (mismatch) {
+        return jsonResponse({ ok: false, error: { code: "current_candidate_asin_mismatch", message: "当前商品的 Amazon 商品编号与任务绑定身份不一致，已拒绝导入（未写入任何数据）。" } }, 409);
+      }
+    }
+  } catch (error) {
+    const code = error instanceof Error && /authoritative|not_found/i.test(error.message) ? "current_candidate_identity_unavailable" : "server_error";
+    return jsonResponse({ ok: false, error: { code, message: "无法确认当前商品身份，已拒绝导入。" } }, code === "server_error" ? 500 : 409);
   }
   try {
     const outcome = await importReviews({ context, taskId, expectedStorageVersion, reviews: inputs });

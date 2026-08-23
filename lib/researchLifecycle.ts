@@ -105,3 +105,98 @@ export function isActiveResearch(input: ResearchLifecycleInput): boolean {
 export function isHistoricalResearch(input: ResearchLifecycleInput): boolean {
   return classifyResearchLifecycle(input).lifecycle === "historical";
 }
+
+/** 分页失败与保护上限触发的显式失败信号（fail-closed）。 */
+export class ProductResearchTasksUnavailableError extends Error {
+  constructor(readonly reason: string) {
+    super("product_research_tasks_unavailable");
+    this.name = "ProductResearchTasksUnavailableError";
+  }
+}
+
+/**
+ * §2.5 完整分页读取直到 hasMore=false（不只读前 50 条静默聚合）。
+ * fail-closed：任意页无效（null / 结构错误 / 网络错误）或保护上限触发 → 抛错，
+ * 绝不返回已收集的部分数据。
+ */
+export async function collectPagedTasks<T>(
+  fetchPage: (offset: number) => Promise<{ items: T[]; hasMore: boolean } | null>,
+): Promise<T[]> {
+  const collected: T[] = [];
+  const size = 50;
+  const MAX_PAGE_COUNT = 200;
+  let offset = 0;
+  let pageCount = 0;
+  for (;;) {
+    if (pageCount >= MAX_PAGE_COUNT) {
+      throw new ProductResearchTasksUnavailableError("分页保护上限触发（>200 页）");
+    }
+    const page = await fetchPage(offset);
+    if (!page) {
+      throw new ProductResearchTasksUnavailableError("分页读取失败（offset=" + offset + "）");
+    }
+    collected.push(...page.items);
+    if (!page.hasMore) return collected;
+    offset += size;
+    pageCount += 1;
+  }
+}
+
+
+
+/* ── 轮 6：/ 与 /research 共享的三组状态分类器（not_started ≠ AI 研究中） ── */
+
+import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
+import { deriveResearchHistoryStatus } from "@/lib/taskResearchHistoryPresentation";
+
+export type ProductProjectGroup = "needs_action" | "researching" | "completed";
+
+export type ProductProjectGroupView = {
+  group: ProductProjectGroup;
+  statusLabel: string;
+  nextLabel: string;
+};
+
+/**
+ * 工作台与商品研究列表共用的项目状态分类（唯一口径）：
+ * 1) stale 最高优先 → 需要我处理；
+ * 2) 仅 AI run=running → AI 研究中；waiting → 需要我处理（AI 等待处理不算研究中）；
+ * 3) failed_recoverable / failed_terminal / cancelled → 需要我处理（优先于旧研究/决定）；
+ * 4) 研究+人工决定已保存且无终态失败 → 已完成；否则 → 需要我处理。
+ * not_started / 无 run 一律不算 AI 研究中。
+ */
+export function deriveProductProjectGroup(input: {
+  aiRunStatus?: string | null;
+  decisionStatus: DecisionStatus;
+  result: unknown;
+  oneLineSummary: string;
+}): ProductProjectGroupView {
+  const runStatus = typeof input.aiRunStatus === "string" ? input.aiRunStatus : "";
+  if (runStatus === "research_stale") {
+    return { group: "needs_action", statusLabel: "研究资料需重新确认", nextLabel: "重新确认研究资料" };
+  }
+  if (runStatus === "running") {
+    return { group: "researching", statusLabel: "AI 正在研究", nextLabel: "查看研究进度" };
+  }
+  if (runStatus === "waiting") {
+    return { group: "needs_action", statusLabel: "研究等待处理", nextLabel: "查看研究进度" };
+  }
+  if (runStatus === "failed_recoverable" || runStatus === "failed_terminal") {
+    return { group: "needs_action", statusLabel: "研究失败，待处理", nextLabel: "补充研究资料" };
+  }
+  if (runStatus === "cancelled") {
+    return { group: "needs_action", statusLabel: "研究已取消，待处理", nextLabel: "重新发起研究" };
+  }
+  const researchStatus = deriveResearchHistoryStatus({
+    result: input.result,
+    decisionStatus: input.decisionStatus,
+    oneLineSummary: input.oneLineSummary,
+  });
+  if (researchStatus.key === "completed") {
+    return { group: "completed", statusLabel: researchStatus.label, nextLabel: "查看研究结果" };
+  }
+  if (researchStatus.key === "awaiting_decision") {
+    return { group: "needs_action", statusLabel: researchStatus.label, nextLabel: "查看并决定" };
+  }
+  return { group: "needs_action", statusLabel: researchStatus.label, nextLabel: "补充研究资料" };
+}

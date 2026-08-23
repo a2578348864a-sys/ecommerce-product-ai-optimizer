@@ -92,3 +92,7 @@ prisma/backups/
 
 # Public Replay 演示沙盒选择（访客运行时数据，非案例）
 data/replay-demo-choices/
+
+# Formal v2 local collection and audit artifacts — never commit
+/tmp/
+/start-local-r11.txt

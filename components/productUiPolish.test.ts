@@ -68,10 +68,13 @@ describe("Product UI polish v2", () => {
     expect(historySource).not.toContain("内部阶段");
     // R5：详情页标题按生命周期（active=商品研究 / historical=研究记录）
     expect(detailSource).toContain('isActiveResearchView ? "商品研究" : "研究记录"');
-    // V3 Final R12：legacy 初始分析降级为折叠"历史初始分析"（当前结论以 EvidenceWorkbench 为准）
-    expect(detailSource).toContain("历史初始分析");
-    expect(detailSource).toContain("历史成果");
-    // Phase 3：任务详情是研究记录，不再挂载五步推进工作台
+    // Formal v2：详情主体固定为四个用户业务模块，缺失数据诚实标记。
+    for (const heading of ["市场机会", "买家需求与差评", "货源与商品匹配", "成本与风险"]) {
+      expect(detailSource).toContain(heading);
+    }
+    expect(detailSource).toContain("尚未取得");
+    expect(detailSource).toContain("历史未核实草稿，禁止使用。");
+    // 正式详情不再挂载五步推进工作台或技术数据面板。
     expect(detailSource).not.toContain("技术信息与原始数据");
     expect(detailSource).not.toContain("WorkflowStepWorkspace");
   });

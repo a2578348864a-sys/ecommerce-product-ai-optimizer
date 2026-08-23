@@ -18,6 +18,8 @@ import "server-only";
  */
 
 import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerationInput";
+import { composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
+import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
 
 /** 冻结中性文案允许集（与 Claim Evidence 的 NEUTRAL_COPY_ALLOWLIST 同源语义；English-only） */
 const NEUTRAL_ALLOWLIST = Object.freeze([
@@ -97,10 +99,14 @@ export function buildSafeFallbackListingDraft(input: {
   const facts = input.generationInput.productFacts;
   if (!facts.length) return null;
 
-  // Bullet：每条只表达一个事实（英文标签: 值）；数量 1-5（Schema 下限 1）
-  const bullets = facts
-    .slice(0, 5)
-    .map((fact) => factLine(enLabel(fact.label || fact.field), fact.value));
+  // 轮 16：升级为自然卖点句（复用 composeOptimizedListingDraft：≥8 词 + 自动关键词），
+  // 仅当事实能支持时；否则回退为"标签: 值"保守行（不伪装成品）。
+  const plan = buildListingPlan(input.generationInput, null);
+  const optimized = composeOptimizedListingDraft(input.generationInput, plan, null);
+  const naturalBullets = optimized.bullets.filter((b) => b.trim().split(/\s+/).filter(Boolean).length >= 8);
+  const bullets = naturalBullets.length >= 1
+    ? naturalBullets
+    : facts.slice(0, 5).map((fact) => factLine(enLabel(fact.label || fact.field), fact.value));
 
   // Title：商品名（来自第一个事实字段词 + 中性后缀，无主观卖点）
   const firstFact = facts[0];
@@ -108,12 +114,15 @@ export function buildSafeFallbackListingDraft(input: {
   const title = `${field} ${neutralCopy(0)}`;
   const titles = [title];
 
-  // Keywords：仅事实字段词与值词（可安全检索，无声明）
-  const keywords = facts
-    .flatMap((fact) => [enLabel(fact.label), fact.value])
-    .map((word) => word.normalize("NFC").trim().slice(0, 40))
-    .filter((word) => word.length > 0)
-    .slice(0, 12);
+  // 轮 16：keywords 优先 auto_suggested（SEO 参考），无则回退事实词
+  let keywords = optimized.keywords.slice(0, 12);
+  if (keywords.length === 0) {
+    keywords = facts
+      .flatMap((fact) => [enLabel(fact.label), fact.value])
+      .map((word) => word.normalize("NFC").trim().slice(0, 40))
+      .filter((word) => word.length > 0)
+      .slice(0, 12);
+  }
   if (keywords.length === 0) keywords.push(field);
 
   // sellingPoints：仅中性文案（1-6 条，无事实性声明）

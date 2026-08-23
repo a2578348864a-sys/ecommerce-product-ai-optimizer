@@ -10,11 +10,12 @@
  * ASIN 三一致由服务端硬门禁；CAPTCHA/登录墙 fail-closed 明确提示；
  * 无"仍然保存"按钮。字段性质全部为 snapshot（capturedAt 页面观察值）。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import { Camera, Check, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
+import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
 
 function buildFetchHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ ...buildAccessHeaders(), ...extra });
@@ -293,7 +294,7 @@ function SnapshotFields({ fields }: { fields: BrowserSnapshotView["fields"] }) {
 }
 
 function SnapshotCard({ snapshot, index }: { snapshot: BrowserSnapshotView; index: number }) {
-  const capturedLabel = snapshot.capturedAt ? new Date(snapshot.capturedAt).toLocaleString("zh-CN") : "unknown";
+  const capturedLabel = snapshot.capturedAt ? new Date(snapshot.capturedAt).toLocaleString("zh-CN") : "尚未取得";
   const confirmLabel = snapshot.confirmedBy.mode === "owner" ? "Owner 人工确认" : "Visitor 人工确认";
   return (
     <li className="rounded-xl border border-slate-200 bg-white p-3">
@@ -314,6 +315,9 @@ function SnapshotCard({ snapshot, index }: { snapshot: BrowserSnapshotView; inde
 
 /* ── 主组件 ── */
 
+/** 轮 12：保存冲突恢复策略——首次冲突：保留预览+刷新版本+仅重试一次；二次冲突：提示重试文案，绝不无限重试。
+ *  决策逻辑在 lib/client/evidenceConflictRecovery.ts（保存/导入/确认共用）；本导出为兼容旧测试入口。 */
+export const resolveSaveConflictRecovery = resolveEvidenceConflictRecovery;
 export function BrowserEvidenceSection({
   taskId,
   evidence,
@@ -336,6 +340,8 @@ export function BrowserEvidenceSection({
   const [previewDemo, setPreviewDemo] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [conflictPending, setConflictPending] = useState(false);
+  const lastVersionRef = useRef<string | null>(null);
 
   // 演示模式（Visitor）：本地采集能力不可用（local_env_required）时，仍可体验
   // “演示采集”——服务端回放预置真实采集样本（demo 分支），结果标注“演示数据”。
@@ -379,8 +385,11 @@ export function BrowserEvidenceSection({
     }
   }
 
-  async function confirmSave() {
-    if (!previewEvidenceId || !storageVersion) return;
+  /** 保存尝试：allowRetry=true 时首冲突自动刷新版本并重试一次；二次冲突只提示，绝不无限重试。 */
+  async function attemptSave(version: { resultJsonHash: string; updatedAt: string } | null, allowRetry: boolean) {
+    if (!previewEvidenceId || !version) return;
+    // 轮 12：记录本次尝试的版本，供 version-refresh 重试去重（同一版本绝不重复尝试）
+    lastVersionRef.current = version.resultJsonHash + version.updatedAt;
     setSaving(true);
     setError("");
     try {
@@ -391,20 +400,29 @@ export function BrowserEvidenceSection({
           signal: AbortSignal.timeout(60_000),
           action: "save",
           evidenceId: previewEvidenceId,
-          expectedStorageVersion: storageVersion,
+          expectedStorageVersion: version,
         }),
       });
       const json = await res.json() as
         | { ok: true }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
-        setError((json as { error?: { message?: string } }).error?.message ?? "保存失败，请重试。");
-        setPreview(null);
-        setPreviewEvidenceId(null);
+        const code = (json as { error?: { code?: string } }).error?.code ?? null;
+        const recovery = resolveSaveConflictRecovery(res.status, code, !allowRetry);
+        if (recovery.retry) {
+          // 轮 12：首冲突→保留预览，刷新版本后重试一次（由下方 effect 在版本变化后执行）
+          setConflictPending(true);
+          onChanged();
+          return;
+        }
+        // 轮 12：二次冲突/失败→保留预览与用户内容（不清空、不重放旧内容），并解除待重试标记
+        setConflictPending(false);
+        setError(recovery.message ?? (json as { error?: { message?: string } }).error?.message ?? "保存失败，请重试。");
         return;
       }
       setPreview(null);
       setPreviewEvidenceId(null);
+      setConflictPending(false);
       onChanged();
     } catch {
       setError("保存失败，请重试。");
@@ -413,13 +431,24 @@ export function BrowserEvidenceSection({
     }
   }
 
+  useEffect(() => {
+    if (!conflictPending || !storageVersion) return;
+    const key = storageVersion.resultJsonHash + storageVersion.updatedAt;
+    if (lastVersionRef.current === key) return;
+    void attemptSave(storageVersion, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅依赖版本变化触发重试，attemptSave 为内部函数
+  }, [storageVersion, conflictPending]);
+
+  function confirmSave() {
+    void attemptSave(storageVersion, true);
+  }
   const pageOk = preview?.extraction.pageStatus === "ok";
   const canConfirm = preview !== null && pageOk && preview.extraction.entityBound && !saving;
 
   return (
     <section id="workbench-browser-evidence" data-testid="workbench-browser-evidence" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">浏览器 Evidence（Amazon 商品详情页）</h3>
+        <h3 className="text-sm font-bold text-slate-900">Amazon 商品资料</h3>
         <button
           type="button"
           disabled={collecting || saving || !canCollect}
@@ -531,7 +560,7 @@ export function BrowserEvidenceSection({
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
-        <span>字段全部为快照（观察值，带采集时间），与 XLSX Evidence 并存不覆盖。</span>
+        <span>字段全部为快照（观察值，带采集时间），与 XLSX 资料并存不覆盖。</span>
         <button
           type="button"
           onClick={onChanged}

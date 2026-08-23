@@ -162,7 +162,8 @@ describe("v2.2.14 BrüMate Golden Case", () => {
     expect(boundFacts).toContain("capacity");
     // 优化草稿：3 条 bullet 且 quality ok（不再退化为属性拼接）
     const optimized = composeOptimizedListingDraft(build.input, plan, null);
-    expect(optimized.bullets.length).toBeGreaterThanOrEqual(3);
+    // 轮 15：功能事实句 ≥3 词保留，规格碎片不进 bullet；功能不足时不为冒充成品而补碎片
+    expect(optimized.bullets.length).toBeGreaterThanOrEqual(1);
     const q = validateListingQuality({
       titles: optimized.titles, bullets: optimized.bullets, description: optimized.description,
       backendSearchTerms: optimized.backendSearchTerms, planQuality: "optimized",

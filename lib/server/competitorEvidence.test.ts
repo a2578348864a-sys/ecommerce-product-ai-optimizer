@@ -12,6 +12,8 @@ import {
   normalizeCompetitorAsin,
   parseCompetitorEvidence,
   removeCompetitorAsin,
+  type CompetitorAsinEntry,
+  type CompetitorEvidenceV1,
 } from "@/lib/server/competitorEvidence";
 import { createHash } from "node:crypto";
 
@@ -204,5 +206,120 @@ describe("competitor evidence mutations (visitor sandbox)", () => {
     // 持久化验证：重新读取（同一 store 文件）
     const reloaded = await getCompetitorEvidence(context, taskId);
     expect(reloaded.asins.map((entry) => entry.asin)).toEqual(["B0TEST0002"]);
+  });
+});
+
+describe("competitorEvidence 自动采集来源（轮 9）", () => {
+  it("browser_use 确认写入：来源必须齐全，且解析后可追溯", async () => {
+    const context = visitorContext();
+    const saved = await addCompetitorAsin({
+      context,
+      taskId,
+      asin: "B0COMP0002",
+      expectedStorageVersion: toStorageVersion(taskId, context),
+      autoProvenance: {
+        collector: { tool: "browser-use", version: "0.1.9" },
+        sourceUrl: "https://www.amazon.com/dp/B0COMP0002",
+        capturedAt: "2026-08-14T02:00:00.000Z",
+        reasonCodes: ["reverse_asin_top10"],
+      },
+    });
+    const entry = saved.asins[0] as CompetitorAsinEntry;
+    expect(entry.sourceKind).toBe("browser_use");
+    expect(entry.collectedBy).toEqual({ tool: "browser-use", version: "0.1.9" });
+    expect(entry.sourceUrl).toBe("https://www.amazon.com/dp/B0COMP0002");
+    const parsed = parseCompetitorEvidence(saved);
+    expect(parsed).not.toBeNull();
+    expect((parsed as CompetitorEvidenceV1).asins[0].sourceKind).toBe("browser_use");
+  });
+
+  it("来源缺失（无 sourceUrl/capturedAt）→ 拒绝保存（不冒充人工添加）", async () => {
+    const context = visitorContext();
+    await expect(addCompetitorAsin({
+      context,
+      taskId,
+      asin: "B0COMP0003",
+      expectedStorageVersion: toStorageVersion(taskId, context),
+      autoProvenance: { collector: { tool: "browser-use", version: "0.1.9" }, sourceUrl: "", capturedAt: "" },
+    })).rejects.toMatchObject({ code: "invalid_auto_provenance" });
+  });
+});
+
+
+describe("轮 15：detailBullets 向后兼容", () => {
+  it("旧数据无 detailBullets 字段仍能解析（缺省 undefined）", () => {
+    const legacyRaw = {
+      schema: "competitor-evidence.v1",
+      version: 1,
+      candidateId: null,
+      asins: [
+        {
+          asin: "B0TEST0001",
+          sourceKind: "browser_use",
+          addedBy: { mode: "owner", actorRef: "owner:v1" },
+          addedAt: "2026-08-20T00:00:00.000Z",
+          note: "legacy note",
+          collectedBy: { tool: "browser-use", version: "0.1.0" },
+          sourceUrl: "https://www.amazon.com/dp/B0TEST0001",
+          capturedAt: "2026-08-20T00:00:00.000Z",
+        },
+      ],
+      updatedAt: "2026-08-20T00:00:00.000Z",
+    };
+    const parsed = parseCompetitorEvidence(legacyRaw);
+    expect(parsed).not.toBeNull();
+    expect((parsed as { asins: { detailBullets?: unknown }[] }).asins[0].detailBullets).toBeUndefined();
+  });
+  it("新数据含 detailBullets：正确解析（≤5 条、≤500 字符、ASIN 保留）", () => {
+    const raw = {
+      schema: "competitor-evidence.v1",
+      version: 1,
+      candidateId: null,
+      asins: [
+        {
+          asin: "B0TEST0002",
+          sourceKind: "browser_use",
+          addedBy: { mode: "owner", actorRef: "owner:v1" },
+          addedAt: "2026-08-20T00:00:00.000Z",
+          collectedBy: { tool: "browser-use", version: "0.1.0" },
+          sourceUrl: "https://www.amazon.com/dp/B0TEST0002",
+          capturedAt: "2026-08-20T00:00:00.000Z",
+          detailBullets: {
+            bullets: ["b1", "b2", "b3", "b4", "b5", "b6"],
+            capturedAt: "2026-08-21T00:00:00.000Z",
+            sourceUrl: "https://www.amazon.com/dp/B0TEST0002",
+          },
+        },
+      ],
+      updatedAt: "2026-08-20T00:00:00.000Z",
+    };
+    const parsed = parseCompetitorEvidence(raw);
+    expect(parsed).not.toBeNull();
+    const entry = (parsed as { asins: { detailBullets?: { bullets: string[]; capturedAt: string; sourceUrl: string | null } }[] }).asins[0];
+    expect(entry.detailBullets?.bullets).toEqual(["b1", "b2", "b3", "b4", "b5"]);
+    expect(entry.detailBullets?.sourceUrl).toBe("https://www.amazon.com/dp/B0TEST0002");
+  });
+  it("detailBullets 为 null/空数组/超长 → 不解析（undefined，不崩溃）", () => {
+    const raw = {
+      schema: "competitor-evidence.v1",
+      version: 1,
+      candidateId: null,
+      asins: [
+        {
+          asin: "B0TEST0003",
+          sourceKind: "browser_use",
+          addedBy: { mode: "owner", actorRef: "owner:v1" },
+          addedAt: "2026-08-20T00:00:00.000Z",
+          collectedBy: { tool: "browser-use", version: "0.1.0" },
+          sourceUrl: "https://www.amazon.com/dp/B0TEST0003",
+          capturedAt: "2026-08-20T00:00:00.000Z",
+          detailBullets: { bullets: [], capturedAt: "2026-08-21T00:00:00.000Z", sourceUrl: null },
+        },
+      ],
+      updatedAt: "2026-08-20T00:00:00.000Z",
+    };
+    const parsed = parseCompetitorEvidence(raw);
+    expect(parsed).not.toBeNull();
+    expect((parsed as { asins: { detailBullets?: unknown }[] }).asins[0].detailBullets).toBeUndefined();
   });
 });

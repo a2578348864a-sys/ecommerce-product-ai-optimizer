@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { buildAccessHeaders, updateDemoAccessSnapshot, type DemoAccessInfo } from "@/lib/client/accessToken";
 import { createBrowserUuid } from "@/lib/browserUuid";
 import { copyPlainText } from "@/lib/client/copyPlainText";
+import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
 
 type ListingStatus = "ready" | "active" | "stale" | "revoked" | "legacy_unbound" | "invalid";
 
@@ -18,6 +19,12 @@ type ListingDraftSafeSummary = {
   backendSearchTerms?: string[];
   /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
   backendTermWarnings?: string[];
+  /** 服务端三级判定保留的低风险表达（待人工确认） */
+  humanReviewClaims?: string[];
+  /** 服务端派生的关键词溯源 id */
+  usedKeywordIds?: string[];
+  /** 关键词方案来源（服务端权威） */
+  keywordPlanSource?: "manual" | "auto_suggested" | "none";
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
   qualityIssues?: string[];
   providerAttempted?: boolean;
@@ -128,6 +135,9 @@ export function ListingHandoffSection({
   const [canGenerate, setCanGenerate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** 轮 15：首次 409 后进入自动恢复（版本刷新后自动重试一次；复用轮 14 冲突决策） */
+  const [conflictPending, setConflictPending] = useState(false);
+  const lastConflictVersionRef = useRef<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [retryBody, setRetryBody] = useState<Record<string, unknown> | null>(null);
   const [listingBrief, setListingBrief] = useState<ListingBriefForm>(EMPTY_LISTING_BRIEF);
@@ -186,6 +196,18 @@ export function ListingHandoffSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSignal]);
 
+  // 轮 15：首次 409 自动恢复——版本刷新后（storageVersion 变化）自动重试一次
+  useEffect(() => {
+    if (!conflictPending || !storageVersion) return;
+    const key = storageVersion.resultJsonHash + storageVersion.updatedAt;
+    if (lastConflictVersionRef.current === key) return;
+    lastConflictVersionRef.current = key;
+    setConflictPending(false);
+    // 自动重试（直接调用 generate；generate 内部会读取最新 storageVersion）
+    void generate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅版本变化时触发一次，其余稳定
+  }, [storageVersion, conflictPending]);
+
   useEffect(() => {
     onProgressChange?.({
       isGenerating: submitting,
@@ -193,10 +215,16 @@ export function ListingHandoffSection({
     });
   }, [draft, onProgressChange, status, submitting]);
 
-  const handleConflict = useCallback(() => {
-    setRequestId(null);
-    setRetryBody(null);
-    setNotice({ tone: "error", text: "创作资料已经更新，请生成新版本。" });
+  const handleConflict = useCallback((alreadyRetried: boolean) => {
+    // 轮 15：409 自动恢复——首次刷新版本后自动重试一次；二次冲突停止并提示
+    const recovery = resolveEvidenceConflictRecovery(409, "task_result_conflict", alreadyRetried);
+    if (recovery.retry) {
+      setConflictPending(true);
+      setNotice({ tone: "info", text: "内容刚在其他位置更新，正在自动获取最新版本并重试…" });
+    } else {
+      setConflictPending(false);
+      setNotice({ tone: "error", text: "创作资料又发生变化，请再试一次" });
+    }
     void load();
   }, [load]);
 
@@ -247,14 +275,14 @@ export function ListingHandoffSection({
       });
       if (res.status === 409) {
         const json = (await res.json()) as { error?: { code?: string; message?: string } };
-        handleConflict();
+        handleConflict(conflictPending);
         void json;
         return;
       }
       if (!res.ok) {
         const json = (await res.json()) as { error?: { code?: string; message?: string } } & { demoAccess?: DemoAccessInfo };
         if (json.error?.code === "handoff_stale" || json.error?.code === "handoff_revision_conflict") {
-          handleConflict();
+          handleConflict(conflictPending);
           return;
         }
         if (json.demoAccess) {
@@ -290,6 +318,7 @@ export function ListingHandoffSection({
         setStatus(json.ok ? json.data.listingStatus : status);
         setRequestId(null);
         setRetryBody(null);
+        setConflictPending(false);
         await load();
         onCommitted?.();
       }
@@ -301,7 +330,7 @@ export function ListingHandoffSection({
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, listingBrief]);
+  }, [submitting, handoffRevision, canGenerate, requestId, taskId, status, load, handleConflict, storageVersion, onCommitted, listingBrief, conflictPending]);
 
   const retrySameRequest = useCallback(async () => {
     if (!retryBody || !requestId || submitting) return;
@@ -313,7 +342,7 @@ export function ListingHandoffSection({
         body: JSON.stringify(retryBody),
       });
       if (res.status === 409) {
-        handleConflict();
+        handleConflict(conflictPending);
         return;
       }
       if (res.ok) {
@@ -328,7 +357,7 @@ export function ListingHandoffSection({
     } finally {
       if (mounted.current) setSubmitting(false);
     }
-  }, [retryBody, requestId, submitting, taskId, load, handleConflict, onCommitted]);
+  }, [retryBody, requestId, submitting, taskId, load, handleConflict, onCommitted, conflictPending]);
 
   /** v2.2.14：复制（HTTP 兼容 helper）+ 每个按钮独立短暂反馈 */
   const copyWithFeedback = async (text: string, buttonKey: string, successText: string) => {
@@ -448,6 +477,36 @@ export function ListingHandoffSection({
           )}
         </div>
 
+
+        {/* 轮 16 收口：人工审核信息只展示服务端权威结果（不再本地猜测事实级别） */}
+        {draft.bullets.length > 0 ? (() => {
+          const reviewClaims = draft.humanReviewClaims ?? [];
+          const planLabel = draft.keywordPlanSource === "manual"
+            ? "已使用人工关键词方案"
+            : draft.keywordPlanSource === "auto_suggested"
+              ? "已自动使用关键词资料"
+              : "暂无有效关键词方案";
+          return (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-human-review-aid">
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">人工审核辅助</p>
+              <p className="mt-1.5 text-xs leading-5 text-slate-600">
+                关键词方案：{planLabel}{draft.keywords.length > 0 ? "（当前草稿已用：" + draft.keywords.slice(0, 6).join("、") + "）" : ""}
+              </p>
+              {reviewClaims.length > 0 ? (
+                <div className="mt-1 text-xs leading-5 text-amber-700">
+                  <p>有 {reviewClaims.length} 条表达需人工确认（服务端判定）：</p>
+                  <ul className="mt-0.5 list-disc pl-4">
+                    {reviewClaims.slice(0, 3).map((claim, idx) => (
+                      <li key={idx} className="truncate">{claim.length > 80 ? claim.slice(0, 80) + "..." : claim}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="mt-1 text-xs leading-5 text-teal-700">已确认内容均基于已确认事实；无待人工确认表达。</p>
+              )}
+            </div>
+          );
+        })() : null}
         {/* 图片创作建议：独立区域，不属于 Listing 文本本体（Listing 后台字段不包含此内容） */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="image-creation-suggestions">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -536,8 +595,12 @@ export function ListingHandoffSection({
               关键词资料：{readiness?.keywordReady ? "已满足" : "未提供（当前可生成文案，不进行关键词优化）"}
             </span>
             {readiness && !readiness.copyReady && readiness.missingForQuality.length > 0 ? (
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800" title={readiness.missingForQuality.join("；")}>
-                待补：{readiness.missingForQuality.slice(0, 2).join("；")}{readiness.missingForQuality.length > 2 ? "…" : ""}
+              <span
+                className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800"
+                data-testid="listing-missing-quality"
+                title={readiness.missingForQuality.join("；")}
+              >
+                生成高质量 Listing 还缺：{readiness.missingForQuality.join("；")}
               </span>
             ) : null}
           </div>
@@ -636,7 +699,9 @@ export function ListingHandoffSection({
             ) : null}
             {draft?.providerAttempted === true && draft.providerSucceeded === false ? (
               <p className="mt-1 rounded-lg bg-slate-100 px-3 py-2 text-slate-600" data-testid="ai-fallback-notice">
-                已尝试 AI 生成但未成功，已保留安全基础草稿：{draft.fallbackReason ?? "Provider 未返回有效结果"}
+                AI 草稿未通过事实校验：{draft.fallbackReason?.includes("未通过")
+                  ? "AI 文案包含未经确认的信息，已保留安全基础草稿（补齐确认事实后可重新生成）。"
+                  : (draft.fallbackReason ?? "AI 草稿未通过事实校验，已保留安全基础草稿。补齐确认事实后可重新生成。")}
               </p>
             ) : null}
             {draft?.backendTermWarnings && draft.backendTermWarnings.length > 0 ? (

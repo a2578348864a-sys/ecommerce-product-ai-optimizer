@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Phase 2 — Evidence Workbench（商品证据工作台展示）
+ * Phase 2 — 资料 Workbench（商品证据工作台展示）
  *
- * 信息层级（Novice Comprehension）：简明结论 → 为什么这么说 → 原始 Evidence。
- * 六大区域：商品概览 / 市场 Evidence / 竞品 Evidence / 关键词 Evidence / 货源 Evidence / Missing。
+ * 信息层级（Novice Comprehension）：简明结论 → 为什么这么说 → 原始 资料。
+ * 六大区域：商品概览 / 市场 资料 / 竞品资料 / 关键词资料 / 货源 资料 / 待补资料。
  * 数据来源严格按 docs/v3/changes/phase-2/evidence-read-model.md；
  * 缺失一律显示 unknown/「未收集」，禁止 AI 填空、禁止编造。
  */
@@ -34,6 +34,8 @@ import {
   type VocAnalysisView,
   type VocEvidenceView,
 } from "@/components/evidence/VocEvidenceSection";
+import { CommercialInputsCard } from "@/components/product-research/CommercialInputsCard";
+import { BrowserUseCollectButton } from "@/components/evidence/BrowserUseCollectButton";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import {
@@ -163,8 +165,8 @@ export function buildResearchMaterialRows(input: {
 /**
  * R12 研究状态行（§170/§175/§176/§177）：
  * - 0 类已收集 → "研究资料尚待补充"
- * - ≥1 类已收集、未生成 AI 证据总结 → "研究进行中"（研究开始 ≠ AI 已运行）
- * - 已生成 AI 证据总结 → "AI 已整理当前资料"
+ * - ≥1 类已收集、未生成 AI 研究摘要 → "研究进行中"（研究开始 ≠ AI 已运行）
+ * - 已生成 AI 研究摘要 → "AI 已整理当前资料"
  */
 export function deriveResearchStatus(
   rows: ResearchMaterialRow[],
@@ -216,7 +218,7 @@ export function extractOverviewItems(result: unknown): WorkbenchOverviewItem[] {
     items.push({
       field,
       label,
-      value: value || "unknown",
+      value: value || "尚未取得",
       nature: natureForField(field),
       ...(value ? { raw: value } : {}),
     });
@@ -417,7 +419,7 @@ export function extractReportSource(result: unknown): {
   };
 }
 
-/* ── 竞品 Evidence API 交互 ────────────────────────────── */
+/* ── 竞品资料 API 交互 ────────────────────────────── */
 
 export type CompetitorAsinView = {
   asin: string;
@@ -482,23 +484,10 @@ function OverviewGrid({ items }: { items: WorkbenchOverviewItem[] }) {
 }
 
 function MissingSection({ gaps }: { gaps: string[] }) {
-  const fixed: Array<[string, string]> = [
-    ["采购价", "unknown"],
-    ["MOQ", "unknown"],
-    ["物流成本", "unknown"],
-    ["合规", "unknown"],
-  ];
   return (
-    <section data-testid="workbench-missing" className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-      <h3 className="text-sm font-bold text-slate-900">还缺什么（Missing）</h3>
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {fixed.map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-amber-200 bg-white px-3 py-2">
-            <p className="text-xs text-slate-500">{label}</p>
-            <p className="text-sm font-semibold text-rose-600">{value}</p>
-          </div>
-        ))}
-      </div>
+    <section id="formal-v2-cost-risk-evidence" data-testid="workbench-missing" className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+      <h3 className="text-sm font-bold text-slate-900">还缺什么（待补资料）</h3>
+      <p className="mt-2 text-xs text-slate-500">采购价、MOQ、物流成本与合规状态请在下方「成本与风险资料」中填写；尚未取得处会明确标注，不做猜测。</p>
       {gaps.length > 0 && (
         <ul className="mt-3 space-y-1">
           {gaps.map((gap) => (
@@ -518,7 +507,7 @@ export function EvidenceWorkbench({
 }: {
   taskId: string;
   result: Record<string, unknown> | null;
-  /** R7：任一 Evidence 区确认/保存成功后冒泡（顶部"当前研究资料"据此重新计算） */
+  /** R7：任一 资料 区确认/保存成功后冒泡（顶部"当前研究资料"据此重新计算） */
   onDataChanged?: () => void;
   /** V3 Final R9（§151）：Task 已确认主图，用于 1688 图片找货输入框自动预填 */
   sourceImageUrl?: string | null;
@@ -645,10 +634,10 @@ export function EvidenceWorkbench({
         setAiSummaryStorageVersion(json.data.storageVersion);
         clearSectionError("aiSummary");
       } else {
-        setSectionError("aiSummary", "AI 证据总结读取失败，请稍后重试。");
+        setSectionError("aiSummary", "AI 研究摘要读取失败，请稍后重试。");
       }
     } catch {
-      setSectionError("aiSummary", "AI 证据总结读取失败，请检查网络后重试。");
+      setSectionError("aiSummary", "AI 研究摘要读取失败，请检查网络后重试。");
     }
   }
 
@@ -741,7 +730,7 @@ export function EvidenceWorkbench({
   const canAdd = newAsin.trim().length > 0 && competitors.length < 5 && !competitorBusy;
 
   // V3 Final R12：当前研究资料清单（checklist 行）→ 研究状态行派生（§170/§175/§177）。
-  // 研究开始（有 1+ 类已收集 Evidence）≠ AI 总结已生成；绝不再用"研究尚未开始"表达"AI 未运行"。
+  // 研究开始（有 1+ 类已收集 资料）≠ AI 总结已生成；绝不再用"研究尚未开始"表达"AI 未运行"。
   const materialRows = buildResearchMaterialRows({
     overview,
     competitors,
@@ -756,7 +745,7 @@ export function EvidenceWorkbench({
 
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
-      {/* R7：当前研究资料（从各 Evidence 区实时 state 派生，确认保存后自动更新） */}
+      {/* R7：当前研究资料（从各 资料 区实时 state 派生，确认保存后自动更新） */}
       <section data-testid="research-evidence-checklist" className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-bold text-slate-900">当前研究资料</p>
@@ -780,7 +769,7 @@ export function EvidenceWorkbench({
         </div>
         {researchStatus.status === "partial" ? (
           <p className="mt-1.5 text-sm leading-6 text-slate-600" data-testid="research-status-detail">
-            已收集{researchStatus.collectedLabels.join("、")}等资料；可继续补充其他 Evidence，或在下方生成 AI 证据总结。
+            已收集{researchStatus.collectedLabels.join("、")}等资料；可继续补充其他 资料，或在下方生成 AI 研究摘要。
           </p>
         ) : null}
         <ul className="mt-2 grid gap-1.5 text-sm sm:grid-cols-2">
@@ -841,7 +830,7 @@ export function EvidenceWorkbench({
           </div>
           <div>
             <dt className="text-xs text-slate-500">目前不知道什么</dt>
-            <dd className="mt-0.5 text-slate-800">采购价 / MOQ / 物流成本 / 合规均为 unknown（未用 AI 填补）。</dd>
+            <dd className="mt-0.5 text-slate-800">采购价 / MOQ / 物流成本 / 合规均尚未取得（未用 AI 填补）。</dd>
           </div>
           <div>
             <dt className="text-xs text-slate-500">人工决定</dt>
@@ -867,12 +856,12 @@ export function EvidenceWorkbench({
       </section>
 
       {/* ── 商品概览 ── */}
-      <section data-testid="workbench-overview" className="rounded-2xl border border-slate-200 bg-white p-4">
+      <section id="formal-v2-market-evidence" data-testid="workbench-overview" className="rounded-2xl border border-slate-200 bg-white p-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">商品概览</h3>
           {source && (
             <span className="text-xs text-slate-500">
-              {source.reportType} · {source.marketplace} · capturedAt {source.capturedAt || "unknown"}
+              {source.reportType} · {source.marketplace} · capturedAt {source.capturedAt || "尚未取得"}
             </span>
           )}
         </div>
@@ -881,7 +870,7 @@ export function EvidenceWorkbench({
         </div>
         {source?.evidenceHash && (
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-slate-500">原始 Evidence（来源追溯）</summary>
+            <summary className="cursor-pointer text-xs text-slate-500">原始 资料（来源追溯）</summary>
             <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
               {JSON.stringify({ evidenceHash: source.evidenceHash, reportType: source.reportType, capturedAt: source.capturedAt }, null, 2)}
             </pre>
@@ -889,9 +878,9 @@ export function EvidenceWorkbench({
         )}
       </section>
 
-      {/* ── 竞品 Evidence ── */}
+      {/* ── 竞品资料 ── */}
       <section data-testid="workbench-competitors" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">竞品 Evidence（人工维护，最多 5 个）</h3>
+        <h3 className="text-sm font-bold text-slate-900">竞品资料（人工维护，最多 5 个）</h3>
         {competitorLoading ? (
           <p className="mt-2 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="size-4 animate-spin" />读取中…</p>
         ) : competitors.length === 0 ? (
@@ -951,12 +940,13 @@ export function EvidenceWorkbench({
         {competitors.length >= 5 && (
           <p className="mt-1 text-xs text-amber-600">已达上限 5 个，请先删除再添加。</p>
         )}
+        <BrowserUseCollectButton taskId={taskId} kind="competitor" storageVersion={storageVersion} onSaved={() => { void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh best-effort */ } })(); void loadKeywordEvidence(); onDataChanged?.(); }} />
         {competitorError && <p className="mt-2 text-sm text-rose-600">{competitorError}</p>}
       </section>
 
-      {/* ── 关键词 Evidence ── */}
+      {/* ── 关键词资料 ── */}
       <section data-testid="workbench-keywords" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">关键词 Evidence</h3>
+        <h3 className="text-sm font-bold text-slate-900">关键词资料</h3>
         <SectionStatusBar
           loading={sectionLoading}
           error={sectionErrors.keyword ?? ""}
@@ -973,7 +963,7 @@ export function EvidenceWorkbench({
               <p><span className="text-slate-500">后台搜索词：</span>{keywordBrief.backendSearchTerms.join("、")}</p>
             )}
             <p className="text-xs text-slate-500">
-              来源：{keywordBrief.source || "unknown"}
+              来源：{keywordBrief.source || "尚未取得"}
               {keywordBrief.reportType ? ` · 报告：${keywordBrief.reportType}` : ""}
               {keywordBrief.marketplace ? ` · 市场：${keywordBrief.marketplace}` : ""}
               {keywordBrief.month ? ` · 数据期：${keywordBrief.month}` : ""}
@@ -995,9 +985,10 @@ export function EvidenceWorkbench({
           storageVersion={keywordReportStorageVersion}
           onChanged={() => { loadKeywordEvidence(); onDataChanged?.(); }}
         />
+        <BrowserUseCollectButton taskId={taskId} kind="keyword" storageVersion={keywordReportStorageVersion} onSaved={() => { loadKeywordEvidence(); void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh */ } })(); onDataChanged?.(); }} />
       </section>
 
-      {/* ── 浏览器 Evidence（V3.3） ── */}
+      {/* ── Amazon 商品资料（V3.3） ── */}
       <div data-testid="workbench-browser">
         <SectionStatusBar
           loading={sectionLoading}
@@ -1015,8 +1006,8 @@ export function EvidenceWorkbench({
         />
       </div>
 
-      {/* ── VOC / Review Evidence（V3.4） ── */}
-      <div data-testid="workbench-voc">
+      {/* ── 买家评论与需求（V3.4） ── */}
+      <div id="formal-v2-buyer-evidence" data-testid="workbench-voc">
         <SectionStatusBar
           loading={sectionLoading}
           error={sectionErrors.voc ?? ""}
@@ -1034,8 +1025,8 @@ export function EvidenceWorkbench({
         />
       </div>
 
-      {/* ── 货源 Evidence（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
-      <section data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
+      {/* ── 货源 资料（F2：真实 1688 供应线索工作台；证据序列 VOC 之后、AI 总结之前） ── */}
+      <section id="formal-v2-sourcing-evidence" data-testid="workbench-sourcing" className="rounded-2xl border border-slate-200 bg-white p-4">
         <SourcingEvidencePanel
           taskId={taskId}
           amazonContext={{ title: null, image: sourceImageUrl ?? null, asin: null }}
@@ -1043,17 +1034,17 @@ export function EvidenceWorkbench({
         />
       </section>
 
-      {/* ── AI 证据总结（Phase 5） ── */}
+      {/* ── AI 研究摘要（Phase 5） ── */}
       <section data-testid="workbench-ai-summary" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">AI 证据总结</h3>
+        <h3 className="text-sm font-bold text-slate-900">AI 研究摘要</h3>
         <SectionStatusBar
           loading={sectionLoading}
           error={sectionErrors.aiSummary ?? ""}
           onRetry={() => { void loadAiSummary(); }}
-          loadingLabel="AI 证据总结"
+          loadingLabel="AI 研究摘要"
         />
         <p className="mt-1 text-xs text-slate-500">
-          AI 只解释已有 Evidence，不创造事实；fact/risk/conflict 必须带证据引用。
+          AI 只解释已有 资料，不创造事实；事实、风险和矛盾信息必须带资料引用。
         </p>
         <AiEvidenceSummarySection
           taskId={taskId}
@@ -1063,11 +1054,12 @@ export function EvidenceWorkbench({
         />
       </section>
 
-      {/* ── Missing ── */}
+      {/* ── 待补资料 ── */}
       <MissingSection gaps={gaps} />
+      <CommercialInputsCard taskId={taskId} onChanged={() => onDataChanged?.()} />
 
       <p className="text-xs text-slate-400">
-        Evidence 全部来自真实来源；AI 不创造事实。查看完整研究记录：
+        资料 全部来自真实来源；AI 不创造事实。查看完整研究记录：
         <Link href={`/tasks/${encodeURIComponent(taskId)}`} className="ml-1 text-teal-700 underline">研究记录详情</Link>
       </p>
     </section>

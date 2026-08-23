@@ -318,33 +318,26 @@ describe("TaskRecordsList operational positioning", () => {
 
 describe("TaskRecordDetail operation overview", () => {
   const detailSource = readComponentSource("components/TaskRecordDetail.tsx");
-  const heroSource = readComponentSource("components/TaskDecisionHero.tsx");
 
   it("keeps the user main flow clean and retains product-facing sections", () => {
     // Phase1: 技术/内部字段从用户主流程移除
     expect(detailSource).not.toMatch(/技术信息与原始数据/);
     expect(detailSource).not.toMatch(/完整结果 JSON/);
     expect(detailSource).not.toMatch(/任务状态和后续能力/);
-    // 用户价值内容保留（决策/证据/准备包/图片素材需求）
-    expect(detailSource).toMatch(/DecisionEvidencePanel/);
-    expect(detailSource).toMatch(/来源证据/);
-    expect(detailSource).toMatch(/Listing 上架准备包/);
-    expect(detailSource).toMatch(/图片素材需求/);
-    // New IA: TaskDecisionHero with stage/blocker/review info
-    expect(detailSource).toMatch(/TaskDecisionHero/);
-    expect(heroSource).toMatch(/当前决策与下一步/);
-    expect(heroSource).toMatch(/当前阶段/);
-    // 用户进度摘要（当前状态/已完成/还缺/下一步）
-    expect(detailSource).toMatch(/还缺/);
-    // V2 收口：商品决策报告为聚合主体（AI 总结 / 风险 / 人工决定 / 下一步）
-    // V3 Final R12：legacy 初始分析降级为折叠"历史初始分析"，当前结论以 EvidenceWorkbench 为准
-    expect(detailSource).toMatch(/legacy-research-projection/);
-    expect(detailSource).toMatch(/历史初始分析/);
-    expect(detailSource).toMatch(/AI 总结/);
-    expect(detailSource).toMatch(/人工确认/);
-    // 五步骤降为状态导航（工作流步骤 + 默认折叠说明，非页面主体）
-    expect(detailSource).toMatch(/工作流步骤/);
-    expect(detailSource).toMatch(/默认折叠，复核时可按需展开/);
+    // Formal v2 主体：统一商品结论 + 四个业务模块；每模块保留结论、依据、缺口和一步动作。
+    expect(detailSource).toMatch(/aria-label="商品结论"/);
+    expect(detailSource).toMatch(/aria-label="研究模块"/);
+    for (const heading of ["市场机会", "买家需求与差评", "货源与商品匹配", "成本与风险"]) {
+      expect(detailSource).toContain(heading);
+    }
+    for (const field of ["AI 结论", "关键依据", "缺什么"]) {
+      expect(detailSource).toContain(field);
+    }
+    expect(detailSource).toContain("EvidenceWorkbench");
+    expect(detailSource).toContain("人工决定");
+    expect(detailSource).toContain("Listing 与商品图片");
+    expect(detailSource).toContain("历史未核实草稿，禁止使用。");
+    expect(detailSource).not.toContain("/prototype");
   });
 });
 

@@ -29,6 +29,7 @@ export const SYSTEM_MANAGED_TASK_RESULT_KEYS = Object.freeze([
   "riskReviewSnapshot",
   "agentRunSnapshot",
   "listingPrepSnapshot",
+  "commercialInputs",
 ] as const);
 
 export type SystemManagedTaskResultKey = typeof SYSTEM_MANAGED_TASK_RESULT_KEYS[number];

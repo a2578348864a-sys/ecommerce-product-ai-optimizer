@@ -1,4 +1,5 @@
 import { buildCandidateResearchHref } from "@/lib/client/sellerSpriteImportWorkflow";
+import { collectPagedTasks } from "@/lib/researchLifecycle";
 import type {
   CandidateResearchAction,
   CandidateResearchBlockReasonCode,
@@ -29,6 +30,9 @@ export type CandidateResearchPoolItem = {
   researchActionMessage: string | null;
   researchDecision: CandidateResearchDecisionSummary | null;
   updatedAt: string;
+  /** 服务端权威解析的身份绑定真实缓存主图可用性（不允许外链；仅同源 /api 引用）。 */
+  imageAvailable: boolean;
+  imageUrl: string | null;
 };
 
 export type CandidateResearchDecisionSummary =
@@ -193,7 +197,17 @@ function parseItem(value: unknown): CandidateResearchPoolItem | null {
     researchActionMessage,
     researchDecision,
     updatedAt,
+    imageAvailable: value.imageAvailable === true,
+    imageUrl: parseSafeImageUrl(value.imageUrl),
   };
+}
+
+/** 只接受同源 Candidate 图片引用（/api/opportunity-candidates/<id>/image）；外链/其它路径一律 null。 */
+function parseSafeImageUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const trimmed = value.trim();
+  if (/^\/api\/opportunity-candidates\/[A-Za-z0-9_-]{1,128}\/image$/.test(trimmed)) return trimmed;
+  return null;
 }
 
 export function parseCandidateListResponse(value: unknown): CandidateResearchPoolPage | null {
@@ -248,4 +262,22 @@ export function isCandidateResearchActionAvailable(
 ): boolean {
   return item.researchAction === "research_available"
     || item.researchAction === "runtime_validation_required";
+}
+
+/* ── 轮 7：可研究口径与 fail-closed 收集 ── */
+
+/** 可研究唯一依据：isCandidateResearchActionAvailable（展示状态不算服务端授权）。 */
+export function filterStartableCandidates(items: readonly CandidateResearchPoolItem[]): CandidateResearchPoolItem[] {
+  return items.filter((item) => isCandidateResearchActionAvailable(item));
+}
+
+/**
+ * 完整分页收集可研究候选（fail-closed：任一页失败/结构无效/超上限 → 抛错，不返回残缺列表）。
+ * 页码保护上限 200 页（=10000 条）。
+ */
+export async function collectStartableCandidates(
+  fetchPage: (offset: number) => Promise<{ items: CandidateResearchPoolItem[]; hasMore: boolean } | null>,
+): Promise<CandidateResearchPoolItem[]> {
+  const all = await collectPagedTasks<CandidateResearchPoolItem>(fetchPage);
+  return filterStartableCandidates(all);
 }

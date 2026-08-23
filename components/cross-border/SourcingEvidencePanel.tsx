@@ -13,6 +13,7 @@
  * - 询盘问题为确定性模板生成（基于 Unknowns/Claims），不自动发送、不调用 AI 猜规格。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
 import { useAccessPassword } from "@/lib/client/accessPassword";
 import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import { sourcingCapabilities } from "@/lib/client/sourcingCapabilities";
@@ -36,7 +37,28 @@ export const UI_METHOD_TO_OPERATION: Record<"keyword" | "image" | "url", Sourcin
   keyword: "search",
   image: "image",
   url: "url",
-};
+}; /**
+ * 轮 14：保存错误→恢复动作映射（纯函数，供 attemptSave 与单测使用）。
+ * 复用 resolveEvidenceConflictRecovery 的决策；预览过期/认证为旁路（不消耗预览的语义由服务端保证）。
+ */
+export function resolveSourcingSaveError(
+  status: number,
+  code: string | null,
+  message: string | null,
+  alreadyRetried: boolean,
+): { kind: "preview_expired" | "auth_required" | "conflict_retry" | "conflict_stop" | "generic"; message: string } {
+  if (code === "preview_expired") {
+    return { kind: "preview_expired", message: message ?? "预览已过期，请重新搜索后再确认。" };
+  }
+  if (code === "auth_required") {
+    return { kind: "auth_required", message: message ?? "" };
+  }
+  const recovery = resolveEvidenceConflictRecovery(status, code, alreadyRetried);
+  if (recovery.retry) return { kind: "conflict_retry", message: "" };
+  // 轮 14：二次冲突文案按任务书要求「资料又发生变化，请再试一次」（保留预览/选择/备注）
+  if (recovery.message) return { kind: "conflict_stop", message: "资料又发生变化，请再试一次" };
+  return { kind: "generic", message: message ?? "保存失败，请重试。" };
+}
 
 /**
  * V3 Final R14：候选商品缩略图（唯一展示入口）。
@@ -137,6 +159,20 @@ export function buildInquiryQuestions(candidate: AcquisitionCandidate): string[]
   return questions.slice(0, 6);
 }
 
+/**
+ * 轮 12：供应线索可用性判定——local_owner/noAuthOwner 免密可用；
+ * runtime-mode 未返回时显示读取中；仅真实需密码时提示；Visitor 契约保持。
+ */
+export function resolveSourcingAccessState(
+  accessPassword: string,
+  noAuthOwner: boolean,
+  hydrated: boolean,
+): { available: boolean; reason: "loading" | "no_auth_owner" | "password" | "password_required"; placeholder: string } {
+  if (!hydrated) return { available: false, reason: "loading", placeholder: "正在读取供应能力…" };
+  if (noAuthOwner) return { available: true, reason: "no_auth_owner", placeholder: "working" };
+  if (accessPassword.trim().length > 0) return { available: true, reason: "password", placeholder: "working" };
+  return { available: false, reason: "password_required", placeholder: "请输入访问密码后使用供应线索功能。" };
+}
 export function SourcingEvidencePanel({
   taskId,
   amazonContext,
@@ -150,7 +186,7 @@ export function SourcingEvidencePanel({
   /** R7：供应线索 evidence 状态变化上报（供 Workbench 顶部清单实时派生） */
   onEvidenceChange?: (hasConfirmed: boolean) => void;
 }) {
-  const [accessPassword] = useAccessPassword();
+  const [accessPassword, , accessHydrated, , noAuthOwner] = useAccessPassword();
   const [status, setStatus] = useState<PanelStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [toolStatus, setToolStatus] = useState<ToolStatus | null>(null);
@@ -164,6 +200,9 @@ export function SourcingEvidencePanel({
   const [storageVersion, setStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
   const [detailByOfferId, setDetailByOfferId] = useState<Partial<Record<string, AcquisitionCandidate | null>>>({});
   const [noteByOfferId, setNoteByOfferId] = useState<Record<string, string>>({});
+  // 轮 14：同页版本恢复——保存 409 时保留预览/选择/备注，刷新版本后自动重试一次；二次冲突提示且停止
+  const [saveConflictPending, setSaveConflictPending] = useState(false);
+  const lastSaveVersionRef = useRef<string | null>(null);
   const [checkingTools, setCheckingTools] = useState(false);
   const [lastCheckAt, setLastCheckAt] = useState<Date | null>(null);
   const [checkResult, setCheckResult] = useState<string>("");
@@ -332,6 +371,8 @@ export function SourcingEvidencePanel({
       setPreview(payloadData.preview);
       setPreviewDemo(payloadData.demo === true);
       setStatus("preview");
+      // 轮 14：采集成功后取得最新任务版本（避免同页其它模块更新后保存立即 409）
+      void loadInitial();
     } catch {
       setStatus("error");
       setErrorMessage("网络异常，请重试。");
@@ -354,8 +395,11 @@ export function SourcingEvidencePanel({
     }
   }
 
-  async function confirmSelection() {
+  /** 轮 14：保存尝试——allowRetry=true 为首次（冲突后交给版本刷新 effect 重试）；false 为版本刷新后的重试。 */
+  async function attemptSave(version: { resultJsonHash: string; updatedAt: string } | null, allowRetry: boolean) {
     if (!preview || selected.size === 0) return;
+    if (!version) return;
+    lastSaveVersionRef.current = version.resultJsonHash + version.updatedAt;
     setStatus("saving");
     setErrorMessage("");
     try {
@@ -364,28 +408,38 @@ export function SourcingEvidencePanel({
         previewId: preview.previewId,
         selectedOfferIds: [...selected],
         noteByOfferId,
-        expectedStorageVersion: storageVersion,
+        expectedStorageVersion: version,
       });
       if (!response.ok || !data.ok || !data.data) {
         const code = data.error?.code ?? "";
-        if (code === "preview_expired") {
+        // 轮 14：统一恢复动作（复用证据冲突决策；预览过期/认证旁路）
+        const action = resolveSourcingSaveError(response.status, code, data.error?.message ?? null, !allowRetry);
+        if (action.kind === "preview_expired") {
           setStatus("error");
-          setErrorMessage("预览已过期，请重新搜索后再确认。");
+          setErrorMessage(action.message);
           return;
         }
-        if (code === "auth_required") {
+        if (action.kind === "auth_required") {
           setStatus("need_login");
-          setErrorMessage(data.error?.message ?? "");
+          setErrorMessage(action.message);
           return;
         }
+        if (action.kind === "conflict_retry") {
+          setSaveConflictPending(true);
+          setStatus("preview");
+          onEvidenceChange?.((evidence?.humanConfirmed.length ?? 0) > 0);
+          return;
+        }
+        setSaveConflictPending(false);
         setStatus("error");
-        setErrorMessage(data.error?.message ?? "保存失败，请重试。");
+        setErrorMessage(action.message);
         return;
       }
       const saved = data.data as { evidence: SourcingEvidenceV1; storageVersion: { resultJsonHash: string; updatedAt: string } };
       setEvidence(saved.evidence);
       setStorageVersion(saved.storageVersion);
       setPreview(null);
+      setSaveConflictPending(false);
       setStatus("confirmed");
       onConfirmed?.();
       onEvidenceChange?.(true);
@@ -394,6 +448,24 @@ export function SourcingEvidencePanel({
       setErrorMessage("网络异常，保存未完成，请重试。");
     }
   }
+
+  function confirmSelection() {
+    void attemptSave(storageVersion, true);
+  }
+
+  // 轮 14：首冲突后——刷新最新任务版本（GET 更新 storageVersion），版本变化时自动重试一次
+  useEffect(() => {
+    if (!saveConflictPending) return;
+    void loadInitial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 冲突后仅需刷新一次最新版本；loadInitial 为稳定 useCallback
+  }, [saveConflictPending]);
+  useEffect(() => {
+    if (!saveConflictPending || !storageVersion) return;
+    const key = storageVersion.resultJsonHash + storageVersion.updatedAt;
+    if (lastSaveVersionRef.current === key) return;
+    void attemptSave(storageVersion, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅依赖版本变化触发重试，attemptSave 为内部函数
+  }, [storageVersion, saveConflictPending]);
 
   const toggleSelect = (offerId: string) => {
     setSelected((prev) => {
@@ -404,7 +476,8 @@ export function SourcingEvidencePanel({
     });
   };
 
-  const accessReady = accessPassword.trim().length > 0;
+  const sourcingAccess = resolveSourcingAccessState(accessPassword, noAuthOwner, accessHydrated);
+  const accessReady = sourcingAccess.available;
   // F3：分能力 readiness（CLI 只 gate 关键词/URL；图片找货独立于 CLI）
   const caps = sourcingCapabilities(toolStatus);
   // §16/§17：公网 runtime（capabilities=local_env_required）→ 统一"实时找货需要本地研究环境"，

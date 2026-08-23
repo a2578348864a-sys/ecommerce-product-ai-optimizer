@@ -664,6 +664,28 @@ function responseError(value: unknown): string {
   }
   return "商品批次操作失败，请稍后重试。";
 }
+export type BatchCandidateHandoffResolution =
+  | { ok: true; destinationUrl: string }
+  | { ok: false; message: string };
+
+function isSafeSiteEntry(value: string): boolean {
+  if (!value.startsWith("/")) return false;
+  if (value.startsWith("//") || value.startsWith("/\\")) return false;
+  return true;
+}
+
+export function resolveBatchCandidateHandoff(
+  responseOk: boolean,
+  body: unknown,
+): BatchCandidateHandoffResolution {
+  const destinationUrl = (body as {
+    data?: { destinationUrl?: unknown };
+  } | null)?.data?.destinationUrl;
+  if (responseOk && typeof destinationUrl === "string" && isSafeSiteEntry(destinationUrl)) {
+    return { ok: true, destinationUrl };
+  }
+  return { ok: false, message: responseError(body) };
+}
 
 export function ProductBatchManager() {
   const [state, setState] = useState<ViewState>("loading");
@@ -914,14 +936,12 @@ export function ProductBatchManager() {
         },
         body: JSON.stringify({ productBatchItemId }),
       });
-      const body = await response.json() as {
-        ok?: boolean;
-        data?: { destinationUrl?: string };
-      };
-      if (!response.ok || !body.data?.destinationUrl) {
-        throw new Error(responseError(body));
+      const body = await response.json();
+      const handoff = resolveBatchCandidateHandoff(response.ok, body);
+      if (!handoff.ok) {
+        throw new Error(handoff.message);
       }
-      window.location.assign(body.data.destinationUrl);
+      window.location.assign(handoff.destinationUrl);
     });
   };
 

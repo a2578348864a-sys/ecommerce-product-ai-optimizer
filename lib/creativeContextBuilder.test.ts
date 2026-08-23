@@ -318,3 +318,64 @@ describe("buildCreativeContextFromResearch（V3 Evidence → Creative Context Br
     expect(summarizeCreativeContext(ctx).schema).toBe("creative-context.v1");
   });
 });
+
+
+describe("轮 15：竞品详情页五点 → competitiveContext（reference-only）", () => {
+  it("competitorEvidence 含 detailBullets → competitiveContext[].bullets 传入", () => {
+    const input = {
+      productName: "test",
+      competitorEvidence: {
+        schema: "competitor-evidence.v1",
+        version: 1,
+        candidateId: null,
+        asins: [
+          {
+            asin: "B0COMP1",
+            sourceKind: "browser_use",
+            addedBy: { mode: "owner", actorRef: "owner:v1" },
+            addedAt: "2026-08-20T00:00:00.000Z",
+            note: "competitor note",
+            collectedBy: { tool: "browser-use", version: "0.1.0" },
+            sourceUrl: "https://www.amazon.com/dp/B0COMP1",
+            capturedAt: "2026-08-20T00:00:00.000Z",
+            detailBullets: {
+              bullets: ["bullet one", "bullet two", "bullet three"],
+              capturedAt: "2026-08-21T00:00:00.000Z",
+              sourceUrl: "https://www.amazon.com/dp/B0COMP1",
+            },
+          },
+        ],
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      },
+    };
+    const ctx = buildCreativeContextFromResearch({ resultJson: input as never, researchRevision: 1 });
+    expect(ctx.competitiveContext).toHaveLength(1);
+    expect(ctx.competitiveContext[0].bullets).toEqual(["bullet one", "bullet two", "bullet three"]);
+  });
+  it("无 detailBullets 的旧数据 → bullets 为 undefined（不报错）", () => {
+    const input = {
+      productName: "test",
+      competitorEvidence: {
+        schema: "competitor-evidence.v1",
+        version: 1,
+        candidateId: null,
+        asins: [
+          {
+            asin: "B0COMP2",
+            sourceKind: "browser_use",
+            addedBy: { mode: "owner", actorRef: "owner:v1" },
+            addedAt: "2026-08-20T00:00:00.000Z",
+            note: "old note",
+            collectedBy: { tool: "browser-use", version: "0.1.0" },
+            sourceUrl: "https://www.amazon.com/dp/B0COMP2",
+            capturedAt: "2026-08-20T00:00:00.000Z",
+          },
+        ],
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      },
+    };
+    const ctx = buildCreativeContextFromResearch({ resultJson: input as never, researchRevision: 1 });
+    expect(ctx.competitiveContext).toHaveLength(1);
+    expect(ctx.competitiveContext[0].bullets).toBeUndefined();
+  });
+});

@@ -10,7 +10,7 @@ import type { AccessContext } from "@/lib/server/accessPassword";
 import {
   createTaskResultJsonMutator,
   type TaskResultJsonDatabase,
-  type TaskResultJsonStorageVersion,
+  type TaskResultJsonStorageVersionInput,
 } from "@/lib/server/taskResultJsonMutation";
 
 export function buildListingPackSnapshot(
@@ -54,7 +54,32 @@ export function createAiImageResultMutation(
   });
 }
 
-export function createResearchDecisionResultMutation(input: {
+/** 轮 6：商业输入（采购/MOQ/物流/合规）写入 candidateAnalysisContext.commercialInputs（research-save 拥有）。
+ * 部分保存语义：按字段合并（本次保存字段替换，未保存字段保留），不覆盖既有其它字段。 */
+export function createCommercialInputsResultMutation(
+  inputs: Record<string, unknown>,
+  updatedAt?: string,
+) {
+  return (current: Readonly<Record<string, unknown>>) => {
+    const context = typeof current.candidateAnalysisContext === "object"
+      && current.candidateAnalysisContext !== null
+      && !Array.isArray(current.candidateAnalysisContext)
+      ? current.candidateAnalysisContext as Record<string, unknown>
+      : {};
+    const stored = typeof (context as Record<string, unknown>).commercialInputs === "object"
+      && (context as Record<string, unknown>).commercialInputs !== null
+      && !Array.isArray((context as Record<string, unknown>).commercialInputs)
+      ? (context as Record<string, unknown>).commercialInputs as Record<string, unknown>
+      : {};
+    return {
+      result: { ...current, candidateAnalysisContext: { ...context, commercialInputs: { ...stored, ...inputs } } },
+      value: null,
+      ...(updatedAt ? { updatedAt } : {}),
+    };
+  };
+}
+
+function createResearchDecisionResultMutation(input: {
   record: ProductResearchRecordV1;
   verification?: ProductResearchVerificationV1;
   decisionStatus: string;
@@ -83,7 +108,7 @@ export function createResearchCompletionResultMutation(input: {
 type WriterInput = {
   context: AccessContext;
   taskId: string;
-  expectedStorageVersion?: TaskResultJsonStorageVersion;
+  expectedStorageVersion?: TaskResultJsonStorageVersionInput;
 };
 
 export function createTaskResultWriterPersistence(input: {
@@ -152,7 +177,19 @@ export function createTaskResultWriterPersistence(input: {
         mutate: createAiImageResultMutation(request.snapshot, request.updatedAt),
       });
     },
+
+    persistCommercialInputs(request: WriterInput & {
+      inputs: Record<string, unknown>;
+      updatedAt?: string;
+    }) {
+      return mutate({
+        context: request.context,
+        taskId: request.taskId,
+        writer: "research-save",
+        expectedStorageVersion: request.expectedStorageVersion,
+        mutate: createCommercialInputsResultMutation(request.inputs, request.updatedAt),
+      });
+    },
   });
 }
-
 export const taskResultWriterPersistence = createTaskResultWriterPersistence();

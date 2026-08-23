@@ -43,7 +43,7 @@ beforeEach(() => {
     candidateId: "candidate-a",
     created: true,
     destination: "research",
-    destinationUrl: "/opportunity-candidates",
+    destinationUrl: "/opportunity-candidates?view=startable&candidateId=candidate-a",
     sourceMeta: {
       version: "product-batch-agent-run-source.v1",
       originKind: "seller_sprite_product_batch",
@@ -68,12 +68,15 @@ describe("POST /api/product-batches/candidates", () => {
       candidateId: "candidate-a",
       created: true,
       destination: "research",
-      destinationUrl: "/opportunity-candidates",
+      destinationUrl: "/opportunity-candidates?view=startable&candidateId=candidate-a",
       sourceMeta: {
         originKind: "seller_sprite_product_batch",
         productName: "Closet organizer",
       },
     });
+    // route 原样下发服务端单一出口地址（不在 route 二次拼接）
+    expect(body.data.destinationUrl).toBe("/opportunity-candidates?view=startable&candidateId=candidate-a");
+    expect(body.data.destinationUrl).not.toContain("Closet");
   });
 
   it.each([

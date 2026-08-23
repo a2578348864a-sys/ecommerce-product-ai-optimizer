@@ -22,6 +22,7 @@ export type ListingKeywordSource =
   | "ad_search_term_report"
   | "manual"
   | "synthetic"
+  | "auto_suggested"
   | "unknown";
 
 export type ListingKeywordProvenance = {

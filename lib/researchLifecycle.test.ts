@@ -2,7 +2,7 @@
  * V3 Final Interaction Correction — R5：classifyResearchLifecycle 测试
  */
 import { describe, expect, it } from "vitest";
-import { classifyResearchLifecycle, isActiveResearch, isHistoricalResearch } from "@/lib/researchLifecycle";
+import { classifyResearchLifecycle, deriveProductProjectGroup, isActiveResearch, isHistoricalResearch } from "@/lib/researchLifecycle";
 
 function versionedResult(decisionStatus: string) {
   return {
@@ -84,5 +84,42 @@ describe("classifyResearchLifecycle（R5 统一分类器）", () => {
     expect(isActiveResearch({ decisionStatus: "continue", result: null })).toBe(true);
     expect(isHistoricalResearch({ decisionStatus: "rejected", result: null })).toBe(true);
     expect(isActiveResearch({ decisionStatus: "rejected", result: null })).toBe(false);
+  });
+});
+
+
+describe("轮 6 共享状态分类器（/ 与 /research 同一口径）", () => {
+  const r = (over: Record<string, unknown>) => ({ aiRunStatus: undefined as string | undefined, decisionStatus: "pending" as const, result: {} as Record<string, unknown>, oneLineSummary: "", ...over }) as { aiRunStatus?: string | null; decisionStatus: "pending" | "continue" | "need_info" | "rejected"; result: unknown; oneLineSummary: string };
+  const completedResult = {
+    productResearchSummary: { schema: "product-research-record.v1", status: "creative_ready", label: "研究已完成" },
+  };
+
+  it("not_started 绝不算 AI 研究中：缺资料/待决定/失败/取消全部落在需要我处理", () => {
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "not_started" })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: undefined })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "cancelled" })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "failed_terminal" })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "failed_recoverable" })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "waiting" })).group).toBe("needs_action");
+  });
+
+  it("running/waiting 之外的 run 状态：只有 running 归 AI 研究中", () => {
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "running" })).group).toBe("researching");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "completed", result: completedResult })).group).toBe("completed");
+  });
+
+  it("终态失败优先：即使已保存研究与人工决定也不落入已完成", () => {
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "failed_terminal", decisionStatus: "continue", result: completedResult })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "cancelled", decisionStatus: "continue", result: completedResult })).group).toBe("needs_action");
+  });
+
+  it("stale 最高优先级", () => {
+    expect(deriveProductProjectGroup(r({ aiRunStatus: "research_stale", result: completedResult })).group).toBe("needs_action");
+  });
+
+  it("待人工决定（已有研究但无正式决定）/ 缺资料 → 需要我处理；完整保存→已完成", () => {
+    expect(deriveProductProjectGroup(r({ result: { finalReport: { finalVerdict: "x" } } })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ result: {} })).group).toBe("needs_action");
+    expect(deriveProductProjectGroup(r({ result: completedResult })).group).toBe("completed");
   });
 });

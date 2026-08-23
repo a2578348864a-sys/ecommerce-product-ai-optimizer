@@ -311,9 +311,9 @@ describe("Staleness UX Closure — 展示层", () => {
     const gateSource = readFileSync(resolve(process.cwd(), "components/studio/TaskStudioPreparation.tsx"), "utf8");
     // stale 时 CTA 禁用 + 原因
     expect(detailSource).toContain("researchStale");
-    expect(detailSource).toContain("需要先重新确认研究");
-    expect(detailSource).toContain("重新确认研究");
-    expect(detailSource).toContain("listing-studio-cta-blocked");
+    expect(detailSource).toContain("!studioLegacyUnsupported && !researchStale");
+    expect(detailSource).toContain("研究资料已变化，请先重新确认研究。");
+    expect(detailSource).toContain("确认研究结论仍然有效");
     expect(detailSource).toContain("new-evidence-since-completion");
     // Studio gate 无死路：stale 原因 + 返回重新确认
     expect(gateSource).toContain("research_stale_requires_reconfirmation");

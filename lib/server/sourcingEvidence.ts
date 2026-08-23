@@ -255,6 +255,25 @@ class SourcingPreviewStore {
     return entry;
   }
 
+  /** 轮 14：peek 只读校验（不删除）——保存链在 CAS 成功前不得消耗预览。 */
+  peek(previewId: string, claim: { subjectKey: string; taskId: string }): SourcingPreviewEntry | null {
+    this.prune();
+    const entry = this.entries.get(previewId);
+    if (!entry) return null;
+    if (entry.subjectKey !== claim.subjectKey || entry.taskId !== claim.taskId) return null;
+    return entry;
+  }
+
+  /** 轮 14：consume 仅在保存成功调用（一次性作废）；未命中/主体不匹配返回 false。 */
+  consume(previewId: string, claim: { subjectKey: string; taskId: string }): boolean {
+    this.prune();
+    const entry = this.entries.get(previewId);
+    if (!entry) return false;
+    if (entry.subjectKey !== claim.subjectKey || entry.taskId !== claim.taskId) return false;
+    this.entries.delete(previewId);
+    return true;
+  }
+
   private prune(): void {
     const now = Date.now();
     for (const [id, entry] of this.entries) {
@@ -294,6 +313,22 @@ export function takeSourcingPreview(
   claim: { subjectKey: string; taskId: string },
 ): SourcingPreviewEntry | null {
   return previewStore.take(previewId, claim);
+}
+
+/** 轮 14：读取预览（不消耗）；CAS 成功前使用。 */
+export function peekSourcingPreview(
+  previewId: string,
+  claim: { subjectKey: string; taskId: string },
+): SourcingPreviewEntry | null {
+  return previewStore.peek(previewId, claim);
+}
+
+/** 轮 14：保存成功后一次性作废预览。 */
+export function consumeSourcingPreview(
+  previewId: string,
+  claim: { subjectKey: string; taskId: string },
+): boolean {
+  return previewStore.consume(previewId, claim);
 }
 
 /** 供测试：清空 preview store */

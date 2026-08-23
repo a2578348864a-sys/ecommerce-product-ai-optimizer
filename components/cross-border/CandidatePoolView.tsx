@@ -7,6 +7,8 @@ import { buildAccessHeaders } from "@/lib/client/accessToken";
 import { useSessionDraft, clearSessionDraftsForEntity } from "@/lib/client/useSessionDraft";
 import {
   candidatePrimaryHref,
+  filterStartableCandidates,
+  isCandidateResearchActionAvailable,
   mergeCandidatePages,
   parseCandidateListResponse,
   type CandidateResearchPoolItem,
@@ -31,6 +33,10 @@ export type CandidatePoolViewProps = {
   manualName: string;
   manualUrl: string;
   message: string;
+  /** 轮 7：startable 视图只显示授权可研究卡（isCandidateResearchActionAvailable 唯一依据）。 */
+  startableOnly?: boolean;
+  /** 轮 7：精确聚焦候选（URL candidateId），找不到诚实提示而非聚焦第一项。 */
+  focusCandidateId?: string | null;
   onRefresh: () => void;
   onLoadMore: () => void;
   onStatusFilterChange: (status: StatusFilter) => void;
@@ -85,7 +91,13 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-export function CandidatePoolView(props: CandidatePoolViewProps) {  return (
+export function CandidatePoolView(props: CandidatePoolViewProps) {
+  const visibleItems = props.startableOnly
+    ? filterStartableCandidates(props.items)
+    : props.items;
+  const focusFound = props.focusCandidateId
+    ? visibleItems.some((c) => c.id === props.focusCandidateId)
+    : null;  return (
     <div className="space-y-4" data-testid="candidate-pool-view">
       <section className="surface-card-strong p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -216,16 +228,43 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {  return (
         </section>
       ) : null}
 
-      {props.state === "ready" && props.items.length > 0 ? (
+      {props.state === "ready" && visibleItems.length > 0 ? (
         <section className="grid gap-3" aria-label="Candidate 列表">
-          {props.items.map((item) => {
+          {visibleItems.map((item) => {
             const href = candidatePrimaryHref(item);
             const selected = props.selectedIds.includes(item.id);
             const converted = item.researchAction === "converted";
             return (
-              <article key={item.id} className={`surface-card p-4 sm:p-5 ${selected ? "border-teal-300 ring-1 ring-teal-200" : ""}`}>
+              <article
+                key={item.id}
+                ref={item.id === props.focusCandidateId ? (el) => { if (el) { el.scrollIntoView({ block: "center" }); el.focus?.(); } } : undefined}
+                tabIndex={item.id === props.focusCandidateId ? -1 : undefined}
+                data-testid={item.id === props.focusCandidateId ? "candidate-focused" : undefined}
+                className={`surface-card p-4 sm:p-5 ${selected ? "border-teal-300 ring-1 ring-teal-200" : ""} ${item.id === props.focusCandidateId ? "border-teal-300 ring-2 ring-teal-200" : ""}`}
+              >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex min-w-0 items-start gap-3">
+                    <div className="shrink-0">
+                      {(item as { imageAvailable?: boolean; imageUrl?: string | null }).imageAvailable
+                        && (item as { imageUrl?: string | null }).imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={(item as { imageUrl?: string }).imageUrl as string}
+                            alt={item.name}
+                            width={88}
+                            height={88}
+                            data-testid="candidate-main-image"
+                            className="h-[88px] w-[88px] rounded-xl border border-slate-200 bg-white object-cover"
+                          />
+                        ) : (
+                          <div
+                            data-testid="candidate-image-placeholder"
+                            className="flex h-[88px] w-[88px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50"
+                          >
+                            <span className="px-2 text-[10px] leading-4 text-slate-400">商品图待补充</span>
+                          </div>
+                        )}
+                    </div>
                     <label className="mt-1 flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -310,6 +349,11 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {  return (
               </article>
             );
           })}
+          {props.focusCandidateId && focusFound === false ? (
+            <p data-testid="candidate-focus-missing" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              没有找到这个候选商品（可能已不在可研究列表或不属于当前身份）。
+            </p>
+          ) : null}
           {props.hasMore ? (
             <button
               type="button"
@@ -370,7 +414,15 @@ export function CandidatePoolView(props: CandidatePoolViewProps) {  return (
   );
 }
 
-export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolean }) {
+export function CandidatePoolPanel({
+  manualMode = false,
+  startableOnly = false,
+  focusCandidateId = null,
+}: {
+  manualMode?: boolean;
+  startableOnly?: boolean;
+  focusCandidateId?: string | null;
+}) {
   const [state, setState] = useState<PoolState>("loading");
   const [items, setItems] = useState<CandidateResearchPoolItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -586,6 +638,11 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
 
   /** F1：开始研究 = create/get Research Task → 直接进入 Research Workbench（不再经候选研究页做预先决策） */
   async function startItemResearch(item: CandidateResearchPoolItem) {
+    // 轮 7：服务端授权唯一依据（绝不向 converted/blocked 发 POST）
+    if (!isCandidateResearchActionAvailable(item)) {
+      setMessage("该商品当前不满足研究条件（已转任务或被阻断），不会发起研究。");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -611,8 +668,9 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
 
   /** 批量开始研究：跳转第一个可研究候选的研究任务 */
   function startSelected() {
+    // 轮 7：可研究唯一依据 isCandidateResearchActionAvailable（展示状态与服务端授权分离）
     const first = items.find(
-      (item) => selectedIds.includes(item.id) && candidatePrimaryHref(item) !== null,
+      (item) => selectedIds.includes(item.id) && isCandidateResearchActionAvailable(item),
     );
     if (!first) {
       setMessage("已选项中没有可开始研究的商品（已转任务或当前不满足研究条件），请重新选择。");
@@ -625,6 +683,8 @@ export function CandidatePoolPanel({ manualMode = false }: { manualMode?: boolea
     <CandidatePoolView
       state={state}
       items={items}
+      startableOnly={startableOnly}
+      focusCandidateId={focusCandidateId}
       total={total}
       hasMore={hasMore}
       statusFilter={statusFilter}

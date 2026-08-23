@@ -31,7 +31,7 @@ export type KeywordEvidenceView = {
 function fieldValue(row: KeywordReportRowView, field: string): string {
   const fv = row.fields[field];
   if (!fv) return "—";
-  if (fv.applicability === "missing" || fv.normalized === null) return "unknown";
+  if (fv.applicability === "missing" || fv.normalized === null) return "尚未取得";
   const value = fv.normalized;
   if (typeof value === "number") {
     if (field === "trafficShare" || field === "naturalTrafficShare" || field === "purchaseRate"
@@ -167,7 +167,7 @@ export function KeywordReportEvidenceSection({
       {evidence ? (
         <div>
           <p className="text-xs font-semibold text-slate-500">
-            已保存：{reportTypeLabel(evidence.reportType)} · {evidence.rows.length} 个关键词 · capturedAt {evidence.capturedAt.slice(0, 10)}
+            已保存：{reportTypeLabel(evidence.reportType)} · {evidence.rows.length} 个关键词 · 采集时间 {evidence.capturedAt.slice(0, 10)}
             {evidence.rows.length === 0 ? "" : ""}
           </p>
           <div className="mt-2 overflow-x-auto">

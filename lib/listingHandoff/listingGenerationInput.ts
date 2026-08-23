@@ -293,11 +293,16 @@ export function projectCreativeContextReferences(
     `AI REFERENCE (NOT FACT): ${r.summary.slice(0, 140)}`,
   );
   const keywordCandidates = context.keywordCandidates.slice(0, 10).map((k) =>
-    `observed keyword (${k.reportType}): ${k.keyword}`,
+    // 轮 16 末：关键词投影保留原始词（SEO 参考用），不带 observed keyword/reportType 展示前缀
+    k.keyword,
   );
-  const competitiveContext = context.competitiveContext.slice(0, 5).map((c) =>
-    `competitor ${c.asin}${c.note ? `: ${c.note.slice(0, 100)}` : ""}`,
-  );
+  const competitiveContext = context.competitiveContext.slice(0, 5).map((c) => {
+    const note = c.note ? `: ${c.note.slice(0, 100)}` : "";
+    const bullets = Array.isArray(c.bullets) && c.bullets.length > 0
+      ? ` bullets=${JSON.stringify(c.bullets.slice(0, 5))}`
+      : "";
+    return `competitor ${c.asin}${note}${bullets}`;
+  });
   const sourcingContext = context.sourcingContext.slice(0, 5).map((s) =>
     `sourcing offer ${s.offerId}${s.title ? `: ${s.title.slice(0, 80)}` : ""}${s.displayedPrice ? ` displayedPrice=${s.displayedPrice}` : ""}${s.confirmed ? " [human confirmed]" : " [search result, NOT confirmed]"} (Similar ≠ Exact; displayedPrice ≠ purchaseCost)`,
   );

@@ -97,6 +97,8 @@ export type CreativeContextCompetitiveInsight = {
   addedAt: string;
   evidenceRef: string;
   provenance: CreativeContextEvidenceRef;
+  /** 轮 15：竞品 Amazon 详情页五点（reference-only；禁止写入当前商品事实） */
+  bullets?: string[];
 };
 
 export type CreativeContextSourcingEntry = {
@@ -616,6 +618,11 @@ export function buildCreativeContextFromResearch(input: CreativeContextBuilderIn
     for (const entry of competitor.asins.slice(0, MAX_COMPETITORS)) {
       const asin = asString(entry.asin);
       if (!asin) continue;
+      const detailBulletsRaw = (entry as { detailBullets?: { bullets?: unknown[] } }).detailBullets;
+      const bullets = Array.isArray(detailBulletsRaw?.bullets)
+        ? detailBulletsRaw.bullets.filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+            .map((b) => cleanExcerpt(b, 200)).slice(0, 5)
+        : [];
       competitiveContext.push({
         asin,
         note: cleanExcerpt(entry.note, 160),
@@ -626,6 +633,7 @@ export function buildCreativeContextFromResearch(input: CreativeContextBuilderIn
           sourceType: "competitor_evidence",
           observedAt: asIso(entry.addedAt),
         },
+        ...(bullets.length > 0 ? { bullets } : {}),
       });
     }
   }

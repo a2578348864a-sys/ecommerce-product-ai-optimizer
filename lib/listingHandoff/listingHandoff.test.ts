@@ -691,7 +691,8 @@ describe("UI 状态（第20章 66-75）", () => {
   });
 
   it("409 冲突恢复", () => {
-    expect(uiSource).toContain("handleConflict()");
+    expect(uiSource).toContain("handleConflict(conflictPending)");
+    expect(uiSource).toContain("创作资料又发生变化，请再试一次");
     expect(uiSource).toContain("handoff_stale");
     expect(uiSource).toContain("void load()");
   });

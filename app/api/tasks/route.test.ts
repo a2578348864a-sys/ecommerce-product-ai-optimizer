@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { SYSTEM_MANAGED_TASK_RESULT_KEYS } from "@/lib/server/taskResultNamespacePolicy";
+import { buildMarketScreeningCandidateIdentity } from "@/lib/server/opportunityCandidateService";
 
 /**
  * /api/tasks route 测试
@@ -11,8 +12,8 @@ import { SYSTEM_MANAGED_TASK_RESULT_KEYS } from "@/lib/server/taskResultNamespac
 
 const CORRECT_PASSWORD = "ci-test-password";
 
-// Mock Prisma
-const mockPrisma = {
+// Mock Prisma（vi.hoisted：route.ts 通过机会候选服务模块间接引用 db mock，不能在工厂里引用未初始化的顶层变量）
+const mockPrisma = vi.hoisted(() => ({
   viralAnalysisRecord: {
     findMany: vi.fn().mockResolvedValue([]),
     count: vi.fn().mockResolvedValue(0),
@@ -36,7 +37,10 @@ const mockPrisma = {
   opportunityCandidate: {
     findMany: vi.fn().mockResolvedValue([]),
   },
-};
+  v4ResearchRun: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
+}));
 
 vi.mock("@/lib/server/db", () => ({
   prisma: mockPrisma,
@@ -112,6 +116,386 @@ async function getJsonStatus(response: Response) {
 }
 
 describe("GET /api/tasks", () => {
+  it("同一经过验证的 productKey、不同 Candidate 可以合并（完整身份解析器验证）", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    const identity = (suffix: string) => buildMarketScreeningCandidateIdentity({
+      productionRegistrationId: `pr-${suffix}`,
+      batchManifestHash: "a".repeat(64),
+      manifestId: `batch-${suffix}`,
+      marketplace: "US",
+      productKey: "amazon:US:B0SAMPLE12",
+      asin: "B0SAMPLE12",
+      evidenceHash: "b".repeat(64),
+    });
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a-old", "candidate-a-old", "2026-08-20T00:00:00.000Z"),
+      record("task-a-new", "candidate-a-new", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-a-old", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("old") }) },
+      { id: "candidate-a-new", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("new") }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [oldA, newA] = body.data.items;
+
+    expect(oldA.productProjectKey).toMatch(/^ppk_[A-Za-z0-9_-]{43}$/);
+    expect(oldA.productProjectKey).not.toContain("candidate");
+    expect(newA.productProjectKey).toBe(oldA.productProjectKey);
+    expect(JSON.stringify(body)).not.toContain("candidate-a-old");
+    expect(JSON.stringify(body)).not.toContain("candidate-a-new");
+    expect(JSON.stringify(body)).not.toContain("B0SAMPLE12");
+    expect(JSON.stringify(body)).not.toContain("productionRegistrationId");
+    expect(JSON.stringify(body)).not.toContain("identityHash");
+  });
+
+  it("同名但不同经过验证的 productKey 不得合并", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    const identity = (asin: string, suffix: string) => buildMarketScreeningCandidateIdentity({
+      productionRegistrationId: `pr-${suffix}`,
+      batchManifestHash: "a".repeat(64),
+      manifestId: `batch-${suffix}`,
+      marketplace: "US",
+      productKey: `amazon:US:${asin}`,
+      asin,
+      evidenceHash: "b".repeat(64),
+    });
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-a", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-b", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-a", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("B0SAMPLE12", "a") }) },
+      { id: "candidate-b", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("B0OTHERT4T", "b") }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+  });
+
+  it("残缺 marketScreeningIdentity 不得合并（只含 productKey）", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-a", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-b", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-a", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: { productKey: "amazon:US:B0SAMPLE12" } }) },
+      { id: "candidate-b", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: { productKey: "amazon:US:B0SAMPLE12" } }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+    expect(JSON.stringify(body)).not.toContain("B0SAMPLE12");
+  });
+
+  it("错误 identityHash 不得合并", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    const valid = buildMarketScreeningCandidateIdentity({
+      productionRegistrationId: "pr-a",
+      batchManifestHash: "a".repeat(64),
+      manifestId: "batch-a",
+      marketplace: "US",
+      productKey: "amazon:US:B0SAMPLE12",
+      asin: "B0SAMPLE12",
+      evidenceHash: "b".repeat(64),
+    });
+    const tampered = { ...valid, identityHash: "f".repeat(64) };
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-a", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-b", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-a", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: tampered }) },
+      { id: "candidate-b", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: tampered }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+  });
+
+  it("非法 productKey 不得合并（schema 完整但 productKey 与 marketplace/ASIN 不一致）", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    const corruptIdentity = {
+      schemaVersion: "market-screening-candidate-identity.v1",
+      productionRegistrationId: "pr-a",
+      batchManifestHash: "a".repeat(64),
+      manifestId: "batch-a",
+      marketplace: "US",
+      productKey: "amazon:us:B0SAMPLE12",
+      asin: "B0SAMPLE12",
+      identityHash: "a".repeat(64),
+      evidenceHash: "b".repeat(64),
+    };
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-a", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-b", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-a", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: corruptIdentity }) },
+      { id: "candidate-b", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: corruptIdentity }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+  });
+
+  it("identity 与图片 productKey 冲突不得合并（fail-closed 而非信任其一）", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    const identity = (suffix: string) => buildMarketScreeningCandidateIdentity({
+      productionRegistrationId: `pr-${suffix}`,
+      batchManifestHash: "a".repeat(64),
+      manifestId: `batch-${suffix}`,
+      marketplace: "US",
+      productKey: "amazon:US:B0SAMPLE12",
+      asin: "B0SAMPLE12",
+      evidenceHash: "b".repeat(64),
+    });
+    // 图片快照声明另一个商品键（candidateIdentityHash 匹配，productKey 冲突）
+    const imageSnapshot = (suffix: string) => ({
+      version: "market-screening-product-image.v1",
+      source: "stage15_screening_preview_cache",
+      status: "available",
+      productKey: "amazon:US:B0OTHERT4T",
+      candidateIdentityHash: identity(suffix).identityHash,
+      mimeType: "image/png",
+      bytes: 8,
+      contentHash: "4c4b6a3be1314ab86138bef4314dde022e600960d8689a2c8f8631802d20dab6",
+      dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      capturedAt: "2026-08-20T00:00:00.000Z",
+    });
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-a", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-b", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-a", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("a"), productImageSnapshot: imageSnapshot("a") }) },
+      { id: "candidate-b", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("b"), productImageSnapshot: imageSnapshot("b") }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+  });
+
+
+  it("同一 candidateId 返回两条 Candidate：即使两条身份都合法且 productKey 相同，也不得合并两个任务", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    const identity = (suffix: string) => buildMarketScreeningCandidateIdentity({
+      productionRegistrationId: `pr-${suffix}`,
+      batchManifestHash: "a".repeat(64),
+      manifestId: `batch-${suffix}`,
+      marketplace: "US",
+      productKey: "amazon:US:B0SAMPLE12",
+      asin: "B0SAMPLE12",
+      evidenceHash: "b".repeat(64),
+    });
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-dupe", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-dupe", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    // 同一 candidateId 命中两条（数据异常：重复候选）——都带合法身份与相同 productKey
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([
+      { id: "candidate-dupe", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("x") }) },
+      { id: "candidate-dupe", name: "Same Product Title", sourceMetaJson: JSON.stringify({ marketScreeningIdentity: identity("y") }) },
+    ]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+    const serialized = JSON.stringify(body);
+    for (const key of ["candidateId", "productKey", "identityHash", "manifestId", "batchManifestHash", "evidenceHash", "productionRegistrationId"]) {
+      expect(serialized).not.toContain('"' + key + '"');
+    }
+  });
+
+  it("Candidate 缺失不得按 candidateId 合并", async () => {
+    const record = (id: string, candidateId: string, updatedAt: string) => ({
+      id,
+      createdAt: new Date(updatedAt),
+      updatedAt: new Date(updatedAt),
+      type: "workflow",
+      decisionStatus: "pending",
+      title: "Same Product Title 商品研究",
+      platform: "manual",
+      productUrl: null,
+      materialText: "Same Product Title",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify({
+        productName: "Same Product Title",
+        sourceMeta: { source: "opportunity", candidateId },
+        candidateToTask: { version: 1, candidateId },
+      }),
+    });
+    // 两个任务指向同一 candidateId，但候选不存在（DB 无记录）
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      record("task-a", "candidate-missing", "2026-08-20T00:00:00.000Z"),
+      record("task-b", "candidate-missing", "2026-08-21T00:00:00.000Z"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(createRequest({ headers: { "x-access-password": CORRECT_PASSWORD } }));
+    const body = await response.json();
+    const [a, b] = body.data.items;
+    expect(a.productProjectKey).not.toBe(b.productProjectKey);
+    expect(JSON.stringify(body)).not.toContain("candidate-missing");
+  });
+
   it("returns an allowlisted Owner result while resolving product image from the raw server binding", async () => {
     const fullHash = "a".repeat(64);
     mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
@@ -401,6 +785,164 @@ describe("GET /api/tasks", () => {
     const { status, body } = await getJsonStatus(response);
     expect(status).toBe(500);
     expect(body.error).toContain("ACCESS_PASSWORD");
+  });
+});
+
+describe("GET /api/tasks 正式工作台数据域（scope=product-research）", () => {
+  const workflowRecord = (id: string, candidateId: string, extra = {}) => ({
+    id,
+    createdAt: new Date("2026-08-20T00:00:00.000Z"),
+    updatedAt: new Date("2026-08-21T00:00:00.000Z"),
+    type: "workflow",
+    decisionStatus: "pending",
+    title: "商品研究记录",
+    platform: "manual",
+    productUrl: null,
+    materialText: "商品研究记录",
+    source: "agent_run",
+    score: 1,
+    level: "low",
+    oneLineSummary: "",
+    resultJson: JSON.stringify({
+      productName: "商品研究记录",
+      sourceMeta: { source: "opportunity", candidateId },
+      candidateToTask: { version: 1, candidateId },
+      ...extra,
+    }),
+  });
+
+  it("只查询正式商品研究任务（type=workflow 且排除 source=mock）", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(0);
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=product-research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    expect(response.status).toBe(200);
+    expect(mockPrisma.viralAnalysisRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: "workflow", source: { not: "mock" } }),
+    }));
+  });
+
+  it("下发服务端 aiRunStatus（running），原始 result.status 不进入浏览器", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      workflowRecord("task-run", "candidate-run", { status: "fake_raw_running" }),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.v4ResearchRun.findMany.mockResolvedValueOnce([{
+      candidateId: "candidate-run",
+      status: "running",
+      updatedAt: new Date("2026-08-21T00:00:00.000Z"),
+    }]);
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=product-research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const body = await response.json();
+    expect(body.data.items[0].aiRunStatus).toBe("running");
+    expect(body.data.items[0].result).not.toHaveProperty("status");
+    expect(JSON.stringify(body)).not.toContain("fake_raw_running");
+  });
+
+  it("failed_recoverable / failed_terminal / cancelled / completed 按最新 run 状态投影", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      workflowRecord("task-r1", "cand-r1"),
+      workflowRecord("task-r2", "cand-r2"),
+      workflowRecord("task-r3", "cand-r3"),
+      workflowRecord("task-r4", "cand-r4"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(4);
+    mockPrisma.v4ResearchRun.findMany.mockResolvedValueOnce([
+      { candidateId: "cand-r1", status: "failed_recoverable", updatedAt: new Date("2026-08-21T00:00:00.000Z") },
+      { candidateId: "cand-r2", status: "failed_terminal", updatedAt: new Date("2026-08-21T00:00:00.000Z") },
+      { candidateId: "cand-r3", status: "cancelled", updatedAt: new Date("2026-08-21T00:00:00.000Z") },
+      { candidateId: "cand-r4", status: "completed", updatedAt: new Date("2026-08-21T00:00:00.000Z") },
+    ]);
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=product-research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const body = await response.json();
+    const byId = new Map(body.data.items.map((item: { id: string; aiRunStatus: string }) => [item.id, item.aiRunStatus]));
+    expect(byId.get("task-r1")).toBe("failed_recoverable");
+    expect(byId.get("task-r2")).toBe("failed_terminal");
+    expect(byId.get("task-r3")).toBe("cancelled");
+    expect(byId.get("task-r4")).toBe("completed");
+  });
+
+  it("多个 run 取最新（updatedAt 最大），且无 run → not_started", async () => {
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([
+      workflowRecord("task-latest", "cand-latest"),
+      workflowRecord("task-none", "cand-none"),
+    ]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(2);
+    mockPrisma.v4ResearchRun.findMany.mockResolvedValueOnce([
+      { candidateId: "cand-latest", status: "completed", updatedAt: new Date("2026-08-20T00:00:00.000Z") },
+      { candidateId: "cand-latest", status: "failed_recoverable", updatedAt: new Date("2026-08-21T00:00:00.000Z") },
+    ]);
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=product-research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const body = await response.json();
+    const byId = new Map(body.data.items.map((item: { id: string; aiRunStatus: string }) => [item.id, item.aiRunStatus]));
+    expect(byId.get("task-latest")).toBe("failed_recoverable");
+    expect(byId.get("task-none")).toBe("not_started");
+    // §6 runUpdatedAt = 最新 run 的 updatedAt（驱动项目代表规则）
+    const byItem = new Map(body.data.items.map((item: { id: string; runUpdatedAt?: string }) => [item.id, item.runUpdatedAt ?? null]));
+    expect(byItem.get("task-latest")).toBe("2026-08-21T00:00:00.000Z");
+    expect(byItem.get("task-none")).toBeNull();
+  });
+
+  it("stale 优先于 run 状态（research_stale）", async () => {
+    const staleResult = {
+      productName: "已过期商品",
+      browserEvidence: { schema: "browser-evidence.v1", snapshots: [{ fields: { asin: { value: "B0STALE12" } } }] },
+      sourceMeta: { source: "opportunity", candidateId: "cand-stale" },
+      candidateToTask: { version: 1, candidateId: "cand-stale" },
+      researchCompletion: {
+        schema: "research-completion.v1",
+        status: "completed",
+        completedAt: "2026-08-20T01:00:00.000Z",
+        decisionId: "11111111-1111-4111-8111-111111111111",
+        revision: 1,
+        finalStatus: "creative_ready",
+        evidenceHash: "a".repeat(64),
+      },
+    };
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValueOnce([{
+      id: "task-stale",
+      createdAt: new Date("2026-08-20T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-21T00:00:00.000Z"),
+      type: "workflow",
+      decisionStatus: "continue",
+      title: "已过期商品",
+      platform: "manual",
+      productUrl: null,
+      materialText: "已过期商品",
+      source: "agent_run",
+      score: 1,
+      level: "low",
+      oneLineSummary: "",
+      resultJson: JSON.stringify(staleResult),
+    }]);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValueOnce(1);
+    mockPrisma.v4ResearchRun.findMany.mockResolvedValueOnce([
+      { candidateId: "cand-stale", status: "completed", updatedAt: new Date("2026-08-21T00:00:00.000Z") },
+    ]);
+    const response = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=product-research",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const body = await response.json();
+    expect(body.data.items[0].aiRunStatus).toBe("research_stale");
+    // §3 统一状态出口：result 不得再出现 status（stale 只经 aiRunStatus / 命名 researchStale 字段）
+    expect(body.data.items[0].result).not.toHaveProperty("status");
+    expect(body.data.items[0].result.researchStale).toBe(true);
+    // §3 Owner 绑定：ownerScope=owner 且 sandboxId=null
+    expect(mockPrisma.v4ResearchRun.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ ownerScope: "owner", sandboxId: null, candidateId: { in: ["cand-stale"] } }),
+    }));
   });
 });
 

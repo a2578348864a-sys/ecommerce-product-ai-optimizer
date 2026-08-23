@@ -12,6 +12,8 @@ import {
   createSourcingPreview,
   getSourcingEvidence,
   parseSourcingEvidence,
+  peekSourcingPreview,
+  consumeSourcingPreview,
   resetSourcingPreviewStoreForTests,
   saveSourcingEvidence,
   takeSourcingPreview,
@@ -274,5 +276,122 @@ describe("Preview Store（主体/任务绑定）", () => {
       subjectKey: `visitor:${DEMO_A}`,
       taskId,
     })).toBeNull();
+  });
+});
+
+
+describe("Preview Store 原子化语义（轮 14）", () => {
+  it("peek 不消耗：校验失败/冲突后可再次取用；consume 后不可再次 peek", () => {
+    const preview = createSourcingPreview({
+      context: visitorContext(DEMO_A),
+      taskId,
+      method: "keyword",
+      query: "保温杯",
+      runTrace: runTrace(),
+      candidates: [sampleCandidate()],
+    });
+    const claim = { subjectKey: `visitor:${DEMO_A}`, taskId };
+    // peek 三次都可用（不删除）
+    expect(peekSourcingPreview(preview.previewId, claim)).not.toBeNull();
+    expect(peekSourcingPreview(preview.previewId, claim)).not.toBeNull();
+    expect(peekSourcingPreview(preview.previewId, claim)).not.toBeNull();
+    // consume 后不可再 peek
+    expect(consumeSourcingPreview(preview.previewId, claim)).toBe(true);
+    expect(peekSourcingPreview(preview.previewId, claim)).toBeNull();
+  });
+
+  it("跨主体 peek/consume 不生效且不消耗原主体预览", () => {
+    const preview = createSourcingPreview({
+      context: visitorContext(DEMO_A),
+      taskId,
+      method: "keyword",
+      query: "保温杯",
+      runTrace: runTrace(),
+      candidates: [sampleCandidate()],
+    });
+    const wrongClaim = { subjectKey: `visitor:${DEMO_B}`, taskId };
+    expect(peekSourcingPreview(preview.previewId, wrongClaim)).toBeNull();
+    expect(consumeSourcingPreview(preview.previewId, wrongClaim)).toBe(false);
+    expect(peekSourcingPreview(preview.previewId, { subjectKey: `visitor:${DEMO_A}`, taskId })).not.toBeNull();
+  });
+
+  it("过期条目 peek null；未过期（expiresAt=now+15min）可 peek", () => {
+    const preview = createSourcingPreview({
+      context: visitorContext(DEMO_A),
+      taskId,
+      method: "keyword",
+      query: "保温杯",
+      runTrace: runTrace(),
+      candidates: [sampleCandidate()],
+    });
+    const claim = { subjectKey: `visitor:${DEMO_A}`, taskId };
+    expect(peekSourcingPreview(preview.previewId, claim)).not.toBeNull();
+    (preview as { expiresAt: number }).expiresAt = Date.now() - 1;
+    expect(peekSourcingPreview(preview.previewId, claim)).toBeNull();
+  });
+});
+
+
+describe("轮 14：20 条候选保存保全（只补前 3 条不丢其余）", () => {
+  function manyCandidates(count: number): AcquisitionCandidate[] {
+    const arr: AcquisitionCandidate[] = [];
+    for (let i = 0; i < count; i++) {
+      const offerId = String(674000000000 + i);
+      arr.push({ ...sampleCandidate(offerId), title: `候选${i}` });
+    }
+    return arr;
+  }
+
+  it("4 条全部确认保存 → 证据含 4 条候选与 4 条确认", async () => {
+    const candidates = manyCandidates(4);
+    const saved = await saveSourcingEvidence({
+      context: visitorContext(),
+      taskId,
+      method: "keyword",
+      query: "保温杯",
+      runTrace: runTrace(),
+      candidates,
+      confirmedOfferIds: candidates.map((c) => c.offerId),
+      expectedStorageVersion: toStorageVersion(taskId),
+    });
+    expect(saved.candidates).toHaveLength(4);
+    expect(saved.humanConfirmed).toHaveLength(4);
+    const readBack = await getSourcingEvidence(visitorContext(), taskId);
+    expect(readBack?.candidates).toHaveLength(4);
+    expect(readBack?.humanConfirmed).toHaveLength(4);
+  });
+
+  it("20 条全部确认保存 → 证据含 20 条候选与 20 条确认（无截断）", async () => {
+    const candidates = manyCandidates(20);
+    const saved = await saveSourcingEvidence({
+      context: visitorContext(),
+      taskId,
+      method: "keyword",
+      query: "保温杯",
+      runTrace: runTrace(),
+      candidates,
+      confirmedOfferIds: candidates.map((c) => c.offerId),
+      expectedStorageVersion: toStorageVersion(taskId),
+    });
+    expect(saved.candidates).toHaveLength(20);
+    expect(saved.humanConfirmed).toHaveLength(20);
+  });
+
+  it("只补前 3 条场景等价语义：确认集合含未补详情候选时该候选仍保留（snapshot 不被删）", async () => {
+    // 此测试验证保存层不因“详情只补前 3”而丢候选：模拟 enrich 只补前 3、其余为 search 快照。
+    const all = manyCandidates(5);
+    const enriched = all.map((c, index) => index < 3 ? { ...c, displayedMoq: { value: 1, ...c.displayedMoq as object } as typeof c.displayedMoq } : c);
+    const saved = await saveSourcingEvidence({
+      context: visitorContext(),
+      taskId,
+      method: "keyword",
+      query: "保温杯",
+      runTrace: runTrace(),
+      candidates: enriched,
+      confirmedOfferIds: all.map((c) => c.offerId),
+      expectedStorageVersion: toStorageVersion(taskId),
+    });
+    expect(saved.candidates).toHaveLength(5);
+    expect(saved.candidates[3].offerId).toBe(all[3].offerId);
   });
 });

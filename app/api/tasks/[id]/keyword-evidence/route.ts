@@ -19,6 +19,18 @@ import {
 import { parseKeywordReport } from "@/lib/upstream/sellersprite/keywordReports";
 import { parseXlsxWorkbook, SellerSpriteXlsxError } from "@/lib/upstream/sellersprite/xlsx";
 import type { AccessContext } from "@/lib/server/accessPassword";
+import {
+  assertBrowserUseOwnerOnly,
+  isAllowedCollectorSourceUrl,
+  marketplaceToAmazonTld,
+  resolveBrowserUseSeed,
+  storeBrowserUsePreview,
+  takeBrowserUsePreview,
+  type BrowserUseKeywordPreviewItem,
+} from "@/lib/server/browserUseResearch";
+import { KEYWORD_EVIDENCE_SCHEMA } from "@/lib/server/keywordEvidence";
+import { runSellerSpriteCollection } from "@/tools/collectors/browser-use/sellerSpriteCollector";
+import { getRuntimeMode } from "@/lib/server/runtimeMode";
 
 export const runtime = "nodejs";
 
@@ -126,6 +138,76 @@ export async function POST(
 ) {
   const id = await getId(context);
   if (!id) return errorResponse(400, "invalid_id", "缺少有效 task id。");
+
+  // ── 轮 9：Browser Use 自动采集关键词（JSON action=collect_browser_use/save_browser_use；仅 local owner） ──
+  {
+    const contentType0 = request.headers.get("content-type") ?? "";
+    if (!contentType0.includes("multipart/form-data")) {
+      const body0 = await request.clone().json().catch(() => null);
+      const bodyRecord0 = isRecord(body0) ? body0 : null;
+      if (bodyRecord0 && (asString(bodyRecord0.action) === "collect_browser_use" || asString(bodyRecord0.action) === "save_browser_use")) {
+        const resolved = await resolveContext(request, id, bodyRecord0);
+        if (!resolved.ok) return resolved.response;
+        try {
+          assertBrowserUseOwnerOnly(resolved.context);
+          if (getRuntimeMode() !== "local_owner") return errorResponse(403, "browser_use_local_env_required", "自动采集仅限本机环境使用。");
+          const snapshot = await readKeywordEvidenceSnapshot(resolved.context, id);
+          const record = (() => { try { const parsed = JSON.parse(snapshot.resultJson) as unknown; return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null; } catch { return null; } })();
+          const seed = resolveBrowserUseSeed(record);
+          if (!seed) return errorResponse(409, "browser_use_identity_unavailable", "该任务没有可验证的权威商品身份（批次/卖家精灵事实缺失或不完整），无法启动自动采集。");
+          if (asString(bodyRecord0.action) === "collect_browser_use") {
+            const run = await runSellerSpriteCollection({
+              kind: "keyword",
+              seedAsin: seed.asin,
+              marketplaceTld: marketplaceToAmazonTld(seed.marketplace),
+              productUrl: seed.productUrl,
+            });
+            if (!run.ok) {
+              return errorResponse(502, "browser_use_collect_failed", run.failureReason === "collector_unavailable" ? "浏览器采集引擎不可用（未启动或超时），请重试。" : "浏览器采集失败：未获得有效页面观察。");
+            }
+            const previewId = storeBrowserUsePreview(run.preview);
+            return jsonResponse({ ok: true, data: { kind: "keyword", preview: run.preview, previewId } });
+          }
+          const previewId = asString(bodyRecord0.previewId);
+          if (!previewId) return errorResponse(400, "preview_id_required", "缺少预览 ID。");
+          const expectedStorageVersion = parseStorageVersionInput(bodyRecord0.expectedStorageVersion);
+          if (expectedStorageVersion === null) return errorResponse(400, "storage_version_required", "内容刚在其他位置更新，请刷新后重试。");
+          const preview = takeBrowserUsePreview(previewId);
+          if (!preview) return errorResponse(400, "preview_not_found", "预览不存在或已过期，请重新采集。");
+          if (preview.kind !== "keyword") return errorResponse(400, "preview_kind_mismatch", "预览类型与保存目标不一致。");
+          if (!isAllowedCollectorSourceUrl(preview.sourceUrl)) return errorResponse(400, "forged_external_source_url", "采集来源不是 Amazon 官方页面，已拒绝保存。");
+          if (preview.seedAsin !== seed.asin) return errorResponse(409, "seed_asin_mismatch", "当前任务的商品身份已变化，请重新采集后再确认。不做覆盖。");
+          const rows = preview.results.map((item, index) => ({
+            rowNumber: index + 1,
+            keyword: item.keyword,
+            keywordTranslation: item.keywordTranslation,
+            fields: {
+              ...(item.searchVolume !== null ? { monthlySearches: { raw: String(item.searchVolume), normalized: item.searchVolume, metricNature: "estimate" as const, applicability: "available" as const } } : {}),
+              ...(item.relevance !== null ? { relevance: { raw: String(item.relevance), normalized: item.relevance, metricNature: "estimate" as const, applicability: "available" as const } } : {}),
+              ...(item.competition !== null ? { competition: { raw: String(item.competition), normalized: item.competition, metricNature: "estimate" as const, applicability: "available" as const } } : {}),
+            },
+          }));
+          if (rows.length === 0) return errorResponse(400, "no_valid_rows", "预览中没有可保存的关键词行。");
+          const evidence: KeywordEvidenceV1 = {
+            schema: KEYWORD_EVIDENCE_SCHEMA,
+            reportType: "reverse_asin",
+            capturedAt: preview.capturedAt,
+            dataPeriod: null,
+            rows,
+            updatedAt: preview.capturedAt,
+          };
+          const saved = await saveKeywordEvidence({ context: resolved.context, taskId: id, evidence, expectedStorageVersion });
+          const after = await readKeywordEvidenceSnapshot(resolved.context, id);
+          return jsonResponse({ ok: true, data: { evidence: saved, storageVersion: toStorageVersion(after), saved: rows.map((row) => row.keyword) } });
+        } catch (error) {
+          if (error && typeof error === "object" && (error as { code?: unknown }).code === "browser_use_local_owner_only") {
+            return errorResponse(403, "browser_use_local_owner_only", "Browser Use 自动采集仅限本机 Owner 使用。");
+          }
+          return errorResponseFrom(error);
+        }
+      }
+    }
+  }
 
   const contentType = request.headers.get("content-type") ?? "";
   const isMultipart = contentType.includes("multipart/form-data");

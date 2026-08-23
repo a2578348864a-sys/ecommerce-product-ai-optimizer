@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -33,7 +33,34 @@ import { V4ValueCards } from "@/components/v4/home/V4ValueCards";
 import { V4FeaturedReplayCard } from "@/components/v4/home/V4FeaturedReplayCard";
 import { V4BoundaryNotice } from "@/components/v4/home/V4BoundaryNotice";
 import type { FeaturedReplay, HomeRuntime } from "@/components/v4/home/heroLogic";
-import { NEXT_ACTION_USER_LABELS, userStatus } from "@/components/v4/userLanguage";
+import type { ResearchProductImageDisplay } from "@/lib/productResearchImage";
+import { resolveTaskProductDisplayName } from "@/lib/productDisplayName";
+import { deriveResearchHistoryStatus, type ResearchHistoryStatus } from "@/lib/taskResearchHistoryPresentation";
+import { collectPagedTasks, deriveProductProjectGroup, ProductResearchTasksUnavailableError } from "@/lib/researchLifecycle";
+export { collectPagedTasks, ProductResearchTasksUnavailableError } from "@/lib/researchLifecycle";
+
+async function collectStartableCandidateCount(): Promise<number> {
+  // 轮 7：可研究唯一依据 = isCandidateResearchActionAvailable（服务端返回 researchAction 后客户端过滤）
+  const all = await collectPagedTasks<{ id: string; researchAction?: string }>(async (offset) => {
+    const response = await fetch("/api/opportunity-candidates?limit=100&offset=" + offset, {
+      headers: { ...buildAccessHeaders() },
+      cache: "no-store",
+    });
+    const json = await response.json().catch(() => null) as { ok?: boolean; items?: Array<{ id: string; researchAction?: string }>; hasMore?: boolean } | null;
+    if (!response.ok || !json?.ok || !Array.isArray(json.items)) return null;
+    return { items: json.items, hasMore: json.hasMore === true };
+  });
+  return all.filter((item) => item.researchAction === "research_available" || item.researchAction === "runtime_validation_required").length;
+}
+
+/** 轮 7：首页研究入口唯一路由（可研究计数未知 → 不可用 + 重试；0 → 发现商品；>0 → startable）。 */
+export function resolveStartResearchHref(availableCount: number | null | undefined): { href: string | null; unavailable: boolean } {
+  if (availableCount === null || availableCount === undefined) return { href: null, unavailable: true };
+  if (availableCount > 0) return { href: "/opportunity-candidates?view=startable", unavailable: false };
+  return { href: "/opportunities", unavailable: false };
+}
+import { ResearchProductImage } from "@/components/ResearchProductImage";
+import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 
 type TasksApiResponse =
   | { ok: true; records?: HomeDashboardTaskItem[]; data?: { items?: HomeDashboardTaskItem[] } }
@@ -166,19 +193,49 @@ const DEFAULT_RUNTIME: HomeRuntime = { mode: "local_owner", noAuthOwner: false, 
 // 展示统一走 userLanguage（userStatus / NEXT_ACTION_USER_LABELS）。
 // ─────────────────────────────────────────────────────────────
 
-type LocalRunItem = {
-  runId: string;
-  candidateLabel: string | null;
-  keyword: string | null;
-  marketplace: string | null;
-  status: string;
-  currentNode: string;
-  wait?: { kind?: string; reasonCode?: string } | null;
+export type LocalTaskItem = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  type: string;
+  decisionStatus: DecisionStatus;
+  title: string | null;
+  materialText: string;
+  oneLineSummary: string;
+  result: unknown;
+  productImage: ResearchProductImageDisplay | null;
+  productProjectKey: string;
+  /** 服务端正式安全投影的 AI 运行状态（research_stale/running/waiting/failed_recoverable/failed_terminal/cancelled/completed/not_started）。 */
+  aiRunStatus?: string;
+  /** 服务端从该候选最新 V4ResearchRun 给出的 run.updatedAt（研究尝试真正时间源）；无 run 时不下发。 */
+  runUpdatedAt?: string;
 };
 
-const LOCAL_WAITING_STATUS = new Set(["waiting_human", "waiting_auth", "waiting_input"]);
-const LOCAL_RESEARCHING_STATUS = new Set(["draft", "planning", "running", "revising", "paused_budget"]);
-const LOCAL_FAILED_STATUS = new Set(["failed_terminal", "failed_recoverable"]);
+type LocalTasksResponse =
+  | { ok: true; records?: LocalTaskItem[]; data?: { items?: LocalTaskItem[] }; page?: { hasMore?: boolean } }
+  | { ok: false; error?: { message?: string } };
+
+export type LocalProductProject = {
+  key: string;
+  task: LocalTaskItem;
+  taskCount: number;
+  productName: string;
+  category: string;
+  market: string;
+  conclusion: string;
+  researchStatus: ResearchHistoryStatus;
+  group: "needs_action" | "researching" | "completed";
+  statusLabel: string;
+  nextLabel: string;
+};
+
+function isLocalRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function localText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
 
 /** 市场代码 → 用户可读站点名（C 端不暴露内部主机/代码；未映射 → 诚实「市场待补充」）。 */
 const LOCAL_MARKET_LABELS: Record<string, string> = {
@@ -202,34 +259,145 @@ function localMarketLabel(marketplace: string | null): string {
   return LOCAL_MARKET_LABELS[trimmed.toLowerCase()] ?? LOCAL_MARKET_LABELS[trimmed] ?? "市场待补充";
 }
 
-/** 当前节点 → 用户下一步动作（NEXT_ACTION_USER_LABELS 的 key）。 */
-const LOCAL_NODE_NEXT_ACTION: Record<string, string> = {
-  gate_a: "finish_gate_a_decision",
-  product_fact_gate: "confirm_product_facts",
-  commercial_check: "fill_commercial_costs",
-  gate_b: "fill_commercial_costs",
-  content_skills: "content_generation",
-  content_review: "content_review",
-  content_handoff: "check_listing",
-};
-
-/** 由 run 状态推导「下一步」用户按钮文案（取 NEXT_ACTION_USER_LABELS；无对应动作时诚实展示进度）。 */
-function localNextActionLabel(run: LocalRunItem): string {
-  if (run.status === "completed") return NEXT_ACTION_USER_LABELS.review_report;
-  if (run.status === "failed_terminal" || run.status === "failed_recoverable") return NEXT_ACTION_USER_LABELS.retry;
-  const waitKind = run.wait?.kind;
-  if (waitKind === "budget") return NEXT_ACTION_USER_LABELS.retry;
-  if (waitKind === "authentication") return NEXT_ACTION_USER_LABELS.start_research;
-  const nodeKey = LOCAL_NODE_NEXT_ACTION[run.currentNode];
-  if (nodeKey) return NEXT_ACTION_USER_LABELS[nodeKey];
-  if (waitKind === "input") return NEXT_ACTION_USER_LABELS.fill_commercial_costs;
-  return "查看研究进度";
-}
-
-function isLocalRunItem(value: unknown): value is LocalRunItem {
+function isLocalTaskItem(value: unknown): value is LocalTaskItem {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
-  return typeof v.runId === "string" && typeof v.status === "string";
+  return typeof v.id === "string"
+    && typeof v.type === "string"
+    && typeof v.decisionStatus === "string"
+    && typeof v.updatedAt === "string"
+    && typeof v.productProjectKey === "string"
+    && v.productProjectKey.startsWith("ppk_");
+}
+
+function localProductMeta(result: unknown) {
+  if (!isLocalRecord(result)) return { category: "类目尚未取得", market: "市场尚未取得" };
+  const context = isLocalRecord(result.candidateAnalysisContext) ? result.candidateAnalysisContext : null;
+  const facts = context && isLocalRecord(context.facts) ? context.facts : null;
+  return {
+    category: localText(facts?.category) || localText(facts?.rootCategory) || "类目尚未取得",
+    market: localMarketLabel(localText(facts?.marketplace) || null),
+  };
+}
+
+function localConclusion(task: LocalTaskItem) {
+  const result = isLocalRecord(task.result) ? task.result : null;
+  const legacy = result && isLocalRecord(result.legacyListSummary) ? result.legacyListSummary : null;
+  const presentation = legacy && isLocalRecord(legacy.presentation) ? legacy.presentation : null;
+  const conclusions = Array.isArray(presentation?.researchConclusions)
+    ? presentation.researchConclusions.map(localText).filter(Boolean)
+    : [];
+  if (conclusions[0]) return conclusions[0];
+  const workflow = legacy && isLocalRecord(legacy.workflow) ? legacy.workflow : null;
+  const verdict = localText(workflow?.verdictLabel);
+  if (verdict && !["暂无", "未知", "待确认"].includes(verdict)) return verdict;
+  const storedSummary = localText(task.oneLineSummary);
+  return storedSummary || "AI 研究结论尚未取得。";
+}
+
+/** 服务端正式投影状态 → 三组语义。失败/取消终态优先于旧研究/决定（§2.4）。 */
+function localProjectState(task: LocalTaskItem, researchStatus: ResearchHistoryStatus) {
+  // 轮 6：与 /research 共用同一口径（唯一分类器）
+  return deriveProductProjectGroup({
+    aiRunStatus: task.aiRunStatus,
+    decisionStatus: task.decisionStatus,
+    result: task.result,
+    oneLineSummary: task.oneLineSummary,
+  });
+}
+
+/** §2.1 正式工作台数据域读取（完整分页 + 只保留正式商品研究任务）；任何失败 → unavailable。 */
+export type WorkbenchTasksLoadResult =
+  | { status: "ready"; tasks: LocalTaskItem[] }
+  | { status: "unavailable" };
+
+export async function loadWorkbenchTasks(
+  fetchPage: (offset: number) => Promise<{ items: LocalTaskItem[]; hasMore: boolean } | null>,
+): Promise<WorkbenchTasksLoadResult> {
+  let all: LocalTaskItem[] | null = null;
+  try {
+    all = await collectPagedTasks(fetchPage);
+  } catch {
+    all = null;
+  }
+  if (!all) return { status: "unavailable" };
+  return { status: "ready", tasks: all.filter((task) => task.type === "workflow") };
+}
+
+function taskTime(task: LocalTaskItem) {
+  const value = Date.parse(task.updatedAt || task.createdAt);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * §6 项目时间戳：max(最新 run 更新, 任务更新时间)。
+ * 研究尝试的最新性以服务端 runUpdatedAt 为准（V4ResearchRun.updatedAt），
+ * 不能只依赖可能未随 run 更新的任务 updatedAt。
+ */
+function taskRecency(task: LocalTaskItem) {
+  const runValue = Date.parse(task.runUpdatedAt ?? "");
+  const runTime = Number.isFinite(runValue) ? runValue : Number.MIN_SAFE_INTEGER;
+  return Math.max(runTime, taskTime(task));
+}
+
+/**
+ * 最终确定性排序契约（与 Formal v2 文档一致）：
+ * 1) max(runUpdatedAt, task.updatedAt) 降序（项目新鲜度）
+ * 2) task.updatedAt 降序
+ * 3) task.id 字典序升序
+ * 结果与 API 输入顺序无关。
+ */
+function compareTaskFreshness(left: LocalTaskItem, right: LocalTaskItem): number {
+  const recencyDiff = taskRecency(right) - taskRecency(left);
+  if (recencyDiff !== 0) return recencyDiff;
+  const timeDiff = taskTime(right) - taskTime(left);
+  if (timeDiff !== 0) return timeDiff;
+  return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+}
+
+function compareProjectFreshness(left: LocalProductProject, right: LocalProductProject): number {
+  return compareTaskFreshness(left.task, right.task);
+}
+
+export function buildLocalProductProjects(tasks: LocalTaskItem[]): LocalProductProject[] {
+  const groups = new Map<string, LocalTaskItem[]>();
+  for (const task of tasks) {
+    const key = localText(task.productProjectKey) || `task:${task.id}`;
+    const existing = groups.get(key);
+    if (existing) existing.push(task);
+    else groups.set(key, [task]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, groupedTasks]) => {
+      const sorted = groupedTasks.toSorted(compareTaskFreshness);
+      // 规则（§6/最终冻结）：项目代表 = max(max(runUpdatedAt, updatedAt)) 降序 → updatedAt 降序 → id 字典序升序
+      const task = sorted[0];
+      const meta = localProductMeta(task.result);
+      const researchStatus = deriveResearchHistoryStatus({
+        result: task.result,
+        decisionStatus: task.decisionStatus,
+        oneLineSummary: task.oneLineSummary,
+      });
+      const state = localProjectState(task, researchStatus);
+      return {
+        key,
+        task,
+        taskCount: sorted.length,
+        productName: resolveTaskProductDisplayName({
+          resultProductName: isLocalRecord(task.result) ? task.result.productName : "",
+          taskTitle: task.title,
+          materialText: task.materialText,
+          fallback: "商品名称尚未取得",
+        }),
+        category: meta.category,
+        market: meta.market,
+        conclusion: localConclusion(task),
+        researchStatus,
+        ...state,
+      };
+    })
+    .toSorted(compareProjectFreshness);
 }
 
 /**
@@ -777,55 +945,80 @@ function PublicDashboard({
     </main>
   );
 }
-function LocalRunSection({
+function LocalProductSection({
   title,
   items,
   loading,
+  unavailable,
   testId,
-  emptyHint = "暂无记录",
+  description,
+  emptyHint,
 }: {
   title: string;
-  items: LocalRunItem[];
+  items: LocalProductProject[];
   loading: boolean;
+  unavailable: boolean;
   testId: string;
-  emptyHint?: string;
+  description: string;
+  emptyHint: string;
 }) {
   return (
     <section className="surface-card min-w-0 p-4 sm:p-5" data-testid={testId} aria-labelledby={testId + "-title"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={testId + "-title"} className="text-base font-semibold text-slate-900">{title}</h2>
+        <div>
+          <h2 id={testId + "-title"} className="text-base font-semibold text-slate-900">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+        </div>
         {!loading && (
           <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">
-            {items.length} 条
+            {items.length} 件
           </span>
         )}
       </div>
       {loading ? (
-        <p className="mt-3 text-sm text-slate-400">正在读取研究记录…</p>
+        <p className="mt-4 text-sm text-slate-400">正在读取商品项目…</p>
+      ) : unavailable ? (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+          商品项目暂时无法读取，请稍后刷新；页面不会用模拟数据代替。
+        </p>
       ) : items.length === 0 ? (
-        <p className="mt-3 text-sm text-slate-400">{emptyHint}</p>
+        <p className="mt-4 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-sm text-slate-400">{emptyHint}</p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {items.map((run) => (
-            <li key={run.runId}>
-              <Link
-                href={"/v4/runs/" + encodeURIComponent(run.runId)}
-                className="group flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-slate-900">{run.candidateLabel ?? "待补充商品名称"}</span>
-                  <span className="mt-0.5 block truncate text-xs text-slate-500">市场：{localMarketLabel(run.marketplace)}</span>
-                </span>
-                <span className="inline-flex shrink-0 items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
-                  {userStatus(run.status)}
-                </span>
-                <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-teal-700">
-                  {localNextActionLabel(run)}
-                  <ArrowRight className="size-4 group-hover:translate-x-0.5" aria-hidden="true" />
-                </span>
-              </Link>
+        <ul className="mt-4 space-y-3">
+          {items.map((project) => {
+            return (
+            <li key={project.key}>
+              <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <ResearchProductImage image={project.task.productImage} alt={project.productName} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="break-words text-base font-semibold leading-6 text-slate-950">{project.productName}</h3>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{project.category} · {project.market}</p>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                        {project.statusLabel}
+                      </span>
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-700">{project.conclusion}</p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      {project.taskCount > 1 ? (
+                        <span className="text-xs text-slate-400">同一商品的 {project.taskCount} 次研究已合并</span>
+                      ) : <span />}
+                      <Link
+                        href={`/tasks/${encodeURIComponent(project.task.id)}`}
+                        className="linear-button inline-flex h-9 items-center justify-center gap-1.5 px-3 text-sm font-semibold"
+                      >
+                        {project.nextLabel}
+                        <ArrowRight className="size-4" aria-hidden="true" />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </article>
             </li>
-          ))}
+          );})}
         </ul>
       )}
     </section>
@@ -833,46 +1026,69 @@ function LocalRunSection({
 }
 
 function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
-  const [runsState, setRunsState] = useState<{ status: "loading" | "ready"; runs: LocalRunItem[] }>({
+  const [tasksState, setTasksState] = useState<{
+    status: "loading" | "ready" | "unavailable";
+    tasks: LocalTaskItem[];
+  }>({
     status: "loading",
-    runs: [],
+    tasks: [],
   });
+  // 轮 7：可研究商品计数（fail-closed；失败 → 不可用 + 重试）
+  const [startableState, setStartableState] = useState<{ status: "loading" | "ready" | "unavailable"; count: number | null }>({ status: "loading", count: null });
+  const loadStartable = useCallback(async () => {
+    setStartableState({ status: "loading", count: null });
+    try {
+      const count = await collectStartableCandidateCount();
+      setStartableState({ status: "ready", count });
+    } catch {
+      setStartableState({ status: "unavailable", count: null });
+    }
+  }, []);
 
   useEffect(() => {
     if (!runtime.v4Graph) {
-      setRunsState({ status: "ready", runs: [] });
+      setTasksState({ status: "ready", tasks: [] });
       return;
     }
     const controller = new AbortController();
+    void loadStartable();
     (async () => {
       try {
-        const response = await fetch("/api/v4/runs", {
-          method: "GET",
-          headers: { ...buildAccessHeaders() },
-          cache: "no-store",
-          signal: controller.signal,
+        // §2.1/§2.5：正式数据域 + 完整分页（hasMore=false 为止）；任意页失败 fail-closed → unavailable。
+        const result = await loadWorkbenchTasks(async (offset) => {
+          const response = await fetch("/api/tasks?scope=product-research&limit=50&offset=" + offset, {
+            method: "GET",
+            headers: { ...buildAccessHeaders() },
+            cache: "no-store",
+            signal: controller.signal,
+          });
+          const json = await response.json().catch(() => null) as LocalTasksResponse | null;
+          if (!response.ok || !json?.ok) return null;
+          const items = (json.records ?? json.data?.items ?? []);
+          return {
+            items: items.filter(isLocalTaskItem),
+            hasMore: json.page?.hasMore === true,
+          };
         });
-        if (!response.ok) {
-          setRunsState({ status: "ready", runs: [] });
-          return;
-        }
-        const json = await response.json().catch(() => null);
-        const runs = Array.isArray(json?.runs) ? json.runs.filter(isLocalRunItem) : [];
-        setRunsState({ status: "ready", runs });
+        setTasksState(
+          result.status === "ready"
+            ? { status: "ready", tasks: result.tasks }
+            : { status: "unavailable", tasks: [] },
+        );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setRunsState({ status: "ready", runs: [] });
+        setTasksState({ status: "unavailable", tasks: [] });
       }
     })();
     return () => controller.abort();
-  }, [runtime.v4Graph]);
+  }, [runtime.v4Graph, loadStartable]);
 
-  const isReady = runsState.status === "ready";
-  const runs = isReady ? runsState.runs : [];
-  const waitingList = runs.filter((r) => LOCAL_WAITING_STATUS.has(r.status)).slice(0, 5);
-  const researchingList = runs.filter((r) => LOCAL_RESEARCHING_STATUS.has(r.status)).slice(0, 5);
-  const failedList = runs.filter((r) => LOCAL_FAILED_STATUS.has(r.status)).slice(0, 5);
-  const completedList = runs.filter((r) => r.status === "completed").slice(0, 4);
+  const projects = useMemo(() => buildLocalProductProjects(tasksState.tasks), [tasksState.tasks]);
+  const needsAction = projects.filter((project) => project.group === "needs_action");
+  const researching = projects.filter((project) => project.group === "researching");
+  const completed = projects.filter((project) => project.group === "completed");
+  const loading = tasksState.status === "loading";
+  const unavailable = tasksState.status === "unavailable";
 
   return (
     <main className="app-shell px-4 py-6 sm:px-6 lg:px-8" data-testid="home-dashboard">
@@ -895,29 +1111,59 @@ function LocalWorkspace({ runtime }: { runtime: HomeRuntime }) {
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="linear-kicker">商品研究</p>
-                    <h2 id="local-start-research-title" className="mt-1 text-xl font-semibold tracking-tight text-slate-950">
-                      开始商品研究
-                    </h2>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                      从候选商品开始研究，AI 整理数据依据，关键决定由你确认。
-                    </p>
+                    <p className="text-sm leading-6 text-slate-600">从一个真实候选商品开始，AI 整理证据，关键决定由你确认。</p>
                   </div>
-                  <Link
-                    href="/v4/runs"
-                    className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
-                    data-testid="local-start-research-cta"
-                  >
-                    开始商品研究
-                    <ArrowRight className="size-4" aria-hidden="true" />
-                  </Link>
+                  {startableState.status === "unavailable" ? (
+                    <div className="flex flex-wrap items-center gap-3" data-testid="local-start-research-unavailable">
+                      <span className="text-sm text-amber-700">研究入口暂时无法读取。</span>
+                      <button type="button" onClick={() => void loadStartable()} className="linear-button-soft inline-flex h-11 items-center justify-center px-5 text-sm font-semibold">
+                        重试
+                      </button>
+                    </div>
+                  ) : startableState.status === "loading" ? (
+                    <span className="inline-flex h-11 items-center px-2 text-sm text-slate-500" data-testid="local-start-research-loading">正在确认可研究商品…</span>
+                  ) : resolveStartResearchHref(startableState.count).href ? (
+                    <Link
+                      href={resolveStartResearchHref(startableState.count).href as string}
+                      className="linear-button-primary inline-flex h-11 items-center justify-center gap-2 px-5 text-sm font-semibold"
+                      data-testid="local-start-research-cta"
+                    >
+                      {startableState.count === 0 ? "去发现商品" : "开始研究一个商品"}
+                      <ArrowRight className="size-4" aria-hidden="true" />
+                    </Link>
+                  ) : null}
                 </div>
               </section>
 
-              <LocalRunSection title="等待我确认" items={waitingList} loading={!isReady} testId="local-status-waiting" />
-              <LocalRunSection title="正在研究" items={researchingList} loading={!isReady} testId="local-status-researching" />
-              <LocalRunSection title="失败待处理" items={failedList} loading={!isReady} testId="local-status-failed" />
-              <LocalRunSection title="最近完成" items={completedList} loading={!isReady} testId="local-status-completed" />
+              <div className="grid min-w-0 gap-4 xl:grid-cols-3">
+                <LocalProductSection
+                  title="需要我处理"
+                  description="等你的决定，研究才能进入下一步。"
+                  items={needsAction}
+                  loading={loading}
+                  unavailable={unavailable}
+                  testId="local-status-needs-action"
+                  emptyHint="当前没有等待你处理的商品。"
+                />
+                <LocalProductSection
+                  title="AI 研究中"
+                  description="资料仍在整理，结论尚未完成。"
+                  items={researching}
+                  loading={loading}
+                  unavailable={unavailable}
+                  testId="local-status-researching"
+                  emptyHint="当前没有正在研究的商品。"
+                />
+                <LocalProductSection
+                  title="已完成"
+                  description="研究和人工决定都已保存。"
+                  items={completed}
+                  loading={loading}
+                  unavailable={unavailable}
+                  testId="local-status-completed"
+                  emptyHint="当前还没有已完成的商品。"
+                />
+              </div>
             </>
           ) : (
             <section

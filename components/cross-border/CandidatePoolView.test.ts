@@ -17,15 +17,15 @@ const item = {
   updatedAt: "2026-08-01T00:00:00.000Z",
 };
 
-function render(overrides: Partial<Parameters<typeof CandidatePoolView>[0]> = {}) {
-  return renderToStaticMarkup(createElement(CandidatePoolView, {
+function render(overrides: Record<string, unknown> = {}) {
+  const props = {
     state: "ready",
-    items: [item],
+    items: [item as never],
     total: 101,
     hasMore: true,
     statusFilter: "all",
     query: "",
-    selectedIds: [],
+    selectedIds: [] as string[],
     busy: false,
     manualOpen: false,
     manualName: "",
@@ -37,7 +37,6 @@ function render(overrides: Partial<Parameters<typeof CandidatePoolView>[0]> = {}
     onQueryChange: () => undefined,
     onToggleSelect: () => undefined,
     onSelectAll: () => undefined,
-    onClearSelection: () => undefined,
     onDeleteItem: () => undefined,
     onDeleteSelected: () => undefined,
     onStartSelected: () => undefined,
@@ -46,7 +45,8 @@ function render(overrides: Partial<Parameters<typeof CandidatePoolView>[0]> = {}
     onManualUrlChange: () => undefined,
     onManualSubmit: () => undefined,
     ...overrides,
-  }));
+  };
+  return renderToStaticMarkup(createElement(CandidatePoolView, props as never));
 }
 
 describe("CandidatePoolView", () => {
@@ -79,8 +79,8 @@ describe("CandidatePoolView", () => {
     const html = render({
       items: [{
         ...item,
-        researchAction: "research_blocked",
-        researchBlockReasonCode: "candidate_not_ready",
+        researchAction: "research_blocked" as const,
+        researchBlockReasonCode: "candidate_not_ready" as const,
         researchActionMessage: "该候选尚未满足研究条件。",
       }],
     });
@@ -140,5 +140,55 @@ describe("CandidatePoolView", () => {
     expect(html).toContain("需要补充供应商证明");
     expect(html).toContain("第 2 版");
     expect(html).not.toContain("decisionEvents");
+  });
+});
+
+
+describe("候选卡主图（轮 6）", () => {
+  it("有可用图 → 同源 img /api 引用；无图 → 诚实占位（无外链）", () => {
+    const withImage = render({
+      items: [{ ...item, imageAvailable: true, imageUrl: "/api/opportunity-candidates/candidate-101/image" } as never],
+    });
+    expect(withImage).toContain('data-testid="candidate-main-image"');
+    expect(withImage).toContain('src="/api/opportunity-candidates/candidate-101/image"');
+    expect(withImage).not.toContain("商品图待补充");
+
+    const noImage = render({
+      items: [{ ...item, imageAvailable: false, imageUrl: null } as never],
+    });
+    expect(noImage).toContain('data-testid="candidate-image-placeholder"');
+    expect(noImage).toContain("商品图待补充");
+    expect(noImage).not.toContain("candidate-main-image");
+    expect(noImage).not.toContain('src="http');
+    expect(noImage).not.toContain("https://");
+  });
+});
+
+
+describe("轮 7 startable 视图与精确聚焦", () => {
+  function items() {
+    return [
+      { ...item, id: "c-avail", researchAction: "research_available" as const, name: "可研究品" },
+      { ...item, id: "c-conv", researchAction: "converted" as const, convertedTaskId: "task-1", name: "历史品" },
+      { ...item, id: "c-blocked", researchAction: "research_blocked" as const, researchBlockReasonCode: "candidate_not_ready" as const, researchActionMessage: "n", name: "被阻断品" },
+    ];
+  }
+  it("startableOnly：只显示授权可研究的卡（converted/blocked 不出现）", () => {
+    const html = render({ items: items() as never, startableOnly: true });
+    expect(html).toContain("可研究品");
+    expect(html).not.toContain("历史品");
+    expect(html).not.toContain("被阻断品");
+  });
+  it("非 startableOnly 视图仍显示全部（历史/普通视图不变）", () => {
+    const html = render({ items: items() as never });
+    expect(html).toContain("历史品");
+    expect(html).toContain("被阻断品");
+  });
+  it("candidateId 精确聚焦：目标存在 → 高亮；不存在 → 诚实提示（不得聚焦第一项）", () => {
+    const found = render({ items: items() as never, startableOnly: true, focusCandidateId: "c-avail" });
+    expect(found).toContain('data-testid="candidate-focused"');
+    const missing = render({ items: items() as never, startableOnly: true, focusCandidateId: "c-not-exist" });
+    expect(missing).toContain("没有找到这个候选商品");
+    expect(missing).not.toContain('data-testid="candidate-focused"');
   });
 });

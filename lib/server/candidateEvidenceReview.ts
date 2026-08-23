@@ -10,6 +10,7 @@ import {
 import type { CandidateEvidenceReviewV1 } from "@/lib/candidateEvidenceReview";
 import { inspectStoredCandidateSourceMeta } from "@/lib/candidateSourceIntegrity";
 import { parseCandidateEvidenceSnapshot } from "@/lib/candidateEvidence";
+import { readCandidateProductImageSnapshot } from "@/lib/productResearchImage";
 import {
   CURRENT_RULE_ASSESSMENT_ALGORITHM,
   isSupportedStoredAssessmentAlgorithm,
@@ -228,6 +229,8 @@ export function toPublicOpportunityCandidate<T extends object>(candidate: T) {
     link: record.link,
   });
   const r22MarketDecisionSnapshot = parseR22MarketDecisionFromAnalysisJson(analysisJson);
+  // 轮 6：身份绑定真实缓存主图可用性（既有权威解析器；仅下发安全同源引用）
+  const cachedImage = readCandidateProductImageSnapshot(typeof sourceMetaJson === "string" ? sourceMetaJson : "");
   const researchProjection = projectStoredCandidateResearchAction({
     id: typeof record.id === "string" ? record.id : "",
     name: typeof record.name === "string" ? record.name : "",
@@ -249,5 +252,9 @@ export function toPublicOpportunityCandidate<T extends object>(candidate: T) {
     ...researchProjection,
     sourceIntegrity: sourceReview.integrity,
     sourceReview,
+    imageAvailable: cachedImage !== null,
+    imageUrl: cachedImage
+      ? `/api/opportunity-candidates/${encodeURIComponent(String(record.id))}/image`
+      : null,
   };
 }

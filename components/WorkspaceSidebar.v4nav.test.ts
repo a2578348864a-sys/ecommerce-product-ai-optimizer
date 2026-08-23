@@ -35,9 +35,12 @@ describe("WorkspaceSidebar 导航矩阵（V4.1 C 端）", () => {
     expect(g[2].label).toBe("历史功能");
     expect(g.flatMap((x) => x.items).some((i) => i.includes("/v4/runs"))).toBe(false);
   });
-  it("模式 Badge 文案：Public / Local Live / 本地未启用", () => {
+  it("模式 Badge 文案：普通本地页面不显示 V4 / Local Live（公网保留）", () => {
     expect(modeBadgeLabel({ mode: "public_showcase", v4Graph: false })).toBe("Public Replay · 只读脱敏案例");
-    expect(modeBadgeLabel({ mode: "local_owner", v4Graph: true })).toBe("Local Live · 可执行研究流程");
-    expect(modeBadgeLabel({ mode: "local_owner", v4Graph: false })).toBe("本地模式 · V4 未启用");
+    expect(modeBadgeLabel({ mode: "local_owner", v4Graph: true })).toBe("");
+    expect(modeBadgeLabel({ mode: "local_owner", v4Graph: false })).toBe("");
+    // 普通本地页面不出现技术模式文案
+    expect(modeBadgeLabel({ mode: "local_owner", v4Graph: true })).not.toContain("Local Live");
+    expect(modeBadgeLabel({ mode: "local_owner", v4Graph: true })).not.toContain("V4");
   });
 });

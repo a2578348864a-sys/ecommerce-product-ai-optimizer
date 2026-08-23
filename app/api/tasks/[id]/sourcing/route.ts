@@ -26,6 +26,8 @@ import {
   readSourcingEvidenceSnapshot,
   saveSourcingEvidence,
   takeSourcingPreview,
+  peekSourcingPreview,
+  consumeSourcingPreview,
 } from "@/lib/server/sourcingEvidence";
 import {
   SOURCING_CLI_DRIVER_VERSION,
@@ -171,9 +173,18 @@ async function enrichCandidates(
 ): Promise<AcquisitionCandidate[]> {
   const byOfferId = new Map(candidates.map((candidate) => [candidate.offerId, candidate]));
   const enriched: AcquisitionCandidate[] = [];
-  for (const offerId of selectedOfferIds.slice(0, MAX_DETAIL_ENRICH)) {
+  // 轮 14：详情补全只覆盖前 MAX_DETAIL_ENRICH 条；其余选中候选必须保留服务端搜索快照
+  // （不得因“只补前 3 条”而丢失 4..20 条候选）。
+  const detailIds = selectedOfferIds.slice(0, MAX_DETAIL_ENRICH);
+  const detailSet = new Set(detailIds);
+  for (const offerId of selectedOfferIds) {
     const candidate = byOfferId.get(offerId);
     if (!candidate) continue;
+    if (!detailSet.has(offerId)) {
+      // 未纳入详情补全体 → 保留 search 快照（候选不被截断/删除）
+      enriched.push(candidate);
+      continue;
+    }
     try {
       const { detail } = await getOfferDetailById({ offerId });
       const binding = crossValidateCandidateWithDetail(candidate, detail); // offerId 不一致即抛
@@ -567,10 +578,13 @@ export async function POST(
     if (selectedOfferIds.length > MAX_SELECTED) {
       return errorResponse(400, "too_many_selected", `单次最多确认 ${MAX_SELECTED} 个候选。`);
     }
-    const preview = takeSourcingPreview(previewId, {
+    const claim = {
       subjectKey: resolved.context.mode === "demo" ? `visitor:${resolved.context.demoAccessId}` : "owner:v1",
       taskId: id,
-    });
+    };
+    // 轮 14：peek（只读校验，不消耗）——候选校验/详情/CAS 全部通过后才 consume；
+    // 候选错误、详情失败、版本冲突均不消耗预览（保证用户可修正在同一预览上重试）。
+    const preview = peekSourcingPreview(previewId, claim);
     if (!preview) {
       return errorResponse(410, "preview_expired", "预览已过期或不属于当前任务，请重新搜索。");
     }
@@ -598,6 +612,8 @@ export async function POST(
         confirmedOfferIds: selectedOfferIds,
         expectedStorageVersion,
       });
+      // 保存成功 → 一次性作废预览（主体/任务已校验，误配 consume 无害）
+      consumeSourcingPreview(previewId, claim);
       const snapshot = await readSourcingEvidenceSnapshot(resolved.context, id);
       return jsonResponse({
         ok: true,

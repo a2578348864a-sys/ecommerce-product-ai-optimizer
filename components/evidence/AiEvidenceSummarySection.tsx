@@ -142,7 +142,7 @@ export function AiEvidenceSummarySection({
           {/* 门禁与追溯 */}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
             <span className={`rounded-full border px-2 py-0.5 font-semibold ${summary.gateResult === "pass" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-600"}`}>
-              {summary.gateResult === "pass" ? "EvidenceRef 门禁通过" : "门禁未通过"}
+              {summary.gateResult === "pass" ? "引用校验通过" : "引用校验未通过"}
             </span>
             <span>引用覆盖 {summary.evidenceRefCoverage.withRefs}/{summary.evidenceRefCoverage.total}</span>
             <span>模型 {summary.model}</span>
@@ -168,7 +168,7 @@ export function AiEvidenceSummarySection({
       ) : (
         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3">
           <p className="text-sm text-slate-600">
-            尚未生成 AI 证据总结。基于当前已有 Evidence 生成（非最终结论），收集更多证据后可重新生成。
+            尚未生成 AI 研究摘要。基于当前已有资料生成（非最终结论），收集更多资料后可重新生成。
           </p>
           <button
             type="button"
@@ -177,7 +177,7 @@ export function AiEvidenceSummarySection({
             className="mt-2 inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {busy ? "生成中…" : "生成 AI 证据总结"}
+            {busy ? "生成中…" : "生成 AI 研究摘要"}
           </button>
           {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
         </div>

@@ -4,10 +4,10 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SourcingCandidateThumb, SourcingEvidencePanel, UI_METHOD_TO_OPERATION } from "@/components/cross-border/SourcingEvidencePanel";
+import { resolveSourcingAccessState, SourcingCandidateThumb, SourcingEvidencePanel, UI_METHOD_TO_OPERATION } from "@/components/cross-border/SourcingEvidencePanel";
 
 vi.mock("@/lib/client/accessPassword", () => ({
-  useAccessPassword: () => ["test-password"],
+  useAccessPassword: () => ["test-password", () => undefined, true, () => undefined, false],
 }));
 vi.mock("@/lib/client/accessToken", () => ({
   buildAccessHeaders: () => ({ "x-access-token": "test" }),
@@ -199,4 +199,21 @@ describe("SourcingCandidateThumb", () => {
     expect(html).toContain("暂无商品图");
     expect(html).not.toContain("<img");
   });
+
+describe("供应线索免密（轮 12）", () => {
+  it("local_owner/noAuthOwner + 空密码 → 可用（不出现输入密码提示）", () => {
+    const state = resolveSourcingAccessState("", true, true);
+    expect(state.available).toBe(true);
+    expect(state.placeholder).toBe("working");
+  });
+
+  it("runtime-mode 未返回（未 hydration）→ 显示读取中，不闪现密码提示；Visitor 旧契约保留", () => {
+    const loading = resolveSourcingAccessState("", false, false);
+    expect(loading.available).toBe(false);
+    expect(loading.reason).toBe("loading");
+    const guest = resolveSourcingAccessState("", false, true);
+    expect(guest.available).toBe(false);
+    expect(guest.reason).toBe("password_required");
+  });
+});
 });

@@ -399,7 +399,9 @@ describe("Task 详情边界", () => {
   it("不再嵌入创作交接编辑器，仅保留 Studio 入口和资料状态", () => {
     expect(detailSource).not.toContain('import { CreativeHandoffPanel } from "@/components/creative-handoff/CreativeHandoffPanel"');
     expect(detailSource).not.toContain("WorkflowStepWorkspace");
-    expect(detailSource).toContain("创作资料：");
+    expect(detailSource).toContain("Listing 与商品图片");
+    expect(detailSource).toContain("发布前需人工确认");
+    expect(detailSource).toContain("历史未核实草稿，禁止使用。");
     expect(detailSource).toContain("/listing-studio?taskId=");
     expect(detailSource).toContain("/image-studio?taskId=");
   });

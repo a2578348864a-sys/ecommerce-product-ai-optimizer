@@ -1,3 +1,4 @@
+import { resolveSaveConflictRecovery } from "./BrowserEvidenceSection";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -271,4 +272,16 @@ describe("BrowserEvidenceSection rendering", () => {
     expect(html).toContain("页面币种为日元");
     expect(html).toContain("本次不保存价格");
   });
+
+describe("保存冲突自动恢复（轮 12）", () => {
+  it("首次 409：保留预览并仅重试一次；二次 409：提示“资料刚刚更新，请再试一次”，不无限重试", () => {
+    const first = resolveSaveConflictRecovery(409, "task_result_conflict", false);
+    expect(first.retry).toBe(true);
+    expect(first.message).toBeNull();
+    const second = resolveSaveConflictRecovery(409, "task_result_conflict", true);
+    expect(second.retry).toBe(false);
+    expect(second.message).toContain("请再试一次");
+    expect(resolveSaveConflictRecovery(200, null, false).retry).toBe(false);
+  });
+});
 });

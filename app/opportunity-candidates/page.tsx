@@ -12,10 +12,12 @@ export const metadata: Metadata = {
 export default async function OpportunityCandidatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mode?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; view?: string | string[]; candidateId?: string | string[] }>;
 }) {
   const params = await searchParams;
   const mode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  const view = Array.isArray(params.view) ? params.view[0] : params.view;
+  const candidateId = Array.isArray(params.candidateId) ? params.candidateId[0] : params.candidateId;
 
   return (
     <main className="app-shell px-3 py-4 sm:px-5 lg:px-6">
@@ -31,7 +33,7 @@ export default async function OpportunityCandidatesPage({
             <WorkspaceMobileNav />
           </header>
           <div className="mt-4">
-            <CandidatePoolPanel manualMode={mode === "manual"} />
+            <CandidatePoolPanel manualMode={mode === "manual"} startableOnly={view === "startable"} focusCandidateId={candidateId?.trim() || null} />
           </div>
         </div>
       </div>

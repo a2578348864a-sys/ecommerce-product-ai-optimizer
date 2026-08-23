@@ -22,14 +22,17 @@ describe("Phase 3 research history information architecture", () => {
     expect(existsSync(resolve(process.cwd(), "components/tasks/WorkflowStepWorkspace.tsx"))).toBe(false);
   });
 
-  it("keeps research, decision, tools and historical artifacts as separate sections", () => {
-    for (const heading of ["商品身份与来源", "历史初始分析", "人工决定", "创作工具", "历史成果"]) {
+  it("keeps formal-v2 research modules, decision and creative review as separate sections", () => {
+    for (const heading of ["市场机会", "买家需求与差评", "货源与商品匹配", "成本与风险", "人工决定", "Listing 与商品图片"]) {
       expect(detail).toContain(heading);
     }
+    expect(detail).toContain('aria-label="研究模块"');
+    expect(detail).toContain('data-testid="formal-v2-materials"');
     expect(detail).toContain("ProductResearchDecisionPanel");
     expect(detail).toContain("/listing-studio?taskId=${encodeURIComponent(record.id)}");
     expect(detail).toContain("/image-studio?taskId=${encodeURIComponent(record.id)}");
-    expect(detail).toContain('data-testid="historical-artifacts"');
+    expect(detail).toContain("历史未核实草稿，禁止使用。");
+    expect(detail).not.toContain("/prototype");
   });
 
   it("presents research status and artifacts without a creative workflow stage", () => {

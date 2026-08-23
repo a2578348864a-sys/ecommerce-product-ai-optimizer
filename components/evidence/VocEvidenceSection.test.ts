@@ -1,3 +1,4 @@
+import { resolveVocAsinInput, noReviewsEmptyMessage } from "./VocEvidenceSection";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -264,4 +265,19 @@ describe("VocEvidenceSection rendering (novice comprehension)", () => {
     const html = renderToStaticMarkup(element);
     expect(html).toContain("当前样本为低星评论集合");
   });
+
+describe("商品身份锁定（轮 12）", () => {
+  it("当前商品模式：ASIN 只读且绑定服务端 taskAsin；竞品模式才可编辑", () => {
+    const current = resolveVocAsinInput("current_candidate", "B08NCVT244", "B0OTHER123");
+    expect(current.editable).toBe(false);
+    expect(current.value).toBe("B08NCVT244");
+    const competitor = resolveVocAsinInput("competitor", "B08NCVT244", "B0OTHER123");
+    expect(competitor.editable).toBe(true);
+    expect(competitor.value).toBe("B0OTHER123");
+  });
+
+  it("当前商品未采到评论时不再诱导换商品：文案为「可重试或粘贴该商品评论」，不含「换一个 ASIN」", () => {
+    expect(noReviewsEmptyMessage()).toBe("当前商品暂未采到公开评论，可重试或粘贴该商品评论。");
+  });
+});
 });

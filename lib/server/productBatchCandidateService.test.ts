@@ -182,10 +182,18 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
     );
 
     expect(first.candidateId).toBe(repeated.candidateId);
-    // F1：加入候选池后回到研究池（主链：发现商品 → 研究池 → 开始研究 → Workbench）
-    expect(first.destinationUrl).toBe("/opportunity-candidates");
+    // 轮 8 契约：交接地址必须携带本次候选的精确 candidateId（服务端单一出口生成）
+    const preciseOwnerUrl = `/opportunity-candidates?view=startable&candidateId=${encodeURIComponent(first.candidateId)}`;
+    expect(first.destinationUrl).toBe(preciseOwnerUrl);
+    expect(repeated.destinationUrl).toBe(preciseOwnerUrl);
     expect(first.destinationUrl).not.toContain("sourceMeta");
     expect(first.destinationUrl).not.toContain("Closet");
+    // 契约：URL 不得携带商品身份/证据/清单泄漏字段
+    expect(first.destinationUrl).not.toContain("productKey");
+    expect(first.destinationUrl).not.toContain("B000000001");
+    expect(first.destinationUrl).not.toContain("c".repeat(64)); // itemIdentityHash
+    expect(first.destinationUrl).not.toContain("a".repeat(64)); // manifestHash
+    expect(first.destinationUrl).not.toContain("e".repeat(64)); // evidenceHash
     expect(first.created).toBe(true);
     expect(repeated.created).toBe(false);
     expect(mocks.txCreate).toHaveBeenCalledTimes(1);
@@ -236,8 +244,9 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
       candidateId: "visitor-candidate-a",
       created: true,
       destination: "research",
-      destinationUrl: "/opportunity-candidates",
+      destinationUrl: `/opportunity-candidates?view=startable&candidateId=${encodeURIComponent("visitor-candidate-a")}`,
     });
+    expect(result.destinationUrl).toContain("candidateId=visitor-candidate-a");
     expect(result.destinationUrl).not.toContain("/agent/run");
   });
 
@@ -260,6 +269,7 @@ describe("Owner ProductBatchItem to Candidate conversion", () => {
       destination: "history",
       destinationUrl: "/tasks/task-a",
     });
+    expect(repeated.destinationUrl).not.toContain("view=startable");
     expect(mocks.txCreate).toHaveBeenCalledTimes(1);
   });
 

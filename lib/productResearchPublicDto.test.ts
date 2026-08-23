@@ -542,4 +542,69 @@ describe("product research browser DTO allowlist", () => {
     expect(projected).not.toHaveProperty("sourceMeta");
     expect(projected).not.toHaveProperty("productBatchSnapshot");
   });
+  it("round9: projects verified_product_batch facts allowlist into detail candidateAnalysisContext (no internal ids/hashes)", () => {
+    const skeleton = {
+      type: "workflow",
+      productName: "Closet organizer",
+      candidateToTask: { version: 1, candidateId: "private-candidate-id", confirmation: "research_started", confirmedAt: "2026-08-14T02:00:00.000Z" },
+      candidateAnalysisContext: {
+        version: "candidate-analysis-context-v1",
+        integrity: "verified_product_batch",
+        facts: {
+          capturedAt: "2026-08-14T02:00:00.000Z",
+          originKind: "seller_sprite_product_batch",
+          productBatchId: "batch-1",
+          productBatchItemId: "item-1",
+          productName: "Closet organizer",
+          marketplace: "US",
+          asin: "B0SAMPLE12",
+          reportType: "search_results",
+          query: "organizer",
+          category: "Home",
+          researchPriority: "priority_1",
+          evidenceStatus: "sufficient_for_comparison",
+          provisionalDisposition: "provisional_score_only",
+          evidenceHash: "e".repeat(64),
+          itemHash: "d".repeat(64),
+          sellerSpriteDisclaimerVersion: "v1",
+          productFacts: {
+            productTitle: "Closet organizer",
+            brand: "Acme",
+            price: 24.99,
+            rating: 4.5,
+            reviews: 120,
+            rootCategoryBsr: 12700,
+            subCategoryBsr: 1266,
+            estimatedMonthlySales: 228,
+            estimatedMonthlyRevenue: 10237,
+          },
+        },
+        assessment: { researchMode: "market_research_only", promotionEligible: false },
+      },
+    };
+    const projected = projectTaskResultForBrowser(skeleton, "detail") as Record<string, any>;
+    const cac = projected.candidateAnalysisContext as Record<string, any>;
+    expect(cac.integrity).toBe("verified_product_batch");
+    expect(cac.facts.asin).toBe("B0SAMPLE12");
+    expect(cac.facts.marketplace).toBe("US");
+    expect(cac.facts.reportType).toBe("search_results");
+    expect(cac.facts.query).toBe("organizer");
+    expect(cac.facts.category).toBe("Home");
+    expect(cac.facts.capturedAt).toBe("2026-08-14T02:00:00.000Z");
+    expect(cac.facts.productFacts).toMatchObject({
+      productTitle: "Closet organizer",
+      brand: "Acme",
+      price: 24.99,
+      rating: 4.5,
+      reviews: 120,
+      rootCategoryBsr: 12700,
+      subCategoryBsr: 1266,
+    });
+    const serialized = JSON.stringify(projected);
+    for (const forbidden of ["productBatchId", "productBatchItemId", "evidenceHash", "itemHash", "sellerSpriteDisclaimerVersion", "private-candidate-id", "candidateId", "productKey", "identityHash", "contextHash", "manifest"]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+    const listProjected = projectTaskResultForBrowser(skeleton, "list") as Record<string, any>;
+    expect(listProjected.candidateAnalysisContext).toBeUndefined();
+  });
 });

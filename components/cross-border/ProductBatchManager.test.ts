@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { ProductBatchItemView, ProductBatchView } from "@/lib/productBatchStore";
-import { ProductBatchManagerView } from "./ProductBatchManager";
+import { ProductBatchManagerView, resolveBatchCandidateHandoff } from "./ProductBatchManager";
 
 const batch: ProductBatchView = {
   id: "batch-a",
@@ -377,5 +377,58 @@ describe("ProductBatch unified role UI", () => {
     expect(html).toContain("登录后查看和选择商品");
     expect(html).not.toContain("batch-a");
     expect(html).not.toContain("Closet organizer");
+  });
+});
+
+describe("轮 8 研究交接地址行为（生产 researchItem 调用的纯函数）", () => {
+  it("仅使用服务端返回的精确站内地址，不自行拼装", () => {
+    const url = "/opportunity-candidates?view=startable&candidateId=96cc7210-26c9-4257-b8fb-0f1597e77369";
+    expect(resolveBatchCandidateHandoff(true, {
+      ok: true,
+      data: { destinationUrl: url },
+    })).toEqual({ ok: true, destinationUrl: url });
+  });
+
+  it("服务端拒绝时原样返回其错误文案（留在当前页显示）", () => {
+    expect(resolveBatchCandidateHandoff(false, {
+      ok: false,
+      error: { code: "product_batch_candidate_not_researchable", message: "当前批次不可研究。" },
+    })).toEqual({ ok: false, message: "当前批次不可研究。" });
+  });
+
+  it("响应成功但缺少/空/非字符串站内地址时不导航", () => {
+    for (const body of [
+      { ok: true },
+      { ok: true, data: {} },
+      { ok: true, data: { destinationUrl: "" } },
+      { ok: true, data: { destinationUrl: 42 } },
+    ]) {
+      expect(resolveBatchCandidateHandoff(true, body)).toEqual({
+        ok: false,
+        message: "商品批次操作失败，请稍后重试。",
+      });
+    }
+  });
+
+  it("拒绝外站/协议相对/反斜杠伪装/协议地址，只放行同址 / 路径", () => {
+    for (const hostile of [
+      "https://evil.example",
+      "//evil.example",
+      "/\\evil.example",
+      "javascript:alert(1)",
+      "mailto:x@evil.example",
+    ]) {
+      expect(resolveBatchCandidateHandoff(true, { ok: true, data: { destinationUrl: hostile } })).toEqual({
+        ok: false,
+        message: "商品批次操作失败，请稍后重试。",
+      });
+    }
+  });
+
+  it("直接放行服务端精确的 startable 候选地址（唯一合法交接形态）", () => {
+    expect(resolveBatchCandidateHandoff(true, { ok: true, data: { destinationUrl: "/tasks/abc-123" } })).toEqual({
+      ok: true,
+      destinationUrl: "/tasks/abc-123",
+    });
   });
 });

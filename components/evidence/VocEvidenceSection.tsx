@@ -7,10 +7,11 @@
  * 每个主题可展开"为什么这么说"：引用 Review 数量、原文、星级、来源 ASIN、当前商品/竞品、capturedAt、sourceRef。
  * 样本量显式；当前商品 vs 竞品明确区分；单边样本提示；绝不显示"分析了全部评论"除非真实全部。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
 import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
 
@@ -386,6 +387,20 @@ function ThemeSection({
 
 /* ── 主组件 ── */
 
+/** 轮 12：评论 ASIN 输入态——当前商品只读绑定服务端 taskAsin；仅竞品模式可编辑。 */
+export function resolveVocAsinInput(
+  role: "current_candidate" | "competitor",
+  taskAsin: string | null | undefined,
+  currentValue: string,
+): { editable: boolean; value: string } {
+  if (role === "current_candidate") return { editable: false, value: taskAsin?.trim() || "" };
+  return { editable: true, value: currentValue };
+}
+
+/** 轮 12：当前商品未采到评论时的诚实空态（不再诱导换商品）。 */
+export function noReviewsEmptyMessage(): string {
+  return "当前商品暂未采到公开评论，可重试或粘贴该商品评论。";
+}
 export function VocEvidenceSection({
   taskId,
   taskAsin,
@@ -414,6 +429,11 @@ export function VocEvidenceSection({
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // 轮 12：导入/采集确认的 CAS 冲突恢复（首次冲突→保留草稿/预览→版本刷新后自动重试一次；二次→简洁提示）
+  const [importConflictPending, setImportConflictPending] = useState(false);
+  const lastImportVersionRef = useRef<string | null>(null);
+  const [confirmConflictPending, setConfirmConflictPending] = useState(false);
+  const lastConfirmVersionRef = useRef<string | null>(null);
   // Package C：半自动采集（collect preview → 人工确认 → 写入）
   const [collectOpen, setCollectOpen] = useState(false);
   const [collectAsin, setCollectAsin] = useState("");
@@ -486,15 +506,20 @@ export function VocEvidenceSection({
     return map;
   }, [evidence]);
 
-  async function runImport() {
+  /** 轮 12：导入尝试——allowRetry=false 表示已经过版本刷新，未再重试（内部标记已重试）。 */
+  async function attemptImport(version: { resultJsonHash: string; updatedAt: string } | null, allowRetry: boolean) {
+    if (!version) return;
+    const lines = importText.split("\n").map((line) => line.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    const key = version.resultJsonHash + version.updatedAt;
+    lastImportVersionRef.current = key;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const lines = importText.split("\n").map((line) => line.trim()).filter(Boolean);
       const rating = importRating.trim() ? Number(importRating.trim()) : null;
       const reviews = lines.map((text) => ({
-        asin: importAsin.trim().toUpperCase(),
+        asin: (importRole === "current_candidate" ? (taskAsin ?? "") : importAsin).trim().toUpperCase(),
         sourceProductRole: importRole,
         reviewText: text,
         rating,
@@ -502,21 +527,23 @@ export function VocEvidenceSection({
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/review-evidence`, {
         method: "POST",
         headers: buildFetchHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ action: "import", expectedStorageVersion: storageVersion, reviews }),
+        body: JSON.stringify({ action: "import", expectedStorageVersion: version, reviews }),
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true; data: { outcome: { importedCount: number; duplicateCount: number; rejectedCount: number } } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
-        const code = (json as { error?: { code?: string } }).error?.code ?? "";
-        if (code === "task_result_conflict") {
-          // F5：同任务其它区块更新导致 CAS 冲突 → 保留 draft、刷新最新版本、提示一键重试
-          setError("任务内容刚在其他区块更新，已自动刷新最新版本；你已输入的评论已保留，请再次点击导入。");
+        const code = (json as { error?: { code?: string } }).error?.code ?? null;
+        // 轮 12：CAS 冲突恢复——首冲突保留草稿+刷新版本重试一次；二次冲突只显示简洁提示
+        const recovery = resolveEvidenceConflictRecovery(res.status, code, !allowRetry);
+        if (recovery.retry) {
+          setImportConflictPending(true);
           onChanged();
           return;
         }
-        setError((json as { error?: { message?: string } }).error?.message ?? "导入失败。");
+        setImportConflictPending(false);
+        setError(recovery.message ?? (json as { error?: { message?: string } }).error?.message ?? "导入失败。");
         return;
       }
       const outcome = json.data.outcome;
@@ -525,6 +552,7 @@ export function VocEvidenceSection({
       setImportRating("");
       setImportOpen(false);
       vocDraft.clear();
+      setImportConflictPending(false);
       onChanged();
     } catch {
       setError("导入失败，请重试。");
@@ -532,6 +560,19 @@ export function VocEvidenceSection({
       setBusy(false);
     }
   }
+
+  function runImport() {
+    void attemptImport(storageVersion, true);
+  }
+
+  // 轮 12：导入首冲突后，版本刷新时安全重试一次（同版本绝不重复）
+  useEffect(() => {
+    if (!importConflictPending || !storageVersion) return;
+    const key = storageVersion.resultJsonHash + storageVersion.updatedAt;
+    if (lastImportVersionRef.current === key) return;
+    void attemptImport(storageVersion, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅依赖版本变化触发重试，attemptImport 为内部函数
+  }, [storageVersion, importConflictPending]);
 
   async function runAnalyze() {
     setAnalyzing(true);
@@ -548,17 +589,17 @@ export function VocEvidenceSection({
         | { ok: true; data: { gateResult: string; unverified: number; demo?: boolean } }
         | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
-        setError((json as { error?: { message?: string } }).error?.message ?? "VOC 分析失败。");
+        setError((json as { error?: { message?: string } }).error?.message ?? "评论分析失败。");
         return;
       }
       setNotice(json.data.demo === true
-        ? "演示数据：已回放示例 VOC 分析结果（非实时 AI 调用）。"
+        ? "演示数据：已回放示例评论分析结果（非实时 AI 调用）。"
         : json.data.gateResult === "fail"
           ? `分析完成，但 ${json.data.unverified} 个主题因缺少有效评论引用未被采用。`
           : "分析完成。");
       onChanged();
     } catch {
-      setError("VOC 分析失败，请稍后重试。");
+      setError("评论分析失败，请稍后重试。");
     } finally {
       setAnalyzing(false);
     }
@@ -594,7 +635,7 @@ export function VocEvidenceSection({
 
   async function runCollect() {
     if (!canCollectReviews) return;
-    const asin = collectAsin.trim().toUpperCase();
+    const asin = (collectRole === "current_candidate" ? (taskAsin ?? "") : collectAsin).trim().toUpperCase();
     if (!asin) {
       setError("请填写要采集评论的 ASIN。");
       return;
@@ -643,8 +684,11 @@ export function VocEvidenceSection({
     }
   }
 
-  async function runCollectConfirm() {
+  /** 轮 12：采集确认尝试——allowRetry=false 表示已经过版本刷新（未再重试）。 */
+  async function attemptCollectConfirm(version: { resultJsonHash: string; updatedAt: string } | null, allowRetry: boolean) {
     if (!collectPreview || collectSelected.size === 0) return;
+    if (!version) return;
+    lastConfirmVersionRef.current = version.resultJsonHash + version.updatedAt;
     setBusy(true);
     setError("");
     setNotice("");
@@ -656,31 +700,36 @@ export function VocEvidenceSection({
           action: "collect-confirm",
           previewId: collectPreview.previewId,
           selectedIndices: [...collectSelected].sort((a, b) => a - b),
-          expectedStorageVersion: storageVersion,
+          expectedStorageVersion: version,
         }),
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
         | { ok: true } | { ok: false; error?: { code?: string; message?: string } };
       if (!res.ok || !json.ok) {
-        const code = (json as { error?: { code?: string } }).error?.code ?? "";
+        const code = (json as { error?: { code?: string } }).error?.code ?? null;
         if (code === "preview_expired") {
           setError("采集预览已失效，请重新采集。");
           setCollectPreview(null);
+          setConfirmConflictPending(false);
           return;
         }
-        if (code === "task_result_conflict") {
-          setError("任务内容刚在其他位置更新，已自动刷新最新版本；请重新采集后确认。");
+        // 轮 12：CAS 冲突恢复——首冲突保留预览+刷新版本重试一次；二次冲突只显示简洁提示
+        const recovery = resolveEvidenceConflictRecovery(res.status, code, !allowRetry);
+        if (recovery.retry) {
+          setConfirmConflictPending(true);
           onChanged();
           return;
         }
-        setError((json as { error?: { message?: string } }).error?.message ?? "确认失败。");
+        setConfirmConflictPending(false);
+        setError(recovery.message ?? (json as { error?: { message?: string } }).error?.message ?? "确认失败。");
         return;
       }
-      setNotice(`已将选中的 ${collectSelected.size} 条评论加入数据集（可打开「开始 VOC 分析」）。`);
+      setNotice(`已将选中的 ${collectSelected.size} 条评论加入数据集（可打开「开始分析评论」）。`);
       setCollectPreview(null);
       setCollectSelected(new Set());
       setCollectOpen(false);
+      setConfirmConflictPending(false);
       onChanged();
     } catch {
       setError("确认失败，请重试。");
@@ -688,6 +737,19 @@ export function VocEvidenceSection({
       setBusy(false);
     }
   }
+
+  function runCollectConfirm() {
+    void attemptCollectConfirm(storageVersion, true);
+  }
+
+  // 轮 12：采集确认首冲突后，版本刷新时安全重试一次（同版本绝不重复）
+  useEffect(() => {
+    if (!confirmConflictPending || !storageVersion) return;
+    const key = storageVersion.resultJsonHash + storageVersion.updatedAt;
+    if (lastConfirmVersionRef.current === key) return;
+    void attemptCollectConfirm(storageVersion, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅依赖版本变化触发重试，attemptCollectConfirm 为内部函数
+  }, [storageVersion, confirmConflictPending]);
 
   function toggleCollectSelect(index: number) {
     setCollectSelected((prev) => {
@@ -714,7 +776,7 @@ export function VocEvidenceSection({
       <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">VOC — 真实买家评论怎么看这个商品</h3>
+            <h3 className="text-sm font-bold text-slate-900">买家评论与需求 — 真实买家怎么看这个商品</h3>
             <p className="mt-0.5 text-xs text-slate-500">
               评论是用户观点证据，不是商品事实；所有主题都回链到真实评论。
             </p>
@@ -743,7 +805,7 @@ export function VocEvidenceSection({
               className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:opacity-50"
             >
               {analyzing ? <Loader2 className="size-4 animate-spin" /> : <BarChart3 className="size-4" />}
-              {analyzing ? "分析中…（约 10-30 秒）" : "开始 VOC 分析"}
+              {analyzing ? "分析中…（约 10-30 秒）" : "开始分析评论"}
             </button>
             {(evidence?.dataset.reviews.length ?? 0) > 0 && (
               <button
@@ -763,7 +825,7 @@ export function VocEvidenceSection({
           capability={capability}
           localEnvMessage={demoMode
             ? "演示模式：当前环境不执行实时评论采集，可点击「演示采集」回放示例评论片段（演示数据，非实时采集）。"
-            : "自动采集评论需要在本地研究环境使用；你仍可粘贴导入评论，并使用已有评论进行 VOC 分析。"}
+            : "自动采集评论需要在本地研究环境使用；你仍可粘贴导入评论，并使用已有评论进行分析。"}
           unavailableMessage={capability?.reasonCategory === "not_installed"
             ? "本机未检测到可用的 Chrome/Edge 浏览器，无法自动采集评论；可改用粘贴导入。"
             : "自动采集评论当前暂不可用；可改用粘贴导入。"}
@@ -783,9 +845,10 @@ export function VocEvidenceSection({
             )}
             <div className="mt-2 grid gap-2 sm:grid-cols-4">
               <label className="text-xs text-slate-500">
-                ASIN（必填）
+                {importRole === "current_candidate" ? "Amazon 商品编号（ASIN，当前商品）" : "竞品 ASIN（必填）"}
                 <input
-                  value={importAsin}
+                  value={importRole === "current_candidate" ? (taskAsin ?? "") : importAsin}
+                  disabled={importRole === "current_candidate"}
                   onChange={(event) => setImportAsin(event.target.value.toUpperCase())}
                   placeholder={taskAsin ?? "B0XXXXXXXXX"}
                   maxLength={10}
@@ -844,9 +907,10 @@ export function VocEvidenceSection({
             </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               <label className="text-xs text-slate-500">
-                ASIN（必填）
+                {collectRole === "current_candidate" ? "Amazon 商品编号（ASIN，当前商品）" : "竞品 ASIN（必填）"}
                 <input
-                  value={collectAsin}
+                  value={collectRole === "current_candidate" ? (taskAsin ?? "") : collectAsin}
+                  disabled={collectRole === "current_candidate"}
                   onChange={(event) => setCollectAsin(event.target.value.toUpperCase())}
                   placeholder={taskAsin ?? "B0XXXXXXXXX"}
                   maxLength={10}
@@ -895,7 +959,7 @@ export function VocEvidenceSection({
                   </p>
                 ))}
                 {collectPreview.items.length === 0 ? (
-                  <p className="mt-2 text-sm text-amber-700">没有可确认的评论，请换一个 ASIN 或改用「粘贴导入」。</p>
+                  <p className="mt-2 text-sm text-amber-700">{noReviewsEmptyMessage()}（也可以改用「粘贴导入」粘贴该商品公开评论。）</p>
                 ) : (
                   <>
                     <p className="mt-2 text-xs font-semibold text-slate-700">
@@ -1078,7 +1142,7 @@ export function VocEvidenceSection({
       )}
       {analysis === null && (evidence?.dataset.reviews.length ?? 0) > 0 && (
         <p className="text-sm text-slate-500">
-          评论已就绪（{evidence!.dataset.reviews.length} 条）。点击「开始 VOC 分析」生成主题。
+          评论已就绪（{evidence!.dataset.reviews.length} 条）。点击「开始分析评论」生成主题。
         </p>
       )}
     </section>

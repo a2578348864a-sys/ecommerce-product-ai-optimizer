@@ -358,3 +358,96 @@ describe("公网 runtime（LOCAL_ACQUISITION_ENABLED 未开启）capability gate
     expect(login.status).toBe(409);
   });
 });
+
+
+describe("轮 14：保存原子化契约（peek→校验→CAS→consume）", () => {
+  // 局部扩展搜索返回：CLI fake 返回 2 条；我们用 demo replay 分支之外的假 CLI 无法产出 20 条，
+  // 因此这里改用「多次 search 合并」不现实——直接依靠 fake CLI 返回的 2 条 + 生成性预览验证核心语义。
+  // 20 条/4 条场景在 sourcingEvidence 级别用 saveSourcingEvidence 直测（见 sourcingEvidence.test.ts 轮 14 段）。
+
+  it("候选校验失败（非预览候选）→ 同一 previewId 修正后仍可成功", async () => {
+    const searchResponse = await POST(request({ action: "search", keyword: "保温杯" }), context());
+    const searchBody = await json(searchResponse);
+    const previewId = (searchBody.data as { preview: { previewId: string } }).preview.previewId;
+    // 错误选择：含非预览候选
+    const bad = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["99999999999"],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(bad.status).toBe(400);
+    expect(((await json(bad)) as { error: { code: string } }).error.code).toBe("candidate_mismatch");
+    // 修正为合法候选 → 同一 previewId 应成功（预览未被消费）
+    const good = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["674035283676"],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(good.status).toBe(200);
+  });
+
+  it("CAS 版本冲突 → 同 previewId 刷新版本后仍可用", async () => {
+    const searchResponse = await POST(request({ action: "search", keyword: "保温杯" }), context());
+    const searchBody = await json(searchResponse);
+    const previewId = (searchBody.data as { preview: { previewId: string } }).preview.previewId;
+    const stale = { resultJsonHash: "0".repeat(64), updatedAt: "2000-01-01T00:00:00.000Z" };
+    const conflict = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["674035283676", "930374004918"],
+      expectedStorageVersion: stale,
+    }), context());
+    expect(conflict.status).toBe(409);
+    // 刷新版本后同一预览重试 → 成功
+    const retry = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["674035283676", "930374004918"],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(retry.status).toBe(200);
+  });
+
+  it("保存成功后同一 previewId 再次使用 → 410（一次性作废）", async () => {
+    const searchResponse = await POST(request({ action: "search", keyword: "保温杯" }), context());
+    const searchBody = await json(searchResponse);
+    const previewId = (searchBody.data as { preview: { previewId: string } }).preview.previewId;
+    const first = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["674035283676"],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(first.status).toBe(200);
+    const second = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["674035283676"],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(second.status).toBe(410);
+    expect(((await json(second)) as { error: { code: string } }).error.code).toBe("preview_expired");
+  });
+
+  it("候选校验失败不消耗预览：错误选择后仍可用（与修正用例互补）", async () => {
+    const searchResponse = await POST(request({ action: "search", keyword: "保温杯" }), context());
+    const searchBody = await json(searchResponse);
+    const previewId = (searchBody.data as { preview: { previewId: string } }).preview.previewId;
+    const bad = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: [],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(bad.status).toBe(400);
+    const after = await POST(request({
+      action: "save",
+      previewId,
+      selectedOfferIds: ["930374004918"],
+      expectedStorageVersion: toStorageVersion(),
+    }), context());
+    expect(after.status).toBe(200);
+  });
+});

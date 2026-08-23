@@ -313,6 +313,22 @@ describe("isolation", () => {
   });
 });
 
+
+  it("当前商品模式 ASIN 与任务绑定身份不一致 → 409 且零写入（轮 12）", async () => {
+    const bound = await createTrustedSandboxTask(DEMO, {
+      type: "workflow", title: "Bound", platform: "amazon", productUrl: null, materialText: "", source: "demo",
+      score: 0, level: "low", oneLineSummary: "", productLifecycle: "new_candidate", decisionStatus: "pending",
+      resultJson: JSON.stringify({ browserEvidence: { schema: "browser-evidence.v1", version: 1, candidateId: null, targetAsin: "B0AUTHORIT", snapshots: [], updatedAt: "2026-08-14T02:00:00.000Z" } }),
+    } as Parameters<typeof createTrustedSandboxTask>[1]);
+    const before = toStorageVersion(bound.id).resultJsonHash;
+    const response = await postJson({
+      action: "import", expectedStorageVersion: toStorageVersion(bound.id),
+      reviews: [{ asin: "B0OTHER123", sourceProductRole: "current_candidate", reviewText: "x", rating: 4 }],
+    }, bound.id);
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe("current_candidate_asin_mismatch");
+    expect(toStorageVersion(bound.id).resultJsonHash).toBe(before);
+  });
 describe("POST collect / collect-confirm（Package C 半自动采集）", () => {
   beforeEach(() => {
     vi.mocked(collectState.session.navigate).mockReset();

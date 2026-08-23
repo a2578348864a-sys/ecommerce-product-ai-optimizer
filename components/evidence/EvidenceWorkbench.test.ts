@@ -1,3 +1,5 @@
+import { VocEvidenceSection } from "@/components/evidence/VocEvidenceSection";
+import { BrowserEvidenceSection } from "@/components/evidence/BrowserEvidenceSection";
 import { describe, expect, it } from "vitest";
 import {
   buildResearchMaterialRows,
@@ -74,7 +76,7 @@ describe("EvidenceWorkbench extractors", () => {
       sourceMeta: { productBatchSnapshot: { asin: "B0TEST0001", productFacts: { productTitle: "T" } } },
     });
     const price = items.find((item) => item.field === "price");
-    expect(price?.value).toBe("unknown");
+    expect(price?.value).toBe("尚未取得");
     expect(price?.raw).toBeUndefined();
   });
 
@@ -299,5 +301,81 @@ describe("mergeConfirmedIntoOverview / coveredFactFieldSet", () => {
     const productBasics = rows.find((row) => row.key === "productBasics");
     expect(productBasics?.state).toBe("已有");
     expect(productBasics?.detail).toBe("已有 1 项 / 仍缺 14 项");
+  });
+});
+
+import { projectTaskResultForBrowser } from "@/lib/productResearchPublicDto";
+
+describe("round9 批次概览恢复（详情投影→商品概览）", () => {
+  const skeleton = {
+    type: "workflow",
+    productName: "Closet organizer",
+    candidateToTask: { version: 1, candidateId: "private-candidate-id", confirmation: "research_started", confirmedAt: "2026-08-14T02:00:00.000Z" },
+    candidateAnalysisContext: {
+      version: "candidate-analysis-context-v1",
+      integrity: "verified_product_batch",
+      facts: {
+        capturedAt: "2026-08-14T02:00:00.000Z",
+        originKind: "seller_sprite_product_batch",
+        productBatchId: "batch-1",
+        productBatchItemId: "item-1",
+        productName: "Closet organizer",
+        marketplace: "US",
+        asin: "B0SAMPLE12",
+        reportType: "search_results",
+        query: "organizer",
+        category: "Home",
+        researchPriority: "priority_1",
+        evidenceStatus: "sufficient_for_comparison",
+        provisionalDisposition: "provisional_score_only",
+        evidenceHash: "e".repeat(64),
+        itemHash: "d".repeat(64),
+        sellerSpriteDisclaimerVersion: "v1",
+        productFacts: {
+          productTitle: "Closet organizer",
+          brand: "Acme",
+          price: 24.99,
+          rating: 4.5,
+          reviews: 120,
+          rootCategoryBsr: 12700,
+          subCategoryBsr: 1266,
+          estimatedMonthlySales: 228,
+          estimatedMonthlyRevenue: 10237,
+        },
+      },
+      assessment: { researchMode: "market_research_only", promotionEligible: false },
+    },
+  };
+
+  it("经过正式详情安全投影后，商品概览显示真实批次事实（不显示未绑定批次空态）", () => {
+    const projected = projectTaskResultForBrowser(skeleton, "detail");
+    const items = extractOverviewItems(projected);
+    expect(items.length).toBeGreaterThanOrEqual(6);
+    expect(items.find((item) => item.field === "productTitle")?.value).toBe("Closet organizer");
+    expect(items.find((item) => item.field === "brand")?.value).toBe("Acme");
+    expect(items.find((item) => item.field === "price")?.value).toBe("24.99");
+    expect(items.find((item) => item.field === "rating")?.value).toBe("4.5");
+    expect(items.find((item) => item.field === "reviews")?.value).toBe("120");
+    expect(items.find((item) => item.field === "rootCategoryBsr")?.value).toBe("12700");
+  });
+});
+
+describe("用户语言与信息收口（轮 12）", () => {
+  it("评论区 SSR：零出现 Evidence/VOC/Missing/unknown，出现买家评论与需求（当前商品 ASIN 只读）", () => {
+    const { renderToStaticMarkup } = require("react-dom/server") as typeof import("react-dom/server");
+    const { createElement } = require("react") as typeof import("react");
+    const html = renderToStaticMarkup(createElement(VocEvidenceSection, {
+      taskId: "t1", taskAsin: "B08NCVT244", evidence: null, analysis: null, storageVersion: null, capability: null, onChanged: () => undefined,
+    } as never));
+    expect(html).toContain("粘贴导入");
+    expect(/Evidence|\bVOC\b|Missing|unknown/.test(html)).toBe(false);
+  });
+  it("Amazon 商品资料区 SSR：标题与字段使用业务语言；成本与风险目标 id 保留", () => {
+    const { renderToStaticMarkup } = require("react-dom/server") as typeof import("react-dom/server");
+    const { createElement } = require("react") as typeof import("react");
+    const html = renderToStaticMarkup(createElement(BrowserEvidenceSection, {
+      taskId: "t1", taskAsin: "B08NCVT244", evidence: null, storageVersion: null, capability: null, onChanged: () => undefined,
+    } as never));
+    expect(/Evidence|\bVOC\b|Missing|unknown/.test(html)).toBe(false);
   });
 });

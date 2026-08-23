@@ -149,6 +149,11 @@ function friendlyError(error: ApiError) {
   if (["handoff_stale", "research_gate_failed", "invalid_handoff_candidate"].includes(error.code)) {
     return "当前研究资料已失效或尚未达到创作条件，请回到研究记录补充后重试。";
   }
+  if (error.code === "confirmed_fact_conflict") {
+    // 同一商品事实（如品牌/系列/型号/材质）在研究中已被确认并给出了值；
+    // 创作侧必须保留研究确认值，不能覆盖为不同值（friendly 提示真实原因）
+    return "「研究已确认该商品事实并给出值」与「你填写/选择的另一个值」冲突——请保留研究确认值后重新确认；如需修改请先回研究记录调整。";
+  }
   if (error.code === "network_error") return "网络连接异常，请稍后重试。";
   return error.message || "创作资料读取失败，请稍后重试。";
 }
