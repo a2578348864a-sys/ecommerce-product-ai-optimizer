@@ -387,3 +387,12 @@
 - 修复：EvidenceWorkbench 新增 onMaterialRowsChange 冒泡（live 清单变化时上报）；TaskRecordDetail 的 FormalV2RecordContent 持有清单状态（签名去重防循环），新增纯函数 applyLiveMaterialRows：商品基础+竞品已具备 → 市场卡改「销量与竞争证据已具备，AI 市场结论尚未整理…」；评论已具备 → 买家卡改「评论数据已具备，AI 需求结论尚未整理…」；供应线索「选」/无数据时保持原文案（诚实标注尚未取得）。
 - 验证：EvidenceWorkbench 30/30、formal-v2 5/5（新增 applyLiveMaterialRows 两用例：已有→live 文案；无 rows/竞品仍缺→保持原推导）；tsc 0；build 成功；真实浏览器 3005 cmt0lmsqa 四卡实测：市场/买家卡已实时显示「证据已具备」，货源/成本卡保持真实缺失文案，console 0 error；截图 docs/v4.1/evidence/d-formal-v2/module-cards-live-1440.png。
 - 边界：未 commit/push/deploy；16 项 B 类未动；prisma/dev.db 无主动写入。
+# 轮 13.5 阶段收口：提交 + push + 构建 + 部署 + 验收
+
+- 提交：83d433d `feat(v4.1): 合并采集收口——关键词区按钮下线、确认研究按钮TDZ修复、研究模块卡实时跟随、去重红线`（17 文件 +471/-422，白名单精确 add；B 类 17 项未动）。
+- push：origin/feature/v4.1-ui-productization，`git status -sb` 无 ahead/behind；origin HEAD == 83d433d。
+- 本地验证：全量 vitest 6061 passed / 89 skipped（6150 total）；唯一文件级失败 lib/server/native1688Bridge.integration.test.ts「bridge did not start」——基线既有环境问题（隔离复跑复现，与早期记录一致；本轮改动文件 6 个套件 52 测试全绿）；tsc 0；白名单 13 个 ts/tsx eslint 0；build 成功。
+- 构建产物：release/next-v2.2.16-83d433d-linux-x64.tar.gz（2,549,010 B；SHA256 dcf4505f927f138f632b26a8ea89250bdbc4b81f621ea03028cc51117203a3f5；BUILD_ID CDFdHc7oN5zu8PxiiZ6DX；webpack 构建无 hashed external modules，WARN 属预期）。
+- 部署（2026-08-23 22:57 UTC+8）：scp artifact → /tmp → `/www/alibaba-ai-assistant` 解压替换 .next → pm2 restart alibaba-ai-assistant（restart 116）。
+- 服务器验收：BUILD_ID == CDFdHc7oN5zu8PxiiZ6DX（与本地下一次一致）；pm2 online；`/api/health` == {"ok":true}；`/tasks` HTTP 200；`/api/runtime-mode` == public_showcase。
+- 如实记录：本次部署的带时间戳备份因 PowerShell 对 `$(date +%Y%m%d-%H%M%S)` 的本地插值而未生成（stderr 已捕获 Get-Date 报错）；回档材料仍完整——旧构建 /tmp/next-v2.2.16-2dc4017-linux-x64.tar.gz（服务器 /tmp 保留）+ 既有 .next.bak-* 备份全部未动。回滚命令：`cd /www/alibaba-ai-assistant && rm -rf .next && tar -xzf /tmp/next-v2.2.16-2dc4017-linux-x64.tar.gz && pm2 restart alibaba-ai-assistant`。
