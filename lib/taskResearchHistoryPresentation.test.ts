@@ -107,6 +107,38 @@ describe("research history status", () => {
     expect(pendingWithFormal.humanDecisionExists).toBe(true);
   });
 
+  it("P1-3：productResearchSummary.status=abandoned → 独立「已放弃」状态（不再「研究已完成」）", () => {
+    const abandoned = deriveResearchHistoryStatus({
+      result: {
+        productResearchSummary: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          status: "abandoned",
+          reasonSummary: "abandoned by user",
+        },
+      },
+      decisionStatus: "continue",
+      oneLineSummary: "research saved",
+    });
+    expect(abandoned.key).toBe("abandoned");
+    expect(abandoned.label).toBe("已放弃");
+    // creative_ready 不回归
+    const ready = deriveResearchHistoryStatus({
+      result: {
+        productResearchSummary: {
+          schema: "product-research-record.v1",
+          revision: 1,
+          status: "creative_ready",
+          reasonSummary: "ok",
+        },
+      },
+      decisionStatus: "continue",
+      oneLineSummary: "",
+    });
+    expect(ready.key).toBe("completed");
+    expect(ready.label).toBe("研究已完成");
+  });
+
   it("projects creative material and generated artifacts as read-only history summaries", () => {
     const result = {
       creativeHandoff: { currentRevision: 3, controlState: "active" },

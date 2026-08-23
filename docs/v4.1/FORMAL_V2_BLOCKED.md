@@ -77,3 +77,13 @@
 1. **主链红→绿未闭环（核心阻塞）**：自动关键词已贯通 service 主链（effectiveKeywordBrief → plan/readiness/provider/derive/keywords；auto_suggested source 类型；tsc 0；yeti/concurrency/composition/compositeRegression 32/32 零回归）。但服务级 E2E 红灯测试（listingMainChain.r16.test.ts，复制 yetti 夹具 + 注入 keywordEvidence + 自然句 Provider）在 generateCreativeHandoffPreview gate 处 storageVersion null 崩溃——夹具环境（sandbox/db push/gate 前置）未完全对齐（yetti 原测试 3/3 过，但复制体 gate 失败；已隔离 sandbox 目录仍 2 失败）。**未能证明「无 Brief 自动关键词经正式主链保存后仍存在」**——不作为硬指标 1 达标上报。红→绿需后续轮次修复夹具环境。
 2. **keywordReady 三态未落地**：计划实现 manual/auto_suggested/none 区分，但 E2E 未闭环前未改动 readiness（避免影响 32/32 回归）。记录为待办。
 3. **旧记录保留**：轮 16 首次（硬指标 1 部分达成等）与轮 15 记录不变。
+
+
+# Formal v2 P1 修复收尾（代码审查后）
+
+- 原 BLOCKED 三条 P1 已闭环（详见 PROGRESS「P1 修复」）：
+  1. 分页 total/hasMore 失真 → 两阶段精确分页（含失败 fail-closed 上限）——已修复并 2 项契约测试。
+  2. Amazon 来源白名单正则绕过 → URL 解析 + 精确主机名集合——已修复并 13 项断言用例。
+  3. abandoned 错分"研究已完成" → 独立"已放弃/查看研究记录"（保持三列）——已修复并双文件用例。
+- 全量测试唯一失败仍为 native1688Bridge.integration（环境性：本机未启动 1688 原生桥；11 用例 skip；非本提交回归）。
+- 待办：重新执行代码审查（P1=0 后可进服务器 IP 更新准备）；其余 P2 列表维持不变（后续轮次）。

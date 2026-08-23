@@ -270,9 +270,28 @@ export function selectReliableSearchKeyword(
   }
   return null;
 }
+/** 系统支持的 Amazon 零售站点（与 marketplaceToAmazonTld 一致；不扩展新 marketplace）。 */
+const AMAZON_RETAIL_HOSTS = new Set([
+  "amazon.com",
+  "amazon.co.uk",
+  "amazon.de",
+  "amazon.co.jp",
+  "amazon.ca",
+]);
+
 export function isAllowedCollectorSourceUrl(url: string): boolean {
-  if (typeof url !== "string" || !url.trim()) return false;
-  return /^https?:\/\/(www\.)?amazon\./i.test(url.trim()) && !/\s/.test(url);
+  if (typeof url !== "string" || !url.trim() || /\s/.test(url)) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  if (parsed.username || parsed.password) return false;
+  const host = parsed.hostname.toLowerCase();
+  const bare = host.startsWith("www.") ? host.slice(4) : host;
+  return AMAZON_RETAIL_HOSTS.has(bare);
 }
 /** marketplace 来源标识 → Amazon 站点 tld（US/Amazon US → com；其余按 us 处理 fail-closed 交给调用方）。 */
 export function marketplaceToAmazonTld(marketplace: string): string {

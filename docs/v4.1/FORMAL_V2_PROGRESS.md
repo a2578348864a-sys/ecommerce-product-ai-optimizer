@@ -344,3 +344,15 @@
 - 真实流程（Chrome headless CDP 1440×900，真实 1688 CLI 搜索「保温杯」）：① 搜索→10 候选预览→勾选 4→保存→刷新保留 4（前 3 详情完整、第 4「跨境一键开盖保温杯」以搜索快照保留显示未知项——无截断）；② 同页冲突恢复：搜索→勾选 2→用 keyword-evidence 合法 API 更新同任务（resultJsonHash 变化）→点保存→409→前端自动刷新版本重试一次→成功（已加入供应线索 5 条，服务端 candidates=5 confirmed=5）；③ 二次冲突：CDP Fetch 拦截 retry 请求挂起→期间再更新版本→放行→第二次 409→显示「资料又发生变化，请再试一次」+ 搜索结果（10 条）与勾选全部保留；全程无「预览已过期」；④ 1440×900 OVERFLOW=0、390×844 OVERFLOW=0、console errors=0 warns=0、起点选择保留（SELECTED_COUNT=2，视口切换后仍 2）。
 - 截图：docs/v4.1/evidence/d-formal-v2/r14-flow-before-save-1440.png、r14-flow-after-reload-1440.png、r14-conflict-recovered-1440.png、r14-conflict-stop-1440.png、r14-preview-selected-1440.png、r14-preview-selected-390.png。
 - 原库校验：prisma/dev.db SHA-256 = 3d1128b6b751f8fa99e30398c625787d08d82ba9611ab64a93fbb31f610e4471（Node 原始句柄读取，MATCHES_R13=true），mtime 2026-08-22T20:07:36.107Z 未变——零写原始库。
+
+# Formal v2 P1 修复（代码审查后最小修复轮）
+
+- 审查结论：NO_GO（P1×3：分页 total/hasMore 失真、Amazon 来源白名单正则可绕过、abandoned 分类口径冲突）。
+- **P1-1** app/api/tasks/route.ts：research/historical 改为**两阶段精确分页**（无 take/skip 全量窗口 → classifyResearchLifecycle 精确分类 → 切片）；total/hasMore/nextOffset 全部基于精确结果；窗口上限 MAX_RESEARCH_PAGINATION_WINDOW=5000（超限 fail-closed 500）；排序 createdAt desc + id desc；SQL 不再做 lifecycle 启发式预过滤（避免提前排除 abandoned+legacy continue 记录）；product-research 语义不变。
+- **P1-2** lib/server/browserUseResearch.ts：isAllowedCollectorSourceUrl 改为 new URL 解析 + 协议(仅 http/https) + 拒绝 userinfo + hostname 精确匹配 AMAZON_RETAIL_HOSTS（amazon.com/co.uk/de/co.jp/ca + www 前缀），拒绝后缀欺骗/用户信息/非 HTTP(S)/含空白/畸形。
+- **P1-3** lib/taskResearchHistoryPresentation.ts + lib/researchLifecycle.ts：productResearchSummary.status="abandoned" → deriveResearchHistoryStatus 返回独立 {key:"abandoned",label:"已放弃"}；deriveProductProjectGroup 对 abandoned → group="completed"（保持三列）+ statusLabel="已放弃" + nextLabel="查看研究记录"；creative_ready 保持"研究已完成/查看研究结果"；类型 ResearchHistoryStatus 扩展 abandoned。
+- 测试：红线契约先写后实现（route.test.ts +2、browserUseResearch.test.ts +1、researchLifecycle.test.ts +1、taskResearchHistoryPresentation.test.ts +1）；原 6 文件基线 102 → **107 passed / 0 skip**；route.test.ts 59/59（含既有 1 处 SQL 预过滤断言适配为两阶段实现断言，行为断言保留）。
+- 反向验证 ×3（均红→恢复绿）：恢复"当前页长度当 total" → 分页新测试 2 failed；恢复旧 Amazon 正则 → 恶意域名用例 failed；abandoned 映射回 completed 文案 → 状态测试 2 failed。
+- 全量 npm run test（一次）：**6046 passed / 0 failed / 89 skipped**；唯一文件级失败 lib/server/native1688Bridge.integration.test.ts（bridge did not start，隔离复跑复现，环境性既有问题）。
+- tsc 0 / 改动文件 ESLint 0 / build 成功 / git diff --check 0；prisma/dev.db SHA a17675798b3a75976758136a37cc4dbe91d6d02e845ba389b1ab9e2b24a463a9 与审查起点一致（零写入）；HEAD 7980f713 未变；暂存区 0；16 项 B 类未动。
+- 结论：三个 P1 全部闭环 → READY_FOR_RE_REVIEW。

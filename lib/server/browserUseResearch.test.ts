@@ -92,6 +92,24 @@ describe("browserUseResearch 合同与门禁（轮 9）", () => {
     expect(isAllowedCollectorSourceUrl("https://www.amazon.com/dp/B0 EVIL")).toBe(false);
   });
 
+  it("采集来源 URL 校验：域名后缀欺骗/用户信息/非 HTTP(S) 一律拒绝（P1-2 红灯）", () => {
+    expect(isAllowedCollectorSourceUrl("https://amazon.com.evil.com/dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("https://www.amazon.com.attacker.tld/dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("https://amazon.com@evil.com/dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("ftp://amazon.com/dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("https://amazonevil.com/dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("https://amazon.com./dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl(" https://amazon.com/dp/X")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("https://amazon.com.evil.com")).toBe(false);
+    expect(isAllowedCollectorSourceUrl("not a url")).toBe(false);
+    // 合法站点仍放行（已有站点集 + www；不扩新 marketplace）
+    expect(isAllowedCollectorSourceUrl("https://www.amazon.com/dp/B0SAMPLE12")).toBe(true);
+    expect(isAllowedCollectorSourceUrl("http://amazon.co.uk/dp/X")).toBe(true);
+    expect(isAllowedCollectorSourceUrl("https://amazon.de/dp/X")).toBe(true);
+    expect(isAllowedCollectorSourceUrl("https://www.amazon.co.jp/dp/X")).toBe(true);
+    expect(isAllowedCollectorSourceUrl("https://amazon.ca/dp/X")).toBe(true);
+  });
+
   it("可靠搜索关键词：跳过品牌词（owala/owala）与空值；取第一个非品牌词；全品牌→null", () => {
     const items = [
       { keyword: "", keywordTranslation: null, capturedAt: "x" } as never,

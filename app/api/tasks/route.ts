@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+
+/** P1-1：research/historical 两阶段精确分页窗口上限（超限 fail-closed，防无界读取）。 */
+const MAX_RESEARCH_PAGINATION_WINDOW = 5000;
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/db";
@@ -549,38 +552,60 @@ export async function GET(request: NextRequest) {
   try {
     const subject = accessSubject(ctx);
     const formalScope = effectiveScope === "product-research";
-    const [records, total] = await Promise.all([
-      prisma.viralAnalysisRecord.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        skip: offset,
-      }),
-      prisma.viralAnalysisRecord.count({ where }),
-    ]);
-
-    const rawResults = records.map((record) => safeParseJson(record.resultJson));
-    // R5：research/historical 的 JS 侧精确过滤（新版 record 决策存于 resultJson，SQL 无法表达）
-    let baseItems = records.map((record) => toTaskItem(record, subject, formalScope));
-    let filteredRawResults = rawResults;
-    if (effectiveScope === "research" || effectiveScope === "historical") {
-      const paired: Array<{ item: ReturnType<typeof toTaskItem>; raw: ReturnType<typeof safeParseJson> }> = [];
-      baseItems.forEach((item, index) => {
+    // P1-1：research/historical 采用"两阶段精确分页"——全量窗口精确分类后切片；
+    // total/hasMore/nextOffset/切片全部基于同一精确生命周期结果；窗口有上限、排序稳定、失败 fail-closed。
+    const isPreciseScope = effectiveScope === "research" || effectiveScope === "historical";
+    let baseItems: Array<ReturnType<typeof toTaskItem>> = [];
+    let filteredRawResults: Array<ReturnType<typeof safeParseJson>> = [];
+    let effectiveTotal = 0;
+    if (isPreciseScope) {
+      const wideWhere: Prisma.ViralAnalysisRecordWhereInput = {
+        ...(typeParam && allowedTypes.has(typeParam) ? { type: typeParam } : {}),
+        ...(isDecisionStatus(decisionStatusParam) ? { decisionStatus: decisionStatusParam } : {}),
+        ...(searchWhere.length ? { OR: searchWhere } : {}),
+      };
+      const allRows = await prisma.viralAnalysisRecord.findMany({
+        where: wideWhere,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
+      if (allRows.length > MAX_RESEARCH_PAGINATION_WINDOW) {
+        throw new Error("research_pagination_window_exceeded");
+      }
+      const precise: Array<{ item: ReturnType<typeof toTaskItem>; raw: ReturnType<typeof safeParseJson> }> = [];
+      for (const record of allRows) {
+        const raw = safeParseJson(record.resultJson);
+        const item = toTaskItem(record, subject, formalScope);
         const lifecycle = classifyResearchLifecycle({
           decisionStatus: item.decisionStatus,
-          result: rawResults[index],
+          result: raw,
           type: item.type,
         });
         const keep = effectiveScope === "research"
           ? lifecycle.lifecycle === "active"
           : lifecycle.lifecycle === "historical";
-        if (keep) paired.push({ item, raw: rawResults[index] });
-      });
-      baseItems = paired.map((entry) => entry.item);
-      filteredRawResults = paired.map((entry) => entry.raw);
+        if (keep) precise.push({ item, raw });
+      }
+      effectiveTotal = precise.length;
+      const paged = precise.slice(offset, offset + limit);
+      baseItems = paged.map((entry) => entry.item);
+      filteredRawResults = paged.map((entry) => entry.raw);
+    } else {
+      const [records, total] = await Promise.all([
+        prisma.viralAnalysisRecord.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: limit,
+          skip: offset,
+        }),
+        prisma.viralAnalysisRecord.count({ where }),
+      ]);
+      const rawResults = records.map((record) => safeParseJson(record.resultJson));
+      baseItems = records.map((record) => toTaskItem(record, subject, formalScope));
+      filteredRawResults = rawResults;
+      effectiveTotal = total;
     }
     const candidateIds = Array.from(new Set(
-      rawResults
+      filteredRawResults
         .map((result) => getResearchTaskCandidateId(result))
         .filter((id): id is string => Boolean(id)),
     ));
@@ -605,10 +630,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // R5：过滤后重新计算 total（分页语义以过滤结果为准）
-    const effectiveTotal = effectiveScope === "research" || effectiveScope === "historical"
-      ? baseItems.length
-      : total;
     const nextOffset = offset + items.length;
     const hasMore = nextOffset < effectiveTotal;
 

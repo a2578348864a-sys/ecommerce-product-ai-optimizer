@@ -192,6 +192,9 @@ export function deriveProductProjectGroup(input: {
     decisionStatus: input.decisionStatus,
     oneLineSummary: input.oneLineSummary,
   });
+  if (researchStatus.key === "abandoned") {
+    return { group: "completed", statusLabel: "已放弃", nextLabel: "查看研究记录" };
+  }
   if (researchStatus.key === "completed") {
     return { group: "completed", statusLabel: researchStatus.label, nextLabel: "查看研究结果" };
   }

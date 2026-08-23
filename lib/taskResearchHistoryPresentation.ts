@@ -1,8 +1,8 @@
 import type { DecisionStatus } from "@/lib/tasks/decisionStatus";
 
 export type ResearchHistoryStatus = {
-  key: "completed" | "awaiting_decision" | "incomplete";
-  label: "研究已完成" | "待人工决定" | "研究记录待补充";
+  key: "completed" | "awaiting_decision" | "incomplete" | "abandoned";
+  label: "研究已完成" | "待人工决定" | "研究记录待补充" | "已放弃";
   researchSaved: boolean;
   humanDecisionExists: boolean;
 };
@@ -59,7 +59,14 @@ export function deriveResearchHistoryStatus(input: {
   const humanDecisionExists = hasVersionedDecision(result)
     || isRecord(result.humanDecision);
 
+  const summaryStatus = isRecord(result.productResearchSummary)
+    ? (result.productResearchSummary as Record<string, unknown>).status
+    : "";
   if (researchSaved && humanDecisionExists) {
+    // P1-3：已放弃（abandoned）是终态历史，不得再标「研究已完成」
+    if (summaryStatus === "abandoned") {
+      return { key: "abandoned", label: "已放弃", researchSaved, humanDecisionExists };
+    }
     return { key: "completed", label: "研究已完成", researchSaved, humanDecisionExists };
   }
   if (researchSaved) {

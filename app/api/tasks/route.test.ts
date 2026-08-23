@@ -704,14 +704,15 @@ describe("GET /api/tasks", () => {
     expect(status).toBe(200);
     expect(body.page.total).toBe(1);
     expect(body.data.items[0].id).toBe("task-completed");
-    // SQL 预过滤必须把 researchCompletion 纳入 historical（不只在 decisionStatus=rejected 内找）
+        // P1-1：两阶段精确分页——SQL 不再做 lifecycle 启发式预过滤；全量窗口 + 稳定排序 + 精确分类后切片。
+    // 行为断言（researchCompletion 出现在 historical）由上方 total/items 保留。
     expect(mockPrisma.viralAnalysisRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        OR: expect.arrayContaining([
-          expect.objectContaining({ resultJson: expect.objectContaining({ contains: '"researchCompletion"' }) }),
-        ]),
-      }),
+      orderBy: expect.arrayContaining([
+        expect.objectContaining({ createdAt: "desc" }),
+        expect.objectContaining({ id: "desc" }),
+      ]),
     }));
+    expect(mockPrisma.viralAnalysisRecord.findMany).not.toHaveBeenCalledWith(expect.objectContaining({ take: expect.anything() }));
   });
 
   it("V3 Current Research Normalization: scope=research 不含已完成的当前研究（researchCompletion → historical）", async () => {
@@ -774,6 +775,164 @@ describe("GET /api/tasks", () => {
     // JS 侧 classifyResearchLifecycle：researchCompletion → historical_completed → 从商品研究移出
     expect(body.page.total).toBe(0);
     expect(body.data.items).toEqual([]);
+  });
+
+  it("P1-1：scope=research 精确分页——total 为精确匹配总数，hasMore 正确，翻页无重无漏（红灯契约）", async () => {
+    const mk = (id: string, decisionStatus: string, verdict: string | null, completion: boolean) => ({
+      id,
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+      type: "candidate_research",
+      decisionStatus,
+      title: id,
+      platform: "manual",
+      productUrl: null,
+      materialText: id,
+      source: "candidate_research",
+      score: 1,
+      level: "low",
+      oneLineSummary: id,
+      resultJson: JSON.stringify({
+        productName: id,
+        ...(verdict !== null ? {
+          researchRecord: {
+            schema: "product-research-record.v1", revision: 1, researchHash: "a".repeat(64),
+            candidateId: "cand-" + id, runId: id, contextHash: "b".repeat(64),
+            createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z",
+            latestDecision: {
+              decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, status: verdict,
+              reason: "r", nextAction: null, researchHash: "a".repeat(64),
+              decidedAt: "2026-08-01T00:00:00.000Z", actor: { mode: "owner", actorRef: "owner:v1" },
+            },
+            decisionEvents: [],
+          },
+        } : {}),
+        ...(completion ? {
+          researchCompletion: {
+            schema: "research-completion.v1", status: "completed", completedAt: "2026-08-01T01:00:00.000Z",
+            decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, finalStatus: "creative_ready",
+          },
+        } : {}),
+      }),
+    });
+    // window：5 条 → 精确 active 4 条 + 1 条 historical（completion）
+    const window = [
+      mk("act-1", "continue", "creative_ready", false),
+      mk("act-2", "continue", "creative_ready", false),
+      mk("act-3", "pending", null, false),
+      mk("act-4", "continue", "needs_information", false),
+      mk("his-1", "continue", "creative_ready", true),
+    ];
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValue(window);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValue(window.length);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValue([]);
+
+    const page1 = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=research&limit=2&offset=0",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const raw1 = await getJsonStatus(page1);
+        const b1 = raw1.body as { page: { total: number; hasMore: boolean; nextOffset: number | null }; data: { items: Array<{ id: string }> } };
+    expect(b1.page.total).toBe(4);
+    expect(b1.page.hasMore).toBe(true);
+    // mock 不执行 orderBy：跨页无重无漏由下方两页并集断言验证（顺序由真实 DB orderBy 保证）
+    expect(b1.data.items.map((i) => i.id)).toHaveLength(2);
+    const ids1 = new Set(b1.data.items.map((i) => i.id));
+
+    const page2 = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=research&limit=2&offset=2",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const b2 = (await getJsonStatus(page2)).body as { page: { total: number; hasMore: boolean }; data: { items: Array<{ id: string }> } };
+    expect(b2.page.total).toBe(4);
+    const allIds = new Set([...ids1, ...b2.data.items.map((i) => i.id)]);
+    expect(allIds.size).toBe(4);
+    expect([...ids1].filter((x) => b2.data.items.some((y) => y.id === x))).toEqual([]);
+    expect(allIds.has("act-1")).toBe(true);
+    expect(allIds.has("act-2")).toBe(true);
+    expect(allIds.has("act-3")).toBe(true);
+    expect(allIds.has("act-4")).toBe(true);
+
+    const page3 = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=research&limit=2&offset=4",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const b3 = (await getJsonStatus(page3)).body as { page: { total: number; hasMore: boolean }; data: { items: Array<{ id: string }> } };
+    expect(b3.page.total).toBe(4);
+    expect(b3.data.items).toEqual([]);
+  });
+
+  it("P1-1：scope=historical 纳入 abandoned（旧字段 continue、无 completion），精确分页无重无漏（红灯契约）", async () => {
+    const mk = (id: string, decisionStatus: string, verdict: string | null, rejected: boolean, completion: boolean) => ({
+      id,
+      createdAt: new Date("2026-08-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+      type: "candidate_research",
+      decisionStatus,
+      title: id,
+      platform: "manual",
+      productUrl: null,
+      materialText: id,
+      source: "candidate_research",
+      score: 1,
+      level: "low",
+      oneLineSummary: id,
+      resultJson: JSON.stringify({
+        productName: id,
+        ...(verdict !== null ? {
+          researchRecord: {
+            schema: "product-research-record.v1", revision: 1, researchHash: "a".repeat(64),
+            candidateId: "cand-" + id, runId: id, contextHash: "b".repeat(64),
+            createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z",
+            latestDecision: {
+              decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, status: verdict,
+              reason: "r", nextAction: null, researchHash: "a".repeat(64),
+              decidedAt: "2026-08-01T00:00:00.000Z", actor: { mode: "owner", actorRef: "owner:v1" },
+            },
+            decisionEvents: [],
+          },
+        } : {}),
+        ...(completion ? {
+          researchCompletion: {
+            schema: "research-completion.v1", status: "completed", completedAt: "2026-08-01T01:00:00.000Z",
+            decisionId: "11111111-1111-4111-8111-111111111111", revision: 1, finalStatus: "creative_ready",
+          },
+        } : {}),
+      }),
+    });
+    // window：5 条 → 精确 historical 3 条（rejected + completion + abandoned special）+ 2 条 active
+    const window = [
+      mk("his-1", "rejected", null, true, false),
+      mk("his-2", "continue", "creative_ready", false, true),
+      mk("abn-1", "continue", "abandoned", false, false),
+      mk("act-1", "continue", "creative_ready", false, false),
+      mk("act-2", "pending", null, false, false),
+    ];
+    mockPrisma.viralAnalysisRecord.findMany.mockResolvedValue(window);
+    mockPrisma.viralAnalysisRecord.count.mockResolvedValue(window.length);
+    mockPrisma.opportunityCandidate.findMany.mockResolvedValue([]);
+
+    const page1 = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=historical&limit=2&offset=0",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const raw1 = await getJsonStatus(page1);
+        const b1 = raw1.body as { page: { total: number; hasMore: boolean }; data: { items: Array<{ id: string }> } };
+    expect(b1.page.hasMore).toBe(true);
+    const ids1 = new Set(b1.data.items.map((i) => i.id));
+    const page2 = await GET(createRequest({
+      url: "http://localhost:3000/api/tasks?scope=historical&limit=2&offset=2",
+      headers: { "x-access-password": CORRECT_PASSWORD },
+    }));
+    const b2 = (await getJsonStatus(page2)).body as { page: { total: number; hasMore: boolean }; data: { items: Array<{ id: string }> } };
+    const ids2 = new Set(b2.data.items.map((i) => i.id));
+    const all = new Set([...ids1, ...ids2]);
+    expect([...ids1].filter((x) => ids2.has(x))).toEqual([]);
+    expect(all.has("abn-1")).toBe(true);
+    expect(all.has("his-1")).toBe(true);
+    expect(all.has("his-2")).toBe(true);
+    expect(b1.page.total).toBe(3);
+    expect(b2.page.total).toBe(3);
   });
 
   it("服务端未配置密码 → GET 返回 500", async () => {

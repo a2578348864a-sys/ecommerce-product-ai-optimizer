@@ -117,6 +117,20 @@ describe("轮 6 共享状态分类器（/ 与 /research 同一口径）", () => 
     expect(deriveProductProjectGroup(r({ aiRunStatus: "research_stale", result: completedResult })).group).toBe("needs_action");
   });
 
+  it("P1-3：abandoned 研究在第三列显示「已放弃/查看研究记录」（不显示已完成/查看研究结果）", () => {
+    const abandonedResult = {
+      productResearchSummary: { schema: "product-research-record.v1", status: "abandoned", label: "已放弃" },
+    };
+    const view = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: abandonedResult }));
+    expect(view.group).toBe("completed");
+    expect(view.statusLabel).toBe("已放弃");
+    expect(view.nextLabel).toBe("查看研究记录");
+    // creative_ready 不回归
+    const ok = deriveProductProjectGroup(r({ aiRunStatus: "completed", result: completedResult }));
+    expect(ok.statusLabel).toBe("研究已完成");
+    expect(ok.nextLabel).toBe("查看研究结果");
+  });
+
   it("待人工决定（已有研究但无正式决定）/ 缺资料 → 需要我处理；完整保存→已完成", () => {
     expect(deriveProductProjectGroup(r({ result: { finalReport: { finalVerdict: "x" } } })).group).toBe("needs_action");
     expect(deriveProductProjectGroup(r({ result: {} })).group).toBe("needs_action");

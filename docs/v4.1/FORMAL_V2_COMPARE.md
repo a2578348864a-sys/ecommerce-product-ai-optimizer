@@ -136,3 +136,11 @@ Formal v2 本轮目标（四按钮各去各的资料区）已完成并经 ①②
 | 竞品参考 | 只有 ASIN+标题 note | 新增详情页五点采集（amazon-detail-observation.v1）+ 存储 detailBullets + competitiveContext.bullets（reference-only）+ 提示词 COMPETITIVE_REFERENCE 传入 |
 | Claim Evidence | 严格（拦截编造） | 严格不变（AI 优化仍被拦截时 → safe_fact_draft + 「AI 草稿未通过事实校验」+ 提示补事实） |
 | 缺失提示 | UI 只显示前 2 项缺失 | 逐项显示「生成高质量 Listing 还缺：…」 |
+
+# Formal v2 对比（P1 修复，代码审查后）
+
+| 项 | 修改前（审查 NO_GO） | 修改后（READY_FOR_RE_REVIEW） |
+| --- | --- | --- |
+| research/historical 分页 | SQL 启发式预过滤 + 页内二次过滤，total=页过滤后长度（失真/丢页） | 两阶段精确分页：全量窗口精确分类→切片，total/hasMore/nextOffset 同源；窗口上限 fail-closed |
+| Amazon 来源校验 | /^https?:\\/\\/(www\\.)?amazon\\./i（后缀欺骗可绕过） | new URL + 协议白名单 + userinfo 拒绝 + hostname 精确集合（com/co.uk/de/co.jp/ca + www） |
+| abandoned 展示 | "研究已完成/查看研究结果"（与详情 historical_abandoned 矛盾） | "已放弃/查看研究记录"（第三列，creative_ready 不变） |
