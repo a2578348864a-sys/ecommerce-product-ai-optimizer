@@ -431,3 +431,19 @@
 - 工程：tsc 0；改动文件 ESLint 0；npm run build 成功；git diff --check 0；prisma/dev.db SHA 前后一致（ab765818…）。
 - 验收：本地 public_showcase 3027 最终构建，showcase4-listing-1440/390 两张截图：说明句 count=1、无横向溢出、Console 0 error/0 warning、原始搜索词带历史草稿标签、缺失事实与图片待确认保留。
 - 状态：未提交、未推送、未部署（仅重启本地 3027 验收服务，未触碰生产）；16 项 B 类未动；数据库零写入。
+# 轮 18 研究模块卡实时同步（本地修复，未提交/未推送/未部署）
+
+- 用户报障：任务详情页 4 张研究模块卡（01-04）的「AI 结论/关键依据/缺什么」与下方实时数据不一致且不随采集更新（卡显示「AI 结论尚未取得/尚未取得可核实的关键依据」，下方却是「AI 已整理当前资料」+ 23 项概览/竞品/关键词/评论/供应全部存在）。
+- 根因：模块卡只从任务快照（record 投影）推导；EvidenceWorkbench 的实时状态（各证据区计数 + AI 小结）仅在轮 13 冒泡了 rows 的 state，未冒泡「是否已有 AI 小结」与「各证据区实时计数」，导致结论/关键依据仍旧。
+- 修复：EvidenceWorkbench 冒泡负载扩展为 { rows, counts, hasAiSummary }（counts=商品基础(已确认覆盖 12 项)/竞品/关键词/Amazon 快照/评论/供应线索 实时计数；hasAiSummary=AI 小结状态）；TaskRecordDetail 的 applyLiveMaterialRows 重写为按实时负载填充：四卡结论→「AI 小结已生成（明细见下方简明结论）」；关键依据→实时计数行（与底部清单口径一致：商品概览 12 项）；缺什么→保持轮 13 实时文案；无实时数据时保持原静态推导（不伪造）。
+- 测试：applyLiveMaterialRows 用例重写（实时同步 3 条 + 无 live 保持原样 1 条 + 无 AI 小结不改结论 1 条），定向 5 文件 67/67 全绿；tsc 0；改动文件 ESLint 0；build 成功。
+- 实测：3005（cmt0lmsqa）四卡 = 「AI 小结已生成」+ 关键依据 商品概览 12 项·竞品 5·关键词 10·Amazon 1·评论 13·供应 1（已确认），与下方「AI 已整理当前资料」状态行一致；实时性=同一 onDataChanged/refetch 链路，采集保存后即刷新。
+- 状态：未提交/未推送/未部署；16 项 B 类未动；数据库零写入（仅本地 3005 重启）。
+# 轮 19 Listing 与商品图片状态纠偏（本地修复，未提交/未推送/未部署）
+
+- 用户报障：任务详情页「Listing 与商品图片」区显示「历史未核实草稿，禁止使用」与「商品图片尚未取得」，但研究记录中 AI Listing 草稿与 AI 图片草稿（1536×1024，1 张）均已存在。
+- 根因 1（图片误报缺失）：hasImageDraft 使用严格 normalizeAiImageDraftSnapshot（要求 accessMode 字段），而研究记录安全投影不含 accessMode → 提取恒为 null → 卡片错误显示「商品图片尚未取得」。改为记录级容错判定（snapshot.items 非空即视为已有图片草稿）。
+- 根因 2（Listing 文案误导）：hasListingDraft=true 时文案为「历史未核实草稿，禁止使用」（且与可用 CTA 矛盾）。改为「AI Listing 草稿已生成（未人工核实，暂不可发布）。」；图片卡改为「AI 图片草稿已生成（待人工确认）；真实参考图尚未提供。」，保留 AI 图片 2 条核验说明与「补充清晰参考图后重新检查」按钮。
+- 测试：红灯先行 2 条（无 accessMode 投影时 hasImageDraft=true；formalV2ImageCopy(true) 标题含 AI 图片草稿/待人工确认），修复后 2 文件 38/38 全绿；tsc 0；改动文件 ESLint 0；build 成功。
+- 实测（3005 cmt0lmsqa #listing-and-images）：Listing=「AI Listing 草稿已生成（未人工核实，暂不可发布）」+ 前往 Listing Studio 核对；商品图片=「AI 图片草稿已生成（待人工确认）；真实参考图尚未提供」+ 补图按钮。
+- 状态：未提交/未推送/未部署；16 项 B 类未动；数据库零写入（仅本地 3005 重启）。

@@ -125,6 +125,15 @@ export function natureForField(field: string): MetricNature {
 
 export type ResearchMaterialRow = { key: string; label: string; state: "已有" | "待补" | "可选"; detail?: string };
 
+export type LiveEvidenceCounts = {
+  productBasics: number;
+  competitor: number;
+  keyword: number;
+  browser: number;
+  voc: number;
+  sourcing: number;
+};
+
 export type ResearchStatusSummary = {
   status: "empty" | "partial" | "ai_ready";
   collectedLabels: string[];
@@ -514,7 +523,7 @@ export function EvidenceWorkbench({
   /** V3 Final R9（§151）：Task 已确认主图，用于 1688 图片找货输入框自动预填 */
   sourceImageUrl?: string | null;
   /** 轮 13 一致性：当前研究资料清单（live rows）实时冒泡给外层（研究模块卡「缺什么」据此更新） */
-  onMaterialRowsChange?: (rows: ResearchMaterialRow[]) => void;
+  onMaterialRowsChange?: (payload: { rows: ResearchMaterialRow[]; counts: LiveEvidenceCounts; hasAiSummary: boolean }) => void;
 }) {
   const overview = extractOverviewItems(result);
   const decision = extractDecisionSummary(result);
@@ -750,11 +759,19 @@ export function EvidenceWorkbench({
   const researchStatus = deriveResearchStatus(materialRows, aiSummary);
 
   // 轮 13 一致性：把 live 清单冒泡给外层（模块卡「缺什么」不落后于实际资料）
-  const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state]));
-  useEffect(() => {
-    onMaterialRowsChange?.(materialRows);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [materialRowsJson]);
+  const liveCounts: LiveEvidenceCounts = {
+  productBasics: coveredFacts.size,
+  competitor: competitors.length,
+  keyword: (keywordReportEvidence as { rows?: unknown[] } | null)?.rows?.length ?? 0,
+  browser: (browserEvidence as { snapshots?: unknown[] } | null)?.snapshots?.length ?? 0,
+  voc: (vocEvidence as { dataset?: { reviews?: unknown[] } } | null)?.dataset?.reviews?.length ?? 0,
+  sourcing: sourcingConfirmed ? 1 : 0,
+};
+const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state])) + JSON.stringify(liveCounts) + (aiSummary ? "1" : "0");
+useEffect(() => {
+  onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary !== null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [materialRowsJson]);
 
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">

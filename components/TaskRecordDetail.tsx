@@ -1568,7 +1568,9 @@ export function deriveFormalV2ResearchView(record: TaskCenterItem): FormalV2Rese
       },
     ],
     hasListingDraft: isRecordValue(result.aiListingPackSnapshot) || isRecordValue(result.listingPackSnapshot) || isRecordValue(result.listing),
-    hasImageDraft: Boolean(extractAiImageDraftSnapshot(result)),
+    hasImageDraft: isRecordValue(result.aiImageDraftSnapshot)
+        && Array.isArray((result.aiImageDraftSnapshot as Record<string, unknown>).items)
+        && ((result.aiImageDraftSnapshot as Record<string, unknown>).items as unknown[]).length > 0,
   };
 }
 
@@ -1651,7 +1653,7 @@ export function FormalV2PrimaryActionTrigger({
 export function formalV2ImageCopy(hasImageDraft: boolean) {
   return hasImageDraft
     ? {
-      headline: "这张 AI 图片暂时不能直接使用。",
+      headline: "AI 图片草稿已生成（待人工确认）；真实参考图尚未提供。",
       guidance: "发布前必须用真实参考图逐项核验。",
       verificationReasons: [
         "无法仅凭 AI 图片确认是不是同一个商品",
@@ -1820,26 +1822,51 @@ function LegacyRecordContent({
  * 轮 13 一致性：研究模块卡「缺什么」跟随当前研究资料清单（live rows，来自 EvidenceWorkbench）。
  * 资料实际已具备时不再声称「尚未取得」，改为指向人工核对；无 live rows 时保持原有静态推导。
  */
+export type LiveMaterialState = { rows: ResearchMaterialRow[] | null; counts: { productBasics: number; competitor: number; keyword: number; browser: number; voc: number; sourcing: number } | null; hasAiSummary: boolean };
+
+/**
+ * 轮 13/18 实时同步：研究模块卡（结论/关键依据/缺什么）跟随 EvidenceWorkbench live 清单、
+ * 各证据区实时计数与 AI 小结状态；采集/保存后立即刷新，不再与下方实际资料脱节。
+ */
 export function applyLiveMaterialRows(
   modules: FormalV2Module[],
-  rows: ResearchMaterialRow[] | null,
+  live: LiveMaterialState | null,
 ): FormalV2Module[] {
-  if (!rows || rows.length === 0) return modules;
-  const stateOf = (key: string) => rows.find((row) => row.key === key)?.state;
+  if (!live || !live.rows || live.rows.length === 0) return modules;
+  const stateOf = (key: string) => live.rows?.find((row) => row.key === key)?.state;
+  const c = live.counts ?? { productBasics: 0, competitor: 0, keyword: 0, browser: 0, voc: 0, sourcing: 0 };
   return modules.map((module) => {
+    let next = { ...module };
+    // AI 小结状态（结论行）：已生成则消除「AI 结论尚未取得」的矛盾
+    if (live.hasAiSummary) {
+      if (module.key === "market") next.conclusion = "AI 小结已生成（依据见下方「简明结论」；关键依据按实时证据计数）。";
+      if (module.key === "buyers") next.conclusion = "AI 小结已生成（喜好/痛点/场景见下方「简明结论」）。";
+      if (module.key === "sourcing") next.conclusion = "AI 小结已生成（供应线索见下方「简明结论」）。";
+      if (module.key === "cost-risk") next.conclusion = "AI 小结已生成（风险提示见下方「简明结论」）。";
+    }
+    // 关键依据（evidence）：按实时计数给出诚实依据行
+    next.evidence = [
+      ...(stateOf("productBasics") === "已有" && c.productBasics > 0 ? ["商品概览 " + c.productBasics + " 项"] : []),
+      ...(stateOf("competitor") === "已有" && c.competitor > 0 ? ["竞品 " + c.competitor + " 个"] : []),
+      ...(stateOf("keyword") === "已有" && c.keyword > 0 ? ["关键词 " + c.keyword + " 个"] : []),
+      ...(stateOf("browser") === "已有" && c.browser > 0 ? ["Amazon 页面快照 " + c.browser + " 条"] : []),
+      ...(stateOf("voc") === "已有" && c.voc > 0 ? ["买家评论 " + c.voc + " 条"] : []),
+      ...(stateOf("sourcing") === "已有" && c.sourcing > 0 ? ["供应线索 " + c.sourcing + " 条（已确认）"] : []),
+    ];
+    if (next.evidence.length === 0 && live.hasAiSummary) next.evidence = ["AI 已整理资料（明细见下方「简明结论」）"];
+    // 缺什么：保持原有 3 模块实时文案，其余按证据状态如实说明
     if (module.key === "market" && stateOf("productBasics") === "已有" && stateOf("competitor") === "已有") {
-      return { ...module, missing: "销量与竞争证据已具备，AI 市场结论尚未整理（可在下方核对市场依据）。" };
+      next.missing = "销量与竞争证据已具备，请在下方核对市场依据。";
+    } else if (module.key === "buyers" && stateOf("voc") === "已有") {
+      next.missing = "评论数据已具备，请在下方核对评论依据。";
+    } else if (module.key === "sourcing" && stateOf("sourcing") === "已有") {
+      next.missing = "供应线索已具备，请核对供应商匹配、报价与交期。";
+    } else if (module.key === "sourcing" && live.hasAiSummary) {
+      next.missing = "供应线索尚未人工确认——仅作线索参考。";
     }
-    if (module.key === "buyers" && stateOf("voc") === "已有") {
-      return { ...module, missing: "评论数据已具备，AI 需求结论尚未整理（可在下方核对评论依据）。" };
-    }
-    if (module.key === "sourcing" && stateOf("sourcing") === "已有") {
-      return { ...module, missing: "供应线索已具备，请核对供应商匹配、报价与交期。" };
-    }
-    return module;
+    return next;
   });
 }
-
 function FormalV2RecordContent({
   record,
   researchStale,
@@ -1866,16 +1893,16 @@ function FormalV2RecordContent({
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
   const [primaryOpen, setPrimaryOpen] = useState(false);
   // 轮 13 一致性：EvidenceWorkbench live 研究资料清单（模块卡「缺什么」据此刷新）
-  const [materialRows, setMaterialRows] = useState<ResearchMaterialRow[] | null>(null);
-  const materialRowsSigRef = useRef("");
-  const onMaterialRowsChange = useCallback((rows: ResearchMaterialRow[]) => {
-    const sig = rows.map((row) => row.key + row.state).join("|");
-    if (materialRowsSigRef.current !== sig) {
-      materialRowsSigRef.current = sig;
-      setMaterialRows(rows);
+  const [liveMaterial, setLiveMaterial] = useState<LiveMaterialState | null>(null);
+  const materialSigRef = useRef("");
+    const onMaterialRowsChange = useCallback((payload: { rows: ResearchMaterialRow[]; counts: { productBasics: number; competitor: number; keyword: number; browser: number; voc: number; sourcing: number }; hasAiSummary: boolean }) => {
+    const sig = JSON.stringify(payload) == null ? 'empty' : JSON.stringify(payload);
+    if (materialSigRef.current !== sig) {
+      materialSigRef.current = sig;
+      setLiveMaterial({ rows: payload.rows, counts: payload.counts, hasAiSummary: payload.hasAiSummary });
     }
   }, []);
-  const liveModules = applyLiveMaterialRows(view.modules, materialRows);
+  const liveModules = applyLiveMaterialRows(view.modules, liveMaterial);
 
   return (
     <section className="surface-card p-5 sm:p-6" data-testid="formal-v2-product-result">
@@ -1954,7 +1981,7 @@ function FormalV2RecordContent({
           <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-4">
             <p className="text-sm font-semibold text-rose-700">Listing</p>
             <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">
-              {view.hasListingDraft ? "历史未核实草稿，禁止使用。" : "Listing 草稿尚未取得。"}
+              {view.hasListingDraft ? "AI Listing 草稿已生成（未人工核实，暂不可发布）。" : "Listing 草稿尚未取得。"}
             </p>
             <p className="mt-2 text-xs leading-5 text-slate-600">必须先核对商品事实、关键词、合规表述和平台规则，不能直接发布。</p>
             {!studioLegacyUnsupported && !researchStale ? (

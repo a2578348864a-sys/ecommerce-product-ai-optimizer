@@ -414,7 +414,8 @@ describe("轮 10 合并：竞品与关键词自动化（源码结构契约）", 
   });
   it("轮 13 一致性：live 研究资料清单冒泡给外层（onMaterialRowsChange 接线）", () => {
     expect(wbSource).toContain("onMaterialRowsChange");
-    expect(wbSource).toContain("onMaterialRowsChange?.(materialRows)");
+    expect(wbSource).toContain("onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary !== null })");
+    expect(wbSource).toContain("LiveEvidenceCounts");
     expect(wbSource).toContain("materialRowsJson");
   });
   it("关键词区待确认卡片：保存走 keyword-evidence save_browser_use + 关键词区版本；保存后刷新并清卡", () => {
