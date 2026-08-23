@@ -36,6 +36,7 @@ import {
 } from "@/components/evidence/VocEvidenceSection";
 import { CommercialInputsCard } from "@/components/product-research/CommercialInputsCard";
 import { BrowserUseCollectButton } from "@/components/evidence/BrowserUseCollectButton";
+import { KeywordPendingSubmitCard, type KeywordPendingPreview } from "@/components/evidence/KeywordPendingSubmitCard";
 import { SourcingEvidencePanel } from "@/components/cross-border/SourcingEvidencePanel";
 import { RESEARCH_MATERIAL_ROWS } from "@/lib/client/evidenceCompletion";
 import {
@@ -504,6 +505,7 @@ export function EvidenceWorkbench({
   result,
   onDataChanged,
   sourceImageUrl,
+  onMaterialRowsChange,
 }: {
   taskId: string;
   result: Record<string, unknown> | null;
@@ -511,6 +513,8 @@ export function EvidenceWorkbench({
   onDataChanged?: () => void;
   /** V3 Final R9（§151）：Task 已确认主图，用于 1688 图片找货输入框自动预填 */
   sourceImageUrl?: string | null;
+  /** 轮 13 一致性：当前研究资料清单（live rows）实时冒泡给外层（研究模块卡「缺什么」据此更新） */
+  onMaterialRowsChange?: (rows: ResearchMaterialRow[]) => void;
 }) {
   const overview = extractOverviewItems(result);
   const decision = extractDecisionSummary(result);
@@ -542,6 +546,8 @@ export function EvidenceWorkbench({
   const [newNote, setNewNote] = useState("");
   const [competitorError, setCompetitorError] = useState("");
   const [competitorBusy, setCompetitorBusy] = useState(false);
+  // 轮 10 合并：竞品采集同时产出的关键词预览（待确认卡片）
+  const [keywordPending, setKeywordPending] = useState<KeywordPendingPreview | null>(null);
 
   const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
   const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
@@ -743,6 +749,13 @@ export function EvidenceWorkbench({
   });
   const researchStatus = deriveResearchStatus(materialRows, aiSummary);
 
+  // 轮 13 一致性：把 live 清单冒泡给外层（模块卡「缺什么」不落后于实际资料）
+  const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state]));
+  useEffect(() => {
+    onMaterialRowsChange?.(materialRows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialRowsJson]);
+
   return (
     <section data-testid="evidence-workbench" className="mt-5 space-y-4">
       {/* R7：当前研究资料（从各 资料 区实时 state 派生，确认保存后自动更新） */}
@@ -878,6 +891,53 @@ export function EvidenceWorkbench({
         )}
       </section>
 
+      {/* ── 关键词资料 ── */}
+      <section data-testid="workbench-keywords" className="rounded-2xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-bold text-slate-900">关键词资料</h3>
+        <SectionStatusBar
+          loading={sectionLoading}
+          error={sectionErrors.keyword ?? ""}
+          onRetry={() => { void loadKeywordEvidence(); }}
+          loadingLabel="关键词证据"
+        />
+        {keywordBrief ? (
+          <div className="mt-2 space-y-1 text-sm text-slate-800">
+            <p><span className="text-slate-500">主关键词：</span>{keywordBrief.primaryKeyword || "—"}</p>
+            {keywordBrief.supportingKeywords.length > 0 && (
+              <p><span className="text-slate-500">辅助关键词：</span>{keywordBrief.supportingKeywords.join("、")}</p>
+            )}
+            {keywordBrief.backendSearchTerms.length > 0 && (
+              <p><span className="text-slate-500">后台搜索词：</span>{keywordBrief.backendSearchTerms.join("、")}</p>
+            )}
+            <p className="text-xs text-slate-500">
+              来源：{keywordBrief.source || "尚未取得"}
+              {keywordBrief.reportType ? ` · 报告：${keywordBrief.reportType}` : ""}
+              {keywordBrief.marketplace ? ` · 市场：${keywordBrief.marketplace}` : ""}
+              {keywordBrief.month ? ` · 数据期：${keywordBrief.month}` : ""}
+              {keywordBrief.asin ? ` · ASIN：${keywordBrief.asin}` : ""}
+            </p>
+            {(keywordBrief.evidenceRef || keywordBrief.reportHash) && (
+              <p className="text-xs text-slate-400">
+                追溯：{keywordBrief.evidenceRef ? `evidenceRef ${keywordBrief.evidenceRef.slice(0, 16)}…` : ""}
+                {keywordBrief.reportHash ? ` · reportHash ${keywordBrief.reportHash.slice(0, 16)}…` : ""}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-slate-500">关键词 Brief 未生成（人工确认后可进入）。</p>
+        )}
+        {keywordPending ? (
+          <KeywordPendingSubmitCard
+            taskId={taskId}
+            preview={keywordPending}
+            storageVersion={keywordReportStorageVersion}
+            onSaved={() => { setKeywordPending(null); loadKeywordEvidence(); }}
+            onCancel={() => setKeywordPending(null)}
+          />
+        ) : null}
+        <KeywordReportEvidenceSection evidence={keywordReportEvidence} />
+      </section>
+
       {/* ── 竞品资料 ── */}
       <section data-testid="workbench-competitors" className="rounded-2xl border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-bold text-slate-900">竞品资料（人工维护，最多 5 个）</h3>
@@ -940,52 +1000,8 @@ export function EvidenceWorkbench({
         {competitors.length >= 5 && (
           <p className="mt-1 text-xs text-amber-600">已达上限 5 个，请先删除再添加。</p>
         )}
-        <BrowserUseCollectButton taskId={taskId} kind="competitor" storageVersion={storageVersion} onSaved={() => { void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh best-effort */ } })(); void loadKeywordEvidence(); onDataChanged?.(); }} />
+        <BrowserUseCollectButton taskId={taskId} kind="competitor" storageVersion={storageVersion} onCollected={({ keywordPreviewId, keywordCount, seedAsin, sourceUrl }) => { if (keywordPreviewId) setKeywordPending({ previewId: keywordPreviewId, seedAsin: seedAsin ?? "", sourceUrl: sourceUrl ?? "", keywordCount: keywordCount ?? 0, capturedAt: null }); }} onSaved={() => { void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (res.ok && body.ok && Array.isArray(body.data?.evidence?.asins)) setCompetitors(body.data.evidence.asins); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh best-effort */ } })(); void loadKeywordEvidence(); onDataChanged?.(); }} />
         {competitorError && <p className="mt-2 text-sm text-rose-600">{competitorError}</p>}
-      </section>
-
-      {/* ── 关键词资料 ── */}
-      <section data-testid="workbench-keywords" className="rounded-2xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-bold text-slate-900">关键词资料</h3>
-        <SectionStatusBar
-          loading={sectionLoading}
-          error={sectionErrors.keyword ?? ""}
-          onRetry={() => { void loadKeywordEvidence(); }}
-          loadingLabel="关键词证据"
-        />
-        {keywordBrief ? (
-          <div className="mt-2 space-y-1 text-sm text-slate-800">
-            <p><span className="text-slate-500">主关键词：</span>{keywordBrief.primaryKeyword || "—"}</p>
-            {keywordBrief.supportingKeywords.length > 0 && (
-              <p><span className="text-slate-500">辅助关键词：</span>{keywordBrief.supportingKeywords.join("、")}</p>
-            )}
-            {keywordBrief.backendSearchTerms.length > 0 && (
-              <p><span className="text-slate-500">后台搜索词：</span>{keywordBrief.backendSearchTerms.join("、")}</p>
-            )}
-            <p className="text-xs text-slate-500">
-              来源：{keywordBrief.source || "尚未取得"}
-              {keywordBrief.reportType ? ` · 报告：${keywordBrief.reportType}` : ""}
-              {keywordBrief.marketplace ? ` · 市场：${keywordBrief.marketplace}` : ""}
-              {keywordBrief.month ? ` · 数据期：${keywordBrief.month}` : ""}
-              {keywordBrief.asin ? ` · ASIN：${keywordBrief.asin}` : ""}
-            </p>
-            {(keywordBrief.evidenceRef || keywordBrief.reportHash) && (
-              <p className="text-xs text-slate-400">
-                追溯：{keywordBrief.evidenceRef ? `evidenceRef ${keywordBrief.evidenceRef.slice(0, 16)}…` : ""}
-                {keywordBrief.reportHash ? ` · reportHash ${keywordBrief.reportHash.slice(0, 16)}…` : ""}
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-500">关键词 Brief 未生成（人工确认后可进入）。</p>
-        )}
-        <KeywordReportEvidenceSection
-          taskId={taskId}
-          evidence={keywordReportEvidence}
-          storageVersion={keywordReportStorageVersion}
-          onChanged={() => { loadKeywordEvidence(); onDataChanged?.(); }}
-        />
-        <BrowserUseCollectButton taskId={taskId} kind="keyword" storageVersion={keywordReportStorageVersion} onSaved={() => { loadKeywordEvidence(); void (async () => { try { const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/competitor-evidence`, { headers: buildFetchHeaders() }); const body = await res.json(); if (body.ok && body.data?.storageVersion) setStorageVersion(body.data.storageVersion); } catch { /* refresh */ } })(); onDataChanged?.(); }} />
       </section>
 
       {/* ── Amazon 商品资料（V3.3） ── */}

@@ -33,7 +33,7 @@ vi.mock("@/tools/collectors/browser-use/sellerSpriteCollector", async (importOri
 vi.mock("@/lib/server/runtimeMode", () => ({ getRuntimeMode: () => "local_owner" }));
 
 import { POST } from "./route";
-import { storeBrowserUsePreview, type BrowserUseResearchPreviewV1 } from "@/lib/server/browserUseResearch";
+import { takeBrowserUsePreview, storeBrowserUsePreview, type BrowserUseResearchPreviewV1 } from "@/lib/server/browserUseResearch";
 
 function batchResultJson(asin = "B0SAMPLE12") {
   return JSON.stringify({
@@ -167,5 +167,25 @@ describe("轮 9 竞品自动采集路由（browser_use）", () => {
     const res = await POST(ownerRequest({ action: "collect_browser_use" }), { params: Promise.resolve({ id: "task-a" }) });
     expect(res.status).toBe(502);
     expect((await res.json()).error.code).toBe("seller_sprite_keyword_failed");
+  });
+  it("轮 10 合并红线：collect 成功时复用关键词预览（keywordPreviewId 可被 keyword save 消费；竞品失败则零 preview）", async () => {
+    mocks.findUnique.mockResolvedValue({ id: "task-a", resultJson: batchResultJson(), updatedAt: new Date("2026-08-14T02:00:00.000Z") });
+    const collect = await POST(ownerRequest({ action: "collect_browser_use" }), { params: Promise.resolve({ id: "task-a" }) });
+    const body = await collect.json();
+    expect(collect.status).toBe(200);
+    expect(body.data.kind).toBe("competitor");
+    expect(typeof body.data.keywordPreviewId).toBe("string");
+    expect(typeof body.data.keywordCount).toBe("number");
+    const kwPreview = takeBrowserUsePreview(body.data.keywordPreviewId);
+    expect(kwPreview?.kind).toBe("keyword");
+    expect(kwPreview?.results?.length ?? 0).toBeGreaterThan(0);
+    expect(kwPreview?.seedAsin).toBe("B0SAMPLE12");
+    // kw 段成功但竞品段失败 → 整体失败且不落任何关键词预览
+    mocks.findUnique.mockResolvedValue({ id: "task-a", resultJson: batchResultJson(), updatedAt: new Date("2026-08-14T02:00:00.000Z") });
+    mocks.runAmazon.mockResolvedValueOnce({ ok: false, failureReason: "collector_unavailable", detail: "x" });
+    const failed = await POST(ownerRequest({ action: "collect_browser_use" }), { params: Promise.resolve({ id: "task-a" }) });
+    const failedBody = await failed.json();
+    expect(failed.status).toBe(502);
+    expect(failedBody.data?.keywordPreviewId).toBeUndefined();
   });
 });

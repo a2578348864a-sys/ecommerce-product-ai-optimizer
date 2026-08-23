@@ -37,7 +37,7 @@ export const runtime = "nodejs";
 type StorageVersion = { resultJsonHash: string; updatedAt: string };
 type ApiResponse =
   | { ok: true; data: { evidence: CompetitorEvidenceV1; storageVersion: StorageVersion } }
-  | { ok: true; data: { kind: "competitor"; preview: import("@/lib/server/browserUseResearch").BrowserUseResearchPreview; previewId: string } }
+  | { ok: true; data: { kind: "competitor"; preview: import("@/lib/server/browserUseResearch").BrowserUseResearchPreview; previewId: string; keywordPreviewId?: string; keywordCount?: number } }
   | { ok: true; data: { evidence: CompetitorEvidenceV1; storageVersion: StorageVersion; saved: string[]; skipped: { asin: string; code: string }[] } }
   | { ok: false; error: { code: string; message: string; detail?: string } };
 
@@ -189,7 +189,9 @@ export async function POST(
           kwRun.preview.collector.version,
         );
         const previewId = storeBrowserUsePreview(preview);
-        return jsonResponse({ ok: true, data: { kind: "competitor", preview, previewId } });
+        // 轮 10 合并：同一次采集的关键词预览一并暂存，关键词证据区可直接消费（省一次浏览器采集）。
+        const keywordPreviewId = storeBrowserUsePreview(kwRun.preview);
+        return jsonResponse({ ok: true, data: { kind: "competitor", preview, previewId, keywordPreviewId, keywordCount: kwRun.preview.results.length } });
       }
       // save_browser_use
       const previewId = asString(bodyRecord.previewId);

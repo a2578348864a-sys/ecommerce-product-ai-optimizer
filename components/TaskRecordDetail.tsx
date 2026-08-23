@@ -16,7 +16,7 @@ import { isAgentRunTask, extractAgentRunSnapshot, extractListingPrepSnapshot } f
 import { extractAgentOutputSnapshotFromTask } from "@/lib/agentOutputSnapshot";
 import { AgentOutputSnapshotCard } from "@/components/AgentOutputSnapshotCard";
 import { DecisionEvidencePanel } from "@/components/DecisionEvidencePanel";
-import { EvidenceWorkbench } from "@/components/evidence/EvidenceWorkbench";
+import { EvidenceWorkbench, type ResearchMaterialRow } from "@/components/evidence/EvidenceWorkbench";
 import { extractDecisionEvidenceSnapshot } from "@/lib/decisionEvidence";
 import { AgentRunTimeline } from "@/components/AgentRunTimeline";
 import { TaskDecisionHero } from "@/components/TaskDecisionHero";
@@ -270,6 +270,13 @@ function ResearchCompletionControl({
     ? summary.status
     : (latest && typeof latest.status === "string" ? latest.status : null);
 
+  const canComplete = latestStatus === "creative_ready" || latestStatus === "abandoned";
+  const blockReason = !latestStatus
+    ? "请先保存人工决定，再完成研究。"
+    : latestStatus === "needs_information"
+      ? "当前仍需补充资料，补充后再完成研究。"
+      : "";
+
   if (completionStatus === "completed" || completionStatus === "abandoned" || done) {
     // V3 UX Closure Staleness：完成研究后证据内容发生变化 → 明确提示 + 重新确认
     const staleState = { stale: researchStale === true };
@@ -377,12 +384,7 @@ function ResearchCompletionControl({
     );
   }
 
-  const canComplete = latestStatus === "creative_ready" || latestStatus === "abandoned";
-  const blockReason = !latestStatus
-    ? "请先保存人工决定，再完成研究。"
-    : latestStatus === "needs_information"
-      ? "当前仍需补充资料，补充后再完成研究。"
-      : "";
+  
 
   /** 点击「确认研究结论仍然有效」→ 先显示组件内确认对话框（不依赖 window.confirm） */
   function requestComplete() {
@@ -1814,6 +1816,30 @@ function LegacyRecordContent({
   );
 }
 
+/**
+ * 轮 13 一致性：研究模块卡「缺什么」跟随当前研究资料清单（live rows，来自 EvidenceWorkbench）。
+ * 资料实际已具备时不再声称「尚未取得」，改为指向人工核对；无 live rows 时保持原有静态推导。
+ */
+export function applyLiveMaterialRows(
+  modules: FormalV2Module[],
+  rows: ResearchMaterialRow[] | null,
+): FormalV2Module[] {
+  if (!rows || rows.length === 0) return modules;
+  const stateOf = (key: string) => rows.find((row) => row.key === key)?.state;
+  return modules.map((module) => {
+    if (module.key === "market" && stateOf("productBasics") === "已有" && stateOf("competitor") === "已有") {
+      return { ...module, missing: "销量与竞争证据已具备，AI 市场结论尚未整理（可在下方核对市场依据）。" };
+    }
+    if (module.key === "buyers" && stateOf("voc") === "已有") {
+      return { ...module, missing: "评论数据已具备，AI 需求结论尚未整理（可在下方核对评论依据）。" };
+    }
+    if (module.key === "sourcing" && stateOf("sourcing") === "已有") {
+      return { ...module, missing: "供应线索已具备，请核对供应商匹配、报价与交期。" };
+    }
+    return module;
+  });
+}
+
 function FormalV2RecordContent({
   record,
   researchStale,
@@ -1839,6 +1865,17 @@ function FormalV2RecordContent({
   const primary = deriveFormalV2PrimaryAction({ statusKey: view.status.key, researchStale, taskType: record.type });
   const imageCopy = formalV2ImageCopy(view.hasImageDraft);
   const [primaryOpen, setPrimaryOpen] = useState(false);
+  // 轮 13 一致性：EvidenceWorkbench live 研究资料清单（模块卡「缺什么」据此刷新）
+  const [materialRows, setMaterialRows] = useState<ResearchMaterialRow[] | null>(null);
+  const materialRowsSigRef = useRef("");
+  const onMaterialRowsChange = useCallback((rows: ResearchMaterialRow[]) => {
+    const sig = rows.map((row) => row.key + row.state).join("|");
+    if (materialRowsSigRef.current !== sig) {
+      materialRowsSigRef.current = sig;
+      setMaterialRows(rows);
+    }
+  }, []);
+  const liveModules = applyLiveMaterialRows(view.modules, materialRows);
 
   return (
     <section className="surface-card p-5 sm:p-6" data-testid="formal-v2-product-result">
@@ -1871,7 +1908,7 @@ function FormalV2RecordContent({
       </section>
 
       <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="研究模块">
-        {view.modules.map((module) => (
+        {liveModules.map((module) => (
           <FormalV2ModuleCard
             key={module.key}
             module={module}
@@ -1889,7 +1926,7 @@ function FormalV2RecordContent({
         <summary className="cursor-pointer text-sm font-semibold text-slate-800">核对与补充当前研究资料</summary>
         <p className="mt-2 text-xs leading-5 text-slate-500">这里只显示当前正式研究记录；缺失数据不会由 AI 猜测补齐。</p>
         <div className="mt-4">
-          <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result)} onDataChanged={onUpdated} />
+          <EvidenceWorkbench taskId={record.id} result={result} sourceImageUrl={resolvePublicSourceImageUrl(result)} onDataChanged={onUpdated} onMaterialRowsChange={onMaterialRowsChange} />
         </div>
       </details>
 

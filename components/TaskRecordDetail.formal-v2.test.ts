@@ -4,6 +4,7 @@ import {
   deriveFormalV2PrimaryAction,
   deriveFormalV2ResearchView,
   formalV2ImageCopy,
+  applyLiveMaterialRows,
 } from "@/components/TaskRecordDetail";
 
 describe("formal v2 task result", () => {
@@ -113,4 +114,35 @@ describe("formal v2 task result", () => {
       "无法确认产品结构、颜色和数量与真实商品一致",
     ]);
   });
+
+
+describe("applyLiveMaterialRows（轮 13 一致性）", () => {
+  const base = [
+    { key: "market", number: "01", title: "市场机会", conclusion: "c", evidence: [] as string[], missing: "市场销量、竞争和价格依据尚未取得。", nextLabel: "核对市场依据", nextHref: "#" },
+    { key: "buyers", number: "02", title: "买家需求与差评", conclusion: "c", evidence: [] as string[], missing: "买家评论与差评数据尚未取得。", nextLabel: "核对评论依据", nextHref: "#" },
+    { key: "sourcing", number: "03", title: "货源与商品匹配", conclusion: "c", evidence: [] as string[], missing: "供应商、MOQ、报价与交期尚未取得。", nextLabel: "补充货源资料", nextHref: "#" },
+    { key: "cost-risk", number: "04", title: "成本与风险", conclusion: "c", evidence: [] as string[], missing: "采购、物流、平台费用和广告预算尚未取得。", nextLabel: "补充成本与风险资料", nextHref: "#" },
+  ] as const;
+  const rows = [
+    { key: "productBasics", label: "商品基础资料", state: "已有" as const },
+    { key: "competitor", label: "竞品资料", state: "已有" as const },
+    { key: "keyword", label: "关键词", state: "已有" as const },
+    { key: "browser", label: "Amazon 页面", state: "已有" as const },
+    { key: "voc", label: "买家评论", state: "已有" as const },
+    { key: "sourcing", label: "供应线索", state: "已有" as const },
+  ];
+  it("实际资料已具备时，「缺什么」不再声称尚未取得", () => {
+    const live = applyLiveMaterialRows([...base] as never, rows as never);
+    expect(live[0].missing).toContain("销量与竞争证据已具备");
+    expect(live[1].missing).toContain("评论数据已具备");
+    expect(live[2].missing).toContain("供应线索已具备");
+    expect(live[3].missing).toBe("采购、物流、平台费用和广告预算尚未取得。");
+  });
+  it("无 live rows 时保持原静态推导；竞品仍缺时不覆盖市场文案", () => {
+    expect(applyLiveMaterialRows([...base] as never, null)).toEqual([...base]);
+    const noComp = applyLiveMaterialRows([...base] as never, [rows[0], { key: "competitor", label: "竞品资料", state: "可选" as const }, rows[4], rows[5]] as never);
+    expect(noComp[0].missing).toBe("市场销量、竞争和价格依据尚未取得。");
+    expect(noComp[1].missing).toContain("评论数据已具备");
+  });
+});
 });

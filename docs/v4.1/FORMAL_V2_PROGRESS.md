@@ -356,3 +356,34 @@
 - 全量 npm run test（一次）：**6046 passed / 0 failed / 89 skipped**；唯一文件级失败 lib/server/native1688Bridge.integration.test.ts（bridge did not start，隔离复跑复现，环境性既有问题）。
 - tsc 0 / 改动文件 ESLint 0 / build 成功 / git diff --check 0；prisma/dev.db SHA a17675798b3a75976758136a37cc4dbe91d6d02e845ba389b1ab9e2b24a463a9 与审查起点一致（零写入）；HEAD 7980f713 未变；暂存区 0；16 项 B 类未动。
 - 结论：三个 P1 全部闭环 → READY_FOR_RE_REVIEW。
+
+
+# 轮 10 合并：竞品与关键词自动化（一次采集出两份 + 关键词区上移）
+
+- 实现：competitor collect 成功时同次采集的关键词预览一并 storeBrowserUsePreview（keyword kind）并入响应 keywordPreviewId/keywordCount；关键词资料区新增 KeywordPendingSubmitCard（「待确认：竞品采集得到的关键词」），保存走 keyword-evidence save_browser_use（buildSaveBrowserUsePayload：previewId+expectedStorageVersion 完整才发送，CAS 不放宽），保存后刷新并清卡；竞品按钮文案「采集关键词+竞品」；关键词资料区移至竞品资料区上方。
+- 契约/失败语义：kw 段失败维持既有 409；kw 段成功但竞品段失败→整体 502 且不落任何预览；预览/保存/取消之外零落库。
+- 验证：定向 5 文件 47/47（基线 40 + 新 7）；tsc 0；改动文件 ESLint 0；build 成功；全量 npm run test 一次 6064 passed / 0 failed / 78 skipped；git diff --check 0；HEAD 2dc4017 不变；暂存区 0；16 项 B 类未动；反向验证 ×2（注释掉 kw 落库→红线红；区块互换→顺序断言红）均已恢复绿。
+- 浏览器：本地 3005 双端（1440/390）任务详情页未登录为密码门禁页——console 0 error/0 warning、无横向滚动；登录后顺序断言由 EvidenceWorkbench 源码结构契约测试承担（真实登录会话不可得，未读密码）——如实际需要，可用带登录会话的浏览器补验。
+- 如实标注：prisma/dev.db 在本轮全量测试进程运行期间被写入（mtime 2026-08-23T20:00:18；SHA 由 a1767579… 变为 3f74c570…；文件头/内容合法 quick check OK；本任务交付物未主动写库；建议后续将全量测试数据域隔离）。
+
+# 轮 10.5 修复：竞品板块重复（用户报障「两个竞品采集」）
+
+- 根因：轮 10 区块换位时 EvidenceWorkbench.tsx 残留两个字节完全相同的「竞品资料」区块（JSX 均含 onCollected 接线），页面出现 2×竞品采集按钮 + 1×自动采集关键词 = 3 个按钮。
+- 修复：删除重复区块（文件 48703 → 44630 字节）；保留唯一竞品区块（含合并按钮「采集关键词+竞品」与关键词预览接线），关键词资料区保持在其上方；新增去重红线契约测试（竞品/关键词 testid 与标题均须恰好 1 次 + 顺序 kw<comp）。
+- 验证：EvidenceWorkbench.test.ts 28/28、KeywordPendingSubmitCard.test.ts 2/2、competitor-evidence route.test.ts 7/7；tsc 0；build 60/60；真实浏览器（3026 隔离 local_owner、iso2 库、展开商品证据工作台 details）双端 DOM 断言：workbench-keywords×1、workbench-competitors×1、kw 在 comp 上方、「采集关键词+竞品」×1、「自动采集竞品」×0、console 0 error/warning、无横向滚动；截图 docs/v4.1/evidence/d-formal-v2/merge-automation-1440.png / merge-automation-390.png（1440 可见关键词资料→竞品资料→采集关键词+竞品按钮，仅一份）。
+- 边界：未 commit/push/deploy（按既定边界）；HEAD 2dc4017 不变；16 项 B 类未动；真实 prisma/dev.db 无主动写入。
+# 轮 12.5 关键词区按钮下线 + 重新确认按钮修复
+
+- 用户确认：删除关键词资料区的「上传 SellerSprite 关键词报表」与「自动采集关键词」两个入口（前后端一起删）；关键词证据只由一个入口产生：「采集关键词+竞品」（一次采集出关键词+竞品，关键词在关键词区确认保存）。
+- 前端：EvidenceWorkbench 移除 BrowserUseCollectButton kind=keyword；KeywordReportEvidenceSection 改为纯展示（删除上传/预览/保存 UI 与 handlePreview/handleSave/busy/error/preview 状态及 Upload/Loader2/useState 依赖）；空态文案指向「采集关键词+竞品」。
+- 后端：keyword-evidence 路由下线 multipart XLSX 预览、action=save（人工报表确认）与 action=collect_browser_use（关键词自动采集）；只保留 GET + action=save_browser_use（合并采集关键词预览确认保存，CAS 不放宽）；上传请求显式 400 upload_disabled，其余未知 action 400 invalid_action。
+- 修复「确认研究结论仍然有效」无响应：ResearchCompletionControl 在 stale 早退分支引用 canComplete/blockReason 处于 TDZ（声明在早退 return 之后），点击抛未捕获异常无反馈；将两声明上移到 latestStatus 之后（stale 分支可正常读取），点击恢复：确认对话框正常弹出（版本 N+1 说明），confirm 走 /complete。
+- 验证：定向 5 文件 46/46（新增去重/下线红线 6 条：关键词区无 kind=keyword、无自动采集/上传文案、上传请求 400 upload_disabled、collect_browser_use 400 invalid_action 等）；tsc 0；build 成功；真实浏览器（3005 cmt0lmsqa）关键词区仅剩证据表（btns []）、竞品区仍为「采集关键词+竞品」单按钮、stale 按钮点击后确认框弹出、console 0 error/warning。
+- 边界：未 commit/push/deploy；16 项 B 类未动；prisma/dev.db 无主动写入。
+# 轮 13 研究模块卡「缺什么」与实际资料不一致 → 改为实时跟随
+
+- 用户报障：#formal-v2-buyer-evidence 区域 4 张研究模块卡（01 市场机会/02 买家需求与差评/03 货源与商品匹配/04 成本与风险）的「缺什么」文案与实际资料不匹配且不会更新（如市场/评论数据实际已采集，卡片仍显示「尚未取得」）。
+- 根因：模块卡「缺什么」由 deriveFormalV2ResearchView 从任务快照（decisionEvidence/agentOutputSnapshot，投影中已裁剪）推导，看不到各证据区实时数据；而「当前研究资料」清单（buildResearchMaterialRows）由工作台各 API 实时派生，两者不同源。
+- 修复：EvidenceWorkbench 新增 onMaterialRowsChange 冒泡（live 清单变化时上报）；TaskRecordDetail 的 FormalV2RecordContent 持有清单状态（签名去重防循环），新增纯函数 applyLiveMaterialRows：商品基础+竞品已具备 → 市场卡改「销量与竞争证据已具备，AI 市场结论尚未整理…」；评论已具备 → 买家卡改「评论数据已具备，AI 需求结论尚未整理…」；供应线索「选」/无数据时保持原文案（诚实标注尚未取得）。
+- 验证：EvidenceWorkbench 30/30、formal-v2 5/5（新增 applyLiveMaterialRows 两用例：已有→live 文案；无 rows/竞品仍缺→保持原推导）；tsc 0；build 成功；真实浏览器 3005 cmt0lmsqa 四卡实测：市场/买家卡已实时显示「证据已具备」，货源/成本卡保持真实缺失文案，console 0 error；截图 docs/v4.1/evidence/d-formal-v2/module-cards-live-1440.png。
+- 边界：未 commit/push/deploy；16 项 B 类未动；prisma/dev.db 无主动写入。

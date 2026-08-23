@@ -89,11 +89,14 @@ export function BrowserUseCollectButton({
   kind,
   storageVersion,
   onSaved,
+  onCollected,
 }: {
   taskId: string;
   kind: "competitor" | "keyword";
   storageVersion?: BrowserUseStorageVersion | null;
   onSaved?: (count: number) => void;
+  /** 轮 10 合并：采集成功后额外产物（竞品采集同时产出的关键词预览） */
+  onCollected?: (extra: { keywordPreviewId?: string | null; keywordCount?: number | null; seedAsin?: string | null; sourceUrl?: string | null }) => void;
 }) {
   const [state, dispatch] = useReducer(browserUseCollectStateReducer, INITIAL_BROWSER_USE_COLLECT_STATE);
   const busy = state.phase === "collecting" || state.phase === "saving";
@@ -117,12 +120,13 @@ export function BrowserUseCollectButton({
           return;
         }
         dispatch({ type: "COLLECT_SUCCEEDED", preview: body.data.preview ?? null, previewId: body.data.previewId ?? "" });
+        onCollected?.({ keywordPreviewId: body.data?.keywordPreviewId ?? null, keywordCount: body.data?.keywordCount ?? null, seedAsin: body.data?.preview?.seedAsin ?? null, sourceUrl: body.data?.preview?.sourceUrl ?? null });
       } catch {
         if (!cancelled) dispatch({ type: "COLLECT_FAILED", code: "collect_failed", message: "网络错误，请重试。" });
       }
     })();
     return () => { cancelled = true; };
-  }, [taskId, kind]);
+  }, [taskId, kind, onCollected]);
 
   const confirmSave = useCallback(() => {
     const payload = buildSaveBrowserUsePayload(state.previewId, storageVersion);
@@ -165,7 +169,7 @@ export function BrowserUseCollectButton({
         className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-teal-200 bg-teal-50 px-3 text-sm font-semibold text-teal-700 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-        {kind === "competitor" ? "自动采集竞品" : "自动采集关键词"}
+        {kind === "competitor" ? "采集关键词+竞品" : "自动采集关键词"}
       </button>
       {(state.phase === "collecting" || state.phase === "saving") && (
         <span className="text-sm text-slate-500">{state.phase === "collecting" ? "正在启动浏览器采集…" : "正在确认保存…"}</span>

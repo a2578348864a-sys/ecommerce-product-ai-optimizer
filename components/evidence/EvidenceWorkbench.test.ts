@@ -1,6 +1,8 @@
 import { VocEvidenceSection } from "@/components/evidence/VocEvidenceSection";
 import { BrowserEvidenceSection } from "@/components/evidence/BrowserEvidenceSection";
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   buildResearchMaterialRows,
   coveredFactFieldSet,
@@ -17,6 +19,10 @@ import {
   type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
 import type { ConfirmedFactCandidate } from "@/lib/factCandidates";
+
+const wbSource = readFileSync(resolve(process.cwd(), "components/evidence/EvidenceWorkbench.tsx"), "utf8");
+const cardSource = readFileSync(resolve(process.cwd(), "components/evidence/KeywordPendingSubmitCard.tsx"), "utf8");
+const buttonSource = readFileSync(resolve(process.cwd(), "components/evidence/BrowserUseCollectButton.tsx"), "utf8");
 
 const batchResult = {
   sourceMeta: {
@@ -377,5 +383,54 @@ describe("用户语言与信息收口（轮 12）", () => {
       taskId: "t1", taskAsin: "B08NCVT244", evidence: null, storageVersion: null, capability: null, onChanged: () => undefined,
     } as never));
     expect(/Evidence|\bVOC\b|Missing|unknown/.test(html)).toBe(false);
+  });
+});
+
+describe("轮 10 合并：竞品与关键词自动化（源码结构契约）", () => {
+  it("顺序：关键词资料区在竞品资料区上方（JSX 结构顺序）", () => {
+    const kwIdx = wbSource.indexOf("workbench-keywords");
+    const cmpIdx = wbSource.indexOf("workbench-competitors");
+    expect(kwIdx).toBeGreaterThan(0);
+    expect(cmpIdx).toBeGreaterThan(kwIdx);
+    // 去重红线（用户报障：竞品板块出现两个）
+    expect((wbSource.match(/── 竞品资料 ──/g) || []).length).toBe(1);
+    expect((wbSource.match(/workbench-competitors/g) || []).length).toBe(1);
+    expect((wbSource.match(/── 关键词资料 ──/g) || []).length).toBe(1);
+    expect((wbSource.match(/workbench-keywords/g) || []).length).toBe(1);
+  });
+  it("竞品采集按钮升级为合并采集（文案「采集关键词+竞品」并携带关键词预览接线）", () => {
+    expect(buttonSource).toContain("采集关键词+竞品");
+    expect(buttonSource).toContain("onCollected");
+    expect(buttonSource).toContain("keywordPreviewId");
+    expect(wbSource).toContain("keywordPending");
+    expect(wbSource).toContain("onCollected={({ keywordPreviewId");
+  });
+  it("轮 12.5 合并红线：关键词区不再有自己的采集/上传入口（仅竞品合并采集一键）", () => {
+    expect(wbSource).not.toContain('kind="keyword"');
+    expect(wbSource).not.toContain("自动采集关键词");
+    expect(wbSource).not.toContain("上传 SellerSprite");
+    expect(wbSource).toContain('<BrowserUseCollectButton taskId={taskId} kind="competitor"');
+    expect(wbSource).toContain("<KeywordPendingSubmitCard");
+  });
+  it("轮 13 一致性：live 研究资料清单冒泡给外层（onMaterialRowsChange 接线）", () => {
+    expect(wbSource).toContain("onMaterialRowsChange");
+    expect(wbSource).toContain("onMaterialRowsChange?.(materialRows)");
+    expect(wbSource).toContain("materialRowsJson");
+  });
+  it("关键词区待确认卡片：保存走 keyword-evidence save_browser_use + 关键词区版本；保存后刷新并清卡", () => {
+    expect(wbSource).toContain("<KeywordPendingSubmitCard");
+    expect(wbSource).toContain("keywordReportStorageVersion");
+    expect(wbSource).toContain("setKeywordPending(null); loadKeywordEvidence();");
+    expect(cardSource).toContain("待确认：竞品采集得到的关键词");
+    expect(cardSource).toContain("keyword-pending-save");
+    expect(cardSource).toContain("keyword-pending-cancel");
+    expect(cardSource).toContain("buildSaveBrowserUsePayload");
+    expect(cardSource).toContain("keyword-evidence");
+  });
+  it("失败语义：关键词段失败仍 409（not 新行为）；预览/保存/取消无落库副作用（save 之外）", () => {
+    expect(cardSource).toContain("取消");
+    expect(cardSource).toContain("版本信息尚未就绪");
+    expect(cardSource).toContain("未发送保存请求");
+    expect(buttonSource).toContain("已取消，未保存任何数据。");
   });
 });
