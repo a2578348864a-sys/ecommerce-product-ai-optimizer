@@ -396,3 +396,38 @@
 - 部署（2026-08-23 22:57 UTC+8）：scp artifact → /tmp → `/www/alibaba-ai-assistant` 解压替换 .next → pm2 restart alibaba-ai-assistant（restart 116）。
 - 服务器验收：BUILD_ID == CDFdHc7oN5zu8PxiiZ6DX（与本地下一次一致）；pm2 online；`/api/health` == {"ok":true}；`/tasks` HTTP 200；`/api/runtime-mode` == public_showcase。
 - 如实记录：本次部署的带时间戳备份因 PowerShell 对 `$(date +%Y%m%d-%H%M%S)` 的本地插值而未生成（stderr 已捕获 Get-Date 报错）；回档材料仍完整——旧构建 /tmp/next-v2.2.16-2dc4017-linux-x64.tar.gz（服务器 /tmp 保留）+ 既有 .next.bak-* 备份全部未动。回滚命令：`cd /www/alibaba-ai-assistant && rm -rf .next && tar -xzf /tmp/next-v2.2.16-2dc4017-linux-x64.tar.gz && pm2 restart alibaba-ai-assistant`。
+# 轮 14 公网 HR 演示版收口（本地完成，未提交/未推送/未部署）
+
+- 交付：public_showcase 模式下首页=演示首页（匿名与访客一致，不再切回旧工作台/密码锁）；/replay=「完整商品研究案例」页（THERMOS FUNTAINER 10oz Pink，真实脱敏快照+自托管商品图）；侧栏仅「首页/完整商品案例」；旧 /replay/[bundleId] 内部跳转 /replay。
+- 数据：data/public-showcase/thermos-case.json（从本地任务 cmt0lmsqa 只读提取并脱敏：商品概览/关键词10/竞品5/评论13+主题/供应线索MOQ500件/风险/人工决定/Listing草稿(标题+4五点)/图片检查待确认/真实缺口中文标注）；public/public-showcase/thermos-main.jpg（真实白底产品图600×600）。禁止术语扫描 0 命中（V4/Replay/Evidence/Gate/Bundle/Run/unknown/blocked/continue_sourcing 等 19 项 + 内部标识）。
+- 测试（TDD 红→绿 + 3 项反向验证）：新 18 条全绿（案例分析 7 + 组件 8 + 侧栏 3）；反向验证：换无图旧案例→红、恢复内部枚举→红、访客回落旧工作台→红，恢复后全绿；tsc 0；改动文件 eslint 0；build 成功。
+- 浏览器验收（本地 public_showcase 3027，1440×900/390×844）：首页（演示首页+唯一主按钮+无旧入口）、案例页（商品图 naturalWidth 600 真实加载、美国站、6 模块齐全、中文缺口）、图片拦截→「商品图片暂不可用」诚实占位；两档无横向滚动、console 0 error/warning、页面术语扫描 0 命中；6 张截图见 docs/v4.1/evidence/d-formal-v2/showcase-*.png。
+- 无回归：本地 Owner（3005 local_owner）首页仍为工作台 dashboard、需要我处理正常；侧栏 local 导航未变。
+- 状态：未提交、未推送、未部署（停止线：等领导看截图）；工作区仅新增上述改动 + 原 16 项 B 类未动；数据库零写入。
+# 轮 15 公网案例内容纠偏（本地完成，未提交/未推送/未部署）
+
+- 商品身份：标题严格等于真实名称（无「商品研究」附加）；商品类型改为中文「儿童食品罐（保温食品罐）」（不再等于品牌 THERMOS）。
+- 中文化：概览值全部转中文（类目=厨房与餐饮、材质=不锈钢、功能特性=真空保温、清洁=可机洗、随附=带折叠勺食品罐、操作=卡扣式开合、重量=4 盎司、数量=1 件、容量=10 盎司（10 oz）、尺寸=英寸、大类/小类排名、参考价格（美元））；关键词来源、MOQ→最小起订量、BSR→大类排名、图片草稿类型→生活方式场景图；页面英文扫描 0 残留（商品名/品牌/ASIN/单位/Listing 后台词除外）。
+- Listing 质量：新增 listingQualityCheck（标题品牌不重复、三点 3–5 条完整句、无 1–2 词碎片）；真实草稿未通过（标题 THERMOS 重复 + 碎片五点），页面展示「历史 Listing 草稿未通过质量校验，未作为正式成果展示」+ 4 条缺失确认事实 + 可追溯后台搜索词 + 人工复核要求。
+- 一致性：缺口列表剔除与概览冲突的「缺少价格/尺寸/重量」项，保留真实缺口（竞品价格/目标市场需求/采购物流平台费用）；竞品全部标注「相邻替代商品，不代表直接竞品」并给出中文业务名；关键词分类（当前商品相关词/相邻类目词/品牌词）。
+- 测试：轮 15 新增 7 条红灯先行（商品名/类型≠品牌/缺口一致性/竞品说明/评论无英文原文/Listing 质量/关键词分类），全部转绿（15 文件 14+8=22 全绿）；3 项反向验证（商品名加词→红、碎片五点放行→红、价格写回缺口→红）恢复后全绿。
+- 验收：本地 public_showcase 3027 最终生产构建，10 张截图（首页/案例顶部/中部/底部/图片失败兜底 × 1440×900 CSS DPR1 与 390×844 CSS DPR2，PNG 1440×900 与 780×1688）；两档无横向滚动、商品图 naturalWidth 600、失败诚实占位、Console 0 error/0 warning、禁用术语 0 命中、英文残留 0（白名单外）。
+- 工程验证：tsc 0；改动文件 ESLint 0；npm run build 成功；git diff --check 0；prisma/dev.db SHA 前后一致（ab765818…）。
+- 状态：未提交、未推送、未部署；16 项 B 类未动；数据库零写入。
+# 轮 16 公网案例视觉清口（本地完成，未提交/未推送/未部署）
+
+- 商品身份：概览「商品名称」值严格等于 THERMOS FUNTAINER Kids Food Jar with Spoon, 10oz, Pink（删除末尾残留「商品研究」）；颜色/款式 = 粉色；主标题与概览名称完全一致。
+- 关键词移动端：390×844 下切换到纵向卡片（sm:hidden/hidden sm:block），每条展示关键词/分类（不截断）/月搜索量/购买量/竞争度；购买量无真实数据如实显示「尚未取得」；关键词模块无内部横向滚动（scrollWidth<=clientWidth），页面无横向溢出。
+- Listing：拒绝原因只出现一次（「未通过质量校验，未作为正式成果展示」×1）；历史重复搜索词明确标注「历史草稿原始搜索词（含重复，未通过质量校验）」；保留缺失确认事实、人工复核要求与「未成为正式成果」说明；原始数据未改。
+- 测试：轮 16 新增 5 条红灯先行（主标题=概览名称、无商品研究后缀、颜色中文、移动端卡片、Listing 不重复），转绿后 27/27；反向验证「恢复商品研究附加词」→ 红，恢复后全绿。
+- 工程：tsc 0（修复 keyword row 类型补 purchase 字段）；ESLint 0；npm run build 成功；git diff --check 0；prisma/dev.db SHA 前后一致（ab765818…）。
+- 验收：本地 public_showcase 3027 最终构建，10 张新截图 showcase3-*（首页/案例顶部/关键词区/Listing 区/图片兜底 × 1440×900 CSS DPR1 与 390×844 CSS DPR2，PNG 1440×900 与 780×1688）；两档页面无横向溢出、关键词模块无内部滚动、Console 0 error/0 warning、分类文字完整、侧栏仅两项。
+- 状态：未提交、未推送、未部署；16 项 B 类未动；数据库零写入。
+# 轮 17 Listing 区说明去重（最后一处重复说明，视觉冻结）
+
+- 修正：PublicCasePage Listing 区外层重复输出 data.listing.note 的行已删除，仅保留黄色框内说明；最终该句在 HTML 与页面中恰好出现 1 次。
+- 保留：状态文案「历史 Listing 草稿未通过质量校验，未作为正式成果展示」、暂未通过原因、4 条缺失确认事实、「历史草稿原始搜索词（含重复，未通过质量校验）」标签与原始搜索词、来源说明、图片草稿待人工确认状态；历史原始数据未改。
+- 测试：新增长红灯测试（split 计数必须 === 1），修复前红 → 修复后绿；全量相关 31/31。
+- 工程：tsc 0；改动文件 ESLint 0；npm run build 成功；git diff --check 0；prisma/dev.db SHA 前后一致（ab765818…）。
+- 验收：本地 public_showcase 3027 最终构建，showcase4-listing-1440/390 两张截图：说明句 count=1、无横向溢出、Console 0 error/0 warning、原始搜索词带历史草稿标签、缺失事实与图片待确认保留。
+- 状态：未提交、未推送、未部署（仅重启本地 3027 验收服务，未触碰生产）；16 项 B 类未动；数据库零写入。

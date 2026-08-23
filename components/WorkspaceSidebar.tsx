@@ -41,15 +41,12 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
     { label: "Image Studio", href: "/image-studio", icon: Images },
   ];
   if (runtime.mode === "public_showcase") {
-    const v4Group: SidebarNavItem[] = [
-      { label: "V4 概览", href: "/", icon: LayoutDashboard },
-      { label: "案例回放", href: "/replay", icon: History },
+    // 公网 HR 演示收口：侧栏只显示「首页」与「完整商品案例」（不出现密码锁/旧工作台入口）。
+    const showcaseGroup: SidebarNavItem[] = [
+      { label: "首页", href: "/", icon: LayoutDashboard },
+      { label: "完整商品案例", href: "/replay", icon: History },
     ];
-    return [
-      { label: "V4 工作台", items: v4Group },
-      { label: "内容工具", items: creativeItems },
-      { label: "历史功能", items: researchItems },
-    ];
+    return [{ label: "演示门户", items: showcaseGroup }];
   }
   return [
     { label: "工作台", items: [{ label: "工作台", href: "/", icon: LayoutDashboard }] },
@@ -60,7 +57,7 @@ export function buildV4NavGroups(runtime: SidebarRuntime): ReadonlyArray<{
 
 /** 模式 Badge 文案（unknown → 空，避免 hydration 漂移） */
 export function modeBadgeLabel(runtime: SidebarRuntime): string {
-  if (runtime.mode === "public_showcase") return "Public Replay · 只读脱敏案例";
+  if (runtime.mode === "public_showcase") return "演示门户 · 只读案例";
   // §4.5：普通本地页面不显示 V4 / Local Live 等技术模式文案（保留公网展示）
   return "";
 }
@@ -245,7 +242,7 @@ export function WorkspaceSidebar() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <p className="text-xs font-semibold text-teal-700">轻选工作台</p>
                 {runtime.mode === "public_showcase" ? (
-                  <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">V4</span>
+                  <span className="rounded border border-teal-200 bg-teal-50 px-1 py-0.5 text-[10px] font-bold text-teal-700">演示</span>
                 ) : null}
               </div>
               <p className="mt-0.5 break-words text-sm font-semibold leading-5 text-slate-950">

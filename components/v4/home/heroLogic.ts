@@ -88,3 +88,12 @@ export function deriveHeroCtas(runtime: HomeRuntime): {
     secondary: null,
   };
 }
+
+/** 公网 HR 演示收口：public_showcase 模式下一律展示演示首页（匿名与访客一致，不得切回旧工作台）。 */
+export type HomeExperience = "showcase" | "dashboard" | "login";
+export function deriveHomeExperience(runtime: HomeRuntime, authenticated: boolean): HomeExperience {
+  if (runtime.mode === "public_showcase") return "showcase";
+  if (runtime.mode === "local_owner" && runtime.noAuthOwner) return "dashboard";
+  if (!authenticated) return "login";
+  return "dashboard";
+}

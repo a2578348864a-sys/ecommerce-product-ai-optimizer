@@ -7,14 +7,14 @@
  * 本组件承担原有的「模式感知分发」与登录处理（依赖浏览器 sessionStorage 认证状态）。
  *
  * 分发语义（契约 §12 / 首页 §13，保持与 v3.0.1 一致）：
- *   public_showcase + 已认证 → HomeDashboardClient；否则 → GuestLanding
+ *   public_showcase → PublicShowcaseHome（匿名与访客一致，HR 演示收口）
  *   local_owner + noAuthOwner → HomeDashboardClient
  *   缺省 / 未认证 → LoginPage；否则 → HomeDashboardClient
  */
 import { useEffect, useState } from "react";
 import { HomeDashboardClient } from "@/components/HomeDashboardClient";
 import { LoginPage } from "@/components/LoginPage";
-import { GuestLanding } from "@/components/GuestLanding";
+import { PublicShowcaseHome } from "@/components/v4/showcase/PublicShowcaseHome";
 import {
   saveAccessToken,
   isAuthenticated,
@@ -112,11 +112,8 @@ export function HomeGate({ runtime, featured }: { runtime: HomeRuntime; featured
   if (!ready) return null;
 
   if (runtime.mode === "public_showcase") {
-    return authenticated ? (
-      <HomeDashboardClient runtime={runtime} featured={featured} />
-    ) : (
-      <GuestLanding runtime={runtime} featured={featured} />
-    );
+    // 公网 HR 演示收口：匿名与访客会话统一展示演示首页（不得切回旧工作台）。
+    return <PublicShowcaseHome />;
   }
 
   if (runtime.mode === "local_owner" && runtime.noAuthOwner) {
