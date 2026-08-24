@@ -124,7 +124,7 @@ export function CommercialInputsCard({ taskId, onChanged }: { taskId: string; on
   const inputCls = "h-9 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100";
 
   return (
-    <section data-testid="commercial-inputs-card" className="rounded-2xl border border-slate-200 bg-white p-4">
+    <section id="formal-v2-cost-risk-evidence" data-testid="commercial-inputs-card" className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-slate-900">成本与风险资料（分次保存）</h3>
         <span className="text-xs text-slate-500">{hasSaved ? "已保存部分字段；未填写的仍是待补" : "当前全部待补"}</span>

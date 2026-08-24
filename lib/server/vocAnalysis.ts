@@ -113,6 +113,19 @@ export function computeThemeStrength(reviewCount: number): VocThemeStrength {
 
 /* ── Prompt（system 固定 + user 数据字段；Review 全为 UNTRUSTED DATA） ── */
 
+/**
+ * R6：VOC 输出语言契约（简体中文）。由 SYSTEM_PROMPT 引用；独立导出示给生成契约测试验证。
+ */
+export const VOC_CHINESE_REQUIREMENT =
+  "输出语言：所有主题标题(label)、摘要(summary)、冲突说明(note)、未知项(unknowns)、下一步建议(nextResearchSteps)" +
+  " 必须使用简体中文。商品名、品牌、ASIN 与必要单位可保留原文。" +
+  " 评论引用继续指向真实 evidenceId（evidenceRefs 值必须是给出的 review evidenceId），不得翻译后篡改评论原意，" +
+  " 不得把单条评论写成普遍结论。不得在输出中给出 runId/模型名/promptVersion/hash 等运行信息。" +
+  " OUTPUT LANGUAGE RULE: theme label/summary/conflicts note/unknowns/nextResearchSteps MUST be Simplified Chinese (" +
+  "only product name/brand/ASIN/units may stay original). Evidence refs stay as real evidenceId values; never translate " +
+  "or distort the original review meaning; never present a single review as a universal conclusion; never output runId/" +
+  "model/promptVersion/hash diagnostics.";
+
 const SYSTEM_PROMPT = [
   "You are the VOC (Voice of Customer) explanation engine of a cross-border e-commerce product research workbench.",
   "You ONLY cluster and explain the provided review evidence. You never create reviews, never invent quotes, never invent counts.",
@@ -141,6 +154,7 @@ const SYSTEM_PROMPT = [
   "- theme labels ≤ 60 chars, summaries ≤ 400 chars.",
   "- weakSignals: only themes appearing in very few reviews (1-2) that should NOT be over-interpreted.",
   "- unknowns: what this sample cannot prove (insufficient data, missing ratings, conflicts, sampling limits).",
+  VOC_CHINESE_REQUIREMENT,
 ].join("\n");
 
 function buildUserPrompt(input: {

@@ -216,7 +216,10 @@ describe("Quality.2 Task-linked AI integration", () => {
     expect(result.draft?.draftKind).toBe("ai_optimized_listing");
     expect(result.draft?.providerAttempted).toBe(true);
     expect(result.draft?.providerSucceeded).toBe(true);
-    expect(result.draft?.usedFactIds).toEqual(["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"]);
+    // R4：公开摘要不含内部 usedFactIds；改为断言安全 usedFactTrace（label/value）对应事实存在
+    expect((result.draft as unknown as Record<string, unknown>).usedFactIds).toBeUndefined();
+    const traceFields = (result.draft?.usedFactTrace ?? []).map((f) => f.label);
+    expect(traceFields.length).toBeGreaterThanOrEqual(3);
     expect(result.draft?.bullets.length).toBeGreaterThanOrEqual(3);
     expect((result.draft?.description ?? "").length).toBeGreaterThan(30);
     // F5 幂等：同 requestId 不再调 Provider

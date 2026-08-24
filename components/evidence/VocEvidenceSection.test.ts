@@ -245,7 +245,8 @@ describe("VocEvidenceSection rendering (novice comprehension)", () => {
       onChanged: () => undefined,
     });
     const html = renderToStaticMarkup(element);
-    expect(html).toContain("仅使用 2/10 条（采样）");
+    expect(html).toContain("抽样分析（共采集 10 条）");
+    expect(html).toContain("本次分析使用 2 条评论");
     expect(html).not.toContain("分析了全部用户评论");
   });
 
@@ -280,4 +281,219 @@ describe("商品身份锁定（轮 12）", () => {
     expect(noReviewsEmptyMessage()).toBe("当前商品暂未采到公开评论，可重试或粘贴该商品评论。");
   });
 });
+});
+
+describe("R6 VOC 收口：历史英文分析诚实降级 + 技术噪声移除", () => {
+  const enAnalysis = () => (analysisFixture() as unknown as { schema: string; version: number; runId: string; candidateId: string | null; model: string; promptVersion: string; inputEvidenceHash: string; datasetSnapshot: { totalReviews: number; reviewsUsed: number; sampledReviews: string[] }; startedAt: string; finishedAt: string; tokenUsage: { completionTokens: number | null; reasoningTokens: number | null } | null; gateResult: "pass" | "fail"; themes: { positiveThemes: Array<{ themeId: string; label: string; summary: string; evidenceRefs: string[]; sourceProductRoles: Array<"current_candidate" | "competitor">; reviewCount: number; coverage: number; strength: "isolated" | "weak" | "recurring"; limitations: string | null }>; painPointThemes: Array<{ themeId: string; label: string; summary: string; evidenceRefs: string[]; sourceProductRoles: Array<"current_candidate" | "competitor">; reviewCount: number; coverage: number; strength: "isolated" | "weak" | "recurring"; limitations: string | null }>; usageScenarios: Array<any>; recurringRequests: Array<any>; conflicts: Array<any>; weakSignals: Array<any> }; unknowns: string[]; nextResearchSteps: string[]; unverified: Array<any>; humanReviewResult: null; updatedAt: string });
+  function renderWith(analysis: unknown, evidence: unknown) {
+    // 复用组件：需要构造 evidence view 与 analysis view
+    const evView = parseVocEvidenceView(evidence as never);
+    const anView = parseVocAnalysisView(analysis as never);
+    return renderToStaticMarkup(createElement(VocEvidenceSection, {
+      taskId: "task-x",
+      taskAsin: "B0A1B2C3D4",
+      evidence: evView,
+      analysis: anView,
+      storageVersion: null,
+      capability: null,
+      onChanged: () => undefined,
+      onDataChanged: () => undefined,
+    } as never));
+  }
+  it("历史英文分析默认不直接展示英文段落，显示中文历史提示", () => {
+    const a = enAnalysis();
+    // 把 label/summary/unknowns/next 全部改为英文（模拟历史英文分析）
+    a.themes.positiveThemes[0].label = "Great build quality";
+    a.themes.positiveThemes[0].summary = "Users love the solid construction.";
+    a.unknowns = ["Sample cannot prove durability."];
+    a.nextResearchSteps = ["Need more reviews."];
+    const html = renderWith(a, evidenceFixture());
+    // 默认主页面不出现整段英文结论
+    expect(html).not.toContain("Great build quality");
+    expect(html).not.toContain("Users love the solid construction.");
+    // 出现中文历史提示
+    expect(html).toContain("这份历史分析使用英文生成，重新分析后可查看中文结论");
+  });
+  it("主题引用评论在「查看原始评论（原文）」折叠内，且经清洁函数（无 <img>/HTML 代码）", () => {
+    const a = enAnalysis();
+    // 中文分析（默认主题分支）；评论文本含 HTML 头像污染
+    const dirtyEvidence = evidenceFixture();
+    dirtyEvidence.dataset.reviews[0].reviewText = '<img src="https://example.com/avatar.png">Very sturdy, love it.';
+    const html = renderWith(a, dirtyEvidence);
+    expect(html).toContain("查看原始评论（原文）");
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("avatar.png");
+    // 清理后文字（注释保留隐私，此处仅验证未渲染 HTML 代码）
+    expect(html).toContain("Very sturdy, love it.");
+  });
+  it("运行 trace 不出现：run/model/voc-analysis/promptVersion/哈希 等内部信息", () => {
+    const html = renderWith(enAnalysis(), evidenceFixture());
+    expect(html).not.toContain("run ");
+    expect(html).not.toContain("deepseek");
+    expect(html).not.toContain("voc-analysis");
+    expect(html).not.toContain("inputEvidenceHash");
+    expect(html).not.toContain("promptVersion");
+    expect(html).not.toContain("hash123");
+  });
+  it("引用数量/身份/星级/ASIN 仍然存在", () => {
+    const html = renderWith(enAnalysis(), evidenceFixture());
+    expect(html).toContain("引用");
+    expect(html).toContain("当前商品");
+    expect(html).toContain("ASIN");
+    expect(html).toContain("星");
+  });
+  it("单条评论不展示为普遍结论（主题引用数仍为1/有限）", () => {
+    const a = enAnalysis();
+    a.themes.positiveThemes[0].evidenceRefs = ["ev-00000001"];
+    const html = renderWith(a, evidenceFixture());
+    expect(html).toContain("引用 1 条");
+    // 清理 HTML 后不含 img 原文
+    expect(html).not.toContain("<img");
+  });
+});
+
+describe("R6 修复：历史英文识别覆盖全部默认可见业务字段（组件级）", () => {
+  type LooseTheme = { themeId: string; label: string; summary: string; limitations: string | null };
+  type LooseConflict = { label: string; summary: string; note: string | null };
+  type LooseAnalysis = {
+    themes: {
+      positiveThemes: LooseTheme[];
+      painPointThemes: LooseTheme[];
+      usageScenarios: LooseTheme[];
+      recurringRequests: LooseTheme[];
+      weakSignals: LooseTheme[];
+      conflicts: LooseConflict[];
+    };
+    unknowns: string[];
+    nextResearchSteps: string[];
+  };
+  function chineseFixture(): LooseAnalysis {
+    return analysisFixture() as unknown as LooseAnalysis;
+  }
+  function renderAnalysis(fixture: unknown) {
+    const analysis = parseVocAnalysisView(fixture as never);
+    const evidence = parseVocEvidenceView(evidenceFixture() as never);
+    const element = createElement(VocEvidenceSection, {
+      taskId: "task-x",
+      taskAsin: "B0A1B2C3D4",
+      evidence,
+      analysis,
+      storageVersion: null,
+      capability: null,
+      onChanged: () => undefined,
+    } as never);
+    return renderToStaticMarkup(element);
+  }
+  it("基线：全中文分析正文默认渲染（不降级）", () => {
+    const html = renderAnalysis(chineseFixture());
+    expect(html).toContain("做工扎实");
+    expect(html).toContain("用户认可做工。");
+    expect(html).not.toContain("这份历史分析使用英文生成");
+  });
+  it("中文 label + 英文 summary → 默认不渲染英文正文，显示中文提示与查看按钮", () => {
+    const a = chineseFixture();
+    a.themes.positiveThemes[0].summary = "Users love the solid construction.";
+    const html = renderAnalysis(a);
+    expect(html).not.toContain("Users love the solid construction.");
+    expect(html).toContain("这份历史分析使用英文生成，重新分析后可查看中文结论");
+    expect(html).toContain("查看历史英文分析");
+  });
+  it("英文 limitations → 降级", () => {
+    const a = chineseFixture();
+    a.themes.positiveThemes[0].limitations = "Only one review; may not be representative.";
+    const html = renderAnalysis(a);
+    expect(html).not.toContain("Only one review; may not be representative.");
+    expect(html).toContain("这份历史分析使用英文生成");
+  });
+  it("英文 conflict summary / note → 降级", () => {
+    const a1 = chineseFixture();
+    a1.themes.conflicts[0].summary = "Some say it is solid; others say it is heavy.";
+    expect(renderAnalysis(a1)).not.toContain("Some say it is solid; others say it is heavy.");
+    const a2 = chineseFixture();
+    a2.themes.conflicts[0].note = "The negative review is a single instance.";
+    expect(renderAnalysis(a2)).not.toContain("The negative review is a single instance.");
+  });
+  it("英文 unknowns / nextResearchSteps → 降级", () => {
+    const a = chineseFixture();
+    a.unknowns = ["Sample cannot prove durability."];
+    a.nextResearchSteps = ["Need more reviews to confirm."];
+    const html = renderAnalysis(a);
+    expect(html).not.toContain("Sample cannot prove durability.");
+    expect(html).not.toContain("Need more reviews to confirm.");
+  });
+  it("usageScenarios / recurringRequests / weakSignals 英文 label → 降级", () => {
+    const a = chineseFixture();
+    a.themes.usageScenarios = [{ ...a.themes.positiveThemes[0], themeId: "t-usage-1", label: "School lunches", summary: "用于学校午餐。" }];
+    expect(renderAnalysis(a)).not.toContain("School lunches");
+    const b = chineseFixture();
+    b.themes.recurringRequests = [{ ...b.themes.positiveThemes[0], themeId: "t-req-1", label: "Preheat with hot water", summary: "建议预热。" }];
+    expect(renderAnalysis(b)).not.toContain("Preheat with hot water");
+    const c = chineseFixture();
+    c.themes.weakSignals = [{ ...c.themes.positiveThemes[0], themeId: "t-weak-1", label: "Leak proof", summary: "个别提到。" }];
+    expect(renderAnalysis(c)).not.toContain("Leak proof");
+  });
+  it("中文业务句中夹带品牌/ASIN/单位 → 不降级，正文照常渲染", () => {
+    const a = chineseFixture();
+    a.themes.positiveThemes[0].summary = "THERMOS（B08NCVT244，10 oz）的保温效果好。";
+    const html = renderAnalysis(a);
+    expect(html).not.toContain("这份历史分析使用英文生成");
+    expect(html).toContain("用户喜欢什么");
+    expect(html).toContain("THERMOS（B08NCVT244，10 oz）的保温效果好。");
+  });
+  it("原始评论/商品身份/ASIN/星级/采集时间/引用数量在降级后展开时仍在（清洁保留身份字段）", () => {
+    const a = chineseFixture();
+    const html = renderAnalysis(a);
+    expect(html).toContain("当前商品");
+    expect(html).toContain("ASIN B0A1B2C3D4");
+    expect(html).toContain("5 星");
+    expect(html).toContain("采集 2026-08-05");
+    expect(html).toContain("引用 1 条");
+  });
+});
+
+describe("R6 修复：评论标题/来源/冲突卡空态统一清洁（组件级）", () => {
+  type LooseEvidence = {
+    dataset: { reviews: Array<{ evidenceId: string; reviewTitle: string | null; reviewText: string; sourceRef: string | null }> };
+  };
+  function renderWithEvidence(evidence: unknown, fixture: unknown) {
+    const analysis = parseVocAnalysisView(fixture as never);
+    const ev = parseVocEvidenceView(evidence as never);
+    const element = createElement(VocEvidenceSection, {
+      taskId: "task-x",
+      taskAsin: "B0A1B2C3D4",
+      evidence: ev,
+      analysis,
+      storageVersion: null,
+      capability: null,
+      onChanged: () => undefined,
+    } as never);
+    return renderToStaticMarkup(element);
+  }
+  it("reviewTitle / sourceRef 通过同一清洁边界（含 img 标记被移除，空则整段不渲染）", () => {
+    const ev = evidenceFixture() as unknown as LooseEvidence;
+    ev.dataset.reviews[0].reviewTitle = "<img src=\"boom.png\">Sturdy lid";
+    ev.dataset.reviews[0].sourceRef = "<img src=\"refboom.png\">";
+    ev.dataset.reviews[1].reviewTitle = "<img src=\"empty.png\"/>";
+    ev.dataset.reviews[1].sourceRef = "<img src=\"refempty.png\"/>";
+    const html = renderWithEvidence(ev, analysisFixture());
+    expect(html).toContain("Sturdy lid");
+    expect(html).not.toContain("boom.png");
+    expect(html).not.toContain("refboom.png");
+    expect(html).not.toContain("empty.png");
+    expect(html).not.toContain("refempty.png");
+  });
+  it("ConflictCard 与 ThemeCard 共用空态：干净后为空统一显示占位文案（不含悬空「· 」）", () => {
+    const ev = evidenceFixture() as unknown as LooseEvidence;
+    ev.dataset.reviews[0].reviewText = '<img src="only.png"/>';
+    const html = renderWithEvidence(ev, analysisFixture());
+    expect(html).not.toContain("only.png");
+    expect(html).not.toContain("<img");
+    const placeholderCount = (html.match(/该条评论没有可展示的文字内容/g) || []).length;
+    expect(placeholderCount).toBeGreaterThanOrEqual(2);
+  });
+  it("非空评论不显示空态占位（主题卡与冲突卡）", () => {
+    const html = renderWithEvidence(evidenceFixture(), analysisFixture());
+    expect(html).not.toContain("该条评论没有可展示的文字内容");
+    expect(html).toContain("Very sturdy, love it.");
+  });
 });

@@ -59,11 +59,15 @@ export type ListingDraftSafeSummary = {
   /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
   backendTermWarnings?: string[];
   /** Draft-level audit metadata, not per-claim citations. */
-  usedFactIds?: string[];
+  /** 轮 21：实际使用的已确认商品事实（仅 label/value；不返回内部 field） */
+  usedFactTrace?: Array<{ label: string; value: string }>;
+  /** R2：实际采用的关键词文本（由 usedKeywordIds + brief 确定性映射） */
+  usedKeywordTrace?: string[];
+  /** R2：生成时提供给 AI 的研究参考（有界、业务语言、去内部前缀） */
+  researchReferenceTrace?: string[];
   /** 服务端三级判定保留的低风险表达（待人工确认；有界返回，不暴露内部字段） */
   humanReviewClaims?: string[];
   /** 服务端派生的关键词溯源 id（有界返回） */
-  usedKeywordIds?: string[];
   /** 关键词方案来源：人工方案 / 自动方案 / 无有效方案 */
   keywordPlanSource?: "manual" | "auto_suggested" | "none";
   draftKind?: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft";
@@ -170,6 +174,53 @@ function dedupeTerms(items: string[]): string[] {
 }
 
 /** 从草稿提取安全摘要（不含事实原始对象/内部引用） */
+/** 轮 21：usedFactIds（field 名）→ 安全事实标签+值（生成依据展示；仅白名单事实）。 */
+function buildUsedFactTrace(
+  facts: Array<{ field: string; label: string; value: string }>,
+  usedIds: string[] | undefined,
+): Array<{ label: string; value: string }> {
+  if (!Array.isArray(usedIds)) return [];
+  const out: Array<{ label: string; value: string }> = [];
+  for (const id of usedIds) {
+    const match = facts.find((f) => f.field === id);
+    if (match) out.push({ label: match.label, value: match.value });
+  }
+  return out;
+}
+
+/** R2：usedKeywordIds + brief → 具体关键词文本（确定性、有界） */
+function deriveUsedKeywordTrace(
+  usedKeywordIds: string[] | undefined,
+  brief: { primaryKeyword: string; supportingKeywords: string[]; backendSearchTerms: string[] } | null,
+): string[] {
+  if (!Array.isArray(usedKeywordIds) || usedKeywordIds.length === 0 || !brief) return [];
+  const byId = new Map<string, string>();
+  const seen = new Set<string>();
+  if (brief.primaryKeyword) {
+    byId.set("kw:primary", brief.primaryKeyword);
+    seen.add(brief.primaryKeyword.toLowerCase());
+  }
+  brief.supportingKeywords.forEach((kw, i) => {
+    if (!seen.has(kw.toLowerCase())) { byId.set(`kw:${i}`, kw); seen.add(kw.toLowerCase()); }
+  });
+  brief.backendSearchTerms.forEach((term, j) => {
+    if (!seen.has(term.toLowerCase())) { byId.set(`kw:backend:${j}`, term); seen.add(term.toLowerCase()); }
+  });
+  const out: string[] = [];
+  for (const id of usedKeywordIds) {
+    const text = byId.get(id);
+    if (text) out.push(text);
+  }
+  return out.slice(0, 20);
+}
+
+/** R2：AI 研究参考 → 业务语言文本（去 "AI REFERENCE (NOT FACT): " 内部前缀；有界） */
+function deriveResearchReferenceTrace(
+  context: { aiReferences?: string[] } | undefined,
+): string[] {
+  const refs = context?.aiReferences ?? [];
+  return refs.slice(0, 6).map((ref) => String(ref).replace(/^AI REFERENCE \(NOT FACT\):\s*/i, "").slice(0, 140));
+}
 export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
   return {
@@ -190,16 +241,29 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     backendTermWarnings: Array.isArray(value.backendTermWarnings)
       ? value.backendTermWarnings.filter((item): item is string => typeof item === "string").slice(0, 10)
       : undefined,
-    usedFactIds: Array.isArray(value.usedFactIds)
-      ? value.usedFactIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 50)
+    usedFactTrace: Array.isArray(value.usedFactTrace)
+      ? value.usedFactTrace
+          .filter((item): item is { label: string; value: string } =>
+            isRecord(item) && typeof item.label === "string" && typeof item.value === "string")
+          .map((item) => ({ label: item.label.slice(0, 80), value: item.value.slice(0, 200) }))
+          .slice(0, 30)
+      : undefined,
+    usedKeywordTrace: Array.isArray(value.usedKeywordTrace)
+      ? value.usedKeywordTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => item.trim().slice(0, 120))
+          .slice(0, 20)
+      : undefined,
+    researchReferenceTrace: value.providerAttempted === true
+      ? (Array.isArray(value.researchReferenceTrace)
+          ? value.researchReferenceTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+              .map((item) => item.trim().slice(0, 160))
+              .slice(0, 6)
+          : undefined)
       : undefined,
     humanReviewClaims: Array.isArray(value.humanReviewClaims)
       ? value.humanReviewClaims.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
           .map((item) => item.trim().slice(0, 120))
           .slice(0, 5)
-      : undefined,
-    usedKeywordIds: Array.isArray(value.usedKeywordIds)
-      ? value.usedKeywordIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 20)
       : undefined,
     keywordPlanSource: value.keywordPlanSource === "manual" || value.keywordPlanSource === "auto_suggested" || value.keywordPlanSource === "none"
       ? value.keywordPlanSource
@@ -210,8 +274,8 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     qualityIssues: Array.isArray(value.qualityIssues)
       ? value.qualityIssues.filter((item): item is string => typeof item === "string").slice(0, 10)
       : undefined,
-    providerAttempted: value.providerAttempted === true,
-    providerSucceeded: value.providerSucceeded === true,
+    providerAttempted: typeof value.providerAttempted === "boolean" ? value.providerAttempted : undefined,
+    providerSucceeded: typeof value.providerSucceeded === "boolean" ? value.providerSucceeded : undefined,
     fallbackApplied: value.fallbackApplied === true,
     fallbackReason: typeof value.fallbackReason === "string" && value.fallbackReason ? value.fallbackReason : null,
     sellingPoints: safeStringArray(value.sellingPoints).slice(0, 6),
@@ -602,6 +666,7 @@ export async function generateListingDraftFromHandoff(
               : ["AI 优化草稿基于已确认事实生成；未进行关键词优化，所有表述需人工复核。"],
             reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
             usedFactIds: aiResult.data.usedFactIds,
+    usedFactTrace: buildUsedFactTrace(generationInput.productFacts, aiResult.data.usedFactIds),
             usedKeywordIds: deriveUsedKeywordIds({
               title: aiResult.data.title,
               bullets: aiResult.data.bullets,
@@ -668,6 +733,7 @@ export async function generateListingDraftFromHandoff(
               ...aiFiltered.cleaned,
               draftKind,
               usedFactIds: aiResult.data.usedFactIds,
+    usedFactTrace: buildUsedFactTrace(generationInput.productFacts, aiResult.data.usedFactIds),
               usedKeywordIds: aiDraft.usedKeywordIds,
               humanReviewClaims: reviewTexts,
               ...(aiDraft.backendTermWarnings ? { backendTermWarnings: aiDraft.backendTermWarnings } : {}),
@@ -715,6 +781,10 @@ export async function generateListingDraftFromHandoff(
         fallbackApplied,
         fallbackReason,
         keywordPlanSource,
+        usedKeywordTrace: deriveUsedKeywordTrace(finalDraft.usedKeywordIds as string[] | undefined, effectiveKeywordBrief),
+        researchReferenceTrace: providerAttempted
+          ? deriveResearchReferenceTrace(generationInput.creativeContext)
+          : undefined,
         ...(fallbackReasonCode ? { fallbackReasonCode } : {}),
         qualityIssues: qualityIssues.slice(0, 10),
         savedAt: binding.generatedAt,

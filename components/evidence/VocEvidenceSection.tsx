@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { buildAccessHeaders, getAccessMode } from "@/lib/client/accessToken";
 import { useSessionDraft } from "@/lib/client/useSessionDraft";
+import { cleanReviewDisplayText, hasEnglishBusinessAnalysis, isEmptyReviewText } from "@/lib/client/vocReviewText";
 import { resolveEvidenceConflictRecovery } from "@/lib/client/evidenceConflictRecovery";
 import type { AcquisitionCapabilityView } from "@/lib/client/acquisitionCapability";
 import { CapabilityNotice } from "@/components/evidence/CapabilityNotice";
@@ -306,24 +307,31 @@ function ThemeCard({
         {theme.sourceProductRoles.map((role) => <RoleBadge key={role} role={role} />)}
       </p>
       {theme.limitations && <p className="mt-1 text-xs text-amber-700">{theme.limitations}</p>}
-      <details className="mt-2">
-        <summary className="cursor-pointer text-xs text-teal-700">为什么这么说（查看引用评论）</summary>
+      <details className="mt-2" data-testid="voc-original-reviews">
+        <summary className="cursor-pointer text-xs text-teal-700">查看原始评论（原文）</summary>
         <ul className="mt-2 space-y-2">
           {refs.length === 0 && <li className="text-xs text-slate-400">无可用引用（引用评论已被清空）。</li>}
-          {refs.map((review) => (
-            <li key={review.evidenceId} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
-              <p className="text-[11px] text-slate-400">
-                {review.sourceProductRole === "competitor" ? "竞品" : "当前商品"} · ASIN {review.productAsin}
-                {review.rating !== null ? ` · ${review.rating} 星` : ""}
-                {review.reviewDate ? ` · ${review.reviewDate}` : ""}
-                {review.capturedAt ? ` · 采集 ${review.capturedAt.slice(0, 10)}` : ""}
-                {review.sourceRef ? ` · ${review.sourceRef.slice(0, 40)}` : ""}
-                {review.locale ? ` · ${review.locale}` : ""}
-              </p>
-              {review.reviewTitle && <p className="mt-0.5 text-xs font-semibold text-slate-700">{review.reviewTitle}</p>}
-              <p className="mt-0.5 text-xs text-slate-600">{review.reviewText}</p>
-            </li>
-          ))}
+          {refs.map((review) => {
+            const cleaned = cleanReviewDisplayText(review.reviewText);
+            const cleanedTitle = cleanReviewDisplayText(review.reviewTitle);
+            const cleanedRef = cleanReviewDisplayText(review.sourceRef).slice(0, 40);
+            return (
+              <li key={review.evidenceId} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+                <p className="text-[11px] text-slate-400">
+                  {review.sourceProductRole === "competitor" ? "竞品" : "当前商品"} · ASIN {review.productAsin}
+                  {review.rating !== null ? ` · ${review.rating} 星` : ""}
+                  {review.reviewDate ? ` · ${review.reviewDate}` : ""}
+                  {review.capturedAt ? ` · 采集 ${review.capturedAt.slice(0, 10)}` : ""}
+                  {cleanedRef ? ` · ${cleanedRef}` : ""}
+                  {review.locale ? ` · ${review.locale}` : ""}
+                </p>
+                {!isEmptyReviewText(cleanedTitle) && <p className="mt-0.5 text-xs font-semibold text-slate-700">{cleanedTitle}</p>}
+                {isEmptyReviewText(cleaned)
+                  ? <p className="mt-0.5 text-xs text-slate-400">该条评论没有可展示的文字内容</p>
+                  : <p className="mt-0.5 text-xs text-slate-600">{cleaned}</p>}
+              </li>
+            );
+          })}
         </ul>
       </details>
     </div>
@@ -341,17 +349,29 @@ function ConflictCard({ conflict, reviewsById }: { conflict: VocConflictView; re
         <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-2">
           <p className="text-xs font-semibold text-teal-700">正面观点（{conflict.positive.reviewCount} 条）</p>
           <ul className="mt-1 space-y-1">
-            {positiveRefs.map((review) => (
-              <li key={review.evidenceId} className="text-xs text-slate-600">· {review.reviewText}</li>
-            ))}
+            {positiveRefs.map((review) => {
+              const cleaned = cleanReviewDisplayText(review.reviewText);
+              const empty = isEmptyReviewText(cleaned);
+              return (
+                <li key={review.evidenceId} className={`text-xs ${empty ? "text-slate-400" : "text-slate-600"}`}>
+                  {empty ? "该条评论没有可展示的文字内容" : `· ${cleaned}`}
+                </li>
+              );
+            })}
           </ul>
         </div>
         <div className="rounded-lg border border-rose-200 bg-rose-50/50 p-2">
           <p className="text-xs font-semibold text-rose-600">负面观点（{conflict.negative.reviewCount} 条）</p>
           <ul className="mt-1 space-y-1">
-            {negativeRefs.map((review) => (
-              <li key={review.evidenceId} className="text-xs text-slate-600">· {review.reviewText}</li>
-            ))}
+            {negativeRefs.map((review) => {
+              const cleaned = cleanReviewDisplayText(review.reviewText);
+              const empty = isEmptyReviewText(cleaned);
+              return (
+                <li key={review.evidenceId} className={`text-xs ${empty ? "text-slate-400" : "text-slate-600"}`}>
+                  {empty ? "该条评论没有可展示的文字内容" : `· ${cleaned}`}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>
@@ -382,6 +402,90 @@ function ThemeSection({
         </div>
       )}
     </section>
+  );
+}
+
+/** R6：分析主体（主题区+统计）——由历史英文降级分支复用 */
+function VocAnalysisBody({ analysis, reviewsMap }: { analysis: VocAnalysisView; reviewsMap: Map<string, VocReviewView> }) {
+  return (
+    <>
+          <ThemeSection
+            title="用户喜欢什么"
+            emptyText="当前样本中没有形成正面主题（或没有高星评论）。"
+            themes={analysis.themes.positiveThemes}
+            reviewsById={reviewsMap}
+          />
+          <ThemeSection
+            title="用户反复抱怨什么"
+            emptyText="当前样本中没有形成痛点主题。"
+            themes={analysis.themes.painPointThemes}
+            reviewsById={reviewsMap}
+          />
+          <ThemeSection
+            title="用户在什么场景下使用"
+            emptyText="当前样本中没有识别出使用场景。"
+            themes={analysis.themes.usageScenarios}
+            reviewsById={reviewsMap}
+          />
+          <ThemeSection
+            title="用户期望什么改进"
+            emptyText="当前样本中没有形成改进需求主题。"
+            themes={analysis.themes.recurringRequests}
+            reviewsById={reviewsMap}
+          />
+          {analysis.themes.conflicts.length > 0 && (
+            <section data-testid="voc-section-conflicts" className="rounded-2xl border border-slate-200 bg-white p-4">
+              <h3 className="text-sm font-bold text-slate-900">观点冲突（不同用户看法相反）</h3>
+              <div className="mt-2 space-y-2">
+                {analysis.themes.conflicts.map((conflict) => (
+                  <ConflictCard key={conflict.themeId} conflict={conflict} reviewsById={reviewsMap} />
+                ))}
+              </div>
+            </section>
+          )}
+          <ThemeSection
+            title="零散信号（只出现一两次，别过度解读）"
+            emptyText="没有零散信号。"
+            themes={analysis.themes.weakSignals}
+            reviewsById={reviewsMap}
+          />
+          <section data-testid="voc-section-unknowns" className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+            <h3 className="text-sm font-bold text-slate-900">仍然不知道什么</h3>
+            {analysis.unknowns.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">当前样本没有标注未知项。</p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {analysis.unknowns.map((unknown, index) => (
+                  <li key={`${index}-${unknown}`} className="text-sm text-slate-700">· {unknown}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section data-testid="voc-section-next" className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h3 className="text-sm font-bold text-slate-900">下一步最值得研究什么</h3>
+            {analysis.nextResearchSteps.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">当前样本没有给出下一步建议。</p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {analysis.nextResearchSteps.map((step, index) => (
+                  <li key={`${index}-${step}`} className="text-sm text-slate-700">· {step}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+          {analysis.unverified.length > 0 && (
+            <p className="text-xs text-slate-400">
+              {analysis.unverified.length} 个主题因缺少有效评论引用未被采用（未展示）。
+            </p>
+          )}
+          <p className="text-[11px] text-slate-400">
+            分析时间 {new Date(analysis.finishedAt).toLocaleString("zh-CN")}
+            · 本次分析使用 {analysis.datasetSnapshot.reviewsUsed} 条评论
+            {analysis.datasetSnapshot.totalReviews !== analysis.datasetSnapshot.reviewsUsed
+              ? ` · 抽样分析（共采集 ${analysis.datasetSnapshot.totalReviews} 条）`
+              : ""}
+          </p>
+    </>
   );
 }
 
@@ -421,6 +525,7 @@ export function VocEvidenceSection({
   onChanged: () => void;
 }) {
   const [importOpen, setImportOpen] = useState(false);
+  const [showHistoricEnglish, setShowHistoricEnglish] = useState(false);
   const [importText, setImportText] = useState("");
   const [importAsin, setImportAsin] = useState("");
   const [importRole, setImportRole] = useState<"current_candidate" | "competitor">("current_candidate");
@@ -1060,86 +1165,35 @@ export function VocEvidenceSection({
       </div>
 
       {/* 分析结果（新手六区） */}
-      {analysis && (
-        <div className="space-y-3">
-          <ThemeSection
-            title="用户喜欢什么"
-            emptyText="当前样本中没有形成正面主题（或没有高星评论）。"
-            themes={analysis.themes.positiveThemes}
-            reviewsById={reviewsMap}
-          />
-          <ThemeSection
-            title="用户反复抱怨什么"
-            emptyText="当前样本中没有形成痛点主题。"
-            themes={analysis.themes.painPointThemes}
-            reviewsById={reviewsMap}
-          />
-          <ThemeSection
-            title="用户在什么场景下使用"
-            emptyText="当前样本中没有识别出使用场景。"
-            themes={analysis.themes.usageScenarios}
-            reviewsById={reviewsMap}
-          />
-          <ThemeSection
-            title="用户期望什么改进"
-            emptyText="当前样本中没有形成改进需求主题。"
-            themes={analysis.themes.recurringRequests}
-            reviewsById={reviewsMap}
-          />
-          {analysis.themes.conflicts.length > 0 && (
-            <section data-testid="voc-section-conflicts" className="rounded-2xl border border-slate-200 bg-white p-4">
-              <h3 className="text-sm font-bold text-slate-900">观点冲突（不同用户看法相反）</h3>
-              <div className="mt-2 space-y-2">
-                {analysis.themes.conflicts.map((conflict) => (
-                  <ConflictCard key={conflict.themeId} conflict={conflict} reviewsById={reviewsMap} />
-                ))}
-              </div>
-            </section>
-          )}
-          <ThemeSection
-            title="零散信号（只出现一两次，别过度解读）"
-            emptyText="没有零散信号。"
-            themes={analysis.themes.weakSignals}
-            reviewsById={reviewsMap}
-          />
-          <section data-testid="voc-section-unknowns" className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
-            <h3 className="text-sm font-bold text-slate-900">仍然不知道什么</h3>
-            {analysis.unknowns.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">当前样本没有标注未知项。</p>
-            ) : (
-              <ul className="mt-2 space-y-1">
-                {analysis.unknowns.map((unknown, index) => (
-                  <li key={`${index}-${unknown}`} className="text-sm text-slate-700">· {unknown}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section data-testid="voc-section-next" className="rounded-2xl border border-slate-200 bg-white p-4">
-            <h3 className="text-sm font-bold text-slate-900">下一步最值得研究什么</h3>
-            {analysis.nextResearchSteps.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">当前样本没有给出下一步建议。</p>
-            ) : (
-              <ul className="mt-2 space-y-1">
-                {analysis.nextResearchSteps.map((step, index) => (
-                  <li key={`${index}-${step}`} className="text-sm text-slate-700">· {step}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-          {analysis.unverified.length > 0 && (
-            <p className="text-xs text-slate-400">
-              {analysis.unverified.length} 个主题因缺少有效评论引用未被采用（未展示）。
-            </p>
-          )}
-          <p className="text-[11px] text-slate-400">
-            run {analysis.runId.slice(0, 8)} · {analysis.model} · {analysis.promptVersion} · 输入 {analysis.inputEvidenceHash.slice(0, 10)}…
-            · 分析 {new Date(analysis.finishedAt).toLocaleString("zh-CN")}
-            {analysis.datasetSnapshot.totalReviews !== analysis.datasetSnapshot.reviewsUsed
-              ? ` · 注意：本次分析仅使用 ${analysis.datasetSnapshot.reviewsUsed}/${analysis.datasetSnapshot.totalReviews} 条（采样）`
-              : ""}
-          </p>
-        </div>
-      )}
+      {analysis && (() => {
+        // R6 修复：扫描全部默认可见业务分析字段（label/summary/limitations/conflicts/unknowns/next）
+        const hasEnglish = hasEnglishBusinessAnalysis(analysis);
+        if (hasEnglish) {
+          return (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4" data-testid="voc-historic-english-notice">
+              <p className="text-sm font-semibold text-amber-800">这份历史分析使用英文生成，重新分析后可查看中文结论。</p>
+              <p className="mt-1 text-xs text-amber-700">当次样本：{analysis.datasetSnapshot.reviewsUsed} 条评论。</p>
+              <button
+                type="button"
+                onClick={() => setShowHistoricEnglish((v) => !v)}
+                className="mt-2 cursor-pointer text-xs font-semibold text-amber-800 hover:underline"
+              >
+                {showHistoricEnglish ? "收起历史英文分析" : "查看历史英文分析"}
+              </button>
+              {showHistoricEnglish ? (
+                <div className="mt-2">
+                  <VocAnalysisBody analysis={analysis} reviewsMap={reviewsMap} />
+                </div>
+              ) : null}
+            </div>
+          );
+        }
+        return (
+          <div className="space-y-3">
+            <VocAnalysisBody analysis={analysis} reviewsMap={reviewsMap} />
+          </div>
+        );
+      })()}
       {analysis === null && (evidence?.dataset.reviews.length ?? 0) > 0 && (
         <p className="text-sm text-slate-500">
           评论已就绪（{evidence!.dataset.reviews.length} 条）。点击「开始分析评论」生成主题。

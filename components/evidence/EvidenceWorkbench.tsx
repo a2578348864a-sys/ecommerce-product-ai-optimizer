@@ -21,6 +21,8 @@ import {
 import {
   AiEvidenceSummarySection,
   type AiEvidenceSummaryView,
+  type BusinessModuleView,
+  type LegacyCategoryView,
 } from "@/components/evidence/AiEvidenceSummarySection";
 import {
   BrowserEvidenceSection,
@@ -495,7 +497,7 @@ function OverviewGrid({ items }: { items: WorkbenchOverviewItem[] }) {
 
 function MissingSection({ gaps }: { gaps: string[] }) {
   return (
-    <section id="formal-v2-cost-risk-evidence" data-testid="workbench-missing" className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+    <section data-testid="workbench-missing" className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
       <h3 className="text-sm font-bold text-slate-900">还缺什么（待补资料）</h3>
       <p className="mt-2 text-xs text-slate-500">采购价、MOQ、物流成本与合规状态请在下方「成本与风险资料」中填写；尚未取得处会明确标注，不做猜测。</p>
       {gaps.length > 0 && (
@@ -561,7 +563,9 @@ export function EvidenceWorkbench({
   const [keywordReportEvidence, setKeywordReportEvidence] = useState<KeywordEvidenceView | null>(null);
   const [keywordReportStorageVersion, setKeywordReportStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
-  const [aiSummary, setAiSummary] = useState<AiEvidenceSummaryView | null>(null);
+  const [aiSummary, setAiSummary] = useState<boolean>(false);
+  const [aiSummaryBusinessModules, setAiSummaryBusinessModules] = useState<BusinessModuleView[] | null>(null);
+  const [aiSummaryLegacyCategories, setAiSummaryLegacyCategories] = useState<LegacyCategoryView[] | null>(null);
   const [aiSummaryStorageVersion, setAiSummaryStorageVersion] = useState<{ resultJsonHash: string; updatedAt: string } | null>(null);
 
   const [browserEvidence, setBrowserEvidence] = useState<BrowserEvidenceView | null>(null);
@@ -642,10 +646,12 @@ export function EvidenceWorkbench({
         signal: AbortSignal.timeout(60_000),
       });
       const json = await res.json() as
-        | { ok: true; data: { summary: AiEvidenceSummaryView | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
+        | { ok: true; data: { hasSummary: boolean; businessModules?: BusinessModuleView[] | null; legacyCategories?: LegacyCategoryView[] | null; storageVersion: { resultJsonHash: string; updatedAt: string } } }
         | { ok: false };
       if (res.ok && json.ok) {
-        setAiSummary(json.data.summary);
+        setAiSummary(json.data.hasSummary);
+        setAiSummaryLegacyCategories(json.data.legacyCategories ?? null);
+        setAiSummaryBusinessModules(json.data.businessModules ?? null);
         setAiSummaryStorageVersion(json.data.storageVersion);
         clearSectionError("aiSummary");
       } else {
@@ -769,7 +775,7 @@ export function EvidenceWorkbench({
 };
 const materialRowsJson = JSON.stringify(materialRows.map((row) => [row.key, row.state])) + JSON.stringify(liveCounts) + (aiSummary ? "1" : "0");
 useEffect(() => {
-  onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary !== null });
+  onMaterialRowsChange?.({ rows: materialRows, counts: liveCounts, hasAiSummary: aiSummary });
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [materialRowsJson]);
 
@@ -1082,6 +1088,8 @@ useEffect(() => {
         <AiEvidenceSummarySection
           taskId={taskId}
           summary={aiSummary}
+          businessModules={aiSummaryBusinessModules}
+          legacyCategories={aiSummaryLegacyCategories}
           storageVersion={aiSummaryStorageVersion}
           onChanged={loadAiSummary}
         />

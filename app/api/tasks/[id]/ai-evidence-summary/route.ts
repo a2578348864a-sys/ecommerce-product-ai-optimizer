@@ -11,6 +11,8 @@ import {
   AiEvidenceSummaryError,
   getAiEvidenceSummary,
   generateAiEvidenceSummary,
+  projectEvidenceSummaryBusiness,
+  projectLegacyCategories,
   readAiSummarySnapshot,
 } from "@/lib/server/aiEvidenceSummary";
 import type { AccessContext } from "@/lib/server/accessPassword";
@@ -101,7 +103,12 @@ export async function GET(
     const snapshot = await readAiSummarySnapshot(resolved.context, id);
     return jsonResponse({
       ok: true,
-      data: { summary, storageVersion: toStorageVersion(snapshot) },
+      data: {
+        hasSummary: summary !== null,
+        businessModules: projectEvidenceSummaryBusiness(summary),
+        legacyCategories: projectLegacyCategories(summary),
+        storageVersion: toStorageVersion(snapshot),
+      },
     });
   } catch (error) {
     return errorResponseFrom(error);
@@ -139,7 +146,7 @@ export async function POST(
   }
 
   try {
-    const { summary, unverified, gateResult } = await generateAiEvidenceSummary({
+    const { summary } = await generateAiEvidenceSummary({
       context: resolved.context,
       taskId: id,
       expectedStorageVersion,
@@ -151,9 +158,9 @@ export async function POST(
     return jsonResponse({
       ok: true,
       data: {
-        summary,
-        unverified,
-        gateResult,
+        hasSummary: summary !== null,
+        businessModules: projectEvidenceSummaryBusiness(summary),
+        legacyCategories: projectLegacyCategories(summary),
         storageVersion: toStorageVersion(snapshot),
       },
     });

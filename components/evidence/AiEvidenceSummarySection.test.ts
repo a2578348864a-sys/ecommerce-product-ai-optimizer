@@ -40,24 +40,45 @@ function renderWith(summary: unknown) {
   return renderToStaticMarkup(createElement(AiEvidenceSummarySection, {
     taskId: "task-x",
     summary: summary as never,
+    businessModules: null,
     storageVersion: null,
     onChanged: () => undefined,
   } as never));
 }
 
-describe("AiEvidenceSummarySection 用户语言（轮 13）", () => {
-  it("有摘要：显示「引用校验通过」与「AI 研究摘要」，不出现 EvidenceRef/Evidence/证据总结", () => {
-    const html = renderWith(base);
-    expect(html).toContain("引用校验通过");
+describe("AiEvidenceSummarySection 用户语言（R5 安全状态）", () => {
+  it("有摘要：显示安全说明与重新生成按钮，不出现 EvidenceRef/Evidence/证据总结/原始 gateResult", () => {
+    const html = renderWith(true);
+    expect(html).toContain("已基于采集证据生成研究摘要");
+    expect(html).toContain("重新生成");
     expect(html).not.toContain("EvidenceRef");
     expect(html).not.toContain("Evidence");
     expect(html).not.toContain("证据总结");
+    expect(html).not.toContain("引用校验通过");
+    expect(html).not.toContain("gateResult");
   });
   it("无摘要：按钮显示「生成 AI 研究摘要」，空态不出现 Evidence/证据总结", () => {
-    const html = renderWith(null);
+    const html = renderWith(false);
     expect(html).toContain("生成 AI 研究摘要");
     expect(html).not.toContain("Evidence");
     expect(html).not.toContain("证据总结");
     expect(html).not.toContain("EvidenceRef");
+  });
+});
+
+describe("R2 契约：前端无第二套模块分类器（服务端唯一口径）", () => {
+  it("组件模块不得存在 projectModulesFromSummary / moduleKeyOf（改由 businessModules prop 驱动）", () => {
+    // 服务端是唯一分类实现；客户端残留第二套函数即失败
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { resolve } = require("node:path") as typeof import("node:path");
+    const source = readFileSync(resolve(process.cwd(), "components/evidence/AiEvidenceSummarySection.tsx"), "utf8");
+    expect(source).not.toContain("projectModulesFromSummary");
+    expect(source).not.toContain("moduleKeyOf");
+  });
+  it("组件接收 businessModules（服务端投影结果）并拒绝自行归纳 summary", () => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const { resolve } = require("node:path") as typeof import("node:path");
+    const source = readFileSync(resolve(process.cwd(), "components/evidence/AiEvidenceSummarySection.tsx"), "utf8");
+    expect(source).toContain("businessModules");
   });
 });

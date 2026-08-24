@@ -16,6 +16,7 @@ import {
   getAiEvidenceSummary,
   hasPersistedEvidenceInput,
   validateAiSummaryOutput,
+  projectEvidenceSummaryBusiness,
 } from "@/lib/server/aiEvidenceSummary";
 import {
   buildProductResearchHash,
@@ -441,5 +442,133 @@ describe("AI evidence summary (Phase 5)", () => {
         expect(item.text).not.toMatch(/值得卖|不值得卖|爆款|稳赚|一定赚钱|guaranteed|best seller guaranteed/i);
       }
     }
+  });
+});
+
+
+describe("轮 21 四模块业务投影（向后兼容）", () => {
+  const mk = (type: string, text: string, refs: string[]) => ({ id: "x", type, text, evidenceRefs: refs });
+  it("按依据来源投影：VOC→买家 / sourcing→货源 / 无依据→缺口", () => {
+        const view = projectEvidenceSummaryBusiness({
+      summary: {
+        facts: [mk("fact", "多条评论提到适合学校午餐", ["ev:voc:1"]), mk("fact", "1688 供应报价较低 MOQ 500 件", ["ev:sourcing:2"]), mk("estimate", "无依据的臆测", [])],
+        estimates: [mk("estimate", "物流与平台费用预估偏高", ["ev:browser:9"])], signals: [], risks: [mk("risk", "存在交付延迟投诉", ["ev:voc:3"])], conflicts: [],
+        missing: [mk("missing", "缺少竞品详细价格", [])],
+        nextSteps: [mk("nextStep", "评估供应商质量", ["ev:sourcing:4"])],
+      },
+    } as never);
+    expect(view.find((v) => v.key === "buyers")!.conclusion.some((x) => x.text.includes("学校午餐"))).toBe(true);
+    expect(view.find((v) => v.key === "sourcing")!.conclusion.some((x) => x.text.includes("1688"))).toBe(true);
+    expect(view.find((v) => v.key === "buyers")!.conclusion.some((x) => x.text.includes("交付延迟"))).toBe(false);
+    expect(view.find((v) => v.key === "costRisk")!.conclusion.some((x) => x.text.includes("交付延迟"))).toBe(true);
+    expect(view.find((v) => v.key === "costRisk")!.conclusion.some((x) => x.text.includes("物流与平台费用"))).toBe(true);
+    expect(view.find((v) => v.key === "market")!.missing.some((x) => x.text.includes("臆测"))).toBe(true);
+    expect(view.find((v) => v.key === "market")!.next.some((x) => x.text.includes("供应商质量"))).toBe(false);
+    expect(view.find((v) => v.key === "sourcing")!.next.some((x) => x.text.includes("供应商质量"))).toBe(true);
+  });
+  it("四模块恒定返回且空摘要不抛错", () => {
+        expect(projectEvidenceSummaryBusiness(null).map((v) => v.key)).toEqual(["market", "buyers", "sourcing", "costRisk"]);
+  });
+});
+
+describe("R3 缺口语义映射（无引用 missing/nextSteps 按业务语义归模块）", () => {
+  const mkGap = (text: string, type = "missing") => ({ id: "g", type, text, evidenceRefs: [] });
+  it("缺少评论资料 → buyers；缺少供应商报价 → sourcing；缺少物流平台费用 → costRisk；缺少市场销量 → market；全部只进缺口不进入 conclusion", () => {
+    const view = projectEvidenceSummaryBusiness({
+      summary: {
+        facts: [],
+        estimates: [],
+        signals: [],
+        risks: [],
+        conflicts: [],
+        missing: [
+          mkGap("缺少买家评论资料"),
+          mkGap("尚未取得供应商报价"),
+          mkGap("缺少物流与平台费用"),
+          mkGap("缺少市场销量数据"),
+        ],
+        nextSteps: [
+          mkGap("需要补充货源规格", "nextStep"),
+          mkGap("需补充合规资料", "nextStep"),
+        ],
+      },
+    } as never);
+    const buyers = view.find((v) => v.key === "buyers")!;
+    const sourcing = view.find((v) => v.key === "sourcing")!;
+    const costRisk = view.find((v) => v.key === "costRisk")!;
+    const market = view.find((v) => v.key === "market")!;
+    // 语义归属
+    expect(buyers.missing.some((x) => x.text.includes("评论"))).toBe(true);
+    expect(sourcing.missing.some((x) => x.text.includes("供应商报价"))).toBe(true);
+    expect(costRisk.missing.some((x) => x.text.includes("物流与平台费用"))).toBe(true);
+    expect(market.missing.some((x) => x.text.includes("市场销量"))).toBe(true);
+    // nextSteps 语义归属（货源规格 → sourcing；合规 → costRisk）
+    expect(sourcing.next.some((x) => x.text.includes("货源规格"))).toBe(true);
+    expect(costRisk.next.some((x) => x.text.includes("合规"))).toBe(true);
+    // 无引用项绝不进 conclusion
+    for (const v of view) {
+      expect(v.conclusion.length).toBe(0);
+    }
+  });
+  it("缺少竞品与价格带 → market（无法识别再回退 market）", () => {
+    const view = projectEvidenceSummaryBusiness({
+      summary: {
+        facts: [], estimates: [], signals: [], risks: [], conflicts: [],
+        missing: [mkGap("缺少竞品对比"), mkGap("缺少热门价格带")],
+        nextSteps: [],
+      },
+    } as never);
+    const market = view.find((v) => v.key === "market")!;
+    expect(market.missing.some((x) => x.text.includes("竞品"))).toBe(true);
+    expect(market.missing.some((x) => x.text.includes("价格带"))).toBe(true);
+    for (const v of view) expect(v.conclusion.length).toBe(0);
+  });
+});
+
+describe("R4 P1-3 risk/conflict 模块优先级", () => {
+  const mk = (type: string, text: string, refs: string[]) => ({ id: "x", type, text, evidenceRefs: refs });
+  it("risk + ev:voc costRisk；fact + ev:voc buyers", () => {
+    const view = projectEvidenceSummaryBusiness({
+      summary: {
+        facts: [mk("fact", "多条评论提到适合学校午餐", ["ev:voc:1"])],
+        estimates: [], signals: [], risks: [mk("risk", "存在交付延迟投诉", ["ev:voc:3"])],
+        conflicts: [], missing: [], nextSteps: [],
+      },
+    } as never);
+    const buyers = view.find((v) => v.key === "buyers")!;
+    const costRisk = view.find((v) => v.key === "costRisk")!;
+    expect(buyers.conclusion.some((x) => x.text.includes("学校午餐"))).toBe(true);
+    expect(buyers.conclusion.some((x) => x.text.includes("交付延迟"))).toBe(false);
+    expect(costRisk.conclusion.some((x) => x.text.includes("交付延迟"))).toBe(true);
+    const riskItem = costRisk.conclusion.find((x) => x.text.includes("交付延迟"))!;
+    expect(riskItem.evidenceTarget).toBe("costRisk");
+  });
+  it("conflict + ev:sourcing costRisk；fact + ev:sourcing sourcing", () => {
+    const view = projectEvidenceSummaryBusiness({
+      summary: {
+        facts: [mk("fact", "1688 供应报价较低 MOQ 500 件", ["ev:sourcing:2"])],
+        estimates: [], signals: [], risks: [],
+        conflicts: [mk("conflict", "货源价格与市场均价矛盾", ["ev:sourcing:5"])],
+        missing: [], nextSteps: [],
+      },
+    } as never);
+    const sourcing = view.find((v) => v.key === "sourcing")!;
+    const costRisk = view.find((v) => v.key === "costRisk")!;
+    expect(sourcing.conclusion.some((x) => x.text.includes("1688"))).toBe(true);
+    expect(sourcing.conclusion.some((x) => x.text.includes("矛盾"))).toBe(false);
+    expect(costRisk.conclusion.some((x) => x.text.includes("矛盾"))).toBe(true);
+    const conflictItem = costRisk.conclusion.find((x) => x.text.includes("矛盾"))!;
+    expect(conflictItem.evidenceTarget).toBe("costRisk");
+  });
+  it("无引用 risk 不得进入 conclusion", () => {
+    const view = projectEvidenceSummaryBusiness({
+      summary: {
+        facts: [], estimates: [], signals: [], risks: [mk("risk", "缺少合规风险说明", [])],
+        conflicts: [], missing: [], nextSteps: [],
+      },
+    } as never);
+    const costRisk = view.find((v) => v.key === "costRisk")!;
+    expect(costRisk.conclusion.some((x) => x.text.includes("合规"))).toBe(false);
+    expect(costRisk.missing.some((x) => x.text.includes("合规"))).toBe(true);
   });
 });

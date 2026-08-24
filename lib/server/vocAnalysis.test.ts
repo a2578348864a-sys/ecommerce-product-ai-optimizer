@@ -5,6 +5,7 @@ import {
   parseVocAnalysis,
   validateVocOutput,
   VOC_STRENGTH_THRESHOLDS,
+  VOC_CHINESE_REQUIREMENT,
   type VocTheme,
 } from "@/lib/server/vocAnalysis";
 import { buildReviewItem, type ReviewItem } from "@/lib/server/reviewEvidence";
@@ -257,5 +258,17 @@ describe("Golden VOC Eval", () => {
     expect(serialized).not.toContain('"runCommand"');
     // 注入文本仅作为主题 label/summary 文本保留（纯文本展示，React 默认转义，无执行权）
     expect(result.analysis.positiveThemes[0].label).toContain("ignore previous instructions");
+  });
+});
+describe("R6 VOC 生成指令：简体中文输出约束（契约）", () => {
+  it("SYSTEM_PROMPT 明确要求简体中文（theme label/summary/conflicts/unknowns/nextSteps 用简体中文）", () => {
+
+    expect(typeof VOC_CHINESE_REQUIREMENT).toBe("string");
+    expect(VOC_CHINESE_REQUIREMENT).toContain("简体中文");
+    expect(VOC_CHINESE_REQUIREMENT.toLowerCase()).toContain("simplified chinese");
+  });
+  it("SYSTEM_PROMPT 不可翻译篡改评论原意（引用仍指向 evidenceId）", () => {
+        expect(VOC_CHINESE_REQUIREMENT).toContain("evidenceId");
+    expect(VOC_CHINESE_REQUIREMENT.toLowerCase()).not.toContain("translate the review");
   });
 });

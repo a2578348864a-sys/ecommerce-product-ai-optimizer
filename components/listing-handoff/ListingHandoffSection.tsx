@@ -17,6 +17,12 @@ type ListingDraftSafeSummary = {
   description: string | null;
   keywords: string[];
   backendSearchTerms?: string[];
+  /** R2：实际使用的已确认商品事实（服务端只返回 label/value） */
+  usedFactTrace?: Array<{ label: string; value: string }>;
+  /** R2：最终文案实际采用的关键词文本 */
+  usedKeywordTrace?: string[];
+  /** R2：生成时提供给 AI 的研究参考（业务语言） */
+  researchReferenceTrace?: string[];
   /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
   backendTermWarnings?: string[];
   /** 服务端三级判定保留的低风险表达（待人工确认） */
@@ -109,6 +115,82 @@ function formatDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+/** R2：Listing 生成依据（服务端已生成的确定性快照 → 用户可读四组；无依据历史草稿诚实空态） */
+/** R3：Listing 生成依据（三态）——
+ * A. 历史草稿无任何依据字段 → 历史空态
+ * B. 非 AI 草稿（providerAttempted=false）→ 不写「提供给 AI」；即使存在 aiReferences 也不展示研究参考组
+ * C. 真实尝试调用 AI（providerAttempted=true）→ 展示「生成时提供给 AI 的研究参考」具体内容
+ * 永远不写「AI 实际使用」（Provider 未返回使用记录）。
+ */
+export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSummary | null }) {
+  if (!draft) return null;
+  // R4 契约：先检查 providerAttempted 显式值（true/false 优先于数组空判断）
+  const aiAttempted = draft.providerAttempted === true;
+  const providerAttemptedExplicit = draft.providerAttempted === true || draft.providerAttempted === false;
+  const hasBasisEntries =
+    (draft.usedFactTrace ?? []).length > 0
+    || (draft.usedKeywordTrace ?? []).length > 0
+    || (draft.researchReferenceTrace ?? []).length > 0
+    || (draft.humanReviewClaims ?? []).length > 0;
+  // A. 历史草稿：providerAttempted 未定义 且 无新版依据字段 → 诚实空态；显式 false 不得判为历史
+  if (!providerAttemptedExplicit && !hasBasisEntries) {
+    return (
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-generation-basis">
+        <p className="text-xs font-bold text-slate-900">生成依据</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">这份历史草稿没有保存生成依据，重新生成后可查看。</p>
+        <p className="mt-2 text-[11px] text-slate-400">研究资料只用于定位和表达参考；Listing 硬属性只允许来自已确认商品事实。</p>
+      </div>
+    );
+  }
+  // B. 非 AI 草稿（安全草稿/结构化草稿）：诚实声明未调用 AI，不显示「提供给 AI」
+  const showAiReferences = aiAttempted && (draft.researchReferenceTrace ?? []).length > 0;
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-generation-basis">
+      <p className="text-xs font-bold text-slate-900">生成依据</p>
+      {!aiAttempted ? (
+        <p className="mt-2 text-xs leading-5 text-slate-600" data-testid="non-ai-basis-notice">
+          本次未调用 AI，当前内容为基于已确认事实生成的安全草稿。
+        </p>
+      ) : null}
+      {(draft.usedFactTrace ?? []).length > 0 ? (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold text-slate-500">最终文案实际命中的已确认商品事实</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-700">
+            {(draft.usedFactTrace ?? []).map((fact, index) => (<li key={index}>{fact.label}：{fact.value}</li>))}
+          </ul>
+        </div>
+      ) : null}
+      {(draft.usedKeywordTrace ?? []).length > 0 ? (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold text-slate-500">最终文案实际采用的关键词</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {(draft.usedKeywordTrace ?? []).map((keyword, index) => (
+              <span key={index} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{keyword}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {showAiReferences ? (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold text-slate-500">生成时提供给 AI 的研究参考</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-slate-600">
+            {(draft.researchReferenceTrace ?? []).map((reference, index) => (<li key={index}>{reference}</li>))}
+          </ul>
+        </div>
+      ) : null}
+      {(draft.humanReviewClaims ?? []).length > 0 ? (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold text-amber-700">待人工确认的表达</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-700">
+            {(draft.humanReviewClaims ?? []).map((claim, index) => (<li key={index}>{claim}</li>))}
+          </ul>
+        </div>
+      ) : null}
+      <p className="mt-2 text-[11px] text-slate-400">研究资料只用于定位和表达参考；Listing 硬属性只允许来自已确认商品事实。</p>
+    </div>
+  );
 }
 
 export function ListingHandoffSection({
@@ -709,6 +791,8 @@ export function ListingHandoffSection({
                 {draft.backendTermWarnings.length} 个搜索词因缺少商品事实依据未采用
               </p>
             ) : null}
+            {/* R2：生成依据（服务端安全结果为唯一来源；前端只展示不重判） */}
+            <ListingGenerationBasis draft={draft} />
             {renderDraftBody()}
             <div className="mt-3">
               <button

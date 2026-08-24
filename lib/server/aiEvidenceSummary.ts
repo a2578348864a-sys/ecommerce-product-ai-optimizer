@@ -75,6 +75,132 @@ export type AiEvidenceSummaryV1 = {
   updatedAt: string;
 };
 
+/**
+ * 轮 21（研究结论收口）：向后兼容的四模块业务投影（服务端纯函数）——
+ * 把扁平分类条目按依据来源归入 市场机会 / 买家需求与差评 / 货源与商品匹配 / 成本与风险；
+ * 无依据条目一律视为缺口（不生成确定性结论）；不修改原 summary 结构，仅新增投影。
+ */
+export type EvidenceTarget = "market" | "buyer" | "sourcing" | "costRisk";
+
+export type SummaryModuleView = {
+  key: "market" | "buyers" | "sourcing" | "costRisk";
+  title: string;
+  conclusion: Array<{ text: string; refCount: number; evidenceTarget: EvidenceTarget }>;
+  missing: Array<{ text: string }>;
+  next: Array<{ text: string }>;
+};
+
+export type LegacyCategoryView = {
+  key: string;
+  label: string;
+  items: Array<{ text: string }>;
+};
+
+const LEGACY_CATEGORY_LABELS: Array<{ key: "facts" | "estimates" | "signals" | "risks" | "conflicts" | "missing" | "nextSteps"; label: string }> = [
+  { key: "facts", label: "已确认事实" },
+  { key: "estimates", label: "估算" },
+  { key: "signals", label: "支持信号" },
+  { key: "risks", label: "风险" },
+  { key: "conflicts", label: "冲突" },
+  { key: "missing", label: "缺失" },
+  { key: "nextSteps", label: "下一步" },
+];
+
+/** R4：历史分类安全投影（仅 label + 用户可读 text；无 id/evidenceRefs/内部字段；有界） */
+export function projectLegacyCategories(summary: AiEvidenceSummaryV1 | null): LegacyCategoryView[] {
+  if (!summary || !summary.summary) return [];
+  const s = summary.summary;
+  const out: LegacyCategoryView[] = [];
+  for (const cat of LEGACY_CATEGORY_LABELS) {
+    const items = s[cat.key];
+    if (!Array.isArray(items) || items.length === 0) continue;
+    out.push({
+      key: cat.key,
+      label: cat.label,
+      items: items.slice(0, 20).map((item) => ({ text: String(item.text ?? "").slice(0, 200) })),
+    });
+    if (out.length >= 7) break;
+  }
+  return out;
+}
+
+const TARGET_BY_KEY: Record<SummaryModuleView["key"], EvidenceTarget> = {
+  market: "market",
+  buyers: "buyer",
+  sourcing: "sourcing",
+  costRisk: "costRisk",
+};
+
+const MODULE_TITLES: Record<SummaryModuleView["key"], string> = {
+  market: "市场机会",
+  buyers: "买家需求与差评",
+  sourcing: "货源与商品匹配",
+  costRisk: "成本与风险",
+};
+
+/**
+ * R3：业务语义词典——仅用于无引用项（missing/nextSteps 或降级缺口）。
+ * 有引用路径（refs 含 voc/sourcing）优先；风险/冲突恒为 costRisk。
+ * 规则只决定展示模块，绝不把无引用缺口升级为结论。
+ */
+const BUYER_GAP_WORDS = ["评论", "买家", "需求", "差评", "VOC", "voc", "评价"];
+const SOURCING_GAP_WORDS = ["供应商", "供应", "货源", "1688", "材质", "规格", "报价", "交期", "样品"];
+const COST_GAP_WORDS = ["采购价", "MOQ", "moq", "物流费", "运费", "平台费", "广告费", "合规", "成本", "利润", "风险", "库存", "费用"];
+const MARKET_GAP_WORDS = ["市场", "销量", "搜索", "搜索量", "竞争", "类目", "价格带", "竞品", "排名", "趋势"];
+
+function moduleOf(type: string, text: string, refs: string[]): SummaryModuleView["key"] {
+  const refsText = refs.join(" ");
+  // R4 合同顺序：① risk/conflict 恒为成本与风险（优先，即使引用是 voc/sourcing）
+  //            ② 有引用：VOC→买家、sourcing→货源
+  //            ③ 无引用语义词典 → ④ 兜底 market
+  if (type === "risk" || type === "conflict") return "costRisk";
+  // 带证据引用：来源优先（VOC→买家、sourcing→货源）
+  if (refsText.includes("voc")) return "buyers";
+  if (refsText.includes("sourcing")) return "sourcing";
+  // 无引用缺口/下一步：业务语义词典（有界、明确）
+  if (BUYER_GAP_WORDS.some((w) => text.includes(w))) return "buyers";
+  if (SOURCING_GAP_WORDS.some((w) => text.includes(w))) return "sourcing";
+  if (COST_GAP_WORDS.some((w) => text.includes(w))) return "costRisk";
+  if (MARKET_GAP_WORDS.some((w) => text.includes(w))) return "market";
+  return "market";
+}
+
+export function projectEvidenceSummaryBusiness(summary: AiEvidenceSummaryV1 | null): SummaryModuleView[] {
+  const base: Record<SummaryModuleView["key"], SummaryModuleView> = {
+    market: { key: "market", title: MODULE_TITLES.market, conclusion: [], missing: [], next: [] },
+    buyers: { key: "buyers", title: MODULE_TITLES.buyers, conclusion: [], missing: [], next: [] },
+    sourcing: { key: "sourcing", title: MODULE_TITLES.sourcing, conclusion: [], missing: [], next: [] },
+    costRisk: { key: "costRisk", title: MODULE_TITLES.costRisk, conclusion: [], missing: [], next: [] },
+  };
+  if (!summary || !summary.summary) return Object.values(base);
+  const s = summary.summary;
+  const add = (items: AiSummaryItem[], bucket: "conclusion" | "missing" | "next") => {
+    for (const item of items) {
+      const key = moduleOf(item.type, item.text, item.evidenceRefs || []);
+      if (bucket === "conclusion") {
+        if ((item.evidenceRefs || []).length === 0) {
+          // 无依据 → 归于缺口（禁止确定性结论）
+          base[key].missing.push({ text: item.text });
+        } else {
+          base[key].conclusion.push({ text: item.text, refCount: item.evidenceRefs.length, evidenceTarget: TARGET_BY_KEY[key] });
+        }
+      } else if (bucket === "missing") {
+        base[key].missing.push({ text: item.text });
+      } else {
+        base[key].next.push({ text: item.text });
+      }
+    }
+  };
+  add(s.facts, "conclusion");
+  add(s.estimates, "conclusion");
+  add(s.signals, "conclusion");
+  add(s.risks, "conclusion");
+  add(s.conflicts, "conclusion");
+  add(s.missing, "missing");
+  add(s.nextSteps, "next");
+  return [base.market, base.buyers, base.sourcing, base.costRisk];
+}
+
 export class AiEvidenceSummaryError extends Error {
   constructor(
     public readonly code: string,
@@ -617,7 +743,7 @@ export async function generateAiEvidenceSummary(input: {
   });
   let aiResult = await callSummary();
   if (!aiResult.ok && aiResult.error.code === "json_parse_error") {
-    // eslint-disable-next-line no-console
+     
     console.error("[ai-evidence-summary] json_parse_error, retrying once", {
       detail: aiResult.error.detail,
       finishReason: aiResult.diagnostics?.finishReason,
@@ -630,7 +756,7 @@ export async function generateAiEvidenceSummary(input: {
   const model = aiResult.diagnostics?.model ?? "unknown";
 
   if (!aiResult.ok) {
-    // eslint-disable-next-line no-console
+     
     console.error("[ai-evidence-summary] provider failed", {
       code: aiResult.error.code,
       detail: aiResult.error.detail,
