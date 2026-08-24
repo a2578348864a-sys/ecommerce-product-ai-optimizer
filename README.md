@@ -1,66 +1,88 @@
 # 轻选工作台
 
-轻选工作台是一套基于真实电商数据的 AI 商品研究与内容生产工作台，通过 Evidence 驱动的研究流程，把 SellerSprite、Amazon、VOC、1688 供应线索与 AI 内容生产连接起来，并保留人工确认作为关键决策门禁。
+> AI 跨境商品研究与上架准备工作台：把真实数据、证据引用、人工决策和内容生成组织成一条可复核的商品研究流程。
 
-（V4 已发布 **v4.0.0**：Evidence 驱动研究图 + 人工决策门禁 + Local Live / Public Replay，详见 [V4 文档索引](docs/v4/README.md)；V3 保持 FROZEN，详见 [Final Release Report](docs/v3/FINAL_RELEASE_REPORT.md)）
+轻选工作台面向跨境电商新手和小团队。它不是“输入商品标题就自动写文案”的工具，而是先整理 SellerSprite、Amazon、买家评论、竞品和 1688 供应线索，再由人工确认商品事实，最后生成可审核的 Listing 与图片草稿。
 
-## Overview
+![轻选工作台公开演示首页](docs/v4.1/evidence/d-formal-v2/showcase3-home-1440.png)
 
-跨境商品研究依赖大量分散数据（报表、市场信号、产品资料），人工整理耗时且容易出错。轻选工作台把「数据整理 → 事实确认 → AI 辅助生成」组织成一条可控流程：机器处理数据与草稿，人在关键节点做决定。
-
-系统是辅助研究工具，**不会**自动采购、上架或投放广告。
-
-## Features
-
-- **SellerSprite 商品数据导入** — 上传 SellerSprite XLSX，自动解析商品资料、市场信号与卖点，生成可确认的商品事实候选
-- **AI 商品研究** — 对单个商品执行来源、风险、总结与 Listing 维度的研究分析
-- **Evidence Workbench** — Amazon 商品证据、关键词/竞品证据、VOC/Review 证据与 1688 供应线索证据统一呈现（已知 / 未知 / 风险 / 下一步）
-- **1688 供应线索** — 关键词找货 / 图片找货 / 1688 URL 三入口 → Preview → 人工确认 → sourcing-evidence.v1；图片找货由普通 Chrome + 窄权限扩展驱动（零 CDP），关键词/详情由本地 1688 CLI 驱动
-- **商品事实确认** — 人工确认哪些研究事实可用于创作，未确认内容不进入权威创作输入
-- **AI Listing 生成** — 基于已确认事实生成 Listing 草稿，附质量校验与降级兜底
-- **AI 图片创作** — 基于共享商品事实与已批准视觉参考生成图片草稿
-- **Human-in-the-loop 工作流** — 研究决定（continue / need_info / rejected）、事实确认、Listing 与图片复核均由人工完成
-- **数据隔离与安全机制** — 访客沙箱隔离、外部图片安全下载、市场信号与创作事实隔离
-
-## How It Works
+## 核心流程
 
 ```mermaid
 flowchart LR
-    A[SellerSprite XLSX 导入] --> B[Candidate 候选池]
-    B --> C[商品研究 / Evidence Workbench]
-    C --> D[人工决策]
-    D --> E[Listing Studio]
-    D --> F[Image Studio]
-    C -. 1688 供应线索 .-> G[Preview → Human Confirm → Evidence]
+    A[SellerSprite 数据] --> B[商品候选池]
+    B --> C[商品研究]
+    C --> D[证据与研究结论]
+    D --> E[人工决策]
+    E --> F[确认商品事实]
+    F --> G[Listing Studio]
+    F --> H[Image Studio]
+
+    C -.-> C1[关键词]
+    C -.-> C2[竞品]
+    C -.-> C3[买家评论与需求]
+    C -.-> C4[1688 供应线索]
+    C -.-> C5[成本与风险]
 ```
 
-- **SellerSprite 导入**：解析 XLSX，提取商品资料与市场信号
-- **商品研究 / Evidence Workbench**：AI 生成来源 / 风险 / 总结 / Listing 四层分析；Amazon、关键词、VOC、1688 Sourcing 证据统一呈现
-- **人工决策**：continue / need_info / rejected；事实确认后进入创作
-- **Listing Studio**：基于确认事实生成 Listing 草稿
-- **Image Studio**：基于共享事实与批准参考图生成图片草稿
+1. 导入 SellerSprite 报表，形成候选商品池。
+2. 围绕关键词、竞品、买家评论、Amazon 页面和 1688 供应线索采集资料。
+3. 将研究结果整理为“市场机会、买家需求与差评、货源与商品匹配、成本与风险”四个业务模块。
+4. 由人决定继续、补资料或停止，并确认哪些内容可以成为当前商品事实。
+5. Listing Studio 只使用已确认商品事实作为硬属性依据；研究资料只用于定位和表达参考。
+6. Image Studio 基于已确认事实和已批准视觉参考生成图片草稿，最终仍由人工审核。
 
-## Architecture
+## 当前能力
 
-- **Frontend** — Next.js 应用，工作台 / Listing Studio / Image Studio 等页面
-- **Backend** — Next.js API Routes，业务逻辑与 AI 编排
-- **Database** — Prisma + SQLite，存储候选、研究记录与创作产物
-- **AI Provider** — 可插拔：文本（Listing/研究）与图片（创作）独立配置，支持 Mock 模式
-- **Storage** — 本地文件存储，承载图片草稿与导入数据
+### 商品研究
 
-## Tech Stack
+- **SellerSprite 导入**：解析 XLSX/CSV 报表，建立商品候选与关键词资料。
+- **关键词研究**：保存关键词证据，自动形成可追溯的主词、辅助词和后台搜索词方案。
+- **竞品研究**：根据真实关键词发现 Amazon 竞品，并可采集竞品详情页五点作为参考资料。
+- **买家评论与需求**：分析 VOC、购买原因、常见痛点、使用场景和观点冲突；历史英文分析会诚实降级，不伪装成中文结论。
+- **1688 供应线索**：支持关键词找货、图片找货和链接读取；搜索结果必须预览并由人工确认后才保存。
+- **成本与风险**：记录采购价、MOQ、物流费、平台费、广告费和合规状态；缺失数据保持“尚未取得”，不自动填 0。
+- **研究结论**：每条事实性结论保留证据依据；AI 分析和未确认信息与商品事实严格分开。
 
-- Next.js 16
-- React 19
-- TypeScript
-- Prisma 5 + SQLite
-- OpenAI-compatible AI Provider（可替换）
+### Listing Studio
 
-## Getting Started
+- 使用已确认商品事实、研究结论和关键词资料生成标题、五点、描述与搜索词。
+- Runtime Skill 统一约束五点数量、句子长度、事实锚点、品牌去重、关键词去重和描述完整性。
+- Claim Evidence 门禁阻止未确认性能、时长、认证、绝对承诺和竞品属性进入当前商品 Listing。
+- AI 或安全兜底未达到质量标准时显示“暂无合格草稿”和拒绝原因，不把事实碎片冒充正式 Listing。
+- 页面展示生成时实际使用的确认事实、关键词、研究参考和待人工确认表达。
+
+### 人工与安全边界
+
+- AI 只能提供研究辅助和草稿，不能自动改变商品状态或替代人工决定。
+- 评论观点、竞品属性和供应商声明不能自动成为当前商品事实。
+- Owner 正式数据与 Visitor 演示沙箱隔离；保存操作保留版本冲突保护。
+- 自动采集仅限本机 Owner 环境；验证码、登录墙、身份错配或来源异常均失败关闭。
+- 系统不会自动选品、采购、上架、投放广告，也不承诺销量或利润。
+
+## 两种运行体验
+
+| 模式 | 用途 | 行为 |
+| --- | --- | --- |
+| `local_owner` | 本机完整工作台 | 显式启用后为本机 Owner 免密模式，可使用研究、确认和创作能力 |
+| `public_showcase` | HR/访客只读演示 | 仅展示首页与完整脱敏商品案例，不实时采集、不写正式数据、不消耗访客额度 |
+
+公开演示使用自托管商品图片和脱敏业务快照。仓库推送只更新源代码，**不会自动部署公网服务器**。
+
+## 技术架构
+
+- **前端**：Next.js 16、React 19、TypeScript
+- **后端**：Next.js Route Handlers 与服务端业务模块
+- **数据**：Prisma 5 + SQLite
+- **工作流**：LangGraph 单一有状态研究流程（保留人工中断点）
+- **AI Provider**：文本与图片 Provider 分开配置，默认 Mock，真实调用受服务端开关与配额门禁控制
+- **采集工具**：SellerSprite 导入、Amazon Browser Use 采集器、本地 1688 CLI/浏览器助手
+
+## 本地运行
 
 ### 环境要求
 
-- Node.js ≥ 20.9
+- Node.js 20.9 或更高版本
 - npm
 
 ### 安装
@@ -71,111 +93,73 @@ npx prisma generate
 npx prisma db push
 ```
 
+复制 `.env.example` 为 `.env.local`。本机 Owner 免密运行至少设置：
+
+```dotenv
+QX_RUNTIME_MODE=local_owner
+DATABASE_URL="file:./dev.db"
+LISTING_PROVIDER_MODE=mock
+IMAGE_PROVIDER_MODE=mock
+```
+
+Mock 模式不会调用真实付费 Provider。需要真实 AI 时，再配置对应密钥和服务端开关；不要把 `.env.local`、Token、Cookie 或真实数据库提交到仓库。
+
 ### 启动
 
-带 SQLite 门禁的本地入口（推荐，端口 3005）：
-
 ```bash
-npm run check:local   # 先验证本机端口与 SQLite 数据库就绪（不启动服务）
-npm run start:local   # 启动正式本地服务（带数据库门禁）
-npm run dev:local     # 启动开发服务器（带数据库门禁）
+npm run check:local
+npm run start:local
 ```
 
-浏览器打开 http://localhost:3005 进入登录页。
+打开 <http://localhost:3005>。开发模式可使用 `npm run dev:local`。
 
-本机长期预览可注册 Windows 计划任务自动管理：
+> 请使用带 SQLite 门禁的 `*:local` 命令管理本机 3005，不要用普通 `next start` 替代。
 
-```bash
-npm run autostart:local        # 注册计划任务（登录后自动拉起 3005）
-npm run autostart:local:status # 查看状态
-```
-
-如只需纯开发服务器（无数据库门禁）可执行 `npm run dev`（http://localhost:3000）。
-
-详细步骤见 [快速开始](docs/getting-started/installation.md)。
-
-## Environment Variables
-
-复制 `.env.example` 为 `.env.local` 并填写。完整说明见 [配置说明](docs/guides/configuration.md)。
-
-| 变量 | 作用 |
-| --- | --- |
-| `ACCESS_PASSWORD` | 登录访问密码（必填） |
-| `PROOF_SIGNING_SECRET` | 会话令牌签发用独立随机密钥 |
-| `AI_PROVIDER` | 文本 AI Provider（`deepseek` 等） |
-| `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | DeepSeek Provider 配置 |
-| `LISTING_PROVIDER_MODE` / `IMAGE_PROVIDER_MODE` | `mock` 或 `real`（默认 mock，不调用真实付费 API） |
-| `OPENAI_LISTING_ENABLED` | Listing AI 门禁（realAiListingGate 读取；与 `LISTING_PROVIDER_MODE=real` 同时为真才放行真实调用） |
-| `OPENAI_LISTING_VISITOR_ENABLED` | 访客是否允许真实 Listing AI（默认 false） |
-| `OPENAI_API_KEY` / `OPENAI_IMAGE_BASE_URL` / `OPENAI_IMAGE_MODEL` | 图片 Provider 配置 |
-| `OPENAI_IMAGE_RESULT_HOSTS` | 图片下载结果域名白名单 |
-| `DATABASE_URL` | SQLite 数据库路径 |
-| `AI_IMAGE_DRAFT_STORAGE_ROOT` | 图片草稿存储目录 |
-
-> 真实密钥值只存在于 `.env.local`，**绝不提交到版本库**。
-
-## Testing
+## 验证
 
 ```bash
-npm test          # Vitest 单元/集成测试
-npm run lint      # ESLint
-npx tsc --noEmit  # 类型检查
-npm run build     # 生产构建
-npm run check     # lint + test + build
+npm test
+npm run lint
+npx tsc --noEmit
+npm run build
 ```
 
-测试不调用真实 AI Provider（默认 Mock），不访问生产数据库。
+测试默认不调用真实 AI Provider，也不应写入正式业务数据库。涉及存储或浏览器流程的验收使用隔离数据库、独立数据目录和独立端口。
 
-## Project Structure
+## 目录结构
 
 | 目录 | 说明 |
 | --- | --- |
-| `app/` | Next.js 页面与 API Routes |
-| `components/` | React 组件 |
-| `lib/` | 业务逻辑、服务端门禁与数据层 |
-| `prisma/` | Prisma Schema 与数据库 |
-| `hooks/` | React Hooks |
-| `scripts/` | 本地运行、验证与工具脚本 |
-| `tools/` | 上游数据工具（SellerSprite、Amazon 采集等） |
-| `tests/` | 测试辅助 |
-| `docs/` | 项目文档 |
+| `app/` | 页面与 API Route Handlers |
+| `components/` | 工作台、研究资料、Listing 与图片界面 |
+| `lib/` | 业务逻辑、事实门禁、权限和数据投影 |
+| `tools/` | SellerSprite、Amazon、1688 等采集工具 |
+| `prisma/` | Prisma Schema；真实数据库不进入提交 |
+| `scripts/` | 本地运行、数据库保护和部署辅助脚本 |
+| `docs/v4.1/` | V4.1 实施、验证、风险和验收记录 |
 
+## 关键文档
 
-## V4 — 商品研究图（Local Live / Public Replay）
-
-V4 把研究流程组织为**单一有状态 Research Workflow**（LangGraph，`QX_V4_GRAPH_ENABLED` 特性开关控制）：来源证据 → 商业/产品事实门禁 → 人工决策 → 内容草稿。
-
-- **Evidence 链**：每条事实性结论都必须携带可追溯证据引用（`evidenceRefs`），无证据的断言不进入报告
-- **Product Fact Gate**：商业计算（乐观/基线/悲观三情景，固定合同版本）与商品事实（SupplierClaim 不自动晋级；只读已确认事实）均设门禁，缺失时 fail-closed
-- **Human Decision**：Gate A（继续研究 / 需信息 / 放弃）、Fact Gate、Gate B（内容就绪 / 改商品 / 需信息 / 放弃）、Content Review（批准导出 / 要求修订 / 拒绝资产）均由人工完成
-- **Local Live**：本地 `QX_V4_GRAPH_ENABLED=on` 时 `/v4/runs` 全链运行（加载上下文 → 市场工具 → 商业检查 → 内容技能 → 人工中断点 → 完整报告）
-- **Public Replay**：公网只读展示**已脱敏、含完整性校验**的历史案例回放（`/replay`），回放不进入任何真实浏览器 / 数据源，不代表当前市场或经营现况
-
-**诚实边界（V4 同样适用）**：系统是辅助研究工具，不会自动选品、自动采购、自动上架或投放广告；不承诺盈利或销量；公网不提供实时采集；真实 Provider 调用受服务端开关与配额门禁（本机默认 Mock）。
-
-已知限制与发布详情见 [KNOWN_LIMITATIONS.md](docs/v4/KNOWN_LIMITATIONS.md)、[RELEASE_NOTES_V4.md](docs/v4/RELEASE_NOTES_V4.md) 与 [CHANGELOG.md](CHANGELOG.md)。
-
-## Documentation
-
-- [文档索引](docs/README.md)
-- [快速开始](docs/getting-started/installation.md)
-- [架构总览](docs/architecture/overview.md)
-- [认证与配额契约](docs/architecture/auth-and-quota-contract.md)
+- [V4.1 正式工作台进度](docs/v4.1/FORMAL_V2_PROGRESS.md)
+- [研究结论与 Listing 依据收口](docs/v4.1/RESEARCH_LISTING_CLOSURE_R5_PROGRESS.md)
+- [Listing Runtime Skill 质量与事实安全](docs/v4.1/LISTING_RUNTIME_REGRESSION_PROGRESS.md)
+- [VOC 买家评论研究区收口](docs/v4.1/VOC_REVIEW_CLOSURE_PROGRESS.md)
+- [认证、权限与配额契约](docs/architecture/auth-and-quota-contract.md)
+- [本地安装说明](docs/getting-started/installation.md)
 - [部署手册](docs/deployment/production-runbook.md)
+- [版本记录](CHANGELOG.md)
 
-## Project Status
+## 项目状态
 
-**V3 = FROZEN**（`V3_PRODUCT_INTEGRATION = PASS`、`V3_PUBLIC_DEMO_READINESS = PASS`、`V3_RELEASE_STATUS = APPROVED`、P0=0 / P1=0）。
-
-- **Main**: `main` = 唯一权威基线（V4 发布 HEAD，tag `v4.0.0`），本地与远端一致，working tree clean；V4 为当前版本线，V3 历史冻结保留。
-- **Public**: https://112.124.54.81（Public Showcase：`QX_RUNTIME_MODE=public_showcase`，公网只读 Replay 历史案例回放 + V3 公网演示遗产；Visitor 沙箱隔离；部署与运维见 [部署手册](docs/deployment/production-runbook.md)）。
-- **Experiment**: `experiment/listing-evidence-expression-v1`（commit `466e8c0`）为历史冻结实验分支，不进入基线、不部署生产；其目标已由 main 能力实现并覆盖，分支仅作历史追溯保留。
-- **历史**: V1/V2/V3 全部 Git 历史与 release tag 原样保留，作为开发记录。
+- **当前产品线**：V4.1 商品研究工作台。
+- **当前主链**：候选商品 → 商品研究与证据 → 研究结论 → 人工决策 → 确认商品事实 → Listing / Image。
+- **当前边界**：本机 Owner 完整工作台；公网仅作为只读 HR 演示，不通过 Git 推送自动部署。
+- **历史版本**：V1/V2/V3/V4.0 的提交与标签保留用于追溯，不再作为当前产品说明。
 
 ## Security
 
-本项目涉及 AI Provider 密钥、访问认证、文件上传与用户数据隔离。请阅读 [SECURITY.md](SECURITY.md) 了解安全边界与报告方式。
+本项目涉及 AI Provider 密钥、访问认证、文件上传、浏览器采集和用户数据隔离。请阅读 [SECURITY.md](SECURITY.md)。发现安全问题时请勿在公开 Issue 中粘贴密钥、Token、Cookie、数据库内容或用户资料。
 
 ## License
 
-MIT License。详见 [LICENSE](LICENSE)。
+MIT License，详见 [LICENSE](LICENSE)。
