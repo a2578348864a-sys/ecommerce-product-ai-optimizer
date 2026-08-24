@@ -42,6 +42,10 @@ type ListingDraftSafeSummary = {
   reviewChecklist: string[];
   blockedClaims: string[];
   complianceWarnings: string[];
+  /** R6：Listing 质量不合格（碎片/数量不足）→ 只显示「暂无合格草稿」 */
+  listingUnqualified?: boolean;
+  /** R6：被拒绝的具体句子 + 中文原因（有界 ≤5，无内部 id） */
+  rejectedListingSentences?: Array<{ text: string; reason: string }>;
 };
 
 type ListingStateResponse = {
@@ -793,7 +797,24 @@ export function ListingHandoffSection({
             ) : null}
             {/* R2：生成依据（服务端安全结果为唯一来源；前端只展示不重判） */}
             <ListingGenerationBasis draft={draft} />
-            {renderDraftBody()}
+            {draft?.listingUnqualified ? (
+              <div data-testid="unqualified-listing-draft" className="mt-1 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2" role="alert">
+                <p className="text-sm font-semibold text-rose-800">暂无合格草稿</p>
+                <p className="mt-1 text-xs leading-5 text-rose-700">
+                  当前草稿未达到 Listing 质量合同（3-5 条完整句、每条 8-30 个英文词、逐条绑定已确认事实）。补齐确认事实后可重新生成。
+                </p>
+                {(draft.rejectedListingSentences ?? []).length > 0 ? (
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-rose-700">
+                    {(draft.rejectedListingSentences ?? []).map((item, index) => (
+                      <li key={index}>
+                        <span className="font-semibold">{item.text}</span> —— {item.reason}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+            {!draft?.listingUnqualified ? renderDraftBody() : null}
             <div className="mt-3">
               <button
                 type="button"

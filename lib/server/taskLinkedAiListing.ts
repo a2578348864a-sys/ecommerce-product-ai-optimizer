@@ -25,6 +25,7 @@ import type { ListingGenerationInput } from "@/lib/listingHandoff/listingGenerat
 import type { ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import type { ListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import type { ListingBrief } from "@/lib/listingHandoff/listingBrief";
+import { buildRuntimePromptRules, LISTING_RUNTIME_SKILL_VERSION } from "@/lib/listingHandoff/listingRuntimeSkill";
 
 export type TaskLinkedAiListingErrorCode =
   | "ai_timeout"
@@ -103,6 +104,14 @@ function buildTaskLinkedAiPrompt(input: {
       : "No keyword brief is available. Generate ONLY Title, Bullets and Description. backendSearchTerms MUST be an empty array.",
     "",
     "RULES:",
+    "LISTING_RUNTIME_RULES_START",
+    ...buildRuntimePromptRules({
+      keywordOptimizationEnabled,
+      factsCount: input.facts.length,
+      hasPlan: true,
+    }).split("\n").map((line) => "    " + line),
+    "LISTING_RUNTIME_RULES_END",
+    "RULES:",
     "- Only confirmed facts may be stated as product facts. Every attribute value must be one of the exact confirmed values.",
     "- LISTING_CREATION_BRIEF is optional marketing guidance, not a confirmed product fact. Use it only for emphasis, ordering, audience framing and tone; never turn it into a product attribute, certification, performance, safety or guarantee claim.",
     "- Each bullet MUST be based on at least one factId from the provided facts and express Feature → shopper relevance.",
@@ -117,6 +126,7 @@ function buildTaskLinkedAiPrompt(input: {
     "- Do not use absolute promises such as 100% guaranteed, guaranteed profit, best seller guaranteed, or equivalent Chinese claims.",
     "- Do not include price, promotion, shipping or company marketing content.",
     "- prohibitedClaims must not appear anywhere in the output.",
+
     "",
     "Return exactly this JSON shape:",
     JSON.stringify({

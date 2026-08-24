@@ -81,7 +81,9 @@ describe("R3.1 English-only Listing contract", () => {
     const input = makeInput(MIXED_FACTS);
     const draft = buildDeterministicListingPackDraft(input, new Date().toISOString());
     expect(checkEnglish(draft)).toEqual([]);
-    expect(draft.description).toContain("convenient carry loop");
+    // R6: 已确认功能事实句由五点承载（不再与描述重复）；描述仍为英文且不自造内容
+    expect([...draft.bullets, draft.description].join(" ")).toContain("convenient carry loop");
+    expect(draft.description).not.toContain("convenient carry loop");
     expect(draft.description).not.toContain("宽口设计");
     const schema = validateAiListingPackDraft(draft);
     expect(schema.ok).toBe(true);

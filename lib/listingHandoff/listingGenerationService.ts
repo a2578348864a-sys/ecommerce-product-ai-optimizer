@@ -15,14 +15,14 @@ import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingS
 import type { MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { classifyClaimTier } from "@/lib/listingHandoff/listingClaimTier";
-import { buildDeterministicListingPackDraft, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
+import { buildDeterministicListingPackDraft, composeBullets as composeSafeBullets, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
+import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { parseListingKeywordBrief, buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
 import { deriveUsedKeywordIds } from "@/lib/listingHandoff/listingKeywordProvenance";
 import { filterBackendSearchTerms } from "@/lib/listingHandoff/listingBackendTermSafety";
-import { validateListingQuality } from "@/lib/listingHandoff/listingQualityValidator";
 import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
 import { filterListingClaims } from "@/lib/listingClaimFilter";
 import { parseProductCreativeHandoff } from "@/lib/productCreativeHandoff";
@@ -81,6 +81,10 @@ export type ListingDraftSafeSummary = {
   reviewChecklist: string[];
   blockedClaims: string[];
   complianceWarnings: string[];
+  /** R6：Listing 质量不合格（碎片/数量不足）；前端只显示「暂无合格草稿」 */
+  listingUnqualified?: boolean;
+  /** R6：被拒绝的具体句子 + 中文原因（有界 ≤5，无内部 id/hash/runId） */
+  rejectedListingSentences?: Array<{ text: string; reason: string }>;
 };
 
 export type ListingGenerateResult = {
@@ -221,6 +225,29 @@ function deriveResearchReferenceTrace(
   const refs = context?.aiReferences ?? [];
   return refs.slice(0, 6).map((ref) => String(ref).replace(/^AI REFERENCE \(NOT FACT\):\s*/i, "").slice(0, 140));
 }
+/** R6：从 bullets 派生质量状态（碎片/数量不足 → 不合格 + 逐条中文原因；有界） */
+function computeUnqualifiedFields(input: { bullets: string[] }): {
+  listingUnqualified: boolean;
+  rejectedListingSentences: Array<{ text: string; reason: string }>;
+} {
+  const bullets = input.bullets;
+  const rejected: Array<{ text: string; reason: string }> = [];
+  for (const b of bullets) {
+    const wc = b.trim().split(/\s+/).filter(Boolean).length;
+    if (wc < 8) {
+      rejected.push({ text: b.slice(0, 140), reason: "该条不足 8 个英文词（属性碎片/过短），不是合格句。" });
+    } else if (wc > 30) {
+      rejected.push({ text: b.slice(0, 140), reason: "该条超过 30 个英文词，不是合格句。" });
+    } else if (!/[.!?]$/.test(b.trim())) {
+      rejected.push({ text: b.slice(0, 140), reason: "该条不是完整句（缺少句末标点）。" });
+    }
+  }
+  return {
+    listingUnqualified: bullets.length < 3 || rejected.length > 0,
+    rejectedListingSentences: rejected.slice(0, 5),
+  };
+}
+
 export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
   return {
@@ -278,6 +305,12 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     providerSucceeded: typeof value.providerSucceeded === "boolean" ? value.providerSucceeded : undefined,
     fallbackApplied: value.fallbackApplied === true,
     fallbackReason: typeof value.fallbackReason === "string" && value.fallbackReason ? value.fallbackReason : null,
+    // R6：历史/既有快照亦诚实标注（检测碎片句），不把低质量快照当可用成果
+    ...computeUnqualifiedFields({ bullets: safeStringArray(value.bullets).slice(0, 5) }),
+    // 已有明确拒绝原因时保留执行期结果（fallback 写入的 rejectedListingSentences 优先于纯粹的碎片推导）
+    rejectedListingSentences: (Array.isArray(value.rejectedListingSentences) && value.rejectedListingSentences.length > 0)
+      ? value.rejectedListingSentences.slice(0, 5)
+      : (computeUnqualifiedFields({ bullets: safeStringArray(value.bullets).slice(0, 5) }).rejectedListingSentences),
     sellingPoints: safeStringArray(value.sellingPoints).slice(0, 6),
     riskNotes: safeStringArray(value.riskNotes),
     reviewChecklist: safeStringArray(value.reviewChecklist),
@@ -544,72 +577,109 @@ export async function generateListingDraftFromHandoff(
       let fallbackReason: string | null = null;
       let fallbackReasonCode: "listing_claims_unsupported" | "provider_failed" | "listing_output_invalid" | null = null;
 
-      const applyStructuredFallback = (publicReason: string, reasonCode: typeof fallbackReasonCode, issue: string) => {
-        const optimized = composeOptimizedListingDraft(generationInput, plan, effectiveKeywordBrief);
-        // R3：structured fallback 与 AI 成功路径同规则——keywords 必须通过正式 Claim Evidence；
-        // 无证据的 brief 词（如 primaryKeyword "insulated water bottle"）不得进入最终草稿。
-        const optimizedKeywords = filterKeywordsByClaimEvidence(optimized.keywords, generationInput, autoTraceableTerms);
-        // composeOptimizedTitle 只把 primaryKeyword 并入标题；primaryKeyword 无证据时标题
-        // 回退为不并入 keyword 的组合（避免无证据词进标题且超长）。
-        const primaryKeyword = effectiveKeywordBrief ? plan.primaryKeyword : null;
-        const primaryHasEvidence = !primaryKeyword
-          || filterKeywordsByClaimEvidence([primaryKeyword], generationInput, autoTraceableTerms).length === 1;
-        const optimizedTitles = primaryHasEvidence
-          ? optimized.titles
-          : composeOptimizedListingDraft(generationInput, plan, effectiveKeywordBrief).titles;
-        const optimizedDraft = {
-          ...safeDraft,
-          titles: optimizedTitles,
-          bullets: optimized.bullets,
-          description: optimized.description,
-          keywords: dedupeTerms(optimizedKeywords),
-          backendSearchTerms: dedupeTerms(optimized.backendSearchTerms),
-          riskNotes: ["结构化草稿基于已确认事实生成；所有表述仍需人工复核。"],
-          reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
+
+  /** 运行时 Skill 合同所需事实（已确认事实原值；id = field） */
+  const runtimeFacts = generationInput.productFacts.map((f): RuntimeFact => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value ?? "").trim() }));
+  const runtimeUsedIds = runtimeFacts.map((f) => f.factId);
+  const asRejected = (issues: RuntimeIssue[], bullets: string[]): Array<{ text: string; reason: string }> => {
+    const out: Array<{ text: string; reason: string }> = [];
+    const seen = new Set<string>();
+    for (const issue of issues) {
+      if (issue.target !== "bullets") continue;
+      const idx = Number(String(issue.code).length ? String(issue.code) : "") || 0;
+      const bullet = bullets[Math.min(Math.max(Number((issue.message.match(/Bullet (\d+)/) || [])[1] ?? "0") - 1, 0), bullets.length - 1)] ?? "";
+      const key = bullet.slice(0, 80);
+      if (!bullet || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ text: bullet.slice(0, RUNTIME_QUALITY_LIMITS.rejectedTextMax), reason: issue.message.slice(0, 80) });
+    }
+    return out.slice(0, RUNTIME_QUALITY_LIMITS.rejectedDisplayMax);
+  };
+  const runtimeQualityInputOf = (draft: Record<string, unknown>, filtered: Record<string, unknown> | null, bullets: string[], description: string): Parameters<typeof validateRuntimeQualityContract>[0] => {
+    const title = String((filtered?.titles as string[] ?? draft.titles as string[] ?? [])[0] ?? "");
+    return {
+      title,
+      bullets,
+      description,
+      keywords: dedupeTerms(((filtered?.keywords ?? draft.keywords ?? []) as string[])),
+      facts: runtimeFacts,
+      usedFactIds: runtimeUsedIds,
+    };
+  };
+            const applyStructuredFallback = (publicReason: string, reasonCode: typeof fallbackReasonCode, issue: string) => {
+          const optimized = composeOptimizedListingDraft(generationInput, plan, effectiveKeywordBrief);
+          const optimizedKeywords = filterKeywordsByClaimEvidence(optimized.keywords, generationInput, autoTraceableTerms);
+          const primaryKeyword = effectiveKeywordBrief ? plan.primaryKeyword : null;
+          const primaryHasEvidence = !primaryKeyword
+            || filterKeywordsByClaimEvidence([primaryKeyword], generationInput, autoTraceableTerms).length === 1;
+          const optimizedTitles = primaryHasEvidence
+            ? optimized.titles
+            : composeOptimizedListingDraft(generationInput, plan, effectiveKeywordBrief).titles;
+          const optimizedDraft = {
+            ...safeDraft,
+            titles: optimizedTitles,
+            bullets: optimized.bullets,
+            description: optimized.description,
+            keywords: dedupeTerms(optimizedKeywords),
+            backendSearchTerms: dedupeTerms(optimized.backendSearchTerms),
+            riskNotes: ["结构化草稿基于已确认事实生成；所有表述仍需人工复核。"],
+            reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
+          };
+          const optimizedSchema = validateAiListingPackDraft(optimizedDraft);
+          const optimizedFiltered = optimizedSchema.ok
+            ? filterListingClaims(optimizedSchema.data, {
+                prohibitedClaims: generationInput.prohibitedClaims,
+                customClaimLabel: "Handoff prohibited claim",
+              })
+            : null;
+          const optimizedEvidence = optimizedFiltered
+            ? verifyListingClaims(optimizedFiltered.cleaned, generationInput)
+            : null;
+          // R6：结构化回退与 AI 路径同跑运行时 Skill 质量合同（8-30 词完整句+事实锚点+品牌去重+关键词去重+描述句数）
+          const optimizedContract = validateRuntimeQualityContract(runtimeQualityInputOf(optimizedDraft, (optimizedFiltered?.cleaned ?? null) as unknown as Record<string, unknown> | null, (optimizedFiltered ? optimizedFiltered.cleaned.bullets : optimizedDraft.bullets) ?? [], String(optimizedFiltered ? optimizedFiltered.cleaned.description : optimizedDraft.description ?? "")));
+          const optimizedQuality = optimizedFiltered && optimizedContract.ok ? { ok: true, blockingIssues: [], issues: [], advisories: [] } : { ok: false, blockingIssues: optimizedContract.issues, issues: optimizedContract.issues, advisories: [] };
+
+          fallbackApplied = true;
+          fallbackReason = publicReason;
+          fallbackReasonCode = reasonCode;
+          if (optimizedSchema.ok && optimizedFiltered && optimizedEvidence && listingClaimsHaveEvidence(optimizedEvidence) && optimizedQuality?.ok && optimizedContract.ok) {
+            draftKind = "structured_listing_draft";
+            finalDraft = withoutKeywordOptimization({ ...optimizedFiltered.cleaned });
+            qualityIssues = [issue];
+            return;
+          }
+
+          // R6：碎片兜底已删除——safe_fact_draft 只允许安全模板完整句；质量不达标 → 无合格草稿
+          const safeBullets = composeSafeBullets(generationInput);
+          const removedFragments: Array<{ text: string; reason: string }> = optimizedContract.ok || !optimizedFiltered
+            ? []
+            : asRejected(optimizedContract.issues, optimizedFiltered.cleaned.bullets);
+          const safeContract = validateRuntimeQualityContract({
+            title: String((safeDraft.titles as unknown as string[] ?? [])[0] ?? ""),
+            bullets: safeBullets,
+            description: String(safeDraft.description ?? ""),
+            keywords: dedupeTerms((safeDraft.keywords ?? []) as string[]),
+            facts: runtimeFacts,
+            usedFactIds: runtimeUsedIds,
+          });
+          const safeQualified = safeBullets.length >= 3 && safeContract.ok;
+          draftKind = "safe_fact_draft";
+          finalDraft = withoutKeywordOptimization({
+            ...safeDraft,
+            bullets: safeQualified ? safeBullets.slice(0, 5) : [],
+            keywords: dedupeTerms((safeDraft.keywords ?? []) as string[]),
+          });
+          qualityIssues = [
+            issue,
+            ...(!optimizedSchema.ok ? ["结构化回退未通过 schema 校验"] : []),
+            ...(optimizedEvidence && !listingClaimsHaveEvidence(optimizedEvidence) ? ["结构化回退未通过 Claim Evidence"] : []),
+            ...(optimizedContract.ok ? [] : optimizedContract.issues.map((item) => item.message)),
+            ...(optimizedQuality?.issues.map((item) => item.message) ?? []),
+            ...(safeQualified ? [] : ["确认事实不足以组成至少 3 条合格句。"]),
+          ].slice(0, 8);
+          finalDraft.rejectedListingSentences = (removedFragments.length > 0 ? removedFragments : asRejected(safeContract.issues, safeBullets)).slice(0, 5);
+          finalDraft.listingUnqualified = !safeQualified;
         };
-        const optimizedSchema = validateAiListingPackDraft(optimizedDraft);
-        const optimizedFiltered = optimizedSchema.ok
-          ? filterListingClaims(optimizedSchema.data, {
-              prohibitedClaims: generationInput.prohibitedClaims,
-              customClaimLabel: "Handoff prohibited claim",
-            })
-          : null;
-        const optimizedEvidence = optimizedFiltered
-          ? verifyListingClaims(optimizedFiltered.cleaned, generationInput)
-          : null;
-        const optimizedQuality = optimizedFiltered
-          ? validateListingQuality({
-              titles: optimizedFiltered.cleaned.titles,
-              bullets: optimizedFiltered.cleaned.bullets,
-              description: optimizedFiltered.cleaned.description,
-              backendSearchTerms: optimized.backendSearchTerms,
-              // 轮 16：结构化回退不按 optimized 严标准（不足 3 条是 advisory 不 bloking；
-              // 碎片规则由 compose 层保证 ≥8 词事实句，不依赖 allowFactOnlyBullets）。
-              planQuality: "safe_fact_draft",
-              allowFactOnlyBullets: true,
-            })
-          : null;
-
-        fallbackApplied = true;
-        fallbackReason = publicReason;
-        fallbackReasonCode = reasonCode;
-        if (optimizedSchema.ok && optimizedFiltered && optimizedEvidence && optimizedQuality
-          && listingClaimsHaveEvidence(optimizedEvidence) && optimizedQuality.ok) {
-          draftKind = "structured_listing_draft";
-          finalDraft = withoutKeywordOptimization({ ...optimizedFiltered.cleaned });
-          qualityIssues = [issue];
-          return;
-        }
-
-        draftKind = "safe_fact_draft";
-        finalDraft = withoutKeywordOptimization({ ...safeDraft });
-        qualityIssues = [
-          issue,
-          ...(!optimizedSchema.ok ? ["结构化回退未通过 schema 校验"] : []),
-          ...(optimizedEvidence && !listingClaimsHaveEvidence(optimizedEvidence) ? ["结构化回退未通过 Claim Evidence"] : []),
-          ...(optimizedQuality?.issues.map((item) => item.message) ?? []),
-        ];
-      };
 
       if (copyReady) {
         // Quality.2（v2.2.14）：copyReady=true 即允许真实 AI 正文优化；
@@ -717,16 +787,18 @@ export async function generateListingDraftFromHandoff(
               )
             : null;
           const claimsAcceptable = Boolean(aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0);
-          const aiQuality = aiFiltered && claimsAcceptable
-            ? validateListingQuality({
-                titles: aiFiltered.cleaned.titles,
-                bullets: aiFiltered.cleaned.bullets,
-                description: aiFiltered.cleaned.description,
-                backendSearchTerms: safeBackendTerms,
-                planQuality: "optimized",
+          const aiRuntimeContract = aiFiltered
+            ? validateRuntimeQualityContract({
+                title: safeTitle,
+                bullets: safeBullets,
+                description: safeDescription,
+                keywords: dedupeTerms(fallbackKeywords),
+                facts: runtimeFacts,
+                usedFactIds: aiResult.data.usedFactIds,
               })
             : null;
-          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok) {
+          const aiQuality = aiFiltered && claimsAcceptable && aiRuntimeContract?.ok ? { ok: true, blockingIssues: [], issues: [], advisories: [] } : { ok: false, blockingIssues: (aiRuntimeContract?.issues ?? []), issues: (aiRuntimeContract?.issues ?? []), advisories: [] };
+          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok) {
             // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
             draftKind = "ai_optimized_listing";
             finalDraft = {
@@ -745,14 +817,19 @@ export async function generateListingDraftFromHandoff(
           } else {
             // 轮 16 收口：claim 失败 = 有内容被三级判定拦截（无依据硬属性/无锚点话术被移除）。
             // 纯结构/质量不达标（无内容被拦）按结构/质量回退；两者兼具优先报 claim。
+            const contractFailed = aiRuntimeContract !== null && !aiRuntimeContract.ok;
             const claimFailed = blockedTexts.length > 0;
             applyStructuredFallback(
               claimFailed
                 ? "AI 文案包含未经确认的信息，已保留安全草稿。"
-                : "AI 文案未通过结构或质量校验，已保留安全草稿。",
+                : (contractFailed ? "AI 文案未通过运行时质量合同（8-30 词完整句/事实锚点/品牌去重）。" : "AI 文案未通过结构或质量校验，已保留安全草稿。"),
               claimFailed ? "listing_claims_unsupported" : "listing_output_invalid",
               claimFailed ? "AI 最终草稿未通过 Claim Evidence" : "AI 最终草稿未通过 Schema/Quality",
             );
+            if (aiRuntimeContract && !aiRuntimeContract.ok) {
+              const rejected = asRejected(aiRuntimeContract.issues, aiResult.data.bullets);
+              if (rejected.length > 0) finalDraft.rejectedListingSentences = rejected.slice(0, 5);
+            }
           }
         } else {
           // ai_schema_invalid = AI 输出不合规（含未知字段），不是 Provider 服务故障；

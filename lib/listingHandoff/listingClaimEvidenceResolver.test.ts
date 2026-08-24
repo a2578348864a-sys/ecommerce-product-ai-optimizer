@@ -368,3 +368,90 @@ describe("Claim Evidence Mapping — P1 完整复述放行顺序", () => {
     expect(listingClaimsHaveEvidence(result)).toBe(false);
   });
 });
+
+import { validateAiListingPackDraft } from "@/lib/aiListingDraft";
+import { filterListingClaims } from "@/lib/listingClaimFilter";
+import { validateRuntimeQualityContract } from "@/lib/listingHandoff/listingRuntimeSkill";
+import { buildListingClaimEvidenceIndex } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
+
+describe("R6 独立证明：Claim Evidence 单独拦截未确认硬属性", () => {
+  function naturalInput() {
+    return {
+      schema: "listing-generation-input.v1",
+      source: { handoffRevision: 1, researchRevision: 1 },
+      productFacts: [
+        { field: "brand", label: "品牌", value: "Owala" },
+        { field: "product_type", label: "类型", value: "Water Bottle" },
+        { field: "material", label: "材质", value: "Stainless Steel" },
+        { field: "capacity", label: "容量", value: "24 oz" },
+        { field: "color_or_variant", label: "颜色", value: "Blue" },
+        { field: "construction", label: "结构", value: "double-wall vacuum insulation" },
+        { field: "functional_feature", label: "功能", value: "straw lid with push-open mechanism" },
+      ],
+      stableSourceFacts: [],
+      creativeReferences: [],
+      prohibitedClaims: ["BPA-free"],
+      unknowns: [],
+      humanReviewRequired: true,
+      researchMode: "market_research_only",
+      promotionEligible: false,
+    } as unknown as ListingGenerationInput;
+  }
+  const GOOD_BULLETS = [
+    "The straw lid with push-open mechanism for everyday use.",
+    "The double-wall vacuum insulation for easy cleaning with water.",
+  ];
+  function draftWithBadBullet(): AiListingPackDraft {
+    // 仅额外混入一条未确认硬属性：保温 12 小时（数字值无任何已确认证据）
+    return {
+      schema: "ai-listing-pack.v1",
+      version: 1,
+      generatedAt: "2026-08-25T00:00:00.000Z",
+      source: "mock_ai_draft",
+      model: "mock",
+      humanReviewRequired: true,
+      titles: ["Owala 24 oz Stainless Steel Water Bottle, Blue"],
+      bullets: [
+        "The straw lid with push-open mechanism for everyday use.",
+        "The double-wall vacuum insulation for easy cleaning with water.",
+        "The Owala bottle in Blue for everyday use.",
+        "The Owala bottle with Stainless Steel for everyday use.",
+        "double-wall vacuum insulation keeps cold for 12 hours in the bottle.",
+      ],
+      description: "The Owala bottle with Stainless Steel and 24 oz for everyday use. The Owala bottle with Blue for easy cleaning with water.",
+      keywords: ["Owala", "Water Bottle", "Stainless Steel", "24 oz", "Blue"],
+      sellingPoints: ["Stainless Steel material for everyday use."],
+      riskNotes: ["请人工复核。"],
+      complianceWarnings: [],
+      blockedClaims: [],
+      reviewChecklist: ["请人工核对。"],
+    } as unknown as AiListingPackDraft;
+  }
+  it("四层：Schema 通过；Runtime Quality 通过；filter 不提前删除；仅 verifyListingClaims 单独拒绝「保温 12 小时」", async () => {
+    const input = naturalInput();
+    const draft = draftWithBadBullet();
+    // 1) Schema 通过
+    const schema = validateAiListingPackDraft(draft);
+    expect(schema.ok, JSON.stringify(schema)).toBe(true);
+    // 2) Runtime Quality 通过（8-30 词/锚点/描述/去重 全满足）
+    const quality = validateRuntimeQualityContract({
+      title: draft.titles[0] ?? "",
+      bullets: draft.bullets,
+      description: draft.description,
+      keywords: draft.keywords,
+      facts: input.productFacts.map((f) => ({ factId: String((f as { field: string }).field), field: String((f as { field: string }).field), label: String((f as { label: string }).label), value: String((f as { value: string }).value) })),
+      usedFactIds: input.productFacts.map((f) => String((f as { field: string }).field)),
+    });
+    expect(quality.ok, JSON.stringify(quality.issues)).toBe(true);
+    // 3) filterListingClaims 不提前删除该句（坏句仍保留在 cleaned 中）
+    const filtered = filterListingClaims(draft, {
+      prohibitedClaims: input.prohibitedClaims,
+      customClaimLabel: "Handoff prohibited claim",
+    }).cleaned;
+    expect(filtered.bullets.some((b) => b.includes("12 hours"))).toBe(true);
+    // 4) verifyListingClaims 单独拒绝该未确认硬属性
+    const evidence = verifyListingClaims(draft, input);
+    const bad = evidence.unsupportedClaims.find((u) => u.text.includes("12 hours"));
+    expect(bad, JSON.stringify(evidence.unsupportedClaims)).toBeDefined();
+  });
+});

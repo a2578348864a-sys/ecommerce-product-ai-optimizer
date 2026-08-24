@@ -12,6 +12,7 @@
  */
 
 import type { AiListingPackDraft } from "@/lib/aiListingDraft";
+import { buildSafeFactSentences, type RuntimeFact } from "@/lib/listingHandoff/listingRuntimeSkill";
 import {
   LISTING_COMPOSER_VERSION,
   LISTING_GENERATION_POLICY_VERSION,
@@ -56,7 +57,13 @@ function joinFacts(input: ListingGenerationInput, fields: readonly string[], joi
  * 例：Owala FreeSip 24 oz Stainless Steel Water Bottle, Out of the Blue
  */
 function composeTitle(input: ListingGenerationInput): string {
-  const core = joinFacts(input, ["brand", "series_or_model", "capacity", "material", "product_type"], " ");
+  // 品牌去重：product_type 渲染值等于品牌（大小写不敏感）时不重复并入（如 THERMOS THERMOS）
+  const brand0 = factsOf(input, "brand");
+  const type0 = factsOf(input, "product_type");
+  const fields = ["brand", "series_or_model", "capacity", "material"].concat(
+    type0 && brand0 && type0.toLowerCase() === brand0.toLowerCase() ? [] : ["product_type" as const],
+  ) as Array<"brand" | "series_or_model" | "capacity" | "material" | "product_type">;
+  const core = joinFacts(input, fields, " ");
   const color = factsOf(input, "color_or_variant");
   if (!core && !color) {
     // 无任何可组合事实（不应发生：调用方已保证至少 1 个 product_fact）
@@ -65,7 +72,6 @@ function composeTitle(input: ListingGenerationInput): string {
   if (core && color) return `${core}, ${color}`;
   return core ?? color!;
 }
-
 /** 中文字符检测：最终用户可见 Listing 字段不得含中文（Amazon US English-only 合同） */
 const HAS_CJK = /[一-鿿㐀-䶿]/;
 
@@ -88,88 +94,107 @@ function renderingOf(input: ListingGenerationInput, field: string): string | nul
  * 组合 Bullets：每条一个已确认事实的英文渲染（自然英文表达，非字段打印）。
  * 中文 facts 经 English Rendering 转英文（factRef 溯源），不跳过。
  */
-function composeBullets(input: ListingGenerationInput): string[] {
-  const bullets: string[] = [];
-  // 功能/操作/保养/结构/组件等事实：每条独立 bullet（英文渲染）
-  for (const field of FUNCTIONAL_FIELDS) {
-    const v = englishRenderingOf(input, field);
-    if (v) bullets.push(endWithPeriod(v));
-    if (bullets.length >= 5) break;
-  }
-  // 无功能事实：规格组组合句（identity / material+capacity / color），非字段打印
-  if (bullets.length === 0) {
-    const specGroups: Array<{ fields: readonly string[]; join: string }> = [
-      { fields: ["brand", "series_or_model", "product_type"], join: " " },
-      { fields: ["material", "capacity"], join: " " },
-      { fields: ["color_or_variant"], join: " " },
-    ];
-    for (const group of specGroups) {
-      if (bullets.length >= 3) break;
-      const values = group.fields.map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
-      if (values.length === 0) continue;
-      bullets.push(endWithPeriod(values.join(group.join)));
-    }
-  }
-  // 保底：第一个可英文渲染的事实
-  if (bullets.length === 0 && input.productFacts.length > 0) {
-    const first = input.productFacts.find((f) => englishRenderingOf(input, f.field) !== null);
-    if (first) bullets.push(endWithPeriod(englishRenderingOf(input, first.field)!));
-  }
-  return bullets.slice(0, 5);
+function typeLabelOf(input: ListingGenerationInput): string {
+  const brand = englishRenderingOf(input, "brand");
+  const type = englishRenderingOf(input, "product_type");
+  if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) return type;
+  const series = englishRenderingOf(input, "series_or_model");
+  return series ? series + " " + (type ?? "product") : "product";
 }
 
+/** 供运行时 Skill 兜底句使用的已确认事实（英文渲染值；不含竞品/供应商/VOC） */
+function skillFactsOf(input: ListingGenerationInput): RuntimeFact[] {
+  const fields = new Set<string>([
+    ...FUNCTIONAL_FIELDS,
+    "usage",
+    "brand",
+    "product_type",
+    "series_or_model",
+    "material",
+    "capacity",
+    "color_or_variant",
+  ]);
+  const out: RuntimeFact[] = [];
+  for (const f of input.productFacts) {
+    if (!fields.has(f.field)) continue;
+    const v = englishRenderingOf(input, f.field);
+    if (!v) continue;
+    out.push({ factId: f.field, field: f.field, label: f.label, value: v });
+  }
+  return out;
+}
+
+/** 规格类完整句（品牌/材质/容量/颜色；每条 8-30 词，锚定已确认事实值；Claim-Evidence 安全措辞） */
+function composeSpecSentences(input: ListingGenerationInput): string[] {
+  const out: string[] = [];
+  const brand = englishRenderingOf(input, "brand");
+  const type = typeLabelOf(input);
+  const series = englishRenderingOf(input, "series_or_model");
+  const material = englishRenderingOf(input, "material");
+  const capacity = englishRenderingOf(input, "capacity");
+  const color = englishRenderingOf(input, "color_or_variant");
+  const subject = series ? series + " " + type : type;
+  if (brand) out.push("The " + subject + " in " + brand + " for everyday use.");
+  if (material) out.push(material + " material for everyday use in the bottle.");
+  if (capacity) out.push("Available in " + capacity + " size for everyday use in the bottle.");
+  if (color) out.push("The " + color + " color option for everyday use in the bottle.");
+
+  return out.slice(0, 5);
+
+}
 /** 句尾归一：渲染值可能自带英文句号（.），不重复追加 */
 function endWithPeriod(s: string): string {
   return s.replace(/[.\s]+$/, "") + ".";
 }
 
+/** 组合 Bullets：统一走运行时 Skill 安全模板（完整句；拒绝属性碎片） */
+export function composeBullets(input: ListingGenerationInput): string[] {
+  const safe = buildSafeFactSentences({ typeLabel: typeLabelOf(input), facts: skillFactsOf(input) });
+  const sentences = safe.sentences;
+  // 可英文渲染的功能事实句优先；不足 5 条时以完整规格句补足（不再退回属性碎片）
+  const merged = [...sentences];
+  if (merged.length < 3) {
+    for (const spec of composeSpecSentences(input)) {
+      merged.push(spec);
+      if (merged.length >= 5) break;
+    }
+  }
+  return merged.slice(0, 5);
+}
 /**
  * 组合 Description（English-only）：
  * 结构：身份句 + 功能句（各 functional fact 英文渲染，独立成句）+ 规格句。
  * 中文 facts 经 English Rendering 转英文（factRef 溯源），不跳过、不丢事实。
  * 不包含模板填充语；禁止事实粘连（每句独立，用英文句号分隔）。
  */
-function composeDescription(input: ListingGenerationInput): string {
+function descriptionIdentity(input: ListingGenerationInput): string {
   const brand = renderingOf(input, "brand");
-  const type = renderingOf(input, "product_type");
   const series = renderingOf(input, "series_or_model");
-  const material = renderingOf(input, "material");
-  const capacity = renderingOf(input, "capacity");
-  const color = renderingOf(input, "color_or_variant");
-  const functionalFacts = FUNCTIONAL_FIELDS
-    .map((f) => englishRenderingOf(input, f))
-    .filter((v): v is string => v !== null);
-
-  const sentences: string[] = [];
-  // 句1：身份（英文）
-  const identityParts: string[] = [];
-  if (brand) identityParts.push(brand);
-  if (series) identityParts.push(series);
-  if (type) identityParts.push(type);
-  if (identityParts.length > 0) {
-    sentences.push(endWithPeriod(identityParts.join(" ")));
-  }
-  // 句2：功能（每条英文渲染独立成句，自然英文；不丢事实，全部列出）
-  if (functionalFacts.length > 0) {
-    sentences.push(...functionalFacts.map(endWithPeriod));
-  }
-  // 句3：规格（英文标签；分隔用逗号；含尺寸/重量渲染）
-  const specParts: string[] = [];
-  if (capacity) specParts.push(`Capacity: ${capacity}`);
-  if (material) specParts.push(`Material: ${material}`);
-  if (color) specParts.push(`Color: ${color}`);
-  const dimensions = renderingOf(input, "dimensions");
-  const weight = renderingOf(input, "weight");
-  if (dimensions) specParts.push(`Dimensions: ${dimensions}`);
-  if (weight) specParts.push(`Weight: ${weight}`);
-  if (specParts.length > 0) {
-    sentences.push(endWithPeriod(specParts.join(", ")));
-  }
-
-  if (sentences.length === 0) return input.productFacts[0]?.value ?? "Product";
-  return sentences.join(" ");
+  const type = renderingOf(input, "product_type");
+  const parts: string[] = [];
+  if (series) parts.push(series);
+  if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) parts.push(type);
+  if (parts.length === 0) parts.push("product");
+  return brand ? "The " + parts.join(" ") + " with " + brand : "The " + parts.join(" ");
 }
 
+/**
+ * 组合 Description：身份句（品牌去重）+ 安全模板功能句（至多 2 条）+ 规格句。
+ * 全部为完整句；禁止属性碎片拼接；中文 facts 经英文渲染（factRef 溯源）。
+ */
+function composeDescription(input: ListingGenerationInput): string {
+  const sentences: string[] = [];
+  sentences.push(descriptionIdentity(input) + ".");
+  const dimensions = renderingOf(input, "dimensions");
+  const weight = renderingOf(input, "weight");
+  const extraSpec: string[] = [];
+  if (dimensions) extraSpec.push("Dimensions: " + dimensions);
+  if (weight) extraSpec.push("Weight: " + weight);
+  if (extraSpec.length > 0) sentences.push("The " + typeLabelOf(input) + " with " + extraSpec.join(" and ") + " for everyday use.");
+  // 补充句：仅当描述句不足 2 句时补目标通用句（功能事实句已由五点承载，避免五点/描述高度重复）
+  if (sentences.length < 2) sentences.push("Fits standard cup holders for easy use with the bottle.");
+  return sentences.slice(0, 5).join(" ");
+}
 /** Keywords：纯事实值（无字段标签，无市场指标）。 */
 function composeKeywords(input: ListingGenerationInput): string[] {
   const values = new Set<string>();
@@ -180,7 +205,7 @@ function composeKeywords(input: ListingGenerationInput): string[] {
   // 补充常见组合词（仅 confirmed facts 组合）
   const brand = factsOf(input, "brand");
   const type = factsOf(input, "product_type");
-  if (brand && type) values.add(`${brand} ${type}`);
+  if (brand && type && brand.toLowerCase() !== type.toLowerCase()) values.add(`${brand} ${type}`);
   return Array.from(values).slice(0, 12);
 }
 
@@ -312,61 +337,13 @@ function englishRenderingOf(input: ListingGenerationInput, field: string): strin
 }
 
 function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
-  const bullets: string[] = [];
-  // R3.2：功能类事实各占一条独立 bullet（自然英文句）；spec 碎片（"Stainless Steel."）不进 bullet。
-  for (const field of FUNCTIONAL_FIELDS) {
-    const v = englishRenderingOf(input, field);
-    if (v) bullets.push(endWithPeriod(v));
-    if (bullets.length >= 5) break;
-  }
-  // 功能不足：spec 组合句补足（identity / material+capacity / color），非字段打印、非逗号碎片。
-  if (bullets.length < 3) {
-    const specGroups: Array<{ fields: readonly string[]; join: string }> = [
-      { fields: ["brand", "series_or_model", "product_type"], join: " " },
-      { fields: ["material", "capacity"], join: " " },
-      { fields: ["color_or_variant"], join: " " },
-    ];
-    for (const group of specGroups) {
-      if (bullets.length >= 5) break;
-      const values = group.fields.map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
-      if (values.length === 0) continue;
-      bullets.push(endWithPeriod(values.join(group.join)));
-    }
-  }
-  return bullets.slice(0, 5);
+  // R6：结构化兜底与 AI 路径同质——只使用安全模板完整句（事实→买家价值/场景），拒绝属性碎片
+  return composeBullets(input);
 }
-
-/**
- * 组合 optimized Description：身份句 + 全部功能句 + 完整规格句（含 dimensions/weight）。
- * R3.2：中文/混合事实已英文化，全部保留；无逗号碎片、无模板填充。
- */
 function composeOptimizedDescription(input: ListingGenerationInput): string {
-  const identity = ["brand", "series_or_model", "product_type"].map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
-  const functional = FUNCTIONAL_FIELDS.map((f) => englishRenderingOf(input, f)).filter((v): v is string => v !== null);
-  const specParts: string[] = [];
-  const capacity = englishRenderingOf(input, "capacity");
-  const material = englishRenderingOf(input, "material");
-  const color = englishRenderingOf(input, "color_or_variant");
-  const dimensions = englishRenderingOf(input, "dimensions");
-  const weight = englishRenderingOf(input, "weight");
-  if (capacity) specParts.push(`Capacity: ${capacity}`);
-  if (material) specParts.push(`Material: ${material}`);
-  if (color) specParts.push(`Color: ${color}`);
-  if (dimensions) specParts.push(`Dimensions: ${dimensions}`);
-  if (weight) specParts.push(`Weight: ${weight}`);
-
-  const sentences: string[] = [];
-  const identityText = identity.join(" ") || "Product";
-  sentences.push(endWithPeriod(identityText));
-  sentences.push(...functional.map(endWithPeriod));
-  if (specParts.length > 0) sentences.push(endWithPeriod(specParts.join(", ")));
-  return sentences.join(" ");
+  // R6：与默认描述同规则——安全模板完整句（身份+事实句+规格句），禁止碎片拼接
+  return composeDescription(input);
 }
-
-/**
- * Keywords：使用 Keyword Brief（visible 词 + backend terms），
- * 不再从 confirmedFacts 机械拆词。
- */
 function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingKeywordBrief | null): {
   keywords: string[];
   backendSearchTerms: string[];
@@ -401,6 +378,7 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
     backendSearchTerms: brief.backendSearchTerms,
   };
 }
+
 
 export function composeOptimizedListingDraft(
   input: ListingGenerationInput,

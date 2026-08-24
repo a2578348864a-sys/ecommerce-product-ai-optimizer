@@ -138,13 +138,15 @@ async function saveBrief(taskId: string) {
 }
 
 const GENERIC_AI_OUTPUT = {
-  title: "Owala Water Bottle",
+  title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
   bullets: [
-    "Straw lid with push-open mechanism.",
-    "Double-wall vacuum insulation.",
-    "Dishwasher-safe removable parts.",
+    "The straw lid with push-open mechanism for everyday use.",
+    "Double-wall vacuum insulation keeps cold for hours in the bottle.",
+    "The dishwasher-safe removable parts for easy cleaning with water.",
+    "The Owala bottle in Blue for everyday use.",
+    "The Owala bottle with double-wall vacuum insulation for easy cleaning.",
   ],
-  description: "Stainless Steel 24 oz Water Bottle, Blue.",
+  description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
   backendSearchTerms: ["vacuum flask"],
   humanReviewRequired: true,
 };

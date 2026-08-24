@@ -240,7 +240,22 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
     expect(readiness.copyReady).toBe(true);
     expect(readiness.keywordReady).toBe(true);
     // R3：AI 输出含未确认词（如 "kids insulated"）时，Claim Evidence 拒绝 → structured 降级
-    expect(result.draft?.draftKind).toBe("structured_listing_draft");
+    // R3：AI 输出含未确认词（如 "kids insulated"）时，Claim Evidence 拒绝 → 降级
+    // R6：固定夹具确定性输出 —— 已确认事实不足以组成 >=3 条合格句 → safe_fact_draft + 无合格草稿；
+    //     碎片不得进入标题/五点/描述等正式 Listing 内容（titles/bullets/description/keywords 为空，仅拒绝区展示被拒句）。
+    expect(result.draft?.draftKind).toBe("safe_fact_draft");
+    expect(result.draft?.listingUnqualified).toBe(true);
+    expect((result.draft?.rejectedListingSentences ?? []).length).toBeGreaterThan(0);
+    // 正式五点必须为空（碎片不进入五点；安全模板句未达标也不得冒充成品）
+    expect((result.draft?.bullets ?? []).length).toBe(0);
+    // 正式 Listing 内容字段（标题/五点/描述/关键词/卖点）不得混入尚未确认的碎片或 Mock AI 未确认内容
+    for (const field of ["titles", "bullets", "description", "keywords", "sellingPoints"]) {
+      const text = (result.draft as unknown as Record<string, unknown>)[field];
+      const joined = Array.isArray(text) ? (text as string[]).join(" ") : String(text ?? "");
+      expect(joined).not.toMatch(/kids insulated/i);
+      expect(joined).not.toMatch(/\b12 ounces\b/i);
+      expect(joined).not.toMatch(/Leakproof/i);
+    }
     expect(result.draft?.providerAttempted).toBe(true);
     expect(result.draft?.providerSucceeded).toBe(false);
     expect(result.draft?.fallbackApplied).toBe(true);

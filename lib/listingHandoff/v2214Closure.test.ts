@@ -21,6 +21,7 @@ import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { validateListingQuality } from "@/lib/listingHandoff/listingQualityValidator";
+import { validateRuntimeQualityContract } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { listingClaimsHaveEvidence, verifyListingClaims } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { generateListingDraftFromHandoff } from "@/lib/listingHandoff/listingGenerationService";
 import { generateCreativeHandoffPreview } from "@/lib/server/productCreativeHandoffPreview";
@@ -107,6 +108,60 @@ function seedTask(taskId: string, resultJson: string) {
   writeFileSync(storePath, JSON.stringify({ version: 1, tasks: [{ id: taskId, demoAccessId: DEMO, type: "workflow", title: "T", decisionStatus: "continue", platform: "amazon", productUrl: null, materialText: "m", source: "demo", score: 1, level: "low", oneLineSummary: "o", resultJson, productLifecycle: "i", createdAt: NOW, updatedAt: NOW }], candidates: [] }), "utf8");
 }
 
+
+/** P1-2：BrüMate 夹具已确认事实（与 buildBruteMateResultJson → confirmation 的 listing facts 一致） */
+const BRUMATE_CONFIRMED_FACTS: Array<{ field: string; value: string }> = [
+  { field: "brand", value: "BrüMate" },
+  { field: "product_type", value: "Water Bottle" },
+  { field: "series_or_model", value: "Rise" },
+  { field: "material", value: "Silicone" },
+  { field: "capacity", value: "18oz" },
+  { field: "color_or_variant", value: "red" },
+  { field: "functional_feature", value: "LEAKPROOF DESIGN WITH COVERED, SOFTSIP STRAW: Our leakproof, SoftSip silicone straw makes every sip feel like a luxury" },
+];
+
+/**
+ * P1-2：以服务端同款 Runtime 合同验证 AI 成功输出（真实合同，非本地复制判定）。
+ * 断言：合同 ok（输出 issues）、每条 bullet 至少锚定一个已确认事实值、标题品牌单次、
+ *       五点 3-5 条 × 8-30 词、无未确认绝对/认证/时长/Leakproof。
+ */
+function assertAiSuccessMeetsRuntimeContract(draft: {
+  titles: string[];
+  bullets: string[];
+  description: string;
+  keywords: string[];
+}): void {
+  const contract = validateRuntimeQualityContract({
+    title: draft.titles[0] ?? "",
+    bullets: draft.bullets,
+    description: draft.description,
+    keywords: draft.keywords,
+    facts: BRUMATE_CONFIRMED_FACTS.map((f) => ({ factId: f.field, field: f.field, label: f.field, value: f.value })),
+    usedFactIds: BRUMATE_CONFIRMED_FACTS.map((f) => f.field),
+  });
+  expect(contract.ok, JSON.stringify(contract.issues)).toBe(true);
+  // 每条 bullet 至少命中一个已确认事实值（值内嵌/完整复述均命中；字段值大小写不敏感匹配）
+  const factValues = BRUMATE_CONFIRMED_FACTS.map((f) => f.value.toLocaleLowerCase()).filter((v) => v.length >= 3);
+  for (const b of draft.bullets) {
+    const lower = b.toLocaleLowerCase();
+    expect(
+      factValues.some((v) => lower.includes(v)),
+      "bullet 未锚定已确认事实值: " + b,
+    ).toBe(true);
+    const wc = b.trim().split(/\s+/).filter(Boolean).length;
+    expect(wc).toBeGreaterThanOrEqual(8);
+    expect(wc).toBeLessThanOrEqual(30);
+    expect(b).not.toMatch(/Leakproof/i);
+    expect(b).not.toMatch(/hours|hrs|keeps.*cold|keeps.*warm|BPA[- ]?free|FDA|CE[\s]?cert|guaranteed|100%/i);
+  }
+  expect(draft.bullets.length).toBeGreaterThanOrEqual(3);
+  expect(draft.bullets.length).toBeLessThanOrEqual(5);
+  // 标题品牌单次
+  const brand = "BrüMate";
+  const brandCount = draft.titles.join(" ").split(brand).length - 1;
+  expect(brandCount, "标题品牌词应只出现一次").toBeLessThanOrEqual(1);
+}
+
 async function confirmBruteMateHandoff(taskId: string) {
   const p1 = await generateCreativeHandoffPreview(taskId, visitorContext());
   const preview = p1.preview!;
@@ -164,13 +219,16 @@ describe("v2.2.14 BrüMate Golden Case", () => {
     const optimized = composeOptimizedListingDraft(build.input, plan, null);
     // 轮 15：功能事实句 ≥3 词保留，规格碎片不进 bullet；功能不足时不为冒充成品而补碎片
     expect(optimized.bullets.length).toBeGreaterThanOrEqual(1);
-    const q = validateListingQuality({
-      titles: optimized.titles, bullets: optimized.bullets, description: optimized.description,
-      backendSearchTerms: optimized.backendSearchTerms, planQuality: "optimized",
-      allowFactOnlyBullets: true,
+    // R6：质量判定统一收敛到运行时 Skill 合同（不再维护第二套冲突阈值）
+    const contract = validateRuntimeQualityContract({
+      title: optimized.titles[0] ?? "",
+      bullets: optimized.bullets,
+      description: optimized.description,
+      keywords: optimized.keywords,
+      facts: build.input.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value ?? "").trim() })),
+      usedFactIds: build.input.productFacts.map((f) => f.field),
     });
-    expect(q.ok).toBe(true);
-    expect(q.blockingIssues).toEqual([]);
+    expect(contract.ok, JSON.stringify(contract.issues)).toBe(true);
     // Description 不再重复 Title（应含功能句，非仅属性拼接）
     expect(optimized.description).not.toBe(`${optimized.titles[0]}。`);
   });
@@ -188,13 +246,13 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       expect(input.keywordBrief).toBeNull();
       expect(input.listingBrief).toBeNull();
       return {
-        title: "BrüMate Rise 18oz Silicone Water Bottle with Covered Straw",
+        title: "BrüMate Silicone Water Bottle, 18oz, red",
         bullets: [
-          "Leakproof SoftSip straw keeps every sip easy, comfortable for daily hydration.",
-          "Silicone construction and 18oz capacity, practical size for on-the-go use.",
-          "red color option, matches your style preference.",
+          "The BrüMate water bottle with Silicone for everyday use in the bottle.",
+          "An 18oz size for easy cleaning with water.",
+          "The red color option for everyday use in the bottle.",
         ],
-        description: "BrüMate Rise 18oz water bottle pairs a covered SoftSip straw with silicone construction for everyday hydration. The leakproof design suits commuting and travel. Available in red.",
+        description: "This 18oz bottle matches your style preference for everyday use. This bottle with Silicone for easy cleaning with water.",
         backendSearchTerms: ["self-invented keyword"], // AI 不得自造关键词，服务端必须丢弃
         usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
         humanReviewRequired: true,
@@ -218,6 +276,14 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       expect(result.draft?.backendSearchTerms).toEqual([]);
       // keywordReady 保持 false（无 brief）
       expect(result.draft?.riskNotes?.join(" ")).toContain("未进行关键词优化");
+      // P1-2：AI 成功输出必须通过真实 Runtime 合同 + 事实锚点 + 品牌单次 + 5 点 3-5 条 × 8-30 词 + 无未确认承诺
+      expect(result.draft?.providerSucceeded).toBe(true);
+      assertAiSuccessMeetsRuntimeContract({
+        titles: result.draft?.titles ?? [],
+        bullets: result.draft?.bullets ?? [],
+        description: result.draft?.description ?? "",
+        keywords: result.draft?.keywords ?? [],
+      });
     } finally {
       setTaskLinkedAiListingClientForTests(null);
     }
@@ -241,13 +307,13 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
     setTaskLinkedAiListingClientForTests(async (input) => {
       capturedInputs.push(input);
       return {
-        title: "BrüMate Rise 18oz Silicone Water Bottle with Covered Straw",
+        title: "BrüMate Silicone Water Bottle, 18oz, red",
         bullets: [
-          "Leakproof SoftSip straw keeps every sip easy, comfortable for daily hydration.",
-          "Silicone construction and 18oz capacity, practical size for on-the-go use.",
-          "red color option, matches your style preference.",
+          "The BrüMate water bottle with Silicone for everyday use in the bottle.",
+          "An 18oz size for easy cleaning with water.",
+          "The red color option for everyday use in the bottle.",
         ],
-        description: "BrüMate Rise 18oz water bottle pairs a covered SoftSip straw with silicone construction for everyday hydration. The leakproof design suits commuting and travel. Available in red.",
+        description: "This 18oz bottle matches your style preference for everyday use. This bottle with Silicone for easy cleaning with water.",
         backendSearchTerms: [],
         usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
         humanReviewRequired: true,
@@ -270,8 +336,15 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(result.listingSaved).toBe(true);
       expect(result.draft?.draftKind).toBe("ai_optimized_listing");
       expect(result.draft?.titles[0]).not.toBe("Brand: BrüMate");
-      expect(result.draft?.bullets.some((bullet) => /SoftSip/i.test(bullet) && /comfortable|practical/i.test(bullet))).toBe(true);
       expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
+      // P1-2：AI 成功输出必须通过真实 Runtime 合同 + 事实锚点 + 品牌单次 + 5 点 3-5 条 × 8-30 词 + 无未确认承诺
+      expect(result.draft?.providerSucceeded).toBe(true);
+      assertAiSuccessMeetsRuntimeContract({
+        titles: result.draft?.titles ?? [],
+        bullets: result.draft?.bullets ?? [],
+        description: result.draft?.description ?? "",
+        keywords: result.draft?.keywords ?? [],
+      });
     } finally {
       setTaskLinkedAiListingClientForTests(null);
     }
@@ -341,16 +414,16 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       };
       const evidence = verifyListingClaims(savedDraft, input.input);
       expect(listingClaimsHaveEvidence(evidence), JSON.stringify(evidence.unsupportedClaims)).toBe(true);
-      const quality = validateListingQuality({
-        titles: result.draft.titles,
+      // R6：质量判定统一收敛到运行时 Skill 合同（结构化兜底不再按旧碎片规则评估）
+      const quality = validateRuntimeQualityContract({
+        title: result.draft.titles[0] ?? "",
         bullets: result.draft.bullets,
         description: result.draft.description ?? "",
-        backendSearchTerms: result.draft.backendSearchTerms ?? [],
-        planQuality: "optimized",
-        // R3.1：structured fallback 的 bullet 全部来自已确认事实值（可短于 3 词）
-        allowFactOnlyBullets: true,
+        keywords: result.draft.keywords ?? [],
+        facts: input.input.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value ?? "").trim() })),
+        usedFactIds: input.input.productFacts.map((f) => f.field),
       });
-      expect(quality.ok).toBe(true);
+      expect(quality.ok, JSON.stringify(quality.issues)).toBe(true);
     } finally {
       setTaskLinkedAiListingClientForTests(null);
     }
