@@ -21,6 +21,8 @@ type ListingDraftSafeSummary = {
   usedFactTrace?: Array<{ label: string; value: string }>;
   /** R2：最终文案实际采用的关键词文本 */
   usedKeywordTrace?: string[];
+  /** ListingPlan.v2：仅进入搜索词字段、未进入正文的关键词（诚实分离，不称正文采用） */
+  searchOnlyKeywordTrace?: string[];
   /** R2：生成时提供给 AI 的研究参考（业务语言） */
   researchReferenceTrace?: string[];
   /** R1.6：被安全过滤的 backend term 人工可读警告（不暴露内部 id） */
@@ -46,6 +48,16 @@ type ListingDraftSafeSummary = {
   listingUnqualified?: boolean;
   /** R6：被拒绝的具体句子 + 中文原因（有界 ≤5，无内部 id） */
   rejectedListingSentences?: Array<{ text: string; reason: string }>;
+  /** ListingPlan.v2：卖点策略（安全摘要；无计划历史草稿为 undefined） */
+  sellingPointPlan?: Array<{
+    role: string;
+    shopperNeed: string;
+    shopperAngle: string;
+    factLabels: string[];
+    keywordIds: string[];
+    claimMode: string;
+    cannotSay: string[];
+  }>;
 };
 
 type ListingStateResponse = {
@@ -128,6 +140,14 @@ function formatDate(iso: string | null): string {
  * C. 真实尝试调用 AI（providerAttempted=true）→ 展示「生成时提供给 AI 的研究参考」具体内容
  * 永远不写「AI 实际使用」（Provider 未返回使用记录）。
  */
+/** ListingPlan.v2：draftKind → 运营语义标签（三态；纯函数，供 DOM 测试与渲染共用） */
+export function draftKindLabel(draftKind: "ai_optimized_listing" | "structured_listing_draft" | "safe_fact_draft" | undefined): string {
+  if (draftKind === "ai_optimized_listing") return "当前草稿：AI 优化草稿 · 已按卖点策略生成运营优化稿";
+  if (draftKind === "structured_listing_draft") return "当前草稿：结构化草稿 · 安全事实草稿，不是运营优化版";
+  if (draftKind === "safe_fact_draft") return "当前草稿：基础草稿 · 安全事实草稿，不是运营优化版";
+  return "当前草稿：已有草稿";
+}
+
 export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSummary | null }) {
   if (!draft) return null;
   // R4 契约：先检查 providerAttempted 显式值（true/false 优先于数组空判断）
@@ -136,6 +156,7 @@ export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSumma
   const hasBasisEntries =
     (draft.usedFactTrace ?? []).length > 0
     || (draft.usedKeywordTrace ?? []).length > 0
+    || (draft.searchOnlyKeywordTrace ?? []).length > 0
     || (draft.researchReferenceTrace ?? []).length > 0
     || (draft.humanReviewClaims ?? []).length > 0;
   // A. 历史草稿：providerAttempted 未定义 且 无新版依据字段 → 诚实空态；显式 false 不得判为历史
@@ -168,10 +189,20 @@ export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSumma
       ) : null}
       {(draft.usedKeywordTrace ?? []).length > 0 ? (
         <div className="mt-2">
-          <p className="text-[11px] font-semibold text-slate-500">最终文案实际采用的关键词</p>
+          <p className="text-[11px] font-semibold text-slate-500">标题和正文实际采用的关键词</p>
           <div className="mt-1 flex flex-wrap gap-1">
             {(draft.usedKeywordTrace ?? []).map((keyword, index) => (
               <span key={index} className="rounded-full border border-teal-100 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">{keyword}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {(draft.searchOnlyKeywordTrace ?? []).length > 0 ? (
+        <div className="mt-2">
+          <p className="text-[11px] font-semibold text-slate-500">仅用于搜索词，未进入正文</p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {(draft.searchOnlyKeywordTrace ?? []).map((keyword, index) => (
+              <span key={index} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">{keyword}</span>
             ))}
           </div>
         </div>
@@ -193,6 +224,35 @@ export function ListingGenerationBasis({ draft }: { draft: ListingDraftSafeSumma
         </div>
       ) : null}
       <p className="mt-2 text-[11px] text-slate-400">研究资料只用于定位和表达参考；Listing 硬属性只允许来自已确认商品事实。</p>
+    </div>
+  );
+}
+
+/** ListingPlan.v2：紧凑卖点策略区（3-5 张卡片；无计划历史草稿诚实空态） */
+export function ListingSellingPointStrategy({ plan }: { plan: ListingDraftSafeSummary["sellingPointPlan"] }) {
+  if (!plan || plan.length === 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3" data-testid="listing-selling-points">
+        <p className="text-xs font-bold text-slate-900">卖点策略</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">这份历史草稿没有保存卖点策略，重新生成后可查看。</p>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/40 p-3" data-testid="listing-selling-points">
+      <p className="text-xs font-bold text-slate-900">卖点策略</p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {plan.map((p, index) => (
+          <div key={index} className="rounded-lg border border-slate-200 bg-white p-2.5">
+            <p className="text-[11px] font-semibold text-teal-700">{p.role}{p.claimMode === "review" ? "（需人工确认）" : ""}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-700"><span className="font-semibold text-slate-500">买家关心：</span>{p.shopperNeed}</p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-700"><span className="font-semibold text-slate-500">准备表达：</span>{p.shopperAngle}</p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-700"><span className="font-semibold text-slate-500">使用事实：</span>{p.factLabels.join("、")}</p>
+            <p className="mt-0.5 text-xs leading-5 text-slate-700"><span className="font-semibold text-slate-500">关键词：</span>{p.keywordIds.length > 0 ? p.keywordIds.join("、") : "无"}</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-rose-600"><span className="font-semibold">不能写：</span>{p.cannotSay.slice(0, 3).join("、")}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -757,11 +817,11 @@ export function ListingHandoffSection({
             <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
               <span className="rounded-full bg-slate-100 px-2.5 py-1">
                 {draft?.draftKind === "ai_optimized_listing"
-                  ? "当前草稿：AI 优化草稿"
+                  ? "当前草稿：AI 优化草稿 · 已按卖点策略生成运营优化稿"
                   : draft?.draftKind === "structured_listing_draft"
-                    ? "当前草稿：结构化草稿"
+                    ? "当前草稿：结构化草稿 · 安全事实草稿，不是运营优化版"
                     : draft?.draftKind === "safe_fact_draft"
-                      ? "当前草稿：基础草稿"
+                      ? "当前草稿：基础草稿 · 安全事实草稿，不是运营优化版"
                       : "当前草稿：已有草稿"}
               </span>
               <span className="text-xs font-normal text-slate-500">
@@ -797,6 +857,7 @@ export function ListingHandoffSection({
             ) : null}
             {/* R2：生成依据（服务端安全结果为唯一来源；前端只展示不重判） */}
             <ListingGenerationBasis draft={draft} />
+          <ListingSellingPointStrategy plan={draft?.sellingPointPlan} />
             {draft?.listingUnqualified ? (
               <div data-testid="unqualified-listing-draft" className="mt-1 rounded-lg border border-rose-200 bg-rose-50/70 px-3 py-2" role="alert">
                 <p className="text-sm font-semibold text-rose-800">暂无合格草稿</p>

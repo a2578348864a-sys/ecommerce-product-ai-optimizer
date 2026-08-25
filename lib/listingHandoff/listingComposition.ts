@@ -136,7 +136,7 @@ function composeSpecSentences(input: ListingGenerationInput): string[] {
   const color = englishRenderingOf(input, "color_or_variant");
   const subject = type;
   // 多样化帧：同一 subject 只允许出现 1 次；其余用无主语帧，避免同模板句互相重复（0.75）
-  if (brand) out.push("The " + subject + " with " + brand + " for everyday use.");
+  if (brand) out.push("The " + subject + " with the " + brand + " brand for everyday use.");
   if (material) out.push("Available in " + material + " material for this " + subject + ".");
   if (capacity) out.push("Fits standard " + capacity + " in this " + subject + " for easy use.");
   if (color) out.push("The " + color + " option matches this " + subject + " for everyday use.");
@@ -144,6 +144,10 @@ function composeSpecSentences(input: ListingGenerationInput): string[] {
 
 }
 /** 句尾归一：渲染值可能自带英文句号（.），不重复追加 */
+
+function planWordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
 function endWithPeriod(s: string): string {
   return s.replace(/[.\s]+$/, "") + ".";
 }
@@ -328,8 +332,10 @@ function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan)
     const factValues = input.productFacts.map((f) => f.value.toLocaleLowerCase()).join(" ");
     const keywordCoveredByFacts = keywordTokens.length > 0 && keywordTokens.every((w) => factValues.includes(w));
     const alreadyCovered = keywordTokens.every((w) => leadTokens.includes(w));
-    if (keywordCoveredByFacts && !alreadyCovered && lead.length + keyword.length <= 110) {
-      lead = lead ? `${lead} ${keyword}` : keyword;
+    // 计划关键词：全词由已确认事实证明（事实安全）→ 允许自然进入标题一次
+    const keywordSafeByFacts = keywordCoveredByFacts && !alreadyCovered && lead.length + keyword.length <= 110;
+    if (keywordSafeByFacts) {
+      lead = lead ? lead + " " + keyword : keyword;
     } else if (lead.length === 0) {
       lead = keyword;
     }
@@ -353,9 +359,74 @@ function englishRenderingOf(input: ListingGenerationInput, field: string): strin
   return v !== null && !HAS_CJK.test(v) && !HAS_CJK_PUNCT.test(v) ? v : null;
 }
 
+/**
+ * v2：按 plan.bulletPlans 逐条生成（每个 bulletPlan 唯一角色 → 有界安全句式）。
+ * 每条必须锚定 bulletPlan.featureFactIds 的确认事实值；
+ * 使用 plan.keywordIds 至多自然带入 1 个计划关键词（词内不重复、不堆砌）。
+ * 安全：全部句式只使用 Claim Evidence 允许词（the/this/product/option/with/for/easy/use/everyday/cleaning/fits/keeps…）。
+ */
+const V2_ROLE_FRAMES: Record<string, (v: string, t: string) => string> = {
+  // 核心结果：功能事实 → 日常价值
+  core_outcome: (v, t) => "The " + v + " option fits the everyday use of this " + t + ".",
+  // 痛点缓解：随附组件 → 使用便利
+  pain_relief: (v, t) => "The " + v + " pairs with the " + t + " for everyday use.",
+  // 使用场景：操作方式 → 标准场景
+  use_scenario: (v, t) => "Standard use with the " + v + " option for this " + t + ".",
+  // 易用：清洁保养 → 打理简单
+  ease_of_use: (v, t) => "Easy cleaning matches the " + v + " option for this " + t + ".",
+  // 证据/匹配：规格 → 选择依据
+  proof_or_fit: (v, t) => "Available construction with the " + v + " of this " + t + ".",
+};
+
+
+/** 无确认事实支持/高风险营销表述（与 runtimeSkill 同源；防止 leakproof/保温时长/认证等进入正式五点） */
+const V2_RISKY_WORDS = /(?:leakproof|bpa\s*[- ]?free|guaranteed|100%|fda|ce certified|best seller|self\s*[- ]?sealing|luxury|premium|military|medically|keeps\s*cold|keeps\s*warm|hours\s*cold|pairs with|feel like|safe\s*[- ]?for|non\s*[- ]?to\s*[- ]?xic|spill\s*[- ]?proof|never\s*leaks|no\s*leaks|shockproof|crushproof|slashproof|military\s*[- ]?grade)/i;
+
+function planBulletValue(input: ListingGenerationInput, factIds: string[]): string {
+  for (const id of factIds) {
+    const f = input.productFacts.find((x) => x.field === id);
+    if (!f || !f.value.trim()) continue;
+    // English rendering 优先（中文 facts 经渲染转英文；渲染失败 → 原值仅当无 CJK 才可用）
+    const rendered = renderingOf(input, id);
+    const candidate = rendered && !HAS_CJK.test(rendered) && !HAS_CJK_PUNCT.test(rendered) ? rendered : "";
+    if (!candidate) continue;
+    if (V2_RISKY_WORDS.test(candidate)) continue;
+    return candidate;
+  }
+  return "";
+}
+
 function composeOptimizedBullets(input: ListingGenerationInput, plan: ListingPlan): string[] {
-  // R6：结构化兜底与 AI 路径同质——只使用安全模板完整句（事实→买家价值/场景），拒绝属性碎片
-  return composeBullets(input);
+  // v2：计划必须真实驱动生成——绝不无差别退回 composeBullets。
+  const typeLabel = typeLabelOf(input);
+  // 关键词只出现在标题（主词一次）与 Keywords 字段；正文不内嵌关键词词面
+  // （市场词可能越过 Claim Evidence 允许表 → 保 claim 安全零风险；"最多自然使用"允许 0–2，取 0 最稳）
+  const kwByIndex = new Map<number, string>();
+  const bullets: string[] = [];
+  const usedKws = new Set<string>();
+  plan.bulletPlans.forEach((bp, index) => {
+    const value = planBulletValue(input, bp.featureFactIds);
+    if (!value) return;
+    const frame = V2_ROLE_FRAMES[bp.role ?? "core_outcome"] ?? V2_ROLE_FRAMES.core_outcome;
+    let sentence = frame(value, typeLabel);
+    // 至多自然带入 1 个计划关键词（仅当该词尚未被引用且不在句内重复）
+    const kw = kwByIndex.get(index);
+    if (kw && !usedKws.has(kw.toLowerCase()) && sentence.toLowerCase().indexOf(kw.toLowerCase()) === -1) {
+      // 关键词追加在句末前（自然收尾）；防止词内重复与超长
+      const trimmed = sentence.replace(/.$/, "");
+      if (trimmed.length + kw.length + 3 <= 200) {
+        sentence = trimmed + " " + kw + ".";
+        usedKws.add(kw.toLowerCase());
+      }
+    }
+    const wc = planWordCount(sentence);
+    if (wc >= 8 && wc <= 30 && /[.!?]$/.test(sentence)) bullets.push(sentence);
+  });
+  // 计划不足以产出 ≥3 条合格句时，回退既有安全模板路径（旧行为保持；不混合导致重复）
+  if (bullets.length < 3) {
+    return composeBullets(input);
+  }
+  return bullets.slice(0, 5);
 }
 function composeOptimizedDescription(input: ListingGenerationInput): string {
   // R6：与默认描述同规则——安全模板完整句（身份+事实句+规格句），禁止碎片拼接
@@ -391,6 +462,10 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
   const type = valueOf(input, "product_type");
   // 品牌==类型（THERMOS THERMOS）不得生成词内重复组合词
   if (brand && type && brand.toLowerCase() !== type.toLowerCase() && !keywords.includes(`${brand} ${type}`)) keywords.push(`${brand} ${type}`);
+  const materialV = valueOf(input, "material");
+  const capacityV = valueOf(input, "capacity");
+  if (type && materialV && !keywords.includes(materialV + " " + type) && keywords.length < 12) keywords.push(materialV + " " + type);
+  if (type && capacityV && !keywords.includes(capacityV + " " + type) && keywords.length < 12) keywords.push(capacityV + " " + type);
   return {
     keywords: keywords.slice(0, 12),
     backendSearchTerms: brief.backendSearchTerms,

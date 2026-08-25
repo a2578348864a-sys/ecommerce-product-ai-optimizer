@@ -269,9 +269,11 @@ describe("v2.2.14 无 Keyword Brief AI 路径", () => {
       });
       expect(calls).toBe(1);
       expect(result.listingSaved).toBe(true);
-      expect(result.draft?.draftKind).toBe("ai_optimized_listing");
+      // ListingPlan.v2 P4：无有效关键词方案（needs_keywords）即使 Provider 成功也不得 ai_optimized
+      expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
       expect(result.draft?.providerAttempted).toBe(true);
       expect(result.draft?.providerSucceeded).toBe(true);
+      expect(result.draft?.fallbackApplied).toBe(true);
       // AI 自造 backend terms 被服务端丢弃
       expect(result.draft?.keywords).toEqual([]);
       expect(result.draft?.backendSearchTerms).toEqual([]);
@@ -335,7 +337,9 @@ describe("v2.2.16 BrüMate Listing Brief Golden Case", () => {
       expect(captured.keywordBrief).toBeNull();
       expect(captured.facts.map((fact) => fact.value)).not.toContain(listingBrief.coreSellingPoint);
       expect(result.listingSaved).toBe(true);
-      expect(result.draft?.draftKind).toBe("ai_optimized_listing");
+      // ListingPlan.v2 P4：无有效关键词方案（needs_keywords）即使 Provider 成功也不得 ai_optimized
+      expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
+      expect(result.draft?.fallbackApplied).toBe(true);
       expect(result.draft?.titles[0]).not.toBe("Brand: BrüMate");
       expect(result.draft?.description).not.toBe(result.draft?.titles[0]);
       // P1-2：AI 成功输出必须通过真实 Runtime 合同 + 事实锚点 + 品牌单次 + 5 点 3-5 条 × 8-30 词 + 无未确认承诺

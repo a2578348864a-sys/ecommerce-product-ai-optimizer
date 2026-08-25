@@ -248,6 +248,7 @@ const FULL_DRAFT = {
     { label: "容量", value: "10oz" },
   ],
   usedKeywordTrace: ["THERMOS", "kids water bottle"],
+  searchOnlyKeywordTrace: ["bento box for kids", "lunch box kids"],
   researchReferenceTrace: ["主题：真空保温结构 — 用户常问保温时长（12 条评论）"],
   humanReviewClaims: ["The dishwasher-safe bottle and lid make everyday cleaning simple and convenient."],
   keywordPlanSource: "manual",
@@ -264,7 +265,9 @@ describe("R2 Listing 生成依据（真实行为 fixture）", () => {
     const text = documentInstance.body.textContent;
     // 四组标题
     expect(text).toContain("最终文案实际命中的已确认商品事实");
-    expect(text).toContain("最终文案实际采用的关键词");
+    expect(text).toContain("标题和正文实际采用的关键词");
+      expect(text).toContain("仅用于搜索词，未进入正文");
+      expect(text).toContain("bento box for kids");
     expect(text).toContain("生成时提供给 AI 的研究参考");
     expect(text).toContain("待人工确认的表达");
     // 具体内容（不是数量、不是固定说明）
@@ -293,7 +296,7 @@ describe("R2 Listing 生成依据（真实行为 fixture）", () => {
 
   it("历史草稿无依据字段 → 诚实空态「这份历史草稿没有保存生成依据，重新生成后可查看。」", async () => {
     const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
-    const legacyDraft = { ...FULL_DRAFT, providerAttempted: undefined, usedFactTrace: [], usedKeywordTrace: [], researchReferenceTrace: [], humanReviewClaims: [] };
+    const legacyDraft = { ...FULL_DRAFT, providerAttempted: undefined, usedFactTrace: [], usedKeywordTrace: [], searchOnlyKeywordTrace: [], researchReferenceTrace: [], humanReviewClaims: [] };
     await act(async () => {
       root = createRoot(container as unknown as Element);
       root.render(createElement(ListingGenerationBasis, { draft: legacyDraft as never }));
@@ -347,7 +350,7 @@ describe("R3 Listing AI 来源口径（providerAttempted 三态）", () => {
   });
   it("A. 历史草稿缺字段 → 历史空态（保持 R2 行为）", async () => {
     const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
-    const legacyDraft = { ...FULL_DRAFT, providerAttempted: undefined, usedFactTrace: [], usedKeywordTrace: [], researchReferenceTrace: [], humanReviewClaims: [] };
+    const legacyDraft = { ...FULL_DRAFT, providerAttempted: undefined, usedFactTrace: [], usedKeywordTrace: [], searchOnlyKeywordTrace: [], researchReferenceTrace: [], humanReviewClaims: [] };
     await act(async () => {
       root = createRoot(container as unknown as Element);
       root.render(createElement(ListingGenerationBasis, { draft: legacyDraft as never }));
@@ -370,6 +373,7 @@ describe("R4 P1-4：三态判断先检查 providerAttempted 显式值（真实�
       fallbackReason: "AI 服务暂不可用，已保留安全草稿。",
       usedFactTrace: [],
       usedKeywordTrace: [],
+      searchOnlyKeywordTrace: [],
       researchReferenceTrace: [],
       humanReviewClaims: [],
     };
@@ -387,7 +391,7 @@ describe("R4 P1-4：三态判断先检查 providerAttempted 显式值（真实�
   });
   it("providerAttempted 未定义 + 无新字段 → 历史草稿", async () => {
     const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
-    const legacyDraft = { ...FULL_DRAFT, providerAttempted: undefined, usedFactTrace: [], usedKeywordTrace: [], researchReferenceTrace: [], humanReviewClaims: [] };
+    const legacyDraft = { ...FULL_DRAFT, providerAttempted: undefined, usedFactTrace: [], usedKeywordTrace: [], searchOnlyKeywordTrace: [], researchReferenceTrace: [], humanReviewClaims: [] };
     await act(async () => {
       root = createRoot(container as unknown as Element);
       root.render(createElement(ListingGenerationBasis, { draft: legacyDraft as never }));
@@ -398,3 +402,141 @@ describe("R4 P1-4：三态判断先检查 providerAttempted 显式值（真实�
     expect(text).not.toContain("本次未调用 AI");
   });
 });
+
+/* ── ListingPlan.v2 卖点策略三态（真实 DOM） ── */
+
+const PLAN_CARDS = [
+  {
+    role: "core_outcome",
+    shopperNeed: "买家担心保温效果与午餐适口性",
+    shopperAngle: "强调真空保温的事实价值",
+    factLabels: ["功能特性"],
+    keywordIds: ["kw:primary", "kw:supporting:bento box for kids"],
+    claimMode: "verified",
+    cannotSay: ["leakproof", "12 hours"],
+  },
+  {
+    role: "ease_of_use",
+    shopperNeed: "买家希望饭后打理简单",
+    shopperAngle: "强调洗碗机清洗便利",
+    factLabels: ["清洁保养"],
+    keywordIds: ["kw:supporting:kids lunch jar"],
+    claimMode: "review",
+    cannotSay: ["BPA-free"],
+  },
+];
+
+describe("ListingPlan.v2 卖点策略（真实 DOM 三态）", () => {
+  it("A. 历史草稿无 sellingPointPlan → 诚实空态文案", async () => {
+    const { ListingSellingPointStrategy } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(ListingSellingPointStrategy, { plan: undefined }));
+    });
+    await flush();
+    const text = documentInstance.body.textContent;
+    expect(text).toContain("卖点策略");
+    expect(text).toContain("这份历史草稿没有保存卖点策略，重新生成后可查看。");
+    expect(text).not.toContain("采购者关心");
+  });
+
+  it("B. structured/safe：计划卡 + 实事标签 + 不能写 + 无内部字段", async () => {
+    const { ListingSellingPointStrategy } = await import("@/components/listing-handoff/ListingHandoffSection");
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(createElement(ListingSellingPointStrategy, { plan: PLAN_CARDS as never }));
+    });
+    await flush();
+    const text = documentInstance.body.textContent;
+    expect(text).toContain("卖点策略");
+    expect(text).toContain("买家关心");
+    expect(text).toContain("准备表达");
+    expect(text).toContain("使用事实");
+    expect(text).toContain("关键词");
+    expect(text).toContain("不能写");
+    expect(text).toContain("leakproof");
+    expect(text).toContain("12 hours");
+    const raw = JSON.stringify({ plan: PLAN_CARDS });
+    expect(raw).not.toContain("runId");
+    expect(raw).not.toContain("Hash");
+    expect(text).not.toContain("usedFactIds");
+  });
+});
+
+describe("ListingPlan.v2 草稿类型标签（draftKindLabel 三态）", () => {
+  it("ai_optimized → 已按卖点策略生成运营优化稿", async () => {
+    const { draftKindLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(draftKindLabel("ai_optimized_listing")).toContain("已按卖点策略生成运营优化稿");
+    expect(draftKindLabel("ai_optimized_listing")).not.toContain("安全事实草稿");
+  });
+
+  it("structured → 安全事实草稿，不是运营优化版", async () => {
+    const { draftKindLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(draftKindLabel("structured_listing_draft")).toContain("安全事实草稿，不是运营优化版");
+    expect(draftKindLabel("structured_listing_draft")).not.toContain("已按卖点策略生成运营优化稿");
+  });
+
+  it("safe_fact → 安全事实草稿，不是运营优化版", async () => {
+    const { draftKindLabel } = await import("@/components/listing-handoff/ListingHandoffSection");
+    expect(draftKindLabel("safe_fact_draft")).toContain("安全事实草稿，不是运营优化版");
+  });
+});
+
+
+  describe("ListingPlan.v2 关键词采用三态（正文采用 / 仅搜索词 诚实分离）", () => {
+    it("红：两组中文标题同时渲染；正文采用组不含搜索词；无内部 id", async () => {
+      const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
+      await act(async () => {
+        root = createRoot(container as unknown as Element);
+        root.render(createElement(ListingGenerationBasis, { draft: FULL_DRAFT as never }));
+      });
+      await flush();
+      const text = documentInstance.body.textContent;
+      expect(text).toContain("标题和正文实际采用的关键词");
+      expect(text).toContain("仅用于搜索词，未进入正文");
+      expect(text).toContain("THERMOS");
+      expect(text).toContain("bento box for kids");
+      // 搜索词不得被当作正文采用展示（bento box 不得出现在正文采用组左侧标题段内）——由分组标题隔离保证
+      const usedSection = text.slice(text.indexOf("标题和正文实际采用的关键词"), text.indexOf("仅用于搜索词，未进入正文"));
+      expect(usedSection).toContain("THERMOS");
+      expect(usedSection).not.toContain("bento box for kids");
+      // 无内部 id
+      expect(text).not.toContain("kw:");
+      expect(text).not.toContain("runId");
+      expect(text).not.toContain("usedKeywordIds");
+    });
+
+    it("红：仅搜索词（正文采用空）→ 显示诚实空态，不把 search-only 称为正文采用", async () => {
+      const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
+      const onlySearchDraft = {
+        ...FULL_DRAFT,
+        usedKeywordTrace: [],
+        searchOnlyKeywordTrace: ["bento box for kids", "lunch box kids", "kids lunch box"],
+      };
+      await act(async () => {
+        root = createRoot(container as unknown as Element);
+        root.render(createElement(ListingGenerationBasis, { draft: onlySearchDraft as never }));
+      });
+      await flush();
+      const text = documentInstance.body.textContent;
+      expect(text).toContain("仅用于搜索词，未进入正文");
+      expect(text).toContain("bento box for kids");
+      // 不得出现「正文实际采用」字样或把搜索词放进正文采用组
+      expect(text).not.toContain("标题和正文实际采用的关键词");
+    });
+
+    it("红：两组均空 → 关键词区整体诚实空态（不渲染采用词组 nor 仅搜索词组）", async () => {
+      const { ListingGenerationBasis } = await import("@/components/listing-handoff/ListingHandoffSection");
+      const emptyKwDraft = { ...FULL_DRAFT, usedKeywordTrace: [], searchOnlyKeywordTrace: [] };
+      await act(async () => {
+        root = createRoot(container as unknown as Element);
+        root.render(createElement(ListingGenerationBasis, { draft: emptyKwDraft as never }));
+      });
+      await flush();
+      const text = documentInstance.body.textContent;
+      expect(text).not.toContain("标题和正文实际采用的关键词");
+      expect(text).not.toContain("仅用于搜索词，未进入正文");
+      // 基本面依然存在（事实组照常）
+      expect(text).toContain("最终文案实际命中的已确认商品事实");
+    });
+  });

@@ -18,7 +18,7 @@ import { classifyClaimTier } from "@/lib/listingHandoff/listingClaimTier";
 import { buildDeterministicListingPackDraft, composeBullets as composeSafeBullets, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
-import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
+import { buildListingPlan, type ListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { parseListingKeywordBrief, buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
 import { buildAutoKeywordPlan } from "@/lib/listingHandoff/listingAutoKeywordPlan";
@@ -64,6 +64,8 @@ export type ListingDraftSafeSummary = {
   usedFactTrace?: Array<{ label: string; value: string }>;
   /** R2：实际采用的关键词文本（由 usedKeywordIds + brief 确定性映射） */
   usedKeywordTrace?: string[];
+  /** ListingPlan.v2：仅进入搜索词字段（keywords/backendSearchTerms）、未进入正文的关键词（有界；与 usedKeywordTrace 互斥） */
+  searchOnlyKeywordTrace?: string[];
   /** R2：生成时提供给 AI 的研究参考（有界、业务语言、去内部前缀） */
   researchReferenceTrace?: string[];
   /** 服务端三级判定保留的低风险表达（待人工确认；有界返回，不暴露内部字段） */
@@ -86,6 +88,16 @@ export type ListingDraftSafeSummary = {
   listingUnqualified?: boolean;
   /** R6：被拒绝的具体句子 + 中文原因（有界 ≤5，无内部 id/hash/runId） */
   rejectedListingSentences?: Array<{ text: string; reason: string }>;
+  /** ListingPlan.v2：卖点策略（安全摘要，公开 DTO；无计划的历史草稿为 undefined） */
+  sellingPointPlan?: Array<{
+    role: string;
+    shopperNeed: string;
+    shopperAngle: string;
+    factLabels: string[];
+    keywordIds: string[];
+    claimMode: string;
+    cannotSay: string[];
+  }>;
 };
 
 export type ListingGenerateResult = {
@@ -281,6 +293,11 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
           .map((item) => item.trim().slice(0, 120))
           .slice(0, 20)
       : undefined,
+    searchOnlyKeywordTrace: Array.isArray(value.searchOnlyKeywordTrace)
+      ? value.searchOnlyKeywordTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+          .map((item) => item.trim().slice(0, 120))
+          .slice(0, 20)
+      : undefined,
     researchReferenceTrace: value.providerAttempted === true
       ? (Array.isArray(value.researchReferenceTrace)
           ? value.researchReferenceTrace.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
@@ -317,6 +334,21 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     reviewChecklist: safeStringArray(value.reviewChecklist),
     blockedClaims: safeStringArray(value.blockedClaims),
     complianceWarnings: safeStringArray(value.complianceWarnings),
+    sellingPointPlan: Array.isArray(value.sellingPointPlan)
+      ? value.sellingPointPlan
+          .filter((item): item is { role: string; shopperNeed: string; shopperAngle: string; factLabels: string[]; keywordIds: string[]; claimMode: string; cannotSay: string[] } =>
+            isRecord(item) && typeof item.role === "string" && typeof item.shopperNeed === "string" && typeof item.shopperAngle === "string" && typeof item.claimMode === "string" && Array.isArray(item.factLabels) && Array.isArray(item.keywordIds) && Array.isArray(item.cannotSay))
+          .map((item) => ({
+            role: String(item.role).slice(0, 40),
+            shopperNeed: String(item.shopperNeed).slice(0, 160),
+            shopperAngle: String(item.shopperAngle).slice(0, 160),
+            factLabels: item.factLabels.filter((x): x is string => typeof x === "string").slice(0, 5),
+            keywordIds: item.keywordIds.filter((x): x is string => typeof x === "string").slice(0, 3),
+            claimMode: String(item.claimMode).slice(0, 20),
+            cannotSay: item.cannotSay.filter((x): x is string => typeof x === "string").slice(0, 5),
+          }))
+          .slice(0, 5)
+      : undefined,
   };
 }
 
@@ -360,6 +392,74 @@ export type ListingGenerationOptions = {
  * 阶段C（锁内）：基于锁内快照二次验证（handoff active/revision/fingerprint/research）→
  *                幂等确认 → Claim Filter → 原子保存 aiListingPackSnapshot + listingHandoffBinding。
  */
+/** ListingPlan.v2：AI 输出与计划绑定校验（唯一入口；复用现有 Runtime 合同，不复制阈值） */
+function aiBulletsBindToPlan(
+  plan: ListingPlan,
+  bullets: string[],
+  facts: Array<{ field: string; label: string; value: string }>,
+): { ok: boolean; issues: string[] } {
+  if (plan.status !== "ready") return { ok: false, issues: ["plan.status 非 ready"] };
+  const used = plan.bulletPlans.length;
+  if ((bullets ?? []).length !== used) return { ok: false, issues: ["bullets 数量与 bulletPlans 不一致：" + bullets.length + " vs " + used] };
+  const issues: string[] = [];
+  bullets.forEach((b, idx) => {
+    const bp = plan.bulletPlans[idx];
+    if (!bp) return;
+    const lower = b.toLowerCase();
+    const factHit = bp.featureFactIds.some((fid) => {
+      const f = facts.find((x) => x.field === fid);
+      return f && f.value.trim() && lower.includes(f.value.trim().toLowerCase());
+    });
+    if (!factHit) issues.push("bullet " + (idx + 1) + " 未命中其计划事实");
+    for (const bad of bp.cannotSay ?? []) {
+      if (bad && lower.includes(bad.toLowerCase())) issues.push("bullet " + (idx + 1) + " 含 cannotSay: " + bad);
+    }
+  });
+  return { ok: issues.length === 0, issues };
+}
+
+/** ListingPlan.v2：有效方案关键词集合（主词 → 辅助词 → 后台搜索词；大小写不敏感去重、保序） */
+function schemeKeywordList(plan: ListingPlan): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (kw: string | null | undefined) => {
+    const k = (kw ?? "").trim();
+    if (!k) return;
+    const key = k.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(k);
+  };
+  push(plan.primaryKeyword);
+  for (const s of plan.supportingKeywords ?? []) push(s);
+  for (const b of plan.backendSearchTerms ?? []) push(b);
+  return out;
+}
+
+/** ListingPlan.v2：关键词采用三态（与“计划关键词”分离，公开 DTO）——
+ * usedKeywordTrace：仅统计最终 title/bullets/description 中真实出现的有效方案关键词（不扫描 keywords/搜索词字段）；
+ * searchOnlyKeywordTrace：仅统计进入最终 keywords/backendSearchTerms 字段、但在 title/bullets/description 未出现的关键词；
+ * 两者大小写不敏感、保序去重、有界(20)、互斥；无有效方案（无 primaryKeyword）→ 均空。
+ */
+export function deriveKeywordAdoptionTrace(
+  plan: ListingPlan | null,
+  bodyTexts: string[],
+  searchFieldTexts: string[],
+): { usedKeywordTrace: string[]; searchOnlyKeywordTrace: string[] } {
+  if (!plan || !plan.primaryKeyword) return { usedKeywordTrace: [], searchOnlyKeywordTrace: [] };
+  const scheme = schemeKeywordList(plan);
+  const body = bodyTexts.join(" ").toLowerCase();
+  const searchSet = new Set(searchFieldTexts.map((s) => s.trim().toLowerCase()).filter(Boolean));
+  const usedKeywordTrace: string[] = [];
+  const searchOnlyKeywordTrace: string[] = [];
+  for (const kw of scheme) {
+    const key = kw.toLowerCase();
+    if (body.includes(key)) usedKeywordTrace.push(kw);
+    else if (searchSet.has(key)) searchOnlyKeywordTrace.push(kw);
+  }
+  return { usedKeywordTrace: usedKeywordTrace.slice(0, 20), searchOnlyKeywordTrace: searchOnlyKeywordTrace.slice(0, 20) };
+}
+
 export async function generateListingDraftFromHandoff(
   taskId: string,
   context: AccessContext,
@@ -594,6 +694,7 @@ export async function generateListingDraftFromHandoff(
         keywordBrief: effectiveKeywordBrief,
       });
       const plan = buildListingPlan(generationInput, effectiveKeywordBrief);
+      // 与既有语义保持一致（v2214 无 Brief AI 路径为既定行为；关键词有效性在输出端约束 keywords/backendTerms）
       const copyReady = readiness.copyReady && plan.planQuality === "optimized";
       const keywordReady = readiness.keywordReady;
       let finalDraft: Record<string, unknown> = safeDraft;
@@ -650,7 +751,9 @@ export async function generateListingDraftFromHandoff(
             description: optimized.description,
             keywords: dedupeTerms(optimizedKeywords),
             backendSearchTerms: dedupeTerms(optimized.backendSearchTerms),
-            riskNotes: ["结构化草稿基于已确认事实生成；所有表述仍需人工复核。"],
+            riskNotes: effectiveKeywordBrief
+              ? ["结构化草稿基于已确认事实生成；所有表述仍需人工复核。"]
+              : ["结构化草稿基于已确认事实生成；未进行关键词优化，所有表述仍需人工复核。"],
             reviewChecklist: ["请人工核对事实、表达与搜索词后完善。"],
           };
           const optimizedSchema = validateAiListingPackDraft(optimizedDraft);
@@ -804,8 +907,10 @@ export async function generateListingDraftFromHandoff(
             prohibitedClaims: generationInput.prohibitedClaims,
             customClaimLabel: "Handoff prohibited claim",
           }) : null;
+          // ListingPlan.v2：Claim Evidence 校验正文（keywords 属 SEO 引用；已由 filterKeywordsByClaimEvidence 过滤，
+          // 未通过者只进入搜索词字段，不作为正文声明，不因 SEO 词拒绝整稿）
           const aiEvidence = aiFiltered
-            ? verifyListingClaims(aiFiltered.cleaned, generationInput)
+            ? verifyListingClaims({ ...aiFiltered.cleaned, keywords: [] }, generationInput)
             : null;
           // 轮 16 末：服务端门禁 = Claim Evidence + 三级判定交集——
           // unsupported 中属于 blocked（无事实硬属性/承诺）才失败；review（依附已确认功能）降为人工确认。
@@ -815,6 +920,9 @@ export async function generateListingDraftFromHandoff(
               )
             : null;
           const claimsAcceptable = Boolean(aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0);
+          // ListingPlan.v2：关键词不得绕过 Claim Evidence；unsupported 中属于 keyword 段的词只保留在搜索词字段（backendSearchTerms）
+          const keywordUnsupported = new Set((aiEvidence?.unsupportedClaims ?? []).filter((u) => u.text.split(" ").length > 1).map((u) => u.text.toLowerCase()));
+          const claimPassingKeywords = (fallbackKeywords ?? []).filter((k: string) => !keywordUnsupported.has(String(k).toLowerCase()));
           const aiRuntimeContract = aiFiltered
             ? validateRuntimeQualityContract({
                 title: safeTitle,
@@ -826,7 +934,9 @@ export async function generateListingDraftFromHandoff(
               })
             : null;
           const aiQuality = aiFiltered && claimsAcceptable && aiRuntimeContract?.ok ? { ok: true, blockingIssues: [], issues: [], advisories: [] } : { ok: false, blockingIssues: (aiRuntimeContract?.issues ?? []), issues: (aiRuntimeContract?.issues ?? []), advisories: [] };
-          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok) {
+          const planBind = aiBulletsBindToPlan(plan, safeBullets, generationInput.productFacts);
+          const planBindAcceptable = planBind.ok;
+          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable) {
             // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
             draftKind = "ai_optimized_listing";
             finalDraft = {
@@ -839,10 +949,15 @@ export async function generateListingDraftFromHandoff(
               ...(aiDraft.backendTermWarnings ? { backendTermWarnings: aiDraft.backendTermWarnings } : {}),
             };
             // 轮 16 收口：最终输出边界稳定去重（keywords/backendTerms，大小写不敏感）
-            finalDraft.keywords = dedupeTerms((finalDraft.keywords as string[] | undefined) ?? []);
+            finalDraft.keywords = dedupeTerms(claimPassingKeywords.length > 0 ? claimPassingKeywords : ((finalDraft.keywords as string[] | undefined) ?? []));
             finalDraft.backendSearchTerms = dedupeTerms((finalDraft.backendSearchTerms as string[] | undefined) ?? []);
             providerSucceeded = true;
           } else {
+            // ListingPlan.v2：Provider 是否成功如实反映调用结果；仅当 claim 硬失败时
+            // 保持既有语义 providerSucceeded=false（R3 契约）；plan 绑定拒绝而 claim 通过时置 true。
+            // claim 失败 = 采纳级：safeAiDraft 经 Claim Evidence 仍有 unsupported（不是原始 AI raw 文本被 tier 拦截）
+            const adoptedClaimFailed = aiEvidence !== null && !listingClaimsHaveEvidence(aiEvidence);
+            if (!adoptedClaimFailed) { providerSucceeded = true; }
             // 轮 16 收口：claim 失败 = 有内容被三级判定拦截（无依据硬属性/无锚点话术被移除）。
             // 纯结构/质量不达标（无内容被拦）按结构/质量回退；两者兼具优先报 claim。
             const contractFailed = aiRuntimeContract !== null && !aiRuntimeContract.ok;
@@ -878,15 +993,42 @@ export async function generateListingDraftFromHandoff(
       const keywordPlanSource: "manual" | "auto_suggested" | "none" = effectiveKeywordBrief
         ? (effectiveKeywordBrief.source === "auto_suggested" ? "auto_suggested" : "manual")
         : "none";
-      const draftSnapshot = {
+      const sellingPointPlan = plan.bulletPlans.slice(0, 5).map((bp) => ({
+        role: bp.role ?? "core_outcome",
+        shopperNeed: bp.shopperNeed ?? "",
+        shopperAngle: bp.shopperAngle,
+        factLabels: bp.featureFactIds.map((id) => {
+          const fact = generationInput.productFacts.find((f) => f.field === id);
+          return fact ? fact.label : id;
+        }),
+        keywordIds: bp.keywordIds ?? [],
+        claimMode: bp.claimMode ?? "verified",
+        cannotSay: bp.cannotSay ?? [],
+      }));
+      const safeDraftWithPlan = {
         ...finalDraft,
+        sellingPointPlan,
+      };
+      const draftSnapshot = {
+        ...safeDraftWithPlan,
         draftKind,
         providerAttempted,
         providerSucceeded,
         fallbackApplied,
         fallbackReason,
         keywordPlanSource,
-        usedKeywordTrace: deriveUsedKeywordTrace(finalDraft.usedKeywordIds as string[] | undefined, effectiveKeywordBrief),
+        ...deriveKeywordAdoptionTrace(
+          plan,
+          [
+            String((finalDraft.titles as unknown as string[] ?? [])[0] ?? ""),
+            ...((finalDraft.bullets as string[] | undefined) ?? []),
+            String(finalDraft.description ?? ""),
+          ],
+          [
+            ...(((finalDraft.keywords as string[] | undefined) ?? []).map((k) => String(k))),
+            ...(((finalDraft.backendSearchTerms as string[] | undefined) ?? []).map((k) => String(k))),
+          ],
+        ),
         researchReferenceTrace: providerAttempted
           ? deriveResearchReferenceTrace(generationInput.creativeContext)
           : undefined,

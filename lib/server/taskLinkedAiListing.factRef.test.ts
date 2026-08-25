@@ -137,16 +137,15 @@ async function saveBrief(taskId: string) {
   });
 }
 
+/** ListingPlan.v2 对齐夹具：bulletPlans=[functional_feature, care, material]（逐条命中计划事实；8-30 词；无 cannotSay/未确认性能/认证/时长） */
 const GENERIC_AI_OUTPUT = {
   title: "Owala 24 oz Stainless Steel Water Bottle, Blue",
   bullets: [
-    "The straw lid with push-open mechanism for everyday use.",
-    "Double-wall vacuum insulation keeps cold for hours in the bottle.",
-    "The dishwasher-safe removable parts for easy cleaning with water.",
-    "The Owala bottle in Blue for everyday use.",
-    "The Owala bottle with double-wall vacuum insulation for easy cleaning.",
+    "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+    "Easy cleaning matches the dishwasher-safe removable parts option for this Water Bottle.",
+    "Available construction with the Stainless Steel of this Water Bottle.",
   ],
-  description: "The Owala bottle with stainless steel and 24 oz for easy cleaning. The Owala bottle with the double-wall vacuum insulation for everyday use. The Owala bottle with the FreeSip straw for everyday use.",
+  description: "The Owala bottle with stainless steel and 24 oz for easy use. The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
   backendSearchTerms: ["vacuum flask"],
   humanReviewRequired: true,
 };
@@ -190,12 +189,55 @@ describe("R1.2 Fact Reference 预防性测试（模拟真实 LLM 行为，不调
     });
   }
 
-  it("合法 factId 原样返回 → PASS（ai_optimized_listing）", async () => {
+  it("合法 factId 原样返回 → PASS（ai_optimized_listing；计划对齐强断言）", async () => {
     const result = await generateWithAi("sandbox-r1-2-fact-ok", async () => ({
       ...GENERIC_AI_OUTPUT,
-      usedFactIds: ["functional_feature", "construction", "care", "material", "capacity", "brand", "product_type"],
+      usedFactIds: ["functional_feature", "care", "material"],
     }));
-    expect(result.draft?.draftKind).toBe("ai_optimized_listing");
+    const draft = result.draft!;
+    expect(draft.draftKind).toBe("ai_optimized_listing");
+    expect(draft.providerAttempted).toBe(true);
+    expect(draft.providerSucceeded).toBe(true);
+    expect(draft.fallbackApplied).toBe(false);
+    // 3 条正式五点，每条 8-30 词，逐条锚定计划事实（functional_feature / care / material）
+    const anchors = ["straw lid with push-open mechanism", "dishwasher-safe removable parts", "Stainless Steel"];
+    expect(draft.bullets.length).toBe(3);
+    for (const b of draft.bullets) {
+      const wc = b.trim().split(/\s+/).length;
+      expect(wc).toBeGreaterThanOrEqual(8);
+      expect(wc).toBeLessThanOrEqual(30);
+      expect(anchors.some((a) => b.toLowerCase().includes(a.toLowerCase()))).toBe(true);
+    }
+    // 正式字段无未确认内容（不得含旧夹具的 "keeps cold for hours"/FreeSip straw 等未确认话术）
+    const formal = [String(draft.titles[0] ?? ""), ...draft.bullets, String(draft.description ?? "")].join(" ").toLowerCase();
+    for (const banned of ["keeps cold", "hours", "leakproof", "12 hours", "bpa", "fda", "guaranteed", "freesip"]) {
+      expect(formal).not.toContain(banned);
+    }
+    // 事实引用/研究参考隔离：公开 DTO 不含内部 id / field / runId
+    const dump = JSON.stringify(draft);
+    expect(dump).not.toContain("usedFactIds");
+    expect(dump).not.toContain("\"field\"");
+    expect(dump).not.toContain("runId");
+    expect(dump).not.toContain("inputEvidenceHash");
+  });
+
+  it("调换两条事实顺序（忽略计划顺序）→ 绑定门拦截 → 回退，且正式字段无未确认内容", async () => {
+    const result = await generateWithAi("sandbox-r1-2-fact-reorder", async () => ({
+      ...GENERIC_AI_OUTPUT,
+      bullets: [
+        "Easy cleaning matches the dishwasher-safe removable parts option for this Water Bottle.",
+        "The straw lid with push-open mechanism keeps this Water Bottle easy to use.",
+        "Available construction with the Stainless Steel of this Water Bottle.",
+      ],
+      usedFactIds: ["functional_feature", "care", "material"],
+    }));
+    const draft = result.draft!;
+    expect(draft.draftKind).not.toBe("ai_optimized_listing");
+    expect(draft.fallbackApplied).toBe(true);
+    const formal = [String(draft.titles[0] ?? ""), ...draft.bullets, String(draft.description ?? "")].join(" ").toLowerCase();
+    for (const banned of ["keeps cold", "leakproof", "12 hours", "bpa", "fda", "guaranteed"]) {
+      expect(formal).not.toContain(banned);
+    }
   });
 
   it("轻微变形 factId → fail-closed", async () => {

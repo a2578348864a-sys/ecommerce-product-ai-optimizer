@@ -3,6 +3,7 @@ import { validateAiListingPackDraft } from "../aiListingDraft";
 import {
   buildDeterministicListingPackDraft,
   composeListingDraft,
+  composeOptimizedListingDraft,
 } from "./listingComposition";
 import {
   LISTING_COMPOSER_VERSION,
@@ -61,7 +62,7 @@ describe("V2.1.5 Listing Composition Layer", () => {
   it("C2. Bullets 为多事实组合（非字段打印）", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
     expect(d.bullets).toEqual([
-      "The Water Bottle with Owala for everyday use.",
+      "The Water Bottle with the Owala brand for everyday use.",
       "Available in Stainless Steel material for this Water Bottle.",
       "Fits standard 24 oz in this Water Bottle for easy use.",
       "The Out of the Blue option matches this Water Bottle for everyday use.",
@@ -226,5 +227,128 @@ describe("真实业务数据（THERMOS FUNTAINER Kids）全链路门禁", () => 
       usedFactIds: THERMOS_REAL_FACTS.map((f) => f.field),
     });
     expect(q.ok, JSON.stringify(q.issues)).toBe(true);
+  });
+});
+
+// ─── ListingPlan.v2：计划必须真实驱动生成（第2轮新增） ───
+
+import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
+
+const V2_INPUT = {
+  schema: "listing-generation-input.v1" as const,
+  source: { handoffRevision: 5, researchRevision: 1 },
+  productFacts: [
+    { field: "brand", label: "品牌", value: "THERMOS" },
+    { field: "product_type", label: "商品类型", value: "THERMOS" },
+    { field: "series_or_model", label: "系列/型号", value: "FUNTAINER Kids" },
+    { field: "capacity", label: "容量", value: "10oz" },
+    { field: "color_or_variant", label: "颜色/款式", value: "Pink" },
+    { field: "material", label: "材质", value: "Stainless Steel" },
+    { field: "functional_feature", label: "功能特性", value: "Vacuum Insulated" },
+    { field: "care", label: "清洁保养", value: "Dishwasher Safe" },
+    { field: "included_components", label: "随附组件", value: "food jar with unfolding spoon" },
+    { field: "operation", label: "操作方式", value: "Latch" },
+    { field: "usage", label: "使用场景", value: "office, home" },
+  ],
+  stableSourceFacts: [],
+  creativeReferences: [],
+  creativePreferences: {},
+  prohibitedClaims: [],
+  unknowns: [],
+  humanReviewRequired: true as const,
+  researchMode: "market_research_only" as const,
+  promotionEligible: false as const,
+  creativeContext: {
+    vocInsights: ["买家提到适合学校午餐、保温、防漏、质量好、超值"],
+    aiReferences: [],
+    keywordCandidates: [],
+    competitiveContext: ["competitor B0DIR01: LunchBots Thermal Food Jar for Kids (direct)"],
+    sourcingContext: [],
+  },
+};
+const V2_BRIEF = {
+  schema: "listing-keyword-brief.v1" as const,
+  primaryKeyword: "thermos for hot food kids",
+  supportingKeywords: ["bento box for kids", "kids lunch jar"],
+  backendSearchTerms: ["thermos", "kids food jar"],
+  source: "sellersprite" as const,
+  capturedAt: "2026-08-25T00:00:00.000Z",
+};
+
+describe("ListingPlan.v2 消费（Composition）", () => {
+  it("plan 角色/顺序变化 → 五点顺序与表达随之变化（plan 真被消费，禁止无差别返回 composeBullets）", () => {
+    const input = V2_INPUT as never;
+    const planA = buildListingPlan(input, V2_BRIEF as never);
+    const planB = buildListingPlan(input, V2_BRIEF as never);
+    // 打乱 planB 的 bulletPlans 顺序
+    planB.bulletPlans = [...planB.bulletPlans].reverse();
+    const draftA = composeOptimizedListingDraft(input, planA, V2_BRIEF as never);
+    const draftB = composeOptimizedListingDraft(input, planB, V2_BRIEF as never);
+    expect(draftA.bullets.length).toBeGreaterThanOrEqual(3);
+    expect(draftA.bullets.length).toBeLessThanOrEqual(5);
+    // 顺序不同 → 五点应不同（至少一条位置发生变化）
+    const same = draftA.bullets.every((b, i) => b === draftB.bullets[i]);
+    expect(same, "plan 顺序变化但五点完全一致 = plan 未被消费").toBe(false);
+  });
+
+  it("每条正式 bullet 唯一映射一个 bulletPlan 并命中其确认事实", () => {
+    const input = V2_INPUT as never;
+    const plan = buildListingPlan(input, V2_BRIEF as never);
+    const draft = composeOptimizedListingDraft(input, plan, V2_BRIEF as never);
+    expect(draft.bullets.length).toBe(plan.bulletPlans.length);
+    for (let i = 0; i < draft.bullets.length; i++) {
+      const planFacts = plan.bulletPlans[i].featureFactIds;
+      const factValues = planFacts.map((fid) => {
+        const f = V2_INPUT.productFacts.find((x) => x.field === fid);
+        return f ? f.value.toLowerCase() : fid.toLowerCase();
+      });
+      const hit = factValues.some((v) => draft.bullets[i].toLowerCase().includes(v));
+      expect(hit, "bullet " + i + " 未锚定其计划事实: " + draft.bullets[i]).toBe(true);
+    }
+  });
+
+  it("无有效关键词 → status=needs_keywords 且不能 ai_optimized（只有安全草稿）", () => {
+    const input = V2_INPUT as never;
+    const plan = buildListingPlan(input, null);
+    expect(plan.status).toBe("needs_keywords");
+    const draft = composeOptimizedListingDraft(input, plan, null);
+    expect(draft.bullets.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+
+describe("ListingPlan.v2：关键词实际上采用（安全事实词 vs 类目词）", () => {
+  it("事实安全关键词（材质+商品类型全词来自已确认事实）→ 标题自然使用一次，并进入 keywords 字段", () => {
+    const input = V2_INPUT as never;
+    // brief 主词为事实安全组合
+    const briefSafe = {
+      ...V2_BRIEF,
+      primaryKeyword: "Stainless Steel Food Jar",
+      supportingKeywords: ["stainless steel food jar", "10oz food jar"],
+    };
+    const plan = buildListingPlan(input, briefSafe as never);
+    const draft = composeOptimizedListingDraft(input, plan, briefSafe as never);
+    const title = draft.titles[0] ?? "";
+    expect(title.toLowerCase()).toContain("stainless");
+    expect(title.toLowerCase()).toContain("food");
+    expect(title.toLowerCase()).toContain("jar");
+    expect(draft.keywords.join(" ").toLowerCase()).toContain("stainless steel food jar");
+  });
+
+  it("计划关键词出现在任意正式文本 → usedKeywordTrace 语义为实际采用；不出现在正文的（类目词）不冒充已采用", () => {
+    const input = V2_INPUT as never;
+    const briefMixed = {
+      ...V2_BRIEF,
+      primaryKeyword: "Stainless Steel Food Jar",
+      supportingKeywords: ["bento box for kids"],
+    };
+    const plan = buildListingPlan(input, briefMixed as never);
+    const draft = composeOptimizedListingDraft(input, plan, briefMixed as never);
+    const corpus = [draft.titles[0] ?? "", ...draft.bullets, draft.description].join(" ").toLowerCase();
+    // 类目词（商品未证明是 bento box）不得进入正式正文
+    const unsafe = "bento box for kids";
+    expect(corpus).not.toContain(unsafe);
+    // 事实安全词进入正文
+    expect(corpus).toContain("food jar");
   });
 });
