@@ -228,6 +228,7 @@ describe("v2.2.14 BrüMate Golden Case", () => {
       facts: build.input.productFacts.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value ?? "").trim() })),
       usedFactIds: build.input.productFacts.map((f) => f.field),
     });
+
     expect(contract.ok, JSON.stringify(contract.issues)).toBe(true);
     // Description 不再重复 Title（应含功能句，非仅属性拼接）
     expect(optimized.description).not.toBe(`${optimized.titles[0]}。`);
@@ -489,5 +490,58 @@ describe("v2.2.14 Quality 对抗", () => {
     });
     expect(q.ok).toBe(false);
     expect(q.blockingIssues.some((i) => i.code === "bullet_duplicate")).toBe(true);
+  });
+});
+
+describe("第3轮反向验证②：irrelevant 竞品不得进入 Listing 生成依据", () => {
+  it("competitorEvidence 含 irrelevant 竞品 → 生成输入 creativeContext 不含该 ASIN（数据保留但被过滤）", async () => {
+    const taskId = "sandbox_task_r3_irrelevant";
+    const base = JSON.parse(buildBruteMateResultJson());
+    // 切换商品身份为 THERMOS FUNTAINER（Food Jar）："LunchBots Thermal Food Jar" 命中核心词 → direct
+    const THERMOS_NAME = "THERMOS FUNTAINER Kids Food Jar with Spoon 10oz Pink";
+    base.productName = THERMOS_NAME;
+    base.candidateAnalysisContext.facts.productName = THERMOS_NAME;
+    base.competitorEvidence = {
+      schema: "competitor-evidence.v1", version: 1, candidateId: null,
+      asins: [
+        { asin: "B0IRR01", sourceKind: "browser_use", addedBy: { mode: "owner", actorRef: "owner:v1" }, addedAt: NOW, note: "Glass Storage Containers", collectedBy: { tool: "browser-use", version: "0.1.0" }, sourceUrl: "https://www.amazon.com/dp/B0IRR01", capturedAt: NOW },
+        { asin: "B0DIR01", sourceKind: "browser_use", addedBy: { mode: "owner", actorRef: "owner:v1" }, addedAt: NOW, note: "LunchBots Thermal Food Jar for Kids", collectedBy: { tool: "browser-use", version: "0.1.0" }, sourceUrl: "https://www.amazon.com/dp/B0DIR01", capturedAt: NOW },
+      ],
+      updatedAt: NOW,
+    };
+    seedTask(taskId, JSON.stringify(base));
+    await confirmBruteMateHandoff(taskId);
+    let capturedInput: Parameters<TaskLinkedAiListingClient>[0] | null = null;
+    setTaskLinkedAiListingClientForTests(async (input: Parameters<TaskLinkedAiListingClient>[0]) => {
+      capturedInput = input as Parameters<TaskLinkedAiListingClient>[0];
+      return {
+        title: "BrüMate Silicone Water Bottle, 18oz, red",
+        bullets: [
+          "The BrüMate water bottle with Silicone for everyday use in the bottle.",
+          "An 18oz size for easy cleaning with water.",
+          "The red color option for everyday use in the bottle.",
+        ],
+        description: "This 18oz bottle matches your style preference for everyday use. This bottle with Silicone for easy cleaning with water.",
+        backendSearchTerms: [],
+        usedFactIds: ["functional_feature", "material", "capacity", "color_or_variant"],
+        humanReviewRequired: true,
+      };
+    });
+    try {
+      const preview = await generateCreativeHandoffPreview(taskId, visitorContext());
+      const sv = preview.gate.storageVersion!;
+      await generateListingDraftFromHandoff(taskId, visitorContext(), {
+        requestId: "550e8400-e29b-41d4-a716-446655440722",
+        expectedStorageVersion: sv,
+        expectedHandoffRevision: 1,
+      });
+      const ccText = JSON.stringify((capturedInput as { creativeContext?: unknown } | null)?.creativeContext ?? {});
+      // 直接竞品保留（定位参考），irrelevant 竞品必须被过滤（不得进入 Listing 依据）
+      expect(ccText).toContain("B0DIR01");
+      expect(ccText).not.toContain("B0IRR01");
+      expect(ccText).not.toContain("Glass Storage Containers");
+    } finally {
+      setTaskLinkedAiListingClientForTests(null);
+    }
   });
 });

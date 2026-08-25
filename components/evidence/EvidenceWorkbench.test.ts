@@ -18,6 +18,7 @@ import {
   natureForField,
   type ResearchMaterialRow,
 } from "./EvidenceWorkbench";
+import { buildKeywordBriefDraft } from "./keywordBriefDraft";
 import type { ConfirmedFactCandidate } from "@/lib/factCandidates";
 
 const wbSource = readFileSync(resolve(process.cwd(), "components/evidence/EvidenceWorkbench.tsx"), "utf8");
@@ -387,16 +388,16 @@ describe("用户语言与信息收口（轮 12）", () => {
 });
 
 describe("轮 10 合并：竞品与关键词自动化（源码结构契约）", () => {
-  it("顺序：关键词资料区在竞品资料区上方（JSX 结构顺序）", () => {
-    const kwIdx = wbSource.indexOf("workbench-keywords");
-    const cmpIdx = wbSource.indexOf("workbench-competitors");
+  it("顺序：关键词策略在竞品策略上方（JSX 结构顺序）", () => {
+    const kwIdx = wbSource.indexOf("<KeywordStrategyCard");
+    const cmpIdx = wbSource.indexOf("<CompetitorStrategyCard");
     expect(kwIdx).toBeGreaterThan(0);
     expect(cmpIdx).toBeGreaterThan(kwIdx);
-    // 去重红线（用户报障：竞品板块出现两个）
-    expect((wbSource.match(/── 竞品资料 ──/g) || []).length).toBe(1);
-    expect((wbSource.match(/workbench-competitors/g) || []).length).toBe(1);
-    expect((wbSource.match(/── 关键词资料 ──/g) || []).length).toBe(1);
-    expect((wbSource.match(/workbench-keywords/g) || []).length).toBe(1);
+    // 去重红线（第2轮新结构：策略卡各唯一，旧平铺区块不再出现）
+    expect((wbSource.match(/<CompetitorStrategyCard/g) || []).length).toBe(1);
+    expect((wbSource.match(/<KeywordStrategyCard/g) || []).length).toBe(1);
+    expect((wbSource.match(/workbench-competitors/g) || []).length).toBe(0);
+    expect((wbSource.match(/workbench-keywords/g) || []).length).toBe(0);
   });
   it("竞品采集按钮升级为合并采集（文案「采集关键词+竞品」并携带关键词预览接线）", () => {
     expect(buttonSource).toContain("采集关键词+竞品");
@@ -433,5 +434,74 @@ describe("轮 10 合并：竞品与关键词自动化（源码结构契约）", 
     expect(cardSource).toContain("版本信息尚未就绪");
     expect(cardSource).toContain("未发送保存请求");
     expect(buttonSource).toContain("已取消，未保存任何数据。");
+  });
+});
+
+
+// ── R6 UX 修复：已保存关键词证据 → Keyword Brief 生成与确认 ──
+// TDD：先写纯函数与接线契约，再最小实现。
+
+describe("buildKeywordBriefDraft（已保存证据 → Brief 草稿）", () => {
+  it("从第 1 行关键词取主词，其余去重取前 N 辅助词（backend 空，由用户确认）", () => {
+    const rows = [
+      { rowNumber: 1, keyword: "kids food jar", keywordTranslation: "儿童食品罐", fields: {} },
+      { rowNumber: 2, keyword: "insulated lunch box", keywordTranslation: "保温午餐盒", fields: {} },
+      { rowNumber: 3, keyword: "kids food jar", keywordTranslation: "儿童食品罐", fields: {} },
+      { rowNumber: 4, keyword: "bento jar", keywordTranslation: "便当罐", fields: {} },
+      { rowNumber: 5, keyword: "", keywordTranslation: null, fields: {} },
+    ];
+    const draft = buildKeywordBriefDraft(rows as never);
+    expect(draft).not.toBeNull();
+    expect(draft?.primaryKeyword).toBe("kids food jar");
+    expect(draft?.supportingKeywords).toEqual(["insulated lunch box", "bento jar"]); // 去重 + 跳过空词 + 无重复
+  });
+
+  it("无有效关键词行 → null（不给空白 Brief）", () => {
+    expect(buildKeywordBriefDraft([] as never)).toBeNull();
+    expect(buildKeywordBriefDraft([{ rowNumber: 1, keyword: "  ", fields: {} }] as never)).toBeNull();
+  });
+
+  it("辅助词有界（最多 5 个），且不重复主词", () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({
+      rowNumber: i + 1,
+      keyword: "kw-" + (i === 0 ? "primary" : "s" + i),
+      keywordTranslation: null,
+      fields: {},
+    }));
+    const draft = buildKeywordBriefDraft(rows as never);
+    expect(draft?.primaryKeyword).toBe("kw-primary");
+    expect(draft?.supportingKeywords.length).toBeLessThanOrEqual(5);
+    expect(draft?.supportingKeywords).not.toContain("kw-primary");
+  });
+});
+
+describe("KeywordBriefCreateCard 接线契约", () => {
+  const createSource = readFileSync(resolve(process.cwd(), "components/evidence/KeywordBriefCreateCard.tsx"), "utf8");
+  it("必须调用后端 save_keyword_brief（action + confirmed:true + keywordBrief）", () => {
+    expect(createSource).toContain("save_keyword_brief");
+    expect(createSource).toContain("confirmed: true");
+    expect(createSource).toContain("keywordBrief");
+    expect(createSource).toContain("/listing-handoff");
+  });
+  it("必须有确认复选与禁用守卫（未勾选不可提交）", () => {
+    expect(createSource).toContain("我已核对");
+    expect(createSource).toContain("disabled");
+    expect(createSource).toContain("onSaved");
+  });
+});
+
+describe("EvidenceWorkbench 关键词资料区接线", () => {
+  it("关键词区渲染 KeywordStrategyCard（默认摘要+调整方案入口）", () => {
+    expect(wbSource).toContain("KeywordStrategyCard");
+    expect(wbSource).toContain("keywordReportEvidence");
+    expect(wbSource).toContain("briefPrimary={keywordBrief");
+  });
+});
+
+describe("关键词策略状态源（第3轮：不能用详情投影的缺失字段）", () => {
+  it("从 listing-handoff GET 读取 keywordBriefSummary 作为状态源（不能用 result.listingKeywordBrief——detail 投影不返回）", () => {
+    expect(wbSource).toContain('/listing-handoff');
+    expect(wbSource).toContain('keywordBriefSummary');
+    expect(wbSource).toContain('loadKeywordBriefState');
   });
 });

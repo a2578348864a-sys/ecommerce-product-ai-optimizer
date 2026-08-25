@@ -170,7 +170,7 @@ export async function POST(
           return jsonResponse({ ok: false, error: { code: "seller_sprite_keyword_failed", message: "SellerSprite 关键词采集失败：" + (kwRun.failureReason === "collector_unavailable" ? "采集引擎不可用（未启动或超时）。" : "未获得有效页面观察。") + " 不继续，也不改用它途。", detail: kwRun.failureReason } }, 502);
         }
         // ② 可靠搜索关键词：第一个非空、非纯品牌词（不做标题猜测）
-        const keyword = selectReliableSearchKeyword(kwRun.preview.results as BrowserUseKeywordPreviewItem[]);
+        const keyword = selectReliableSearchKeyword(kwRun.preview.results as BrowserUseKeywordPreviewItem[], seed.productName);
         if (!keyword) {
           return jsonResponse({ ok: false, error: { code: "no_reliable_search_keyword", message: "SellerSprite 关键词没有可用的非品牌查询词，已停止（不从标题瞎猜）。" } }, 409);
         }

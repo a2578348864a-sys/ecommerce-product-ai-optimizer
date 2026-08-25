@@ -379,3 +379,33 @@ describe("轮 15：竞品详情页五点 → competitiveContext（reference-only
     expect(ctx.competitiveContext[0].bullets).toBeUndefined();
   });
 });
+
+describe("CompetitiveInsight relation 分类（第1轮）", () => {
+  const resultWith = (competitors: unknown[]) => ({
+    candidateAnalysisContext: { facts: { productName: "THERMOS FUNTAINER Kids Food Jar with Spoon 10oz Pink" } },
+    competitorEvidence: {
+      schema: "competitor-evidence.v1", version: 1,
+      asins: competitors as never,
+    },
+  });
+  it("direct 竞品进入上下文且 relation=direct", () => {
+    const ctx = buildCreativeContextFromResearch({ resultJson: resultWith([
+      { asin: "B0TEST01", note: "LunchBots Thermal Food Jar for Kids", addedAt: "2026-08-01T00:00:00.000Z", detailBullets: { bullets: ["A bullet."] } },
+    ]) } as never);
+    const comp = ctx.competitiveContext[0];
+    expect(comp).toBeDefined();
+    expect(comp.relation).toBe("direct");
+  });
+  it("adjacent 标注相邻替代且仍展示（不删除）", () => {
+    const ctx = buildCreativeContextFromResearch({ resultJson: resultWith([
+      { asin: "B0TEST02", note: "Thermal Lunch Jar", addedAt: "2026-08-01T00:00:00.000Z" },
+    ]) } as never);
+    expect(ctx.competitiveContext[0].relation).toBe("adjacent");
+  });
+  it("irrelevant 竞品 relation=irrelevant（数据保留，不进入 Listing 输入语义）", () => {
+    const ctx = buildCreativeContextFromResearch({ resultJson: resultWith([
+      { asin: "B0TEST03", note: "Glass Storage Containers", addedAt: "2026-08-01T00:00:00.000Z" },
+    ]) } as never);
+    expect(ctx.competitiveContext[0].relation).toBe("irrelevant");
+  });
+});

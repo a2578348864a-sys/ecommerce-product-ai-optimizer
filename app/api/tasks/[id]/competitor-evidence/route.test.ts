@@ -38,10 +38,10 @@ import { takeBrowserUsePreview, storeBrowserUsePreview, type BrowserUseResearchP
 function batchResultJson(asin = "B0SAMPLE12") {
   return JSON.stringify({
     type: "workflow",
-    productName: "T",
+    productName: "Lunch Box Organizer",
     candidateAnalysisContext: {
       version: "candidate-analysis-context-v1", integrity: "verified_product_batch",
-      facts: { productName: "T", marketplace: "US", asin, reportType: "search_results" },
+      facts: { productName: "Lunch Box Organizer", marketplace: "US", asin, reportType: "search_results" },
       assessment: { researchMode: "market_research_only", promotionEligible: false },
     },
   });

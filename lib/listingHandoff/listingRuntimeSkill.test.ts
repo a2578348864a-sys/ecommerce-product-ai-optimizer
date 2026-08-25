@@ -86,6 +86,7 @@ describe("运行时 Listing Skill：质量合同", () => {
 describe("运行时 Listing Skill：安全兜底句（事实模板）与事实不足", () => {
   it("THERMOS 事实可组 ≥3 条 8-30 词、含事实值的完整句", () => {
     const r = buildSafeFactSentences({ typeLabel: "Food Jar", facts: THERMOS_FACTS });
+    console.log("SAFE_B:", JSON.stringify(r.sentences));
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.sentences.length).toBeGreaterThanOrEqual(3);
@@ -113,5 +114,51 @@ describe("运行时 Listing Skill：安全兜底句（事实模板）与事实�
     expect(rules).toContain("8-30");
     expect(rules).toContain("buyer value");
     expect(rules).toContain("Do not fabricate");
+  });
+});
+
+describe("安全兜底句互不重复（第1轮：同模板被 0.75 拦截）", () => {
+  it("THERMOS 多事实句通过真实合同（无 bullet_duplicate）", () => {
+    const r = buildSafeFactSentences({ typeLabel: "Food Jar", facts: THERMOS_FACTS });
+    console.log("SAFE_B:", JSON.stringify(r.sentences));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const contract = validateRuntimeQualityContract({
+        title: "Thermos Food Jar",
+        bullets: r.sentences,
+        description: "The Thermos Food Jar with the 10oz for everyday use. This product is made for daily food storage.",
+        keywords: [],
+        facts: THERMOS_FACTS,
+        usedFactIds: THERMOS_FACTS.map((f) => f.factId),
+      });
+      expect(contract.ok, JSON.stringify(contract.issues)).toBe(true);
+    }
+  });
+});
+
+describe("反向验证③：同模板重复五点必须被 Runtime 合同拦截（0.75 门禁保持关闭）", () => {
+  it("7 帧同模板（仅值不同）→ bullet_duplicate 必须命中，合同拒绝", () => {
+    const dup = [
+      "The Food Jar with the vacuum insulated for everyday use.",
+      "The Food Jar with the dishwasher safe for everyday use.",
+      "The Food Jar with the unfolding spoon for everyday use.",
+      "The Food Jar with the latch for everyday use.",
+      "The Food Jar with the office, home for everyday use.",
+      "The Food Jar with the stainless steel for everyday use.",
+      "The Food Jar with the 10oz for everyday use.",
+    ];
+    const r = validateRuntimeQualityContract({
+      title: "THERMOS Food Jar",
+      bullets: dup,
+      description: "The THERMOS Food Jar is made of Stainless Steel and holds 10oz for easy use. The unfolding spoon helps at school lunch time every day.",
+      keywords: ["THERMOS", "Kids Food Jar"],
+      facts: THERMOS_FACTS,
+      usedFactIds: THERMOS_FACTS.map((f) => f.factId),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.issues.some((i) => i.code === "bullet_duplicate")).toBe(true);
+    // 事件计数：至少 1 对重复被拒绝（同模板 5 条 → 多对命中）
+    const dupCount = r.issues.filter((i) => i.code === "bullet_duplicate").length;
+    expect(dupCount).toBeGreaterThanOrEqual(1);
   });
 });

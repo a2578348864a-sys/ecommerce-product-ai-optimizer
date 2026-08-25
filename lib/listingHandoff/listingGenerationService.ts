@@ -17,6 +17,7 @@ import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHan
 import { classifyClaimTier } from "@/lib/listingHandoff/listingClaimTier";
 import { buildDeterministicListingPackDraft, composeBullets as composeSafeBullets, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
+import { pickBestKeyword } from "@/lib/research/researchInputQuality";
 import { buildListingPlan } from "@/lib/listingHandoff/listingPlan";
 import { buildListingReadiness } from "@/lib/listingHandoff/listingReadiness";
 import { parseListingKeywordBrief, buildListingKeywordBrief } from "@/lib/listingHandoff/listingKeywordBrief";
@@ -391,9 +392,17 @@ export async function generateListingDraftFromHandoff(
     throw new ListingHandoffError("handoff_required", 422, "创作交接证据缺失。");
   }
   const researchRevision = gateA.candidate.sourceResearch.researchRevision;
-  // V3 Evidence → Creative Context Bridge：研究 Evidence 参考层随 Listing 输入进入（参考 only，非事实）
+  // V3 Evidence → Creative Context Bridge：研究 Evidence 参考层随 Listing 输入进入（参考 only，非事实）。
+  // 第3轮：irrelevant 竞品（design 注释：数据不删除但不进入 Listing 依据）必须在进入生成输入前过滤；
+  // adjacent 仅作定位参考，direct 作为竞品定位参考（均非商品事实）。
+  const creativeContextForListing = gateA.creativeContext
+    ? {
+        ...gateA.creativeContext,
+        competitiveContext: gateA.creativeContext.competitiveContext.filter((c) => c.relation !== "irrelevant"),
+      }
+    : null;
   const buildResult = buildListingInputFromCreativeHandoff(handoffA, researchRevision, {
-    creativeContext: gateA.creativeContext ?? null,
+    creativeContext: creativeContextForListing,
   });
   if (!buildResult.ok) {
     throw new ListingHandoffError(buildResult.code, 422, buildResult.message);
@@ -401,8 +410,8 @@ export async function generateListingDraftFromHandoff(
   const generationInputBase = withListingBrief(buildResult.input, input.listingBrief);
 
   // R3.2 English rendering：中文 confirmed facts 转英文（factRef 溯源），不跳过、不丢事实。
-  // fail-closed：任一 fact 无法安全英文化 → 拒绝生成（不得静默删除事实）。
-  const { buildEnglishRenderingPack } = await import("@/lib/listingHandoff/listingEnglishRendering");
+  // 逐事实 fail-closed（渲染器文档：无法安全英文化的事实不进入最终 Listing）。
+  const { buildEnglishRenderingPack, ENGLISH_RENDERING_VERSION } = await import("@/lib/listingHandoff/listingEnglishRendering");
   const renderingResult = await buildEnglishRenderingPack({
     facts: buildResult.input.productFacts.map((f) => ({
       factId: f.field,
@@ -410,14 +419,20 @@ export async function generateListingDraftFromHandoff(
       sourceValue: f.value,
     })),
   });
-  if (!renderingResult.ok) {
+  let generationInput: ListingGenerationInput;
+  if (renderingResult.ok) {
+    generationInput = { ...generationInputBase, englishRenderings: renderingResult.pack };
+  } else if (renderingResult.code === "integrity_failed" && renderingResult.message.includes("cannot render to English")) {
+    // Provider 关闭 / AI 翻译不可用时的确定性降级（与渲染器“该 fact 不进入最终 Listing”的
+    // 逐事实 fail-closed 契约一致）：不调外部 Provider；仅无法英文化（含 CJK/粘连）事实不进入
+    // 组合输入，其余 already-English 事实保持原样；Claim Evidence / Runtime 门禁零放宽。
+    generationInput = {
+      ...generationInputBase,
+      englishRenderings: { schema: ENGLISH_RENDERING_VERSION, renderings: [], generatedAt: null, source: "literal" },
+    };
+  } else {
     throw new ListingHandoffError("listing_english_rendering_failed", 422, `事实英文化失败：${renderingResult.message}`);
   }
-  const generationInput: ListingGenerationInput = {
-    ...generationInputBase,
-    englishRenderings: renderingResult.pack,
-  };
-
   const generationInputFingerprint = computeListingGenerationFingerprint(generationInput);
 
   // ── 阶段B：Composition first（锁外，不持锁，不调用 Provider）──
@@ -550,7 +565,20 @@ export async function generateListingDraftFromHandoff(
             });
             return built.ok ? built.brief : null;
           })();
-      const effectiveKeywordBrief = keywordBrief ?? autoBrief;
+      // 第1轮：已保存 Brief 主词相关度不足 → 标记"需重新确认"，不进入 effectiveKeywordBrief（数据不删除）
+      const productNameForRelevance = [
+        generationInput.productFacts.find((f) => f.field === "brand")?.value ?? "",
+        generationInput.productFacts.find((f) => f.field === "series_or_model")?.value ?? "",
+        generationInput.productFacts.find((f) => f.field === "product_type")?.value ?? "",
+      ].filter(Boolean).join(" ");
+      let keywordBriefNeedsConfirm = false;
+      if (keywordBrief && productNameForRelevance.trim()) {
+        const best = pickBestKeyword([{ keyword: keywordBrief.primaryKeyword }], productNameForRelevance);
+        if (!best) {
+          keywordBriefNeedsConfirm = true;
+        }
+      }
+      const effectiveKeywordBrief = keywordBrief && !keywordBriefNeedsConfirm ? keywordBrief : autoBrief;
       // 轮 16：auto_suggested 计划的全部词可追溯到已保存 keywordEvidence（同源安全集），
       // 通过 Claim Evidence 关键词过滤时放行；人工 Brief 词维持原有证据校验（零回归）。
       const autoTraceableTerms = effectiveKeywordBrief && effectiveKeywordBrief.source === "auto_suggested"
@@ -669,14 +697,14 @@ export async function generateListingDraftFromHandoff(
             bullets: safeQualified ? safeBullets.slice(0, 5) : [],
             keywords: dedupeTerms((safeDraft.keywords ?? []) as string[]),
           });
-          qualityIssues = [
+          qualityIssues = Array.from(new Set([
             issue,
             ...(!optimizedSchema.ok ? ["结构化回退未通过 schema 校验"] : []),
             ...(optimizedEvidence && !listingClaimsHaveEvidence(optimizedEvidence) ? ["结构化回退未通过 Claim Evidence"] : []),
             ...(optimizedContract.ok ? [] : optimizedContract.issues.map((item) => item.message)),
             ...(optimizedQuality?.issues.map((item) => item.message) ?? []),
             ...(safeQualified ? [] : ["确认事实不足以组成至少 3 条合格句。"]),
-          ].slice(0, 8);
+          ])).slice(0, 8);
           finalDraft.rejectedListingSentences = (removedFragments.length > 0 ? removedFragments : asRejected(safeContract.issues, safeBullets)).slice(0, 5);
           finalDraft.listingUnqualified = !safeQualified;
         };

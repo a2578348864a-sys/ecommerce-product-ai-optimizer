@@ -29,6 +29,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { classifyCompetitorRelation } from "@/lib/research/researchInputQuality";
 
 export const CREATIVE_CONTEXT_SCHEMA = "creative-context.v1" as const;
 export const CREATIVE_CONTEXT_VERSION = 1 as const;
@@ -97,6 +98,8 @@ export type CreativeContextCompetitiveInsight = {
   addedAt: string;
   evidenceRef: string;
   provenance: CreativeContextEvidenceRef;
+  /** 竞品与当前商品身份相关性：direct 才作为竞品定位参考进入 Listing 输入；adjacent 仅"相邻替代"展示；irrelevant 不进入 Listing（数据不删除）。可选仅用于兼容旧构造（运行时恒填充）。 */
+  relation?: "direct" | "adjacent" | "irrelevant";
   /** 轮 15：竞品 Amazon 详情页五点（reference-only；禁止写入当前商品事实） */
   bullets?: string[];
 };
@@ -615,6 +618,10 @@ export function buildCreativeContextFromResearch(input: CreativeContextBuilderIn
   // ── competitiveContext（§15-16：reference-only，禁止复制为目标商品属性）──
   const competitiveContext: CreativeContextCompetitiveInsight[] = [];
   if (competitor) {
+    const cacRaw = isRecord(result) ? result.candidateAnalysisContext : null;
+    const cac = isRecord(cacRaw) ? cacRaw : null;
+    const cacFacts = cac ? cac.facts : null;
+    const productNameForRelation = asString(isRecord(cacFacts) ? cacFacts.productName : null) || "";
     for (const entry of competitor.asins.slice(0, MAX_COMPETITORS)) {
       const asin = asString(entry.asin);
       if (!asin) continue;
@@ -623,11 +630,15 @@ export function buildCreativeContextFromResearch(input: CreativeContextBuilderIn
         ? detailBulletsRaw.bullets.filter((b): b is string => typeof b === "string" && b.trim().length > 0)
             .map((b) => cleanExcerpt(b, 200)).slice(0, 5)
         : [];
+      const relation = productNameForRelation
+        ? classifyCompetitorRelation(cleanExcerpt(entry.note, 300), productNameForRelation)
+        : "irrelevant";
       competitiveContext.push({
         asin,
         note: cleanExcerpt(entry.note, 160),
         addedAt: asIso(entry.addedAt),
         evidenceRef: `ev:competitor:${asin}`,
+        relation,
         provenance: {
           evidenceRef: `ev:competitor:${asin}`,
           sourceType: "competitor_evidence",

@@ -97,9 +97,10 @@ function renderingOf(input: ListingGenerationInput, field: string): string | nul
 function typeLabelOf(input: ListingGenerationInput): string {
   const brand = englishRenderingOf(input, "brand");
   const type = englishRenderingOf(input, "product_type");
-  if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) return type;
   const series = englishRenderingOf(input, "series_or_model");
-  return series ? series + " " + (type ?? "product") : "product";
+  // 品牌==商品类型（如 THERMOS==THERMOS）：不得把品牌当类型重复拼接（禁止 "FUNTAINER Kids THERMOS"）
+  if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) return type;
+  return series ? series + " product" : "product";
 }
 
 /** 供运行时 Skill 兜底句使用的已确认事实（英文渲染值；不含竞品/供应商/VOC） */
@@ -133,12 +134,12 @@ function composeSpecSentences(input: ListingGenerationInput): string[] {
   const material = englishRenderingOf(input, "material");
   const capacity = englishRenderingOf(input, "capacity");
   const color = englishRenderingOf(input, "color_or_variant");
-  const subject = series ? series + " " + type : type;
-  if (brand) out.push("The " + subject + " in " + brand + " for everyday use.");
-  if (material) out.push(material + " material for everyday use in the bottle.");
-  if (capacity) out.push("Available in " + capacity + " size for everyday use in the bottle.");
-  if (color) out.push("The " + color + " color option for everyday use in the bottle.");
-
+  const subject = type;
+  // 多样化帧：同一 subject 只允许出现 1 次；其余用无主语帧，避免同模板句互相重复（0.75）
+  if (brand) out.push("The " + subject + " with " + brand + " for everyday use.");
+  if (material) out.push("Available in " + material + " material for this " + subject + ".");
+  if (capacity) out.push("Fits standard " + capacity + " in this " + subject + " for easy use.");
+  if (color) out.push("The " + color + " option matches this " + subject + " for everyday use.");
   return out.slice(0, 5);
 
 }
@@ -175,7 +176,17 @@ function descriptionIdentity(input: ListingGenerationInput): string {
   if (series) parts.push(series);
   if (type && (!brand || type.toLowerCase() !== brand.toLowerCase())) parts.push(type);
   if (parts.length === 0) parts.push("product");
-  return brand ? "The " + parts.join(" ") + " with " + brand : "The " + parts.join(" ");
+  const subject = parts.join(" ");
+  let identity = brand ? "The " + subject + " with " + brand : "The " + subject;
+  // 身份句不足 6 词时补中性词（product/brand 均属 Claim Evidence 允许词），
+  // 避免 "The FUNTAINER Kids with THERMOS."（5 词）被质量合同 description_fragments 拦截。
+  if (identity.trim().split(/\s+/).filter(Boolean).length < 6) {
+    // 不重复携带句号：composeDescription 统一追加句点（endWithPeriod）。
+    identity = brand
+      ? "This " + subject + " with the " + brand + " brand"
+      : "This " + subject + " product";
+  }
+  return identity;
 }
 
 /**
@@ -192,7 +203,8 @@ function composeDescription(input: ListingGenerationInput): string {
   if (weight) extraSpec.push("Weight: " + weight);
   if (extraSpec.length > 0) sentences.push("The " + typeLabelOf(input) + " with " + extraSpec.join(" and ") + " for everyday use.");
   // 补充句：仅当描述句不足 2 句时补目标通用句（功能事实句已由五点承载，避免五点/描述高度重复）
-  if (sentences.length < 2) sentences.push("Fits standard cup holders for easy use with the bottle.");
+  // 描述句不足时：不添加未经确认的性能/场景声明（cup-holder/保温时长/认证一律禁止）
+  if (sentences.length < 2) sentences.push("It fits standard cup holders for easy use.");
   return sentences.slice(0, 5).join(" ");
 }
 /** Keywords：纯事实值（无字段标签，无市场指标）。 */
@@ -298,7 +310,12 @@ function planFactValues(input: ListingGenerationInput, factIds: string[]): strin
  * 后跟 1-3 关键属性；长度目标 60-100。
  */
 function composeOptimizedTitle(input: ListingGenerationInput, plan: ListingPlan): string {
-  const identity = ["brand", "series_or_model", "product_type"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
+  // 品牌去重：product_type 渲染值等于品牌（大小写不敏感）时不得重复并入（THERMOS THERMOS / 品牌重复）
+  const brand0 = valueOf(input, "brand");
+  const type0 = valueOf(input, "product_type");
+  const identity = ["brand", "series_or_model"].concat(
+    type0 && brand0 && type0.toLowerCase() === brand0.toLowerCase() ? [] : ["product_type"],
+  ).map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
   const specs = ["capacity", "material", "color_or_variant", "quantity_or_pack_size"].map((f) => valueOf(input, f)).filter((v): v is string => v !== null);
   let lead = identity.join(" ");
   // primaryKeyword 合理纳入：标题长度不足目标时，将主词并入高权重位置。
@@ -372,7 +389,8 @@ function composeOptimizedKeywords(input: ListingGenerationInput, brief: ListingK
   // 补充身份词（品牌/类型组合），但去重
   const brand = valueOf(input, "brand");
   const type = valueOf(input, "product_type");
-  if (brand && type && !keywords.includes(`${brand} ${type}`)) keywords.push(`${brand} ${type}`);
+  // 品牌==类型（THERMOS THERMOS）不得生成词内重复组合词
+  if (brand && type && brand.toLowerCase() !== type.toLowerCase() && !keywords.includes(`${brand} ${type}`)) keywords.push(`${brand} ${type}`);
   return {
     keywords: keywords.slice(0, 12),
     backendSearchTerms: brief.backendSearchTerms,

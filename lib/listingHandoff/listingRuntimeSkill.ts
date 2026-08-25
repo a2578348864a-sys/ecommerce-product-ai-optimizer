@@ -68,9 +68,13 @@ function wordCount(text: string): number {
 }
 
 function sentenceList(text: string): string[] {
-  return text
+  // 小数（3.5"L）中的句点不是句子边界：与 Claim Evidence 的 splitSegments 同规则保护，否则描述句数误判。
+  const protectedText = text
+    .replace(/(\d)\.(\d)/g, "$1__DEC__$2")
+    .replace(/\b(approx)\.(?!\s*[0-9]+\s*x)/gi, "$1__DOT__");
+  return protectedText
     .split(/[.!?]+/)
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/__DEC__/g, ".").replace(/__DOT__/g, "."))
     .filter((s) => s.length > 0);
 }
 
@@ -224,40 +228,46 @@ export type SafeFactSentencesResult =
 const TEMPLATES: Array<{ field: string; build: (type: string, value: string) => string }> = [
   {
     field: "cleaning",
-    build: (type, value) => "The " + type + " with the " + value + " for everyday use.",
+    build: (type, value) => "The " + value + " option fits for cleaning this " + type + ".",
   },
   {
     field: "functional_feature",
-    build: (type, value) => "The " + type + " with the " + value + " for everyday use.",
+    build: (type, value) => "The " + value + " option fits this " + type + " for everyday use.",
   },
   {
     field: "construction",
-    build: (type, value) => "The " + type + " with the " + value + " for everyday use.",
+    build: (type, value) => "Available with the " + value + " construction for this " + type + ".",
   },
   {
     field: "care",
-    build: (type, value) => "The " + type + " with the " + value + " for easy cleaning.",
+    build: (type, value) => "Easy cleaning with the " + value + " option for this " + type + ".",
   },
   {
     field: "included_components",
-    build: (type, value) => "The " + type + " with the " + value + " for everyday use.",
+    build: (type, value) => "This " + type + " pairs with the " + value + " for easy use.",
   },
   {
     field: "operation",
-    build: (type, value) => "The " + type + " with the " + value + " for everyday use.",
+    build: (type, value) => "The " + value + " keeps this " + type + " easy to use.",
   },
   {
     field: "usage",
-    build: (type, value) => "The " + type + " with the " + value + " for everyday use.",
+    build: (type, value) => "Everyday use with the " + value + " for this " + type + ".",
   },
 ];export function buildSafeFactSentences(input: SafeFactSentencesInput): SafeFactSentencesResult {
   const typeLabel = String(input.typeLabel || "product").trim();
   const sentences: string[] = [];
   const rejected: Array<{ text: string; reason: string }> = [];
+  const RISKY_MARKETING_WORDS = /(?:leakproof|bpa\s*[- ]?free|guaranteed|100%|fda|ce certified|best seller|self\s*[- ]?sealing|luxury|premium|military|medically|keeps\s*cold|keeps\s*warm|hours\s*cold|pairs with|feel like|safe\s*[- ]?for|non\s*[- ]?to\s*[- ]?xic|spill\s*[- ]?proof|never\s*leaks|no\s*leaks|shockproof|crushproof|slashproof|military\s*[- ]?grade)/i;
   for (const tpl of TEMPLATES) {
     const fact = input.facts.find((f) => f.field === tpl.field && f.value && String(f.value).trim());
     if (!fact) continue;
-    const sentence = tpl.build(typeLabel, String(fact.value).trim());
+    const value = String(fact.value).trim();
+    if (RISKY_MARKETING_WORDS.test(value)) {
+      rejected.push({ text: value.slice(0, 140), reason: "该确认事实值含未确认的营销/性能表述（如防漏、保温、认证、绝对承诺），不进入安全兜底句。" });
+      continue;
+    }
+    const sentence = tpl.build(typeLabel, value);
     const wc = wordCount(sentence);
     if (wc >= 8 && wc <= 30 && /[.!?]$/.test(sentence)) {
       sentences.push(sentence);

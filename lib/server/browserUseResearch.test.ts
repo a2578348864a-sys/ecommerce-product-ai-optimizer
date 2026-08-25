@@ -1,3 +1,4 @@
+import { pickBestKeyword, scoreKeywordRelevance, classifyCompetitorRelation } from "@/lib/research/researchInputQuality";
 import { describe, expect, it } from "vitest";
 import {
   assertBrowserUseOwnerOnly,
@@ -132,3 +133,15 @@ function validPreview(): BrowserUseResearchPreviewV1 {
     collector: { tool: "browser-use", version: "0.1.9" },
   };
 }
+describe("selectReliableSearchKeyword with productName（与 Brief 推荐同一算法）", () => {
+  const items = [
+    { keyword: "lunch box", keywordTranslation: "午餐盒", searchVolume: 1_481_183, capturedAt: "x" } as never,
+    { keyword: "thermos for hot food kids", keywordTranslation: "热食保温罐", searchVolume: 54_915, capturedAt: "x" } as never,
+  ];
+  it("传权威商品名 → 抛弃首行宽词，选相关词（THERMOS 夹具）", () => {
+    expect(selectReliableSearchKeyword(items as never, "THERMOS FUNTAINER Kids Food Jar with Spoon 10oz Pink")).toBe("thermos for hot food kids");
+  });
+  it("无相关词 → null（fail-closed，不从标题编造）", () => {
+    expect(selectReliableSearchKeyword([{ keyword: "kitchen towels", keywordTranslation: "厨巾", searchVolume: 1, capturedAt: "x" }] as never, "THERMOS FUNTAINER Kids Food Jar with Spoon 10oz Pink")).toBeNull();
+  });
+});

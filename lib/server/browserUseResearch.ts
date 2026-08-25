@@ -1,4 +1,5 @@
 import "server-only";
+import { pickBestKeyword } from "@/lib/research/researchInputQuality";
 
 /**
  * 轮 9：Browser Use 自动采集研究输入（竞品 / 关键词）——正式链路合同。
@@ -260,15 +261,26 @@ export function takeBrowserUsePreview(previewId: string): BrowserUseResearchPrev
  */
 export function selectReliableSearchKeyword(
   items: readonly BrowserUseKeywordPreviewItem[],
+  productName?: string | null,
 ): string | null {
-  for (const item of items) {
-    const keyword = typeof item.keyword === "string" ? item.keyword.trim() : "";
-    if (!keyword) continue;
-    const translation = typeof item.keywordTranslation === "string" ? item.keywordTranslation.trim() : "";
-    if (translation && translation.toLowerCase() === keyword.toLowerCase()) continue;
-    return keyword;
+  const rows = (items ?? []).map((item) => ({
+    keyword: typeof item.keyword === "string" ? item.keyword.trim() : "",
+    searchVolume: typeof item.searchVolume === "number" ? item.searchVolume : null,
+  }));
+  // 无权威商品名 → 兼容旧行为（跳过空/纯翻译重复词后取第一个非空）；
+  // 有权威商品名 → 与 Keyword Brief 推荐同一相关度算法（禁止两套算法），fail-closed。
+  if (!productName || !String(productName).trim()) {
+    for (const row of rows) {
+      if (!row.keyword) continue;
+      const item = items[rows.indexOf(row)];
+      const translation = item && typeof item.keywordTranslation === "string" ? item.keywordTranslation.trim() : "";
+      if (translation && translation.toLowerCase() === row.keyword.toLowerCase()) continue;
+      return row.keyword;
+    }
+    return null;
   }
-  return null;
+    const best = pickBestKeyword(rows, String(productName), []);
+  return best ? best.keyword : null;
 }
 /** 系统支持的 Amazon 零售站点（与 marketplaceToAmazonTld 一致；不扩展新 marketplace）。 */
 const AMAZON_RETAIL_HOSTS = new Set([
