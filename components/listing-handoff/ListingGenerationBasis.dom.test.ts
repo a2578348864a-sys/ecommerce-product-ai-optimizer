@@ -1,4 +1,5 @@
 import { createElement } from "react";
+import { draftSafeSummary } from "@/lib/listingHandoff/listingGenerationService";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -540,3 +541,61 @@ describe("ListingPlan.v2 草稿类型标签（draftKindLabel 三态）", () => {
       expect(text).toContain("最终文案实际命中的已确认商品事实");
     });
   });
+
+describe("LISTING_HISTORICAL_DRAFT_READ_GUARD DOM：历史坏快照经读取边界安全降级", () => {
+  it("unqualified 历史快照 → draftSafeSummary 清空正式字段且 listingUnqualified=true、rejected 有界、Basis 诚实空态", async () => {
+    const badSnapshot = {
+      draftKind: "structured_listing_draft",
+      humanReviewRequired: true,
+      generatedAt: "2026-08-26T00:00:00.000Z",
+      source: "deterministic_composition_v1",
+      version: 1,
+      composerVersion: "listing-composer-v1",
+      generationPolicyVersion: "listing-generation-policy-v1",
+      polishApplied: false,
+      polishModel: null,
+      titles: ["HydroJug CUPPNK Tumbler water bottle 40oz Stainless Steel Pink"],
+      bullets: [
+        "The Leak Proof, Water Bottle option fits the everyday use of this Tumbler.",
+        "Easy cleaning matches the Dishwasher Safe option for this Tumbler.",
+        "Available construction with the 40oz of this Tumbler.",
+        "The Tumbler pairs with the Tumbler for everyday use.",
+      ],
+      description: "A Tumbler for daily use.",
+      keywords: ["HydroJug", "Tumbler"],
+      backendSearchTerms: ["water bottle"],
+      sellingPoints: ["A Tumbler"],
+      providerAttempted: true,
+      providerSucceeded: true,
+      fallbackApplied: true,
+      fallbackReason: "AI 文案未匹配卖点策略。",
+      usedFactIds: ["functional_feature", "care", "material"],
+      // 无 factSafe/copyQuality —— 历史
+    };
+    const summary = draftSafeSummary(badSnapshot);
+    expect(summary?.listingUnqualified).toBe(true);
+    expect(summary?.factSafe).toBe(false);
+    expect(summary?.copyQuality).toBe(false);
+    expect(summary?.bullets).toEqual([]);
+    expect(summary?.titles).toEqual([]);
+    expect(summary?.description).toBe("");
+    expect(summary?.keywords).toEqual([]);
+    expect((summary?.rejectedListingSentences ?? []).length).toBeGreaterThan(0);
+    expect((summary?.rejectedListingSentences ?? []).length).toBeLessThanOrEqual(5);
+    for (const r of summary?.rejectedListingSentences ?? []) {
+      expect(r.text.length).toBeLessThanOrEqual(500);
+      expect(/[\u4e00-\u9fff]/.test(r.reason)).toBe(true);
+    }
+    // Basis 渲染：数据通过安全摘要后不显示"当前有效"式内容,显示诚实空态或拒绝诊断
+    const { ListingGenerationBasis: Basis } = await import("@/components/listing-handoff/ListingHandoffSection");
+    root = createRoot(container as unknown as Element);
+    root.render(createElement(Basis, { draft: summary as never }));
+    await flush();
+    const text = documentInstance.body.textContent;
+    // Basis 显示诚实空态（无依据字段时）或研究资料说明——不展示正式坏句字段
+    expect(text).not.toContain("option fits");
+    expect(text).not.toContain("pairs with");
+    // 诚实空态/研究说明必然存在其一
+    expect(text.includes("这份历史草稿") || text.includes("研究资料只用于定位和表达参考")).toBe(true);
+  });
+});

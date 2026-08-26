@@ -309,8 +309,81 @@ function computeUnqualifiedFields(input: { bullets: string[] }): {
   };
 }
 
+/**
+ * LISTING_HISTORICAL_DRAFT_READ_GUARD：历史快照读取边界重校验（只读，不写库）。
+ * 旧快照即使保存 listingUnqualified=false 或缺失 factSafe/copyQuality，也必须按当前
+ * Fact Safety 语义 + Copy Quality 合同重新判定：不合格不得作为正式 Listing 暴露。
+ * 纯函数：不修改传入 value；不读库；同输入同输出。
+ */
+export type HistoricalDraftReadVerdict = {
+  factSafe: boolean;
+  copyQuality: boolean;
+  listingUnqualified: boolean;
+  reason: string;
+  rejected: Array<{ text: string; reason: string }>;
+};
+
+export function revalidateHistoricalDraftRead(value: Record<string, unknown>): HistoricalDraftReadVerdict {
+  // 1) 安全解析正式字段（有界）
+  const titles = safeStringArray(value.titles).slice(0, 3);
+  const bullets = safeStringArray(value.bullets).slice(0, 5);
+  const description = safeString(value.description) ?? "";
+  // 2) cannotSay 从快照 sellingPointPlan 聚合（有界），无则用缺省保守集
+  const cannotSay = new Set<string>(DEFAULT_CANNOT_SAY);
+  if (Array.isArray(value.sellingPointPlan)) {
+    for (const bp of value.sellingPointPlan) {
+      if (isRecord(bp) && Array.isArray(bp.cannotSay)) {
+        for (const c of bp.cannotSay) if (typeof c === "string" && c.trim()) cannotSay.add(c.trim().slice(0, 80));
+      }
+    }
+  }
+  // 3) 当前 Copy Quality 重校验（正文词面检测；不依赖 facts/typeLabel 上下文）
+  const copy = validateCopyQualityContract({
+    title: titles[0] ?? "",
+    bullets,
+    description,
+    cannotSay: [...cannotSay],
+  });
+  // 4) factSafe：仅当持久化明确 true 且正文无禁止词面（读取侧矛盾）才 true；缺失→false
+  const bodyText = [titles[0] ?? "", ...bullets, description].join(" ").toLowerCase();
+  const persistedFactSafe = value.factSafe === true;
+  const readSideConflics = [...cannotSay].some((c) => {
+    const term = c.toLowerCase().replace(/[-_\s]+/g, "");
+    return term && bodyText.replace(/[-_\s]+/g, "").includes(term);
+  });
+  const factSafe = persistedFactSafe && !readSideConflics;
+  // 5) copyQuality = 当前重校验结果（绝不信任持久化）
+  const copyQuality = copy.ok;
+  // 6) listingUnqualified：任一不满足即不合格
+  const stats = computeUnqualifiedFields({ bullets });
+  const listingUnqualified = !factSafe || !copyQuality || stats.listingUnqualified;
+  const reason = !factSafe
+    ? "历史快照缺少可靠的事实安全证明或正文命中禁止声明，读取时未能通过当前 Fact Safety 判定。"
+    : !copyQuality
+      ? "历史快照正文未通过当前 Copy Quality 重校验（模板化/禁止词/自指等）。"
+      : stats.listingUnqualified
+        ? "历史快照正式结构化检查不合格（数量/词数/句法）。"
+        : "";
+  // rejected：合格句被拒的有界诊断（原坏句文本 + 中文原因）
+  const rejected: Array<{ text: string; reason: string }> = copy.issues.slice(0, 5).map((issue) => {
+    const text = issue.target === "bullets"
+      ? (bullets[Number(String(issue.message.match(/Bullet (\d+)/)?.[1] ?? "0")) - 1] ?? "")
+      : (titles[0] ?? "");
+    return { text: String(text).slice(0, 140), reason: issue.message.slice(0, 80) };
+  });
+  return { factSafe, copyQuality, listingUnqualified, reason, rejected };
+}
+
 export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null {
   if (!isRecord(value) || !isHandoffListedDraftShape(value)) return null;
+  const readGuard = revalidateHistoricalDraftRead(value);
+  const BLOCKED_EMPTY = readGuard.listingUnqualified;
+  const titlesOut = BLOCKED_EMPTY ? [] : safeStringArray(value.titles).slice(0, 3);
+  const bulletsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.bullets).slice(0, 5);
+  const descriptionOut = BLOCKED_EMPTY ? "" : safeString(value.description);
+  const keywordsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.keywords).slice(0, 12);
+  const backendOut = BLOCKED_EMPTY ? [] : (Array.isArray(value.backendSearchTerms) ? value.backendSearchTerms.filter((item): item is string => typeof item === "string").slice(0, 50) : undefined);
+  const sellingPointsOut = BLOCKED_EMPTY ? [] : safeStringArray(value.sellingPoints).slice(0, 6);
   return {
     generatedAt: safeString(value.generatedAt),
     source: safeString(value.source),
@@ -319,13 +392,11 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     generationPolicyVersion: safeString(value.generationPolicyVersion),
     polishApplied: value.polishApplied === true,
     polishModel: safeString(value.polishModel),
-    titles: safeStringArray(value.titles).slice(0, 3),
-    bullets: safeStringArray(value.bullets).slice(0, 5),
-    description: safeString(value.description),
-    keywords: safeStringArray(value.keywords).slice(0, 12),
-    backendSearchTerms: Array.isArray(value.backendSearchTerms)
-      ? value.backendSearchTerms.filter((item): item is string => typeof item === "string").slice(0, 50)
-      : undefined,
+    titles: titlesOut,
+    bullets: bulletsOut,
+    description: descriptionOut,
+    keywords: keywordsOut,
+    backendSearchTerms: backendOut,
     backendTermWarnings: Array.isArray(value.backendTermWarnings)
       ? value.backendTermWarnings.filter((item): item is string => typeof item === "string").slice(0, 10)
       : undefined,
@@ -353,8 +424,8 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
               .slice(0, 6)
           : undefined)
       : undefined,
-    factSafe: typeof value.factSafe === "boolean" ? value.factSafe : undefined,
-    copyQuality: typeof value.copyQuality === "boolean" ? value.copyQuality : undefined,
+    factSafe: readGuard.factSafe,
+    copyQuality: readGuard.copyQuality,
     humanReviewClaims: Array.isArray(value.humanReviewClaims)
       ? value.humanReviewClaims.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
           .map((item) => item.trim().slice(0, 120))
@@ -374,16 +445,16 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
     fallbackApplied: value.fallbackApplied === true,
     fallbackReason: typeof value.fallbackReason === "string" && value.fallbackReason ? value.fallbackReason : null,
     // R6：历史/既有快照亦诚实标注（检测碎片句），不把低质量快照当可用成果
-    ...computeUnqualifiedFields({ bullets: safeStringArray(value.bullets).slice(0, 5) }),
+    listingUnqualified: readGuard.listingUnqualified,
     // 已有明确拒绝原因时保留执行期结果（fallback 写入的 rejectedListingSentences 优先于纯粹的碎片推导）
-    rejectedListingSentences: (Array.isArray(value.rejectedListingSentences) && value.rejectedListingSentences.length > 0)
-      ? value.rejectedListingSentences.slice(0, 5)
-      : (computeUnqualifiedFields({ bullets: safeStringArray(value.bullets).slice(0, 5) }).rejectedListingSentences),
-    sellingPoints: safeStringArray(value.sellingPoints).slice(0, 6),
+    rejectedListingSentences: readGuard.listingUnqualified && readGuard.rejected.length > 0
+      ? readGuard.rejected
+      : (Array.isArray(value.rejectedListingSentences) && value.rejectedListingSentences.length > 0 ? value.rejectedListingSentences.slice(0, 5) : computeUnqualifiedFields({ bullets: bulletsOut }).rejectedListingSentences),
     riskNotes: safeStringArray(value.riskNotes),
     reviewChecklist: safeStringArray(value.reviewChecklist),
     blockedClaims: safeStringArray(value.blockedClaims),
     complianceWarnings: safeStringArray(value.complianceWarnings),
+    sellingPoints: sellingPointsOut,
     sellingPointPlan: Array.isArray(value.sellingPointPlan)
       ? value.sellingPointPlan
           .filter((item): item is { role: string; shopperNeed: string; shopperAngle: string; factLabels: string[]; keywordIds: string[]; claimMode: string; cannotSay: string[] } =>
