@@ -46,6 +46,10 @@ type ListingDraftSafeSummary = {
   complianceWarnings: string[];
   /** R6：Listing 质量不合格（碎片/数量不足）→ 只显示「暂无合格草稿」 */
   listingUnqualified?: boolean;
+  /** LISTING_COPY_QUALITY：事实安全（Claim Policy 出口）通过状态 */
+  factSafe?: boolean;
+  /** LISTING_COPY_QUALITY：文案质量（Copy Quality 合同）通过状态 */
+  copyQuality?: boolean;
   /** R6：被拒绝的具体句子 + 中文原因（有界 ≤5，无内部 id） */
   rejectedListingSentences?: Array<{ text: string; reason: string }>;
   /** ListingPlan.v2：卖点策略（安全摘要；无计划历史草稿为 undefined） */
@@ -699,9 +703,22 @@ export function ListingHandoffSection({
     <section className="mt-5 min-w-0 rounded-2xl border border-slate-200 bg-white p-4" aria-label="Listing 草稿">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-bold text-slate-800">Listing 草稿</h2>
-        <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
-          当前有效 Listing
-        </span>
+        {draft?.listingUnqualified ? (
+          <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700" data-testid="listing-unqualified-badge">
+            暂无合格草稿
+          </span>
+        ) : (
+          <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700">
+            当前有效 Listing
+          </span>
+        )}
+        {draft ? (
+          <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+            <span className={`rounded-full px-2 py-0.5 ${draft.factSafe ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="fact-safe-status">事实安全：{draft.factSafe ? "通过" : "未通过"}</span>
+            <span className={`rounded-full px-2 py-0.5 ${draft.copyQuality ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`} data-testid="copy-quality-status">文案质量：{draft.copyQuality ? "通过" : "未通过"}</span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600" data-testid="draft-kind-status">草稿类型：{draft.draftKind === "ai_optimized_listing" ? "AI 运营优化稿" : draft.draftKind === "structured_listing_draft" ? "安全事实提纲" : "暂无合格草稿"}</span>
+          </div>
+        ) : null}
       </header>
 
       {notice ? (

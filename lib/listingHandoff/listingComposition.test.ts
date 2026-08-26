@@ -63,9 +63,9 @@ describe("V2.1.5 Listing Composition Layer", () => {
     const d = composeListingDraft(input(OWALA_FACTS));
     expect(d.bullets).toEqual([
       "The Water Bottle with the Owala brand for everyday use.",
-      "Available in Stainless Steel material for this Water Bottle.",
-      "Fits standard 24 oz in this Water Bottle for easy use.",
-      "The Out of the Blue option matches this Water Bottle for everyday use.",
+      "This Water Bottle with Stainless Steel for practical use.",
+      "Standard 24 oz capacity for this Water Bottle product.",
+      "The Out of the Blue color option for this Water Bottle for easy use.",
     ]);
     expect(d.bullets.some((b) => /^(品牌|商品类型|系列\/型号|材质|容量):/.test(b))).toBe(false);
   });
@@ -205,7 +205,7 @@ describe("真实业务数据（THERMOS FUNTAINER Kids）全链路门禁", () => 
       bullets: pack.bullets,
       description: pack.description,
       keywords: pack.keywords,
-      facts: THERMOS_REAL_FACTS.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: String(f.value).trim() })),
+      facts: THERMOS_REAL_FACTS.map((f) => ({ factId: f.field, field: f.field, label: f.label, value: (input2.englishRenderings?.renderings?.find((r) => r.field === f.field)?.english ?? String(f.value)).trim() })),
       usedFactIds: THERMOS_REAL_FACTS.map((f) => f.field),
     });
     expect(quality.ok, JSON.stringify(quality.issues)).toBe(true);

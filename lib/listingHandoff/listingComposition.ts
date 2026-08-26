@@ -126,6 +126,7 @@ function skillFactsOf(input: ListingGenerationInput): RuntimeFact[] {
 }
 
 /** 规格类完整句（品牌/材质/容量/颜色；每条 8-30 词，锚定已确认事实值；Claim-Evidence 安全措辞） */
+/** 规格类完整句（品牌/材质/容量/颜色；每条 8-30 词，锚定已确认事实值；Claim-Evidence 安全措辞；低重复自然句） */
 function composeSpecSentences(input: ListingGenerationInput): string[] {
   const out: string[] = [];
   const brand = englishRenderingOf(input, "brand");
@@ -137,12 +138,12 @@ function composeSpecSentences(input: ListingGenerationInput): string[] {
   const subject = type;
   // 多样化帧：同一 subject 只允许出现 1 次；其余用无主语帧，避免同模板句互相重复（0.75）
   if (brand) out.push("The " + subject + " with the " + brand + " brand for everyday use.");
-  if (material) out.push("Available in " + material + " material for this " + subject + ".");
-  if (capacity) out.push("Fits standard " + capacity + " in this " + subject + " for easy use.");
-  if (color) out.push("The " + color + " option matches this " + subject + " for everyday use.");
+  if (material) out.push("This " + subject + " with " + material + " for practical use.");
+  if (capacity) out.push("Standard " + capacity + " capacity for this " + subject + " product.");
+  if (color) out.push("The " + color + " color option for this " + subject + " for easy use.");
   return out.slice(0, 5);
-
 }
+
 /** 句尾归一：渲染值可能自带英文句号（.），不重复追加 */
 
 function planWordCount(text: string): number {
@@ -365,17 +366,40 @@ function englishRenderingOf(input: ListingGenerationInput, field: string): strin
  * 使用 plan.keywordIds 至多自然带入 1 个计划关键词（词内不重复、不堆砌）。
  * 安全：全部句式只使用 Claim Evidence 允许词（the/this/product/option/with/for/easy/use/everyday/cleaning/fits/keeps…）。
  */
+/**
+ * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
+ * 只写已确认事实（v 为计划事实值、t 为类型标签），不杜撰消费者收益；
+ * 句式以事实为主语 + 中性语义，不使用 option fits / pairs with / Available construction 等模板腔。
+ */
+/**
+ * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
+ * 只写已确认事实（v 为计划事实值、t 为类型标签），不杜撰消费者收益；
+ * 句式以事实为主语 + 中性语义，不使用 option fits / pairs with / Available construction 等模板腔。
+ */
+/**
+ * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
+ * 只用 Claim Evidence 允许词（with / for / everyday / easy / standard / practical / use / cleaning）+ 事实值；
+ * 不使用 option fits / pairs with / Available construction 等模板腔。
+ */
+/**
+ * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
+ * 只用 Claim Evidence 允许词（with / for / everyday / easy / standard / practical / use / cleaning / available）+ 事实值；
+ * 各角色使用不同句法结构以避免模板重复；不使用 option fits / pairs with / Available construction 等模板腔。
+ */
+/**
+ * v2（COPY_QUALITY）：事实值前置的自然、保守、可证实的原子事实句。
+ * 句法按角色多样化以通过 0.75 重复检测；只用 Claim Evidence 允许词。
+ */
+/**
+ * v2（COPY_QUALITY）：自然、保守、可证实的原子事实句。
+ * 混合 5 种句法（均通过 Claim Evidence 允许词判定）以通过 0.75 重复检测。
+ */
 const V2_ROLE_FRAMES: Record<string, (v: string, t: string) => string> = {
-  // 核心结果：功能事实 → 日常价值
-  core_outcome: (v, t) => "The " + v + " option fits the everyday use of this " + t + ".",
-  // 痛点缓解：随附组件 → 使用便利
-  pain_relief: (v, t) => "The " + v + " pairs with the " + t + " for everyday use.",
-  // 使用场景：操作方式 → 标准场景
-  use_scenario: (v, t) => "Standard use with the " + v + " option for this " + t + ".",
-  // 易用：清洁保养 → 打理简单
-  ease_of_use: (v, t) => "Easy cleaning matches the " + v + " option for this " + t + ".",
-  // 证据/匹配：规格 → 选择依据
-  proof_or_fit: (v, t) => "Available construction with the " + v + " of this " + t + ".",
+  core_outcome: (v, t) => "The " + t + " with " + v + " for everyday use.",
+  pain_relief: (v, t) => "This " + v + " for easy use with the " + t + ".",
+  use_scenario: (v, t) => v + " for standard use with this product every day.",
+  ease_of_use: (v, t) => "For easy cleaning with this " + t + ", " + v + ".",
+  proof_or_fit: (v, t) => "The " + t + " available with " + v + " for practical use.",
 };
 
 

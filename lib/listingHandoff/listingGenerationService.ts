@@ -15,6 +15,9 @@ import { buildListingHandoffBinding, parseListingHandoffBinding, computeListingS
 import type { MockListingProvider } from "@/lib/listingHandoff/mockListingProvider";
 import { verifyListingClaims, listingClaimsHaveEvidence } from "@/lib/listingHandoff/listingClaimEvidenceResolver";
 import { classifyClaimTier } from "@/lib/listingHandoff/listingClaimTier";
+import { classifyClaimPolicy, type ClaimPolicyVerdict } from "@/lib/listingHandoff/listingClaimPolicy";
+import { DEFAULT_CANNOT_SAY } from "@/lib/listingHandoff/listingPlan";
+import { validateCopyQualityContract } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { buildDeterministicListingPackDraft, composeBullets as composeSafeBullets, composeOptimizedListingDraft } from "@/lib/listingHandoff/listingComposition";
 import { RUNTIME_QUALITY_LIMITS, type RuntimeFact, validateRuntimeQualityContract, type RuntimeIssue } from "@/lib/listingHandoff/listingRuntimeSkill";
 import { pickBestKeyword } from "@/lib/research/researchInputQuality";
@@ -87,6 +90,8 @@ export type ListingDraftSafeSummary = {
   complianceWarnings: string[];
   /** R6：Listing 质量不合格（碎片/数量不足）；前端只显示「暂无合格草稿」 */
   listingUnqualified?: boolean;
+  factSafe?: boolean;
+  copyQuality?: boolean;
   /** R6：被拒绝的具体句子 + 中文原因（有界 ≤5，无内部 id/hash/runId） */
   rejectedListingSentences?: Array<{ text: string; reason: string }>;
   /** ListingPlan.v2：卖点策略（安全摘要，公开 DTO；无计划的历史草稿为 undefined） */
@@ -152,6 +157,10 @@ function safeInt(value: unknown): number | null {
 }
 
 /** LISTING_FINAL_CLOSURE：竞品品牌/风险词在证据校验之前先被唯一策略出口过滤（人工 Brief 也不能绕过） */
+function typeLabelOfListingInput(input: ListingGenerationInput): string {
+  return String(input.productFacts.find((f) => f.field === "product_type")?.value ?? "").trim();
+}
+
 function keywordPolicyInputOf(generationInput: ListingGenerationInput): KeywordPolicyInput {
   const ownBrand = generationInput.productFacts.find((f) => f.field === "brand")?.value ?? "";
   const titles = (generationInput.creativeContext?.competitiveContext ?? []).map((entry) =>
@@ -344,6 +353,8 @@ export function draftSafeSummary(value: unknown): ListingDraftSafeSummary | null
               .slice(0, 6)
           : undefined)
       : undefined,
+    factSafe: typeof value.factSafe === "boolean" ? value.factSafe : undefined,
+    copyQuality: typeof value.copyQuality === "boolean" ? value.copyQuality : undefined,
     humanReviewClaims: Array.isArray(value.humanReviewClaims)
       ? value.humanReviewClaims.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
           .map((item) => item.trim().slice(0, 120))
@@ -765,6 +776,42 @@ export async function generateListingDraftFromHandoff(
         hasBlockingIssue: false,
         keywordBrief: effectiveKeywordBrief,
       });
+      /**
+       * LISTING_COPY_QUALITY：读取边界 fail-closed（单一 Claim Policy 出口）。
+       * 新版逐项确认元数据 = confirmedFacts 中 evidenceTier="human_confirmed" 且
+       * sourceRef.sourceKind="user_confirmation"（人工逐项确认）。历史快照无此字段 → 高风险字段默认 review。
+       */
+      const highRiskConfirmedFields = new Set<string>();
+      {
+        const confirmed = handoffC.versions[handoffC.versions.length - 1]?.confirmedFacts ?? [];
+        for (const f of confirmed) {
+          const kind = (f.sourceRef as { sourceKind?: string } | undefined)?.sourceKind;
+          if (f.evidenceTier === "human_confirmed" && kind === "user_confirmation") {
+            highRiskConfirmedFields.add(String(f.field ?? ""));
+          }
+        }
+      }
+      const claimVerdicts = new Map<string, ClaimPolicyVerdict>();
+      for (const gf of generationInput.productFacts) {
+        const verdict = classifyClaimPolicy({
+          field: gf.field,
+          value: String(gf.value ?? ""),
+          explicitHighRiskConfirmed: highRiskConfirmedFields.has(gf.field),
+          prohibited: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
+        });
+        claimVerdicts.set(gf.field, verdict);
+      }
+      /** 事实安全基线：仅 verified 事实可进正式字段 */
+      const claimSafeFacts = generationInput.productFacts.filter((gf) => {
+        const v = claimVerdicts.get(gf.field);
+        return v ? v.tier === "verified" : false;
+      });
+      const reviewOnlyFacts = generationInput.productFacts.filter((gf) => {
+        const v = claimVerdicts.get(gf.field);
+        return v ? v.tier === "review" : false;
+      });
+      /** 生成链输入使用事实安全基线（plan/验证/锚点只认 verified）；reviewOnlyFacts 仅展示用 */
+      generationInput = { ...generationInput, productFacts: claimSafeFacts };
       const plan = buildListingPlan(generationInput, effectiveKeywordBrief);
       // 与既有语义保持一致（v2214 无 Brief AI 路径为既定行为；关键词有效性在输出端约束 keywords/backendTerms）
       const copyReady = readiness.copyReady && plan.planQuality === "optimized";
@@ -842,13 +889,26 @@ export async function generateListingDraftFromHandoff(
           // R6：结构化回退与 AI 路径同跑运行时 Skill 质量合同（8-30 词完整句+事实锚点+品牌去重+关键词去重+描述句数）
           const optimizedContract = validateRuntimeQualityContract(runtimeQualityInputOf(optimizedDraft, (optimizedFiltered?.cleaned ?? null) as unknown as Record<string, unknown> | null, (optimizedFiltered ? optimizedFiltered.cleaned.bullets : optimizedDraft.bullets) ?? [], String(optimizedFiltered ? optimizedFiltered.cleaned.description : optimizedDraft.description ?? "")));
           const optimizedQuality = optimizedFiltered && optimizedContract.ok ? { ok: true, blockingIssues: [], issues: [], advisories: [] } : { ok: false, blockingIssues: optimizedContract.issues, issues: optimizedContract.issues, advisories: [] };
+          /** LISTING_COPY_QUALITY：structured 回退稿同样必须通过 Copy Quality（事实安全 ≠ 文案质量） */
+          const optimizedCopyQuality = validateCopyQualityContract({
+            title: String((optimizedFiltered?.cleaned as { titles?: string[] } | null)?.titles?.[0] ?? (optimizedDraft.titles as string[] | undefined)?.[0] ?? ""),
+            bullets: (optimizedFiltered?.cleaned?.bullets ?? optimizedDraft.bullets) ?? [],
+            description: String(optimizedFiltered ? optimizedFiltered.cleaned.description : optimizedDraft.description ?? ""),
+            cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
+            facts: runtimeFacts,
+            bulletPlans: plan.bulletPlans,
+            typeLabel: typeLabelOfListingInput(generationInput),
+          });
 
           fallbackApplied = true;
           fallbackReason = publicReason;
           fallbackReasonCode = reasonCode;
-          if (optimizedSchema.ok && optimizedFiltered && optimizedEvidence && listingClaimsHaveEvidence(optimizedEvidence) && optimizedQuality?.ok && optimizedContract.ok) {
+          if (optimizedSchema.ok && optimizedFiltered && optimizedEvidence && listingClaimsHaveEvidence(optimizedEvidence) && optimizedQuality?.ok && optimizedContract.ok && optimizedCopyQuality.ok) {
             draftKind = "structured_listing_draft";
             finalDraft = withoutKeywordOptimization({ ...optimizedFiltered.cleaned });
+            finalDraft.listingUnqualified = false;
+            finalDraft.factSafe = true;
+            finalDraft.copyQuality = true;
             qualityIssues = [issue];
             return;
           }
@@ -866,7 +926,17 @@ export async function generateListingDraftFromHandoff(
             facts: runtimeFacts,
             usedFactIds: runtimeUsedIds,
           });
-          const safeQualified = safeBullets.length >= 3 && safeContract.ok;
+          /** LISTING_COPY_QUALITY：safe 事实提纲同样必须通过 Copy Quality（自然、非模板腔） */
+          const safeCopyQuality = validateCopyQualityContract({
+            title: String((safeDraft.titles as unknown as string[] ?? [])[0] ?? ""),
+            bullets: safeBullets,
+            description: String(safeDraft.description ?? ""),
+            cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
+            facts: runtimeFacts,
+            bulletPlans: plan.bulletPlans,
+            typeLabel: typeLabelOfListingInput(generationInput),
+          });
+          const safeQualified = safeBullets.length >= 3 && safeContract.ok && safeCopyQuality.ok;
           draftKind = "safe_fact_draft";
           finalDraft = withoutKeywordOptimization({
             ...safeDraft,
@@ -883,6 +953,8 @@ export async function generateListingDraftFromHandoff(
           ])).slice(0, 8);
           finalDraft.rejectedListingSentences = (removedFragments.length > 0 ? removedFragments : asRejected(safeContract.issues, safeBullets)).slice(0, 5);
           finalDraft.listingUnqualified = !safeQualified;
+          finalDraft.factSafe = true;
+          finalDraft.copyQuality = safeCopyQuality.ok;
         };
 
       if (copyReady) {
@@ -1018,7 +1090,17 @@ export async function generateListingDraftFromHandoff(
             keywordPolicyInputOf(generationInput),
           );
           const brandPolicyAcceptable = competitorBrandMentions.length === 0;
-          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable && brandPolicyAcceptable) {
+          /** LISTING_COPY_QUALITY：AI 稿同样必须通过 Copy Quality（事实安全 ≠ 文案质量） */
+          const aiCopyQuality = validateCopyQualityContract({
+            title: safeTitle,
+            bullets: safeBullets,
+            description: safeDescription,
+            cannotSay: [...DEFAULT_CANNOT_SAY, ...(generationInput.prohibitedClaims ?? [])],
+            facts: runtimeFacts,
+            bulletPlans: plan.bulletPlans,
+            typeLabel: typeLabelOfListingInput(generationInput),
+          });
+          if (aiSchema.ok && aiFiltered && aiEvidence && unresolvedBlocked !== null && unresolvedBlocked.length === 0 && aiQuality?.ok && aiRuntimeContract?.ok && planBindAcceptable && brandPolicyAcceptable && aiCopyQuality.ok) {
             // R1.6：filterListingClaims 重建对象不含后端元数据字段 → 显式补回
             draftKind = "ai_optimized_listing";
             finalDraft = {
@@ -1034,6 +1116,9 @@ export async function generateListingDraftFromHandoff(
             finalDraft.keywords = dedupeTerms(claimPassingKeywords.length > 0 ? claimPassingKeywords : ((finalDraft.keywords as string[] | undefined) ?? []));
             finalDraft.backendSearchTerms = dedupeTerms((finalDraft.backendSearchTerms as string[] | undefined) ?? []);
             providerSucceeded = true;
+            finalDraft.listingUnqualified = false;
+            finalDraft.factSafe = true;
+            finalDraft.copyQuality = true;
           } else {
             // ListingPlan.v2：Provider 是否成功如实反映调用结果；仅当 claim 硬失败时
             // 保持既有语义 providerSucceeded=false（R3 契约）；plan 绑定拒绝而 claim 通过时置 true。

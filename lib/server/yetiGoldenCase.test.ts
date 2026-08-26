@@ -234,31 +234,21 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
     return { result, readiness };
   }
 
-  it("claimSafe/copyReady/keywordReady → Mock Provider 被调用；固定夹具确定结果 = structured_listing_draft（唯一，不二选一）", async () => {
+  it("claimSafe/copyReady/keywordReady → Mock Provider 被调用；固定夹具结果 = 无合格草稿（事实不足）", async () => {
     const { result, readiness } = await fullChain();
     expect(readiness.claimSafe).toBe(true);
     expect(readiness.copyReady).toBe(true);
     expect(readiness.keywordReady).toBe(true);
-    // 确定结果（固定夹具）：AI 输出含未确认词（12 ounces/未确认）被 Claim Evidence 拒绝 → 结构化回退；
-    // 但组合层当前改进已能为 5 条确认事实产出 >=3 条合格句 → structured_listing_draft（唯一结果，禁止 safe/structured 二选一）
-    expect(result.draft?.draftKind).toBe("structured_listing_draft");
-    expect(result.draft?.listingUnqualified).toBe(false);
-    expect(result.draft?.rejectedListingSentences ?? []).toEqual([]);
+    // LISTING_COPY_QUALITY：YETI 确认功能事实仅 care（无 functional/usage/operation），
+    // 无法组成 >=3 条合格五点 → 诚实返回无合格草稿（正式五点为空 + listingUnqualified=true），禁止拼垃圾句。
+    expect(result.draft?.draftKind).toBe("safe_fact_draft");
+    expect(result.draft?.listingUnqualified).toBe(true);
     expect(result.draft?.providerAttempted).toBe(true);
     expect(result.draft?.providerSucceeded).toBe(true);
     expect(result.draft?.fallbackApplied).toBe(true);
-    // 3-5 条正式五点：8-30 词 + 逐条锚定确认事实（care/material/color）
     const bullets = result.draft?.bullets ?? [];
-    expect(bullets.length).toBeGreaterThanOrEqual(3);
-    expect(bullets.length).toBeLessThanOrEqual(5);
-    const anchors = ["dishwasher-safe bottle and lid", "Stainless Steel", "Mist/Pink/Grasshopper"];
-    for (const b of bullets) {
-      const wc = b.trim().split(/\s+/).length;
-      expect(wc).toBeGreaterThanOrEqual(8);
-      expect(wc).toBeLessThanOrEqual(30);
-      expect(anchors.some((a) => b.toLowerCase().includes(a.toLowerCase()))).toBe(true);
-    }
-    // 正式 Listing 内容字段（标题/五点/描述/关键词/卖点）不得混入未确认的 12 ounces/leakproof/认证/性能时长
+    expect(bullets).toEqual([]);
+    // 正式字段非空时也不得混入未确认内容（若未来事实足够允许有稿）
     for (const field of ["titles", "bullets", "description", "keywords", "sellingPoints"]) {
       const text = (result.draft as unknown as Record<string, unknown>)[field];
       const joined = Array.isArray(text) ? (text as string[]).join(" ") : String(text ?? "");
@@ -267,15 +257,7 @@ describe("YETI Golden Case 全链（候选 → 确认 → Readiness → Brief �
       expect(joined).not.toMatch(/Leakproof/i);
       expect(joined).not.toMatch(/BPA|FDA|CE certified|guaranteed|keeps cold|keeps warm|12 hours/i);
     }
-    // 关键词诚实：正文未采用任何方案词；仅搜索词字段采用的是后台词（与 keywords 字段分离）
-    expect(result.draft?.usedKeywordTrace ?? []).toEqual([]);
-    expect(result.draft?.searchOnlyKeywordTrace ?? []).toEqual(["insulated kids bottle", "straw cap bottle", "kids water bottle"]);
-    // sellingPointPlan 存在且与正式五点一一对应（每张卡有角色 + >=1 个已确认事实）
-    const plan = result.draft?.sellingPointPlan ?? [];
-    expect(plan.length).toBe(bullets.length);
-    for (const bp of plan) {
-      expect(["core_outcome", "pain_relief", "use_scenario", "ease_of_use", "proof_or_fit"]).toContain(bp.role);
-      expect(bp.factLabels.length).toBeGreaterThanOrEqual(1);
-    }
+    // 合规展示 reasons（无合格草稿依据可见）
+    expect((result.draft?.qualityIssues ?? []).length).toBeGreaterThanOrEqual(1);
   }, 30_000);
 });

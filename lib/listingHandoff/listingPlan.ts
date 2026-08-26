@@ -139,7 +139,7 @@ const ROLE_FIELD_FAMILIES: Array<{ role: ListingPlanRole; fields: readonly strin
 ];
 
 /** 无确认事实支持的禁止表述（默认全加；已确认事实值本身不在其中） */
-const DEFAULT_CANNOT_SAY = [
+export const DEFAULT_CANNOT_SAY = [
   "leakproof",
   "12 hours",
   "keeps warm 12 hours",
@@ -156,8 +156,26 @@ const DEFAULT_CANNOT_SAY = [
 function shopperNeedOf(vocInsights: string[]): string {
   const raw = Array.isArray(vocInsights) ? vocInsights : [];
   if (raw.length === 0) return "日常使用需求";
-  const text = raw.slice(0, 3).join(" ").replace(/s+/g, " ").trim().slice(0, 120);
+  // FIX(COPY_QUALITY)：/s+/g 是字面字符 s 的替换 bug；空格/空白必须用 [\s]+
+  const text = raw.slice(0, 3).join(" ").replace(/[\s]+/g, " ").trim().slice(0, 120);
   return text || "日常使用需求";
+}
+
+/** v2：按角色角度生成差异化 shopperNeed（同需求不得复制到多卡；不足时用角色角度兜底而非重复） */
+const ROLE_NEED_HINTS: Record<ListingPlanRole, string> = {
+  core_outcome: "日常核心功能需求",
+  pain_relief: "痛点缓解与省心需求",
+  use_scenario: "常用场景与随身需求",
+  ease_of_use: "打理与清洁便利需求",
+  proof_or_fit: "规格匹配与选择依据",
+};
+
+function shopperNeedOfRole(role: ListingPlanRole, baseNeed: string): string {
+  const hint = ROLE_NEED_HINTS[role] ?? "实际使用价值";
+  // 差异化：角色角度 + 基础需求合并（若基础需求与角色角度相同或为空，仅用角色角度）
+  const trimmed = String(baseNeed ?? "").trim();
+  if (!trimmed || trimmed === hint || trimmed === "日常使用需求") return hint;
+  return hint + "（" + trimmed.slice(0, 60) + "）";
 }
 
 /** v2：VOC/竞品参考 —— 只作为证据引用标签，不进入 featureFactIds（reference-only） */
@@ -190,7 +208,8 @@ function assignRoles(
   const out: Array<{ role: ListingPlanRole; featureFactIds: string[]; shopperAngle: string; shopperNeed: string; claimMode: ListingClaimMode }> = [];
   // 身份事实（brand/product_type/series）不充当条件卖点；仅 functional/specification 可作为 bullet 事实
   const bulletEligible = facts.filter((f) => f.role !== "identity");
-  const need = shopperNeedOf(input.creativeContext?.vocInsights ?? []);
+  const baseNeed = shopperNeedOf(input.creativeContext?.vocInsights ?? []);
+  const needOf = (role: ListingPlanRole) => shopperNeedOfRole(role, baseNeed);
   // 1) 按角色族挑选未使用的事实（角色顺序：core → use → ease → proof → pain）
   for (const family of ROLE_FIELD_FAMILIES) {
     if (out.length >= 5) break;
@@ -202,7 +221,7 @@ function assignRoles(
       role: family.role,
       featureFactIds: [found.factId],
       shopperAngle: FUNCTIONAL_ANGLE_HINTS[found.field] ?? "实际使用价值",
-      shopperNeed: need,
+      shopperNeed: needOf(family.role),
       claimMode: "verified",
     });
   }
@@ -215,7 +234,7 @@ function assignRoles(
         role: "proof_or_fit",
         featureFactIds: present.map((field) => bulletEligible.find((f) => f.field === field && !used.has(f.factId))!.factId),
         shopperAngle: "关键材质与容量选择依据",
-        shopperNeed: need,
+        shopperNeed: needOf("proof_or_fit"),
         claimMode: "verified",
       });
       present.forEach((field) => used.add(field));
@@ -229,7 +248,7 @@ function assignRoles(
       if (used.has(f.factId)) continue;
       const role = restRoles.shift()!;
       used.add(f.factId);
-      out.push({ role, featureFactIds: [f.factId], shopperAngle: "基础商品信息", shopperNeed: need, claimMode: "verified" });
+      out.push({ role, featureFactIds: [f.factId], shopperAngle: "基础商品信息", shopperNeed: needOf(role), claimMode: "verified" });
     }
   }
   return out.slice(0, 5);

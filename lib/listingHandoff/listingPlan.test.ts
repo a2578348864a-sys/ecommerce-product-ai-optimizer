@@ -127,3 +127,51 @@ describe("ListingPlan.v2：角色与状态", () => {
     expect(JSON.stringify(sum).indexOf("Hash")).toBe(-1);
   });
 });
+
+// ── LISTING_COPY_QUALITY：卖点卡 shopperNeed 去重 + /s+/g 修复 ──
+describe("ListingPlan Copy Quality 红测", () => {
+  it("红：四张卖点卡 shopperNeed 不得重复（按角色差分）", () => {
+    const plan = buildListingPlan(thermosInput(), brief());
+    expect(plan.planQuality).toBe("optimized");
+    const needs = plan.bulletPlans.map((b) => String(b.shopperNeed ?? "").trim());
+    const seen = new Set<string>();
+    for (const n of needs) {
+      expect(seen.has(n)).toBe(false);
+      seen.add(n);
+    }
+  });
+
+  it("红：同一非身份事实只支撑一个核心卖点（featureFactIds 不跨卡复用）", () => {
+    const plan = buildListingPlan(thermosInput(), brief());
+    const seenIds = new Set<string>();
+    for (const bp of plan.bulletPlans) {
+      for (const fid of bp.featureFactIds) {
+        expect(seenIds.has(fid)).toBe(false);
+        seenIds.add(fid);
+      }
+    }
+  });
+
+  it("红：数据不足时允许少计划并标 needs_facts，不填充重复卡", () => {
+    // 只有 2 个功能事实（无 material/care 等），预期 bullets < 3 或 status=needs_facts
+    const input2 = thermosInput({
+      productFacts: [
+        { field: "brand", label: "品牌", value: "THERMOS" },
+        { field: "product_type", label: "商品类型", value: "THERMOS" },
+        { field: "functional_feature", label: "功能特性", value: "Vacuum Insulated" },
+        { field: "usage", label: "使用场景", value: "office, home" },
+      ],
+    });
+    const plan = buildListingPlan(input2, null);
+    expect(plan.status).toBe("needs_facts");
+    expect(plan.bulletPlans.length).toBeLessThan(3);
+  });
+
+  it("红：/s+/g 修复 — 连续空白折叠正确（VOC 用真实空白而非字面 s）", () => {
+    // 通过有 vocInsights 的输入验证：shopperNeed 不含字面 "s" 粘连且为自然文本
+    const plan = buildListingPlan(thermosInput(), brief());
+    const need = plan.bulletPlans[0]?.shopperNeed ?? "";
+    expect(need).toContain("日常");
+    expect(need).not.toMatch(/[a-zA-Z]s[a-zA-Z]/);
+  });
+});

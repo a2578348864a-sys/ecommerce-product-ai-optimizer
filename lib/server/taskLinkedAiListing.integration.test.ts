@@ -939,3 +939,73 @@ describe("LISTING_FINAL_CLOSURE：待确认句隔离 + 竞品品牌过滤 + 五�
     const allKw = [...(d.keywords ?? []), ...((d.backendSearchTerms ?? []) as string[])].join(" ").toLowerCase();
     expect(allKw).not.toContain("owala");
   }, 60_000);
+
+
+// ── LISTING_COPY_QUALITY：HydroJug 坏稿必须被拦截（事实安全 + 文案质量双门禁） ──
+describe("LISTING_COPY_QUALITY：坏稿拦截（事实安全 + 文案质量）", () => {
+  it("红：Leak Proof 历史值不得进入正式字段（review/prohibited → 无合格草稿或无泄漏）", async () => {
+    const taskId = "sandbox-cq-leakproof";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    // 注入高风险值 Leak Proof 的 AI 输出
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "HydroJug 40oz Tumbler",
+      bullets: [
+        "The Tumbler with leak proof for everyday use.",
+        "The Tumbler with dishwasher safe for easy cleaning.",
+        "The Tumbler with stainless steel for practical use.",
+      ],
+      description: "The HydroJug Tumbler with leak proof and double wall insulation.",
+      backendSearchTerms: ["water bottle"],
+      usedFactIds: ["functional_feature", "care", "material"],
+      humanReviewRequired: true,
+    }));
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441999", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    const d = result.draft!;
+    const formal = [String(d.titles[0] ?? ""), ...d.bullets, String(d.description ?? "")].join(" ").toLowerCase();
+    expect(formal).not.toMatch(/leak\s*[- ]?proof/);
+  }, 60_000);
+
+  it("红：pairs with / option fits / Available construction 模板句 → copy quality 拦截（不得 ai_optimized）", async () => {
+    const taskId = "sandbox-cq-template";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "Owala 24 oz Water Bottle",
+      bullets: [
+        "The straw lid option fits the everyday use of this Water Bottle.",
+        "The Water Bottle pairs with the straw lid for easy use.",
+        "Available construction with the straw lid of this Water Bottle.",
+      ],
+      description: "The Water Bottle with straw lid and double wall insulation for use.",
+      backendSearchTerms: ["vacuum flask"],
+      usedFactIds: ["functional_feature", "construction", "care"],
+      humanReviewRequired: true,
+    }));
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441998", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
+  }, 60_000);
+
+  it("红：AI 稿含 cannotSay 同义变体（Leak Proof → leakproof）→ 拒绝", async () => {
+    const taskId = "sandbox-cq-cannotsay";
+    await setupHandoff(taskId, true);
+    await saveBrief(taskId);
+    setTaskLinkedAiListingClientForTests(async () => ({
+      title: "Owala 24 oz Water Bottle",
+      bullets: [
+        "The straw lid with push-open mechanism for everyday use.",
+        "The water bottle leak proof option for easy cleaning.",
+        "Stainless Steel for practical use with this Water Bottle.",
+      ],
+      description: "The Water Bottle with straw lid and double wall insulation for use.",
+      backendSearchTerms: ["vacuum flask"],
+      usedFactIds: ["functional_feature", "care", "material"],
+      humanReviewRequired: true,
+    }));
+    const pr = await generateCreativeHandoffPreview(taskId, visitorContext());
+    const result = await generateListingDraftFromHandoff(taskId, visitorContext(), { requestId: "550e8400-e29b-41d4-a716-446655441997", expectedStorageVersion: pr.gate.storageVersion!, expectedHandoffRevision: pr.gate.currentHandoff!.currentRevision });
+    expect(result.draft?.draftKind).not.toBe("ai_optimized_listing");
+  }, 60_000);
+});
